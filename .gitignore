@@ -32,3 +32,4 @@ frontend/.vite/
 
 docs/notes.md
 
+*.db

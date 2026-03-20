@@ -3,7 +3,26 @@
 }
 
 .home nav {
-  margin-top: 1rem;
+  margin-top: 2rem;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.home nav a {
+  padding: 0.75rem 1.5rem;
+  background: #4fc3f7;
+  color: #111;
+  border-radius: 4px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.home nav a:hover {
+  background: #81d4fa;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(79, 195, 247, 0.3);
 }
 
 .counter {

@@ -11,12 +11,13 @@ name = "oversolve"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "bottle",
+    "flask",
     "waitress",
     "jax[cpu]",
     "scipy",
     "pyyaml",
     "cadquery-ocp",
+    "PyMySQL",
 ]
 
 [project.optional-dependencies]

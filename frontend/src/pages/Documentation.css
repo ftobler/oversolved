@@ -1,0 +1,237 @@
+.documentation {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.doc-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid #333;
+  background: #111;
+}
+
+.doc-header h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.doc-header .back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: inherit;
+  text-decoration: none;
+}
+
+.doc-header .back:hover {
+  background: #222;
+}
+
+.doc-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.doc-nav {
+  width: 240px;
+  padding: 24px 16px;
+  border-right: 1px solid #333;
+  background: #111;
+  overflow-y: auto;
+}
+
+.doc-nav h3 {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  text-transform: uppercase;
+  color: #888;
+  font-weight: 600;
+}
+
+.doc-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.doc-nav li {
+  margin: 8px 0;
+}
+
+.doc-nav li.loading-item {
+  color: #666;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.doc-nav a {
+  display: block;
+  padding: 8px 12px;
+  color: #ccc;
+  text-decoration: none;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.doc-nav a:hover {
+  color: #fff;
+  background: #222;
+}
+
+.doc-nav a.active {
+  color: #fff;
+  background: #4fc3f7;
+  font-weight: 600;
+}
+
+.doc-content {
+  flex: 1;
+  padding: 32px;
+  overflow-y: auto;
+  color: #ccc;
+  text-align: left;
+}
+
+.doc-content h1,
+.doc-content h2,
+.doc-content h3,
+.doc-content h4,
+.doc-content h5,
+.doc-content h6 {
+  color: #fff;
+  margin-top: 24px;
+  margin-bottom: 12px;
+}
+
+.doc-content h1 {
+  font-size: 32px;
+  margin-top: 0;
+}
+
+.doc-content h2 {
+  font-size: 24px;
+}
+
+.doc-content h3 {
+  font-size: 20px;
+}
+
+.doc-content p {
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.doc-content code {
+  background: #222;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.9em;
+  color: #81c784;
+}
+
+.doc-content pre {
+  background: #222;
+  padding: 16px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 16px 0;
+  border-left: 3px solid #4fc3f7;
+}
+
+.doc-content pre code {
+  background: none;
+  padding: 0;
+  color: #81c784;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+
+.doc-content ul,
+.doc-content ol {
+  margin: 16px 0;
+  padding-left: 32px;
+}
+
+.doc-content li {
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.doc-content a {
+  color: #4fc3f7;
+  text-decoration: none;
+}
+
+.doc-content a:hover {
+  text-decoration: underline;
+}
+
+.doc-content blockquote {
+  border-left: 3px solid #666;
+  padding-left: 16px;
+  margin: 16px 0;
+  color: #999;
+  font-style: italic;
+}
+
+.doc-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 16px 0;
+}
+
+.doc-content th,
+.doc-content td {
+  border: 1px solid #333;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.doc-content th {
+  background: #222;
+  color: #fff;
+}
+
+.doc-content hr {
+  border: none;
+  border-top: 1px solid #333;
+  margin: 24px 0;
+}
+
+.loading,
+.error {
+  text-align: center;
+  padding: 32px;
+  font-size: 16px;
+}
+
+.error {
+  color: #ef5350;
+}
+
+@media (max-width: 768px) {
+  .doc-container {
+    flex-direction: column;
+  }
+
+  .doc-nav {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #333;
+    padding: 16px;
+  }
+
+  .doc-content {
+    padding: 16px;
+  }
+}
