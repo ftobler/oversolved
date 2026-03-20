@@ -1,0 +1,50 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-latest-arm64]
+        python-version: ["3.12", "3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: flake8
+        run: flake8 oversolve tests
+
+      - name: mypy
+        run: mypy oversolve tests
+
+  frontend:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-latest-arm64]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: npm install
+        run: npm install
+        working-directory: frontend
+
+      - name: npm build
+        run: npm run build
+        working-directory: frontend
+
+      - name: npm lint
+        run: npm run lint
+        working-directory: frontend
