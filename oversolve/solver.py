@@ -186,6 +186,35 @@ def _constraint_render(c: dict, geom: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Per-entity constraint status
+# ---------------------------------------------------------------------------
+
+def _entity_status(J, rank, entities, entity_offsets, n_params, overall_status):
+    """Return per-entity 'fully_constrained' | 'underconstrained' | 'overconstrained'.
+
+    For each entity, temporarily pin all its parameters (augment J with identity
+    rows for those columns).  If the rank increases, those parameters had free
+    DOF — the entity is underconstrained.  This matches CAD UX: an element is
+    blue whenever any of its DOF are unconstrained, including position freedom
+    in a freely-floating (no fixed) sketch.
+    """
+    if overall_status == "overconstrained":
+        return {eid: "overconstrained" for eid in entities}
+
+    result = {}
+    for eid, entity in entities.items():
+        off  = entity_offsets[eid]
+        size = ENTITY_SIZES[entity["kind"]]
+        pin  = np.zeros((size, n_params))
+        for k in range(size):
+            pin[k, off + k] = 1.0
+        J_aug    = np.vstack([J, pin]) if J.shape[0] > 0 else pin
+        new_rank = int(np.linalg.matrix_rank(J_aug, tol=RANK_TOL))
+        result[eid] = "underconstrained" if new_rank > rank else "fully_constrained"
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Sketch solver
 # ---------------------------------------------------------------------------
 
@@ -337,6 +366,12 @@ def _solve_sketch(feature: dict) -> dict:
     geom_initial = _geometry_from_array(x0, entities, entity_offsets)
     geom_solved = _geometry_from_array(x_sol, entities, entity_offsets)
 
+    # Per-entity status via null-space analysis.
+    # The null space of J encodes all unconstrained directions. We project out
+    # the 3 rigid-body modes (translation x/y, rotation) so that a freely
+    # floating but shape-determined sketch doesn't flag its entities as free.
+    entity_status = _entity_status(J, rank, entities, entity_offsets, n_params, status)
+
     # Per-constraint residual (sum of squares) and render data
     constraints_out = {}
     for c in constraints:
@@ -348,6 +383,7 @@ def _solve_sketch(feature: dict) -> dict:
 
     return {
         "status": status,
+        "entity_status": entity_status,
         "params": {
             "initial": _params_from_array(x0, entities, entity_offsets),
             "solved":  _params_from_array(x_sol, entities, entity_offsets),

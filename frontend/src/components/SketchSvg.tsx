@@ -72,10 +72,13 @@ export interface Constraints {
   [constraintId: string]: Constraint
 }
 
+export type EntityStatus = Record<string, Status>
+
 interface Props {
   initial: Sketch
   solved: Sketch
   status?: Status
+  entityStatus?: EntityStatus
   size?: number
   constraints?: Constraints
 }
@@ -163,10 +166,11 @@ function renderSketch(
   sketch: Sketch,
   px: (x: number, y: number) => [number, number],
   pxScale: number,
-  color: string,
+  colorOf: (id: string) => string,
   strokeWidth: number,
 ) {
   return Object.entries(sketch).map(([id, entity]) => {
+    const color = colorOf(id)
     if ('start' in entity && 'end' in entity && 'radius' in entity) {
       const arc = entity as Arc
       const [cx, cy] = px(arc.center[0], arc.center[1])
@@ -354,17 +358,23 @@ const STATUS_COLOR: Record<Status, string> = {
   overconstrained: '#ef5350',
 }
 
-export default function SketchSvg({ initial, solved, status, size = 300, constraints }: Props) {
+export default function SketchSvg({ initial, solved, status, entityStatus, size = 300, constraints }: Props) {
   const { scale, tx, ty } = fitTransform([initial, solved], size)
 
   function px(x: number, y: number): [number, number] {
     return [x * scale + tx, size - (y * scale + ty)]
   }
 
+  const fallbackColor = status ? STATUS_COLOR[status] : STATUS_COLOR.underconstrained
+  const solvedColorOf = (id: string): string => {
+    if (entityStatus && entityStatus[id]) return STATUS_COLOR[entityStatus[id]]
+    return fallbackColor
+  }
+
   return (
     <svg width={size} height={size} style={{ background: '#111', borderRadius: 4 }}>
-      {renderSketch(initial, px, scale, '#66bb6a', 1)}
-      {renderSketch(solved, px, scale, status ? STATUS_COLOR[status] : '#4fc3f7', 2)}
+      {renderSketch(initial, px, scale, () => '#66bb6a', 1)}
+      {renderSketch(solved, px, scale, solvedColorOf, 2)}
       {constraints && renderConstraints(constraints, px, scale)}
     </svg>
   )
