@@ -2,6 +2,7 @@ import { Routes, Route, Link } from 'react-router-dom'
 import Visualizer from './pages/Visualizer'
 import Documentation from './pages/Documentation'
 import Documents from './pages/Documents'
+import DocumentViewer from './pages/DocumentViewer'
 import './App.css'
 
 function Home() {
@@ -24,6 +25,7 @@ function App() {
       <Route path="/" element={<Home />} />
       <Route path="/visualizer" element={<Visualizer />} />
       <Route path="/documents" element={<Documents />} />
+      <Route path="/documents/:docId" element={<DocumentViewer />} />
       <Route path="/docs" element={<Documentation />} />
       <Route path="/docs/:doc" element={<Documentation />} />
     </Routes>
