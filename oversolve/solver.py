@@ -12,18 +12,17 @@ ENTITY_SIZES = {
     "arc":          5,  # cx, cy, r, a_start_deg, a_end_deg
 }
 
+LOSS_THRESHOLD = 1e-4   # above this the system is overconstrained (conflicting)
+RANK_TOL = 1e-6         # tolerance for numerical rank computation
+
 
 def solve(yaml_str: str) -> dict:
     """Solve all sketch features in a YAML document.
 
-    Returns a nested dict:
-        result[feature_id]["initial"][entity_id] -> geometry
-        result[feature_id]["solved"][entity_id]  -> geometry
-
-    Geometry per kind:
-        line_segment -> {start, end}
-        circle       -> {center, radius}
-        arc          -> {center, start, end, radius, angle_start, angle_end}
+    Returns a nested dict per feature:
+        result[feature_id]["initial"][entity_id]  -> geometry
+        result[feature_id]["solved"][entity_id]   -> geometry
+        result[feature_id]["status"]              -> "fully_constrained" | "underconstrained" | "overconstrained"
     """
     doc = yaml.safe_load(yaml_str)
     features = doc.get("features", [])
@@ -32,8 +31,8 @@ def solve(yaml_str: str) -> dict:
     for feature in features:
         if feature.get("kind") != "sketch":
             continue
-        initial, solved = _solve_sketch(feature)
-        result[feature["id"]] = {"initial": initial, "solved": solved}
+        initial, solved, status = _solve_sketch(feature)
+        result[feature["id"]] = {"initial": initial, "solved": solved, "status": status}
     return result
 
 
@@ -91,11 +90,10 @@ def _solve_sketch(feature: dict) -> tuple:
         ep = get_params(x, eid)
         kind = entities[eid]["kind"]
         point = ref.get("point", "start")
-
         if kind == "line_segment":
             return ep[2:4] if point == "end" else ep[0:2]
         elif kind == "circle":
-            return ep[0:2]  # only center is addressable
+            return ep[0:2]
         elif kind == "arc":
             cx, cy, r = ep[0], ep[1], ep[2]
             a_deg = ep[3] if point != "end" else ep[4]
@@ -119,7 +117,7 @@ def _solve_sketch(feature: dict) -> tuple:
                 r.append(jnp.sqrt(dx**2 + dy**2) - c["value"])
             elif kind == "radius":
                 ep = get_params(x, c["target"]["entity"])
-                r.append(ep[2] - c["value"])  # ep[2] is r for both circle and arc
+                r.append(ep[2] - c["value"])
             elif kind == "coincident":
                 pa = get_point(x, c["a"])
                 pb = get_point(x, c["b"])
@@ -138,6 +136,27 @@ def _solve_sketch(feature: dict) -> tuple:
                 db = eb[2:4] - eb[0:2]
                 cos_val = jnp.dot(da, db) / (jnp.linalg.norm(da) * jnp.linalg.norm(db))
                 r.append(cos_val - jnp.cos(jnp.deg2rad(c["value"])))
+            elif kind == "tangent":
+                # line direction perpendicular to arc radius at the contact point
+                line_ep = get_params(x, c["line"]["entity"])
+                line_dir = line_ep[2:4] - line_ep[0:2]
+                line_dir = line_dir / jnp.linalg.norm(line_dir)
+                arc_ep = get_params(x, c["arc"]["entity"])
+                arc_pt = c["arc"].get("point", "start")
+                a_deg = arc_ep[3] if arc_pt != "end" else arc_ep[4]
+                radius_dir = jnp.array([jnp.cos(jnp.deg2rad(a_deg)), jnp.sin(jnp.deg2rad(a_deg))])
+                r.append(jnp.dot(line_dir, radius_dir))
+            elif kind == "equal_length":
+                ea = get_params(x, c["a"]["entity"])
+                eb = get_params(x, c["b"]["entity"])
+                len_a = jnp.sqrt((ea[2] - ea[0])**2 + (ea[3] - ea[1])**2)
+                len_b = jnp.sqrt((eb[2] - eb[0])**2 + (eb[3] - eb[1])**2)
+                r.append(len_a - len_b)
+            elif kind == "point_distance":
+                pa = get_point(x, c["a"])
+                pb = get_point(x, c["b"])
+                dist = jnp.sqrt((pb[0] - pa[0])**2 + (pb[1] - pa[1])**2)
+                r.append(dist - c["value"])
             else:
                 raise ValueError(f"Unknown constraint kind: {kind!r}")
         return jnp.array(r)
@@ -152,12 +171,24 @@ def _solve_sketch(feature: dict) -> tuple:
         val, grad = loss_and_grad(jnp.array(x_np))
         return float(val), np.array(grad, dtype=np.float64)
 
-    result = minimize(scipy_fn, x0, method="BFGS", jac=True, options={"maxiter": 2000, "gtol": 1e-12})
-    x_sol = np.array(result.x)
+    opt = minimize(scipy_fn, x0, method="BFGS", jac=True, options={"maxiter": 2000, "gtol": 1e-12})
+    x_sol = np.array(opt.x)
+    final_loss = float(opt.fun)
+
+    # Detect constraint status via Jacobian rank
+    J = np.array(jax.jacobian(residuals)(jnp.array(x_sol)))
+    rank = int(np.linalg.matrix_rank(J, tol=RANK_TOL))
+    n_params = len(x_sol)
+
+    if final_loss > LOSS_THRESHOLD:
+        status = "overconstrained"
+    elif rank < n_params - 3:
+        status = "underconstrained"
+    else:
+        status = "fully_constrained"
 
     return (
         _geometry_from_array(x0, entities, entity_offsets),
         _geometry_from_array(x_sol, entities, entity_offsets),
+        status,
     )
-
-

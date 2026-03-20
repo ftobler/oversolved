@@ -8,6 +8,7 @@ interface FeatureResult {
   [featureId: string]: {
     initial: Sketch
     solved: Sketch
+    status: 'fully_constrained' | 'underconstrained' | 'overconstrained'
   }
 }
 
@@ -35,7 +36,7 @@ export default function Visualizer() {
         <Link to="/" className="back">
           <span className="material-icons">arrow_back</span>
         </Link>
-        <h1>Sketch Visualizer</h1>
+        <h1>Test Visualizer</h1>
         <button className="reload" onClick={() => window.location.reload()}>
           <span className="material-icons">refresh</span>
         </button>
@@ -51,10 +52,10 @@ export default function Visualizer() {
         <section key={testName} className="test-section">
           <h2>{testName}</h2>
           <div className="sketch-row">
-            {Object.entries(features).map(([featureId, { initial, solved }]) => (
+            {Object.entries(features).map(([featureId, { initial, solved, status }]) => (
               <div key={featureId} className="sketch-card">
                 <div className="sketch-label">{featureId}</div>
-                <SketchSvg initial={initial} solved={solved} size={280} />
+                <SketchSvg initial={initial} solved={solved} status={status} size={280} />
               </div>
             ))}
           </div>

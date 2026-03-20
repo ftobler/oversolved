@@ -25,9 +25,12 @@ export interface Sketch {
   [entityId: string]: Entity
 }
 
+type Status = 'fully_constrained' | 'underconstrained' | 'overconstrained'
+
 interface Props {
   initial: Sketch
   solved: Sketch
+  status?: Status
   size?: number
 }
 
@@ -96,12 +99,15 @@ function renderSketch(
       const y0 = cy + r * Math.sin(a0)
       const x1 = cx + r * Math.cos(a1)
       const y1 = cy + r * Math.sin(a1)
-      const largeArc = Math.abs(arc.angle_end - arc.angle_start) > 180 ? 1 : 0
+      // Arcs are always CCW in CAD (y-up), which maps to CW in SVG (y-down), so sweep=1.
+      // Span is computed CCW: (end - start + 360) % 360.
+      const span = ((arc.angle_end - arc.angle_start) + 360) % 360
+      const largeArc = span > 180 ? 1 : 0
       const [sx, sy] = px(arc.start[0], arc.start[1])
       const [ex, ey] = px(arc.end[0], arc.end[1])
       return (
         <g key={id}>
-          <path d={`M ${x0} ${y0} A ${r} ${r} 0 ${largeArc} 0 ${x1} ${y1}`} stroke={color} strokeWidth={strokeWidth} fill="none" />
+          <path d={`M ${x0} ${y0} A ${r} ${r} 0 ${largeArc} 1 ${x1} ${y1}`} stroke={color} strokeWidth={strokeWidth} fill="none" />
           <circle cx={sx} cy={sy} r={strokeWidth * 1.5} fill={color} />
           <circle cx={ex} cy={ey} r={strokeWidth * 1.5} fill={color} />
           <circle cx={cx} cy={cy} r={strokeWidth} fill={color} opacity={0.5} />
@@ -132,7 +138,13 @@ function renderSketch(
   })
 }
 
-export default function SketchSvg({ initial, solved, size = 300 }: Props) {
+const STATUS_COLOR: Record<Status, string> = {
+  fully_constrained: '#ffffff',
+  underconstrained: '#4fc3f7',
+  overconstrained: '#ef5350',
+}
+
+export default function SketchSvg({ initial, solved, status, size = 300 }: Props) {
   const { scale, tx, ty } = fitTransform([initial, solved], size)
 
   function px(x: number, y: number): [number, number] {
@@ -142,7 +154,7 @@ export default function SketchSvg({ initial, solved, size = 300 }: Props) {
   return (
     <svg width={size} height={size} style={{ background: '#111', borderRadius: 4 }}>
       {renderSketch(initial, px, scale, '#66bb6a', 1)}
-      {renderSketch(solved, px, scale, '#4fc3f7', 2)}
+      {renderSketch(solved, px, scale, status ? STATUS_COLOR[status] : '#4fc3f7', 2)}
     </svg>
   )
 }
