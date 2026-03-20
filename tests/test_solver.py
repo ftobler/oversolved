@@ -1644,5 +1644,3 @@ features:
     # line_b starts at (0, 5)
     assert abs(sk["line_b"]["start"][0] - 0.0) < TOL
     assert abs(sk["line_b"]["start"][1] - 5.0) < TOL
-
-

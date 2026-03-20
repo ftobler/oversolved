@@ -94,6 +94,9 @@ const iconModules = import.meta.glob('../assets/icons/*.svg', {
   import: 'default',
 }) as Record<string, string>
 
+// Ensure parallel icon is loaded (workaround for glob timing issues)
+import constraintParallelUrl from '../assets/icons/constraint-parallel.svg?url'
+
 const SYMBOL_TO_ICON: Record<string, string> = {
   symbol_h:          'constraint-horizontal',
   symbol_v:          'constraint-vertical',
@@ -111,6 +114,8 @@ const SYMBOL_TO_ICON: Record<string, string> = {
 }
 
 function getIconUrl(kind: string): string | undefined {
+  // Special case for parallel to ensure it's always available
+  if (kind === 'symbol_parallel') return constraintParallelUrl
   const name = SYMBOL_TO_ICON[kind]
   if (!name) return undefined
   return iconModules[`../assets/icons/${name}.svg`]
