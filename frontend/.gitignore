@@ -24,4 +24,4 @@ dist-ssr
 *.sw?
 
 
-frontend/public/test_output
+public/test_output/*
