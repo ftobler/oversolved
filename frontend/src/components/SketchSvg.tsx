@@ -228,7 +228,7 @@ function renderSketch(
       const dashArray = pt.construction ? '4 2' : undefined
       return (
         <g key={id}>
-          <circle cx={px_} cy={py_} r={strokeWidth * 2.5} fill={color} strokeDasharray={dashArray} />
+          <circle cx={px_} cy={py_} r={strokeWidth * 2.0} fill={color} strokeDasharray={dashArray} />
           <line x1={px_ - strokeWidth * 4} y1={py_} x2={px_ + strokeWidth * 4} y2={py_} stroke={color} strokeWidth={strokeWidth * 0.75} strokeDasharray={dashArray} />
           <line x1={px_} y1={py_ - strokeWidth * 4} x2={px_} y2={py_ + strokeWidth * 4} stroke={color} strokeWidth={strokeWidth * 0.75} strokeDasharray={dashArray} />
         </g>
@@ -360,8 +360,8 @@ function renderConstraints(
         const dim = r as DimLinearRender
         const [x1, y1] = px(dim.p1[0], dim.p1[1])
         const [x2, y2] = px(dim.p2[0], dim.p2[1])
-        const nx = dim.normal[0]
-        const ny = -dim.normal[1]
+        const nx = -dim.normal[0]
+        const ny = dim.normal[1]
         const nlen = Math.sqrt(nx * nx + ny * ny) || 1
         const unx = nx / nlen
         const uny = ny / nlen
