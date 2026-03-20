@@ -1723,12 +1723,12 @@ features:
     assert abs(length(sk["construction_line"]["start"], sk["construction_line"]["end"]) - 10.0) < TOL
 
     # Verify construction geometry has the construction flag
-    assert sk["construction_line"].get("construction") == True
-    assert sk["construction_circle"].get("construction") == True
-    assert sk["construction_pt"].get("construction") == True
+    assert sk["construction_line"].get("construction")
+    assert sk["construction_circle"].get("construction")
+    assert sk["construction_pt"].get("construction")
 
     # Verify regular entity doesn't have construction flag
-    assert sk["main_line"].get("construction") is None or sk["main_line"].get("construction") == False
+    assert not sk["main_line"].get("construction")
 
     # Verify construction circle radius is correct
     assert abs(sk["construction_circle"]["radius"] - 2.0) < TOL
@@ -1856,8 +1856,8 @@ features:
     assert abs(length(sk["side_left"]["start"], sk["side_left"]["end"]) - 10.0) < TOL
 
     # Verify construction diagonals are marked as construction
-    assert sk["diag_br_tl"].get("construction") == True
-    assert sk["diag_bl_tr"].get("construction") == True
+    assert sk["diag_br_tl"].get("construction")
+    assert sk["diag_bl_tr"].get("construction")
 
     # Verify center point is at (5, 5)
     assert abs(sk["center"]["x"] - 5.0) < TOL
