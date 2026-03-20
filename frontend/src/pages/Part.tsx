@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import Viewport from '../components/Viewport'
 import './Part.css'
 import toolbarLineIcon from '../assets/icons/toolbar-line.svg'
 import toolbarRectangleIcon from '../assets/icons/toolbar-rectangle.svg'
@@ -24,6 +25,7 @@ import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
 import toolbarPlayIcon from '../assets/icons/toolbar-play.svg'
+import viewportResetIcon from '../assets/icons/viewport-reset.svg'
 
 export default function Part() {
   const { docId } = useParams<{ docId: string }>()
@@ -34,6 +36,7 @@ export default function Part() {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(docId || '')
   const [features, setFeatures] = useState<Array<{ id: string; kind?: string }>>([])
+  const [visibleFeatures, setVisibleFeatures] = useState<Set<string>>(new Set())
 
   const extractFeatures = (yaml: string) => {
     // Built-in features
@@ -75,6 +78,9 @@ export default function Part() {
     return [...builtInFeatures, ...features]
   }
   const [mode, setMode] = useState<'sketch' | 'feature' | 'code'>('sketch')
+  const [rollbackPosition, setRollbackPosition] = useState<number>(4) // Start after built-in features
+  const [solveResult, setSolveResult] = useState<string>('')
+  const [solving, setSolving] = useState(false)
 
   useEffect(() => {
     if (!docId) return
@@ -86,7 +92,9 @@ export default function Part() {
       })
       .then(data => {
         setContent(data.content)
-        setFeatures(extractFeatures(data.content))
+        const extracted = extractFeatures(data.content)
+        setFeatures(extracted)
+        setVisibleFeatures(new Set(extracted.map(f => f.id)))
         setLoading(false)
       })
       .catch(e => {
@@ -137,6 +145,60 @@ export default function Part() {
     } catch (e) {
       setError(String(e))
     }
+  }
+
+  const handleRun = async () => {
+    setSolving(true)
+    setSolveResult('')
+    try {
+      const response = await fetch('/api/solve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        setSolveResult(data.error || 'Solve failed')
+      } else {
+        setSolveResult(JSON.stringify(data.result, null, 2))
+      }
+    } catch (e) {
+      setSolveResult(String(e))
+    } finally {
+      setSolving(false)
+    }
+  }
+
+  const handleRollbackDragOver = (e: React.DragEvent, featureIndex: number) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    // Update position if after Origin (index >= 1)
+    if (featureIndex >= 1) {
+      setRollbackPosition(featureIndex + 1)
+    }
+  }
+
+  const handleRollbackDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleRollbackDrop = (e: React.DragEvent, featureIndex: number) => {
+    e.preventDefault()
+    if (featureIndex >= 1) {
+      setRollbackPosition(featureIndex + 1)
+    }
+  }
+
+  const toggleVisibility = (featureId: string) => {
+    setVisibleFeatures(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(featureId)) {
+        newSet.delete(featureId)
+      } else {
+        newSet.add(featureId)
+      }
+      return newSet
+    })
   }
 
   return (
@@ -196,26 +258,67 @@ export default function Part() {
             {features.length === 0 ? (
               <li className="empty">No features</li>
             ) : (
-              features.map(feature => (
-                <li key={feature.id} className="feature-item">
-                  <img
-                    src={
-                      feature.kind?.toLowerCase() === 'sketch'
-                        ? featureSketchIcon
-                        : feature.kind?.toLowerCase() === 'extrude'
-                        ? featureExtrudeIcon
-                        : feature.kind?.toLowerCase() === 'origin'
-                        ? featureOriginIcon
-                        : featurePlaneIcon
-                    }
-                    alt={feature.kind || 'feature'}
-                    className="feature-icon"
-                  />
-                  <span className="feature-name">{feature.id}</span>
-                </li>
+              features.map((feature, index) => (
+                <div key={`feature-${feature.id}`}>
+                  {rollbackPosition === index && (
+                    <li
+                      className="rollback-bar"
+                      title="Rollback"
+                      draggable
+                      onDragStart={handleRollbackDragStart}
+                      onDragOver={(e) => handleRollbackDragOver(e, index)}
+                      onDrop={(e) => handleRollbackDrop(e, index)}
+                    ></li>
+                  )}
+                  <li
+                    key={feature.id}
+                    className={`feature-item ${index >= rollbackPosition ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''}`}
+                    onDragOver={(e) => handleRollbackDragOver(e, index)}
+                    onDrop={(e) => handleRollbackDrop(e, index)}
+                  >
+                    <img
+                      src={
+                        feature.kind?.toLowerCase() === 'sketch'
+                          ? featureSketchIcon
+                          : feature.kind?.toLowerCase() === 'extrude'
+                          ? featureExtrudeIcon
+                          : feature.kind?.toLowerCase() === 'origin'
+                          ? featureOriginIcon
+                          : featurePlaneIcon
+                      }
+                      alt={feature.kind || 'feature'}
+                      className="feature-icon"
+                    />
+                    <span className="feature-name">{feature.id}</span>
+                    <button
+                      className="feature-visibility-btn"
+                      onClick={() => toggleVisibility(feature.id)}
+                      title={visibleFeatures.has(feature.id) ? 'Hide' : 'Show'}
+                    >
+                      <span className="material-icons">
+                        {visibleFeatures.has(feature.id) ? 'visibility' : 'visibility_off'}
+                      </span>
+                    </button>
+                  </li>
+                </div>
               ))
             )}
-            <li className="rollback-bar" title="Rollback"></li>
+            {rollbackPosition === features.length && (
+              <li
+                className="rollback-bar"
+                title="Rollback"
+                draggable
+                onDragStart={handleRollbackDragStart}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setRollbackPosition(features.length)
+                }}
+              ></li>
+            )}
           </ul>
         </aside>
 
@@ -252,7 +355,7 @@ export default function Part() {
 
             {mode === 'code' && (
               <>
-                <button className="editor-btn" title="Run">
+                <button className="editor-btn" title="Run" onClick={handleRun} disabled={solving}>
                   <img src={toolbarPlayIcon} alt="Run" />
                 </button>
               </>
@@ -260,6 +363,12 @@ export default function Part() {
 
             {mode === 'sketch' && (
               <>
+                <button className="editor-btn" title="Reset Viewport">
+                  <img src={viewportResetIcon} alt="Reset Viewport" />
+                </button>
+
+                <div className="toolbar-separator" />
+
                 <button className="editor-btn" title="Line">
                   <img src={toolbarLineIcon} alt="Line" />
                 </button>
@@ -341,26 +450,29 @@ export default function Part() {
           {!loading && !error && (
             <>
               {mode === 'code' && (
-                <textarea
-                  value={content}
-                  onChange={e => {
-                    setContent(e.target.value)
-                    setFeatures(extractFeatures(e.target.value))
-                  }}
-                  placeholder="Document content..."
-                  spellCheck="false"
-                />
-              )}
-              {mode === 'sketch' && (
-                <div className="viewer-placeholder">
-                  Sketch Viewer
+                <div className="code-split">
+                  <textarea
+                    className="code-input"
+                    value={content}
+                    onChange={e => {
+                      setContent(e.target.value)
+                      setFeatures(extractFeatures(e.target.value))
+                    }}
+                    placeholder="Document content..."
+                    spellCheck="false"
+                  />
+                  <div className="code-result">
+                    {solving
+                      ? <span className="code-result-status">Solving...</span>
+                      : solveResult
+                      ? <pre>{solveResult}</pre>
+                      : <span className="code-result-status">Press Run to solve</span>
+                    }
+                  </div>
                 </div>
               )}
-              {mode === 'feature' && (
-                <div className="viewer-placeholder">
-                  Feature Viewer
-                </div>
-              )}
+              {mode === 'sketch' && <Viewport />}
+              {mode === 'feature' && <Viewport />}
             </>
           )}
         </div>

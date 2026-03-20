@@ -602,5 +602,43 @@ def feature_plane(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/viewport-reset.svg")
+def viewport_reset(ctx):
+    # Square outline
+    m = 0.12
+    ctx.move_to(m, m)
+    ctx.line_to(1 - m, m)
+    ctx.line_to(1 - m, 1 - m)
+    ctx.line_to(m, 1 - m)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # Left-pointing arrow
+    cy = 0.5
+    ah = 0.09
+    lx0 = 0.42
+    lx1 = m + 0.16
+    ctx.move_to(lx0, cy)
+    ctx.line_to(lx1 + ah, cy)
+    stroke(ctx, 1.5)
+    ctx.move_to(lx1, cy)
+    ctx.line_to(lx1 + ah, cy - ah)
+    ctx.line_to(lx1 + ah, cy + ah)
+    ctx.close_path()
+    ctx.fill()
+
+    # Right-pointing arrow
+    rx0 = 0.58
+    rx1 = 1 - m - 0.16
+    ctx.move_to(rx0, cy)
+    ctx.line_to(rx1 - ah, cy)
+    stroke(ctx, 1.5)
+    ctx.move_to(rx1, cy)
+    ctx.line_to(rx1 - ah, cy - ah)
+    ctx.line_to(rx1 - ah, cy + ah)
+    ctx.close_path()
+    ctx.fill()
+
+
 if __name__ == "__main__":
     drawall()

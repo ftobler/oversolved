@@ -186,12 +186,68 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  text-align: left;
+}
+
+.feature-visibility-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #555;
+  padding: 2px 4px;
+  transition: color 0.2s;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.feature-visibility-btn:hover {
+  color: #777;
+}
+
+.feature-visibility-btn .material-icons {
+  font-size: 11px;
 }
 
 .feature-item:hover {
   background: #222;
   border-color: #4fc3f7;
   color: #4fc3f7;
+}
+
+.feature-item.rolled-back {
+  opacity: 0.4;
+  color: #555;
+}
+
+.feature-item.rolled-back:hover {
+  color: #777;
+  border-color: #333;
+}
+
+.feature-item.rolled-back .feature-icon {
+  opacity: 0.5;
+}
+
+.feature-item.rolled-back .feature-visibility-btn {
+  opacity: 0.5;
+}
+
+.feature-item.invisible {
+  opacity: 0.4;
+  color: #555;
+}
+
+.feature-item.invisible .feature-icon,
+.feature-item.invisible .feature-name {
+  opacity: 0.5;
+}
+
+.feature-item.invisible .feature-visibility-btn {
+  opacity: 1;
 }
 
 .features-list .empty {
@@ -206,13 +262,20 @@
   color: gray;
   background: var(--tiling-sine) repeat-x;
   margin: 5px 0;
-  cursor: pointer;
+  cursor: grab;
   transition: all 0.2s;
+  list-style: none;
+  user-select: none;
 }
 
 .rollback-bar:hover {
   background-color: #1a1a1a;
   border-top-color: #555;
+  opacity: 0.8;
+}
+
+.rollback-bar:active {
+  cursor: grabbing;
 }
 
 .doc-editor {
@@ -324,6 +387,53 @@
   filter: invert(0.8);
 }
 
+.code-split {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.code-input {
+  flex: 1;
+  padding: 16px;
+  background: #111;
+  color: #ccc;
+  border: none;
+  border-right: 1px solid #333;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  resize: none;
+}
+
+.code-input:focus {
+  outline: none;
+  color: #fff;
+}
+
+.code-result {
+  flex: 1;
+  padding: 16px;
+  background: #0d0d0d;
+  overflow-y: auto;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #ccc;
+  text-align: left;
+}
+
+.code-result pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.code-result-status {
+  color: #555;
+  font-style: italic;
+}
+
 .doc-editor textarea {
   flex: 1;
   padding: 16px;
@@ -352,15 +462,6 @@
 
 .doc-editor .status.error {
   color: #ef5350;
-}
-
-.viewer-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  font-size: 16px;
-  color: #666;
 }
 
 @media (max-width: 768px) {
@@ -410,7 +511,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 16px;
+  padding: 0px 16px;
   border-top: 1px solid #333;
   background: #111;
   font-size: 12px;

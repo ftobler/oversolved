@@ -324,3 +324,73 @@ class TestDocsAPI:
 
         response = client.get('/api/docs/nonexistent')
         assert response.status_code == 404  # File doesn't exist
+
+
+SIMPLE_YAML = """\
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Square"
+    initial:
+      line1: [0.0, 0.0, 1.0, 0.0]
+    entities:
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_horiz
+        kind: horizontal
+        target: {entity: line1}
+"""
+
+
+class TestSolveAPI:
+    """Tests for the /api/solve endpoint."""
+
+    def test_solve_accepts_json(self, client):
+        """Test that /api/solve accepts application/json with a content field."""
+        response = client.post(
+            '/api/solve',
+            data=json.dumps({'content': SIMPLE_YAML}),
+            content_type='application/json',
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert 'result' in data
+        assert 'sketch_1' in data['result']
+
+    def test_solve_accepts_yaml(self, client):
+        """Test that /api/solve accepts raw YAML body."""
+        response = client.post(
+            '/api/solve',
+            data=SIMPLE_YAML,
+            content_type='text/plain',
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert 'result' in data
+        assert 'sketch_1' in data['result']
+
+    def test_solve_returns_error_on_invalid_yaml(self, client):
+        """Test that /api/solve returns a JSON error for invalid input."""
+        response = client.post(
+            '/api/solve',
+            data=json.dumps({'content': 'not: valid: yaml: ::'}),
+            content_type='application/json',
+        )
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert 'error' in data
+
+    def test_solve_returns_error_on_missing_content(self, client):
+        """Test that /api/solve returns a JSON error when content field is missing."""
+        response = client.post(
+            '/api/solve',
+            data=json.dumps({'foo': 'bar'}),
+            content_type='application/json',
+        )
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert 'error' in data

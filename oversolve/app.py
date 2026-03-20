@@ -3,6 +3,7 @@
 from pathlib import Path
 from flask import Flask, g, jsonify, request, send_from_directory
 from oversolve.db import Database, SQLiteConnection, MariaDBConnection, DocumentStore
+from oversolve.solver import solve
 
 
 def _get_database(config):
@@ -113,6 +114,30 @@ def create_app(config=None):
         doc_store = DocumentStore(db)
         ids = doc_store.list_ids()
         return jsonify({'documents': ids})
+
+    @app.route('/api/solve', methods=['POST'])
+    def solve_document():
+        """Run the solver on a YAML document and return the result.
+        Accepts application/json with a 'content' field, or raw YAML/text body.
+        """
+        content_type = request.content_type or ''
+
+        if 'application/json' in content_type:
+            data = request.get_json()
+            if not data or 'content' not in data:
+                return jsonify({'error': 'Missing "content" field'}), 400
+            yaml_content = data['content']
+        else:
+            # Accept raw YAML / plain text body
+            yaml_content = request.get_data(as_text=True)
+            if not yaml_content:
+                return jsonify({'error': 'Empty request body'}), 400
+
+        try:
+            result = solve(yaml_content)
+            return jsonify({'result': result})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
 
     @app.route('/api/docs', methods=['GET'])
     def list_docs():
