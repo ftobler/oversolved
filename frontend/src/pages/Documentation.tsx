@@ -63,9 +63,6 @@ export default function Documentation() {
   }, [docFiles.length])
 
   useEffect(() => {
-    setLoading(true)
-    setError(null)
-
     fetch(`/api/docs/${currentDoc}`)
       .then(r => {
         if (!r.ok) {
@@ -76,9 +73,11 @@ export default function Documentation() {
       .then(data => {
         setContent(data.content)
         setLoading(false)
+        setError(null)
       })
       .catch(e => {
         setError(String(e))
+        setContent('')
         setLoading(false)
       })
   }, [currentDoc])
