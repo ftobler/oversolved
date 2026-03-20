@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { load as yamlLoad } from 'js-yaml'
 import SketchSvg from '../components/SketchSvg'
-import type { Sketch } from '../components/SketchSvg'
+import type { Sketch, Constraints } from '../components/SketchSvg'
 import './Visualizer.css'
 
 interface FeatureResult {
@@ -10,6 +11,7 @@ interface FeatureResult {
       initial: Sketch
       solved: Sketch
     }
+    constraints: Constraints
     status: 'fully_constrained' | 'underconstrained' | 'overconstrained'
     solve_ms: number
   }
@@ -24,12 +26,12 @@ export default function Visualizer() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/test_output/results.json')
+    fetch('/test_output/results.yaml')
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json()
+        return r.text()
       })
-      .then(setResults)
+      .then(text => setResults(yamlLoad(text) as Results))
       .catch(e => setError(String(e)))
   }, [])
 
@@ -54,10 +56,10 @@ export default function Visualizer() {
       {results && (
         <div className="sketch-row">
           {Object.entries(results).flatMap(([testName, features]) =>
-            Object.entries(features).map(([featureId, { geometry, status, solve_ms }]) => (
+            Object.entries(features).map(([featureId, { geometry, constraints, status, solve_ms }]) => (
               <div key={`${testName}/${featureId}`} className="sketch-card">
                 <div className="sketch-label">{testName}/{featureId} <span className="solve-time">{solve_ms} ms</span></div>
-                <SketchSvg initial={geometry.initial} solved={geometry.solved} status={status} size={330} />
+                <SketchSvg initial={geometry.initial} solved={geometry.solved} status={status} size={330} constraints={constraints} />
               </div>
             ))
           )}

@@ -1519,3 +1519,53 @@ features:
     assert abs(center["y"] - expected_y) < TOL
     assert abs(center["x"] - 3.0) < TOL
     assert abs(center["y"] - 2.0) < TOL
+
+
+def test_two_circles_partial_constraint(sketch_log):
+    """Two circles in one sketch: one fully constrained, one only radius-constrained."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Two Circles"
+    initial:
+      circle_a: [3.0, 4.0, 5.0]
+      circle_b: [8.0, 2.0, 2.0]
+    entities:
+      - id: circle_a
+        kind: circle
+      - id: circle_b
+        kind: circle
+    constraints:
+      - id: c_a_fix
+        kind: fixed
+        target: {entity: circle_a}
+        x: 3.0
+        y: 4.0
+      - id: c_a_radius
+        kind: radius
+        target: {entity: circle_a}
+        value: 5.0
+      - id: c_b_radius
+        kind: radius
+        target: {entity: circle_b}
+        value: 2.0
+"""
+    result = solve(yaml_str)
+    sketch_log["test_two_circles_partial_constraint"] = result
+
+    sk = result["sketch_1"]["geometry"]["solved"]
+
+    # circle_a: fully pinned — center and radius must match exactly
+    assert abs(sk["circle_a"]["center"][0] - 3.0) < TOL
+    assert abs(sk["circle_a"]["center"][1] - 4.0) < TOL
+    assert abs(sk["circle_a"]["radius"] - 5.0) < TOL
+
+    # circle_b: only radius constrained — center can be anywhere
+    assert abs(sk["circle_b"]["radius"] - 2.0) < TOL
+
+    # overall sketch is underconstrained (circle_b center is free)
+    assert result["sketch_1"]["status"] == "underconstrained"

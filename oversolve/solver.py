@@ -322,9 +322,14 @@ def _solve_sketch(feature: dict) -> dict:
     rank = int(np.linalg.matrix_rank(J, tol=RANK_TOL))
     n_params = len(x_sol)
 
+    # Each fixed constraint pins 2 rigid-body DOF (tx, ty). Reduce the 3-DOF
+    # rigid-body allowance accordingly so genuinely free parameters are flagged.
+    n_fixed_pinned = sum(2 for c in constraints if c["kind"] == "fixed")
+    rigid_body_dof = max(0, 3 - n_fixed_pinned)
+
     if final_loss > LOSS_THRESHOLD:
         status = "overconstrained"
-    elif rank < n_params - 3:
+    elif rank < n_params - rigid_body_dof:
         status = "underconstrained"
     else:
         status = "fully_constrained"
