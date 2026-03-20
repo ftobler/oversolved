@@ -173,19 +173,58 @@ result["sketch_1"]["line_height"]["start"] # (x, y)
 
 ### Supported entity kinds
 
-| kind         | parameters        |
-|--------------|-------------------|
-| line_segment | [x1, y1, x2, y2] |
+| kind         | initial parameters              | geometry output fields                                          |
+|--------------|---------------------------------|-----------------------------------------------------------------|
+| line_segment | [x1, y1, x2, y2]               | start: (x,y), end: (x,y)                                       |
+| circle       | [cx, cy, r]                    | center: (x,y), radius: float                                    |
+| arc          | [cx, cy, r, a_start, a_end]    | center: (x,y), radius: float, angle_start: deg, angle_end: deg, start: (x,y), end: (x,y) |
+| point        | [x, y]                         | x: float, y: float                                              |
+
+Arcs are defined CCW in a y-up coordinate system. `a_start` and `a_end` are angles in degrees
+measured from the +x axis. `start` and `end` in the output are the arc endpoints on the circle.
+
+Valid `point` references per entity kind:
+
+| kind         | valid point values            |
+|--------------|-------------------------------|
+| line_segment | `start` (default), `end`      |
+| circle       | `center` (only option)        |
+| arc          | `start` (default), `end`      |
+| point        | (no point key needed)         |
 
 ### Supported constraint kinds
 
-| kind          | fields                                       |
-|---------------|----------------------------------------------|
-| horizontal    | target: {entity}                             |
-| vertical      | target: {entity}                             |
-| length        | target: {entity}, value: float (mm)          |
-| coincident    | a: {entity, point}, b: {entity, point}       |
-| perpendicular | a: {entity}, b: {entity}                     |
-| angle         | a: {entity}, b: {entity}, value: float (deg) |
+| kind           | fields                                                        | residuals (=0 when satisfied)                          |
+|----------------|---------------------------------------------------------------|--------------------------------------------------------|
+| horizontal     | `target: {entity}`                                            | end.y - start.y                                        |
+| vertical       | `target: {entity}`                                            | end.x - start.x                                        |
+| length         | `target: {entity}`, `value: float`                            | len(line) - value                                      |
+| radius         | `target: {entity}`, `value: float`                            | r - value                                              |
+| coincident     | `a: {entity, point}`, `b: {entity, point}`                    | a.x - b.x, a.y - b.y                                  |
+| perpendicular  | `a: {entity}`, `b: {entity}`                                  | dot(dir_a, dir_b)                                      |
+| angle          | `a: {entity}`, `b: {entity}`, `value: float (deg)`            | cos(angle_between) - cos(value)                        |
+| tangent        | `line: {entity}`, `arc: {entity, point}`                      | dot(line_dir, radius_dir) -- line perpendicular to radius |
+| normal         | `line: {entity}`, `arc: {entity, point}`                      | cross(line_dir, radius_dir) -- line parallel to radius |
+| equal_length   | `a: {entity}`, `b: {entity}`                                  | len(a) - len(b)                                        |
+| point_distance | `a: {entity, point}`, `b: {entity, point}`, `value: float`    | dist(a, b) - value                                     |
+| midpoint       | `line: {entity}`, `point: {entity}`, `axis: x\|y\|both`       | point - midpoint(line) on specified axis(es)           |
+| concentric     | `a: {entity}`, `b: {entity}`                                  | center_a.x - center_b.x, center_a.y - center_b.y      |
+| fixed          | `target: {entity, point}`, `x: float`, `y: float`             | point.x - x, point.y - y                               |
 
-`point` defaults to `start` when omitted.
+`point` defaults to `start` when omitted. `axis` in `midpoint` defaults to `both`.
+
+### Solver output structure
+
+```python
+result = solve(yaml_str)
+result["sketch_1"]["initial"]["line_base"]["start"]  # (x, y) -- original guess
+result["sketch_1"]["solved"]["line_base"]["start"]   # (x, y) -- after solving
+result["sketch_1"]["status"]    # "fully_constrained" | "underconstrained" | "overconstrained"
+result["sketch_1"]["solve_ms"]  # float -- wall time in milliseconds
+```
+
+Constraint status is determined from the Jacobian of the residuals at the solution:
+
+- **overconstrained**: final residual loss > 1e-4 (conflicting constraints)
+- **underconstrained**: Jacobian rank < n_params - 3 (free degrees of freedom beyond the 3 rigid-body DOF)
+- **fully_constrained**: otherwise
