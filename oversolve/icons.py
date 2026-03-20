@@ -40,7 +40,7 @@ def constraint_angle(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/constraint-coincident.svg", angle=-10, offset_y=-0.15)
+@icon("frontend/src/assets/icons/constraint-coincident.svg", angle=-10, offset_y=-0.15)  # double use: toolbar
 def constraint_coincident(ctx):
     # a line with a point on it and a dotted line coming off that point
 
@@ -55,35 +55,35 @@ def constraint_coincident(ctx):
 
     # Draw dotted line coming off the point (can be diagonal)
     x0, y0 = 0.5, 0.8
-    x1, y1 = 0.35, 0.2
+    x1, y1 = 0.35, 0.15
     num_dots = 3
     draw_dotted_line(ctx, x0, y0, x1, y1, num_dots)
 
 
-@icon("frontend/src/assets/icons/constraint-colinear.svg", angle=15)
+@icon("frontend/src/assets/icons/constraint-colinear.svg", angle=15)  # double use: toolbar
 def constraint_colinear(ctx):
     # two parallel lines, one dotted. shifted at an angle.
 
     # normal line
     ctx.move_to(0.25, 0.6)
-    ctx.line_to(0.85, 0.6)
+    ctx.line_to(0.9, 0.6)
     stroke(ctx, 1.5)
 
     # dotted line (above, parallel)
-    x0, y0 = 0.15, 0.4
+    x0, y0 = 0.10, 0.4
     x1, y1 = 0.8, 0.4
-    num_dots = 4
+    num_dots = 3
     draw_dotted_line(ctx, x0, y0, x1, y1, num_dots)
 
 
-@icon("frontend/src/assets/icons/constraint-dimension.svg")
+@icon("frontend/src/assets/icons/constraint-dimension.svg")  # double use: toolbar
 def constraint_dimension(ctx):
     # Parameters
     x0, x1 = 0.15, 0.85   # left/right x of the measured feature
     y_obj1 = 0.25          # y of the object line (thing being measured)
     y_obj2 = 0.75          # y of the object line (thing being measured)
     y_dim = 0.5           # y of the dimension line
-    arr = px(5)         # arrowhead size (base half-width = arr/2)
+    arr = px(6)         # arrowhead size (base half-width = arr/2)
 
     # # Object line
     # ctx.move_to(x0, y_obj)
@@ -117,7 +117,7 @@ def constraint_dimension(ctx):
     ctx.fill()
 
 
-@icon("frontend/src/assets/icons/constraint-square.svg")
+@icon("frontend/src/assets/icons/constraint-square.svg")  # double use: toolbar (perpendicular)
 def constraint_square(ctx):
     # Parameters
     cx, cy = 0.2, 0.8    # corner (vertex of the right angle)
@@ -137,7 +137,7 @@ def constraint_square(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/constraint-horizontal.svg")
+@icon("frontend/src/assets/icons/constraint-horizontal.svg")  # double use: toolbar
 def constraint_horizontal(ctx):
     # Parameters
     x0, x1 = 0.15, 0.85   # left and right endpoints
@@ -160,7 +160,7 @@ def constraint_horizontal(ctx):
     stroke(ctx, 2)
 
 
-@icon("frontend/src/assets/icons/constraint-vertical.svg")
+@icon("frontend/src/assets/icons/constraint-vertical.svg")  # double use: toolbar
 def constraint_vertical(ctx):
     # Parameters
     y0, y1 = 0.15, 0.85   # top and bottom endpoints
@@ -183,12 +183,12 @@ def constraint_vertical(ctx):
     stroke(ctx, 2)
 
 
-@icon("frontend/src/assets/icons/constraint-equal.svg", angle=-15)
+@icon("frontend/src/assets/icons/constraint-equal.svg", angle=-5)  # double use: toolbar
 def constraint_equal(ctx):
     # Draw a simple equal sign (two horizontal lines)
     x0, x1 = 0.25, 0.75
-    y_top = 0.38
-    y_bottom = 0.62
+    y_top = 0.4
+    y_bottom = 0.6
 
     ctx.move_to(x0, y_top)
     ctx.line_to(x1, y_top)
@@ -199,7 +199,7 @@ def constraint_equal(ctx):
     stroke(ctx, 2)
 
 
-@icon("frontend/src/assets/icons/constraint-tangent.svg", angle=-20)
+@icon("frontend/src/assets/icons/constraint-tangent.svg", angle=-20, offset_x=0.1)  # double use: toolbar
 def constraint_tangent(ctx):
     # Parameters
     cx, cy = 0.34, 0.5   # circle center
@@ -221,7 +221,7 @@ def constraint_tangent(ctx):
     # ctx.fill()
 
 
-@icon("frontend/src/assets/icons/constraint-midpoint.svg", angle=-15)
+@icon("frontend/src/assets/icons/constraint-midpoint.svg", angle=-15)  # double use: toolbar
 def constraint_midpoint(ctx):
     # Parameters
     x0, y0 = 0.1, 0.5  # segment endpoints
@@ -246,7 +246,7 @@ def constraint_midpoint(ctx):
     ctx.fill()
 
 
-@icon("frontend/src/assets/icons/constraint-normal.svg")
+@icon("frontend/src/assets/icons/constraint-normal.svg")  # double use: toolbar
 def constraint_normal(ctx):
     # Parameters
     x0, x1 = 0.1, 0.9  # x extent of the curved surface
@@ -283,7 +283,7 @@ def constraint_normal(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/constraint-concentric.svg")
+@icon("frontend/src/assets/icons/constraint-concentric.svg")  # double use: toolbar
 def constraint_concentric(ctx):
     # Parameters
     cx, cy = 0.5, 0.5   # shared center
@@ -301,7 +301,7 @@ def constraint_concentric(ctx):
     ctx.fill()
 
 
-@icon("frontend/src/assets/icons/constraint-fixed.svg")
+@icon("frontend/src/assets/icons/constraint-fixed.svg")  # double use: toolbar
 def constraint_fixed(ctx):
     # Parameters
     x0, x1 = 0.2, 0.8        # endpoints of the fixed line
@@ -326,7 +326,7 @@ def constraint_fixed(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/constraint-parallel.svg", angle=20)
+@icon("frontend/src/assets/icons/constraint-parallel.svg", angle=20)  # double use: toolbar
 def constraint_parallel(ctx):
     # Two parallel lines with arrow indicators
     y1 = 0.35
@@ -358,6 +358,191 @@ def constraint_parallel(ctx):
     # ctx.line_to(x1, y2)
     # ctx.line_to(x1 - arrow_len, y2 + arrow_h)
     # stroke(ctx, 1.5)
+
+
+# Toolbar icons
+@icon("frontend/src/assets/icons/toolbar-menu.svg")
+def toolbar_menu(ctx):
+    # Hamburger menu icon (three horizontal lines)
+    y_positions = [0.25, 0.5, 0.75]
+    x0, x1 = 0.2, 0.8
+    for y in y_positions:
+        ctx.move_to(x0, y)
+        ctx.line_to(x1, y)
+    stroke(ctx, 2)
+
+
+@icon("frontend/src/assets/icons/toolbar-line.svg")
+def toolbar_line(ctx):
+    # Simple diagonal line
+    ctx.move_to(0.2, 0.8)
+    ctx.line_to(0.8, 0.2)
+    stroke(ctx, 2)
+
+
+@icon("frontend/src/assets/icons/toolbar-rectangle.svg")
+def toolbar_rectangle(ctx):
+    # Rectangle
+    x0, x1 = 0.2, 0.8
+    y0, y1 = 0.3, 0.7
+    ctx.move_to(x0, y0)
+    ctx.line_to(x1, y0)
+    ctx.line_to(x1, y1)
+    ctx.line_to(x0, y1)
+    ctx.close_path()
+    stroke(ctx, 2)
+
+
+@icon("frontend/src/assets/icons/toolbar-circle.svg")
+def toolbar_circle(ctx):
+    # Circle
+    cx, cy = 0.5, 0.5
+    r = 0.3
+    ctx.arc(cx, cy, r, 0, 2 * math.pi)
+    stroke(ctx, 2)
+
+
+@icon("frontend/src/assets/icons/toolbar-arc.svg")
+def toolbar_arc(ctx):
+    # Arc
+    cx, cy = 0.5, 0.5
+    r = 0.3
+    ctx.arc(cx, cy, r, math.pi, 2 * math.pi)
+    stroke(ctx, 2)
+
+
+@icon("frontend/src/assets/icons/toolbar-point.svg")
+def toolbar_point(ctx):
+    # Point (circle)
+    cx, cy = 0.5, 0.5
+    r = px(3)
+    ctx.arc(cx, cy, r, 0, 2 * math.pi)
+    ctx.fill()
+
+
+@icon("frontend/src/assets/icons/toolbar-help.svg")
+def toolbar_help(ctx):
+    # Question mark
+    cx, cy = 0.5, 0.5
+    r = 0.25
+
+    # Circle outline
+    ctx.arc(cx, cy, r, 0, 2 * math.pi)
+    stroke(ctx, 1.5)
+
+    # Question mark
+    # Dot at bottom
+    ctx.arc(cx, cy + r * 0.4, px(2), 0, 2 * math.pi)
+    ctx.fill()
+
+    # Curve for top of question mark
+    ctx.move_to(cx - r * 0.2, cy - r * 0.15)
+    ctx.line_to(cx - r * 0.2, cy - r * 0.35)
+    ctx.arc(cx, cy - r * 0.35, r * 0.2, math.pi, 0)
+    ctx.line_to(cx + r * 0.2, cy - r * 0.05)
+    stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/toolbar-visualizer.svg")
+def toolbar_visualizer(ctx):
+    # Bug icon
+    # Head (circle)
+    ctx.arc(0.5, 0.3, 0.1, 0, 2 * math.pi)
+    stroke(ctx, 1.5)
+
+    # Body
+    ctx.move_to(0.5, 0.4)
+    ctx.line_to(0.5, 0.7)
+    stroke(ctx, 1.5)
+
+    # Antennae
+    ctx.move_to(0.45, 0.25)
+    ctx.line_to(0.35, 0.1)
+    ctx.move_to(0.55, 0.25)
+    ctx.line_to(0.65, 0.1)
+    stroke(ctx, 1.5)
+
+    # Legs
+    for x_offset in [-0.15, 0.15]:
+        ctx.move_to(0.5 + x_offset, 0.5)
+        ctx.line_to(0.5 + x_offset * 1.5, 0.65)
+        ctx.move_to(0.5 + x_offset, 0.6)
+        ctx.line_to(0.5 + x_offset * 1.5, 0.75)
+    stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/toolbar-extrude.svg")
+def toolbar_extrude(ctx):
+    # Extrude icon: a rectangle with an arrow pointing outward
+    # Base rectangle
+    x0, x1 = 0.15, 0.45
+    y0, y1 = 0.25, 0.75
+
+    ctx.move_to(x0, y0)
+    ctx.line_to(x1, y0)
+    ctx.line_to(x1, y1)
+    ctx.line_to(x0, y1)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # Arrow pointing out to the right
+    arrow_start = x1 + 0.1
+    arrow_end = 0.9
+    arrow_mid = (arrow_start + arrow_end) / 2
+    arrow_y = (y0 + y1) / 2
+
+    # Arrow shaft
+    ctx.move_to(arrow_start, arrow_y)
+    ctx.line_to(arrow_end, arrow_y)
+    stroke(ctx, 1.5)
+
+    # Arrow head
+    arrow_size = 0.2
+    ctx.move_to(arrow_end - arrow_size, arrow_y - arrow_size * 0.6)
+    ctx.line_to(arrow_end, arrow_y)
+    ctx.line_to(arrow_end - arrow_size, arrow_y + arrow_size * 0.6)
+    # ctx.close_path()
+    ctx.stroke()
+
+
+@icon("frontend/src/assets/icons/toolbar-sketch.svg", angle=120)
+def toolbar_sketch(ctx):
+    # Sketch/pencil icon (horizontal)
+    # Pencil shaft
+    x0, y0 = 0.15, 0.5
+    x1, y1 = 0.85, 0.5
+
+    # Draw pencil shaft as a rectangle
+    shaft_thickness = 0.25
+    tip_size = 0.25
+    ctx.move_to(x0, y0 - shaft_thickness / 2)
+    ctx.line_to(x1 - tip_size, y1 - shaft_thickness / 2)
+    ctx.line_to(x1 - tip_size, y1 + shaft_thickness / 2)
+    ctx.line_to(x0, y0 + shaft_thickness / 2)
+    ctx.close_path()
+    stroke(ctx, 2)
+
+    # Pencil tip (small triangle at the right end)
+    tip_thickness = shaft_thickness
+    ctx.move_to(x1, y1)
+    ctx.line_to(x1 - tip_size, y1 - tip_thickness * 0.5)
+    ctx.line_to(x1 - tip_size, y1 + tip_thickness * 0.5)
+    ctx.close_path()
+    ctx.stroke()
+
+
+@icon("frontend/src/assets/icons/toolbar-play.svg")
+def toolbar_play(ctx):
+    # Play button icon: triangle pointing right
+    cx, cy = 0.5, 0.5
+    size = 0.3
+
+    # Triangle pointing right
+    ctx.move_to(cx - size, cy - size)
+    ctx.line_to(cx - size, cy + size)
+    ctx.line_to(cx + size, cy)
+    ctx.close_path()
+    ctx.fill()
 
 
 if __name__ == "__main__":

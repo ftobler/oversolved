@@ -1,6 +1,27 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import './Part.css'
+import toolbarLineIcon from '../assets/icons/toolbar-line.svg'
+import toolbarRectangleIcon from '../assets/icons/toolbar-rectangle.svg'
+import toolbarCircleIcon from '../assets/icons/toolbar-circle.svg'
+import toolbarArcIcon from '../assets/icons/toolbar-arc.svg'
+import toolbarPointIcon from '../assets/icons/toolbar-point.svg'
+import toolbarHorizontalIcon from '../assets/icons/constraint-horizontal.svg'
+import toolbarVerticalIcon from '../assets/icons/constraint-vertical.svg'
+import toolbarCoincidentIcon from '../assets/icons/constraint-coincident.svg'
+import toolbarConcentricIcon from '../assets/icons/constraint-concentric.svg'
+import toolbarEqualIcon from '../assets/icons/constraint-equal.svg'
+import toolbarFixedIcon from '../assets/icons/constraint-fixed.svg'
+import toolbarMidpointIcon from '../assets/icons/constraint-midpoint.svg'
+import toolbarNormalIcon from '../assets/icons/constraint-normal.svg'
+import toolbarParallelIcon from '../assets/icons/constraint-parallel.svg'
+import toolbarPerpendicularIcon from '../assets/icons/constraint-square.svg'
+import toolbarTangentIcon from '../assets/icons/constraint-tangent.svg'
+import toolbarCollinearIcon from '../assets/icons/constraint-colinear.svg'
+import toolbarDimensionIcon from '../assets/icons/constraint-dimension.svg'
+import toolbarExtrudeIcon from '../assets/icons/toolbar-extrude.svg'
+import toolbarSketchIcon from '../assets/icons/toolbar-sketch.svg'
+import toolbarPlayIcon from '../assets/icons/toolbar-play.svg'
 
 export default function Part() {
   const { docId } = useParams<{ docId: string }>()
@@ -11,7 +32,7 @@ export default function Part() {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(docId || '')
   const [features, setFeatures] = useState<string[]>([])
-  const [mode, setMode] = useState<'sketch' | 'feature'>('sketch')
+  const [mode, setMode] = useState<'sketch' | 'feature' | 'code'>('sketch')
 
   useEffect(() => {
     if (!docId) return
@@ -23,9 +44,9 @@ export default function Part() {
       })
       .then(data => {
         setContent(data.content)
-        // Extract feature IDs from YAML (lines starting with "- id:")
-        const featureMatches = data.content.match(/^\s*- id:\s*(.+?)$/gm) || []
-        const featureIds = featureMatches.map((line: string) => line.replace(/^\s*- id:\s*/, '').trim())
+        // Extract top-level feature IDs from YAML (lines starting with "- id:" at column 0)
+        const featureMatches = data.content.match(/^- id:\s*(.+?)$/gm) || []
+        const featureIds = featureMatches.map((line: string) => line.replace(/^- id:\s*/, '').trim())
         setFeatures(featureIds)
         setLoading(false)
       })
@@ -136,80 +157,109 @@ export default function Part() {
                 onClick={() => setMode('sketch')}
                 title="Sketch mode"
               >
-                Sketch
+                <span className="btn-text">Sketch</span>
+                <span className="btn-abbr">S</span>
               </button>
               <button
                 className={`mode-btn ${mode === 'feature' ? 'active' : ''}`}
                 onClick={() => setMode('feature')}
                 title="Feature mode"
               >
-                Feature
+                <span className="btn-text">Feature</span>
+                <span className="btn-abbr">F</span>
+              </button>
+              <button
+                className={`mode-btn ${mode === 'code' ? 'active' : ''}`}
+                onClick={() => setMode('code')}
+                title="Code mode"
+              >
+                <span className="btn-text">Code</span>
+                <span className="btn-abbr">C</span>
               </button>
             </div>
 
             <div className="toolbar-separator" />
 
+            {mode === 'code' && (
+              <>
+                <button className="editor-btn" title="Run">
+                  <img src={toolbarPlayIcon} alt="Run" />
+                </button>
+              </>
+            )}
+
             {mode === 'sketch' && (
               <>
                 <button className="editor-btn" title="Line">
-                  <span className="material-icons">minus</span>
+                  <img src={toolbarLineIcon} alt="Line" />
                 </button>
                 <button className="editor-btn" title="Rectangle">
-                  <span className="material-icons">rectangle</span>
+                  <img src={toolbarRectangleIcon} alt="Rectangle" />
                 </button>
                 <button className="editor-btn" title="Circle">
-                  <span className="material-icons">circle</span>
+                  <img src={toolbarCircleIcon} alt="Circle" />
                 </button>
                 <button className="editor-btn" title="Arc">
-                  <span className="material-icons">arc</span>
+                  <img src={toolbarArcIcon} alt="Arc" />
                 </button>
                 <button className="editor-btn" title="Point">
-                  <span className="material-icons">fiber_manual_record</span>
+                  <img src={toolbarPointIcon} alt="Point" />
                 </button>
 
                 <div className="toolbar-separator" />
 
                 <button className="editor-btn" title="Horizontal">
-                  <span className="material-icons">drag_handle</span>
+                  <img src={toolbarHorizontalIcon} alt="Horizontal" />
                 </button>
                 <button className="editor-btn" title="Vertical">
-                  <span className="material-icons">unfold_more</span>
+                  <img src={toolbarVerticalIcon} alt="Vertical" />
                 </button>
                 <button className="editor-btn" title="Coincident">
-                  <span className="material-icons">ads_click</span>
+                  <img src={toolbarCoincidentIcon} alt="Coincident" />
                 </button>
                 <button className="editor-btn" title="Concentric">
-                  <span className="material-icons">donut_large</span>
+                  <img src={toolbarConcentricIcon} alt="Concentric" />
                 </button>
                 <button className="editor-btn" title="Equal">
-                  <span className="material-icons">balance</span>
+                  <img src={toolbarEqualIcon} alt="Equal" />
                 </button>
                 <button className="editor-btn" title="Fixed">
-                  <span className="material-icons">lock</span>
+                  <img src={toolbarFixedIcon} alt="Fixed" />
                 </button>
                 <button className="editor-btn" title="Midpoint">
-                  <span className="material-icons">location_on</span>
+                  <img src={toolbarMidpointIcon} alt="Midpoint" />
                 </button>
                 <button className="editor-btn" title="Normal">
-                  <span className="material-icons">perpendicular</span>
+                  <img src={toolbarNormalIcon} alt="Normal" />
                 </button>
                 <button className="editor-btn" title="Parallel">
-                  <span className="material-icons">unfold_more</span>
+                  <img src={toolbarParallelIcon} alt="Parallel" />
                 </button>
                 <button className="editor-btn" title="Perpendicular">
-                  <span className="material-icons">crop_square</span>
+                  <img src={toolbarPerpendicularIcon} alt="Perpendicular" />
                 </button>
                 <button className="editor-btn" title="Tangent">
-                  <span className="material-icons">gesture</span>
+                  <img src={toolbarTangentIcon} alt="Tangent" />
                 </button>
                 <button className="editor-btn" title="Collinear">
-                  <span className="material-icons">shows_slash</span>
+                  <img src={toolbarCollinearIcon} alt="Collinear" />
                 </button>
 
                 <div className="toolbar-separator" />
 
                 <button className="editor-btn" title="Dimension">
-                  <span className="material-icons">straighten</span>
+                  <img src={toolbarDimensionIcon} alt="Dimension" />
+                </button>
+              </>
+            )}
+
+            {mode === 'feature' && (
+              <>
+                <button className="editor-btn" title="Extrude">
+                  <img src={toolbarExtrudeIcon} alt="Extrude" />
+                </button>
+                <button className="editor-btn" title="Sketch">
+                  <img src={toolbarSketchIcon} alt="Sketch" />
                 </button>
               </>
             )}
@@ -219,18 +269,32 @@ export default function Part() {
           {loading && <p className="status">Loading document...</p>}
           {error && <p className="status error">Error: {error}</p>}
           {!loading && !error && (
-            <textarea
-              value={content}
-              onChange={e => {
-                setContent(e.target.value)
-                // Update features list as user types
-                const featureMatches = e.target.value.match(/^\s*- id:\s*(.+?)$/gm) || []
-                const featureIds = featureMatches.map((line: string) => line.replace(/^\s*- id:\s*/, '').trim())
-                setFeatures(featureIds)
-              }}
-              placeholder="Document content..."
-              spellCheck="false"
-            />
+            <>
+              {mode === 'code' && (
+                <textarea
+                  value={content}
+                  onChange={e => {
+                    setContent(e.target.value)
+                    // Update features list as user types (only top-level)
+                    const featureMatches = e.target.value.match(/^- id:\s*(.+?)$/gm) || []
+                    const featureIds = featureMatches.map((line: string) => line.replace(/^- id:\s*/, '').trim())
+                    setFeatures(featureIds)
+                  }}
+                  placeholder="Document content..."
+                  spellCheck="false"
+                />
+              )}
+              {mode === 'sketch' && (
+                <div className="viewer-placeholder">
+                  Sketch Viewer
+                </div>
+              )}
+              {mode === 'feature' && (
+                <div className="viewer-placeholder">
+                  Feature Viewer
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

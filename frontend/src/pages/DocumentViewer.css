@@ -207,11 +207,12 @@
   gap: 2px;
   background: #1a1a1a;
   border-radius: 4px;
-  padding: 2px;
+  padding: 1px;
+  height: 24px;
 }
 
 .mode-btn {
-  padding: 6px 4px;
+  padding: 6px 12px;
   font-size: 12px;
   font-weight: 600;
   border: none;
@@ -221,31 +222,6 @@
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
-  position: relative;
-  min-width: 28px;
-}
-
-.mode-btn .btn-text {
-  display: none;
-}
-
-.mode-btn .btn-abbr {
-  display: inline;
-}
-
-.mode-btn.active .btn-text {
-  display: inline;
-}
-
-.mode-btn.active .btn-abbr {
-  display: none;
-}
-
-@media (max-width: 480px) {
-  .mode-btn {
-    min-width: 24px;
-    padding: 6px 2px;
-  }
 }
 
 .mode-btn:hover {
@@ -260,8 +236,8 @@
 .toolbar-separator {
   width: 1px;
   height: 24px;
-  background: #666;
-  margin: 0 4px;
+  background: #222;
+  margin: 0 8px;
 }
 
 .editor-btn {
@@ -286,12 +262,6 @@
 
 .editor-btn .material-icons {
   font-size: 18px;
-}
-
-.editor-btn img {
-  width: 18px;
-  height: 18px;
-  filter: invert(0.8);
 }
 
 .doc-editor textarea {
@@ -322,15 +292,6 @@
 
 .doc-editor .status.error {
   color: #ef5350;
-}
-
-.viewer-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  font-size: 16px;
-  color: #666;
 }
 
 @media (max-width: 768px) {
@@ -380,7 +341,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 16px;
+  padding: 0px 16px;
   border-top: 1px solid #333;
   background: #111;
   font-size: 12px;

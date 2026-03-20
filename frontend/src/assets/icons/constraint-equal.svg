@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">
-<path fill="none" stroke-width="0.0833333" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.250092 0.379959 L 0.750038 0.37996 " transform="matrix(23.18222, -6.211657, 6.211657, 23.18222, -2.696938, 3.514719)"/>
-<path fill="none" stroke-width="0.0833333" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.249962 0.62004 L 0.749908 0.620041 " transform="matrix(23.18222, -6.211657, 6.211657, 23.18222, -2.696938, 3.514719)"/>
+<path fill="none" stroke-width="0.0833333" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.249949 0.400027 L 0.750065 0.399995 " transform="matrix(23.908673, -2.091738, 2.091738, 23.908673, -1.000205, 1.091533)"/>
+<path fill="none" stroke-width="0.0833333" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.249935 0.600005 L 0.750051 0.599973 " transform="matrix(23.908673, -2.091738, 2.091738, 23.908673, -1.000205, 1.091533)"/>
 </svg>
