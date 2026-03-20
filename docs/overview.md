@@ -27,6 +27,7 @@ Oversolve CAD core part is a AST (Abstract Syntax tree) in toml/json format whic
 * Typescript
 * Vite
 * Material icons (no CDN, local font file)
+* dark mode
 
 ## CI
 

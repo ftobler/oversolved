@@ -106,3 +106,86 @@ features:
     symmetric: false
 
 ```
+
+---
+
+## Prototype Format (implemented)
+
+This is the subset currently understood by the solver. Differences from the full format:
+- `initial` is a mapping `entity_id: [x1, y1, x2, y2]` instead of a list
+- constraint `value` fields are plain numbers (mm and degrees implied, no unit string)
+- `queries` and `plane` are not yet used
+
+```yaml
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Sketch 1"
+
+    # Starting guesses -- solver moves these to satisfy constraints
+    initial:
+      line_base:   [0.0,   0.0,  17.32,  0.0 ]
+      line_height: [17.32, 0.0,  17.32, 10.0 ]
+      line_hyp:    [17.32, 10.0,  0.0,   0.0 ]
+
+    entities:
+      - id: line_base
+        kind: line_segment
+      - id: line_height
+        kind: line_segment
+      - id: line_hyp
+        kind: line_segment
+
+    constraints:
+      - id: c_horizontal_base
+        kind: horizontal
+        target: { entity: line_base }
+      - id: c_perpendicular
+        kind: perpendicular
+        a: { entity: line_base }
+        b: { entity: line_height }
+      - id: c_join
+        kind: coincident
+        a: { entity: line_base,   point: end   }
+        b: { entity: line_height, point: start }
+      - id: c_angle_30
+        kind: angle
+        a: { entity: line_base }
+        b: { entity: line_hyp }
+        value: 30
+      - id: c_length_height
+        kind: length
+        target: { entity: line_height }
+        value: 10
+```
+
+Solver output:
+
+```python
+result = solve(yaml_str)
+result["sketch_1"]["line_base"]["start"]   # (x, y)
+result["sketch_1"]["line_base"]["end"]     # (x, y)
+result["sketch_1"]["line_height"]["start"] # (x, y)
+```
+
+### Supported entity kinds
+
+| kind         | parameters        |
+|--------------|-------------------|
+| line_segment | [x1, y1, x2, y2] |
+
+### Supported constraint kinds
+
+| kind          | fields                                       |
+|---------------|----------------------------------------------|
+| horizontal    | target: {entity}                             |
+| vertical      | target: {entity}                             |
+| length        | target: {entity}, value: float (mm)          |
+| coincident    | a: {entity, point}, b: {entity, point}       |
+| perpendicular | a: {entity}, b: {entity}                     |
+| angle         | a: {entity}, b: {entity}, value: float (deg) |
+
+`point` defaults to `start` when omitted.
