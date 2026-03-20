@@ -1582,3 +1582,67 @@ features:
 
     # overall sketch is underconstrained (circle_b center is free)
     assert result["sketch_1"]["status"] == "underconstrained"
+
+
+def test_parallel_constraint(sketch_log):
+    """Two lines constrained to be parallel."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Parallel Lines"
+    initial:
+      line_a: [0.0, 0.0, 10.0, 2.0]
+      line_b: [0.0, 5.0, 10.0, 8.0]
+    entities:
+      - id: line_a
+        kind: line_segment
+      - id: line_b
+        kind: line_segment
+    constraints:
+      - id: c_a_horiz
+        kind: horizontal
+        target: {entity: line_a}
+      - id: c_a_len
+        kind: length
+        target: {entity: line_a}
+        value: 10.0
+      - id: c_parallel
+        kind: parallel
+        a: {entity: line_a}
+        b: {entity: line_b}
+      - id: c_b_fix
+        kind: fixed
+        target: {entity: line_b, point: start}
+        x: 0.0
+        y: 5.0
+      - id: c_b_len
+        kind: length
+        target: {entity: line_b}
+        value: 10.0
+"""
+    result = solve(yaml_str)
+    sketch_log["test_parallel_constraint"] = result
+
+    sk = result["sketch_1"]["geometry"]["solved"]
+
+    # line_a is horizontal with length 10
+    assert abs(sk["line_a"]["start"][1] - sk["line_a"]["end"][1]) < TOL
+    assert abs(length(sk["line_a"]["start"], sk["line_a"]["end"]) - 10.0) < TOL
+
+    # line_b is parallel to line_a (same y-delta)
+    dy_a = sk["line_a"]["end"][1] - sk["line_a"]["start"][1]
+    dy_b = sk["line_b"]["end"][1] - sk["line_b"]["start"][1]
+    assert abs(dy_a - dy_b) < TOL
+
+    # line_b has length 10
+    assert abs(length(sk["line_b"]["start"], sk["line_b"]["end"]) - 10.0) < TOL
+
+    # line_b starts at (0, 5)
+    assert abs(sk["line_b"]["start"][0] - 0.0) < TOL
+    assert abs(sk["line_b"]["start"][1] - 5.0) < TOL
+
+

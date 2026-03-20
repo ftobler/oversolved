@@ -1,5 +1,6 @@
 import math
 import time
+from typing import Any
 import yaml
 import numpy as np
 from scipy.optimize import least_squares
@@ -48,8 +49,10 @@ def solve(yaml_str: str) -> dict:
 # Geometry helpers
 # ---------------------------------------------------------------------------
 
-def _geometry_from_array(x, entities: dict, entity_offsets: dict) -> dict:
-    out = {}
+def _geometry_from_array(
+        x, entities: dict,
+        entity_offsets: dict) -> dict[str, Any]:  # noqa: E501
+    out: dict[str, Any] = {}
     for eid, entity in entities.items():
         off = entity_offsets[eid]
         ep = x[off:off + ENTITY_SIZES[entity["kind"]]]
@@ -185,6 +188,12 @@ def _constraint_render(c: dict, geom: dict) -> dict:
         eid = c["a"]["entity"]
         ea = geom[eid]
         return {"kind": "symbol_perp", "at": ea["end"], "entity": eid}
+
+    elif kind == "parallel":
+        eid = c["a"]["entity"]
+        ea = geom[eid]
+        at = [(ea["start"][0] + ea["end"][0]) / 2, (ea["start"][1] + ea["end"][1]) / 2]
+        return {"kind": "symbol_parallel", "at": at, "entity": eid}
 
     elif kind == "angle":
         eid = c["a"]["entity"]
@@ -376,6 +385,12 @@ def _solve_sketch(feature: dict) -> dict:
                 da = ea[2:4] - ea[0:2]
                 db = eb[2:4] - eb[0:2]
                 r.append(np.dot(da, db))
+            elif kind == "parallel":
+                ea = get_params(x, c["a"]["entity"])
+                eb = get_params(x, c["b"]["entity"])
+                da = ea[2:4] - ea[0:2]
+                db = eb[2:4] - eb[0:2]
+                r.append(da[0] * db[1] - da[1] * db[0])
             elif kind == "angle":
                 ea = get_params(x, c["a"]["entity"])
                 eb = get_params(x, c["b"]["entity"])

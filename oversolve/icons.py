@@ -326,5 +326,39 @@ def constraint_fixed(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/constraint-parallel.svg", angle=20)
+def constraint_parallel(ctx):
+    # Two parallel lines with arrow indicators
+    y1 = 0.35
+    y2 = 0.65
+    x0, x1 = 0.2, 0.8
+
+    # First line
+    ctx.move_to(x0, y1)
+    ctx.line_to(x1, y1)
+    stroke(ctx, 2)
+
+    # Second line (parallel)
+    ctx.move_to(x0, y2)
+    ctx.line_to(x1, y2)
+    stroke(ctx, 2)
+
+    # Arrow indicators (small arrows showing direction)
+    arrow_len = 0.06
+    arrow_h = 0.04
+
+    # Top arrow (pointing right)
+    ctx.move_to(x1 - arrow_len, y1 - arrow_h)
+    ctx.line_to(x1, y1)
+    ctx.line_to(x1 - arrow_len, y1 + arrow_h)
+    stroke(ctx, 1.5)
+
+    # Bottom arrow (pointing right)
+    ctx.move_to(x1 - arrow_len, y2 - arrow_h)
+    ctx.line_to(x1, y2)
+    ctx.line_to(x1 - arrow_len, y2 + arrow_h)
+    stroke(ctx, 1.5)
+
+
 if __name__ == "__main__":
     drawall()

@@ -103,6 +103,7 @@ const SYMBOL_TO_ICON: Record<string, string> = {
   symbol_fixed:      'constraint-fixed',
   symbol_midpoint:   'constraint-midpoint',
   symbol_normal:     'constraint-normal',
+  symbol_parallel:   'constraint-parallel',
   symbol_perp:       'constraint-square',
   symbol_tangent:    'constraint-tangent',
   symbol_colinear:   'constraint-colinear',
@@ -438,8 +439,8 @@ function renderConstraints(
             <line x1={vx} y1={vy} x2={x1} y2={y1} stroke={color} strokeWidth={1} />
             <line x1={vx} y1={vy} x2={x3} y2={y3} stroke={color} strokeWidth={1} />
             <path d={arcPath} stroke={color} strokeWidth={1} fill="none" />
-            <rect x={labelX - textWidth / 2} y={labelY - 6} width={textWidth} height={12} fill="#111" />
-            <text x={labelX} y={labelY} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
+            <rect x={labelX - textWidth / 2} y={labelY - 7} width={textWidth} height={14} fill="#111" />
+            <text x={labelX} y={labelY} fill={color} fontSize={10} fontFamily="monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
           </g>
         )
       }
