@@ -488,7 +488,6 @@ def toolbar_extrude(ctx):
     # Arrow pointing out to the right
     arrow_start = x1 + 0.1
     arrow_end = 0.9
-    arrow_mid = (arrow_start + arrow_end) / 2
     arrow_y = (y0 + y1) / 2
 
     # Arrow shaft
