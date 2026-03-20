@@ -8,17 +8,14 @@ interface DocFile {
   label: string
 }
 
-const LABEL_MAP: Record<string, string> = {
-  overview: 'Overview',
-  setup: 'Setup Guide',
-  api: 'API Reference',
-  icon_guidelines: 'Icon Guidelines',
-  ast: 'AST Documentation',
-  notes: 'Notes',
-}
-
-function formatLabel(name: string): string {
-  return LABEL_MAP[name] || name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+function extractLabel(name: string, content: string): string {
+  // Try to extract first h1 heading from markdown
+  const match = content.match(/^#\s+(.+?)$/m)
+  if (match && match[1]) {
+    return match[1].trim()
+  }
+  // Fallback to formatted filename
+  return name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
 export default function Documentation() {
@@ -30,16 +27,36 @@ export default function Documentation() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Fetch list of docs once
+    // Fetch list of docs and their content to extract labels
     if (docFiles.length === 0) {
       fetch('/api/docs')
         .then(r => r.json())
         .then(data => {
-          const files = (data.docs || []).map((name: string) => ({
-            name,
-            label: formatLabel(name),
-          }))
-          setDocFiles(files)
+          const names = data.docs || []
+          // Fetch content for all docs to extract labels
+          Promise.all(
+            names.map((name: string) =>
+              fetch(`/api/docs/${name}`)
+                .then(r => r.json())
+                .catch(() => ({ name, content: '' }))
+            )
+          )
+            .then(results => {
+              const files = results.map(result => ({
+                name: result.name,
+                label: extractLabel(result.name, result.content || ''),
+              }))
+              setDocFiles(files)
+            })
+            .catch(e => {
+              console.error('Failed to fetch docs:', e)
+              // Fallback: just use names without content
+              const files = names.map((name: string) => ({
+                name,
+                label: extractLabel(name, ''),
+              }))
+              setDocFiles(files)
+            })
         })
         .catch(e => console.error('Failed to fetch docs list:', e))
     }
@@ -49,15 +66,15 @@ export default function Documentation() {
     setLoading(true)
     setError(null)
 
-    fetch(`/docs/${currentDoc}.md`)
+    fetch(`/api/docs/${currentDoc}`)
       .then(r => {
         if (!r.ok) {
-          throw new Error(`Failed to load ${currentDoc}.md`)
+          throw new Error(`Failed to load ${currentDoc}`)
         }
-        return r.text()
+        return r.json()
       })
-      .then(text => {
-        setContent(text)
+      .then(data => {
+        setContent(data.content)
         setLoading(false)
       })
       .catch(e => {
@@ -77,7 +94,6 @@ export default function Documentation() {
 
       <div className="doc-container">
         <nav className="doc-nav">
-          <h3>Docs</h3>
           <ul>
             {docFiles.length === 0 ? (
               <li className="loading-item">Loading...</li>

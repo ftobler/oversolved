@@ -123,6 +123,30 @@ def create_app(config=None):
         md_files = sorted([f.stem for f in docs_path.glob('*.md')])
         return jsonify({'docs': md_files})
 
+    @app.route('/api/docs/<doc_name>', methods=['GET'])
+    def get_doc(doc_name):
+        """Retrieve a markdown documentation file."""
+        docs_path = Path(__file__).parent.parent / 'docs'
+        file_path = docs_path / f'{doc_name}.md'
+
+        # Security: ensure the file is within the docs directory
+        try:
+            file_path = file_path.resolve()
+            docs_path = docs_path.resolve()
+            if not str(file_path).startswith(str(docs_path)):
+                return jsonify({'error': 'Invalid doc name'}), 400
+        except (OSError, ValueError):
+            return jsonify({'error': 'Invalid doc name'}), 400
+
+        if not file_path.exists():
+            return jsonify({'error': 'Documentation not found'}), 404
+
+        try:
+            content = file_path.read_text(encoding='utf-8')
+            return jsonify({'name': doc_name, 'content': content})
+        except OSError:
+            return jsonify({'error': 'Failed to read documentation'}), 500
+
     # Serve frontend
     frontend_dist = Path(__file__).parent.parent / 'frontend' / 'dist'
     if frontend_dist.exists():

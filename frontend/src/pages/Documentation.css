@@ -47,6 +47,7 @@
   border-right: 1px solid #333;
   background: #111;
   overflow-y: auto;
+  text-align: left;
 }
 
 .doc-nav h3 {
