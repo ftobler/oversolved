@@ -40,21 +40,21 @@ def constraint_angle(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/constraint-coincident.svg", angle=-10)
+@icon("frontend/src/assets/icons/constraint-coincident.svg", angle=-10, offset_y=-0.15)
 def constraint_coincident(ctx):
     # a line with a point on it and a dotted line coming off that point
 
     # Draw main line
-    ctx.move_to(0.2, 0.7)
-    ctx.line_to(0.8, 0.7)
+    ctx.move_to(0.15, 0.8)
+    ctx.line_to(0.85, 0.8)
     stroke(ctx, 1.5)
 
     # Draw point on the line (center)
-    ctx.arc(0.5, 0.7, px(2.2), 0, 2 * math.pi)
+    ctx.arc(0.5, 0.8, px(2.2), 0, 2 * math.pi)
     ctx.fill()
 
     # Draw dotted line coming off the point (can be diagonal)
-    x0, y0 = 0.5, 0.7
+    x0, y0 = 0.5, 0.8
     x1, y1 = 0.35, 0.2
     num_dots = 3
     draw_dotted_line(ctx, x0, y0, x1, y1, num_dots)
@@ -142,7 +142,7 @@ def constraint_horizontal(ctx):
     # Parameters
     x0, x1 = 0.15, 0.85   # left and right endpoints
     y = 0.5         # vertical center
-    cap_half = 0.15        # half-height of the end caps
+    cap_half = 0.08        # half-height of the end caps
 
     # Main horizontal line
     ctx.move_to(x0, y)
@@ -165,7 +165,7 @@ def constraint_vertical(ctx):
     # Parameters
     y0, y1 = 0.15, 0.85   # top and bottom endpoints
     x = 0.5          # horizontal center
-    cap_half = 0.15         # half-width of the end caps
+    cap_half = 0.08         # half-width of the end caps
 
     # Main vertical line
     ctx.move_to(x, y0)
@@ -199,7 +199,7 @@ def constraint_equal(ctx):
     stroke(ctx, 2)
 
 
-@icon("frontend/src/assets/icons/constraint-tangent.svg")
+@icon("frontend/src/assets/icons/constraint-tangent.svg", angle=-20)
 def constraint_tangent(ctx):
     # Parameters
     cx, cy = 0.34, 0.5   # circle center
@@ -208,7 +208,7 @@ def constraint_tangent(ctx):
 
     # Circle
     ctx.arc(cx, cy, r, 0, 2 * math.pi)
-    stroke(ctx, 2)
+    stroke(ctx, 1.5)
 
     # Tangent line (vertical, touching circle at its rightmost point)
     tx = cx + r
@@ -291,7 +291,7 @@ def constraint_concentric(ctx):
     # r_inner = 0.20        # inner ring radius
 
     ctx.arc(cx, cy, r_outer, 0, 2 * math.pi)
-    stroke(ctx, 2)
+    stroke(ctx, 1.5)
 
     # ctx.arc(cx, cy, r_inner, 0, 2 * math.pi)
     # stroke(ctx, 2)
@@ -308,7 +308,7 @@ def constraint_fixed(ctx):
     x0d, x1d = 0.23, 0.83        # endpoints of the fixed line
     y_line = 0.5            # y of the fixed line
     y_base = 0.45            # y of the solid base
-    dash_n = 4               # number of dashes for the base
+    dash_n = 3               # number of dashes for the base
 
     # Fixed line (the constrained object)
     ctx.move_to(x0, y_line)
@@ -343,21 +343,21 @@ def constraint_parallel(ctx):
     ctx.line_to(x1, y2)
     stroke(ctx, 2)
 
-    # Arrow indicators (small arrows showing direction)
-    arrow_len = 0.06
-    arrow_h = 0.04
+    # # Arrow indicators (small arrows showing direction)
+    # arrow_len = 0.06
+    # arrow_h = 0.04
 
-    # Top arrow (pointing right)
-    ctx.move_to(x1 - arrow_len, y1 - arrow_h)
-    ctx.line_to(x1, y1)
-    ctx.line_to(x1 - arrow_len, y1 + arrow_h)
-    stroke(ctx, 1.5)
+    # # Top arrow (pointing right)
+    # ctx.move_to(x1 - arrow_len, y1 - arrow_h)
+    # ctx.line_to(x1, y1)
+    # ctx.line_to(x1 - arrow_len, y1 + arrow_h)
+    # stroke(ctx, 1.5)
 
-    # Bottom arrow (pointing right)
-    ctx.move_to(x1 - arrow_len, y2 - arrow_h)
-    ctx.line_to(x1, y2)
-    ctx.line_to(x1 - arrow_len, y2 + arrow_h)
-    stroke(ctx, 1.5)
+    # # Bottom arrow (pointing right)
+    # ctx.move_to(x1 - arrow_len, y2 - arrow_h)
+    # ctx.line_to(x1, y2)
+    # ctx.line_to(x1 - arrow_len, y2 + arrow_h)
+    # stroke(ctx, 1.5)
 
 
 if __name__ == "__main__":

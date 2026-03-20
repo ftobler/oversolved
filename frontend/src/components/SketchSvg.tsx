@@ -308,15 +308,17 @@ function renderConstraints(
     const colCount = 3
     const iconPadding = 4
 
-    clist.forEach(([id, c], idx) => {
+    let symbolIdx = 0
+    clist.forEach(([id, c]) => {
       const r = c.render
       const color = CONSTRAINT_COLOR
 
       if (r.kind.startsWith('symbol_')) {
         const url = getIconUrl(r.kind)
         if (!url) return
-        const row = Math.floor(idx / colCount)
-        const col = idx % colCount
+        const row = Math.floor(symbolIdx / colCount)
+        const col = symbolIdx % colCount
+        symbolIdx++
         const x = gridX + col * (ICON_SIZE + iconPadding)
         const y = gridY + row * (ICON_SIZE + iconPadding)
 

@@ -6,9 +6,9 @@ SIZE = 24
 _registry = []
 
 
-def icon(path, angle=0):
+def icon(path, angle=0, offset_x=0, offset_y=0):
     def wrapper(fn):
-        _registry.append((path, fn, angle))
+        _registry.append((path, fn, angle, offset_x, offset_y))
         return fn
     return wrapper
 
@@ -32,7 +32,7 @@ def source_default(ctx):
     ctx.set_source_rgb(0, 0, 0)
 
 
-def _draw_one(path, fn, angle):
+def _draw_one(path, fn, angle, offset_x=0, offset_y=0):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -53,6 +53,10 @@ def _draw_one(path, fn, angle):
         ctx.rotate(rad)
         ctx.translate(-0.5, -0.5)
 
+    # ===== offset translation =====
+    if offset_x != 0 or offset_y != 0:
+        ctx.translate(offset_x, offset_y)
+
     fn(ctx)
 
     surface.finish()
@@ -66,6 +70,8 @@ def _postprocess_svg(path: Path):
 
 
 def drawall():
-    for path, fn, angle in _registry:
-        print(f"→ {path} (angle={angle})")
-        _draw_one(path, fn, angle)
+    for entry in _registry:
+        path, fn, angle = entry[:3]
+        offset_x, offset_y = entry[3:5] if len(entry) > 3 else (0, 0)
+        print(f"→ {path} (angle={angle}, offset=({offset_x}, {offset_y}))")
+        _draw_one(path, fn, angle, offset_x, offset_y)
