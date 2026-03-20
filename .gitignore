@@ -29,3 +29,6 @@ frontend/.vite/
 .vscode/
 *.swp
 *.swo
+
+docs/notes.md
+
