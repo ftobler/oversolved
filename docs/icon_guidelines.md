@@ -13,7 +13,7 @@ Icons in this project follow the **Material Icons Outlined** style.
 | Stroke width | `2` for primary lines, `1.5` for secondary/detail lines |
 | Stroke caps | `stroke-linecap="round"` |
 | Stroke joins | `stroke-linejoin="round"` |
-| Padding | ~2–3 px from edge |
+| Padding | ~2-3 px from edge |
 | Monochrome | Yes — no hardcoded colors, never use `#hex` or `rgb()` |
 
 ## How to add icons
@@ -32,23 +32,7 @@ Each icon is a **standalone SVG file** under `src/assets/icons/`. Do not use `<s
 
 ### Naming
 
-- File: `src/assets/icons/<group>-<name>.svg`  (e.g. `constraint-parallel.svg`)
-
-## Existing icons
-
-| File | Description |
-|---|---|
-| `src/assets/icons/constraint-coincident.svg` | Two lines meeting at a locked point |
-| `src/assets/icons/constraint-parallel.svg` | Two diagonal parallel lines (//) |
-| `src/assets/icons/constraint-angle.svg` | ∠ symbol with arc indicator |
-| `src/assets/icons/constraint-equal.svg` | Two segments with matching tick marks |
-| `src/assets/icons/constraint-horizontal.svg` | Horizontal line with vertical end-caps |
-| `src/assets/icons/constraint-vertical.svg` | Vertical line with horizontal end-caps |
-| `src/assets/icons/constraint-colinear.svg` | Three points on a line |
-| `src/assets/icons/constraint-tangent.svg` | Circle with tangent line |
-| `src/assets/icons/constraint-dimensioned.svg` | Object line with dimension arrows |
-| `src/assets/icons/constraint-square.svg` | Right-angle legs with corner marker |
-| `public/icons.svg` | Brand / social icons (github, discord, bluesky, x, …) — legacy sprite sheet |
+- File: `src/assets/icons/<group>-<name>.svg`
 
 ## Geometry tips
 
