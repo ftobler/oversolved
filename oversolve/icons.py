@@ -471,7 +471,7 @@ def toolbar_visualizer(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/toolbar-extrude.svg")
+@icon("frontend/src/assets/icons/feature-extrude.svg")
 def toolbar_extrude(ctx):
     # Extrude icon: a rectangle with an arrow pointing outward
     # Base rectangle
@@ -505,7 +505,7 @@ def toolbar_extrude(ctx):
     ctx.stroke()
 
 
-@icon("frontend/src/assets/icons/toolbar-sketch.svg", angle=120)
+@icon("frontend/src/assets/icons/feature-sketch.svg", angle=120)
 def toolbar_sketch(ctx):
     # Sketch/pencil icon (horizontal)
     # Pencil shaft
@@ -543,6 +543,64 @@ def toolbar_play(ctx):
     ctx.line_to(cx + size, cy)
     ctx.close_path()
     ctx.fill()
+
+
+@icon("frontend/src/assets/icons/feature-origin.svg")
+def feature_origin(ctx):
+    # Origin point icon: larger filled circle
+    cx, cy = 0.5, 0.5
+    R = px(4)  # 20% larger than toolbar-point
+    ctx.arc(cx, cy, R, 0, 2 * math.pi)
+    stroke(ctx, 1.5)
+
+    # Origin point icon: larger filled circle
+    r = R / 3
+    ctx.arc(cx, cy, r, 0, 2 * math.pi)
+    ctx.fill()
+
+
+@icon("frontend/src/assets/icons/feature-plane.svg")
+def feature_plane(ctx):
+    # Plane icon: 3D tilted 3x2 grid
+    # Define the tilted plane corners (isometric-like view)
+    x0, y0 = 0.2, 0.7  # bottom-left
+    x1, y1 = 0.8, 0.65  # bottom-right
+    x2, y2 = 0.75, 0.2  # top-right
+    x3, y3 = 0.15, 0.25  # top-left
+
+    # Draw the plane perimeter
+    ctx.move_to(x0, y0)
+    ctx.line_to(x1, y1)
+    ctx.line_to(x2, y2)
+    ctx.line_to(x3, y3)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # Draw vertical grid lines (2 internal lines for 3 columns)
+    N = 2
+    for i in range(1, N):
+        t = i / N
+        # Interpolate points along the edges
+        left_x = x0 + (x3 - x0) * t
+        left_y = y0 + (y3 - y0) * t
+        right_x = x1 + (x2 - x1) * t
+        right_y = y1 + (y2 - y1) * t
+        ctx.move_to(left_x, left_y)
+        ctx.line_to(right_x, right_y)
+    stroke(ctx, 1.5)
+
+    # Draw horizontal grid line (1 internal line for 2 rows)
+    M = 2
+    for i in range(1, M):
+        t = i / M
+        # Interpolate points along top and bottom edges
+        bottom_x = x0 + (x1 - x0) * t
+        bottom_y = y0 + (y1 - y0) * t
+        top_x = x3 + (x2 - x3) * t
+        top_y = y3 + (y2 - y3) * t
+        ctx.move_to(bottom_x, bottom_y)
+        ctx.line_to(top_x, top_y)
+    stroke(ctx, 1.5)
 
 
 if __name__ == "__main__":

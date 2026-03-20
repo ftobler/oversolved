@@ -19,8 +19,10 @@ import toolbarPerpendicularIcon from '../assets/icons/constraint-square.svg'
 import toolbarTangentIcon from '../assets/icons/constraint-tangent.svg'
 import toolbarCollinearIcon from '../assets/icons/constraint-colinear.svg'
 import toolbarDimensionIcon from '../assets/icons/constraint-dimension.svg'
-import toolbarExtrudeIcon from '../assets/icons/toolbar-extrude.svg'
-import toolbarSketchIcon from '../assets/icons/toolbar-sketch.svg'
+import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
+import featureSketchIcon from '../assets/icons/feature-sketch.svg'
+import featureOriginIcon from '../assets/icons/feature-origin.svg'
+import featurePlaneIcon from '../assets/icons/feature-plane.svg'
 import toolbarPlayIcon from '../assets/icons/toolbar-play.svg'
 
 export default function Part() {
@@ -31,7 +33,47 @@ export default function Part() {
   const [error, setError] = useState<string | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(docId || '')
-  const [features, setFeatures] = useState<string[]>([])
+  const [features, setFeatures] = useState<Array<{ id: string; kind?: string }>>([])
+
+  const extractFeatures = (yaml: string) => {
+    // Built-in features
+    const builtInFeatures: Array<{ id: string; kind?: string }> = [
+      { id: 'Origin', kind: 'origin' },
+      { id: 'Top', kind: 'plane' },
+      { id: 'Front', kind: 'plane' },
+      { id: 'Right', kind: 'plane' },
+    ]
+
+    // Extract top-level features with their kind
+    const lines = yaml.split('\n')
+    const features: Array<{ id: string; kind?: string }> = []
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      const idMatch = line.match(/^\s{0,3}- id:\s*(.+?)$/)
+      if (idMatch) {
+        const feature: { id: string; kind?: string } = { id: idMatch[1].trim() }
+
+        // Look ahead for kind field (within next 10 lines)
+        for (let j = i + 1; j < Math.min(i + 10, lines.length); j++) {
+          const nextLine = lines[j]
+          // Stop looking if we hit another top-level item
+          if (nextLine.match(/^\s{0,3}- id:/)) {
+            break
+          }
+          const kindMatch = nextLine.match(/^\s+kind:\s*(.+?)$/)
+          if (kindMatch) {
+            feature.kind = kindMatch[1].trim()
+            break
+          }
+        }
+
+        features.push(feature)
+      }
+    }
+
+    return [...builtInFeatures, ...features]
+  }
   const [mode, setMode] = useState<'sketch' | 'feature' | 'code'>('sketch')
 
   useEffect(() => {
@@ -44,10 +86,7 @@ export default function Part() {
       })
       .then(data => {
         setContent(data.content)
-        // Extract top-level feature IDs from YAML (lines starting with "- id:" at column 0)
-        const featureMatches = data.content.match(/^- id:\s*(.+?)$/gm) || []
-        const featureIds = featureMatches.map((line: string) => line.replace(/^- id:\s*/, '').trim())
-        setFeatures(featureIds)
+        setFeatures(extractFeatures(data.content))
         setLoading(false)
       })
       .catch(e => {
@@ -83,6 +122,23 @@ export default function Part() {
     }
   }
 
+  const handleSave = async () => {
+    if (!docId) return
+
+    try {
+      const response = await fetch(`/api/documents/${docId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      })
+
+      if (!response.ok) throw new Error('Failed to save document')
+      setError(null)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
   return (
     <div className="document-viewer">
       <header className="doc-toolbar">
@@ -99,7 +155,7 @@ export default function Part() {
           <button className="toolbar-btn" title="Redo">
             <span className="material-icons">redo</span>
           </button>
-          <button className="toolbar-btn" title="Save">
+          <button className="toolbar-btn" title="Save" onClick={handleSave}>
             <span className="material-icons">save</span>
           </button>
           {isEditing ? (
@@ -141,11 +197,25 @@ export default function Part() {
               <li className="empty">No features</li>
             ) : (
               features.map(feature => (
-                <li key={feature} className="feature-item">
-                  {feature}
+                <li key={feature.id} className="feature-item">
+                  <img
+                    src={
+                      feature.kind?.toLowerCase() === 'sketch'
+                        ? featureSketchIcon
+                        : feature.kind?.toLowerCase() === 'extrude'
+                        ? featureExtrudeIcon
+                        : feature.kind?.toLowerCase() === 'origin'
+                        ? featureOriginIcon
+                        : featurePlaneIcon
+                    }
+                    alt={feature.kind || 'feature'}
+                    className="feature-icon"
+                  />
+                  <span className="feature-name">{feature.id}</span>
                 </li>
               ))
             )}
+            <li className="rollback-bar" title="Rollback"></li>
           </ul>
         </aside>
 
@@ -256,10 +326,10 @@ export default function Part() {
             {mode === 'feature' && (
               <>
                 <button className="editor-btn" title="Extrude">
-                  <img src={toolbarExtrudeIcon} alt="Extrude" />
+                  <img src={featureExtrudeIcon} alt="Extrude" />
                 </button>
                 <button className="editor-btn" title="Sketch">
-                  <img src={toolbarSketchIcon} alt="Sketch" />
+                  <img src={featureSketchIcon} alt="Sketch" />
                 </button>
               </>
             )}
@@ -275,10 +345,7 @@ export default function Part() {
                   value={content}
                   onChange={e => {
                     setContent(e.target.value)
-                    // Update features list as user types (only top-level)
-                    const featureMatches = e.target.value.match(/^- id:\s*(.+?)$/gm) || []
-                    const featureIds = featureMatches.map((line: string) => line.replace(/^- id:\s*/, '').trim())
-                    setFeatures(featureIds)
+                    setFeatures(extractFeatures(e.target.value))
                   }}
                   placeholder="Document content..."
                   spellCheck="false"
