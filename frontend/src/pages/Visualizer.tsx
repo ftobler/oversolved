@@ -6,8 +6,10 @@ import './Visualizer.css'
 
 interface FeatureResult {
   [featureId: string]: {
-    initial: Sketch
-    solved: Sketch
+    geometry: {
+      initial: Sketch
+      solved: Sketch
+    }
     status: 'fully_constrained' | 'underconstrained' | 'overconstrained'
     solve_ms: number
   }
@@ -49,19 +51,18 @@ export default function Visualizer() {
         <p className="empty">No test results yet. Run <code>pytest</code> to generate them.</p>
       )}
 
-      {results && Object.entries(results).map(([testName, features]) => (
-        <section key={testName} className="test-section">
-          <h2>{testName}</h2>
-          <div className="sketch-row">
-            {Object.entries(features).map(([featureId, { initial, solved, status, solve_ms }]) => (
-              <div key={featureId} className="sketch-card">
-                <div className="sketch-label">{featureId} <span className="solve-time">{solve_ms} ms</span></div>
-                <SketchSvg initial={initial} solved={solved} status={status} size={280} />
+      {results && (
+        <div className="sketch-row">
+          {Object.entries(results).flatMap(([testName, features]) =>
+            Object.entries(features).map(([featureId, { geometry, status, solve_ms }]) => (
+              <div key={`${testName}/${featureId}`} className="sketch-card">
+                <div className="sketch-label">{testName}/{featureId} <span className="solve-time">{solve_ms} ms</span></div>
+                <SketchSvg initial={geometry.initial} solved={geometry.solved} status={status} size={330} />
               </div>
-            ))}
-          </div>
-        </section>
-      ))}
+            ))
+          )}
+        </div>
+      )}
     </div>
   )
 }

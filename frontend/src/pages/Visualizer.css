@@ -75,12 +75,15 @@
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  width: 330px;
+  flex-shrink: 0;
 }
 
 .sketch-label {
   font-size: 0.8rem;
   color: #78909c;
   font-family: monospace;
+  word-break: break-all;
 }
 
 .solve-time {

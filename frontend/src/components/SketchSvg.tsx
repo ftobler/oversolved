@@ -39,7 +39,7 @@ interface Props {
   size?: number
 }
 
-const PADDING = 20
+const PADDING = 40
 
 function allPoints(sketches: Sketch[]): Point[] {
   const pts: Point[] = []

@@ -51,8 +51,8 @@ features:
     result = solve(yaml_str)
     sketch_log["test_horizontal_line_with_length"] = result
 
-    s = result["sketch_1"]["solved"]["line1"]["start"]
-    e = result["sketch_1"]["solved"]["line1"]["end"]
+    s = result["sketch_1"]["geometry"]["solved"]["line1"]["start"]
+    e = result["sketch_1"]["geometry"]["solved"]["line1"]["end"]
 
     assert abs(s[1] - e[1]) < TOL, "line must be horizontal (same y)"
     length = math.sqrt((e[0] - s[0]) ** 2 + (e[1] - s[1]) ** 2)
@@ -97,10 +97,10 @@ features:
     result = solve(yaml_str)
     sketch_log["test_perpendicular_lines_with_coincident_endpoint"] = result
 
-    base_s = result["sketch_1"]["solved"]["base"]["start"]
-    base_e = result["sketch_1"]["solved"]["base"]["end"]
-    height_s = result["sketch_1"]["solved"]["height"]["start"]
-    height_e = result["sketch_1"]["solved"]["height"]["end"]
+    base_s = result["sketch_1"]["geometry"]["solved"]["base"]["start"]
+    base_e = result["sketch_1"]["geometry"]["solved"]["base"]["end"]
+    height_s = result["sketch_1"]["geometry"]["solved"]["height"]["start"]
+    height_e = result["sketch_1"]["geometry"]["solved"]["height"]["end"]
 
     assert abs(base_e[0] - height_s[0]) < TOL, "coincident x"
     assert abs(base_e[1] - height_s[1]) < TOL, "coincident y"
@@ -153,10 +153,10 @@ features:
     result = solve(yaml_str)
     sketch_log["test_two_lines_with_angle_constraint"] = result
 
-    a_s = result["sketch_1"]["solved"]["line_a"]["start"]
-    a_e = result["sketch_1"]["solved"]["line_a"]["end"]
-    b_s = result["sketch_1"]["solved"]["line_b"]["start"]
-    b_e = result["sketch_1"]["solved"]["line_b"]["end"]
+    a_s = result["sketch_1"]["geometry"]["solved"]["line_a"]["start"]
+    a_e = result["sketch_1"]["geometry"]["solved"]["line_a"]["end"]
+    b_s = result["sketch_1"]["geometry"]["solved"]["line_b"]["start"]
+    b_e = result["sketch_1"]["geometry"]["solved"]["line_b"]["end"]
 
     assert abs(a_s[0] - b_s[0]) < TOL, "shared origin x"
     assert abs(a_s[1] - b_s[1]) < TOL, "shared origin y"
@@ -238,7 +238,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_rectangle"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     b_s, b_e = sk["bottom"]["start"], sk["bottom"]["end"]
     r_s, r_e = sk["right"]["start"],  sk["right"]["end"]
     t_s, t_e = sk["top"]["start"],    sk["top"]["end"]
@@ -317,7 +317,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_equilateral_triangle"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     a_s, a_e = sk["a"]["start"], sk["a"]["end"]
     b_s, b_e = sk["b"]["start"], sk["b"]["end"]
     c_s, c_e = sk["c"]["start"], sk["c"]["end"]
@@ -434,7 +434,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_pentagon"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     edges = [(sk[f"e{i}"]["start"], sk[f"e{i}"]["end"]) for i in range(5)]
 
     # coincident joints (including wrap-around)
@@ -479,7 +479,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_circle_radius"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     assert abs(sk["circ"]["radius"] - 5.0) < TOL
 
 
@@ -521,7 +521,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_arc_coincident_with_line"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     line_end = sk["line1"]["end"]
     arc_start = sk["arc1"]["start"]
 
@@ -568,7 +568,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_circle_center_on_line_endpoint"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     line_end = sk["line1"]["end"]
     center = sk["circ"]["center"]
 
@@ -653,7 +653,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_equal_belt"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     al, ar = sk["arc_l"], sk["arc_r"]
     tl, bl = sk["top_line"], sk["bot_line"]
 
@@ -740,7 +740,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_unequal_belt"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     al, ar = sk["arc_l"], sk["arc_r"]
     tl, bl = sk["top_line"], sk["bot_line"]
 
@@ -837,7 +837,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_serpentine_belt"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     a1, a2, a3 = sk["arc_1"], sk["arc_2"], sk["arc_3"]
     s12, s23 = sk["seg_12"], sk["seg_23"]
 
@@ -928,7 +928,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_collinear_equal_segments_single_dim"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     segs = [sk[f"s{i}"] for i in range(1, 5)]
 
     for seg in segs:
@@ -1008,7 +1008,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_collinear_equal_segments_total_span"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     segs = [sk[f"s{i}"] for i in range(1, 5)]
 
     total = length(segs[0]["start"], segs[3]["end"])
@@ -1088,7 +1088,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_collinear_equal_segments_partial_span"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     segs = [sk[f"s{i}"] for i in range(1, 5)]
 
     partial = length(segs[1]["start"], segs[2]["end"])
@@ -1223,7 +1223,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_midpoint_constraint"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     line, circ = sk["line1"], sk["circ"]
     mid_x = (line["start"][0] + line["end"][0]) / 2
     mid_y = (line["start"][1] + line["end"][1]) / 2
@@ -1272,7 +1272,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_normal_constraint"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     line, arc = sk["line1"], sk["arc1"]
 
     assert abs(arc["radius"] - 3.0) < TOL
@@ -1326,7 +1326,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_concentric_constraint"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     cs, cl = sk["circ_s"], sk["circ_l"]
 
     assert abs(cs["radius"] - 2.0) < TOL
@@ -1368,7 +1368,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_fixed_constraint"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     line = sk["line1"]
 
     assert abs(line["start"][0] - 0.0) < TOL
@@ -1414,7 +1414,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_point_on_midpoint"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     line, pt = sk["line1"], sk["pt"]
     mid_x = (line["start"][0] + line["end"][0]) / 2
     mid_y = (line["start"][1] + line["end"][1]) / 2
@@ -1507,7 +1507,7 @@ features:
     result = solve(yaml_str)
     sketch_log["test_rectangle_center_point"] = result
 
-    sk = result["sketch_1"]["solved"]
+    sk = result["sketch_1"]["geometry"]["solved"]
     top, left, center = sk["top"], sk["left"], sk["center"]
 
     assert abs(length(top["start"], top["end"]) - 6.0) < TOL
