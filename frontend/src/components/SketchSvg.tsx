@@ -298,7 +298,7 @@ function renderConstraints(
 
     // Position grid below/right of entity's right-bottom corner (with extra spacing)
     const gridX = bounds.maxX + 16
-    const gridY = bounds.maxY + 2
+    const gridY = bounds.maxY + 16
     const colCount = 3
     const iconPadding = 4
 
@@ -357,6 +357,7 @@ function renderConstraints(
         const mx = (d1x + d2x) / 2
         const my = (d1y + d2y) / 2
         const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
+        const textPadding = 3
         dimConstraints.push(
           <g key={id} opacity={0.85}>
             <line x1={x1} y1={y1} x2={d1x} y2={d1y} stroke={color} strokeWidth={1} strokeDasharray="2 2" />
@@ -364,34 +365,81 @@ function renderConstraints(
             <line x1={d1x} y1={d1y} x2={d2x} y2={d2y} stroke={color} strokeWidth={1} />
             <path d={arrowhead(d2x, d2y, d1x, d1y)} fill={color} />
             <path d={arrowhead(d1x, d1y, d2x, d2y)} fill={color} />
-            <text x={mx} y={my - 4} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle">{label}</text>
+            <rect x={mx - (label.length * 2.5 + textPadding)} y={my - 6} width={label.length * 5 + textPadding * 2} height={12} fill="#111" />
+            <text x={mx} y={my} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
           </g>
         )
       } else if (r.kind === 'dim_radius') {
         const dim = r as DimRadiusRender
         const [x1, y1] = px(dim.p1[0], dim.p1[1])
         const [x2, y2] = px(dim.p2[0], dim.p2[1])
-        const mx = (x1 + x2) / 2
-        const my = (y1 + y2) / 2
+        // Rotate radius line by 10 degrees
+        const angle = 10 * (Math.PI / 180)
+        const cos10 = Math.cos(angle)
+        const sin10 = Math.sin(angle)
+        const dx = x2 - x1
+        const dy = y2 - y1
+        const rdx = dx * cos10 - dy * sin10
+        const rdy = dx * sin10 + dy * cos10
+        const x2_rot = x1 + rdx
+        const y2_rot = y1 + rdy
+        const mx = (x1 + x2_rot) / 2
+        const my = (y1 + y2_rot) / 2
         const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
+        const textPadding = 3
         dimConstraints.push(
           <g key={id} opacity={0.85}>
-            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={1} />
-            <path d={arrowhead(x1, y1, x2, y2)} fill={color} />
-            <text x={mx} y={my - 4} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle">{label}</text>
+            <line x1={x1} y1={y1} x2={x2_rot} y2={y2_rot} stroke={color} strokeWidth={1} />
+            <path d={arrowhead(x1, y1, x2_rot, y2_rot)} fill={color} />
+            <rect x={mx - (label.length * 2.5 + textPadding)} y={my - 6} width={label.length * 5 + textPadding * 2} height={12} fill="#111" />
+            <text x={mx} y={my} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
           </g>
         )
       } else if (r.kind === 'dim_angle') {
-        const dim = r as DimAngleRender
-        const [x1, y1] = px(dim.p1[0], dim.p1[1])
-        const [x2, y2] = px(dim.p2[0], dim.p2[1])
-        const mx = (x1 + x2) / 2
-        const my = (y1 + y2) / 2
+        const dim = r as DimAngleRender & { p3: Point }
+        const [vx, vy] = px(dim.p2[0], dim.p2[1])  // vertex
+        const [x1, y1] = px(dim.p1[0], dim.p1[1])  // ray 1 end
+        const [x3, y3] = px(dim.p3[0], dim.p3[1])  // ray 2 end
+
+        // Compute angles from vertex to each point
+        const angle1 = Math.atan2(y1 - vy, x1 - vx)
+        const angle2 = Math.atan2(y3 - vy, x3 - vx)
+
+        // Arc radius (proportional to ray lengths)
+        const r1 = Math.hypot(x1 - vx, y1 - vy)
+        const r2 = Math.hypot(x3 - vx, y3 - vy)
+        const arcRadius = Math.min(r1, r2) * 0.4
+
+        // Arc endpoints
+        const ax1 = vx + arcRadius * Math.cos(angle1)
+        const ay1 = vy + arcRadius * Math.sin(angle1)
+        const ax2 = vx + arcRadius * Math.cos(angle2)
+        const ay2 = vy + arcRadius * Math.sin(angle2)
+
+        // Determine if large-arc (> 180°)
+        let angleDiff = angle2 - angle1
+        if (angleDiff < 0) angleDiff += 2 * Math.PI
+        if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff
+        const largeArc = angleDiff > Math.PI ? 1 : 0
+
+        // Label position (middle of arc)
+        const midAngle = (angle1 + angle2) / 2
+        const labelRadius = arcRadius * 1.5
+        const labelX = vx + labelRadius * Math.cos(midAngle)
+        const labelY = vy + labelRadius * Math.sin(midAngle)
+
         const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
+        const arcPath = `M ${ax1} ${ay1} A ${arcRadius} ${arcRadius} 0 ${largeArc} 1 ${ax2} ${ay2}`
+        const textPadding = 4
+        const textWidth = (label.length * 3 + 4) + textPadding * 2
+
         dimConstraints.push(
           <g key={id} opacity={0.85}>
-            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={1} strokeDasharray="3 2" />
-            <text x={mx} y={my - 4} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle">{label}</text>
+            <line x1={vx} y1={vy} x2={x1} y2={y1} stroke={color} strokeWidth={1} />
+            <line x1={vx} y1={vy} x2={x3} y2={y3} stroke={color} strokeWidth={1} />
+            <path d={arcPath} stroke={color} strokeWidth={1} fill="none" />
+            <rect x={labelX - textWidth / 2} y={labelY - 6} width={textWidth} height={12} fill="#111" />
+            <text x={labelX} y={labelY} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
           </g>
         )
       }
