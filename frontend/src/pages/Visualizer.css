@@ -27,6 +27,7 @@
   cursor: pointer;
   border-radius: 4px;
   font-size: 1rem;
+  text-decoration: none;
 }
 
 .back:hover,
@@ -84,6 +85,7 @@
   color: #78909c;
   font-family: monospace;
   word-break: break-all;
+  height: 50px;
 }
 
 .solve-time {
