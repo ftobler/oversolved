@@ -57,16 +57,21 @@ def _geometry_from_array(
         off = entity_offsets[eid]
         ep = x[off:off + ENTITY_SIZES[entity["kind"]]]
         kind = entity["kind"]
+        is_construction = entity.get("construction", False)
         if kind == "line_segment":
             out[eid] = {
                 "start": [float(ep[0]), float(ep[1])],
                 "end": [float(ep[2]), float(ep[3])],
             }
+            if is_construction:
+                out[eid]["construction"] = True
         elif kind == "circle":
             out[eid] = {
                 "center": [float(ep[0]), float(ep[1])],
                 "radius": float(ep[2]),
             }
+            if is_construction:
+                out[eid]["construction"] = True
         elif kind == "arc":
             cx, cy, r = float(ep[0]), float(ep[1]), float(ep[2])
             a0, a1 = float(ep[3]), float(ep[4])
@@ -96,8 +101,12 @@ def _geometry_from_array(
                     math.sin(
                         math.radians(a1))],
             }
+            if is_construction:
+                out[eid]["construction"] = True
         elif kind == "point":
             out[eid] = {"x": float(ep[0]), "y": float(ep[1])}
+            if is_construction:
+                out[eid]["construction"] = True
     return out
 
 

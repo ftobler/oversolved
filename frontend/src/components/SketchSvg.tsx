@@ -3,11 +3,13 @@ type Point = [number, number]
 interface LineSegment {
   start: Point
   end: Point
+  construction?: boolean
 }
 
 interface Circle {
   center: Point
   radius: number
+  construction?: boolean
 }
 
 interface Arc {
@@ -17,11 +19,13 @@ interface Arc {
   angle_end: number
   start: Point
   end: Point
+  construction?: boolean
 }
 
 interface PointEntity {
   x: number
   y: number
+  construction?: boolean
 }
 
 type Entity = LineSegment | Circle | Arc | PointEntity
@@ -194,14 +198,15 @@ function renderSketch(
       const largeArc = span > 180 ? 1 : 0
       const [sx, sy] = px(arc.start[0], arc.start[1])
       const [ex, ey] = px(arc.end[0], arc.end[1])
+      const dashArray = arc.construction ? '4 2' : undefined
       return (
         <g key={id}>
-          <path d={`M ${x0} ${y0} A ${r} ${r} 0 ${largeArc} 0 ${x1} ${y1}`} stroke={color} strokeWidth={strokeWidth} fill="none" />
+          <path d={`M ${x0} ${y0} A ${r} ${r} 0 ${largeArc} 0 ${x1} ${y1}`} stroke={color} strokeWidth={strokeWidth} fill="none" strokeDasharray={dashArray} />
           {/* radius lines: center to start and center to end */}
           <line x1={cx} y1={cy} x2={x0} y2={y0} stroke={color} strokeWidth={strokeWidth * 0.5} strokeDasharray={`${strokeWidth * 2} ${strokeWidth * 2}`} opacity={0.5} />
           <line x1={cx} y1={cy} x2={x1} y2={y1} stroke={color} strokeWidth={strokeWidth * 0.5} strokeDasharray={`${strokeWidth * 2} ${strokeWidth * 2}`} opacity={0.5} />
-          <circle cx={sx} cy={sy} r={strokeWidth * 1.5} fill={color} />
-          <circle cx={ex} cy={ey} r={strokeWidth * 1.5} fill={color} />
+          <circle cx={sx} cy={sy} r={strokeWidth * 1.5} fill={color} strokeDasharray={dashArray} />
+          <circle cx={ex} cy={ey} r={strokeWidth * 1.5} fill={color} strokeDasharray={dashArray} />
           <circle cx={cx} cy={cy} r={strokeWidth * 2} fill={color} opacity={0.7} />
         </g>
       )
@@ -209,30 +214,33 @@ function renderSketch(
       const line = entity as LineSegment
       const [x1, y1] = px(line.start[0], line.start[1])
       const [x2, y2] = px(line.end[0], line.end[1])
+      const dashArray = line.construction ? '4 2' : undefined
       return (
         <g key={id}>
-          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={strokeWidth} />
-          <circle cx={x1} cy={y1} r={strokeWidth * 1.5} fill={color} />
-          <circle cx={x2} cy={y2} r={strokeWidth * 1.5} fill={color} />
+          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={strokeWidth} strokeDasharray={dashArray} />
+          <circle cx={x1} cy={y1} r={strokeWidth * 1.5} fill={color} strokeDasharray={dashArray} />
+          <circle cx={x2} cy={y2} r={strokeWidth * 1.5} fill={color} strokeDasharray={dashArray} />
         </g>
       )
     } else if ('x' in entity) {
       const pt = entity as PointEntity
       const [px_, py_] = px(pt.x, pt.y)
+      const dashArray = pt.construction ? '4 2' : undefined
       return (
         <g key={id}>
-          <circle cx={px_} cy={py_} r={strokeWidth * 2.5} fill={color} />
-          <line x1={px_ - strokeWidth * 4} y1={py_} x2={px_ + strokeWidth * 4} y2={py_} stroke={color} strokeWidth={strokeWidth * 0.75} />
-          <line x1={px_} y1={py_ - strokeWidth * 4} x2={px_} y2={py_ + strokeWidth * 4} stroke={color} strokeWidth={strokeWidth * 0.75} />
+          <circle cx={px_} cy={py_} r={strokeWidth * 2.5} fill={color} strokeDasharray={dashArray} />
+          <line x1={px_ - strokeWidth * 4} y1={py_} x2={px_ + strokeWidth * 4} y2={py_} stroke={color} strokeWidth={strokeWidth * 0.75} strokeDasharray={dashArray} />
+          <line x1={px_} y1={py_ - strokeWidth * 4} x2={px_} y2={py_ + strokeWidth * 4} stroke={color} strokeWidth={strokeWidth * 0.75} strokeDasharray={dashArray} />
         </g>
       )
     } else {
       const circ = entity as Circle
       const [cx, cy] = px(circ.center[0], circ.center[1])
       const r = circ.radius * pxScale
+      const dashArray = circ.construction ? '4 2' : undefined
       return (
         <g key={id}>
-          <circle cx={cx} cy={cy} r={r} stroke={color} strokeWidth={strokeWidth} fill="none" />
+          <circle cx={cx} cy={cy} r={r} stroke={color} strokeWidth={strokeWidth} fill="none" strokeDasharray={dashArray} />
           <circle cx={cx} cy={cy} r={strokeWidth} fill={color} opacity={0.5} />
         </g>
       )

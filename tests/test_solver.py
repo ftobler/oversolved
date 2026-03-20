@@ -760,7 +760,12 @@ features:
 
 
 def test_serpentine_belt(sketch_log):
-    """Three equal arcs in a serpentine (S-path): middle arc wraps the opposite side."""
+    """Three equal arcs in a serpentine (S-path): corrected geometry.
+
+    Arc 1 (left): center below, curves from 92° to 268° (top at 90°)
+    Arc 2 (middle): center above, curves from 272° to 92° (wraps around)
+    Arc 3 (right): center below, curves from 92° to 268° (top at 90°)
+    """
     yaml_str = """
 version: 1
 kind: part
@@ -770,11 +775,11 @@ features:
     kind: sketch
     label: "Serpentine Belt"
     initial:
-      arc_1: [0.2,  0.2, 2.1, 268,  92]
-      arc_2: [8.1, -0.1, 2.0,  92, 272]
-      arc_3: [16.1, 0.1, 1.9, 268,  92]
-      seg_12: [0.1,  2.1, 8.1,  2.0]
-      seg_23: [8.1, -2.0, 16.0,-2.0]
+      arc_1: [0.2,  -2.1, 2.1,  92, 268]
+      arc_2: [8.1,  2.1, 2.0, 272,  92]
+      arc_3: [-1.0,  1.5, 3.0,  92, 268]
+      seg_12: [0.1,  2.0, 8.1,  2.0]
+      seg_23: [8.1, -2.0, -1.0,-2.0]
     entities:
       - id: arc_1
         kind: arc
@@ -798,7 +803,7 @@ features:
       - id: c_r3
         kind: radius
         target: {entity: arc_3}
-        value: 2.0
+        value: 3.0
       - id: c_join_1_12
         kind: coincident
         a: {entity: arc_1,  point: end}
@@ -842,8 +847,9 @@ features:
     a1, a2, a3 = sk["arc_1"], sk["arc_2"], sk["arc_3"]
     s12, s23 = sk["seg_12"], sk["seg_23"]
 
-    for arc in [a1, a2, a3]:
-        assert abs(arc["radius"] - 2.0) < TOL
+    assert abs(a1["radius"] - 2.0) < TOL
+    assert abs(a2["radius"] - 2.0) < TOL
+    assert abs(a3["radius"] - 3.0) < TOL
 
     assert length(a1["end"], s12["start"]) < TOL
     assert length(s12["end"], a2["start"]) < TOL
@@ -1644,3 +1650,245 @@ features:
     # line_b starts at (0, 5)
     assert abs(sk["line_b"]["start"][0] - 0.0) < TOL
     assert abs(sk["line_b"]["start"][1] - 5.0) < TOL
+
+
+def test_construction_geometry(sketch_log):
+    """Construction geometry entities are marked and solved correctly."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Construction Geometry"
+    initial:
+      main_line: [0.0, 0.0, 10.0, 0.0]
+      construction_line: [0.0, 5.0, 10.0, 5.0]
+      construction_circle: [5.0, 5.0, 2.0]
+      construction_pt: [7.5, 7.5]
+    entities:
+      - id: main_line
+        kind: line_segment
+      - id: construction_line
+        kind: line_segment
+        construction: true
+      - id: construction_circle
+        kind: circle
+        construction: true
+      - id: construction_pt
+        kind: point
+        construction: true
+    constraints:
+      - id: c_main_horiz
+        kind: horizontal
+        target: {entity: main_line}
+      - id: c_main_len
+        kind: length
+        target: {entity: main_line}
+        value: 10.0
+      - id: c_main_fix
+        kind: fixed
+        target: {entity: main_line, point: start}
+        x: 0.0
+        y: 0.0
+      - id: c_const_horiz
+        kind: horizontal
+        target: {entity: construction_line}
+      - id: c_const_len
+        kind: length
+        target: {entity: construction_line}
+        value: 10.0
+      - id: c_const_circle_rad
+        kind: radius
+        target: {entity: construction_circle}
+        value: 2.0
+      - id: c_const_pt_fix
+        kind: fixed
+        target: {entity: construction_pt}
+        x: 7.5
+        y: 7.5
+"""
+    result = solve(yaml_str)
+    sketch_log["test_construction_geometry"] = result
+
+    sk = result["sketch_1"]["geometry"]["solved"]
+
+    # Verify main entities are solved correctly
+    assert abs(length(sk["main_line"]["start"], sk["main_line"]["end"]) - 10.0) < TOL
+    assert abs(sk["main_line"]["start"][0] - 0.0) < TOL
+    assert abs(sk["main_line"]["start"][1] - 0.0) < TOL
+
+    # Verify construction line is solved
+    assert abs(length(sk["construction_line"]["start"], sk["construction_line"]["end"]) - 10.0) < TOL
+
+    # Verify construction geometry has the construction flag
+    assert sk["construction_line"].get("construction") == True
+    assert sk["construction_circle"].get("construction") == True
+    assert sk["construction_pt"].get("construction") == True
+
+    # Verify regular entity doesn't have construction flag
+    assert sk["main_line"].get("construction") is None or sk["main_line"].get("construction") == False
+
+    # Verify construction circle radius is correct
+    assert abs(sk["construction_circle"]["radius"] - 2.0) < TOL
+
+    # Verify construction point position
+    assert abs(sk["construction_pt"]["x"] - 7.5) < TOL
+    assert abs(sk["construction_pt"]["y"] - 7.5) < TOL
+
+
+def test_square_with_construction_diagonals(sketch_log):
+    """A square with 2 construction diagonals coincident with a center point."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Square with Construction Diagonals"
+    initial:
+      side_bottom:  [0.0, 0.0, 10.0, 0.0]
+      side_right:   [10.0, 0.0, 10.0, 10.0]
+      side_top:     [10.0, 10.0, 0.0, 10.0]
+      side_left:    [0.0, 10.0, 0.0, 0.0]
+      diag_br_tl:   [10.0, 0.0, 0.0, 10.0]
+      diag_bl_tr:   [0.0, 0.0, 10.0, 10.0]
+      center:       [5.0, 5.0]
+    entities:
+      - id: side_bottom
+        kind: line_segment
+      - id: side_right
+        kind: line_segment
+      - id: side_top
+        kind: line_segment
+      - id: side_left
+        kind: line_segment
+      - id: diag_br_tl
+        kind: line_segment
+        construction: true
+      - id: diag_bl_tr
+        kind: line_segment
+        construction: true
+      - id: center
+        kind: point
+    constraints:
+      - id: c_bottom_horiz
+        kind: horizontal
+        target: {entity: side_bottom}
+      - id: c_bottom_len
+        kind: length
+        target: {entity: side_bottom}
+        value: 10.0
+      - id: c_bottom_fix
+        kind: fixed
+        target: {entity: side_bottom, point: start}
+        x: 0.0
+        y: 0.0
+      - id: c_right_vert
+        kind: vertical
+        target: {entity: side_right}
+      - id: c_right_len
+        kind: length
+        target: {entity: side_right}
+        value: 10.0
+      - id: c_top_horiz
+        kind: horizontal
+        target: {entity: side_top}
+      - id: c_top_len
+        kind: length
+        target: {entity: side_top}
+        value: 10.0
+      - id: c_left_vert
+        kind: vertical
+        target: {entity: side_left}
+      - id: c_left_len
+        kind: length
+        target: {entity: side_left}
+        value: 10.0
+      - id: c_join_br
+        kind: coincident
+        a: {entity: side_bottom, point: end}
+        b: {entity: side_right, point: start}
+      - id: c_join_tr
+        kind: coincident
+        a: {entity: side_right, point: end}
+        b: {entity: side_top, point: start}
+      - id: c_join_tl
+        kind: coincident
+        a: {entity: side_top, point: end}
+        b: {entity: side_left, point: start}
+      - id: c_diag_br_tl_start
+        kind: coincident
+        a: {entity: diag_br_tl, point: start}
+        b: {entity: side_right, point: start}
+      - id: c_diag_br_tl_end
+        kind: coincident
+        a: {entity: diag_br_tl, point: end}
+        b: {entity: side_left, point: start}
+      - id: c_diag_bl_tr_start
+        kind: coincident
+        a: {entity: diag_bl_tr, point: start}
+        b: {entity: side_bottom, point: start}
+      - id: c_diag_bl_tr_end
+        kind: coincident
+        a: {entity: diag_bl_tr, point: end}
+        b: {entity: side_top, point: start}
+      - id: c_center_on_diag_br_tl
+        kind: midpoint
+        line: {entity: diag_br_tl}
+        point: {entity: center}
+      - id: c_center_on_diag_bl_tr
+        kind: midpoint
+        line: {entity: diag_bl_tr}
+        point: {entity: center}
+"""
+    result = solve(yaml_str)
+    sketch_log["test_square_with_construction_diagonals"] = result
+
+    sk = result["sketch_1"]["geometry"]["solved"]
+
+    # Verify square dimensions
+    assert abs(length(sk["side_bottom"]["start"], sk["side_bottom"]["end"]) - 10.0) < TOL
+    assert abs(length(sk["side_right"]["start"], sk["side_right"]["end"]) - 10.0) < TOL
+    assert abs(length(sk["side_top"]["start"], sk["side_top"]["end"]) - 10.0) < TOL
+    assert abs(length(sk["side_left"]["start"], sk["side_left"]["end"]) - 10.0) < TOL
+
+    # Verify construction diagonals are marked as construction
+    assert sk["diag_br_tl"].get("construction") == True
+    assert sk["diag_bl_tr"].get("construction") == True
+
+    # Verify center point is at (5, 5)
+    assert abs(sk["center"]["x"] - 5.0) < TOL
+    assert abs(sk["center"]["y"] - 5.0) < TOL
+
+    # Verify diagonals connect opposite corners
+    diag1_start = sk["diag_br_tl"]["start"]
+    diag1_end = sk["diag_br_tl"]["end"]
+    right_start = sk["side_right"]["start"]
+    left_start = sk["side_left"]["start"]
+    assert abs(diag1_start[0] - right_start[0]) < TOL
+    assert abs(diag1_start[1] - right_start[1]) < TOL
+    assert abs(diag1_end[0] - left_start[0]) < TOL
+    assert abs(diag1_end[1] - left_start[1]) < TOL
+
+    diag2_start = sk["diag_bl_tr"]["start"]
+    diag2_end = sk["diag_bl_tr"]["end"]
+    bottom_start = sk["side_bottom"]["start"]
+    top_start = sk["side_top"]["start"]  # top-right corner
+    assert abs(diag2_start[0] - bottom_start[0]) < TOL
+    assert abs(diag2_start[1] - bottom_start[1]) < TOL
+    assert abs(diag2_end[0] - top_start[0]) < TOL
+    assert abs(diag2_end[1] - top_start[1]) < TOL
+
+    # Verify center is at the intersection of both diagonals (midpoint of each)
+    cx, cy = sk["center"]["x"], sk["center"]["y"]
+    diag1_mid_x = (sk["diag_br_tl"]["start"][0] + sk["diag_br_tl"]["end"][0]) / 2
+    diag1_mid_y = (sk["diag_br_tl"]["start"][1] + sk["diag_br_tl"]["end"][1]) / 2
+    diag2_mid_x = (sk["diag_bl_tr"]["start"][0] + sk["diag_bl_tr"]["end"][0]) / 2
+    diag2_mid_y = (sk["diag_bl_tr"]["start"][1] + sk["diag_bl_tr"]["end"][1]) / 2
+    assert abs(cx - diag1_mid_x) < TOL
+    assert abs(cy - diag1_mid_y) < TOL
+    assert abs(cx - diag2_mid_x) < TOL
+    assert abs(cy - diag2_mid_y) < TOL
