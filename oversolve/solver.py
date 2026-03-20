@@ -1,10 +1,8 @@
 import math
 import time
 import yaml
-import jax
-import jax.numpy as jnp
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import least_squares
 
 
 ENTITY_SIZES = {
@@ -25,6 +23,7 @@ def solve(yaml_str: str) -> dict:
         result[feature_id]["initial"][entity_id]  -> geometry
         result[feature_id]["solved"][entity_id]   -> geometry
         result[feature_id]["status"]              -> "fully_constrained" | "underconstrained" | "overconstrained"
+        result[feature_id]["solve_ms"]            -> solve time in milliseconds
     """
     doc = yaml.safe_load(yaml_str)
     features = doc.get("features", [])
@@ -103,8 +102,8 @@ def _solve_sketch(feature: dict) -> tuple:
         elif kind == "arc":
             cx, cy, r = ep[0], ep[1], ep[2]
             a_deg = ep[3] if point != "end" else ep[4]
-            return jnp.array([cx + r * jnp.cos(jnp.deg2rad(a_deg)),
-                               cy + r * jnp.sin(jnp.deg2rad(a_deg))])
+            return np.array([cx + r * np.cos(np.radians(a_deg)),
+                              cy + r * np.sin(np.radians(a_deg))])
         elif kind == "point":
             return ep[0:2]
         raise ValueError(f"Unknown kind: {kind!r}")
@@ -122,7 +121,7 @@ def _solve_sketch(feature: dict) -> tuple:
             elif kind == "length":
                 ep = get_params(x, c["target"]["entity"])
                 dx, dy = ep[2] - ep[0], ep[3] - ep[1]
-                r.append(jnp.sqrt(dx**2 + dy**2) - c["value"])
+                r.append(np.sqrt(dx**2 + dy**2) - c["value"])
             elif kind == "radius":
                 ep = get_params(x, c["target"]["entity"])
                 r.append(ep[2] - c["value"])
@@ -136,38 +135,37 @@ def _solve_sketch(feature: dict) -> tuple:
                 eb = get_params(x, c["b"]["entity"])
                 da = ea[2:4] - ea[0:2]
                 db = eb[2:4] - eb[0:2]
-                r.append(jnp.dot(da, db))
+                r.append(np.dot(da, db))
             elif kind == "angle":
                 ea = get_params(x, c["a"]["entity"])
                 eb = get_params(x, c["b"]["entity"])
                 da = ea[2:4] - ea[0:2]
                 db = eb[2:4] - eb[0:2]
-                cos_val = jnp.dot(da, db) / (jnp.linalg.norm(da) * jnp.linalg.norm(db))
-                r.append(cos_val - jnp.cos(jnp.deg2rad(c["value"])))
+                cos_val = np.dot(da, db) / (np.linalg.norm(da) * np.linalg.norm(db))
+                r.append(cos_val - np.cos(np.radians(c["value"])))
             elif kind == "tangent":
-                # line direction perpendicular to arc radius at the contact point
                 line_ep = get_params(x, c["line"]["entity"])
                 line_dir = line_ep[2:4] - line_ep[0:2]
-                line_dir = line_dir / jnp.linalg.norm(line_dir)
+                line_dir = line_dir / np.linalg.norm(line_dir)
                 arc_ep = get_params(x, c["arc"]["entity"])
                 arc_pt = c["arc"].get("point", "start")
                 a_deg = arc_ep[3] if arc_pt != "end" else arc_ep[4]
-                radius_dir = jnp.array([jnp.cos(jnp.deg2rad(a_deg)), jnp.sin(jnp.deg2rad(a_deg))])
-                r.append(jnp.dot(line_dir, radius_dir))
+                radius_dir = np.array([np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
+                r.append(np.dot(line_dir, radius_dir))
             elif kind == "equal_length":
                 ea = get_params(x, c["a"]["entity"])
                 eb = get_params(x, c["b"]["entity"])
-                len_a = jnp.sqrt((ea[2] - ea[0])**2 + (ea[3] - ea[1])**2)
-                len_b = jnp.sqrt((eb[2] - eb[0])**2 + (eb[3] - eb[1])**2)
+                len_a = np.sqrt((ea[2] - ea[0])**2 + (ea[3] - ea[1])**2)
+                len_b = np.sqrt((eb[2] - eb[0])**2 + (eb[3] - eb[1])**2)
                 r.append(len_a - len_b)
             elif kind == "point_distance":
                 pa = get_point(x, c["a"])
                 pb = get_point(x, c["b"])
-                dist = jnp.sqrt((pb[0] - pa[0])**2 + (pb[1] - pa[1])**2)
+                dist = np.sqrt((pb[0] - pa[0])**2 + (pb[1] - pa[1])**2)
                 r.append(dist - c["value"])
             elif kind == "midpoint":
                 ep = get_params(x, c["line"]["entity"])
-                mid = jnp.array([(ep[0] + ep[2]) / 2, (ep[1] + ep[3]) / 2])
+                mid = np.array([(ep[0] + ep[2]) / 2, (ep[1] + ep[3]) / 2])
                 pt = get_point(x, c["point"])
                 axis = c.get("axis", "both")
                 if axis in ("x", "both"):
@@ -175,14 +173,13 @@ def _solve_sketch(feature: dict) -> tuple:
                 if axis in ("y", "both"):
                     r.append(pt[1] - mid[1])
             elif kind == "normal":
-                # line direction parallel to radius direction at contact (perpendicular to tangent)
                 line_ep = get_params(x, c["line"]["entity"])
                 line_dir = line_ep[2:4] - line_ep[0:2]
-                line_dir = line_dir / jnp.linalg.norm(line_dir)
+                line_dir = line_dir / np.linalg.norm(line_dir)
                 arc_ep = get_params(x, c["arc"]["entity"])
                 arc_pt = c["arc"].get("point", "start")
                 a_deg = arc_ep[3] if arc_pt != "end" else arc_ep[4]
-                radius_dir = jnp.array([jnp.cos(jnp.deg2rad(a_deg)), jnp.sin(jnp.deg2rad(a_deg))])
+                radius_dir = np.array([np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
                 r.append(line_dir[0] * radius_dir[1] - line_dir[1] * radius_dir[0])
             elif kind == "concentric":
                 ea = get_params(x, c["a"]["entity"])
@@ -195,24 +192,14 @@ def _solve_sketch(feature: dict) -> tuple:
                 r.append(pt[1] - c["y"])
             else:
                 raise ValueError(f"Unknown constraint kind: {kind!r}")
-        return jnp.array(r)
+        return np.array(r) if r else np.zeros(0)
 
-    def loss(x):
-        r = residuals(x)
-        return jnp.sum(r ** 2)
+    opt = least_squares(residuals, x0, method="trf", jac="3-point", ftol=1e-10, xtol=1e-10, gtol=1e-10, max_nfev=10000)
+    x_sol = opt.x
+    final_loss = 2.0 * float(opt.cost)  # least_squares reports 0.5 * sum(residuals**2)
 
-    loss_and_grad = jax.jit(jax.value_and_grad(loss))
-
-    def scipy_fn(x_np):
-        val, grad = loss_and_grad(jnp.array(x_np))
-        return float(val), np.array(grad, dtype=np.float64)
-
-    opt = minimize(scipy_fn, x0, method="BFGS", jac=True, options={"maxiter": 2000, "gtol": 1e-12})
-    x_sol = np.array(opt.x)
-    final_loss = float(opt.fun)
-
-    # Detect constraint status via Jacobian rank
-    J = np.array(jax.jacobian(residuals)(jnp.array(x_sol)))
+    # Detect constraint status via Jacobian rank (opt.jac available from trf method)
+    J = opt.jac if opt.jac is not None and opt.jac.shape[0] > 0 else np.zeros((0, len(x_sol)))
     rank = int(np.linalg.matrix_rank(J, tol=RANK_TOL))
     n_params = len(x_sol)
 
