@@ -1,4 +1,5 @@
 import math
+import time
 import yaml
 import jax
 import jax.numpy as jnp
@@ -10,6 +11,7 @@ ENTITY_SIZES = {
     "line_segment": 4,  # x1, y1, x2, y2
     "circle":       3,  # cx, cy, r
     "arc":          5,  # cx, cy, r, a_start_deg, a_end_deg
+    "point":        2,  # x, y
 }
 
 LOSS_THRESHOLD = 1e-4   # above this the system is overconstrained (conflicting)
@@ -31,8 +33,10 @@ def solve(yaml_str: str) -> dict:
     for feature in features:
         if feature.get("kind") != "sketch":
             continue
+        t0 = time.perf_counter()
         initial, solved, status = _solve_sketch(feature)
-        result[feature["id"]] = {"initial": initial, "solved": solved, "status": status}
+        solve_ms = (time.perf_counter() - t0) * 1000
+        result[feature["id"]] = {"initial": initial, "solved": solved, "status": status, "solve_ms": round(solve_ms, 1)}
     return result
 
 
@@ -63,6 +67,8 @@ def _geometry_from_array(x, entities: dict, entity_offsets: dict) -> dict:
                 "start": (cx + r * math.cos(math.radians(a0)), cy + r * math.sin(math.radians(a0))),
                 "end":   (cx + r * math.cos(math.radians(a1)), cy + r * math.sin(math.radians(a1))),
             }
+        elif kind == "point":
+            out[eid] = {"x": float(ep[0]), "y": float(ep[1])}
     return out
 
 
@@ -99,6 +105,8 @@ def _solve_sketch(feature: dict) -> tuple:
             a_deg = ep[3] if point != "end" else ep[4]
             return jnp.array([cx + r * jnp.cos(jnp.deg2rad(a_deg)),
                                cy + r * jnp.sin(jnp.deg2rad(a_deg))])
+        elif kind == "point":
+            return ep[0:2]
         raise ValueError(f"Unknown kind: {kind!r}")
 
     def residuals(x):
@@ -157,6 +165,34 @@ def _solve_sketch(feature: dict) -> tuple:
                 pb = get_point(x, c["b"])
                 dist = jnp.sqrt((pb[0] - pa[0])**2 + (pb[1] - pa[1])**2)
                 r.append(dist - c["value"])
+            elif kind == "midpoint":
+                ep = get_params(x, c["line"]["entity"])
+                mid = jnp.array([(ep[0] + ep[2]) / 2, (ep[1] + ep[3]) / 2])
+                pt = get_point(x, c["point"])
+                axis = c.get("axis", "both")
+                if axis in ("x", "both"):
+                    r.append(pt[0] - mid[0])
+                if axis in ("y", "both"):
+                    r.append(pt[1] - mid[1])
+            elif kind == "normal":
+                # line direction parallel to radius direction at contact (perpendicular to tangent)
+                line_ep = get_params(x, c["line"]["entity"])
+                line_dir = line_ep[2:4] - line_ep[0:2]
+                line_dir = line_dir / jnp.linalg.norm(line_dir)
+                arc_ep = get_params(x, c["arc"]["entity"])
+                arc_pt = c["arc"].get("point", "start")
+                a_deg = arc_ep[3] if arc_pt != "end" else arc_ep[4]
+                radius_dir = jnp.array([jnp.cos(jnp.deg2rad(a_deg)), jnp.sin(jnp.deg2rad(a_deg))])
+                r.append(line_dir[0] * radius_dir[1] - line_dir[1] * radius_dir[0])
+            elif kind == "concentric":
+                ea = get_params(x, c["a"]["entity"])
+                eb = get_params(x, c["b"]["entity"])
+                r.append(ea[0] - eb[0])
+                r.append(ea[1] - eb[1])
+            elif kind == "fixed":
+                pt = get_point(x, c["target"])
+                r.append(pt[0] - c["x"])
+                r.append(pt[1] - c["y"])
             else:
                 raise ValueError(f"Unknown constraint kind: {kind!r}")
         return jnp.array(r)

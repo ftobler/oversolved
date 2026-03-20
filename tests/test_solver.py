@@ -593,9 +593,9 @@ features:
     label: "Equal Belt r=2"
     initial:
       arc_l:    [0.2,  0.3, 2.2,  88, 272]
-      arc_r:    [10.1,-0.2, 2.1, 268,  92]
-      top_line: [0.1,  2.1, 9.9,  1.9]
-      bot_line: [10.2,-2.1, 0.1, -1.9]
+      arc_r:    [7.0, -0.2, 2.1, 268,  92]
+      top_line: [0.1,  2.1, 6.9,  1.9]
+      bot_line: [7.1, -2.1, 0.1, -1.9]
     entities:
       - id: arc_l
         kind: arc
@@ -680,7 +680,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
-    label: "Unequal Belt r=2,3"
+    label: "Unequal Belt r=1,3"
     initial:
       arc_l:    [0.2,  0.1, 2.1,  92, 268]
       arc_r:    [11.9,-0.2, 3.1, 268,  92]
@@ -699,7 +699,7 @@ features:
       - id: c_r_l
         kind: radius
         target: {entity: arc_l}
-        value: 2.0
+        value: 1.0
       - id: c_r_r
         kind: radius
         target: {entity: arc_r}
@@ -744,7 +744,7 @@ features:
     al, ar = sk["arc_l"], sk["arc_r"]
     tl, bl = sk["top_line"], sk["bot_line"]
 
-    assert abs(al["radius"] - 2.0) < TOL
+    assert abs(al["radius"] - 1.0) < TOL
     assert abs(ar["radius"] - 3.0) < TOL
 
     assert length(al["end"],   tl["start"]) < TOL
@@ -1183,3 +1183,339 @@ features:
     result = solve(yaml_str)
     sketch_log["test_status_overconstrained"] = result
     assert result["sketch_1"]["status"] == "overconstrained"
+
+
+# ---------------------------------------------------------------------------
+# New constraint tests: midpoint, normal, concentric, fixed
+# ---------------------------------------------------------------------------
+
+def test_midpoint_constraint(sketch_log):
+    """Circle center constrained to the midpoint of a horizontal line."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Midpoint"
+    initial:
+      line1: [0.4, 0.4, 5.6, 0.6]
+      circ:  [2.5, 1.5, 1.1]
+    entities:
+      - id: line1
+        kind: line_segment
+      - id: circ
+        kind: circle
+    constraints:
+      - id: c_horiz
+        kind: horizontal
+        target: {entity: line1}
+      - id: c_len
+        kind: length
+        target: {entity: line1}
+        value: 6.0
+      - id: c_mid
+        kind: midpoint
+        line: {entity: line1}
+        point: {entity: circ}
+"""
+    result = solve(yaml_str)
+    sketch_log["test_midpoint_constraint"] = result
+
+    sk = result["sketch_1"]["solved"]
+    line, circ = sk["line1"], sk["circ"]
+    mid_x = (line["start"][0] + line["end"][0]) / 2
+    mid_y = (line["start"][1] + line["end"][1]) / 2
+
+    assert abs(length(line["start"], line["end"]) - 6.0) < TOL
+    assert abs(circ["center"][0] - mid_x) < TOL
+    assert abs(circ["center"][1] - mid_y) < TOL
+
+
+def test_normal_constraint(sketch_log):
+    """Line endpoint coincident with arc start; line is normal to the arc there (radial direction)."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Normal"
+    initial:
+      arc1:  [3.5, 3.5, 2.8, 200, 290]
+      line1: [0.3, 1.5, 1.2, 1.3]
+    entities:
+      - id: arc1
+        kind: arc
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_r
+        kind: radius
+        target: {entity: arc1}
+        value: 3.0
+      - id: c_join
+        kind: coincident
+        a: {entity: line1, point: end}
+        b: {entity: arc1,  point: start}
+      - id: c_len
+        kind: length
+        target: {entity: line1}
+        value: 2.0
+      - id: c_normal
+        kind: normal
+        line: {entity: line1}
+        arc:  {entity: arc1, point: start}
+"""
+    result = solve(yaml_str)
+    sketch_log["test_normal_constraint"] = result
+
+    sk = result["sketch_1"]["solved"]
+    line, arc = sk["line1"], sk["arc1"]
+
+    assert abs(arc["radius"] - 3.0) < TOL
+    assert length(line["end"], arc["start"]) < TOL
+
+    # line direction must be parallel to the radius vector at arc start
+    ld = (line["end"][0] - line["start"][0], line["end"][1] - line["start"][1])
+    rv = (arc["start"][0] - arc["center"][0], arc["start"][1] - arc["center"][1])
+    cross = abs(ld[0] * rv[1] - ld[1] * rv[0])
+    norm = length((0, 0), ld) * length((0, 0), rv)
+    assert cross / norm < ATOL
+
+
+def test_concentric_constraint(sketch_log):
+    """Two circles share the same center via concentric constraint."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Concentric"
+    initial:
+      circ_s: [1.5, 1.5, 2.2]
+      circ_l: [2.5, 2.5, 3.1]
+    entities:
+      - id: circ_s
+        kind: circle
+      - id: circ_l
+        kind: circle
+    constraints:
+      - id: c_r_s
+        kind: radius
+        target: {entity: circ_s}
+        value: 2.0
+      - id: c_r_l
+        kind: radius
+        target: {entity: circ_l}
+        value: 3.0
+      - id: c_conc
+        kind: concentric
+        a: {entity: circ_s}
+        b: {entity: circ_l}
+      - id: c_fix
+        kind: fixed
+        target: {entity: circ_s}
+        x: 0.0
+        y: 0.0
+"""
+    result = solve(yaml_str)
+    sketch_log["test_concentric_constraint"] = result
+
+    sk = result["sketch_1"]["solved"]
+    cs, cl = sk["circ_s"], sk["circ_l"]
+
+    assert abs(cs["radius"] - 2.0) < TOL
+    assert abs(cl["radius"] - 3.0) < TOL
+    assert length(cs["center"], cl["center"]) < TOL
+    assert abs(cs["center"][0] - 0.0) < TOL
+    assert abs(cs["center"][1] - 0.0) < TOL
+
+
+def test_fixed_constraint(sketch_log):
+    """Line start fixed at origin; horizontal with length 5."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Fixed"
+    initial:
+      line1: [0.2, 0.2, 4.8, 0.3]
+    entities:
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_fix
+        kind: fixed
+        target: {entity: line1, point: start}
+        x: 0.0
+        y: 0.0
+      - id: c_horiz
+        kind: horizontal
+        target: {entity: line1}
+      - id: c_len
+        kind: length
+        target: {entity: line1}
+        value: 5.0
+"""
+    result = solve(yaml_str)
+    sketch_log["test_fixed_constraint"] = result
+
+    sk = result["sketch_1"]["solved"]
+    line = sk["line1"]
+
+    assert abs(line["start"][0] - 0.0) < TOL
+    assert abs(line["start"][1] - 0.0) < TOL
+    assert abs(length(line["start"], line["end"]) - 5.0) < TOL
+
+
+# ---------------------------------------------------------------------------
+# Point primitive tests
+# ---------------------------------------------------------------------------
+
+def test_point_on_midpoint(sketch_log):
+    """A point entity constrained to the midpoint of a line."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Point on midpoint"
+    initial:
+      line1: [0.3, 0.4, 3.8, 0.6]
+      pt:    [2.1, 0.3]
+    entities:
+      - id: line1
+        kind: line_segment
+      - id: pt
+        kind: point
+    constraints:
+      - id: c_horiz
+        kind: horizontal
+        target: {entity: line1}
+      - id: c_len
+        kind: length
+        target: {entity: line1}
+        value: 4.0
+      - id: c_mid
+        kind: midpoint
+        line: {entity: line1}
+        point: {entity: pt}
+"""
+    result = solve(yaml_str)
+    sketch_log["test_point_on_midpoint"] = result
+
+    sk = result["sketch_1"]["solved"]
+    line, pt = sk["line1"], sk["pt"]
+    mid_x = (line["start"][0] + line["end"][0]) / 2
+    mid_y = (line["start"][1] + line["end"][1]) / 2
+
+    assert abs(length(line["start"], line["end"]) - 4.0) < TOL
+    assert abs(pt["x"] - mid_x) < TOL
+    assert abs(pt["y"] - mid_y) < TOL
+
+
+def test_rectangle_center_point(sketch_log):
+    """Rectangle 6x4 with a point at its center, constrained via midpoints of two adjacent faces."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Rectangle center point"
+    initial:
+      top:    [0.3, 4.2, 6.1, 3.9]
+      right:  [6.2, 4.1, 6.1,-0.1]
+      bottom: [6.0,-0.2, 0.2, 0.1]
+      left:   [0.1,-0.1, 0.2, 4.0]
+      center: [3.1, 2.1]
+    entities:
+      - id: top
+        kind: line_segment
+      - id: right
+        kind: line_segment
+      - id: bottom
+        kind: line_segment
+      - id: left
+        kind: line_segment
+      - id: center
+        kind: point
+    constraints:
+      - id: c_horiz_top
+        kind: horizontal
+        target: {entity: top}
+      - id: c_horiz_bot
+        kind: horizontal
+        target: {entity: bottom}
+      - id: c_vert_l
+        kind: vertical
+        target: {entity: left}
+      - id: c_vert_r
+        kind: vertical
+        target: {entity: right}
+      - id: c_join_tr
+        kind: coincident
+        a: {entity: top,    point: end}
+        b: {entity: right,  point: start}
+      - id: c_join_rb
+        kind: coincident
+        a: {entity: right,  point: end}
+        b: {entity: bottom, point: start}
+      - id: c_join_bl
+        kind: coincident
+        a: {entity: bottom, point: end}
+        b: {entity: left,   point: start}
+      - id: c_join_lt
+        kind: coincident
+        a: {entity: left,   point: end}
+        b: {entity: top,    point: start}
+      - id: c_width
+        kind: length
+        target: {entity: top}
+        value: 6.0
+      - id: c_height
+        kind: length
+        target: {entity: left}
+        value: 4.0
+      - id: c_fix
+        kind: fixed
+        target: {entity: top, point: start}
+        x: 0.0
+        y: 4.0
+      - id: c_mid_x
+        kind: midpoint
+        line:  {entity: top}
+        point: {entity: center}
+        axis: x
+      - id: c_mid_y
+        kind: midpoint
+        line:  {entity: left}
+        point: {entity: center}
+        axis: y
+"""
+    result = solve(yaml_str)
+    sketch_log["test_rectangle_center_point"] = result
+
+    sk = result["sketch_1"]["solved"]
+    top, left, center = sk["top"], sk["left"], sk["center"]
+
+    assert abs(length(top["start"], top["end"]) - 6.0) < TOL
+    assert abs(length(left["start"], left["end"]) - 4.0) < TOL
+
+    expected_x = (top["start"][0] + top["end"][0]) / 2
+    expected_y = (left["start"][1] + left["end"][1]) / 2
+    assert abs(center["x"] - expected_x) < TOL
+    assert abs(center["y"] - expected_y) < TOL
+    assert abs(center["x"] - 3.0) < TOL
+    assert abs(center["y"] - 2.0) < TOL

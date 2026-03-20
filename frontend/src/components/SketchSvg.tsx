@@ -19,7 +19,12 @@ interface Arc {
   end: Point
 }
 
-type Entity = LineSegment | Circle | Arc
+interface PointEntity {
+  x: number
+  y: number
+}
+
+type Entity = LineSegment | Circle | Arc | PointEntity
 
 export interface Sketch {
   [entityId: string]: Entity
@@ -56,6 +61,9 @@ function allPoints(sketches: Sketch[]): Point[] {
           [center[0], center[1] - radius],
           [center[0], center[1] + radius],
         )
+      } else if ('x' in entity) {
+        const pt = entity as PointEntity
+        pts.push([pt.x, pt.y])
       }
     }
   }
@@ -99,7 +107,8 @@ function renderSketch(
       const y0 = cy + r * Math.sin(a0)
       const x1 = cx + r * Math.cos(a1)
       const y1 = cy + r * Math.sin(a1)
-      // Arcs are always CCW in CAD (y-up), which maps to CW in SVG (y-down), so sweep=1.
+      // Arcs are CCW in CAD (y-up). Negating angles for y-flip preserves visual orientation,
+      // so CCW in CAD remains CCW on screen: sweep=0.
       // Span is computed CCW: (end - start + 360) % 360.
       const span = ((arc.angle_end - arc.angle_start) + 360) % 360
       const largeArc = span > 180 ? 1 : 0
@@ -107,10 +116,13 @@ function renderSketch(
       const [ex, ey] = px(arc.end[0], arc.end[1])
       return (
         <g key={id}>
-          <path d={`M ${x0} ${y0} A ${r} ${r} 0 ${largeArc} 1 ${x1} ${y1}`} stroke={color} strokeWidth={strokeWidth} fill="none" />
+          <path d={`M ${x0} ${y0} A ${r} ${r} 0 ${largeArc} 0 ${x1} ${y1}`} stroke={color} strokeWidth={strokeWidth} fill="none" />
+          {/* radius lines: center to start and center to end */}
+          <line x1={cx} y1={cy} x2={x0} y2={y0} stroke={color} strokeWidth={strokeWidth * 0.5} strokeDasharray={`${strokeWidth * 2} ${strokeWidth * 2}`} opacity={0.5} />
+          <line x1={cx} y1={cy} x2={x1} y2={y1} stroke={color} strokeWidth={strokeWidth * 0.5} strokeDasharray={`${strokeWidth * 2} ${strokeWidth * 2}`} opacity={0.5} />
           <circle cx={sx} cy={sy} r={strokeWidth * 1.5} fill={color} />
           <circle cx={ex} cy={ey} r={strokeWidth * 1.5} fill={color} />
-          <circle cx={cx} cy={cy} r={strokeWidth} fill={color} opacity={0.5} />
+          <circle cx={cx} cy={cy} r={strokeWidth * 2} fill={color} opacity={0.7} />
         </g>
       )
     } else if ('start' in entity) {
@@ -122,6 +134,16 @@ function renderSketch(
           <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={strokeWidth} />
           <circle cx={x1} cy={y1} r={strokeWidth * 1.5} fill={color} />
           <circle cx={x2} cy={y2} r={strokeWidth * 1.5} fill={color} />
+        </g>
+      )
+    } else if ('x' in entity) {
+      const pt = entity as PointEntity
+      const [px_, py_] = px(pt.x, pt.y)
+      return (
+        <g key={id}>
+          <circle cx={px_} cy={py_} r={strokeWidth * 2.5} fill={color} />
+          <line x1={px_ - strokeWidth * 4} y1={py_} x2={px_ + strokeWidth * 4} y2={py_} stroke={color} strokeWidth={strokeWidth * 0.75} />
+          <line x1={px_} y1={py_ - strokeWidth * 4} x2={px_} y2={py_ + strokeWidth * 4} stroke={color} strokeWidth={strokeWidth * 0.75} />
         </g>
       )
     } else {

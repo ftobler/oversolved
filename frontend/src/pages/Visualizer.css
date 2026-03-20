@@ -82,3 +82,8 @@
   color: #78909c;
   font-family: monospace;
 }
+
+.solve-time {
+  opacity: 0.5;
+  margin-left: 0.5rem;
+}

@@ -9,6 +9,7 @@ interface FeatureResult {
     initial: Sketch
     solved: Sketch
     status: 'fully_constrained' | 'underconstrained' | 'overconstrained'
+    solve_ms: number
   }
 }
 
@@ -52,9 +53,9 @@ export default function Visualizer() {
         <section key={testName} className="test-section">
           <h2>{testName}</h2>
           <div className="sketch-row">
-            {Object.entries(features).map(([featureId, { initial, solved, status }]) => (
+            {Object.entries(features).map(([featureId, { initial, solved, status, solve_ms }]) => (
               <div key={featureId} className="sketch-card">
-                <div className="sketch-label">{featureId}</div>
+                <div className="sketch-label">{featureId} <span className="solve-time">{solve_ms} ms</span></div>
                 <SketchSvg initial={initial} solved={solved} status={status} size={280} />
               </div>
             ))}
