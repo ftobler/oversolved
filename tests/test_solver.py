@@ -20,7 +20,7 @@ def is_tangent(line_s, line_e, arc_center, arc_pt):
 def angle_between(a_s, a_e, b_s, b_e):
     da = (a_e[0] - a_s[0], a_e[1] - a_s[1])
     db = (b_e[0] - b_s[0], b_e[1] - b_s[1])
-    cos = (da[0]*db[0] + da[1]*db[1]) / (length(a_s, a_e) * length(b_s, b_e))
+    cos = (da[0] * db[0] + da[1] * db[1]) / (length(a_s, a_e) * length(b_s, b_e))
     return math.degrees(math.acos(max(-1.0, min(1.0, cos))))
 
 
@@ -168,7 +168,8 @@ features:
 
     da = (a_e[0] - a_s[0], a_e[1] - a_s[1])
     db = (b_e[0] - b_s[0], b_e[1] - b_s[1])
-    cos_angle = (da[0] * db[0] + da[1] * db[1]) / (math.sqrt(da[0]**2 + da[1]**2) * math.sqrt(db[0]**2 + db[1]**2))
+    cos_angle = (da[0] * db[0] + da[1] * db[1]) / (math.sqrt(da[0]
+                                                             ** 2 + da[1]**2) * math.sqrt(db[0]**2 + db[1]**2))
     angle_deg = math.degrees(math.acos(max(-1.0, min(1.0, cos_angle))))
     assert abs(angle_deg - 45.0) < TOL, f"angle must be 45 deg, got {angle_deg}"
 
@@ -240,9 +241,9 @@ features:
 
     sk = result["sketch_1"]["geometry"]["solved"]
     b_s, b_e = sk["bottom"]["start"], sk["bottom"]["end"]
-    r_s, r_e = sk["right"]["start"],  sk["right"]["end"]
-    t_s, t_e = sk["top"]["start"],    sk["top"]["end"]
-    l_s, l_e = sk["left"]["start"],   sk["left"]["end"]
+    r_s, r_e = sk["right"]["start"], sk["right"]["end"]
+    t_s, t_e = sk["top"]["start"], sk["top"]["end"]
+    l_s, l_e = sk["left"]["start"], sk["left"]["end"]
 
     # coincident joints
     assert length(b_e, r_s) < TOL
@@ -441,7 +442,7 @@ features:
     for i in range(5):
         s, e = edges[i]
         ns, _ = edges[(i + 1) % 5]
-        assert length(e, ns) < TOL, f"joint e{i}->e{(i+1)%5} not coincident"
+        assert length(e, ns) < TOL, f"joint e{i}->e{(i + 1) % 5} not coincident"
 
     # all sides equal to 4
     for i, (s, e) in enumerate(edges):
@@ -661,14 +662,14 @@ features:
     assert abs(ar["radius"] - 2.0) < TOL
 
     assert length(al["start"], tl["start"]) < TOL
-    assert length(tl["end"],   ar["end"])   < TOL
+    assert length(tl["end"], ar["end"]) < TOL
     assert length(ar["start"], bl["start"]) < TOL
-    assert length(bl["end"],   al["end"])   < TOL
+    assert length(bl["end"], al["end"]) < TOL
 
     assert is_tangent(tl["start"], tl["end"], al["center"], al["start"]) < ATOL
-    assert is_tangent(tl["start"], tl["end"], ar["center"], ar["end"])   < ATOL
+    assert is_tangent(tl["start"], tl["end"], ar["center"], ar["end"]) < ATOL
     assert is_tangent(bl["start"], bl["end"], ar["center"], ar["start"]) < ATOL
-    assert is_tangent(bl["start"], bl["end"], al["center"], al["end"])   < ATOL
+    assert is_tangent(bl["start"], bl["end"], al["center"], al["end"]) < ATOL
 
 
 def test_unequal_belt(sketch_log):
@@ -747,14 +748,14 @@ features:
     assert abs(al["radius"] - 1.0) < TOL
     assert abs(ar["radius"] - 3.0) < TOL
 
-    assert length(al["end"],   tl["start"]) < TOL
-    assert length(tl["end"],   ar["start"]) < TOL
-    assert length(ar["end"],   bl["start"]) < TOL
-    assert length(bl["end"],   al["start"]) < TOL
+    assert length(al["end"], tl["start"]) < TOL
+    assert length(tl["end"], ar["start"]) < TOL
+    assert length(ar["end"], bl["start"]) < TOL
+    assert length(bl["end"], al["start"]) < TOL
 
-    assert is_tangent(tl["start"], tl["end"], al["center"], al["end"])   < ATOL
+    assert is_tangent(tl["start"], tl["end"], al["center"], al["end"]) < ATOL
     assert is_tangent(tl["start"], tl["end"], ar["center"], ar["start"]) < ATOL
-    assert is_tangent(bl["start"], bl["end"], ar["center"], ar["end"])   < ATOL
+    assert is_tangent(bl["start"], bl["end"], ar["center"], ar["end"]) < ATOL
     assert is_tangent(bl["start"], bl["end"], al["center"], al["start"]) < ATOL
 
 
@@ -844,15 +845,23 @@ features:
     for arc in [a1, a2, a3]:
         assert abs(arc["radius"] - 2.0) < TOL
 
-    assert length(a1["end"],   s12["start"]) < TOL
-    assert length(s12["end"],  a2["start"])  < TOL
-    assert length(a2["end"],   s23["start"]) < TOL
-    assert length(s23["end"],  a3["start"])  < TOL
+    assert length(a1["end"], s12["start"]) < TOL
+    assert length(s12["end"], a2["start"]) < TOL
+    assert length(a2["end"], s23["start"]) < TOL
+    assert length(s23["end"], a3["start"]) < TOL
 
-    assert is_tangent(s12["start"], s12["end"], a1["center"], a1["end"])   < ATOL
-    assert is_tangent(s12["start"], s12["end"], a2["center"], a2["start"]) < ATOL
-    assert is_tangent(s23["start"], s23["end"], a2["center"], a2["end"])   < ATOL
-    assert is_tangent(s23["start"], s23["end"], a3["center"], a3["start"]) < ATOL
+    assert is_tangent(s12["start"], s12["end"], a1["center"], a1["end"]) < ATOL
+    assert is_tangent(
+        s12["start"],
+        s12["end"],
+        a2["center"],
+        a2["start"]) < ATOL
+    assert is_tangent(s23["start"], s23["end"], a2["center"], a2["end"]) < ATOL
+    assert is_tangent(
+        s23["start"],
+        s23["end"],
+        a3["center"],
+        a3["start"]) < ATOL
 
 
 # ---------------------------------------------------------------------------
@@ -1280,7 +1289,11 @@ features:
 
     # line direction must be parallel to the radius vector at arc start
     ld = (line["end"][0] - line["start"][0], line["end"][1] - line["start"][1])
-    rv = (arc["start"][0] - arc["center"][0], arc["start"][1] - arc["center"][1])
+    rv = (
+        arc["start"][0] -
+        arc["center"][0],
+        arc["start"][1] -
+        arc["center"][1])
     cross = abs(ld[0] * rv[1] - ld[1] * rv[0])
     norm = length((0, 0), ld) * length((0, 0), rv)
     assert cross / norm < ATOL

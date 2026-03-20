@@ -7,12 +7,13 @@ from scipy.optimize import least_squares
 
 ENTITY_SIZES = {
     "line_segment": 4,  # x1, y1, x2, y2
-    "circle":       3,  # cx, cy, r
-    "arc":          5,  # cx, cy, r, a_start_deg, a_end_deg
-    "point":        2,  # x, y
+    "circle": 3,  # cx, cy, r
+    "arc": 5,  # cx, cy, r, a_start_deg, a_end_deg
+    "point": 2,  # x, y
 }
 
-LOSS_THRESHOLD = 1e-4   # above this the system is overconstrained (conflicting)
+# above this the system is overconstrained (conflicting)
+LOSS_THRESHOLD = 1e-4
 RANK_TOL = 1e-6         # tolerance for numerical rank computation
 
 
@@ -37,7 +38,8 @@ def solve(yaml_str: str) -> dict:
             continue
         t0 = time.perf_counter()
         feature_result = _solve_sketch(feature)
-        feature_result["solve_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+        feature_result["solve_ms"] = round(
+            (time.perf_counter() - t0) * 1000, 1)
         result[feature["id"]] = feature_result
     return result
 
@@ -55,7 +57,7 @@ def _geometry_from_array(x, entities: dict, entity_offsets: dict) -> dict:
         if kind == "line_segment":
             out[eid] = {
                 "start": [float(ep[0]), float(ep[1])],
-                "end":   [float(ep[2]), float(ep[3])],
+                "end": [float(ep[2]), float(ep[3])],
             }
         elif kind == "circle":
             out[eid] = {
@@ -66,12 +68,30 @@ def _geometry_from_array(x, entities: dict, entity_offsets: dict) -> dict:
             cx, cy, r = float(ep[0]), float(ep[1]), float(ep[2])
             a0, a1 = float(ep[3]), float(ep[4])
             out[eid] = {
-                "center":      [cx, cy],
-                "radius":      r,
+                "center": [
+                    cx,
+                    cy],
+                "radius": r,
                 "angle_start": a0,
-                "angle_end":   a1,
-                "start": [cx + r * math.cos(math.radians(a0)), cy + r * math.sin(math.radians(a0))],
-                "end":   [cx + r * math.cos(math.radians(a1)), cy + r * math.sin(math.radians(a1))],
+                "angle_end": a1,
+                "start": [
+                    cx +
+                    r *
+                    math.cos(
+                        math.radians(a0)),
+                    cy +
+                    r *
+                    math.sin(
+                        math.radians(a0))],
+                "end": [
+                    cx +
+                    r *
+                    math.cos(
+                        math.radians(a1)),
+                    cy +
+                    r *
+                    math.sin(
+                        math.radians(a1))],
             }
         elif kind == "point":
             out[eid] = {"x": float(ep[0]), "y": float(ep[1])}
@@ -111,76 +131,143 @@ def _constraint_render(c: dict, geom: dict) -> dict:
     kind = c["kind"]
 
     if kind == "horizontal":
-        e = geom[c["target"]["entity"]]
-        at = [(e["start"][0] + e["end"][0]) / 2, (e["start"][1] + e["end"][1]) / 2]
-        return {"kind": "symbol_h", "at": at}
+        eid = c["target"]["entity"]
+        e = geom[eid]
+        at = [(e["start"][0] + e["end"][0]) / 2,
+              (e["start"][1] + e["end"][1]) / 2]
+        return {"kind": "symbol_h", "at": at, "entity": eid}
 
     elif kind == "vertical":
-        e = geom[c["target"]["entity"]]
-        at = [(e["start"][0] + e["end"][0]) / 2, (e["start"][1] + e["end"][1]) / 2]
-        return {"kind": "symbol_v", "at": at}
+        eid = c["target"]["entity"]
+        e = geom[eid]
+        at = [(e["start"][0] + e["end"][0]) / 2,
+              (e["start"][1] + e["end"][1]) / 2]
+        return {"kind": "symbol_v", "at": at, "entity": eid}
 
     elif kind == "length":
-        e = geom[c["target"]["entity"]]
+        eid = c["target"]["entity"]
+        e = geom[eid]
         dx = e["end"][0] - e["start"][0]
         dy = e["end"][1] - e["start"][1]
         n = math.hypot(dx, dy)
         normal = [-dy / n, dx / n] if n > 0 else [0.0, 1.0]
-        return {"kind": "dim_linear", "p1": e["start"], "p2": e["end"], "value": c["value"], "normal": normal}
+        return {
+            "kind": "dim_linear",
+            "p1": e["start"],
+            "p2": e["end"],
+            "value": c["value"],
+            "normal": normal,
+            "entity": eid}
 
     elif kind == "radius":
-        e = geom[c["target"]["entity"]]
+        eid = c["target"]["entity"]
+        e = geom[eid]
         center = e["center"]
-        edge = e["start"] if "start" in e else [e["center"][0] + e["radius"], e["center"][1]]
-        return {"kind": "dim_radius", "p1": center, "p2": edge, "value": c["value"]}
+        edge = e["start"] if "start" in e else [
+            e["center"][0] + e["radius"], e["center"][1]]
+        return {
+            "kind": "dim_radius",
+            "p1": center,
+            "p2": edge,
+            "value": c["value"],
+            "entity": eid}
 
     elif kind == "coincident":
-        return {"kind": "symbol_coincident", "at": _geom_point(geom, c["a"])}
+        eid = c["a"]["entity"]
+        return {
+            "kind": "symbol_coincident",
+            "at": _geom_point(
+                geom,
+                c["a"]),
+            "entity": eid}
 
     elif kind == "perpendicular":
-        ea = geom[c["a"]["entity"]]
-        return {"kind": "symbol_perp", "at": ea["end"]}
+        eid = c["a"]["entity"]
+        ea = geom[eid]
+        return {"kind": "symbol_perp", "at": ea["end"], "entity": eid}
 
     elif kind == "angle":
-        ea, eb = geom[c["a"]["entity"]], geom[c["b"]["entity"]]
-        return {"kind": "dim_angle", "p1": ea["start"], "p2": ea["end"], "p3": eb["end"], "value": c["value"]}
+        eid = c["a"]["entity"]
+        ea, eb = geom[eid], geom[c["b"]["entity"]]
+        return {
+            "kind": "dim_angle",
+            "p1": ea["start"],
+            "p2": ea["end"],
+            "p3": eb["end"],
+            "value": c["value"],
+            "entity": eid}
 
     elif kind == "tangent":
-        arc = geom[c["arc"]["entity"]]
-        pt = arc["start"] if c["arc"].get("point", "start") != "end" else arc["end"]
-        return {"kind": "symbol_tangent", "at": pt}
+        eid = c["arc"]["entity"]
+        arc = geom[eid]
+        pt = arc["start"] if c["arc"].get(
+            "point", "start") != "end" else arc["end"]
+        return {"kind": "symbol_tangent", "at": pt, "entity": eid}
 
     elif kind == "normal":
-        arc = geom[c["arc"]["entity"]]
-        pt = arc["start"] if c["arc"].get("point", "start") != "end" else arc["end"]
-        return {"kind": "symbol_normal", "at": pt}
+        eid = c["arc"]["entity"]
+        arc = geom[eid]
+        pt = arc["start"] if c["arc"].get(
+            "point", "start") != "end" else arc["end"]
+        return {"kind": "symbol_normal", "at": pt, "entity": eid}
 
     elif kind == "equal_length":
-        ea, eb = geom[c["a"]["entity"]], geom[c["b"]["entity"]]
-        at_a = [(ea["start"][0] + ea["end"][0]) / 2, (ea["start"][1] + ea["end"][1]) / 2]
-        at_b = [(eb["start"][0] + eb["end"][0]) / 2, (eb["start"][1] + eb["end"][1]) / 2]
-        return {"kind": "symbol_equal", "at_a": at_a, "at_b": at_b}
+        eid = c["a"]["entity"]
+        ea, eb = geom[eid], geom[c["b"]["entity"]]
+        at_a = [(ea["start"][0] + ea["end"][0]) / 2,
+                (ea["start"][1] + ea["end"][1]) / 2]
+        at_b = [(eb["start"][0] + eb["end"][0]) / 2,
+                (eb["start"][1] + eb["end"][1]) / 2]
+        return {
+            "kind": "symbol_equal",
+            "at_a": at_a,
+            "at_b": at_b,
+            "entity": eid}
 
     elif kind == "point_distance":
+        eid = c["a"]["entity"]
         pa = _geom_point(geom, c["a"])
         pb = _geom_point(geom, c["b"])
         dx, dy = pb[0] - pa[0], pb[1] - pa[1]
         n = math.hypot(dx, dy)
         normal = [-dy / n, dx / n] if n > 0 else [0.0, 1.0]
-        return {"kind": "dim_linear", "p1": pa, "p2": pb, "value": c["value"], "normal": normal}
+        return {
+            "kind": "dim_linear",
+            "p1": pa,
+            "p2": pb,
+            "value": c["value"],
+            "normal": normal,
+            "entity": eid}
 
     elif kind == "midpoint":
-        e = geom[c["line"]["entity"]]
-        at = [(e["start"][0] + e["end"][0]) / 2, (e["start"][1] + e["end"][1]) / 2]
-        return {"kind": "symbol_midpoint", "at": at, "axis": c.get("axis", "both")}
+        eid = c["line"]["entity"]
+        e = geom[eid]
+        at = [(e["start"][0] + e["end"][0]) / 2,
+              (e["start"][1] + e["end"][1]) / 2]
+        return {
+            "kind": "symbol_midpoint",
+            "at": at,
+            "axis": c.get(
+                "axis",
+                "both"),
+            "entity": eid}
 
     elif kind == "concentric":
-        e = geom[c["a"]["entity"]]
+        eid = c["a"]["entity"]
+        e = geom[eid]
         center = e["center"] if "center" in e else [e["x"], e["y"]]
-        return {"kind": "symbol_concentric", "at": center}
+        return {"kind": "symbol_concentric", "at": center, "entity": eid}
 
     elif kind == "fixed":
-        return {"kind": "symbol_fixed", "at": _geom_point(geom, c["target"]), "x": c["x"], "y": c["y"]}
+        eid = c["target"]["entity"]
+        return {
+            "kind": "symbol_fixed",
+            "at": _geom_point(
+                geom,
+                c["target"]),
+            "x": c["x"],
+            "y": c["y"],
+            "entity": eid}
 
     return {"kind": "unknown"}
 
@@ -189,7 +276,13 @@ def _constraint_render(c: dict, geom: dict) -> dict:
 # Per-entity constraint status
 # ---------------------------------------------------------------------------
 
-def _entity_status(J, rank, entities, entity_offsets, n_params, overall_status):
+def _entity_status(
+        J,
+        rank,
+        entities,
+        entity_offsets,
+        n_params,
+        overall_status):
     """Return per-entity 'fully_constrained' | 'underconstrained' | 'overconstrained'.
 
     For each entity, temporarily pin all its parameters (augment J with identity
@@ -203,12 +296,12 @@ def _entity_status(J, rank, entities, entity_offsets, n_params, overall_status):
 
     result = {}
     for eid, entity in entities.items():
-        off  = entity_offsets[eid]
+        off = entity_offsets[eid]
         size = ENTITY_SIZES[entity["kind"]]
-        pin  = np.zeros((size, n_params))
+        pin = np.zeros((size, n_params))
         for k in range(size):
             pin[k, off + k] = 1.0
-        J_aug    = np.vstack([J, pin]) if J.shape[0] > 0 else pin
+        J_aug = np.vstack([J, pin]) if J.shape[0] > 0 else pin
         new_rank = int(np.linalg.matrix_rank(J_aug, tol=RANK_TOL))
         result[eid] = "underconstrained" if new_rank > rank else "fully_constrained"
     return result
@@ -250,7 +343,7 @@ def _solve_sketch(feature: dict) -> dict:
             cx, cy, r = ep[0], ep[1], ep[2]
             a_deg = ep[3] if point != "end" else ep[4]
             return np.array([cx + r * np.cos(np.radians(a_deg)),
-                              cy + r * np.sin(np.radians(a_deg))])
+                             cy + r * np.sin(np.radians(a_deg))])
         elif kind == "point":
             return ep[0:2]
         raise ValueError(f"Unknown kind: {kind!r}")
@@ -288,7 +381,8 @@ def _solve_sketch(feature: dict) -> dict:
                 eb = get_params(x, c["b"]["entity"])
                 da = ea[2:4] - ea[0:2]
                 db = eb[2:4] - eb[0:2]
-                cos_val = np.dot(da, db) / (np.linalg.norm(da) * np.linalg.norm(db))
+                cos_val = np.dot(da, db) / (np.linalg.norm(da)
+                                            * np.linalg.norm(db))
                 r.append(cos_val - np.cos(np.radians(c["value"])))
             elif kind == "tangent":
                 line_ep = get_params(x, c["line"]["entity"])
@@ -297,7 +391,8 @@ def _solve_sketch(feature: dict) -> dict:
                 arc_ep = get_params(x, c["arc"]["entity"])
                 arc_pt = c["arc"].get("point", "start")
                 a_deg = arc_ep[3] if arc_pt != "end" else arc_ep[4]
-                radius_dir = np.array([np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
+                radius_dir = np.array(
+                    [np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
                 r.append(np.dot(line_dir, radius_dir))
             elif kind == "equal_length":
                 ea = get_params(x, c["a"]["entity"])
@@ -326,8 +421,13 @@ def _solve_sketch(feature: dict) -> dict:
                 arc_ep = get_params(x, c["arc"]["entity"])
                 arc_pt = c["arc"].get("point", "start")
                 a_deg = arc_ep[3] if arc_pt != "end" else arc_ep[4]
-                radius_dir = np.array([np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
-                r.append(line_dir[0] * radius_dir[1] - line_dir[1] * radius_dir[0])
+                radius_dir = np.array(
+                    [np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
+                r.append(
+                    line_dir[0] *
+                    radius_dir[1] -
+                    line_dir[1] *
+                    radius_dir[0])
             elif kind == "concentric":
                 ea = get_params(x, c["a"]["entity"])
                 eb = get_params(x, c["b"]["entity"])
@@ -344,15 +444,18 @@ def _solve_sketch(feature: dict) -> dict:
     opt = least_squares(residuals, x0, method="trf", jac="3-point",
                         ftol=1e-10, xtol=1e-10, gtol=1e-10, max_nfev=10000)
     x_sol = opt.x
-    final_loss = 2.0 * float(opt.cost)  # least_squares cost = 0.5 * sum(residuals**2)
+    # least_squares cost = 0.5 * sum(residuals**2)
+    final_loss = 2.0 * float(opt.cost)
 
     # Constraint status via Jacobian rank
-    J = opt.jac if opt.jac is not None and opt.jac.shape[0] > 0 else np.zeros((0, len(x_sol)))
+    J = opt.jac if opt.jac is not None and opt.jac.shape[0] > 0 else np.zeros(
+        (0, len(x_sol)))
     rank = int(np.linalg.matrix_rank(J, tol=RANK_TOL))
     n_params = len(x_sol)
 
     # Each fixed constraint pins 2 rigid-body DOF (tx, ty). Reduce the 3-DOF
-    # rigid-body allowance accordingly so genuinely free parameters are flagged.
+    # rigid-body allowance accordingly so genuinely free parameters are
+    # flagged.
     n_fixed_pinned = sum(2 for c in constraints if c["kind"] == "fixed")
     rigid_body_dof = max(0, 3 - n_fixed_pinned)
 
@@ -370,7 +473,8 @@ def _solve_sketch(feature: dict) -> dict:
     # The null space of J encodes all unconstrained directions. We project out
     # the 3 rigid-body modes (translation x/y, rotation) so that a freely
     # floating but shape-determined sketch doesn't flag its entities as free.
-    entity_status = _entity_status(J, rank, entities, entity_offsets, n_params, status)
+    entity_status = _entity_status(
+        J, rank, entities, entity_offsets, n_params, status)
 
     # Per-constraint residual (sum of squares) and render data
     constraints_out = {}
@@ -386,11 +490,11 @@ def _solve_sketch(feature: dict) -> dict:
         "entity_status": entity_status,
         "params": {
             "initial": _params_from_array(x0, entities, entity_offsets),
-            "solved":  _params_from_array(x_sol, entities, entity_offsets),
+            "solved": _params_from_array(x_sol, entities, entity_offsets),
         },
         "geometry": {
             "initial": geom_initial,
-            "solved":  geom_solved,
+            "solved": geom_solved,
         },
         "constraints": constraints_out,
     }

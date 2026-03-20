@@ -61,7 +61,7 @@ interface DimAngleRender {
   [key: string]: unknown
 }
 
-type ConstraintRender = SymbolRender | DimLinearRender | DimRadiusRender | DimAngleRender
+type ConstraintRender = (SymbolRender | DimLinearRender | DimRadiusRender | DimAngleRender) & { entity?: string }
 
 export interface Constraint {
   render: ConstraintRender
@@ -247,109 +247,158 @@ function arrowhead(x1: number, y1: number, x2: number, y2: number, size = 6): st
   return `M ${x2} ${y2} L ${bx + px} ${by + py} L ${bx - px} ${by - py} Z`
 }
 
+function getEntityBounds(entity: Entity, px: (x: number, y: number) => [number, number]): { minX: number; maxX: number; minY: number; maxY: number } | null {
+  const pts: Point[] = []
+  if ('start' in entity && 'end' in entity && 'radius' in entity) {
+    const arc = entity as Arc
+    pts.push(arc.start, arc.end, [arc.center[0] - arc.radius, arc.center[1]], [arc.center[0] + arc.radius, arc.center[1]], [arc.center[0], arc.center[1] - arc.radius], [arc.center[0], arc.center[1] + arc.radius])
+  } else if ('start' in entity) {
+    const line = entity as LineSegment
+    pts.push(line.start, line.end)
+  } else if ('center' in entity) {
+    const circ = entity as Circle
+    const { center, radius } = circ
+    pts.push([center[0] - radius, center[1]], [center[0] + radius, center[1]], [center[0], center[1] - radius], [center[0], center[1] + radius])
+  } else if ('x' in entity) {
+    const pt = entity as PointEntity
+    pts.push([pt.x, pt.y])
+  }
+  if (pts.length === 0) return null
+  const pxPts = pts.map(p => px(p[0], p[1]))
+  return {
+    minX: Math.min(...pxPts.map(p => p[0])),
+    maxX: Math.max(...pxPts.map(p => p[0])),
+    minY: Math.min(...pxPts.map(p => p[1])),
+    maxY: Math.max(...pxPts.map(p => p[1])),
+  }
+}
+
 function renderConstraints(
   constraints: Constraints,
+  sketch: Sketch,
   px: (x: number, y: number) => [number, number],
   pxScale: number,
 ) {
-  return Object.entries(constraints).map(([id, c]) => {
-    const r = c.render
-    const color = CONSTRAINT_COLOR
-    const sw = 1
+  // Group constraints by entity
+  const byEntity: Record<string, [string, Constraint][]> = {}
+  for (const [id, c] of Object.entries(constraints)) {
+    const eid = c.render.entity || 'default'
+    if (!byEntity[eid]) byEntity[eid] = []
+    byEntity[eid].push([id, c])
+  }
 
-    if (r.kind.startsWith('symbol_')) {
-      const url = getIconUrl(r.kind)
-      if (!url) return null
-      const iconStyle = { filter: 'invert(1) sepia(1) saturate(5) hue-rotate(5deg)', opacity: 0.9 }
-      const renderIcon = (pos: Point, suffix: string) => {
-        const [sx, sy] = px(pos[0], pos[1])
-        return (
-          <image
-            key={`${id}${suffix}`}
-            href={url}
-            x={sx - ICON_SIZE / 2}
-            y={sy - ICON_SIZE / 2}
-            width={ICON_SIZE}
-            height={ICON_SIZE}
-            style={iconStyle}
-          />
+  const symbolConstraints: React.ReactNode[] = []
+  const dimConstraints: React.ReactNode[] = []
+
+  for (const [eid, clist] of Object.entries(byEntity)) {
+    const entity = sketch[eid]
+    if (!entity) continue
+    const bounds = getEntityBounds(entity, px)
+    if (!bounds) continue
+
+    // Position grid below/right of entity's right-bottom corner (with extra spacing)
+    const gridX = bounds.maxX + 16
+    const gridY = bounds.maxY + 2
+    const colCount = 3
+    const iconPadding = 4
+
+    clist.forEach(([id, c], idx) => {
+      const r = c.render
+      const color = CONSTRAINT_COLOR
+
+      if (r.kind.startsWith('symbol_')) {
+        const url = getIconUrl(r.kind)
+        if (!url) return
+        const row = Math.floor(idx / colCount)
+        const col = idx % colCount
+        const x = gridX + col * (ICON_SIZE + iconPadding)
+        const y = gridY + row * (ICON_SIZE + iconPadding)
+
+        const bgColor = '#3e3e3e'
+        const padding = 3
+
+        symbolConstraints.push(
+          <g key={id}>
+            <rect
+              x={x - ICON_SIZE / 2 - padding}
+              y={y - ICON_SIZE / 2 - padding}
+              width={ICON_SIZE + padding * 2}
+              height={ICON_SIZE + padding * 2}
+              fill={bgColor}
+              rx={2}
+            />
+            <image
+              href={url}
+              x={x - ICON_SIZE / 2}
+              y={y - ICON_SIZE / 2}
+              width={ICON_SIZE}
+              height={ICON_SIZE}
+              style={{ filter: 'invert(1) sepia(1) saturate(5) hue-rotate(5deg)', opacity: 0.9 }}
+            />
+          </g>
+        )
+        return
+      }
+
+      if (r.kind === 'dim_linear') {
+        const dim = r as DimLinearRender
+        const [x1, y1] = px(dim.p1[0], dim.p1[1])
+        const [x2, y2] = px(dim.p2[0], dim.p2[1])
+        const nx = dim.normal[0]
+        const ny = -dim.normal[1]
+        const nlen = Math.sqrt(nx * nx + ny * ny) || 1
+        const unx = nx / nlen
+        const uny = ny / nlen
+        const offset = 14 * pxScale / Math.max(pxScale, 1) + 10
+        const d1x = x1 + unx * offset
+        const d1y = y1 + uny * offset
+        const d2x = x2 + unx * offset
+        const d2y = y2 + uny * offset
+        const mx = (d1x + d2x) / 2
+        const my = (d1y + d2y) / 2
+        const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
+        dimConstraints.push(
+          <g key={id} opacity={0.85}>
+            <line x1={x1} y1={y1} x2={d1x} y2={d1y} stroke={color} strokeWidth={1} strokeDasharray="2 2" />
+            <line x1={x2} y1={y2} x2={d2x} y2={d2y} stroke={color} strokeWidth={1} strokeDasharray="2 2" />
+            <line x1={d1x} y1={d1y} x2={d2x} y2={d2y} stroke={color} strokeWidth={1} />
+            <path d={arrowhead(d2x, d2y, d1x, d1y)} fill={color} />
+            <path d={arrowhead(d1x, d1y, d2x, d2y)} fill={color} />
+            <text x={mx} y={my - 4} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle">{label}</text>
+          </g>
+        )
+      } else if (r.kind === 'dim_radius') {
+        const dim = r as DimRadiusRender
+        const [x1, y1] = px(dim.p1[0], dim.p1[1])
+        const [x2, y2] = px(dim.p2[0], dim.p2[1])
+        const mx = (x1 + x2) / 2
+        const my = (y1 + y2) / 2
+        const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
+        dimConstraints.push(
+          <g key={id} opacity={0.85}>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={1} />
+            <path d={arrowhead(x1, y1, x2, y2)} fill={color} />
+            <text x={mx} y={my - 4} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle">{label}</text>
+          </g>
+        )
+      } else if (r.kind === 'dim_angle') {
+        const dim = r as DimAngleRender
+        const [x1, y1] = px(dim.p1[0], dim.p1[1])
+        const [x2, y2] = px(dim.p2[0], dim.p2[1])
+        const mx = (x1 + x2) / 2
+        const my = (y1 + y2) / 2
+        const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
+        dimConstraints.push(
+          <g key={id} opacity={0.85}>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={1} strokeDasharray="3 2" />
+            <text x={mx} y={my - 4} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle">{label}</text>
+          </g>
         )
       }
-      const sym = r as Record<string, unknown>
-      if (sym.at_a && sym.at_b) {
-        return <g key={id}>{renderIcon(sym.at_a as Point, '_a')}{renderIcon(sym.at_b as Point, '_b')}</g>
-      }
-      if (sym.at) return renderIcon(sym.at as Point, '')
-      return null
-    }
+    })
+  }
 
-    if (r.kind === 'dim_linear') {
-      const dim = r as DimLinearRender
-      const [x1, y1] = px(dim.p1[0], dim.p1[1])
-      const [x2, y2] = px(dim.p2[0], dim.p2[1])
-      // normal in model space → SVG space (y flipped)
-      const nx = dim.normal[0]
-      const ny = -dim.normal[1]
-      const nlen = Math.sqrt(nx * nx + ny * ny) || 1
-      const unx = nx / nlen
-      const uny = ny / nlen
-      const offset = 14 * pxScale / Math.max(pxScale, 1) + 10
-      // dimension line endpoints (offset from measured points along normal)
-      const d1x = x1 + unx * offset
-      const d1y = y1 + uny * offset
-      const d2x = x2 + unx * offset
-      const d2y = y2 + uny * offset
-      const mx = (d1x + d2x) / 2
-      const my = (d1y + d2y) / 2
-      const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
-      return (
-        <g key={id} opacity={0.85}>
-          {/* extension lines */}
-          <line x1={x1} y1={y1} x2={d1x} y2={d1y} stroke={color} strokeWidth={sw} strokeDasharray="2 2" />
-          <line x1={x2} y1={y2} x2={d2x} y2={d2y} stroke={color} strokeWidth={sw} strokeDasharray="2 2" />
-          {/* dimension line with arrows */}
-          <line x1={d1x} y1={d1y} x2={d2x} y2={d2y} stroke={color} strokeWidth={sw} />
-          <path d={arrowhead(d2x, d2y, d1x, d1y)} fill={color} />
-          <path d={arrowhead(d1x, d1y, d2x, d2y)} fill={color} />
-          {/* value label */}
-          <text x={mx} y={my - 4} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle">{label}</text>
-        </g>
-      )
-    }
-
-    if (r.kind === 'dim_radius') {
-      const dim = r as DimRadiusRender
-      const [x1, y1] = px(dim.p1[0], dim.p1[1])
-      const [x2, y2] = px(dim.p2[0], dim.p2[1])
-      const mx = (x1 + x2) / 2
-      const my = (y1 + y2) / 2
-      const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
-      return (
-        <g key={id} opacity={0.85}>
-          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={sw} />
-          <path d={arrowhead(x1, y1, x2, y2)} fill={color} />
-          <text x={mx} y={my - 4} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle">{label}</text>
-        </g>
-      )
-    }
-
-    if (r.kind === 'dim_angle') {
-      const dim = r as DimAngleRender
-      const [x1, y1] = px(dim.p1[0], dim.p1[1])
-      const [x2, y2] = px(dim.p2[0], dim.p2[1])
-      const mx = (x1 + x2) / 2
-      const my = (y1 + y2) / 2
-      const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
-      return (
-        <g key={id} opacity={0.85}>
-          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={sw} strokeDasharray="3 2" />
-          <text x={mx} y={my - 4} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle">{label}</text>
-        </g>
-      )
-    }
-
-    return null
-  })
+  return [...symbolConstraints, ...dimConstraints]
 }
 
 const STATUS_COLOR: Record<Status, string> = {
@@ -375,7 +424,7 @@ export default function SketchSvg({ initial, solved, status, entityStatus, size 
     <svg width={size} height={size} style={{ background: '#111', borderRadius: 4 }}>
       {renderSketch(initial, px, scale, () => '#66bb6a', 1)}
       {renderSketch(solved, px, scale, solvedColorOf, 2)}
-      {constraints && renderConstraints(constraints, px, scale)}
+      {constraints && renderConstraints(constraints, solved, px, scale)}
     </svg>
   )
 }

@@ -79,11 +79,11 @@ def constraint_colinear(ctx):
 @icon("frontend/src/assets/icons/constraint-dimension.svg")
 def constraint_dimension(ctx):
     # Parameters
-    x0, x1   = 0.15, 0.85   # left/right x of the measured feature
-    y_obj1    = 0.25          # y of the object line (thing being measured)
-    y_obj2    = 0.75          # y of the object line (thing being measured)
-    y_dim    = 0.5           # y of the dimension line
-    arr      = px(5)         # arrowhead size (base half-width = arr/2)
+    x0, x1 = 0.15, 0.85   # left/right x of the measured feature
+    y_obj1 = 0.25          # y of the object line (thing being measured)
+    y_obj2 = 0.75          # y of the object line (thing being measured)
+    y_dim = 0.5           # y of the dimension line
+    arr = px(5)         # arrowhead size (base half-width = arr/2)
 
     # # Object line
     # ctx.move_to(x0, y_obj)
@@ -103,14 +103,14 @@ def constraint_dimension(ctx):
     stroke(ctx, 1.5)
 
     # Left arrowhead (pointing right, tip at x0)
-    ctx.move_to(x0,       y_dim)
+    ctx.move_to(x0, y_dim)
     ctx.line_to(x0 + arr, y_dim - arr * 0.5)
     ctx.line_to(x0 + arr, y_dim + arr * 0.5)
     ctx.close_path()
     ctx.fill()
 
     # Right arrowhead (pointing left, tip at x1)
-    ctx.move_to(x1,       y_dim)
+    ctx.move_to(x1, y_dim)
     ctx.line_to(x1 - arr, y_dim - arr * 0.5)
     ctx.line_to(x1 - arr, y_dim + arr * 0.5)
     ctx.close_path()
@@ -120,9 +120,9 @@ def constraint_dimension(ctx):
 @icon("frontend/src/assets/icons/constraint-square.svg")
 def constraint_square(ctx):
     # Parameters
-    cx, cy  = 0.2, 0.8    # corner (vertex of the right angle)
-    leg     = 0.65        # length of each leg
-    marker  = 0.22        # size of the right-angle square marker
+    cx, cy = 0.2, 0.8    # corner (vertex of the right angle)
+    leg = 0.65        # length of each leg
+    marker = 0.22        # size of the right-angle square marker
 
     # Vertical and horizontal legs (drawn in one stroke)
     ctx.move_to(cx, cy - leg)
@@ -131,7 +131,7 @@ def constraint_square(ctx):
     stroke(ctx, 2)
 
     # Right-angle corner marker (small square notch inside the angle)
-    ctx.move_to(cx,          cy - marker)
+    ctx.move_to(cx, cy - marker)
     ctx.line_to(cx + marker, cy - marker)
     ctx.line_to(cx + marker, cy)
     stroke(ctx, 1.5)
@@ -140,8 +140,8 @@ def constraint_square(ctx):
 @icon("frontend/src/assets/icons/constraint-horizontal.svg")
 def constraint_horizontal(ctx):
     # Parameters
-    x0, x1  = 0.15, 0.85   # left and right endpoints
-    y        = 0.5         # vertical center
+    x0, x1 = 0.15, 0.85   # left and right endpoints
+    y = 0.5         # vertical center
     cap_half = 0.15        # half-height of the end caps
 
     # Main horizontal line
@@ -163,8 +163,8 @@ def constraint_horizontal(ctx):
 @icon("frontend/src/assets/icons/constraint-vertical.svg")
 def constraint_vertical(ctx):
     # Parameters
-    y0, y1  = 0.15, 0.85   # top and bottom endpoints
-    x        = 0.5          # horizontal center
+    y0, y1 = 0.15, 0.85   # top and bottom endpoints
+    x = 0.5          # horizontal center
     cap_half = 0.15         # half-width of the end caps
 
     # Main vertical line
@@ -203,7 +203,7 @@ def constraint_equal(ctx):
 def constraint_tangent(ctx):
     # Parameters
     cx, cy = 0.34, 0.5   # circle center
-    r      = 0.22        # circle radius
+    r = 0.22        # circle radius
     y0, y1 = 0.08, 0.92  # tangent line extent
 
     # Circle
@@ -224,20 +224,14 @@ def constraint_tangent(ctx):
 @icon("frontend/src/assets/icons/constraint-midpoint.svg", angle=-15)
 def constraint_midpoint(ctx):
     # Parameters
-    x0, y0    = 0.1, 0.5    # segment endpoints
-    x1, y1    = 0.9, 0.5
-    tick_half = 0.13         # half-length of the perpendicular tick marks
-    dot_r     = px(3.2)      # radius of midpoint dot
+    x0, y0 = 0.1, 0.5  # segment endpoints
+    x1, y1 = 0.9, 0.5
+    dot_r = px(3.2)  # radius of midpoint dot
 
     # Segment
     ctx.move_to(x0, y0)
     ctx.line_to(x1, y1)
     stroke(ctx, 2)
-
-    # Perpendicular unit vector
-    dx, dy = x1 - x0, y1 - y0
-    length = math.hypot(dx, dy)
-    nx, ny = -dy / length, dx / length
 
     # # One tick mark per half, at the quarter and three-quarter points
     # for t in [0.28, 0.72]:
@@ -255,10 +249,9 @@ def constraint_midpoint(ctx):
 @icon("frontend/src/assets/icons/constraint-normal.svg")
 def constraint_normal(ctx):
     # Parameters
-    x0, x1  = 0.1, 0.9     # x extent of the curved surface
-    y_base  = 0.78         # y at the endpoints of the surface arc
-    y_ctrl  = 0.42         # y of arc center (height of the bump)
-    marker  = 0.2          # right-angle marker size
+    x0, x1 = 0.1, 0.9  # x extent of the curved surface
+    y_base = 0.78  # y at the endpoints of the surface arc
+    marker = 0.2  # right-angle marker size
 
     # Calculate arc center and radius
     cx = 0.5
@@ -286,14 +279,14 @@ def constraint_normal(ctx):
     # Right-angle marker (upper-right quadrant of the junction)
     ctx.move_to(mx + marker, my)
     ctx.line_to(mx + marker, my - marker)
-    ctx.line_to(mx,          my - marker)
+    ctx.line_to(mx, my - marker)
     stroke(ctx, 1.5)
 
 
 @icon("frontend/src/assets/icons/constraint-concentric.svg")
 def constraint_concentric(ctx):
     # Parameters
-    cx, cy  = 0.5, 0.5   # shared center
+    cx, cy = 0.5, 0.5   # shared center
     r_outer = 0.3        # outer ring radius
     # r_inner = 0.20        # inner ring radius
 
