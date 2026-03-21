@@ -124,6 +124,7 @@ function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5, onPoi
 }
 
 const HIT_PIXELS = 14
+const POINT_HIT_PIXELS = 20
 
 /** Invisible circle-mesh dots spaced densely along a polyline. Uses the same mechanism
  *  as the working endpoint Dot components — circleGeometry is reliably hittable. */
@@ -162,10 +163,30 @@ function HitPolyline({ pts, onPointerOver, onPointerOut }: {
           position={p} onPointerOver={onPointerOver} onPointerOut={onPointerOut}
         >
           <circleGeometry args={[1, 8]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
         </mesh>
       ))}
     </>
+  )
+}
+
+/** Invisible circle hit-target for a point. Larger radius than the visual dot
+ *  and placed at z=0.01 so the raycaster picks it before lines/surfaces. */
+function HitDot({ x, y, onPointerOver, onPointerOut }: {
+  x: number; y: number
+  onPointerOver: (e: { stopPropagation: () => void }) => void
+  onPointerOut: () => void
+}) {
+  const meshRef = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
+  useFrame(() => {
+    if (meshRef.current) meshRef.current.scale.setScalar(POINT_HIT_PIXELS * p2w(camera))
+  })
+  return (
+    <mesh ref={meshRef} position={[x, y, 0]} onPointerOver={onPointerOver} onPointerOut={onPointerOut}>
+      <sphereGeometry args={[1, 8, 8]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    </mesh>
   )
 }
 
@@ -247,8 +268,11 @@ function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
           ? <DashedLine points={pts} color={color} lineWidth={lw} />
           : <Line points={pts} color={color} lineWidth={lw} />}
         <Dot x={arc.start[0]} y={arc.start[1]} px={4} color={color} />
+        <HitDot x={arc.start[0]} y={arc.start[1]} onPointerOver={onOver} onPointerOut={onOut} />
         <Dot x={arc.end[0]} y={arc.end[1]} px={4} color={color} />
+        <HitDot x={arc.end[0]} y={arc.end[1]} onPointerOver={onOver} onPointerOut={onOut} />
         <Dot x={arc.center[0]} y={arc.center[1]} px={2.5} color={color} />
+        <HitDot x={arc.center[0]} y={arc.center[1]} onPointerOver={onOver} onPointerOut={onOut} />
       </group>
     )
   } else if ('start' in e) {
@@ -261,7 +285,9 @@ function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
           ? <DashedLine points={pts} color={color} lineWidth={lw} />
           : <Line points={pts} color={color} lineWidth={lw} />}
         <Dot x={line.start[0]} y={line.start[1]} px={4} color={color} />
+        <HitDot x={line.start[0]} y={line.start[1]} onPointerOver={onOver} onPointerOut={onOut} />
         <Dot x={line.end[0]} y={line.end[1]} px={4} color={color} />
+        <HitDot x={line.end[0]} y={line.end[1]} onPointerOver={onOver} onPointerOut={onOut} />
       </group>
     )
   } else if ('x' in e) {
@@ -269,6 +295,7 @@ function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
     return (
       <group onPointerOver={onOver} onPointerOut={onOut}>
         <Dot x={pt.x} y={pt.y} px={5} color={color} />
+        <HitDot x={pt.x} y={pt.y} onPointerOver={onOver} onPointerOut={onOut} />
       </group>
     )
   } else {
@@ -281,6 +308,7 @@ function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
           ? <DashedLine points={pts} color={color} lineWidth={lw} />
           : <Line points={pts} color={color} lineWidth={lw} />}
         <Dot x={circ.center[0]} y={circ.center[1]} px={2.5} color={color} />
+        <HitDot x={circ.center[0]} y={circ.center[1]} onPointerOver={onOver} onPointerOut={onOut} />
       </group>
     )
   }
@@ -610,8 +638,8 @@ export default function Sketch3D({ initial, solved, constraints, topology }: Ske
   return (
     <group>
       {topology && <TopologySurfaces topology={topology} />}
-      <EntityLines sketch={initial} color={COLOR_INITIAL} lineWidth={1} />
       <EntityLines sketch={solved} color={COLOR_SOLVED} lineWidth={2} />
+      <EntityLines sketch={initial} color={COLOR_INITIAL} lineWidth={1} />
       {constraints && <ConstraintOverlays constraints={constraints} sketch={solved} extent={extent} />}
     </group>
   )
