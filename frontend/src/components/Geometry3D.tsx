@@ -46,9 +46,11 @@ function getIconUrl(kind: string): string | undefined {
 // Pre-built unit arrow shape: tip at origin, pointing +X, base at x=-1
 const ARROW_SHAPE = (() => {
   const s = new THREE.Shape()
+  const width = 0.3  // width of the arrow head
+  const length = 1.0  // length of the arrow head
   s.moveTo(0, 0)
-  s.lineTo(-1, 0.4)
-  s.lineTo(-1, -0.4)
+  s.lineTo(-length,  width)
+  s.lineTo(-length, -width)
   s.closePath()
   return s
 })()
@@ -447,7 +449,9 @@ function ConstraintTile({ url, id, featureId, highlightIds }: { url: string; id:
   const selected = useSketchEditorStore(s => s.selection.has(cId))
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
-  const bg = hovered ? '#ffffff' : selected ? COLOR_SELECTED : '#3e3e3e'
+
+  const bg_color = selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : '#1C1C1C'
+  const fg_style = (hovered || selected) ? 'invert(1.0)' : 'invert(0.7)'
   return (
     <div
       key={id}
@@ -458,21 +462,21 @@ function ConstraintTile({ url, id, featureId, highlightIds }: { url: string; id:
       style={{
         width: ICON_SIZE,
         height: ICON_SIZE,
-        background: bg,
+        background: bg_color,
         borderRadius: 2,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
-        cursor: 'pointer',
-        transition: 'background-color 0.15s',
+        cursor: 'pointer'
       }}
     >
       <img
         src={url}
         width={ICON_SIZE - 4}
         height={ICON_SIZE - 4}
-        style={{ filter: (hovered || selected) ? 'invert(0)' : 'invert(1) sepia(1) saturate(5) hue-rotate(5deg)', opacity: hovered ? 1 : 0.9, transition: 'filter 0.15s, opacity 0.15s' }}
+        style={{filter: fg_style}}
+        // style={{ filter: (hovered || selected) ? 'invert(1)' : 'invert(0.8)'}}
       />
     </div>
   )
@@ -518,8 +522,8 @@ function LinearDimension({ cid, dim, dimOffset, featureId, entityId }: { cid: st
 
   return (
     <group key={cid}>
-      <DashedLine points={[[x1, y1, 0], [d1x, d1y, 0]]} color={color} lineWidth={1} />
-      <DashedLine points={[[x2, y2, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} />
+      <Line points={[[x1, y1, 0], [d1x, d1y, 0]]} color={color} lineWidth={1} />
+      <Line points={[[x2, y2, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} />
       <Line points={dimLinePts} color={color} lineWidth={1} />
       <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={color} />
       <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={color} />
@@ -528,7 +532,7 @@ function LinearDimension({ cid, dim, dimOffset, featureId, entityId }: { cid: st
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
       <Html position={[mx, my, 0.001]} center style={{ pointerEvents: 'none' }}>
-        <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', transition: 'color 0.15s' }}>
+        <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
           {label}
         </div>
       </Html>
@@ -577,7 +581,7 @@ function RadiusDimension({ cid, dim, featureId, entityId }: { cid: string; dim: 
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
       <Html position={[mx, my, 0.001]} center style={{ pointerEvents: 'none' }}>
-        <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', transition: 'color 0.15s' }}>
+        <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
           {label}
         </div>
       </Html>
@@ -631,7 +635,7 @@ function AngleDimension({ cid, dim, featureId, entityId }: { cid: string; dim: {
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
       <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
-        <div style={{ color, fontSize: 18, fontFamily: 'monospace', background: '#111', padding: '0 6px', borderRadius: 2, whiteSpace: 'nowrap', transition: 'color 0.15s' }}>
+        <div style={{ color, fontSize: 18, fontFamily: 'monospace', background: '#111', padding: '0 6px', borderRadius: 2, whiteSpace: 'nowrap' }}>
           {label}
         </div>
       </Html>
@@ -769,7 +773,7 @@ function SurfaceMesh({ shape }: { shape: THREE.Shape }) {
       onPointerOut={() => setHovered(false)}
     >
       <shapeGeometry args={[shape]} />
-      <meshBasicMaterial color="white" transparent opacity={hovered ? 0.25 : 0.10} side={THREE.DoubleSide} depthWrite={false} />
+      <meshBasicMaterial color="white" transparent opacity={hovered ? 0.15 : 0.10} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
   )
 }
