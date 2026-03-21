@@ -515,7 +515,7 @@ function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOverlaysP
       const groupWidth = Math.min(ICON_COLS, symbolIcons.length) * colWidth
       symbolElements.push(
         <Html key={`icons-${eid}`} position={[bounds.maxX, bounds.maxY, 0.001]} style={{ pointerEvents: 'auto' }}>
-          <div style={{ marginLeft: 8, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
+          <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
             {symbolIcons.map(({ url, key }) => (
               <ConstraintTile key={key} url={url} id={key} />
             ))}
