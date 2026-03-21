@@ -3,14 +3,19 @@ import { create } from 'zustand'
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type Mutation =
   | { type: 'move_vertex'; featureId: string; entityId: string; vertexKey: string; to: [number, number] }
+  | { type: 'move_entity'; featureId: string; entityId: string; delta: [number, number] }
   | { type: 'add_constraint'; featureId: string; kind: string; targets: string[] }
+  | { type: 'set_constraint_value'; featureId: string; constraintId: string; value: number }
   | { type: 'delete'; targets: string[] }
 
+export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'circle' | 'arc' | 'point'
+
 export interface DragState {
-  vertexId: string       // full composite ID
+  type: 'vertex' | 'edge'
+  vertexId: string       // full composite ID (entity ID for edge drags)
   featureId: string
   entityId: string
-  vertexKey: string      // "start" | "end" | "center" | "x,y"
+  vertexKey: string      // "start" | "end" | "center" | "xy" | "edge"
   startWorld: [number, number]
   currentWorld: [number, number]
 }
@@ -21,6 +26,8 @@ interface SketchEditorState {
   drag: DragState | null
   orbitEnabled: boolean
   onMutation: ((m: Mutation) => void) | null
+  hoveredConstraintEntityIds: Set<string>  // entity IDs highlighted by constraint hover
+  activeTool: ActiveTool
 
   // --- actions ---
   toggleSelect: (id: string) => void
@@ -28,6 +35,8 @@ interface SketchEditorState {
   setDrag: (drag: DragState | null) => void
   setOrbitEnabled: (enabled: boolean) => void
   setOnMutation: (cb: ((m: Mutation) => void) | null) => void
+  setHoveredConstraintEntities: (ids: Set<string>) => void
+  setActiveTool: (tool: ActiveTool) => void
   applyConstraint: (kind: string) => void
   deleteSelected: () => void
 }
@@ -37,6 +46,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   drag: null,
   orbitEnabled: true,
   onMutation: null,
+  hoveredConstraintEntityIds: new Set(),
+  activeTool: 'select',
 
   toggleSelect: (id) =>
     set(s => {
@@ -53,6 +64,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setOrbitEnabled: (enabled) => set({ orbitEnabled: enabled }),
 
   setOnMutation: (cb) => set({ onMutation: cb }),
+
+  setHoveredConstraintEntities: (ids) => set({ hoveredConstraintEntityIds: ids }),
+
+  setActiveTool: (tool) => set({ activeTool: tool }),
 
   applyConstraint: (kind) => {
     const { selection, onMutation } = get()

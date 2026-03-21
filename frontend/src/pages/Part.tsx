@@ -6,7 +6,8 @@ import type { Feature, SketchData } from '../components/Viewport'
 import type { Sketch, Constraints } from '../components/SketchSvg'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import type { Mutation } from '../stores/sketchEditorStore'
-import { parseYamlDoc, applyMoveVertex, applyAddConstraint, applyDeleteElements } from '../utils/yamlMutations'
+import { parseYamlDoc, applyMoveVertex, applyMoveEntity, applyAddConstraint, applyDeleteElements, applySetConstraintValue } from '../utils/yamlMutations'
+import { registerCommand, unregisterCommand, dispatchKey } from '../stores/commandRegistry'
 import './Part.css'
 import toolbarLineIcon from '../assets/icons/toolbar-line.svg'
 import toolbarRectangleIcon from '../assets/icons/toolbar-rectangle.svg'
@@ -34,6 +35,90 @@ import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
 import toolbarPlayIcon from '../assets/icons/toolbar-play.svg'
 import viewportResetIcon from '../assets/icons/viewport-reset.svg'
+
+function SketchToolbar({ onResetViewport }: { onResetViewport: () => void }) {
+  const activeTool = useSketchEditorStore(s => s.activeTool)
+  const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
+  const store = useSketchEditorStore.getState
+
+  return (
+    <>
+      <button className="editor-btn" title="Reset Viewport" onClick={onResetViewport}>
+        <img src={viewportResetIcon} alt="Reset Viewport" />
+      </button>
+
+      <div className="toolbar-separator" />
+
+      {/* Dimension tool — activatable, appears before drawing tools */}
+      <button
+        className={`editor-btn ${activeTool === 'dimension' ? 'active' : ''}`}
+        title="Dimension (D)"
+        onClick={() => setActiveTool('dimension')}
+      >
+        <img src={toolbarDimensionIcon} alt="Dimension" />
+      </button>
+
+      <div className="toolbar-separator" />
+
+      {/* Drawing tools — TODO: insertion logic */}
+      <button className={`editor-btn ${activeTool === 'line' ? 'active' : ''}`} title="Line" onClick={() => setActiveTool('line')}>
+        <img src={toolbarLineIcon} alt="Line" />
+      </button>
+      <button className={`editor-btn ${activeTool === 'rect' ? 'active' : ''}`} title="Rectangle" onClick={() => setActiveTool('rect')}>
+        <img src={toolbarRectangleIcon} alt="Rectangle" />
+      </button>
+      <button className={`editor-btn ${activeTool === 'circle' ? 'active' : ''}`} title="Circle" onClick={() => setActiveTool('circle')}>
+        <img src={toolbarCircleIcon} alt="Circle" />
+      </button>
+      <button className={`editor-btn ${activeTool === 'arc' ? 'active' : ''}`} title="Arc" onClick={() => setActiveTool('arc')}>
+        <img src={toolbarArcIcon} alt="Arc" />
+      </button>
+      <button className={`editor-btn ${activeTool === 'point' ? 'active' : ''}`} title="Point" onClick={() => setActiveTool('point')}>
+        <img src={toolbarPointIcon} alt="Point" />
+      </button>
+
+      <div className="toolbar-separator" />
+
+      {/* Constraint buttons — act immediately, no mode change */}
+      <button className="editor-btn" title="Horizontal (H)" onClick={() => store().applyConstraint('horizontal')}>
+        <img src={toolbarHorizontalIcon} alt="Horizontal" />
+      </button>
+      <button className="editor-btn" title="Vertical (V)" onClick={() => store().applyConstraint('vertical')}>
+        <img src={toolbarVerticalIcon} alt="Vertical" />
+      </button>
+      <button className="editor-btn" title="Coincident" onClick={() => store().applyConstraint('coincident')}>
+        <img src={toolbarCoincidentIcon} alt="Coincident" />
+      </button>
+      <button className="editor-btn" title="Concentric" onClick={() => store().applyConstraint('concentric')}>
+        <img src={toolbarConcentricIcon} alt="Concentric" />
+      </button>
+      <button className="editor-btn" title="Equal" onClick={() => store().applyConstraint('equal_length')}>
+        <img src={toolbarEqualIcon} alt="Equal" />
+      </button>
+      <button className="editor-btn" title="Fixed" onClick={() => store().applyConstraint('fixed')}>
+        <img src={toolbarFixedIcon} alt="Fixed" />
+      </button>
+      <button className="editor-btn" title="Midpoint" onClick={() => store().applyConstraint('midpoint')}>
+        <img src={toolbarMidpointIcon} alt="Midpoint" />
+      </button>
+      <button className="editor-btn" title="Normal" onClick={() => store().applyConstraint('normal')}>
+        <img src={toolbarNormalIcon} alt="Normal" />
+      </button>
+      <button className="editor-btn" title="Parallel" onClick={() => store().applyConstraint('parallel')}>
+        <img src={toolbarParallelIcon} alt="Parallel" />
+      </button>
+      <button className="editor-btn" title="Perpendicular" onClick={() => store().applyConstraint('perpendicular')}>
+        <img src={toolbarPerpendicularIcon} alt="Perpendicular" />
+      </button>
+      <button className="editor-btn" title="Tangent" onClick={() => store().applyConstraint('tangent')}>
+        <img src={toolbarTangentIcon} alt="Tangent" />
+      </button>
+      <button className="editor-btn" title="Collinear" onClick={() => store().applyConstraint('collinear')}>
+        <img src={toolbarCollinearIcon} alt="Collinear" />
+      </button>
+    </>
+  )
+}
 
 export default function Part() {
   const { docId } = useParams<{ docId: string }>()
@@ -93,10 +178,14 @@ export default function Part() {
   const [solving, setSolving] = useState(false)
   const [solveTime, setSolveTime] = useState<number | null>(null)
   const [undoStack, setUndoStack] = useState<string[]>([])
+  const [redoStack, setRedoStack] = useState<string[]>([])
+  const [solveError, setSolveError] = useState<string | null>(null)
   const contentRef = useRef(content)
   contentRef.current = content
 
-  // Re-solve: parse YAML, POST to /api/solve, update results
+  // Re-solve: parse YAML, POST to /api/solve, update results.
+  // On error: keep previous geometry visible; show error banner.
+  // TODO: backend should return 200 with partial results instead of 400 for solver errors.
   const reSolve = useCallback(async (yamlContent: string) => {
     setSolving(true)
     setSolveTime(null)
@@ -112,8 +201,8 @@ export default function Part() {
       const endTime = performance.now()
       setSolveTime(Math.round((endTime - startTime) * 100) / 100)
       if (!response.ok) {
-        setSolveResult(data.error || 'Solve failed')
-        setSolveResults({})
+        setSolveError(data.error || `Solve failed (${response.status})`)
+        // Keep previous solveResults visible — do NOT clear them
       } else {
         const result = data.result as Record<string, { geometry?: { initial?: Sketch; solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
         const results: Record<string, SketchData> = {}
@@ -128,25 +217,33 @@ export default function Part() {
           }
         }
         setSolveResults(results)
+        setSolveError(null)
       }
     } catch (e) {
-      setSolveResult(String(e))
+      setSolveError(String(e))
     } finally {
       setSolving(false)
     }
   }, [])
 
-  // Mutation handler: push undo, apply YAML AST mutation, re-solve
+  // Mutation handler: push undo, clear redo, apply YAML AST mutation, re-solve
   const handleMutation = useCallback((m: Mutation) => {
     const current = contentRef.current
     setUndoStack(prev => [...prev, current])
+    setRedoStack([])
     const doc = parseYamlDoc(current)
     switch (m.type) {
       case 'move_vertex':
         applyMoveVertex(doc, m.featureId, m.entityId, m.vertexKey, m.to)
         break
+      case 'move_entity':
+        applyMoveEntity(doc, m.featureId, m.entityId, m.delta)
+        break
       case 'add_constraint':
         applyAddConstraint(doc, m.featureId, m.kind, m.targets)
+        break
+      case 'set_constraint_value':
+        applySetConstraintValue(doc, m.featureId, m.constraintId, m.value)
         break
       case 'delete':
         applyDeleteElements(doc, m.targets)
@@ -170,6 +267,7 @@ export default function Part() {
       if (prev.length === 0) return prev
       const next = [...prev]
       const last = next.pop()!
+      setRedoStack(r => [...r, contentRef.current])
       setContent(last)
       setFeatures(extractFeatures(last))
       reSolve(last)
@@ -177,24 +275,39 @@ export default function Part() {
     })
   }, [reSolve])
 
-  // Keyboard shortcuts: Ctrl+Z for undo, Delete/Backspace for delete
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Skip if typing in input/textarea
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+  // Redo handler
+  const handleRedo = useCallback(() => {
+    setRedoStack(prev => {
+      if (prev.length === 0) return prev
+      const next = [...prev]
+      const last = next.pop()!
+      setUndoStack(u => [...u, contentRef.current])
+      setContent(last)
+      setFeatures(extractFeatures(last))
+      reSolve(last)
+      return next
+    })
+  }, [reSolve])
 
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        e.preventDefault()
-        handleUndo()
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault()
-        useSketchEditorStore.getState().deleteSelected()
-      }
+  // Register commands and keyboard shortcuts via central command registry
+  useEffect(() => {
+    registerCommand('undo', handleUndo)
+    registerCommand('redo', handleRedo)
+    registerCommand('deleteSelected', () => useSketchEditorStore.getState().deleteSelected())
+    registerCommand('applyDimension', () => useSketchEditorStore.getState().applyConstraint('length'))
+    registerCommand('applyHorizontal', () => useSketchEditorStore.getState().applyConstraint('horizontal'))
+    registerCommand('applyVertical', () => useSketchEditorStore.getState().applyConstraint('vertical'))
+    window.addEventListener('keydown', dispatchKey)
+    return () => {
+      window.removeEventListener('keydown', dispatchKey)
+      unregisterCommand('undo')
+      unregisterCommand('redo')
+      unregisterCommand('deleteSelected')
+      unregisterCommand('applyDimension')
+      unregisterCommand('applyHorizontal')
+      unregisterCommand('applyVertical')
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [handleUndo])
+  }, [handleUndo, handleRedo])
 
   useEffect(() => {
     if (!docId) return
@@ -374,7 +487,7 @@ export default function Part() {
           <button className="toolbar-btn" title="Undo" onClick={handleUndo} disabled={undoStack.length === 0}>
             <span className="material-icons-outlined">undo</span>
           </button>
-          <button className="toolbar-btn" title="Redo">
+          <button className="toolbar-btn" title="Redo" onClick={handleRedo} disabled={redoStack.length === 0}>
             <span className="material-icons-outlined">redo</span>
           </button>
           <button className="toolbar-btn" title="Save" onClick={handleSave}>
@@ -386,7 +499,7 @@ export default function Part() {
               value={editName}
               onChange={e => setEditName(e.target.value)}
               onBlur={handleRename}
-              onKeyPress={e => {
+              onKeyDown={e => {
                 if (e.key === 'Enter') handleRename()
               }}
               autoFocus
@@ -521,76 +634,7 @@ export default function Part() {
               </>
             )}
 
-            {mode === 'sketch' && (
-              <>
-                <button className="editor-btn" title="Reset Viewport" onClick={() => setViewportReset(v => v + 1)}>
-                  <img src={viewportResetIcon} alt="Reset Viewport" />
-                </button>
-
-                <div className="toolbar-separator" />
-
-                <button className="editor-btn" title="Line">
-                  <img src={toolbarLineIcon} alt="Line" />
-                </button>
-                <button className="editor-btn" title="Rectangle">
-                  <img src={toolbarRectangleIcon} alt="Rectangle" />
-                </button>
-                <button className="editor-btn" title="Circle">
-                  <img src={toolbarCircleIcon} alt="Circle" />
-                </button>
-                <button className="editor-btn" title="Arc">
-                  <img src={toolbarArcIcon} alt="Arc" />
-                </button>
-                <button className="editor-btn" title="Point">
-                  <img src={toolbarPointIcon} alt="Point" />
-                </button>
-
-                <div className="toolbar-separator" />
-
-                <button className="editor-btn" title="Horizontal" onClick={() => useSketchEditorStore.getState().applyConstraint('horizontal')}>
-                  <img src={toolbarHorizontalIcon} alt="Horizontal" />
-                </button>
-                <button className="editor-btn" title="Vertical" onClick={() => useSketchEditorStore.getState().applyConstraint('vertical')}>
-                  <img src={toolbarVerticalIcon} alt="Vertical" />
-                </button>
-                <button className="editor-btn" title="Coincident" onClick={() => useSketchEditorStore.getState().applyConstraint('coincident')}>
-                  <img src={toolbarCoincidentIcon} alt="Coincident" />
-                </button>
-                <button className="editor-btn" title="Concentric" onClick={() => useSketchEditorStore.getState().applyConstraint('concentric')}>
-                  <img src={toolbarConcentricIcon} alt="Concentric" />
-                </button>
-                <button className="editor-btn" title="Equal" onClick={() => useSketchEditorStore.getState().applyConstraint('equal_length')}>
-                  <img src={toolbarEqualIcon} alt="Equal" />
-                </button>
-                <button className="editor-btn" title="Fixed" onClick={() => useSketchEditorStore.getState().applyConstraint('fixed')}>
-                  <img src={toolbarFixedIcon} alt="Fixed" />
-                </button>
-                <button className="editor-btn" title="Midpoint" onClick={() => useSketchEditorStore.getState().applyConstraint('midpoint')}>
-                  <img src={toolbarMidpointIcon} alt="Midpoint" />
-                </button>
-                <button className="editor-btn" title="Normal" onClick={() => useSketchEditorStore.getState().applyConstraint('normal')}>
-                  <img src={toolbarNormalIcon} alt="Normal" />
-                </button>
-                <button className="editor-btn" title="Parallel" onClick={() => useSketchEditorStore.getState().applyConstraint('parallel')}>
-                  <img src={toolbarParallelIcon} alt="Parallel" />
-                </button>
-                <button className="editor-btn" title="Perpendicular" onClick={() => useSketchEditorStore.getState().applyConstraint('perpendicular')}>
-                  <img src={toolbarPerpendicularIcon} alt="Perpendicular" />
-                </button>
-                <button className="editor-btn" title="Tangent" onClick={() => useSketchEditorStore.getState().applyConstraint('tangent')}>
-                  <img src={toolbarTangentIcon} alt="Tangent" />
-                </button>
-                <button className="editor-btn" title="Collinear" onClick={() => useSketchEditorStore.getState().applyConstraint('collinear')}>
-                  <img src={toolbarCollinearIcon} alt="Collinear" />
-                </button>
-
-                <div className="toolbar-separator" />
-
-                <button className="editor-btn" title="Dimension" onClick={() => useSketchEditorStore.getState().applyConstraint('length')}>
-                  <img src={toolbarDimensionIcon} alt="Dimension" />
-                </button>
-              </>
-            )}
+            {mode === 'sketch' && <SketchToolbar onResetViewport={() => setViewportReset(v => v + 1)} />}
 
             {mode === 'feature' && (
               <>
@@ -605,6 +649,7 @@ export default function Part() {
 
           </div>
 
+          {solveError && <div className="solve-error-banner">Solver error: {solveError}</div>}
           {loading && <p className="status">Loading document...</p>}
           {error && <p className="status error">Error: {error}</p>}
           {!loading && !error && (

@@ -184,6 +184,72 @@ export function applyDeleteElements(doc: Document, targets: string[]): Document 
   return doc
 }
 
+// All coordinate index pairs per entity kind, in order (used by applyMoveEntity)
+const ALL_COORD_INDICES: Record<string, [number, number][]> = {
+  line_segment: [[0, 1], [2, 3]],
+  circle:       [[0, 1]],
+  arc:          [[0, 1]],
+  point:        [[0, 1]],
+}
+
+/**
+ * Translate an entire entity by a delta (dx, dy).
+ * Offsets all coordinate pairs in the initial param array.
+ */
+export function applyMoveEntity(
+  doc: Document,
+  featureId: string,
+  entityId: string,
+  delta: [number, number],
+): Document {
+  const [dx, dy] = delta
+  if (dx === 0 && dy === 0) return doc
+  const kind = findEntityKind(doc, featureId, entityId)
+  if (!kind) return doc
+  const coordPairs = ALL_COORD_INDICES[kind]
+  if (!coordPairs) return doc
+
+  const feature = findFeature(doc, featureId)
+  if (!feature) return doc
+  const initial = feature.get('initial')
+  if (!initial) return doc
+  const params = initial.get(entityId) as YAMLSeq | undefined
+  if (!params) return doc
+
+  for (const [xi, yi] of coordPairs) {
+    const x = params.get(xi) as number
+    const y = params.get(yi) as number
+    params.set(xi, Math.round((x + dx) * 1000) / 1000)
+    params.set(yi, Math.round((y + dy) * 1000) / 1000)
+  }
+  return doc
+}
+
+/**
+ * Update the `value` field of an existing constraint.
+ * Used for editing dimension values via dialog.
+ */
+export function applySetConstraintValue(
+  doc: Document,
+  featureId: string,
+  constraintId: string,
+  value: number,
+): Document {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return doc
+  const constraints = feature.get('constraints') as YAMLSeq | undefined
+  if (!constraints) return doc
+  for (const item of constraints.items) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const c = item as any
+    if (c.get?.('id') === constraintId) {
+      c.set('value', Math.round(value * 1000) / 1000)
+      return doc
+    }
+  }
+  return doc
+}
+
 /** Parse YAML string to Document, preserving comments/formatting */
 export function parseYamlDoc(content: string): Document {
   return parseDocument(content)

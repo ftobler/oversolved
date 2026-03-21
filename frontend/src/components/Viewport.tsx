@@ -11,6 +11,17 @@ import { useSketchEditorStore } from '../stores/sketchEditorStore'
 const INITIAL_POSITION: [number, number, number] = [0, 0, 100]  // camera initial position
 const INITIAL_ZOOM = 200
 
+// CAD-style mouse button mapping:
+//   LEFT  = disabled (selection only via R3F raycasting, not viewport rotation)
+//   MIDDLE = PAN
+//   RIGHT  = ROTATE
+// Ctrl+right is swapped to PAN dynamically in SceneController.
+const MOUSE_BUTTONS = {
+  LEFT: -1 as unknown as THREE.MOUSE,
+  MIDDLE: THREE.MOUSE.PAN,
+  RIGHT: THREE.MOUSE.ROTATE,
+}
+
 // ── Origin marker ─────────────────────────────────────────────────────────────
 
 const AXIS_LEN = 0.35
@@ -110,6 +121,23 @@ function SceneController({ resetTrigger, canvasRef, pvRef, hoverRef, snapRef, ca
     ctrlRef.current?.update()
   }, [resetTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Ctrl+right = pan: hold Ctrl to swap right mouse from ROTATE → PAN
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === 'Control' || e.key === 'Meta') && ctrlRef.current) {
+        ctrlRef.current.mouseButtons.RIGHT = THREE.MOUSE.PAN
+      }
+    }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if ((e.key === 'Control' || e.key === 'Meta') && ctrlRef.current) {
+        ctrlRef.current.mouseButtons.RIGHT = THREE.MOUSE.ROTATE
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp) }
+  }, [])
+
   useFrame(() => {
     if (snapRef.current) {
       const dir = snapRef.current.clone().normalize()
@@ -126,7 +154,17 @@ function SceneController({ resetTrigger, canvasRef, pvRef, hoverRef, snapRef, ca
 
   const orbitEnabled = useSketchEditorStore(s => s.orbitEnabled)
 
-  return <OrbitControls ref={ctrlRef} enabled={orbitEnabled} enableRotate enableZoom enablePan enableDamping={false} />
+  return (
+    <OrbitControls
+      ref={ctrlRef}
+      enabled={orbitEnabled}
+      mouseButtons={MOUSE_BUTTONS}
+      enableRotate
+      enableZoom
+      enablePan
+      enableDamping={false}
+    />
+  )
 }
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -186,6 +224,22 @@ export default function Viewport({
     requestAnimationFrame(() => setReady(true))
   }, [])
 
+  // Detect click-vs-drag for middle and right buttons.
+  // Less than 4px movement = click → show alert placeholder.
+  const pointerDownPos = useRef<[number, number] | null>(null)
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button === 1 || e.button === 2) pointerDownPos.current = [e.clientX, e.clientY]
+  }, [])
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    if (!pointerDownPos.current) return
+    const dx = e.clientX - pointerDownPos.current[0]
+    const dy = e.clientY - pointerDownPos.current[1]
+    pointerDownPos.current = null
+    if (Math.hypot(dx, dy) >= 4) return
+    if (e.button === 1) window.alert('middle mouse click')
+    if (e.button === 2) window.alert('right mouse click')
+  }, [])
+
   const showOrigin = isActive('Origin', features, rollbackPosition, visibleFeatures)
   const showFront  = isActive('Front',  features, rollbackPosition, visibleFeatures)
   const showTop    = isActive('Top',    features, rollbackPosition, visibleFeatures)
@@ -200,7 +254,12 @@ export default function Viewport({
   }, [features, rollbackPosition, visibleFeatures, solveResults])
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div
+      style={{ position: 'relative', width: '100%', height: '100%' }}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onContextMenu={e => e.preventDefault()}
+    >
       <Canvas
         style={{ width: '100%', height: '100%', background: '#111' }}
         gl={{ antialias: true }}

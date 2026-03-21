@@ -376,6 +376,24 @@
   color: #4fc3f7;
 }
 
+.editor-btn.active {
+  background: #1a3a4a;
+  color: #4fc3f7;
+}
+
+.editor-btn.active img {
+  filter: invert(0.8) sepia(1) saturate(3) hue-rotate(170deg);
+}
+
+.solve-error-banner {
+  background: #3a1a1a;
+  color: #ef9a9a;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-bottom: 1px solid #5a2a2a;
+  flex-shrink: 0;
+}
+
 .editor-btn .material-icons {
   font-size: 18px;
 }
