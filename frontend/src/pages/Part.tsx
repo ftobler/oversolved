@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
 import type { Feature, SketchData } from '../components/Viewport'
-import type { Sketch, Constraints } from '../components/SketchSvg'
+import type { Sketch } from '../components/SketchSvg'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import type { Mutation } from '../stores/sketchEditorStore'
 import type { PartDoc } from '../utils/yamlMutations'
@@ -184,6 +184,48 @@ export default function Part() {
     })
   }, [codeText])
 
+  // Convert flat array geometry from server to Sketch format for UI
+  const unflattenGeometry = (
+    flatGeometry: Record<string, number[]>,
+    entities: Array<{ id: string; kind: string }> | undefined
+  ): Sketch => {
+    if (!entities) return {}
+
+    const entityMap = Object.fromEntries(entities.map(e => [e.id, e.kind]))
+    const result: Sketch = {}
+
+    for (const [entityId, params] of Object.entries(flatGeometry)) {
+      const kind = entityMap[entityId]
+      if (!kind) continue
+
+      if (kind === 'line_segment') {
+        result[entityId] = {
+          start: [params[0], params[1]],
+          end: [params[2], params[3]],
+        }
+      } else if (kind === 'circle') {
+        result[entityId] = {
+          center: [params[0], params[1]],
+          radius: params[2],
+        }
+      } else if (kind === 'arc') {
+        const [cx, cy, r, a0, a1] = params
+        result[entityId] = {
+          center: [cx, cy],
+          radius: r,
+          angle_start: a0,
+          angle_end: a1,
+          start: [cx + r * Math.cos((a0 * Math.PI) / 180), cy + r * Math.sin((a0 * Math.PI) / 180)],
+          end: [cx + r * Math.cos((a1 * Math.PI) / 180), cy + r * Math.sin((a1 * Math.PI) / 180)],
+        }
+      } else if (kind === 'point') {
+        result[entityId] = { x: params[0], y: params[1] }
+      }
+    }
+
+    return result
+  }
+
   // Re-solve: POST doc as JSON to /api/solve, update results.
   // On error: keep previous geometry visible; show error banner.
   // TODO: backend should return 200 with partial results instead of 400 for solver errors.
@@ -205,38 +247,20 @@ export default function Part() {
         // Keep previous solveResults visible — do NOT clear them
       } else {
         // Server returns solve results only — no echo of the input document.
-        // geometry.solved = entity positions after solving (server-produced).
-        // geometry.initial is NOT expected; if present it is ignored.
-        const result = data.result as Record<string, { geometry?: { solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
-
-        // Build constraintId → involved entity IDs from the doc so the 3D view
-        // can highlight ALL entities involved in a constraint on hover.
-        const constraintEntities: Record<string, Record<string, string[]>> = {}
-        for (const f of (d.features ?? [])) {
-          const entityMap: Record<string, string[]> = {}
-          for (const c of (f.constraints ?? [])) {
-            const ids: string[] = []
-            if (c.target?.entity) ids.push(c.target.entity)
-            if (c.a?.entity) ids.push(c.a.entity)
-            if (c.b?.entity) ids.push(c.b.entity)
-            if (ids.length) entityMap[c.id] = ids
-          }
-          constraintEntities[f.id] = entityMap
-        }
+        // geometry is flat array format: {entity_id: [x1, y1, x2, y2]} for lines, etc.
+        // constraints are no longer included per new spec.
+        const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../components/SketchSvg').Topology }>
 
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
-          if (feature.geometry?.solved) {
-            const enrichedConstraints: Constraints | undefined = feature.constraints
-              ? Object.fromEntries(Object.entries(feature.constraints).map(([cid, c]) => {
-                  const entities = constraintEntities[id]?.[cid]
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  return [cid, entities?.length ? { ...c, render: { ...c.render, entities } as any } : c]
-                }))
-              : undefined
+          if (feature.geometry) {
+            // Find the feature definition to get entity kinds for unflattening
+            const featureDef = (d.features ?? []).find(f => f.id === id)
+            const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
+
             results[id] = {
-              solved: feature.geometry.solved,
-              constraints: enrichedConstraints,
+              solved,
+              // Constraints no longer in response per new spec
               topology: feature.topology,
             }
           }
@@ -448,13 +472,15 @@ export default function Part() {
         setSolveResults({})
       } else {
         setSolveResult(stringifyYaml(data.result))
-        const result = data.result as Record<string, { geometry?: { solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
+        const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; topology?: import('../components/SketchSvg').Topology }>
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
-          if (feature.geometry?.solved) {
+          if (feature.geometry) {
+            // Find the feature definition to get entity kinds for unflattening
+            const featureDef = (parsed.features ?? []).find(f => f.id === id)
+            const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
             results[id] = {
-              solved: feature.geometry.solved,
-              constraints: feature.constraints,
+              solved,
               topology: feature.topology,
             }
           }
@@ -704,7 +730,7 @@ export default function Part() {
                   </div>
                 </div>
               )}
-              {mode !== 'code' && <Viewport features={features as Feature[]} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} />}
+              {mode !== 'code' && <Viewport features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} />}
             </>
           )}
         </div>
