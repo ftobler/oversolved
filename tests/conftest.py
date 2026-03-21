@@ -36,8 +36,8 @@ def sketch_log():
         #         log[test_name] = {}
         #     log[test_name][feature_id] = solve_result
 
-    # # Store log dict as attribute so topology_log can access it
-    # log_result._log = log
+    # Store log dict as attribute so topology_log can access it (kinda a hack)
+    log_result._log = log
 
     yield log_result
 

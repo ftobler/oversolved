@@ -139,7 +139,6 @@ def constraint_dimension(ctx):
     _draw_arrow(ctx, x0, y_dim, x1, y_dim, arr)
 
 
-
 @icon("frontend/src/assets/icons/constraint-square.svg")  # double use: toolbar (perpendicular)
 def constraint_square(ctx):
     # Parameters

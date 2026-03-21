@@ -547,7 +547,6 @@ def _solve_sketch(feature: dict) -> dict:
     else:
         status = "fully_constrained"
 
-    geom_initial = _geometry_from_array(x0, entities, entity_offsets)
     geom_solved = _geometry_from_array(x_sol, entities, entity_offsets)
 
     # Topology: detect intersection points and bounded surfaces

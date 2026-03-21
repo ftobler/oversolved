@@ -2889,8 +2889,6 @@ features:
 """
     result = solve(yaml_str)["result"]["sketch_1"]
     sketch_log("test_hourglass_shape", yaml_str, result)
-    doc = yaml_module.safe_load(yaml_str)
-    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
     # Verify all line entities are present
     assert "diag_left" in result["geometry"]
     assert "diag_right" in result["geometry"]
@@ -3073,8 +3071,6 @@ features:
 """
     result = solve(yaml_str)["result"]["sketch_1"]
     sketch_log("test_empty_sketch_superfluous_constraint", yaml_str, result)
-    doc = yaml_module.safe_load(yaml_str)
-    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
     # Empty sketch with no entities should still solve successfully
     assert result["status"] == "fully_constrained"
     assert result["geometry"] == {}
