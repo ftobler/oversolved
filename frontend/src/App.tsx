@@ -8,7 +8,7 @@ import './App.css'
 function Home() {
   return (
     <div className="home">
-      <h1>Oversolve</h1>
+      <h1>Oversolved</h1>
       <p>Exploratory CAD project.</p>
       <nav>
         <Link to="/visualizer">Sketch Visualizer</Link>

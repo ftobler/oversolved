@@ -81,7 +81,7 @@ export default function Part() {
     return [...builtInFeatures, ...features]
   }
   const [mode, setMode] = useState<'sketch' | 'feature' | 'code'>('sketch')
-  const [rollbackPosition, setRollbackPosition] = useState<number>(4) // Start after built-in features
+  const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
   const [solveResult, setSolveResult] = useState<string>('')
   const [solveResults, setSolveResults] = useState<Record<string, SketchData>>({})
   const [viewportReset, setViewportReset] = useState(0)
@@ -101,6 +101,7 @@ export default function Part() {
         const extracted = extractFeatures(data.content)
         setFeatures(extracted)
         setVisibleFeatures(new Set(extracted.map(f => f.id)))
+        setRollbackPosition(extracted.length)
         setLoading(false)
       })
       .catch(e => {
@@ -265,7 +266,7 @@ export default function Part() {
             <span className="material-icons-outlined">menu</span>
           </button>
           <button className="logo" onClick={() => navigate('/')}>
-            Oversolve
+            Oversolved
           </button>
           <button className="toolbar-btn" title="Undo">
             <span className="material-icons-outlined">undo</span>
@@ -328,7 +329,7 @@ export default function Part() {
                   )}
                   <li
                     key={feature.id}
-                    className={`feature-item ${index >= rollbackPosition ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''}`}
+                    className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''}`}
                     onDragOver={(e) => handleRollbackDragOver(e, index)}
                     onDrop={(e) => handleRollbackDrop(e, index)}
                   >
@@ -537,7 +538,7 @@ export default function Part() {
         </div>
       </div>
       <footer className="doc-footer">
-        <p>Copyright 2026 - Oversolve</p>
+        <p>Copyright 2026 - Oversolved</p>
       </footer>
     </div>
   )

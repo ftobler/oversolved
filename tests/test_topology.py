@@ -46,7 +46,7 @@ def rect(x0, y0, x1, y1):
 
 # ── Single enclosed region ────────────────────────────────────────────────────
 
-def test_triangle_one_surface():
+def test_triangle_one_surface(topology_log):
     """Three lines forming a closed triangle → 1 surface."""
     geom = {
         "a": line(0, 0, 2, 0),
@@ -54,59 +54,65 @@ def test_triangle_one_surface():
         "c": line(1, 2, 0, 0),
     }
     result = detect_topology(geom)
+    topology_log["test_triangle_one_surface"] = result
     assert num_surfaces(result) == 1
     assert num_intersections(result) == 0  # no new intersections, just shared endpoints
 
 
-def test_rectangle_one_surface():
+def test_rectangle_one_surface(topology_log):
     """Four lines forming a closed rectangle → 1 surface."""
     result = detect_topology(rect(0, 0, 2, 2))
+    topology_log["test_rectangle_one_surface"] = result
     assert num_surfaces(result) == 1
     assert num_intersections(result) == 0
 
 
-def test_standalone_circle_one_surface():
+def test_standalone_circle_one_surface(topology_log):
     """A circle with no intersections → 1 surface."""
     result = detect_topology({"c": circle(1, 1, 1)})
+    topology_log["test_standalone_circle_one_surface"] = result
     assert num_surfaces(result) == 1
     assert num_intersections(result) == 0
 
 
 # ── Rectangle split into two regions ─────────────────────────────────────────
 
-def test_rectangle_with_diagonal_two_surfaces():
+def test_rectangle_with_diagonal_two_surfaces(topology_log):
     """Rectangle + diagonal → 2 triangular surfaces."""
     geom = {**rect(0, 0, 2, 2), "diag": line(0, 0, 2, 2)}
     result = detect_topology(geom)
+    topology_log["test_rectangle_with_diagonal_two_surfaces"] = result
     assert num_surfaces(result) == 2
     assert num_intersections(result) == 0  # diagonal shares corners, no new pts
 
 
-def test_rectangle_with_midline_two_surfaces():
+def test_rectangle_with_midline_two_surfaces(topology_log):
     """Rectangle + horizontal line through the middle (intersects edges, not corners) → 2 surfaces."""
     geom = {
         **rect(0, 0, 4, 4),
         "mid": line(-1, 2, 5, 2),   # crosses left edge at (0,2), right edge at (4,2)
     }
     result = detect_topology(geom)
+    topology_log["test_rectangle_with_midline_two_surfaces"] = result
     assert num_surfaces(result) == 2
     assert num_intersections(result) == 2  # two new crossing points
 
 
-def test_rectangle_with_vertical_midline_two_surfaces():
+def test_rectangle_with_vertical_midline_two_surfaces(topology_log):
     """Rectangle + vertical line through the middle → 2 surfaces."""
     geom = {
         **rect(0, 0, 4, 4),
         "mid": line(2, -1, 2, 5),   # crosses bottom at (2,0), top at (2,4)
     }
     result = detect_topology(geom)
+    topology_log["test_rectangle_with_vertical_midline_two_surfaces"] = result
     assert num_surfaces(result) == 2
     assert num_intersections(result) == 2
 
 
 # ── Rectangle with diagonal (not touching corners) ───────────────────────────
 
-def test_rectangle_with_noncorner_diagonal_two_surfaces():
+def test_rectangle_with_noncorner_diagonal_two_surfaces(topology_log):
     """Rectangle + line whose endpoints sit on two edges (not corners) → 2 surfaces.
 
     The line endpoints already exist as endpoint vertices, so no new
@@ -117,12 +123,13 @@ def test_rectangle_with_noncorner_diagonal_two_surfaces():
         "slash": line(0, 2, 2, 4),   # left-mid to top-mid
     }
     result = detect_topology(geom)
+    topology_log["test_rectangle_with_noncorner_diagonal_two_surfaces"] = result
     assert num_surfaces(result) == 2
 
 
 # ── Circle cut in two ─────────────────────────────────────────────────────────
 
-def test_circle_cut_by_chord_two_surfaces():
+def test_circle_cut_by_chord_two_surfaces(topology_log):
     """Circle bisected by a chord through the center → 2 surfaces.
 
     The chord endpoints are exactly on the circle, so they're endpoint vertices,
@@ -133,87 +140,95 @@ def test_circle_cut_by_chord_two_surfaces():
         "chord": line(-1, 0, 1, 0),  # diameter, hits circle at (-1,0) and (1,0)
     }
     result = detect_topology(geom)
+    topology_log["test_circle_cut_by_chord_two_surfaces"] = result
     assert num_surfaces(result) == 2
 
 
-def test_circle_cut_by_off_center_chord_two_surfaces():
+def test_circle_cut_by_off_center_chord_two_surfaces(topology_log):
     """Circle cut by a chord that does not pass through the center → 2 surfaces."""
     geom = {
         "c": circle(0, 0, 1),
         "chord": line(-1, 0.5, 1, 0.5),  # horizontal chord above center
     }
     result = detect_topology(geom)
+    topology_log["test_circle_cut_by_off_center_chord_two_surfaces"] = result
     assert num_surfaces(result) == 2
     assert num_intersections(result) == 2
 
 
 # ── Two overlapping circles ───────────────────────────────────────────────────
 
-def test_two_overlapping_circles_three_surfaces():
+def test_two_overlapping_circles_three_surfaces(topology_log):
     """Two overlapping circles → 3 surfaces: left lune, overlap, right lune."""
     geom = {
         "c1": circle(-0.5, 0, 1),
         "c2": circle(0.5, 0, 1),
     }
     result = detect_topology(geom)
+    topology_log["test_two_overlapping_circles_three_surfaces"] = result
     assert num_surfaces(result) == 3
     assert num_intersections(result) == 2
 
 
 # ── Arc scenarios ─────────────────────────────────────────────────────────────
 
-def test_semicircle_arc_and_diameter_one_surface():
+def test_semicircle_arc_and_diameter_one_surface(topology_log):
     """Upper semicircle arc + diameter line → 1 surface (half-disk)."""
     geom = {
         "semi": arc(0, 0, 1, 0, 180),
         "diam": line(-1, 0, 1, 0),
     }
     result = detect_topology(geom)
+    topology_log["test_semicircle_arc_and_diameter_one_surface"] = result
     assert num_surfaces(result) == 1
     assert num_intersections(result) == 0  # arc endpoints land on line endpoints
 
 
-def test_arc_chord_divides_two_surfaces():
-    """3/4 arc + chord closing off the short segment → 2 surfaces."""
+def test_arc_chord_divides_one_surface(topology_log):
+    """3/4 arc + chord closing off the short segment → 1 surface (half-disk-like region)."""
     geom = {
         "a": arc(0, 0, 1, 0, 270),      # 3/4 arc from 0° to 270°
         "ch": line(0, -1, 1, 0),         # chord from (0,-1) to (1,0)
     }
     result = detect_topology(geom)
-    assert num_surfaces(result) == 2
+    topology_log["test_arc_chord_divides_one_surface"] = result
+    assert num_surfaces(result) == 1
 
 
 # ── No surfaces (open geometry) ───────────────────────────────────────────────
 
-def test_single_line_no_surfaces():
+def test_single_line_no_surfaces(topology_log):
     """A single open line cannot enclose any area."""
     result = detect_topology({"l": line(0, 0, 1, 1)})
+    topology_log["test_single_line_no_surfaces"] = result
     assert num_surfaces(result) == 0
 
 
-def test_two_non_intersecting_lines_no_surfaces():
+def test_two_non_intersecting_lines_no_surfaces(topology_log):
     result = detect_topology({
         "a": line(0, 0, 1, 0),
         "b": line(0, 1, 1, 1),
     })
+    topology_log["test_two_non_intersecting_lines_no_surfaces"] = result
     assert num_surfaces(result) == 0
 
 
 # ── Construction lines are ignored ───────────────────────────────────────────
 
-def test_construction_lines_ignored():
+def test_construction_lines_ignored(topology_log):
     """Construction lines are excluded from topology — rectangle stays 1 surface."""
     geom = {
         **rect(0, 0, 2, 2),
         "diag": {**line(0, 0, 2, 2), "construction": True},
     }
     result = detect_topology(geom)
+    topology_log["test_construction_lines_ignored"] = result
     assert num_surfaces(result) == 1  # diagonal not counted
 
 
 # ── More complex shapes ───────────────────────────────────────────────────────
 
-def test_two_separate_rectangles_two_surfaces():
+def test_two_separate_rectangles_two_surfaces(topology_log):
     """Two separate closed rectangles → 2 surfaces each."""
     geom = {
         # First rectangle (0,0)-(2,2)
@@ -228,11 +243,12 @@ def test_two_separate_rectangles_two_surfaces():
         "l2": line(4, 2, 4, 0),
     }
     result = detect_topology(geom)
+    topology_log["test_two_separate_rectangles_two_surfaces"] = result
     assert num_surfaces(result) == 2
     assert num_intersections(result) == 0
 
 
-def test_rectangle_with_two_parallel_splits_three_surfaces():
+def test_rectangle_with_two_parallel_splits_three_surfaces(topology_log):
     """Rectangle split by two parallel lines → 3 surfaces."""
     geom = {
         **rect(0, 0, 6, 4),
@@ -240,11 +256,12 @@ def test_rectangle_with_two_parallel_splits_three_surfaces():
         "s2": line(4, -1, 4, 5),  # second split at x=4
     }
     result = detect_topology(geom)
+    topology_log["test_rectangle_with_two_parallel_splits_three_surfaces"] = result
     assert num_surfaces(result) == 3
     assert num_intersections(result) == 4  # each line hits top + bottom
 
 
-def test_rectangle_with_cross_four_surfaces():
+def test_rectangle_with_cross_four_surfaces(topology_log):
     """Rectangle split by a horizontal + vertical line crossing inside → 4 surfaces."""
     geom = {
         **rect(0, 0, 4, 4),
@@ -252,6 +269,7 @@ def test_rectangle_with_cross_four_surfaces():
         "v": line(2, -1, 2, 5),  # vertical mid
     }
     result = detect_topology(geom)
+    topology_log["test_rectangle_with_cross_four_surfaces"] = result
     assert num_surfaces(result) == 4
     assert num_intersections(result) == 5  # 4 edge hits + 1 center crossing
 
@@ -263,7 +281,7 @@ def test_rectangle_with_cross_four_surfaces():
 # split-parameter list would put the end vertex first, reversing the arc
 # direction in the half-edge graph and causing the wrong (or no) surface.
 
-def test_wrapping_arc_half_disk():
+def test_wrapping_arc_half_disk(topology_log):
     """Right-half-disk: CCW arc from 270° to 90° (through 0°) + vertical chord.
 
     The arc wraps through 0°, so angle_end (1.57 rad) < angle_start (4.71 rad).
@@ -275,10 +293,11 @@ def test_wrapping_arc_half_disk():
         "l": line(0, -r, 0, r),        # vertical chord closing the left side
     }
     result = detect_topology(geom)
+    topology_log["test_wrapping_arc_half_disk"] = result
     assert num_surfaces(result) == 1
 
 
-def test_wrapping_arc_three_quarter():
+def test_wrapping_arc_three_quarter(topology_log):
     """3/4 arc from 270° to 180° (wrapping through 0°) + chord → 1 surface."""
     r = 1.0
     geom = {
@@ -286,10 +305,11 @@ def test_wrapping_arc_three_quarter():
         "l": line(0, -r, -r, 0),      # chord from (0,-1) to (-1,0)
     }
     result = detect_topology(geom)
+    topology_log["test_wrapping_arc_three_quarter"] = result
     assert num_surfaces(result) == 1
 
 
-def test_equal_belt_one_surface():
+def test_equal_belt_one_surface(topology_log):
     """Stadium (pill) shape: two 180° arcs + two straight sides → 1 enclosed surface.
 
     The right arc goes from 270° to 90° (wrapping through 0°).  Without proper
@@ -304,10 +324,11 @@ def test_equal_belt_one_surface():
         "bot":   line(d / 2, -r, -d / 2, -r),
     }
     result = detect_topology(geom)
+    topology_log["test_equal_belt_one_surface"] = result
     assert num_surfaces(result) == 1
 
 
-def test_unequal_belt_one_surface():
+def test_unequal_belt_one_surface(topology_log):
     """Unequal belt: two arcs of different radii + two tangent lines → 1 surface.
 
     Both the wrapping-arc and the twin-mapping fixes must be active for this
@@ -322,4 +343,5 @@ def test_unequal_belt_one_surface():
         "bot":   line(d / 2, -r2, -d / 2, -r1),
     }
     result = detect_topology(geom)
+    topology_log["test_unequal_belt_one_surface"] = result
     assert num_surfaces(result) == 1

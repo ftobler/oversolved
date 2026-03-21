@@ -163,7 +163,7 @@ function getIconUrl(kind: string): string | undefined {
   return iconModules[`../assets/icons/${name}.svg`]
 }
 
-function allPoints(sketches: Sketch[]): Point[] {
+function allPoints(sketches: Sketch[], topology?: Topology): Point[] {
   const pts: Point[] = []
   for (const sketch of sketches) {
     for (const entity of Object.values(sketch)) {
@@ -188,11 +188,17 @@ function allPoints(sketches: Sketch[]): Point[] {
       }
     }
   }
+  // Include topology vertices in bounds calculation
+  if (topology) {
+    for (const v of Object.values(topology.vertices)) {
+      pts.push([v.x, v.y])
+    }
+  }
   return pts
 }
 
-function fitTransform(sketches: Sketch[], size: number): { scale: number; tx: number; ty: number } {
-  const points = allPoints(sketches)
+function fitTransform(sketches: Sketch[], size: number, topology?: Topology): { scale: number; tx: number; ty: number } {
+  const points = allPoints(sketches, topology)
   if (points.length === 0) return { scale: 1, tx: size / 2, ty: size / 2 }
 
   const xs = points.map(p => p[0])
@@ -560,7 +566,7 @@ const STATUS_COLOR: Record<Status, string> = {
 }
 
 export default function SketchSvg({ initial, solved, status, entityStatus, size = 300, constraints, topology }: Props) {
-  const { scale, tx, ty } = fitTransform([initial, solved], size)
+  const { scale, tx, ty } = fitTransform([initial, solved], size, topology)
 
   function px(x: number, y: number): [number, number] {
     return [x * scale + tx, size - (y * scale + ty)]

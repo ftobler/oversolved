@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { OrthographicCamera, OrbitControls, Line, Text } from '@react-three/drei'
 import * as THREE from 'three'
-import type { Sketch, Constraints } from './SketchSvg'
+import type { Sketch, Constraints, Topology } from './SketchSvg'
 import Sketch3D from './Sketch3D'
 import { CubeGizmoCanvas, drawCubeGizmo } from './CubeGizmo'
 import type { Pv, Hit } from './CubeGizmo'
@@ -138,6 +138,7 @@ export interface SketchData {
   initial: Sketch
   solved: Sketch
   constraints?: Constraints
+  topology?: Topology
 }
 
 interface ViewportProps {
@@ -221,6 +222,7 @@ export default function Viewport({
             initial={solveResults![f.id].initial}
             solved={solveResults![f.id].solved}
             constraints={solveResults![f.id].constraints}
+            topology={solveResults![f.id].topology}
           />
         ))}
       </Canvas>

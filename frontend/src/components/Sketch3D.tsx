@@ -2,7 +2,7 @@ import { useRef, useMemo } from 'react'
 import { Line, Html } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { Sketch, Constraints } from './SketchSvg'
+import type { Sketch, Constraints, Topology } from './SketchSvg'
 
 interface LineSegment { start: [number, number]; end: [number, number]; construction?: boolean }
 interface Circle { center: [number, number]; radius: number; construction?: boolean }
@@ -369,6 +369,60 @@ function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOverlaysP
 }
 
 // ---------------------------------------------------------------------------
+// Topology surface rendering
+// ---------------------------------------------------------------------------
+
+interface TopologySurfacesProps {
+  topology: Topology
+}
+
+function TopologySurfaces({ topology }: TopologySurfacesProps) {
+  const meshes = useMemo(() => {
+    return topology.surfaces.flatMap((surface, si) => {
+      // Sample the boundary as a flat list of 2D points
+      const pts: [number, number][] = []
+      type ArcEdge = { kind: 'arc'; start: [number,number]; end: [number,number]; center: [number,number]; radius: number; angle_start_deg: number; angle_end_deg: number; ccw: boolean }
+      type LineEdge = { kind: 'line'; start: [number,number]; end: [number,number] }
+
+      surface.boundary.forEach((edge, ei) => {
+        const e = edge as ArcEdge | LineEdge
+        if (ei === 0) pts.push(e.start)
+        if (e.kind === 'line') {
+          pts.push(e.end)
+        } else {
+          const { center, radius, angle_start_deg, angle_end_deg, ccw } = e as ArcEdge
+          // Span in the arc's travel direction
+          const span = ccw
+            ? ((angle_end_deg - angle_start_deg) + 360) % 360
+            : ((angle_start_deg - angle_end_deg) + 360) % 360
+          const steps = Math.max(2, Math.ceil((span / 360) * ARC_SEGMENTS))
+          for (let i = 1; i <= steps; i++) {
+            const a = (angle_start_deg + (span * i) / steps) * (Math.PI / 180)
+            pts.push([center[0] + radius * Math.cos(a), center[1] + radius * Math.sin(a)])
+          }
+        }
+      })
+
+      if (pts.length < 3) return []
+
+      const shape = new THREE.Shape()
+      shape.moveTo(pts[0][0], pts[0][1])
+      for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1])
+      shape.closePath()
+
+      return [(
+        <mesh key={`surface-${si}`} position={[0, 0, -0.001]}>
+          <shapeGeometry args={[shape]} />
+          <meshBasicMaterial color="white" transparent opacity={0.10} side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>
+      )]
+    })
+  }, [topology])
+
+  return <>{meshes}</>
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -376,13 +430,15 @@ interface Sketch3DProps {
   initial: Sketch
   solved: Sketch
   constraints?: Constraints
+  topology?: Topology
 }
 
-export default function Sketch3D({ initial, solved, constraints }: Sketch3DProps) {
+export default function Sketch3D({ initial, solved, constraints, topology }: Sketch3DProps) {
   const extent = useMemo(() => sketchExtent(solved), [solved])
 
   return (
     <group>
+      {topology && <TopologySurfaces topology={topology} />}
       <EntityLines sketch={initial} color={COLOR_INITIAL} lineWidth={1} />
       <EntityLines sketch={solved} color={COLOR_SOLVED} lineWidth={2} />
       {constraints && <ConstraintOverlays constraints={constraints} sketch={solved} extent={extent} />}

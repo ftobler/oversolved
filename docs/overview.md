@@ -19,7 +19,7 @@ Use test driven development throughout.
 
 source code in `oversolved` directory.
 
-Oversolve CAD core part is a AST (Abstract Syntax tree) in toml/json format which handles all geometry rebuilds on the backend. The format is described in `ast.md`.
+Oversolved CAD core part is a AST (Abstract Syntax tree) in toml/json format which handles all geometry rebuilds on the backend. The format is described in `ast.md`.
 
 ## frontend (React)
 
