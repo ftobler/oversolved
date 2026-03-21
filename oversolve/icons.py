@@ -615,9 +615,9 @@ def viewport_reset(ctx):
 
     # Left-pointing arrow
     cy = 0.5
-    ah = 0.09
-    lx0 = 0.42
-    lx1 = m + 0.16
+    ah = 0.19
+    lx0 = 0.45
+    lx1 = m + 0.05
     ctx.move_to(lx0, cy)
     ctx.line_to(lx1 + ah, cy)
     stroke(ctx, 1.5)
@@ -628,8 +628,8 @@ def viewport_reset(ctx):
     ctx.fill()
 
     # Right-pointing arrow
-    rx0 = 0.58
-    rx1 = 1 - m - 0.16
+    rx0 = 1 - lx0
+    rx1 = 1 - m - 0.05
     ctx.move_to(rx0, cy)
     ctx.line_to(rx1 - ah, cy)
     stroke(ctx, 1.5)
