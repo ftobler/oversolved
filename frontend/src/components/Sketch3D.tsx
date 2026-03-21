@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, useState } from 'react'
 import { Line, Html } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -13,6 +13,7 @@ type Entity = LineSegment | Circle | Arc | PointEntity
 const COLOR_INITIAL = '#66bb6a'
 const COLOR_SOLVED = '#4fc3f7'
 const COLOR_CONSTRAINT = '#ffd54f'
+const COLOR_HOVER = '#ffffff'
 const ARC_SEGMENTS = 64
 const ICON_SIZE = 22
 const ICON_COLS = 3
@@ -100,12 +101,14 @@ function Arrowhead({ tip, from, px, color }: { tip: [number, number]; from: [num
 }
 
 /** Line with dash/gap sizes in pixels, constant regardless of zoom. */
-function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5 }: {
+function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5, onPointerOver, onPointerOut }: {
   points: [number, number, number][]
   color: string
   lineWidth: number
   dashPx?: number
   gapPx?: number
+  onPointerOver?: (e: { stopPropagation: () => void }) => void
+  onPointerOut?: () => void
 }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const lineRef = useRef<any>(null)
@@ -117,7 +120,46 @@ function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5 }: {
     mat.dashSize = dashPx * scale
     mat.gapSize = gapPx * scale
   })
-  return <Line ref={lineRef} points={points} color={color} lineWidth={lineWidth} dashed dashSize={0.01} gapSize={0.005} />
+  return <Line ref={lineRef} points={points} color={color} lineWidth={lineWidth} dashed dashSize={0.01} gapSize={0.005} onPointerOver={onPointerOver} onPointerOut={onPointerOut} />
+}
+
+const HIT_PIXELS = 14
+
+/** Invisible hit-area meshes along a polyline, one plane per segment, width scales with zoom. */
+function HitPolyline({ pts, onPointerOver, onPointerOut }: {
+  pts: [number, number, number][]
+  onPointerOver: (e: { stopPropagation: () => void }) => void
+  onPointerOut: () => void
+}) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const meshRefs = useRef<(THREE.Mesh | null)[]>([])
+  const { camera } = useThree()
+
+  const segments = useMemo(() => pts.slice(0, -1).map((p, i) => {
+    const p2 = pts[i + 1]
+    const dx = p2[0] - p[0], dy = p2[1] - p[1]
+    const length = Math.sqrt(dx * dx + dy * dy)
+    return { length, angle: Math.atan2(dy, dx), mx: (p[0] + p2[0]) / 2, my: (p[1] + p2[1]) / 2 }
+  }).filter(s => s.length > 1e-6), [pts])
+
+  useFrame(() => {
+    const scale = HIT_PIXELS * p2w(camera)
+    meshRefs.current.forEach(ref => { if (ref) ref.scale.y = scale })
+  })
+
+  return (
+    <>
+      {segments.map((seg, i) => (
+        <mesh key={i} ref={el => { meshRefs.current[i] = el }}
+          position={[seg.mx, seg.my, 0]} rotation={[0, 0, seg.angle]}
+          onPointerOver={onPointerOver} onPointerOut={onPointerOut}
+        >
+          <planeGeometry args={[seg.length, 1]} />
+          <meshBasicMaterial colorWrite={false} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+      ))}
+    </>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +212,70 @@ function sketchExtent(sketch: Sketch): number {
 // Entity rendering
 // ---------------------------------------------------------------------------
 
+interface EntityItemProps {
+  entity: Entity
+  baseColor: string
+  lineWidth?: number
+}
+
+function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
+  const [hovered, setHovered] = useState(false)
+  const color = hovered ? COLOR_HOVER : baseColor
+  const lw = hovered ? lineWidth + 1 : lineWidth
+  const e = entity
+  const construction = 'construction' in e && e.construction
+  const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
+  const onOut = () => setHovered(false)
+
+  if ('start' in e && 'end' in e && 'radius' in e) {
+    const arc = e as Arc
+    const pts = sampleArc(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
+    return (
+      <group onPointerOver={onOver} onPointerOut={onOut}>
+        <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
+        {construction
+          ? <DashedLine points={pts} color={color} lineWidth={lw} />
+          : <Line points={pts} color={color} lineWidth={lw} />}
+        <Dot x={arc.start[0]} y={arc.start[1]} px={4} color={color} />
+        <Dot x={arc.end[0]} y={arc.end[1]} px={4} color={color} />
+        <Dot x={arc.center[0]} y={arc.center[1]} px={2.5} color={color} />
+      </group>
+    )
+  } else if ('start' in e) {
+    const line = e as LineSegment
+    const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
+    return (
+      <group onPointerOver={onOver} onPointerOut={onOut}>
+        <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
+        {construction
+          ? <DashedLine points={pts} color={color} lineWidth={lw} />
+          : <Line points={pts} color={color} lineWidth={lw} />}
+        <Dot x={line.start[0]} y={line.start[1]} px={4} color={color} />
+        <Dot x={line.end[0]} y={line.end[1]} px={4} color={color} />
+      </group>
+    )
+  } else if ('x' in e) {
+    const pt = e as PointEntity
+    return (
+      <group onPointerOver={onOver} onPointerOut={onOut}>
+        <Dot x={pt.x} y={pt.y} px={5} color={color} />
+      </group>
+    )
+  } else {
+    const circ = e as Circle
+    const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
+    return (
+      <group onPointerOver={onOver} onPointerOut={onOut}>
+        <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
+        {construction
+          ? <DashedLine points={pts} color={color} lineWidth={lw} />
+          : <Line points={pts} color={color} lineWidth={lw} />}
+        <Dot x={circ.center[0]} y={circ.center[1]} px={2.5} color={color} />
+      </group>
+    )
+  }
+}
+
 interface EntityLinesProps {
   sketch: Sketch
   color: string
@@ -177,59 +283,13 @@ interface EntityLinesProps {
 }
 
 function EntityLines({ sketch, color, lineWidth = 1 }: EntityLinesProps) {
-  const elements = useMemo(() => {
-    return Object.entries(sketch).map(([id, entity]) => {
-      const e = entity as Entity
-      const construction = 'construction' in e && e.construction
-
-      if ('start' in e && 'end' in e && 'radius' in e) {
-        const arc = e as Arc
-        const pts = sampleArc(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
-        return (
-          <group key={id}>
-            {construction
-              ? <DashedLine points={pts} color={color} lineWidth={lineWidth} />
-              : <Line points={pts} color={color} lineWidth={lineWidth} />}
-            <Dot x={arc.start[0]} y={arc.start[1]} px={4} color={color} />
-            <Dot x={arc.end[0]} y={arc.end[1]} px={4} color={color} />
-            <Dot x={arc.center[0]} y={arc.center[1]} px={2.5} color={color} />
-          </group>
-        )
-      } else if ('start' in e) {
-        const line = e as LineSegment
-        const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
-        return (
-          <group key={id}>
-            {construction
-              ? <DashedLine points={pts} color={color} lineWidth={lineWidth} />
-              : <Line points={pts} color={color} lineWidth={lineWidth} />}
-            <Dot x={line.start[0]} y={line.start[1]} px={4} color={color} />
-            <Dot x={line.end[0]} y={line.end[1]} px={4} color={color} />
-          </group>
-        )
-      } else if ('x' in e) {
-        const pt = e as PointEntity
-        return (
-          <group key={id}>
-            <Dot x={pt.x} y={pt.y} px={5} color={color} />
-          </group>
-        )
-      } else {
-        const circ = e as Circle
-        const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
-        return (
-          <group key={id}>
-            {construction
-              ? <DashedLine points={pts} color={color} lineWidth={lineWidth} />
-              : <Line points={pts} color={color} lineWidth={lineWidth} />}
-            <Dot x={circ.center[0]} y={circ.center[1]} px={2.5} color={color} />
-          </group>
-        )
-      }
-    })
-  }, [sketch, color, lineWidth])
-
-  return <>{elements}</>
+  return (
+    <>
+      {Object.entries(sketch).map(([id, entity]) => (
+        <EntityItem key={id} entity={entity as Entity} baseColor={color} lineWidth={lineWidth} />
+      ))}
+    </>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -376,50 +436,61 @@ interface TopologySurfacesProps {
   topology: Topology
 }
 
-function TopologySurfaces({ topology }: TopologySurfacesProps) {
-  const meshes = useMemo(() => {
-    return topology.surfaces.flatMap((surface, si) => {
-      // Sample the boundary as a flat list of 2D points
-      const pts: [number, number][] = []
-      type ArcEdge = { kind: 'arc'; start: [number,number]; end: [number,number]; center: [number,number]; radius: number; angle_start_deg: number; angle_end_deg: number; ccw: boolean }
-      type LineEdge = { kind: 'line'; start: [number,number]; end: [number,number] }
+type SurfaceShape = { shape: THREE.Shape; pts: [number, number][] }
 
-      surface.boundary.forEach((edge, ei) => {
-        const e = edge as ArcEdge | LineEdge
-        if (ei === 0) pts.push(e.start)
-        if (e.kind === 'line') {
-          pts.push(e.end)
-        } else {
-          const { center, radius, angle_start_deg, angle_end_deg, ccw } = e as ArcEdge
-          // Signed angular span: positive = CCW, negative = CW
-          const span = ccw
-            ? ((angle_end_deg - angle_start_deg) + 360) % 360
-            : -(((angle_start_deg - angle_end_deg) + 360) % 360)
-          const steps = Math.max(2, Math.ceil((Math.abs(span) / 360) * ARC_SEGMENTS))
-          for (let i = 1; i <= steps; i++) {
-            const a = (angle_start_deg + (span * i) / steps) * (Math.PI / 180)
-            pts.push([center[0] + radius * Math.cos(a), center[1] + radius * Math.sin(a)])
-          }
+function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
+  type ArcEdge = { kind: 'arc'; start: [number,number]; end: [number,number]; center: [number,number]; radius: number; angle_start_deg: number; angle_end_deg: number; ccw: boolean }
+  type LineEdge = { kind: 'line'; start: [number,number]; end: [number,number] }
+
+  return topology.surfaces.flatMap(surface => {
+    const pts: [number, number][] = []
+    surface.boundary.forEach((edge, ei) => {
+      const e = edge as ArcEdge | LineEdge
+      if (ei === 0) pts.push(e.start)
+      if (e.kind === 'line') {
+        pts.push(e.end)
+      } else {
+        const { center, radius, angle_start_deg, angle_end_deg, ccw } = e as ArcEdge
+        const span = ccw
+          ? ((angle_end_deg - angle_start_deg) + 360) % 360
+          : -(((angle_start_deg - angle_end_deg) + 360) % 360)
+        const steps = Math.max(2, Math.ceil((Math.abs(span) / 360) * ARC_SEGMENTS))
+        for (let i = 1; i <= steps; i++) {
+          const a = (angle_start_deg + (span * i) / steps) * (Math.PI / 180)
+          pts.push([center[0] + radius * Math.cos(a), center[1] + radius * Math.sin(a)])
         }
-      })
-
-      if (pts.length < 3) return []
-
-      const shape = new THREE.Shape()
-      shape.moveTo(pts[0][0], pts[0][1])
-      for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1])
-      shape.closePath()
-
-      return [(
-        <mesh key={`surface-${si}`} position={[0, 0, -0.001]}>
-          <shapeGeometry args={[shape]} />
-          <meshBasicMaterial color="white" transparent opacity={0.10} side={THREE.DoubleSide} depthWrite={false} />
-        </mesh>
-      )]
+      }
     })
-  }, [topology])
+    if (pts.length < 3) return []
+    const shape = new THREE.Shape()
+    shape.moveTo(pts[0][0], pts[0][1])
+    for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1])
+    shape.closePath()
+    return [{ shape, pts }]
+  })
+}
 
-  return <>{meshes}</>
+function SurfaceMesh({ shape }: { shape: THREE.Shape }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <mesh
+      position={[0, 0, -0.001]}
+      onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
+      onPointerOut={() => setHovered(false)}
+    >
+      <shapeGeometry args={[shape]} />
+      <meshBasicMaterial color="white" transparent opacity={hovered ? 0.25 : 0.10} side={THREE.DoubleSide} depthWrite={false} />
+    </mesh>
+  )
+}
+
+function TopologySurfaces({ topology }: TopologySurfacesProps) {
+  const surfaces = useMemo(() => buildSurfaceShapes(topology), [topology])
+  return (
+    <>
+      {surfaces.map((s, si) => <SurfaceMesh key={si} shape={s.shape} />)}
+    </>
+  )
 }
 
 // ---------------------------------------------------------------------------
