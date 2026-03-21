@@ -3,12 +3,11 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
 import type { Feature, SketchData } from '../components/Viewport'
-import type { Sketch } from '../components/SketchSvg'
 import { unflattenGeometry } from '../components/SketchSvg'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import type { Mutation } from '../stores/sketchEditorStore'
 import type { PartDoc } from '../utils/yamlMutations'
-import { applyMoveVertex, applyMoveEntity, applyAddConstraint, applyDeleteElements, applySetConstraintValue, applyAddEntity, applyAddRect } from '../utils/yamlMutations'
+import { applyMoveVertex, applyMoveEntity, applyAddConstraint, applyDeleteElements, applyAddEntity, applyAddRect, applySetConstraintValue } from '../utils/yamlMutations'
 import { registerCommand, unregisterCommand, dispatchKey } from '../stores/commandRegistry'
 import './Part.css'
 import toolbarLineIcon from '../assets/icons/toolbar-line.svg'
@@ -230,6 +229,7 @@ export default function Part() {
         }
         // Update both the cached solve results AND the primary document state
         setSolveResults(prev => ({ ...prev, ...results }))
+        setSolveResult(stringifyYaml(data.result))
         setDoc(d)
         docRef.current = d
         if (mode === 'code') {
@@ -239,6 +239,7 @@ export default function Part() {
       }
     } catch (e) {
       setSolveError(String(e))
+      setSolveResult(String(e))
     } finally {
       setSolving(false)
     }
