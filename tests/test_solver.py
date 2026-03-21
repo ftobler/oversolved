@@ -2624,3 +2624,115 @@ features:
     angle_sum = angle_a + angle_c
     assert abs(angle_exterior - angle_sum) < ATOL * 2, \
         f"Exterior angle {angle_exterior}° should equal sum of remote interior angles {angle_sum}°"
+
+
+def test_hourglass_shape(sketch_log):
+    """Test hourglass shape with 4 lines, 2 crossing in the middle."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Hourglass"
+    initial:
+      tl: [0.0, 2.0]
+      tr: [2.0, 2.0]
+      bl: [0.0, 0.0]
+      br: [2.0, 0.0]
+    entities:
+      - id: tl
+        kind: point
+      - id: tr
+        kind: point
+      - id: bl
+        kind: point
+      - id: br
+        kind: point
+      - id: top_line
+        kind: line_segment
+      - id: bottom_line
+        kind: line_segment
+      - id: diag_left
+        kind: line_segment
+      - id: diag_right
+        kind: line_segment
+    constraints:
+      # Top line: tl to tr
+      - id: c_top_start
+        kind: coincident
+        a: {entity: top_line, point: start}
+        b: {entity: tl}
+      - id: c_top_end
+        kind: coincident
+        a: {entity: top_line, point: end}
+        b: {entity: tr}
+      # Bottom line: bl to br
+      - id: c_bottom_start
+        kind: coincident
+        a: {entity: bottom_line, point: start}
+        b: {entity: bl}
+      - id: c_bottom_end
+        kind: coincident
+        a: {entity: bottom_line, point: end}
+        b: {entity: br}
+      # Diagonal left: tl to br
+      - id: c_diag_left_start
+        kind: coincident
+        a: {entity: diag_left, point: start}
+        b: {entity: tl}
+      - id: c_diag_left_end
+        kind: coincident
+        a: {entity: diag_left, point: end}
+        b: {entity: br}
+      # Diagonal right: tr to bl
+      - id: c_diag_right_start
+        kind: coincident
+        a: {entity: diag_right, point: start}
+        b: {entity: tr}
+      - id: c_diag_right_end
+        kind: coincident
+        a: {entity: diag_right, point: end}
+        b: {entity: bl}
+      # Fix top-left corner
+      - id: c_tl_fixed
+        kind: fixed
+        target: {entity: tl}
+        x: 0.0
+        y: 2.0
+      # Top line horizontal
+      - id: c_top_horiz
+        kind: horizontal
+        target: {entity: top_line}
+      # Bottom line horizontal
+      - id: c_bottom_horiz
+        kind: horizontal
+        target: {entity: bottom_line}
+      # Top line length
+      - id: c_top_length
+        kind: length
+        target: {entity: top_line}
+        value: 2.0
+      # Bottom line length
+      - id: c_bottom_length
+        kind: length
+        target: {entity: bottom_line}
+        value: 2.0
+      # Diagonal length (≈ 2√2)
+      - id: c_diag_length
+        kind: length
+        target: {entity: diag_left}
+        value: 2.828
+"""
+    result = solve(yaml_str)
+    sketch_log["test_hourglass_shape"] = result
+
+    # Verify all line entities are present
+    assert "diag_left" in result["sketch_1"]["geometry"]["solved"]
+    assert "diag_right" in result["sketch_1"]["geometry"]["solved"]
+    assert "top_line" in result["sketch_1"]["geometry"]["solved"]
+    assert "bottom_line" in result["sketch_1"]["geometry"]["solved"]
+
+    # Verify the sketch is fully constrained
+    assert result["sketch_1"]["status"] == "fully_constrained"
