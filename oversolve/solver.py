@@ -4,6 +4,7 @@ from typing import Any
 import yaml
 import numpy as np
 from scipy.optimize import least_squares
+from oversolve.topology import detect_topology
 
 
 ENTITY_SIZES = {
@@ -493,6 +494,11 @@ def _solve_sketch(feature: dict) -> dict:
     geom_initial = _geometry_from_array(x0, entities, entity_offsets)
     geom_solved = _geometry_from_array(x_sol, entities, entity_offsets)
 
+    # Topology: detect intersection points and bounded surfaces
+    topology = detect_topology(geom_solved)
+    for vid, pt in topology['intersection_points'].items():
+        geom_solved[vid] = {'x': pt['x'], 'y': pt['y'], 'intersection': True}
+
     # Per-entity status via null-space analysis.
     # The null space of J encodes all unconstrained directions. We project out
     # the 3 rigid-body modes (translation x/y, rotation) so that a freely
@@ -521,4 +527,5 @@ def _solve_sketch(feature: dict) -> dict:
             "solved": geom_solved,
         },
         "constraints": constraints_out,
+        "topology": topology,
     }
