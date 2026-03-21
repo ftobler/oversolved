@@ -16,6 +16,7 @@ export const KEYMAP: Record<string, string> = {
   'd':            'applyDimension',
   'h':            'applyHorizontal',
   'v':            'applyVertical',
+  'escape':       'cancelDraw',
 }
 
 // ── Registration ───────────────────────────────────────────────────────────

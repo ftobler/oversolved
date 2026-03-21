@@ -394,6 +394,21 @@
   flex-shrink: 0;
 }
 
+.solve-error-dismiss {
+  background: transparent;
+  border: none;
+  color: #ef9a9a;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  margin-left: 8px;
+  line-height: 1;
+}
+
+.solve-error-dismiss:hover {
+  color: #fff;
+}
+
 .editor-btn .material-icons {
   font-size: 18px;
 }

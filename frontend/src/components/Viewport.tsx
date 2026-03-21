@@ -187,6 +187,7 @@ interface ViewportProps {
   visibleFeatures?: Set<string>
   solveResults?: Record<string, SketchData>
   resetTrigger?: number
+  activeFeatureId?: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -211,6 +212,7 @@ export default function Viewport({
   visibleFeatures,
   solveResults,
   resetTrigger = 0,
+  activeFeatureId,
 }: ViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pvRef = useRef<Pv[]>([])
@@ -292,6 +294,7 @@ export default function Viewport({
             solved={solveResults![f.id].solved}
             constraints={solveResults![f.id].constraints}
             topology={solveResults![f.id].topology}
+            activeFeatureId={activeFeatureId}
           />))}
       </Canvas>
 

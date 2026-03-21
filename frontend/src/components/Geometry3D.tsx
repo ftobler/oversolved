@@ -16,6 +16,7 @@ const COLOR_CONSTRAINT = '#ffd54f'
 const COLOR_HOVER = '#ffffff'
 const COLOR_SELECTED = '#ff9800'
 const COLOR_CONSTRAINT_HOVER = '#fff176'  // entity highlighted because a constraint on it is hovered
+const COLOR_PREVIEW = '#aaaaaa'
 const ARC_SEGMENTS = 64
 const ICON_SIZE = 22
 const ICON_COLS = 3
@@ -207,6 +208,7 @@ function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
+  const activeTool = useSketchEditorStore(s => s.activeTool)
   // Offset the hit-sphere toward the camera (not object-space z) so the vertex
   // always wins the raycast over the 3D edge cylinders regardless of orbit angle.
   useFrame(() => {
@@ -223,6 +225,7 @@ function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
   }, [vertId, toggleSelect])
   const onPointerDown = useCallback((e: { stopPropagation: () => void; point: THREE.Vector3 }) => {
     if (!vertId || !featureId || !entityId || !vertexKey) return
+    if (activeTool !== 'select') return
     e.stopPropagation()
     setOrbitEnabled(false)
     setDrag({
@@ -234,7 +237,7 @@ function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
       startWorld: [x, y],
       currentWorld: [x, y],
     })
-  }, [vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled])
+  }, [vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool])
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : baseColor
   return (
     <group
@@ -261,9 +264,7 @@ function sampleArc(cx: number, cy: number, r: number, a0deg: number, a1deg: numb
   let span = ((a1deg - a0deg) + 360) % 360
   const isFullCircle = span === 0
   if (isFullCircle) span = 360
-  // Take shorter arc if > 180° (only for partial arcs, not full circles)
-  else if (span > 180) span = span - 360
-  const steps = Math.max(2, Math.ceil((Math.abs(span) / 360) * ARC_SEGMENTS))
+  const steps = Math.max(2, Math.ceil((span / 360) * ARC_SEGMENTS))
   const pts: [number, number, number][] = []
   for (let i = 0; i <= steps; i++) {
     const a = (a0deg + (span * i) / steps) * (Math.PI / 180)
@@ -322,6 +323,9 @@ function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1 }: E
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
+  const activeTool = useSketchEditorStore(s => s.activeTool)
+  const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
+  const onMutation = useSketchEditorStore(s => s.onMutation)
   const color = hovered ? COLOR_HOVER
     : selected ? COLOR_SELECTED
     : constraintHovered ? COLOR_CONSTRAINT_HOVER
@@ -331,14 +335,23 @@ function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1 }: E
   const construction = 'construction' in e && e.construction
   const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
   const onOut = () => setHovered(false)
-  const onClick = useCallback((ev: { stopPropagation: () => void }) => { ev.stopPropagation(); toggleSelect(entId) }, [entId, toggleSelect])
+  const onClick = useCallback((ev: { stopPropagation: () => void }) => {
+    ev.stopPropagation()
+    if (activeTool === 'dimension') {
+      onMutation?.({ type: 'add_constraint', featureId, kind: 'length', targets: [`entity:${featureId}:${entityId}`] })
+      setActiveTool('select')
+    } else {
+      toggleSelect(entId)
+    }
+  }, [entId, toggleSelect, activeTool, onMutation, featureId, entityId, setActiveTool])
   // Edge drag: pointer down on the edge group initiates a full-entity move
   const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: { x: number; y: number } }) => {
+    if (activeTool !== 'select') return
     ev.stopPropagation()
     setOrbitEnabled(false)
     setDrag({ type: 'edge', vertexId: entId, featureId, entityId,
       vertexKey: 'edge', startWorld: [ev.point.x, ev.point.y], currentWorld: [ev.point.x, ev.point.y] })
-  }, [entId, featureId, entityId, setDrag, setOrbitEnabled])
+  }, [entId, featureId, entityId, setDrag, setOrbitEnabled, activeTool])
 
   if ('start' in e && 'end' in e && 'radius' in e) {
     const arc = e as Arc
@@ -634,13 +647,16 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
     if (!entity) continue
     const bounds = getEntityBounds(entity)
     const symbolIcons: { url: string; key: string }[] = []
+    let symbolAt: [number, number] | null = null
 
     for (const [cid, c] of clist) {
-      const r = c.render as { kind: string; [key: string]: unknown }
+      const r = c.render as { kind: string; at?: [number, number]; [key: string]: unknown }
 
       if (r.kind.startsWith('symbol_')) {
         const url = getIconUrl(r.kind)
         if (!url) continue
+        // Use the first symbol's `at` position (solver-provided) for group placement
+        if (!symbolAt && r.at) symbolAt = r.at
         symbolIcons.push({ url, key: cid })
 
       } else if (r.kind === 'dim_linear') {
@@ -661,8 +677,10 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
     if (symbolIcons.length > 0) {
       const colWidth = ICON_SIZE + 2
       const groupWidth = Math.min(ICON_COLS, symbolIcons.length) * colWidth
+      // Use solver-provided `at` position when available; fall back to entity bounding box corner
+      const [px, py] = symbolAt ?? [bounds.maxX, bounds.maxY]
       symbolElements.push(
-        <Html key={`icons-${eid}`} position={[bounds.maxX, bounds.maxY, 0.001]} style={{ pointerEvents: 'auto' }}>
+        <Html key={`icons-${eid}`} position={[px, py, 0.001]} style={{ pointerEvents: 'auto' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
             {symbolIcons.map(({ url, key }) => (
               <ConstraintTile key={key} url={url} id={key} featureId={featureId} entityId={eid} />
@@ -785,6 +803,156 @@ function DragPlane() {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Draw plane — captures pointer for entity insertion when a drawing tool is active
+// ---------------------------------------------------------------------------
+
+function computePreviewPts(
+  tool: string,
+  pts: [number, number][],
+  hover: [number, number] | null,
+): [number, number, number][] | null {
+  const h = hover
+  if (tool === 'line' && pts.length === 1 && h) {
+    return [[pts[0][0], pts[0][1], 0], [h[0], h[1], 0]]
+  }
+  if (tool === 'circle' && pts.length === 1 && h) {
+    const r = Math.hypot(h[0] - pts[0][0], h[1] - pts[0][1])
+    return sampleArc(pts[0][0], pts[0][1], r, 0, 0)
+  }
+  if (tool === 'arc' && pts.length === 2 && h) {
+    const r = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1])
+    const aStart = Math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0]) * (180 / Math.PI)
+    const aEnd = Math.atan2(h[1] - pts[0][1], h[0] - pts[0][0]) * (180 / Math.PI)
+    return sampleArc(pts[0][0], pts[0][1], r, aStart, aEnd)
+  }
+  if (tool === 'arc' && pts.length === 1 && h) {
+    // Show a small dot at center (first point) and line to hover (radius indicator)
+    return [[pts[0][0], pts[0][1], 0], [h[0], h[1], 0]]
+  }
+  if (tool === 'rect' && pts.length === 1 && h) {
+    const [x0, y0] = pts[0]
+    const [x1, y1] = h
+    return [[x0, y0, 0], [x1, y0, 0], [x1, y1, 0], [x0, y1, 0], [x0, y0, 0]]
+  }
+  return null
+}
+
+function DrawPreview({ featureId, activeFeatureId }: { featureId: string; activeFeatureId?: string }) {
+  const activeTool = useSketchEditorStore(s => s.activeTool)
+  const drawPoints = useSketchEditorStore(s => s.drawPoints)
+  const drawHover = useSketchEditorStore(s => s.drawHover)
+
+  if (featureId !== activeFeatureId) return null
+  if (activeTool === 'select') return null
+
+  const previewPts = computePreviewPts(activeTool, drawPoints, drawHover)
+
+  return (
+    <>
+      {/* Placed points (already clicked) */}
+      {drawPoints.map((pt, i) => (
+        <Dot key={i} x={pt[0]} y={pt[1]} px={4} color={COLOR_PREVIEW} billboard />
+      ))}
+      {/* Hover cursor dot */}
+      {drawHover && activeTool === 'point' && (
+        <Dot x={drawHover[0]} y={drawHover[1]} px={4} color={COLOR_PREVIEW} billboard />
+      )}
+      {/* Preview line/shape */}
+      {previewPts && <Line points={previewPts} color={COLOR_PREVIEW} lineWidth={1} />}
+    </>
+  )
+}
+
+function DrawPlane({ featureId, activeFeatureId }: { featureId: string; activeFeatureId?: string }) {
+  const activeTool = useSketchEditorStore(s => s.activeTool)
+  const drawPoints = useSketchEditorStore(s => s.drawPoints)
+  const addDrawPoint = useSketchEditorStore(s => s.addDrawPoint)
+  const setDrawHover = useSketchEditorStore(s => s.setDrawHover)
+  const clearDraw = useSketchEditorStore(s => s.clearDraw)
+  const onMutation = useSketchEditorStore(s => s.onMutation)
+  const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
+
+  if (featureId !== activeFeatureId) return null
+  if (activeTool === 'select' || activeTool === 'dimension') return null
+
+  const handleDown = (x: number, y: number) => {
+    const pts = drawPoints
+
+    if (activeTool === 'point') {
+      onMutation?.({ type: 'add_entity', featureId, kind: 'point', params: [x, y] })
+      // keep tool active for repeated point insertion
+
+    } else if (activeTool === 'line') {
+      if (pts.length === 0) {
+        addDrawPoint([x, y])
+      } else {
+        onMutation?.({ type: 'add_entity', featureId, kind: 'line_segment',
+          params: [pts[0][0], pts[0][1], x, y] })
+        clearDraw()
+        setActiveTool('select')
+      }
+
+    } else if (activeTool === 'circle') {
+      if (pts.length === 0) {
+        addDrawPoint([x, y])
+      } else {
+        const r = Math.hypot(x - pts[0][0], y - pts[0][1])
+        if (r > 0) {
+          onMutation?.({ type: 'add_entity', featureId, kind: 'circle',
+            params: [pts[0][0], pts[0][1], r] })
+        }
+        clearDraw()
+        setActiveTool('select')
+      }
+
+    } else if (activeTool === 'arc') {
+      if (pts.length === 0) {
+        addDrawPoint([x, y])           // center
+      } else if (pts.length === 1) {
+        addDrawPoint([x, y])           // start point
+      } else {
+        // pts[0]=center, pts[1]=start, [x,y]=end
+        const r = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1])
+        const aStart = Math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0]) * (180 / Math.PI)
+        const aEnd = Math.atan2(y - pts[0][1], x - pts[0][0]) * (180 / Math.PI)
+        if (r > 0) {
+          onMutation?.({ type: 'add_entity', featureId, kind: 'arc',
+            params: [pts[0][0], pts[0][1], r, aStart, aEnd] })
+        }
+        clearDraw()
+        setActiveTool('select')
+      }
+
+    } else if (activeTool === 'rect') {
+      if (pts.length === 0) {
+        addDrawPoint([x, y])
+      } else {
+        const [x0, y0] = pts[0]
+        // 4 line segments for the rectangle
+        onMutation?.({ type: 'add_entity', featureId, kind: 'line_segment', params: [x0, y0, x, y0] })
+        onMutation?.({ type: 'add_entity', featureId, kind: 'line_segment', params: [x, y0, x, y] })
+        onMutation?.({ type: 'add_entity', featureId, kind: 'line_segment', params: [x, y, x0, y] })
+        onMutation?.({ type: 'add_entity', featureId, kind: 'line_segment', params: [x0, y, x0, y0] })
+        clearDraw()
+        setActiveTool('select')
+      }
+    }
+  }
+
+  return (
+    <mesh
+      position={[0, 0, -0.002]}
+      onPointerMove={e => { e.stopPropagation(); setDrawHover([e.point.x, e.point.y]) }}
+      onPointerDown={e => { e.stopPropagation(); handleDown(e.point.x, e.point.y) }}
+      onPointerOut={() => setDrawHover(null)}
+    >
+      <planeGeometry args={[100000, 100000]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
+    </mesh>
+  )
+}
+
 // Apply drag offset to sketch for optimistic preview
 function applyDragPreview(sketch: Sketch, drag: { type?: string; entityId: string; vertexKey: string; startWorld: [number, number]; currentWorld: [number, number] }): Sketch {
   const dx = drag.currentWorld[0] - drag.startWorld[0]
@@ -837,9 +1005,10 @@ interface Geometry3DProps {
   solved: Sketch
   constraints?: Constraints
   topology?: Topology
+  activeFeatureId?: string
 }
 
-export default function Geometry3D({ featureId, solved, constraints, topology }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, constraints, topology, activeFeatureId }: Geometry3DProps) {
   const drag = useSketchEditorStore(s => s.drag)
   // During drag on this feature, show optimistic preview
   const displaySketch = useMemo(() => {
@@ -854,6 +1023,8 @@ export default function Geometry3D({ featureId, solved, constraints, topology }:
       <EntityLines sketch={displaySketch} featureId={featureId} color={COLOR_SOLVED} lineWidth={2} />
       {constraints && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
       <DragPlane />
+      <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} />
+      <DrawPlane featureId={featureId} activeFeatureId={activeFeatureId} />
     </group>
   )
 }

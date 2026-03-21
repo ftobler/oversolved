@@ -64,8 +64,8 @@ export function applyMoveVertex(
   const params = initial.get(entityId) as YAMLSeq | undefined
   if (!params) return doc
 
-  params.set(indices[0], Math.round(to[0] * 1000) / 1000)
-  params.set(indices[1], Math.round(to[1] * 1000) / 1000)
+  params.set(indices[0], Math.round(to[0] * 1e6) / 1e6)
+  params.set(indices[1], Math.round(to[1] * 1e6) / 1e6)
   return doc
 }
 
@@ -219,8 +219,8 @@ export function applyMoveEntity(
   for (const [xi, yi] of coordPairs) {
     const x = params.get(xi) as number
     const y = params.get(yi) as number
-    params.set(xi, Math.round((x + dx) * 1000) / 1000)
-    params.set(yi, Math.round((y + dy) * 1000) / 1000)
+    params.set(xi, Math.round((x + dx) * 1e6) / 1e6)
+    params.set(yi, Math.round((y + dy) * 1e6) / 1e6)
   }
   return doc
 }
@@ -247,6 +247,65 @@ export function applySetConstraintValue(
       return doc
     }
   }
+  return doc
+}
+
+const KIND_PREFIX: Record<string, string> = {
+  line_segment: 'line',
+  circle:       'circle',
+  arc:          'arc',
+  point:        'point',
+}
+
+/**
+ * Add a new entity to a feature's entities list and initial params.
+ * Generates a unique entity ID based on kind prefix.
+ */
+export function applyAddEntity(
+  doc: Document,
+  featureId: string,
+  kind: string,
+  params: number[],
+): Document {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return doc
+
+  // Collect existing entity IDs for uniqueness
+  const existingIds = new Set<string>()
+  const entList = feature.get('entities') as YAMLSeq | undefined
+  if (entList) {
+    for (const item of entList.items) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const id = (item as any).get?.('id')
+      if (id) existingIds.add(id)
+    }
+  }
+
+  const prefix = KIND_PREFIX[kind] ?? kind
+  let idx = 1
+  let eid = `${prefix}${idx}`
+  while (existingIds.has(eid)) { idx++; eid = `${prefix}${idx}` }
+
+  // Add to entities list
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entryNode = doc.createNode({ id: eid, kind }) as any
+  if (!entList) {
+    feature.set('entities', doc.createNode([]))
+    ;(feature.get('entities') as YAMLSeq).add(entryNode)
+  } else {
+    entList.add(entryNode)
+  }
+
+  // Add to initial params
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let initial = feature.get('initial') as any
+  if (!initial) {
+    feature.set('initial', doc.createNode({}))
+    initial = feature.get('initial')
+  }
+  const roundedParams = params.map(p => Math.round(p * 1e6) / 1e6)
+  initial.set(eid, doc.createNode(roundedParams))
+
   return doc
 }
 

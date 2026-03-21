@@ -7,6 +7,7 @@ export type Mutation =
   | { type: 'add_constraint'; featureId: string; kind: string; targets: string[] }
   | { type: 'set_constraint_value'; featureId: string; constraintId: string; value: number }
   | { type: 'delete'; targets: string[] }
+  | { type: 'add_entity'; featureId: string; kind: string; params: number[] }
 
 export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'circle' | 'arc' | 'point'
 
@@ -28,6 +29,8 @@ interface SketchEditorState {
   onMutation: ((m: Mutation) => void) | null
   hoveredConstraintEntityIds: Set<string>  // entity IDs highlighted by constraint hover
   activeTool: ActiveTool
+  drawPoints: [number, number][]
+  drawHover: [number, number] | null
 
   // --- actions ---
   toggleSelect: (id: string) => void
@@ -39,6 +42,9 @@ interface SketchEditorState {
   setActiveTool: (tool: ActiveTool) => void
   applyConstraint: (kind: string) => void
   deleteSelected: () => void
+  addDrawPoint: (pt: [number, number]) => void
+  setDrawHover: (pt: [number, number] | null) => void
+  clearDraw: () => void
 }
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
@@ -48,6 +54,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   onMutation: null,
   hoveredConstraintEntityIds: new Set(),
   activeTool: 'select',
+  drawPoints: [],
+  drawHover: null,
 
   toggleSelect: (id) =>
     set(s => {
@@ -67,7 +75,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setHoveredConstraintEntities: (ids) => set({ hoveredConstraintEntityIds: ids }),
 
-  setActiveTool: (tool) => set({ activeTool: tool }),
+  setActiveTool: (tool) => set({ activeTool: tool, drawPoints: [], drawHover: null }),
 
   applyConstraint: (kind) => {
     const { selection, onMutation } = get()
@@ -85,4 +93,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     onMutation({ type: 'delete', targets: [...selection] })
     set({ selection: new Set() })
   },
+
+  addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),
+  setDrawHover: (pt) => set({ drawHover: pt }),
+  clearDraw: () => set({ drawPoints: [], drawHover: null }),
 }))

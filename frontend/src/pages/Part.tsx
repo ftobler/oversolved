@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { parse as parseYaml } from 'yaml'
 import Viewport from '../components/Viewport'
@@ -6,7 +6,7 @@ import type { Feature, SketchData } from '../components/Viewport'
 import type { Sketch, Constraints } from '../components/SketchSvg'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import type { Mutation } from '../stores/sketchEditorStore'
-import { parseYamlDoc, applyMoveVertex, applyMoveEntity, applyAddConstraint, applyDeleteElements, applySetConstraintValue } from '../utils/yamlMutations'
+import { parseYamlDoc, applyMoveVertex, applyMoveEntity, applyAddConstraint, applyDeleteElements, applySetConstraintValue, applyAddEntity } from '../utils/yamlMutations'
 import { registerCommand, unregisterCommand, dispatchKey } from '../stores/commandRegistry'
 import './Part.css'
 import toolbarLineIcon from '../assets/icons/toolbar-line.svg'
@@ -172,6 +172,14 @@ export default function Part() {
   }
   const [mode, setMode] = useState<'sketch' | 'feature' | 'code'>('sketch')
   const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
+
+  const activeSketchFeatureId = useMemo(() => {
+    const limit = rollbackPosition ?? features.length
+    const sketches = features
+      .slice(0, limit)
+      .filter(f => f.kind === 'sketch' && visibleFeatures.has(f.id))
+    return sketches.length > 0 ? sketches[sketches.length - 1].id : undefined
+  }, [features, rollbackPosition, visibleFeatures])
   const [solveResult, setSolveResult] = useState<string>('')
   const [solveResults, setSolveResults] = useState<Record<string, SketchData>>({})
   const [viewportReset, setViewportReset] = useState(0)
@@ -228,6 +236,7 @@ export default function Part() {
 
   // Mutation handler: push undo, clear redo, apply YAML AST mutation, re-solve
   const handleMutation = useCallback((m: Mutation) => {
+    setSolveError(null)
     const current = contentRef.current
     setUndoStack(prev => [...prev, current])
     setRedoStack([])
@@ -247,6 +256,9 @@ export default function Part() {
         break
       case 'delete':
         applyDeleteElements(doc, m.targets)
+        break
+      case 'add_entity':
+        applyAddEntity(doc, m.featureId, m.kind, m.params)
         break
     }
     const newContent = doc.toString()
@@ -294,9 +306,13 @@ export default function Part() {
     registerCommand('undo', handleUndo)
     registerCommand('redo', handleRedo)
     registerCommand('deleteSelected', () => useSketchEditorStore.getState().deleteSelected())
-    registerCommand('applyDimension', () => useSketchEditorStore.getState().applyConstraint('length'))
+    registerCommand('applyDimension', () => useSketchEditorStore.getState().setActiveTool('dimension'))
     registerCommand('applyHorizontal', () => useSketchEditorStore.getState().applyConstraint('horizontal'))
     registerCommand('applyVertical', () => useSketchEditorStore.getState().applyConstraint('vertical'))
+    registerCommand('cancelDraw', () => {
+      useSketchEditorStore.getState().clearDraw()
+      useSketchEditorStore.getState().setActiveTool('select')
+    })
     window.addEventListener('keydown', dispatchKey)
     return () => {
       window.removeEventListener('keydown', dispatchKey)
@@ -306,6 +322,7 @@ export default function Part() {
       unregisterCommand('applyDimension')
       unregisterCommand('applyHorizontal')
       unregisterCommand('applyVertical')
+      unregisterCommand('cancelDraw')
     }
   }, [handleUndo, handleRedo])
 
@@ -649,7 +666,12 @@ export default function Part() {
 
           </div>
 
-          {solveError && <div className="solve-error-banner">Solver error: {solveError}</div>}
+          {solveError && (
+            <div className="solve-error-banner">
+              Solver error: {solveError}
+              <button className="solve-error-dismiss" onClick={() => setSolveError(null)}>×</button>
+            </div>
+          )}
           {loading && <p className="status">Loading document...</p>}
           {error && <p className="status error">Error: {error}</p>}
           {!loading && !error && (
@@ -676,7 +698,7 @@ export default function Part() {
                   </div>
                 </div>
               )}
-              {mode !== 'code' && <Viewport features={features as Feature[]} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} />}
+              {mode !== 'code' && <Viewport features={features as Feature[]} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} />}
             </>
           )}
         </div>
