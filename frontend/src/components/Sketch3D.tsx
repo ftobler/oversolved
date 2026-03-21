@@ -130,7 +130,7 @@ const POINT_HIT_PIXELS = 20
 const POINT_HIT_PIXELS_Z_OFFSET = 10
 
 // Set to true to visualise hit geometry (orange cylinders for edges, blue spheres for vertices)
-const DEBUG_HIT = true
+const DEBUG_HIT = false
 
 /** One invisible cylinder per segment. Radius scales to HIT_PIXELS each frame so
  *  coverage is gapless at any zoom. Placed at z=-0.001 so vertex spheres (z=0,
