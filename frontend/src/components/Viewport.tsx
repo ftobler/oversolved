@@ -7,7 +7,7 @@ import Sketch3D from './Sketch3D'
 import { CubeGizmoCanvas } from './CubeGizmo'
 import { drawCubeGizmo, type Pv, type Hit } from './CubeGizmo.utils'
 
-const INITIAL_POSITION: [number, number, number] = [0, 0, 5]
+const INITIAL_POSITION: [number, number, number] = [0, 0, 100]  // camera initial position
 const INITIAL_ZOOM = 200
 
 // ── Origin marker ─────────────────────────────────────────────────────────────
@@ -201,9 +201,10 @@ export default function Viewport({
       <Canvas
         style={{ width: '100%', height: '100%', background: '#111' }}
         gl={{ antialias: true, logarithmicDepthBuffer: true }}
+        gl={{ antialias: true }}
         onCreated={onCreated}
       >
-        <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={0.1} far={1000000000} />
+        <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={-1000000} far={1000000} />
         <SceneController
           resetTrigger={resetTrigger}
           canvasRef={canvasRef}
