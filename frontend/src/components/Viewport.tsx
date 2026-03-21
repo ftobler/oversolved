@@ -4,8 +4,8 @@ import { OrthographicCamera, OrbitControls, Line, Text } from '@react-three/drei
 import * as THREE from 'three'
 import type { Sketch, Constraints, Topology } from './SketchSvg'
 import Sketch3D from './Sketch3D'
-import { CubeGizmoCanvas, drawCubeGizmo } from './CubeGizmo'
-import type { Pv, Hit } from './CubeGizmo'
+import { CubeGizmoCanvas } from './CubeGizmo'
+import { drawCubeGizmo, type Pv, type Hit } from './CubeGizmo.utils'
 
 const INITIAL_POSITION: [number, number, number] = [0, 0, 5]
 const INITIAL_ZOOM = 200
@@ -102,6 +102,7 @@ function SceneController({ resetTrigger, canvasRef, pvRef, hoverRef, snapRef, ca
     if (!mounted.current) { mounted.current = true; return }
     camera.position.set(...INITIAL_POSITION)
     if ('zoom' in camera) {
+      // eslint-disable-next-line react-hooks/immutability
       (camera as { zoom: number; updateProjectionMatrix: () => void }).zoom = INITIAL_ZOOM
       camera.updateProjectionMatrix()
     }
