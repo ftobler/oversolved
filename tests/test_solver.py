@@ -2736,3 +2736,91 @@ features:
 
     # Verify the sketch is fully constrained
     assert result["sketch_1"]["status"] == "fully_constrained"
+
+
+
+
+def test_venn_diagram_two_circles(sketch_log):
+    """Test Venn diagram with two overlapping circles."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Venn Diagram"
+    initial:
+      c1: [0.5, 0.5]
+      c2: [1.5, 0.5]
+    entities:
+      - id: c1
+        kind: point
+      - id: c2
+        kind: point
+      - id: circle1
+        kind: circle
+      - id: circle2
+        kind: circle
+    constraints:
+      # Circle 1 center fixed at origin (0.5, 0.5)
+      - id: c_c1_fixed
+        kind: fixed
+        target: {entity: c1}
+        x: 0.5
+        y: 0.5
+      # Circle 1 center coincident with point
+      - id: c_circle1_center
+        kind: coincident
+        a: {entity: circle1, point: center}
+        b: {entity: c1}
+      # Circle 1 radius
+      - id: c_circle1_radius
+        kind: radius
+        target: {entity: circle1}
+        value: 0.6
+      # Circle 2 center coincident with point
+      - id: c_circle2_center
+        kind: coincident
+        a: {entity: circle2, point: center}
+        b: {entity: c2}
+      # Circle 2 radius (same as circle 1 for symmetric Venn diagram)
+      - id: c_circle2_radius
+        kind: radius
+        target: {entity: circle2}
+        value: 0.6
+      # c2 fixed with x-distance of 1.0 from c1
+      - id: c_c2_fixed
+        kind: fixed
+        target: {entity: c2}
+        x: 1.5
+        y: 0.5
+"""
+    result = solve(yaml_str)
+    sketch_log["test_venn_diagram_two_circles"] = result
+
+    # Verify both circles are present
+    assert "circle1" in result["sketch_1"]["geometry"]["solved"]
+    assert "circle2" in result["sketch_1"]["geometry"]["solved"]
+
+    # Verify circle 1
+    circle1 = result["sketch_1"]["geometry"]["solved"]["circle1"]
+    assert "center" in circle1
+    assert "radius" in circle1
+    assert abs(circle1["radius"] - 0.6) < 0.01
+
+    # Verify circle 2
+    circle2 = result["sketch_1"]["geometry"]["solved"]["circle2"]
+    assert "center" in circle2
+    assert "radius" in circle2
+    assert abs(circle2["radius"] - 0.6) < 0.01
+
+    # Verify the circles overlap (distance between centers < sum of radii)
+    c1_center = circle1["center"]
+    c2_center = circle2["center"]
+    dist = ((c1_center[0] - c2_center[0])**2 + (c1_center[1] - c2_center[1])**2)**0.5
+    sum_radii = circle1["radius"] + circle2["radius"]
+    assert dist < sum_radii, "Circles should overlap for Venn diagram"
+
+    # Verify the sketch is fully constrained
+    assert result["sketch_1"]["status"] == "fully_constrained"
