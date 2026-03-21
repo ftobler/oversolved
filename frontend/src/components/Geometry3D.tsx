@@ -338,7 +338,11 @@ function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1 }: E
   const onClick = useCallback((ev: { stopPropagation: () => void }) => {
     ev.stopPropagation()
     if (activeTool === 'dimension') {
-      onMutation?.({ type: 'add_constraint', featureId, kind: 'length', targets: [`entity:${featureId}:${entityId}`] })
+      const input = window.prompt('Enter dimension value:')
+      if (input === null) return
+      const val = parseFloat(input)
+      if (isNaN(val) || val <= 0) return
+      onMutation?.({ type: 'add_constraint', featureId, kind: 'length', targets: [`entity:${featureId}:${entityId}`], value: val })
       setActiveTool('select')
     } else {
       toggleSelect(entId)
@@ -455,7 +459,8 @@ function ConstraintTile({ url, id, featureId, highlightIds }: { url: string; id:
       key={id}
       onMouseEnter={() => { setHovered(true); setHoveredConstraintEntities(new Set(highlightIds)) }}
       onMouseLeave={() => { setHovered(false); setHoveredConstraintEntities(new Set()) }}
-      onClick={() => toggleSelect(cId)}
+      onClick={(e) => { e.stopPropagation(); toggleSelect(cId) }}
+      onPointerDown={(e) => e.stopPropagation()}
       style={{
         width: ICON_SIZE,
         height: ICON_SIZE,

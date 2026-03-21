@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { parse as parseYaml } from 'yaml'
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
 import type { Feature, SketchData } from '../components/Viewport'
 import type { Sketch, Constraints } from '../components/SketchSvg'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import type { Mutation } from '../stores/sketchEditorStore'
-import { parseYamlDoc, applyMoveVertex, applyMoveEntity, applyAddConstraint, applyDeleteElements, applySetConstraintValue, applyAddEntity, applyAddRect } from '../utils/yamlMutations'
+import type { PartDoc } from '../utils/yamlMutations'
+import { applyMoveVertex, applyMoveEntity, applyAddConstraint, applyDeleteElements, applySetConstraintValue, applyAddEntity, applyAddRect } from '../utils/yamlMutations'
 import { registerCommand, unregisterCommand, dispatchKey } from '../stores/commandRegistry'
 import './Part.css'
 import toolbarLineIcon from '../assets/icons/toolbar-line.svg'
@@ -122,57 +123,30 @@ function SketchToolbar({ onResetViewport }: { onResetViewport: () => void }) {
   )
 }
 
+const BUILT_IN_FEATURES: Array<{ id: string; kind?: string }> = [
+  { id: 'Origin', kind: 'origin' },
+  { id: 'Top', kind: 'plane' },
+  { id: 'Front', kind: 'plane' },
+  { id: 'Right', kind: 'plane' },
+]
+
+function extractFeatures(doc: PartDoc): Array<{ id: string; kind?: string }> {
+  return [...BUILT_IN_FEATURES, ...(doc.features ?? []).map(f => ({ id: f.id, kind: f.kind }))]
+}
+
 export default function Part() {
   const { docId } = useParams<{ docId: string }>()
   const navigate = useNavigate()
-  const [content, setContent] = useState('')
+  const [doc, setDoc] = useState<PartDoc | null>(null)
+  const docRef = useRef<PartDoc | null>(null)
+  const [codeText, setCodeText] = useState('')  // textarea content in code mode
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(docId || '')
   const [features, setFeatures] = useState<Array<{ id: string; kind?: string }>>([])
   const [visibleFeatures, setVisibleFeatures] = useState<Set<string>>(new Set())
-
-  const extractFeatures = (yaml: string) => {
-    // Built-in features
-    const builtInFeatures: Array<{ id: string; kind?: string }> = [
-      { id: 'Origin', kind: 'origin' },
-      { id: 'Top', kind: 'plane' },
-      { id: 'Front', kind: 'plane' },
-      { id: 'Right', kind: 'plane' },
-    ]
-
-    // Extract top-level features with their kind
-    const lines = yaml.split('\n')
-    const features: Array<{ id: string; kind?: string }> = []
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
-      const idMatch = line.match(/^\s{0,3}- id:\s*(.+?)$/)
-      if (idMatch) {
-        const feature: { id: string; kind?: string } = { id: idMatch[1].trim() }
-
-        // Look ahead for kind field (within next 10 lines)
-        for (let j = i + 1; j < Math.min(i + 10, lines.length); j++) {
-          const nextLine = lines[j]
-          // Stop looking if we hit another top-level item
-          if (nextLine.match(/^\s{0,3}- id:/)) {
-            break
-          }
-          const kindMatch = nextLine.match(/^\s+kind:\s*(.+?)$/)
-          if (kindMatch) {
-            feature.kind = kindMatch[1].trim()
-            break
-          }
-        }
-
-        features.push(feature)
-      }
-    }
-
-    return [...builtInFeatures, ...features]
-  }
-  const [mode, setMode] = useState<'sketch' | 'feature' | 'code'>('sketch')
+  const [mode, setModeRaw] = useState<'sketch' | 'feature' | 'code'>('sketch')
   const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
 
   const activeSketchFeatureId = useMemo(() => {
@@ -187,25 +161,41 @@ export default function Part() {
   const [viewportReset, setViewportReset] = useState(0)
   const [solving, setSolving] = useState(false)
   const [solveTime, setSolveTime] = useState<number | null>(null)
-  const [undoStack, setUndoStack] = useState<string[]>([])
-  const [redoStack, setRedoStack] = useState<string[]>([])
+  const [undoStack, setUndoStack] = useState<PartDoc[]>([])
+  const [redoStack, setRedoStack] = useState<PartDoc[]>([])
   const [solveError, setSolveError] = useState<string | null>(null)
-  const contentRef = useRef(content)
-  contentRef.current = content
 
-  // Re-solve: parse YAML, POST to /api/solve, update results.
+  // Switching modes: serialize doc → codeText when entering code; parse codeText → doc when leaving code
+  const setMode = useCallback((newMode: 'sketch' | 'feature' | 'code') => {
+    setModeRaw(prev => {
+      if (prev === 'code' && newMode !== 'code') {
+        // Leaving code tab — parse edited text back into doc
+        try {
+          const parsed = parseYaml(codeText) as PartDoc
+          docRef.current = parsed
+          setDoc(parsed)
+          setFeatures(extractFeatures(parsed))
+        } catch { /* ignore parse errors — keep existing doc */ }
+      }
+      if (newMode === 'code' && docRef.current) {
+        setCodeText(stringifyYaml(docRef.current))
+      }
+      return newMode
+    })
+  }, [codeText])
+
+  // Re-solve: POST doc as JSON to /api/solve, update results.
   // On error: keep previous geometry visible; show error banner.
   // TODO: backend should return 200 with partial results instead of 400 for solver errors.
-  const reSolve = useCallback(async (yamlContent: string) => {
+  const reSolve = useCallback(async (d: PartDoc) => {
     setSolving(true)
     setSolveTime(null)
     const startTime = performance.now()
     try {
-      const parsedContent = parseYaml(yamlContent)
       const response = await fetch('/api/solve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsedContent),
+        body: JSON.stringify(d),
       })
       const data = await response.json()
       const endTime = performance.now()
@@ -216,17 +206,16 @@ export default function Part() {
       } else {
         const result = data.result as Record<string, { geometry?: { initial?: Sketch; solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
 
-        // Build constraintId → involved entity IDs from the YAML definitions so the 3D view
-        // can highlight ALL entities involved in a constraint on hover (not just the primary one).
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // Build constraintId → involved entity IDs from the doc so the 3D view
+        // can highlight ALL entities involved in a constraint on hover.
         const constraintEntities: Record<string, Record<string, string[]>> = {}
-        for (const f of (parsedContent?.features ?? [])) {
+        for (const f of (d.features ?? [])) {
           const entityMap: Record<string, string[]> = {}
           for (const c of (f.constraints ?? [])) {
             const ids: string[] = []
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const pick = (obj: any) => { if (obj?.entity) ids.push(obj.entity) }
-            pick(c.target); pick(c.a); pick(c.b)
+            if (c.target?.entity) ids.push(c.target.entity)
+            if (c.a?.entity) ids.push(c.a.entity)
+            if (c.b?.entity) ids.push(c.b.entity)
             if (ids.length) entityMap[c.id] = ids
           }
           constraintEntities[f.id] = entityMap
@@ -260,41 +249,41 @@ export default function Part() {
     }
   }, [])
 
-  // Mutation handler: push undo, clear redo, apply YAML AST mutation, re-solve
+  // Mutation handler: deep-clone doc, apply mutation, update state, re-solve
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)
-    const current = contentRef.current
+    const current = docRef.current
+    if (!current) return
+    const next: PartDoc = JSON.parse(JSON.stringify(current))
     setUndoStack(prev => [...prev, current])
     setRedoStack([])
-    const doc = parseYamlDoc(current)
     switch (m.type) {
       case 'move_vertex':
-        applyMoveVertex(doc, m.featureId, m.entityId, m.vertexKey, m.to)
+        applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to)
         break
       case 'move_entity':
-        applyMoveEntity(doc, m.featureId, m.entityId, m.delta)
+        applyMoveEntity(next, m.featureId, m.entityId, m.delta)
         break
       case 'add_constraint':
-        applyAddConstraint(doc, m.featureId, m.kind, m.targets)
+        applyAddConstraint(next, m.featureId, m.kind, m.targets, m.value)
         break
       case 'set_constraint_value':
-        applySetConstraintValue(doc, m.featureId, m.constraintId, m.value)
+        applySetConstraintValue(next, m.featureId, m.constraintId, m.value)
         break
       case 'delete':
-        applyDeleteElements(doc, m.targets)
+        applyDeleteElements(next, m.targets)
         break
       case 'add_entity':
-        applyAddEntity(doc, m.featureId, m.kind, m.params)
+        applyAddEntity(next, m.featureId, m.kind, m.params)
         break
       case 'add_rect':
-        applyAddRect(doc, m.featureId, m.p0, m.p1)
+        applyAddRect(next, m.featureId, m.p0, m.p1)
         break
     }
-    const newContent = doc.toString()
-    contentRef.current = newContent  // sync update so back-to-back mutations see the latest content
-    setContent(newContent)
-    setFeatures(extractFeatures(newContent))
-    reSolve(newContent)
+    docRef.current = next
+    setDoc(next)
+    setFeatures(extractFeatures(next))
+    reSolve(next)
   }, [reSolve])
 
   // Register mutation handler in editor store
@@ -309,8 +298,9 @@ export default function Part() {
       if (prev.length === 0) return prev
       const next = [...prev]
       const last = next.pop()!
-      setRedoStack(r => [...r, contentRef.current])
-      setContent(last)
+      if (docRef.current) setRedoStack(r => [...r, docRef.current!])
+      docRef.current = last
+      setDoc(last)
       setFeatures(extractFeatures(last))
       reSolve(last)
       return next
@@ -323,8 +313,9 @@ export default function Part() {
       if (prev.length === 0) return prev
       const next = [...prev]
       const last = next.pop()!
-      setUndoStack(u => [...u, contentRef.current])
-      setContent(last)
+      if (docRef.current) setUndoStack(u => [...u, docRef.current!])
+      docRef.current = last
+      setDoc(last)
       setFeatures(extractFeatures(last))
       reSolve(last)
       return next
@@ -365,8 +356,10 @@ export default function Part() {
         return r.json()
       })
       .then(data => {
-        setContent(data.content)
-        const extracted = extractFeatures(data.content)
+        const parsed = parseYaml(data.content) as PartDoc
+        docRef.current = parsed
+        setDoc(parsed)
+        const extracted = extractFeatures(parsed)
         setFeatures(extracted)
         setVisibleFeatures(new Set(extracted.map(f => f.id)))
         setRollbackPosition(extracted.length)
@@ -389,7 +382,7 @@ export default function Part() {
       const response = await fetch(`/api/documents/${editName}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content: stringifyYaml(doc ?? {}) }),
       })
 
       if (!response.ok) throw new Error('Failed to rename document')
@@ -412,7 +405,7 @@ export default function Part() {
       const response = await fetch(`/api/documents/${docId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content: stringifyYaml(doc ?? {}) }),
       })
 
       if (!response.ok) throw new Error('Failed to save document')
@@ -424,41 +417,26 @@ export default function Part() {
 
   const handleRun = async () => {
     setSolveResult('')
-    // Convert JSON result to YAML format for the code panel display
-    const jsonToYaml = (obj: unknown, indent = 0): string => {
-      if (obj === null || obj === undefined) return 'null'
-      if (typeof obj === 'string') return obj
-      if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj)
-      const nextSpaces = '  '.repeat(indent + 1)
-      if (Array.isArray(obj)) {
-        if (obj.length === 0) return '[]'
-        return obj
-          .map(item => `${nextSpaces}- ${jsonToYaml(item, indent + 1).trimStart()}`)
-          .join('\n')
-      }
-      if (typeof obj === 'object') {
-        const lines = Object.entries(obj).map(([key, value]) => {
-          const yamlValue = jsonToYaml(value, indent + 1)
-          if (typeof value === 'object' && value !== null) {
-            return `${nextSpaces}${key}:\n${yamlValue}`
-          }
-          return `${nextSpaces}${key}: ${yamlValue}`
-        })
-        return lines.join('\n')
-      }
-      return String(obj)
+    // Parse the code tab textarea, update doc, then solve
+    let parsed: PartDoc
+    try {
+      parsed = parseYaml(codeText) as PartDoc
+    } catch (e) {
+      setSolveResult(`Parse error: ${e}`)
+      return
     }
+    docRef.current = parsed
+    setDoc(parsed)
+    setFeatures(extractFeatures(parsed))
 
-    // Re-solve and also capture the display YAML
     setSolving(true)
     setSolveTime(null)
     const startTime = performance.now()
     try {
-      const parsedContent = parseYaml(content)
       const response = await fetch('/api/solve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsedContent),
+        body: JSON.stringify(parsed),
       })
       const data = await response.json()
       const endTime = performance.now()
@@ -467,7 +445,7 @@ export default function Part() {
         setSolveResult(data.error || 'Solve failed')
         setSolveResults({})
       } else {
-        setSolveResult(jsonToYaml(data.result))
+        setSolveResult(stringifyYaml(data.result))
         const result = data.result as Record<string, { geometry?: { initial?: Sketch; solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
@@ -710,11 +688,8 @@ export default function Part() {
                 <div className="code-split">
                   <textarea
                     className="code-input"
-                    value={content}
-                    onChange={e => {
-                      setContent(e.target.value)
-                      setFeatures(extractFeatures(e.target.value))
-                    }}
+                    value={codeText}
+                    onChange={e => setCodeText(e.target.value)}
                     placeholder="Document content..."
                     spellCheck="false"
                   />

@@ -2825,7 +2825,7 @@ features:
 
 
 def test_circle_arc_horizontal_constraint(sketch_log):
-    """Circle and arc with horizontal constraint between circle center and arc endpoint."""
+    """Circle and arc fully constrained via horizontal, two verticals, and two radius constraints."""
     yaml_str = """version: 1
 kind: part
 
@@ -2834,14 +2834,26 @@ features:
     kind: sketch
     entities: [ { id: circle1, kind: circle }, { id: arc1, kind: arc } ]
     constraints:
-      [
-        {
-            id: c_horizontal_1,
-            kind: horizontal,
-            a: { entity: circle1, point: center },
-            b: { entity: arc1, point: end }
-          }
-      ]
+      - id: c_horizontal_1
+        kind: horizontal
+        a: { entity: circle1, point: center }
+        b: { entity: arc1, point: end }
+      - id: c_radius_circle
+        kind: radius
+        target: { entity: circle1 }
+        value: 0.5
+      - id: c_radius_arc
+        kind: radius
+        target: { entity: arc1 }
+        value: 0.8
+      - id: c_vertical_1
+        kind: vertical
+        a: { entity: circle1, point: center }
+        b: { entity: arc1, point: start }
+      - id: c_vertical_2
+        kind: vertical
+        a: { entity: circle1, point: center }
+        b: { entity: arc1, point: end }
     initial:
       circle1:
         - -0.010286
@@ -2857,24 +2869,109 @@ features:
     result = solve(yaml_str)
     sketch_log["test_circle_arc_horizontal_constraint"] = result
 
-    # Verify both entities are present
-    assert "circle1" in result["sketch_1"]["geometry"]["solved"]
-    assert "arc1" in result["sketch_1"]["geometry"]["solved"]
-
-    # Verify circle1 has center and radius
     circle1 = result["sketch_1"]["geometry"]["solved"]["circle1"]
-    assert "center" in circle1
-    assert "radius" in circle1
-
-    # Verify arc1 has center, radius, and endpoints
     arc1 = result["sketch_1"]["geometry"]["solved"]["arc1"]
-    assert "center" in arc1
-    assert "radius" in arc1
-    assert "start" in arc1
-    assert "end" in arc1
 
-    # Verify horizontal constraint: circle center and arc end should have same y-coordinate
-    circle_center = circle1["center"]
-    arc_end = arc1["end"]
-    assert abs(circle_center[1] - arc_end[1]) < TOL, \
-        f"Horizontal constraint failed: circle center y={circle_center[1]}, arc end y={arc_end[1]}"
+    # Radius constraints
+    assert abs(circle1["radius"] - 0.5) < TOL, f"circle radius expected 0.5, got {circle1['radius']}"
+    assert abs(arc1["radius"] - 0.8) < TOL, f"arc radius expected 0.8, got {arc1['radius']}"
+
+    # Horizontal: circle center y == arc end y
+    assert abs(circle1["center"][1] - arc1["end"][1]) < TOL, \
+        f"Horizontal failed: circle y={circle1['center'][1]}, arc end y={arc1['end'][1]}"
+
+    # Vertical 1: circle center x == arc start x
+    assert abs(circle1["center"][0] - arc1["start"][0]) < TOL, \
+        f"Vertical 1 failed: circle x={circle1['center'][0]}, arc start x={arc1['start'][0]}"
+
+    # Vertical 2: circle center x == arc end x
+    assert abs(circle1["center"][0] - arc1["end"][0]) < TOL, \
+        f"Vertical 2 failed: circle x={circle1['center'][0]}, arc end x={arc1['end'][0]}"
+
+    assert result["sketch_1"]["status"] == "fully_constrained"
+
+
+def test_empty_sketch_superfluous_constraint(sketch_log):
+    """An empty sketch with a constraint referencing unknown entities is silently ignored."""
+    yaml_str = """version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    entities: []
+    constraints:
+      - id: c_bogus
+        kind: horizontal
+        a: { entity: nonexistent_a, point: center }
+        b: { entity: nonexistent_b, point: end }
+"""
+    result = solve(yaml_str)
+    sketch_log["test_empty_sketch_superfluous_constraint"] = result
+
+    assert "sketch_1" in result
+    assert result["sketch_1"]["status"] == "fully_constrained"
+    assert result["sketch_1"]["geometry"]["solved"] == {}
+
+
+def test_fixed_line_endpoint(sketch_log):
+    """A line with a fixed endpoint constraint should remain at that position."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    initial:
+      line1: [-0.838727, 0.849922, -0.071016, 1.154386]
+    entities:
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_fixed_1
+        kind: fixed
+        target: {entity: line1, point: end}
+"""
+    result = solve(yaml_str)
+    sketch_log["test_fixed_line_endpoint"] = result
+
+    line = result["sketch_1"]["geometry"]["solved"]["line1"]
+    fixed_end = [-0.071016, 1.154386]
+
+    assert abs(line["end"][0] - fixed_end[0]) < TOL, f"end x should be fixed at {fixed_end[0]}, got {line['end'][0]}"
+    assert abs(line["end"][1] - fixed_end[1]) < TOL, f"end y should be fixed at {fixed_end[1]}, got {line['end'][1]}"
+    assert result["sketch_1"]["status"] == "underconstrained"
+
+
+def test_fixed_entire_line(sketch_log):
+    """A line with a fixed constraint on the entire entity should remain fully fixed."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    initial:
+      line1: [-0.838727, 0.849922, -0.071016, 1.154386]
+    entities:
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_fixed_1
+        kind: fixed
+        target: {entity: line1}
+"""
+    result = solve(yaml_str)
+    sketch_log["test_fixed_entire_line"] = result
+
+    line = result["sketch_1"]["geometry"]["solved"]["line1"]
+    fixed_start = [-0.838727, 0.849922]
+    fixed_end = [-0.071016, 1.154386]
+
+    assert abs(line["start"][0] - fixed_start[0]) < TOL, f"start x should be fixed at {fixed_start[0]}, got {line['start'][0]}"
+    assert abs(line["start"][1] - fixed_start[1]) < TOL, f"start y should be fixed at {fixed_start[1]}, got {line['start'][1]}"
+    assert abs(line["end"][0] - fixed_end[0]) < TOL, f"end x should be fixed at {fixed_end[0]}, got {line['end'][0]}"
+    assert abs(line["end"][1] - fixed_end[1]) < TOL, f"end y should be fixed at {fixed_end[1]}, got {line['end'][1]}"
+    assert result["sketch_1"]["status"] == "fully_constrained"

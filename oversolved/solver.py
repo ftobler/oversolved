@@ -289,13 +289,12 @@ def _constraint_render(c: dict, geom: dict) -> dict:
 
     elif kind == "fixed":
         eid = c["target"]["entity"]
+        at = _geom_point(geom, c["target"])
         return {
             "kind": "symbol_fixed",
-            "at": _geom_point(
-                geom,
-                c["target"]),
-            "x": c["x"],
-            "y": c["y"],
+            "at": at,
+            "x": c.get("x", at[0]),
+            "y": c.get("y", at[1]),
             "entity": eid}
 
     return {"kind": "unknown"}
@@ -351,6 +350,22 @@ def _solve_sketch(feature: dict) -> dict:
         entity_offsets[eid] = len(params)
         size = ENTITY_SIZES[entity["kind"]]
         params.extend(initial.get(eid, [0.0] * size))
+
+    def _constraint_entity_ids(c: dict) -> list:
+        """Return all entity IDs referenced by a constraint."""
+        ids = []
+        for key in ("target", "line", "arc", "point"):
+            if key in c and isinstance(c[key], dict) and "entity" in c[key]:
+                ids.append(c[key]["entity"])
+        for key in ("a", "b"):
+            if key in c and isinstance(c[key], dict) and "entity" in c[key]:
+                ids.append(c[key]["entity"])
+        return ids
+
+    constraints = [
+        c for c in constraints
+        if all(eid in entities for eid in _constraint_entity_ids(c))
+    ]
 
     x0 = np.array(params, dtype=np.float64)
 
@@ -479,9 +494,20 @@ def _solve_sketch(feature: dict) -> dict:
                 r.append(ea[0] - eb[0])
                 r.append(ea[1] - eb[1])
             elif kind == "fixed":
-                pt = get_point(x, c["target"])
-                r.append(pt[0] - c["x"])
-                r.append(pt[1] - c["y"])
+                eid = c["target"]["entity"]
+                has_point = "point" in c["target"]
+                has_xy = "x" in c and "y" in c
+                if has_point or has_xy:
+                    pt = get_point(x, c["target"])
+                    fix_x = c.get("x", float(get_point(x0, c["target"])[0]))
+                    fix_y = c.get("y", float(get_point(x0, c["target"])[1]))
+                    r.append(pt[0] - fix_x)
+                    r.append(pt[1] - fix_y)
+                else:
+                    off = entity_offsets[eid]
+                    size = ENTITY_SIZES[entities[eid]["kind"]]
+                    for i in range(size):
+                        r.append(x[off + i] - x0[off + i])
             else:
                 raise ValueError(f"Unknown constraint kind: {kind!r}")
         return np.array(r) if r else np.zeros(0)
@@ -501,7 +527,12 @@ def _solve_sketch(feature: dict) -> dict:
     # Each fixed constraint pins 2 rigid-body DOF (tx, ty). Reduce the 3-DOF
     # rigid-body allowance accordingly so genuinely free parameters are
     # flagged.
-    n_fixed_pinned = sum(2 for c in constraints if c["kind"] == "fixed")
+    n_fixed_pinned = sum(
+        ENTITY_SIZES[entities[c["target"]["entity"]]["kind"]]
+        if ("point" not in c.get("target", {}) and "x" not in c and "y" not in c)
+        else 2
+        for c in constraints if c["kind"] == "fixed"
+    )
     rigid_body_dof = max(0, 3 - n_fixed_pinned)
 
     if final_loss > LOSS_THRESHOLD:
