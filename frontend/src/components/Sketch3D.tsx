@@ -10,7 +10,6 @@ interface Arc { center: [number, number]; radius: number; angle_start: number; a
 interface PointEntity { x: number; y: number; construction?: boolean }
 type Entity = LineSegment | Circle | Arc | PointEntity
 
-const COLOR_INITIAL = '#66bb6a'
 const COLOR_SOLVED = '#4fc3f7'
 const COLOR_CONSTRAINT = '#ffd54f'
 const COLOR_HOVER = '#ffffff'
@@ -66,12 +65,15 @@ function p2w(camera: THREE.Camera): number {
   return 'zoom' in camera ? 1 / (camera as THREE.OrthographicCamera).zoom : 1
 }
 
-/** 10-gon dot with constant pixel radius regardless of zoom. */
-function Dot({ x, y, px, color }: { x: number; y: number; px: number; color: string }) {
+/** 10-gon dot with constant pixel radius regardless of zoom.
+ *  If billboard=true the dot always faces the camera. */
+function Dot({ x, y, px, color, billboard = false }: { x: number; y: number; px: number; color: string; billboard?: boolean }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
   useFrame(() => {
-    if (meshRef.current) meshRef.current.scale.setScalar(px * p2w(camera))
+    if (!meshRef.current) return
+    meshRef.current.scale.setScalar(px * p2w(camera))
+    if (billboard) meshRef.current.quaternion.copy(camera.quaternion)
   })
   return (
     <mesh ref={meshRef} position={[x, y, 0]}>
@@ -123,70 +125,101 @@ function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5, onPoi
   return <Line ref={lineRef} points={points} color={color} lineWidth={lineWidth} dashed dashSize={0.01} gapSize={0.005} onPointerOver={onPointerOver} onPointerOut={onPointerOut} />
 }
 
-const HIT_PIXELS = 14
+const HIT_PIXELS = 8
 const POINT_HIT_PIXELS = 20
+const POINT_HIT_PIXELS_Z_OFFSET = 10
 
-/** Invisible circle-mesh dots spaced densely along a polyline. Uses the same mechanism
- *  as the working endpoint Dot components — circleGeometry is reliably hittable. */
+// Set to true to visualise hit geometry (orange cylinders for edges, blue spheres for vertices)
+const DEBUG_HIT = true
+
+/** One invisible cylinder per segment. Radius scales to HIT_PIXELS each frame so
+ *  coverage is gapless at any zoom. Placed at z=-0.001 so vertex spheres (z=0,
+ *  extending to z=+R) always win the raycast at endpoint positions. */
 function HitPolyline({ pts, onPointerOver, onPointerOut }: {
   pts: [number, number, number][]
   onPointerOver: (e: { stopPropagation: () => void }) => void
   onPointerOut: () => void
 }) {
-  const dotRefs = useRef<(THREE.Mesh | null)[]>([])
+  const segRefs = useRef<(THREE.Mesh | null)[]>([])
   const { camera } = useThree()
 
-  // Sample one dot every ~HIT_PIXELS world-units along each segment
-  const dotPts = useMemo(() => {
-    const result: [number, number, number][] = []
-    for (let i = 0; i < pts.length - 1; i++) {
-      const [x1, y1] = pts[i], [x2, y2] = pts[i + 1]
-      const len = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-      const n = Math.max(1, Math.ceil(len / (HIT_PIXELS / 200))) // 200 = typical zoom
-      for (let j = 0; j <= n; j++) {
-        const t = j / n
-        result.push([x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, 0])
-      }
-    }
-    return result
-  }, [pts])
+  // cylinder default axis is Y; rotate so Y aligns with segment direction
+  const segs = useMemo(() => pts.slice(0, -1).map((p1, i) => {
+    const p2 = pts[i + 1]
+    const cx = (p1[0] + p2[0]) / 2, cy = (p1[1] + p2[1]) / 2
+    const len = Math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+    const angle = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) - Math.PI / 2
+    return { cx, cy, len, angle }
+  }), [pts])
 
   useFrame(() => {
-    const s = HIT_PIXELS * p2w(camera)
-    dotRefs.current.forEach(ref => { if (ref) ref.scale.setScalar(s) })
+    const r = HIT_PIXELS * p2w(camera)
+    segRefs.current.forEach((ref, i) => { if (ref) ref.scale.set(r, segs[i].len, r) })
   })
 
   return (
     <>
-      {dotPts.map((p, i) => (
-        <mesh key={i} ref={el => { dotRefs.current[i] = el }}
-          position={p} onPointerOver={onPointerOver} onPointerOut={onPointerOut}
+      {segs.map((s, i) => s.len > 0 && (
+        <mesh key={i} ref={el => { segRefs.current[i] = el }}
+          position={[s.cx, s.cy, -0.001]} rotation={[0, 0, s.angle]}
+          onPointerOver={onPointerOver} onPointerOut={onPointerOut}
         >
-          <circleGeometry args={[1, 8]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
+          <cylinderGeometry args={[1, 1, 1, 8, 1]} />
+          <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.25 : 0} color="#ff6600" depthWrite={false} side={THREE.DoubleSide} />
         </mesh>
       ))}
     </>
   )
 }
 
-/** Invisible circle hit-target for a point. Larger radius than the visual dot
- *  and placed at z=0.01 so the raycaster picks it before lines/surfaces. */
-function HitDot({ x, y, onPointerOver, onPointerOut }: {
-  x: number; y: number
-  onPointerOver: (e: { stopPropagation: () => void }) => void
-  onPointerOut: () => void
-}) {
-  const meshRef = useRef<THREE.Mesh>(null)
+/** Vertex dot with its own independent hover state. Placed as a sibling (not child)
+ *  of the edge group so hover does not bubble up and highlight the whole entity. */
+/** Square highlight rendered at z=0.001 so it's always visible above lines. */
+function VertexHighlight({ x, y, px, color }: { x: number; y: number; px: number; color: string }) {
+  const groupRef = useRef<THREE.Group>(null)
   const { camera } = useThree()
   useFrame(() => {
-    if (meshRef.current) meshRef.current.scale.setScalar(POINT_HIT_PIXELS * p2w(camera))
+    if (!groupRef.current) return
+    groupRef.current.scale.setScalar(px * p2w(camera))
+    groupRef.current.quaternion.copy(camera.quaternion)
   })
+  const h = 1.4 // half-size of square in local units
+  const pts: [number, number, number][] = [[-h, -h, 0], [h, -h, 0], [h, h, 0], [-h, h, 0], [-h, -h, 0]]
   return (
-    <mesh ref={meshRef} position={[x, y, 0]} onPointerOver={onPointerOver} onPointerOut={onPointerOut}>
-      <sphereGeometry args={[1, 8, 8]} />
-      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-    </mesh>
+    <group ref={groupRef} position={[x, y, 0]}>
+      <Line points={pts} color={color} lineWidth={2} />
+    </group>
+  )
+}
+
+function VertexDot({ x, y, px, baseColor }: { x: number; y: number; px: number; baseColor: string }) {
+  const [hovered, setHovered] = useState(false)
+  const hitRef = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
+  // Offset the hit-sphere toward the camera (not object-space z) so the vertex
+  // always wins the raycast over the 3D edge cylinders regardless of orbit angle.
+  useFrame(() => {
+    if (!hitRef.current) return
+    const scale = p2w(camera)
+    hitRef.current.scale.setScalar(POINT_HIT_PIXELS * scale)
+    // Camera-relative offset: move along view direction toward the camera
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion)
+    const off = POINT_HIT_PIXELS_Z_OFFSET * scale
+    hitRef.current.position.set(x + fwd.x * off, y + fwd.y * off, fwd.z * off)
+  })
+  const color = hovered ? COLOR_HOVER : baseColor
+  return (
+    <group
+      onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
+      onPointerOut={() => setHovered(false)}
+    >
+      <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard />
+      {hovered && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
+      <mesh ref={hitRef} position={[x, y, 0]}>
+        <sphereGeometry args={[1, 8, 8]} />
+        <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.35 : 0} color="#00aaff" depthWrite={false} />
+      </mesh>
+    </group>
   )
 }
 
@@ -262,54 +295,49 @@ function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
     const arc = e as Arc
     const pts = sampleArc(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
     return (
-      <group onPointerOver={onOver} onPointerOut={onOut}>
-        <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
-        {construction
-          ? <DashedLine points={pts} color={color} lineWidth={lw} />
-          : <Line points={pts} color={color} lineWidth={lw} />}
-        <Dot x={arc.start[0]} y={arc.start[1]} px={4} color={color} />
-        <HitDot x={arc.start[0]} y={arc.start[1]} onPointerOver={onOver} onPointerOut={onOut} />
-        <Dot x={arc.end[0]} y={arc.end[1]} px={4} color={color} />
-        <HitDot x={arc.end[0]} y={arc.end[1]} onPointerOver={onOver} onPointerOut={onOut} />
-        <Dot x={arc.center[0]} y={arc.center[1]} px={2.5} color={color} />
-        <HitDot x={arc.center[0]} y={arc.center[1]} onPointerOver={onOver} onPointerOut={onOut} />
-      </group>
+      <>
+        <group>
+          <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
+          {construction
+            ? <DashedLine points={pts} color={color} lineWidth={lw} />
+            : <Line points={pts} color={color} lineWidth={lw} />}
+        </group>
+        <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} />
+        <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} />
+        <VertexDot x={arc.center[0]} y={arc.center[1]} px={2.5} baseColor={baseColor} />
+      </>
     )
   } else if ('start' in e) {
     const line = e as LineSegment
     const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
     return (
-      <group onPointerOver={onOver} onPointerOut={onOut}>
-        <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
-        {construction
-          ? <DashedLine points={pts} color={color} lineWidth={lw} />
-          : <Line points={pts} color={color} lineWidth={lw} />}
-        <Dot x={line.start[0]} y={line.start[1]} px={4} color={color} />
-        <HitDot x={line.start[0]} y={line.start[1]} onPointerOver={onOver} onPointerOut={onOut} />
-        <Dot x={line.end[0]} y={line.end[1]} px={4} color={color} />
-        <HitDot x={line.end[0]} y={line.end[1]} onPointerOver={onOver} onPointerOut={onOut} />
-      </group>
+      <>
+        <group>
+          <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
+          {construction
+            ? <DashedLine points={pts} color={color} lineWidth={lw} />
+            : <Line points={pts} color={color} lineWidth={lw} />}
+        </group>
+        <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} />
+        <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} />
+      </>
     )
   } else if ('x' in e) {
     const pt = e as PointEntity
-    return (
-      <group onPointerOver={onOver} onPointerOut={onOut}>
-        <Dot x={pt.x} y={pt.y} px={5} color={color} />
-        <HitDot x={pt.x} y={pt.y} onPointerOver={onOver} onPointerOut={onOut} />
-      </group>
-    )
+    return <VertexDot x={pt.x} y={pt.y} px={5} baseColor={baseColor} />
   } else {
     const circ = e as Circle
     const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
     return (
-      <group onPointerOver={onOver} onPointerOut={onOut}>
-        <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
-        {construction
-          ? <DashedLine points={pts} color={color} lineWidth={lw} />
-          : <Line points={pts} color={color} lineWidth={lw} />}
-        <Dot x={circ.center[0]} y={circ.center[1]} px={2.5} color={color} />
-        <HitDot x={circ.center[0]} y={circ.center[1]} onPointerOver={onOver} onPointerOut={onOut} />
-      </group>
+      <>
+        <group>
+          <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
+          {construction
+            ? <DashedLine points={pts} color={color} lineWidth={lw} />
+            : <Line points={pts} color={color} lineWidth={lw} />}
+        </group>
+        <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} />
+      </>
     )
   }
 }
@@ -632,14 +660,13 @@ interface Sketch3DProps {
   topology?: Topology
 }
 
-export default function Sketch3D({ initial, solved, constraints, topology }: Sketch3DProps) {
+export default function Sketch3D({ solved, constraints, topology }: Sketch3DProps) {
   const extent = useMemo(() => sketchExtent(solved), [solved])
 
   return (
     <group>
       {topology && <TopologySurfaces topology={topology} />}
       <EntityLines sketch={solved} color={COLOR_SOLVED} lineWidth={2} />
-      <EntityLines sketch={initial} color={COLOR_INITIAL} lineWidth={1} />
       {constraints && <ConstraintOverlays constraints={constraints} sketch={solved} extent={extent} />}
     </group>
   )
