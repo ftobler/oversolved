@@ -25,6 +25,8 @@ import toolbarCollinearIcon from '../assets/icons/constraint-colinear.svg'
 import toolbarDimensionIcon from '../assets/icons/constraint-dimension.svg'
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
+import featurePartIcon from '../assets/icons/feature-part.svg'
+import featureCodeIcon from '../assets/icons/icon-code.svg'
 import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
 import toolbarPlayIcon from '../assets/icons/toolbar-play.svg'
@@ -388,24 +390,21 @@ export default function Part() {
                 onClick={() => setMode('sketch')}
                 title="Sketch mode"
               >
-                <span className="btn-text">Sketch</span>
-                <span className="btn-abbr">S</span>
+                <img src={featureSketchIcon} alt="Sketch" />
               </button>
               <button
                 className={`mode-btn ${mode === 'feature' ? 'active' : ''}`}
                 onClick={() => setMode('feature')}
                 title="Feature mode"
               >
-                <span className="btn-text">Feature</span>
-                <span className="btn-abbr">F</span>
+                <img src={featurePartIcon} alt="Feature" />
               </button>
               <button
                 className={`mode-btn ${mode === 'code' ? 'active' : ''}`}
                 onClick={() => setMode('code')}
                 title="Code mode"
               >
-                <span className="btn-text">Code</span>
-                <span className="btn-abbr">C</span>
+                <img src={featureCodeIcon} alt="Code" />
               </button>
             </div>
 

@@ -667,7 +667,7 @@ def feature_part(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/feature-code.svg")
+@icon("frontend/src/assets/icons/icon-code.svg")
 def feature_code(ctx):
     # Two curly braces { } — classic code symbol
     # Each brace: top hook, straight segment, middle point, straight segment, bottom hook
