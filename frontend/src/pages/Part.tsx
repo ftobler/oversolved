@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { parse as parseYaml } from 'yaml'
 import Viewport from '../components/Viewport'
+import type { Feature, SketchData } from '../components/Viewport'
 import type { Sketch, Constraints } from '../components/SketchSvg'
 import './Part.css'
 import toolbarLineIcon from '../assets/icons/toolbar-line.svg'
@@ -82,7 +83,7 @@ export default function Part() {
   const [mode, setMode] = useState<'sketch' | 'feature' | 'code'>('sketch')
   const [rollbackPosition, setRollbackPosition] = useState<number>(4) // Start after built-in features
   const [solveResult, setSolveResult] = useState<string>('')
-  const [solveSketch, setSolveSketch] = useState<{ initial: Sketch; solved: Sketch; constraints?: Constraints } | null>(null)
+  const [solveResults, setSolveResults] = useState<Record<string, SketchData>>({})
   const [viewportReset, setViewportReset] = useState(0)
   const [solving, setSolving] = useState(false)
   const [solveTime, setSolveTime] = useState<number | null>(null)
@@ -170,7 +171,7 @@ export default function Part() {
       setSolveTime(Math.round((endTime - startTime) * 100) / 100)
       if (!response.ok) {
         setSolveResult(data.error || 'Solve failed')
-        setSolveSketch(null)
+        setSolveResults({})
       } else {
         // Convert JSON result to YAML format
         const jsonToYaml = (obj: unknown, indent = 0): string => {
@@ -203,16 +204,19 @@ export default function Part() {
         const yamlStr = jsonToYaml(data.result)
         setSolveResult(yamlStr)
 
-        // Extract first sketch geometry for 3D viewport
+        // Extract per-feature sketch geometry for 3D viewport
         const result = data.result as Record<string, { geometry?: { initial?: Sketch; solved?: Sketch }; constraints?: Constraints }>
-        const firstSketch = Object.values(result).find(f => f.geometry?.solved)
-        if (firstSketch?.geometry?.initial && firstSketch?.geometry?.solved) {
-          setSolveSketch({
-            initial: firstSketch.geometry.initial,
-            solved: firstSketch.geometry.solved,
-            constraints: firstSketch.constraints,
-          })
+        const results: Record<string, SketchData> = {}
+        for (const [id, feature] of Object.entries(result)) {
+          if (feature.geometry?.initial && feature.geometry?.solved) {
+            results[id] = {
+              initial: feature.geometry.initial,
+              solved: feature.geometry.solved,
+              constraints: feature.constraints,
+            }
+          }
         }
+        setSolveResults(results)
       }
     } catch (e) {
       setSolveResult(String(e))
@@ -526,8 +530,8 @@ export default function Part() {
                   </div>
                 </div>
               )}
-              {mode === 'sketch' && <Viewport sketch={solveSketch} resetTrigger={viewportReset} />}
-              {mode === 'feature' && <Viewport sketch={solveSketch} resetTrigger={viewportReset} />}
+              {mode === 'sketch' && <Viewport features={features as Feature[]} rollbackPosition={rollbackPosition} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} />}
+              {mode === 'feature' && <Viewport features={features as Feature[]} rollbackPosition={rollbackPosition} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} />}
             </>
           )}
         </div>
