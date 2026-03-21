@@ -102,8 +102,7 @@ function SceneController({ resetTrigger, canvasRef, pvRef, hoverRef, snapRef, ca
     if (!mounted.current) { mounted.current = true; return }
     camera.position.set(...INITIAL_POSITION)
     if ('zoom' in camera) {
-      // eslint-disable-next-line react-hooks/immutability
-      (camera as { zoom: number; updateProjectionMatrix: () => void }).zoom = INITIAL_ZOOM
+      (camera as { zoom: number; updateProjectionMatrix: () => void }).zoom = INITIAL_ZOOM // eslint-disable-line react-hooks/immutability
       camera.updateProjectionMatrix()
     }
     ctrlRef.current?.target.set(0, 0, 0)
