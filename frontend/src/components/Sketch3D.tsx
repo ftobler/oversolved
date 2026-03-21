@@ -619,12 +619,12 @@ function SurfaceMesh({ shape }: { shape: THREE.Shape }) {
   const [hovered, setHovered] = useState(false)
   return (
     <mesh
-      position={[0, 0, -0.001]}
-      onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
+      position={[0, 0, -0.003]}
+      onPointerOver={() => setHovered(true)}
       onPointerOut={() => setHovered(false)}
     >
       <shapeGeometry args={[shape]} />
-      <meshBasicMaterial color="white" transparent opacity={hovered ? 0.25 : 0.10} side={THREE.DoubleSide} depthWrite={false} />
+      <meshBasicMaterial color="white" transparent opacity={hovered ? 0.15 : 0.10} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
   )
 }
