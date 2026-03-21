@@ -379,17 +379,9 @@ def detect_topology(geometry: dict) -> dict:
         for vid in out_map:
             out_map[vid].sort()
 
-        # twin_lut[(vfrom, vto)] -> list of he indices
-        twin_lut: dict = {}
-        for i, (vf, vt, _) in enumerate(hes):
-            twin_lut.setdefault((vf, vt), []).append(i)
-
-        # For each half-edge, find its twin (opposite direction)
-        twin: dict = {}
-        for i, (vf, vt, _) in enumerate(hes):
-            cands = twin_lut.get((vt, vf), [])
-            if cands:
-                twin[i] = cands[0]
+        # Half-edges are added in pairs (fwd, rev) at indices (2k, 2k+1),
+        # so the twin of i is always i ^ 1.
+        twin: dict = {i: i ^ 1 for i in range(len(hes))}
 
         # next[twin[i]] = outgoing edge at vf one step before i in CCW order
         # (i.e. the most clockwise turn when arriving via twin[i])
@@ -419,18 +411,22 @@ def detect_topology(geometry: dict) -> dict:
                     for i in cycle
                 ]})
 
-    # Standalone circles (no intersections) → one surface each
+    # Standalone circles (no intersections) → one surface each.
+    # Represented as two semicircle arcs so the SVG path is non-degenerate
+    # (a single arc from a point back to itself collapses to zero in SVG).
     for eid, e in circles.items():
         if len(_dedup(splits.get(eid, []))) < 2:
             cx, cy, r = e['center'][0], e['center'][1], e['radius']
-            surfaces.append({'boundary': [{
-                'kind': 'arc',
-                'center': [cx, cy], 'radius': r,
-                'angle_start_deg': 0., 'angle_end_deg': 360.,
-                'ccw': True,
-                'start': [cx + r, cy], 'end': [cx + r, cy],
-                'start_vertex': None, 'end_vertex': None,
-            }]})
+            surfaces.append({'boundary': [
+                {'kind': 'arc', 'center': [cx, cy], 'radius': r,
+                 'angle_start_deg': 0., 'angle_end_deg': 180., 'ccw': True,
+                 'start': [cx + r, cy], 'end': [cx - r, cy],
+                 'start_vertex': None, 'end_vertex': None},
+                {'kind': 'arc', 'center': [cx, cy], 'radius': r,
+                 'angle_start_deg': 180., 'angle_end_deg': 360., 'ccw': True,
+                 'start': [cx - r, cy], 'end': [cx + r, cy],
+                 'start_vertex': None, 'end_vertex': None},
+            ]})
 
     return {
         'intersection_points': {
