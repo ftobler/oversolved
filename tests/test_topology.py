@@ -1,7 +1,6 @@
 """Tests for topology.py — intersection detection and surface extraction."""
 
 import math
-import pytest
 from oversolve.topology import detect_topology
 
 
@@ -300,9 +299,9 @@ def test_equal_belt_one_surface():
     r, d = 1.0, 4.0   # arc radius, centre-to-centre distance
     geom = {
         "arc_l": arc(-d / 2, 0, r, 90, 270),    # left  semicircle (non-wrapping)
-        "arc_r": arc( d / 2, 0, r, 270, 90),    # right semicircle (wrapping)
-        "top":   line(-d / 2, r,  d / 2, r),
-        "bot":   line( d / 2, -r, -d / 2, -r),
+        "arc_r": arc(d / 2, 0, r, 270, 90),    # right semicircle (wrapping)
+        "top":   line(-d / 2, r, d / 2, r),
+        "bot":   line(d / 2, -r, -d / 2, -r),
     }
     result = detect_topology(geom)
     assert num_surfaces(result) == 1
@@ -318,9 +317,9 @@ def test_unequal_belt_one_surface():
     # External tangent points (approximate, good enough for topology)
     geom = {
         "arc_l": arc(-d / 2, 0, r1, 90, 270),
-        "arc_r": arc( d / 2, 0, r2, 270, 90),
+        "arc_r": arc(d / 2, 0, r2, 270, 90),
         "top":   line(-d / 2, r1, d / 2, r2),
-        "bot":   line( d / 2, -r2, -d / 2, -r1),
+        "bot":   line(d / 2, -r2, -d / 2, -r1),
     }
     result = detect_topology(geom)
     assert num_surfaces(result) == 1

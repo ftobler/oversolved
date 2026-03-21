@@ -2738,8 +2738,6 @@ features:
     assert result["sketch_1"]["status"] == "fully_constrained"
 
 
-
-
 def test_venn_diagram_two_circles(sketch_log):
     """Test Venn diagram with two overlapping circles."""
     yaml_str = """
