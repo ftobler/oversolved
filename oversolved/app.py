@@ -134,7 +134,8 @@ def create_app(config=None):
             # Convert parsed object back to YAML for the solver
             yaml_str = yaml.dump(data)
             result = solve(yaml_str)
-            return jsonify({'result': result})
+            # result is already in spec format: {solve_ms: ..., result: {...}}
+            return jsonify(result)
         except Exception as e:
             return jsonify({'error': str(e)}), 400
 

@@ -22,28 +22,33 @@ RANK_TOL = 1e-6         # tolerance for numerical rank computation
 def solve(yaml_str: str) -> dict:
     """Solve all sketch features in a YAML document.
 
-    Returns a nested dict per feature:
-        result[feature_id]["status"]             -> "fully_constrained" | "underconstrained" | "overconstrained"
-        result[feature_id]["solve_ms"]           -> float, wall-clock solve time
-        result[feature_id]["params"]["initial"]  -> {entity_id: [params]}  original flat params
-        result[feature_id]["params"]["solved"]   -> {entity_id: [params]}  solved flat params (merge back as new initial)
-        result[feature_id]["geometry"]["initial"] -> {entity_id: geometry dict}
-        result[feature_id]["geometry"]["solved"]  -> {entity_id: geometry dict}
-        result[feature_id]["constraints"]         -> {constraint_id: {residual, render}}
+    Returns the spec-compliant format with top-level solve_ms and result wrapper.
+    Per-feature response contains only new information produced by solving:
+        result[feature_id]["status"]      -> "fully_constrained" | "underconstrained" | "overconstrained"
+        result[feature_id]["solve_ms"]    -> float, wall-clock solve time
+        result[feature_id]["geometry"]    -> {entity_id: [params]}  solved flat params (same format as input initial)
+        result[feature_id]["features"]    -> {entity_id: {status}}  per-entity constraint status
+        result[feature_id]["topology"]    -> {vertices, intersection_points, surfaces}
     """
     doc = yaml.safe_load(yaml_str)
     features = doc.get("features", [])
 
+    t0 = time.perf_counter()
     result = {}
     for feature in features:
         if feature.get("kind") != "sketch":
             continue
-        t0 = time.perf_counter()
+        t_feature_start = time.perf_counter()
         feature_result = _solve_sketch(feature)
         feature_result["solve_ms"] = round(
-            (time.perf_counter() - t0) * 1000, 1)
+            (time.perf_counter() - t_feature_start) * 1000, 1)
         result[feature["id"]] = feature_result
-    return result
+
+    total_ms = round((time.perf_counter() - t0) * 1000, 1)
+    return {
+        "solve_ms": total_ms,
+        "result": result
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -566,17 +571,15 @@ def _solve_sketch(feature: dict) -> dict:
             "render": _constraint_render(c, geom_solved),
         }
 
+    # Convert geometry from named-field format to flat array format (same as input initial)
+    geometry_flat = _params_from_array(x_sol, entities, entity_offsets)
+
+    # Convert entity_status to features format: {entity_id: {status: "..."}}
+    features = {eid: {"status": st} for eid, st in entity_status.items()}
+
     return {
         "status": status,
-        "entity_status": entity_status,
-        "params": {
-            "initial": _params_from_array(x0, entities, entity_offsets),
-            "solved": _params_from_array(x_sol, entities, entity_offsets),
-        },
-        "geometry": {
-            "initial": geom_initial,
-            "solved": geom_solved,
-        },
-        "constraints": constraints_out,
+        "geometry": geometry_flat,
+        "features": features,
         "topology": topology,
     }
