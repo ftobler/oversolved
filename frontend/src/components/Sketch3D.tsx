@@ -391,11 +391,11 @@ function TopologySurfaces({ topology }: TopologySurfacesProps) {
           pts.push(e.end)
         } else {
           const { center, radius, angle_start_deg, angle_end_deg, ccw } = e as ArcEdge
-          // Span in the arc's travel direction
+          // Signed angular span: positive = CCW, negative = CW
           const span = ccw
             ? ((angle_end_deg - angle_start_deg) + 360) % 360
-            : ((angle_start_deg - angle_end_deg) + 360) % 360
-          const steps = Math.max(2, Math.ceil((span / 360) * ARC_SEGMENTS))
+            : -(((angle_start_deg - angle_end_deg) + 360) % 360)
+          const steps = Math.max(2, Math.ceil((Math.abs(span) / 360) * ARC_SEGMENTS))
           for (let i = 1; i <= steps; i++) {
             const a = (angle_start_deg + (span * i) / steps) * (Math.PI / 180)
             pts.push([center[0] + radius * Math.cos(a), center[1] + radius * Math.sin(a)])
