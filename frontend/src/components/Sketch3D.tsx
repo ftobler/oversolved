@@ -131,7 +131,6 @@ function HitPolyline({ pts, onPointerOver, onPointerOut }: {
   onPointerOver: (e: { stopPropagation: () => void }) => void
   onPointerOut: () => void
 }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const meshRefs = useRef<(THREE.Mesh | null)[]>([])
   const { camera } = useThree()
 
@@ -168,8 +167,11 @@ function HitPolyline({ pts, onPointerOver, onPointerOut }: {
 
 function sampleArc(cx: number, cy: number, r: number, a0deg: number, a1deg: number): [number, number, number][] {
   let span = ((a1deg - a0deg) + 360) % 360
-  if (span === 0) span = 360
-  const steps = Math.max(2, Math.ceil((span / 360) * ARC_SEGMENTS))
+  const isFullCircle = span === 0
+  if (isFullCircle) span = 360
+  // Take shorter arc if > 180° (only for partial arcs, not full circles)
+  else if (span > 180) span = span - 360
+  const steps = Math.max(2, Math.ceil((Math.abs(span) / 360) * ARC_SEGMENTS))
   const pts: [number, number, number][] = []
   for (let i = 0; i <= steps; i++) {
     const a = (a0deg + (span * i) / steps) * (Math.PI / 180)
