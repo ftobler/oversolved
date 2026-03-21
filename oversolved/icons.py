@@ -640,5 +640,94 @@ def viewport_reset(ctx):
     ctx.fill()
 
 
+@icon("frontend/src/assets/icons/feature-part.svg")
+def feature_part(ctx):
+    # Draw a cube using a hexagon outline (isometric projection)
+    # Hexagon vertices (isometric cube corners)
+    hex_points = [
+        (0.5, 0.15),  # top
+        (0.8, 0.3),   # top-right
+        (0.8, 0.6),   # bottom-right
+        (0.5, 0.75),  # bottom
+        (0.2, 0.6),   # bottom-left
+        (0.2, 0.3),   # top-left
+    ]
+    center_point = (0.5, 0.45)
+
+    # Draw hexagon outline (cube outer edges)
+    ctx.move_to(*hex_points[0])
+    for pt in hex_points[1:]:
+        ctx.line_to(*pt)
+    ctx.close_path()
+    stroke(ctx, 2)
+
+    for pt in [hex_points[1], hex_points[3], hex_points[5]]:
+        ctx.move_to(*center_point)
+        ctx.line_to(*pt)
+    stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/feature-code.svg")
+def feature_code(ctx):
+    # Two curly braces { } — classic code symbol
+    # Each brace: top hook, straight segment, middle point, straight segment, bottom hook
+
+    def draw_brace(tip_x, outer_x, cy, half_h, r):
+        """Draw one curly brace.
+        tip_x: x of the middle point (the pointy bit)
+        outer_x: x of the top/bottom hooks
+        cy: vertical center
+        half_h: half the total height
+        r: corner radius for the hooks
+        """
+        top = cy - half_h
+        bot = cy + half_h
+        # direction: +1 if tip is to the left of outer, -1 otherwise
+        d = 1 if outer_x > tip_x else -1
+
+        # Top hook: starts at (outer_x, top), curves inward
+        ctx.move_to(outer_x, top)
+        ctx.curve_to(
+            outer_x - r * 1.2 * d, top,
+            outer_x - r * 1.2 * d, top + r * 1.5,
+            outer_x - r * 1.2 * d, top + r * 1.5
+        )
+
+        # Upper straight segment down to middle
+        ctx.line_to(outer_x - r * 1.2 * d, cy - r * 0.8)
+
+        # Middle point curve
+        ctx.curve_to(
+            outer_x - r * 1.2 * d, cy - r * 0.3,
+            tip_x, cy - r * 0.3,
+            tip_x, cy
+        )
+        ctx.curve_to(
+            tip_x, cy + r * 0.3,
+            outer_x - r * 1.2 * d, cy + r * 0.3,
+            outer_x - r * 1.2 * d, cy + r * 0.8
+        )
+
+        # Lower straight segment
+        ctx.line_to(outer_x - r * 1.2 * d, bot - r * 1.5)
+
+        # Bottom hook: curves back out to (outer_x, bot)
+        ctx.curve_to(
+            outer_x - r * 1.2 * d, bot,
+            outer_x, bot,
+            outer_x, bot
+        )
+        stroke(ctx, 1.5)
+
+    half_h = 0.32
+    cy = 0.5
+    r = 0.12
+
+    # Left brace {  — tip points left, hooks on right
+    draw_brace(tip_x=0.15, outer_x=0.38, cy=cy, half_h=half_h, r=r)
+    # Right brace }  — tip points right, hooks on left
+    draw_brace(tip_x=0.85, outer_x=0.62, cy=cy, half_h=half_h, r=r)
+
+
 if __name__ == "__main__":
     drawall()
