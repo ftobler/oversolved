@@ -2822,3 +2822,59 @@ features:
 
     # Verify the sketch is fully constrained
     assert result["sketch_1"]["status"] == "fully_constrained"
+
+
+def test_circle_arc_horizontal_constraint(sketch_log):
+    """Circle and arc with horizontal constraint between circle center and arc endpoint."""
+    yaml_str = """version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    entities: [ { id: circle1, kind: circle }, { id: arc1, kind: arc } ]
+    constraints:
+      [
+        {
+            id: c_horizontal_1,
+            kind: horizontal,
+            a: { entity: circle1, point: center },
+            b: { entity: arc1, point: end }
+          }
+      ]
+    initial:
+      circle1:
+        - -0.010286
+        - 0.63888
+        - 0.451166
+      arc1:
+        - -0.182578
+        - 0.13224
+        - 1.101525
+        - 49.373795
+        - 147.230997
+"""
+    result = solve(yaml_str)
+    sketch_log["test_circle_arc_horizontal_constraint"] = result
+
+    # Verify both entities are present
+    assert "circle1" in result["sketch_1"]["geometry"]["solved"]
+    assert "arc1" in result["sketch_1"]["geometry"]["solved"]
+
+    # Verify circle1 has center and radius
+    circle1 = result["sketch_1"]["geometry"]["solved"]["circle1"]
+    assert "center" in circle1
+    assert "radius" in circle1
+
+    # Verify arc1 has center, radius, and endpoints
+    arc1 = result["sketch_1"]["geometry"]["solved"]["arc1"]
+    assert "center" in arc1
+    assert "radius" in arc1
+    assert "start" in arc1
+    assert "end" in arc1
+
+    # Verify horizontal constraint: circle center and arc end should have same y-coordinate
+    circle_center = circle1["center"]
+    arc_end = arc1["end"]
+    assert abs(circle_center[1] - arc_end[1]) < TOL, \
+        f"Horizontal constraint failed: circle center y={circle_center[1]}, arc end y={arc_end[1]}"

@@ -213,13 +213,37 @@ export default function Part() {
         // Keep previous solveResults visible — do NOT clear them
       } else {
         const result = data.result as Record<string, { geometry?: { initial?: Sketch; solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
+
+        // Build constraintId → involved entity IDs from the YAML definitions so the 3D view
+        // can highlight ALL entities involved in a constraint on hover (not just the primary one).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const constraintEntities: Record<string, Record<string, string[]>> = {}
+        for (const f of (parsedContent?.features ?? [])) {
+          const entityMap: Record<string, string[]> = {}
+          for (const c of (f.constraints ?? [])) {
+            const ids: string[] = []
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const pick = (obj: any) => { if (obj?.entity) ids.push(obj.entity) }
+            pick(c.target); pick(c.a); pick(c.b)
+            if (ids.length) entityMap[c.id] = ids
+          }
+          constraintEntities[f.id] = entityMap
+        }
+
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
           if (feature.geometry?.initial && feature.geometry?.solved) {
+            const enrichedConstraints: Constraints | undefined = feature.constraints
+              ? Object.fromEntries(Object.entries(feature.constraints).map(([cid, c]) => {
+                  const entities = constraintEntities[id]?.[cid]
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  return [cid, entities?.length ? { ...c, render: { ...c.render, entities } as any } : c]
+                }))
+              : undefined
             results[id] = {
               initial: feature.geometry.initial,
               solved: feature.geometry.solved,
-              constraints: feature.constraints,
+              constraints: enrichedConstraints,
               topology: feature.topology,
             }
           }

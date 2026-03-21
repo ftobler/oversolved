@@ -425,7 +425,25 @@ function EntityLines({ sketch, featureId, color, lineWidth = 1 }: EntityLinesPro
 // Constraint rendering
 // ---------------------------------------------------------------------------
 
-function ConstraintTile({ url, id, featureId, entityId }: { url: string; id: string; featureId: string; entityId: string }) {
+/** Find all entity IDs in the sketch that have a vertex at the given point (within eps). */
+function findEntitiesAtPoint(sketch: Sketch, pt: [number, number], eps = 1e-4): string[] {
+  const [px, py] = pt
+  const near = (x: number, y: number) => Math.abs(x - px) <= eps && Math.abs(y - py) <= eps
+  const ids: string[] = []
+  for (const [eid, entity] of Object.entries(sketch)) {
+    const e = entity as Entity
+    if ('start' in e && 'end' in e) {
+      if (near(e.start[0], e.start[1]) || near(e.end[0], e.end[1])) ids.push(eid)
+    } else if ('x' in e) {
+      if (near(e.x, e.y)) ids.push(eid)
+    } else if ('center' in e) {
+      if (near(e.center[0], e.center[1])) ids.push(eid)
+    }
+  }
+  return ids
+}
+
+function ConstraintTile({ url, id, featureId, highlightIds }: { url: string; id: string; featureId: string; highlightIds: string[] }) {
   const [hovered, setHovered] = useState(false)
   const cId = `constraint:${featureId}:${id}`
   const selected = useSketchEditorStore(s => s.selection.has(cId))
@@ -435,7 +453,7 @@ function ConstraintTile({ url, id, featureId, entityId }: { url: string; id: str
   return (
     <div
       key={id}
-      onMouseEnter={() => { setHovered(true); setHoveredConstraintEntities(new Set([entityId])) }}
+      onMouseEnter={() => { setHovered(true); setHoveredConstraintEntities(new Set(highlightIds)) }}
       onMouseLeave={() => { setHovered(false); setHoveredConstraintEntities(new Set()) }}
       onClick={() => toggleSelect(cId)}
       style={{
@@ -646,7 +664,7 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
     const entity = sketch[eid] as Entity | undefined
     if (!entity) continue
     const bounds = getEntityBounds(entity)
-    const symbolIcons: { url: string; key: string }[] = []
+    const symbolIcons: { url: string; key: string; highlightIds: string[] }[] = []
     let symbolAt: [number, number] | null = null
 
     for (const [cid, c] of clist) {
@@ -657,7 +675,18 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
         if (!url) continue
         // Use the first symbol's `at` position (solver-provided) for group placement
         if (!symbolAt && r.at) symbolAt = r.at
-        symbolIcons.push({ url, key: cid })
+        // Determine which entities to highlight on hover:
+        //   1. Use YAML-derived `entities` list (e.g. equal_length: [line1, line3])
+        //   2. Fall back to proximity search via `at` (e.g. coincident shared vertex)
+        //   3. Fall back to the single grouped entity
+        const yamlEntities = (r as { entities?: string[] }).entities
+        const atEntities = (!yamlEntities || yamlEntities.length === 0) && r.at
+          ? findEntitiesAtPoint(sketch, r.at as [number, number])
+          : []
+        const highlightIds = yamlEntities?.length ? yamlEntities
+          : atEntities.length > 0 ? atEntities
+          : [eid]
+        symbolIcons.push({ url, key: cid, highlightIds })
 
       } else if (r.kind === 'dim_linear') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }
@@ -682,8 +711,8 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
       symbolElements.push(
         <Html key={`icons-${eid}`} position={[px, py, 0.001]} style={{ pointerEvents: 'auto' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
-            {symbolIcons.map(({ url, key }) => (
-              <ConstraintTile key={key} url={url} id={key} featureId={featureId} entityId={eid} />
+            {symbolIcons.map(({ url, key, highlightIds }) => (
+              <ConstraintTile key={key} url={url} id={key} featureId={featureId} highlightIds={highlightIds} />
             ))}
           </div>
         </Html>
