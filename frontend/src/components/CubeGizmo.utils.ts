@@ -24,13 +24,26 @@ const CV = [
   new THREE.Vector3(-1,  1,  1), // 7
 ]
 
+const COLOR_FACE = 'rgba(255,255,255,0.15)'
+const COLOR_EDGE = 'rgba(255,255,255,0.15)'
+const COLOR_VERT = 'rgba(255,255,255,0.15)'
+
 const CUBE_FACES = [
-  { verts: [4,5,6,7], label: 'Front',  normal: new THREE.Vector3( 0,  0,  1), fill: 'rgba(100,160,220,0.30)' },
-  { verts: [1,0,3,2], label: 'Back',   normal: new THREE.Vector3( 0,  0, -1), fill: 'rgba( 80,120,180,0.30)' },
-  { verts: [5,1,2,6], label: 'Right',  normal: new THREE.Vector3( 1,  0,  0), fill: 'rgba(220,100,100,0.30)' },
-  { verts: [0,4,7,3], label: 'Left',   normal: new THREE.Vector3(-1,  0,  0), fill: 'rgba(160, 70, 70,0.30)' },
-  { verts: [7,6,2,3], label: 'Top',    normal: new THREE.Vector3( 0,  1,  0), fill: 'rgba(100,200,120,0.30)' },
-  { verts: [0,1,5,4], label: 'Bottom', normal: new THREE.Vector3( 0, -1,  0), fill: 'rgba( 70,150, 90,0.30)' },
+  { verts: [4,5,6,7], label: 'Front',  normal: new THREE.Vector3( 0,  0,  1), fill: COLOR_FACE },
+  { verts: [1,0,3,2], label: 'Back',   normal: new THREE.Vector3( 0,  0, -1), fill: COLOR_FACE },
+  { verts: [5,1,2,6], label: 'Right',  normal: new THREE.Vector3( 1,  0,  0), fill: COLOR_FACE },
+  { verts: [0,4,7,3], label: 'Left',   normal: new THREE.Vector3(-1,  0,  0), fill: COLOR_FACE },
+  { verts: [7,6,2,3], label: 'Top',    normal: new THREE.Vector3( 0,  1,  0), fill: COLOR_FACE },
+  { verts: [0,1,5,4], label: 'Bottom', normal: new THREE.Vector3( 0, -1,  0), fill: COLOR_FACE },
+]
+
+const FACE_AXES = [
+  { x: new THREE.Vector3( 1,  0,  0), y: new THREE.Vector3( 0,  1,  0) }, // Front
+  { x: new THREE.Vector3(-1,  0,  0), y: new THREE.Vector3( 0,  1,  0) }, // Back
+  { x: new THREE.Vector3( 0,  0, -1), y: new THREE.Vector3( 0,  1,  0) }, // Right
+  { x: new THREE.Vector3( 0,  0,  1), y: new THREE.Vector3( 0,  1,  0) }, // Left
+  { x: new THREE.Vector3( 1,  0,  0), y: new THREE.Vector3( 0,  0, -1) }, // Top
+  { x: new THREE.Vector3( 1,  0,  0), y: new THREE.Vector3( 0,  0,  1) }, // Bottom
 ]
 
 const CUBE_EDGES: [number, number][] = [
@@ -39,10 +52,26 @@ const CUBE_EDGES: [number, number][] = [
   [0,4],[1,5],[2,6],[3,7],
 ]
 
+const BEVEL_INSET = 0.20
+const INSET = 0.12
+const EXTRA_INSET = 0.05
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type Pv = { sx: number; sy: number; z: number }
 export type Hit = { type: 'vertex' | 'edge' | 'face'; index: number; snapDir: THREE.Vector3 }
+
+type GizmoPoly = {
+  type: 'face' | 'edge' | 'vertex'
+  index: number
+  pts: Pv[]
+  cz: number
+  nz: number // Normal Z for back-face culling/sorting
+  snapDir: THREE.Vector3
+  fill: string
+  label?: string
+  axes?: { x: THREE.Vector3; y: THREE.Vector3 }
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,45 +85,117 @@ function pointInPoly(px: number, py: number, poly: Pv[]): boolean {
   return inside
 }
 
-function distToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-  const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy
-  if (l2 === 0) return Math.hypot(px - ax, py - ay)
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2))
-  return Math.hypot(px - ax - t * dx, py - ay - t * dy)
+function project(v: THREE.Vector3, q: THREE.Quaternion, cx: number, cy: number, s: number): Pv {
+  const t = v.clone().applyQuaternion(q)
+  return { sx: cx + t.x * s, sy: cy - t.y * s, z: t.z }
 }
 
-function projectVerts(camera: THREE.Camera, W: number, H: number): Pv[] {
+function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
   const cx = W / 2, cy = H / 2, s = W * 0.27
-  const q = camera.quaternion.clone().invert()
-  return CV.map(v => {
-    const t = v.clone().applyQuaternion(q)
-    return { sx: cx + t.x * s, sy: cy - t.y * s, z: t.z }
+
+  // 1. Inset points for each face
+  const faceInsetPoints = CUBE_FACES.map(f => {
+    const center = f.normal.clone()
+    return f.verts.map(vi => {
+      const v = CV[vi].clone()
+      return v.add(center.clone().sub(v).multiplyScalar(BEVEL_INSET))
+    })
   })
+
+  const polys: GizmoPoly[] = []
+
+  // Faces
+  CUBE_FACES.forEach((f, fi) => {
+    const center = f.normal.clone()
+    const pts = faceInsetPoints[fi].map(p => {
+      // Apply EXTRA_INSET to the points, moving them toward the face center
+      const p2 = p.clone().add(center.clone().sub(p).multiplyScalar(EXTRA_INSET))
+      return project(p2, q, cx, cy, s)
+    })
+    const nz = f.normal.clone().applyQuaternion(q).z
+    polys.push({
+      type: 'face',
+      index: fi,
+      pts,
+      cz: pts.reduce((sum, p) => sum + p.z, 0) / pts.length,
+      nz,
+      snapDir: f.normal.clone(),
+      fill: COLOR_FACE,
+      label: f.label,
+      axes: FACE_AXES[fi]
+    })
+  })
+
+  // Edges
+  CUBE_EDGES.forEach(([v1, v2], ei) => {
+    const adjFaces = CUBE_FACES.map((f, i) => ({ f, i })).filter(x => x.f.verts.includes(v1) && x.f.verts.includes(v2))
+    if (adjFaces.length !== 2) return
+
+    const f0 = adjFaces[0].i, f1 = adjFaces[1].i
+    const p0_v1 = faceInsetPoints[f0][CUBE_FACES[f0].verts.indexOf(v1)]
+    const p0_v2 = faceInsetPoints[f0][CUBE_FACES[f0].verts.indexOf(v2)]
+    const p1_v2 = faceInsetPoints[f1][CUBE_FACES[f1].verts.indexOf(v2)]
+    const p1_v1 = faceInsetPoints[f1][CUBE_FACES[f1].verts.indexOf(v1)]
+
+    const pts3d = [p0_v1, p0_v2, p1_v2, p1_v1]
+    const edgeCenter = pts3d[0].clone().add(pts3d[1]).add(pts3d[2]).add(pts3d[3]).multiplyScalar(0.25)
+
+    const pts = pts3d.map(p => {
+      // Move towards edge center using EXTRA_INSET to shorten it
+      const p2 = p.clone().add(edgeCenter.clone().sub(p).multiplyScalar(EXTRA_INSET))
+      return project(p2, q, cx, cy, s)
+    })
+    const normal = CV[v1].clone().add(CV[v2]).normalize()
+    const nz = normal.clone().applyQuaternion(q).z
+
+    polys.push({
+      type: 'edge',
+      index: ei,
+      pts,
+      cz: pts.reduce((sum, p) => sum + p.z, 0) / pts.length,
+      nz,
+      snapDir: normal,
+      fill: COLOR_EDGE
+    })
+  })
+
+  // Vertices
+  CV.forEach((v, vi) => {
+    const adjFaces = CUBE_FACES.map((f, i) => ({ f, i })).filter(x => x.f.verts.includes(vi))
+    // We want to order them so they form a proper polygon.
+    // For a cube vertex, 3 faces meet. The order doesn't strictly matter for a triangle as long as it's convex.
+    const pts3d = adjFaces.map(x => faceInsetPoints[x.i][CUBE_FACES[x.i].verts.indexOf(vi)])
+    const pts = pts3d.map(p => project(p, q, cx, cy, s))
+    const normal = v.clone().normalize()
+    const nz = normal.clone().applyQuaternion(q).z
+
+    polys.push({
+      type: 'vertex',
+      index: vi,
+      pts,
+      cz: pts.reduce((sum, p) => sum + p.z, 0) / pts.length,
+      nz,
+      snapDir: normal,
+      fill: COLOR_VERT
+    })
+  })
+
+  return polys.sort((a, b) => a.cz - b.cz)
 }
 
 export function computeGizmoHit(mx: number, my: number, pv: Pv[], camera: THREE.Camera): Hit | null {
-  const W = GIZMO_SIZE
+  const W = GIZMO_SIZE, H = GIZMO_SIZE
   const q = camera.quaternion.clone().invert()
-  const VR = W * 0.10, ER = W * 0.07
 
-  for (let i = 0; i < pv.length; i++)
-    if (Math.hypot(mx - pv[i].sx, my - pv[i].sy) < VR)
-      return { type: 'vertex', index: i, snapDir: CV[i].clone().normalize() }
-
-  for (let ei = 0; ei < CUBE_EDGES.length; ei++) {
-    const [a, b] = CUBE_EDGES[ei]
-    if (distToSeg(mx, my, pv[a].sx, pv[a].sy, pv[b].sx, pv[b].sy) < ER)
-      return { type: 'edge', index: ei, snapDir: CV[a].clone().add(CV[b]).normalize() }
+  const polys = getPolys(q, W, H)
+  // Check from front to back
+  for (let i = polys.length - 1; i >= 0; i--) {
+    const poly = polys[i]
+    if (poly.nz < -0.1) continue // Back-face cull roughly
+    if (pointInPoly(mx, my, poly.pts)) {
+      return { type: poly.type, index: poly.index, snapDir: poly.snapDir }
+    }
   }
-
-  const frontFaces = CUBE_FACES
-    .map((f, i) => ({ f, i, nz: f.normal.clone().applyQuaternion(q).z }))
-    .filter(x => x.nz > 0)
-    .sort((a, b) => b.nz - a.nz)
-
-  for (const { f, i } of frontFaces)
-    if (pointInPoly(mx, my, f.verts.map(vi => pv[vi])))
-      return { type: 'face', index: i, snapDir: f.normal.clone() }
 
   return null
 }
@@ -112,71 +213,56 @@ export function drawCubeGizmo(canvas: HTMLCanvasElement, camera: THREE.Camera, h
   ctx.scale(dpr, dpr)
 
   const W = GIZMO_SIZE, H = GIZMO_SIZE
-  const pv = projectVerts(camera, W, H)
   const q = camera.quaternion.clone().invert()
+  const s = W * 0.27
+  const polys = getPolys(q, W, H)
 
-  const faces = CUBE_FACES.map((f, i) => ({
-    ...f, i,
-    nz: f.normal.clone().applyQuaternion(q).z,
-    pts: f.verts.map(vi => pv[vi]),
-    cz: f.verts.reduce((s, vi) => s + pv[vi].z, 0) / f.verts.length,
-  })).sort((a, b) => a.cz - b.cz)
+  for (const poly of polys) {
+    if (poly.nz <= -0.0) continue // Back-face cull
 
-  // Faces — semi-transparent, back-face culled
-  for (const face of faces) {
-    if (face.nz <= 0) continue
     ctx.beginPath()
-    face.pts.forEach((p, j) => j ? ctx.lineTo(p.sx, p.sy) : ctx.moveTo(p.sx, p.sy))
+    poly.pts.forEach((p, j) => j ? ctx.lineTo(p.sx, p.sy) : ctx.moveTo(p.sx, p.sy))
     ctx.closePath()
-    ctx.fillStyle = hover?.type === 'face' && hover.index === face.i
-      ? 'rgba(255,255,255,0.45)'
-      : face.fill
+
+    const isHover = hover?.type === poly.type && hover.index === poly.index
+    ctx.fillStyle = isHover ? 'rgba(255,255,255,0.5)' : poly.fill
     ctx.fill()
+
+    if (poly.type === 'face' && poly.label && poly.axes && poly.nz > 0) {
+      const fcx = poly.pts.reduce((sum, p) => sum + p.sx, 0) / poly.pts.length
+      const fcy = poly.pts.reduce((sum, p) => sum + p.sy, 0) / poly.pts.length
+
+      const ux = poly.axes.x.clone().applyQuaternion(q)
+      const uy = poly.axes.y.clone().applyQuaternion(q)
+
+      // We want the text to be flat. ux and uy are the projected basis vectors.
+      // Canvas transform: [ m11 m12 m21 m22 dx dy ]
+      // m11 = ux.x * s, m12 = -ux.y * s (because Y is inverted in project)
+      // m21 = uy.x * s, m22 = -uy.y * s
+
+      ctx.save()
+      ctx.translate(fcx, fcy)
+      const fs = W * 0.00030 // Adjusted for better text size
+      ctx.transform(
+        ux.x * s * fs,
+        -ux.y * s * fs,
+        -uy.x * s * fs,
+        uy.y * s * fs,
+        0, 0)
+
+      ctx.fillStyle = '#000'
+      ctx.font = `bold 10px system-ui, sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(poly.label, 0, 0)
+      ctx.restore()
+    }
   }
 
-  // Edges — front edges opaque, back edges faded
-  for (let ei = 0; ei < CUBE_EDGES.length; ei++) {
-    const [a, b] = CUBE_EDGES[ei]
-    const pa = pv[a], pb = pv[b]
-    const front = (pa.z + pb.z) / 2 > 0
-    const hov = hover?.type === 'edge' && hover.index === ei
-    ctx.beginPath()
-    ctx.moveTo(pa.sx, pa.sy)
-    ctx.lineTo(pb.sx, pb.sy)
-    ctx.strokeStyle = hov ? '#ffdd00' : '#dddddd'
-    ctx.lineWidth = hov ? 2.5 : (front ? 1.5 : 1)
-    ctx.globalAlpha = front ? 0.9 : 0.22
-    ctx.stroke()
-  }
-  ctx.globalAlpha = 1
-
-  // Labels — black text on visible faces only
-  for (const face of faces) {
-    if (face.nz < 0.20) continue
-    const fcx = face.pts.reduce((s, p) => s + p.sx, 0) / face.pts.length
-    const fcy = face.pts.reduce((s, p) => s + p.sy, 0) / face.pts.length
-    ctx.globalAlpha = Math.min(1, face.nz * 2.5)
-    ctx.font = `bold ${Math.round(W * 0.078 * 1.2)}px system-ui, sans-serif`
-    ctx.fillStyle = '#111111'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(face.label, fcx, fcy)
-  }
-  ctx.globalAlpha = 1
-
-  // Vertices — front opaque, back faded; highlight on hover
-  const vr = W * 0.045
-  for (let i = 0; i < pv.length; i++) {
-    const p = pv[i]
-    const hov = hover?.type === 'vertex' && hover.index === i
-    ctx.beginPath()
-    ctx.arc(p.sx, p.sy, hov ? vr * 1.8 : vr, 0, Math.PI * 2)
-    ctx.fillStyle = hov ? '#ffdd00' : '#cccccc'
-    ctx.globalAlpha = p.z > 0 ? 0.90 : 0.22
-    ctx.fill()
-  }
-  ctx.globalAlpha = 1
   ctx.restore()
 
-  return pv
+  // Return original vertices for any other legacy use, though projectVerts might be better
+  const cx = W / 2, cy = H / 2
+  return CV.map(v => project(v, q, cx, cy, s))
 }
+
