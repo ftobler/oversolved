@@ -295,7 +295,7 @@ export default function Part() {
 
         <div className="toolbar-right">
           <Link to="/docs" className="toolbar-btn" title="Documentation">
-            <span className="material-icons-outlined">book_2</span>
+            <span className="material-icons-outlined">help</span>
           </Link>
           <Link to="/visualizer" className="toolbar-btn" title="Visualizer">
             <span className="material-icons-outlined">bug_report</span>
