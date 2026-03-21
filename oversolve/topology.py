@@ -201,6 +201,15 @@ def _has_param(spl, p: float) -> bool:
     return any(abs(s - p) < _SPLIT_EPS for s, _ in spl)
 
 
+def _norm_arc_param(p: float, a0: float) -> float:
+    """Shift angle p into [a0, a0 + 2π) so arc split params sort correctly."""
+    while p < a0 - _SPLIT_EPS:
+        p += 2 * math.pi
+    while p >= a0 + 2 * math.pi - _SPLIT_EPS:
+        p -= 2 * math.pi
+    return p
+
+
 def _dedup(spl):
     """Sort splits by param, remove consecutive duplicates."""
     if not spl:
@@ -301,6 +310,7 @@ def detect_topology(geometry: dict) -> dict:
 
     verts: dict = {}     # vid -> [x, y]
     splits: dict = {}    # eid -> [(param, vid)]
+    arc_a0: dict = {}    # eid -> arc start angle (for parameter normalisation)
 
     for eid, e in lines.items():
         splits[eid] = [(0.0, _vid(verts, e['start'])), (1.0, _vid(verts, e['end']))]
@@ -311,6 +321,9 @@ def detect_topology(geometry: dict) -> dict:
     for eid, e in arcs.items():
         a0 = math.radians(e['angle_start'])
         a1 = math.radians(e['angle_end'])
+        # Normalise a1 into [a0, a0+2π) so that CCW arcs crossing 0° sort correctly.
+        a1 = _norm_arc_param(a1, a0)
+        arc_a0[eid] = a0
         splits[eid] = [(a0, _vid(verts, e['start'])), (a1, _vid(verts, e['end']))]
 
     # Track which vertex IDs come from entity endpoints (not intersections)
@@ -324,6 +337,11 @@ def detect_topology(geometry: dict) -> dict:
             eid_b, eb = elist[j]
             for pa, pb, pt in _intersect(eid_a, ea, eid_b, eb, lines, circles, arcs):
                 v = _vid(verts, pt)
+                # Normalise arc parameters so they sort within [a0, a0+2π)
+                if eid_a in arc_a0:
+                    pa = _norm_arc_param(pa, arc_a0[eid_a])
+                if eid_b in arc_a0:
+                    pb = _norm_arc_param(pb, arc_a0[eid_b])
                 if not _has_param(splits[eid_a], pa):
                     splits[eid_a].append((pa, v))
                 if not _has_param(splits[eid_b], pb):

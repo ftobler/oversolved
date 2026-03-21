@@ -255,3 +255,72 @@ def test_rectangle_with_cross_four_surfaces():
     result = detect_topology(geom)
     assert num_surfaces(result) == 4
     assert num_intersections(result) == 5  # 4 edge hits + 1 center crossing
+
+
+# ── Wrapping arcs (angle_end < angle_start, crossing 0°) ─────────────────────
+#
+# A CCW arc from 270° to 90° passes through 0°.  Its end-angle (1.57 rad) is
+# numerically LESS than its start-angle (4.71 rad), so a naïve sort of the
+# split-parameter list would put the end vertex first, reversing the arc
+# direction in the half-edge graph and causing the wrong (or no) surface.
+
+def test_wrapping_arc_half_disk():
+    """Right-half-disk: CCW arc from 270° to 90° (through 0°) + vertical chord.
+
+    The arc wraps through 0°, so angle_end (1.57 rad) < angle_start (4.71 rad).
+    This must still yield exactly 1 surface.
+    """
+    r = 1.0
+    geom = {
+        "a": arc(0, 0, r, 270, 90),   # right semicircle, wraps through 0°
+        "l": line(0, -r, 0, r),        # vertical chord closing the left side
+    }
+    result = detect_topology(geom)
+    assert num_surfaces(result) == 1
+
+
+def test_wrapping_arc_three_quarter():
+    """3/4 arc from 270° to 180° (wrapping through 0°) + chord → 1 surface."""
+    r = 1.0
+    geom = {
+        "a": arc(0, 0, r, 270, 180),  # 270° arc, wraps through 0°
+        "l": line(0, -r, -r, 0),      # chord from (0,-1) to (-1,0)
+    }
+    result = detect_topology(geom)
+    assert num_surfaces(result) == 1
+
+
+def test_equal_belt_one_surface():
+    """Stadium (pill) shape: two 180° arcs + two straight sides → 1 enclosed surface.
+
+    The right arc goes from 270° to 90° (wrapping through 0°).  Without proper
+    parameter normalisation the right arc is reversed in the DCEL and no surface
+    is found for the right half.
+    """
+    r, d = 1.0, 4.0   # arc radius, centre-to-centre distance
+    geom = {
+        "arc_l": arc(-d / 2, 0, r, 90, 270),    # left  semicircle (non-wrapping)
+        "arc_r": arc( d / 2, 0, r, 270, 90),    # right semicircle (wrapping)
+        "top":   line(-d / 2, r,  d / 2, r),
+        "bot":   line( d / 2, -r, -d / 2, -r),
+    }
+    result = detect_topology(geom)
+    assert num_surfaces(result) == 1
+
+
+def test_unequal_belt_one_surface():
+    """Unequal belt: two arcs of different radii + two tangent lines → 1 surface.
+
+    Both the wrapping-arc and the twin-mapping fixes must be active for this
+    to produce a single enclosed region.
+    """
+    r1, r2, d = 1.0, 2.0, 6.0
+    # External tangent points (approximate, good enough for topology)
+    geom = {
+        "arc_l": arc(-d / 2, 0, r1, 90, 270),
+        "arc_r": arc( d / 2, 0, r2, 270, 90),
+        "top":   line(-d / 2, r1, d / 2, r2),
+        "bot":   line( d / 2, -r2, -d / 2, -r1),
+    }
+    result = detect_topology(geom)
+    assert num_surfaces(result) == 1
