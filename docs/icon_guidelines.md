@@ -18,36 +18,63 @@ Icons in this project follow the **Material Icons Outlined** style.
 
 ## How to add icons
 
-Each icon is a **standalone SVG file** under `src/assets/icons/`. Do not use `<symbol>` wrappers — they are invisible in browsers, Inkscape and image previewers unless referenced via `<use>`.
+Icons are defined **programmatically in `oversolved/icons.py`** using Python and Cairo. The `@icon` decorator generates the SVG file automatically at build time.
 
-```svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
-  <!-- primary line -->
-  <line x1="4" y1="12" x2="20" y2="12"
-        stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-  <!-- filled dot / arrowhead -->
-  <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
-</svg>
+Add a function decorated with `@icon`:
+
+```python
+@icon("frontend/src/assets/icons/my-icon.svg")
+def my_icon(ctx):
+    # Draw using Cairo primitives
+    ctx.move_to(0.2, 0.5)
+    ctx.line_to(0.8, 0.5)
+    stroke(ctx, 2)
+
+    # Filled shapes use ctx.fill()
+    ctx.arc(0.5, 0.5, 0.1, 0, 2 * math.pi)
+    ctx.fill()
 ```
+
+Then run:
+```bash
+python oversolved/icons.py
+```
+
+This generates the SVG file at the specified path.
+
+### Coordinates
+
+- Coordinates are **normalized to 0–1** (not pixels)
+- Use `px()` helper to convert pixel dimensions: `px(2)` = 2 pixels on a 24×24 canvas
+- For example, `px(2.5)` creates a dot radius of 2.5 pixels
 
 ### Naming
 
-- File: `src/assets/icons/<group>-<name>.svg`
+- Path: `frontend/src/assets/icons/<group>-<name>.svg`
 
-## Geometry tips
+## Cairo drawing primitives
 
-- **Lines** → `<line>` with `stroke="currentColor"`
-- **Circles / rings** → `<circle fill="none" stroke="currentColor">` for outlines, `fill="currentColor"` for filled dots
-- **Arcs** → `<path d="M ... A ..." fill="none" stroke="currentColor">`
-- **Diagonal lines** → use `<line>` with computed endpoints, not `<rect transform="rotate(…)">`
-- **Arrowheads** → open `<path>` chevrons (`M x1 y1 L tip L x2 y2`) at `stroke-width="1.5"`, or small filled `<polygon>` triangles
-- **Right-angle markers** → `<polyline>` forming the corner square notch inside the angle
+Use these when defining icons in `icons.py`:
+
+- **Lines** → `ctx.move_to(x0, y0)` + `ctx.line_to(x1, y1)` + `stroke(ctx, width)`
+- **Circles / rings** → `ctx.arc(cx, cy, radius, 0, 2*math.pi)` + `stroke()` (outline) or `ctx.fill()` (solid)
+- **Arcs** → `ctx.arc(cx, cy, radius, angle0, angle1)` + `stroke()`
+- **Paths** → `ctx.move_to()`, `ctx.line_to()`, `ctx.curve_to()` for Bézier curves
+- **Filled shapes** → `ctx.close_path()` + `ctx.fill()` (triangles, polygons, arrowheads)
+- **Dots** → `ctx.arc()` with `ctx.fill()`, use `px(radius)` for pixel-based sizes
 - For tick marks perpendicular to a line with direction `(dx, dy)`: the perpendicular unit vector is `(dy, -dx) / length`. Extend 2–3 px each way from the midpoint.
+
+### Common helpers
+
+- `stroke(ctx, width)` — stroke with current color
+- `px(n)` — convert pixels to normalized coordinates (e.g., `px(2.5)` for a 2.5-pixel dimension)
+- `math.atan2()`, `math.cos()`, `math.sin()` — for angle calculations
 
 ## Do not
 
-- Hardcode colors (`fill="#333"`, `stroke="black"`, etc.)
-- Use `stroke="none"` implicitly — set it explicitly where needed to prevent double-painting
-- Use `<rect transform="rotate(…)">` for diagonal lines (prefer `<line>`)
-- Mix multiple stroke widths beyond 2 / 1.5
-- Use fills on open paths (they close unexpectedly)
+- Hardcode colors — always use the stroke/fill helpers which respect `currentColor`
+- Set `stroke()` implicitly — be explicit about which operations should stroke/fill
+- Draw SVG files manually (use `icons.py` instead for programmatic generation)
+- Mix multiple stroke widths beyond 2 / 1.5 (consistency with guidelines)
+- Use `ctx.fill()` on open paths — they will close unexpectedly; use `stroke()` instead
+- Forget to call `drawall()` at the end of `icons.py` to regenerate SVG files

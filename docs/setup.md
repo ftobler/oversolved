@@ -16,17 +16,13 @@ A complete Flask-based REST API backend with:
    - Database initialization and migration runner
    - Error handling and JSON responses
 
-3. **CLI Entry Point** (`oversolved/run_server.py`)
+3. **CLI Entry Point** (`oversolved/run_server.py`/`main.py`)
    - Flexible server startup with configurable host/port
    - Support for both SQLite and MariaDB
    - Debug mode and production mode (using Waitress)
+   - Registered command `ovsersolved`
 
-4. **Comprehensive Tests**
-   - `tests/test_database.py`: 15 tests covering database layer
-   - `tests/test_api.py`: 17 tests covering API endpoints
-   - All 32 tests pass, covering edge cases and error conditions
-
-5. **Documentation** (`API.md`)
+5. **Documentation** (`api.md`)
    - Complete API reference
    - Usage examples with curl and Python
    - Database setup instructions
@@ -37,11 +33,11 @@ A complete Flask-based REST API backend with:
 ### Development
 
 ```bash
-# Install dependencies (already done)
-pip install flask PyMySQL
+# Install dependencies for dev
+pip install -e .[dev]
 
 # Run with SQLite in debug mode
-python -m oversolved.run_server --debug
+python oversolved --debug
 ```
 
 Server will be at `http://localhost:5000`
@@ -49,7 +45,7 @@ Server will be at `http://localhost:5000`
 ### Production with SQLite
 
 ```bash
-python -m oversolved.run_server --db-path /var/lib/oversolved/db.sqlite
+python oversolved --db-path /var/lib/oversolved/db.sqlite
 ```
 
 ### Production with MariaDB
@@ -65,94 +61,6 @@ python -m oversolved.run_server \
   --db-user oversolved \
   --db-password mypassword \
   --db-name oversolved
-```
-
-## API Usage
-
-### Store a document
-
-```bash
-curl -X PUT http://localhost:5000/api/documents/my_sketch \
-  -H "Content-Type: application/json" \
-  -d '{"content": "version: 1\nkind: part\n"}'
-```
-
-### Retrieve a document
-
-```bash
-curl http://localhost:5000/api/documents/my_sketch
-```
-
-### List all documents
-
-```bash
-curl http://localhost:5000/api/documents
-```
-
-### Delete a document
-
-```bash
-curl -X DELETE http://localhost:5000/api/documents/my_sketch
-```
-
-## Testing
-
-All tests use in-memory SQLite and require no external setup:
-
-```bash
-# Run all backend tests
-pytest tests/test_database.py tests/test_api.py -v
-
-# Run with coverage
-pytest tests/test_database.py tests/test_api.py --cov=oversolved
-```
-
-## Database Migrations
-
-To add a new migration:
-
-1. Add a migration function in `oversolved/app.py`:
-
-```python
-def migration_002_add_metadata_table(db: Database):
-    db.execute("""
-        CREATE TABLE metadata (
-            doc_id VARCHAR(255),
-            key TEXT,
-            value TEXT,
-            FOREIGN KEY (doc_id) REFERENCES documents(id)
-        )
-    """)
-```
-
-2. Register it in `_register_migrations()`:
-
-```python
-db.register_migration(2, 'add_metadata_table', migration_002_add_metadata_table)
-```
-
-Migrations run automatically on startup, once per version.
-
-## Architecture
-
-```
-oversolved/
-├── __init__.py
-├── app.py              # Flask app, routes, migrations
-├── db.py               # Database abstraction
-├── icons.py            # (existing)
-├── icon_cairo.py       # (existing)
-├── run_server.py       # CLI entry point
-└── solver.py           # (existing)
-
-tests/
-├── test_api.py         # 17 API endpoint tests
-├── test_database.py    # 15 database layer tests
-├── test_solver.py      # (existing solver tests)
-└── test_serpentine_belt_fixed.py # (existing)
-
-API.md                  # API documentation
-SETUP.md                # This file
 ```
 
 ## Environment Variables (Optional)

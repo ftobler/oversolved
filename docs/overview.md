@@ -21,6 +21,30 @@ source code in `oversolved` directory.
 
 Oversolved CAD core part is a AST (Abstract Syntax tree) in toml/json format which handles all geometry rebuilds on the backend. The format is described in `ast.md`.
 
+### Backend Architecture
+
+```
+oversolved/
+├── __init__.py
+├── app.py              # Flask app, routes, migrations
+├── db.py               # Database abstraction
+├── icons.py            # (existing)
+├── icon_cairo.py       # (existing)
+├── run_server.py       # CLI entry point
+└── solver.py           # (existing)
+
+tests/
+├── test_api.py         # 17 API endpoint tests
+├── test_database.py    # 15 database layer tests
+├── test_solver.py      # (existing solver tests)
+└── test_serpentine_belt_fixed.py # (existing)
+
+docs/
+├── api.md              # API documentation
+├── setup.md            # Setup guide
+└── overview.md         # This file
+```
+
 ## frontend (React)
 
 * React Frontend
