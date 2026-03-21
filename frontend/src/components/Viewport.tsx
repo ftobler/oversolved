@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { OrthographicCamera, OrbitControls, Line, Text } from '@react-three/drei'
 import * as THREE from 'three'
@@ -177,6 +177,12 @@ export default function Viewport({
   const snapRef = useRef<THREE.Vector3 | null>(null)
   const cameraRef = useRef<THREE.Camera | null>(null)
 
+  const [ready, setReady] = useState(false)
+  const onCreated = useCallback(() => {
+    // Allow one frame for the camera/scene to settle, then reveal
+    requestAnimationFrame(() => setReady(true))
+  }, [])
+
   const showOrigin = isActive('Origin', features, rollbackPosition, visibleFeatures)
   const showFront  = isActive('Front',  features, rollbackPosition, visibleFeatures)
   const showTop    = isActive('Top',    features, rollbackPosition, visibleFeatures)
@@ -195,6 +201,7 @@ export default function Viewport({
       <Canvas
         style={{ width: '100%', height: '100%', background: '#111' }}
         gl={{ antialias: true }}
+        onCreated={onCreated}
       >
         <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} />
         <SceneController
@@ -225,6 +232,14 @@ export default function Viewport({
           />
         ))}
       </Canvas>
+
+      {!ready && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: '#111',
+          zIndex: 1,
+        }} />
+      )}
 
       <CubeGizmoCanvas
         canvasRef={canvasRef}
