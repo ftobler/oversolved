@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { parse as parseYaml } from 'yaml'
 import Viewport from '../components/Viewport'
+import type { Sketch, Constraints } from '../components/SketchSvg'
 import './Part.css'
 import toolbarLineIcon from '../assets/icons/toolbar-line.svg'
 import toolbarRectangleIcon from '../assets/icons/toolbar-rectangle.svg'
@@ -80,7 +82,10 @@ export default function Part() {
   const [mode, setMode] = useState<'sketch' | 'feature' | 'code'>('sketch')
   const [rollbackPosition, setRollbackPosition] = useState<number>(4) // Start after built-in features
   const [solveResult, setSolveResult] = useState<string>('')
+  const [solveSketch, setSolveSketch] = useState<{ initial: Sketch; solved: Sketch; constraints?: Constraints } | null>(null)
+  const [viewportReset, setViewportReset] = useState(0)
   const [solving, setSolving] = useState(false)
+  const [solveTime, setSolveTime] = useState<number | null>(null)
 
   useEffect(() => {
     if (!docId) return
@@ -150,17 +155,64 @@ export default function Part() {
   const handleRun = async () => {
     setSolving(true)
     setSolveResult('')
+    setSolveTime(null)
+    const startTime = performance.now()
     try {
+      // Parse YAML content to structured object
+      const parsedContent = parseYaml(content)
       const response = await fetch('/api/solve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(parsedContent),
       })
       const data = await response.json()
+      const endTime = performance.now()
+      setSolveTime(Math.round((endTime - startTime) * 100) / 100)
       if (!response.ok) {
         setSolveResult(data.error || 'Solve failed')
+        setSolveSketch(null)
       } else {
-        setSolveResult(JSON.stringify(data.result, null, 2))
+        // Convert JSON result to YAML format
+        const jsonToYaml = (obj: unknown, indent = 0): string => {
+          if (obj === null || obj === undefined) return 'null'
+          if (typeof obj === 'string') return obj
+          if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj)
+
+          const nextSpaces = '  '.repeat(indent + 1)
+
+          if (Array.isArray(obj)) {
+            if (obj.length === 0) return '[]'
+            return obj
+              .map(item => `${nextSpaces}- ${jsonToYaml(item, indent + 1).trimStart()}`)
+              .join('\n')
+          }
+
+          if (typeof obj === 'object') {
+            const lines = Object.entries(obj).map(([key, value]) => {
+              const yamlValue = jsonToYaml(value, indent + 1)
+              if (typeof value === 'object' && value !== null) {
+                return `${nextSpaces}${key}:\n${yamlValue}`
+              }
+              return `${nextSpaces}${key}: ${yamlValue}`
+            })
+            return lines.join('\n')
+          }
+
+          return String(obj)
+        }
+        const yamlStr = jsonToYaml(data.result)
+        setSolveResult(yamlStr)
+
+        // Extract first sketch geometry for 3D viewport
+        const result = data.result as Record<string, { geometry?: { initial?: Sketch; solved?: Sketch }; constraints?: Constraints }>
+        const firstSketch = Object.values(result).find(f => f.geometry?.solved)
+        if (firstSketch?.geometry?.initial && firstSketch?.geometry?.solved) {
+          setSolveSketch({
+            initial: firstSketch.geometry.initial,
+            solved: firstSketch.geometry.solved,
+            constraints: firstSketch.constraints,
+          })
+        }
       }
     } catch (e) {
       setSolveResult(String(e))
@@ -206,19 +258,19 @@ export default function Part() {
       <header className="doc-toolbar">
         <div className="toolbar-left">
           <button className="toolbar-btn burger" title="Menu" onClick={() => navigate('/documents')}>
-            <span className="material-icons">menu</span>
+            <span className="material-icons-outlined">menu</span>
           </button>
           <button className="logo" onClick={() => navigate('/')}>
             Oversolve
           </button>
           <button className="toolbar-btn" title="Undo">
-            <span className="material-icons">undo</span>
+            <span className="material-icons-outlined">undo</span>
           </button>
           <button className="toolbar-btn" title="Redo">
-            <span className="material-icons">redo</span>
+            <span className="material-icons-outlined">redo</span>
           </button>
           <button className="toolbar-btn" title="Save" onClick={handleSave}>
-            <span className="material-icons">save</span>
+            <span className="material-icons-outlined">save</span>
           </button>
           {isEditing ? (
             <input
@@ -243,10 +295,10 @@ export default function Part() {
 
         <div className="toolbar-right">
           <Link to="/docs" className="toolbar-btn" title="Documentation">
-            <span className="material-icons">help</span>
+            <span className="material-icons-outlined">book_2</span>
           </Link>
           <Link to="/visualizer" className="toolbar-btn" title="Visualizer">
-            <span className="material-icons">bug_report</span>
+            <span className="material-icons-outlined">bug_report</span>
           </Link>
         </div>
       </header>
@@ -295,7 +347,7 @@ export default function Part() {
                       onClick={() => toggleVisibility(feature.id)}
                       title={visibleFeatures.has(feature.id) ? 'Hide' : 'Show'}
                     >
-                      <span className="material-icons">
+                      <span className="material-icons-outlined">
                         {visibleFeatures.has(feature.id) ? 'visibility' : 'visibility_off'}
                       </span>
                     </button>
@@ -358,12 +410,15 @@ export default function Part() {
                 <button className="editor-btn" title="Run" onClick={handleRun} disabled={solving}>
                   <img src={toolbarPlayIcon} alt="Run" />
                 </button>
+                {solveTime !== null && (
+                  <span className="solve-time">{solveTime}ms</span>
+                )}
               </>
             )}
 
             {mode === 'sketch' && (
               <>
-                <button className="editor-btn" title="Reset Viewport">
+                <button className="editor-btn" title="Reset Viewport" onClick={() => setViewportReset(v => v + 1)}>
                   <img src={viewportResetIcon} alt="Reset Viewport" />
                 </button>
 
@@ -471,8 +526,8 @@ export default function Part() {
                   </div>
                 </div>
               )}
-              {mode === 'sketch' && <Viewport />}
-              {mode === 'feature' && <Viewport />}
+              {mode === 'sketch' && <Viewport sketch={solveSketch} resetTrigger={viewportReset} />}
+              {mode === 'feature' && <Viewport sketch={solveSketch} resetTrigger={viewportReset} />}
             </>
           )}
         </div>

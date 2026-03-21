@@ -1,6 +1,7 @@
 """Flask application for the Oversolve solver API."""
 
 from pathlib import Path
+import yaml
 from flask import Flask, g, jsonify, request, send_from_directory
 from oversolve.db import Database, SQLiteConnection, MariaDBConnection, DocumentStore
 from oversolve.solver import solve
@@ -117,24 +118,22 @@ def create_app(config=None):
 
     @app.route('/api/solve', methods=['POST'])
     def solve_document():
-        """Run the solver on a YAML document and return the result.
-        Accepts application/json with a 'content' field, or raw YAML/text body.
+        """Run the solver on a structured document object and return the result.
+        Accepts application/json with the parsed document structure.
         """
         content_type = request.content_type or ''
 
-        if 'application/json' in content_type:
-            data = request.get_json()
-            if not data or 'content' not in data:
-                return jsonify({'error': 'Missing "content" field'}), 400
-            yaml_content = data['content']
-        else:
-            # Accept raw YAML / plain text body
-            yaml_content = request.get_data(as_text=True)
-            if not yaml_content:
-                return jsonify({'error': 'Empty request body'}), 400
+        if 'application/json' not in content_type:
+            return jsonify({'error': 'Content-Type must be application/json'}), 400
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Empty request body'}), 400
 
         try:
-            result = solve(yaml_content)
+            # Convert parsed object back to YAML for the solver
+            yaml_str = yaml.dump(data)
+            result = solve(yaml_str)
             return jsonify({'result': result})
         except Exception as e:
             return jsonify({'error': str(e)}), 400

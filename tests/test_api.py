@@ -2,6 +2,7 @@
 
 import json
 import pytest
+import yaml
 from oversolve.app import create_app
 
 
@@ -350,10 +351,11 @@ class TestSolveAPI:
     """Tests for the /api/solve endpoint."""
 
     def test_solve_accepts_json(self, client):
-        """Test that /api/solve accepts application/json with a content field."""
+        """Test that /api/solve accepts application/json with parsed document structure."""
+        parsed = yaml.safe_load(SIMPLE_YAML)
         response = client.post(
             '/api/solve',
-            data=json.dumps({'content': SIMPLE_YAML}),
+            data=json.dumps(parsed),
             content_type='application/json',
         )
         assert response.status_code == 200
@@ -361,34 +363,35 @@ class TestSolveAPI:
         assert 'result' in data
         assert 'sketch_1' in data['result']
 
-    def test_solve_accepts_yaml(self, client):
+    def test_solve_does_not_accept_yaml(self, client):
         """Test that /api/solve accepts raw YAML body."""
         response = client.post(
             '/api/solve',
             data=SIMPLE_YAML,
             content_type='text/plain',
         )
+        assert response.status_code != 200
+        # data = json.loads(response.data)
+        # assert 'result' in data
+        # assert 'sketch_1' in data['result']
+
+    def test_solve_returns_empty_result_for_no_features(self, client):
+        """Test that /api/solve returns empty result for document with no features."""
+        response = client.post(
+            '/api/solve',
+            data=json.dumps({'version': 1, 'kind': 'part'}),
+            content_type='application/json',
+        )
         assert response.status_code == 200
         data = json.loads(response.data)
         assert 'result' in data
-        assert 'sketch_1' in data['result']
+        assert data['result'] == {}
 
-    def test_solve_returns_error_on_invalid_yaml(self, client):
-        """Test that /api/solve returns a JSON error for invalid input."""
+    def test_solve_returns_error_on_empty_body(self, client):
+        """Test that /api/solve returns a JSON error for empty request body."""
         response = client.post(
             '/api/solve',
-            data=json.dumps({'content': 'not: valid: yaml: ::'}),
-            content_type='application/json',
-        )
-        assert response.status_code == 400
-        data = json.loads(response.data)
-        assert 'error' in data
-
-    def test_solve_returns_error_on_missing_content(self, client):
-        """Test that /api/solve returns a JSON error when content field is missing."""
-        response = client.post(
-            '/api/solve',
-            data=json.dumps({'foo': 'bar'}),
+            data=json.dumps(None),
             content_type='application/json',
         )
         assert response.status_code == 400
