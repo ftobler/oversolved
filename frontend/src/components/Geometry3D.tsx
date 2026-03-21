@@ -1,8 +1,9 @@
-import { useRef, useMemo, useState } from 'react'
+import { useRef, useMemo, useState, useCallback } from 'react'
 import { Line, Html } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Sketch, Constraints, Topology } from './SketchSvg'
+import { useSketchEditorStore } from '../stores/sketchEditorStore'
 
 interface LineSegment { start: [number, number]; end: [number, number]; construction?: boolean }
 interface Circle { center: [number, number]; radius: number; construction?: boolean }
@@ -13,6 +14,7 @@ type Entity = LineSegment | Circle | Arc | PointEntity
 const COLOR_SOLVED = '#4fc3f7'
 const COLOR_CONSTRAINT = '#ffd54f'
 const COLOR_HOVER = '#ffffff'
+const COLOR_SELECTED = '#ff9800'
 const ARC_SEGMENTS = 64
 const ICON_SIZE = 22
 const ICON_COLS = 3
@@ -192,10 +194,18 @@ function VertexHighlight({ x, y, px, color }: { x: number; y: number; px: number
   )
 }
 
-function VertexDot({ x, y, px, baseColor }: { x: number; y: number; px: number; baseColor: string }) {
+function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
+  x: number; y: number; px: number; baseColor: string
+  featureId?: string; entityId?: string; vertexKey?: string
+}) {
   const [hovered, setHovered] = useState(false)
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
+  const vertId = featureId && entityId && vertexKey ? `vertex:${featureId}:${entityId}:${vertexKey}` : undefined
+  const selected = useSketchEditorStore(s => vertId ? s.selection.has(vertId) : false)
+  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const setDrag = useSketchEditorStore(s => s.setDrag)
+  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   // Offset the hit-sphere toward the camera (not object-space z) so the vertex
   // always wins the raycast over the 3D edge cylinders regardless of orbit angle.
   useFrame(() => {
@@ -207,14 +217,32 @@ function VertexDot({ x, y, px, baseColor }: { x: number; y: number; px: number; 
     const off = POINT_HIT_PIXELS_Z_OFFSET * scale
     hitRef.current.position.set(x + fwd.x * off, y + fwd.y * off, fwd.z * off)
   })
-  const color = hovered ? COLOR_HOVER : baseColor
+  const onClick = useCallback((e: { stopPropagation: () => void }) => {
+    if (vertId) { e.stopPropagation(); toggleSelect(vertId) }
+  }, [vertId, toggleSelect])
+  const onPointerDown = useCallback((e: { stopPropagation: () => void; point: THREE.Vector3 }) => {
+    if (!vertId || !featureId || !entityId || !vertexKey) return
+    e.stopPropagation()
+    setOrbitEnabled(false)
+    setDrag({
+      vertexId: vertId,
+      featureId,
+      entityId,
+      vertexKey,
+      startWorld: [x, y],
+      currentWorld: [x, y],
+    })
+  }, [vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled])
+  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : baseColor
   return (
     <group
       onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
       onPointerOut={() => setHovered(false)}
+      onClick={onClick}
+      onPointerDown={onPointerDown}
     >
       <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard />
-      {hovered && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
+      {(hovered || selected) && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
       <mesh ref={hitRef} position={[x, y, 0]}>
         <sphereGeometry args={[1, 8, 8]} />
         <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.35 : 0} color="#00aaff" depthWrite={false} />
@@ -278,33 +306,39 @@ function sketchExtent(sketch: Sketch): number {
 
 interface EntityItemProps {
   entity: Entity
+  entityId: string
+  featureId: string
   baseColor: string
   lineWidth?: number
 }
 
-function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
+function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1 }: EntityItemProps) {
   const [hovered, setHovered] = useState(false)
-  const color = hovered ? COLOR_HOVER : baseColor
+  const entId = `entity:${featureId}:${entityId}`
+  const selected = useSketchEditorStore(s => s.selection.has(entId))
+  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : baseColor
   const lw = hovered ? lineWidth + 1 : lineWidth
   const e = entity
   const construction = 'construction' in e && e.construction
   const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
   const onOut = () => setHovered(false)
+  const onClick = useCallback((ev: { stopPropagation: () => void }) => { ev.stopPropagation(); toggleSelect(entId) }, [entId, toggleSelect])
 
   if ('start' in e && 'end' in e && 'radius' in e) {
     const arc = e as Arc
     const pts = sampleArc(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
     return (
       <>
-        <group>
+        <group onClick={onClick}>
           <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
         </group>
-        <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} />
-        <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} />
-        <VertexDot x={arc.center[0]} y={arc.center[1]} px={2.5} baseColor={baseColor} />
+        <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" />
+        <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" />
+        <VertexDot x={arc.center[0]} y={arc.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" />
       </>
     )
   } else if ('start' in e) {
@@ -312,31 +346,31 @@ function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
     const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
     return (
       <>
-        <group>
+        <group onClick={onClick}>
           <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
         </group>
-        <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} />
-        <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} />
+        <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" />
+        <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" />
       </>
     )
   } else if ('x' in e) {
     const pt = e as PointEntity
-    return <VertexDot x={pt.x} y={pt.y} px={5} baseColor={baseColor} />
+    return <VertexDot x={pt.x} y={pt.y} px={5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="xy" />
   } else {
     const circ = e as Circle
     const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
     return (
       <>
-        <group>
+        <group onClick={onClick}>
           <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
         </group>
-        <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} />
+        <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" />
       </>
     )
   }
@@ -344,15 +378,16 @@ function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
 
 interface EntityLinesProps {
   sketch: Sketch
+  featureId: string
   color: string
   lineWidth?: number
 }
 
-function EntityLines({ sketch, color, lineWidth = 1 }: EntityLinesProps) {
+function EntityLines({ sketch, featureId, color, lineWidth = 1 }: EntityLinesProps) {
   return (
     <>
       {Object.entries(sketch).map(([id, entity]) => (
-        <EntityItem key={id} entity={entity as Entity} baseColor={color} lineWidth={lineWidth} />
+        <EntityItem key={id} entity={entity as Entity} entityId={id} featureId={featureId} baseColor={color} lineWidth={lineWidth} />
       ))}
     </>
   )
@@ -362,22 +397,28 @@ function EntityLines({ sketch, color, lineWidth = 1 }: EntityLinesProps) {
 // Constraint rendering
 // ---------------------------------------------------------------------------
 
-function ConstraintTile({ url, id }: { url: string; id: string }) {
+function ConstraintTile({ url, id, featureId }: { url: string; id: string; featureId: string }) {
   const [hovered, setHovered] = useState(false)
+  const cId = `constraint:${featureId}:${id}`
+  const selected = useSketchEditorStore(s => s.selection.has(cId))
+  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const bg = hovered ? '#ffffff' : selected ? COLOR_SELECTED : '#3e3e3e'
   return (
     <div
       key={id}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={() => toggleSelect(cId)}
       style={{
         width: ICON_SIZE,
         height: ICON_SIZE,
-        background: hovered ? '#ffffff' : '#3e3e3e',
+        background: bg,
         borderRadius: 2,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
+        cursor: 'pointer',
         transition: 'background-color 0.15s',
       }}
     >
@@ -385,14 +426,17 @@ function ConstraintTile({ url, id }: { url: string; id: string }) {
         src={url}
         width={ICON_SIZE - 4}
         height={ICON_SIZE - 4}
-        style={{ filter: hovered ? 'invert(0)' : 'invert(1) sepia(1) saturate(5) hue-rotate(5deg)', opacity: hovered ? 1 : 0.9, transition: 'filter 0.15s, opacity 0.15s' }}
+        style={{ filter: (hovered || selected) ? 'invert(0)' : 'invert(1) sepia(1) saturate(5) hue-rotate(5deg)', opacity: hovered ? 1 : 0.9, transition: 'filter 0.15s, opacity 0.15s' }}
       />
     </div>
   )
 }
 
-function LinearDimension({ cid, dim, dimOffset }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }; dimOffset: number }) {
+function LinearDimension({ cid, dim, dimOffset, featureId }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }; dimOffset: number; featureId: string }) {
   const [hovered, setHovered] = useState(false)
+  const cIdStr = `constraint:${featureId}:${cid}`
+  const selected = useSketchEditorStore(s => s.selection.has(cIdStr))
+  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const [x1, y1] = dim.p1,
     [x2, y2] = dim.p2
   const nx = dim.normal[0],
@@ -407,9 +451,10 @@ function LinearDimension({ cid, dim, dimOffset }: { cid: string; dim: { kind: st
   const mx = (d1x + d2x) / 2,
     my = (d1y + d2y) / 2
   const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
-  const color = hovered ? COLOR_HOVER : COLOR_CONSTRAINT
+  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_CONSTRAINT
   const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
   const onOut = () => setHovered(false)
+  const onClickDim = useCallback((ev: { stopPropagation: () => void }) => { ev.stopPropagation(); toggleSelect(cIdStr) }, [cIdStr, toggleSelect])
   const dimLinePts: [number, number, number][] = [[d1x, d1y, 0], [d2x, d2y, 0]]
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
@@ -424,7 +469,7 @@ function LinearDimension({ cid, dim, dimOffset }: { cid: string; dim: { kind: st
       <Line points={dimLinePts} color={color} lineWidth={1} />
       <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={color} />
       <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={color} />
-      <mesh ref={meshRef} position={[mx, my, 0.001]} onPointerOver={onOver} onPointerOut={onOut}>
+      <mesh ref={meshRef} position={[mx, my, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClickDim}>
         <circleGeometry args={[1, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
@@ -437,8 +482,11 @@ function LinearDimension({ cid, dim, dimOffset }: { cid: string; dim: { kind: st
   )
 }
 
-function RadiusDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number } }) {
+function RadiusDimension({ cid, dim, featureId }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number }; featureId: string }) {
   const [hovered, setHovered] = useState(false)
+  const cIdStr = `constraint:${featureId}:${cid}`
+  const selected = useSketchEditorStore(s => s.selection.has(cIdStr))
+  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const [x1, y1] = dim.p1,
     [x2, y2] = dim.p2
   const angle = 10 * (Math.PI / 180)
@@ -449,9 +497,10 @@ function RadiusDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [
   const mx = (x1 + x2r) / 2,
     my = (y1 + y2r) / 2
   const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
-  const color = hovered ? COLOR_HOVER : COLOR_CONSTRAINT
+  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_CONSTRAINT
   const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
   const onOut = () => setHovered(false)
+  const onClickDim = useCallback((ev: { stopPropagation: () => void }) => { ev.stopPropagation(); toggleSelect(cIdStr) }, [cIdStr, toggleSelect])
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
   useFrame(() => {
@@ -462,7 +511,7 @@ function RadiusDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [
     <group key={cid}>
       <Line points={[[x1, y1, 0], [x2r, y2r, 0]]} color={color} lineWidth={1} />
       <Arrowhead tip={[x2r, y2r]} from={[x1, y1]} px={12} color={color} />
-      <mesh ref={meshRef} position={[mx, my, 0.001]} onPointerOver={onOver} onPointerOut={onOut}>
+      <mesh ref={meshRef} position={[mx, my, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClickDim}>
         <circleGeometry args={[1, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
@@ -475,8 +524,11 @@ function RadiusDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [
   )
 }
 
-function AngleDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number } }) {
+function AngleDimension({ cid, dim, featureId }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number }; featureId: string }) {
   const [hovered, setHovered] = useState(false)
+  const cIdStr = `constraint:${featureId}:${cid}`
+  const selected = useSketchEditorStore(s => s.selection.has(cIdStr))
+  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   if (!dim.p3) return null
   const [vx, vy] = dim.p2,
     [x1, y1] = dim.p1,
@@ -491,9 +543,10 @@ function AngleDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [n
   const labelX = vx + arcR * Math.cos(midAngle),
     labelY = vy + arcR * Math.sin(midAngle)
   const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
-  const color = hovered ? COLOR_HOVER : COLOR_CONSTRAINT
+  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_CONSTRAINT
   const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
   const onOut = () => setHovered(false)
+  const onClickDim = useCallback((ev: { stopPropagation: () => void }) => { ev.stopPropagation(); toggleSelect(cIdStr) }, [cIdStr, toggleSelect])
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
   useFrame(() => {
@@ -505,7 +558,7 @@ function AngleDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [n
       <Line points={[[vx, vy, 0], [x1, y1, 0]]} color={color} lineWidth={1} />
       <Line points={[[vx, vy, 0], [x3, y3, 0]]} color={color} lineWidth={1} />
       <Line points={arcPts} color={color} lineWidth={1} />
-      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut}>
+      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClickDim}>
         <circleGeometry args={[1, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
@@ -522,9 +575,10 @@ interface ConstraintOverlaysProps {
   constraints: Constraints
   sketch: Sketch
   extent: number
+  featureId: string
 }
 
-function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOverlaysProps) {
+function ConstraintOverlays({ constraints, sketch, extent, featureId }: ConstraintOverlaysProps) {
   const dimOffset = extent * 0.1
 
   const byEntity: Record<string, [string, Constraints[string]][]> = {}
@@ -553,16 +607,16 @@ function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOverlaysP
 
       } else if (r.kind === 'dim_linear') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }
-        dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} />)
+        dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} featureId={featureId} />)
 
       } else if (r.kind === 'dim_radius') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number }
-        dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} />)
+        dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} featureId={featureId} />)
 
       } else if (r.kind === 'dim_angle') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number }
         if (!dim.p3) continue
-        dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} />)
+        dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} featureId={featureId} />)
       }
     }
 
@@ -573,7 +627,7 @@ function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOverlaysP
         <Html key={`icons-${eid}`} position={[bounds.maxX, bounds.maxY, 0.001]} style={{ pointerEvents: 'auto' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
             {symbolIcons.map(({ url, key }) => (
-              <ConstraintTile key={key} url={url} id={key} />
+              <ConstraintTile key={key} url={url} id={key} featureId={featureId} />
             ))}
           </div>
         </Html>
@@ -650,24 +704,93 @@ function TopologySurfaces({ topology }: TopologySurfacesProps) {
 }
 
 // ---------------------------------------------------------------------------
+// DragPlane — large invisible plane that captures pointer during vertex drag
+// ---------------------------------------------------------------------------
+
+function DragPlane() {
+  const drag = useSketchEditorStore(s => s.drag)
+  const setDrag = useSketchEditorStore(s => s.setDrag)
+  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
+  const onMutation = useSketchEditorStore(s => s.onMutation)
+
+  if (!drag) return null
+
+  return (
+    <mesh
+      position={[0, 0, 0.01]}
+      onPointerMove={(e) => {
+        e.stopPropagation()
+        setDrag({ ...drag, currentWorld: [e.point.x, e.point.y] })
+      }}
+      onPointerUp={(e) => {
+        e.stopPropagation()
+        if (onMutation) {
+          onMutation({
+            type: 'move_vertex',
+            featureId: drag.featureId,
+            entityId: drag.entityId,
+            vertexKey: drag.vertexKey,
+            to: drag.currentWorld,
+          })
+        }
+        setDrag(null)
+        setOrbitEnabled(true)
+      }}
+    >
+      <planeGeometry args={[10000, 10000]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
+    </mesh>
+  )
+}
+
+// Apply drag offset to sketch for optimistic preview
+function applyDragPreview(sketch: Sketch, drag: { entityId: string; vertexKey: string; startWorld: [number, number]; currentWorld: [number, number] }): Sketch {
+  const dx = drag.currentWorld[0] - drag.startWorld[0]
+  const dy = drag.currentWorld[1] - drag.startWorld[1]
+  if (dx === 0 && dy === 0) return sketch
+  const result = structuredClone(sketch)
+  const entity = result[drag.entityId]
+  if (!entity) return sketch
+  const key = drag.vertexKey
+  if ('start' in entity && 'end' in entity && key === 'start') {
+    (entity as LineSegment).start = [drag.currentWorld[0], drag.currentWorld[1]]
+  } else if ('start' in entity && 'end' in entity && key === 'end') {
+    (entity as LineSegment).end = [drag.currentWorld[0], drag.currentWorld[1]]
+  } else if ('center' in entity && key === 'center') {
+    (entity as Circle | Arc).center = [drag.currentWorld[0], drag.currentWorld[1]]
+  } else if ('x' in entity && key === 'xy') {
+    (entity as PointEntity).x = drag.currentWorld[0];
+    (entity as PointEntity).y = drag.currentWorld[1]
+  }
+  return result
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
-interface Sketch3DProps {
-  initial: Sketch
+interface Geometry3DProps {
+  featureId: string
   solved: Sketch
   constraints?: Constraints
   topology?: Topology
 }
 
-export default function Sketch3D({ solved, constraints, topology }: Sketch3DProps) {
-  const extent = useMemo(() => sketchExtent(solved), [solved])
+export default function Geometry3D({ featureId, solved, constraints, topology }: Geometry3DProps) {
+  const drag = useSketchEditorStore(s => s.drag)
+  // During drag on this feature, show optimistic preview
+  const displaySketch = useMemo(() => {
+    if (drag && drag.featureId === featureId) return applyDragPreview(solved, drag)
+    return solved
+  }, [solved, drag, featureId])
+  const extent = useMemo(() => sketchExtent(displaySketch), [displaySketch])
 
   return (
     <group>
       {topology && <TopologySurfaces topology={topology} />}
-      <EntityLines sketch={solved} color={COLOR_SOLVED} lineWidth={2} />
-      {constraints && <ConstraintOverlays constraints={constraints} sketch={solved} extent={extent} />}
+      <EntityLines sketch={displaySketch} featureId={featureId} color={COLOR_SOLVED} lineWidth={2} />
+      {constraints && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
+      <DragPlane />
     </group>
   )
 }

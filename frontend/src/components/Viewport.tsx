@@ -3,9 +3,10 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { OrthographicCamera, OrbitControls, Line, Text } from '@react-three/drei'
 import * as THREE from 'three'
 import type { Sketch, Constraints, Topology } from './SketchSvg'
-import Sketch3D from './Sketch3D'
+import Geometry3D from './Geometry3D'
 import { CubeGizmoCanvas } from './CubeGizmo'
 import { drawCubeGizmo, type Pv, type Hit } from './CubeGizmo.utils'
+import { useSketchEditorStore } from '../stores/sketchEditorStore'
 
 const INITIAL_POSITION: [number, number, number] = [0, 0, 100]  // camera initial position
 const INITIAL_ZOOM = 200
@@ -123,7 +124,9 @@ function SceneController({ resetTrigger, canvasRef, pvRef, hoverRef, snapRef, ca
       pvRef.current = drawCubeGizmo(canvasRef.current, camera, hoverRef.current)
   })
 
-  return <OrbitControls ref={ctrlRef} enableRotate enableZoom enablePan enableDamping={false} />
+  const orbitEnabled = useSketchEditorStore(s => s.orbitEnabled)
+
+  return <OrbitControls ref={ctrlRef} enabled={orbitEnabled} enableRotate enableZoom enablePan enableDamping={false} />
 }
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -200,9 +203,9 @@ export default function Viewport({
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <Canvas
         style={{ width: '100%', height: '100%', background: '#111' }}
-        gl={{ antialias: true, logarithmicDepthBuffer: true }}
         gl={{ antialias: true }}
         onCreated={onCreated}
+        onPointerMissed={() => useSketchEditorStore.getState().clearSelection()}
       >
         <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={-1000000} far={1000000} />
         <SceneController
@@ -225,13 +228,12 @@ export default function Viewport({
 
         {/* Features */}
         {activeSketchFeatures.map(f => (
-          <Sketch3D key={f.id}
-            initial={solveResults![f.id].initial}
+          <Geometry3D key={f.id}
+            featureId={f.id}
             solved={solveResults![f.id].solved}
             constraints={solveResults![f.id].constraints}
             topology={solveResults![f.id].topology}
-          />
-        ))}
+          />))}
       </Canvas>
 
       {!ready && (

@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { parse as parseYaml } from 'yaml'
 import Viewport from '../components/Viewport'
 import type { Feature, SketchData } from '../components/Viewport'
 import type { Sketch, Constraints } from '../components/SketchSvg'
+import { useSketchEditorStore } from '../stores/sketchEditorStore'
+import type { Mutation } from '../stores/sketchEditorStore'
+import { parseYamlDoc, applyMoveVertex, applyAddConstraint, applyDeleteElements } from '../utils/yamlMutations'
 import './Part.css'
 import toolbarLineIcon from '../assets/icons/toolbar-line.svg'
 import toolbarRectangleIcon from '../assets/icons/toolbar-rectangle.svg'
@@ -89,6 +92,109 @@ export default function Part() {
   const [viewportReset, setViewportReset] = useState(0)
   const [solving, setSolving] = useState(false)
   const [solveTime, setSolveTime] = useState<number | null>(null)
+  const [undoStack, setUndoStack] = useState<string[]>([])
+  const contentRef = useRef(content)
+  contentRef.current = content
+
+  // Re-solve: parse YAML, POST to /api/solve, update results
+  const reSolve = useCallback(async (yamlContent: string) => {
+    setSolving(true)
+    setSolveTime(null)
+    const startTime = performance.now()
+    try {
+      const parsedContent = parseYaml(yamlContent)
+      const response = await fetch('/api/solve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsedContent),
+      })
+      const data = await response.json()
+      const endTime = performance.now()
+      setSolveTime(Math.round((endTime - startTime) * 100) / 100)
+      if (!response.ok) {
+        setSolveResult(data.error || 'Solve failed')
+        setSolveResults({})
+      } else {
+        const result = data.result as Record<string, { geometry?: { initial?: Sketch; solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
+        const results: Record<string, SketchData> = {}
+        for (const [id, feature] of Object.entries(result)) {
+          if (feature.geometry?.initial && feature.geometry?.solved) {
+            results[id] = {
+              initial: feature.geometry.initial,
+              solved: feature.geometry.solved,
+              constraints: feature.constraints,
+              topology: feature.topology,
+            }
+          }
+        }
+        setSolveResults(results)
+      }
+    } catch (e) {
+      setSolveResult(String(e))
+    } finally {
+      setSolving(false)
+    }
+  }, [])
+
+  // Mutation handler: push undo, apply YAML AST mutation, re-solve
+  const handleMutation = useCallback((m: Mutation) => {
+    const current = contentRef.current
+    setUndoStack(prev => [...prev, current])
+    const doc = parseYamlDoc(current)
+    switch (m.type) {
+      case 'move_vertex':
+        applyMoveVertex(doc, m.featureId, m.entityId, m.vertexKey, m.to)
+        break
+      case 'add_constraint':
+        applyAddConstraint(doc, m.featureId, m.kind, m.targets)
+        break
+      case 'delete':
+        applyDeleteElements(doc, m.targets)
+        break
+    }
+    const newContent = doc.toString()
+    setContent(newContent)
+    setFeatures(extractFeatures(newContent))
+    reSolve(newContent)
+  }, [reSolve])
+
+  // Register mutation handler in editor store
+  useEffect(() => {
+    useSketchEditorStore.getState().setOnMutation(handleMutation)
+    return () => useSketchEditorStore.getState().setOnMutation(null)
+  }, [handleMutation])
+
+  // Undo handler
+  const handleUndo = useCallback(() => {
+    setUndoStack(prev => {
+      if (prev.length === 0) return prev
+      const next = [...prev]
+      const last = next.pop()!
+      setContent(last)
+      setFeatures(extractFeatures(last))
+      reSolve(last)
+      return next
+    })
+  }, [reSolve])
+
+  // Keyboard shortcuts: Ctrl+Z for undo, Delete/Backspace for delete
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Skip if typing in input/textarea
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault()
+        handleUndo()
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        useSketchEditorStore.getState().deleteSelected()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [handleUndo])
 
   useEffect(() => {
     if (!docId) return
@@ -157,12 +263,37 @@ export default function Part() {
   }
 
   const handleRun = async () => {
-    setSolving(true)
     setSolveResult('')
+    // Convert JSON result to YAML format for the code panel display
+    const jsonToYaml = (obj: unknown, indent = 0): string => {
+      if (obj === null || obj === undefined) return 'null'
+      if (typeof obj === 'string') return obj
+      if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj)
+      const nextSpaces = '  '.repeat(indent + 1)
+      if (Array.isArray(obj)) {
+        if (obj.length === 0) return '[]'
+        return obj
+          .map(item => `${nextSpaces}- ${jsonToYaml(item, indent + 1).trimStart()}`)
+          .join('\n')
+      }
+      if (typeof obj === 'object') {
+        const lines = Object.entries(obj).map(([key, value]) => {
+          const yamlValue = jsonToYaml(value, indent + 1)
+          if (typeof value === 'object' && value !== null) {
+            return `${nextSpaces}${key}:\n${yamlValue}`
+          }
+          return `${nextSpaces}${key}: ${yamlValue}`
+        })
+        return lines.join('\n')
+      }
+      return String(obj)
+    }
+
+    // Re-solve and also capture the display YAML
+    setSolving(true)
     setSolveTime(null)
     const startTime = performance.now()
     try {
-      // Parse YAML content to structured object
       const parsedContent = parseYaml(content)
       const response = await fetch('/api/solve', {
         method: 'POST',
@@ -176,38 +307,7 @@ export default function Part() {
         setSolveResult(data.error || 'Solve failed')
         setSolveResults({})
       } else {
-        // Convert JSON result to YAML format
-        const jsonToYaml = (obj: unknown, indent = 0): string => {
-          if (obj === null || obj === undefined) return 'null'
-          if (typeof obj === 'string') return obj
-          if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj)
-
-          const nextSpaces = '  '.repeat(indent + 1)
-
-          if (Array.isArray(obj)) {
-            if (obj.length === 0) return '[]'
-            return obj
-              .map(item => `${nextSpaces}- ${jsonToYaml(item, indent + 1).trimStart()}`)
-              .join('\n')
-          }
-
-          if (typeof obj === 'object') {
-            const lines = Object.entries(obj).map(([key, value]) => {
-              const yamlValue = jsonToYaml(value, indent + 1)
-              if (typeof value === 'object' && value !== null) {
-                return `${nextSpaces}${key}:\n${yamlValue}`
-              }
-              return `${nextSpaces}${key}: ${yamlValue}`
-            })
-            return lines.join('\n')
-          }
-
-          return String(obj)
-        }
-        const yamlStr = jsonToYaml(data.result)
-        setSolveResult(yamlStr)
-
-        // Extract per-feature sketch geometry for 3D viewport
+        setSolveResult(jsonToYaml(data.result))
         const result = data.result as Record<string, { geometry?: { initial?: Sketch; solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
@@ -271,7 +371,7 @@ export default function Part() {
           <button className="logo" onClick={() => navigate('/')}>
             Oversolved
           </button>
-          <button className="toolbar-btn" title="Undo">
+          <button className="toolbar-btn" title="Undo" onClick={handleUndo} disabled={undoStack.length === 0}>
             <span className="material-icons-outlined">undo</span>
           </button>
           <button className="toolbar-btn" title="Redo">
@@ -447,46 +547,46 @@ export default function Part() {
 
                 <div className="toolbar-separator" />
 
-                <button className="editor-btn" title="Horizontal">
+                <button className="editor-btn" title="Horizontal" onClick={() => useSketchEditorStore.getState().applyConstraint('horizontal')}>
                   <img src={toolbarHorizontalIcon} alt="Horizontal" />
                 </button>
-                <button className="editor-btn" title="Vertical">
+                <button className="editor-btn" title="Vertical" onClick={() => useSketchEditorStore.getState().applyConstraint('vertical')}>
                   <img src={toolbarVerticalIcon} alt="Vertical" />
                 </button>
-                <button className="editor-btn" title="Coincident">
+                <button className="editor-btn" title="Coincident" onClick={() => useSketchEditorStore.getState().applyConstraint('coincident')}>
                   <img src={toolbarCoincidentIcon} alt="Coincident" />
                 </button>
-                <button className="editor-btn" title="Concentric">
+                <button className="editor-btn" title="Concentric" onClick={() => useSketchEditorStore.getState().applyConstraint('concentric')}>
                   <img src={toolbarConcentricIcon} alt="Concentric" />
                 </button>
-                <button className="editor-btn" title="Equal">
+                <button className="editor-btn" title="Equal" onClick={() => useSketchEditorStore.getState().applyConstraint('equal_length')}>
                   <img src={toolbarEqualIcon} alt="Equal" />
                 </button>
-                <button className="editor-btn" title="Fixed">
+                <button className="editor-btn" title="Fixed" onClick={() => useSketchEditorStore.getState().applyConstraint('fixed')}>
                   <img src={toolbarFixedIcon} alt="Fixed" />
                 </button>
-                <button className="editor-btn" title="Midpoint">
+                <button className="editor-btn" title="Midpoint" onClick={() => useSketchEditorStore.getState().applyConstraint('midpoint')}>
                   <img src={toolbarMidpointIcon} alt="Midpoint" />
                 </button>
-                <button className="editor-btn" title="Normal">
+                <button className="editor-btn" title="Normal" onClick={() => useSketchEditorStore.getState().applyConstraint('normal')}>
                   <img src={toolbarNormalIcon} alt="Normal" />
                 </button>
-                <button className="editor-btn" title="Parallel">
+                <button className="editor-btn" title="Parallel" onClick={() => useSketchEditorStore.getState().applyConstraint('parallel')}>
                   <img src={toolbarParallelIcon} alt="Parallel" />
                 </button>
-                <button className="editor-btn" title="Perpendicular">
+                <button className="editor-btn" title="Perpendicular" onClick={() => useSketchEditorStore.getState().applyConstraint('perpendicular')}>
                   <img src={toolbarPerpendicularIcon} alt="Perpendicular" />
                 </button>
-                <button className="editor-btn" title="Tangent">
+                <button className="editor-btn" title="Tangent" onClick={() => useSketchEditorStore.getState().applyConstraint('tangent')}>
                   <img src={toolbarTangentIcon} alt="Tangent" />
                 </button>
-                <button className="editor-btn" title="Collinear">
+                <button className="editor-btn" title="Collinear" onClick={() => useSketchEditorStore.getState().applyConstraint('collinear')}>
                   <img src={toolbarCollinearIcon} alt="Collinear" />
                 </button>
 
                 <div className="toolbar-separator" />
 
-                <button className="editor-btn" title="Dimension">
+                <button className="editor-btn" title="Dimension" onClick={() => useSketchEditorStore.getState().applyConstraint('length')}>
                   <img src={toolbarDimensionIcon} alt="Dimension" />
                 </button>
               </>
