@@ -46,7 +46,7 @@ def _angle_in_arc(a_rad: float, start_deg: float, end_deg: float) -> bool:
     s = math.radians(start_deg) % (2 * math.pi)
     e = math.radians(end_deg) % (2 * math.pi)
     a = a_rad % (2 * math.pi)
-    if abs(s - e) < _EPS:   # full circle
+    if abs(s - e) < _EPS or abs(s - e) > 2 * math.pi - _EPS:   # full circle or near full circle
         return True
     if s < e:
         return s - _EPS <= a <= e + _EPS
