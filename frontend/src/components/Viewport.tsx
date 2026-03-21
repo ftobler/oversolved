@@ -3,6 +3,7 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { OrthographicCamera, OrbitControls, Line, Text } from '@react-three/drei'
 import * as THREE from 'three'
 import type { Sketch, Constraints, Topology } from './SketchSvg'
+import { unflattenGeometry } from './SketchSvg'
 import Geometry3D from './Geometry3D'
 import { CubeGizmoCanvas } from './CubeGizmo'
 import { drawCubeGizmo, type Pv, type Hit } from './CubeGizmo.utils'
@@ -167,48 +168,6 @@ function SceneController({ resetTrigger, canvasRef, pvRef, hoverRef, snapRef, ca
   )
 }
 
-// ── Geometry unflattening ───────────────────────────────────────────────────
-
-/** Convert flat array format (from AST initial or server solve) to UI Sketch format */
-function unflattenGeometry(
-  flat: Record<string, number[]>,
-  entities: Array<{ id: string; kind: string }> | undefined
-): Sketch {
-  if (!entities) return {}
-  const entityMap = Object.fromEntries(entities.map(e => [e.id, e.kind]))
-  const result: Sketch = {}
-
-  for (const [entityId, params] of Object.entries(flat)) {
-    const kind = entityMap[entityId]
-    if (!kind) continue
-
-    if (kind === 'line_segment') {
-      result[entityId] = {
-        start: [params[0], params[1]],
-        end: [params[2], params[3]],
-      }
-    } else if (kind === 'circle') {
-      result[entityId] = {
-        center: [params[0], params[1]],
-        radius: params[2],
-      }
-    } else if (kind === 'arc') {
-      const [cx, cy, r, a0, a1] = params
-      result[entityId] = {
-        center: [cx, cy],
-        radius: r,
-        angle_start: a0,
-        angle_end: a1,
-        start: [cx + r * Math.cos((a0 * Math.PI) / 180), cy + r * Math.sin((a0 * Math.PI) / 180)],
-        end: [cx + r * Math.cos((a1 * Math.PI) / 180), cy + r * Math.sin((a1 * Math.PI) / 180)],
-      }
-    } else if (kind === 'point') {
-      result[entityId] = { x: params[0], y: params[1] }
-    }
-  }
-  return result
-}
-
 // ── Constraint rendering ─────────────────────────────────────────────────────
 
 function geomPoint(sketch: Sketch, ref: { entity: string; point?: string }): [number, number] | null {
@@ -244,7 +203,7 @@ function computeConstraintRender(constraint: any, sketch: Sketch): any {
       const pb = geomPoint(sketch, constraint.b)
       if (!pa || !pb) return { kind: 'unknown' }
       const at: [number, number] = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
-      return { kind: 'symbol_h', at, entities: [constraint.a.entity, constraint.b.entity] }
+      return { kind: 'symbol_h', at, entity: constraint.a.entity, entities: [constraint.a.entity, constraint.b.entity] }
     }
     const eid = constraint.target?.entity
     if (!eid) return { kind: 'unknown' }
@@ -260,7 +219,7 @@ function computeConstraintRender(constraint: any, sketch: Sketch): any {
       const pb = geomPoint(sketch, constraint.b)
       if (!pa || !pb) return { kind: 'unknown' }
       const at: [number, number] = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
-      return { kind: 'symbol_v', at, entities: [constraint.a.entity, constraint.b.entity] }
+      return { kind: 'symbol_v', at, entity: constraint.a.entity, entities: [constraint.a.entity, constraint.b.entity] }
     }
     const eid = constraint.target?.entity
     if (!eid) return { kind: 'unknown' }
@@ -306,14 +265,15 @@ function computeConstraintRender(constraint: any, sketch: Sketch): any {
   }
 
   if (kind === 'coincident') {
-    const eid = constraint.a?.entity
+    const eid = constraint.a?.entity || constraint.target?.entity
     if (!eid) return { kind: 'unknown' }
-    const pt = geomPoint(sketch, constraint.a)
+    const pt = geomPoint(sketch, constraint.a || constraint.target)
     if (!pt) return { kind: 'unknown' }
     return {
       kind: 'symbol_coincident',
       at: pt,
-      entities: [constraint.a?.entity, constraint.b?.entity].filter(Boolean) as string[],
+      entity: eid,
+      entities: [constraint.a?.entity, constraint.b?.entity, constraint.target?.entity].filter(Boolean) as string[],
     }
   }
 
@@ -322,7 +282,7 @@ function computeConstraintRender(constraint: any, sketch: Sketch): any {
     if (!eid) return { kind: 'unknown' }
     const ea = sketch[eid] as any
     if (!ea || !ea.end) return { kind: 'unknown' }
-    return { kind: 'symbol_perp', at: ea.end, entities: [constraint.a?.entity, constraint.b?.entity].filter(Boolean) as string[] }
+    return { kind: 'symbol_perp', at: ea.end, entity: eid, entities: [constraint.a?.entity, constraint.b?.entity].filter(Boolean) as string[] }
   }
 
   if (kind === 'parallel') {
@@ -331,7 +291,7 @@ function computeConstraintRender(constraint: any, sketch: Sketch): any {
     const ea = sketch[eid] as any
     if (!ea || !ea.start || !ea.end) return { kind: 'unknown' }
     const at: [number, number] = [(ea.start[0] + ea.end[0]) / 2, (ea.start[1] + ea.end[1]) / 2]
-    return { kind: 'symbol_parallel', at, entities: [constraint.a?.entity, constraint.b?.entity].filter(Boolean) as string[] }
+    return { kind: 'symbol_parallel', at, entity: eid, entities: [constraint.a?.entity, constraint.b?.entity].filter(Boolean) as string[] }
   }
 
   if (kind === 'angle') {
@@ -362,6 +322,7 @@ function computeConstraintRender(constraint: any, sketch: Sketch): any {
     return {
       kind: 'symbol_equal',
       at: at_a,
+      entity: eid,
       entities: [eid, eid2],
     }
   }
@@ -398,6 +359,7 @@ function computeConstraintRender(constraint: any, sketch: Sketch): any {
     return {
       kind: 'symbol_midpoint',
       at,
+      entity: eid,
       entities: [eid, constraint.point?.entity].filter(Boolean) as string[],
     }
   }
@@ -408,7 +370,7 @@ function computeConstraintRender(constraint: any, sketch: Sketch): any {
     const e = sketch[eid] as any
     if (!e) return { kind: 'unknown' }
     const center = e.center ? e.center : [e.x, e.y]
-    return { kind: 'symbol_concentric', at: center, entities: [eid, constraint.b?.entity].filter(Boolean) as string[] }
+    return { kind: 'symbol_concentric', at: center, entity: eid, entities: [eid, constraint.b?.entity].filter(Boolean) as string[] }
   }
 
   if (kind === 'fixed') {
@@ -431,7 +393,7 @@ function computeConstraintRender(constraint: any, sketch: Sketch): any {
     const arcGeom = sketch[arcEid] as any
     if (!arcGeom) return { kind: 'unknown' }
     const pt = arc.point !== 'end' ? arcGeom.start : arcGeom.end
-    return { kind: 'symbol_tangent', at: pt, entities: [constraint.line?.entity, arcEid].filter(Boolean) as string[] }
+    return { kind: 'symbol_tangent', at: pt, entity: arcEid, entities: [constraint.line?.entity, arcEid].filter(Boolean) as string[] }
   }
 
   if (kind === 'normal') {
@@ -442,7 +404,7 @@ function computeConstraintRender(constraint: any, sketch: Sketch): any {
     const arcGeom = sketch[arcEid] as any
     if (!arcGeom) return { kind: 'unknown' }
     const pt = arc.point !== 'end' ? arcGeom.start : arcGeom.end
-    return { kind: 'symbol_normal', at: pt, entities: [constraint.line?.entity, arcEid].filter(Boolean) as string[] }
+    return { kind: 'symbol_normal', at: pt, entity: arcEid, entities: [constraint.line?.entity, arcEid].filter(Boolean) as string[] }
   }
 
   if (kind === 'colinear') {
@@ -453,6 +415,7 @@ function computeConstraintRender(constraint: any, sketch: Sketch): any {
     return {
       kind: 'symbol_colinear',
       at: pt,
+      entity: eid,
       entities: [constraint.a?.entity, constraint.b?.entity, constraint.target?.entity].filter(Boolean) as string[],
     }
   }

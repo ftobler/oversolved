@@ -213,8 +213,12 @@ export default function Part() {
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
           if (feature.geometry) {
-            // Find the feature definition to get entity kinds for unflattening
+            // Find the feature definition
             const featureDef = (d.features ?? []).find(f => f.id === id)
+            if (featureDef) {
+              // Feed solved geometry back into the document's initial state
+              featureDef.initial = feature.geometry
+            }
             const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
 
             results[id] = {
@@ -224,7 +228,13 @@ export default function Part() {
             }
           }
         }
+        // Update both the cached solve results AND the primary document state
         setSolveResults(prev => ({ ...prev, ...results }))
+        setDoc(d)
+        docRef.current = d
+        if (mode === 'code') {
+          setCodeText(stringifyYaml(d))
+        }
         setSolveError(null)
       }
     } catch (e) {
@@ -232,7 +242,7 @@ export default function Part() {
     } finally {
       setSolving(false)
     }
-  }, [])
+  }, [mode])
 
   // Mutation handler: deep-clone doc, apply mutation, update state, re-solve
   const handleMutation = useCallback((m: Mutation) => {
@@ -429,44 +439,7 @@ export default function Part() {
     docRef.current = parsed
     setDoc(parsed)
     setFeatures(extractFeatures(parsed))
-
-    setSolving(true)
-    setSolveTime(null)
-    const startTime = performance.now()
-    try {
-      const response = await fetch('/api/solve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed),
-      })
-      const data = await response.json()
-      const endTime = performance.now()
-      setSolveTime(Math.round((endTime - startTime) * 100) / 100)
-      if (!response.ok) {
-        setSolveResult(data.error || 'Solve failed')
-        setSolveResults({})
-      } else {
-        setSolveResult(stringifyYaml(data.result))
-        const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; topology?: import('../components/SketchSvg').Topology }>
-        const results: Record<string, SketchData> = {}
-        for (const [id, feature] of Object.entries(result)) {
-          if (feature.geometry) {
-            // Find the feature definition to get entity kinds for unflattening
-            const featureDef = (parsed.features ?? []).find(f => f.id === id)
-            const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
-            results[id] = {
-              solved,
-              topology: feature.topology,
-            }
-          }
-        }
-        setSolveResults(results)
-      }
-    } catch (e) {
-      setSolveResult(String(e))
-    } finally {
-      setSolving(false)
-    }
+    reSolve(parsed)
   }
 
   const handleRollbackDragOver = (e: React.DragEvent, featureIndex: number) => {
