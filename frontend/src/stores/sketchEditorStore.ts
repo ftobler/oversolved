@@ -8,6 +8,7 @@ export type Mutation =
   | { type: 'set_constraint_value'; featureId: string; constraintId: string; value: number }
   | { type: 'delete'; targets: string[] }
   | { type: 'add_entity'; featureId: string; kind: string; params: number[] }
+  | { type: 'add_rect'; featureId: string; p0: [number, number]; p1: [number, number] }
 
 export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'circle' | 'arc' | 'point'
 

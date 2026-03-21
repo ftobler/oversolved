@@ -309,6 +309,112 @@ export function applyAddEntity(
   return doc
 }
 
+/**
+ * Add a rectangle as 4 line segments with 8 automatic constraints:
+ *   4× coincident (connecting corners), 2× equal_length (opposite sides),
+ *   1× horizontal (bottom side), 1× vertical (right side).
+ * Single undo step for the whole operation.
+ */
+export function applyAddRect(
+  doc: Document,
+  featureId: string,
+  p0: [number, number],
+  p1: [number, number],
+): Document {
+  const [x0, y0] = p0
+  const [x1, y1] = p1
+  const feature = findFeature(doc, featureId)
+  if (!feature) return doc
+
+  // Collect existing entity IDs
+  const existingIds = new Set<string>()
+  const entList = feature.get('entities') as YAMLSeq | undefined
+  if (entList) {
+    for (const item of entList.items) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const id = (item as any).get?.('id')
+      if (id) existingIds.add(id)
+    }
+  }
+
+  // Generate 4 unique line IDs
+  const lineIds: string[] = []
+  let idx = 1
+  for (let i = 0; i < 4; i++) {
+    while (existingIds.has(`line${idx}`)) idx++
+    lineIds.push(`line${idx}`)
+    existingIds.add(`line${idx}`)
+    idx++
+  }
+  const [lA, lB, lC, lD] = lineIds
+  const fid = featureId
+
+  // Add 4 line entities (CCW winding: bottom, right, top, left)
+  const lines: [string, number[]][] = [
+    [lA, [x0, y0, x1, y0]],  // bottom: p0 → (x1,y0)  [horizontal]
+    [lB, [x1, y0, x1, y1]],  // right:  (x1,y0) → p1  [vertical]
+    [lC, [x1, y1, x0, y1]],  // top:    p1 → (x0,y1)
+    [lD, [x0, y1, x0, y0]],  // left:   (x0,y1) → p0
+  ]
+  const round = (v: number) => Math.round(v * 1e6) / 1e6
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entryList = (entList ?? (() => { feature.set('entities', doc.createNode([])); return feature.get('entities') as YAMLSeq })())
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let initial = feature.get('initial') as any
+  if (!initial) { feature.set('initial', doc.createNode({})); initial = feature.get('initial') }
+  for (const [eid, params] of lines) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    entryList.add(doc.createNode({ id: eid, kind: 'line_segment' }) as any)
+    initial.set(eid, doc.createNode(params.map(round)))
+  }
+
+  // Collect existing constraint IDs
+  const existingCids = new Set<string>()
+  const conList = feature.get('constraints') as YAMLSeq | undefined
+  if (conList) {
+    for (const item of conList.items) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const id = (item as any).get?.('id')
+      if (id) existingCids.add(id)
+    }
+  }
+  // Ensure constraints list exists
+  if (!conList) feature.set('constraints', doc.createNode([]))
+  const cList = feature.get('constraints') as YAMLSeq
+
+  const addConstraint = (kind: string, targets: string[]) => {
+    let cidx = existingCids.size + 1
+    let cid = `c_${kind}_${cidx}`
+    while (existingCids.has(cid)) { cidx++; cid = `c_${kind}_${cidx}` }
+    existingCids.add(cid)
+    const parseTarget = (t: string) => {
+      const parts = t.split(':')
+      if (parts[0] === 'entity') return { entity: parts[2] }
+      if (parts[0] === 'vertex') return { entity: parts[2], point: parts[3] }
+      return { entity: t }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry: Record<string, any> = { id: cid, kind }
+    if (targets.length === 1) entry.target = parseTarget(targets[0])
+    else if (targets.length >= 2) { entry.a = parseTarget(targets[0]); entry.b = parseTarget(targets[1]) }
+    cList.add(doc.createNode(entry))
+  }
+
+  // 4× coincident: connect corners
+  addConstraint('coincident', [`vertex:${fid}:${lA}:end`,   `vertex:${fid}:${lB}:start`])
+  addConstraint('coincident', [`vertex:${fid}:${lB}:end`,   `vertex:${fid}:${lC}:start`])
+  addConstraint('coincident', [`vertex:${fid}:${lC}:end`,   `vertex:${fid}:${lD}:start`])
+  addConstraint('coincident', [`vertex:${fid}:${lD}:end`,   `vertex:${fid}:${lA}:start`])
+  // 2× equal_length: opposite sides
+  addConstraint('equal_length', [`entity:${fid}:${lA}`, `entity:${fid}:${lC}`])
+  addConstraint('equal_length', [`entity:${fid}:${lB}`, `entity:${fid}:${lD}`])
+  // 1× horizontal, 1× vertical
+  addConstraint('horizontal', [`entity:${fid}:${lA}`])
+  addConstraint('vertical',   [`entity:${fid}:${lB}`])
+
+  return doc
+}
+
 /** Parse YAML string to Document, preserving comments/formatting */
 export function parseYamlDoc(content: string): Document {
   return parseDocument(content)

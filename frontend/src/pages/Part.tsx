@@ -6,7 +6,7 @@ import type { Feature, SketchData } from '../components/Viewport'
 import type { Sketch, Constraints } from '../components/SketchSvg'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import type { Mutation } from '../stores/sketchEditorStore'
-import { parseYamlDoc, applyMoveVertex, applyMoveEntity, applyAddConstraint, applyDeleteElements, applySetConstraintValue, applyAddEntity } from '../utils/yamlMutations'
+import { parseYamlDoc, applyMoveVertex, applyMoveEntity, applyAddConstraint, applyDeleteElements, applySetConstraintValue, applyAddEntity, applyAddRect } from '../utils/yamlMutations'
 import { registerCommand, unregisterCommand, dispatchKey } from '../stores/commandRegistry'
 import './Part.css'
 import toolbarLineIcon from '../assets/icons/toolbar-line.svg'
@@ -260,8 +260,12 @@ export default function Part() {
       case 'add_entity':
         applyAddEntity(doc, m.featureId, m.kind, m.params)
         break
+      case 'add_rect':
+        applyAddRect(doc, m.featureId, m.p0, m.p1)
+        break
     }
     const newContent = doc.toString()
+    contentRef.current = newContent  // sync update so back-to-back mutations see the latest content
     setContent(newContent)
     setFeatures(extractFeatures(newContent))
     reSolve(newContent)
@@ -305,11 +309,11 @@ export default function Part() {
   useEffect(() => {
     registerCommand('undo', handleUndo)
     registerCommand('redo', handleRedo)
-    registerCommand('deleteSelected', () => useSketchEditorStore.getState().deleteSelected())
-    registerCommand('applyDimension', () => useSketchEditorStore.getState().setActiveTool('dimension'))
-    registerCommand('applyHorizontal', () => useSketchEditorStore.getState().applyConstraint('horizontal'))
-    registerCommand('applyVertical', () => useSketchEditorStore.getState().applyConstraint('vertical'))
-    registerCommand('cancelDraw', () => {
+    registerCommand('delete_selected', () => useSketchEditorStore.getState().deleteSelected())
+    registerCommand('apply_dimension', () => useSketchEditorStore.getState().setActiveTool('dimension'))
+    registerCommand('apply_horizontal', () => useSketchEditorStore.getState().applyConstraint('horizontal'))
+    registerCommand('apply_vertical', () => useSketchEditorStore.getState().applyConstraint('vertical'))
+    registerCommand('cancel_draw', () => {
       useSketchEditorStore.getState().clearDraw()
       useSketchEditorStore.getState().setActiveTool('select')
     })
@@ -318,11 +322,11 @@ export default function Part() {
       window.removeEventListener('keydown', dispatchKey)
       unregisterCommand('undo')
       unregisterCommand('redo')
-      unregisterCommand('deleteSelected')
-      unregisterCommand('applyDimension')
-      unregisterCommand('applyHorizontal')
-      unregisterCommand('applyVertical')
-      unregisterCommand('cancelDraw')
+      unregisterCommand('delete_selected')
+      unregisterCommand('apply_dimension')
+      unregisterCommand('apply_horizontal')
+      unregisterCommand('apply_vertical')
+      unregisterCommand('cancel_draw')
     }
   }, [handleUndo, handleRedo])
 

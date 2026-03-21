@@ -11,12 +11,12 @@ export const KEYMAP: Record<string, string> = {
   'ctrl+z':       'undo',
   'ctrl+shift+z': 'redo',
   'ctrl+y':       'redo',
-  'delete':       'deleteSelected',
-  'backspace':    'deleteSelected',
-  'd':            'applyDimension',
-  'h':            'applyHorizontal',
-  'v':            'applyVertical',
-  'escape':       'cancelDraw',
+  'delete':       'delete_selected',
+  'backspace':    'delete_selected',
+  'd':            'apply_dimension',
+  'h':            'apply_horizontal',
+  'v':            'apply_vertical',
+  'escape':       'cancel_draw',
 }
 
 // ── Registration ───────────────────────────────────────────────────────────

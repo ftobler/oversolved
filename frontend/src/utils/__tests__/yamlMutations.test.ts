@@ -64,12 +64,12 @@ describe('applyMoveVertex', () => {
     expect(result.features[0].initial.line1).toEqual([0, 0, 10, 0])
   })
 
-  it('rounds coordinates to 3 decimal places', () => {
+  it('rounds coordinates to 6 decimal places', () => {
     const doc = parseYamlDoc(SAMPLE_YAML)
     applyMoveVertex(doc, 'Sketch1', 'line1', 'start', [1.23456789, 9.87654321])
     const result = doc.toJSON()
-    expect(result.features[0].initial.line1[0]).toBe(1.235)
-    expect(result.features[0].initial.line1[1]).toBe(9.877)
+    expect(result.features[0].initial.line1[0]).toBe(1.234568)
+    expect(result.features[0].initial.line1[1]).toBe(9.876543)
   })
 })
 

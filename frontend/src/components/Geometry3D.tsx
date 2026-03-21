@@ -928,12 +928,7 @@ function DrawPlane({ featureId, activeFeatureId }: { featureId: string; activeFe
       if (pts.length === 0) {
         addDrawPoint([x, y])
       } else {
-        const [x0, y0] = pts[0]
-        // 4 line segments for the rectangle
-        onMutation?.({ type: 'add_entity', featureId, kind: 'line_segment', params: [x0, y0, x, y0] })
-        onMutation?.({ type: 'add_entity', featureId, kind: 'line_segment', params: [x, y0, x, y] })
-        onMutation?.({ type: 'add_entity', featureId, kind: 'line_segment', params: [x, y, x0, y] })
-        onMutation?.({ type: 'add_entity', featureId, kind: 'line_segment', params: [x0, y, x0, y0] })
+        onMutation?.({ type: 'add_rect', featureId, p0: pts[0], p1: [x, y] })
         clearDraw()
         setActiveTool('select')
       }
