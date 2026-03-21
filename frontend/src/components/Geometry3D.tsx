@@ -836,6 +836,53 @@ function DragPlane() {
 // Draw plane — captures pointer for entity insertion when a drawing tool is active
 // ---------------------------------------------------------------------------
 
+/** Compute circumcircle of 3 points. Returns null if points are collinear. */
+function circumcircle(p1: [number, number], p2: [number, number], p3: [number, number]): { cx: number; cy: number; r: number } | null {
+  const ax = p1[0], ay = p1[1]
+  const bx = p2[0], by = p2[1]
+  const cx = p3[0], cy = p3[1]
+  const D = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+  if (Math.abs(D) < 1e-10) return null
+  const ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / D
+  const uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / D
+  const r = Math.hypot(ax - ux, ay - uy)
+  return { cx: ux, cy: uy, r }
+}
+
+/**
+ * Given arc start and end angles (degrees) and a radius point, determine the CCW arc.
+ * Returns [aStart, aEnd] such that going CCW from aStart reaches aEnd.
+ * The radius point determines which arc (short or long) was intended.
+ */
+function arcAnglesFromRadiusPoint(
+  cx: number, cy: number,
+  start: [number, number], end: [number, number], radiusPt: [number, number]
+): [number, number] {
+  const aStart = Math.atan2(start[1] - cy, start[0] - cx) * (180 / Math.PI)
+  const aEnd = Math.atan2(end[1] - cy, end[0] - cx) * (180 / Math.PI)
+  const aRadius = Math.atan2(radiusPt[1] - cy, radiusPt[0] - cx) * (180 / Math.PI)
+
+  // Normalize all to [0, 360)
+  const norm = (a: number) => ((a % 360) + 360) % 360
+  const s = norm(aStart)
+  const e = norm(aEnd)
+  const rp = norm(aRadius)
+
+  // CCW span from s to e
+  const spanCCW = ((e - s) + 360) % 360
+
+  // Is the radius point in the CCW arc from s to e?
+  const rpInCCW = ((rp - s) + 360) % 360 < spanCCW
+
+  if (rpInCCW) {
+    // Short/long CCW arc contains the radius point — use it as-is
+    return [aStart, aEnd]
+  } else {
+    // Radius point is in the CW arc — flip to get CCW arc that contains it
+    return [aEnd, aStart]
+  }
+}
+
 function computePreviewPts(
   tool: string,
   pts: [number, number][],
@@ -850,13 +897,17 @@ function computePreviewPts(
     return sampleArc(pts[0][0], pts[0][1], r, 0, 0)
   }
   if (tool === 'arc' && pts.length === 2 && h) {
-    const r = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1])
-    const aStart = Math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0]) * (180 / Math.PI)
-    const aEnd = Math.atan2(h[1] - pts[0][1], h[0] - pts[0][0]) * (180 / Math.PI)
-    return sampleArc(pts[0][0], pts[0][1], r, aStart, aEnd)
+    // pts[0]=start, pts[1]=end, h=radius point — show live arc preview
+    const cc = circumcircle(pts[0], pts[1], h)
+    if (cc) {
+      const [aStart, aEnd] = arcAnglesFromRadiusPoint(cc.cx, cc.cy, pts[0], pts[1], h)
+      return sampleArc(cc.cx, cc.cy, cc.r, aStart, aEnd)
+    }
+    // Collinear — just show chord
+    return [[pts[0][0], pts[0][1], 0], [pts[1][0], pts[1][1], 0]]
   }
   if (tool === 'arc' && pts.length === 1 && h) {
-    // Show a small dot at center (first point) and line to hover (radius indicator)
+    // Show chord from start to hover (indicating end point placement)
     return [[pts[0][0], pts[0][1], 0], [h[0], h[1], 0]]
   }
   if (tool === 'rect' && pts.length === 1 && h) {
@@ -937,17 +988,16 @@ function DrawPlane({ featureId, activeFeatureId }: { featureId: string; activeFe
 
     } else if (activeTool === 'arc') {
       if (pts.length === 0) {
-        addDrawPoint([x, y])           // center
-      } else if (pts.length === 1) {
         addDrawPoint([x, y])           // start point
+      } else if (pts.length === 1) {
+        addDrawPoint([x, y])           // end point
       } else {
-        // pts[0]=center, pts[1]=start, [x,y]=end
-        const r = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1])
-        const aStart = Math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0]) * (180 / Math.PI)
-        const aEnd = Math.atan2(y - pts[0][1], x - pts[0][0]) * (180 / Math.PI)
-        if (r > 0) {
+        // pts[0]=start, pts[1]=end, [x,y]=radius point
+        const cc = circumcircle(pts[0], pts[1], [x, y])
+        if (cc && cc.r > 0) {
+          const [aStart, aEnd] = arcAnglesFromRadiusPoint(cc.cx, cc.cy, pts[0], pts[1], [x, y])
           onMutation?.({ type: 'add_entity', featureId, kind: 'arc',
-            params: [pts[0][0], pts[0][1], r, aStart, aEnd] })
+            params: [cc.cx, cc.cy, cc.r, aStart, aEnd] })
         }
         clearDraw()
         setActiveTool('select')

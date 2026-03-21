@@ -27,6 +27,7 @@ import toolbarPerpendicularIcon from '../assets/icons/constraint-square.svg'
 import toolbarTangentIcon from '../assets/icons/constraint-tangent.svg'
 import toolbarCollinearIcon from '../assets/icons/constraint-colinear.svg'
 import toolbarDimensionIcon from '../assets/icons/constraint-dimension.svg'
+import toolbarLineSwapIcon from '../assets/icons/constraint-line-swap.svg'
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featurePartIcon from '../assets/icons/feature-part.svg'
@@ -58,8 +59,6 @@ function SketchToolbar({ onResetViewport }: { onResetViewport: () => void }) {
         <img src={toolbarDimensionIcon} alt="Dimension" />
       </button>
 
-      <div className="toolbar-separator" />
-
       {/* Drawing tools — TODO: insertion logic */}
       <button className={`editor-btn ${activeTool === 'line' ? 'active' : ''}`} title="Line" onClick={() => setActiveTool('line')}>
         <img src={toolbarLineIcon} alt="Line" />
@@ -75,6 +74,9 @@ function SketchToolbar({ onResetViewport }: { onResetViewport: () => void }) {
       </button>
       <button className={`editor-btn ${activeTool === 'point' ? 'active' : ''}`} title="Point" onClick={() => setActiveTool('point')}>
         <img src={toolbarPointIcon} alt="Point" />
+      </button>
+      <button className="editor-btn" title="Line Swap" onClick={() => store().applyConstraint('colinear')}>
+        <img src={toolbarLineSwapIcon} alt="Line Swap" />
       </button>
 
       <div className="toolbar-separator" />

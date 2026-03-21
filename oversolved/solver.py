@@ -144,6 +144,11 @@ def _constraint_render(c: dict, geom: dict) -> dict:
     kind = c["kind"]
 
     if kind == "horizontal":
+        if "a" in c:
+            pa = _geom_point(geom, c["a"])
+            pb = _geom_point(geom, c["b"])
+            at = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
+            return {"kind": "symbol_h", "at": at, "entity": c["a"]["entity"]}
         eid = c["target"]["entity"]
         e = geom[eid]
         at = [(e["start"][0] + e["end"][0]) / 2,
@@ -151,6 +156,11 @@ def _constraint_render(c: dict, geom: dict) -> dict:
         return {"kind": "symbol_h", "at": at, "entity": eid}
 
     elif kind == "vertical":
+        if "a" in c:
+            pa = _geom_point(geom, c["a"])
+            pb = _geom_point(geom, c["b"])
+            at = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
+            return {"kind": "symbol_v", "at": at, "entity": c["a"]["entity"]}
         eid = c["target"]["entity"]
         e = geom[eid]
         at = [(e["start"][0] + e["end"][0]) / 2,
@@ -372,11 +382,21 @@ def _solve_sketch(feature: dict) -> dict:
         for c in (clist if clist is not None else constraints):
             kind = c["kind"]
             if kind == "horizontal":
-                ep = get_params(x, c["target"]["entity"])
-                r.append(ep[3] - ep[1])
+                if "a" in c:
+                    pa = get_point(x, c["a"])
+                    pb = get_point(x, c["b"])
+                    r.append(pa[1] - pb[1])
+                else:
+                    ep = get_params(x, c["target"]["entity"])
+                    r.append(ep[3] - ep[1])
             elif kind == "vertical":
-                ep = get_params(x, c["target"]["entity"])
-                r.append(ep[2] - ep[0])
+                if "a" in c:
+                    pa = get_point(x, c["a"])
+                    pb = get_point(x, c["b"])
+                    r.append(pa[0] - pb[0])
+                else:
+                    ep = get_params(x, c["target"]["entity"])
+                    r.append(ep[2] - ep[0])
             elif kind == "length":
                 ep = get_params(x, c["target"]["entity"])
                 dx, dy = ep[2] - ep[0], ep[3] - ep[1]
