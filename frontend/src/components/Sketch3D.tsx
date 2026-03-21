@@ -381,6 +381,44 @@ function LinearDimension({ cid, dim, dimOffset }: { cid: string; dim: { kind: st
   )
 }
 
+function RadiusDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number } }) {
+  const [hovered, setHovered] = useState(false)
+  const [x1, y1] = dim.p1,
+    [x2, y2] = dim.p2
+  const angle = 10 * (Math.PI / 180)
+  const dx = x2 - x1,
+    dy = y2 - y1
+  const x2r = x1 + dx * Math.cos(angle) - dy * Math.sin(angle)
+  const y2r = y1 + dx * Math.sin(angle) + dy * Math.cos(angle)
+  const mx = (x1 + x2r) / 2,
+    my = (y1 + y2r) / 2
+  const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
+  const color = hovered ? COLOR_HOVER : COLOR_CONSTRAINT
+  const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
+  const onOut = () => setHovered(false)
+  const meshRef = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
+  useFrame(() => {
+    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
+  })
+
+  return (
+    <group key={cid}>
+      <Line points={[[x1, y1, 0], [x2r, y2r, 0]]} color={color} lineWidth={1} />
+      <Arrowhead tip={[x2r, y2r]} from={[x1, y1]} px={12} color={color} />
+      <mesh ref={meshRef} position={[mx, my, 0.001]} onPointerOver={onOver} onPointerOut={onOut}>
+        <circleGeometry args={[1, 8]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <Html position={[mx, my, 0.001]} center style={{ pointerEvents: 'none' }}>
+        <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', transition: 'color 0.15s' }}>
+          {label}
+        </div>
+      </Html>
+    </group>
+  )
+}
+
 function AngleDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number } }) {
   const [hovered, setHovered] = useState(false)
   if (!dim.p3) return null
@@ -394,8 +432,8 @@ function AngleDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [n
   const arcR = Math.min(r1, r2) * 0.4
   const arcPts = sampleArc(vx, vy, arcR, angle1 * (180 / Math.PI), angle2 * (180 / Math.PI))
   const midAngle = (angle1 + angle2) / 2
-  const labelX = vx + arcR * 1.5 * Math.cos(midAngle),
-    labelY = vy + arcR * 1.5 * Math.sin(midAngle)
+  const labelX = vx + arcR * Math.cos(midAngle),
+    labelY = vy + arcR * Math.sin(midAngle)
   const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
   const color = hovered ? COLOR_HOVER : COLOR_CONSTRAINT
   const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
@@ -463,25 +501,7 @@ function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOverlaysP
 
       } else if (r.kind === 'dim_radius') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number }
-        const [x1, y1] = dim.p1, [x2, y2] = dim.p2
-        const angle = 10 * (Math.PI / 180)
-        const dx = x2 - x1, dy = y2 - y1
-        const x2r = x1 + dx * Math.cos(angle) - dy * Math.sin(angle)
-        const y2r = y1 + dx * Math.sin(angle) + dy * Math.cos(angle)
-        const mx = (x1 + x2r) / 2, my = (y1 + y2r) / 2
-        const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
-
-        dimElements.push(
-          <group key={cid}>
-            <Line points={[[x1, y1, 0], [x2r, y2r, 0]]} color={COLOR_CONSTRAINT} lineWidth={1} />
-            <Arrowhead tip={[x2r, y2r]} from={[x1, y1]} px={12} color={COLOR_CONSTRAINT} />
-            <Html position={[mx, my, 0.001]} center style={{ pointerEvents: 'none' }}>
-              <div style={{ color: COLOR_CONSTRAINT, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
-                {label}
-              </div>
-            </Html>
-          </group>
-        )
+        dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} />)
 
       } else if (r.kind === 'dim_angle') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number }
