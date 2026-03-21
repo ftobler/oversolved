@@ -20,6 +20,9 @@ dependencies = [
     "PyMySQL",
 ]
 
+[project.scripts]
+oversolved = "oversolved.main:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest",
