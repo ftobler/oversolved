@@ -206,7 +206,7 @@ export default function Part() {
         setSolveResult(yamlStr)
 
         // Extract per-feature sketch geometry for 3D viewport
-        const result = data.result as Record<string, { geometry?: { initial?: Sketch; solved?: Sketch }; constraints?: Constraints }>
+        const result = data.result as Record<string, { geometry?: { initial?: Sketch; solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
           if (feature.geometry?.initial && feature.geometry?.solved) {
@@ -214,6 +214,7 @@ export default function Part() {
               initial: feature.geometry.initial,
               solved: feature.geometry.solved,
               constraints: feature.constraints,
+              topology: feature.topology,
             }
           }
         }
