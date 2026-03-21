@@ -58,3 +58,7 @@ jobs:
       - name: npm lint
         run: npm run lint
         working-directory: frontend
+
+      - name: npm test (vitest)
+        run: npx vitest run
+        working-directory: frontend

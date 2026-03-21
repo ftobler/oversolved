@@ -63,6 +63,25 @@ python -m oversolved.run_server \
   --db-name oversolved
 ```
 
+## Testing
+
+### Backend Tests
+
+```bash
+pytest tests/test_database.py tests/test_api.py -v
+```
+
+Uses in-memory SQLite, no external setup required.
+
+### Frontend Tests
+
+```bash
+cd frontend
+npx vitest run
+```
+
+Runs all Vitest test suites in the frontend directory.
+
 ## Environment Variables (Optional)
 
 For production, you can use environment variables instead of CLI args:
