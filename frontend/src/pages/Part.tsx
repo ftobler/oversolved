@@ -532,8 +532,8 @@ export default function Part() {
                   </div>
                 </div>
               )}
-              {mode === 'sketch' && <Viewport features={features as Feature[]} rollbackPosition={rollbackPosition} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} />}
-              {mode === 'feature' && <Viewport features={features as Feature[]} rollbackPosition={rollbackPosition} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} />}
+              {mode === 'sketch' && <Viewport features={features as Feature[]} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} />}
+              {mode === 'feature' && <Viewport features={features as Feature[]} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} />}
             </>
           )}
         </div>

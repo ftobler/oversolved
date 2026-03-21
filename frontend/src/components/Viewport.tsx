@@ -6,7 +6,6 @@ import type { Sketch, Constraints, Topology } from './SketchSvg'
 import Sketch3D from './Sketch3D'
 import { CubeGizmoCanvas, drawCubeGizmo } from './CubeGizmo'
 import type { Pv, Hit } from './CubeGizmo'
-import type { mx_bilerp_0 } from 'three/src/nodes/materialx/lib/mx_noise.js'
 
 const INITIAL_POSITION: [number, number, number] = [0, 0, 5]
 const INITIAL_ZOOM = 200
