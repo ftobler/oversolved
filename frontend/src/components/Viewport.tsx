@@ -167,15 +167,18 @@ function SceneController({ resetTrigger, canvasRef, pvRef, hoverRef, snapRef, ca
   )
 }
 
-// ── Convert initial geometry to Sketch format ──────────────────────────────────
+// ── Geometry unflattening ───────────────────────────────────────────────────
 
-function convertInitialToSketch(feature: Feature & { initial?: Record<string, number[]>; entities?: Array<{ id: string; kind: string }> }): Sketch {
-  if (!feature.initial || !feature.entities) return {}
-
-  const entityMap = Object.fromEntries(feature.entities.map(e => [e.id, e.kind]))
+/** Convert flat array format (from AST initial or server solve) to UI Sketch format */
+function unflattenGeometry(
+  flat: Record<string, number[]>,
+  entities: Array<{ id: string; kind: string }> | undefined
+): Sketch {
+  if (!entities) return {}
+  const entityMap = Object.fromEntries(entities.map(e => [e.id, e.kind]))
   const result: Sketch = {}
 
-  for (const [entityId, params] of Object.entries(feature.initial)) {
+  for (const [entityId, params] of Object.entries(flat)) {
     const kind = entityMap[entityId]
     if (!kind) continue
 
@@ -203,86 +206,49 @@ function convertInitialToSketch(feature: Feature & { initial?: Record<string, nu
       result[entityId] = { x: params[0], y: params[1] }
     }
   }
-
   return result
 }
 
-// ── Convert PartConstraint[] to Constraints format with render data ──────────
+// ── Constraint rendering ─────────────────────────────────────────────────────
 
-type GeometryForConstraints = Record<string, any>
-
-function flatToGeometryForConstraints(
-  feature: Feature & { initial?: Record<string, number[]>; entities?: Array<{ id: string; kind: string }> }
-): GeometryForConstraints {
-  if (!feature.initial || !feature.entities) return {}
-
-  const entityMap = Object.fromEntries(feature.entities.map(e => [e.id, e.kind]))
-  const result: GeometryForConstraints = {}
-
-  for (const [entityId, params] of Object.entries(feature.initial)) {
-    const kind = entityMap[entityId]
-    if (!kind) continue
-
-    if (kind === 'line_segment') {
-      result[entityId] = {
-        start: [params[0], params[1]],
-        end: [params[2], params[3]],
-      }
-    } else if (kind === 'circle') {
-      result[entityId] = {
-        center: [params[0], params[1]],
-        radius: params[2],
-      }
-    } else if (kind === 'arc') {
-      const [cx, cy, r, a0, a1] = params
-      result[entityId] = {
-        start: [cx + r * Math.cos((a0 * Math.PI) / 180), cy + r * Math.sin((a0 * Math.PI) / 180)],
-        end: [cx + r * Math.cos((a1 * Math.PI) / 180), cy + r * Math.sin((a1 * Math.PI) / 180)],
-        center: [cx, cy],
-        radius: r,
-      }
-    } else if (kind === 'point') {
-      result[entityId] = { x: params[0], y: params[1] }
-    }
-  }
-
-  return result
-}
-
-function geomPoint(geom: GeometryForConstraints, ref: { entity: string; point?: string }): [number, number] | null {
-  const e = geom[ref.entity]
+function geomPoint(sketch: Sketch, ref: { entity: string; point?: string }): [number, number] | null {
+  const e = sketch[ref.entity]
   if (!e) return null
   const pt = ref.point || 'start'
 
-  if (e.start && e.end && e.radius) {
+  if ('start' in e && 'end' in e && 'radius' in e) {
     // arc
-    return pt !== 'end' ? e.start : e.end
-  } else if (e.start) {
+    const arc = e as any
+    return pt !== 'end' ? arc.start : arc.end
+  } else if ('start' in e && 'end' in e) {
     // line_segment
-    return pt === 'end' ? e.end : e.start
-  } else if (e.center) {
+    const line = e as any
+    return pt === 'end' ? line.end : line.start
+  } else if ('center' in e) {
     // circle
-    return e.center
-  } else {
+    return (e as any).center
+  } else if ('x' in e) {
     // point
-    return [e.x, e.y]
+    const p = e as any
+    return [p.x, p.y]
   }
+  return null
 }
 
-function constraintRender(constraint: any, geom: GeometryForConstraints): any {
+function computeConstraintRender(constraint: any, sketch: Sketch): any {
   const kind = constraint.kind
 
   if (kind === 'horizontal') {
     if (constraint.a && constraint.b) {
-      const pa = geomPoint(geom, constraint.a)
-      const pb = geomPoint(geom, constraint.b)
+      const pa = geomPoint(sketch, constraint.a)
+      const pb = geomPoint(sketch, constraint.b)
       if (!pa || !pb) return { kind: 'unknown' }
       const at: [number, number] = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
-      return { kind: 'symbol_h', at, entity: constraint.a.entity }
+      return { kind: 'symbol_h', at, entities: [constraint.a.entity, constraint.b.entity] }
     }
     const eid = constraint.target?.entity
     if (!eid) return { kind: 'unknown' }
-    const e = geom[eid]
+    const e = sketch[eid] as any
     if (!e || !e.start || !e.end) return { kind: 'unknown' }
     const at: [number, number] = [(e.start[0] + e.end[0]) / 2, (e.start[1] + e.end[1]) / 2]
     return { kind: 'symbol_h', at, entity: eid }
@@ -290,15 +256,15 @@ function constraintRender(constraint: any, geom: GeometryForConstraints): any {
 
   if (kind === 'vertical') {
     if (constraint.a && constraint.b) {
-      const pa = geomPoint(geom, constraint.a)
-      const pb = geomPoint(geom, constraint.b)
+      const pa = geomPoint(sketch, constraint.a)
+      const pb = geomPoint(sketch, constraint.b)
       if (!pa || !pb) return { kind: 'unknown' }
       const at: [number, number] = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
-      return { kind: 'symbol_v', at, entity: constraint.a.entity }
+      return { kind: 'symbol_v', at, entities: [constraint.a.entity, constraint.b.entity] }
     }
     const eid = constraint.target?.entity
     if (!eid) return { kind: 'unknown' }
-    const e = geom[eid]
+    const e = sketch[eid] as any
     if (!e || !e.start || !e.end) return { kind: 'unknown' }
     const at: [number, number] = [(e.start[0] + e.end[0]) / 2, (e.start[1] + e.end[1]) / 2]
     return { kind: 'symbol_v', at, entity: eid }
@@ -307,7 +273,7 @@ function constraintRender(constraint: any, geom: GeometryForConstraints): any {
   if (kind === 'length') {
     const eid = constraint.target?.entity
     if (!eid) return { kind: 'unknown' }
-    const e = geom[eid]
+    const e = sketch[eid] as any
     if (!e || !e.start || !e.end) return { kind: 'unknown' }
     const dx = e.end[0] - e.start[0]
     const dy = e.end[1] - e.start[1]
@@ -326,7 +292,7 @@ function constraintRender(constraint: any, geom: GeometryForConstraints): any {
   if (kind === 'radius') {
     const eid = constraint.target?.entity
     if (!eid) return { kind: 'unknown' }
-    const e = geom[eid]
+    const e = sketch[eid] as any
     if (!e) return { kind: 'unknown' }
     const center = e.center
     const edge = e.start ? e.start : [e.center[0] + e.radius, e.center[1]]
@@ -342,38 +308,38 @@ function constraintRender(constraint: any, geom: GeometryForConstraints): any {
   if (kind === 'coincident') {
     const eid = constraint.a?.entity
     if (!eid) return { kind: 'unknown' }
-    const pt = geomPoint(geom, constraint.a)
+    const pt = geomPoint(sketch, constraint.a)
     if (!pt) return { kind: 'unknown' }
     return {
       kind: 'symbol_coincident',
       at: pt,
-      entity: eid,
+      entities: [constraint.a?.entity, constraint.b?.entity].filter(Boolean) as string[],
     }
   }
 
   if (kind === 'perpendicular') {
     const eid = constraint.a?.entity
     if (!eid) return { kind: 'unknown' }
-    const ea = geom[eid]
+    const ea = sketch[eid] as any
     if (!ea || !ea.end) return { kind: 'unknown' }
-    return { kind: 'symbol_perp', at: ea.end, entity: eid }
+    return { kind: 'symbol_perp', at: ea.end, entities: [constraint.a?.entity, constraint.b?.entity].filter(Boolean) as string[] }
   }
 
   if (kind === 'parallel') {
     const eid = constraint.a?.entity
     if (!eid) return { kind: 'unknown' }
-    const ea = geom[eid]
+    const ea = sketch[eid] as any
     if (!ea || !ea.start || !ea.end) return { kind: 'unknown' }
     const at: [number, number] = [(ea.start[0] + ea.end[0]) / 2, (ea.start[1] + ea.end[1]) / 2]
-    return { kind: 'symbol_parallel', at, entity: eid }
+    return { kind: 'symbol_parallel', at, entities: [constraint.a?.entity, constraint.b?.entity].filter(Boolean) as string[] }
   }
 
   if (kind === 'angle') {
     const eid = constraint.a?.entity
     const eid2 = constraint.b?.entity
     if (!eid || !eid2) return { kind: 'unknown' }
-    const ea = geom[eid]
-    const eb = geom[eid2]
+    const ea = sketch[eid] as any
+    const eb = sketch[eid2] as any
     if (!ea || !eb || !ea.start || !ea.end || !eb.end) return { kind: 'unknown' }
     return {
       kind: 'dim_angle',
@@ -389,16 +355,14 @@ function constraintRender(constraint: any, geom: GeometryForConstraints): any {
     const eid = constraint.a?.entity
     const eid2 = constraint.b?.entity
     if (!eid || !eid2) return { kind: 'unknown' }
-    const ea = geom[eid]
-    const eb = geom[eid2]
+    const ea = sketch[eid] as any
+    const eb = sketch[eid2] as any
     if (!ea || !eb || !ea.start || !ea.end || !eb.start || !eb.end) return { kind: 'unknown' }
     const at_a: [number, number] = [(ea.start[0] + ea.end[0]) / 2, (ea.start[1] + ea.end[1]) / 2]
-    const at_b: [number, number] = [(eb.start[0] + eb.end[0]) / 2, (eb.start[1] + eb.end[1]) / 2]
     return {
       kind: 'symbol_equal',
-      at_a,
-      at_b,
-      entity: eid,
+      at: at_a,
+      entities: [eid, eid2],
     }
   }
 
@@ -406,8 +370,8 @@ function constraintRender(constraint: any, geom: GeometryForConstraints): any {
     const eid = constraint.a?.entity
     const eid2 = constraint.b?.entity
     if (!eid || !eid2) return { kind: 'unknown' }
-    const pa = geomPoint(geom, constraint.a)
-    const pb = geomPoint(geom, constraint.b)
+    const pa = geomPoint(sketch, constraint.a)
+    const pb = geomPoint(sketch, constraint.b)
     if (!pa || !pb) return { kind: 'unknown' }
     const dx = pb[0] - pa[0]
     const dy = pb[1] - pa[1]
@@ -428,29 +392,29 @@ function constraintRender(constraint: any, geom: GeometryForConstraints): any {
     if (!line) return { kind: 'unknown' }
     const eid = line.entity
     if (!eid) return { kind: 'unknown' }
-    const e = geom[eid]
+    const e = sketch[eid] as any
     if (!e || !e.start || !e.end) return { kind: 'unknown' }
     const at: [number, number] = [(e.start[0] + e.end[0]) / 2, (e.start[1] + e.end[1]) / 2]
     return {
       kind: 'symbol_midpoint',
       at,
-      entity: eid,
+      entities: [eid, constraint.point?.entity].filter(Boolean) as string[],
     }
   }
 
   if (kind === 'concentric') {
     const eid = constraint.a?.entity
     if (!eid) return { kind: 'unknown' }
-    const e = geom[eid]
+    const e = sketch[eid] as any
     if (!e) return { kind: 'unknown' }
     const center = e.center ? e.center : [e.x, e.y]
-    return { kind: 'symbol_concentric', at: center, entity: eid }
+    return { kind: 'symbol_concentric', at: center, entities: [eid, constraint.b?.entity].filter(Boolean) as string[] }
   }
 
   if (kind === 'fixed') {
     const eid = constraint.target?.entity
     if (!eid) return { kind: 'unknown' }
-    const at = geomPoint(geom, constraint.target)
+    const at = geomPoint(sketch, constraint.target)
     if (!at) return { kind: 'unknown' }
     return {
       kind: 'symbol_fixed',
@@ -460,15 +424,14 @@ function constraintRender(constraint: any, geom: GeometryForConstraints): any {
   }
 
   if (kind === 'tangent') {
-    const line = constraint.line
     const arc = constraint.arc
-    if (!line || !arc) return { kind: 'unknown' }
+    if (!arc) return { kind: 'unknown' }
     const arcEid = arc.entity
     if (!arcEid) return { kind: 'unknown' }
-    const arcGeom = geom[arcEid]
+    const arcGeom = sketch[arcEid] as any
     if (!arcGeom) return { kind: 'unknown' }
     const pt = arc.point !== 'end' ? arcGeom.start : arcGeom.end
-    return { kind: 'symbol_tangent', at: pt, entity: arcEid }
+    return { kind: 'symbol_tangent', at: pt, entities: [constraint.line?.entity, arcEid].filter(Boolean) as string[] }
   }
 
   if (kind === 'normal') {
@@ -476,48 +439,45 @@ function constraintRender(constraint: any, geom: GeometryForConstraints): any {
     if (!arc) return { kind: 'unknown' }
     const arcEid = arc.entity
     if (!arcEid) return { kind: 'unknown' }
-    const arcGeom = geom[arcEid]
+    const arcGeom = sketch[arcEid] as any
     if (!arcGeom) return { kind: 'unknown' }
     const pt = arc.point !== 'end' ? arcGeom.start : arcGeom.end
-    return { kind: 'symbol_normal', at: pt, entity: arcEid }
+    return { kind: 'symbol_normal', at: pt, entities: [constraint.line?.entity, arcEid].filter(Boolean) as string[] }
   }
 
   if (kind === 'colinear') {
-    // colinear typically constrains a point to lie on a line; use the point
     const eid = constraint.a?.entity || constraint.target?.entity
     if (!eid) return { kind: 'unknown' }
-    const pt = geomPoint(geom, constraint.a || constraint.target)
+    const pt = geomPoint(sketch, constraint.a || constraint.target)
     if (!pt) return { kind: 'unknown' }
     return {
       kind: 'symbol_colinear',
       at: pt,
-      entity: eid,
+      entities: [constraint.a?.entity, constraint.b?.entity, constraint.target?.entity].filter(Boolean) as string[],
     }
   }
 
   return { kind: 'unknown' }
 }
 
-function convertInitialConstraints(
-  feature: any
+function deriveConstraints(
+  feature: any,
+  sketch: Sketch
 ): Constraints {
   if (!feature.constraints) return {}
-
-  const geom = flatToGeometryForConstraints(feature)
   const result: Constraints = {}
 
   for (const c of feature.constraints) {
-    const render = constraintRender(c, geom)
-    // Skip constraints that couldn't be rendered (e.g., missing entities)
+    const render = computeConstraintRender(c, sketch)
     if (render.kind === 'unknown') continue
     result[c.id] = {
       render,
       residual: 0,
     }
   }
-
   return result
 }
+
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -649,9 +609,10 @@ export default function Viewport({
           // Get the full feature definition if available
           const fullFeatureDef = featureDefs?.find(fd => fd.id === f.id) || f
           // Use solved geometry if available, otherwise show initial geometry from the document
-          const sketch = solveResult?.solved ? solveResult.solved : convertInitialToSketch(fullFeatureDef)
-          // Use solved constraints if available, otherwise compute from initial document
-          const constraints = solveResult?.constraints ? solveResult.constraints : convertInitialConstraints(fullFeatureDef)
+          const sketch = solveResult?.solved ? solveResult.solved : unflattenGeometry(fullFeatureDef.initial || {}, fullFeatureDef.entities)
+          // Always derive constraints from the current sketch geometry (whether solved or initial)
+          // to ensure icons are correctly placed.
+          const constraints = solveResult?.constraints ? solveResult.constraints : deriveConstraints(fullFeatureDef, sketch)
           return (
             <Geometry3D key={f.id}
               featureId={f.id}

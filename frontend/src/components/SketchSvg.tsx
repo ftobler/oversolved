@@ -71,6 +71,52 @@ export interface Sketch {
   [entityId: string]: Entity
 }
 
+/** Convert flat array format (from AST initial or server solve) to UI Sketch format.
+ *  Ensures all entities are present in result, defaulting to zero-params if missing. */
+export function unflattenGeometry(
+  flat: Record<string, number[]> | undefined,
+  entities: Array<{ id: string; kind: string }> | undefined
+): Sketch {
+  if (!entities) return {}
+  const result: Sketch = {}
+  const data = flat || {}
+
+  for (const { id, kind } of entities) {
+    // Default to zero-params if not in flat data to allow rendering/constraints
+    const params = data[id] || (
+      kind === 'line_segment' ? [0, 0, 0, 0] :
+      kind === 'circle' ? [0, 0, 0] :
+      kind === 'arc' ? [0, 0, 0, 0, 0] :
+      kind === 'point' ? [0, 0] : []
+    )
+
+    if (kind === 'line_segment') {
+      result[id] = {
+        start: [params[0] || 0, params[1] || 0],
+        end: [params[2] || 0, params[3] || 0],
+      }
+    } else if (kind === 'circle') {
+      result[id] = {
+        center: [params[0] || 0, params[1] || 0],
+        radius: params[2] || 0,
+      }
+    } else if (kind === 'arc') {
+      const cx = params[0] || 0, cy = params[1] || 0, r = params[2] || 0, a0 = params[3] || 0, a1 = params[4] || 0
+      result[id] = {
+        center: [cx, cy],
+        radius: r,
+        angle_start: a0,
+        angle_end: a1,
+        start: [cx + r * Math.cos((a0 * Math.PI) / 180), cy + r * Math.sin((a0 * Math.PI) / 180)],
+        end: [cx + r * Math.cos((a1 * Math.PI) / 180), cy + r * Math.sin((a1 * Math.PI) / 180)],
+      }
+    } else if (kind === 'point') {
+      result[id] = { x: params[0] || 0, y: params[1] || 0 }
+    }
+  }
+  return result
+}
+
 type Status = 'fully_constrained' | 'underconstrained' | 'overconstrained'
 
 // Constraint render types (from solver output)

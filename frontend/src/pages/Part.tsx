@@ -4,6 +4,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
 import type { Feature, SketchData } from '../components/Viewport'
 import type { Sketch } from '../components/SketchSvg'
+import { unflattenGeometry } from '../components/SketchSvg'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import type { Mutation } from '../stores/sketchEditorStore'
 import type { PartDoc } from '../utils/yamlMutations'
@@ -184,48 +185,6 @@ export default function Part() {
     })
   }, [codeText])
 
-  // Convert flat array geometry from server to Sketch format for UI
-  const unflattenGeometry = (
-    flatGeometry: Record<string, number[]>,
-    entities: Array<{ id: string; kind: string }> | undefined
-  ): Sketch => {
-    if (!entities) return {}
-
-    const entityMap = Object.fromEntries(entities.map(e => [e.id, e.kind]))
-    const result: Sketch = {}
-
-    for (const [entityId, params] of Object.entries(flatGeometry)) {
-      const kind = entityMap[entityId]
-      if (!kind) continue
-
-      if (kind === 'line_segment') {
-        result[entityId] = {
-          start: [params[0], params[1]],
-          end: [params[2], params[3]],
-        }
-      } else if (kind === 'circle') {
-        result[entityId] = {
-          center: [params[0], params[1]],
-          radius: params[2],
-        }
-      } else if (kind === 'arc') {
-        const [cx, cy, r, a0, a1] = params
-        result[entityId] = {
-          center: [cx, cy],
-          radius: r,
-          angle_start: a0,
-          angle_end: a1,
-          start: [cx + r * Math.cos((a0 * Math.PI) / 180), cy + r * Math.sin((a0 * Math.PI) / 180)],
-          end: [cx + r * Math.cos((a1 * Math.PI) / 180), cy + r * Math.sin((a1 * Math.PI) / 180)],
-        }
-      } else if (kind === 'point') {
-        result[entityId] = { x: params[0], y: params[1] }
-      }
-    }
-
-    return result
-  }
-
   // Re-solve: POST doc as JSON to /api/solve, update results.
   // On error: keep previous geometry visible; show error banner.
   // TODO: backend should return 200 with partial results instead of 400 for solver errors.
@@ -265,7 +224,7 @@ export default function Part() {
             }
           }
         }
-        setSolveResults(results)
+        setSolveResults(prev => ({ ...prev, ...results }))
         setSolveError(null)
       }
     } catch (e) {
@@ -280,6 +239,22 @@ export default function Part() {
     setSolveError(null)
     const current = docRef.current
     if (!current) return
+
+    // Clear solveResults for the affected feature(s) to ensure the Viewport
+    // renders the document AST state (initial) immediately instead of a stale
+    // solved state. The conceptual contract is that the AST is the source of
+    // truth for the client while solving happens in the background.
+    setSolveResults(prev => {
+      const next = { ...prev }
+      if ('featureId' in m) {
+        delete next[m.featureId]
+      } else if (m.type === 'delete') {
+        // Clear all or find affected features from targets
+        return {}
+      }
+      return next
+    })
+
     const next: PartDoc = JSON.parse(JSON.stringify(current))
     setUndoStack(prev => [...prev, current])
     setRedoStack([])
