@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Run the Oversolve API server."""
+"""Run the Oversolved API server."""
 
 import argparse
 from waitress import serve
@@ -8,7 +8,7 @@ from oversolved.app import create_app
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description='Run the Oversolve API server')
+    parser = argparse.ArgumentParser(description='Run the Oversolved API server')
     parser.add_argument(
         '--host',
         default='127.0.0.1',
