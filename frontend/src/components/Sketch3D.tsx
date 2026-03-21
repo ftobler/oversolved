@@ -306,6 +306,106 @@ function EntityLines({ sketch, color, lineWidth = 1 }: EntityLinesProps) {
 // Constraint rendering
 // ---------------------------------------------------------------------------
 
+function ConstraintTile({ url, id }: { url: string; id: string }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div
+      key={id}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: ICON_SIZE,
+        height: ICON_SIZE,
+        background: hovered ? '#ffffff' : '#3e3e3e',
+        borderRadius: 2,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        transition: 'background-color 0.15s',
+      }}
+    >
+      <img
+        src={url}
+        width={ICON_SIZE - 4}
+        height={ICON_SIZE - 4}
+        style={{ filter: hovered ? 'invert(0)' : 'invert(1) sepia(1) saturate(5) hue-rotate(5deg)', opacity: hovered ? 1 : 0.9, transition: 'filter 0.15s, opacity 0.15s' }}
+      />
+    </div>
+  )
+}
+
+function LinearDimension({ cid, dim, dimOffset }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }; dimOffset: number }) {
+  const [hovered, setHovered] = useState(false)
+  const [x1, y1] = dim.p1,
+    [x2, y2] = dim.p2
+  const nx = dim.normal[0],
+    ny = dim.normal[1]
+  const nlen = Math.sqrt(nx * nx + ny * ny) || 1
+  const unx = nx / nlen,
+    uny = ny / nlen
+  const d1x = x1 + unx * dimOffset,
+    d1y = y1 + uny * dimOffset
+  const d2x = x2 + unx * dimOffset,
+    d2y = y2 + uny * dimOffset
+  const mx = (d1x + d2x) / 2,
+    my = (d1y + d2y) / 2
+  const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
+  const color = hovered ? COLOR_HOVER : COLOR_CONSTRAINT
+  const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
+  const onOut = () => setHovered(false)
+  const dimLinePts: [number, number, number][] = [[d1x, d1y, 0], [d2x, d2y, 0]]
+
+  return (
+    <group key={cid}>
+      <HitPolyline pts={dimLinePts} onPointerOver={onOver} onPointerOut={onOut} />
+      <DashedLine points={[[x1, y1, 0], [d1x, d1y, 0]]} color={color} lineWidth={1} />
+      <DashedLine points={[[x2, y2, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} />
+      <Line points={dimLinePts} color={color} lineWidth={1} />
+      <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={color} />
+      <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={color} />
+      <Html position={[mx, my, 0.001]} center style={{ pointerEvents: 'none' }}>
+        <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', transition: 'color 0.15s' }}>
+          {label}
+        </div>
+      </Html>
+    </group>
+  )
+}
+
+function AngleDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number } }) {
+  const [hovered, setHovered] = useState(false)
+  if (!dim.p3) return null
+  const [vx, vy] = dim.p2,
+    [x1, y1] = dim.p1,
+    [x3, y3] = dim.p3
+  const angle1 = Math.atan2(y1 - vy, x1 - vx)
+  const angle2 = Math.atan2(y3 - vy, x3 - vx)
+  const r1 = Math.hypot(x1 - vx, y1 - vy),
+    r2 = Math.hypot(x3 - vx, y3 - vy)
+  const arcR = Math.min(r1, r2) * 0.4
+  const arcPts = sampleArc(vx, vy, arcR, angle1 * (180 / Math.PI), angle2 * (180 / Math.PI))
+  const midAngle = (angle1 + angle2) / 2
+  const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
+  const color = hovered ? COLOR_HOVER : COLOR_CONSTRAINT
+  const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
+  const onOut = () => setHovered(false)
+
+  return (
+    <group key={cid}>
+      <HitPolyline pts={arcPts} onPointerOver={onOver} onPointerOut={onOut} />
+      <Line points={[[vx, vy, 0], [x1, y1, 0]]} color={color} lineWidth={1} />
+      <Line points={[[vx, vy, 0], [x3, y3, 0]]} color={color} lineWidth={1} />
+      <Line points={arcPts} color={color} lineWidth={1} />
+      <Html position={[vx + arcR * 1.5 * Math.cos(midAngle), vy + arcR * 1.5 * Math.sin(midAngle), 0.001]} center style={{ pointerEvents: 'none' }}>
+        <div style={{ color, fontSize: 18, fontFamily: 'monospace', background: '#111', padding: '0 6px', borderRadius: 2, whiteSpace: 'nowrap', transition: 'color 0.15s' }}>
+          {label}
+        </div>
+      </Html>
+    </group>
+  )
+}
+
 interface ConstraintOverlaysProps {
   constraints: Constraints
   sketch: Sketch
@@ -341,29 +441,7 @@ function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOverlaysP
 
       } else if (r.kind === 'dim_linear') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }
-        const [x1, y1] = dim.p1, [x2, y2] = dim.p2
-        const nx = dim.normal[0], ny = dim.normal[1]
-        const nlen = Math.sqrt(nx * nx + ny * ny) || 1
-        const unx = nx / nlen, uny = ny / nlen
-        const d1x = x1 + unx * dimOffset, d1y = y1 + uny * dimOffset
-        const d2x = x2 + unx * dimOffset, d2y = y2 + uny * dimOffset
-        const mx = (d1x + d2x) / 2, my = (d1y + d2y) / 2
-        const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
-
-        dimElements.push(
-          <group key={cid}>
-            <DashedLine points={[[x1, y1, 0], [d1x, d1y, 0]]} color={COLOR_CONSTRAINT} lineWidth={1} />
-            <DashedLine points={[[x2, y2, 0], [d2x, d2y, 0]]} color={COLOR_CONSTRAINT} lineWidth={1} />
-            <Line points={[[d1x, d1y, 0], [d2x, d2y, 0]]} color={COLOR_CONSTRAINT} lineWidth={1} />
-            <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={COLOR_CONSTRAINT} />
-            <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={COLOR_CONSTRAINT} />
-            <Html position={[mx, my, 0.001]} center style={{ pointerEvents: 'none' }}>
-              <div style={{ color: COLOR_CONSTRAINT, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
-                {label}
-              </div>
-            </Html>
-          </group>
-        )
+        dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} />)
 
       } else if (r.kind === 'dim_radius') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number }
@@ -390,27 +468,7 @@ function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOverlaysP
       } else if (r.kind === 'dim_angle') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number }
         if (!dim.p3) continue
-        const [vx, vy] = dim.p2, [x1, y1] = dim.p1, [x3, y3] = dim.p3
-        const angle1 = Math.atan2(y1 - vy, x1 - vx)
-        const angle2 = Math.atan2(y3 - vy, x3 - vx)
-        const r1 = Math.hypot(x1 - vx, y1 - vy), r2 = Math.hypot(x3 - vx, y3 - vy)
-        const arcR = Math.min(r1, r2) * 0.4
-        const arcPts = sampleArc(vx, vy, arcR, angle1 * (180 / Math.PI), angle2 * (180 / Math.PI))
-        const midAngle = (angle1 + angle2) / 2
-        const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
-
-        dimElements.push(
-          <group key={cid}>
-            <Line points={[[vx, vy, 0], [x1, y1, 0]]} color={COLOR_CONSTRAINT} lineWidth={1} />
-            <Line points={[[vx, vy, 0], [x3, y3, 0]]} color={COLOR_CONSTRAINT} lineWidth={1} />
-            <Line points={arcPts} color={COLOR_CONSTRAINT} lineWidth={1} />
-            <Html position={[vx + arcR * 1.5 * Math.cos(midAngle), vy + arcR * 1.5 * Math.sin(midAngle), 0.001]} center style={{ pointerEvents: 'none' }}>
-              <div style={{ color: COLOR_CONSTRAINT, fontSize: 18, fontFamily: 'monospace', background: '#111', padding: '0 6px', borderRadius: 2, whiteSpace: 'nowrap' }}>
-                {label}
-              </div>
-            </Html>
-          </group>
-        )
+        dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} />)
       }
     }
 
@@ -418,16 +476,10 @@ function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOverlaysP
       const colWidth = ICON_SIZE + 2
       const groupWidth = Math.min(ICON_COLS, symbolIcons.length) * colWidth
       symbolElements.push(
-        <Html key={`icons-${eid}`} position={[bounds.maxX, bounds.maxY, 0.001]} style={{ pointerEvents: 'none' }}>
+        <Html key={`icons-${eid}`} position={[bounds.maxX, bounds.maxY, 0.001]} style={{ pointerEvents: 'auto' }}>
           <div style={{ marginLeft: 8, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
             {symbolIcons.map(({ url, key }) => (
-              <div key={key} style={{
-                width: ICON_SIZE, height: ICON_SIZE, background: '#3e3e3e', borderRadius: 2,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>
-                <img src={url} width={ICON_SIZE - 4} height={ICON_SIZE - 4}
-                  style={{ filter: 'invert(1) sepia(1) saturate(5) hue-rotate(5deg)', opacity: 0.9 }} />
-              </div>
+              <ConstraintTile key={key} url={url} id={key} />
             ))}
           </div>
         </Html>
