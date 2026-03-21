@@ -1,14 +1,8 @@
 import { create } from 'zustand'
+import type { Mutation } from '../types/cad'
 
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
-export type Mutation =
-  | { type: 'move_vertex'; featureId: string; entityId: string; vertexKey: string; to: [number, number] }
-  | { type: 'move_entity'; featureId: string; entityId: string; delta: [number, number] }
-  | { type: 'add_constraint'; featureId: string; kind: string; targets: string[]; value?: number }
-  | { type: 'set_constraint_value'; featureId: string; constraintId: string; value: number }
-  | { type: 'delete'; targets: string[] }
-  | { type: 'add_entity'; featureId: string; kind: string; params: number[] }
-  | { type: 'add_rect'; featureId: string; p0: [number, number]; p1: [number, number] }
+export type { Mutation }
 
 export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'circle' | 'arc' | 'point'
 

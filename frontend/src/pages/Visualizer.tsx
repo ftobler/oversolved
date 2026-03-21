@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { load as yamlLoad } from 'js-yaml'
 import SketchSvg from '../components/SketchSvg'
-import type { Sketch, Constraints, EntityStatus, Topology } from '../components/SketchSvg'
+import type { Sketch, Constraints, EntityStatus, Topology } from '../types/cad'
 import './Visualizer.css'
 
 interface FeatureResult {

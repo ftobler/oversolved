@@ -2,14 +2,8 @@ import { useRef, useMemo, useState, useCallback } from 'react'
 import { Line, Html } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { Sketch, Constraints, Topology } from './SketchSvg'
+import type { Sketch, Constraints, Topology, Point, TopologySurface, TopologyEdge, TopologyArcEdge, Entity, LineSegment, Circle, Arc, PointEntity } from '../types/cad'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
-
-interface LineSegment { start: [number, number]; end: [number, number]; construction?: boolean }
-interface Circle { center: [number, number]; radius: number; construction?: boolean }
-interface Arc { center: [number, number]; radius: number; angle_start: number; angle_end: number; start: [number, number]; end: [number, number]; construction?: boolean }
-interface PointEntity { x: number; y: number; construction?: boolean }
-type Entity = LineSegment | Circle | Arc | PointEntity
 
 const COLOR_SOLVED = '#4fc3f7'
 const COLOR_CONSTRAINT = '#ffd54f'
@@ -739,18 +733,14 @@ interface TopologySurfacesProps {
 type SurfaceShape = { shape: THREE.Shape; pts: [number, number][] }
 
 function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
-  type ArcEdge = { kind: 'arc'; start: [number,number]; end: [number,number]; center: [number,number]; radius: number; angle_start_deg: number; angle_end_deg: number; ccw: boolean }
-  type LineEdge = { kind: 'line'; start: [number,number]; end: [number,number] }
-
-  return topology.surfaces.flatMap(surface => {
-    const pts: [number, number][] = []
-    surface.boundary.forEach((edge, ei) => {
-      const e = edge as ArcEdge | LineEdge
-      if (ei === 0) pts.push(e.start)
-      if (e.kind === 'line') {
-        pts.push(e.end)
+  return topology.surfaces.flatMap((surface: TopologySurface) => {
+    const pts: Point[] = []
+    surface.boundary.forEach((edge: TopologyEdge, ei: number) => {
+      if (ei === 0) pts.push(edge.start)
+      if (edge.kind === 'line') {
+        pts.push(edge.end)
       } else {
-        const { center, radius, angle_start_deg, angle_end_deg, ccw } = e as ArcEdge
+        const { center, radius, angle_start_deg, angle_end_deg, ccw } = edge as TopologyArcEdge
         const span = ccw
           ? ((angle_end_deg - angle_start_deg) + 360) % 360
           : -(((angle_start_deg - angle_end_deg) + 360) % 360)

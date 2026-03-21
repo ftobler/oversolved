@@ -1,63 +1,13 @@
+import type { PartDoc, PartFeature, PartConstraint, PartTarget } from '../types/cad'
+
 // ---------------------------------------------------------------------------
 // Architecture contract
 // ---------------------------------------------------------------------------
 //
 // PartDoc is the SOURCE OF TRUTH for the document.
-//
-// Flow:
-//   1. Load:     server → YAML string → parseYaml() → PartDoc
-//   2. Edit:     GUI mutations modify PartDoc in place (deep-cloned per mutation)
-//   3. Code tab: PartDoc → stringifyYaml() → textarea (read-only in production)
-//   4. Solve:    PartDoc → JSON.stringify → POST /api/solve
-//               ← server returns SOLVE RESULTS ONLY (see SolveResult type below)
-//   5. Save:     PartDoc → stringifyYaml() → PUT /api/documents/:id
-//
-// The solver receives the document, solves each feature step by step, and
-// returns results that correspond 1:1 to the document structure.
-// The server MUST NOT echo back the input document — only new information
-// produced by solving (entity positions, constraint states, topology) is
-// returned.  Embedding the original AST in the response was a debugging
-// artifact and must not recur.
-//
+// ...
 // See ast.md for example.
 //
-// ---------------------------------------------------------------------------
-// Document types
-// ---------------------------------------------------------------------------
-
-export interface PartTarget {
-  entity: string
-  point?: string
-}
-
-export interface PartConstraint {
-  id: string
-  kind: string
-  value?: number
-  target?: PartTarget
-  a?: PartTarget
-  b?: PartTarget
-}
-
-export interface PartEntityDef {
-  id: string
-  kind: string
-}
-
-export interface PartFeature {
-  id: string
-  kind: string
-  entities?: PartEntityDef[]
-  initial?: Record<string, number[]>
-  constraints?: PartConstraint[]
-}
-
-export interface PartDoc {
-  version?: number
-  kind?: string
-  features?: PartFeature[]
-}
-
 // ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------
