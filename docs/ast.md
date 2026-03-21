@@ -3,7 +3,7 @@
 ## High-Level Example
 
 ```yaml
-oversolve: 1  # version
+oversolved: 1  # version
 queries
   - id: <id>
     kind: <kind>

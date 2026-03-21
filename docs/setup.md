@@ -4,19 +4,19 @@
 
 A complete Flask-based REST API backend with:
 
-1. **Database Abstraction Layer** (`oversolve/db.py`)
+1. **Database Abstraction Layer** (`oversolved/db.py`)
    - Supports both SQLite (for testing) and MariaDB (for production)
    - Migration system for schema versioning
    - Transaction management with context managers
    - Document storage abstraction
 
-2. **Flask Application** (`oversolve/app.py`)
+2. **Flask Application** (`oversolved/app.py`)
    - REST API endpoints for document CRUD operations
    - Automatic frontend serving from `frontend/dist/`
    - Database initialization and migration runner
    - Error handling and JSON responses
 
-3. **CLI Entry Point** (`oversolve/run_server.py`)
+3. **CLI Entry Point** (`oversolved/run_server.py`)
    - Flexible server startup with configurable host/port
    - Support for both SQLite and MariaDB
    - Debug mode and production mode (using Waitress)
@@ -41,7 +41,7 @@ A complete Flask-based REST API backend with:
 pip install flask PyMySQL
 
 # Run with SQLite in debug mode
-python -m oversolve.run_server --debug
+python -m oversolved.run_server --debug
 ```
 
 Server will be at `http://localhost:5000`
@@ -49,22 +49,22 @@ Server will be at `http://localhost:5000`
 ### Production with SQLite
 
 ```bash
-python -m oversolve.run_server --db-path /var/lib/oversolve/db.sqlite
+python -m oversolved.run_server --db-path /var/lib/oversolved/db.sqlite
 ```
 
 ### Production with MariaDB
 
 ```bash
 # First, create the database
-mysql -u root -p -e "CREATE DATABASE oversolve;"
+mysql -u root -p -e "CREATE DATABASE oversolved;"
 
 # Run the server
-python -m oversolve.run_server \
+python -m oversolved.run_server \
   --db-type mariadb \
   --db-host localhost \
-  --db-user oversolve \
+  --db-user oversolved \
   --db-password mypassword \
-  --db-name oversolve
+  --db-name oversolved
 ```
 
 ## API Usage
@@ -104,14 +104,14 @@ All tests use in-memory SQLite and require no external setup:
 pytest tests/test_database.py tests/test_api.py -v
 
 # Run with coverage
-pytest tests/test_database.py tests/test_api.py --cov=oversolve
+pytest tests/test_database.py tests/test_api.py --cov=oversolved
 ```
 
 ## Database Migrations
 
 To add a new migration:
 
-1. Add a migration function in `oversolve/app.py`:
+1. Add a migration function in `oversolved/app.py`:
 
 ```python
 def migration_002_add_metadata_table(db: Database):
@@ -136,7 +136,7 @@ Migrations run automatically on startup, once per version.
 ## Architecture
 
 ```
-oversolve/
+oversolved/
 ├── __init__.py
 ├── app.py              # Flask app, routes, migrations
 ├── db.py               # Database abstraction
@@ -160,7 +160,7 @@ SETUP.md                # This file
 For production, you can use environment variables instead of CLI args:
 
 ```bash
-export FLASK_APP=oversolve.app:create_app
+export FLASK_APP=oversolved.app:create_app
 export FLASK_ENV=production
 
 # Then adjust your run_server.py to read from env if needed
@@ -186,7 +186,7 @@ This happens if a transaction is used after the connection is closed. Check that
 Verify:
 - MariaDB/MySQL is running: `mysql -u root -p`
 - Database exists: `SHOW DATABASES;`
-- User has permissions: `GRANT ALL ON oversolve.* TO 'oversolve'@'localhost';`
+- User has permissions: `GRANT ALL ON oversolved.* TO 'oversolved'@'localhost';`
 
 **Frontend not serving**
 

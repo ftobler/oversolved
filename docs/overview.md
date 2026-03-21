@@ -17,7 +17,7 @@ Use test driven development throughout.
 * `pytest` in `tests` folder
 * `toml` file
 
-source code in `oversolve` directory.
+source code in `oversolved` directory.
 
 Oversolve CAD core part is a AST (Abstract Syntax tree) in toml/json format which handles all geometry rebuilds on the backend. The format is described in `ast.md`.
 

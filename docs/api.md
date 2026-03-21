@@ -21,24 +21,24 @@ pip install -e ".[dev]"
 ### Development Mode (SQLite, Flask debug server)
 
 ```bash
-python -m oversolve.run_server --debug
+python -m oversolved.run_server --debug
 ```
 
 ### Production Mode (SQLite, Waitress)
 
 ```bash
-python -m oversolve.run_server --db-type sqlite --db-path oversolve.db
+python -m oversolved.run_server --db-type sqlite --db-path oversolved.db
 ```
 
 ### With MariaDB
 
 ```bash
-python -m oversolve.run_server \
+python -m oversolved.run_server \
   --db-type mariadb \
   --db-host localhost \
   --db-user root \
   --db-password mypassword \
-  --db-name oversolve
+  --db-name oversolved
 ```
 
 ## API Endpoints
@@ -138,8 +138,8 @@ Serves the built React frontend if available in `frontend/dist/`.
 Default for development. Use in-memory database or file-based:
 
 ```bash
-python -m oversolve.run_server --db-path :memory:
-python -m oversolve.run_server --db-path mydb.sqlite
+python -m oversolved.run_server --db-path :memory:
+python -m oversolved.run_server --db-path mydb.sqlite
 ```
 
 ### MariaDB (Production)
@@ -147,7 +147,7 @@ python -m oversolve.run_server --db-path mydb.sqlite
 Requires database to be created beforehand:
 
 ```sql
-CREATE DATABASE oversolve;
+CREATE DATABASE oversolved;
 ```
 
 Then run the server with MariaDB configuration. Migrations will create tables automatically.
@@ -172,7 +172,7 @@ Migrations run automatically on startup in version order. Each migration runs on
 
 To add a new migration:
 
-1. Add a function in `oversolve/app.py` under `_register_migrations()`
+1. Add a function in `oversolved/app.py` under `_register_migrations()`
 2. Increment the version number
 3. Register it with `db.register_migration()`
 
@@ -236,7 +236,7 @@ requests.delete('http://localhost:5000/api/documents/my_sketch')
 ## Architecture
 
 ```
-oversolve/
+oversolved/
 ├── db.py              # Database abstraction layer
 ├── app.py             # Flask application and routes
 └── run_server.py      # CLI entry point

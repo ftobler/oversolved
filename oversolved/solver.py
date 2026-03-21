@@ -4,7 +4,7 @@ from typing import Any
 import yaml
 import numpy as np
 from scipy.optimize import least_squares
-from oversolve.topology import detect_topology
+from oversolved.topology import detect_topology
 
 
 ENTITY_SIZES = {

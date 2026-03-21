@@ -1,7 +1,7 @@
 """Tests for database layer."""
 
 import pytest
-from oversolve.db import Database, SQLiteConnection, DocumentStore
+from oversolved.db import Database, SQLiteConnection, DocumentStore
 
 
 @pytest.fixture

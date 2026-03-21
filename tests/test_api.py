@@ -3,7 +3,7 @@
 import json
 import pytest
 import yaml
-from oversolve.app import create_app
+from oversolved.app import create_app
 
 
 @pytest.fixture

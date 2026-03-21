@@ -3,7 +3,7 @@
 
 import argparse
 from waitress import serve
-from oversolve.app import create_app
+from oversolved.app import create_app
 
 
 def main():
@@ -28,8 +28,8 @@ def main():
     )
     parser.add_argument(
         '--db-path',
-        default='oversolve.db',
-        help='SQLite database path (default: oversolve.db)'
+        default='oversolved.db',
+        help='SQLite database path (default: oversolved.db)'
     )
     parser.add_argument(
         '--db-host',
@@ -78,7 +78,7 @@ def main():
         print(f'Running in debug mode on {args.host}:{args.port}')
         app.run(host=args.host, port=args.port, debug=True)
     else:
-        print(f'Starting Oversolve API server on {args.host}:{args.port}')
+        print(f'Starting Oversolved API server on {args.host}:{args.port}')
         print(f'Database: {args.db_type}')
         serve(app, host=args.host, port=args.port)
 

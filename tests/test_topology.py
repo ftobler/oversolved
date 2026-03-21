@@ -1,7 +1,7 @@
 """Tests for topology.py — intersection detection and surface extraction."""
 
 import math
-from oversolve.topology import detect_topology
+from oversolved.topology import detect_topology
 
 
 def num_surfaces(result):

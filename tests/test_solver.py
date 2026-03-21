@@ -1,5 +1,5 @@
 import math
-from oversolve.solver import solve
+from oversolved.solver import solve
 
 TOL = 1e-5
 ATOL = 1e-3  # angular / normalized-dot-product tolerance

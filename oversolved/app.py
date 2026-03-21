@@ -1,10 +1,10 @@
-"""Flask application for the Oversolve solver API."""
+"""Flask application for the Oversolved solver API."""
 
 from pathlib import Path
 import yaml
 from flask import Flask, g, jsonify, request, send_from_directory
-from oversolve.db import Database, SQLiteConnection, MariaDBConnection, DocumentStore
-from oversolve.solver import solve
+from oversolved.db import Database, SQLiteConnection, MariaDBConnection, DocumentStore
+from oversolved.solver import solve
 
 
 def _get_database(config):
