@@ -125,36 +125,44 @@ function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5, onPoi
 
 const HIT_PIXELS = 14
 
-/** Invisible hit-area meshes along a polyline, one plane per segment, width scales with zoom. */
+/** Invisible circle-mesh dots spaced densely along a polyline. Uses the same mechanism
+ *  as the working endpoint Dot components — circleGeometry is reliably hittable. */
 function HitPolyline({ pts, onPointerOver, onPointerOut }: {
   pts: [number, number, number][]
   onPointerOver: (e: { stopPropagation: () => void }) => void
   onPointerOut: () => void
 }) {
-  const meshRefs = useRef<(THREE.Mesh | null)[]>([])
+  const dotRefs = useRef<(THREE.Mesh | null)[]>([])
   const { camera } = useThree()
 
-  const segments = useMemo(() => pts.slice(0, -1).map((p, i) => {
-    const p2 = pts[i + 1]
-    const dx = p2[0] - p[0], dy = p2[1] - p[1]
-    const length = Math.sqrt(dx * dx + dy * dy)
-    return { length, angle: Math.atan2(dy, dx), mx: (p[0] + p2[0]) / 2, my: (p[1] + p2[1]) / 2 }
-  }).filter(s => s.length > 1e-6), [pts])
+  // Sample one dot every ~HIT_PIXELS world-units along each segment
+  const dotPts = useMemo(() => {
+    const result: [number, number, number][] = []
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x1, y1] = pts[i], [x2, y2] = pts[i + 1]
+      const len = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+      const n = Math.max(1, Math.ceil(len / (HIT_PIXELS / 200))) // 200 = typical zoom
+      for (let j = 0; j <= n; j++) {
+        const t = j / n
+        result.push([x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, 0])
+      }
+    }
+    return result
+  }, [pts])
 
   useFrame(() => {
-    const scale = HIT_PIXELS * p2w(camera)
-    meshRefs.current.forEach(ref => { if (ref) ref.scale.y = scale })
+    const s = HIT_PIXELS * p2w(camera)
+    dotRefs.current.forEach(ref => { if (ref) ref.scale.setScalar(s) })
   })
 
   return (
     <>
-      {segments.map((seg, i) => (
-        <mesh key={i} ref={el => { meshRefs.current[i] = el }}
-          position={[seg.mx, seg.my, 0]} rotation={[0, 0, seg.angle]}
-          onPointerOver={onPointerOver} onPointerOut={onPointerOut}
+      {dotPts.map((p, i) => (
+        <mesh key={i} ref={el => { dotRefs.current[i] = el }}
+          position={p} onPointerOver={onPointerOver} onPointerOut={onPointerOut}
         >
-          <planeGeometry args={[seg.length, 1]} />
-          <meshBasicMaterial colorWrite={false} depthWrite={false} side={THREE.DoubleSide} />
+          <circleGeometry args={[1, 8]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       ))}
     </>
