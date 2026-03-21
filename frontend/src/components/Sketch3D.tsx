@@ -355,15 +355,23 @@ function LinearDimension({ cid, dim, dimOffset }: { cid: string; dim: { kind: st
   const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
   const onOut = () => setHovered(false)
   const dimLinePts: [number, number, number][] = [[d1x, d1y, 0], [d2x, d2y, 0]]
+  const meshRef = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
+  useFrame(() => {
+    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
+  })
 
   return (
     <group key={cid}>
-      <HitPolyline pts={dimLinePts} onPointerOver={onOver} onPointerOut={onOut} />
       <DashedLine points={[[x1, y1, 0], [d1x, d1y, 0]]} color={color} lineWidth={1} />
       <DashedLine points={[[x2, y2, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} />
       <Line points={dimLinePts} color={color} lineWidth={1} />
       <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={color} />
       <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={color} />
+      <mesh ref={meshRef} position={[mx, my, 0.001]} onPointerOver={onOver} onPointerOut={onOut}>
+        <circleGeometry args={[1, 8]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
       <Html position={[mx, my, 0.001]} center style={{ pointerEvents: 'none' }}>
         <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', transition: 'color 0.15s' }}>
           {label}
@@ -386,18 +394,28 @@ function AngleDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [n
   const arcR = Math.min(r1, r2) * 0.4
   const arcPts = sampleArc(vx, vy, arcR, angle1 * (180 / Math.PI), angle2 * (180 / Math.PI))
   const midAngle = (angle1 + angle2) / 2
+  const labelX = vx + arcR * 1.5 * Math.cos(midAngle),
+    labelY = vy + arcR * 1.5 * Math.sin(midAngle)
   const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
   const color = hovered ? COLOR_HOVER : COLOR_CONSTRAINT
   const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
   const onOut = () => setHovered(false)
+  const meshRef = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
+  useFrame(() => {
+    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
+  })
 
   return (
     <group key={cid}>
-      <HitPolyline pts={arcPts} onPointerOver={onOver} onPointerOut={onOut} />
       <Line points={[[vx, vy, 0], [x1, y1, 0]]} color={color} lineWidth={1} />
       <Line points={[[vx, vy, 0], [x3, y3, 0]]} color={color} lineWidth={1} />
       <Line points={arcPts} color={color} lineWidth={1} />
-      <Html position={[vx + arcR * 1.5 * Math.cos(midAngle), vy + arcR * 1.5 * Math.sin(midAngle), 0.001]} center style={{ pointerEvents: 'none' }}>
+      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut}>
+        <circleGeometry args={[1, 8]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
         <div style={{ color, fontSize: 18, fontFamily: 'monospace', background: '#111', padding: '0 6px', borderRadius: 2, whiteSpace: 'nowrap', transition: 'color 0.15s' }}>
           {label}
         </div>
