@@ -16,6 +16,49 @@ def draw_dotted_line(ctx, x0, y0, x1, y1, num_dots):
     stroke(ctx, 1.5)
 
 
+def _arrowhead(ctx, x, y, angle, size):
+    """Draw a filled arrowhead at (x, y) pointing at angle (degrees). Uses arr for size."""
+    rad = math.radians(angle)
+    # Arrowhead points: tip, left, right
+    tip = (x, y)
+    left = (
+        x + size * math.cos(rad + math.radians(150)),
+        y + size * math.sin(rad + math.radians(150)),
+    )
+    right = (
+        x + size * math.cos(rad - math.radians(150)),
+        y + size * math.sin(rad - math.radians(150)),
+    )
+    ctx.move_to(*tip)
+    ctx.line_to(*left)
+    ctx.line_to(*right)
+    ctx.close_path()
+    ctx.fill()
+
+
+def _draw_arrow(ctx, x0, y0, x1, y1, arr):
+    """Draw a dimension arrow from (x0, y0) to (x1, y1) with arrowheads at both ends."""
+    # Draw main line (between arrowhead tips)
+    dx, dy = x1 - x0, y1 - y0
+    length = math.hypot(dx, dy)
+    if length == 0:
+        return
+    ux, uy = dx / length, dy / length
+    # Shorten line so arrowheads are outside
+    start_x = x0 + ux * (arr / 2)
+    start_y = y0 + uy * (arr / 2)
+    end_x = x1 - ux * (arr / 2)
+    end_y = y1 - uy * (arr / 2)
+    ctx.move_to(start_x, start_y)
+    ctx.line_to(end_x, end_y)
+    stroke(ctx, 1.5)
+
+    # Arrowheads
+    angle0 = math.degrees(math.atan2(uy, ux))
+    _arrowhead(ctx, x0, y0, angle0 + 180, arr)
+    _arrowhead(ctx, x1, y1, angle0, arr)
+
+
 @icon("frontend/src/assets/icons/constraint-angle.svg", angle=-20)
 def constraint_angle(ctx):
     # Draw two lines forming an angle
@@ -85,11 +128,6 @@ def constraint_dimension(ctx):
     y_dim = 0.5           # y of the dimension line
     arr = px(6)         # arrowhead size (base half-width = arr/2)
 
-    # # Object line
-    # ctx.move_to(x0, y_obj)
-    # ctx.line_to(x1, y_obj)
-    # stroke(ctx, 2)
-
     # Extension lines (from just below object line down to dimension line)
     ctx.move_to(x0, y_obj1)
     ctx.line_to(x0, y_obj2)
@@ -97,24 +135,9 @@ def constraint_dimension(ctx):
     ctx.line_to(x1, y_obj2)
     stroke(ctx, 1.5)
 
-    # Dimension line (between arrowhead tips)
-    ctx.move_to(x0 + arr, y_dim)
-    ctx.line_to(x1 - arr, y_dim)
-    stroke(ctx, 1.5)
+    # Draw dimension arrow between two points
+    _draw_arrow(ctx, x0, y_dim, x1, y_dim, arr)
 
-    # Left arrowhead (pointing right, tip at x0)
-    ctx.move_to(x0, y_dim)
-    ctx.line_to(x0 + arr, y_dim - arr * 0.5)
-    ctx.line_to(x0 + arr, y_dim + arr * 0.5)
-    ctx.close_path()
-    ctx.fill()
-
-    # Right arrowhead (pointing left, tip at x1)
-    ctx.move_to(x1, y_dim)
-    ctx.line_to(x1 - arr, y_dim - arr * 0.5)
-    ctx.line_to(x1 - arr, y_dim + arr * 0.5)
-    ctx.close_path()
-    ctx.fill()
 
 
 @icon("frontend/src/assets/icons/constraint-square.svg")  # double use: toolbar (perpendicular)
@@ -613,31 +636,8 @@ def viewport_reset(ctx):
     ctx.close_path()
     stroke(ctx, 1.5)
 
-    # Left-pointing arrow
-    cy = 0.5
-    ah = 0.19
-    lx0 = 0.45
-    lx1 = m + 0.05
-    ctx.move_to(lx0, cy)
-    ctx.line_to(lx1 + ah, cy)
-    stroke(ctx, 1.5)
-    ctx.move_to(lx1, cy)
-    ctx.line_to(lx1 + ah, cy - ah)
-    ctx.line_to(lx1 + ah, cy + ah)
-    ctx.close_path()
-    ctx.fill()
-
-    # Right-pointing arrow
-    rx0 = 1 - lx0
-    rx1 = 1 - m - 0.05
-    ctx.move_to(rx0, cy)
-    ctx.line_to(rx1 - ah, cy)
-    stroke(ctx, 1.5)
-    ctx.move_to(rx1, cy)
-    ctx.line_to(rx1 - ah, cy - ah)
-    ctx.line_to(rx1 - ah, cy + ah)
-    ctx.close_path()
-    ctx.fill()
+    n = m + 0.05
+    _draw_arrow(ctx, n, 0.5, 1 - n, 0.5, px(6))
 
 
 @icon("frontend/src/assets/icons/feature-part.svg")
@@ -727,6 +727,24 @@ def feature_code(ctx):
     draw_brace(tip_x=0.15, outer_x=0.38, cy=cy, half_h=half_h, r=r)
     # Right brace }  — tip points right, hooks on left
     draw_brace(tip_x=0.85, outer_x=0.62, cy=cy, half_h=half_h, r=r)
+
+
+@icon("frontend/src/assets/icons/constraint-line-swap.svg")
+def constraint_line_swap(ctx):
+    # Dashed line at the top
+    x0, x1 = 0.15, 0.85
+    line_1_height = 0.2
+    num_dots = 4
+    draw_dotted_line(ctx, x0, line_1_height, x1 + 0.1, line_1_height, num_dots)
+
+    # Solid line at the bottom
+    line_2_height = 1 - line_1_height
+    ctx.move_to(x0, line_2_height)
+    ctx.line_to(x1, line_2_height)
+    stroke(ctx, 1.5)
+
+    arrow_height = line_1_height + 0.03
+    _draw_arrow(ctx, 0.5, arrow_height, 0.5, 1 - arrow_height, px(6))
 
 
 if __name__ == "__main__":
