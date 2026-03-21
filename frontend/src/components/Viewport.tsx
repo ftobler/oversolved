@@ -200,10 +200,10 @@ export default function Viewport({
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <Canvas
         style={{ width: '100%', height: '100%', background: '#111' }}
-        gl={{ antialias: true }}
+        gl={{ antialias: true, logarithmicDepthBuffer: true }}
         onCreated={onCreated}
       >
-        <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} />
+        <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={0.1} far={1000000000} />
         <SceneController
           resetTrigger={resetTrigger}
           canvasRef={canvasRef}
