@@ -1,5 +1,42 @@
 type Point = [number, number]
 
+// ── Topology types ────────────────────────────────────────────────────────────
+
+interface TopologyLineEdge {
+  kind: 'line'
+  start: Point
+  end: Point
+  start_vertex: string
+  end_vertex: string
+}
+
+interface TopologyArcEdge {
+  kind: 'arc'
+  start: Point
+  end: Point
+  center: Point
+  radius: number
+  angle_start_deg: number
+  angle_end_deg: number
+  ccw: boolean
+  start_vertex: string
+  end_vertex: string
+}
+
+type TopologyEdge = TopologyLineEdge | TopologyArcEdge
+
+interface TopologySurface {
+  boundary: TopologyEdge[]
+}
+
+export interface Topology {
+  intersection_points: Record<string, { x: number; y: number }>
+  vertices: Record<string, { x: number; y: number }>
+  surfaces: TopologySurface[]
+}
+
+// ── Entity types ──────────────────────────────────────────────────────────────
+
 interface LineSegment {
   start: Point
   end: Point
@@ -85,6 +122,7 @@ interface Props {
   entityStatus?: EntityStatus
   size?: number
   constraints?: Constraints
+  topology?: Topology
 }
 
 const PADDING = 40
@@ -246,6 +284,56 @@ function renderSketch(
       )
     }
   })
+}
+
+function renderTopology(
+  topology: Topology,
+  px: (x: number, y: number) => [number, number],
+  pxScale: number,
+) {
+  const elements: React.ReactNode[] = []
+
+  // Surfaces — filled white at 10% opacity
+  topology.surfaces.forEach((surface, si) => {
+    const parts: string[] = []
+    surface.boundary.forEach((edge, ei) => {
+      const [ex, ey] = px(edge.end[0], edge.end[1])
+      if (ei === 0) {
+        const [sx, sy] = px(edge.start[0], edge.start[1])
+        parts.push(`M ${sx} ${sy}`)
+      }
+      if (edge.kind === 'line') {
+        parts.push(`L ${ex} ${ey}`)
+      } else {
+        const ae = edge as TopologyArcEdge
+        const r = ae.radius * pxScale
+        // Span in the arc's travel direction
+        const span = ae.ccw
+          ? ((ae.angle_end_deg - ae.angle_start_deg) + 360) % 360
+          : ((ae.angle_start_deg - ae.angle_end_deg) + 360) % 360
+        const largeArc = span > 180 ? 1 : 0
+        // CCW in CAD (y-up) → sweep=0 after y-flip (see renderSketch comment)
+        const sweep = ae.ccw ? 0 : 1
+        parts.push(`A ${r} ${r} 0 ${largeArc} ${sweep} ${ex} ${ey}`)
+      }
+    })
+    if (parts.length > 0) {
+      parts.push('Z')
+      elements.push(
+        <path key={`topo-surface-${si}`} d={parts.join(' ')} fill="white" fillOpacity={0.10} stroke="none" />
+      )
+    }
+  })
+
+  // Intersection points — white dots at 10% opacity
+  Object.entries(topology.intersection_points).forEach(([vid, pt]) => {
+    const [cx, cy] = px(pt.x, pt.y)
+    elements.push(
+      <circle key={`topo-ipt-${vid}`} cx={cx} cy={cy} r={4} fill="white" opacity={0.10} />
+    )
+  })
+
+  return elements
 }
 
 function arrowhead(x1: number, y1: number, x2: number, y2: number, size = 6): string {
@@ -471,7 +559,7 @@ const STATUS_COLOR: Record<Status, string> = {
   overconstrained: '#ef5350',
 }
 
-export default function SketchSvg({ initial, solved, status, entityStatus, size = 300, constraints }: Props) {
+export default function SketchSvg({ initial, solved, status, entityStatus, size = 300, constraints, topology }: Props) {
   const { scale, tx, ty } = fitTransform([initial, solved], size)
 
   function px(x: number, y: number): [number, number] {
@@ -488,6 +576,7 @@ export default function SketchSvg({ initial, solved, status, entityStatus, size 
     <svg width={size} height={size} style={{ background: '#111', borderRadius: 4 }}>
       {renderSketch(initial, px, scale, () => '#66bb6a', 1)}
       {renderSketch(solved, px, scale, solvedColorOf, 2)}
+      {topology && renderTopology(topology, px, scale)}
       {constraints && renderConstraints(constraints, solved, px, scale)}
     </svg>
   )

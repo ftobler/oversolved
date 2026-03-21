@@ -2794,7 +2794,7 @@ features:
         kind: point_distance
         a: {entity: c1}
         b: {entity: c2}
-        value: 1.0
+        value: 0.8
 """
     result = solve(yaml_str)
     sketch_log["test_venn_diagram_two_circles"] = result

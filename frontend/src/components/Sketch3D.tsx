@@ -272,7 +272,7 @@ function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOverlaysP
       } else if (r.kind === 'dim_linear') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }
         const [x1, y1] = dim.p1, [x2, y2] = dim.p2
-        const nx = -dim.normal[0], ny = dim.normal[1]
+        const nx = dim.normal[0], ny = dim.normal[1]
         const nlen = Math.sqrt(nx * nx + ny * ny) || 1
         const unx = nx / nlen, uny = ny / nlen
         const d1x = x1 + unx * dimOffset, d1y = y1 + uny * dimOffset

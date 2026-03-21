@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { load as yamlLoad } from 'js-yaml'
 import SketchSvg from '../components/SketchSvg'
-import type { Sketch, Constraints, EntityStatus } from '../components/SketchSvg'
+import type { Sketch, Constraints, EntityStatus, Topology } from '../components/SketchSvg'
 import './Visualizer.css'
 
 interface FeatureResult {
@@ -15,6 +15,7 @@ interface FeatureResult {
     entity_status: EntityStatus
     status: 'fully_constrained' | 'underconstrained' | 'overconstrained'
     solve_ms: number
+    topology?: Topology
   }
 }
 
@@ -57,10 +58,10 @@ export default function Visualizer() {
       {results && (
         <div className="sketch-row">
           {Object.entries(results).flatMap(([testName, features]) =>
-            Object.entries(features).map(([featureId, { geometry, constraints, entity_status, status, solve_ms }]) => (
+            Object.entries(features).map(([featureId, { geometry, constraints, entity_status, status, solve_ms, topology }]) => (
               <div key={`${testName}/${featureId}`} className="sketch-card">
                 <div className="sketch-label">{testName}/{featureId} <span className="solve-time">{solve_ms} ms</span></div>
-                <SketchSvg initial={geometry.initial} solved={geometry.solved} status={status} entityStatus={entity_status} size={330} constraints={constraints} />
+                <SketchSvg initial={geometry.initial} solved={geometry.solved} status={status} entityStatus={entity_status} size={330} constraints={constraints} topology={topology} />
               </div>
             ))
           )}
