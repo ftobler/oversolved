@@ -2762,6 +2762,8 @@ features:
         kind: circle
       - id: circle2
         kind: circle
+      - id: center_line
+        kind: line_segment
     constraints:
       # Circle 1 center fixed at origin (0.5, 0.5)
       - id: c_c1_fixed
@@ -2789,12 +2791,19 @@ features:
         kind: radius
         target: {entity: circle2}
         value: 0.6
-      # c2 fixed with x-distance of 1.0 from c1
-      - id: c_c2_fixed
-        kind: fixed
-        target: {entity: c2}
-        x: 1.5
-        y: 0.5
+      # Distance constraint between circle centers
+      - id: c_center_line_start
+        kind: coincident
+        a: {entity: center_line, point: start}
+        b: {entity: c1}
+      - id: c_center_line_end
+        kind: coincident
+        a: {entity: center_line, point: end}
+        b: {entity: c2}
+      - id: c_center_distance
+        kind: length
+        target: {entity: center_line}
+        value: 1.0
 """
     result = solve(yaml_str)
     sketch_log["test_venn_diagram_two_circles"] = result
