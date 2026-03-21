@@ -204,7 +204,10 @@ export default function Part() {
         setSolveError(data.error || `Solve failed (${response.status})`)
         // Keep previous solveResults visible — do NOT clear them
       } else {
-        const result = data.result as Record<string, { geometry?: { initial?: Sketch; solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
+        // Server returns solve results only — no echo of the input document.
+        // geometry.solved = entity positions after solving (server-produced).
+        // geometry.initial is NOT expected; if present it is ignored.
+        const result = data.result as Record<string, { geometry?: { solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
 
         // Build constraintId → involved entity IDs from the doc so the 3D view
         // can highlight ALL entities involved in a constraint on hover.
@@ -223,7 +226,7 @@ export default function Part() {
 
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
-          if (feature.geometry?.initial && feature.geometry?.solved) {
+          if (feature.geometry?.solved) {
             const enrichedConstraints: Constraints | undefined = feature.constraints
               ? Object.fromEntries(Object.entries(feature.constraints).map(([cid, c]) => {
                   const entities = constraintEntities[id]?.[cid]
@@ -232,7 +235,6 @@ export default function Part() {
                 }))
               : undefined
             results[id] = {
-              initial: feature.geometry.initial,
               solved: feature.geometry.solved,
               constraints: enrichedConstraints,
               topology: feature.topology,
@@ -446,12 +448,11 @@ export default function Part() {
         setSolveResults({})
       } else {
         setSolveResult(stringifyYaml(data.result))
-        const result = data.result as Record<string, { geometry?: { initial?: Sketch; solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
+        const result = data.result as Record<string, { geometry?: { solved?: Sketch }; constraints?: Constraints; topology?: import('../components/SketchSvg').Topology }>
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
-          if (feature.geometry?.initial && feature.geometry?.solved) {
+          if (feature.geometry?.solved) {
             results[id] = {
-              initial: feature.geometry.initial,
               solved: feature.geometry.solved,
               constraints: feature.constraints,
               topology: feature.topology,

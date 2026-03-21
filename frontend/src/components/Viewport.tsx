@@ -174,8 +174,10 @@ export interface Feature {
   kind?: string
 }
 
+// Solve result for one feature — contains only data produced by the solver.
+// The initial (pre-solve) geometry lives in PartDoc.features[x].initial and
+// is never echoed back by the server. Do NOT add an 'initial' field here.
 export interface SketchData {
-  initial: Sketch
   solved: Sketch
   constraints?: Constraints
   topology?: Topology
