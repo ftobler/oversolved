@@ -33,7 +33,6 @@ version: 1  # integer
 kind: part
 
 queries:
-
   - id: <id:top_plane>
     kind: entity_query
     entity_type: face
@@ -125,12 +124,13 @@ features:
     kind: sketch
     label: "Sketch 1"
 
-    # Starting guesses -- solver moves these to satisfy constraints
+    # Starting guesses - solver moves these to satisfy constraints
     initial:
       line_base:   [0.0,   0.0,  17.32,  0.0 ]
       line_height: [17.32, 0.0,  17.32, 10.0 ]
       line_hyp:    [17.32, 10.0,  0.0,   0.0 ]
 
+    # list of primitives on the sketch
     entities:
       - id: line_base
         kind: line_segment
@@ -139,6 +139,7 @@ features:
       - id: line_hyp
         kind: line_segment
 
+    # lits of constraints on the sketch
     constraints:
       - id: c_horizontal_base
         kind: horizontal
@@ -200,7 +201,7 @@ Valid `point` references per entity kind:
 | vertical       | `target: {entity}`                                            | end.x - start.x                                        |
 | length         | `target: {entity}`, `value: float`                            | len(line) - value                                      |
 | radius         | `target: {entity}`, `value: float`                            | r - value                                              |
-| coincident     | `a: {entity, point}`, `b: {entity, point}`                    | a.x - b.x, a.y - b.y                                  |
+| coincident     | `a: {entity, point}`, `b: {entity, point}`                    | a.x - b.x, a.y - b.y                                   |
 | perpendicular  | `a: {entity}`, `b: {entity}`                                  | dot(dir_a, dir_b)                                      |
 | angle          | `a: {entity}`, `b: {entity}`, `value: float (deg)`            | cos(angle_between) - cos(value)                        |
 | tangent        | `line: {entity}`, `arc: {entity, point}`                      | dot(line_dir, radius_dir) -- line perpendicular to radius |
@@ -208,7 +209,7 @@ Valid `point` references per entity kind:
 | equal_length   | `a: {entity}`, `b: {entity}`                                  | len(a) - len(b)                                        |
 | point_distance | `a: {entity, point}`, `b: {entity, point}`, `value: float`    | dist(a, b) - value                                     |
 | midpoint       | `line: {entity}`, `point: {entity}`, `axis: x\|y\|both`       | point - midpoint(line) on specified axis(es)           |
-| concentric     | `a: {entity}`, `b: {entity}`                                  | center_a.x - center_b.x, center_a.y - center_b.y      |
+| concentric     | `a: {entity}`, `b: {entity}`                                  | center_a.x - center_b.x, center_a.y - center_b.y       |
 | fixed          | `target: {entity, point}`, `x: float`, `y: float`             | point.x - x, point.y - y                               |
 
 `point` defaults to `start` when omitted. `axis` in `midpoint` defaults to `both`.
