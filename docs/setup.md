@@ -100,6 +100,16 @@ export FLASK_ENV=production
 
 For the constraint solver use case, the API is I/O bound (document storage), not CPU bound. Both databases will perform well.
 
+## System Dependencies
+
+Before installing Python dependencies, make sure the required system libraries are installed:
+
+```bash
+sudo apt install libcairo2-dev
+```
+
+This is required for `pycairo`. Without it, `pip install` will fail with a "Dependency cairo not found" error.
+
 ## Troubleshooting
 
 **"Cannot operate on a closed database" error**
