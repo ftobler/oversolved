@@ -205,7 +205,7 @@ def constraint_vertical(ctx):
     stroke(ctx, 2)
 
 
-@icon("frontend/src/assets/icons/constraint-equal.svg", angle=-5)  # double use: toolbar
+@icon("frontend/src/assets/icons/constraint-equal.svg")  # double use: toolbar
 def constraint_equal(ctx):
     # Draw a simple equal sign (two horizontal lines)
     x0, x1 = 0.25, 0.75
