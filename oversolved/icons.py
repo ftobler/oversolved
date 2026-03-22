@@ -746,5 +746,70 @@ def constraint_line_swap(ctx):
     _draw_arrow(ctx, 0.5, arrow_height, 0.5, 1 - arrow_height, px(6))
 
 
+def _copy_icon_back_rect(ctx, bx0, by0, bx1, by1, fx0, fy0, fx1, fy1):
+    """Draw the back rectangle of a copy icon, clipped by the front rectangle.
+    Only the portions of the back rect not covered by the front rect are drawn."""
+    # Visible: left edge top portion (by0 → fy0), top edge, right edge, bottom edge right portion (fx1 → bx1)
+    ctx.move_to(bx0, fy0)
+    ctx.line_to(bx0, by0)
+    ctx.line_to(bx1, by0)
+    ctx.line_to(bx1, by1)
+    ctx.line_to(fx1, by1)
+    stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/toolbar-copy-code.svg")
+def toolbar_copy_code(ctx):
+    # Classic copy icon (two overlapping rectangles) with code lines on the front sheet
+    bx0, by0, bx1, by1 = 0.30, 0.12, 0.82, 0.68
+    fx0, fy0, fx1, fy1 = 0.18, 0.32, 0.70, 0.88
+
+    _copy_icon_back_rect(ctx, bx0, by0, bx1, by1, fx0, fy0, fx1, fy1)
+
+    # Front rectangle
+    ctx.move_to(fx0, fy0)
+    ctx.line_to(fx1, fy0)
+    ctx.line_to(fx1, fy1)
+    ctx.line_to(fx0, fy1)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # Code lines on front rectangle (3 short horizontal lines like text)
+    margin = 0.09
+    line_x0 = fx0 + margin
+    line_x1 = fx1 - margin
+    mid_x = (line_x0 + line_x1) / 2
+    for y in [0.47, 0.60, 0.73]:
+        x1 = line_x1 if y != 0.60 else mid_x
+        ctx.move_to(line_x0, y)
+        ctx.line_to(x1, y)
+    stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/toolbar-copy-result.svg")
+def toolbar_copy_result(ctx):
+    # Classic copy icon with a checkmark on the front sheet (result = success/output)
+    bx0, by0, bx1, by1 = 0.30, 0.12, 0.82, 0.68
+    fx0, fy0, fx1, fy1 = 0.18, 0.32, 0.70, 0.88
+
+    _copy_icon_back_rect(ctx, bx0, by0, bx1, by1, fx0, fy0, fx1, fy1)
+
+    # Front rectangle
+    ctx.move_to(fx0, fy0)
+    ctx.line_to(fx1, fy0)
+    ctx.line_to(fx1, fy1)
+    ctx.line_to(fx0, fy1)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # Checkmark on the front rectangle
+    cx = (fx0 + fx1) / 2 - 0.02
+    cy = (fy0 + fy1) / 2 + 0.04
+    ctx.move_to(cx - 0.14, cy)
+    ctx.line_to(cx - 0.02, cy + 0.13)
+    ctx.line_to(cx + 0.18, cy - 0.14)
+    stroke(ctx, 2)
+
+
 if __name__ == "__main__":
     drawall()
