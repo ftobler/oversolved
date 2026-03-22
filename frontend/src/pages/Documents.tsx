@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import './Documents.css'
 
 interface DocumentMeta {
@@ -8,6 +8,7 @@ interface DocumentMeta {
 }
 
 export default function Documents() {
+  const navigate = useNavigate()
   const [documents, setDocuments] = useState<DocumentMeta[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -88,11 +89,21 @@ export default function Documents() {
 
   return (
     <div className="documents">
-      <header className="doc-header">
-        <Link to="/" className="back">
-          <span className="material-icons">arrow_back</span>
-        </Link>
-        <h1>Documents</h1>
+      <header className="doc-toolbar">
+        <div className="toolbar-left">
+          <button className="logo" onClick={() => navigate('/')}>
+            Oversolved
+          </button>
+          <h2 className="doc-name">Documents</h2>
+        </div>
+        <div className="toolbar-right">
+          <Link to="/docs" className="toolbar-btn" title="Documentation">
+            <span className="material-icons-outlined">help</span>
+          </Link>
+          <Link to="/visualizer" className="toolbar-btn" title="Visualizer">
+            <span className="material-icons-outlined">bug_report</span>
+          </Link>
+        </div>
       </header>
 
       <div className="doc-list">

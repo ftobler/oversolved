@@ -150,10 +150,21 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
 
   if (kind === 'perpendicular') {
     const eid = constraint.a?.entity
+    const eid2 = constraint.b?.entity
     if (!eid) return { kind: 'unknown' }
     const ea = sketch[eid] as any
+    const eb = eid2 ? sketch[eid2] as any : undefined
+    const entities = [eid, eid2].filter(Boolean) as string[]
+    if (eb && eb.center) {
+      const pt = constraint.b?.point !== 'end' ? eb.start : eb.end
+      return { kind: 'symbol_perp', at: pt, entity: eid2!, entities }
+    }
+    if (ea && ea.center) {
+      const pt = constraint.a?.point !== 'end' ? ea.start : ea.end
+      return { kind: 'symbol_perp', at: pt, entity: eid, entities }
+    }
     if (!ea || !ea.end) return { kind: 'unknown' }
-    return { kind: 'symbol_perp', at: ea.end, entity: eid, entities: [constraint.a?.entity, constraint.b?.entity].filter(Boolean) as string[] }
+    return { kind: 'symbol_perp', at: ea.end, entity: eid, entities }
   }
 
   if (kind === 'parallel') {

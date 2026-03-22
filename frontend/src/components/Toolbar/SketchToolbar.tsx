@@ -13,7 +13,6 @@ import toolbarConcentricIcon from '../../assets/icons/constraint-concentric.svg'
 import toolbarEqualIcon from '../../assets/icons/constraint-equal.svg'
 import toolbarFixedIcon from '../../assets/icons/constraint-fixed.svg'
 import toolbarMidpointIcon from '../../assets/icons/constraint-midpoint.svg'
-import toolbarNormalIcon from '../../assets/icons/constraint-normal.svg'
 import toolbarParallelIcon from '../../assets/icons/constraint-parallel.svg'
 import toolbarPerpendicularIcon from '../../assets/icons/constraint-square.svg'
 import toolbarTangentIcon from '../../assets/icons/constraint-tangent.svg'
@@ -85,7 +84,6 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
       <ToolbarButton title="Equal" icon={toolbarEqualIcon} onClick={() => applyConstraint('equal_length')} />
       <ToolbarButton title="Fixed" icon={toolbarFixedIcon} onClick={() => applyConstraint('fixed')} />
       <ToolbarButton title="Midpoint" icon={toolbarMidpointIcon} onClick={() => applyConstraint('midpoint')} />
-      <ToolbarButton title="Normal" icon={toolbarNormalIcon} onClick={() => applyConstraint('normal')} />
       <ToolbarButton title="Parallel" icon={toolbarParallelIcon} onClick={() => applyConstraint('parallel')} />
       <ToolbarButton title="Perpendicular" icon={toolbarPerpendicularIcon} onClick={() => applyConstraint('perpendicular')} />
       <ToolbarButton title="Tangent" icon={toolbarTangentIcon} onClick={() => applyConstraint('tangent')} />

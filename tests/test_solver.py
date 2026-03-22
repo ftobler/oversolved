@@ -1426,9 +1426,9 @@ features:
         target: {entity: line1}
         value: 2.0
       - id: c_normal
-        kind: normal
-        line: {entity: line1}
-        arc:  {entity: arc1, point: start}
+        kind: perpendicular
+        a: {entity: line1}
+        b: {entity: arc1, point: start}
 """
     result = solve(yaml_str)["result"]["sketch_1"]
     sketch_log("test_normal_constraint", yaml_str, result)

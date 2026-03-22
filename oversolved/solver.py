@@ -227,9 +227,20 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "entity": eid}
 
     elif kind == "perpendicular":
-        eid = c["a"]["entity"]
-        ea = geom[eid]
-        return {"kind": "symbol_perp", "at": ea["end"], "entity": eid}
+        ea_id = c["a"]["entity"]
+        eb_id = c["b"]["entity"]
+        ea = geom[ea_id]
+        eb = geom[eb_id]
+        if "center" in eb:
+            arc_ref = c["b"]
+            pt = eb["start"] if arc_ref.get("point", "start") != "end" else eb["end"]
+            return {"kind": "symbol_perp", "at": pt, "entity": eb_id}
+        elif "center" in ea:
+            arc_ref = c["a"]
+            pt = ea["start"] if arc_ref.get("point", "start") != "end" else ea["end"]
+            return {"kind": "symbol_perp", "at": pt, "entity": ea_id}
+        else:
+            return {"kind": "symbol_perp", "at": ea["end"], "entity": ea_id}
 
     elif kind == "parallel":
         eid = c["a"]["entity"]
@@ -447,11 +458,29 @@ def _solve_sketch(feature: dict) -> dict:
                 r.append(pa[0] - pb[0])
                 r.append(pa[1] - pb[1])
             elif kind == "perpendicular":
-                ea = get_params(x, c["a"]["entity"])
-                eb = get_params(x, c["b"]["entity"])
-                da = ea[2:4] - ea[0:2]
-                db = eb[2:4] - eb[0:2]
-                r.append(np.dot(da, db))
+                ea_id = c["a"]["entity"]
+                eb_id = c["b"]["entity"]
+                ea_kind = entities[ea_id]["kind"]
+                eb_kind = entities[eb_id]["kind"]
+                if ea_kind == "line_segment" and eb_kind == "line_segment":
+                    ea = get_params(x, ea_id)
+                    eb = get_params(x, eb_id)
+                    da = ea[2:4] - ea[0:2]
+                    db = eb[2:4] - eb[0:2]
+                    r.append(np.dot(da, db))
+                else:
+                    line_ref = c["a"] if ea_kind == "line_segment" else c["b"]
+                    arc_ref = c["b"] if ea_kind == "line_segment" else c["a"]
+                    line_ep = get_params(x, line_ref["entity"])
+                    line_dir = line_ep[2:4] - line_ep[0:2]
+                    line_dir = line_dir / np.linalg.norm(line_dir)
+                    arc_ep = get_params(x, arc_ref["entity"])
+                    arc_pt = arc_ref.get("point", "start")
+                    a_deg = arc_ep[3] if arc_pt != "end" else arc_ep[4]
+                    radius_dir = np.array(
+                        [np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
+                    r.append(
+                        line_dir[0] * radius_dir[1] - line_dir[1] * radius_dir[0])
             elif kind == "parallel":
                 ea = get_params(x, c["a"]["entity"])
                 eb = get_params(x, c["b"]["entity"])

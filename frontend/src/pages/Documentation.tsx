@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import './Documentation.css'
 
@@ -19,6 +19,7 @@ function extractLabel(name: string, content: string): string {
 }
 
 export default function Documentation() {
+  const navigate = useNavigate()
   const { doc } = useParams<{ doc?: string }>()
   const currentDoc = doc || 'overview'
   const [content, setContent] = useState<string>('')
@@ -84,11 +85,21 @@ export default function Documentation() {
 
   return (
     <div className="documentation">
-      <header className="doc-header">
-        <Link to="/" className="back">
-          <span className="material-icons">arrow_back</span>
-        </Link>
-        <h1>Documentation</h1>
+      <header className="doc-toolbar">
+        <div className="toolbar-left">
+          <button className="toolbar-btn burger" title="Documents" onClick={() => navigate('/documents')}>
+            <span className="material-icons-outlined">menu</span>
+          </button>
+          <button className="logo" onClick={() => navigate('/')}>
+            Oversolved
+          </button>
+          <h2 className="doc-name">Documentation</h2>
+        </div>
+        <div className="toolbar-right">
+          <Link to="/visualizer" className="toolbar-btn" title="Visualizer">
+            <span className="material-icons-outlined">bug_report</span>
+          </Link>
+        </div>
       </header>
 
       <div className="doc-container">

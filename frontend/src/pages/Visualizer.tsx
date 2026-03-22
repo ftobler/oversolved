@@ -219,45 +219,57 @@ export default function Visualizer() {
 
   return (
     <div className="visualizer">
-      <header className="vis-header">
-        <Link to="/" className="back">
-          <span className="material-icons">arrow_back</span>
-        </Link>
-        <h1>Test Visualizer</h1>
-        <button className="reload" onClick={() => window.location.reload()}>
-          <span className="material-icons">refresh</span>
-        </button>
+      <header className="doc-toolbar">
+        <div className="toolbar-left">
+          <button className="toolbar-btn burger" title="Documents" onClick={() => navigate('/documents')}>
+            <span className="material-icons-outlined">menu</span>
+          </button>
+          <button className="logo" onClick={() => navigate('/')}>
+            Oversolved
+          </button>
+          <h2 className="doc-name">Test Visualizer</h2>
+        </div>
+        <div className="toolbar-right">
+          <button className="toolbar-btn" title="Reload" onClick={() => window.location.reload()}>
+            <span className="material-icons-outlined">refresh</span>
+          </button>
+          <Link to="/docs" className="toolbar-btn" title="Documentation">
+            <span className="material-icons-outlined">help</span>
+          </Link>
+        </div>
       </header>
 
-      {error && <p className="error">Failed to load results: {error}</p>}
+      <div className="visualizer-content">
+        {error && <p className="error">Failed to load results: {error}</p>}
 
-      {results && cards.length === 0 && (
-        <p className="empty">No test results yet. Run <code>pytest</code> to generate them.</p>
-      )}
+        {results && cards.length === 0 && (
+          <p className="empty">No test results yet. Run <code>pytest</code> to generate them.</p>
+        )}
 
-      {/* Single hidden Canvas that renders all cards sequentially */}
-      {cards.length > 0 && (
-        <SketchQueue cards={cards} onSnapshot={handleSnapshot} />
-      )}
+        {/* Single hidden Canvas that renders all cards sequentially */}
+        {cards.length > 0 && (
+          <SketchQueue cards={cards} onSnapshot={handleSnapshot} />
+        )}
 
-      <div className="sketch-row">
-        {cards.map(card => (
-          <div
-            key={card.id}
-            className="sketch-card"
-            onClick={() => openAsDocument(card)}
-            style={card.astInput ? { cursor: 'pointer' } : undefined}
-            title={card.astInput ? 'Open as document' : undefined}
-          >
-            <div className="sketch-label">
-              {card.label} <span className="solve-time">{card.solve_ms} ms</span>
+        <div className="sketch-row">
+          {cards.map(card => (
+            <div
+              key={card.id}
+              className="sketch-card"
+              onClick={() => openAsDocument(card)}
+              style={card.astInput ? { cursor: 'pointer' } : undefined}
+              title={card.astInput ? 'Open as document' : undefined}
+            >
+              <div className="sketch-label">
+                {card.label} <span className="solve-time">{card.solve_ms} ms</span>
+              </div>
+              {snapshots[card.id]
+                ? <img src={snapshots[card.id]} width={CARD_SIZE} height={CARD_SIZE} style={{ display: 'block' }} />
+                : <div style={{ width: CARD_SIZE, height: CARD_SIZE, background: '#111' }} />
+              }
             </div>
-            {snapshots[card.id]
-              ? <img src={snapshots[card.id]} width={CARD_SIZE} height={CARD_SIZE} style={{ display: 'block' }} />
-              : <div style={{ width: CARD_SIZE, height: CARD_SIZE, background: '#111' }} />
-            }
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   )

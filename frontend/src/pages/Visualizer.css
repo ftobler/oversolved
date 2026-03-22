@@ -1,44 +1,12 @@
 .visualizer {
-  padding: 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
 }
 
-.vis-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.vis-header h1 {
-  margin: 0;
-  font-size: 1.5rem;
+.visualizer-content {
+  padding: 1.5rem 2rem;
   flex: 1;
-}
-
-.back,
-.reload {
-  display: flex;
-  align-items: center;
-  padding: 0.25rem;
-  border: none;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-  border-radius: 4px;
-  font-size: 1rem;
-  text-decoration: none;
-}
-
-.back:hover,
-.reload:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.material-icons {
-  font-family: 'Material Icons';
-  font-size: 20px;
-  line-height: 1;
 }
 
 .error {
