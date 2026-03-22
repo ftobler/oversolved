@@ -74,7 +74,7 @@ describe('applyAddConstraint', () => {
     const added = constraints.find(c => c.id.startsWith('c_vertical'))
     expect(added).toBeDefined()
     expect(added!.kind).toBe('vertical')
-    expect(added!.target).toEqual({ entity: 'line1' })
+    expect(added!.target).toEqual('$line1')
   })
 
   it('adds a two-target constraint', () => {
@@ -83,8 +83,8 @@ describe('applyAddConstraint', () => {
     const constraints = doc.features![0].constraints!
     const added = constraints.find(c => c.id.startsWith('c_perpendicular'))
     expect(added).toBeDefined()
-    expect(added!.a).toEqual({ entity: 'line1' })
-    expect(added!.b).toEqual({ entity: 'circ1' })
+    expect(added!.a).toEqual('$line1')
+    expect(added!.b).toEqual('$circ1')
   })
 
   it('adds constraint with vertex point reference', () => {
@@ -93,8 +93,8 @@ describe('applyAddConstraint', () => {
     const constraints = doc.features![0].constraints!
     const added = constraints.find(c => c.id.startsWith('c_coincident'))
     expect(added).toBeDefined()
-    expect(added!.a).toEqual({ entity: 'line1', point: 'end' })
-    expect(added!.b).toEqual({ entity: 'circ1', point: 'center' })
+    expect(added!.a).toEqual('$line1end')
+    expect(added!.b).toEqual('$circ1center')
   })
 
   it('generates unique constraint ids', () => {

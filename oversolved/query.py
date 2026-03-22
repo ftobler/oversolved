@@ -70,7 +70,7 @@ class Repository:
         self.elements[id] = obj
 
     def register_anchestor(self, anchestors: list[str], obj: Any) -> str:
-        id = secrets.token_urlsafe(18)
+        id = secrets.token_urlsafe(9)
         key = frozenset(anchestors)
         self.anchestral.setdefault(key, []).append(id)
         self.elements[id] = obj

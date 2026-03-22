@@ -153,6 +153,39 @@ def to_geom(geom_flat, entities):
     return result
 
 
+def test_missing_plane_is_error():
+    """A sketch without a plane reference must fail with a descriptive error."""
+    yaml_str = """
+version: 1
+kind: part
+features:
+  - id: sketch1
+    kind: sketch
+    entities: []
+    constraints: []
+"""
+    result = solve(yaml_str)["result"]["sketch1"]
+    assert result["status"] == "exception"
+    assert "plane" in result["exception"].lower()
+
+
+def test_unknown_plane_is_error():
+    """A sketch referencing a non-existent plane must also fail."""
+    yaml_str = """
+version: 1
+kind: part
+features:
+  - id: sketch1
+    kind: sketch
+    plane: "@does_not_exist"
+    entities: []
+    constraints: []
+"""
+    result = solve(yaml_str)["result"]["sketch1"]
+    assert result["status"] == "exception"
+    assert "plane" in result["exception"].lower()
+
+
 def test_horizontal_line_with_length(sketch_log):
     """A slightly tilted line should become horizontal with length 10."""
     yaml_str = """
@@ -162,6 +195,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Horizontal Line"
     initial:
       line1: [0.0, 1.5, 8.5, 3.5]
@@ -199,6 +233,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "L Shape"
     initial:
       base:   [0.0, 0.0, 7.0, 1.0]
@@ -255,6 +290,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Angled Lines"
     initial:
       line_a: [0.5, 1.0, 6.0, 3.0]
@@ -316,6 +352,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Rectangle 8x5"
     initial:
       bottom: [0.5, 0.5, 7.0, 1.0]
@@ -408,6 +445,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Equilateral Triangle"
     initial:
       a: [0.5, 0.5, 5.5, 1.0]
@@ -484,6 +522,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Regular Pentagon"
     initial:
       e0: [0.0, 0.5, 3.5, 0.8]
@@ -601,6 +640,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Circle r=5"
     initial:
       circ: [3.0, 2.0, 3.5]
@@ -630,6 +670,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Line + Arc"
     initial:
       line1: [0.5, 0.5, 4.5, 0.3]
@@ -678,6 +719,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Line + Circle"
     initial:
       line1: [0.5, 0.5, 7.5, 0.5]
@@ -730,6 +772,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Equal Belt r=2"
     initial:
       arc_l:    [0.2,  0.3, 2.2,  88, 272]
@@ -821,6 +864,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Unequal Belt r=1,3"
     initial:
       arc_l:    [0.2,  0.1, 2.1,  92, 268]
@@ -914,6 +958,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Serpentine Belt"
     initial:
       arc_1: [0.2,  -2.1, 2.1,  92, 268]
@@ -1025,6 +1070,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Collinear x4 (single dim)"
     initial:
       s1: [0.3, 0.4, 2.8, 0.1]
@@ -1105,6 +1151,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Collinear x4 (total span)"
     initial:
       s1: [0.3, 0.4, 2.8, 0.1]
@@ -1186,6 +1233,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Collinear x4 (partial span)"
     initial:
       s1: [0.3, 0.4, 2.8, 0.1]
@@ -1271,6 +1319,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Fully Constrained"
     initial:
       line1: [0.0, 1.5, 8.5, 3.5]
@@ -1300,6 +1349,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Underconstrained"
     initial:
       line1: [1.0, 2.0, 5.0, 6.0]
@@ -1322,6 +1372,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Overconstrained"
     initial:
       line1: [0.0, 1.5, 8.5, 3.5]
@@ -1358,6 +1409,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Midpoint"
     initial:
       line1: [0.4, 0.4, 5.6, 0.6]
@@ -1403,6 +1455,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Normal"
     initial:
       arc1:  [3.5, 3.5, 2.8, 200, 290]
@@ -1452,6 +1505,233 @@ features:
     assert cross / norm < ATOL
 
 
+def test_normal_constraint_circle(sketch_log):
+    """Line endpoint coincident with circle; line is normal (radial) to the circle."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Normal line-circle"
+    initial:
+      circ:  [3.0, 3.0, 2.0]
+      line1: [0.5, 3.2, 1.3, 3.1]
+    entities:
+      - id: circ
+        kind: circle
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_fix_circ
+        kind: fixed
+        target: {entity: circ}
+        x: 3.0
+        y: 3.0
+      - id: c_radius
+        kind: radius
+        target: {entity: circ}
+        value: 2.0
+      - id: c_join
+        kind: coincident
+        a: {entity: line1, point: end}
+        b: {entity: circ}
+      - id: c_len
+        kind: length
+        target: {entity: line1}
+        value: 2.0
+      - id: c_normal
+        kind: normal
+        line: {entity: line1}
+        arc:  {entity: circ}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_normal_constraint_circle", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
+    line, circ = geom["line1"], geom["circ"]
+
+    # line end must be on the circle
+    assert abs(length(line["end"], circ["center"]) - circ["radius"]) < TOL
+
+    # line direction must be parallel to the radius vector at the contact point
+    ld = (line["end"][0] - line["start"][0], line["end"][1] - line["start"][1])
+    rv = (line["end"][0] - circ["center"][0], line["end"][1] - circ["center"][1])
+    cross = abs(ld[0] * rv[1] - ld[1] * rv[0])
+    norm = length((0, 0), ld) * length((0, 0), rv)
+    assert cross / norm < ATOL
+
+
+def test_perpendicular_line_circle(sketch_log):
+    """Line tangent to a circle (perpendicular constraint on line and circle)."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Perpendicular line-circle"
+    initial:
+      circ:  [0.0, 0.0, 3.0]
+      line1: [-1.5, 3.1, 1.5, 3.1]
+    entities:
+      - id: circ
+        kind: circle
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_fix_circ
+        kind: fixed
+        target: {entity: circ}
+        x: 0.0
+        y: 0.0
+      - id: c_radius
+        kind: radius
+        target: {entity: circ}
+        value: 3.0
+      - id: c_join
+        kind: coincident
+        a: {entity: line1, point: end}
+        b: {entity: circ}
+      - id: c_perp
+        kind: perpendicular
+        a: {entity: line1}
+        b: {entity: circ}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_perpendicular_line_circle", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
+    line, circ = geom["line1"], geom["circ"]
+
+    # line end must be on the circle
+    assert abs(length(line["end"], circ["center"]) - circ["radius"]) < TOL
+
+    # perpendicular = line direction is parallel to radius (normal to tangent)
+    ld = (line["end"][0] - line["start"][0], line["end"][1] - line["start"][1])
+    rv = (line["end"][0] - circ["center"][0], line["end"][1] - circ["center"][1])
+    cross = abs(ld[0] * rv[1] - ld[1] * rv[0])
+    norm = length((0, 0), ld) * length((0, 0), rv)
+    assert cross / norm < ATOL
+
+
+def test_tangent_line_circle(sketch_log):
+    """Line tangent to a circle at the contact point (tangent constraint)."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Tangent line-circle"
+    initial:
+      circ:  [0.0, 0.0, 3.0]
+      line1: [-2.0, 2.8, 2.0, 3.1]
+    entities:
+      - id: circ
+        kind: circle
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_fix_circ
+        kind: fixed
+        target: {entity: circ}
+        x: 0.0
+        y: 0.0
+      - id: c_radius
+        kind: radius
+        target: {entity: circ}
+        value: 3.0
+      - id: c_join
+        kind: coincident
+        a: {entity: line1, point: end}
+        b: {entity: circ}
+      - id: c_tangent
+        kind: tangent
+        line: {entity: line1}
+        arc:  {entity: circ}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_tangent_line_circle", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
+    line, circ = geom["line1"], geom["circ"]
+
+    # line end must be on the circle
+    assert abs(length(line["end"], circ["center"]) - circ["radius"]) < TOL
+
+    # tangent = line direction perpendicular to radius at contact
+    ld = (line["end"][0] - line["start"][0], line["end"][1] - line["start"][1])
+    rv = (line["end"][0] - circ["center"][0], line["end"][1] - circ["center"][1])
+    dot = abs(ld[0] * rv[0] + ld[1] * rv[1])
+    norm = length((0, 0), ld) * length((0, 0), rv)
+    assert dot / norm < ATOL
+
+
+def test_query_string_constraints(sketch_log):
+    """Constraints using query string syntax ($entity, $entitypoint) work the same
+    as old-style {entity: ..., point: ...} dicts."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Query Strings"
+    initial:
+      base:   [0.0, 0.0, 7.0, 1.0]
+      height: [7.5, 0.5, 5.5, 5.5]
+    entities:
+      - id: base
+        kind: line_segment
+      - id: height
+        kind: line_segment
+    constraints:
+      - id: c_horiz
+        kind: horizontal
+        target: "$base"
+      - id: c_join
+        kind: coincident
+        a: "$baseend"
+        b: "$heightstart"
+      - id: c_perp
+        kind: perpendicular
+        a: "$base"
+        b: "$height"
+      - id: c_len
+        kind: length
+        target: "$height"
+        value: 5.0
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_query_string_constraints", yaml_str, result)
+    assert result["status"] in ("fully_constrained", "underconstrained")
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+    base_e = geom["base"][2:4]
+    height_s = geom["height"][0:2]
+    height_e = geom["height"][2:4]
+    assert abs(base_e[0] - height_s[0]) < TOL, "coincident x"
+    assert abs(base_e[1] - height_s[1]) < TOL, "coincident y"
+    dh = (height_e[0] - height_s[0], height_e[1] - height_s[1])
+    length = math.sqrt(dh[0] ** 2 + dh[1] ** 2)
+    assert abs(length - 5.0) < TOL, f"height length must be 5, got {length}"
+
+
 def test_concentric_constraint(sketch_log):
     """Two circles share the same center via concentric constraint."""
     yaml_str = """
@@ -1461,6 +1741,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Concentric"
     initial:
       circ_s: [1.5, 1.5, 2.2]
@@ -1512,6 +1793,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Fixed"
     initial:
       line1: [0.2, 0.2, 4.8, 0.3]
@@ -1557,6 +1839,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Point on midpoint"
     initial:
       line1: [0.3, 0.4, 3.8, 0.6]
@@ -1602,6 +1885,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Midpoint of two points"
     initial:
       pt_a:   [0.0, 0.0]
@@ -1657,6 +1941,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Midpoint of two points axis x"
     initial:
       pt_a:   [0.0, 0.0]
@@ -1714,6 +1999,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Midpoint of line endpoints"
     initial:
       line_a: [0.0, 0.0, 2.0, 0.0]
@@ -1766,6 +2052,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Rectangle center point"
     initial:
       top:    [0.3, 4.2, 6.1, 3.9]
@@ -1864,6 +2151,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Two Circles"
     initial:
       circle_a: [3.0, 4.0, 5.0]
@@ -1915,6 +2203,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Parallel Lines"
     initial:
       line_a: [0.0, 0.0, 10.0, 2.0]
@@ -1978,6 +2267,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Construction Geometry"
     initial:
       main_line: [0.0, 0.0, 10.0, 0.0]
@@ -2066,6 +2356,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Square with Construction Diagonals"
     initial:
       side_bottom:  [0.0, 0.0, 10.0, 0.0]
@@ -2228,6 +2519,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Thales Circle Theorem (Asymmetric)"
     initial:
       circle:       [3.0, 2.0, 4.0]
@@ -2364,6 +2656,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Pythagorean 3-4-5 Triangle"
     initial:
       pt_a:    [0.0, 0.0]
@@ -2486,6 +2779,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Angle Sum Theorem Triangle"
     initial:
       pt_a:   [0.0, 0.0]
@@ -2593,6 +2887,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Vertical Angles Theorem"
     initial:
       pt_center: [0.0, 0.0]
@@ -2695,6 +2990,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Alternate Interior Angles Theorem"
     initial:
       pt_a:      [0.0, 0.0]
@@ -2830,6 +3126,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Exterior Angle Theorem"
     initial:
       pt_a:    [0.0, 0.0]
@@ -2961,6 +3258,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Hourglass"
     initial:
       tl: [0.0, 2.0]
@@ -3072,6 +3370,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Venn Diagram"
     initial:
       c1: [0.5, 0.5]
@@ -3158,6 +3457,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     entities: [ { id: circle1, kind: circle }, { id: arc1, kind: arc } ]
     constraints:
       - id: c_horizontal_1
@@ -3226,6 +3526,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     entities: []
     constraints:
       - id: c_bogus
@@ -3249,6 +3550,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     initial:
       line1: [-0.838727, 0.849922, -0.071016, 1.154386]
     entities:
@@ -3280,6 +3582,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     initial:
       line1: [-0.838727, 0.849922, -0.071016, 1.154386]
     entities:
@@ -3321,6 +3624,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Circle diameter"
     initial:
       circ: [3.0, 2.0, 1.5]
@@ -3350,6 +3654,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Line to line distance"
     initial:
       line_a: [0.0, 0.0, 4.0, 0.0]
@@ -3397,6 +3702,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Circle center to point"
     initial:
       circ: [0.0, 0.0, 1.0]
@@ -3443,6 +3749,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Coincident point-point"
     initial:
       pt_a: [1.0, 2.0]
@@ -3483,6 +3790,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Coincident point-on-line"
     initial:
       line1: [0.0, 2.0, 8.0, 2.0]
@@ -3528,6 +3836,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Coincident point-on-circle"
     initial:
       circ: [0.0, 0.0, 3.0]
@@ -3573,6 +3882,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Coincident point-on-arc"
     initial:
       arc1: [0.0, 0.0, 4.0, 0.0, 90.0]
@@ -3617,6 +3927,7 @@ kind: part
 features:
   - id: sketch_1
     kind: sketch
+    plane: "@builtin_plane_front"
     label: "Coincident line-to-line"
     initial:
       line_a: [0.0, 0.0, 3.0, 0.1]

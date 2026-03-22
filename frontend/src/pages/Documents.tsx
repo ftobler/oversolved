@@ -51,7 +51,7 @@ export default function Documents() {
       const response = await fetch(`/api/documents/${newDocId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: 'version: 1\nkind: part\n\nfeatures:\n' }),
+        body: JSON.stringify({ content: 'version: 1\nkind: part\nfeatures: []\n' }),
       })
 
       if (!response.ok) {

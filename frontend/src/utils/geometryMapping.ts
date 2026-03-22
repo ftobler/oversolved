@@ -50,6 +50,24 @@ export function unflattenGeometry(
   return result
 }
 
+const KNOWN_POINTS = ['start', 'end', 'center', 'xy'] as const
+
+/** Resolve a query string (e.g. "$line1" or "$arc1start") to an {entity, point?} ref.
+ *  Tries known sub-element suffixes first, then falls back to a bare entity lookup. */
+function resolveQueryRef(q: string | undefined, sketch: Sketch): { entity: string; point?: string } | null {
+  if (!q) return null
+  if (!q.startsWith('$')) return null
+  const local = q.slice(1)
+  for (const pt of KNOWN_POINTS) {
+    if (local.length > pt.length && local.endsWith(pt)) {
+      const eid = local.slice(0, -pt.length)
+      if (sketch[eid]) return { entity: eid, point: pt }
+    }
+  }
+  if (sketch[local]) return { entity: local }
+  return null
+}
+
 export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string }): [number, number] | null {
   const e = sketch[ref.entity]
   if (!e) return null
@@ -71,6 +89,20 @@ export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string 
 }
 
 export function computeConstraintRender(constraint: any, sketch: Sketch): any {
+  // Normalize refs: convert query strings to {entity, point?} objects.
+  // Old-format dicts pass through unchanged (backward compat).
+  const normalize = (q: any) => typeof q === 'string' ? resolveQueryRef(q, sketch) : q
+  constraint = {
+    ...constraint,
+    target:  normalize(constraint.target),
+    a:       normalize(constraint.a),
+    b:       normalize(constraint.b),
+    line:    normalize(constraint.line),
+    arc:     normalize(constraint.arc),
+    point:   normalize(constraint.point),
+    point_a: normalize(constraint.point_a),
+    point_b: normalize(constraint.point_b),
+  }
   const kind = constraint.kind
 
   if (kind === 'horizontal') {

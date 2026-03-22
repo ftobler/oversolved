@@ -5,6 +5,7 @@ import yaml
 import numpy as np
 from scipy.optimize import least_squares
 from oversolved.topology import detect_topology
+from oversolved.query import Repository
 
 
 ENTITY_SIZES = {
@@ -262,12 +263,10 @@ def _constraint_render(c: dict, geom: dict) -> dict:
         ea = geom[ea_id]
         eb = geom[eb_id]
         if "center" in eb:
-            arc_ref = c["b"]
-            pt = eb["start"] if arc_ref.get("point", "start") != "end" else eb["end"]
+            pt = eb["start"] if "start" in eb and c["b"].get("point", "start") != "end" else list(eb["center"])
             return {"kind": "symbol_perp", "at": pt, "entity": eb_id}
         elif "center" in ea:
-            arc_ref = c["a"]
-            pt = ea["start"] if arc_ref.get("point", "start") != "end" else ea["end"]
+            pt = ea["start"] if "start" in ea and c["a"].get("point", "start") != "end" else list(ea["center"])
             return {"kind": "symbol_perp", "at": pt, "entity": ea_id}
         else:
             return {"kind": "symbol_perp", "at": ea["end"], "entity": ea_id}
@@ -292,15 +291,19 @@ def _constraint_render(c: dict, geom: dict) -> dict:
     elif kind == "tangent":
         eid = c["arc"]["entity"]
         arc = geom[eid]
-        pt = arc["start"] if c["arc"].get(
-            "point", "start") != "end" else arc["end"]
+        if "start" in arc:
+            pt = arc["start"] if c["arc"].get("point", "start") != "end" else arc["end"]
+        else:
+            pt = list(arc["center"])
         return {"kind": "symbol_tangent", "at": pt, "entity": eid}
 
     elif kind == "normal":
         eid = c["arc"]["entity"]
         arc = geom[eid]
-        pt = arc["start"] if c["arc"].get(
-            "point", "start") != "end" else arc["end"]
+        if "start" in arc:
+            pt = arc["start"] if c["arc"].get("point", "start") != "end" else arc["end"]
+        else:
+            pt = list(arc["center"])
         return {"kind": "symbol_normal", "at": pt, "entity": eid}
 
     elif kind == "equal_length":
@@ -418,21 +421,80 @@ def _solve_sketch(feature: dict) -> dict:
         size = ENTITY_SIZES[entity["kind"]]
         params.extend(initial.get(eid, [0.0] * size))
 
+    # Build a query Repository so constraints can reference entities by query string.
+    # Sub-elements are registered with their canonical names appended to the entity id.
+    feature_id = feature.get("id", "")
+    repo = Repository()
+
+    # Register globally available built-in entities (queried via @builtin_... syntax).
+    repo.register("builtin_origin",      {"type": "point", "x": 0.0, "y": 0.0, "z": 0.0})
+    repo.register("builtin_plane_front", {"type": "plane", "origin": [0,0,0], "x_axis": [1,0,0], "y_axis": [0,1,0],  "normal": [0,0,1]})
+    repo.register("builtin_plane_top",   {"type": "plane", "origin": [0,0,0], "x_axis": [1,0,0], "y_axis": [0,0,-1], "normal": [0,1,0]})
+    repo.register("builtin_plane_right", {"type": "plane", "origin": [0,0,0], "x_axis": [0,0,-1], "y_axis": [0,1,0], "normal": [1,0,0]})
+
+    for eid, entity in entities.items():
+        kind = entity["kind"]
+        repo.register(feature_id + eid, {"entity": eid})
+        if kind == "line_segment":
+            repo.register(feature_id + eid + "start", {"entity": eid, "point": "start"})
+            repo.register(feature_id + eid + "end",   {"entity": eid, "point": "end"})
+        elif kind == "circle":
+            repo.register(feature_id + eid + "center", {"entity": eid, "point": "center"})
+        elif kind == "arc":
+            repo.register(feature_id + eid + "start",  {"entity": eid, "point": "start"})
+            repo.register(feature_id + eid + "end",    {"entity": eid, "point": "end"})
+            repo.register(feature_id + eid + "center", {"entity": eid, "point": "center"})
+        elif kind == "point":
+            repo.register(feature_id + eid + "xy", {"entity": eid, "point": "xy"})
+
+    def resolve_ref(val):
+        """Resolve a constraint field value to {entity, point?}.
+        Accepts either a query string (new format) or an existing dict (old format)."""
+        if isinstance(val, str):
+            return repo.query(val, context=feature_id)
+        return val  # already a dict — backward compat with old {entity: ...} format
+
+    # Validate that the sketch declares a plane reference.
+    plane_query = feature.get("plane")
+    if not plane_query:
+        raise ValueError(
+            "sketch feature requires a 'plane' reference "
+            "(e.g. plane: \"@builtin_plane_front\")"
+        )
+    plane_obj = resolve_ref(plane_query)
+    if plane_obj is None or plane_obj.get("type") != "plane":
+        raise ValueError(
+            f"sketch 'plane' {plane_query!r} does not resolve to a known plane"
+        )
+
+    _REF_FIELDS = ("target", "line", "arc", "point", "a", "b", "point_a", "point_b")
+
     def _constraint_entity_ids(c: dict) -> list:
         """Return all entity IDs referenced by a constraint."""
         ids = []
-        for key in ("target", "line", "arc", "point"):
-            if key in c and isinstance(c[key], dict) and "entity" in c[key]:
-                ids.append(c[key]["entity"])
-        for key in ("a", "b", "point_a", "point_b"):
-            if key in c and isinstance(c[key], dict) and "entity" in c[key]:
-                ids.append(c[key]["entity"])
+        for key in _REF_FIELDS:
+            ref = resolve_ref(c.get(key))
+            if isinstance(ref, dict) and "entity" in ref:
+                ids.append(ref["entity"])
         return ids
 
     constraints = [
         c for c in constraints
         if all(eid in entities for eid in _constraint_entity_ids(c))
     ]
+
+    # Pre-resolve all query strings to {entity, point?} dicts so the rest of
+    # the solver (residuals, render) can use them without any further changes.
+    def _pre_resolve(c: dict) -> dict:
+        rc = dict(c)
+        for field in _REF_FIELDS:
+            if field in rc and isinstance(rc[field], str):
+                resolved = resolve_ref(rc[field])
+                if resolved is not None:
+                    rc[field] = resolved
+        return rc
+
+    constraints = [_pre_resolve(c) for c in constraints]
 
     x0 = np.array(params, dtype=np.float64)
 
@@ -458,6 +520,18 @@ def _solve_sketch(feature: dict) -> dict:
         elif kind == "point":
             return ep[0:2]
         raise ValueError(f"Unknown kind: {kind!r}")
+
+    def _radius_dir(x, arc_eid, arc_ref, contact_ep):
+        """Normalized radius direction for normal/tangent/perpendicular constraints.
+        For arcs: use stored angle. For circles: use current contact point position."""
+        ep = get_params(x, arc_eid)
+        if entities[arc_eid]["kind"] == "circle":
+            rv = contact_ep - ep[0:2]
+            rn = np.linalg.norm(rv)
+            return rv / rn if rn > 1e-10 else np.array([1.0, 0.0])
+        arc_pt = arc_ref.get("point", "start")
+        a_deg = ep[3] if arc_pt != "end" else ep[4]
+        return np.array([np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
 
     def residuals(x, clist=None):
         r = []
@@ -537,11 +611,8 @@ def _solve_sketch(feature: dict) -> dict:
                     line_ep = get_params(x, line_ref["entity"])
                     line_dir = line_ep[2:4] - line_ep[0:2]
                     line_dir = line_dir / np.linalg.norm(line_dir)
-                    arc_ep = get_params(x, arc_ref["entity"])
-                    arc_pt = arc_ref.get("point", "start")
-                    a_deg = arc_ep[3] if arc_pt != "end" else arc_ep[4]
-                    radius_dir = np.array(
-                        [np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
+                    contact = line_ep[2:4]
+                    radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
                     r.append(
                         line_dir[0] * radius_dir[1] - line_dir[1] * radius_dir[0])
             elif kind == "parallel":
@@ -562,11 +633,8 @@ def _solve_sketch(feature: dict) -> dict:
                 line_ep = get_params(x, c["line"]["entity"])
                 line_dir = line_ep[2:4] - line_ep[0:2]
                 line_dir = line_dir / np.linalg.norm(line_dir)
-                arc_ep = get_params(x, c["arc"]["entity"])
-                arc_pt = c["arc"].get("point", "start")
-                a_deg = arc_ep[3] if arc_pt != "end" else arc_ep[4]
-                radius_dir = np.array(
-                    [np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
+                contact = line_ep[2:4]
+                radius_dir = _radius_dir(x, c["arc"]["entity"], c["arc"], contact)
                 r.append(np.dot(line_dir, radius_dir))
             elif kind == "equal_length":
                 ea = get_params(x, c["a"]["entity"])
@@ -597,16 +665,10 @@ def _solve_sketch(feature: dict) -> dict:
                 line_ep = get_params(x, c["line"]["entity"])
                 line_dir = line_ep[2:4] - line_ep[0:2]
                 line_dir = line_dir / np.linalg.norm(line_dir)
-                arc_ep = get_params(x, c["arc"]["entity"])
-                arc_pt = c["arc"].get("point", "start")
-                a_deg = arc_ep[3] if arc_pt != "end" else arc_ep[4]
-                radius_dir = np.array(
-                    [np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
+                contact = line_ep[2:4]
+                radius_dir = _radius_dir(x, c["arc"]["entity"], c["arc"], contact)
                 r.append(
-                    line_dir[0] *
-                    radius_dir[1] -
-                    line_dir[1] *
-                    radius_dir[0])
+                    line_dir[0] * radius_dir[1] - line_dir[1] * radius_dir[0])
             elif kind == "concentric":
                 ea = get_params(x, c["a"]["entity"])
                 eb = get_params(x, c["b"]["entity"])

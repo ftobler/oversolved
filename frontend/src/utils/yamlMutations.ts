@@ -41,9 +41,9 @@ function findFeature(doc: PartDoc, featureId: string): PartFeature | undefined {
 
 const parseTarget = (t: string): PartTarget => {
   const parts = t.split(':')
-  if (parts[0] === 'entity') return { entity: parts[2] }
-  if (parts[0] === 'vertex') return { entity: parts[2], point: parts[3] }
-  return { entity: t }
+  if (parts[0] === 'entity') return '$' + parts[2]
+  if (parts[0] === 'vertex') return '$' + parts[2] + parts[3]
+  return '$' + t
 }
 
 function uniqueConstraintId(constraints: PartConstraint[], kind: string): string {

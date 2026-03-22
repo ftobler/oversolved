@@ -1069,6 +1069,19 @@ function applyDragPreview(sketch: Sketch, drag: { type?: string; entityId: strin
   return result
 }
 
+// Euler rotations (XYZ) for each built-in sketch plane.
+const BUILTIN_PLANE_ROTATIONS: Record<string, [number, number, number]> = {
+  'builtin_plane_front': [0, 0, 0],
+  'builtin_plane_top':   [-Math.PI / 2, 0, 0],
+  'builtin_plane_right': [0, Math.PI / 2, 0],
+}
+
+function planeRotation(planeQuery: string | undefined): [number, number, number] {
+  if (!planeQuery) return [0, 0, 0]
+  const id = planeQuery.startsWith('@') ? planeQuery.slice(1) : planeQuery
+  return BUILTIN_PLANE_ROTATIONS[id] ?? [0, 0, 0]
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -1079,9 +1092,10 @@ interface Geometry3DProps {
   constraints?: Constraints
   topology?: Topology
   activeFeatureId?: string
+  plane?: string
 }
 
-export default function Geometry3D({ featureId, solved, constraints, topology, activeFeatureId }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, constraints, topology, activeFeatureId, plane }: Geometry3DProps) {
   const drag = useSketchEditorStore(s => s.drag)
   // During drag on this feature, show optimistic preview
   const displaySketch = useMemo(() => {
@@ -1089,9 +1103,10 @@ export default function Geometry3D({ featureId, solved, constraints, topology, a
     return solved
   }, [solved, drag, featureId])
   const extent = useMemo(() => sketchExtent(displaySketch), [displaySketch])
+  const rot = planeRotation(plane)
 
   return (
-    <group>
+    <group rotation={rot}>
       {topology && <TopologySurfaces topology={topology} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={COLOR_SOLVED} lineWidth={2} />
       {constraints && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}

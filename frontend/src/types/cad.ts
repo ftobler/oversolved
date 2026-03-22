@@ -4,18 +4,28 @@ export type Point = [number, number]
 
 // ── Document AST Types ────────────────────────────────────────────────────────
 
-export interface PartTarget {
-  entity: string
-  point?: string
-}
+// A query string referencing an entity or sub-element, e.g. "$line1" or "$arc1start".
+// See docs/query.md for the full query syntax.
+export type PartTarget = string
 
 export interface PartConstraint {
   id: string
   kind: string
   value?: number
+  // Generic refs (used by most constraints)
   target?: PartTarget
   a?: PartTarget
   b?: PartTarget
+  // Semantic refs (used by tangent, normal, midpoint, etc.)
+  line?: PartTarget
+  arc?: PartTarget
+  point?: PartTarget
+  point_a?: PartTarget
+  point_b?: PartTarget
+  // Optional scalar overrides (used by fixed constraint)
+  x?: number
+  y?: number
+  axis?: string
 }
 
 export interface PartEntityDef {
@@ -28,6 +38,7 @@ export interface PartFeature {
   id: string
   kind: string
   label?: string
+  plane?: string  // query string, e.g. "@builtin_plane_front"
   entities?: PartEntityDef[]
   initial?: Record<string, number[]>
   constraints?: PartConstraint[]

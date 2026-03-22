@@ -13,6 +13,16 @@ import {
   applyToggleConstruction,
 } from '../utils/yamlMutations'
 
+function healDoc(raw: unknown): PartDoc {
+  const doc = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  return {
+    ...doc,
+    version:  (doc.version  as number)  ?? 1,
+    kind:     (doc.kind     as string)  ?? 'part',
+    features: Array.isArray(doc.features) ? doc.features : [],
+  } as PartDoc
+}
+
 export function usePartDoc(docId: string | undefined, mode: string, setCodeText: (t: string) => void) {
   const [doc, setDoc] = useState<PartDoc | null>(null)
   const docRef = useRef<PartDoc | null>(null)
@@ -160,7 +170,7 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
         return r.json()
       })
       .then(data => {
-        const parsed = parseYaml(data.content) as PartDoc
+        const parsed = healDoc(parseYaml(data.content))
         docRef.current = parsed
         setDoc(parsed)
         setLoading(false)
