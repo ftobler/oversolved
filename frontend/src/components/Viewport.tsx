@@ -17,6 +17,7 @@ const INITIAL_ZOOM = 200
 
 interface ViewportProps {
   features?: Feature[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   featureDefs?: any[]
   rollbackPosition?: number
   visibleFeatures?: Set<string>

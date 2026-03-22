@@ -2,13 +2,9 @@ import { useRef, useState } from 'react'
 import { Line, Html } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { Sketch, Constraints, Entity, LineSegment, Circle, Arc, PointEntity } from '../types/cad'
+import type { Sketch, Constraints, Entity } from '../types/cad'
+import { COLOR_CONSTRAINT, p2w, ARROW_SHAPE, sampleArc, getEntityBounds } from './sketch_helpers'
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-export const COLOR_CONSTRAINT = '#ffd54f'
 const ICON_SIZE = 22
 const ICON_COLS = 3
 
@@ -39,25 +35,6 @@ function getIconUrl(kind: string): string | undefined {
   if (!name) return undefined
   return iconModules[`../assets/icons/${name}.svg`]
 }
-
-// ---------------------------------------------------------------------------
-// Shared primitives (also exported for use in Sketch3D)
-// ---------------------------------------------------------------------------
-
-/** World units per pixel for an orthographic camera. */
-export function p2w(camera: THREE.Camera): number {
-  return 'zoom' in camera ? 1 / (camera as THREE.OrthographicCamera).zoom : 1
-}
-
-/** Pre-built unit arrow shape: tip at origin, pointing +X, base at x=-1 */
-export const ARROW_SHAPE = (() => {
-  const s = new THREE.Shape()
-  s.moveTo(0, 0)
-  s.lineTo(-1, 0.4)
-  s.lineTo(-1, -0.4)
-  s.closePath()
-  return s
-})()
 
 /** Filled triangle arrowhead with constant pixel size regardless of zoom. */
 export function Arrowhead({ tip, from, px, color }: { tip: [number, number]; from: [number, number]; px: number; color: string }) {
@@ -101,40 +78,6 @@ export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5
   return <Line ref={lineRef} points={points} color={color} lineWidth={lineWidth} dashed dashSize={0.01} gapSize={0.005} onPointerOver={onPointerOver} onPointerOut={onPointerOut} />
 }
 
-export function sampleArc(cx: number, cy: number, r: number, a0deg: number, a1deg: number): [number, number, number][] {
-  let span = ((a1deg - a0deg) + 360) % 360
-  const isFullCircle = span === 0
-  if (isFullCircle) span = 360
-  else if (span > 180) span = span - 360
-  const steps = Math.max(2, Math.ceil((Math.abs(span) / 360) * 64))
-  const pts: [number, number, number][] = []
-  for (let i = 0; i <= steps; i++) {
-    const a = (a0deg + (span * i) / steps) * (Math.PI / 180)
-    pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a), 0])
-  }
-  return pts
-}
-
-export function getEntityBounds(entity: Entity): { minX: number; maxX: number; minY: number; maxY: number } {
-  if ('start' in entity && 'end' in entity && 'radius' in entity) {
-    const arc = entity as Arc
-    const pts: [number, number][] = [arc.start, arc.end,
-      [arc.center[0] - arc.radius, arc.center[1]], [arc.center[0] + arc.radius, arc.center[1]],
-      [arc.center[0], arc.center[1] - arc.radius], [arc.center[0], arc.center[1] + arc.radius],
-    ]
-    return { minX: Math.min(...pts.map(p => p[0])), maxX: Math.max(...pts.map(p => p[0])), minY: Math.min(...pts.map(p => p[1])), maxY: Math.max(...pts.map(p => p[1])) }
-  } else if ('start' in entity) {
-    const l = entity as LineSegment
-    return { minX: Math.min(l.start[0], l.end[0]), maxX: Math.max(l.start[0], l.end[0]), minY: Math.min(l.start[1], l.end[1]), maxY: Math.max(l.start[1], l.end[1]) }
-  } else if ('center' in entity) {
-    const c = entity as Circle
-    return { minX: c.center[0] - c.radius, maxX: c.center[0] + c.radius, minY: c.center[1] - c.radius, maxY: c.center[1] + c.radius }
-  } else {
-    const p = entity as PointEntity
-    return { minX: p.x, maxX: p.x, minY: p.y, maxY: p.y }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Constraint symbol tile
 // ---------------------------------------------------------------------------
@@ -173,6 +116,11 @@ function ConstraintTile({ url, id }: { url: string; id: string }) {
 
 function LinearDimension({ cid, dim, dimOffset }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }; dimOffset: number }) {
   const [hovered, setHovered] = useState(false)
+  const meshRef = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
+  useFrame(() => {
+    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
+  })
   const [x1, y1] = dim.p1,
     [x2, y2] = dim.p2
   const nx = dim.normal[0],
@@ -191,11 +139,6 @@ function LinearDimension({ cid, dim, dimOffset }: { cid: string; dim: { kind: st
   const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
   const onOut = () => setHovered(false)
   const dimLinePts: [number, number, number][] = [[d1x, d1y, 0], [d2x, d2y, 0]]
-  const meshRef = useRef<THREE.Mesh>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
-  })
 
   return (
     <group key={cid}>
@@ -219,6 +162,11 @@ function LinearDimension({ cid, dim, dimOffset }: { cid: string; dim: { kind: st
 
 function RadiusDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number } }) {
   const [hovered, setHovered] = useState(false)
+  const meshRef = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
+  useFrame(() => {
+    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
+  })
   const [x1, y1] = dim.p1,
     [x2, y2] = dim.p2
   const angle = 10 * (Math.PI / 180)
@@ -232,11 +180,6 @@ function RadiusDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [
   const color = hovered ? '#ffffff' : COLOR_CONSTRAINT
   const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
   const onOut = () => setHovered(false)
-  const meshRef = useRef<THREE.Mesh>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
-  })
 
   return (
     <group key={cid}>
@@ -257,6 +200,12 @@ function RadiusDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [
 
 function AngleDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number } }) {
   const [hovered, setHovered] = useState(false)
+  const meshRef = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
+  useFrame(() => {
+    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
+  })
+
   if (!dim.p3) return null
   const [vx, vy] = dim.p2,
     [x1, y1] = dim.p1,
@@ -274,11 +223,6 @@ function AngleDimension({ cid, dim }: { cid: string; dim: { kind: string; p1: [n
   const color = hovered ? '#ffffff' : COLOR_CONSTRAINT
   const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
   const onOut = () => setHovered(false)
-  const meshRef = useRef<THREE.Mesh>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
-  })
 
   return (
     <group key={cid}>
@@ -328,7 +272,7 @@ export function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOv
     const symbolIcons: { url: string; key: string }[] = []
 
     for (const [cid, c] of clist) {
-      const r = (c.render as any) as { kind: string; [key: string]: unknown }
+      const r = c.render as unknown as { kind: string; [key: string]: unknown }
 
       if (r.kind.startsWith('symbol_')) {
         const url = getIconUrl(r.kind)

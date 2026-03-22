@@ -217,7 +217,7 @@ export function drawCubeGizmo(canvas: HTMLCanvasElement, camera: THREE.Camera, h
   const polys = getPolys(q, W, H)
 
   for (const poly of polys) {
-    if (poly.nz <= -0.0) continue // Back-face cull
+    if (poly.nz < 0) continue // Back-face cull
 
     ctx.beginPath()
     poly.pts.forEach((p, j) => j ? ctx.lineTo(p.sx, p.sy) : ctx.moveTo(p.sx, p.sy))

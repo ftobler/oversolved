@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc } from '../../types/cad'
+import type { PartDoc, PartConstraint } from '../../types/cad'
 import { applyMoveVertex, applyAddConstraint, applyDeleteElements } from '../yamlMutations'
 
 const makeSampleDoc = (): PartDoc => ({
@@ -101,7 +101,7 @@ describe('applyAddConstraint', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'vertical', ['entity:Sketch1:line1'])
     applyAddConstraint(doc, 'Sketch1', 'vertical', ['entity:Sketch1:circ1'])
-    const ids = doc.features![0].constraints!.map((c: any) => c.id)
+    const ids = doc.features![0].constraints!.map((c: PartConstraint) => c.id)
     const vertIds = ids.filter((id: string) => id.startsWith('c_vertical'))
     expect(new Set(vertIds).size).toBe(vertIds.length)
   })

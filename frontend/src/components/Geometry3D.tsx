@@ -592,6 +592,19 @@ function RadiusDimension({ cid, dim, featureId, entityId }: { cid: string; dim: 
 function AngleDimension({ cid, dim, featureId, entityId }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number }; featureId: string; entityId: string }) {
   const [hovered, setHovered] = useState(false)
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
+  const onClickDim = useCallback((ev: { stopPropagation: () => void }) => {
+    ev.stopPropagation()
+    const input = window.prompt(`Enter angle value in degrees (current: ${dim.value})`)
+    if (input === null) return
+    const val = parseFloat(input)
+    if (isNaN(val)) return
+    useSketchEditorStore.getState().onMutation?.({ type: 'set_constraint_value', featureId, constraintId: cid, value: val })
+  }, [featureId, cid, dim.value])
+  const meshRef = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
+  useFrame(() => {
+    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
+  })
   if (!dim.p3) return null
   const [vx, vy] = dim.p2,
     [x1, y1] = dim.p1,
@@ -611,19 +624,6 @@ function AngleDimension({ cid, dim, featureId, entityId }: { cid: string; dim: {
     ev.stopPropagation(); setHovered(true); setHoveredConstraintEntities(new Set([entityId]))
   }
   const onOut = () => { setHovered(false); setHoveredConstraintEntities(new Set()) }
-  const onClickDim = useCallback((ev: { stopPropagation: () => void }) => {
-    ev.stopPropagation()
-    const input = window.prompt(`Enter angle value in degrees (current: ${dim.value})`)
-    if (input === null) return
-    const val = parseFloat(input)
-    if (isNaN(val)) return
-    useSketchEditorStore.getState().onMutation?.({ type: 'set_constraint_value', featureId, constraintId: cid, value: val })
-  }, [featureId, cid, dim.value])
-  const meshRef = useRef<THREE.Mesh>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
-  })
 
   return (
     <group key={cid}>

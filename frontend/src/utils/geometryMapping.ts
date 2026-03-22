@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Sketch, Constraints, Point } from '../types/cad'
 
 /** Convert flat array format (from AST initial or server solve) to UI Sketch format.

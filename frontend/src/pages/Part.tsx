@@ -66,6 +66,7 @@ export default function Part() {
   useEffect(() => {
     if (doc && visibleFeatures.size === 0) {
       const extracted = extractFeatures(doc)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisibleFeatures(new Set(extracted.map(f => f.id)))
       setRollbackPosition(extracted.length)
     }

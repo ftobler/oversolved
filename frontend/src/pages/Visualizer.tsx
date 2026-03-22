@@ -16,7 +16,7 @@ import './Visualizer.css'
 interface AstFeature {
   id: string
   entities?: { id: string; kind: string }[]
-  constraints?: any[]
+  constraints?: { id: string; kind: string; [key: string]: unknown }[]
   initial?: Record<string, number[]>
 }
 
@@ -64,7 +64,7 @@ interface CardData {
   solve_ms: number
   status: string
   topology?: Topology
-  astInput?: any  // present for sketch_log entries; enables open-as-document
+  astInput?: unknown  // present for sketch_log entries; enables open-as-document
 }
 
 function extractCards(results: Results): CardData[] {
@@ -95,6 +95,7 @@ const CARD_SIZE = 330
 function sketchBounds(sketch: Sketch): { cx: number; cy: number; extent: number } {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
   for (const e of Object.values(sketch)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const entity = e as any
     if (entity.start && entity.end && entity.radius != null) {
       const pts = [entity.start, entity.end,
@@ -131,6 +132,7 @@ function CaptureController({ card, onCapture }: { card: CardData; onCapture: (ur
     const zoom = (CARD_SIZE * 0.85) / extent
     const cam = camera as THREE.OrthographicCamera
     cam.position.set(cx, cy, 100)
+    // eslint-disable-next-line react-hooks/immutability
     cam.zoom = zoom
     cam.updateProjectionMatrix()
     capturedRef.current = false
