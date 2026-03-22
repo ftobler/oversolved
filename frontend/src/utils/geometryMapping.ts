@@ -10,7 +10,9 @@ export function unflattenGeometry(
   const result: Sketch = {}
   const data = flat || {}
 
-  for (const { id, kind } of entities) {
+  for (const entityDef of entities) {
+    const { id, kind } = entityDef
+    const construction = (entityDef as any).construction === true
     const params = data[id] || (
       kind === 'line_segment' ? [0, 0, 0, 0] :
       kind === 'circle' ? [0, 0, 0] :
@@ -22,11 +24,13 @@ export function unflattenGeometry(
       result[id] = {
         start: [params[0] || 0, params[1] || 0],
         end: [params[2] || 0, params[3] || 0],
+        ...(construction && { construction: true }),
       }
     } else if (kind === 'circle') {
       result[id] = {
         center: [params[0] || 0, params[1] || 0],
         radius: params[2] || 0,
+        ...(construction && { construction: true }),
       }
     } else if (kind === 'arc') {
       const cx = params[0] || 0, cy = params[1] || 0, r = params[2] || 0, a0 = params[3] || 0, a1 = params[4] || 0
@@ -37,6 +41,7 @@ export function unflattenGeometry(
         angle_end: a1,
         start: [cx + r * Math.cos((a0 * Math.PI) / 180), cy + r * Math.sin((a0 * Math.PI) / 180)],
         end: [cx + r * Math.cos((a1 * Math.PI) / 180), cy + r * Math.sin((a1 * Math.PI) / 180)],
+        ...(construction && { construction: true }),
       }
     } else if (kind === 'point') {
       result[id] = { x: params[0] || 0, y: params[1] || 0 }
