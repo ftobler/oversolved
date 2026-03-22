@@ -20,8 +20,8 @@ const makeSampleDoc = (): PartDoc => ({
         { id: 'pt1', kind: 'point' },
       ],
       constraints: [
-        { id: 'c_horiz', kind: 'horizontal', target: { entity: 'line1' } },
-        { id: 'c_len', kind: 'length', target: { entity: 'line1' }, value: 10 },
+        { id: 'c_horiz', kind: 'horizontal', target: '$line1' },
+        { id: 'c_len', kind: 'length', target: '$line1', value: 10 },
       ],
     },
   ],

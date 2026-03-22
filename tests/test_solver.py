@@ -1983,7 +1983,7 @@ features:
     sk = geom
 
     ax, ay = sk["pt_a"]["x"], sk["pt_a"]["y"]
-    bx, by = sk["pt_b"]["x"], sk["pt_b"]["y"]
+    bx = sk["pt_b"]["x"]
     mx, my = sk["pt_mid"]["x"], sk["pt_mid"]["y"]
 
     assert abs(mx - (ax + bx) / 2) < TOL   # x at midpoint (3.0)

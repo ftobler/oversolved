@@ -428,9 +428,9 @@ def _solve_sketch(feature: dict) -> dict:
 
     # Register globally available built-in entities (queried via @builtin_... syntax).
     repo.register("builtin_origin",      {"type": "point", "x": 0.0, "y": 0.0, "z": 0.0})
-    repo.register("builtin_plane_front", {"type": "plane", "origin": [0,0,0], "x_axis": [1,0,0], "y_axis": [0,1,0],  "normal": [0,0,1]})
-    repo.register("builtin_plane_top",   {"type": "plane", "origin": [0,0,0], "x_axis": [1,0,0], "y_axis": [0,0,-1], "normal": [0,1,0]})
-    repo.register("builtin_plane_right", {"type": "plane", "origin": [0,0,0], "x_axis": [0,0,-1], "y_axis": [0,1,0], "normal": [1,0,0]})
+    repo.register("builtin_plane_front", {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 1, 0],  "normal": [0, 0, 1]})
+    repo.register("builtin_plane_top",   {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 0, -1], "normal": [0, 1, 0]})
+    repo.register("builtin_plane_right", {"type": "plane", "origin": [0, 0, 0], "x_axis": [0, 0, -1], "y_axis": [0, 1, 0], "normal": [1, 0, 0]})
 
     for eid, entity in entities.items():
         kind = entity["kind"]

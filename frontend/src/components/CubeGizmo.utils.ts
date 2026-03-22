@@ -53,7 +53,6 @@ const CUBE_EDGES: [number, number][] = [
 ]
 
 const BEVEL_INSET = 0.20
-const INSET = 0.12
 const EXTRA_INSET = 0.05
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -183,7 +182,7 @@ function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
   return polys.sort((a, b) => a.cz - b.cz)
 }
 
-export function computeGizmoHit(mx: number, my: number, pv: Pv[], camera: THREE.Camera): Hit | null {
+export function computeGizmoHit(mx: number, my: number, _pv: Pv[], camera: THREE.Camera): Hit | null {
   const W = GIZMO_SIZE, H = GIZMO_SIZE
   const q = camera.quaternion.clone().invert()
 
