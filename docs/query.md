@@ -13,8 +13,9 @@ Each element can refer to another one by an id. There are different requirements
 | `$<ELE><SUB>`           | local id inside the feature with a uniquely identified subelement.  |
 | `@<FEAT><ELE><SUB>`     | absolute element lookup by id.                                      |
 | `?A,B;<idA><idB>`       | anchrestry information list.                                        |
+| `?A,B;<idA><idB>:<TYPE>`| anchrestry information list, restricted to geometry type.           |
 
-In Anchestry information lists, lengths are hex encoded and comma separated. A semicolon separates it from the id strings which have no delimiters between them. Each ID string must be of valid Query Syntax.
+In Anchestry information lists, lengths are hex encoded and comma separated. A semicolon separates it from the id strings which have no delimiters between them. Each ID string must be of valid Query Syntax. An optional `:<TYPE>` suffix after the id strings restricts resolution to a specific geometry type (e.g. `pt`, `line`, `arc`, `edge`, `face`). This is useful when an intersection produces multiple geometry types and the desired one must be unambiguous.
 
 A query is always used to refer to another element. The query should resolve unique. Anchestry information is used up until the query uniquely resolves.
 
