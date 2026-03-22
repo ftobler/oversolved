@@ -173,6 +173,21 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
     }
   }
 
+  if (kind === 'diameter') {
+    const eid = constraint.target?.entity
+    if (!eid) return { kind: 'unknown' }
+    const e = sketch[eid] as any
+    if (!e) return { kind: 'unknown' }
+    const cx = e.center[0], cy = e.center[1], r = e.radius
+    return {
+      kind: 'dim_diameter',
+      p1: [cx - r, cy] as [number, number],
+      p2: [cx + r, cy] as [number, number],
+      value: constraint.value || 0,
+      entity: eid,
+    }
+  }
+
   if (kind === 'coincident') {
     const eid = constraint.a?.entity || constraint.target?.entity
     if (!eid) return { kind: 'unknown' }
@@ -306,25 +321,29 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
   }
 
   if (kind === 'tangent') {
-    const arc = constraint.arc
+    // supports both line/arc keys and a/b keys
+    const arc = constraint.arc ?? (sketch[constraint.b?.entity] as any)?.center != null ? constraint.b : constraint.a
     if (!arc) return { kind: 'unknown' }
     const arcEid = arc.entity
     if (!arcEid) return { kind: 'unknown' }
     const arcGeom = sketch[arcEid] as any
     if (!arcGeom) return { kind: 'unknown' }
-    const pt = arc.point !== 'end' ? arcGeom.start : arcGeom.end
-    return { kind: 'symbol_tangent', at: pt, entity: arcEid, entities: [constraint.line?.entity, arcEid].filter(Boolean) as string[] }
+    const pt = arc.point !== 'end' ? (arcGeom.start ?? arcGeom.center) : (arcGeom.end ?? arcGeom.center)
+    const lineEid = constraint.line?.entity ?? (arcEid === constraint.a?.entity ? constraint.b?.entity : constraint.a?.entity)
+    return { kind: 'symbol_tangent', at: pt, entity: arcEid, entities: [lineEid, arcEid].filter(Boolean) as string[] }
   }
 
   if (kind === 'normal') {
-    const arc = constraint.arc
+    // supports both line/arc keys and a/b keys
+    const arc = constraint.arc ?? ((sketch[constraint.b?.entity] as any)?.center != null ? constraint.b : constraint.a)
     if (!arc) return { kind: 'unknown' }
     const arcEid = arc.entity
     if (!arcEid) return { kind: 'unknown' }
     const arcGeom = sketch[arcEid] as any
     if (!arcGeom) return { kind: 'unknown' }
-    const pt = arc.point !== 'end' ? arcGeom.start : arcGeom.end
-    return { kind: 'symbol_normal', at: pt, entity: arcEid, entities: [constraint.line?.entity, arcEid].filter(Boolean) as string[] }
+    const pt = arc.point !== 'end' ? (arcGeom.start ?? arcGeom.center) : (arcGeom.end ?? arcGeom.center)
+    const lineEid = constraint.line?.entity ?? (arcEid === constraint.a?.entity ? constraint.b?.entity : constraint.a?.entity)
+    return { kind: 'symbol_normal', at: pt, entity: arcEid, entities: [lineEid, arcEid].filter(Boolean) as string[] }
   }
 
   if (kind === 'colinear') {

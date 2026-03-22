@@ -4,66 +4,15 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Sketch, Constraints, Topology, Point, TopologySurface, TopologyEdge, TopologyArcEdge, Entity, LineSegment, Circle, Arc, PointEntity } from '../types/cad'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
+import { p2w, sampleArc, getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl } from './sketch_helpers'
+import { DashedLine, LinearDimension, RadiusDimension, DiameterDimension, AngleDimension } from './sketch_dimensions'
 
 const COLOR_SOLVED = '#4fc3f7'
-const COLOR_CONSTRAINT = '#ffd54f'
 const COLOR_HOVER = '#ffffff'
 const COLOR_SELECTED = '#ff9800'
 const COLOR_CONSTRAINT_HOVER = '#fff176'  // entity highlighted because a constraint on it is hovered
 const COLOR_PREVIEW = '#aaaaaa'
 const ARC_SEGMENTS = 64
-const ICON_SIZE = 22
-const ICON_COLS = 3
-
-const iconModules = import.meta.glob('../assets/icons/*.svg', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-}) as Record<string, string>
-
-const SYMBOL_TO_ICON: Record<string, string> = {
-  symbol_h:          'constraint-horizontal',
-  symbol_v:          'constraint-vertical',
-  symbol_coincident: 'constraint-coincident',
-  symbol_concentric: 'constraint-concentric',
-  symbol_equal:      'constraint-equal',
-  symbol_fixed:      'constraint-fixed',
-  symbol_midpoint:   'constraint-midpoint',
-  symbol_normal:     'constraint-normal',
-  symbol_parallel:   'constraint-parallel',
-  symbol_perp:       'constraint-square',
-  symbol_tangent:    'constraint-tangent',
-  symbol_colinear:   'constraint-colinear',
-  symbol_angle:      'constraint-angle',
-}
-
-function getIconUrl(kind: string): string | undefined {
-  const name = SYMBOL_TO_ICON[kind]
-  if (!name) return undefined
-  return iconModules[`../assets/icons/${name}.svg`]
-}
-
-// Pre-built unit arrow shape: tip at origin, pointing +X, base at x=-1
-const ARROW_SHAPE = (() => {
-  const s = new THREE.Shape()
-  const width = 0.3  // width of the arrow head
-  const length = 1.0  // length of the arrow head
-  s.moveTo(0, 0)
-  s.lineTo(-length,  width)
-  s.lineTo(-length, -width)
-  s.closePath()
-  return s
-})()
-
-// ---------------------------------------------------------------------------
-// Pixel-size helpers
-// World units per pixel for an orthographic camera = 1 / camera.zoom
-// (r3f default ortho: 1 world unit = 1px at zoom=1)
-// ---------------------------------------------------------------------------
-
-function p2w(camera: THREE.Camera): number {
-  return 'zoom' in camera ? 1 / (camera as THREE.OrthographicCamera).zoom : 1
-}
 
 /** 10-gon dot with constant pixel radius regardless of zoom.
  *  If billboard=true the dot always faces the camera. */
@@ -83,47 +32,6 @@ function Dot({ x, y, px, color, billboard = false }: { x: number; y: number; px:
   )
 }
 
-/** Filled triangle arrowhead with constant pixel size regardless of zoom. */
-function Arrowhead({ tip, from, px, color }: { tip: [number, number]; from: [number, number]; px: number; color: string }) {
-  const meshRef = useRef<THREE.Mesh>(null)
-  const { camera } = useThree()
-  const angle = Math.atan2(tip[1] - from[1], tip[0] - from[0])
-  useFrame(() => {
-    if (meshRef.current) {
-      const s = px * p2w(camera)
-      meshRef.current.scale.set(s, s, 1)
-    }
-  })
-  return (
-    <mesh ref={meshRef} position={[tip[0], tip[1], 0]} rotation={[0, 0, angle]}>
-      <shapeGeometry args={[ARROW_SHAPE]} />
-      <meshBasicMaterial color={color} side={THREE.DoubleSide} />
-    </mesh>
-  )
-}
-
-/** Line with dash/gap sizes in pixels, constant regardless of zoom. */
-function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5, onPointerOver, onPointerOut }: {
-  points: [number, number, number][]
-  color: string
-  lineWidth: number
-  dashPx?: number
-  gapPx?: number
-  onPointerOver?: (e: { stopPropagation: () => void }) => void
-  onPointerOut?: () => void
-}) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const lineRef = useRef<any>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    const mat = lineRef.current?.material
-    if (!mat) return
-    const scale = p2w(camera)
-    mat.dashSize = dashPx * scale
-    mat.gapSize = gapPx * scale
-  })
-  return <Line ref={lineRef} points={points} color={color} lineWidth={lineWidth} dashed dashSize={0.01} gapSize={0.005} onPointerOver={onPointerOver} onPointerOut={onPointerOut} />
-}
 
 const HIT_PIXELS = 8
 const POINT_HIT_PIXELS = 20
@@ -255,39 +163,6 @@ function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
 // ---------------------------------------------------------------------------
 // Geometry helpers
 // ---------------------------------------------------------------------------
-
-function sampleArc(cx: number, cy: number, r: number, a0deg: number, a1deg: number): [number, number, number][] {
-  let span = ((a1deg - a0deg) + 360) % 360
-  const isFullCircle = span === 0
-  if (isFullCircle) span = 360
-  const steps = Math.max(2, Math.ceil((span / 360) * ARC_SEGMENTS))
-  const pts: [number, number, number][] = []
-  for (let i = 0; i <= steps; i++) {
-    const a = (a0deg + (span * i) / steps) * (Math.PI / 180)
-    pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a), 0])
-  }
-  return pts
-}
-
-function getEntityBounds(entity: Entity): { minX: number; maxX: number; minY: number; maxY: number } {
-  if ('start' in entity && 'end' in entity && 'radius' in entity) {
-    const arc = entity as Arc
-    const pts: [number, number][] = [arc.start, arc.end,
-      [arc.center[0] - arc.radius, arc.center[1]], [arc.center[0] + arc.radius, arc.center[1]],
-      [arc.center[0], arc.center[1] - arc.radius], [arc.center[0], arc.center[1] + arc.radius],
-    ]
-    return { minX: Math.min(...pts.map(p => p[0])), maxX: Math.max(...pts.map(p => p[0])), minY: Math.min(...pts.map(p => p[1])), maxY: Math.max(...pts.map(p => p[1])) }
-  } else if ('start' in entity) {
-    const l = entity as LineSegment
-    return { minX: Math.min(l.start[0], l.end[0]), maxX: Math.max(l.start[0], l.end[0]), minY: Math.min(l.start[1], l.end[1]), maxY: Math.max(l.start[1], l.end[1]) }
-  } else if ('center' in entity) {
-    const c = entity as Circle
-    return { minX: c.center[0] - c.radius, maxX: c.center[0] + c.radius, minY: c.center[1] - c.radius, maxY: c.center[1] + c.radius }
-  } else {
-    const p = entity as PointEntity
-    return { minX: p.x, maxX: p.x, minY: p.y, maxY: p.y }
-  }
-}
 
 function sketchExtent(sketch: Sketch): number {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
@@ -484,166 +359,6 @@ function ConstraintTile({ url, id, featureId, highlightIds }: { url: string; id:
   )
 }
 
-function LinearDimension({ cid, dim, dimOffset, featureId, entityId }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }; dimOffset: number; featureId: string; entityId: string }) {
-  const [hovered, setHovered] = useState(false)
-  const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
-  const [x1, y1] = dim.p1,
-    [x2, y2] = dim.p2
-  const nx = dim.normal[0],
-    ny = dim.normal[1]
-  const nlen = Math.sqrt(nx * nx + ny * ny) || 1
-  const unx = nx / nlen,
-    uny = ny / nlen
-  const d1x = x1 + unx * dimOffset,
-    d1y = y1 + uny * dimOffset
-  const d2x = x2 + unx * dimOffset,
-    d2y = y2 + uny * dimOffset
-  const mx = (d1x + d2x) / 2,
-    my = (d1y + d2y) / 2
-  const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
-  const color = hovered ? COLOR_HOVER : COLOR_CONSTRAINT
-  const onOver = (ev: { stopPropagation: () => void }) => {
-    ev.stopPropagation(); setHovered(true); setHoveredConstraintEntities(new Set([entityId]))
-  }
-  const onOut = () => { setHovered(false); setHoveredConstraintEntities(new Set()) }
-  // Click opens a prompt to edit the dimension value
-  const onClickDim = useCallback((ev: { stopPropagation: () => void }) => {
-    ev.stopPropagation()
-    const input = window.prompt(`Enter dimension value (current: ${dim.value})`)
-    if (input === null) return
-    const val = parseFloat(input)
-    if (isNaN(val) || val <= 0) return
-    useSketchEditorStore.getState().onMutation?.({ type: 'set_constraint_value', featureId, constraintId: cid, value: val })
-  }, [featureId, cid, dim.value])
-  const dimLinePts: [number, number, number][] = [[d1x, d1y, 0], [d2x, d2y, 0]]
-  const meshRef = useRef<THREE.Mesh>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
-  })
-
-  return (
-    <group key={cid}>
-      <Line points={[[x1, y1, 0], [d1x, d1y, 0]]} color={color} lineWidth={1} />
-      <Line points={[[x2, y2, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} />
-      <Line points={dimLinePts} color={color} lineWidth={1} />
-      <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={color} />
-      <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={color} />
-      <mesh ref={meshRef} position={[mx, my, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClickDim}>
-        <circleGeometry args={[1, 8]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-      <Html position={[mx, my, 0.001]} center style={{ pointerEvents: 'none' }}>
-        <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
-          {label}
-        </div>
-      </Html>
-    </group>
-  )
-}
-
-function RadiusDimension({ cid, dim, featureId, entityId }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number }; featureId: string; entityId: string }) {
-  const [hovered, setHovered] = useState(false)
-  const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
-  const [x1, y1] = dim.p1,
-    [x2, y2] = dim.p2
-  const angle = 10 * (Math.PI / 180)
-  const dx = x2 - x1,
-    dy = y2 - y1
-  const x2r = x1 + dx * Math.cos(angle) - dy * Math.sin(angle)
-  const y2r = y1 + dx * Math.sin(angle) + dy * Math.cos(angle)
-  const mx = (x1 + x2r) / 2,
-    my = (y1 + y2r) / 2
-  const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
-  const color = hovered ? COLOR_HOVER : COLOR_CONSTRAINT
-  const onOver = (ev: { stopPropagation: () => void }) => {
-    ev.stopPropagation(); setHovered(true); setHoveredConstraintEntities(new Set([entityId]))
-  }
-  const onOut = () => { setHovered(false); setHoveredConstraintEntities(new Set()) }
-  const onClickDim = useCallback((ev: { stopPropagation: () => void }) => {
-    ev.stopPropagation()
-    const input = window.prompt(`Enter radius value (current: ${dim.value})`)
-    if (input === null) return
-    const val = parseFloat(input)
-    if (isNaN(val) || val <= 0) return
-    useSketchEditorStore.getState().onMutation?.({ type: 'set_constraint_value', featureId, constraintId: cid, value: val })
-  }, [featureId, cid, dim.value])
-  const meshRef = useRef<THREE.Mesh>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
-  })
-
-  return (
-    <group key={cid}>
-      <Line points={[[x1, y1, 0], [x2r, y2r, 0]]} color={color} lineWidth={1} />
-      <Arrowhead tip={[x2r, y2r]} from={[x1, y1]} px={12} color={color} />
-      <mesh ref={meshRef} position={[mx, my, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClickDim}>
-        <circleGeometry args={[1, 8]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-      <Html position={[mx, my, 0.001]} center style={{ pointerEvents: 'none' }}>
-        <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
-          {label}
-        </div>
-      </Html>
-    </group>
-  )
-}
-
-function AngleDimension({ cid, dim, featureId, entityId }: { cid: string; dim: { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number }; featureId: string; entityId: string }) {
-  const [hovered, setHovered] = useState(false)
-  const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
-  const onClickDim = useCallback((ev: { stopPropagation: () => void }) => {
-    ev.stopPropagation()
-    const input = window.prompt(`Enter angle value in degrees (current: ${dim.value})`)
-    if (input === null) return
-    const val = parseFloat(input)
-    if (isNaN(val)) return
-    useSketchEditorStore.getState().onMutation?.({ type: 'set_constraint_value', featureId, constraintId: cid, value: val })
-  }, [featureId, cid, dim.value])
-  const meshRef = useRef<THREE.Mesh>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
-  })
-  if (!dim.p3) return null
-  const [vx, vy] = dim.p2,
-    [x1, y1] = dim.p1,
-    [x3, y3] = dim.p3
-  const angle1 = Math.atan2(y1 - vy, x1 - vx)
-  const angle2 = Math.atan2(y3 - vy, x3 - vx)
-  const r1 = Math.hypot(x1 - vx, y1 - vy),
-    r2 = Math.hypot(x3 - vx, y3 - vy)
-  const arcR = Math.min(r1, r2) * 0.4
-  const arcPts = sampleArc(vx, vy, arcR, angle1 * (180 / Math.PI), angle2 * (180 / Math.PI))
-  const midAngle = (angle1 + angle2) / 2
-  const labelX = vx + arcR * Math.cos(midAngle),
-    labelY = vy + arcR * Math.sin(midAngle)
-  const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
-  const color = hovered ? COLOR_HOVER : COLOR_CONSTRAINT
-  const onOver = (ev: { stopPropagation: () => void }) => {
-    ev.stopPropagation(); setHovered(true); setHoveredConstraintEntities(new Set([entityId]))
-  }
-  const onOut = () => { setHovered(false); setHoveredConstraintEntities(new Set()) }
-
-  return (
-    <group key={cid}>
-      <Line points={[[vx, vy, 0], [x1, y1, 0]]} color={color} lineWidth={1} />
-      <Line points={[[vx, vy, 0], [x3, y3, 0]]} color={color} lineWidth={1} />
-      <Line points={arcPts} color={color} lineWidth={1} />
-      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClickDim}>
-        <circleGeometry args={[1, 8]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-      <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
-        <div style={{ color, fontSize: 18, fontFamily: 'monospace', background: '#111', padding: '0 6px', borderRadius: 2, whiteSpace: 'nowrap' }}>
-          {label}
-        </div>
-      </Html>
-    </group>
-  )
-}
 
 interface ConstraintOverlaysProps {
   constraints: Constraints
@@ -695,16 +410,20 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
 
       } else if (r.kind === 'dim_linear') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }
-        dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} featureId={featureId} entityId={eid} />)
+        dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} interaction={{ featureId, entityId: eid, promptLabel: 'dimension' }} />)
 
       } else if (r.kind === 'dim_radius') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number }
-        dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} featureId={featureId} entityId={eid} />)
+        dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, promptLabel: 'radius' }} />)
+
+      } else if (r.kind === 'dim_diameter') {
+        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number }
+        dimElements.push(<DiameterDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, promptLabel: 'diameter' }} />)
 
       } else if (r.kind === 'dim_angle') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number }
         if (!dim.p3) continue
-        dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} featureId={featureId} entityId={eid} />)
+        dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, promptLabel: 'angle in degrees' }} />)
       }
     }
 

@@ -162,6 +162,16 @@ def _geom_point(geom: dict, ref: dict) -> list:
 # Constraint render data
 # ---------------------------------------------------------------------------
 
+def _pick_arc_ref(c: dict, geom: dict) -> dict | None:
+    """When a constraint uses a/b keys instead of line/arc, return the ref whose
+    entity is an arc or circle (has a 'center' key in geom)."""
+    for key in ("b", "a"):
+        ref = c.get(key)
+        if ref and "center" in geom.get(ref.get("entity", ""), {}):
+            return ref
+    return None
+
+
 def _constraint_render(c: dict, geom: dict) -> dict:
     """Compute geometric render data for a single constraint using solved geometry."""
     kind = c["kind"]
@@ -289,19 +299,25 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "entity": eid}
 
     elif kind == "tangent":
-        eid = c["arc"]["entity"]
+        arc_ref = c.get("arc") or (_pick_arc_ref(c, geom))
+        if not arc_ref:
+            return {"kind": "unknown"}
+        eid = arc_ref["entity"]
         arc = geom[eid]
         if "start" in arc:
-            pt = arc["start"] if c["arc"].get("point", "start") != "end" else arc["end"]
+            pt = arc["start"] if arc_ref.get("point", "start") != "end" else arc["end"]
         else:
             pt = list(arc["center"])
         return {"kind": "symbol_tangent", "at": pt, "entity": eid}
 
     elif kind == "normal":
-        eid = c["arc"]["entity"]
+        arc_ref = c.get("arc") or (_pick_arc_ref(c, geom))
+        if not arc_ref:
+            return {"kind": "unknown"}
+        eid = arc_ref["entity"]
         arc = geom[eid]
         if "start" in arc:
-            pt = arc["start"] if c["arc"].get("point", "start") != "end" else arc["end"]
+            pt = arc["start"] if arc_ref.get("point", "start") != "end" else arc["end"]
         else:
             pt = list(arc["center"])
         return {"kind": "symbol_normal", "at": pt, "entity": eid}
@@ -630,11 +646,19 @@ def _solve_sketch(feature: dict) -> dict:
                                             * np.linalg.norm(db))
                 r.append(cos_val - np.cos(np.radians(c["value"])))
             elif kind == "tangent":
-                line_ep = get_params(x, c["line"]["entity"])
+                if "line" in c and "arc" in c:
+                    line_ref, arc_ref = c["line"], c["arc"]
+                else:
+                    ea_id, eb_id = c["a"]["entity"], c["b"]["entity"]
+                    if entities[ea_id]["kind"] == "line_segment":
+                        line_ref, arc_ref = c["a"], c["b"]
+                    else:
+                        line_ref, arc_ref = c["b"], c["a"]
+                line_ep = get_params(x, line_ref["entity"])
                 line_dir = line_ep[2:4] - line_ep[0:2]
                 line_dir = line_dir / np.linalg.norm(line_dir)
                 contact = line_ep[2:4]
-                radius_dir = _radius_dir(x, c["arc"]["entity"], c["arc"], contact)
+                radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
                 r.append(np.dot(line_dir, radius_dir))
             elif kind == "equal_length":
                 ea = get_params(x, c["a"]["entity"])
@@ -662,11 +686,19 @@ def _solve_sketch(feature: dict) -> dict:
                 if axis in ("y", "both"):
                     r.append(pt[1] - mid[1])
             elif kind == "normal":
-                line_ep = get_params(x, c["line"]["entity"])
+                if "line" in c and "arc" in c:
+                    line_ref, arc_ref = c["line"], c["arc"]
+                else:
+                    ea_id, eb_id = c["a"]["entity"], c["b"]["entity"]
+                    if entities[ea_id]["kind"] == "line_segment":
+                        line_ref, arc_ref = c["a"], c["b"]
+                    else:
+                        line_ref, arc_ref = c["b"], c["a"]
+                line_ep = get_params(x, line_ref["entity"])
                 line_dir = line_ep[2:4] - line_ep[0:2]
                 line_dir = line_dir / np.linalg.norm(line_dir)
                 contact = line_ep[2:4]
-                radius_dir = _radius_dir(x, c["arc"]["entity"], c["arc"], contact)
+                radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
                 r.append(
                     line_dir[0] * radius_dir[1] - line_dir[1] * radius_dir[0])
             elif kind == "concentric":

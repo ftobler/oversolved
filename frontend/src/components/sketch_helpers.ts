@@ -3,6 +3,37 @@ import type { Entity, LineSegment, Circle, Arc, PointEntity } from '../types/cad
 
 export const COLOR_CONSTRAINT = '#ffd54f'
 
+export const ICON_SIZE = 22
+export const ICON_COLS = 3
+
+export const iconModules = import.meta.glob('../assets/icons/*.svg', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
+export const SYMBOL_TO_ICON: Record<string, string> = {
+  symbol_h:          'constraint-horizontal',
+  symbol_v:          'constraint-vertical',
+  symbol_coincident: 'constraint-coincident',
+  symbol_concentric: 'constraint-concentric',
+  symbol_equal:      'constraint-equal',
+  symbol_fixed:      'constraint-fixed',
+  symbol_midpoint:   'constraint-midpoint',
+  symbol_normal:     'constraint-normal',
+  symbol_parallel:   'constraint-parallel',
+  symbol_perp:       'constraint-square',
+  symbol_tangent:    'constraint-tangent',
+  symbol_colinear:   'constraint-colinear',
+  symbol_angle:      'constraint-angle',
+}
+
+export function getIconUrl(kind: string): string | undefined {
+  const name = SYMBOL_TO_ICON[kind]
+  if (!name) return undefined
+  return iconModules[`../assets/icons/${name}.svg`]
+}
+
 /** World units per pixel for an orthographic camera. */
 export function p2w(camera: THREE.Camera): number {
   return 'zoom' in camera ? 1 / (camera as THREE.OrthographicCamera).zoom : 1

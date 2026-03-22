@@ -1505,6 +1505,61 @@ features:
     assert cross / norm < ATOL
 
 
+def test_normal_constraint_arc(sketch_log):
+    """Line endpoint coincident with arc start; line is normal (radial) to the arc using kind: normal."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Normal line-arc (kind: normal)"
+    initial:
+      arc1:  [3.5, 3.5, 2.8, 200, 290]
+      line1: [0.3, 1.5, 1.2, 1.3]
+    entities:
+      - id: arc1
+        kind: arc
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_r
+        kind: radius
+        target: {entity: arc1}
+        value: 3.0
+      - id: c_join
+        kind: coincident
+        a: {entity: line1, point: end}
+        b: {entity: arc1,  point: start}
+      - id: c_len
+        kind: length
+        target: {entity: line1}
+        value: 2.0
+      - id: c_normal
+        kind: normal
+        line: {entity: line1}
+        arc:  {entity: arc1, point: start}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_normal_constraint_arc", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+    line, arc = geom["line1"], geom["arc1"]
+
+    assert abs(arc["radius"] - 3.0) < TOL
+    assert length(line["end"], arc["start"]) < TOL
+
+    # line direction must be parallel to the radius vector at arc start
+    ld = (line["end"][0] - line["start"][0], line["end"][1] - line["start"][1])
+    rv = (arc["start"][0] - arc["center"][0], arc["start"][1] - arc["center"][1])
+    cross = abs(ld[0] * rv[1] - ld[1] * rv[0])
+    norm = length((0, 0), ld) * length((0, 0), rv)
+    assert cross / norm < ATOL
+
+
 def test_normal_constraint_circle(sketch_log):
     """Line endpoint coincident with circle; line is normal (radial) to the circle."""
     yaml_str = """
@@ -1621,6 +1676,114 @@ features:
     cross = abs(ld[0] * rv[1] - ld[1] * rv[0])
     norm = length((0, 0), ld) * length((0, 0), rv)
     assert cross / norm < ATOL
+
+
+def test_normal_constraint_arc_ab_keys(sketch_log):
+    """kind: normal with a/b keys (frontend format) works the same as line/arc keys."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Normal arc a/b keys"
+    initial:
+      arc1:  [3.5, 3.5, 2.8, 200, 290]
+      line1: [0.3, 1.5, 1.2, 1.3]
+    entities:
+      - id: arc1
+        kind: arc
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_r
+        kind: radius
+        target: {entity: arc1}
+        value: 3.0
+      - id: c_join
+        kind: coincident
+        a: {entity: line1, point: end}
+        b: {entity: arc1,  point: start}
+      - id: c_len
+        kind: length
+        target: {entity: line1}
+        value: 2.0
+      - id: c_normal
+        kind: normal
+        a: {entity: line1}
+        b: {entity: arc1, point: start}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_normal_constraint_arc_ab_keys", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+    line, arc = geom["line1"], geom["arc1"]
+
+    assert abs(arc["radius"] - 3.0) < TOL
+    assert length(line["end"], arc["start"]) < TOL
+
+    ld = (line["end"][0] - line["start"][0], line["end"][1] - line["start"][1])
+    rv = (arc["start"][0] - arc["center"][0], arc["start"][1] - arc["center"][1])
+    cross = abs(ld[0] * rv[1] - ld[1] * rv[0])
+    norm = length((0, 0), ld) * length((0, 0), rv)
+    assert cross / norm < ATOL
+
+
+def test_tangent_line_circle_ab_keys(sketch_log):
+    """kind: tangent with a/b keys (frontend format) works the same as line/arc keys."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Tangent a/b keys"
+    initial:
+      circ:  [0.0, 0.0, 3.0]
+      line1: [-2.0, 2.8, 2.0, 3.1]
+    entities:
+      - id: circ
+        kind: circle
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_fix_circ
+        kind: fixed
+        target: {entity: circ}
+        x: 0.0
+        y: 0.0
+      - id: c_radius
+        kind: radius
+        target: {entity: circ}
+        value: 3.0
+      - id: c_join
+        kind: coincident
+        a: {entity: line1, point: end}
+        b: {entity: circ}
+      - id: c_tangent
+        kind: tangent
+        a: {entity: line1}
+        b: {entity: circ}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_tangent_line_circle_ab_keys", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+    line, circ = geom["line1"], geom["circ"]
+
+    assert abs(length(line["end"], circ["center"]) - circ["radius"]) < TOL
+
+    ld = (line["end"][0] - line["start"][0], line["end"][1] - line["start"][1])
+    rv = (line["end"][0] - circ["center"][0], line["end"][1] - circ["center"][1])
+    dot = abs(ld[0] * rv[0] + ld[1] * rv[1])
+    norm = length((0, 0), ld) * length((0, 0), rv)
+    assert dot / norm < ATOL
 
 
 def test_tangent_line_circle(sketch_log):

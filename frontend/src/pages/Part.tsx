@@ -15,6 +15,8 @@ import featureCodeIcon from '../assets/icons/icon-code.svg'
 import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
 import toolbarPlayIcon from '../assets/icons/toolbar-play.svg'
+import toolbarCopyCodeIcon from '../assets/icons/toolbar-copy-code.svg'
+import toolbarCopyResultIcon from '../assets/icons/toolbar-copy-result.svg'
 
 const BUILT_IN_FEATURES: Array<{ id: string; kind?: string }> = [
   { id: 'Origin', kind: 'origin' },
@@ -322,6 +324,13 @@ export default function Part() {
                   <img src={toolbarPlayIcon} alt="Run" />
                 </button>
                 {solveTime !== null && <span className="solve-time">{solveTime}ms</span>}
+                <div className="toolbar-separator" />
+                <button className="editor-btn" title="Copy code" onClick={() => navigator.clipboard.writeText(codeText)}>
+                  <img src={toolbarCopyCodeIcon} alt="Copy code" />
+                </button>
+                <button className="editor-btn" title="Copy result" onClick={() => navigator.clipboard.writeText(solveResult)}>
+                  <img src={toolbarCopyResultIcon} alt="Copy result" />
+                </button>
               </>
             )}
             {mode === 'sketch' && <SketchToolbar onResetViewport={() => setViewportReset(v => v + 1)} />}

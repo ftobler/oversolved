@@ -115,6 +115,14 @@ export interface DimRadiusRender {
   entity?: string
 }
 
+export interface DimDiameterRender {
+  kind: 'dim_diameter'
+  p1: Point
+  p2: Point
+  value: number
+  entity?: string
+}
+
 export interface DimAngleRender {
   kind: 'dim_angle'
   p1: Point
@@ -124,7 +132,7 @@ export interface DimAngleRender {
   entity?: string
 }
 
-export type ConstraintRender = SymbolRender | DimLinearRender | DimRadiusRender | DimAngleRender
+export type ConstraintRender = SymbolRender | DimLinearRender | DimRadiusRender | DimDiameterRender | DimAngleRender
 
 export interface Constraint {
   render: ConstraintRender
