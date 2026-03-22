@@ -267,19 +267,19 @@ def _constraint_render(c: dict, geom: dict) -> dict:
                 c["a"]),
             "entity": eid}
 
-    elif kind == "perpendicular":
+    elif kind == "normal":
         ea_id = c["a"]["entity"]
         eb_id = c["b"]["entity"]
         ea = geom[ea_id]
         eb = geom[eb_id]
         if "center" in eb:
             pt = eb["start"] if "start" in eb and c["b"].get("point", "start") != "end" else list(eb["center"])
-            return {"kind": "symbol_perp", "at": pt, "entity": eb_id}
+            return {"kind": "symbol_normal", "at": pt, "entity": eb_id}
         elif "center" in ea:
             pt = ea["start"] if "start" in ea and c["a"].get("point", "start") != "end" else list(ea["center"])
-            return {"kind": "symbol_perp", "at": pt, "entity": ea_id}
+            return {"kind": "symbol_normal", "at": pt, "entity": ea_id}
         else:
-            return {"kind": "symbol_perp", "at": ea["end"], "entity": ea_id}
+            return {"kind": "symbol_normal", "at": ea["end"], "entity": ea_id}
 
     elif kind == "parallel":
         eid = c["a"]["entity"]
@@ -309,18 +309,6 @@ def _constraint_render(c: dict, geom: dict) -> dict:
         else:
             pt = list(arc["center"])
         return {"kind": "symbol_tangent", "at": pt, "entity": eid}
-
-    elif kind == "normal":
-        arc_ref = c.get("arc") or (_pick_arc_ref(c, geom))
-        if not arc_ref:
-            return {"kind": "unknown"}
-        eid = arc_ref["entity"]
-        arc = geom[eid]
-        if "start" in arc:
-            pt = arc["start"] if arc_ref.get("point", "start") != "end" else arc["end"]
-        else:
-            pt = list(arc["center"])
-        return {"kind": "symbol_normal", "at": pt, "entity": eid}
 
     elif kind == "equal_length":
         eid = c["a"]["entity"]
@@ -610,7 +598,7 @@ def _solve_sketch(feature: dict) -> dict:
                     pb = get_point(x, c["b"])
                     r.append(pa[0] - pb[0])
                     r.append(pa[1] - pb[1])
-            elif kind == "perpendicular":
+            elif kind == "normal":
                 ea_id = c["a"]["entity"]
                 eb_id = c["b"]["entity"]
                 ea_kind = entities[ea_id]["kind"]
@@ -685,22 +673,6 @@ def _solve_sketch(feature: dict) -> dict:
                     r.append(pt[0] - mid[0])
                 if axis in ("y", "both"):
                     r.append(pt[1] - mid[1])
-            elif kind == "normal":
-                if "line" in c and "arc" in c:
-                    line_ref, arc_ref = c["line"], c["arc"]
-                else:
-                    ea_id, eb_id = c["a"]["entity"], c["b"]["entity"]
-                    if entities[ea_id]["kind"] == "line_segment":
-                        line_ref, arc_ref = c["a"], c["b"]
-                    else:
-                        line_ref, arc_ref = c["b"], c["a"]
-                line_ep = get_params(x, line_ref["entity"])
-                line_dir = line_ep[2:4] - line_ep[0:2]
-                line_dir = line_dir / np.linalg.norm(line_dir)
-                contact = line_ep[2:4]
-                radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
-                r.append(
-                    line_dir[0] * radius_dir[1] - line_dir[1] * radius_dir[0])
             elif kind == "concentric":
                 ea = get_params(x, c["a"]["entity"])
                 eb = get_params(x, c["b"]["entity"])

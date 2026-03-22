@@ -79,9 +79,9 @@ describe('applyAddConstraint', () => {
 
   it('adds a two-target constraint', () => {
     const doc = makeSampleDoc()
-    applyAddConstraint(doc, 'Sketch1', 'perpendicular', ['entity:Sketch1:line1', 'entity:Sketch1:circ1'])
+    applyAddConstraint(doc, 'Sketch1', 'normal', ['entity:Sketch1:line1', 'entity:Sketch1:circ1'])
     const constraints = doc.features![0].constraints!
-    const added = constraints.find(c => c.id.startsWith('c_perpendicular'))
+    const added = constraints.find(c => c.id.startsWith('c_normal'))
     expect(added).toBeDefined()
     expect(added!.a).toEqual('$line1')
     expect(added!.b).toEqual('$circ1')

@@ -224,8 +224,8 @@ features:
     assert abs(length_val - 10.0) < TOL, f"length must be 10, got {length_val}"
 
 
-def test_perpendicular_lines_with_coincident_endpoint(sketch_log):
-    """A horizontal base and vertical height share an endpoint and are perpendicular."""
+def test_normal_lines_with_coincident_endpoint(sketch_log):
+    """A horizontal base and vertical height share an endpoint and are normal (perpendicular) to each other."""
     yaml_str = """
 version: 1
 kind: part
@@ -252,7 +252,7 @@ features:
         a: {entity: base,   point: end}
         b: {entity: height, point: start}
       - id: c_perp
-        kind: perpendicular
+        kind: normal
         a: {entity: base}
         b: {entity: height}
       - id: c_len
@@ -261,7 +261,7 @@ features:
         value: 5.0
 """
     result = solve(yaml_str)["result"]["sketch_1"]
-    sketch_log("test_perpendicular_lines_with_coincident_endpoint", yaml_str, result)
+    sketch_log("test_normal_lines_with_coincident_endpoint", yaml_str, result)
     doc = yaml_module.safe_load(yaml_str)
     geom = to_geom(result["geometry"], doc["features"][0]["entities"])
     base_s = geom["base"][0:2]
@@ -1479,7 +1479,7 @@ features:
         target: {entity: line1}
         value: 2.0
       - id: c_normal
-        kind: perpendicular
+        kind: normal
         a: {entity: line1}
         b: {entity: arc1, point: start}
 """
@@ -1506,7 +1506,7 @@ features:
 
 
 def test_normal_constraint_arc(sketch_log):
-    """Line endpoint coincident with arc start; line is normal (radial) to the arc using kind: normal."""
+    """Line endpoint coincident with arc start; line is normal (radial) to the arc."""
     yaml_str = """
 version: 1
 kind: part
@@ -1515,7 +1515,7 @@ features:
   - id: sketch_1
     kind: sketch
     plane: "@builtin_plane_front"
-    label: "Normal line-arc (kind: normal)"
+    label: "Normal line-arc"
     initial:
       arc1:  [3.5, 3.5, 2.8, 200, 290]
       line1: [0.3, 1.5, 1.2, 1.3]
@@ -1539,8 +1539,8 @@ features:
         value: 2.0
       - id: c_normal
         kind: normal
-        line: {entity: line1}
-        arc:  {entity: arc1, point: start}
+        a: {entity: line1}
+        b: {entity: arc1, point: start}
 """
     result = solve(yaml_str)["result"]["sketch_1"]
     sketch_log("test_normal_constraint_arc", yaml_str, result)
@@ -1599,8 +1599,8 @@ features:
         value: 2.0
       - id: c_normal
         kind: normal
-        line: {entity: line1}
-        arc:  {entity: circ}
+        a: {entity: line1}
+        b: {entity: circ}
 """
     result = solve(yaml_str)["result"]["sketch_1"]
     sketch_log("test_normal_constraint_circle", yaml_str, result)
@@ -1621,8 +1621,8 @@ features:
     assert cross / norm < ATOL
 
 
-def test_perpendicular_line_circle(sketch_log):
-    """Line tangent to a circle (perpendicular constraint on line and circle)."""
+def test_normal_line_circle(sketch_log):
+    """Line normal to a circle (normal constraint on line and circle)."""
     yaml_str = """
 version: 1
 kind: part
@@ -1631,7 +1631,7 @@ features:
   - id: sketch_1
     kind: sketch
     plane: "@builtin_plane_front"
-    label: "Perpendicular line-circle"
+    label: "Normal line-circle"
     initial:
       circ:  [0.0, 0.0, 3.0]
       line1: [-1.5, 3.1, 1.5, 3.1]
@@ -1655,12 +1655,12 @@ features:
         a: {entity: line1, point: end}
         b: {entity: circ}
       - id: c_perp
-        kind: perpendicular
+        kind: normal
         a: {entity: line1}
         b: {entity: circ}
 """
     result = solve(yaml_str)["result"]["sketch_1"]
-    sketch_log("test_perpendicular_line_circle", yaml_str, result)
+    sketch_log("test_normal_line_circle", yaml_str, result)
     assert result.get("status") != "exception", result.get("exception")
     doc = yaml_module.safe_load(yaml_str)
     geom = to_geom(result["geometry"], doc["features"][0]["entities"])
@@ -1673,60 +1673,6 @@ features:
     # perpendicular = line direction is parallel to radius (normal to tangent)
     ld = (line["end"][0] - line["start"][0], line["end"][1] - line["start"][1])
     rv = (line["end"][0] - circ["center"][0], line["end"][1] - circ["center"][1])
-    cross = abs(ld[0] * rv[1] - ld[1] * rv[0])
-    norm = length((0, 0), ld) * length((0, 0), rv)
-    assert cross / norm < ATOL
-
-
-def test_normal_constraint_arc_ab_keys(sketch_log):
-    """kind: normal with a/b keys (frontend format) works the same as line/arc keys."""
-    yaml_str = """
-version: 1
-kind: part
-
-features:
-  - id: sketch_1
-    kind: sketch
-    plane: "@builtin_plane_front"
-    label: "Normal arc a/b keys"
-    initial:
-      arc1:  [3.5, 3.5, 2.8, 200, 290]
-      line1: [0.3, 1.5, 1.2, 1.3]
-    entities:
-      - id: arc1
-        kind: arc
-      - id: line1
-        kind: line_segment
-    constraints:
-      - id: c_r
-        kind: radius
-        target: {entity: arc1}
-        value: 3.0
-      - id: c_join
-        kind: coincident
-        a: {entity: line1, point: end}
-        b: {entity: arc1,  point: start}
-      - id: c_len
-        kind: length
-        target: {entity: line1}
-        value: 2.0
-      - id: c_normal
-        kind: normal
-        a: {entity: line1}
-        b: {entity: arc1, point: start}
-"""
-    result = solve(yaml_str)["result"]["sketch_1"]
-    sketch_log("test_normal_constraint_arc_ab_keys", yaml_str, result)
-    assert result.get("status") != "exception", result.get("exception")
-    doc = yaml_module.safe_load(yaml_str)
-    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
-    line, arc = geom["line1"], geom["arc1"]
-
-    assert abs(arc["radius"] - 3.0) < TOL
-    assert length(line["end"], arc["start"]) < TOL
-
-    ld = (line["end"][0] - line["start"][0], line["end"][1] - line["start"][1])
-    rv = (arc["start"][0] - arc["center"][0], arc["start"][1] - arc["center"][1])
     cross = abs(ld[0] * rv[1] - ld[1] * rv[0])
     norm = length((0, 0), ld) * length((0, 0), rv)
     assert cross / norm < ATOL
@@ -1872,7 +1818,7 @@ features:
         a: "$baseend"
         b: "$heightstart"
       - id: c_perp
-        kind: perpendicular
+        kind: normal
         a: "$base"
         b: "$height"
       - id: c_len
@@ -2862,7 +2808,7 @@ features:
         target: {entity: leg_bc}
         value: 4.0
       - id: c_right_angle_abc
-        kind: perpendicular
+        kind: normal
         a: {entity: leg_ab}
         b: {entity: leg_bc}
       - id: c_leg_ab_start

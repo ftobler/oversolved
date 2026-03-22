@@ -268,43 +268,6 @@ def constraint_midpoint(ctx):
     ctx.fill()
 
 
-@icon("frontend/src/assets/icons/constraint-normal.svg")  # double use: toolbar
-def constraint_normal(ctx):
-    # Parameters
-    x0, x1 = 0.1, 0.9  # x extent of the curved surface
-    y_base = 0.78  # y at the endpoints of the surface arc
-    marker = 0.2  # right-angle marker size
-
-    # Calculate arc center and radius
-    cx = 0.5
-    cy = 1.7
-    r = 1
-
-    # Calculate start and end angles
-    angle0 = math.atan2(y_base - cy, x0 - cx)
-    angle1 = math.atan2(y_base - cy, x1 - cx)
-
-    # Draw arc (surface)
-    ctx.arc(cx, cy, r, angle0, angle1)
-    stroke(ctx, 2)
-
-    # Midpoint of the arc for the normal
-    angle_mid = (angle0 + angle1) / 2
-    mx = cx + r * math.cos(angle_mid)
-    my = cy + r * math.sin(angle_mid)
-
-    # Normal line (vertical, upward from midpoint of the surface)
-    ctx.move_to(mx, my)
-    ctx.line_to(mx, 0.08)
-    stroke(ctx, 2)
-
-    # Right-angle marker (upper-right quadrant of the junction)
-    ctx.move_to(mx + marker, my)
-    ctx.line_to(mx + marker, my - marker)
-    ctx.line_to(mx, my - marker)
-    stroke(ctx, 1.5)
-
-
 @icon("frontend/src/assets/icons/constraint-concentric.svg")  # double use: toolbar
 def constraint_concentric(ctx):
     # Parameters
