@@ -25,6 +25,9 @@ jobs:
       - name: mypy
         run: mypy oversolved tests
 
+      - name: pytest
+        run: pytest tests
+
   frontend:
     strategy:
       matrix:
