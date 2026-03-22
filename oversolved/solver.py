@@ -24,7 +24,7 @@ def solve(yaml_str: str) -> dict:
 
     Returns the spec-compliant format with top-level solve_ms and result wrapper.
     Per-feature response contains only new information produced by solving:
-        result[feature_id]["status"]      -> "fully_constrained" | "underconstrained" | "overconstrained"
+        result[feature_id]["status"]      -> "fully_constrained" | "underconstrained" | "overconstrained" | "exception"
         result[feature_id]["solve_ms"]    -> float, wall-clock solve time
         result[feature_id]["geometry"]    -> {entity_id: [params]}  solved flat params (same format as input initial)
         result[feature_id]["features"]    -> {entity_id: {status}}  per-entity constraint status
@@ -36,12 +36,7 @@ def solve(yaml_str: str) -> dict:
     t0 = time.perf_counter()
     result = {}
     for feature in features:
-        if feature.get("kind") != "sketch":
-            continue
-        t_feature_start = time.perf_counter()
-        feature_result = _solve_sketch(feature)
-        feature_result["solve_ms"] = round(
-            (time.perf_counter() - t_feature_start) * 1000, 1)
+        feature_result = _try_solve_feature(feature)
         result[feature["id"]] = feature_result
 
     total_ms = round((time.perf_counter() - t0) * 1000, 1)
@@ -49,6 +44,28 @@ def solve(yaml_str: str) -> dict:
         "solve_ms": total_ms,
         "result": result
     }
+
+
+def _try_solve_feature(feature: Any) -> dict:
+    t0 = time.perf_counter()
+    try:
+        result = _solve_feature(feature)
+        result["solve_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+        return result
+    except Exception as e:
+        return {
+            "solve_ms": round((time.perf_counter() - t0) * 1000, 1),
+            "status": "exception",
+            "exception": str(e)
+        }
+
+
+def _solve_feature(feature: Any) -> dict:
+    kind = feature.get("kind")
+    if kind == "sketch":
+        feature_result = _solve_sketch(feature)
+        return feature_result
+    raise Exception(f"unknown feature type: '{kind}'")
 
 
 # ---------------------------------------------------------------------------
