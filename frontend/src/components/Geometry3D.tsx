@@ -338,12 +338,14 @@ function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1 }: E
       if (input === null) return
       const val = parseFloat(input)
       if (isNaN(val) || val <= 0) return
-      onMutation?.({ type: 'add_constraint', featureId, kind: 'length', targets: [`entity:${featureId}:${entityId}`], value: val })
+      const isCircleOrArc = 'radius' in e
+      const kind = isCircleOrArc ? 'diameter' : 'length'
+      onMutation?.({ type: 'add_constraint', featureId, kind, targets: [`entity:${featureId}:${entityId}`], value: val })
       setActiveTool('select')
     } else {
       toggleSelect(entId)
     }
-  }, [entId, toggleSelect, activeTool, onMutation, featureId, entityId, setActiveTool])
+  }, [entId, toggleSelect, activeTool, onMutation, featureId, entityId, setActiveTool, e])
   // Edge drag: pointer down on the edge group initiates a full-entity move
   const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: { x: number; y: number } }) => {
     if (activeTool !== 'select') return
