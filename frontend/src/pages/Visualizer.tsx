@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { load as yamlLoad } from 'js-yaml'
+import { stringify as yamlStringify } from 'yaml'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import Sketch3D from '../components/Sketch3D'
@@ -63,6 +64,7 @@ interface CardData {
   solve_ms: number
   status: string
   topology?: Topology
+  astInput?: any  // present for sketch_log entries; enables open-as-document
 }
 
 function extractCards(results: Results): CardData[] {
@@ -74,7 +76,7 @@ function extractCards(results: Results): CardData[] {
       const solved = unflattenGeometry(entry.solve_result.geometry, entities)
       const initial = unflattenGeometry(feature?.initial, entities)
       const constraints = feature ? deriveConstraints(feature, solved) : {}
-      cards.push({ id: testName, label: testName, solved, initial, constraints, solve_ms: entry.solve_result.solve_ms, status: entry.solve_result.status, topology: entry.solve_result.topology })
+      cards.push({ id: testName, label: testName, solved, initial, constraints, solve_ms: entry.solve_result.solve_ms, status: entry.solve_result.status, topology: entry.solve_result.topology, astInput: entry.ast_input })
     } else {
       for (const [featureId, data] of Object.entries(entry as TopologyLogEntry)) {
         cards.push({ id: `${testName}/${featureId}`, label: `${testName}/${featureId}`, solved: {}, initial: {}, constraints: {}, solve_ms: data.solve_ms, status: data.status, topology: data.topology })
@@ -183,9 +185,21 @@ function SketchQueue({ cards, onSnapshot }: { cards: CardData[]; onSnapshot: (id
 // ---------------------------------------------------------------------------
 
 export default function Visualizer() {
+  const navigate = useNavigate()
   const [results, setResults] = useState<Results | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [snapshots, setSnapshots] = useState<Record<string, string>>({})
+
+  const openAsDocument = useCallback(async (card: CardData) => {
+    if (!card.astInput) return
+    const docId = card.id
+    await fetch(`/api/documents/${docId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: yamlStringify(card.astInput) }),
+    })
+    navigate(`/documents/${docId}`)
+  }, [navigate])
 
   useEffect(() => {
     fetch('/test_output/results.yaml')
@@ -228,7 +242,13 @@ export default function Visualizer() {
 
       <div className="sketch-row">
         {cards.map(card => (
-          <div key={card.id} className="sketch-card">
+          <div
+            key={card.id}
+            className="sketch-card"
+            onClick={() => openAsDocument(card)}
+            style={card.astInput ? { cursor: 'pointer' } : undefined}
+            title={card.astInput ? 'Open as document' : undefined}
+          >
             <div className="sketch-label">
               {card.label} <span className="solve-time">{card.solve_ms} ms</span>
             </div>
