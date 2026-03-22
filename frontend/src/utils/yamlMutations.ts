@@ -117,6 +117,28 @@ export function applyAddConstraint(
   feature.constraints.push(c)
 }
 
+export function applyToggleConstruction(doc: PartDoc, targets: string[]): void {
+  const byFeature: Record<string, Set<string>> = {}
+  for (const t of targets) {
+    const parts = t.split(':')
+    if (parts[0] !== 'entity') continue
+    const fid = parts[1]
+    const eid = parts[2]
+    if (!byFeature[fid]) byFeature[fid] = new Set()
+    byFeature[fid].add(eid)
+  }
+  for (const [fid, eids] of Object.entries(byFeature)) {
+    const feature = findFeature(doc, fid)
+    if (!feature?.entities) continue
+    for (const def of feature.entities) {
+      if (eids.has(def.id) && def.kind !== 'point') {
+        if (def.construction) delete def.construction
+        else def.construction = true
+      }
+    }
+  }
+}
+
 export function applyDeleteElements(doc: PartDoc, targets: string[]): void {
   const byFeature: Record<string, { entities: Set<string>; constraints: Set<string> }> = {}
   for (const t of targets) {

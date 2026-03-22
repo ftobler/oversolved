@@ -1593,6 +1593,170 @@ features:
     assert abs(pt["y"] - mid_y) < TOL
 
 
+def test_midpoint_of_two_points(sketch_log):
+    """A point constrained to the midpoint between two other points."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Midpoint of two points"
+    initial:
+      pt_a:   [0.0, 0.0]
+      pt_b:   [4.0, 2.0]
+      pt_mid: [3.0, 5.0]
+    entities:
+      - id: pt_a
+        kind: point
+      - id: pt_b
+        kind: point
+      - id: pt_mid
+        kind: point
+    constraints:
+      - id: c_fix_a
+        kind: fixed
+        target: {entity: pt_a}
+        x: 0.0
+        y: 0.0
+      - id: c_fix_b
+        kind: fixed
+        target: {entity: pt_b}
+        x: 4.0
+        y: 2.0
+      - id: c_mid
+        kind: midpoint
+        point_a: {entity: pt_a}
+        point_b: {entity: pt_b}
+        point: {entity: pt_mid}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_midpoint_of_two_points", yaml_str, result)
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+    sk = geom
+
+    ax, ay = sk["pt_a"]["x"], sk["pt_a"]["y"]
+    bx, by = sk["pt_b"]["x"], sk["pt_b"]["y"]
+    mx, my = sk["pt_mid"]["x"], sk["pt_mid"]["y"]
+
+    assert abs(mx - (ax + bx) / 2) < TOL
+    assert abs(my - (ay + by) / 2) < TOL
+
+
+def test_midpoint_of_two_points_axis_x(sketch_log):
+    """Point x-coordinate centered between two points at different y values (axis: x only).
+    pt_a=(0,0), pt_b=(6,4) — midpoint x=3, midpoint y=2.
+    pt_mid.y is constrained by horizontal to pt_a (y=0), not y=2, proving axis:x
+    leaves y untouched."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Midpoint of two points axis x"
+    initial:
+      pt_a:   [0.0, 0.0]
+      pt_b:   [6.0, 4.0]
+      pt_mid: [0.5, 0.1]
+    entities:
+      - id: pt_a
+        kind: point
+      - id: pt_b
+        kind: point
+      - id: pt_mid
+        kind: point
+    constraints:
+      - id: c_fix_a
+        kind: fixed
+        target: {entity: pt_a}
+        x: 0.0
+        y: 0.0
+      - id: c_fix_b
+        kind: fixed
+        target: {entity: pt_b}
+        x: 6.0
+        y: 4.0
+      - id: c_horiz
+        kind: horizontal
+        a: {entity: pt_mid}
+        b: {entity: pt_a}
+      - id: c_mid
+        kind: midpoint
+        point_a: {entity: pt_a}
+        point_b: {entity: pt_b}
+        point: {entity: pt_mid}
+        axis: x
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_midpoint_of_two_points_axis_x", yaml_str, result)
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+    sk = geom
+
+    ax, ay = sk["pt_a"]["x"], sk["pt_a"]["y"]
+    bx, by = sk["pt_b"]["x"], sk["pt_b"]["y"]
+    mx, my = sk["pt_mid"]["x"], sk["pt_mid"]["y"]
+
+    assert abs(mx - (ax + bx) / 2) < TOL   # x at midpoint (3.0)
+    assert abs(my - ay) < TOL              # y matches pt_a, NOT midpoint y (2.0)
+
+
+def test_midpoint_of_line_endpoints(sketch_log):
+    """Point constrained to midpoint between start of one line and end of another."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Midpoint of line endpoints"
+    initial:
+      line_a: [0.0, 0.0, 2.0, 0.0]
+      line_b: [6.0, 0.0, 8.0, 0.0]
+      pt_mid: [9.0, 9.0]
+    entities:
+      - id: line_a
+        kind: line_segment
+      - id: line_b
+        kind: line_segment
+      - id: pt_mid
+        kind: point
+    constraints:
+      - id: c_fix_a
+        kind: fixed
+        target: {entity: line_a, point: end}
+        x: 2.0
+        y: 0.0
+      - id: c_fix_b
+        kind: fixed
+        target: {entity: line_b, point: start}
+        x: 6.0
+        y: 0.0
+      - id: c_mid
+        kind: midpoint
+        point_a: {entity: line_a, point: end}
+        point_b: {entity: line_b, point: start}
+        point: {entity: pt_mid}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_midpoint_of_line_endpoints", yaml_str, result)
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+    sk = geom
+
+    ax, ay = sk["line_a"]["end"][0], sk["line_a"]["end"][1]
+    bx, by = sk["line_b"]["start"][0], sk["line_b"]["start"][1]
+    mx, my = sk["pt_mid"]["x"], sk["pt_mid"]["y"]
+
+    assert abs(mx - (ax + bx) / 2) < TOL
+    assert abs(my - (ay + by) / 2) < TOL
+
+
 def test_rectangle_center_point(sketch_log):
     """Rectangle 6x4 with a point at its center, constrained via midpoints of two adjacent faces."""
     yaml_str = """
@@ -3141,3 +3305,356 @@ features:
     assert abs(line.end[0] - fixed_end[0]) < TOL, f"end x should be fixed at {fixed_end[0]}, got {line.end[0]}"
     assert abs(line.end[1] - fixed_end[1]) < TOL, f"end y should be fixed at {fixed_end[1]}, got {line.end[1]}"
     assert result["status"] == "fully_constrained"
+
+
+# ---------------------------------------------------------------------------
+# Dimension constraint tests
+# ---------------------------------------------------------------------------
+
+
+def test_dimension_circle_diameter(sketch_log):
+    """Circle constrained by diameter (not radius)."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Circle diameter"
+    initial:
+      circ: [3.0, 2.0, 1.5]
+    entities:
+      - id: circ
+        kind: circle
+    constraints:
+      - id: c_diam
+        kind: diameter
+        target: {entity: circ}
+        value: 6.0
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_dimension_circle_diameter", yaml_str, result)
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
+    assert abs(geom["circ"]["radius"] * 2 - 6.0) < TOL
+
+
+def test_dimension_line_to_line_distance(sketch_log):
+    """Two horizontal parallel lines constrained to a fixed perpendicular distance."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Line to line distance"
+    initial:
+      line_a: [0.0, 0.0, 4.0, 0.0]
+      line_b: [0.0, 0.8, 4.0, 0.8]
+    entities:
+      - id: line_a
+        kind: line_segment
+      - id: line_b
+        kind: line_segment
+    constraints:
+      - id: c_horiz_a
+        kind: horizontal
+        target: {entity: line_a}
+      - id: c_horiz_b
+        kind: horizontal
+        target: {entity: line_b}
+      - id: c_fix_a
+        kind: fixed
+        target: {entity: line_a, point: start}
+        x: 0.0
+        y: 0.0
+      - id: c_dist
+        kind: line_distance
+        a: {entity: line_a}
+        b: {entity: line_b}
+        value: 3.0
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_dimension_line_to_line_distance", yaml_str, result)
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
+    a_start = geom["line_a"]["start"]
+    b_start = geom["line_b"]["start"]
+    dist = abs(b_start[1] - a_start[1])  # both horizontal, so y-diff is distance
+    assert abs(dist - 3.0) < TOL
+
+
+def test_dimension_circle_center_to_point(sketch_log):
+    """Distance from circle center to an external point."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Circle center to point"
+    initial:
+      circ: [0.0, 0.0, 1.0]
+      pt:   [5.0, 0.2]
+    entities:
+      - id: circ
+        kind: circle
+      - id: pt
+        kind: point
+    constraints:
+      - id: c_fix_circ
+        kind: fixed
+        target: {entity: circ}
+        x: 0.0
+        y: 0.0
+      - id: c_dist
+        kind: point_distance
+        a: {entity: circ}
+        b: {entity: pt}
+        value: 5.0
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_dimension_circle_center_to_point", yaml_str, result)
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
+    cx, cy = geom["circ"]["center"]
+    px, py = geom["pt"]["x"], geom["pt"]["y"]
+    dist = math.hypot(px - cx, py - cy)
+    assert abs(dist - 5.0) < TOL
+
+
+# ---------------------------------------------------------------------------
+# Coincident constraint tests
+# ---------------------------------------------------------------------------
+
+
+def test_coincident_point_to_point(sketch_log):
+    """Two free point entities pulled to the same location."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Coincident point-point"
+    initial:
+      pt_a: [1.0, 2.0]
+      pt_b: [4.0, 5.0]
+    entities:
+      - id: pt_a
+        kind: point
+      - id: pt_b
+        kind: point
+    constraints:
+      - id: c_fix_a
+        kind: fixed
+        target: {entity: pt_a}
+        x: 1.0
+        y: 2.0
+      - id: c_coin
+        kind: coincident
+        a: {entity: pt_b}
+        b: {entity: pt_a}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_coincident_point_to_point", yaml_str, result)
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
+    ax, ay = geom["pt_a"]["x"], geom["pt_a"]["y"]
+    bx, by = geom["pt_b"]["x"], geom["pt_b"]["y"]
+    assert abs(bx - ax) < TOL
+    assert abs(by - ay) < TOL
+
+
+def test_coincident_point_on_line(sketch_log):
+    """A free point constrained to lie on a fixed horizontal line."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Coincident point-on-line"
+    initial:
+      line1: [0.0, 2.0, 8.0, 2.0]
+      pt:    [3.0, 5.5]
+    entities:
+      - id: line1
+        kind: line_segment
+      - id: pt
+        kind: point
+    constraints:
+      - id: c_fix_line
+        kind: fixed
+        target: {entity: line1}
+      - id: c_coin
+        kind: coincident
+        a: {entity: pt}
+        b: {entity: line1}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_coincident_point_on_line", yaml_str, result)
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
+    line = geom["line1"]
+    px, py = geom["pt"]["x"], geom["pt"]["y"]
+    # Line is horizontal at y=2; point must be at y=2
+    dx = line["end"][0] - line["start"][0]
+    dy = line["end"][1] - line["start"][1]
+    n = math.hypot(dx, dy)
+    nx, ny = -dy / n, dx / n
+    vx = px - line["start"][0]
+    vy = py - line["start"][1]
+    perp_dist = abs(vx * nx + vy * ny)
+    assert perp_dist < TOL
+
+
+def test_coincident_point_on_circle(sketch_log):
+    """A free point constrained to lie on the circumference of a fixed circle."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Coincident point-on-circle"
+    initial:
+      circ: [0.0, 0.0, 3.0]
+      pt:   [1.0, 1.0]
+    entities:
+      - id: circ
+        kind: circle
+      - id: pt
+        kind: point
+    constraints:
+      - id: c_fix_circ
+        kind: fixed
+        target: {entity: circ}
+        x: 0.0
+        y: 0.0
+      - id: c_radius
+        kind: radius
+        target: {entity: circ}
+        value: 3.0
+      - id: c_coin
+        kind: coincident
+        a: {entity: pt}
+        b: {entity: circ}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_coincident_point_on_circle", yaml_str, result)
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
+    cx, cy = geom["circ"]["center"]
+    r = geom["circ"]["radius"]
+    px, py = geom["pt"]["x"], geom["pt"]["y"]
+    dist = math.hypot(px - cx, py - cy)
+    assert abs(dist - r) < TOL
+
+
+def test_coincident_point_on_arc(sketch_log):
+    """A free point constrained to lie on the arc (circle of the arc)."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Coincident point-on-arc"
+    initial:
+      arc1: [0.0, 0.0, 4.0, 0.0, 90.0]
+      pt:   [1.0, 1.0]
+    entities:
+      - id: arc1
+        kind: arc
+      - id: pt
+        kind: point
+    constraints:
+      - id: c_fix_arc
+        kind: fixed
+        target: {entity: arc1}
+      - id: c_radius
+        kind: radius
+        target: {entity: arc1}
+        value: 4.0
+      - id: c_coin
+        kind: coincident
+        a: {entity: pt}
+        b: {entity: arc1}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_coincident_point_on_arc", yaml_str, result)
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
+    arc = geom["arc1"]
+    cx, cy = arc["center"]
+    r = arc["radius"]
+    px, py = geom["pt"]["x"], geom["pt"]["y"]
+    dist = math.hypot(px - cx, py - cy)
+    assert abs(dist - r) < TOL
+
+
+def test_coincident_line_to_line(sketch_log):
+    """End of one line coincident with start of another (chain of two segments)."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Coincident line-to-line"
+    initial:
+      line_a: [0.0, 0.0, 3.0, 0.1]
+      line_b: [3.2, 0.3, 6.0, 0.0]
+    entities:
+      - id: line_a
+        kind: line_segment
+      - id: line_b
+        kind: line_segment
+    constraints:
+      - id: c_fix_start
+        kind: fixed
+        target: {entity: line_a, point: start}
+        x: 0.0
+        y: 0.0
+      - id: c_len_a
+        kind: length
+        target: {entity: line_a}
+        value: 3.0
+      - id: c_len_b
+        kind: length
+        target: {entity: line_b}
+        value: 3.0
+      - id: c_coin
+        kind: coincident
+        a: {entity: line_a, point: end}
+        b: {entity: line_b, point: start}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_coincident_line_to_line", yaml_str, result)
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
+    a_end = geom["line_a"]["end"]
+    b_start = geom["line_b"]["start"]
+    assert abs(a_end[0] - b_start[0]) < TOL
+    assert abs(a_end[1] - b_start[1]) < TOL
+    assert abs(math.hypot(geom["line_a"]["end"][0] - geom["line_a"]["start"][0],
+                          geom["line_a"]["end"][1] - geom["line_a"]["start"][1]) - 3.0) < TOL
+    assert abs(math.hypot(geom["line_b"]["end"][0] - geom["line_b"]["start"][0],
+                          geom["line_b"]["end"][1] - geom["line_b"]["start"][1]) - 3.0) < TOL

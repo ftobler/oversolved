@@ -36,6 +36,7 @@ interface SketchEditorState {
   setHoveredConstraintEntities: (ids: Set<string>) => void
   setActiveTool: (tool: ActiveTool) => void
   applyConstraint: (kind: string) => void
+  toggleConstruction: () => void
   deleteSelected: () => void
   addDrawPoint: (pt: [number, number]) => void
   setDrawHover: (pt: [number, number] | null) => void
@@ -80,6 +81,14 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const firstParts = targets[0].split(':')
     const featureId = firstParts[1] ?? ''
     onMutation({ type: 'add_constraint', featureId, kind, targets })
+  },
+
+  toggleConstruction: () => {
+    const { selection, onMutation } = get()
+    if (selection.size === 0 || !onMutation) return
+    const targets = [...selection].filter(t => t.startsWith('entity:'))
+    if (targets.length === 0) return
+    onMutation({ type: 'toggle_construction', targets })
   },
 
   deleteSelected: () => {

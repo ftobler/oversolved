@@ -217,6 +217,36 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "value": c["value"],
             "entity": eid}
 
+    elif kind == "diameter":
+        eid = c["target"]["entity"]
+        e = geom[eid]
+        cx, cy, r = e["center"][0], e["center"][1], e["radius"]
+        return {
+            "kind": "dim_diameter",
+            "p1": [cx - r, cy],
+            "p2": [cx + r, cy],
+            "value": c["value"],
+            "entity": eid}
+
+    elif kind == "line_distance":
+        eid_a = c["a"]["entity"]
+        eid_b = c["b"]["entity"]
+        ea, eb = geom[eid_a], geom[eid_b]
+        dx = ea["end"][0] - ea["start"][0]
+        dy = ea["end"][1] - ea["start"][1]
+        n = math.hypot(dx, dy)
+        nx, ny = (-dy / n, dx / n) if n > 0 else (0.0, 1.0)
+        # foot of perpendicular from eb["start"] onto line_a
+        t = (eb["start"][0] - ea["start"][0]) * nx + (eb["start"][1] - ea["start"][1]) * ny
+        foot = [eb["start"][0] - t * nx, eb["start"][1] - t * ny]
+        return {
+            "kind": "dim_linear",
+            "p1": foot,
+            "p2": list(eb["start"]),
+            "value": c["value"],
+            "normal": [nx, ny],
+            "entity": eid_a}
+
     elif kind == "coincident":
         eid = c["a"]["entity"]
         return {
@@ -302,16 +332,20 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "entity": eid}
 
     elif kind == "midpoint":
-        eid = c["line"]["entity"]
-        e = geom[eid]
-        at = [(e["start"][0] + e["end"][0]) / 2,
-              (e["start"][1] + e["end"][1]) / 2]
+        if "line" in c:
+            eid = c["line"]["entity"]
+            e = geom[eid]
+            at = [(e["start"][0] + e["end"][0]) / 2,
+                  (e["start"][1] + e["end"][1]) / 2]
+        else:
+            eid = c["point_a"]["entity"]
+            pa = _geom_point(geom, c["point_a"])
+            pb = _geom_point(geom, c["point_b"])
+            at = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
         return {
             "kind": "symbol_midpoint",
             "at": at,
-            "axis": c.get(
-                "axis",
-                "both"),
+            "axis": c.get("axis", "both"),
             "entity": eid}
 
     elif kind == "concentric":
@@ -390,7 +424,7 @@ def _solve_sketch(feature: dict) -> dict:
         for key in ("target", "line", "arc", "point"):
             if key in c and isinstance(c[key], dict) and "entity" in c[key]:
                 ids.append(c[key]["entity"])
-        for key in ("a", "b"):
+        for key in ("a", "b", "point_a", "point_b"):
             if key in c and isinstance(c[key], dict) and "entity" in c[key]:
                 ids.append(c[key]["entity"])
         return ids
@@ -452,11 +486,40 @@ def _solve_sketch(feature: dict) -> dict:
             elif kind == "radius":
                 ep = get_params(x, c["target"]["entity"])
                 r.append(ep[2] - c["value"])
+            elif kind == "diameter":
+                ep = get_params(x, c["target"]["entity"])
+                r.append(2 * ep[2] - c["value"])
+            elif kind == "line_distance":
+                ep_a = get_params(x, c["a"]["entity"])
+                ep_b = get_params(x, c["b"]["entity"])
+                dx, dy = ep_a[2] - ep_a[0], ep_a[3] - ep_a[1]
+                n = np.sqrt(dx**2 + dy**2)
+                nx, ny = (-dy / n, dx / n) if n > 0 else (0.0, 1.0)
+                vx = ep_b[0] - ep_a[0]
+                vy = ep_b[1] - ep_a[1]
+                r.append(vx * nx + vy * ny - c["value"])
             elif kind == "coincident":
-                pa = get_point(x, c["a"])
-                pb = get_point(x, c["b"])
-                r.append(pa[0] - pb[0])
-                r.append(pa[1] - pb[1])
+                b_eid = c["b"]["entity"]
+                b_kind = entities[b_eid]["kind"]
+                if "point" not in c["b"] and b_kind == "line_segment":
+                    # point on line: perpendicular distance = 0
+                    pa = get_point(x, c["a"])
+                    ep_b = get_params(x, b_eid)
+                    dx, dy = ep_b[2] - ep_b[0], ep_b[3] - ep_b[1]
+                    n = np.sqrt(dx**2 + dy**2)
+                    nx, ny = (-dy / n, dx / n) if n > 0 else (0.0, 1.0)
+                    r.append((pa[0] - ep_b[0]) * nx + (pa[1] - ep_b[1]) * ny)
+                elif "point" not in c["b"] and b_kind in ("circle", "arc"):
+                    # point on circle/arc: distance from center = radius
+                    pa = get_point(x, c["a"])
+                    ep_b = get_params(x, b_eid)
+                    dist = np.sqrt((pa[0] - ep_b[0])**2 + (pa[1] - ep_b[1])**2)
+                    r.append(dist - ep_b[2])
+                else:
+                    pa = get_point(x, c["a"])
+                    pb = get_point(x, c["b"])
+                    r.append(pa[0] - pb[0])
+                    r.append(pa[1] - pb[1])
             elif kind == "perpendicular":
                 ea_id = c["a"]["entity"]
                 eb_id = c["b"]["entity"]
@@ -517,8 +580,13 @@ def _solve_sketch(feature: dict) -> dict:
                 dist = np.sqrt((pb[0] - pa[0])**2 + (pb[1] - pa[1])**2)
                 r.append(dist - c["value"])
             elif kind == "midpoint":
-                ep = get_params(x, c["line"]["entity"])
-                mid = np.array([(ep[0] + ep[2]) / 2, (ep[1] + ep[3]) / 2])
+                if "line" in c:
+                    ep = get_params(x, c["line"]["entity"])
+                    mid = np.array([(ep[0] + ep[2]) / 2, (ep[1] + ep[3]) / 2])
+                else:
+                    pa = get_point(x, c["point_a"])
+                    pb = get_point(x, c["point_b"])
+                    mid = (pa + pb) / 2
                 pt = get_point(x, c["point"])
                 axis = c.get("axis", "both")
                 if axis in ("x", "both"):

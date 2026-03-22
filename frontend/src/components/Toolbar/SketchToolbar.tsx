@@ -18,7 +18,7 @@ import toolbarPerpendicularIcon from '../../assets/icons/constraint-square.svg'
 import toolbarTangentIcon from '../../assets/icons/constraint-tangent.svg'
 import toolbarCollinearIcon from '../../assets/icons/constraint-colinear.svg'
 import toolbarDimensionIcon from '../../assets/icons/constraint-dimension.svg'
-import toolbarLineSwapIcon from '../../assets/icons/constraint-line-swap.svg'
+import toolbarConstructionIcon from '../../assets/icons/constraint-line-swap.svg'
 import viewportResetIcon from '../../assets/icons/viewport-reset.svg'
 
 interface SketchToolbarProps {
@@ -29,6 +29,7 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
   const applyConstraint = useSketchEditorStore(s => s.applyConstraint)
+  const toggleConstruction = useSketchEditorStore(s => s.toggleConstruction)
 
   return (
     <>
@@ -73,7 +74,7 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
         onClick={() => setActiveTool('point')}
         active={activeTool === 'point'}
       />
-      <ToolbarButton title="Line Swap" icon={toolbarLineSwapIcon} onClick={() => applyConstraint('colinear')} />
+      <ToolbarButton title="Toggle Construction" icon={toolbarConstructionIcon} onClick={toggleConstruction} />
 
       <div className="toolbar-separator" />
 

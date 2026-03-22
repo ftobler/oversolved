@@ -10,6 +10,7 @@ import {
   applyAddEntity,
   applyAddRect,
   applySetConstraintValue,
+  applyToggleConstruction,
 } from '../utils/yamlMutations'
 
 export function usePartDoc(docId: string | undefined, mode: string, setCodeText: (t: string) => void) {
@@ -114,6 +115,9 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
         break
       case 'add_rect':
         applyAddRect(next, m.featureId, m.p0, m.p1)
+        break
+      case 'toggle_construction':
+        applyToggleConstruction(next, m.targets)
         break
     }
     docRef.current = next
