@@ -259,13 +259,15 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "entity": eid_a}
 
     elif kind == "coincident":
-        eid = c["a"]["entity"]
-        return {
-            "kind": "symbol_coincident",
-            "at": _geom_point(
-                geom,
-                c["a"]),
-            "entity": eid}
+        a_eid = c["a"]["entity"]
+        ea = geom[a_eid]
+        if "point" not in c["a"] and "start" in ea and "start" in geom.get(c["b"]["entity"], {}):
+            # line-to-line collinear: place symbol at midpoint of a
+            at = [(ea["start"][0] + ea["end"][0]) / 2,
+                  (ea["start"][1] + ea["end"][1]) / 2]
+        else:
+            at = _geom_point(geom, c["a"])
+        return {"kind": "symbol_coincident", "at": at, "entity": a_eid}
 
     elif kind == "normal":
         ea_id = c["a"]["entity"]
@@ -590,9 +592,22 @@ def _solve_sketch(feature: dict) -> dict:
                 vy = pb[1] - ep_a[1]
                 r.append(vx * nx + vy * ny - c["value"])
             elif kind == "coincident":
+                a_eid = c["a"]["entity"]
                 b_eid = c["b"]["entity"]
+                a_kind = entities[a_eid]["kind"]
                 b_kind = entities[b_eid]["kind"]
-                if "point" not in c["b"] and b_kind == "line_segment":
+                if ("point" not in c["a"] and "point" not in c["b"]
+                        and a_kind == "line_segment" and b_kind == "line_segment"):
+                    # line-to-line collinear: both lines lie on the same infinite line
+                    ea = get_params(x, a_eid)
+                    eb = get_params(x, b_eid)
+                    da = ea[2:4] - ea[0:2]
+                    db = eb[2:4] - eb[0:2]
+                    r.append(da[0] * db[1] - da[1] * db[0])  # parallel
+                    n = np.sqrt(da[0]**2 + da[1]**2)
+                    nx, ny = (-da[1] / n, da[0] / n) if n > 0 else (0.0, 1.0)
+                    r.append((eb[0] - ea[0]) * nx + (eb[1] - ea[1]) * ny)
+                elif "point" not in c["b"] and b_kind == "line_segment":
                     # point on line: perpendicular distance = 0
                     pa = get_point(x, c["a"])
                     ep_b = get_params(x, b_eid)

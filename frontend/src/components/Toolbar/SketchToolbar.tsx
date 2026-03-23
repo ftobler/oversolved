@@ -16,7 +16,6 @@ import toolbarMidpointIcon from '../../assets/icons/constraint-midpoint.svg'
 import toolbarParallelIcon from '../../assets/icons/constraint-parallel.svg'
 import toolbarNormalIcon from '../../assets/icons/constraint-square.svg'
 import toolbarTangentIcon from '../../assets/icons/constraint-tangent.svg'
-import toolbarCollinearIcon from '../../assets/icons/constraint-colinear.svg'
 import toolbarDimensionIcon from '../../assets/icons/constraint-dimension.svg'
 import toolbarConstructionIcon from '../../assets/icons/constraint-line-swap.svg'
 import viewportResetIcon from '../../assets/icons/viewport-reset.svg'
@@ -88,7 +87,6 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
       <ToolbarButton title="Parallel" icon={toolbarParallelIcon} onClick={() => applyConstraint('parallel')} />
       <ToolbarButton title="Normal" icon={toolbarNormalIcon} onClick={() => applyConstraint('normal')} />
       <ToolbarButton title="Tangent" icon={toolbarTangentIcon} onClick={() => applyConstraint('tangent')} />
-      <ToolbarButton title="Collinear" icon={toolbarCollinearIcon} onClick={() => applyConstraint('collinear')} />
     </>
   )
 }

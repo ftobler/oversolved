@@ -4107,6 +4107,76 @@ features:
                           geom["line_b"]["end"][1] - geom["line_b"]["start"][1]) - 3.0) < TOL
 
 
+def test_coincident_lines_collinear(sketch_log):
+    """Two non-collinear line segments made collinear via coincident (no point ref).
+
+    Both lines should lie on the same infinite line; their endpoints slide freely.
+    Verified by checking that all four endpoints have the same perpendicular
+    distance from the reference line (zero) and that the direction vectors are
+    parallel.
+    """
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Coincident lines collinear"
+    initial:
+      line_a: [0.0, 0.0, 4.0, 0.0]
+      line_b: [1.0, 1.5, 5.0, 1.2]
+    entities:
+      - id: line_a
+        kind: line_segment
+      - id: line_b
+        kind: line_segment
+    constraints:
+      - id: c_fix_a_start
+        kind: fixed
+        target: {entity: line_a, point: start}
+        x: 0.0
+        y: 0.0
+      - id: c_horiz
+        kind: horizontal
+        target: {entity: line_a}
+      - id: c_len_a
+        kind: length
+        target: {entity: line_a}
+        value: 4.0
+      - id: c_len_b
+        kind: length
+        target: {entity: line_b}
+        value: 3.0
+      - id: c_collinear
+        kind: coincident
+        a: {entity: line_a}
+        b: {entity: line_b}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_coincident_lines_collinear", yaml_str, result)
+
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
+    # All four endpoints must lie on the same line (y == 0 here due to horizontal + fixed)
+    for pt in [geom["line_a"]["start"], geom["line_a"]["end"],
+               geom["line_b"]["start"], geom["line_b"]["end"]]:
+        assert abs(pt[1]) < TOL
+
+    # Directions must be parallel (cross product == 0)
+    da = [geom["line_a"]["end"][0] - geom["line_a"]["start"][0],
+          geom["line_a"]["end"][1] - geom["line_a"]["start"][1]]
+    db = [geom["line_b"]["end"][0] - geom["line_b"]["start"][0],
+          geom["line_b"]["end"][1] - geom["line_b"]["start"][1]]
+    assert abs(da[0] * db[1] - da[1] * db[0]) < TOL
+
+    # Lengths preserved
+    assert abs(math.hypot(*da) - 4.0) < TOL
+    assert abs(math.hypot(*db) - 3.0) < TOL
+
+
 def test_tangent_degenerate_initial(sketch_log):
     """Tangent line-circle with a near-zero-length initial line converges quickly.
 
