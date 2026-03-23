@@ -336,15 +336,15 @@ function findEntitiesAtPoint(sketch: Sketch, pt: [number, number], eps = 1e-4): 
   return ids
 }
 
-function ConstraintTile({ url, id, featureId, highlightIds }: { url: string; id: string; featureId: string; highlightIds: string[] }) {
+function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean }) {
   const [hovered, setHovered] = useState(false)
   const cId = `constraint:${featureId}:${id}`
   const selected = useSketchEditorStore(s => s.selection.has(cId))
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
 
-  const bg_color = selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : '#1C1C1C'
-  const fg_style = (hovered || selected) ? 'invert(1.0)' : 'invert(0.7)'
+  const bg_color = selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : superfluous ? '#2a1f00' : '#1C1C1C'
+  const fg_style = (hovered || selected) ? 'invert(1.0)' : superfluous ? 'invert(0.5) sepia(1) saturate(3) hue-rotate(0deg)' : 'invert(0.7)'
   return (
     <div
       key={id}
@@ -361,7 +361,8 @@ function ConstraintTile({ url, id, featureId, highlightIds }: { url: string; id:
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
-        cursor: 'pointer'
+        cursor: 'pointer',
+        ...(superfluous && { outline: '1px solid #b37400' }),
       }}
     >
       <img
@@ -369,7 +370,6 @@ function ConstraintTile({ url, id, featureId, highlightIds }: { url: string; id:
         width={ICON_SIZE - 4}
         height={ICON_SIZE - 4}
         style={{filter: fg_style}}
-        // style={{ filter: (hovered || selected) ? 'invert(1)' : 'invert(0.8)'}}
       />
     </div>
   )
@@ -403,7 +403,7 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
 
     // Sub-group symbols by their `at` position so each distinct location gets its own Html anchor.
     // Key is a rounded grid string; value holds the canonical position and its icon list.
-    const atGroups = new Map<string, { at: [number, number]; icons: { url: string; key: string; highlightIds: string[] }[] }>()
+    const atGroups = new Map<string, { at: [number, number]; icons: { url: string; key: string; highlightIds: string[]; superfluous?: boolean }[] }>()
 
     for (const [cid, c] of clist) {
       const r = c.render as { kind: string; at?: [number, number]; point?: string; entities?: string[]; [key: string]: unknown }
@@ -430,7 +430,7 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
           const atEntities = findEntitiesAtPoint(sketch, at)
           highlightIds = atEntities.length > 0 ? atEntities : [eid]
         }
-        atGroups.get(atKey)!.icons.push({ url, key: cid, highlightIds })
+        atGroups.get(atKey)!.icons.push({ url, key: cid, highlightIds, superfluous: c.superfluous })
 
       } else if (r.kind === 'dim_linear') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }
@@ -457,8 +457,8 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
       symbolElements.push(
         <Html key={`icons-${eid}-${atKey}`} position={[at[0], at[1], 0.001]} style={{ pointerEvents: 'auto' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
-            {icons.map(({ url, key, highlightIds }) => (
-              <ConstraintTile key={key} url={url} id={key} featureId={featureId} highlightIds={highlightIds} />
+            {icons.map(({ url, key, highlightIds, superfluous }) => (
+              <ConstraintTile key={key} url={url} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} />
             ))}
           </div>
         </Html>

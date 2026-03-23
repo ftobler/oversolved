@@ -4223,3 +4223,144 @@ features:
     result = solve(yaml_str)["result"]["sketch_1"]
     sketch_log("test_fixed_constraint_unresolvable_query_string", yaml_str, result)
     assert result.get("status") != "exception", result.get("exception")
+
+
+def test_superfluous_duplicate_horizontal(sketch_log):
+    """Two horizontal constraints on the same line: one is superfluous."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    initial:
+      line1: [0, 0, 5, 0]
+    entities:
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_h1
+        kind: horizontal
+        target: $line1
+      - id: c_h2
+        kind: horizontal
+        target: $line1
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_superfluous_duplicate_horizontal", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    constraints = result.get("constraints", {})
+    assert "c_h1" in constraints
+    assert "c_h2" in constraints
+    # Exactly one of the two duplicate horizontals must be flagged superfluous
+    superfluous = [cid for cid, c in constraints.items() if c.get("superfluous")]
+    assert len(superfluous) == 1
+    assert superfluous[0] in ("c_h1", "c_h2")
+
+
+def test_superfluous_redundant_length(sketch_log):
+    """A fully-fixed line (via fixed constraint) with an additional length constraint:
+    the length is superfluous because the endpoints are already pinned."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    initial:
+      line1: [0, 0, 3, 0]
+    entities:
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_fixed_start
+        kind: fixed
+        target: $line1start
+        x: 0
+        y: 0
+      - id: c_fixed_end
+        kind: fixed
+        target: $line1end
+        x: 3
+        y: 0
+      - id: c_len
+        kind: length
+        target: $line1
+        value: 3
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_superfluous_redundant_length", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    constraints = result.get("constraints", {})
+    assert constraints.get("c_len", {}).get("superfluous") is True
+    assert constraints.get("c_fixed_start", {}).get("superfluous") is not True
+    assert constraints.get("c_fixed_end", {}).get("superfluous") is not True
+
+
+def test_superfluous_none_on_minimal_rect(sketch_log):
+    """A minimal rectangle (4 lines, 4 coincident, 2 equal-length, horizontal, vertical)
+    has no superfluous constraints."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    initial:
+      lA: [0, 0, 4, 0]
+      lB: [4, 0, 4, 3]
+      lC: [4, 3, 0, 3]
+      lD: [0, 3, 0, 0]
+    entities:
+      - id: lA
+        kind: line_segment
+      - id: lB
+        kind: line_segment
+      - id: lC
+        kind: line_segment
+      - id: lD
+        kind: line_segment
+    constraints:
+      - id: c_coin_ab
+        kind: coincident
+        a: $lAend
+        b: $lBstart
+      - id: c_coin_bc
+        kind: coincident
+        a: $lBend
+        b: $lCstart
+      - id: c_coin_cd
+        kind: coincident
+        a: $lCend
+        b: $lDstart
+      - id: c_coin_da
+        kind: coincident
+        a: $lDend
+        b: $lAstart
+      - id: c_eq_ac
+        kind: equal_length
+        a: $lA
+        b: $lC
+      - id: c_eq_bd
+        kind: equal_length
+        a: $lB
+        b: $lD
+      - id: c_h
+        kind: horizontal
+        target: $lA
+      - id: c_v
+        kind: vertical
+        target: $lB
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_superfluous_none_on_minimal_rect", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    constraints = result.get("constraints", {})
+    superfluous = [cid for cid, c in constraints.items() if c.get("superfluous")]
+    assert superfluous == [], f"Expected no superfluous, got: {superfluous}"

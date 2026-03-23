@@ -137,6 +137,7 @@ export type ConstraintRender = SymbolRender | DimLinearRender | DimRadiusRender 
 export interface Constraint {
   render: ConstraintRender
   residual: number
+  superfluous?: boolean
 }
 
 export interface Constraints {

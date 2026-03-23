@@ -53,7 +53,7 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
         setSolveError(data.error || `Solve failed (${response.status})`)
         setSolveRawResult(data.error || `Solve failed (${response.status})`)
       } else {
-        const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology }>
+        const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }> }>
 
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
@@ -61,11 +61,30 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
             const featureDef = (d.features ?? []).find(f => f.id === id)
             if (featureDef) {
               featureDef.initial = feature.geometry
+              // Remove superfluous constraints from the AST
+              if (feature.constraints && featureDef.constraints) {
+                const superfluousIds = new Set(
+                  Object.entries(feature.constraints)
+                    .filter(([, c]) => c.superfluous)
+                    .map(([cid]) => cid)
+                )
+                if (superfluousIds.size > 0) {
+                  featureDef.constraints = featureDef.constraints.filter(c => !superfluousIds.has(c.id))
+                }
+              }
             }
             const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
+            const constraints: import('../types/cad').Constraints | undefined = feature.constraints
+              ? Object.fromEntries(
+                  Object.entries(feature.constraints)
+                    .filter(([, c]) => !c.superfluous)
+                    .map(([cid, c]) => [cid, { render: c.render, residual: c.residual }])
+                )
+              : undefined
             results[id] = {
               solved,
               topology: feature.topology,
+              ...(constraints && { constraints }),
             }
           }
         }

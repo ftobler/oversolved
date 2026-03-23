@@ -765,13 +765,41 @@ def _solve_sketch(feature: dict) -> dict:
     entity_status = _entity_status(
         J, rank, entities, entity_offsets, n_params, status)
 
-    # Per-constraint residual (sum of squares) and render data
+    # Per-constraint residual (sum of squares), render data, and superfluous flag.
+    # A constraint is superfluous when removing its Jacobian rows does not reduce
+    # the rank — i.e. it is linearly dependent on the remaining constraints.
+    constraint_row_ranges: list[tuple[str, int, int]] = []
+    row_idx = 0
+    for c in constraints:
+        r_vec = residuals(x_sol, [c])
+        n = len(r_vec)
+        constraint_row_ranges.append((c["id"], row_idx, row_idx + n))
+        row_idx += n
+
+    # Greedy superfluous detection: iterate constraints in order; a constraint is
+    # superfluous if its rows can be dropped from the *currently active* Jacobian
+    # without reducing rank.  Using a greedy approach (rather than testing against
+    # the full J) ensures at most one of a pair of identical constraints is flagged,
+    # so the retained set always stays sufficient to constrain the sketch.
+    superfluous_ids: set[str] = set()
+    if J.shape[0] > 0:
+        active_rows = list(range(J.shape[0]))
+        for cid, start, end in constraint_row_ranges:
+            crows = list(range(start, end))
+            remaining = [r for r in active_rows if r not in crows]
+            J_active = J[active_rows, :]
+            J_remaining = J[remaining, :]
+            if int(np.linalg.matrix_rank(J_remaining, tol=RANK_TOL)) == int(np.linalg.matrix_rank(J_active, tol=RANK_TOL)):
+                superfluous_ids.add(cid)
+                active_rows = remaining
+
     constraints_out = {}
     for c in constraints:
         r_vec = residuals(x_sol, [c])
         constraints_out[c["id"]] = {
             "residual": round(float(np.sum(r_vec**2)), 12),
             "render": _constraint_render(c, geom_solved),
+            "superfluous": c["id"] in superfluous_ids,
         }
 
     # Convert geometry from named-field format to flat array format (same as input initial)
@@ -785,4 +813,5 @@ def _solve_sketch(feature: dict) -> dict:
         "geometry": geometry_flat,
         "features": features,
         "topology": topology,
+        "constraints": constraints_out,
     }
