@@ -122,6 +122,9 @@ function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const handleDimClick = useSketchEditorStore(s => s.handleDimClick)
+  const constraintHovered = useSketchEditorStore(s =>
+    entityId && vertexKey ? s.hoveredConstraintEntityIds.has(`${entityId}:${vertexKey}`) : false
+  )
   // Offset the hit-sphere toward the camera (not object-space z) so the vertex
   // always wins the raycast over the 3D edge cylinders regardless of orbit angle.
   useFrame(() => {
@@ -160,7 +163,7 @@ function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
       currentWorld: [x, y],
     })
   }, [vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool])
-  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : baseColor
+  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
   return (
     <group
       onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
@@ -169,7 +172,7 @@ function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
       onPointerDown={onPointerDown}
     >
       <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard />
-      {(hovered || selected) && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
+      {(hovered || selected || constraintHovered) && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
       <mesh ref={hitRef} position={[x, y, 0]}>
         <sphereGeometry args={[1, 8, 8]} />
         <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.35 : 0} color="#00aaff" depthWrite={false} />
@@ -397,29 +400,37 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
     const entity = sketch[eid] as Entity | undefined
     if (!entity) continue
     const bounds = getEntityBounds(entity)
-    const symbolIcons: { url: string; key: string; highlightIds: string[] }[] = []
-    let symbolAt: [number, number] | null = null
+
+    // Sub-group symbols by their `at` position so each distinct location gets its own Html anchor.
+    // Key is a rounded grid string; value holds the canonical position and its icon list.
+    const atGroups = new Map<string, { at: [number, number]; icons: { url: string; key: string; highlightIds: string[] }[] }>()
 
     for (const [cid, c] of clist) {
-      const r = c.render as { kind: string; at?: [number, number]; [key: string]: unknown }
+      const r = c.render as { kind: string; at?: [number, number]; point?: string; entities?: string[]; [key: string]: unknown }
 
       if (r.kind.startsWith('symbol_')) {
         const url = getIconUrl(r.kind)
         if (!url) continue
-        // Use the first symbol's `at` position (solver-provided) for group placement
-        if (!symbolAt && r.at) symbolAt = r.at
-        // Determine which entities to highlight on hover:
-        //   1. Use YAML-derived `entities` list (e.g. equal_length: [line1, line3])
-        //   2. Fall back to proximity search via `at` (e.g. coincident shared vertex)
-        //   3. Fall back to the single grouped entity
-        const yamlEntities = (r as { entities?: string[] }).entities
-        const atEntities = (!yamlEntities || yamlEntities.length === 0) && r.at
-          ? findEntitiesAtPoint(sketch, r.at as [number, number])
-          : []
-        const highlightIds = yamlEntities?.length ? yamlEntities
-          : atEntities.length > 0 ? atEntities
-          : [eid]
-        symbolIcons.push({ url, key: cid, highlightIds })
+        const at: [number, number] = r.at ?? [bounds.maxX, bounds.maxY]
+        const atKey = `${Math.round(at[0] * 1000)}_${Math.round(at[1] * 1000)}`
+        if (!atGroups.has(atKey)) atGroups.set(atKey, { at, icons: [] })
+
+        // Determine which ids to highlight on hover:
+        //   - vertex-targeted constraint (e.g. fixed on $line1start): highlight just that vertex
+        //   - multi-entity constraint: highlight all involved entities
+        //   - proximity fallback: entities sharing the `at` point
+        //   - last resort: the owning entity
+        let highlightIds: string[]
+        if (r.point != null) {
+          // Vertex-targeted (e.g. fixed on a specific endpoint) — use "entityId:vertexKey" format
+          highlightIds = [`${eid}:${r.point}`]
+        } else if (r.entities?.length) {
+          highlightIds = r.entities
+        } else {
+          const atEntities = findEntitiesAtPoint(sketch, at)
+          highlightIds = atEntities.length > 0 ? atEntities : [eid]
+        }
+        atGroups.get(atKey)!.icons.push({ url, key: cid, highlightIds })
 
       } else if (r.kind === 'dim_linear') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }
@@ -440,15 +451,13 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
       }
     }
 
-    if (symbolIcons.length > 0) {
+    for (const [atKey, { at, icons }] of atGroups) {
       const colWidth = ICON_SIZE + 2
-      const groupWidth = Math.min(ICON_COLS, symbolIcons.length) * colWidth
-      // Use solver-provided `at` position when available; fall back to entity bounding box corner
-      const [px, py] = symbolAt ?? [bounds.maxX, bounds.maxY]
+      const groupWidth = Math.min(ICON_COLS, icons.length) * colWidth
       symbolElements.push(
-        <Html key={`icons-${eid}`} position={[px, py, 0.001]} style={{ pointerEvents: 'auto' }}>
+        <Html key={`icons-${eid}-${atKey}`} position={[at[0], at[1], 0.001]} style={{ pointerEvents: 'auto' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
-            {symbolIcons.map(({ url, key, highlightIds }) => (
+            {icons.map(({ url, key, highlightIds }) => (
               <ConstraintTile key={key} url={url} id={key} featureId={featureId} highlightIds={highlightIds} />
             ))}
           </div>

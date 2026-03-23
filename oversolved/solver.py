@@ -474,12 +474,20 @@ def _solve_sketch(feature: dict) -> dict:
     _REF_FIELDS = ("target", "line", "arc", "point", "a", "b", "point_a", "point_b")
 
     def _constraint_entity_ids(c: dict) -> list:
-        """Return all entity IDs referenced by a constraint."""
+        """Return all entity IDs referenced by a constraint.
+        If a query string fails to resolve, None is appended so the constraint
+        is rejected by the 'all eid in entities' filter instead of passing vacuously."""
         ids = []
         for key in _REF_FIELDS:
-            ref = resolve_ref(c.get(key))
+            val = c.get(key)
+            if val is None:
+                continue
+            ref = resolve_ref(val)
             if isinstance(ref, dict) and "entity" in ref:
                 ids.append(ref["entity"])
+            elif isinstance(val, str):
+                # Unresolvable query string — treat as a missing entity reference
+                ids.append(None)
         return ids
 
     constraints = [
@@ -568,6 +576,11 @@ def _solve_sketch(feature: dict) -> dict:
                 ep = get_params(x, c["target"]["entity"])
                 r.append(2 * ep[2] - c["value"])
             elif kind == "line_distance":
+                if c["a"]["entity"] == c["b"]["entity"]:
+                    raise ValueError(
+                        f"line_distance constraint '{c['id']}': "
+                        "a and b cannot reference the same entity"
+                    )
                 ep_a = get_params(x, c["a"]["entity"])
                 pb = get_point(x, c["b"])
                 dx, dy = ep_a[2] - ep_a[0], ep_a[3] - ep_a[1]
@@ -613,8 +626,8 @@ def _solve_sketch(feature: dict) -> dict:
                     line_ref = c["a"] if ea_kind == "line_segment" else c["b"]
                     arc_ref = c["b"] if ea_kind == "line_segment" else c["a"]
                     line_ep = get_params(x, line_ref["entity"])
+                    # Unnormalized: same zeros, avoids 1/|d| blowup for short lines
                     line_dir = line_ep[2:4] - line_ep[0:2]
-                    line_dir = line_dir / np.linalg.norm(line_dir)
                     contact = line_ep[2:4]
                     radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
                     r.append(
@@ -643,11 +656,20 @@ def _solve_sketch(feature: dict) -> dict:
                     else:
                         line_ref, arc_ref = c["b"], c["a"]
                 line_ep = get_params(x, line_ref["entity"])
+                arc_ep = get_params(x, arc_ref["entity"])
+                # Use unnormalized line direction: dot(d, r) = 0 has the same
+                # zero-set as dot(normalize(d), r) = 0 but avoids the 1/|d|
+                # gradient blowup when the line is near-degenerate.
                 line_dir = line_ep[2:4] - line_ep[0:2]
-                line_dir = line_dir / np.linalg.norm(line_dir)
                 contact = line_ep[2:4]
                 radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
+                # perpendicularity: line direction dot radius direction == 0
                 r.append(np.dot(line_dir, radius_dir))
+                # contact point on circle: distance from center == radius
+                # (arcs use coincident constraints to pin endpoints; circles have no vertex)
+                if entities[arc_ref["entity"]]["kind"] == "circle":
+                    dist = np.sqrt((contact[0] - arc_ep[0])**2 + (contact[1] - arc_ep[1])**2)
+                    r.append(dist - arc_ep[2])
             elif kind == "equal_length":
                 ea = get_params(x, c["a"]["entity"])
                 eb = get_params(x, c["b"]["entity"])

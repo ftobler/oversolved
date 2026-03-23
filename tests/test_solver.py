@@ -1707,10 +1707,6 @@ features:
         kind: radius
         target: {entity: circ}
         value: 3.0
-      - id: c_join
-        kind: coincident
-        a: {entity: line1, point: end}
-        b: {entity: circ}
       - id: c_tangent
         kind: tangent
         a: {entity: line1}
@@ -1761,10 +1757,6 @@ features:
         kind: radius
         target: {entity: circ}
         value: 3.0
-      - id: c_join
-        kind: coincident
-        a: {entity: line1, point: end}
-        b: {entity: circ}
       - id: c_tangent
         kind: tangent
         line: {entity: line1}
@@ -3802,6 +3794,41 @@ features:
     assert abs(dist - 3.0) < TOL
 
 
+def test_line_distance_self_reference_rejected(sketch_log):
+    """line_distance with a == b (same entity) must be rejected immediately.
+
+    The point on a line always has zero distance to that line, so any non-zero
+    value target is unsatisfiable and the solver would silently waste its full
+    evaluation budget. A self-referencing distance is a user error and should
+    return status: exception with a descriptive message.
+    """
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Self-distance"
+    initial:
+      line3: [0.0, 0.0, 4.0, 0.0]
+    entities:
+      - id: line3
+        kind: line_segment
+    constraints:
+      - id: c_line_distance_8
+        kind: line_distance
+        a: $line3
+        b: $line3
+        value: 2
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_line_distance_self_reference_rejected", yaml_str, result)
+    assert result["status"] == "exception"
+    assert "same entity" in result["exception"]
+
+
 def test_dimension_circle_center_to_point(sketch_log):
     """Distance from circle center to an external point."""
     yaml_str = """
@@ -4078,3 +4105,121 @@ features:
                           geom["line_a"]["end"][1] - geom["line_a"]["start"][1]) - 3.0) < TOL
     assert abs(math.hypot(geom["line_b"]["end"][0] - geom["line_b"]["start"][0],
                           geom["line_b"]["end"][1] - geom["line_b"]["start"][1]) - 3.0) < TOL
+
+
+def test_tangent_degenerate_initial(sketch_log):
+    """Tangent line-circle with a near-zero-length initial line converges quickly.
+
+    The initial line1 start and end are only ~0.0005 units apart. Previously the
+    tangent residual normalized the line direction vector, producing a 1/|line_length|
+    factor in the Jacobian that made the optimizer ill-conditioned and caused it to
+    exhaust its full evaluation budget (~10 s). The fix: use the unnormalized dot
+    product, which has the same zero-set but well-conditioned gradients.
+    """
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: Tangent line-circle
+    initial:
+      circle1:
+        - 0.0696838394
+        - -1.2097402902
+        - 2.1436771388
+      line1:
+        - -1.357488
+        - 0.389801
+        - -1.3571180609
+        - 0.3901309202
+    entities:
+      - id: circle1
+        kind: circle
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_fixed_5
+        kind: fixed
+        target: $line1start
+      - id: c_coincident_6
+        kind: coincident
+        a: $line1start
+        b: $circle1
+      - id: c_tangent_7
+        kind: tangent
+        a: $line1
+        b: $circle1
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_tangent_degenerate_initial", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+
+    # Must solve fast: well-conditioned Jacobian means <<100 ms, not seconds
+    assert result["solve_ms"] < 500, f"solver too slow: {result['solve_ms']} ms"
+
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+    line, circ = geom["line1"], geom["circle1"]
+
+    # line start stays at its fixed position
+    assert abs(line["start"][0] - (-1.357488)) < TOL
+    assert abs(line["start"][1] - 0.389801) < TOL
+
+    # line start is on the circle (coincident constraint)
+    assert abs(length(line["start"], circ["center"]) - circ["radius"]) < TOL
+
+    # line end is on the circle (tangent contact constraint)
+    assert abs(length(line["end"], circ["center"]) - circ["radius"]) < TOL
+
+    # line is tangent at line end: line direction perpendicular to radius
+    assert is_tangent(line["start"], line["end"], circ["center"], line["end"]) < ATOL
+
+
+def test_fixed_constraint_unresolvable_query_string(sketch_log):
+    """Constraints referencing a non-existent entity via query string are silently
+    dropped — they must NOT cause a 'string indices must be integers' exception.
+
+    Regression: $circle1 and $circle1center don't resolve (no circle1 entity),
+    so both fixed constraints were left as raw strings after _pre_resolve.
+    Later c["target"]["entity"] on the string raised TypeError.
+    """
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: Tangent line-circle
+    initial:
+      arc1:
+        - 0.013638
+        - 0.049086
+        - 0.378366
+        - -0.592784
+        - -160.092221
+      line1:
+        - -0.73911
+        - -0.519418
+        - -0.550477
+        - 0.734078
+    entities:
+      - id: arc1
+        kind: arc
+      - id: line1
+        kind: line_segment
+    constraints:
+      - id: c_fixed_4
+        kind: fixed
+        target: $circle1
+      - id: c_fixed_5
+        kind: fixed
+        target: $circle1center
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_fixed_constraint_unresolvable_query_string", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")

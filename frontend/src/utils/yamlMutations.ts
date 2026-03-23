@@ -111,8 +111,29 @@ export function applyAddConstraint(
   if (!feature.constraints) feature.constraints = []
   const cid = uniqueConstraintId(feature.constraints, kind)
   const c: PartConstraint = { id: cid, kind }
-  if (targets.length === 1) c.target = parseTarget(targets[0])
-  else if (targets.length >= 2) { c.a = parseTarget(targets[0]); c.b = parseTarget(targets[1]) }
+  if (kind === 'midpoint') {
+    // midpoint needs specific keys depending on selection:
+    //   entity + vertex  → line: $entity,  point: $vertex
+    //   3 vertices       → point_a: $v1, point_b: $v2, point: $v3
+    const entityTargets = targets.filter(t => t.startsWith('entity:'))
+    const vertexTargets = targets.filter(t => t.startsWith('vertex:'))
+    if (entityTargets.length === 1 && vertexTargets.length === 1) {
+      c.line = parseTarget(entityTargets[0])
+      c.point = parseTarget(vertexTargets[0])
+    } else if (vertexTargets.length === 3) {
+      c.point_a = parseTarget(vertexTargets[0])
+      c.point_b = parseTarget(vertexTargets[1])
+      c.point   = parseTarget(vertexTargets[2])
+    } else {
+      // Not enough / wrong selection — skip adding
+      return
+    }
+  } else if (targets.length === 1) {
+    c.target = parseTarget(targets[0])
+  } else if (targets.length >= 2) {
+    c.a = parseTarget(targets[0])
+    c.b = parseTarget(targets[1])
+  }
   if (value !== undefined) c.value = value
   feature.constraints.push(c)
 }

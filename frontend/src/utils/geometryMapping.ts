@@ -340,6 +340,7 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
       kind: 'symbol_fixed',
       at,
       entity: eid,
+      ...(constraint.target?.point != null && { point: constraint.target.point }),
     }
   }
 
