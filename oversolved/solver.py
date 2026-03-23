@@ -658,9 +658,11 @@ def _solve_sketch(feature: dict) -> dict:
                 line_ep = get_params(x, line_ref["entity"])
                 arc_ep = get_params(x, arc_ref["entity"])
                 line_dir = line_ep[2:4] - line_ep[0:2]
-                line_len = np.linalg.norm(line_dir)
-                if line_len > 1e-10:
-                    line_dir = line_dir / line_len
+                # Smooth normalization: avoids 1/|d| gradient blowup for short
+                # lines while still preventing the trivial-zero at d=0.
+                # d / sqrt(|d|^2 + eps^2): gradient bounded by 1/eps; zero iff d=0.
+                _eps = 0.01
+                line_dir = line_dir / np.sqrt(np.dot(line_dir, line_dir) + _eps * _eps)
                 contact = line_ep[2:4]
                 radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
                 # perpendicularity: line direction dot radius direction == 0
