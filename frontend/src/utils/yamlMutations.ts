@@ -47,10 +47,10 @@ function randomId(bytes: number): string {
   return btoa(String.fromCharCode(...arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
-function uniqueConstraintId(constraints: PartConstraint[]): string {
+function uniqueConstraintId(constraints: PartConstraint[], kind: string): string {
   const existing = new Set(constraints.map(c => c.id))
-  let id = randomId(12)
-  while (existing.has(id)) id = randomId(12)
+  let id = `c_${kind}_${randomId(6)}`
+  while (existing.has(id)) id = `c_${kind}_${randomId(6)}`
   return id
 }
 
@@ -109,7 +109,7 @@ export function applyAddConstraint(
   const feature = findFeature(doc, featureId)
   if (!feature) return
   if (!feature.constraints) feature.constraints = []
-  const cid = uniqueConstraintId(feature.constraints)
+  const cid = uniqueConstraintId(feature.constraints, kind)
   const c: PartConstraint = { id: cid, kind }
   if (kind === 'midpoint') {
     // midpoint needs specific keys depending on selection:
