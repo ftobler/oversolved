@@ -139,7 +139,7 @@ def constraint_dimension(ctx):
     _draw_arrow(ctx, x0, y_dim, x1, y_dim, arr)
 
 
-@icon("frontend/src/assets/icons/constraint-square.svg")  # double use: toolbar (perpendicular)
+@icon("frontend/src/assets/icons/constraint-square.svg")  # double use: toolbar (normal)
 def constraint_square(ctx):
     # Parameters
     cx, cy = 0.2, 0.8    # corner (vertex of the right angle)
