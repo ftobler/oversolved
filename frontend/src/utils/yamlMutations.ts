@@ -28,12 +28,6 @@ const ALL_COORD_INDICES: Record<string, [number, number][]> = {
   point:        [[0, 1]],
 }
 
-const KIND_PREFIX: Record<string, string> = {
-  line_segment: 'line',
-  circle:       'circle',
-  arc:          'arc',
-  point:        'point',
-}
 
 function findFeature(doc: PartDoc, featureId: string): PartFeature | undefined {
   return doc.features?.find(f => f.id === featureId)
@@ -46,12 +40,18 @@ const parseTarget = (t: string): PartTarget => {
   return '$' + t
 }
 
-function uniqueConstraintId(constraints: PartConstraint[], kind: string): string {
+/** Generate a random base64url ID.  bytes=12 for elements, bytes=18 for features. */
+function randomId(bytes: number): string {
+  const arr = new Uint8Array(bytes)
+  crypto.getRandomValues(arr)
+  return btoa(String.fromCharCode(...arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
+
+function uniqueConstraintId(constraints: PartConstraint[]): string {
   const existing = new Set(constraints.map(c => c.id))
-  let idx = existing.size + 1
-  let cid = `c_${kind}_${idx}`
-  while (existing.has(cid)) { idx++; cid = `c_${kind}_${idx}` }
-  return cid
+  let id = randomId(12)
+  while (existing.has(id)) id = randomId(12)
+  return id
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ export function applyAddConstraint(
   const feature = findFeature(doc, featureId)
   if (!feature) return
   if (!feature.constraints) feature.constraints = []
-  const cid = uniqueConstraintId(feature.constraints, kind)
+  const cid = uniqueConstraintId(feature.constraints)
   const c: PartConstraint = { id: cid, kind }
   if (kind === 'midpoint') {
     // midpoint needs specific keys depending on selection:
@@ -206,10 +206,8 @@ export function applyAddEntity(
   if (!feature.entities) feature.entities = []
   if (!feature.initial) feature.initial = {}
   const existing = new Set(feature.entities.map(e => e.id))
-  const prefix = KIND_PREFIX[kind] ?? kind
-  let idx = 1
-  let eid = `${prefix}${idx}`
-  while (existing.has(eid)) { idx++; eid = `${prefix}${idx}` }
+  let eid = randomId(12)
+  while (existing.has(eid)) eid = randomId(12)
   feature.entities.push({ id: eid, kind })
   feature.initial[eid] = params.map(round)
 }
@@ -228,12 +226,11 @@ export function applyAddRect(
 
   const existingIds = new Set(feature.entities.map(e => e.id))
   const lineIds: string[] = []
-  let idx = 1
   for (let i = 0; i < 4; i++) {
-    while (existingIds.has(`line${idx}`)) idx++
-    lineIds.push(`line${idx}`)
-    existingIds.add(`line${idx}`)
-    idx++
+    let id = randomId(12)
+    while (existingIds.has(id)) id = randomId(12)
+    lineIds.push(id)
+    existingIds.add(id)
   }
   const [lA, lB, lC, lD] = lineIds
   const [x0, y0] = p0
