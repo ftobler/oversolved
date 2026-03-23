@@ -22,7 +22,12 @@ function Dot({ x, y, px, color, billboard = false }: { x: number; y: number; px:
   useFrame(() => {
     if (!meshRef.current) return
     meshRef.current.scale.setScalar(px * p2w(camera))
-    if (billboard) meshRef.current.quaternion.copy(camera.quaternion)
+    if (billboard) {
+      // Billboard in world space: undo parent world rotation before applying camera quaternion
+      const parentQuat = new THREE.Quaternion()
+      meshRef.current.parent?.getWorldQuaternion(parentQuat)
+      meshRef.current.quaternion.copy(camera.quaternion).premultiply(parentQuat.invert())
+    }
   })
   return (
     <mesh ref={meshRef} position={[x, y, 0]}>
@@ -89,7 +94,10 @@ function VertexHighlight({ x, y, px, color }: { x: number; y: number; px: number
   useFrame(() => {
     if (!groupRef.current) return
     groupRef.current.scale.setScalar(px * p2w(camera))
-    groupRef.current.quaternion.copy(camera.quaternion)
+    // Billboard in world space: undo parent world rotation before applying camera quaternion
+    const parentQuat = new THREE.Quaternion()
+    groupRef.current.parent?.getWorldQuaternion(parentQuat)
+    groupRef.current.quaternion.copy(camera.quaternion).premultiply(parentQuat.invert())
   })
   const h = 1.4 // half-size of square in local units
   const pts: [number, number, number][] = [[-h, -h, 0], [h, -h, 0], [h, h, 0], [-h, h, 0], [-h, -h, 0]]
@@ -113,20 +121,30 @@ function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const activeTool = useSketchEditorStore(s => s.activeTool)
+  const handleDimClick = useSketchEditorStore(s => s.handleDimClick)
   // Offset the hit-sphere toward the camera (not object-space z) so the vertex
   // always wins the raycast over the 3D edge cylinders regardless of orbit angle.
   useFrame(() => {
     if (!hitRef.current) return
     const scale = p2w(camera)
     hitRef.current.scale.setScalar(POINT_HIT_PIXELS * scale)
-    // Camera-relative offset: move along view direction toward the camera
+    // Camera view direction in world space, transformed into local (sketch plane) space
     const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion)
+    const parentQuat = new THREE.Quaternion()
+    hitRef.current.parent?.getWorldQuaternion(parentQuat)
+    fwd.applyQuaternion(parentQuat.invert())
     const off = POINT_HIT_PIXELS_Z_OFFSET * scale
     hitRef.current.position.set(x + fwd.x * off, y + fwd.y * off, fwd.z * off)
   })
   const onClick = useCallback((e: { stopPropagation: () => void }) => {
-    if (vertId) { e.stopPropagation(); toggleSelect(vertId) }
-  }, [vertId, toggleSelect])
+    if (!vertId || !featureId) return
+    e.stopPropagation()
+    if (activeTool === 'dimension') {
+      handleDimClick(vertId, featureId, 'vertex')
+    } else {
+      toggleSelect(vertId)
+    }
+  }, [vertId, featureId, toggleSelect, activeTool, handleDimClick])
   const onPointerDown = useCallback((e: { stopPropagation: () => void; point: THREE.Vector3 }) => {
     if (!vertId || !featureId || !entityId || !vertexKey) return
     if (activeTool !== 'select') return
@@ -195,8 +213,7 @@ function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1 }: E
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const activeTool = useSketchEditorStore(s => s.activeTool)
-  const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
-  const onMutation = useSketchEditorStore(s => s.onMutation)
+  const handleDimClick = useSketchEditorStore(s => s.handleDimClick)
   const color = hovered ? COLOR_HOVER
     : selected ? COLOR_SELECTED
     : constraintHovered ? COLOR_CONSTRAINT_HOVER
@@ -209,18 +226,14 @@ function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1 }: E
   const onClick = useCallback((ev: { stopPropagation: () => void }) => {
     ev.stopPropagation()
     if (activeTool === 'dimension') {
-      const input = window.prompt('Enter dimension value:')
-      if (input === null) return
-      const val = parseFloat(input)
-      if (isNaN(val) || val <= 0) return
-      const isCircleOrArc = 'radius' in e
-      const kind = isCircleOrArc ? 'diameter' : 'length'
-      onMutation?.({ type: 'add_constraint', featureId, kind, targets: [`entity:${featureId}:${entityId}`], value: val })
-      setActiveTool('select')
+      const isArc = 'start' in e && 'end' in e && 'radius' in e
+      const isCircle = !isArc && 'radius' in e
+      const entityKind = isArc ? 'arc' : isCircle ? 'circle' : 'line'
+      handleDimClick(`entity:${featureId}:${entityId}`, featureId, 'entity', entityKind)
     } else {
       toggleSelect(entId)
     }
-  }, [entId, toggleSelect, activeTool, onMutation, featureId, entityId, setActiveTool, e])
+  }, [entId, toggleSelect, activeTool, handleDimClick, featureId, entityId, e])
   // Edge drag: pointer down on the edge group initiates a full-entity move
   const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: { x: number; y: number } }) => {
     if (activeTool !== 'select') return

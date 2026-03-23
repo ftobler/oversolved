@@ -283,6 +283,29 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
     }
   }
 
+  if (kind === 'line_distance') {
+    const eid = constraint.a?.entity
+    if (!eid) return { kind: 'unknown' }
+    const ea = sketch[eid] as any
+    if (!ea || !ea.start || !ea.end) return { kind: 'unknown' }
+    const pb = geomPoint(sketch, constraint.b)
+    if (!pb) return { kind: 'unknown' }
+    const dx = ea.end[0] - ea.start[0]
+    const dy = ea.end[1] - ea.start[1]
+    const n = Math.hypot(dx, dy)
+    const normal: Point = n > 0 ? [-dy / n, dx / n] : [0, 1]
+    const t = (pb[0] - ea.start[0]) * normal[0] + (pb[1] - ea.start[1]) * normal[1]
+    const foot: Point = [pb[0] - t * normal[0], pb[1] - t * normal[1]]
+    return {
+      kind: 'dim_linear',
+      p1: foot,
+      p2: pb,
+      value: constraint.value || 0,
+      normal,
+      entity: eid,
+    }
+  }
+
   if (kind === 'midpoint') {
     const line = constraint.line
     if (!line) return { kind: 'unknown' }

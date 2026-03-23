@@ -241,19 +241,19 @@ def _constraint_render(c: dict, geom: dict) -> dict:
 
     elif kind == "line_distance":
         eid_a = c["a"]["entity"]
-        eid_b = c["b"]["entity"]
-        ea, eb = geom[eid_a], geom[eid_b]
+        ea = geom[eid_a]
         dx = ea["end"][0] - ea["start"][0]
         dy = ea["end"][1] - ea["start"][1]
         n = math.hypot(dx, dy)
         nx, ny = (-dy / n, dx / n) if n > 0 else (0.0, 1.0)
-        # foot of perpendicular from eb["start"] onto line_a
-        t = (eb["start"][0] - ea["start"][0]) * nx + (eb["start"][1] - ea["start"][1]) * ny
-        foot = [eb["start"][0] - t * nx, eb["start"][1] - t * ny]
+        pb = _geom_point(geom, c["b"])
+        # foot of perpendicular from pb onto line_a
+        t = (pb[0] - ea["start"][0]) * nx + (pb[1] - ea["start"][1]) * ny
+        foot = [pb[0] - t * nx, pb[1] - t * ny]
         return {
             "kind": "dim_linear",
             "p1": foot,
-            "p2": list(eb["start"]),
+            "p2": list(pb),
             "value": c["value"],
             "normal": [nx, ny],
             "entity": eid_a}
@@ -569,12 +569,12 @@ def _solve_sketch(feature: dict) -> dict:
                 r.append(2 * ep[2] - c["value"])
             elif kind == "line_distance":
                 ep_a = get_params(x, c["a"]["entity"])
-                ep_b = get_params(x, c["b"]["entity"])
+                pb = get_point(x, c["b"])
                 dx, dy = ep_a[2] - ep_a[0], ep_a[3] - ep_a[1]
                 n = np.sqrt(dx**2 + dy**2)
                 nx, ny = (-dy / n, dx / n) if n > 0 else (0.0, 1.0)
-                vx = ep_b[0] - ep_a[0]
-                vy = ep_b[1] - ep_a[1]
+                vx = pb[0] - ep_a[0]
+                vy = pb[1] - ep_a[1]
                 r.append(vx * nx + vy * ny - c["value"])
             elif kind == "coincident":
                 b_eid = c["b"]["entity"]

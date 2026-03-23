@@ -26,6 +26,7 @@ interface SketchEditorState {
   activeTool: ActiveTool
   drawPoints: [number, number][]
   drawHover: [number, number] | null
+  pendingDimTarget: string | null  // first click target when doing two-target dimension
 
   // --- actions ---
   toggleSelect: (id: string) => void
@@ -41,6 +42,7 @@ interface SketchEditorState {
   addDrawPoint: (pt: [number, number]) => void
   setDrawHover: (pt: [number, number] | null) => void
   clearDraw: () => void
+  handleDimClick: (target: string, featureId: string, kind: 'entity' | 'vertex', entityKind?: string) => void
 }
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
@@ -52,6 +54,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   activeTool: 'select',
   drawPoints: [],
   drawHover: null,
+  pendingDimTarget: null,
 
   toggleSelect: (id) =>
     set(s => {
@@ -101,4 +104,47 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),
   setDrawHover: (pt) => set({ drawHover: pt }),
   clearDraw: () => set({ drawPoints: [], drawHover: null }),
+
+  handleDimClick: (target, featureId, kind, entityKind) => {
+    const { pendingDimTarget, onMutation } = get()
+    if (!pendingDimTarget) {
+      // Single-entity dimension (line→length, arc→radius, circle→diameter) or first click of two-target
+      if (kind === 'entity') {
+        const dimKind = entityKind === 'arc' ? 'radius' : entityKind === 'circle' ? 'diameter' : null
+        if (dimKind) {
+          // Arc/circle: prompt immediately for single-entity dimension
+          const input = window.prompt('Enter dimension value:')
+          if (input === null) return
+          const val = parseFloat(input)
+          if (isNaN(val) || val <= 0) return
+          onMutation?.({ type: 'add_constraint', featureId, kind: dimKind, targets: [target], value: val })
+          set({ activeTool: 'select', pendingDimTarget: null })
+          return
+        }
+      }
+      // First click: store pending
+      set({ pendingDimTarget: target })
+    } else {
+      // Second click: determine constraint kind and prompt
+      const first = pendingDimTarget
+      set({ pendingDimTarget: null })
+      const firstIsVertex = first.startsWith('vertex:')
+      const secondIsVertex = target.startsWith('vertex:')
+      let dimKind: string
+      if (firstIsVertex && secondIsVertex) {
+        dimKind = 'point_distance'
+      } else if (!firstIsVertex && !secondIsVertex) {
+        dimKind = 'line_distance'
+      } else {
+        // mixed: treat as point_distance (point on line)
+        dimKind = 'line_distance'
+      }
+      const input = window.prompt('Enter dimension value:')
+      if (input === null) return
+      const val = parseFloat(input)
+      if (isNaN(val) || val <= 0) return
+      onMutation?.({ type: 'add_constraint', featureId, kind: dimKind, targets: [first, target], value: val })
+      set({ activeTool: 'select' })
+    }
+  },
 }))
