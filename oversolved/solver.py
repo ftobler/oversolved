@@ -657,10 +657,10 @@ def _solve_sketch(feature: dict) -> dict:
                         line_ref, arc_ref = c["b"], c["a"]
                 line_ep = get_params(x, line_ref["entity"])
                 arc_ep = get_params(x, arc_ref["entity"])
-                # Use unnormalized line direction: dot(d, r) = 0 has the same
-                # zero-set as dot(normalize(d), r) = 0 but avoids the 1/|d|
-                # gradient blowup when the line is near-degenerate.
                 line_dir = line_ep[2:4] - line_ep[0:2]
+                line_len = np.linalg.norm(line_dir)
+                if line_len > 1e-10:
+                    line_dir = line_dir / line_len
                 contact = line_ep[2:4]
                 radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
                 # perpendicularity: line direction dot radius direction == 0
