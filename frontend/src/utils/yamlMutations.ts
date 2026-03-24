@@ -182,6 +182,18 @@ export function applySetConstraintValue(
   if (c) c.value = Math.round(value * 1000) / 1000
 }
 
+export function applySetConstraintPos(
+  doc: PartDoc,
+  featureId: string,
+  constraintId: string,
+  pos: [number, number],
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.constraints) return
+  const c = feature.constraints.find(c => c.id === constraintId)
+  if (c) c.pos = [round(pos[0]), round(pos[1])]
+}
+
 export function applyAddEntity(
   doc: PartDoc,
   featureId: string,

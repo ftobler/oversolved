@@ -7,7 +7,8 @@ export type { Mutation }
 
 export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'circle' | 'arc' | 'point'
 
-export interface DragState {
+/** Dragging a geometry vertex or whole edge. */
+export interface VertexOrEdgeDrag {
   type: 'vertex' | 'edge'
   vertexId: string       // full composite ID (entity ID for edge drags)
   featureId: string
@@ -16,6 +17,19 @@ export interface DragState {
   startWorld: [number, number]
   currentWorld: [number, number]
 }
+
+/** Dragging a dimension label to reposition it. */
+export interface DimLabelDrag {
+  type: 'dim_label'
+  constraintId: string
+  featureId: string
+  /** World-space anchor for the label (midpoint of measured points, center, or vertex). */
+  anchorWorld: [number, number]
+  startWorld: [number, number]
+  currentWorld: [number, number]
+}
+
+export type DragState = VertexOrEdgeDrag | DimLabelDrag
 
 interface SketchEditorState {
   // --- state ---

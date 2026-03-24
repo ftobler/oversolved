@@ -10,6 +10,7 @@ import {
   applyAddEntity,
   applyAddRect,
   applySetConstraintValue,
+  applySetConstraintPos,
   applyToggleConstruction,
 } from '../utils/yamlMutations'
 
@@ -74,11 +75,22 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
               }
             }
             const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
+            // Build a lookup of AST-stored label positions so they survive the
+            // server round-trip (the solver does not know about pos).
+            const astPosById = new Map(
+              (featureDef?.constraints ?? [])
+                .filter(c => c.pos)
+                .map(c => [c.id, c.pos!])
+            )
             const constraints: import('../types/cad').Constraints | undefined = feature.constraints
               ? Object.fromEntries(
                   Object.entries(feature.constraints)
                     .filter(([, c]) => !c.superfluous)
-                    .map(([cid, c]) => [cid, { render: c.render, residual: c.residual }])
+                    .map(([cid, c]) => {
+                      const pos = astPosById.get(cid)
+                      const render = pos ? { ...c.render, pos } : c.render
+                      return [cid, { render, residual: c.residual }]
+                    })
                 )
               : undefined
             results[id] = {
@@ -135,6 +147,9 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
         break
       case 'set_constraint_value':
         applySetConstraintValue(next, m.featureId, m.constraintId, m.value)
+        break
+      case 'set_constraint_pos':
+        applySetConstraintPos(next, m.featureId, m.constraintId, m.pos)
         break
       case 'delete':
         applyDeleteElements(next, m.targets)

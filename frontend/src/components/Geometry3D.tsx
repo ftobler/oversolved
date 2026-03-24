@@ -433,21 +433,21 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
         atGroups.get(atKey)!.icons.push({ url, key: cid, highlightIds, superfluous: c.superfluous })
 
       } else if (r.kind === 'dim_linear') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }
-        dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} interaction={{ featureId, entityId: eid, promptLabel: 'dimension' }} />)
+        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number] }
+        dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'dimension' }} />)
 
       } else if (r.kind === 'dim_radius') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number }
-        dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, promptLabel: 'radius' }} />)
+        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
+        dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'radius' }} />)
 
       } else if (r.kind === 'dim_diameter') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number }
-        dimElements.push(<DiameterDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, promptLabel: 'diameter' }} />)
+        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
+        dimElements.push(<DiameterDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'diameter' }} />)
 
       } else if (r.kind === 'dim_angle') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number }
+        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number; pos?: [number, number] }
         if (!dim.p3) continue
-        dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, promptLabel: 'angle in degrees' }} />)
+        dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'angle in degrees' }} />)
       }
     }
 
@@ -552,8 +552,13 @@ function DragPlane() {
       onPointerUp={(e) => {
         e.stopPropagation()
         if (onMutation) {
-          if (drag.type === 'edge') {
-            // Fire move_entity with total delta from drag start
+          if (drag.type === 'dim_label') {
+            const pos: [number, number] = [
+              drag.currentWorld[0] - drag.anchorWorld[0],
+              drag.currentWorld[1] - drag.anchorWorld[1],
+            ]
+            onMutation({ type: 'set_constraint_pos', featureId: drag.featureId, constraintId: drag.constraintId, pos })
+          } else if (drag.type === 'edge') {
             const delta: [number, number] = [
               drag.currentWorld[0] - drag.startWorld[0],
               drag.currentWorld[1] - drag.startWorld[1],
@@ -769,16 +774,20 @@ function DrawPlane({ featureId, activeFeatureId }: { featureId: string; activeFe
   )
 }
 
-// Apply drag offset to sketch for optimistic preview
-function applyDragPreview(sketch: Sketch, drag: { type?: string; entityId: string; vertexKey: string; startWorld: [number, number]; currentWorld: [number, number] }): Sketch {
+// Apply drag offset to sketch for optimistic preview.
+// Dimension label drags (dim_label) don't affect entity geometry — the optimistic
+// position is handled inside each dimension component via the drag store.
+function applyDragPreview(sketch: Sketch, drag: import('../stores/sketchEditorStore').DragState): Sketch {
+  if (drag.type === 'dim_label') return sketch
   const dx = drag.currentWorld[0] - drag.startWorld[0]
   const dy = drag.currentWorld[1] - drag.startWorld[1]
   if (dx === 0 && dy === 0) return sketch
   const result = structuredClone(sketch)
-  const entity = result[drag.entityId]
+  const entity = result[(drag as { entityId: string }).entityId]
   if (!entity) return sketch
 
-  if (drag.type === 'edge') {
+  const d = drag as { type: string; entityId: string; vertexKey: string }
+  if (d.type === 'edge') {
     // Translate the entire entity by delta
     if ('start' in entity && 'end' in entity) {
       const l = entity as LineSegment
@@ -794,7 +803,7 @@ function applyDragPreview(sketch: Sketch, drag: { type?: string; entityId: strin
     return result
   }
 
-  const key = drag.vertexKey
+  const key = d.vertexKey
   if ('start' in entity && 'end' in entity && 'radius' in entity && key === 'start') {
     (entity as Arc).start = [drag.currentWorld[0], drag.currentWorld[1]]
   } else if ('start' in entity && 'end' in entity && 'radius' in entity && key === 'end') {

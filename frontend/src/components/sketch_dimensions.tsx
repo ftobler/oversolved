@@ -10,10 +10,12 @@ import {
 } from './sketch_helpers'
 
 /** Optional interactive context for dimension components.
- *  When provided, hover highlights entities and click opens an edit prompt. */
+ *  When provided, hover highlights entities, click opens an edit prompt,
+ *  and pointer-down initiates a drag to reposition the label. */
 export interface DimInteraction {
   featureId: string
   entityId: string
+  constraintId: string
   promptLabel: string
 }
 
@@ -120,44 +122,92 @@ function useDimInteraction(cid: string, value: number, interaction: DimInteracti
   return { hovered, color, onOver, onOut, onClick }
 }
 
+/** Returns the active dragged label position for this constraint (if being dragged), else null. */
+function useActiveLabelDrag(cid: string): [number, number] | null {
+  const drag = useSketchEditorStore(s => s.drag)
+  if (drag?.type === 'dim_label' && drag.constraintId === cid) {
+    return drag.currentWorld
+  }
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // Dimension components (exported — used by both Sketch3D and Geometry3D)
 // ---------------------------------------------------------------------------
 
 export function LinearDimension({ cid, dim, dimOffset, interaction }: {
   cid: string
-  dim: { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }
+  dim: { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number] }
   dimOffset: number
   interaction?: DimInteraction
 }) {
   const { color, onOver, onOut, onClick } = useDimInteraction(cid, dim.value, interaction)
+  const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
+  const setDrag = useSketchEditorStore(s => s.setDrag)
+  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const { camera } = useThree()
   useFrame(() => {
     if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
   })
+
   const [x1, y1] = dim.p1, [x2, y2] = dim.p2
   const nx = dim.normal[0], ny = dim.normal[1]
   const nlen = Math.sqrt(nx * nx + ny * ny) || 1
   const unx = nx / nlen, uny = ny / nlen
-  const d1x = x1 + unx * dimOffset, d1y = y1 + uny * dimOffset
-  const d2x = x2 + unx * dimOffset, d2y = y2 + uny * dimOffset
-  const mx = (d1x + d2x) / 2, my = (d1y + d2y) / 2
+
+  // Anchor = midpoint of the two measured points.
+  const anchorX = (x1 + x2) / 2, anchorY = (y1 + y2) / 2
+
+  // Effective label offset: active drag overrides stored pos, which overrides default.
+  const effectivePos: [number, number] | undefined = activeDragPos
+    ? [activeDragPos[0] - anchorX, activeDragPos[1] - anchorY]
+    : dim.pos
+
+  let labelX: number, labelY: number, d1x: number, d1y: number, d2x: number, d2y: number
+
+  if (effectivePos) {
+    const [ox, oy] = effectivePos
+    labelX = anchorX + ox
+    labelY = anchorY + oy
+    // Project pos onto normal direction to get the dimension-line perpendicular offset.
+    const perpOff = ox * unx + oy * uny
+    d1x = x1 + unx * perpOff; d1y = y1 + uny * perpOff
+    d2x = x2 + unx * perpOff; d2y = y2 + uny * perpOff
+  } else {
+    d1x = x1 + unx * dimOffset; d1y = y1 + uny * dimOffset
+    d2x = x2 + unx * dimOffset; d2y = y2 + uny * dimOffset
+    labelX = (d1x + d2x) / 2; labelY = (d1y + d2y) / 2
+  }
+
   const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
-  const dimLinePts: [number, number, number][] = [[d1x, d1y, 0], [d2x, d2y, 0]]
+
+  const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
+    if (!interaction) return
+    e.stopPropagation()
+    setOrbitEnabled(false)
+    setDrag({
+      type: 'dim_label',
+      constraintId: cid,
+      featureId: interaction.featureId,
+      anchorWorld: [anchorX, anchorY],
+      startWorld: [labelX, labelY],
+      currentWorld: [labelX, labelY],
+    })
+  }, [interaction, cid, anchorX, anchorY, labelX, labelY, setDrag, setOrbitEnabled])
 
   return (
     <group key={cid}>
       <Line points={[[x1, y1, 0], [d1x, d1y, 0]]} color={color} lineWidth={1} />
       <Line points={[[x2, y2, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} />
-      <Line points={dimLinePts} color={color} lineWidth={1} />
+      <Line points={[[d1x, d1y, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} />
       <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={color} />
       <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={color} />
-      <mesh ref={meshRef} position={[mx, my, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick}>
+      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
         <circleGeometry args={[1, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
-      <Html position={[mx, my, 0.001]} center style={{ pointerEvents: 'none' }}>
+      <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
         <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
           {label}
         </div>
@@ -168,32 +218,74 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
 
 export function RadiusDimension({ cid, dim, interaction }: {
   cid: string
-  dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number }
+  dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
 }) {
   const { color, onOver, onOut, onClick } = useDimInteraction(cid, dim.value, interaction)
+  const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
+  const setDrag = useSketchEditorStore(s => s.setDrag)
+  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const { camera } = useThree()
   useFrame(() => {
     if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
   })
-  const [x1, y1] = dim.p1, [x2, y2] = dim.p2
-  const angle = 10 * (Math.PI / 180)
-  const dx = x2 - x1, dy = y2 - y1
-  const x2r = x1 + dx * Math.cos(angle) - dy * Math.sin(angle)
-  const y2r = y1 + dx * Math.sin(angle) + dy * Math.cos(angle)
-  const mx = (x1 + x2r) / 2, my = (y1 + y2r) / 2
+
+  // p1 = center, p2 = edge point; r is the circle/arc radius.
+  const [cx, cy] = dim.p1
+  const r = Math.hypot(dim.p2[0] - cx, dim.p2[1] - cy)
+
+  const effectivePos: [number, number] | undefined = activeDragPos
+    ? [activeDragPos[0] - cx, activeDragPos[1] - cy]
+    : dim.pos
+
+  let labelX: number, labelY: number, tipX: number, tipY: number
+
+  if (effectivePos) {
+    const [ox, oy] = effectivePos
+    labelX = cx + ox; labelY = cy + oy
+    // Arrow tip is on the circle boundary in the direction from center toward label.
+    const d = Math.hypot(ox, oy)
+    if (d > 0) {
+      tipX = cx + (ox / d) * r
+      tipY = cy + (oy / d) * r
+    } else {
+      tipX = dim.p2[0]; tipY = dim.p2[1]
+    }
+  } else {
+    // Default: rotate slightly off-axis, label at midpoint.
+    const angle = 10 * (Math.PI / 180)
+    const dx = dim.p2[0] - cx, dy = dim.p2[1] - cy
+    tipX = cx + dx * Math.cos(angle) - dy * Math.sin(angle)
+    tipY = cy + dx * Math.sin(angle) + dy * Math.cos(angle)
+    labelX = (cx + tipX) / 2; labelY = (cy + tipY) / 2
+  }
+
   const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
+
+  const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
+    if (!interaction) return
+    e.stopPropagation()
+    setOrbitEnabled(false)
+    setDrag({
+      type: 'dim_label',
+      constraintId: cid,
+      featureId: interaction.featureId,
+      anchorWorld: [cx, cy],
+      startWorld: [labelX, labelY],
+      currentWorld: [labelX, labelY],
+    })
+  }, [interaction, cid, cx, cy, labelX, labelY, setDrag, setOrbitEnabled])
 
   return (
     <group key={cid}>
-      <Line points={[[x1, y1, 0], [x2r, y2r, 0]]} color={color} lineWidth={1} />
-      <Arrowhead tip={[x2r, y2r]} from={[x1, y1]} px={12} color={color} />
-      <mesh ref={meshRef} position={[mx, my, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick}>
+      <Line points={[[cx, cy, 0], [tipX, tipY, 0]]} color={color} lineWidth={1} />
+      <Arrowhead tip={[tipX, tipY]} from={[cx, cy]} px={12} color={color} />
+      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
         <circleGeometry args={[1, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
-      <Html position={[mx, my, 0.001]} center style={{ pointerEvents: 'none' }}>
+      <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
         <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
           {label}
         </div>
@@ -204,29 +296,68 @@ export function RadiusDimension({ cid, dim, interaction }: {
 
 export function DiameterDimension({ cid, dim, interaction }: {
   cid: string
-  dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number }
+  dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
 }) {
   const { color, onOver, onOut, onClick } = useDimInteraction(cid, dim.value, interaction)
+  const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
+  const setDrag = useSketchEditorStore(s => s.setDrag)
+  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const { camera } = useThree()
   useFrame(() => {
     if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
   })
-  const [x1, y1] = dim.p1, [x2, y2] = dim.p2
-  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
+
+  // p1 and p2 are the two endpoints of the diameter; center is their midpoint.
+  const anchorX = (dim.p1[0] + dim.p2[0]) / 2, anchorY = (dim.p1[1] + dim.p2[1]) / 2
+  const r = Math.hypot(dim.p2[0] - dim.p1[0], dim.p2[1] - dim.p1[1]) / 2
+
+  const effectivePos: [number, number] | undefined = activeDragPos
+    ? [activeDragPos[0] - anchorX, activeDragPos[1] - anchorY]
+    : dim.pos
+
+  let ep1x: number, ep1y: number, ep2x: number, ep2y: number, labelX: number, labelY: number
+
+  if (effectivePos) {
+    const [ox, oy] = effectivePos
+    labelX = anchorX + ox; labelY = anchorY + oy
+    // Rotate the diameter line to point along the drag direction.
+    const angle = Math.atan2(oy, ox)
+    ep1x = anchorX - r * Math.cos(angle); ep1y = anchorY - r * Math.sin(angle)
+    ep2x = anchorX + r * Math.cos(angle); ep2y = anchorY + r * Math.sin(angle)
+  } else {
+    ep1x = dim.p1[0]; ep1y = dim.p1[1]
+    ep2x = dim.p2[0]; ep2y = dim.p2[1]
+    labelX = anchorX; labelY = anchorY
+  }
+
   const label = `Ø${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
+
+  const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
+    if (!interaction) return
+    e.stopPropagation()
+    setOrbitEnabled(false)
+    setDrag({
+      type: 'dim_label',
+      constraintId: cid,
+      featureId: interaction.featureId,
+      anchorWorld: [anchorX, anchorY],
+      startWorld: [labelX, labelY],
+      currentWorld: [labelX, labelY],
+    })
+  }, [interaction, cid, anchorX, anchorY, labelX, labelY, setDrag, setOrbitEnabled])
 
   return (
     <group key={cid}>
-      <Line points={[[x1, y1, 0], [x2, y2, 0]]} color={color} lineWidth={1} />
-      <Arrowhead tip={[x1, y1]} from={[x2, y2]} px={12} color={color} />
-      <Arrowhead tip={[x2, y2]} from={[x1, y1]} px={12} color={color} />
-      <mesh ref={meshRef} position={[mx, my, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick}>
+      <Line points={[[ep1x, ep1y, 0], [ep2x, ep2y, 0]]} color={color} lineWidth={1} />
+      <Arrowhead tip={[ep1x, ep1y]} from={[ep2x, ep2y]} px={12} color={color} />
+      <Arrowhead tip={[ep2x, ep2y]} from={[ep1x, ep1y]} px={12} color={color} />
+      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
         <circleGeometry args={[1, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
-      <Html position={[mx, my, 0.001]} center style={{ pointerEvents: 'none' }}>
+      <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
         <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
           {label}
         </div>
@@ -237,33 +368,66 @@ export function DiameterDimension({ cid, dim, interaction }: {
 
 export function AngleDimension({ cid, dim, interaction }: {
   cid: string
-  dim: { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number }
+  dim: { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
 }) {
   const { color, onOver, onOut, onClick } = useDimInteraction(cid, dim.value, interaction, false)
+  const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
+  const setDrag = useSketchEditorStore(s => s.setDrag)
+  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const { camera } = useThree()
   useFrame(() => {
     if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
   })
 
   if (!dim.p3) return null
+
+  // p2 is the vertex; p1 and p3 are points on the two lines.
   const [vx, vy] = dim.p2, [x1, y1] = dim.p1, [x3, y3] = dim.p3
   const angle1 = Math.atan2(y1 - vy, x1 - vx)
   const angle2 = Math.atan2(y3 - vy, x3 - vx)
-  const r1 = Math.hypot(x1 - vx, y1 - vy), r2 = Math.hypot(x3 - vx, y3 - vy)
-  const arcR = Math.min(r1, r2) * 0.4
+
+  const effectivePos: [number, number] | undefined = activeDragPos
+    ? [activeDragPos[0] - vx, activeDragPos[1] - vy]
+    : dim.pos
+
+  let arcR: number, labelX: number, labelY: number
+
+  if (effectivePos) {
+    arcR = Math.hypot(effectivePos[0], effectivePos[1])
+    labelX = vx + effectivePos[0]; labelY = vy + effectivePos[1]
+  } else {
+    const r1 = Math.hypot(x1 - vx, y1 - vy), r2 = Math.hypot(x3 - vx, y3 - vy)
+    arcR = Math.min(r1, r2) * 0.4
+    const midAngle = (angle1 + angle2) / 2
+    labelX = vx + arcR * Math.cos(midAngle)
+    labelY = vy + arcR * Math.sin(midAngle)
+  }
+
   const arcPts = sampleArc(vx, vy, arcR, angle1 * (180 / Math.PI), angle2 * (180 / Math.PI))
-  const midAngle = (angle1 + angle2) / 2
-  const labelX = vx + arcR * Math.cos(midAngle), labelY = vy + arcR * Math.sin(midAngle)
   const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
+
+  const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
+    if (!interaction) return
+    e.stopPropagation()
+    setOrbitEnabled(false)
+    setDrag({
+      type: 'dim_label',
+      constraintId: cid,
+      featureId: interaction.featureId,
+      anchorWorld: [vx, vy],
+      startWorld: [labelX, labelY],
+      currentWorld: [labelX, labelY],
+    })
+  }, [interaction, cid, vx, vy, labelX, labelY, setDrag, setOrbitEnabled])
 
   return (
     <group key={cid}>
       <Line points={[[vx, vy, 0], [x1, y1, 0]]} color={color} lineWidth={1} />
       <Line points={[[vx, vy, 0], [x3, y3, 0]]} color={color} lineWidth={1} />
       <Line points={arcPts} color={color} lineWidth={1} />
-      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick}>
+      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
         <circleGeometry args={[1, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
@@ -313,16 +477,16 @@ export function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOv
         if (!url) continue
         symbolIcons.push({ url, key: cid })
       } else if (r.kind === 'dim_linear') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number }
+        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number] }
         dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} />)
       } else if (r.kind === 'dim_radius') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number }
+        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
         dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} />)
       } else if (r.kind === 'dim_diameter') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number }
+        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
         dimElements.push(<DiameterDimension key={cid} cid={cid} dim={dim} />)
       } else if (r.kind === 'dim_angle') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number }
+        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number; pos?: [number, number] }
         if (!dim.p3) continue
         dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} />)
       }

@@ -150,6 +150,7 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
       value: constraint.value || 0,
       normal,
       entity: eid,
+      ...(constraint.pos && { pos: constraint.pos }),
     }
   }
 
@@ -166,6 +167,7 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
       p2: edge,
       value: constraint.value || 0,
       entity: eid,
+      ...(constraint.pos && { pos: constraint.pos }),
     }
   }
 
@@ -181,6 +183,7 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
       p2: [cx + r, cy] as [number, number],
       value: constraint.value || 0,
       entity: eid,
+      ...(constraint.pos && { pos: constraint.pos }),
     }
   }
 
@@ -239,6 +242,7 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
       p3: eb.end,
       value: constraint.value || 0,
       entity: eid,
+      ...(constraint.pos && { pos: constraint.pos }),
     }
   }
 
@@ -276,6 +280,7 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
       value: constraint.value || 0,
       normal,
       entity: eid,
+      ...(constraint.pos && { pos: constraint.pos }),
     }
   }
 
@@ -299,6 +304,7 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
       value: constraint.value || 0,
       normal,
       entity: eid,
+      ...(constraint.pos && { pos: constraint.pos }),
     }
   }
 

@@ -26,6 +26,11 @@ export interface PartConstraint {
   x?: number
   y?: number
   axis?: string
+  // Dimension label position — 2D offset in sketch space relative to the
+  // constraint's anchor point (midpoint of measured points for linear dims,
+  // center for radius/diameter, vertex for angle).  When absent the renderer
+  // uses a default offset derived from sketch extent.
+  pos?: [number, number]
 }
 
 export interface PartEntityDef {
@@ -105,14 +110,18 @@ export interface DimLinearRender {
   normal: Point
   value: number
   entity?: string
+  /** Label offset in sketch space relative to midpoint(p1, p2). */
+  pos?: Point
 }
 
 export interface DimRadiusRender {
   kind: 'dim_radius'
-  p1: Point
-  p2: Point
+  p1: Point  // center
+  p2: Point  // edge point
   value: number
   entity?: string
+  /** Label offset in sketch space relative to center (p1). */
+  pos?: Point
 }
 
 export interface DimDiameterRender {
@@ -121,15 +130,19 @@ export interface DimDiameterRender {
   p2: Point
   value: number
   entity?: string
+  /** Label offset in sketch space relative to midpoint(p1, p2). */
+  pos?: Point
 }
 
 export interface DimAngleRender {
   kind: 'dim_angle'
   p1: Point
-  p2: Point
+  p2: Point  // vertex
   p3?: Point
   value: number
   entity?: string
+  /** Label offset in sketch space relative to vertex (p2). */
+  pos?: Point
 }
 
 export type ConstraintRender = SymbolRender | DimLinearRender | DimRadiusRender | DimDiameterRender | DimAngleRender
@@ -192,6 +205,7 @@ export type Mutation =
   | { type: 'move_entity'; featureId: string; entityId: string; delta: Point }
   | { type: 'add_constraint'; featureId: string; kind: string; targets: string[]; value?: number }
   | { type: 'set_constraint_value'; featureId: string; constraintId: string; value: number }
+  | { type: 'set_constraint_pos'; featureId: string; constraintId: string; pos: Point }
   | { type: 'delete'; targets: string[] }
   | { type: 'add_entity'; featureId: string; kind: string; params: number[] }
   | { type: 'add_rect'; featureId: string; p0: Point; p1: Point }

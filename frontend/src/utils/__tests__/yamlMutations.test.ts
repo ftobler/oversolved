@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc, PartConstraint } from '../../types/cad'
-import { applyMoveVertex, applyAddConstraint, applyDeleteElements } from '../yamlMutations'
+import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos } from '../yamlMutations'
 
 const makeSampleDoc = (): PartDoc => ({
   version: 1,
@@ -112,6 +112,39 @@ describe('applyAddConstraint', () => {
     const constraints = doc.features![0].constraints!
     const added = constraints.find(c => c.id.startsWith('c_length'))
     expect(added!.value).toBe(42)
+  })
+})
+
+describe('applySetConstraintPos', () => {
+  it('sets pos on an existing constraint', () => {
+    const doc = makeSampleDoc()
+    applySetConstraintPos(doc, 'Sketch1', 'c_len', [3.5, -2.0])
+    const c = doc.features![0].constraints!.find(c => c.id === 'c_len')
+    expect(c!.pos).toEqual([3.5, -2.0])
+  })
+
+  it('rounds pos to 6 decimal places', () => {
+    const doc = makeSampleDoc()
+    applySetConstraintPos(doc, 'Sketch1', 'c_len', [1.23456789, -9.87654321])
+    const c = doc.features![0].constraints!.find(c => c.id === 'c_len')
+    expect(c!.pos![0]).toBe(1.234568)
+    expect(c!.pos![1]).toBe(-9.876543)
+  })
+
+  it('no-ops for unknown constraint', () => {
+    const doc = makeSampleDoc()
+    applySetConstraintPos(doc, 'Sketch1', 'c_nonexistent', [1, 2])
+    // No pos set on any constraint
+    for (const c of doc.features![0].constraints!) {
+      expect(c.pos).toBeUndefined()
+    }
+  })
+
+  it('no-ops for unknown feature', () => {
+    const doc = makeSampleDoc()
+    applySetConstraintPos(doc, 'NoSuchFeature', 'c_len', [1, 2])
+    const c = doc.features![0].constraints!.find(c => c.id === 'c_len')
+    expect(c!.pos).toBeUndefined()
   })
 })
 
