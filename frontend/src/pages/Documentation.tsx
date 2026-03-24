@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import './Documentation.css'
 
 interface DocFile {
@@ -122,7 +123,7 @@ export default function Documentation() {
         <main className="doc-content">
           {loading && <p className="loading">Loading documentation...</p>}
           {error && <p className="error">Error: {error}</p>}
-          {!loading && !error && <ReactMarkdown>{content}</ReactMarkdown>}
+          {!loading && !error && <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>}
         </main>
       </div>
     </div>
