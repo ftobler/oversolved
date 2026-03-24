@@ -121,7 +121,7 @@ function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const activeTool = useSketchEditorStore(s => s.activeTool)
-  const handleDimClick = useSketchEditorStore(s => s.handleDimClick)
+  const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const constraintHovered = useSketchEditorStore(s =>
     entityId && vertexKey ? s.hoveredConstraintEntityIds.has(`${entityId}:${vertexKey}`) : false
   )
@@ -216,7 +216,7 @@ function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1 }: E
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const activeTool = useSketchEditorStore(s => s.activeTool)
-  const handleDimClick = useSketchEditorStore(s => s.handleDimClick)
+  const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const color = hovered ? COLOR_HOVER
     : selected ? COLOR_SELECTED
     : constraintHovered ? COLOR_CONSTRAINT_HOVER
@@ -231,7 +231,7 @@ function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1 }: E
     if (activeTool === 'dimension') {
       const isArc = 'start' in e && 'end' in e && 'radius' in e
       const isCircle = !isArc && 'radius' in e
-      const entityKind = isArc ? 'arc' : isCircle ? 'circle' : 'line'
+      const entityKind = isArc ? 'arc' : isCircle ? 'circle' : 'line_segment'
       handleDimClick(`entity:${featureId}:${entityId}`, featureId, 'entity', entityKind)
     } else {
       toggleSelect(entId)

@@ -42,7 +42,7 @@ interface SketchEditorState {
   addDrawPoint: (pt: [number, number]) => void
   setDrawHover: (pt: [number, number] | null) => void
   clearDraw: () => void
-  handleDimClick: (target: string, featureId: string, kind: 'entity' | 'vertex', entityKind?: string) => void
+  handleDimensionClick: (target: string, featureId: string, kind: 'entity' | 'vertex', entityKind?: string) => void
 }
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
@@ -105,12 +105,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setDrawHover: (pt) => set({ drawHover: pt }),
   clearDraw: () => set({ drawPoints: [], drawHover: null }),
 
-  handleDimClick: (target, featureId, kind, entityKind) => {
+  handleDimensionClick: (target, featureId, kind, entityKind) => {
     const { pendingDimTarget, onMutation } = get()
     if (!pendingDimTarget) {
       // Single-entity dimension (line→length, arc→radius, circle→diameter) or first click of two-target
       if (kind === 'entity') {
-        const dimKind = entityKind === 'arc' ? 'radius' : entityKind === 'circle' ? 'diameter' : null
+        const dimKind = entityKind === 'arc' ? 'radius' : entityKind === 'circle' ? 'diameter' : entityKind === 'line_segment' ? 'length' : null
         if (dimKind) {
           // Arc/circle: prompt immediately for single-entity dimension
           const input = window.prompt('Enter dimension value:')
