@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Mutation } from '../types/cad'
+import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '../registry'
 
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type { Mutation }
@@ -108,11 +109,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   handleDimensionClick: (target, featureId, kind, entityKind) => {
     const { pendingDimTarget, onMutation } = get()
     if (!pendingDimTarget) {
-      // Single-entity dimension (line→length, arc→radius, circle→diameter) or first click of two-target
+      // Single-entity dimension — registry resolves entity kind to constraint kind
       if (kind === 'entity') {
-        const dimKind = entityKind === 'arc' ? 'radius' : entityKind === 'circle' ? 'diameter' : entityKind === 'line_segment' ? 'length' : null
+        const dimKind = entityKind ? resolveSingleEntityDimension(entityKind) : null
         if (dimKind) {
-          // Arc/circle: prompt immediately for single-entity dimension
           const input = window.prompt('Enter dimension value:')
           if (input === null) return
           const val = parseFloat(input)
@@ -122,23 +122,16 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
           return
         }
       }
-      // First click: store pending
+      // First click: store pending for two-target dimension
       set({ pendingDimTarget: target })
     } else {
-      // Second click: determine constraint kind and prompt
+      // Second click — registry resolves target pair to constraint kind
       const first = pendingDimTarget
       set({ pendingDimTarget: null })
-      const firstIsVertex = first.startsWith('vertex:')
-      const secondIsVertex = target.startsWith('vertex:')
-      let dimKind: string
-      if (firstIsVertex && secondIsVertex) {
-        dimKind = 'point_distance'
-      } else if (!firstIsVertex && !secondIsVertex) {
-        dimKind = 'line_distance'
-      } else {
-        // mixed: treat as point_distance (point on line)
-        dimKind = 'line_distance'
-      }
+      const dimKind = resolveTwoTargetDimension(
+        first.startsWith('vertex:'),
+        target.startsWith('vertex:'),
+      )
       const input = window.prompt('Enter dimension value:')
       if (input === null) return
       const val = parseFloat(input)

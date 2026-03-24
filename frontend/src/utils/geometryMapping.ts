@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Sketch, Constraints, Point } from '../types/cad'
+import { getDefaultParams } from '../registry'
 
 /** Convert flat array format (from AST initial or server solve) to UI Sketch format.
  *  Ensures all entities are present in result, defaulting to zero-params if missing. */
@@ -14,12 +15,7 @@ export function unflattenGeometry(
   for (const entityDef of entities) {
     const { id, kind } = entityDef
     const construction = (entityDef as any).construction === true
-    const params = data[id] || (
-      kind === 'line_segment' ? [0, 0, 0, 0] :
-      kind === 'circle' ? [0, 0, 0] :
-      kind === 'arc' ? [0, 0, 0, 0, 0] :
-      kind === 'point' ? [0, 0] : []
-    )
+    const params = data[id] || getDefaultParams(kind)
 
     if (kind === 'line_segment') {
       result[id] = {

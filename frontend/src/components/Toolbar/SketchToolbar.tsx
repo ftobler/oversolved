@@ -1,24 +1,27 @@
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { TOOLBAR_CONSTRAINTS, TOOLBAR_ENTITIES } from '../../registry'
+import type { ConstraintDef, EntityDef } from '../../registry'
 import ToolbarButton from './ToolbarButton'
 
-import toolbarLineIcon from '../../assets/icons/toolbar-line.svg'
 import toolbarRectangleIcon from '../../assets/icons/toolbar-rectangle.svg'
-import toolbarCircleIcon from '../../assets/icons/toolbar-circle.svg'
-import toolbarArcIcon from '../../assets/icons/toolbar-arc.svg'
-import toolbarPointIcon from '../../assets/icons/toolbar-point.svg'
-import toolbarHorizontalIcon from '../../assets/icons/constraint-horizontal.svg'
-import toolbarVerticalIcon from '../../assets/icons/constraint-vertical.svg'
-import toolbarCoincidentIcon from '../../assets/icons/constraint-coincident.svg'
-import toolbarConcentricIcon from '../../assets/icons/constraint-concentric.svg'
-import toolbarEqualIcon from '../../assets/icons/constraint-equal.svg'
-import toolbarFixedIcon from '../../assets/icons/constraint-fixed.svg'
-import toolbarMidpointIcon from '../../assets/icons/constraint-midpoint.svg'
-import toolbarParallelIcon from '../../assets/icons/constraint-parallel.svg'
-import toolbarNormalIcon from '../../assets/icons/constraint-square.svg'
-import toolbarTangentIcon from '../../assets/icons/constraint-tangent.svg'
 import toolbarDimensionIcon from '../../assets/icons/constraint-dimension.svg'
 import toolbarConstructionIcon from '../../assets/icons/constraint-line-swap.svg'
 import viewportResetIcon from '../../assets/icons/viewport-reset.svg'
+
+// Eager-load all icon SVGs so we can look them up by filename at runtime.
+const iconModules = import.meta.glob('../../assets/icons/*.svg', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
+function iconUrl(filename: string): string {
+  return iconModules[`../../assets/icons/${filename}.svg`] ?? ''
+}
+
+function shortcutHint(def: ConstraintDef): string {
+  return def.shortcut ? ` (${def.shortcut.toUpperCase()})` : ''
+}
 
 interface SketchToolbarProps {
   onResetViewport: () => void
@@ -43,50 +46,38 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
         active={activeTool === 'dimension'}
       />
 
-      <ToolbarButton
-        title="Line"
-        icon={toolbarLineIcon}
-        onClick={() => setActiveTool('line')}
-        active={activeTool === 'line'}
-      />
+      {/* Drawing tools — derived from entity registry */}
+      {TOOLBAR_ENTITIES.map((def: EntityDef) => (
+        <ToolbarButton
+          key={def.kind}
+          title={def.label}
+          icon={iconUrl(def.toolbarIcon!)}
+          onClick={() => setActiveTool(def.activeTool!)}
+          active={activeTool === def.activeTool}
+        />
+      ))}
+
+      {/* Rectangle is a composite tool, not a single entity — stays manual */}
       <ToolbarButton
         title="Rectangle"
         icon={toolbarRectangleIcon}
         onClick={() => setActiveTool('rect')}
         active={activeTool === 'rect'}
       />
-      <ToolbarButton
-        title="Circle"
-        icon={toolbarCircleIcon}
-        onClick={() => setActiveTool('circle')}
-        active={activeTool === 'circle'}
-      />
-      <ToolbarButton
-        title="Arc"
-        icon={toolbarArcIcon}
-        onClick={() => setActiveTool('arc')}
-        active={activeTool === 'arc'}
-      />
-      <ToolbarButton
-        title="Point"
-        icon={toolbarPointIcon}
-        onClick={() => setActiveTool('point')}
-        active={activeTool === 'point'}
-      />
+
       <ToolbarButton title="Toggle Construction" icon={toolbarConstructionIcon} onClick={toggleConstruction} />
 
       <div className="toolbar-separator" />
 
-      <ToolbarButton title="Horizontal (H)" icon={toolbarHorizontalIcon} onClick={() => applyConstraint('horizontal')} />
-      <ToolbarButton title="Vertical (V)" icon={toolbarVerticalIcon} onClick={() => applyConstraint('vertical')} />
-      <ToolbarButton title="Coincident" icon={toolbarCoincidentIcon} onClick={() => applyConstraint('coincident')} />
-      <ToolbarButton title="Concentric" icon={toolbarConcentricIcon} onClick={() => applyConstraint('concentric')} />
-      <ToolbarButton title="Equal" icon={toolbarEqualIcon} onClick={() => applyConstraint('equal_length')} />
-      <ToolbarButton title="Fixed" icon={toolbarFixedIcon} onClick={() => applyConstraint('fixed')} />
-      <ToolbarButton title="Midpoint" icon={toolbarMidpointIcon} onClick={() => applyConstraint('midpoint')} />
-      <ToolbarButton title="Parallel" icon={toolbarParallelIcon} onClick={() => applyConstraint('parallel')} />
-      <ToolbarButton title="Normal" icon={toolbarNormalIcon} onClick={() => applyConstraint('normal')} />
-      <ToolbarButton title="Tangent" icon={toolbarTangentIcon} onClick={() => applyConstraint('tangent')} />
+      {/* Constraint buttons — derived from constraint registry */}
+      {TOOLBAR_CONSTRAINTS.map((def: ConstraintDef) => (
+        <ToolbarButton
+          key={def.kind}
+          title={`${def.label}${shortcutHint(def)}`}
+          icon={iconUrl(def.toolbarIcon!)}
+          onClick={() => applyConstraint(def.kind)}
+        />
+      ))}
     </>
   )
 }

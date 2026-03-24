@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { Entity, LineSegment, Circle, Arc, PointEntity } from '../types/cad'
+import { RENDER_KIND_TO_ICON } from '../registry'
 
 export const COLOR_CONSTRAINT = '#ffd54f'
 
@@ -12,20 +13,8 @@ export const iconModules = import.meta.glob('../assets/icons/*.svg', {
   import: 'default',
 }) as Record<string, string>
 
-export const SYMBOL_TO_ICON: Record<string, string> = {
-  symbol_h:          'constraint-horizontal',
-  symbol_v:          'constraint-vertical',
-  symbol_coincident: 'constraint-coincident',
-  symbol_concentric: 'constraint-concentric',
-  symbol_equal:      'constraint-equal',
-  symbol_fixed:      'constraint-fixed',
-  symbol_midpoint:   'constraint-midpoint',
-  symbol_normal:     'constraint-square',
-  symbol_parallel:   'constraint-parallel',
-  symbol_tangent:    'constraint-tangent',
-  symbol_colinear:   'constraint-colinear',
-  symbol_angle:      'constraint-angle',
-}
+/** Derived from the constraint registry — maps render kind to icon filename. */
+export const SYMBOL_TO_ICON: Readonly<Record<string, string>> = RENDER_KIND_TO_ICON
 
 export function getIconUrl(kind: string): string | undefined {
   const name = SYMBOL_TO_ICON[kind]

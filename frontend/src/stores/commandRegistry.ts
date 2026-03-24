@@ -1,5 +1,8 @@
 // Central command registry: maps command names to actions registered at runtime.
 // Keymaps are defined here so they are testable and independently configurable.
+// Constraint shortcuts are derived from the constraint registry.
+
+import { CONSTRAINT_SHORTCUTS } from '../registry'
 
 const handlers = new Map<string, () => void>()
 
@@ -7,16 +10,21 @@ const handlers = new Map<string, () => void>()
 // Key strings are built from KeyboardEvent: optional modifiers joined with '+',
 // then the lowercase key name. E.g. Ctrl+Z → "ctrl+z", D → "d".
 
-export const KEYMAP: Record<string, string> = {
+// Core (non-constraint) keybindings
+const CORE_KEYMAP: Record<string, string> = {
   'ctrl+z':       'undo',
   'ctrl+shift+z': 'redo',
   'ctrl+y':       'redo',
   'delete':       'delete_selected',
   'backspace':    'delete_selected',
   'd':            'apply_dimension',
-  'h':            'apply_horizontal',
-  'v':            'apply_vertical',
   'escape':       'cancel_draw',
+}
+
+// Merge core bindings with constraint-registry-derived shortcuts
+export const KEYMAP: Record<string, string> = {
+  ...CORE_KEYMAP,
+  ...Object.fromEntries(CONSTRAINT_SHORTCUTS),
 }
 
 // ── Registration ───────────────────────────────────────────────────────────

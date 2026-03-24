@@ -1,4 +1,5 @@
 import type { PartDoc, PartFeature, PartConstraint, PartTarget } from '../types/cad'
+import { VERTEX_INDICES, ALL_COORD_INDICES } from '../registry'
 
 // ---------------------------------------------------------------------------
 // Architecture contract
@@ -13,20 +14,6 @@ import type { PartDoc, PartFeature, PartConstraint, PartTarget } from '../types/
 // ---------------------------------------------------------------------------
 
 const round = (v: number) => Math.round(v * 1e6) / 1e6
-
-const VERTEX_INDICES: Record<string, Record<string, [number, number]>> = {
-  line_segment: { start: [0, 1], end: [2, 3] },
-  circle:       { center: [0, 1] },
-  arc:          { center: [0, 1] },
-  point:        { xy: [0, 1] },
-}
-
-const ALL_COORD_INDICES: Record<string, [number, number][]> = {
-  line_segment: [[0, 1], [2, 3]],
-  circle:       [[0, 1]],
-  arc:          [[0, 1]],
-  point:        [[0, 1]],
-}
 
 
 function findFeature(doc: PartDoc, featureId: string): PartFeature | undefined {

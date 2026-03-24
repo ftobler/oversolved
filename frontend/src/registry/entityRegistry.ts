@@ -1,0 +1,155 @@
+// ============================================================================
+// Entity Registry — single source of truth for sketch entity types.
+//
+// Every entity kind recognised by the solver is listed here exactly once.
+// Toolbar buttons, vertex definitions, parameter layouts, and documentation
+// are all derived from this registry.
+//
+// To add a new entity type:
+//   1. Add an entry to ENTITIES below.
+//   2. Add unflatten logic in utils/geometryMapping.ts  (unflattenGeometry).
+//   3. Add solver handling in the backend  (solver.py).
+//   4. Add rendering in Geometry3D.tsx / SketchSvg.tsx.
+//   5. Optionally add an SVG icon in assets/icons/.
+// ============================================================================
+
+import type { ActiveTool } from '../stores/sketchEditorStore'
+
+// -- Entity definition --------------------------------------------------------
+
+export interface VertexDef {
+  /** Vertex key (e.g. "start", "end", "center", "xy"). */
+  key: string
+  /** Indices into the flat parameter array for [x, y]. */
+  indices: [number, number]
+}
+
+export interface EntityDef {
+  /** Solver kind string — the canonical name used in the AST and solver. */
+  kind: string
+
+  /** Human-readable label shown in toolbar and docs. */
+  label: string
+
+  /** One-line description for documentation. */
+  description: string
+
+  /** Number of scalar parameters in the flat array. */
+  paramCount: number
+
+  /** Default parameter values when no initial data exists. */
+  defaultParams: number[]
+
+  /** Named vertices and their parameter indices. */
+  vertices: VertexDef[]
+
+  /**
+   * Coordinate pairs to translate when moving the whole entity.
+   * Each entry is [xIndex, yIndex] into the flat parameter array.
+   */
+  coordPairs: [number, number][]
+
+  /**
+   * The ActiveTool value that triggers drawing this entity.
+   * `undefined` for entities that cannot be drawn interactively (e.g. construction-only).
+   */
+  activeTool?: ActiveTool
+
+  /** Icon filename (without path/extension) for the toolbar button. */
+  toolbarIcon?: string
+
+  /** Whether this entity type shows in the drawing toolbar. */
+  showInToolbar: boolean
+}
+
+// -- Registry -----------------------------------------------------------------
+
+export const ENTITIES: readonly EntityDef[] = [
+  {
+    kind: 'line_segment',
+    label: 'Line',
+    description: 'A straight line segment defined by two endpoints.',
+    paramCount: 4,
+    defaultParams: [0, 0, 0, 0],
+    vertices: [
+      { key: 'start', indices: [0, 1] },
+      { key: 'end',   indices: [2, 3] },
+    ],
+    coordPairs: [[0, 1], [2, 3]],
+    activeTool: 'line',
+    toolbarIcon: 'toolbar-line',
+    showInToolbar: true,
+  },
+  {
+    kind: 'circle',
+    label: 'Circle',
+    description: 'A full circle defined by center and radius.',
+    paramCount: 3,
+    defaultParams: [0, 0, 0],
+    vertices: [
+      { key: 'center', indices: [0, 1] },
+    ],
+    coordPairs: [[0, 1]],
+    activeTool: 'circle',
+    toolbarIcon: 'toolbar-circle',
+    showInToolbar: true,
+  },
+  {
+    kind: 'arc',
+    label: 'Arc',
+    description: 'A circular arc defined by center, radius, start angle, and end angle (in degrees).',
+    paramCount: 5,
+    defaultParams: [0, 0, 0, 0, 0],
+    vertices: [
+      { key: 'center', indices: [0, 1] },
+    ],
+    coordPairs: [[0, 1]],
+    activeTool: 'arc',
+    toolbarIcon: 'toolbar-arc',
+    showInToolbar: true,
+  },
+  {
+    kind: 'point',
+    label: 'Point',
+    description: 'A free point in the sketch plane.',
+    paramCount: 2,
+    defaultParams: [0, 0],
+    vertices: [
+      { key: 'xy', indices: [0, 1] },
+    ],
+    coordPairs: [[0, 1]],
+    activeTool: 'point',
+    toolbarIcon: 'toolbar-point',
+    showInToolbar: true,
+  },
+] as const
+
+// -- Derived lookup tables (computed once at module load) ---------------------
+
+/** Map from entity kind → full definition. */
+export const ENTITY_BY_KIND: ReadonlyMap<string, EntityDef> =
+  new Map(ENTITIES.map(e => [e.kind, e]))
+
+/** Map from entity kind → vertex key → [xIndex, yIndex]. */
+export const VERTEX_INDICES: Readonly<Record<string, Record<string, [number, number]>>> =
+  Object.fromEntries(
+    ENTITIES.map(e => [
+      e.kind,
+      Object.fromEntries(e.vertices.map(v => [v.key, v.indices])),
+    ])
+  )
+
+/** Map from entity kind → array of [xIndex, yIndex] coordinate pairs. */
+export const ALL_COORD_INDICES: Readonly<Record<string, [number, number][]>> =
+  Object.fromEntries(
+    ENTITIES.map(e => [e.kind, e.coordPairs])
+  )
+
+/** Entities that appear as toolbar drawing buttons, in display order. */
+export const TOOLBAR_ENTITIES: readonly EntityDef[] =
+  ENTITIES.filter(e => e.showInToolbar)
+
+/** Get default parameters for an entity kind. */
+export function getDefaultParams(kind: string): number[] {
+  return ENTITY_BY_KIND.get(kind)?.defaultParams ?? []
+}
