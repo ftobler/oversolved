@@ -202,12 +202,13 @@ function sketchExtent(sketch: Sketch): number {
 interface EntityItemProps {
   entity: Entity
   entityId: string
+  entityKind: string
   featureId: string
   baseColor: string
   lineWidth?: number
 }
 
-function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1 }: EntityItemProps) {
+function EntityItem({ entity, entityId, entityKind, featureId, baseColor, lineWidth = 1 }: EntityItemProps) {
   const [hovered, setHovered] = useState(false)
   const entId = `entity:${featureId}:${entityId}`
   const selected = useSketchEditorStore(s => s.selection.has(entId))
@@ -229,14 +230,11 @@ function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1 }: E
   const onClick = useCallback((ev: { stopPropagation: () => void }) => {
     ev.stopPropagation()
     if (activeTool === 'dimension') {
-      const isArc = 'start' in e && 'end' in e && 'radius' in e
-      const isCircle = !isArc && 'radius' in e
-      const entityKind = isArc ? 'arc' : isCircle ? 'circle' : 'line_segment'
       handleDimClick(`entity:${featureId}:${entityId}`, featureId, 'entity', entityKind)
     } else {
       toggleSelect(entId)
     }
-  }, [entId, toggleSelect, activeTool, handleDimClick, featureId, entityId, e])
+  }, [entId, toggleSelect, activeTool, handleDimClick, featureId, entityId, entityKind])
   // Edge drag: pointer down on the edge group initiates a full-entity move
   const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: { x: number; y: number } }) => {
     if (activeTool !== 'select') return
@@ -301,14 +299,15 @@ interface EntityLinesProps {
   sketch: Sketch
   featureId: string
   color: string
+  kindMap: Record<string, string>
   lineWidth?: number
 }
 
-function EntityLines({ sketch, featureId, color, lineWidth = 1 }: EntityLinesProps) {
+function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1 }: EntityLinesProps) {
   return (
     <>
       {Object.entries(sketch).map(([id, entity]) => (
-        <EntityItem key={id} entity={entity as Entity} entityId={id} featureId={featureId} baseColor={color} lineWidth={lineWidth} />
+        <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line_segment'} featureId={featureId} baseColor={color} lineWidth={lineWidth} />
       ))}
     </>
   )
@@ -841,13 +840,14 @@ function planeRotation(planeQuery: string | undefined): [number, number, number]
 interface Geometry3DProps {
   featureId: string
   solved: Sketch
+  entities?: Array<{ id: string; kind: string }>
   constraints?: Constraints
   topology?: Topology
   activeFeatureId?: string
   plane?: string
 }
 
-export default function Geometry3D({ featureId, solved, constraints, topology, activeFeatureId, plane }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane }: Geometry3DProps) {
   const drag = useSketchEditorStore(s => s.drag)
   // During drag on this feature, show optimistic preview
   const displaySketch = useMemo(() => {
@@ -856,11 +856,15 @@ export default function Geometry3D({ featureId, solved, constraints, topology, a
   }, [solved, drag, featureId])
   const extent = useMemo(() => sketchExtent(displaySketch), [displaySketch])
   const rot = planeRotation(plane)
+  const kindMap = useMemo(() =>
+    Object.fromEntries((entities ?? []).map(e => [e.id, e.kind])),
+    [entities]
+  )
 
   return (
     <group rotation={rot}>
       {topology && <TopologySurfaces topology={topology} />}
-      <EntityLines sketch={displaySketch} featureId={featureId} color={COLOR_SOLVED} lineWidth={2} />
+      <EntityLines sketch={displaySketch} featureId={featureId} color={COLOR_SOLVED} lineWidth={2} kindMap={kindMap} />
       {constraints && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
       <DragPlane />
       <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} />

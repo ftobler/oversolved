@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import { Line, Html } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -99,7 +99,21 @@ function ConstraintTile({ url, id }: { url: string; id: string }) {
 
 function useDimInteraction(cid: string, value: number, interaction: DimInteraction | undefined, validatePositive = true) {
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
+  const drag = useSketchEditorStore(s => s.drag)
   const [hovered, setHovered] = useState(false)
+
+  // Suppress the click that the browser fires on the label mesh after a drag.
+  // When the pointer moves during a dim_label drag we set this flag; the next
+  // click clears it and returns early so the edit prompt is not shown.
+  const dragMoved = useRef(false)
+  useEffect(() => {
+    if (drag?.type === 'dim_label' && drag.constraintId === cid) {
+      const moved = drag.currentWorld[0] !== drag.startWorld[0]
+        || drag.currentWorld[1] !== drag.startWorld[1]
+      if (moved) dragMoved.current = true
+    }
+  }, [drag, cid])
+
   const onOver = useCallback((ev: { stopPropagation: () => void }) => {
     ev.stopPropagation()
     setHovered(true)
@@ -110,6 +124,7 @@ function useDimInteraction(cid: string, value: number, interaction: DimInteracti
     if (interaction) setHoveredConstraintEntities(new Set())
   }, [interaction, setHoveredConstraintEntities])
   const onClick = useCallback((ev: { stopPropagation: () => void }) => {
+    if (dragMoved.current) { dragMoved.current = false; return }
     if (!interaction) return
     ev.stopPropagation()
     const input = window.prompt(`Enter ${interaction.promptLabel} value (current: ${value})`)
@@ -118,8 +133,11 @@ function useDimInteraction(cid: string, value: number, interaction: DimInteracti
     if (isNaN(val) || (validatePositive && val <= 0)) return
     useSketchEditorStore.getState().onMutation?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: val })
   }, [interaction, cid, value, validatePositive])
+  // Called at the start of each pointer-down so a fresh drag begins with the flag clear.
+  const resetDragMoved = useCallback(() => { dragMoved.current = false }, [])
+
   const color = hovered ? '#ffffff' : COLOR_CONSTRAINT
-  return { hovered, color, onOver, onOut, onClick }
+  return { hovered, color, onOver, onOut, onClick, resetDragMoved }
 }
 
 /** Returns the active dragged label position for this constraint (if being dragged), else null. */
@@ -141,7 +159,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
   dimOffset: number
   interaction?: DimInteraction
 }) {
-  const { color, onOver, onOut, onClick } = useDimInteraction(cid, dim.value, interaction)
+  const { color, onOver, onOut, onClick, resetDragMoved } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -185,6 +203,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
   const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
     if (!interaction) return
     e.stopPropagation()
+    resetDragMoved()
     setOrbitEnabled(false)
     setDrag({
       type: 'dim_label',
@@ -194,7 +213,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
       startWorld: [labelX, labelY],
       currentWorld: [labelX, labelY],
     })
-  }, [interaction, cid, anchorX, anchorY, labelX, labelY, setDrag, setOrbitEnabled])
+  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setDrag, setOrbitEnabled])
 
   return (
     <group key={cid}>
@@ -221,7 +240,7 @@ export function RadiusDimension({ cid, dim, interaction }: {
   dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
 }) {
-  const { color, onOver, onOut, onClick } = useDimInteraction(cid, dim.value, interaction)
+  const { color, onOver, onOut, onClick, resetDragMoved } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -266,6 +285,7 @@ export function RadiusDimension({ cid, dim, interaction }: {
   const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
     if (!interaction) return
     e.stopPropagation()
+    resetDragMoved()
     setOrbitEnabled(false)
     setDrag({
       type: 'dim_label',
@@ -275,7 +295,7 @@ export function RadiusDimension({ cid, dim, interaction }: {
       startWorld: [labelX, labelY],
       currentWorld: [labelX, labelY],
     })
-  }, [interaction, cid, cx, cy, labelX, labelY, setDrag, setOrbitEnabled])
+  }, [interaction, cid, cx, cy, labelX, labelY, resetDragMoved, setDrag, setOrbitEnabled])
 
   return (
     <group key={cid}>
@@ -299,7 +319,7 @@ export function DiameterDimension({ cid, dim, interaction }: {
   dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
 }) {
-  const { color, onOver, onOut, onClick } = useDimInteraction(cid, dim.value, interaction)
+  const { color, onOver, onOut, onClick, resetDragMoved } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -337,6 +357,7 @@ export function DiameterDimension({ cid, dim, interaction }: {
   const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
     if (!interaction) return
     e.stopPropagation()
+    resetDragMoved()
     setOrbitEnabled(false)
     setDrag({
       type: 'dim_label',
@@ -346,7 +367,7 @@ export function DiameterDimension({ cid, dim, interaction }: {
       startWorld: [labelX, labelY],
       currentWorld: [labelX, labelY],
     })
-  }, [interaction, cid, anchorX, anchorY, labelX, labelY, setDrag, setOrbitEnabled])
+  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setDrag, setOrbitEnabled])
 
   return (
     <group key={cid}>
@@ -371,7 +392,7 @@ export function AngleDimension({ cid, dim, interaction }: {
   dim: { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
 }) {
-  const { color, onOver, onOut, onClick } = useDimInteraction(cid, dim.value, interaction, false)
+  const { color, onOver, onOut, onClick, resetDragMoved } = useDimInteraction(cid, dim.value, interaction, false)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -411,6 +432,7 @@ export function AngleDimension({ cid, dim, interaction }: {
   const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
     if (!interaction) return
     e.stopPropagation()
+    resetDragMoved()
     setOrbitEnabled(false)
     setDrag({
       type: 'dim_label',
@@ -420,7 +442,7 @@ export function AngleDimension({ cid, dim, interaction }: {
       startWorld: [labelX, labelY],
       currentWorld: [labelX, labelY],
     })
-  }, [interaction, cid, vx, vy, labelX, labelY, setDrag, setOrbitEnabled])
+  }, [interaction, cid, vx, vy, labelX, labelY, resetDragMoved, setDrag, setOrbitEnabled])
 
   return (
     <group key={cid}>

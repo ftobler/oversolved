@@ -3,6 +3,7 @@ import Visualizer from './pages/Visualizer'
 import Documentation from './pages/Documentation'
 import Documents from './pages/Documents'
 import Part from './pages/Part'
+import Registry from './pages/Registry'
 import './App.css'
 
 function Home() {
@@ -14,6 +15,7 @@ function Home() {
         <Link to="/visualizer">Sketch Visualizer</Link>
         <Link to="/documents">Documents</Link>
         <Link to="/docs">Documentation</Link>
+        <Link to="/registry">Registry</Link>
       </nav>
     </div>
   )
@@ -28,6 +30,7 @@ function App() {
       <Route path="/documents/:docId" element={<Part />} />
       <Route path="/docs" element={<Documentation />} />
       <Route path="/docs/:doc" element={<Documentation />} />
+      <Route path="/registry" element={<Registry />} />
     </Routes>
   )
 }
