@@ -17,7 +17,7 @@ export function unflattenGeometry(
     const construction = (entityDef as any).construction === true
     const params = data[id] || getDefaultParams(kind)
 
-    if (kind === 'line_segment') {
+    if (kind === 'line') {
       result[id] = {
         start: [params[0] || 0, params[1] || 0],
         end: [params[2] || 0, params[3] || 0],

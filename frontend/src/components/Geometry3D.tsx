@@ -371,7 +371,7 @@ function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1 }: Entit
       {Object.entries(sketch)
         .filter(([, entity]) => !(entity as PointEntity).projected)
         .map(([id, entity]) => (
-          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line_segment'} featureId={featureId} baseColor={color} lineWidth={lineWidth} />
+          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line'} featureId={featureId} baseColor={color} lineWidth={lineWidth} />
         ))}
     </>
   )
@@ -777,7 +777,7 @@ function DrawPlane({ featureId, activeFeatureId }: { featureId: string; activeFe
       if (pts.length === 0) {
         addDrawPoint([x, y])
       } else {
-        onMutation?.({ type: 'add_entity', featureId, kind: 'line_segment',
+        onMutation?.({ type: 'add_entity', featureId, kind: 'line',
           params: [pts[0][0], pts[0][1], x, y] })
         clearDraw()
         setActiveTool('select')

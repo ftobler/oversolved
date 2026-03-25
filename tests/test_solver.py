@@ -47,7 +47,7 @@ class Geom:
 
     @property
     def start(self):
-        if self._kind == "line_segment":
+        if self._kind == "line":
             return list(self._data[0:2])
         elif self._kind == "arc":
             # Arc: [cx, cy, r, a_start, a_end], compute start point from angle
@@ -57,7 +57,7 @@ class Geom:
 
     @property
     def end(self):
-        if self._kind == "line_segment":
+        if self._kind == "line":
             return list(self._data[2:4])
         elif self._kind == "arc":
             # Arc: [cx, cy, r, a_start, a_end], compute end point from angle
@@ -201,7 +201,7 @@ features:
       line1: [0.0, 1.5, 8.5, 3.5]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_horiz
         kind: horizontal
@@ -240,9 +240,9 @@ features:
       height: [7.5, 0.5, 5.5, 5.5]
     entities:
       - id: base
-        kind: line_segment
+        kind: line
       - id: height
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_horiz
         kind: horizontal
@@ -297,9 +297,9 @@ features:
       line_b: [1.0, 0.5, 4.0, 6.5]
     entities:
       - id: line_a
-        kind: line_segment
+        kind: line
       - id: line_b
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_origin
         kind: coincident
@@ -361,13 +361,13 @@ features:
       left:   [0.5, 4.0, 0.3, 0.5]
     entities:
       - id: bottom
-        kind: line_segment
+        kind: line
       - id: right
-        kind: line_segment
+        kind: line
       - id: top
-        kind: line_segment
+        kind: line
       - id: left
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_join_br
         kind: coincident
@@ -453,11 +453,11 @@ features:
       c: [3.5, 4.5, 0.3, 0.5]
     entities:
       - id: a
-        kind: line_segment
+        kind: line
       - id: b
-        kind: line_segment
+        kind: line
       - id: c
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_join_ab
         kind: coincident
@@ -532,15 +532,15 @@ features:
       e4: [-0.8, 3.5, 0.3, 0.3]
     entities:
       - id: e0
-        kind: line_segment
+        kind: line
       - id: e1
-        kind: line_segment
+        kind: line
       - id: e2
-        kind: line_segment
+        kind: line
       - id: e3
-        kind: line_segment
+        kind: line
       - id: e4
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_join_01
         kind: coincident
@@ -677,7 +677,7 @@ features:
       arc1:  [5.5, 0.5, 2.8, 175, 260]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
       - id: arc1
         kind: arc
     constraints:
@@ -726,7 +726,7 @@ features:
       circ:  [8.0, 0.5, 2.5]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
       - id: circ
         kind: circle
     constraints:
@@ -785,9 +785,9 @@ features:
       - id: arc_r
         kind: arc
       - id: top_line
-        kind: line_segment
+        kind: line
       - id: bot_line
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_r_l
         kind: radius
@@ -877,9 +877,9 @@ features:
       - id: arc_r
         kind: arc
       - id: top_line
-        kind: line_segment
+        kind: line
       - id: bot_line
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_r_l
         kind: radius
@@ -974,9 +974,9 @@ features:
       - id: arc_3
         kind: arc
       - id: seg_12
-        kind: line_segment
+        kind: line
       - id: seg_23
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_r1
         kind: radius
@@ -1079,13 +1079,13 @@ features:
       s4: [7.9, 0.3, 10.2, 0.1]
     entities:
       - id: s1
-        kind: line_segment
+        kind: line
       - id: s2
-        kind: line_segment
+        kind: line
       - id: s3
-        kind: line_segment
+        kind: line
       - id: s4
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_horiz
         kind: horizontal
@@ -1160,13 +1160,13 @@ features:
       s4: [7.9, 0.3, 10.2, 0.1]
     entities:
       - id: s1
-        kind: line_segment
+        kind: line
       - id: s2
-        kind: line_segment
+        kind: line
       - id: s3
-        kind: line_segment
+        kind: line
       - id: s4
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_horiz
         kind: horizontal
@@ -1242,13 +1242,13 @@ features:
       s4: [7.9, 0.3, 10.2, 0.1]
     entities:
       - id: s1
-        kind: line_segment
+        kind: line
       - id: s2
-        kind: line_segment
+        kind: line
       - id: s3
-        kind: line_segment
+        kind: line
       - id: s4
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_horiz
         kind: horizontal
@@ -1325,7 +1325,7 @@ features:
       line1: [0.0, 1.5, 8.5, 3.5]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_horiz
         kind: horizontal
@@ -1355,7 +1355,7 @@ features:
       line1: [1.0, 2.0, 5.0, 6.0]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints: []
 """
     result = solve(yaml_str)["result"]["sketch_1"]
@@ -1378,7 +1378,7 @@ features:
       line1: [0.0, 1.5, 8.5, 3.5]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_horiz
         kind: horizontal
@@ -1416,7 +1416,7 @@ features:
       circ:  [2.5, 1.5, 1.1]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
       - id: circ
         kind: circle
     constraints:
@@ -1464,7 +1464,7 @@ features:
       - id: arc1
         kind: arc
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_r
         kind: radius
@@ -1523,7 +1523,7 @@ features:
       - id: arc1
         kind: arc
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_r
         kind: radius
@@ -1578,7 +1578,7 @@ features:
       - id: circ
         kind: circle
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_circ
         kind: fixed
@@ -1639,7 +1639,7 @@ features:
       - id: circ
         kind: circle
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_circ
         kind: fixed
@@ -1696,7 +1696,7 @@ features:
       - id: circ
         kind: circle
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_circ
         kind: fixed
@@ -1746,7 +1746,7 @@ features:
       - id: circ
         kind: circle
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_circ
         kind: fixed
@@ -1798,9 +1798,9 @@ features:
       height: [7.5, 0.5, 5.5, 5.5]
     entities:
       - id: base
-        kind: line_segment
+        kind: line
       - id: height
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_horiz
         kind: horizontal
@@ -1900,7 +1900,7 @@ features:
       line1: [0.2, 0.2, 4.8, 0.3]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix
         kind: fixed
@@ -1947,7 +1947,7 @@ features:
       pt:    [2.1, 0.3]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
       - id: pt
         kind: point
     constraints:
@@ -2108,9 +2108,9 @@ features:
       pt_mid: [9.0, 9.0]
     entities:
       - id: line_a
-        kind: line_segment
+        kind: line
       - id: line_b
-        kind: line_segment
+        kind: line
       - id: pt_mid
         kind: point
     constraints:
@@ -2163,13 +2163,13 @@ features:
       center: [3.1, 2.1]
     entities:
       - id: top
-        kind: line_segment
+        kind: line
       - id: right
-        kind: line_segment
+        kind: line
       - id: bottom
-        kind: line_segment
+        kind: line
       - id: left
-        kind: line_segment
+        kind: line
       - id: center
         kind: point
     constraints:
@@ -2311,9 +2311,9 @@ features:
       line_b: [0.0, 5.0, 10.0, 8.0]
     entities:
       - id: line_a
-        kind: line_segment
+        kind: line
       - id: line_b
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_a_horiz
         kind: horizontal
@@ -2377,9 +2377,9 @@ features:
       construction_pt: [7.5, 7.5]
     entities:
       - id: main_line
-        kind: line_segment
+        kind: line
       - id: construction_line
-        kind: line_segment
+        kind: line
         construction: true
       - id: construction_circle
         kind: circle
@@ -2469,18 +2469,18 @@ features:
       center:       [5.0, 5.0]
     entities:
       - id: side_bottom
-        kind: line_segment
+        kind: line
       - id: side_right
-        kind: line_segment
+        kind: line
       - id: side_top
-        kind: line_segment
+        kind: line
       - id: side_left
-        kind: line_segment
+        kind: line
       - id: diag_br_tl
-        kind: line_segment
+        kind: line
         construction: true
       - id: diag_bl_tr
-        kind: line_segment
+        kind: line
         construction: true
       - id: center
         kind: point
@@ -2640,11 +2640,11 @@ features:
       - id: pt_c
         kind: point
       - id: line_ab
-        kind: line_segment
+        kind: line
       - id: line_bc
-        kind: line_segment
+        kind: line
       - id: line_ac
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_circle_center
         kind: fixed
@@ -2774,11 +2774,11 @@ features:
       - id: pt_c
         kind: point
       - id: leg_ab
-        kind: line_segment
+        kind: line
       - id: leg_bc
-        kind: line_segment
+        kind: line
       - id: hyp_ca
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_pt_a_fixed
         kind: fixed
@@ -2897,11 +2897,11 @@ features:
       - id: pt_c
         kind: point
       - id: side_ab
-        kind: line_segment
+        kind: line
       - id: side_bc
-        kind: line_segment
+        kind: line
       - id: side_ca
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_pt_a_fixed
         kind: fixed
@@ -3010,9 +3010,9 @@ features:
       - id: pt_d
         kind: point
       - id: line_ab
-        kind: line_segment
+        kind: line
       - id: line_cd
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_pt_center_fixed
         kind: fixed
@@ -3117,11 +3117,11 @@ features:
       - id: pt_f
         kind: point
       - id: line_ab
-        kind: line_segment
+        kind: line
       - id: line_cd
-        kind: line_segment
+        kind: line
       - id: transversal
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_pt_a_fixed
         kind: fixed
@@ -3248,13 +3248,13 @@ features:
       - id: pt_d
         kind: point
       - id: side_ab
-        kind: line_segment
+        kind: line
       - id: side_bc
-        kind: line_segment
+        kind: line
       - id: side_ca
-        kind: line_segment
+        kind: line
       - id: ext_bd
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_pt_a_fixed
         kind: fixed
@@ -3376,13 +3376,13 @@ features:
       - id: br
         kind: point
       - id: top_line
-        kind: line_segment
+        kind: line
       - id: bottom_line
-        kind: line_segment
+        kind: line
       - id: diag_left
-        kind: line_segment
+        kind: line
       - id: diag_right
-        kind: line_segment
+        kind: line
     constraints:
       # Top line: tl to tr
       - id: c_top_start
@@ -3656,7 +3656,7 @@ features:
       line1: [-0.838727, 0.849922, -0.071016, 1.154386]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fixed_1
         kind: fixed
@@ -3688,7 +3688,7 @@ features:
       line1: [-0.838727, 0.849922, -0.071016, 1.154386]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fixed_1
         kind: fixed
@@ -3762,9 +3762,9 @@ features:
       line_b: [0.0, 0.8, 4.0, 0.8]
     entities:
       - id: line_a
-        kind: line_segment
+        kind: line
       - id: line_b
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_horiz_a
         kind: horizontal
@@ -3815,7 +3815,7 @@ features:
       line3: [0.0, 0.0, 4.0, 0.0]
     entities:
       - id: line3
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_line_distance_8
         kind: line_distance
@@ -3933,7 +3933,7 @@ features:
       pt:    [3.0, 5.5]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
       - id: pt
         kind: point
     constraints:
@@ -4070,9 +4070,9 @@ features:
       line_b: [3.2, 0.3, 6.0, 0.0]
     entities:
       - id: line_a
-        kind: line_segment
+        kind: line
       - id: line_b
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_start
         kind: fixed
@@ -4129,9 +4129,9 @@ features:
       line_b: [1.0, 1.5, 5.0, 1.2]
     entities:
       - id: line_a
-        kind: line_segment
+        kind: line
       - id: line_b
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_a_start
         kind: fixed
@@ -4209,7 +4209,7 @@ features:
       - id: circle1
         kind: circle
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fixed_5
         kind: fixed
@@ -4364,9 +4364,9 @@ features:
       arm:  [2.0, 4.5, 6.0, 4.5]
     entities:
       - id: base
-        kind: line_segment
+        kind: line
       - id: arm
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_base
         kind: fixed
@@ -4614,7 +4614,7 @@ features:
       line1: [1.0, 2.0, 5.0, 2.0]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix
         kind: fixed
@@ -4656,7 +4656,7 @@ features:
       - id: arc1
         kind: arc
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_arc
         kind: fixed
@@ -4742,7 +4742,7 @@ features:
       - id: arc1
         kind: arc
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_arc
         kind: fixed
@@ -4795,7 +4795,7 @@ features:
       line1: [0.2, 0.3, 9.8, 0.5]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_horiz
         kind: horizontal
@@ -4834,7 +4834,7 @@ features:
       circ:  [7.0, 0.0, 2.0]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
       - id: circ
         kind: circle
     constraints:
@@ -4886,7 +4886,7 @@ features:
       line1: [0.0, 0.0, 5.0, 0.0]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_horiz
         kind: horizontal
@@ -4987,7 +4987,7 @@ features:
       - id: arc1
         kind: arc
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fixed_4
         kind: fixed
@@ -5015,7 +5015,7 @@ features:
       line1: [0, 0, 5, 0]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_h1
         kind: horizontal
@@ -5051,7 +5051,7 @@ features:
       line1: [0, 0, 3, 0]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fixed_start
         kind: fixed
@@ -5095,13 +5095,13 @@ features:
       lD: [0, 3, 0, 0]
     entities:
       - id: lA
-        kind: line_segment
+        kind: line
       - id: lB
-        kind: line_segment
+        kind: line
       - id: lC
-        kind: line_segment
+        kind: line
       - id: lD
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_coin_ab
         kind: coincident
@@ -5202,9 +5202,9 @@ features:
       line_b: [3.0, 0.0, 5.0, 2.0]
     entities:
       - id: line_a
-        kind: line_segment
+        kind: line
       - id: line_b
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_origin
         kind: fixed
@@ -5265,9 +5265,9 @@ features:
       line_b: [5.0, 2.0, 3.0, 0.0]
     entities:
       - id: line_a
-        kind: line_segment
+        kind: line
       - id: line_b
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_origin
         kind: fixed
@@ -5326,9 +5326,9 @@ features:
       line_b: [3.0, 0.0, 5.0, 2.0]
     entities:
       - id: line_a
-        kind: line_segment
+        kind: line
       - id: line_b
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_vertex
         kind: fixed
@@ -5385,9 +5385,9 @@ features:
       line_b: [5.0, 2.0, 3.0, 0.0]
     entities:
       - id: line_a
-        kind: line_segment
+        kind: line
       - id: line_b
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_fix_vertex
         kind: fixed

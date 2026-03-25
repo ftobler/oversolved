@@ -116,23 +116,23 @@ describe('sketchEditorStore', () => {
   })
 
   describe('handleDimClick', () => {
-    it('line_segment: single click goes pending (waiting for second click)', () => {
+    it('line: single click goes pending (waiting for second click)', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
 
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line_segment')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
 
       expect(handler).not.toHaveBeenCalled()
       expect(useSketchEditorStore.getState().pendingDimTarget).toBe('entity:S1:L1')
-      expect(useSketchEditorStore.getState().pendingDimEntityKind).toBe('line_segment')
+      expect(useSketchEditorStore.getState().pendingDimEntityKind).toBe('line')
     })
 
-    it('line_segment: clicking same line twice creates length constraint', () => {
+    it('line: clicking same line twice creates length constraint', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
 
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line_segment')
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line_segment')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
       confirmDialog('10')
 
       expect(handler).toHaveBeenCalledOnce()
@@ -181,12 +181,12 @@ describe('sketchEditorStore', () => {
       })
     })
 
-    it('line_segment: no constraint when dialog is not confirmed', () => {
+    it('line: no constraint when dialog is not confirmed', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
 
       // First click → pending, no dialog
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line_segment')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
       expect(handler).not.toHaveBeenCalled()
     })
 
@@ -210,12 +210,12 @@ describe('sketchEditorStore', () => {
       })
     })
 
-    it('two different line_segment clicks create angle constraint', () => {
+    it('two different line clicks create angle constraint', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
 
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line_segment')
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L2', 'S1', 'entity', POS, 'line_segment')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L2', 'S1', 'entity', POS, 'line')
       confirmDialog('45')
 
       expect(handler).toHaveBeenCalledOnce()

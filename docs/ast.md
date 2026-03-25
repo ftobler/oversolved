@@ -65,11 +65,11 @@ features:
       - <id:line_hyp>:    [17.32, 10.0, 0.0, 0.0 ]
     entities:
       - id: <id:line_base>
-        kind: line_segment
+        kind: line
       - id: <id:line_height>
-        kind: line_segment
+        kind: line
       - id: <id:line_hyp>
-        kind: line_segment
+        kind: line
     constraints:
       - id: <id:c_origin>
         kind: coincident
@@ -133,11 +133,11 @@ features:
     # list of primitives on the sketch
     entities:
       - id: line_base
-        kind: line_segment
+        kind: line
       - id: line_height
-        kind: line_segment
+        kind: line
       - id: line_hyp
-        kind: line_segment
+        kind: line
 
     # lits of constraints on the sketch
     constraints:
@@ -176,7 +176,7 @@ result["sketch_1"]["line_height"]["start"] # (x, y)
 
 | kind         | initial parameters              | geometry output fields                                          |
 |--------------|---------------------------------|-----------------------------------------------------------------|
-| line_segment | [x1, y1, x2, y2]               | start: (x,y), end: (x,y)                                       |
+| line | [x1, y1, x2, y2]               | start: (x,y), end: (x,y)                                       |
 | circle       | [cx, cy, r]                    | center: (x,y), radius: float                                    |
 | arc          | [cx, cy, r, a_start, a_end]    | center: (x,y), radius: float, angle_start: deg, angle_end: deg, start: (x,y), end: (x,y) |
 | point        | [x, y]                         | x: float, y: float                                              |
@@ -188,7 +188,7 @@ Valid `point` references per entity kind:
 
 | kind         | valid point values            |
 |--------------|-------------------------------|
-| line_segment | `start` (default), `end`      |
+| line | `start` (default), `end`      |
 | circle       | `center` (only option)        |
 | arc          | `start` (default), `end`      |
 | point        | (no point key needed)         |

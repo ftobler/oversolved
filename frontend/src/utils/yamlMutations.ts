@@ -243,7 +243,7 @@ export function applyAddRect(
     [lD, [x0, y1, x0, y0]],
   ]
   for (const [eid, params] of lines) {
-    feature.entities.push({ id: eid, kind: 'line_segment' })
+    feature.entities.push({ id: eid, kind: 'line' })
     feature.initial[eid] = params.map(round)
   }
 

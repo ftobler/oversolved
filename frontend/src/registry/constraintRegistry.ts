@@ -292,7 +292,7 @@ export interface DimensionRule {
   trigger:
     | { type: 'single_entity'; entityKind: string }
     | { type: 'two_vertices' }
-    | { type: 'two_line_segments' }
+    | { type: 'two_lines' }
     | { type: 'two_entities' }
     | { type: 'mixed' }
 
@@ -305,7 +305,7 @@ export interface DimensionRule {
 
 export const DIMENSION_RULES: readonly DimensionRule[] = [
   {
-    trigger: { type: 'single_entity', entityKind: 'line_segment' },
+    trigger: { type: 'single_entity', entityKind: 'line' },
     constraintKind: 'length',
     description: 'Click a line segment twice (same line) to set its length.',
   },
@@ -325,7 +325,7 @@ export const DIMENSION_RULES: readonly DimensionRule[] = [
     description: 'Click two points to set the distance between them.',
   },
   {
-    trigger: { type: 'two_line_segments' },
+    trigger: { type: 'two_lines' },
     constraintKind: 'angle',
     description: 'Click two line segments to set the angle between them.',
   },
@@ -396,8 +396,8 @@ export function resolveTwoTargetDimension(
     return DIMENSION_RULES.find(r => r.trigger.type === 'two_vertices')!.constraintKind
   }
   if (!firstIsVertex && !secondIsVertex) {
-    if (firstEntityKind === 'line_segment' && secondEntityKind === 'line_segment') {
-      return DIMENSION_RULES.find(r => r.trigger.type === 'two_line_segments')!.constraintKind
+    if (firstEntityKind === 'line' && secondEntityKind === 'line') {
+      return DIMENSION_RULES.find(r => r.trigger.type === 'two_lines')!.constraintKind
     }
     return DIMENSION_RULES.find(r => r.trigger.type === 'two_entities')!.constraintKind
   }

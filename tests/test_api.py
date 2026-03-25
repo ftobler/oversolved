@@ -293,7 +293,7 @@ features:
       line1: [0.0, 0.0, 1.0, 0.0]
     entities:
       - id: line1
-        kind: line_segment
+        kind: line
     constraints:
       - id: c_horiz
         kind: horizontal

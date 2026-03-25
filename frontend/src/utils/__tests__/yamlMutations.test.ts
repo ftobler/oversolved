@@ -15,7 +15,7 @@ const makeSampleDoc = (): PartDoc => ({
         pt1: [1, 2],
       },
       entities: [
-        { id: 'line1', kind: 'line_segment' },
+        { id: 'line1', kind: 'line' },
         { id: 'circ1', kind: 'circle' },
         { id: 'pt1', kind: 'point' },
       ],
@@ -28,13 +28,13 @@ const makeSampleDoc = (): PartDoc => ({
 })
 
 describe('applyMoveVertex', () => {
-  it('moves line_segment start', () => {
+  it('moves line start', () => {
     const doc = makeSampleDoc()
     applyMoveVertex(doc, 'Sketch1', 'line1', 'start', [2, 3])
     expect(doc.features![0].initial!.line1).toEqual([2, 3, 10, 0])
   })
 
-  it('moves line_segment end', () => {
+  it('moves line end', () => {
     const doc = makeSampleDoc()
     applyMoveVertex(doc, 'Sketch1', 'line1', 'end', [15, 5])
     expect(doc.features![0].initial!.line1).toEqual([0, 0, 15, 5])

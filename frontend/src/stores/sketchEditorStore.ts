@@ -141,8 +141,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const { pendingDimTarget, pendingDimEntityKind, onMutation } = get()
     const openDialog = get().openDialog
     if (!pendingDimTarget) {
-      // Single-entity dimension — immediately create for arc/circle, go pending for line_segment
-      if (kind === 'entity' && entityKind !== 'line_segment') {
+      // Single-entity dimension — immediately create for arc/circle, go pending for line
+      if (kind === 'entity' && entityKind !== 'line') {
         const dimKind = entityKind ? resolveSingleEntityDimension(entityKind) : null
         if (dimKind) {
           openDialog({
@@ -158,7 +158,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
           return
         }
       }
-      // First click: store pending (line_segment goes pending for potential angle with second line)
+      // First click: store pending (line goes pending for potential angle with second line)
       set({ pendingDimTarget: target, pendingDimEntityKind: entityKind ?? null })
     } else {
       // Second click — resolve constraint kind from target pair
@@ -167,7 +167,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       set({ pendingDimTarget: null, pendingDimEntityKind: null })
 
       if (first === target && firstEntityKind) {
-        // Same entity clicked twice: create single-entity dimension (e.g. length for line_segment)
+        // Same entity clicked twice: create single-entity dimension (e.g. length for line)
         const singleKind = resolveSingleEntityDimension(firstEntityKind)
         if (!singleKind) return
         openDialog({

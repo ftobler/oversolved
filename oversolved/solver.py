@@ -9,7 +9,7 @@ from oversolved.query import Repository
 
 
 ENTITY_SIZES = {
-    "line_segment": 4,  # x1, y1, x2, y2
+    "line": 4,  # x1, y1, x2, y2
     "circle": 3,  # cx, cy, r
     "arc": 5,  # cx, cy, r, a_start_deg, a_end_deg
     "point": 2,  # x, y
@@ -82,7 +82,7 @@ def _geometry_from_array(
         ep = x[off:off + ENTITY_SIZES[entity["kind"]]]
         kind = entity["kind"]
         is_construction = entity.get("construction", False)
-        if kind == "line_segment":
+        if kind == "line":
             out[eid] = {
                 "start": [float(ep[0]), float(ep[1])],
                 "end": [float(ep[2]), float(ep[3])],
@@ -150,7 +150,7 @@ def _geom_point(geom: dict, ref: dict) -> list:
     pt = ref.get("point", "start")
     if "start" in e and "end" in e and "radius" in e:   # arc
         return e["start"] if pt != "end" else e["end"]
-    elif "start" in e:                                   # line_segment
+    elif "start" in e:                                   # line
         return e["end"] if pt == "end" else e["start"]
     elif "center" in e:                                  # circle
         return list(e["center"])
@@ -455,7 +455,7 @@ def _solve_sketch(feature: dict) -> dict:
     for eid, entity in entities.items():
         kind = entity["kind"]
         repo.register(feature_id + eid, {"entity": eid})
-        if kind == "line_segment":
+        if kind == "line":
             repo.register(feature_id + eid + "start", {"entity": eid, "point": "start"})
             repo.register(feature_id + eid + "end",   {"entity": eid, "point": "end"})
         elif kind == "circle":
@@ -546,7 +546,7 @@ def _solve_sketch(feature: dict) -> dict:
         ep = get_params(x, eid)
         kind = entities[eid]["kind"]
         point = ref.get("point", "start")
-        if kind == "line_segment":
+        if kind == "line":
             return ep[2:4] if point == "end" else ep[0:2]
         elif kind == "circle":
             return ep[0:2]
@@ -621,7 +621,7 @@ def _solve_sketch(feature: dict) -> dict:
                 a_kind = entities[a_eid]["kind"]
                 b_kind = entities[b_eid]["kind"]
                 if ("point" not in c["a"] and "point" not in c["b"]
-                        and a_kind == "line_segment" and b_kind == "line_segment"):
+                        and a_kind == "line" and b_kind == "line"):
                     # line-to-line collinear: both lines lie on the same infinite line
                     ea = get_params(x, a_eid)
                     eb = get_params(x, b_eid)
@@ -631,7 +631,7 @@ def _solve_sketch(feature: dict) -> dict:
                     n = np.sqrt(da[0]**2 + da[1]**2)
                     nx, ny = (-da[1] / n, da[0] / n) if n > 0 else (0.0, 1.0)
                     r.append((eb[0] - ea[0]) * nx + (eb[1] - ea[1]) * ny)
-                elif "point" not in c["b"] and b_kind == "line_segment":
+                elif "point" not in c["b"] and b_kind == "line":
                     # point on line: perpendicular distance = 0
                     pa = get_point(x, c["a"])
                     ep_b = get_params(x, b_eid)
@@ -655,15 +655,15 @@ def _solve_sketch(feature: dict) -> dict:
                 eb_id = c["b"]["entity"]
                 ea_kind = entities[ea_id]["kind"]
                 eb_kind = entities[eb_id]["kind"]
-                if ea_kind == "line_segment" and eb_kind == "line_segment":
+                if ea_kind == "line" and eb_kind == "line":
                     ea = get_params(x, ea_id)
                     eb = get_params(x, eb_id)
                     da = ea[2:4] - ea[0:2]
                     db = eb[2:4] - eb[0:2]
                     r.append(np.dot(da, db))
                 else:
-                    line_ref = c["a"] if ea_kind == "line_segment" else c["b"]
-                    arc_ref = c["b"] if ea_kind == "line_segment" else c["a"]
+                    line_ref = c["a"] if ea_kind == "line" else c["b"]
+                    arc_ref = c["b"] if ea_kind == "line" else c["a"]
                     line_ep = get_params(x, line_ref["entity"])
                     # Unnormalized: same zeros, avoids 1/|d| blowup for short lines
                     line_dir = line_ep[2:4] - line_ep[0:2]
@@ -690,7 +690,7 @@ def _solve_sketch(feature: dict) -> dict:
                     line_ref, arc_ref = c["line"], c["arc"]
                 else:
                     ea_id, eb_id = c["a"]["entity"], c["b"]["entity"]
-                    if entities[ea_id]["kind"] == "line_segment":
+                    if entities[ea_id]["kind"] == "line":
                         line_ref, arc_ref = c["a"], c["b"]
                     else:
                         line_ref, arc_ref = c["b"], c["a"]

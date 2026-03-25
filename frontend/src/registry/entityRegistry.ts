@@ -66,7 +66,7 @@ export interface EntityDef {
 
 export const ENTITIES: readonly EntityDef[] = [
   {
-    kind: 'line_segment',
+    kind: 'line',
     label: 'Line',
     description: 'A straight line segment defined by two endpoints.',
     paramCount: 4,

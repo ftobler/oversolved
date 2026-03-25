@@ -90,7 +90,7 @@ describe('dimension rules', () => {
   })
 
   it('resolveSingleEntityDimension maps known entity kinds', () => {
-    expect(resolveSingleEntityDimension('line_segment')).toBe('length')
+    expect(resolveSingleEntityDimension('line')).toBe('length')
     expect(resolveSingleEntityDimension('arc')).toBe('radius')
     expect(resolveSingleEntityDimension('circle')).toBe('diameter')
   })
@@ -163,7 +163,7 @@ describe('entityRegistry', () => {
   })
 
   it('getDefaultParams returns correct defaults', () => {
-    expect(getDefaultParams('line_segment')).toEqual([0, 0, 0, 0])
+    expect(getDefaultParams('line')).toEqual([0, 0, 0, 0])
     expect(getDefaultParams('circle')).toEqual([0, 0, 0])
     expect(getDefaultParams('arc')).toEqual([0, 0, 0, 0, 0])
     expect(getDefaultParams('point')).toEqual([0, 0])
