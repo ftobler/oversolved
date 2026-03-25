@@ -1311,7 +1311,7 @@ features:
 # ---------------------------------------------------------------------------
 
 def test_status_fully_constrained(sketch_log):
-    """A horizontal line with fixed length is fully constrained."""
+    """A horizontal line with fixed length and a fixed point is fully constrained."""
     yaml_str = """
 version: 1
 kind: part
@@ -1322,11 +1322,16 @@ features:
     plane: "@builtin_plane_front"
     label: "Fully Constrained"
     initial:
-      line1: [0.0, 1.5, 8.5, 3.5]
+      line1: [0.0, 0.0, 10.0, 0.0]
     entities:
       - id: line1
         kind: line
     constraints:
+      - id: c_fix
+        kind: fixed
+        target: {entity: line1, point: start}
+        x: 0.0
+        y: 0.0
       - id: c_horiz
         kind: horizontal
         target: {entity: line1}
@@ -3449,6 +3454,11 @@ features:
         kind: length
         target: {entity: diag_left}
         value: 2.828
+      # Rotation fix
+      - id: c_rot_fix
+        kind: vertical
+        a: {entity: tl}
+        b: {entity: bl}
 """
     result = solve(yaml_str)["result"]["sketch_1"]
     sketch_log("test_hourglass_shape", yaml_str, result)
@@ -3518,6 +3528,11 @@ features:
         a: {entity: c1}
         b: {entity: c2}
         value: 0.8
+      # Orientation fix
+      - id: c_orientation
+        kind: horizontal
+        a: {entity: c1}
+        b: {entity: c2}
 """
     result = solve(yaml_str)["result"]["sketch_1"]
     sketch_log("test_venn_diagram_two_circles", yaml_str, result)
@@ -3550,53 +3565,69 @@ features:
     assert result["status"] == "fully_constrained"
 
 
+import textwrap
+
+
 def test_circle_arc_horizontal_constraint(sketch_log):
     """Circle and arc fully constrained via horizontal, two verticals, and two radius constraints."""
-    yaml_str = """version: 1
-kind: part
+    yaml_str = textwrap.dedent("""
+        version: 1
+        kind: part
 
-features:
-  - id: sketch_1
-    kind: sketch
-    plane: "@builtin_plane_front"
-    entities: [ { id: circle1, kind: circle }, { id: arc1, kind: arc } ]
-    constraints:
-      - id: c_horizontal_1
-        kind: horizontal
-        a: { entity: circle1, point: center }
-        b: { entity: arc1, point: end }
-      - id: c_radius_circle
-        kind: radius
-        target: { entity: circle1 }
-        value: 0.5
-      - id: c_radius_arc
-        kind: radius
-        target: { entity: arc1 }
-        value: 0.8
-      - id: c_vertical_1
-        kind: vertical
-        a: { entity: circle1, point: center }
-        b: { entity: arc1, point: start }
-      - id: c_vertical_2
-        kind: vertical
-        a: { entity: circle1, point: center }
-        b: { entity: arc1, point: end }
-    initial:
-      circle1:
-        - -0.010286
-        - 0.63888
-        - 0.451166
-      arc1:
-        - -0.182578
-        - 0.13224
-        - 1.101525
-        - 49.373795
-        - 147.230997
-"""
+        features:
+          - id: sketch_1
+            kind: sketch
+            plane: "@builtin_plane_front"
+            entities: [ { id: circle1, kind: circle }, { id: arc1, kind: arc } ]
+            constraints:
+              - id: c_horizontal_1
+                kind: horizontal
+                a: { entity: circle1, point: center }
+                b: { entity: arc1, point: end }
+              - id: c_radius_circle
+                kind: radius
+                target: { entity: circle1 }
+                value: 0.5
+              - id: c_radius_arc
+                kind: radius
+                target: { entity: arc1 }
+                value: 0.8
+              - id: c_vertical_1
+                kind: vertical
+                a: { entity: circle1, point: center }
+                b: { entity: arc1, point: start }
+              - id: c_vertical_2
+                kind: vertical
+                a: { entity: circle1, point: center }
+                b: { entity: arc1, point: end }
+              - id: c_fix_circle
+                kind: fixed
+                target: { entity: circle1, point: center }
+                x: 0.0
+                y: 0.0
+              - id: c_fix_arc
+                kind: fixed
+                target: { entity: arc1, point: center }
+                x: 0.0
+                y: 0.8
+            initial:
+              circle1:
+                - -0.010286
+                - 0.63888
+                - 0.451166
+              arc1:
+                - -0.182578
+                - 0.13224
+                - 1.101525
+                - 49.373795
+                - 147.230997
+    """).strip()
+
     result = solve(yaml_str)["result"]["sketch_1"]
     sketch_log("test_circle_arc_horizontal_constraint", yaml_str, result)
     doc = yaml_module.safe_load(yaml_str)
     geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+
     circle1 = geom["circle1"]
     arc1 = geom["arc1"]
 
