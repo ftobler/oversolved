@@ -41,7 +41,8 @@ interface SketchEditorState {
   activeTool: ActiveTool
   drawPoints: [number, number][]
   drawHover: [number, number] | null
-  pendingDimTarget: string | null  // first click target when doing two-target dimension
+  pendingDimTarget: string | null       // first click target when doing two-target dimension
+  pendingDimEntityKind: string | null   // entity kind of the first click target
 
   // --- actions ---
   toggleSelect: (id: string) => void
@@ -70,6 +71,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   drawPoints: [],
   drawHover: null,
   pendingDimTarget: null,
+  pendingDimEntityKind: null,
 
   toggleSelect: (id) =>
     set(s => {
@@ -121,10 +123,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   clearDraw: () => set({ drawPoints: [], drawHover: null }),
 
   handleDimensionClick: (target, featureId, kind, entityKind) => {
-    const { pendingDimTarget, onMutation } = get()
+    const { pendingDimTarget, pendingDimEntityKind, onMutation } = get()
     if (!pendingDimTarget) {
-      // Single-entity dimension — registry resolves entity kind to constraint kind
-      if (kind === 'entity') {
+      // Single-entity dimension — immediately create for arc/circle, go pending for line_segment
+      if (kind === 'entity' && entityKind !== 'line_segment') {
         const dimKind = entityKind ? resolveSingleEntityDimension(entityKind) : null
         if (dimKind) {
           const input = window.prompt('Enter dimension value:')
@@ -132,19 +134,38 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
           const val = parseFloat(input)
           if (isNaN(val) || val <= 0) return
           onMutation?.({ type: 'add_constraint', featureId, kind: dimKind, targets: [target], value: val })
-          set({ activeTool: 'select', pendingDimTarget: null })
+          set({ activeTool: 'select', pendingDimTarget: null, pendingDimEntityKind: null })
           return
         }
       }
-      // First click: store pending for two-target dimension
-      set({ pendingDimTarget: target })
+      // First click: store pending (line_segment goes pending for potential angle with second line)
+      set({ pendingDimTarget: target, pendingDimEntityKind: entityKind ?? null })
     } else {
-      // Second click — registry resolves target pair to constraint kind
+      // Second click — resolve constraint kind from target pair
       const first = pendingDimTarget
-      set({ pendingDimTarget: null })
-      const dimKind = resolveTwoTargetDimension(
+      const firstEntityKind = pendingDimEntityKind
+      set({ pendingDimTarget: null, pendingDimEntityKind: null })
+
+      let dimKind: string
+      if (first === target && firstEntityKind) {
+        // Same entity clicked twice: create single-entity dimension (e.g. length for line_segment)
+        const singleKind = resolveSingleEntityDimension(firstEntityKind)
+        if (!singleKind) return
+        dimKind = singleKind
+        const input = window.prompt('Enter dimension value:')
+        if (input === null) return
+        const val = parseFloat(input)
+        if (isNaN(val) || val <= 0) return
+        onMutation?.({ type: 'add_constraint', featureId, kind: dimKind, targets: [target], value: val })
+        set({ activeTool: 'select' })
+        return
+      }
+
+      dimKind = resolveTwoTargetDimension(
         first.startsWith('vertex:'),
         target.startsWith('vertex:'),
+        firstEntityKind ?? undefined,
+        entityKind,
       )
       const input = window.prompt('Enter dimension value:')
       if (input === null) return

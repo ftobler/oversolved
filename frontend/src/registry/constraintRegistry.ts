@@ -292,6 +292,7 @@ export interface DimensionRule {
   trigger:
     | { type: 'single_entity'; entityKind: string }
     | { type: 'two_vertices' }
+    | { type: 'two_line_segments' }
     | { type: 'two_entities' }
     | { type: 'mixed' }
 
@@ -306,7 +307,7 @@ export const DIMENSION_RULES: readonly DimensionRule[] = [
   {
     trigger: { type: 'single_entity', entityKind: 'line_segment' },
     constraintKind: 'length',
-    description: 'Click a line segment to set its length.',
+    description: 'Click a line segment twice (same line) to set its length.',
   },
   {
     trigger: { type: 'single_entity', entityKind: 'arc' },
@@ -322,6 +323,11 @@ export const DIMENSION_RULES: readonly DimensionRule[] = [
     trigger: { type: 'two_vertices' },
     constraintKind: 'point_distance',
     description: 'Click two points to set the distance between them.',
+  },
+  {
+    trigger: { type: 'two_line_segments' },
+    constraintKind: 'angle',
+    description: 'Click two line segments to set the angle between them.',
   },
   {
     trigger: { type: 'two_entities' },
@@ -375,14 +381,24 @@ export function resolveSingleEntityDimension(entityKind: string): string | null 
 
 /**
  * Resolve the dimension constraint kind for a two-target click.
- * @param firstIsVertex  Whether the first click was on a vertex.
- * @param secondIsVertex Whether the second click was on a vertex.
+ * @param firstIsVertex    Whether the first click was on a vertex.
+ * @param secondIsVertex   Whether the second click was on a vertex.
+ * @param firstEntityKind  Entity kind of the first click (if entity).
+ * @param secondEntityKind Entity kind of the second click (if entity).
  */
-export function resolveTwoTargetDimension(firstIsVertex: boolean, secondIsVertex: boolean): string {
+export function resolveTwoTargetDimension(
+  firstIsVertex: boolean,
+  secondIsVertex: boolean,
+  firstEntityKind?: string,
+  secondEntityKind?: string,
+): string {
   if (firstIsVertex && secondIsVertex) {
     return DIMENSION_RULES.find(r => r.trigger.type === 'two_vertices')!.constraintKind
   }
   if (!firstIsVertex && !secondIsVertex) {
+    if (firstEntityKind === 'line_segment' && secondEntityKind === 'line_segment') {
+      return DIMENSION_RULES.find(r => r.trigger.type === 'two_line_segments')!.constraintKind
+    }
     return DIMENSION_RULES.find(r => r.trigger.type === 'two_entities')!.constraintKind
   }
   return DIMENSION_RULES.find(r => r.trigger.type === 'mixed')!.constraintKind

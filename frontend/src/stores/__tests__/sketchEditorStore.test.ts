@@ -9,6 +9,7 @@ function reset() {
     onMutation: null,
     activeTool: 'dimension',
     pendingDimTarget: null,
+    pendingDimEntityKind: null,
   })
 }
 
@@ -104,11 +105,23 @@ describe('sketchEditorStore', () => {
   })
 
   describe('handleDimClick', () => {
-    it('line_segment: single click creates length constraint immediately', () => {
+    it('line_segment: single click goes pending (waiting for second click)', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', 'line_segment')
+
+      expect(handler).not.toHaveBeenCalled()
+      expect(useSketchEditorStore.getState().pendingDimTarget).toBe('entity:S1:L1')
+      expect(useSketchEditorStore.getState().pendingDimEntityKind).toBe('line_segment')
+    })
+
+    it('line_segment: clicking same line twice creates length constraint', () => {
       const handler = vi.fn()
       vi.spyOn(window, 'prompt').mockReturnValueOnce('10')
       useSketchEditorStore.getState().setOnMutation(handler)
 
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', 'line_segment')
       useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', 'line_segment')
 
       expect(handler).toHaveBeenCalledOnce()
@@ -186,27 +199,43 @@ describe('sketchEditorStore', () => {
       })
     })
 
-    it('two entity clicks create line_distance constraint', () => {
+    it('two different line_segment clicks create angle constraint', () => {
       const handler = vi.fn()
-      vi.spyOn(window, 'prompt').mockReturnValueOnce('3')
+      vi.spyOn(window, 'prompt').mockReturnValueOnce('45')
       useSketchEditorStore.getState().setOnMutation(handler)
 
       useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', 'line_segment')
-      // first click on a line: immediately creates length, no pending state
-      // reset and test the two-entity flow by starting with a non-line entity kind
-      // (or by simulating a second click via pending state directly)
-      handler.mockClear()
-      vi.spyOn(window, 'prompt').mockReturnValueOnce('3')
-      useSketchEditorStore.setState({ pendingDimTarget: 'entity:S1:L1' })
-
       useSketchEditorStore.getState().handleDimensionClick('entity:S1:L2', 'S1', 'entity', 'line_segment')
 
       expect(handler).toHaveBeenCalledOnce()
       expect(handler).toHaveBeenCalledWith({
         type: 'add_constraint',
         featureId: 'S1',
-        kind: 'line_distance',
+        kind: 'angle',
         targets: ['entity:S1:L1', 'entity:S1:L2'],
+        value: 45,
+      })
+      expect(useSketchEditorStore.getState().pendingDimTarget).toBeNull()
+    })
+
+    it('two non-line-segment entity clicks create line_distance constraint', () => {
+      const handler = vi.fn()
+      vi.spyOn(window, 'prompt').mockReturnValueOnce('3')
+      useSketchEditorStore.getState().setOnMutation(handler)
+
+      useSketchEditorStore.setState({
+        pendingDimTarget: 'entity:S1:A1',
+        pendingDimEntityKind: 'arc',
+      })
+
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:A2', 'S1', 'entity', 'arc')
+
+      expect(handler).toHaveBeenCalledOnce()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'S1',
+        kind: 'line_distance',
+        targets: ['entity:S1:A1', 'entity:S1:A2'],
         value: 3,
       })
     })
