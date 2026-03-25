@@ -118,6 +118,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     renderKind: 'symbol_coincident',
     symbolIcon: 'constraint-coincident',
     toolbarIcon: 'constraint-coincident',
+    shortcut: 'c',
     showInToolbar: true,
   },
   {
@@ -142,6 +143,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     renderKind: 'symbol_equal',
     symbolIcon: 'constraint-equal',
     toolbarIcon: 'constraint-equal',
+    shortcut: 'e',
     showInToolbar: true,
   },
   {
@@ -166,6 +168,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     renderKind: 'symbol_normal',
     symbolIcon: 'constraint-square',
     toolbarIcon: 'constraint-square',
+    shortcut: 'n',
     showInToolbar: true,
   },
   {
@@ -178,6 +181,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     renderKind: 'symbol_tangent',
     symbolIcon: 'constraint-tangent',
     toolbarIcon: 'constraint-tangent',
+    shortcut: 't',
     showInToolbar: true,
   },
   {
@@ -190,6 +194,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     renderKind: 'symbol_midpoint',
     symbolIcon: 'constraint-midpoint',
     toolbarIcon: 'constraint-midpoint',
+    shortcut: 'm',
     showInToolbar: true,
   },
   {
@@ -202,6 +207,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     renderKind: 'symbol_fixed',
     symbolIcon: 'constraint-fixed',
     toolbarIcon: 'constraint-fixed',
+    shortcut: 'f',
     showInToolbar: true,
   },
   {

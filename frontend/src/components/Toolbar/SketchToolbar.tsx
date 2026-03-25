@@ -65,7 +65,7 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
         active={activeTool === 'rect'}
       />
 
-      <ToolbarButton title="Toggle Construction" icon={toolbarConstructionIcon} onClick={toggleConstruction} />
+      <ToolbarButton title="Toggle Construction (Q)" icon={toolbarConstructionIcon} onClick={toggleConstruction} />
 
       <div className="toolbar-separator" />
 

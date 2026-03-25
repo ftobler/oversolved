@@ -4,7 +4,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
 import type { Feature, PartDoc } from '../types/cad'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
-import { registerCommand, unregisterCommand, dispatchKey } from '../stores/commandRegistry'
+import { registerCommand, unregisterCommand, dispatchKey, SHORTCUT_CONSTRAINT_KINDS } from '../stores/commandRegistry'
 import SketchToolbar from '../components/Toolbar/SketchToolbar'
 import AppHeader from '../components/AppHeader'
 import { usePartDoc } from '../hooks/usePartDoc'
@@ -114,8 +114,10 @@ export default function Part() {
     registerCommand('redo', handleRedo)
     registerCommand('delete_selected', () => useSketchEditorStore.getState().deleteSelected())
     registerCommand('apply_dimension', () => useSketchEditorStore.getState().setActiveTool('dimension'))
-    registerCommand('apply_horizontal', () => useSketchEditorStore.getState().applyConstraint('horizontal'))
-    registerCommand('apply_vertical', () => useSketchEditorStore.getState().applyConstraint('vertical'))
+    registerCommand('toggle_construction', () => useSketchEditorStore.getState().toggleConstruction())
+    for (const kind of SHORTCUT_CONSTRAINT_KINDS) {
+      registerCommand(`apply_${kind}`, () => useSketchEditorStore.getState().applyConstraint(kind))
+    }
     registerCommand('cancel_draw', () => {
       useSketchEditorStore.getState().clearDraw()
       useSketchEditorStore.getState().setActiveTool('select')
@@ -127,8 +129,10 @@ export default function Part() {
       unregisterCommand('redo')
       unregisterCommand('delete_selected')
       unregisterCommand('apply_dimension')
-      unregisterCommand('apply_horizontal')
-      unregisterCommand('apply_vertical')
+      unregisterCommand('toggle_construction')
+      for (const kind of SHORTCUT_CONSTRAINT_KINDS) {
+        unregisterCommand(`apply_${kind}`)
+      }
       unregisterCommand('cancel_draw')
     }
   }, [handleUndo, handleRedo])

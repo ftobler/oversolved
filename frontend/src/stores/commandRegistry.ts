@@ -2,7 +2,11 @@
 // Keymaps are defined here so they are testable and independently configurable.
 // Constraint shortcuts are derived from the constraint registry.
 
-import { CONSTRAINT_SHORTCUTS } from '../registry'
+import { CONSTRAINT_SHORTCUTS, CONSTRAINTS } from '../registry'
+
+/** All constraint kinds that have a shortcut, for use in Part.tsx registration. */
+export const SHORTCUT_CONSTRAINT_KINDS: readonly string[] =
+  CONSTRAINTS.filter(c => c.shortcut).map(c => c.kind)
 
 const handlers = new Map<string, () => void>()
 
@@ -18,6 +22,7 @@ const CORE_KEYMAP: Record<string, string> = {
   'delete':       'delete_selected',
   'backspace':    'delete_selected',
   'd':            'apply_dimension',
+  'q':            'toggle_construction',
   'escape':       'cancel_draw',
 }
 
