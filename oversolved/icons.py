@@ -774,5 +774,25 @@ def toolbar_copy_result(ctx):
     stroke(ctx, 2)
 
 
+@icon("frontend/src/assets/icons/dialog-ok.svg")
+def dialog_ok(ctx):
+    # Checkmark
+    ctx.move_to(0.15, 0.5)
+    ctx.line_to(0.4, 0.75)
+    ctx.line_to(0.85, 0.25)
+    stroke(ctx, 2)
+
+
+@icon("frontend/src/assets/icons/dialog-cancel.svg")
+def dialog_cancel(ctx):
+    # X mark
+    ctx.move_to(0.2, 0.2)
+    ctx.line_to(0.8, 0.8)
+    stroke(ctx, 2)
+    ctx.move_to(0.8, 0.2)
+    ctx.line_to(0.2, 0.8)
+    stroke(ctx, 2)
+
+
 if __name__ == "__main__":
     drawall()

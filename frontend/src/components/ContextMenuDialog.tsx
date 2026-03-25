@@ -1,5 +1,7 @@
 import { useRef, useEffect, useState } from 'react'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
+import okIcon from '../assets/icons/dialog-ok.svg'
+import cancelIcon from '../assets/icons/dialog-cancel.svg'
 import './ContextMenuDialog.css'
 
 export default function ContextMenuDialog() {
@@ -54,8 +56,8 @@ export default function ContextMenuDialog() {
         onKeyDown={handleKeyDown}
         className="context-menu-input"
       />
-      <button className="context-menu-btn context-menu-btn-ok" onClick={handleConfirm}>OK</button>
-      <button className="context-menu-btn context-menu-btn-cancel" onClick={() => { dialog.onCancel?.(); closeDialog() }}>Cancel</button>
+      <button className="context-menu-btn context-menu-btn-ok" onClick={handleConfirm}><img src={okIcon} alt="OK" /></button>
+      <button className="context-menu-btn context-menu-btn-cancel" onClick={() => { dialog.onCancel?.(); closeDialog() }}><img src={cancelIcon} alt="Cancel" /></button>
     </div>
   )
 }

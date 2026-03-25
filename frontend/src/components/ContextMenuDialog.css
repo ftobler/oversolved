@@ -39,21 +39,30 @@
   background: #2a2a2a;
   border: 1px solid #555;
   border-radius: 3px;
-  color: #ccc;
-  font-size: 12px;
-  padding: 3px 8px;
+  padding: 2px 5px;
   cursor: pointer;
-  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.context-menu-btn img {
+  width: 14px;
+  height: 14px;
+  filter: invert(60%);
+  display: block;
 }
 
 .context-menu-btn:hover {
   border-color: #888;
-  color: #eee;
 }
 
-.context-menu-btn-ok:hover {
-  border-color: #4fc3f7;
-  color: #4fc3f7;
+.context-menu-btn:hover img {
+  filter: invert(80%);
+}
+
+.context-menu-btn-ok:hover img {
+  filter: invert(70%) sepia(100%) saturate(300%) hue-rotate(170deg);
 }
 
 /* Hide the number input spinner arrows */
