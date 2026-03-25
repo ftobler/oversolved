@@ -5140,3 +5140,285 @@ features:
     constraints = result.get("constraints", {})
     superfluous = [cid for cid, c in constraints.items() if c.get("superfluous")]
     assert superfluous == [], f"Expected no superfluous, got: {superfluous}"
+
+
+# ---------------------------------------------------------------------------
+# Angle constraint direction tests
+# ---------------------------------------------------------------------------
+# The solver constrains cos(angle(da, db)) = cos(value) where
+#   da = ea.end - ea.start  (forward direction of line A)
+#   db = eb.end - eb.start  (forward direction of line B)
+# Two lines can share a vertex at any of 4 combinations of endpoints.
+# The render data must encode both line directions so the arc is drawn
+# in the sector that actually equals `value`, regardless of line orientation.
+
+def _angle_between_directions(a_s, a_e, b_s, b_e):
+    """Angle between direction vectors da=(a_e-a_s) and db=(b_e-b_s), in degrees."""
+    da = (a_e[0] - a_s[0], a_e[1] - a_s[1])
+    db = (b_e[0] - b_s[0], b_e[1] - b_s[1])
+    la = math.hypot(*da)
+    lb = math.hypot(*db)
+    cos_val = (da[0]*db[0] + da[1]*db[1]) / (la * lb)
+    return math.degrees(math.acos(max(-1.0, min(1.0, cos_val))))
+
+
+def _check_angle_render(render, expected_deg, tol=1e-2):
+    """
+    Verify that the dim_angle render data encodes both line directions correctly.
+
+    After the fix, the render data stores:
+      p1, p2  -> line A:  direction da = p2 - p1
+      p3, p4  -> line B:  direction db = p4 - p3
+    The angle between da and db must equal expected_deg.
+    """
+    assert render["kind"] == "dim_angle", f"Expected dim_angle, got {render['kind']}"
+    p1, p2 = render["p1"], render["p2"]
+    p3, p4 = render["p3"], render["p4"]
+    actual = _angle_between_directions(p1, p2, p3, p4)
+    assert abs(actual - expected_deg) < tol, (
+        f"Render arc angle {actual:.3f}° != expected {expected_deg}°. "
+        f"p1={p1} p2={p2} p3={p3} p4={p4}"
+    )
+
+
+def test_angle_direction_ea_end_eb_start(sketch_log):
+    """45° constraint: vertex at ea.end = eb.start (standard L-shape orientation).
+
+    Line A goes right (→), Line B goes up-right from the end of A.
+    Both direction vectors start at different ends, vertex = ea.end = eb.start.
+    The solver must enforce angle(da, db) = 45° and the render data must
+    store both full line directions so p2-p1 = da and p4-p3 = db.
+    """
+    yaml_str = """
+version: 1
+kind: part
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Angle dir: ea.end = eb.start"
+    initial:
+      line_a: [0.0, 0.0, 3.0, 0.0]
+      line_b: [3.0, 0.0, 5.0, 2.0]
+    entities:
+      - id: line_a
+        kind: line_segment
+      - id: line_b
+        kind: line_segment
+    constraints:
+      - id: c_fix_origin
+        kind: fixed
+        target: {entity: line_a, point: start}
+        x: 0.0
+        y: 0.0
+      - id: c_horiz
+        kind: horizontal
+        target: {entity: line_a}
+      - id: c_coin
+        kind: coincident
+        a: {entity: line_a, point: end}
+        b: {entity: line_b, point: start}
+      - id: c_angle
+        kind: angle
+        a: {entity: line_a}
+        b: {entity: line_b}
+        value: 45.0
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_angle_direction_ea_end_eb_start", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+    a_s, a_e = geom["line_a"].start, geom["line_a"].end
+    b_s, b_e = geom["line_b"].start, geom["line_b"].end
+
+    # Solver must produce angle(da, db) = 45 degrees
+    actual_angle = _angle_between_directions(a_s, a_e, b_s, b_e)
+    assert abs(actual_angle - 45.0) < TOL, f"Solver angle {actual_angle:.4f}° != 45°"
+
+    # Shared vertex must be at ea.end = eb.start
+    assert abs(a_e[0] - b_s[0]) < TOL and abs(a_e[1] - b_s[1]) < TOL, "ea.end != eb.start"
+
+    # Render data must encode both direction vectors
+    render = result["constraints"]["c_angle"]["render"]
+    _check_angle_render(render, 45.0)
+
+
+def test_angle_direction_ea_end_eb_end(sketch_log):
+    """45° constraint: vertex at ea.end = eb.end (line B is reversed).
+
+    Line A goes right (→), Line B's END is at the vertex (line B goes toward vertex).
+    da = (→), db points away from vertex in the direction of line B.
+    The solver must still enforce angle(da, db) = 45° and the render data
+    must correctly encode both directions.
+    """
+    yaml_str = """
+version: 1
+kind: part
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Angle dir: ea.end = eb.end"
+    initial:
+      line_a: [0.0, 0.0, 3.0, 0.0]
+      line_b: [5.0, 2.0, 3.0, 0.0]
+    entities:
+      - id: line_a
+        kind: line_segment
+      - id: line_b
+        kind: line_segment
+    constraints:
+      - id: c_fix_origin
+        kind: fixed
+        target: {entity: line_a, point: start}
+        x: 0.0
+        y: 0.0
+      - id: c_horiz
+        kind: horizontal
+        target: {entity: line_a}
+      - id: c_coin
+        kind: coincident
+        a: {entity: line_a, point: end}
+        b: {entity: line_b, point: end}
+      - id: c_angle
+        kind: angle
+        a: {entity: line_a}
+        b: {entity: line_b}
+        value: 45.0
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_angle_direction_ea_end_eb_end", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+    a_s, a_e = geom["line_a"].start, geom["line_a"].end
+    b_s, b_e = geom["line_b"].start, geom["line_b"].end
+
+    # Solver must produce angle(da, db) = 45 degrees
+    actual_angle = _angle_between_directions(a_s, a_e, b_s, b_e)
+    assert abs(actual_angle - 45.0) < TOL, f"Solver angle {actual_angle:.4f}° != 45°"
+
+    # Shared vertex must be at ea.end = eb.end
+    assert abs(a_e[0] - b_e[0]) < TOL and abs(a_e[1] - b_e[1]) < TOL, "ea.end != eb.end"
+
+    # Render data must encode both direction vectors so arc shows 45°
+    render = result["constraints"]["c_angle"]["render"]
+    _check_angle_render(render, 45.0)
+
+
+def test_angle_direction_ea_start_eb_start(sketch_log):
+    """45° constraint: vertex at ea.start = eb.start (line A is reversed).
+
+    The START of both lines is the vertex. da points away from vertex (forward along A),
+    db also points away from vertex (forward along B).
+    """
+    yaml_str = """
+version: 1
+kind: part
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Angle dir: ea.start = eb.start"
+    initial:
+      line_a: [3.0, 0.0, 0.0, 0.0]
+      line_b: [3.0, 0.0, 5.0, 2.0]
+    entities:
+      - id: line_a
+        kind: line_segment
+      - id: line_b
+        kind: line_segment
+    constraints:
+      - id: c_fix_vertex
+        kind: fixed
+        target: {entity: line_a, point: start}
+        x: 3.0
+        y: 0.0
+      - id: c_horiz
+        kind: horizontal
+        target: {entity: line_a}
+      - id: c_coin
+        kind: coincident
+        a: {entity: line_a, point: start}
+        b: {entity: line_b, point: start}
+      - id: c_angle
+        kind: angle
+        a: {entity: line_a}
+        b: {entity: line_b}
+        value: 45.0
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_angle_direction_ea_start_eb_start", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+    a_s, a_e = geom["line_a"].start, geom["line_a"].end
+    b_s, b_e = geom["line_b"].start, geom["line_b"].end
+
+    actual_angle = _angle_between_directions(a_s, a_e, b_s, b_e)
+    assert abs(actual_angle - 45.0) < TOL, f"Solver angle {actual_angle:.4f}° != 45°"
+
+    assert abs(a_s[0] - b_s[0]) < TOL and abs(a_s[1] - b_s[1]) < TOL, "ea.start != eb.start"
+
+    render = result["constraints"]["c_angle"]["render"]
+    _check_angle_render(render, 45.0)
+
+
+def test_angle_direction_ea_start_eb_end(sketch_log):
+    """45° constraint: vertex at ea.start = eb.end (both lines reversed).
+
+    Line A goes leftward (ea.start is the shared vertex, ea.end is on the right).
+    Line B ends at the vertex (eb.end = ea.start).
+    da = (←), db = (direction of B away from its start, toward vertex).
+    """
+    yaml_str = """
+version: 1
+kind: part
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Angle dir: ea.start = eb.end"
+    initial:
+      line_a: [3.0, 0.0, 0.0, 0.0]
+      line_b: [5.0, 2.0, 3.0, 0.0]
+    entities:
+      - id: line_a
+        kind: line_segment
+      - id: line_b
+        kind: line_segment
+    constraints:
+      - id: c_fix_vertex
+        kind: fixed
+        target: {entity: line_a, point: start}
+        x: 3.0
+        y: 0.0
+      - id: c_horiz
+        kind: horizontal
+        target: {entity: line_a}
+      - id: c_coin
+        kind: coincident
+        a: {entity: line_a, point: start}
+        b: {entity: line_b, point: end}
+      - id: c_angle
+        kind: angle
+        a: {entity: line_a}
+        b: {entity: line_b}
+        value: 45.0
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_angle_direction_ea_start_eb_end", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    doc = yaml_module.safe_load(yaml_str)
+    geom = to_geom(result["geometry"], doc["features"][0]["entities"])
+    a_s, a_e = geom["line_a"].start, geom["line_a"].end
+    b_s, b_e = geom["line_b"].start, geom["line_b"].end
+
+    actual_angle = _angle_between_directions(a_s, a_e, b_s, b_e)
+    assert abs(actual_angle - 45.0) < TOL, f"Solver angle {actual_angle:.4f}° != 45°"
+
+    assert abs(a_s[0] - b_e[0]) < TOL and abs(a_s[1] - b_e[1]) < TOL, "ea.start != eb.end"
+
+    render = result["constraints"]["c_angle"]["render"]
+    _check_angle_render(render, 45.0)

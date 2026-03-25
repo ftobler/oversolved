@@ -260,28 +260,38 @@ export function renderConstraints(
           </g>
         )
       } else if (r.kind === 'dim_angle') {
-        const dim = r as DimAngleRender & { p3: Point }
-        const [vx, vy] = px(dim.p2[0], dim.p2[1])
-        const [x1, y1] = px(dim.p1[0], dim.p1[1])
-        const [x3, y3] = px(dim.p3[0], dim.p3[1])
-        // angle1 = forward direction of line A (from p1 toward vertex p2)
-        const angle1 = Math.atan2(vy - y1, vx - x1)
-        const angle2 = Math.atan2(y3 - vy, x3 - vx)
-        const r1 = Math.hypot(x1 - vx, y1 - vy)
-        const r2 = Math.hypot(x3 - vx, y3 - vy)
-        const arcRadius = Math.min(r1, r2) * 0.4
+        const dim = r as DimAngleRender
+        // p1,p2 = line A; direction da = p2-p1. p3,p4 = line B; direction db = p4-p3.
+        const [ax1s, ay1s] = px(dim.p1[0], dim.p1[1])
+        const [ax2s, ay2s] = px(dim.p2[0], dim.p2[1])
+        const [bx1s, by1s] = px(dim.p3[0], dim.p3[1])
+        const [bx2s, by2s] = px(dim.p4[0], dim.p4[1])
+        const angle1 = Math.atan2(ay2s - ay1s, ax2s - ax1s)  // direction of da
+        const angle2 = Math.atan2(by2s - by1s, bx2s - bx1s)  // direction of db
+        // Find shared vertex
+        const EPS = 1e-4
+        let vx: number, vy: number
+        if (Math.hypot(ax2s - bx1s, ay2s - by1s) < EPS) { vx = ax2s; vy = ay2s }
+        else if (Math.hypot(ax2s - bx2s, ay2s - by2s) < EPS) { vx = ax2s; vy = ay2s }
+        else if (Math.hypot(ax1s - bx1s, ay1s - by1s) < EPS) { vx = ax1s; vy = ay1s }
+        else if (Math.hypot(ax1s - bx2s, ay1s - by2s) < EPS) { vx = ax1s; vy = ay1s }
+        else { vx = ax2s; vy = ay2s }
+        // Extension line endpoints (the non-vertex end of each line)
+        const extAx = Math.abs(ax2s - vx) + Math.abs(ay2s - vy) > EPS ? ax2s : ax1s
+        const extAy = Math.abs(ax2s - vx) + Math.abs(ay2s - vy) > EPS ? ay2s : ay1s
+        const extBx = Math.abs(bx2s - vx) + Math.abs(by2s - vy) > EPS ? bx2s : bx1s
+        const extBy = Math.abs(bx2s - vx) + Math.abs(by2s - vy) > EPS ? by2s : by1s
+        const rA = Math.hypot(extAx - vx, extAy - vy)
+        const rB = Math.hypot(extBx - vx, extBy - vy)
+        const arcRadius = Math.min(rA, rB) * 0.4
         const ax1 = vx + arcRadius * Math.cos(angle1)
         const ay1 = vy + arcRadius * Math.sin(angle1)
         const ax2 = vx + arcRadius * Math.cos(angle2)
         const ay2 = vy + arcRadius * Math.sin(angle2)
-        let angleDiff = angle2 - angle1
-        if (angleDiff < 0) angleDiff += 2 * Math.PI
-        if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff
-        const largeArc = angleDiff > Math.PI ? 1 : 0
-        // midAngle consistent with shorter-arc direction
         let spanRad = angle2 - angle1
         if (spanRad < -Math.PI) spanRad += 2 * Math.PI
         else if (spanRad > Math.PI) spanRad -= 2 * Math.PI
+        const largeArc = Math.abs(spanRad) > Math.PI ? 1 : 0
         const midAngle = angle1 + spanRad / 2
         const labelRadius = arcRadius * 1.5
         const labelX = vx + labelRadius * Math.cos(midAngle)
@@ -292,8 +302,8 @@ export function renderConstraints(
         const textWidth = (label.length * 3 + 4) + textPadding * 2
         dimConstraints.push(
           <g key={id} opacity={0.85}>
-            <line x1={vx} y1={vy} x2={x1} y2={y1} stroke={color} strokeWidth={1} />
-            <line x1={vx} y1={vy} x2={x3} y2={y3} stroke={color} strokeWidth={1} />
+            <line x1={vx} y1={vy} x2={extAx} y2={extAy} stroke={color} strokeWidth={1} />
+            <line x1={vx} y1={vy} x2={extBx} y2={extBy} stroke={color} strokeWidth={1} />
             <path d={arcPath} stroke={color} strokeWidth={1} fill="none" />
             <rect x={labelX - textWidth / 2} y={labelY - 7} width={textWidth} height={14} fill="#111" />
             <text x={labelX} y={labelY} fill={color} fontSize={10} fontFamily="monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>

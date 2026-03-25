@@ -444,8 +444,8 @@ function ConstraintOverlays({ constraints, sketch, extent, featureId }: Constrai
         dimElements.push(<DiameterDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'diameter' }} />)
 
       } else if (r.kind === 'dim_angle') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number; pos?: [number, number] }
-        if (!dim.p3) continue
+        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3: [number, number]; p4: [number, number]; value: number; pos?: [number, number] }
+        if (!dim.p3 || !dim.p4) continue
         dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'angle in degrees' }} />)
       }
     }

@@ -292,11 +292,16 @@ def _constraint_render(c: dict, geom: dict) -> dict:
     elif kind == "angle":
         eid = c["a"]["entity"]
         ea, eb = geom[eid], geom[c["b"]["entity"]]
+        # p1,p2 encode line A (direction da = p2 - p1).
+        # p3,p4 encode line B (direction db = p4 - p3).
+        # Both full lines are stored so the renderer can compute da and db
+        # independently of which vertex configuration the two lines share.
         return {
             "kind": "dim_angle",
             "p1": ea["start"],
             "p2": ea["end"],
-            "p3": eb["end"],
+            "p3": eb["start"],
+            "p4": eb["end"],
             "value": c["value"],
             "entity": eid}
 

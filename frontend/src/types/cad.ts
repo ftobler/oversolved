@@ -136,12 +136,17 @@ export interface DimDiameterRender {
 
 export interface DimAngleRender {
   kind: 'dim_angle'
+  /** Line A start. Direction da = p2 − p1. */
   p1: Point
-  p2: Point  // vertex
-  p3?: Point
+  /** Line A end. */
+  p2: Point
+  /** Line B start. Direction db = p4 − p3. */
+  p3: Point
+  /** Line B end. */
+  p4: Point
   value: number
   entity?: string
-  /** Label offset in sketch space relative to vertex (p2). */
+  /** Label offset in sketch space relative to the shared vertex. */
   pos?: Point
 }
 

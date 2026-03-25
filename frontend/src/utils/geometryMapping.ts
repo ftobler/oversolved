@@ -234,12 +234,13 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
     if (!eid || !eid2) return { kind: 'unknown' }
     const ea = sketch[eid] as any
     const eb = sketch[eid2] as any
-    if (!ea || !eb || !ea.start || !ea.end || !eb.end) return { kind: 'unknown' }
+    if (!ea || !eb || !ea.start || !ea.end || !eb.start || !eb.end) return { kind: 'unknown' }
     return {
       kind: 'dim_angle',
       p1: ea.start,
       p2: ea.end,
-      p3: eb.end,
+      p3: eb.start,
+      p4: eb.end,
       value: constraint.value || 0,
       entity: eid,
       ...(constraint.pos && { pos: constraint.pos }),

@@ -394,7 +394,7 @@ export function DiameterDimension({ cid, dim, interaction }: {
 
 export function AngleDimension({ cid, dim, interaction }: {
   cid: string
-  dim: { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number; pos?: [number, number] }
+  dim: { kind: string; p1: [number, number]; p2: [number, number]; p3: [number, number]; p4: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
 }) {
   const { color, onOver, onOut, onClick, resetDragMoved } = useDimInteraction(cid, dim.value, interaction, false)
@@ -407,15 +407,30 @@ export function AngleDimension({ cid, dim, interaction }: {
     if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
   })
 
-  if (!dim.p3) return null
+  // p1,p2 = line A endpoints; da = p2 - p1 (solver's forward direction of A).
+  // p3,p4 = line B endpoints; db = p4 - p3 (solver's forward direction of B).
+  // The arc spans from angle_da to angle_db, matching the constrained angle.
+  const [ax1, ay1] = dim.p1, [ax2, ay2] = dim.p2  // line A
+  const [bx1, by1] = dim.p3, [bx2, by2] = dim.p4  // line B
 
-  // p2 is the vertex; p1 and p3 are points on the two lines.
-  // angle1 uses the FORWARD direction of line A (from p1 toward vertex p2),
-  // matching how the solver constrains: dot(da, db) where da = end - start.
-  // angle2 is the direction from vertex toward p3 (forward direction of line B).
-  const [vx, vy] = dim.p2, [x1, y1] = dim.p1, [x3, y3] = dim.p3
-  const angle1 = Math.atan2(vy - y1, vx - x1)
-  const angle2 = Math.atan2(y3 - vy, x3 - vx)
+  const angle1 = Math.atan2(ay2 - ay1, ax2 - ax1)  // direction of da
+  const angle2 = Math.atan2(by2 - by1, bx2 - bx1)  // direction of db
+
+  // Find the shared vertex (the endpoint common to both lines).
+  const EPS = 1e-6
+  let vx: number, vy: number
+  // Check all 4 endpoint combinations; fall back to line A's end.
+  if (Math.hypot(ax2 - bx1, ay2 - by1) < EPS) { vx = ax2; vy = ay2 }       // ea.end = eb.start
+  else if (Math.hypot(ax2 - bx2, ay2 - by2) < EPS) { vx = ax2; vy = ay2 }  // ea.end = eb.end
+  else if (Math.hypot(ax1 - bx1, ay1 - by1) < EPS) { vx = ax1; vy = ay1 }  // ea.start = eb.start
+  else if (Math.hypot(ax1 - bx2, ay1 - by2) < EPS) { vx = ax1; vy = ay1 }  // ea.start = eb.end
+  else { vx = ax2; vy = ay2 }  // no shared vertex — best guess
+
+  // Points on each line for extension lines (the other endpoint from the vertex).
+  const extAx = Math.abs(ax2 - vx) + Math.abs(ay2 - vy) > EPS ? ax2 : ax1
+  const extAy = Math.abs(ax2 - vx) + Math.abs(ay2 - vy) > EPS ? ay2 : ay1
+  const extBx = Math.abs(bx2 - vx) + Math.abs(by2 - vy) > EPS ? bx2 : bx1
+  const extBy = Math.abs(bx2 - vx) + Math.abs(by2 - vy) > EPS ? by2 : by1
 
   const effectivePos: [number, number] | undefined = activeDragPos
     ? [activeDragPos[0] - vx, activeDragPos[1] - vy]
@@ -427,9 +442,10 @@ export function AngleDimension({ cid, dim, interaction }: {
     arcR = Math.hypot(effectivePos[0], effectivePos[1])
     labelX = vx + effectivePos[0]; labelY = vy + effectivePos[1]
   } else {
-    const r1 = Math.hypot(x1 - vx, y1 - vy), r2 = Math.hypot(x3 - vx, y3 - vy)
-    arcR = Math.min(r1, r2) * 0.4
-    // Compute midAngle consistently with sampleArc (always takes the shorter arc)
+    const rA = Math.hypot(extAx - vx, extAy - vy)
+    const rB = Math.hypot(extBx - vx, extBy - vy)
+    arcR = Math.min(rA, rB) * 0.4
+    // Compute midAngle consistently with sampleArc (always shorter arc).
     const a1deg = angle1 * (180 / Math.PI)
     const a2deg = angle2 * (180 / Math.PI)
     let spanDeg = ((a2deg - a1deg) + 360) % 360
@@ -459,8 +475,8 @@ export function AngleDimension({ cid, dim, interaction }: {
 
   return (
     <group key={cid}>
-      <Line points={[[vx, vy, 0], [x1, y1, 0]]} color={color} lineWidth={1} />
-      <Line points={[[vx, vy, 0], [x3, y3, 0]]} color={color} lineWidth={1} />
+      <Line points={[[vx, vy, 0], [extAx, extAy, 0]]} color={color} lineWidth={1} />
+      <Line points={[[vx, vy, 0], [extBx, extBy, 0]]} color={color} lineWidth={1} />
       <Line points={arcPts} color={color} lineWidth={1} />
       <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
         <circleGeometry args={[1, 8]} />
@@ -521,8 +537,8 @@ export function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOv
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
         dimElements.push(<DiameterDimension key={cid} cid={cid} dim={dim} />)
       } else if (r.kind === 'dim_angle') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3?: [number, number]; value: number; pos?: [number, number] }
-        if (!dim.p3) continue
+        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3: [number, number]; p4: [number, number]; value: number; pos?: [number, number] }
+        if (!dim.p3 || !dim.p4) continue
         dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} />)
       }
     }
