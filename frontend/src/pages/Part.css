@@ -401,22 +401,6 @@
 }
 
 @media (max-width: 768px) {
-  .doc-toolbar {
-    flex-wrap: wrap;
-    padding: 8px 12px;
-  }
-
-  .toolbar-left,
-  .toolbar-right {
-    min-width: auto;
-  }
-
-  .toolbar-center {
-    width: 100%;
-    order: 3;
-    margin-top: 8px;
-  }
-
   .doc-name {
     max-width: 150px;
   }
