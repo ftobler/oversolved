@@ -1,10 +1,19 @@
-import { Routes, Route, Link } from 'react-router-dom'
+import { Routes, Route, Link, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Visualizer from './pages/Visualizer'
 import Documentation from './pages/Documentation'
 import Documents from './pages/Documents'
 import Part from './pages/Part'
 import Registry from './pages/Registry'
+import Login from './pages/Login'
 import './App.css'
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return null
+  if (!user) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
 
 function Home() {
   return (
@@ -23,15 +32,18 @@ function Home() {
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/visualizer" element={<Visualizer />} />
-      <Route path="/documents" element={<Documents />} />
-      <Route path="/documents/:docId" element={<Part />} />
-      <Route path="/docs" element={<Documentation />} />
-      <Route path="/docs/:doc" element={<Documentation />} />
-      <Route path="/registry" element={<Registry />} />
-    </Routes>
+    <AuthProvider>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+        <Route path="/documents" element={<ProtectedRoute><Documents /></ProtectedRoute>} />
+        <Route path="/documents/:uuid" element={<ProtectedRoute><Part /></ProtectedRoute>} />
+        <Route path="/docs" element={<ProtectedRoute><Documentation /></ProtectedRoute>} />
+        <Route path="/docs/:doc" element={<ProtectedRoute><Documentation /></ProtectedRoute>} />
+        <Route path="/registry" element={<ProtectedRoute><Registry /></ProtectedRoute>} />
+        <Route path="/visualizer" element={<ProtectedRoute><Visualizer /></ProtectedRoute>} />
+      </Routes>
+    </AuthProvider>
   )
 }
 

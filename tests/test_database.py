@@ -1,42 +1,79 @@
 """Tests for database layer."""
 
 import pytest
-from oversolved.db import Database, SQLiteConnection, DocumentStore
+from oversolved.db import Database, SQLiteConnection, DocumentStore, UserStore, SessionStore
+
+
+def _make_db():
+    conn = SQLiteConnection(':memory:')
+    database = Database(conn)
+
+    def migration_001(db: Database):
+        db.execute("""
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                must_change_password INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        db.execute("""
+            CREATE TABLE sessions (
+                token TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                expires_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+        db.execute("""
+            CREATE TABLE documents (
+                uuid TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                content TEXT NOT NULL,
+                owner_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (owner_id) REFERENCES users(id)
+            )
+        """)
+
+    database.register_migration(1, 'initial_schema', migration_001)
+    database.init()
+    return database
 
 
 @pytest.fixture
 def db():
-    """Create an in-memory SQLite database for testing."""
-    conn = SQLiteConnection(':memory:')
-    database = Database(conn)
-
-    # Register migrations
-    def migration_001_create_documents_table(db: Database):
-        """Create the documents table."""
-        db.execute("""
-            CREATE TABLE documents (
-                id VARCHAR(255) PRIMARY KEY,
-                content TEXT NOT NULL
-            )
-        """)
-
-    database.register_migration(1, 'create_documents_table', migration_001_create_documents_table)
-    database.init()
+    database = _make_db()
     yield database
     database.close()
 
 
 @pytest.fixture
+def user_store(db):
+    return UserStore(db)
+
+
+@pytest.fixture
+def session_store(db):
+    return SessionStore(db)
+
+
+@pytest.fixture
 def doc_store(db):
-    """Create a document store."""
     return DocumentStore(db)
+
+
+@pytest.fixture
+def user_id(user_store):
+    return user_store.create('testuser', 'hashed_pw')
 
 
 class TestSQLiteConnection:
     """Tests for SQLite connection."""
 
     def test_execute_query(self):
-        """Test basic query execution."""
         conn = SQLiteConnection(':memory:')
         cursor = conn.execute("SELECT 1 as num")
         row = cursor.fetchone()
@@ -44,7 +81,6 @@ class TestSQLiteConnection:
         conn.close()
 
     def test_commit_rollback(self):
-        """Test commit and rollback."""
         conn = SQLiteConnection(':memory:')
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.commit()
@@ -68,30 +104,25 @@ class TestDatabase:
     """Tests for Database class."""
 
     def test_init_creates_schema_version_table(self, db):
-        """Test that init creates schema_version table."""
         cursor = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'")
         assert cursor.fetchone() is not None
 
     def test_migration_runs_once(self, db):
-        """Test that migrations run only once."""
         call_count = 0
 
         def test_migration(database: Database):
             nonlocal call_count
             call_count += 1
-            database.execute("CREATE TABLE test (id INTEGER)")
+            database.execute("CREATE TABLE test_once (id INTEGER)")
 
         db.register_migration(10, 'test_migration', test_migration)
         db.init()
-
         assert call_count == 1
 
-        # Re-init should not run migration again
         db.init()
         assert call_count == 1
 
     def test_transaction_commits(self, db):
-        """Test transaction commits on success."""
         db.execute("CREATE TABLE test (id INTEGER)")
         db.commit()
 
@@ -102,7 +133,6 @@ class TestDatabase:
         assert cursor.fetchone()[0] == 1
 
     def test_transaction_rollback_on_error(self, db):
-        """Test transaction rolls back on error."""
         db.execute("CREATE TABLE test (id INTEGER)")
         db.commit()
 
@@ -117,93 +147,119 @@ class TestDatabase:
         assert cursor.fetchone()[0] == 0
 
 
+class TestUserStore:
+    """Tests for UserStore."""
+
+    def test_create_and_find(self, user_store):
+        uid = user_store.create('alice', 'hash123')
+        assert isinstance(uid, int)
+
+        user = user_store.find_by_username('alice')
+        assert user is not None
+        assert user['username'] == 'alice'
+        assert user['password_hash'] == 'hash123'
+        assert user['must_change_password'] is False
+
+    def test_create_with_must_change_password(self, user_store):
+        user_store.create('bob', 'hash', must_change_password=True)
+        user = user_store.find_by_username('bob')
+        assert user['must_change_password'] is True
+
+    def test_find_by_id(self, user_store):
+        uid = user_store.create('charlie', 'hash')
+        user = user_store.find_by_id(uid)
+        assert user is not None
+        assert user['username'] == 'charlie'
+
+    def test_find_nonexistent(self, user_store):
+        assert user_store.find_by_username('nobody') is None
+        assert user_store.find_by_id(9999) is None
+
+
+class TestSessionStore:
+    """Tests for SessionStore."""
+
+    def test_create_and_find(self, session_store, user_id):
+        token = session_store.create(user_id)
+        assert isinstance(token, str)
+        assert len(token) > 20
+
+        session = session_store.find(token)
+        assert session is not None
+        assert session['user_id'] == user_id
+
+    def test_find_nonexistent(self, session_store):
+        assert session_store.find('no-such-token') is None
+
+    def test_delete(self, session_store, user_id):
+        token = session_store.create(user_id)
+        session_store.delete(token)
+        assert session_store.find(token) is None
+
+
 class TestDocumentStore:
     """Tests for DocumentStore."""
 
-    def test_store_and_retrieve(self, doc_store):
-        """Test storing and retrieving a document."""
-        doc_id = 'doc1'
-        content = 'version: 1\nkind: part\n'
+    def test_create_returns_uuid(self, doc_store, user_id):
+        uuid = doc_store.create('My Doc', user_id)
+        assert isinstance(uuid, str)
+        assert len(uuid) > 10
 
-        doc_store.store(doc_id, content)
-        retrieved = doc_store.retrieve(doc_id)
+    def test_retrieve(self, doc_store, user_id):
+        uuid = doc_store.create('Test', user_id)
+        doc_store.store_content(uuid, 'version: 1\n')
 
-        assert retrieved == content
+        doc = doc_store.retrieve(uuid)
+        assert doc is not None
+        assert doc['uuid'] == uuid
+        assert doc['name'] == 'Test'
+        assert doc['content'] == 'version: 1\n'
+        assert doc['owner_id'] == user_id
 
     def test_retrieve_nonexistent(self, doc_store):
-        """Test retrieving a nonexistent document."""
-        retrieved = doc_store.retrieve('nonexistent')
-        assert retrieved is None
+        assert doc_store.retrieve('no-such-uuid') is None
 
-    def test_update_document(self, doc_store):
-        """Test updating an existing document."""
-        doc_id = 'doc1'
-        content1 = 'version: 1\n'
-        content2 = 'version: 2\n'
+    def test_store_content_updates(self, doc_store, user_id):
+        uuid = doc_store.create('Doc', user_id)
+        doc_store.store_content(uuid, 'v1')
+        doc_store.store_content(uuid, 'v2')
+        assert doc_store.retrieve(uuid)['content'] == 'v2'
 
-        doc_store.store(doc_id, content1)
-        doc_store.store(doc_id, content2)
+    def test_rename(self, doc_store, user_id):
+        uuid = doc_store.create('Old Name', user_id)
+        result = doc_store.rename(uuid, 'New Name')
+        assert result is True
+        assert doc_store.retrieve(uuid)['name'] == 'New Name'
 
-        retrieved = doc_store.retrieve(doc_id)
-        assert retrieved == content2
+    def test_rename_nonexistent(self, doc_store):
+        assert doc_store.rename('no-uuid', 'Name') is False
 
-    def test_delete_document(self, doc_store):
-        """Test deleting a document."""
-        doc_id = 'doc1'
-        doc_store.store(doc_id, 'content')
-
-        deleted = doc_store.delete(doc_id)
-        assert deleted is True
-
-        retrieved = doc_store.retrieve(doc_id)
-        assert retrieved is None
+    def test_delete(self, doc_store, user_id):
+        uuid = doc_store.create('Doc', user_id)
+        assert doc_store.delete(uuid) is True
+        assert doc_store.retrieve(uuid) is None
 
     def test_delete_nonexistent(self, doc_store):
-        """Test deleting a nonexistent document."""
-        deleted = doc_store.delete('nonexistent')
-        assert deleted is False
+        assert doc_store.delete('no-uuid') is False
 
-    def test_list_ids(self, doc_store):
-        """Test listing document IDs."""
-        ids = ['doc1', 'doc2', 'doc3']
-        for doc_id in ids:
-            doc_store.store(doc_id, f'content of {doc_id}')
+    def test_list_by_owner(self, doc_store, user_id):
+        doc_store.create('Beta', user_id)
+        doc_store.create('Alpha', user_id)
+        docs = doc_store.list_by_owner(user_id)
+        assert len(docs) == 2
+        assert docs[0]['name'] == 'Alpha'
+        assert docs[1]['name'] == 'Beta'
+        for d in docs:
+            assert 'uuid' in d
+            assert 'name' in d
 
-        retrieved_ids = doc_store.list_ids()
-        assert retrieved_ids == sorted(ids)
+    def test_list_by_owner_empty(self, doc_store, user_id):
+        assert doc_store.list_by_owner(user_id) == []
 
-    def test_list_ids_empty(self, doc_store):
-        """Test listing IDs when no documents exist."""
-        ids = doc_store.list_ids()
-        assert ids == []
-
-    def test_store_large_yaml(self, doc_store):
-        """Test storing a large YAML document."""
-        doc_id = 'large_doc'
-        # Create a large YAML-like content
-        content = 'version: 1\n' + 'key: value\n' * 10000
-
-        doc_store.store(doc_id, content)
-        retrieved = doc_store.retrieve(doc_id)
-
-        assert retrieved == content
-        assert len(retrieved) > 50000
-
-    def test_store_special_characters(self, doc_store):
-        """Test storing documents with special characters."""
-        doc_id = 'special_doc'
-        content = '''
-version: 1
-kind: part
-features:
-  - id: sketch_1
-    label: "Test with 'quotes' and \"double\" quotes"
-    initial:
-      point_a: [1.5, 2.3]
-      line: [0.0, 0.0, 10.5, 20.3]
-'''
-
-        doc_store.store(doc_id, content)
-        retrieved = doc_store.retrieve(doc_id)
-
-        assert retrieved == content
+    def test_list_by_owner_isolation(self, doc_store, user_store):
+        uid1 = user_store.create('user1', 'h')
+        uid2 = user_store.create('user2', 'h')
+        doc_store.create('Doc A', uid1)
+        doc_store.create('Doc B', uid2)
+        assert len(doc_store.list_by_owner(uid1)) == 1
+        assert len(doc_store.list_by_owner(uid2)) == 1

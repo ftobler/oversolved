@@ -1,9 +1,11 @@
 """Flask application for the Oversolved solver API."""
 
+from functools import wraps
 from pathlib import Path
 import yaml
-from flask import Flask, g, jsonify, request, send_from_directory
-from oversolved.db import Database, SQLiteConnection, MariaDBConnection, DocumentStore
+from flask import Flask, g, jsonify, request, send_from_directory, make_response
+from werkzeug.security import generate_password_hash, check_password_hash
+from oversolved.db import Database, SQLiteConnection, MariaDBConnection, DocumentStore, UserStore, SessionStore
 from oversolved.solver import solve
 
 
@@ -23,11 +25,17 @@ def _get_database(config):
     return Database(db_conn)
 
 
+def _ensure_admin_user(db: Database) -> None:
+    """Create the default admin user if it doesn't exist."""
+    user_store = UserStore(db)
+    if user_store.find_by_username('admin') is None:
+        user_store.create('admin', generate_password_hash('admin'), must_change_password=True)
+
+
 def create_app(config=None):
     """Create and configure the Flask app."""
     app = Flask(__name__)
 
-    # Default config
     app.config.update({
         'DB_TYPE': 'sqlite',
         'DB_PATH': ':memory:',
@@ -37,7 +45,6 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
-    # Store config for later connection creation
     app.db_config = {
         'type': app.config['DB_TYPE'],
         'path': app.config.get('DB_PATH', ':memory:'),
@@ -47,10 +54,11 @@ def create_app(config=None):
         'name': app.config.get('DB_NAME'),
     }
 
-    # Initialize database once for migrations
+    # Initialize database, run migrations, seed admin user
     db = _get_database(app.db_config)
     _register_migrations(db)
     db.init()
+    _ensure_admin_user(db)
     db.close()
 
     def get_db():
@@ -65,83 +73,185 @@ def create_app(config=None):
 
     @app.before_request
     def before_request():
-        """Ensure database connection is available."""
         get_db()
 
-    # Routes
-    @app.route('/api/documents/<doc_id>', methods=['GET'])
-    def get_document(doc_id):
-        """Retrieve a YAML document."""
-        db = app.get_db()
-        doc_store = DocumentStore(db)
-        content = doc_store.retrieve(doc_id)
-        if content is None:
-            return jsonify({'error': 'Document not found'}), 404
-        return jsonify({'id': doc_id, 'content': content})
+    def require_auth(f):
+        """Decorator that requires a valid session cookie."""
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            token = request.cookies.get('session_token')
+            if not token:
+                return jsonify({'error': 'Not authenticated'}), 401
+            db = get_db()
+            session = SessionStore(db).find(token)
+            if session is None:
+                return jsonify({'error': 'Invalid or expired session'}), 401
+            user = UserStore(db).find_by_id(session['user_id'])
+            if user is None:
+                return jsonify({'error': 'User not found'}), 401
+            g.current_user = user
+            return f(*args, **kwargs)
+        return decorated
 
-    @app.route('/api/documents/<doc_id>', methods=['PUT', 'POST'])
-    def store_document(doc_id):
-        """Store or update a YAML document."""
+    # ── Auth routes ────────────────────────────────────────────────────────────
+
+    @app.route('/api/auth/login', methods=['POST'])
+    def login():
         if not request.is_json:
             return jsonify({'error': 'Content-Type must be application/json'}), 400
+        data = request.get_json()
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+        if not username or not password:
+            return jsonify({'error': 'Username and password required'}), 400
+        db = get_db()
+        user = UserStore(db).find_by_username(username)
+        if user is None or not check_password_hash(user['password_hash'], password):
+            return jsonify({'error': 'Invalid credentials'}), 401
+        token = SessionStore(db).create(user['id'])
+        response = make_response(jsonify({
+            'user': {
+                'id': user['id'],
+                'username': user['username'],
+                'must_change_password': user['must_change_password'],
+            }
+        }))
+        response.set_cookie(
+            'session_token', token,
+            httponly=True, samesite='Lax', max_age=60 * 60 * 24 * 30
+        )
+        return response
 
+    @app.route('/api/auth/logout', methods=['POST'])
+    def logout():
+        token = request.cookies.get('session_token')
+        if token:
+            SessionStore(get_db()).delete(token)
+        response = make_response(jsonify({'status': 'logged_out'}))
+        response.delete_cookie('session_token')
+        return response
+
+    @app.route('/api/auth/me', methods=['GET'])
+    def me():
+        token = request.cookies.get('session_token')
+        if not token:
+            return jsonify({'error': 'Not authenticated'}), 401
+        db = get_db()
+        session = SessionStore(db).find(token)
+        if session is None:
+            return jsonify({'error': 'Invalid or expired session'}), 401
+        user = UserStore(db).find_by_id(session['user_id'])
+        if user is None:
+            return jsonify({'error': 'User not found'}), 401
+        return jsonify({
+            'user': {
+                'id': user['id'],
+                'username': user['username'],
+                'must_change_password': user['must_change_password'],
+            }
+        })
+
+    # ── Document routes ────────────────────────────────────────────────────────
+
+    @app.route('/api/documents', methods=['GET'])
+    @require_auth
+    def list_documents():
+        docs = DocumentStore(get_db()).list_by_owner(g.current_user['id'])
+        return jsonify({'documents': docs})
+
+    @app.route('/api/documents', methods=['POST'])
+    @require_auth
+    def create_document():
+        if not request.is_json:
+            return jsonify({'error': 'Content-Type must be application/json'}), 400
+        data = request.get_json()
+        name = (data.get('name') or '').strip()
+        if not name:
+            return jsonify({'error': 'Document name required'}), 400
+        uuid = DocumentStore(get_db()).create(name, g.current_user['id'])
+        return jsonify({'uuid': uuid, 'name': name}), 201
+
+    @app.route('/api/documents/<uuid>', methods=['GET'])
+    @require_auth
+    def get_document(uuid):
+        doc = DocumentStore(get_db()).retrieve(uuid)
+        if doc is None:
+            return jsonify({'error': 'Document not found'}), 404
+        if doc['owner_id'] != g.current_user['id']:
+            return jsonify({'error': 'Forbidden'}), 403
+        return jsonify({'uuid': doc['uuid'], 'name': doc['name'], 'content': doc['content']})
+
+    @app.route('/api/documents/<uuid>', methods=['PUT'])
+    @require_auth
+    def update_document(uuid):
+        if not request.is_json:
+            return jsonify({'error': 'Content-Type must be application/json'}), 400
         data = request.get_json()
         if 'content' not in data:
             return jsonify({'error': 'Missing "content" field'}), 400
-
         content = data['content']
         if not isinstance(content, str):
             return jsonify({'error': '"content" must be a string'}), 400
-
-        db = app.get_db()
-        doc_store = DocumentStore(db)
-        doc_store.store(doc_id, content)
-        return jsonify({'id': doc_id, 'status': 'stored'}), 201
-
-    @app.route('/api/documents/<doc_id>', methods=['DELETE'])
-    def delete_document(doc_id):
-        """Delete a document."""
-        db = app.get_db()
-        doc_store = DocumentStore(db)
-        deleted = doc_store.delete(doc_id)
-        if not deleted:
+        db = get_db()
+        doc = DocumentStore(db).retrieve(uuid)
+        if doc is None:
             return jsonify({'error': 'Document not found'}), 404
-        return jsonify({'id': doc_id, 'status': 'deleted'}), 200
+        if doc['owner_id'] != g.current_user['id']:
+            return jsonify({'error': 'Forbidden'}), 403
+        DocumentStore(db).store_content(uuid, content)
+        return jsonify({'uuid': uuid, 'status': 'stored'}), 200
 
-    @app.route('/api/documents', methods=['GET'])
-    def list_documents():
-        """List all document IDs."""
-        db = app.get_db()
-        doc_store = DocumentStore(db)
-        ids = doc_store.list_ids()
-        return jsonify({'documents': ids})
+    @app.route('/api/documents/<uuid>', methods=['PATCH'])
+    @require_auth
+    def rename_document(uuid):
+        if not request.is_json:
+            return jsonify({'error': 'Content-Type must be application/json'}), 400
+        data = request.get_json()
+        name = (data.get('name') or '').strip()
+        if not name:
+            return jsonify({'error': 'Document name required'}), 400
+        db = get_db()
+        doc = DocumentStore(db).retrieve(uuid)
+        if doc is None:
+            return jsonify({'error': 'Document not found'}), 404
+        if doc['owner_id'] != g.current_user['id']:
+            return jsonify({'error': 'Forbidden'}), 403
+        DocumentStore(db).rename(uuid, name)
+        return jsonify({'uuid': uuid, 'name': name})
+
+    @app.route('/api/documents/<uuid>', methods=['DELETE'])
+    @require_auth
+    def delete_document(uuid):
+        db = get_db()
+        doc = DocumentStore(db).retrieve(uuid)
+        if doc is None:
+            return jsonify({'error': 'Document not found'}), 404
+        if doc['owner_id'] != g.current_user['id']:
+            return jsonify({'error': 'Forbidden'}), 403
+        DocumentStore(db).delete(uuid)
+        return jsonify({'uuid': uuid, 'status': 'deleted'}), 200
+
+    # ── Solver ─────────────────────────────────────────────────────────────────
 
     @app.route('/api/solve', methods=['POST'])
     def solve_document():
-        """Run the solver on a structured document object and return the result.
-        Accepts application/json with the parsed document structure.
-        """
         content_type = request.content_type or ''
-
         if 'application/json' not in content_type:
             return jsonify({'error': 'Content-Type must be application/json'}), 400
-
         data = request.get_json()
         if not data:
             return jsonify({'error': 'Empty request body'}), 400
-
         try:
-            # Convert parsed object back to YAML for the solver
             yaml_str = yaml.dump(data)
             result = solve(yaml_str)
-            # result is already in spec format: {solve_ms: ..., result: {...}}
             return jsonify(result)
         except Exception as e:
             return jsonify({'error': str(e)}), 400
 
+    # ── Documentation ──────────────────────────────────────────────────────────
+
     @app.route('/api/docs', methods=['GET'])
     def list_docs():
-        """List available documentation files."""
         docs_path = Path(__file__).parent.parent / 'docs'
         if not docs_path.exists():
             return jsonify({'docs': []})
@@ -150,11 +260,8 @@ def create_app(config=None):
 
     @app.route('/api/docs/<doc_name>', methods=['GET'])
     def get_doc(doc_name):
-        """Retrieve a markdown documentation file."""
         docs_path = Path(__file__).parent.parent / 'docs'
         file_path = docs_path / f'{doc_name}.md'
-
-        # Security: ensure the file is within the docs directory
         try:
             file_path = file_path.resolve()
             docs_path = docs_path.resolve()
@@ -162,30 +269,27 @@ def create_app(config=None):
                 return jsonify({'error': 'Invalid doc name'}), 400
         except (OSError, ValueError):
             return jsonify({'error': 'Invalid doc name'}), 400
-
         if not file_path.exists():
             return jsonify({'error': 'Documentation not found'}), 404
-
         try:
             content = file_path.read_text(encoding='utf-8')
             return jsonify({'name': doc_name, 'content': content})
         except OSError:
             return jsonify({'error': 'Failed to read documentation'}), 500
 
-    # Serve frontend
+    # ── Frontend ───────────────────────────────────────────────────────────────
+
     frontend_dist = Path(__file__).parent.parent / 'frontend' / 'dist'
     if frontend_dist.exists():
         @app.route('/')
         @app.route('/<path:path>')
         def serve_frontend(path='index.html'):
-            """Serve the frontend."""
             if path and (frontend_dist / path).exists():
                 return send_from_directory(frontend_dist, path)
             return send_from_directory(frontend_dist, 'index.html')
 
     @app.teardown_appcontext
     def close_db(error):
-        """Close database connection after request."""
         db = g.pop('db', None)
         if db is not None:
             db.close()
@@ -196,16 +300,38 @@ def create_app(config=None):
 def _register_migrations(db: Database) -> None:
     """Register all database migrations."""
 
-    def migration_001_create_documents_table(database: Database):
-        """Create the documents table."""
+    def migration_001_initial_schema(database: Database):
+        """Create users, sessions, and documents tables."""
         database.execute("""
-            CREATE TABLE IF NOT EXISTS documents (
-                id VARCHAR(255) PRIMARY KEY,
-                content LONGTEXT NOT NULL
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                must_change_password INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        database.execute("""
+            CREATE TABLE sessions (
+                token TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                expires_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+        database.execute("""
+            CREATE TABLE documents (
+                uuid TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                content TEXT NOT NULL,
+                owner_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
 
-    db.register_migration(1, 'create_documents_table', migration_001_create_documents_table)
+    db.register_migration(1, 'initial_schema', migration_001_initial_schema)
 
 
 if __name__ == '__main__':

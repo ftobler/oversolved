@@ -1,7 +1,9 @@
 """Database abstraction layer supporting SQLite and MariaDB."""
 
 import sqlite3
+import secrets
 import contextlib
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Callable
 from abc import ABC, abstractmethod
 
@@ -93,7 +95,6 @@ class Database:
 
     def init(self) -> None:
         """Initialize database and run pending migrations."""
-        # Create schema_version table if it doesn't exist
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
@@ -102,12 +103,10 @@ class Database:
         """)
         self.conn.commit()
 
-        # Get current version
         cursor = self.conn.execute("SELECT MAX(version) FROM schema_version")
         row = cursor.fetchone()
         self._version = row[0] if row[0] is not None else 0
 
-        # Run pending migrations
         for version, name, func in self._migrations:
             if version > self._version:
                 try:
@@ -149,51 +148,154 @@ class Database:
             raise
 
 
+class UserStore:
+    """User management."""
+
+    def __init__(self, db: Database):
+        self.db = db
+
+    def create(self, username: str, password_hash: str, must_change_password: bool = False) -> int:
+        """Create a user and return its id."""
+        with self.db.transaction():
+            cursor = self.db.execute(
+                "INSERT INTO users (username, password_hash, must_change_password) VALUES (?, ?, ?)",
+                (username, password_hash, 1 if must_change_password else 0)
+            )
+            return cursor.lastrowid
+
+    def find_by_username(self, username: str) -> Optional[dict]:
+        """Find a user by username."""
+        cursor = self.db.execute(
+            "SELECT id, username, password_hash, must_change_password FROM users WHERE username = ?",
+            (username,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            'id': row[0],
+            'username': row[1],
+            'password_hash': row[2],
+            'must_change_password': bool(row[3]),
+        }
+
+    def find_by_id(self, user_id: int) -> Optional[dict]:
+        """Find a user by id."""
+        cursor = self.db.execute(
+            "SELECT id, username, must_change_password FROM users WHERE id = ?",
+            (user_id,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            'id': row[0],
+            'username': row[1],
+            'must_change_password': bool(row[2]),
+        }
+
+
+class SessionStore:
+    """Session management."""
+
+    SESSION_DURATION = timedelta(days=30)
+
+    def __init__(self, db: Database):
+        self.db = db
+
+    def create(self, user_id: int) -> str:
+        """Create a session and return the token."""
+        token = secrets.token_urlsafe(32)
+        expires_at = (datetime.now(timezone.utc) + self.SESSION_DURATION).isoformat()
+        with self.db.transaction():
+            self.db.execute(
+                "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+                (token, user_id, expires_at)
+            )
+        return token
+
+    def find(self, token: str) -> Optional[dict]:
+        """Find a valid (non-expired) session."""
+        cursor = self.db.execute(
+            "SELECT token, user_id, expires_at FROM sessions WHERE token = ?",
+            (token,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        expires_at = datetime.fromisoformat(row[2])
+        if datetime.now(timezone.utc) >= expires_at:
+            return None
+        return {'token': row[0], 'user_id': row[1], 'expires_at': row[2]}
+
+    def delete(self, token: str) -> None:
+        """Delete a session (logout)."""
+        with self.db.transaction():
+            self.db.execute("DELETE FROM sessions WHERE token = ?", (token,))
+
+    def cleanup_expired(self) -> None:
+        """Remove expired sessions."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self.db.transaction():
+            self.db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
+
+
 class DocumentStore:
     """Store and retrieve YAML documents."""
 
     def __init__(self, db: Database):
         self.db = db
 
-    def store(self, doc_id: str, yaml_content: str) -> None:
-        """Store a YAML document."""
+    def create(self, name: str, owner_id: int) -> str:
+        """Create a new document and return its UUID."""
+        uuid = secrets.token_urlsafe(16)
         with self.db.transaction():
-            cursor = self.db.execute(
-                "SELECT id FROM documents WHERE id = ?",
-                (doc_id,)
+            self.db.execute(
+                "INSERT INTO documents (uuid, name, content, owner_id) VALUES (?, ?, ?, ?)",
+                (uuid, name, '', owner_id)
             )
-            exists = cursor.fetchone() is not None
+        return uuid
 
-            if exists:
-                self.db.execute(
-                    "UPDATE documents SET content = ? WHERE id = ?",
-                    (yaml_content, doc_id)
-                )
-            else:
-                self.db.execute(
-                    "INSERT INTO documents (id, content) VALUES (?, ?)",
-                    (doc_id, yaml_content)
-                )
+    def store_content(self, uuid: str, content: str) -> None:
+        """Update document content."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self.db.transaction():
+            self.db.execute(
+                "UPDATE documents SET content = ?, updated_at = ? WHERE uuid = ?",
+                (content, now, uuid)
+            )
 
-    def retrieve(self, doc_id: str) -> Optional[str]:
-        """Retrieve a YAML document by ID."""
-        cursor = self.db.execute(
-            "SELECT content FROM documents WHERE id = ?",
-            (doc_id,)
-        )
-        row = cursor.fetchone()
-        return row[0] if row else None
-
-    def delete(self, doc_id: str) -> bool:
-        """Delete a document by ID. Returns True if deleted, False if not found."""
+    def rename(self, uuid: str, name: str) -> bool:
+        """Rename a document. Returns True if found."""
+        now = datetime.now(timezone.utc).isoformat()
         with self.db.transaction():
             cursor = self.db.execute(
-                "DELETE FROM documents WHERE id = ?",
-                (doc_id,)
+                "UPDATE documents SET name = ?, updated_at = ? WHERE uuid = ?",
+                (name, now, uuid)
             )
             return cursor.rowcount > 0
 
-    def list_ids(self) -> list[str]:
-        """List all document IDs."""
-        cursor = self.db.execute("SELECT id FROM documents ORDER BY id")
-        return [row[0] for row in cursor.fetchall()]
+    def retrieve(self, uuid: str) -> Optional[dict]:
+        """Retrieve a document by UUID."""
+        cursor = self.db.execute(
+            "SELECT uuid, name, content, owner_id FROM documents WHERE uuid = ?",
+            (uuid,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {'uuid': row[0], 'name': row[1], 'content': row[2], 'owner_id': row[3]}
+
+    def delete(self, uuid: str) -> bool:
+        """Delete a document by UUID. Returns True if deleted."""
+        with self.db.transaction():
+            cursor = self.db.execute("DELETE FROM documents WHERE uuid = ?", (uuid,))
+            return cursor.rowcount > 0
+
+    def list_by_owner(self, owner_id: int) -> list[dict]:
+        """List all documents for an owner, ordered by name."""
+        cursor = self.db.execute(
+            "SELECT uuid, name FROM documents WHERE owner_id = ? ORDER BY name",
+            (owner_id,)
+        )
+        return [{'uuid': row[0], 'name': row[1]} for row in cursor.fetchall()]

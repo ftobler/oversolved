@@ -74,6 +74,13 @@
   transition: 0.2s;
 }
 
+.header-username {
+  color: #666;
+  font-size: 13px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
 .doc-name {
   margin: 0;
   font-size: 16px;
@@ -85,4 +92,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 300px;
+}
+
+.doc-name:hover {
+  background: #222;
+  color: #fff;
+  cursor: pointer;
 }

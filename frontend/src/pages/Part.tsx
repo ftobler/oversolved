@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
 import type { Feature, PartDoc } from '../types/cad'
@@ -32,11 +32,10 @@ function extractFeatures(doc: PartDoc | null): Array<{ id: string; kind?: string
 }
 
 export default function Part() {
-  const { docId } = useParams<{ docId: string }>()
-  const navigate = useNavigate()
+  const { uuid } = useParams<{ uuid: string }>()
   const [codeText, setCodeText] = useState('')
   const [isEditing, setIsEditing] = useState(false)
-  const [editName, setEditName] = useState(docId || '')
+  const [editName, setEditName] = useState('')
   const [visibleFeatures, setVisibleFeatures] = useState<Set<string>>(new Set())
   const [mode, setModeRaw] = useState<'sketch' | 'feature' | 'code'>('sketch')
   const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
@@ -62,7 +61,13 @@ export default function Part() {
     handleUndo,
     handleRedo,
     saveDoc,
-  } = usePartDoc(docId, mode, setCodeText)
+    renameDoc,
+    docName,
+  } = usePartDoc(uuid, mode, setCodeText)
+
+  useEffect(() => {
+    if (docName) setEditName(docName)
+  }, [docName])
 
   const features = useMemo(() => extractFeatures(doc), [doc])
 
@@ -129,27 +134,21 @@ export default function Part() {
   }, [handleUndo, handleRedo])
 
   const handleRename = async () => {
-    if (!editName.trim() || editName === docId) {
+    if (!editName.trim() || editName === docName) {
       setIsEditing(false)
       return
     }
-    try {
-      if (!doc) return
-      const success = await saveDoc(editName, doc)
-      if (success) {
-        await fetch(`/api/documents/${docId}`, { method: 'DELETE' })
-        setIsEditing(false)
-        navigate(`/documents/${editName}`)
-      }
-    } catch (e) {
-      setError(String(e))
-      setEditName(docId || '')
+    const success = await renameDoc(uuid!, editName)
+    if (success) {
+      setIsEditing(false)
+    } else {
+      setEditName(docName)
     }
   }
 
   const handleSave = async () => {
-    if (!docId || !doc) return
-    const success = await saveDoc(docId, doc)
+    if (!uuid || !doc) return
+    const success = await saveDoc(uuid, doc)
     if (success) setError(null)
   }
 
@@ -213,7 +212,7 @@ export default function Part() {
           />
         ) : (
           <h2 className="doc-name" onClick={() => setIsEditing(true)}>
-            {docId}
+            {docName}
           </h2>
         )}
       </AppHeader>

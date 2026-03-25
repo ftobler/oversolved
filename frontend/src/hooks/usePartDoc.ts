@@ -24,8 +24,9 @@ function healDoc(raw: unknown): PartDoc {
   } as PartDoc
 }
 
-export function usePartDoc(docId: string | undefined, mode: string, setCodeText: (t: string) => void) {
+export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void) {
   const [doc, setDoc] = useState<PartDoc | null>(null)
+  const [docName, setDocName] = useState<string>('')
   const docRef = useRef<PartDoc | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -62,7 +63,6 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
             const featureDef = (d.features ?? []).find(f => f.id === id)
             if (featureDef) {
               featureDef.initial = feature.geometry
-              // Remove superfluous constraints from the AST
               if (feature.constraints && featureDef.constraints) {
                 const superfluousIds = new Set(
                   Object.entries(feature.constraints)
@@ -75,15 +75,6 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
               }
             }
             const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
-            // Inject projected entities (e.g. origin) returned by the solver.
-            const projectedData = (feature as Record<string, unknown>).projected as Record<string, number[]> | undefined
-            if (projectedData) {
-              for (const [id, p] of Object.entries(projectedData)) {
-                solved[id] = { x: p[0] ?? 0, y: p[1] ?? 0, projected: true }
-              }
-            }
-            // Build a lookup of AST-stored label positions so they survive the
-            // server round-trip (the solver does not know about pos).
             const astPosById = new Map(
               (featureDef?.constraints ?? [])
                 .filter(c => c.pos)
@@ -203,9 +194,9 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
   }, [reSolve])
 
   useEffect(() => {
-    if (!docId) return
+    if (!uuid) return
     setLoading(true)
-    fetch(`/api/documents/${docId}`)
+    fetch(`/api/documents/${uuid}`)
       .then(r => {
         if (!r.ok) throw new Error('Failed to load document')
         return r.json()
@@ -214,17 +205,18 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
         const parsed = healDoc(parseYaml(data.content))
         docRef.current = parsed
         setDoc(parsed)
+        setDocName(data.name)
         setLoading(false)
       })
       .catch(e => {
         setError(String(e))
         setLoading(false)
       })
-  }, [docId])
+  }, [uuid])
 
-  const saveDoc = useCallback(async (targetId: string, document: PartDoc) => {
+  const saveDoc = useCallback(async (uuid: string, document: PartDoc) => {
     try {
-      const response = await fetch(`/api/documents/${targetId}`, {
+      const response = await fetch(`/api/documents/${uuid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: stringifyYaml(document) }),
@@ -237,10 +229,28 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
     }
   }, [])
 
+  const renameDoc = useCallback(async (uuid: string, name: string) => {
+    try {
+      const response = await fetch(`/api/documents/${uuid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!response.ok) throw new Error('Failed to rename document')
+      setDocName(name)
+      return true
+    } catch (e) {
+      setError(String(e))
+      return false
+    }
+  }, [])
+
   return {
     doc,
     setDoc,
     docRef,
+    docName,
+    setDocName,
     loading,
     error,
     setError,
@@ -259,5 +269,6 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
     handleUndo,
     handleRedo,
     saveDoc,
+    renameDoc,
   }
 }

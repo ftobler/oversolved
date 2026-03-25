@@ -4,8 +4,8 @@ import AppHeader from '../components/AppHeader'
 import './Documents.css'
 
 interface DocumentMeta {
-  id: string
-  preview: string
+  uuid: string
+  name: string
 }
 
 export default function Documents() {
@@ -13,7 +13,7 @@ export default function Documents() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
-  const [newDocId, setNewDocId] = useState('')
+  const [newDocName, setNewDocName] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
 
   const fetchDocuments = () => {
@@ -23,11 +23,7 @@ export default function Documents() {
         return r.json()
       })
       .then(data => {
-        const docs = (data.documents || []).map((id: string) => ({
-          id,
-          preview: '',
-        }))
-        setDocuments(docs)
+        setDocuments(data.documents || [])
         setError(null)
       })
       .catch(e => {
@@ -42,23 +38,24 @@ export default function Documents() {
   }, [])
 
   const handleAddDocument = async () => {
-    if (!newDocId.trim()) {
-      setAddError('Document ID cannot be empty')
+    if (!newDocName.trim()) {
+      setAddError('Document name cannot be empty')
       return
     }
 
     try {
-      const response = await fetch(`/api/documents/${newDocId}`, {
-        method: 'PUT',
+      const response = await fetch('/api/documents', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: 'version: 1\nkind: part\nfeatures: []\n' }),
+        body: JSON.stringify({ name: newDocName.trim() }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to create document')
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to create document')
       }
 
-      setNewDocId('')
+      setNewDocName('')
       setShowAddForm(false)
       setAddError(null)
       fetchDocuments()
@@ -67,13 +64,13 @@ export default function Documents() {
     }
   }
 
-  const handleDeleteDocument = async (id: string) => {
-    if (!confirm(`Delete document "${id}"?`)) {
+  const handleDeleteDocument = async (uuid: string, name: string) => {
+    if (!confirm(`Delete document "${name}"?`)) {
       return
     }
 
     try {
-      const response = await fetch(`/api/documents/${id}`, {
+      const response = await fetch(`/api/documents/${uuid}`, {
         method: 'DELETE',
       })
 
@@ -103,9 +100,9 @@ export default function Documents() {
           <div className="add-form">
             <input
               type="text"
-              placeholder="Document ID"
-              value={newDocId}
-              onChange={e => setNewDocId(e.target.value)}
+              placeholder="Document name"
+              value={newDocName}
+              onChange={e => setNewDocName(e.target.value)}
               onKeyPress={e => {
                 if (e.key === 'Enter') handleAddDocument()
               }}
@@ -128,16 +125,15 @@ export default function Documents() {
         {documents.length > 0 && (
           <ul>
             {documents.map(doc => (
-              <li key={doc.id} className="doc-item">
-                <Link to={`/documents/${doc.id}`} className="doc-link">
-                  <span className="doc-name">{doc.id}</span>
-                  {doc.preview && <span className="doc-preview">{doc.preview}</span>}
+              <li key={doc.uuid} className="doc-item">
+                <Link to={`/documents/${doc.uuid}`} className="doc-link">
+                  <span className="doc-name">{doc.name}</span>
                 </Link>
                 <button
                   className="btn btn-delete"
                   onClick={e => {
                     e.preventDefault()
-                    handleDeleteDocument(doc.id)
+                    handleDeleteDocument(doc.uuid, doc.name)
                   }}
                   title="Delete document"
                 >

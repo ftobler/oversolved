@@ -1,5 +1,6 @@
 import { useNavigate, Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
+import { useAuth } from '../contexts/AuthContext'
 import './AppHeader.css'
 
 interface AppHeaderProps {
@@ -10,6 +11,13 @@ interface AppHeaderProps {
 
 export default function AppHeader({ title, children, rightContent }: AppHeaderProps) {
   const navigate = useNavigate()
+  const { user, logout } = useAuth()
+
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login')
+  }
+
   return (
     <header className="app-header">
       <div className="app-header-left">
@@ -30,6 +38,14 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
         <Link to="/visualizer" className="toolbar-btn" title="Visualizer">
           <span className="material-icons-outlined">bug_report</span>
         </Link>
+        {user && (
+          <>
+            <span className="header-username">{user.username}</span>
+            <button className="toolbar-btn" title="Sign out" onClick={handleLogout}>
+              <span className="material-icons-outlined">logout</span>
+            </button>
+          </>
+        )}
       </div>
     </header>
   )
