@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { load as yamlLoad } from 'js-yaml'
 import { stringify as yamlStringify } from 'yaml'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
@@ -7,6 +7,7 @@ import * as THREE from 'three'
 import Sketch3D from '../components/Sketch3D'
 import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
 import type { Sketch, Constraints, Topology } from '../types/cad'
+import AppHeader from '../components/AppHeader'
 import './Visualizer.css'
 
 // Two formats are written by conftest.py:
@@ -221,25 +222,11 @@ export default function Visualizer() {
 
   return (
     <div className="visualizer">
-      <header className="doc-toolbar">
-        <div className="toolbar-left">
-          <button className="toolbar-btn burger" title="Documents" onClick={() => navigate('/documents')}>
-            <span className="material-icons-outlined">menu</span>
-          </button>
-          <button className="logo" onClick={() => navigate('/')}>
-            Oversolved
-          </button>
-          <h2 className="doc-name">Test Visualizer</h2>
-        </div>
-        <div className="toolbar-right">
-          <button className="toolbar-btn" title="Reload" onClick={() => window.location.reload()}>
-            <span className="material-icons-outlined">refresh</span>
-          </button>
-          <Link to="/docs" className="toolbar-btn" title="Documentation">
-            <span className="material-icons-outlined">help</span>
-          </Link>
-        </div>
-      </header>
+      <AppHeader title="Test Visualizer" rightContent={
+        <button className="toolbar-btn" title="Reload" onClick={() => window.location.reload()}>
+          <span className="material-icons-outlined">refresh</span>
+        </button>
+      } />
 
       <div className="visualizer-content">
         {error && <p className="error">Failed to load results: {error}</p>}

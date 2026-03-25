@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import AppHeader from '../components/AppHeader'
 import './Documentation.css'
 
 interface DocFile {
@@ -20,7 +21,6 @@ function extractLabel(name: string, content: string): string {
 }
 
 export default function Documentation() {
-  const navigate = useNavigate()
   const { doc } = useParams<{ doc?: string }>()
   const currentDoc = doc || 'overview'
   const [content, setContent] = useState<string>('')
@@ -86,22 +86,7 @@ export default function Documentation() {
 
   return (
     <div className="documentation">
-      <header className="doc-toolbar">
-        <div className="toolbar-left">
-          <button className="toolbar-btn burger" title="Documents" onClick={() => navigate('/documents')}>
-            <span className="material-icons-outlined">menu</span>
-          </button>
-          <button className="logo" onClick={() => navigate('/')}>
-            Oversolved
-          </button>
-          <h2 className="doc-name">Documentation</h2>
-        </div>
-        <div className="toolbar-right">
-          <Link to="/visualizer" className="toolbar-btn" title="Visualizer">
-            <span className="material-icons-outlined">bug_report</span>
-          </Link>
-        </div>
-      </header>
+      <AppHeader title="Documentation" />
 
       <div className="doc-container">
         <nav className="doc-nav">

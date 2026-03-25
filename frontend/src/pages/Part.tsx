@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
 import type { Feature, PartDoc } from '../types/cad'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import { registerCommand, unregisterCommand, dispatchKey } from '../stores/commandRegistry'
 import SketchToolbar from '../components/Toolbar/SketchToolbar'
+import AppHeader from '../components/AppHeader'
 import { usePartDoc } from '../hooks/usePartDoc'
 import './Part.css'
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
@@ -189,49 +190,33 @@ export default function Part() {
 
   return (
     <div className="document-viewer">
-      <header className="doc-toolbar">
-        <div className="toolbar-left">
-          <button className="toolbar-btn burger" title="Menu" onClick={() => navigate('/documents')}>
-            <span className="material-icons-outlined">menu</span>
-          </button>
-          <button className="logo" onClick={() => navigate('/')}>
-            Oversolved
-          </button>
-          <button className="toolbar-btn" title="Undo" onClick={handleUndo} disabled={undoStack.length === 0}>
-            <span className="material-icons-outlined">undo</span>
-          </button>
-          <button className="toolbar-btn" title="Redo" onClick={handleRedo} disabled={redoStack.length === 0}>
-            <span className="material-icons-outlined">redo</span>
-          </button>
-          <button className="toolbar-btn" title="Save" onClick={handleSave}>
-            <span className="material-icons-outlined">save</span>
-          </button>
-          {isEditing ? (
-            <input
-              className="doc-name-input"
-              value={editName}
-              onChange={e => setEditName(e.target.value)}
-              onBlur={handleRename}
-              onKeyDown={e => {
-                if (e.key === 'Enter') handleRename()
-              }}
-              autoFocus
-            />
-          ) : (
-            <h2 className="doc-name" onClick={() => setIsEditing(true)}>
-              {docId}
-            </h2>
-          )}
-        </div>
-        <div className="toolbar-right">
-          <Link to="/docs" className="toolbar-btn" title="Documentation">
-            <span className="material-icons-outlined">help</span>
-          </Link>
-          <Link to="/visualizer" className="toolbar-btn" title="Visualizer">
-            <span className="material-icons-outlined">bug_report</span>
-          </Link>
-        </div>
-      </header>
+      <AppHeader>
+        <button className="toolbar-btn" title="Undo" onClick={handleUndo} disabled={undoStack.length === 0}>
+          <span className="material-icons-outlined">undo</span>
+        </button>
+        <button className="toolbar-btn" title="Redo" onClick={handleRedo} disabled={redoStack.length === 0}>
+          <span className="material-icons-outlined">redo</span>
+        </button>
+        <button className="toolbar-btn" title="Save" onClick={handleSave}>
+          <span className="material-icons-outlined">save</span>
+        </button>
+        {isEditing ? (
+          <input
+            className="doc-name-input"
+            value={editName}
+            onChange={e => setEditName(e.target.value)}
+            onBlur={handleRename}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleRename()
+            }}
+            autoFocus
+          />
+        ) : (
+          <h2 className="doc-name" onClick={() => setIsEditing(true)}>
+            {docId}
+          </h2>
+        )}
+      </AppHeader>
 
       <div className="doc-container">
         <aside className="doc-sidebar">
