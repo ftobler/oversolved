@@ -264,7 +264,8 @@ export function renderConstraints(
         const [vx, vy] = px(dim.p2[0], dim.p2[1])
         const [x1, y1] = px(dim.p1[0], dim.p1[1])
         const [x3, y3] = px(dim.p3[0], dim.p3[1])
-        const angle1 = Math.atan2(y1 - vy, x1 - vx)
+        // angle1 = forward direction of line A (from p1 toward vertex p2)
+        const angle1 = Math.atan2(vy - y1, vx - x1)
         const angle2 = Math.atan2(y3 - vy, x3 - vx)
         const r1 = Math.hypot(x1 - vx, y1 - vy)
         const r2 = Math.hypot(x3 - vx, y3 - vy)
@@ -277,7 +278,11 @@ export function renderConstraints(
         if (angleDiff < 0) angleDiff += 2 * Math.PI
         if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff
         const largeArc = angleDiff > Math.PI ? 1 : 0
-        const midAngle = (angle1 + angle2) / 2
+        // midAngle consistent with shorter-arc direction
+        let spanRad = angle2 - angle1
+        if (spanRad < -Math.PI) spanRad += 2 * Math.PI
+        else if (spanRad > Math.PI) spanRad -= 2 * Math.PI
+        const midAngle = angle1 + spanRad / 2
         const labelRadius = arcRadius * 1.5
         const labelX = vx + labelRadius * Math.cos(midAngle)
         const labelY = vy + labelRadius * Math.sin(midAngle)

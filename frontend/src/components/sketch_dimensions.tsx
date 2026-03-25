@@ -410,8 +410,11 @@ export function AngleDimension({ cid, dim, interaction }: {
   if (!dim.p3) return null
 
   // p2 is the vertex; p1 and p3 are points on the two lines.
+  // angle1 uses the FORWARD direction of line A (from p1 toward vertex p2),
+  // matching how the solver constrains: dot(da, db) where da = end - start.
+  // angle2 is the direction from vertex toward p3 (forward direction of line B).
   const [vx, vy] = dim.p2, [x1, y1] = dim.p1, [x3, y3] = dim.p3
-  const angle1 = Math.atan2(y1 - vy, x1 - vx)
+  const angle1 = Math.atan2(vy - y1, vx - x1)
   const angle2 = Math.atan2(y3 - vy, x3 - vx)
 
   const effectivePos: [number, number] | undefined = activeDragPos
@@ -426,7 +429,12 @@ export function AngleDimension({ cid, dim, interaction }: {
   } else {
     const r1 = Math.hypot(x1 - vx, y1 - vy), r2 = Math.hypot(x3 - vx, y3 - vy)
     arcR = Math.min(r1, r2) * 0.4
-    const midAngle = (angle1 + angle2) / 2
+    // Compute midAngle consistently with sampleArc (always takes the shorter arc)
+    const a1deg = angle1 * (180 / Math.PI)
+    const a2deg = angle2 * (180 / Math.PI)
+    let spanDeg = ((a2deg - a1deg) + 360) % 360
+    if (spanDeg > 180) spanDeg -= 360
+    const midAngle = angle1 + (spanDeg / 2) * (Math.PI / 180)
     labelX = vx + arcR * Math.cos(midAngle)
     labelY = vy + arcR * Math.sin(midAngle)
   }
