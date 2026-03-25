@@ -420,10 +420,17 @@ def _entity_status(
 # Sketch solver
 # ---------------------------------------------------------------------------
 
+ORIGIN_ID = "_origin"
+ORIGIN_FIX_ID = "__builtin_origin_fix__"
+
+
 def _solve_sketch(feature: dict) -> dict:
     entities = {e["id"]: e for e in feature["entities"]}
     initial = feature.get("initial", {})
     constraints = feature.get("constraints", [])
+
+    # Inject the projected origin point — always present at (0, 0), not user-editable.
+    entities[ORIGIN_ID] = {"id": ORIGIN_ID, "kind": "point", "projected": True}
 
     entity_offsets: dict = {}
     params: list = []
@@ -438,7 +445,9 @@ def _solve_sketch(feature: dict) -> dict:
     repo = Repository()
 
     # Register globally available built-in entities (queried via @builtin_... syntax).
-    repo.register("builtin_origin",      {"type": "point", "x": 0.0, "y": 0.0, "z": 0.0})
+    # @builtin_origin resolves to the injected _origin entity so YAML constraints
+    # that reference "@builtin_origin" work correctly.
+    repo.register("builtin_origin",      {"entity": ORIGIN_ID, "point": "xy"})
     repo.register("builtin_plane_front", {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 1, 0],  "normal": [0, 0, 1]})
     repo.register("builtin_plane_top",   {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 0, -1], "normal": [0, 1, 0]})
     repo.register("builtin_plane_right", {"type": "plane", "origin": [0, 0, 0], "x_axis": [0, 0, -1], "y_axis": [0, 1, 0], "normal": [1, 0, 0]})
@@ -514,6 +523,16 @@ def _solve_sketch(feature: dict) -> dict:
         return rc
 
     constraints = [_pre_resolve(c) for c in constraints]
+
+    # Implicit constraint: pin the projected origin to (0, 0).
+    # This is appended AFTER pre-resolution; it uses an already-resolved dict directly.
+    constraints.append({
+        "id": ORIGIN_FIX_ID,
+        "kind": "fixed",
+        "target": {"entity": ORIGIN_ID, "point": "xy"},
+        "x": 0.0,
+        "y": 0.0,
+    })
 
     x0 = np.array(params, dtype=np.float64)
 
@@ -788,12 +807,17 @@ def _solve_sketch(feature: dict) -> dict:
     # Per-constraint residual (sum of squares), render data, and superfluous flag.
     # A constraint is superfluous when removing its Jacobian rows does not reduce
     # the rank — i.e. it is linearly dependent on the remaining constraints.
+    # The implicit origin-fix constraint is excluded from this analysis and output.
     constraint_row_ranges: list[tuple[str, int, int]] = []
+    origin_fix_rows: set[int] = set()
     row_idx = 0
     for c in constraints:
         r_vec = residuals(x_sol, [c])
         n = len(r_vec)
-        constraint_row_ranges.append((c["id"], row_idx, row_idx + n))
+        if c["id"] == ORIGIN_FIX_ID:
+            origin_fix_rows = set(range(row_idx, row_idx + n))
+        else:
+            constraint_row_ranges.append((c["id"], row_idx, row_idx + n))
         row_idx += n
 
     # Greedy superfluous detection: iterate constraints in order; a constraint is
@@ -801,20 +825,23 @@ def _solve_sketch(feature: dict) -> dict:
     # without reducing rank.  Using a greedy approach (rather than testing against
     # the full J) ensures at most one of a pair of identical constraints is flagged,
     # so the retained set always stays sufficient to constrain the sketch.
+    # Origin-fix rows are always retained so they never inflate user-constraint rank.
     superfluous_ids: set[str] = set()
     if J.shape[0] > 0:
-        active_rows = list(range(J.shape[0]))
+        active_rows = [r for r in range(J.shape[0]) if r not in origin_fix_rows]
         for cid, start, end in constraint_row_ranges:
             crows = list(range(start, end))
             remaining = [r for r in active_rows if r not in crows]
-            J_active = J[active_rows, :]
-            J_remaining = J[remaining, :]
+            J_active = J[active_rows + list(origin_fix_rows), :]
+            J_remaining = J[remaining + list(origin_fix_rows), :]
             if int(np.linalg.matrix_rank(J_remaining, tol=RANK_TOL)) == int(np.linalg.matrix_rank(J_active, tol=RANK_TOL)):
                 superfluous_ids.add(cid)
                 active_rows = remaining
 
     constraints_out = {}
     for c in constraints:
+        if c["id"] == ORIGIN_FIX_ID:
+            continue  # internal — never expose to the frontend
         r_vec = residuals(x_sol, [c])
         constraints_out[c["id"]] = {
             "residual": round(float(np.sum(r_vec**2)), 12),
@@ -822,15 +849,21 @@ def _solve_sketch(feature: dict) -> dict:
             "superfluous": c["id"] in superfluous_ids,
         }
 
-    # Convert geometry from named-field format to flat array format (same as input initial)
-    geometry_flat = _params_from_array(x_sol, entities, entity_offsets)
+    # Split geometry: user entities go to "geometry", projected entities to "projected".
+    user_entities = {eid: e for eid, e in entities.items() if not e.get("projected")}
+    projected_entities = {eid: e for eid, e in entities.items() if e.get("projected")}
 
-    # Convert entity_status to features format: {entity_id: {status: "..."}}
-    features = {eid: {"status": st} for eid, st in entity_status.items()}
+    geometry_flat = _params_from_array(x_sol, user_entities, entity_offsets)
+    projected_flat = _params_from_array(x_sol, projected_entities, entity_offsets)
+
+    # Convert entity_status to features format, excluding projected entities.
+    features = {eid: {"status": st} for eid, st in entity_status.items()
+                if not entities.get(eid, {}).get("projected")}
 
     return {
         "status": status,
         "geometry": geometry_flat,
+        "projected": projected_flat,
         "features": features,
         "topology": topology,
         "constraints": constraints_out,

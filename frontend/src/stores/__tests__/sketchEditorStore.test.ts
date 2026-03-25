@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useSketchEditorStore } from '../sketchEditorStore'
 
+const POS: [number, number] = [0, 0]
+
 function reset() {
   useSketchEditorStore.setState({
     selection: new Set(),
@@ -10,7 +12,16 @@ function reset() {
     activeTool: 'dimension',
     pendingDimTarget: null,
     pendingDimEntityKind: null,
+    pendingDialog: null,
   })
+}
+
+/** Simulate user confirming the currently open dialog with a value. */
+function confirmDialog(value: string) {
+  const dialog = useSketchEditorStore.getState().pendingDialog
+  if (!dialog) throw new Error('No dialog open')
+  dialog.onConfirm(value)
+  useSketchEditorStore.getState().closeDialog()
 }
 
 describe('sketchEditorStore', () => {
@@ -109,7 +120,7 @@ describe('sketchEditorStore', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
 
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', 'line_segment')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line_segment')
 
       expect(handler).not.toHaveBeenCalled()
       expect(useSketchEditorStore.getState().pendingDimTarget).toBe('entity:S1:L1')
@@ -118,11 +129,11 @@ describe('sketchEditorStore', () => {
 
     it('line_segment: clicking same line twice creates length constraint', () => {
       const handler = vi.fn()
-      vi.spyOn(window, 'prompt').mockReturnValueOnce('10')
       useSketchEditorStore.getState().setOnMutation(handler)
 
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', 'line_segment')
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', 'line_segment')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line_segment')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line_segment')
+      confirmDialog('10')
 
       expect(handler).toHaveBeenCalledOnce()
       expect(handler).toHaveBeenCalledWith({
@@ -135,12 +146,13 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().pendingDimTarget).toBeNull()
     })
 
-    it('arc: single click creates radius constraint immediately', () => {
+    it('arc: single click opens dialog and creates radius constraint on confirm', () => {
       const handler = vi.fn()
-      vi.spyOn(window, 'prompt').mockReturnValueOnce('5')
       useSketchEditorStore.getState().setOnMutation(handler)
 
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:A1', 'S1', 'entity', 'arc')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:A1', 'S1', 'entity', POS, 'arc')
+      expect(useSketchEditorStore.getState().pendingDialog).not.toBeNull()
+      confirmDialog('5')
 
       expect(handler).toHaveBeenCalledOnce()
       expect(handler).toHaveBeenCalledWith({
@@ -152,12 +164,12 @@ describe('sketchEditorStore', () => {
       })
     })
 
-    it('circle: single click creates diameter constraint immediately', () => {
+    it('circle: single click opens dialog and creates diameter constraint on confirm', () => {
       const handler = vi.fn()
-      vi.spyOn(window, 'prompt').mockReturnValueOnce('8')
       useSketchEditorStore.getState().setOnMutation(handler)
 
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:C1', 'S1', 'entity', 'circle')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:C1', 'S1', 'entity', POS, 'circle')
+      confirmDialog('8')
 
       expect(handler).toHaveBeenCalledOnce()
       expect(handler).toHaveBeenCalledWith({
@@ -169,25 +181,24 @@ describe('sketchEditorStore', () => {
       })
     })
 
-    it('line_segment: does not create constraint when prompt is cancelled', () => {
+    it('line_segment: no constraint when dialog is not confirmed', () => {
       const handler = vi.fn()
-      vi.spyOn(window, 'prompt').mockReturnValueOnce(null)
       useSketchEditorStore.getState().setOnMutation(handler)
 
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', 'line_segment')
-
+      // First click → pending, no dialog
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line_segment')
       expect(handler).not.toHaveBeenCalled()
     })
 
     it('two vertex clicks create point_distance constraint', () => {
       const handler = vi.fn()
-      vi.spyOn(window, 'prompt').mockReturnValueOnce('7')
       useSketchEditorStore.getState().setOnMutation(handler)
 
-      useSketchEditorStore.getState().handleDimensionClick('vertex:S1:L1:start', 'S1', 'vertex')
+      useSketchEditorStore.getState().handleDimensionClick('vertex:S1:L1:start', 'S1', 'vertex', POS)
       expect(useSketchEditorStore.getState().pendingDimTarget).toBe('vertex:S1:L1:start')
 
-      useSketchEditorStore.getState().handleDimensionClick('vertex:S1:L2:end', 'S1', 'vertex')
+      useSketchEditorStore.getState().handleDimensionClick('vertex:S1:L2:end', 'S1', 'vertex', POS)
+      confirmDialog('7')
 
       expect(handler).toHaveBeenCalledOnce()
       expect(handler).toHaveBeenCalledWith({
@@ -201,11 +212,11 @@ describe('sketchEditorStore', () => {
 
     it('two different line_segment clicks create angle constraint', () => {
       const handler = vi.fn()
-      vi.spyOn(window, 'prompt').mockReturnValueOnce('45')
       useSketchEditorStore.getState().setOnMutation(handler)
 
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', 'line_segment')
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L2', 'S1', 'entity', 'line_segment')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line_segment')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L2', 'S1', 'entity', POS, 'line_segment')
+      confirmDialog('45')
 
       expect(handler).toHaveBeenCalledOnce()
       expect(handler).toHaveBeenCalledWith({
@@ -220,7 +231,6 @@ describe('sketchEditorStore', () => {
 
     it('two non-line-segment entity clicks create line_distance constraint', () => {
       const handler = vi.fn()
-      vi.spyOn(window, 'prompt').mockReturnValueOnce('3')
       useSketchEditorStore.getState().setOnMutation(handler)
 
       useSketchEditorStore.setState({
@@ -228,7 +238,8 @@ describe('sketchEditorStore', () => {
         pendingDimEntityKind: 'arc',
       })
 
-      useSketchEditorStore.getState().handleDimensionClick('entity:S1:A2', 'S1', 'entity', 'arc')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:A2', 'S1', 'entity', POS, 'arc')
+      confirmDialog('3')
 
       expect(handler).toHaveBeenCalledOnce()
       expect(handler).toHaveBeenCalledWith({

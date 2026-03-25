@@ -75,6 +75,13 @@ export function usePartDoc(docId: string | undefined, mode: string, setCodeText:
               }
             }
             const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
+            // Inject projected entities (e.g. origin) returned by the solver.
+            const projectedData = (feature as Record<string, unknown>).projected as Record<string, number[]> | undefined
+            if (projectedData) {
+              for (const [id, p] of Object.entries(projectedData)) {
+                solved[id] = { x: p[0] ?? 0, y: p[1] ?? 0, projected: true }
+              }
+            }
             // Build a lookup of AST-stored label positions so they survive the
             // server round-trip (the solver does not know about pos).
             const astPosById = new Map(

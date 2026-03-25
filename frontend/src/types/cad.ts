@@ -86,6 +86,7 @@ export interface PointEntity {
   x: number
   y: number
   construction?: boolean
+  projected?: boolean
 }
 
 export type Entity = LineSegment | Circle | Arc | PointEntity

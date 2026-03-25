@@ -12,6 +12,7 @@ const COLOR_HOVER = '#ffffff'
 const COLOR_SELECTED = '#ff9800'
 const COLOR_CONSTRAINT_HOVER = '#fff176'  // entity highlighted because a constraint on it is hovered
 const COLOR_PREVIEW = '#aaaaaa'
+const COLOR_PROJECTED = '#ffca28'         // amber — projected/reference geometry
 const ARC_SEGMENTS = 64
 
 /** 10-gon dot with constant pixel radius regardless of zoom.
@@ -182,6 +183,67 @@ function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
 }
 
 // ---------------------------------------------------------------------------
+// Projected geometry (e.g. origin point — always present, not user-editable)
+// ---------------------------------------------------------------------------
+
+/** Cross/plus marker at constant pixel size for a projected reference point.
+ *  Clickable with the dimension tool; not draggable. */
+function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number; y: number; featureId: string; entityId: string }) {
+  const groupRef = useRef<THREE.Group>(null)
+  const hitRef = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
+  const activeTool = useSketchEditorStore(s => s.activeTool)
+  const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
+
+  useFrame(() => {
+    const scale = 7 * p2w(camera)
+    if (groupRef.current) groupRef.current.scale.setScalar(scale)
+    if (hitRef.current) hitRef.current.scale.setScalar(POINT_HIT_PIXELS * p2w(camera))
+  })
+
+  const onClick = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
+    if (activeTool !== 'dimension') return
+    e.stopPropagation()
+    // Treat origin as a vertex click so two-vertex flows (point_distance) work correctly
+    const vertId = `vertex:${featureId}:${entityId}:xy`
+    handleDimClick(vertId, featureId, 'vertex', [e.clientX, e.clientY])
+  }, [activeTool, handleDimClick, featureId, entityId])
+
+  const armPts: [[number, number, number], [number, number, number]][] = [
+    [[-1, 0, 0], [1, 0, 0]],
+    [[0, -1, 0], [0, 1, 0]],
+  ]
+
+  return (
+    <group position={[x, y, 0]}>
+      <group ref={groupRef}>
+        {armPts.map((pts, i) => (
+          <Line key={i} points={pts} color={COLOR_PROJECTED} lineWidth={1.5} />
+        ))}
+      </group>
+      <mesh ref={hitRef} position={[0, 0, 0]} onClick={onClick}>
+        <sphereGeometry args={[1, 8, 8]} />
+        <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.35 : 0} color={COLOR_PROJECTED} depthWrite={false} />
+      </mesh>
+    </group>
+  )
+}
+
+/** Renders all projected entities in the sketch (those with projected: true). */
+function ProjectedEntities({ sketch, featureId }: { sketch: Sketch; featureId: string }) {
+  return (
+    <>
+      {Object.entries(sketch)
+        .filter(([, e]) => (e as PointEntity).projected)
+        .map(([id, e]) => {
+          const pt = e as PointEntity
+          return <ProjectedOriginPoint key={id} x={pt.x} y={pt.y} featureId={featureId} entityId={id} />
+        })}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Geometry helpers
 // ---------------------------------------------------------------------------
 
@@ -306,9 +368,11 @@ interface EntityLinesProps {
 function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1 }: EntityLinesProps) {
   return (
     <>
-      {Object.entries(sketch).map(([id, entity]) => (
-        <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line_segment'} featureId={featureId} baseColor={color} lineWidth={lineWidth} />
-      ))}
+      {Object.entries(sketch)
+        .filter(([, entity]) => !(entity as PointEntity).projected)
+        .map(([id, entity]) => (
+          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line_segment'} featureId={featureId} baseColor={color} lineWidth={lineWidth} />
+        ))}
     </>
   )
 }
@@ -865,6 +929,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     <group rotation={rot}>
       {topology && <TopologySurfaces topology={topology} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={COLOR_SOLVED} lineWidth={2} kindMap={kindMap} />
+      <ProjectedEntities sketch={displaySketch} featureId={featureId} />
       {constraints && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
       <DragPlane />
       <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} />
