@@ -203,6 +203,20 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
     labelX = (d1x + d2x) / 2; labelY = (d1y + d2y) / 2
   }
 
+  // Determine if the label is inside the dimension line (between d1 and d2).
+  //   Normal (inside):  |<---X--->|
+  //     arrows at boundaries pointing outward, label sits between them.
+  //   Outside near d1:  X--->|------|<-.
+  //     d1 arrow inverted (points into gap), leader line from d1 to label, d2 arrow normal.
+  //   Outside near d2:  .--->|------|<---X
+  //     d1 arrow normal, d2 arrow inverted (points into gap), leader line from d2 to label.
+  const dimLen = Math.hypot(d2x - d1x, d2y - d1y)
+  const udirX = dimLen > 0 ? (d2x - d1x) / dimLen : 1
+  const udirY = dimLen > 0 ? (d2y - d1y) / dimLen : 0
+  // Project label onto the d1→d2 axis.
+  const tLabel = (labelX - d1x) * udirX + (labelY - d1y) * udirY
+  const isInside = tLabel >= 0 && tLabel <= dimLen
+
   const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
 
   const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
@@ -225,8 +239,27 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
       <Line points={[[x1, y1, 0], [d1x, d1y, 0]]} color={color} lineWidth={1} />
       <Line points={[[x2, y2, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} />
       <Line points={[[d1x, d1y, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} />
-      <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={color} />
-      <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={color} />
+      {isInside ? (
+        // Inside: arrows at boundaries pointing outward.
+        <>
+          <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={color} />
+          <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={color} />
+        </>
+      ) : tLabel < 0 ? (
+        // Outside near d1: invert d1 arrow (now points into gap), add leader to label.
+        <>
+          <Arrowhead tip={[d1x, d1y]} from={[d1x - udirX, d1y - udirY]} px={12} color={color} />
+          <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={color} />
+          <Line points={[[d1x, d1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
+        </>
+      ) : (
+        // Outside near d2: normal d1 arrow, invert d2 arrow, add leader to label.
+        <>
+          <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={color} />
+          <Arrowhead tip={[d2x, d2y]} from={[d2x + udirX, d2y + udirY]} px={12} color={color} />
+          <Line points={[[d2x, d2y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
+        </>
+      )}
       <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
         <circleGeometry args={[1, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
@@ -285,6 +318,15 @@ export function RadiusDimension({ cid, dim, interaction }: {
     labelX = (cx + tipX) / 2; labelY = (cy + tipY) / 2
   }
 
+  // Determine if the label is inside the circle (between center and edge) or outside.
+  //   Inside:  o---X--->|   line from center through label to edge, arrow at edge outward.
+  //   Outside: o------|<---x  line from center through edge to label, arrow at edge inverted.
+  // Note: for arc entities, when the label direction falls outside the arc's angular range,
+  // the arc should be virtually extended with a thin dashed line. This requires knowing the
+  // arc range (not available in dim_radius data) and is not yet implemented here.
+  const labelDist = Math.hypot(labelX - cx, labelY - cy)
+  const isInside = labelDist <= r
+
   const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
 
   const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
@@ -304,8 +346,20 @@ export function RadiusDimension({ cid, dim, interaction }: {
 
   return (
     <group key={cid}>
-      <Line points={[[cx, cy, 0], [tipX, tipY, 0]]} color={color} lineWidth={1} />
-      <Arrowhead tip={[tipX, tipY]} from={[cx, cy]} px={12} color={color} />
+      {isInside ? (
+        // Inside: line from center to edge, arrow at edge pointing outward.
+        <>
+          <Line points={[[cx, cy, 0], [tipX, tipY, 0]]} color={color} lineWidth={1} />
+          <Arrowhead tip={[tipX, tipY]} from={[cx, cy]} px={12} color={color} />
+        </>
+      ) : (
+        // Outside: line extends from center through edge all the way to label,
+        // arrow at edge is inverted (points inward toward center).
+        <>
+          <Line points={[[cx, cy, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
+          <Arrowhead tip={[tipX, tipY]} from={[labelX, labelY]} px={12} color={color} />
+        </>
+      )}
       <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
         <circleGeometry args={[1, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />

@@ -295,9 +295,12 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
     const dx = ea.end[0] - ea.start[0]
     const dy = ea.end[1] - ea.start[1]
     const n = Math.hypot(dx, dy)
-    const normal: Point = n > 0 ? [-dy / n, dx / n] : [0, 1]
-    const t = (pb[0] - ea.start[0]) * normal[0] + (pb[1] - ea.start[1]) * normal[1]
-    const foot: Point = [pb[0] - t * normal[0], pb[1] - t * normal[1]]
+    // normal must be along the line direction (perpendicular to the measurement) so that
+    // dragging the label slides the dimension line sideways, not along the measurement axis.
+    const normal: Point = n > 0 ? [dx / n, dy / n] : [0, 1]
+    const perpDir: [number, number] = n > 0 ? [-dy / n, dx / n] : [1, 0]
+    const t = (pb[0] - ea.start[0]) * perpDir[0] + (pb[1] - ea.start[1]) * perpDir[1]
+    const foot: Point = [pb[0] - t * perpDir[0], pb[1] - t * perpDir[1]]
     return {
       kind: 'dim_linear',
       p1: foot,
