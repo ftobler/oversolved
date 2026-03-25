@@ -6,25 +6,6 @@
   color: #ccc;
 }
 
-/* ── Toolbar ──────────────────────────────────────────────────────────────── */
-
-.reg-toolbar {
-  display: flex;
-  align-items: center;
-  padding: 0 16px;
-  height: 48px;
-  background: #111;
-  border-bottom: 1px solid #222;
-  flex-shrink: 0;
-}
-
-.reg-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #fff;
-  margin-left: 12px;
-}
-
 /* ── Layout ───────────────────────────────────────────────────────────────── */
 
 .reg-container {

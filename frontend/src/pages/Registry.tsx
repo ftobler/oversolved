@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import AppHeader from '../components/AppHeader'
 import { CONSTRAINTS, ENTITIES, DIMENSION_RULES } from '../registry'
 import { KEYMAP } from '../stores/commandRegistry'
 import './Registry.css'
@@ -187,22 +187,13 @@ const SECTIONS = [
 ] as const
 
 export default function Registry() {
-  const navigate = useNavigate()
-
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
   }
 
   return (
     <div className="registry-page">
-      <header className="reg-toolbar">
-        <div className="toolbar-left">
-          <button className="toolbar-btn" title="Back" onClick={() => navigate('/')}>
-            <span className="material-icons-outlined">arrow_back</span>
-          </button>
-          <span className="reg-title">Registry</span>
-        </div>
-      </header>
+      <AppHeader title="Registry" />
 
       <div className="reg-container">
         <nav className="reg-nav">
