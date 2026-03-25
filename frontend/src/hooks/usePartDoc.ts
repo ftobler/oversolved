@@ -59,8 +59,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
+          const featureDef = (d.features ?? []).find(f => f.id === id)
           if (feature.geometry) {
-            const featureDef = (d.features ?? []).find(f => f.id === id)
             if (featureDef) {
               featureDef.initial = feature.geometry
               if (feature.constraints && featureDef.constraints) {
@@ -94,7 +94,14 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
             results[id] = {
               solved,
               topology: feature.topology,
+              status: feature.status,
               ...(constraints && { constraints }),
+            }
+          } else {
+            // exception: no geometry returned — fall back to initial positions, flag status
+            results[id] = {
+              solved: unflattenGeometry(featureDef?.initial, featureDef?.entities),
+              status: feature.status ?? 'exception',
             }
           }
         }

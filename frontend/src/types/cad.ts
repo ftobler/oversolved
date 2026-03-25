@@ -200,6 +200,7 @@ export interface SketchData {
   solved: Sketch
   constraints?: Constraints
   topology?: Topology
+  status?: string
 }
 
 export type EntityStatus = Record<string, ConstraintStatus>

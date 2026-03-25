@@ -8,6 +8,7 @@ import { p2w, sampleArc, getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl } fro
 import { DashedLine, LinearDimension, RadiusDimension, DiameterDimension, AngleDimension } from './sketch_dimensions'
 
 const COLOR_SOLVED = '#4fc3f7'
+const COLOR_ERROR  = '#ef5350'
 const COLOR_HOVER = '#ffffff'
 const COLOR_SELECTED = '#ff9800'
 const COLOR_CONSTRAINT_HOVER = '#fff176'  // entity highlighted because a constraint on it is hovered
@@ -909,9 +910,10 @@ interface Geometry3DProps {
   topology?: Topology
   activeFeatureId?: string
   plane?: string
+  solveStatus?: string
 }
 
-export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, solveStatus }: Geometry3DProps) {
   const drag = useSketchEditorStore(s => s.drag)
   // During drag on this feature, show optimistic preview
   const displaySketch = useMemo(() => {
@@ -925,10 +927,12 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     [entities]
   )
 
+  const baseColor = (solveStatus === 'overconstrained' || solveStatus === 'exception') ? COLOR_ERROR : COLOR_SOLVED
+
   return (
     <group rotation={rot}>
       {topology && <TopologySurfaces topology={topology} />}
-      <EntityLines sketch={displaySketch} featureId={featureId} color={COLOR_SOLVED} lineWidth={2} kindMap={kindMap} />
+      <EntityLines sketch={displaySketch} featureId={featureId} color={baseColor} lineWidth={2} kindMap={kindMap} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />
       {constraints && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
       <DragPlane />
