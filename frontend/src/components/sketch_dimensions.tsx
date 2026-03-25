@@ -123,15 +123,20 @@ function useDimInteraction(cid: string, value: number, interaction: DimInteracti
     setHovered(false)
     if (interaction) setHoveredConstraintEntities(new Set())
   }, [interaction, setHoveredConstraintEntities])
-  const onClick = useCallback((ev: { stopPropagation: () => void }) => {
+  const onClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (dragMoved.current) { dragMoved.current = false; return }
     if (!interaction) return
     ev.stopPropagation()
-    const input = window.prompt(`Enter ${interaction.promptLabel} value (current: ${value})`)
-    if (input === null) return
-    const val = parseFloat(input)
-    if (isNaN(val) || (validatePositive && val <= 0)) return
-    useSketchEditorStore.getState().onMutation?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: val })
+    useSketchEditorStore.getState().openDialog({
+      position: [ev.clientX, ev.clientY],
+      label: interaction.promptLabel,
+      defaultValue: String(value),
+      onConfirm: (input) => {
+        const val = parseFloat(input)
+        if (isNaN(val) || (validatePositive && val <= 0)) return
+        useSketchEditorStore.getState().onMutation?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: val })
+      },
+    })
   }, [interaction, cid, value, validatePositive])
   // Called at the start of each pointer-down so a fresh drag begins with the flag clear.
   const resetDragMoved = useCallback(() => { dragMoved.current = false }, [])

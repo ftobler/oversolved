@@ -1,0 +1,68 @@
+.context-menu-dialog {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 5px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  font-size: 12px;
+  color: #aaa;
+  white-space: nowrap;
+  pointer-events: all;
+}
+
+.context-menu-label {
+  color: #888;
+  user-select: none;
+}
+
+.context-menu-input {
+  background: #2a2a2a;
+  border: 1px solid #555;
+  border-radius: 3px;
+  color: #eee;
+  font-size: 13px;
+  padding: 3px 6px;
+  width: 80px;
+  outline: none;
+}
+
+.context-menu-input:focus {
+  border-color: #4fc3f7;
+}
+
+.context-menu-btn {
+  background: #2a2a2a;
+  border: 1px solid #555;
+  border-radius: 3px;
+  color: #ccc;
+  font-size: 12px;
+  padding: 3px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.context-menu-btn:hover {
+  border-color: #888;
+  color: #eee;
+}
+
+.context-menu-btn-ok:hover {
+  border-color: #4fc3f7;
+  color: #4fc3f7;
+}
+
+/* Hide the number input spinner arrows */
+.context-menu-input::-webkit-outer-spin-button,
+.context-menu-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.context-menu-input[type='number'] {
+  -moz-appearance: textfield;
+}

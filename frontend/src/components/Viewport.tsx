@@ -11,6 +11,7 @@ import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import OriginMarker from './Viewport/OriginMarker'
 import ReferencePlane from './Viewport/ReferencePlane'
 import SceneController from './Viewport/SceneController'
+import ContextMenuDialog from './ContextMenuDialog'
 
 const INITIAL_POSITION: [number, number, number] = [0, 0, 100]
 const INITIAL_ZOOM = 200
@@ -116,6 +117,7 @@ export default function Viewport({
       {!ready && <div style={{ position: 'absolute', inset: 0, background: '#111', zIndex: 1 }} />}
 
       <CubeGizmoCanvas canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
+      <ContextMenuDialog />
     </div>
   )
 }

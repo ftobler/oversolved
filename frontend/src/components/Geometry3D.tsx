@@ -139,11 +139,11 @@ function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
     const off = POINT_HIT_PIXELS_Z_OFFSET * scale
     hitRef.current.position.set(x + fwd.x * off, y + fwd.y * off, fwd.z * off)
   })
-  const onClick = useCallback((e: { stopPropagation: () => void }) => {
+  const onClick = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!vertId || !featureId) return
     e.stopPropagation()
     if (activeTool === 'dimension') {
-      handleDimClick(vertId, featureId, 'vertex')
+      handleDimClick(vertId, featureId, 'vertex', [e.clientX, e.clientY])
     } else {
       toggleSelect(vertId)
     }
@@ -227,10 +227,10 @@ function EntityItem({ entity, entityId, entityKind, featureId, baseColor, lineWi
   const construction = 'construction' in e && e.construction
   const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
   const onOut = () => setHovered(false)
-  const onClick = useCallback((ev: { stopPropagation: () => void }) => {
+  const onClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     ev.stopPropagation()
     if (activeTool === 'dimension') {
-      handleDimClick(`entity:${featureId}:${entityId}`, featureId, 'entity', entityKind)
+      handleDimClick(`entity:${featureId}:${entityId}`, featureId, 'entity', [ev.clientX, ev.clientY], entityKind)
     } else {
       toggleSelect(entId)
     }

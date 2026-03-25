@@ -7,6 +7,14 @@ export type { Mutation }
 
 export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'circle' | 'arc' | 'point'
 
+export interface DialogState {
+  position: [number, number]
+  label: string
+  defaultValue?: string
+  onConfirm: (val: string) => void
+  onCancel?: () => void
+}
+
 /** Dragging a geometry vertex or whole edge. */
 export interface VertexOrEdgeDrag {
   type: 'vertex' | 'edge'
@@ -43,6 +51,7 @@ interface SketchEditorState {
   drawHover: [number, number] | null
   pendingDimTarget: string | null       // first click target when doing two-target dimension
   pendingDimEntityKind: string | null   // entity kind of the first click target
+  pendingDialog: DialogState | null
 
   // --- actions ---
   toggleSelect: (id: string) => void
@@ -58,7 +67,9 @@ interface SketchEditorState {
   addDrawPoint: (pt: [number, number]) => void
   setDrawHover: (pt: [number, number] | null) => void
   clearDraw: () => void
-  handleDimensionClick: (target: string, featureId: string, kind: 'entity' | 'vertex', entityKind?: string) => void
+  openDialog: (opts: DialogState) => void
+  closeDialog: () => void
+  handleDimensionClick: (target: string, featureId: string, kind: 'entity' | 'vertex', screenPos: [number, number], entityKind?: string) => void
 }
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
@@ -72,6 +83,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   drawHover: null,
   pendingDimTarget: null,
   pendingDimEntityKind: null,
+  pendingDialog: null,
 
   toggleSelect: (id) =>
     set(s => {
@@ -122,19 +134,27 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setDrawHover: (pt) => set({ drawHover: pt }),
   clearDraw: () => set({ drawPoints: [], drawHover: null }),
 
-  handleDimensionClick: (target, featureId, kind, entityKind) => {
+  openDialog: (opts) => set({ pendingDialog: opts }),
+  closeDialog: () => set({ pendingDialog: null }),
+
+  handleDimensionClick: (target, featureId, kind, screenPos, entityKind) => {
     const { pendingDimTarget, pendingDimEntityKind, onMutation } = get()
+    const openDialog = get().openDialog
     if (!pendingDimTarget) {
       // Single-entity dimension — immediately create for arc/circle, go pending for line_segment
       if (kind === 'entity' && entityKind !== 'line_segment') {
         const dimKind = entityKind ? resolveSingleEntityDimension(entityKind) : null
         if (dimKind) {
-          const input = window.prompt('Enter dimension value:')
-          if (input === null) return
-          const val = parseFloat(input)
-          if (isNaN(val) || val <= 0) return
-          onMutation?.({ type: 'add_constraint', featureId, kind: dimKind, targets: [target], value: val })
-          set({ activeTool: 'select', pendingDimTarget: null, pendingDimEntityKind: null })
+          openDialog({
+            position: screenPos,
+            label: 'Dimension value',
+            onConfirm: (input) => {
+              const val = parseFloat(input)
+              if (isNaN(val) || val <= 0) return
+              onMutation?.({ type: 'add_constraint', featureId, kind: dimKind, targets: [target], value: val })
+              set({ activeTool: 'select', pendingDimTarget: null, pendingDimEntityKind: null })
+            },
+          })
           return
         }
       }
@@ -146,33 +166,39 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       const firstEntityKind = pendingDimEntityKind
       set({ pendingDimTarget: null, pendingDimEntityKind: null })
 
-      let dimKind: string
       if (first === target && firstEntityKind) {
         // Same entity clicked twice: create single-entity dimension (e.g. length for line_segment)
         const singleKind = resolveSingleEntityDimension(firstEntityKind)
         if (!singleKind) return
-        dimKind = singleKind
-        const input = window.prompt('Enter dimension value:')
-        if (input === null) return
-        const val = parseFloat(input)
-        if (isNaN(val) || val <= 0) return
-        onMutation?.({ type: 'add_constraint', featureId, kind: dimKind, targets: [target], value: val })
-        set({ activeTool: 'select' })
+        openDialog({
+          position: screenPos,
+          label: 'Dimension value',
+          onConfirm: (input) => {
+            const val = parseFloat(input)
+            if (isNaN(val) || val <= 0) return
+            onMutation?.({ type: 'add_constraint', featureId, kind: singleKind, targets: [target], value: val })
+            set({ activeTool: 'select' })
+          },
+        })
         return
       }
 
-      dimKind = resolveTwoTargetDimension(
+      const dimKind = resolveTwoTargetDimension(
         first.startsWith('vertex:'),
         target.startsWith('vertex:'),
         firstEntityKind ?? undefined,
         entityKind,
       )
-      const input = window.prompt('Enter dimension value:')
-      if (input === null) return
-      const val = parseFloat(input)
-      if (isNaN(val) || val <= 0) return
-      onMutation?.({ type: 'add_constraint', featureId, kind: dimKind, targets: [first, target], value: val })
-      set({ activeTool: 'select' })
+      openDialog({
+        position: screenPos,
+        label: 'Dimension value',
+        onConfirm: (input) => {
+          const val = parseFloat(input)
+          if (isNaN(val) || val <= 0) return
+          onMutation?.({ type: 'add_constraint', featureId, kind: dimKind, targets: [first, target], value: val })
+          set({ activeTool: 'select' })
+        },
+      })
     }
   },
 }))
