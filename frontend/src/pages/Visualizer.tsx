@@ -196,12 +196,14 @@ export default function Visualizer() {
   const openAsDocument = useCallback(async (card: CardData) => {
     if (!card.astInput) return
     const docId = card.id
-    await fetch(`/api/documents/${docId}`, {
+    const response = await fetch(`/api/documents/${docId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: yamlStringify(card.astInput) }),
     })
-    navigate(`/documents/${docId}`)
+    if (response.ok) {
+      navigate(`/documents/${docId}`)
+    }
   }, [navigate])
 
   useEffect(() => {
