@@ -510,72 +510,96 @@ export function AngleDimension({ cid, dim, interaction }: {
   const angle1 = Math.atan2(ay2 - ay1, ax2 - ax1)  // direction of da
   const angle2 = Math.atan2(by2 - by1, bx2 - bx1)  // direction of db
 
-  // Find the shared vertex (the endpoint common to both lines).
-  const EPS = 1e-6
+  // Find the intersection of the two infinite lines to get the arc origin vertex.
+  // Line A: ax1 + t*(ax2-ax1), Line B: bx1 + s*(bx2-bx1)
+  // Solve for t using Cramer's rule; fall back to ax2 if lines are parallel.
+  const dax = ax2 - ax1, day = ay2 - ay1
+  const dbx = bx2 - bx1, dby = by2 - by1
+  const cross = dax * dby - day * dbx
   let vx: number, vy: number
-  // Check all 4 endpoint combinations; fall back to line A's end.
-  if (Math.hypot(ax2 - bx1, ay2 - by1) < EPS) { vx = ax2; vy = ay2 }       // ea.end = eb.start
-  else if (Math.hypot(ax2 - bx2, ay2 - by2) < EPS) { vx = ax2; vy = ay2 }  // ea.end = eb.end
-  else if (Math.hypot(ax1 - bx1, ay1 - by1) < EPS) { vx = ax1; vy = ay1 }  // ea.start = eb.start
-  else if (Math.hypot(ax1 - bx2, ay1 - by2) < EPS) { vx = ax1; vy = ay1 }  // ea.start = eb.end
-  else { vx = ax2; vy = ay2 }  // no shared vertex — best guess
+  if (Math.abs(cross) > 1e-10) {
+    const t = ((bx1 - ax1) * dby - (by1 - ay1) * dbx) / cross
+    vx = ax1 + t * dax
+    vy = ay1 + t * day
+  } else {
+    // Parallel lines — fall back to midpoint of closest endpoints
+    vx = (ax2 + bx1) / 2
+    vy = (ay2 + by1) / 2
+  }
 
-  // Points on each line for extension lines (the other endpoint from the vertex).
-  const extAx = Math.abs(ax2 - vx) + Math.abs(ay2 - vy) > EPS ? ax2 : ax1
-  const extAy = Math.abs(ax2 - vx) + Math.abs(ay2 - vy) > EPS ? ay2 : ay1
-  const extBx = Math.abs(bx2 - vx) + Math.abs(by2 - vy) > EPS ? bx2 : bx1
-  const extBy = Math.abs(bx2 - vx) + Math.abs(by2 - vy) > EPS ? by2 : by1
+  // For each line, pick the endpoint furthest from the vertex as the extension target.
+  const extAx = Math.hypot(ax2 - vx, ay2 - vy) >= Math.hypot(ax1 - vx, ay1 - vy) ? ax2 : ax1
+  const extAy = Math.hypot(ax2 - vx, ay2 - vy) >= Math.hypot(ax1 - vx, ay1 - vy) ? ay2 : ay1
+  const extBx = Math.hypot(bx2 - vx, by2 - vy) >= Math.hypot(bx1 - vx, by1 - vy) ? bx2 : bx1
+  const extBy = Math.hypot(bx2 - vx, by2 - vy) >= Math.hypot(bx1 - vx, by1 - vy) ? by2 : by1
 
   const effectivePos: [number, number] | undefined = activeDragPos
     ? [activeDragPos[0] - vx, activeDragPos[1] - vy]
     : dim.pos
 
-  let arcR: number, labelX: number, labelY: number
+  const a0deg = angle1 * (180 / Math.PI)
+  const a1deg = angle2 * (180 / Math.PI)
 
+  // arcSpan matches sampleArc: always takes the shorter arc path.
+  // Positive = CCW, negative = CW.
+  let arcSpan = ((a1deg - a0deg) + 360) % 360
+  if (arcSpan > 180) arcSpan -= 360
+
+  // arcR is the distance from vertex to label. The label always sits ON the arc circle,
+  // either within the angle span (inside) or on the radial extension (outside).
+  let arcR: number, labelAngleDeg: number
   if (effectivePos) {
-    arcR = Math.hypot(effectivePos[0], effectivePos[1])
-    labelX = vx + effectivePos[0]; labelY = vy + effectivePos[1]
+    arcR = Math.hypot(effectivePos[0], effectivePos[1]) || 1e-6
+    labelAngleDeg = Math.atan2(effectivePos[1], effectivePos[0]) * (180 / Math.PI)
   } else {
     const rA = Math.hypot(extAx - vx, extAy - vy)
     const rB = Math.hypot(extBx - vx, extBy - vy)
     arcR = Math.min(rA, rB) * 0.4
-    // Compute midAngle consistently with sampleArc (always shorter arc).
-    const a1deg = angle1 * (180 / Math.PI)
-    const a2deg = angle2 * (180 / Math.PI)
-    let spanDeg = ((a2deg - a1deg) + 360) % 360
-    if (spanDeg > 180) spanDeg -= 360
-    const midAngle = angle1 + (spanDeg / 2) * (Math.PI / 180)
-    labelX = vx + arcR * Math.cos(midAngle)
-    labelY = vy + arcR * Math.sin(midAngle)
+    // Default: midpoint of the shorter arc span
+    labelAngleDeg = a0deg + arcSpan / 2
   }
 
-  const arcPts = sampleArc(vx, vy, arcR, angle1 * (180 / Math.PI), angle2 * (180 / Math.PI))
+  // Label position is always on the arc circle at its angle.
+  const labelRad = labelAngleDeg * (Math.PI / 180)
+  const labelX = vx + arcR * Math.cos(labelRad)
+  const labelY = vy + arcR * Math.sin(labelRad)
 
-  // Determine if label is inside or outside the angle arc.
-  // ASCII visualizations (with arc segments instead of straight lines, vertex at |):
-  //   Inside angle:    |<---arc-X-arc--->|
-  //     Arrows at arc endpoints pointing outward from vertex.
-  //   Outside angle:   X-arc----|  |----arc-<
-  //     Arrows at arc endpoints pointing inward toward vertex, leader line to label.
-  //
-  // Detection: project label direction onto the angle arc. If it falls within the
-  // angle span (between angle1 and angle2), it's inside; otherwise it's outside.
-  const labelAngle = Math.atan2(labelY - vy, labelX - vx)
+  // Determine inside/outside: must match sampleArc's shorter-path direction.
+  // relLabel is how far CCW the label is from a0.
+  // ASCII visualizations (arc between the two lines, vertex at V):
+  //   Inside angle:    V---arc--|<---X--->|--arc---V
+  //     Label on arc between endpoints; arrows at arc ends point outward (away from vertex).
+  //   Outside angle:   X===arc extension===|---arc---|
+  //     Label past an arc end on the extension; arrows at arc ends point inward (toward vertex).
+  const relLabel = ((labelAngleDeg - a0deg) + 360) % 360
+  const isInside = arcSpan >= 0
+    ? relLabel <= arcSpan           // CCW arc: inside if label is within [a0, a0+span]
+    : relLabel >= (360 + arcSpan)   // CW arc: inside if label is within [a0+span, a0] (wrapping)
 
-  // Normalize angles to [0, 360) for comparison
-  let a1Norm = (angle1 * (180 / Math.PI) + 360) % 360
-  let a2Norm = (angle2 * (180 / Math.PI) + 360) % 360
-  let labelNorm = (labelAngle * (180 / Math.PI) + 360) % 360
+  // Arc from a0 to a1 at arcR.
+  const arcPts = sampleArc(vx, vy, arcR, a0deg, a1deg)
+  const arcStartPt: [number, number, number] = [vx + arcR * Math.cos(angle1), vy + arcR * Math.sin(angle1), 0]
+  const arcEndPt: [number, number, number] = [vx + arcR * Math.cos(angle2), vy + arcR * Math.sin(angle2), 0]
 
-  // Determine if label is within the arc span
-  let isInsideAngle: boolean
-  if (a1Norm <= a2Norm) {
-    // Arc spans normally (e.g., 30° to 120°)
-    isInsideAngle = labelNorm >= a1Norm && labelNorm <= a2Norm
-  } else {
-    // Arc wraps around 360° (e.g., 320° to 50°)
-    isInsideAngle = labelNorm >= a1Norm || labelNorm <= a2Norm
-  }
+  // Outside: find which arc endpoint is angularly closer to the label,
+  // then draw a dashed arc extension from that endpoint to the label.
+  const angDiff = (a: number, b: number) => { const d = ((a - b) + 360) % 360; return Math.min(d, 360 - d) }
+  const extendFromStart = !isInside && angDiff(labelAngleDeg, a0deg) < angDiff(labelAngleDeg, a1deg)
+  const extArcPts = isInside ? null : sampleArc(
+    vx, vy, arcR,
+    extendFromStart ? a0deg : a1deg,
+    labelAngleDeg,
+  )
+
+  // Arc tangent directions at each endpoint (unit tangent in arc travel direction).
+  // Forward tangent at angle θ: (-sinθ, cosθ) * sign where sign = +1 CCW, -1 CW.
+  const arcSign = arcSpan >= 0 ? 1 : -1
+  const a0r = angle1, a1r = angle2
+  // Tangent pointing INTO the arc span at each endpoint:
+  //   arcStart: forward arc direction (into span)
+  //   arcEnd:   backward arc direction (into span from the end)
+  const tanStartInX = -Math.sin(a0r) * arcSign, tanStartInY = Math.cos(a0r) * arcSign
+  const tanEndInX   =  Math.sin(a1r) * arcSign, tanEndInY   = -Math.cos(a1r) * arcSign
 
   const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
 
@@ -594,35 +618,38 @@ export function AngleDimension({ cid, dim, interaction }: {
     })
   }, [interaction, cid, vx, vy, labelX, labelY, resetDragMoved, setDrag, setOrbitEnabled])
 
-  // Get arc endpoints for arrow placement
-  const arcStartPt = arcPts.length > 0 ? arcPts[0] : [extAx, extAy, 0]
-  const arcEndPt = arcPts.length > 0 ? arcPts[arcPts.length - 1] : [extBx, extBy, 0]
-
   return (
     <group key={cid}>
-      <Line points={[[vx, vy, 0], [extAx, extAy, 0]]} color={color} lineWidth={1} />
-      <Line points={[[vx, vy, 0], [extBx, extBy, 0]]} color={color} lineWidth={1} />
+      {/* Arc spanning the angle */}
       <Line points={arcPts} color={color} lineWidth={1} />
-      {isInsideAngle ? (
-        // Inside angle: arrows at arc endpoints pointing outward from vertex
+
+      {isInside ? (
+        // Inside: arrows tangent to arc at endpoints, pointing OUTWARD (away from span)
         // |<---arc-X-arc--->|
         <>
-          <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[vx, vy]} px={12} color={color} />
-          <Arrowhead tip={[arcEndPt[0], arcEndPt[1]]} from={[vx, vy]} px={12} color={color} />
+          <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[arcStartPt[0] + tanStartInX, arcStartPt[1] + tanStartInY]} px={12} color={color} />
+          <Arrowhead tip={[arcEndPt[0],   arcEndPt[1]  ]} from={[arcEndPt[0]   + tanEndInX,   arcEndPt[1]   + tanEndInY  ]} px={12} color={color} />
         </>
       ) : (
-        // Outside angle: arrows at arc endpoints pointing inward toward vertex, leader line to label
-        // X-arc----|  |----arc-<
+        // Outside: solid arc extension from nearest endpoint to label,
+        // arrows tangent to arc at endpoints pointing INTO the span
+        // X---arc extension---|---arc---|
         <>
-          <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[labelX, labelY]} px={12} color={color} />
-          <Arrowhead tip={[arcEndPt[0], arcEndPt[1]]} from={[labelX, labelY]} px={12} color={color} />
-          <Line points={[[arcStartPt[0], arcStartPt[1], 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
+          {extArcPts && extArcPts.length >= 2 && (
+            <Line points={extArcPts} color={color} lineWidth={1} />
+          )}
+          <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[arcStartPt[0] - tanStartInX, arcStartPt[1] - tanStartInY]} px={12} color={color} />
+          <Arrowhead tip={[arcEndPt[0],   arcEndPt[1]  ]} from={[arcEndPt[0]   - tanEndInX,   arcEndPt[1]   - tanEndInY  ]} px={12} color={color} />
         </>
       )}
+
+      {/* Interaction hit area */}
       <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
         <circleGeometry args={[1, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
+
+      {/* Label text */}
       <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
         <div style={{ color, fontSize: 18, fontFamily: 'monospace', background: '#111', padding: '0 6px', borderRadius: 2, whiteSpace: 'nowrap' }}>
           {label}
