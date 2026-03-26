@@ -204,12 +204,17 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
   }
 
   // Determine if the label is inside the dimension line (between d1 and d2).
-  //   Normal (inside):  |<---X--->|
-  //     arrows at boundaries pointing outward, label sits between them.
-  //   Outside near d1:  X--->|------|<-.
-  //     d1 arrow inverted (points into gap), leader line from d1 to label, d2 arrow normal.
-  //   Outside near d2:  .--->|------|<---X
-  //     d1 arrow normal, d2 arrow inverted (points into gap), leader line from d2 to label.
+  // ASCII visualizations (in world coordinates, with d1 on the left, d2 on the right):
+  //   Inside:        |<---X--->|
+  //     Arrows at boundaries pointing outward, label sits between them.
+  //   Outside near d1:   X--->|------|<-
+  //     Both arrows point inward, leader line from d1 to label.
+  //   Outside near d2:   |----->|<------X
+  //     Both arrows point inward, leader line from d2 to label.
+  //
+  // Note: For parallel lines, the arrows should remain aligned with the dimension line,
+  // not skewed or offset. The dimension line (d1→d2) is parallel to the measured line (x1→x2),
+  // so arrows should point along the dimension line direction only.
   const dimLen = Math.hypot(d2x - d1x, d2y - d1y)
   const udirX = dimLen > 0 ? (d2x - d1x) / dimLen : 1
   const udirY = dimLen > 0 ? (d2y - d1y) / dimLen : 0
@@ -241,21 +246,25 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
       <Line points={[[d1x, d1y, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} />
       {isInside ? (
         // Inside: arrows at boundaries pointing outward.
+        // |<---X--->|
         <>
           <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={color} />
           <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={color} />
         </>
       ) : tLabel < 0 ? (
-        // Outside near d1: invert d1 arrow (now points into gap), add leader to label.
+        // Outside near d1: both arrows point inward (into the dimension line), leader from d1 to label.
+        // X--->|------|<-
         <>
           <Arrowhead tip={[d1x, d1y]} from={[d1x - udirX, d1y - udirY]} px={12} color={color} />
-          <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={color} />
+          <Arrowhead tip={[d2x, d2y]} from={[d2x + udirX, d2y + udirY]} px={12} color={color} />
           <Line points={[[d1x, d1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
         </>
       ) : (
-        // Outside near d2: normal d1 arrow, invert d2 arrow, add leader to label.
+        // Outside near d2: both arrows point inward (into the dimension line), leader from d2 to label.
+        // Same arrow config as outside near d1, but different leader line.
+        // |----->|<------X
         <>
-          <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={color} />
+          <Arrowhead tip={[d1x, d1y]} from={[d1x - udirX, d1y - udirY]} px={12} color={color} />
           <Arrowhead tip={[d2x, d2y]} from={[d2x + udirX, d2y + udirY]} px={12} color={color} />
           <Line points={[[d2x, d2y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
         </>
@@ -319,11 +328,16 @@ export function RadiusDimension({ cid, dim, interaction }: {
   }
 
   // Determine if the label is inside the circle (between center and edge) or outside.
-  //   Inside:  o---X--->|   line from center through label to edge, arrow at edge outward.
-  //   Outside: o------|<---x  line from center through edge to label, arrow at edge inverted.
-  // Note: for arc entities, when the label direction falls outside the arc's angular range,
-  // the arc should be virtually extended with a thin dashed line. This requires knowing the
-  // arc range (not available in dim_radius data) and is not yet implemented here.
+  // ASCII visualizations (center at o, edge at |):
+  //   Inside (circle):   o---X--->|
+  //     Line from center through label to edge, arrow at edge pointing outward.
+  //   Outside (circle):  o------|<---X
+  //     Line from center through edge to label, arrow at edge pointing inward.
+  //
+  // For arc entities, if the label direction falls outside the arc's angular range,
+  // the arc should be virtually extended with a thin dashed dimension line to show
+  // that the dimension applies to the extended geometry. This would require knowing
+  // the arc range (p1, p2 endpoints + center) to detect if label is outside arc span.
   const labelDist = Math.hypot(labelX - cx, labelY - cy)
   const isInside = labelDist <= r
 
@@ -411,6 +425,18 @@ export function DiameterDimension({ cid, dim, interaction }: {
     labelX = anchorX; labelY = anchorY
   }
 
+  // Determine if label is inside or outside the circle.
+  // ASCII visualizations (center at o, endpoints at |):
+  //   Inside (within circle):   |<--X--o----->|
+  //     Arrows at endpoints pointing outward (away from center), label within circle bounds.
+  //   Outside (beyond circle):  ->|---o----|<--X
+  //     Arrows at endpoints pointing inward (toward center), leader line from endpoint to label.
+  const labelDist = Math.hypot(labelX - anchorX, labelY - anchorY)
+  const isInside = labelDist <= r
+  const diamLen = Math.hypot(ep2x - ep1x, ep2y - ep1y)
+  const udirX = diamLen > 0 ? (ep2x - ep1x) / diamLen : 1
+  const udirY = diamLen > 0 ? (ep2y - ep1y) / diamLen : 0
+
   const label = `Ø${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
 
   const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
@@ -431,8 +457,22 @@ export function DiameterDimension({ cid, dim, interaction }: {
   return (
     <group key={cid}>
       <Line points={[[ep1x, ep1y, 0], [ep2x, ep2y, 0]]} color={color} lineWidth={1} />
-      <Arrowhead tip={[ep1x, ep1y]} from={[ep2x, ep2y]} px={12} color={color} />
-      <Arrowhead tip={[ep2x, ep2y]} from={[ep1x, ep1y]} px={12} color={color} />
+      {isInside ? (
+        // Inside circle: arrows at endpoints pointing outward.
+        // |<--X--o----->|
+        <>
+          <Arrowhead tip={[ep1x, ep1y]} from={[ep2x, ep2y]} px={12} color={color} />
+          <Arrowhead tip={[ep2x, ep2y]} from={[ep1x, ep1y]} px={12} color={color} />
+        </>
+      ) : (
+        // Outside circle: both arrows point inward (toward center).
+        // X--->|---o----|<--
+        <>
+          <Arrowhead tip={[ep1x, ep1y]} from={[ep1x - udirX, ep1y - udirY]} px={12} color={color} />
+          <Arrowhead tip={[ep2x, ep2y]} from={[ep2x + udirX, ep2y + udirY]} px={12} color={color} />
+          <Line points={[[ep1x, ep1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
+        </>
+      )}
       <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
         <circleGeometry args={[1, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
@@ -510,6 +550,33 @@ export function AngleDimension({ cid, dim, interaction }: {
   }
 
   const arcPts = sampleArc(vx, vy, arcR, angle1 * (180 / Math.PI), angle2 * (180 / Math.PI))
+
+  // Determine if label is inside or outside the angle arc.
+  // ASCII visualizations (with arc segments instead of straight lines, vertex at |):
+  //   Inside angle:    |<---arc-X-arc--->|
+  //     Arrows at arc endpoints pointing outward from vertex.
+  //   Outside angle:   X-arc----|  |----arc-<
+  //     Arrows at arc endpoints pointing inward toward vertex, leader line to label.
+  //
+  // Detection: project label direction onto the angle arc. If it falls within the
+  // angle span (between angle1 and angle2), it's inside; otherwise it's outside.
+  const labelAngle = Math.atan2(labelY - vy, labelX - vx)
+
+  // Normalize angles to [0, 360) for comparison
+  let a1Norm = (angle1 * (180 / Math.PI) + 360) % 360
+  let a2Norm = (angle2 * (180 / Math.PI) + 360) % 360
+  let labelNorm = (labelAngle * (180 / Math.PI) + 360) % 360
+
+  // Determine if label is within the arc span
+  let isInsideAngle: boolean
+  if (a1Norm <= a2Norm) {
+    // Arc spans normally (e.g., 30° to 120°)
+    isInsideAngle = labelNorm >= a1Norm && labelNorm <= a2Norm
+  } else {
+    // Arc wraps around 360° (e.g., 320° to 50°)
+    isInsideAngle = labelNorm >= a1Norm || labelNorm <= a2Norm
+  }
+
   const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
 
   const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
@@ -527,11 +594,31 @@ export function AngleDimension({ cid, dim, interaction }: {
     })
   }, [interaction, cid, vx, vy, labelX, labelY, resetDragMoved, setDrag, setOrbitEnabled])
 
+  // Get arc endpoints for arrow placement
+  const arcStartPt = arcPts.length > 0 ? arcPts[0] : [extAx, extAy, 0]
+  const arcEndPt = arcPts.length > 0 ? arcPts[arcPts.length - 1] : [extBx, extBy, 0]
+
   return (
     <group key={cid}>
       <Line points={[[vx, vy, 0], [extAx, extAy, 0]]} color={color} lineWidth={1} />
       <Line points={[[vx, vy, 0], [extBx, extBy, 0]]} color={color} lineWidth={1} />
       <Line points={arcPts} color={color} lineWidth={1} />
+      {isInsideAngle ? (
+        // Inside angle: arrows at arc endpoints pointing outward from vertex
+        // |<---arc-X-arc--->|
+        <>
+          <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[vx, vy]} px={12} color={color} />
+          <Arrowhead tip={[arcEndPt[0], arcEndPt[1]]} from={[vx, vy]} px={12} color={color} />
+        </>
+      ) : (
+        // Outside angle: arrows at arc endpoints pointing inward toward vertex, leader line to label
+        // X-arc----|  |----arc-<
+        <>
+          <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[labelX, labelY]} px={12} color={color} />
+          <Arrowhead tip={[arcEndPt[0], arcEndPt[1]]} from={[labelX, labelY]} px={12} color={color} />
+          <Line points={[[arcStartPt[0], arcStartPt[1], 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
+        </>
+      )}
       <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
         <circleGeometry args={[1, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
