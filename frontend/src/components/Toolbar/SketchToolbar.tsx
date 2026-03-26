@@ -4,6 +4,7 @@ import type { ConstraintDef, EntityDef } from '../../registry'
 import ToolbarButton from './ToolbarButton'
 
 import toolbarRectangleIcon from '../../assets/icons/toolbar-rectangle.svg'
+import toolbarCenterRectangleIcon from '../../assets/icons/toolbar-center-rectangle.svg'
 import toolbarDimensionIcon from '../../assets/icons/constraint-dimension.svg'
 import toolbarConstructionIcon from '../../assets/icons/constraint-line-swap.svg'
 import viewportResetIcon from '../../assets/icons/viewport-reset.svg'
@@ -63,6 +64,13 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
         icon={toolbarRectangleIcon}
         onClick={() => setActiveTool('rect')}
         active={activeTool === 'rect'}
+      />
+
+      <ToolbarButton
+        title="Center Rectangle"
+        icon={toolbarCenterRectangleIcon}
+        onClick={() => setActiveTool('center_rect')}
+        active={activeTool === 'center_rect'}
       />
 
       <ToolbarButton title="Toggle Construction (Q)" icon={toolbarConstructionIcon} onClick={toggleConstruction} />

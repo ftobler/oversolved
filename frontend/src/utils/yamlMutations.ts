@@ -211,14 +211,18 @@ export function applyAddEntity(
   feature.initial[eid] = params.map(round)
 }
 
-export function applyAddRect(
-  doc: PartDoc,
+/** Helper: add 4 rectangle lines with corner/edge/dimension constraints.
+ *  Returns the 4 line IDs [lA, lB, lC, lD] for use in additional constraints.
+ */
+function _applyRectLines(
+  feature: PartFeature,
   featureId: string,
-  p0: [number, number],
-  p1: [number, number],
-): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature) return
+  doc: PartDoc,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): [string, string, string, string] {
   if (!feature.entities) feature.entities = []
   if (!feature.initial) feature.initial = {}
   if (!feature.constraints) feature.constraints = []
@@ -232,8 +236,6 @@ export function applyAddRect(
     existingIds.add(id)
   }
   const [lA, lB, lC, lD] = lineIds
-  const [x0, y0] = p0
-  const [x1, y1] = p1
   const fid = featureId
 
   const lines: [string, number[]][] = [
@@ -255,4 +257,65 @@ export function applyAddRect(
   applyAddConstraint(doc, fid, 'equal_length', [`entity:${fid}:${lB}`,      `entity:${fid}:${lD}`])
   applyAddConstraint(doc, fid, 'horizontal',   [`entity:${fid}:${lA}`])
   applyAddConstraint(doc, fid, 'vertical',     [`entity:${fid}:${lB}`])
+
+  return [lA, lB, lC, lD]
+}
+
+export function applyAddRect(
+  doc: PartDoc,
+  featureId: string,
+  p0: [number, number],
+  p1: [number, number],
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+
+  const [x0, y0] = p0
+  const [x1, y1] = p1
+  _applyRectLines(feature, featureId, doc, x0, y0, x1, y1)
+}
+
+export function applyAddCenterRect(
+  doc: PartDoc,
+  featureId: string,
+  center: [number, number],
+  corner: [number, number],
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  if (!feature.entities) feature.entities = []
+  if (!feature.initial) feature.initial = {}
+  if (!feature.constraints) feature.constraints = []
+
+  const [cx, cy] = center
+  const [x, y] = corner
+  const dx = x - cx
+  const dy = y - cy
+
+  // 4 corners of the rectangle (symmetric around center)
+  const x0 = cx - dx, x1 = cx + dx
+  const y0 = cy - dy, y1 = cy + dy
+
+  const [lA, lB, lC, lD] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1)
+
+  // Create point entity at center
+  const existingIds = new Set(feature.entities.map(e => e.id))
+  let pointId = randomId(12)
+  while (existingIds.has(pointId)) pointId = randomId(12)
+  feature.entities.push({ id: pointId, kind: 'point' })
+  feature.initial[pointId] = [cx, cy].map(round)
+
+  // Add midpoint constraints: center point is midpoint of each diagonal
+  // Diagonal 1: lA:start (top-right) to lC:start (bottom-left)
+  applyAddConstraint(doc, featureId, 'midpoint', [
+    `vertex:${featureId}:${lA}:start`,
+    `vertex:${featureId}:${lC}:start`,
+    `vertex:${featureId}:${pointId}:xy`,
+  ])
+  // Diagonal 2: lB:start (top-left) to lD:start (bottom-right)
+  applyAddConstraint(doc, featureId, 'midpoint', [
+    `vertex:${featureId}:${lB}:start`,
+    `vertex:${featureId}:${lD}:start`,
+    `vertex:${featureId}:${pointId}:xy`,
+  ])
 }

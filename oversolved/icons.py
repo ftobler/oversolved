@@ -365,17 +365,36 @@ def toolbar_line(ctx):
     stroke(ctx, 2)
 
 
-@icon("frontend/src/assets/icons/toolbar-rectangle.svg")
-def toolbar_rectangle(ctx):
-    # Rectangle
-    x0, x1 = 0.2, 0.8
-    y0, y1 = 0.3, 0.7
+def _draw_rect_outline(ctx, x0, x1, y0, y1):
+    """Draw a rectangle outline from (x0, y0) to (x1, y1)."""
     ctx.move_to(x0, y0)
     ctx.line_to(x1, y0)
     ctx.line_to(x1, y1)
     ctx.line_to(x0, y1)
     ctx.close_path()
     stroke(ctx, 2)
+
+
+@icon("frontend/src/assets/icons/toolbar-rectangle.svg")
+def toolbar_rectangle(ctx):
+    # Rectangle
+    x0, x1 = 0.2, 0.8
+    y0, y1 = 0.3, 0.7
+    _draw_rect_outline(ctx, x0, x1, y0, y1)
+
+
+@icon("frontend/src/assets/icons/toolbar-center-rectangle.svg")
+def toolbar_center_rectangle(ctx):
+    # Center-point rectangle: rectangle outline with center point marked
+    x0, x1 = 0.2, 0.8
+    y0, y1 = 0.3, 0.7
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+
+    _draw_rect_outline(ctx, x0, x1, y0, y1)
+
+    # Center point (filled dot)
+    ctx.arc(cx, cy, px(2.5), 0, 2 * math.pi)
+    ctx.fill()
 
 
 @icon("frontend/src/assets/icons/toolbar-circle.svg")

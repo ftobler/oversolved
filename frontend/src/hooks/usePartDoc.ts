@@ -9,6 +9,7 @@ import {
   applyDeleteElements,
   applyAddEntity,
   applyAddRect,
+  applyAddCenterRect,
   applySetConstraintValue,
   applySetConstraintPos,
   applyToggleConstruction,
@@ -164,6 +165,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'add_rect':
         applyAddRect(next, m.featureId, m.p0, m.p1)
+        break
+      case 'add_center_rect':
+        applyAddCenterRect(next, m.featureId, m.center, m.corner)
         break
       case 'toggle_construction':
         applyToggleConstruction(next, m.targets)

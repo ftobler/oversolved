@@ -726,6 +726,15 @@ function computePreviewPts(
     const [x1, y1] = h
     return [[x0, y0, 0], [x1, y0, 0], [x1, y1, 0], [x0, y1, 0], [x0, y0, 0]]
   }
+  if (tool === 'center_rect' && pts.length === 1 && h) {
+    const [cx, cy] = pts[0]
+    const [x, y] = h
+    const dx = x - cx, dy = y - cy
+    // Symmetric rectangle around center
+    const x0 = cx - dx, x1 = cx + dx
+    const y0 = cy - dy, y1 = cy + dy
+    return [[x0, y0, 0], [x1, y0, 0], [x1, y1, 0], [x0, y1, 0], [x0, y0, 0]]
+  }
   return null
 }
 
@@ -819,6 +828,15 @@ function DrawPlane({ featureId, activeFeatureId }: { featureId: string; activeFe
         addDrawPoint([x, y])
       } else {
         onMutation?.({ type: 'add_rect', featureId, p0: pts[0], p1: [x, y] })
+        clearDraw()
+        setActiveTool('select')
+      }
+
+    } else if (activeTool === 'center_rect') {
+      if (pts.length === 0) {
+        addDrawPoint([x, y])           // first click = center
+      } else {
+        onMutation?.({ type: 'add_center_rect', featureId, center: pts[0], corner: [x, y] })
         clearDraw()
         setActiveTool('select')
       }

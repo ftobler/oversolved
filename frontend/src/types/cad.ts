@@ -216,4 +216,5 @@ export type Mutation =
   | { type: 'delete'; targets: string[] }
   | { type: 'add_entity'; featureId: string; kind: string; params: number[] }
   | { type: 'add_rect'; featureId: string; p0: Point; p1: Point }
+  | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point }
   | { type: 'toggle_construction'; targets: string[] }
