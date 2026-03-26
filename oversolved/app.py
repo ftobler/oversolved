@@ -193,12 +193,15 @@ def create_app(config=None):
         if not isinstance(content, str):
             return jsonify({'error': '"content" must be a string'}), 400
         db = get_db()
-        doc = DocumentStore(db).retrieve(uuid)
+        doc_store = DocumentStore(db)
+        doc = doc_store.retrieve(uuid)
         if doc is None:
-            return jsonify({'error': 'Document not found'}), 404
-        if doc['owner_id'] != g.current_user['id']:
-            return jsonify({'error': 'Forbidden'}), 403
-        DocumentStore(db).store_content(uuid, content)
+            # Create document if it doesn't exist (upsert)
+            doc_store.create_with_uuid(uuid, uuid, g.current_user['id'])
+        else:
+            if doc['owner_id'] != g.current_user['id']:
+                return jsonify({'error': 'Forbidden'}), 403
+        doc_store.store_content(uuid, content)
         return jsonify({'uuid': uuid, 'status': 'stored'}), 200
 
     @app.route('/api/documents/<uuid>', methods=['PATCH'])

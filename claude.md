@@ -28,7 +28,7 @@ npx vitest run
 - mypy and flake8 runs on both `oversolved/` and `tests/`
 - Frontend changes require `npm run build` + `npm run lint` to pass
 - code style: do not use em or en-dashes.
-
+- Agents must never interact with Git.
 
 ## important files
 - tests/test_sovler.py
