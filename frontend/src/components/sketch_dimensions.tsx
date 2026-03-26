@@ -20,14 +20,14 @@ export interface DimInteraction {
 }
 
 /** Filled triangle arrowhead with constant pixel size regardless of zoom. */
-export function Arrowhead({ tip, from, px, color }: { tip: [number, number]; from: [number, number]; px: number; color: string }) {
+export function Arrowhead({ tip, from, color }: { tip: [number, number]; from: [number, number]; color: string }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
   const angle = Math.atan2(tip[1] - from[1], tip[0] - from[0])
   useFrame(() => {
     if (meshRef.current) {
-      const s = px * p2w(camera)
-      meshRef.current.scale.set(s, s, 1)
+      const s = 12 * p2w(camera)
+      meshRef.current.scale.set(s * 1.2, s * 0.9, 1)
     }
   })
   return (
@@ -35,6 +35,26 @@ export function Arrowhead({ tip, from, px, color }: { tip: [number, number]; fro
       <shapeGeometry args={[ARROW_SHAPE]} />
       <meshBasicMaterial color={color} side={THREE.DoubleSide} />
     </mesh>
+  )
+}
+
+/** Short tail line from a point in a direction, with constant pixel length regardless of zoom. */
+function ArrowTail({ origin, dir, color }: { origin: [number, number]; dir: [number, number]; color: string }) {
+  const lineRef = useRef<any>(null)
+  const { camera } = useThree()
+  useFrame(() => {
+    if (!lineRef.current) return
+    const len = 25 * p2w(camera)
+    const pts = lineRef.current.geometry?.attributes?.position
+    if (pts) {
+      pts.setXYZ(0, origin[0], origin[1], 0)
+      pts.setXYZ(1, origin[0] + dir[0] * len, origin[1] + dir[1] * len, 0)
+      pts.needsUpdate = true
+    }
+  })
+  const len = 25 * p2w(camera)
+  return (
+    <Line ref={lineRef} points={[[origin[0], origin[1], 0], [origin[0] + dir[0] * len, origin[1] + dir[1] * len, 0]]} color={color} lineWidth={1} />
   )
 }
 
@@ -248,15 +268,17 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
         // Inside: arrows at boundaries pointing outward.
         // |<---X--->|
         <>
-          <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} px={12} color={color} />
-          <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} px={12} color={color} />
+          <Arrowhead tip={[d1x, d1y]} from={[d2x, d2y]} color={color} />
+          <Arrowhead tip={[d2x, d2y]} from={[d1x, d1y]} color={color} />
         </>
       ) : tLabel < 0 ? (
         // Outside near d1: both arrows point inward (into the dimension line), leader from d1 to label.
         // X--->|------|<-
         <>
-          <Arrowhead tip={[d1x, d1y]} from={[d1x - udirX, d1y - udirY]} px={12} color={color} />
-          <Arrowhead tip={[d2x, d2y]} from={[d2x + udirX, d2y + udirY]} px={12} color={color} />
+          <Arrowhead tip={[d1x, d1y]} from={[d1x - udirX, d1y - udirY]} color={color} />
+          <ArrowTail origin={[d1x, d1y]} dir={[-udirX, -udirY]} color={color} />
+          <Arrowhead tip={[d2x, d2y]} from={[d2x + udirX, d2y + udirY]} color={color} />
+          <ArrowTail origin={[d2x, d2y]} dir={[udirX, udirY]} color={color} />
           <Line points={[[d1x, d1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
         </>
       ) : (
@@ -264,8 +286,10 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
         // Same arrow config as outside near d1, but different leader line.
         // |----->|<------X
         <>
-          <Arrowhead tip={[d1x, d1y]} from={[d1x - udirX, d1y - udirY]} px={12} color={color} />
-          <Arrowhead tip={[d2x, d2y]} from={[d2x + udirX, d2y + udirY]} px={12} color={color} />
+          <Arrowhead tip={[d1x, d1y]} from={[d1x - udirX, d1y - udirY]} color={color} />
+          <ArrowTail origin={[d1x, d1y]} dir={[-udirX, -udirY]} color={color} />
+          <Arrowhead tip={[d2x, d2y]} from={[d2x + udirX, d2y + udirY]} color={color} />
+          <ArrowTail origin={[d2x, d2y]} dir={[udirX, udirY]} color={color} />
           <Line points={[[d2x, d2y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
         </>
       )}
@@ -364,14 +388,15 @@ export function RadiusDimension({ cid, dim, interaction }: {
         // Inside: line from center to edge, arrow at edge pointing outward.
         <>
           <Line points={[[cx, cy, 0], [tipX, tipY, 0]]} color={color} lineWidth={1} />
-          <Arrowhead tip={[tipX, tipY]} from={[cx, cy]} px={12} color={color} />
+          <Arrowhead tip={[tipX, tipY]} from={[cx, cy]} color={color} />
         </>
       ) : (
         // Outside: line extends from center through edge all the way to label,
         // arrow at edge is inverted (points inward toward center).
         <>
           <Line points={[[cx, cy, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
-          <Arrowhead tip={[tipX, tipY]} from={[labelX, labelY]} px={12} color={color} />
+          <Arrowhead tip={[tipX, tipY]} from={[labelX, labelY]} color={color} />
+          {(() => { const td = Math.hypot(tipX - cx, tipY - cy) || 1; return <ArrowTail origin={[tipX, tipY]} dir={[(tipX - cx) / td, (tipY - cy) / td]} color={color} /> })()}
         </>
       )}
       <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
@@ -461,15 +486,17 @@ export function DiameterDimension({ cid, dim, interaction }: {
         // Inside circle: arrows at endpoints pointing outward.
         // |<--X--o----->|
         <>
-          <Arrowhead tip={[ep1x, ep1y]} from={[ep2x, ep2y]} px={12} color={color} />
-          <Arrowhead tip={[ep2x, ep2y]} from={[ep1x, ep1y]} px={12} color={color} />
+          <Arrowhead tip={[ep1x, ep1y]} from={[ep2x, ep2y]} color={color} />
+          <Arrowhead tip={[ep2x, ep2y]} from={[ep1x, ep1y]} color={color} />
         </>
       ) : (
         // Outside circle: both arrows point inward (toward center).
         // X--->|---o----|<--
         <>
-          <Arrowhead tip={[ep1x, ep1y]} from={[ep1x - udirX, ep1y - udirY]} px={12} color={color} />
-          <Arrowhead tip={[ep2x, ep2y]} from={[ep2x + udirX, ep2y + udirY]} px={12} color={color} />
+          <Arrowhead tip={[ep1x, ep1y]} from={[ep1x - udirX, ep1y - udirY]} color={color} />
+          <ArrowTail origin={[ep1x, ep1y]} dir={[-udirX, -udirY]} color={color} />
+          <Arrowhead tip={[ep2x, ep2y]} from={[ep2x + udirX, ep2y + udirY]} color={color} />
+          <ArrowTail origin={[ep2x, ep2y]} dir={[udirX, udirY]} color={color} />
           <Line points={[[ep1x, ep1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
         </>
       )}
@@ -627,8 +654,8 @@ export function AngleDimension({ cid, dim, interaction }: {
         // Inside: arrows tangent to arc at endpoints, pointing OUTWARD (away from span)
         // |<---arc-X-arc--->|
         <>
-          <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[arcStartPt[0] + tanStartInX, arcStartPt[1] + tanStartInY]} px={12} color={color} />
-          <Arrowhead tip={[arcEndPt[0],   arcEndPt[1]  ]} from={[arcEndPt[0]   + tanEndInX,   arcEndPt[1]   + tanEndInY  ]} px={12} color={color} />
+          <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[arcStartPt[0] + tanStartInX, arcStartPt[1] + tanStartInY]} color={color} />
+          <Arrowhead tip={[arcEndPt[0],   arcEndPt[1]  ]} from={[arcEndPt[0]   + tanEndInX,   arcEndPt[1]   + tanEndInY  ]} color={color} />
         </>
       ) : (
         // Outside: solid arc extension from nearest endpoint to label,
@@ -638,8 +665,10 @@ export function AngleDimension({ cid, dim, interaction }: {
           {extArcPts && extArcPts.length >= 2 && (
             <Line points={extArcPts} color={color} lineWidth={1} />
           )}
-          <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[arcStartPt[0] - tanStartInX, arcStartPt[1] - tanStartInY]} px={12} color={color} />
-          <Arrowhead tip={[arcEndPt[0],   arcEndPt[1]  ]} from={[arcEndPt[0]   - tanEndInX,   arcEndPt[1]   - tanEndInY  ]} px={12} color={color} />
+          <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[arcStartPt[0] - tanStartInX, arcStartPt[1] - tanStartInY]} color={color} />
+          <ArrowTail origin={[arcStartPt[0], arcStartPt[1]]} dir={[-tanStartInX, -tanStartInY]} color={color} />
+          <Arrowhead tip={[arcEndPt[0],   arcEndPt[1]  ]} from={[arcEndPt[0]   - tanEndInX,   arcEndPt[1]   - tanEndInY  ]} color={color} />
+          <ArrowTail origin={[arcEndPt[0], arcEndPt[1]]} dir={[-tanEndInX, -tanEndInY]} color={color} />
         </>
       )}
 
