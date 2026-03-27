@@ -268,6 +268,7 @@ export default function Part() {
                     onDragOver={(e) => handleRollbackDragOver(e, index)}
                     onDrop={(e) => handleRollbackDrop(e, index)}
                     onDoubleClick={() => feature.kind === 'sketch' ? enterEditSketch(feature.id) : undefined}
+                    style={{ flexWrap: 'wrap' }}
                   >
                     <img
                       src={
@@ -301,6 +302,31 @@ export default function Part() {
                         {visibleFeatures.has(feature.id) ? 'visibility' : 'visibility_off'}
                       </span>
                     </button>
+                    {feature.kind === 'sketch' && feature.id === editingSketchId && (() => {
+                      const featureDef = doc?.features?.find(f => f.id === feature.id)
+                      const currentPlane = featureDef?.plane ?? '@builtin_plane_front'
+                      const planes = [
+                        { value: '@builtin_plane_front', label: 'Front' },
+                        { value: '@builtin_plane_top',   label: 'Top' },
+                        { value: '@builtin_plane_right', label: 'Right' },
+                      ]
+                      return (
+                        <div className="feature-plane-selector">
+                          <span className="feature-plane-label">Plane</span>
+                          <div className="feature-plane-btns">
+                            {planes.map(p => (
+                              <button
+                                key={p.value}
+                                className={`feature-plane-btn ${currentPlane === p.value ? 'active' : ''}`}
+                                onClick={(e) => { e.stopPropagation(); handleMutation({ type: 'set_feature_plane', featureId: feature.id, plane: p.value }) }}
+                              >
+                                {p.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </li>
                 </div>
               ))

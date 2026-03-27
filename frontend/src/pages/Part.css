@@ -145,6 +145,60 @@
 .feature-item.editing {
   background: #1a0f1a;
   color: #e060b0;
+  align-items: flex-start;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.feature-item.editing > .feature-icon,
+.feature-item.editing > .feature-name,
+.feature-item.editing > .feature-edit-btn,
+.feature-item.editing > .feature-visibility-btn {
+  margin-top: 2px;
+}
+
+.feature-plane-selector {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #2e1a2e;
+}
+
+.feature-plane-label {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.feature-plane-btns {
+  display: flex;
+  gap: 3px;
+}
+
+.feature-plane-btn {
+  padding: 2px 7px;
+  font-size: 10px;
+  border: 1px solid #3a2a3a;
+  border-radius: 3px;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.feature-plane-btn:hover {
+  border-color: #b83b88;
+  color: #e060b0;
+}
+
+.feature-plane-btn.active {
+  background: #b83b88;
+  border-color: #b83b88;
+  color: #fff;
 }
 
 .feature-item.editing .feature-icon {

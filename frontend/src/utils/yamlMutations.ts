@@ -329,3 +329,9 @@ export function applyAddCenterRect(
     `vertex:${featureId}:${pointId}:xy`,
   ])
 }
+
+export function applySetFeaturePlane(doc: PartDoc, featureId: string, plane: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  feature.plane = plane
+}

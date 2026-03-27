@@ -13,6 +13,7 @@ import {
   applySetConstraintValue,
   applySetConstraintPos,
   applyToggleConstruction,
+  applySetFeaturePlane,
 } from '../utils/yamlMutations'
 
 function healDoc(raw: unknown): PartDoc {
@@ -171,6 +172,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'toggle_construction':
         applyToggleConstruction(next, m.targets)
+        break
+      case 'set_feature_plane':
+        applySetFeaturePlane(next, m.featureId, m.plane)
         break
     }
     docRef.current = next
