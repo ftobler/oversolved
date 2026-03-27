@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { Line } from '@react-three/drei'
 import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { sampleArc, getEntityBounds } from '../sketch_helpers'
+import { sampleArc, sampleArcCCW, getEntityBounds } from '../sketch_helpers'
 import { DashedLine } from '../sketch_dimensions'
 import { VertexDot, HitPolyline, ProjectedOriginPoint } from './VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER } from './constants'
@@ -54,7 +54,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
 
   if ('start' in e && 'end' in e && 'radius' in e) {
     const arc = e as Arc
-    const pts = sampleArc(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
+    const pts = sampleArcCCW(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
