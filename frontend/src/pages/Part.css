@@ -49,6 +49,36 @@
   color: #666;
 }
 
+.sidebar-editing-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #b83b88;
+  padding: 2px 4px 2px 12px;
+}
+
+.exit-sketch-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #b83b88;
+  padding: 2px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.exit-sketch-btn:hover {
+  background: #2a1a2a;
+  color: #e060b0;
+}
+
+.exit-sketch-btn .material-icons-outlined {
+  font-size: 14px;
+}
+
 .features-list {
   list-style: none;
   margin: 0;
@@ -84,6 +114,47 @@
   white-space: nowrap;
   flex: 1;
   text-align: left;
+}
+
+.feature-edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #555;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.feature-item:hover .feature-edit-btn {
+  opacity: 1;
+}
+
+.feature-edit-btn:hover {
+  color: #b83b88;
+}
+
+.feature-edit-btn .material-icons-outlined {
+  font-size: 11px;
+}
+
+.feature-item.editing {
+  background: #1a0f1a;
+  color: #e060b0;
+}
+
+.feature-item.editing .feature-icon {
+  filter: invert(0.6) sepia(1) saturate(3) hue-rotate(280deg);
+}
+
+.feature-item.editing:hover {
+  background: #221222;
+  color: #e060b0;
+  border-color: #b83b88;
 }
 
 .feature-visibility-btn {

@@ -40,6 +40,7 @@ export default function Part() {
   const [mode, setModeRaw] = useState<'sketch' | 'feature' | 'code'>('sketch')
   const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
   const [viewportReset, setViewportReset] = useState(0)
+  const [editingSketchId, setEditingSketchId] = useState<string | null>(null)
 
   const {
     doc,
@@ -85,8 +86,9 @@ export default function Part() {
     const sketches = features
       .slice(0, limit)
       .filter(f => f.kind === 'sketch' && visibleFeatures.has(f.id))
+    if (editingSketchId && sketches.some(f => f.id === editingSketchId)) return editingSketchId
     return sketches.length > 0 ? sketches[sketches.length - 1].id : undefined
-  }, [features, rollbackPosition, visibleFeatures])
+  }, [features, rollbackPosition, visibleFeatures, editingSketchId])
 
   const setMode = useCallback((newMode: 'sketch' | 'feature' | 'code') => {
     setModeRaw(prev => {
@@ -191,6 +193,15 @@ export default function Part() {
     })
   }
 
+  const enterEditSketch = (featureId: string) => {
+    setEditingSketchId(featureId)
+    setMode('sketch')
+  }
+
+  const exitEditSketch = () => {
+    setEditingSketchId(null)
+  }
+
   return (
     <div className="document-viewer">
       <AppHeader>
@@ -223,7 +234,16 @@ export default function Part() {
 
       <div className="doc-container">
         <aside className="doc-sidebar">
-          <div className="sidebar-header">Features</div>
+          {editingSketchId ? (
+            <div className="sidebar-header sidebar-editing-header">
+              <span>Editing: {editingSketchId}</span>
+              <button className="exit-sketch-btn" onClick={exitEditSketch} title="Exit sketch">
+                <span className="material-icons-outlined">close</span>
+              </button>
+            </div>
+          ) : (
+            <div className="sidebar-header">Features</div>
+          )}
           <ul className="features-list">
             {features.length === 0 ? (
               <li className="empty">No features</li>
@@ -242,9 +262,10 @@ export default function Part() {
                   )}
                   <li
                     key={feature.id}
-                    className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''}`}
+                    className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingSketchId ? 'editing' : ''}`}
                     onDragOver={(e) => handleRollbackDragOver(e, index)}
                     onDrop={(e) => handleRollbackDrop(e, index)}
+                    onDoubleClick={() => feature.kind === 'sketch' ? enterEditSketch(feature.id) : undefined}
                   >
                     <img
                       src={
@@ -260,6 +281,15 @@ export default function Part() {
                       className="feature-icon"
                     />
                     <span className="feature-name">{feature.id}</span>
+                    {feature.kind === 'sketch' && feature.id !== editingSketchId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={() => enterEditSketch(feature.id)}
+                        title="Edit sketch"
+                      >
+                        <span className="material-icons-outlined">edit</span>
+                      </button>
+                    )}
                     <button
                       className="feature-visibility-btn"
                       onClick={() => toggleVisibility(feature.id)}
