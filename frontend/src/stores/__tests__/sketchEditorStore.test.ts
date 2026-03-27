@@ -10,6 +10,7 @@ function reset() {
     orbitEnabled: true,
     onMutation: null,
     activeTool: 'dimension',
+    activeFeatureId: null,
     pendingDimTarget: null,
     pendingDimEntityKind: null,
     pendingDialog: null,
@@ -93,6 +94,7 @@ describe('sketchEditorStore', () => {
     it('dispatches add_constraint with selected targets', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
       useSketchEditorStore.getState().toggleSelect('entity:Sketch1:L1')
       useSketchEditorStore.getState().toggleSelect('entity:Sketch1:L2')
 
