@@ -110,6 +110,10 @@ export default function Part() {
   }, [handleMutation])
 
   useEffect(() => {
+    useSketchEditorStore.getState().setActiveFeatureId(activeSketchFeatureId ?? null)
+  }, [activeSketchFeatureId])
+
+  useEffect(() => {
     registerCommand('undo', handleUndo)
     registerCommand('redo', handleRedo)
     registerCommand('delete_selected', () => useSketchEditorStore.getState().deleteSelected())

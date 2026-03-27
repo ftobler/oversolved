@@ -47,6 +47,7 @@ interface SketchEditorState {
   onMutation: ((m: Mutation) => void) | null
   hoveredConstraintEntityIds: Set<string>  // entity IDs highlighted by constraint hover
   activeTool: ActiveTool
+  activeFeatureId: string | null           // the sketch currently being edited
   drawPoints: [number, number][]
   drawHover: [number, number] | null
   pendingDimTarget: string | null       // first click target when doing two-target dimension
@@ -59,6 +60,7 @@ interface SketchEditorState {
   setDrag: (drag: DragState | null) => void
   setOrbitEnabled: (enabled: boolean) => void
   setOnMutation: (cb: ((m: Mutation) => void) | null) => void
+  setActiveFeatureId: (id: string | null) => void
   setHoveredConstraintEntities: (ids: Set<string>) => void
   setActiveTool: (tool: ActiveTool) => void
   applyConstraint: (kind: string) => void
@@ -79,6 +81,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   onMutation: null,
   hoveredConstraintEntityIds: new Set(),
   activeTool: 'select',
+  activeFeatureId: null,
   drawPoints: [],
   drawHover: null,
   pendingDimTarget: null,
@@ -101,18 +104,17 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setOnMutation: (cb) => set({ onMutation: cb }),
 
+  setActiveFeatureId: (id) => set({ activeFeatureId: id }),
+
   setHoveredConstraintEntities: (ids) => set({ hoveredConstraintEntityIds: ids }),
 
   setActiveTool: (tool) => set({ activeTool: tool, drawPoints: [], drawHover: null }),
 
   applyConstraint: (kind) => {
-    const { selection, onMutation } = get()
-    if (selection.size === 0 || !onMutation) return
-    // Derive featureId from first selected element (all must share same feature for now)
+    const { selection, onMutation, activeFeatureId } = get()
+    if (selection.size === 0 || !onMutation || !activeFeatureId) return
     const targets = [...selection]
-    const firstParts = targets[0].split(':')
-    const featureId = firstParts[1] ?? ''
-    onMutation({ type: 'add_constraint', featureId, kind, targets })
+    onMutation({ type: 'add_constraint', featureId: activeFeatureId, kind, targets })
   },
 
   toggleConstruction: () => {
@@ -138,7 +140,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   closeDialog: () => set({ pendingDialog: null }),
 
   handleDimensionClick: (target, featureId, kind, screenPos, entityKind) => {
-    const { pendingDimTarget, pendingDimEntityKind, onMutation } = get()
+    const { pendingDimTarget, pendingDimEntityKind, onMutation, activeFeatureId } = get()
+    const hostFeatureId = activeFeatureId ?? featureId
     const openDialog = get().openDialog
     if (!pendingDimTarget) {
       // Single-entity dimension — immediately create for arc/circle, go pending for line
@@ -151,7 +154,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
             onConfirm: (input) => {
               const val = parseFloat(input)
               if (isNaN(val) || val <= 0) return
-              onMutation?.({ type: 'add_constraint', featureId, kind: dimKind, targets: [target], value: val })
+              onMutation?.({ type: 'add_constraint', featureId: hostFeatureId, kind: dimKind, targets: [target], value: val })
               set({ activeTool: 'select', pendingDimTarget: null, pendingDimEntityKind: null })
             },
           })
@@ -176,7 +179,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
           onConfirm: (input) => {
             const val = parseFloat(input)
             if (isNaN(val) || val <= 0) return
-            onMutation?.({ type: 'add_constraint', featureId, kind: singleKind, targets: [target], value: val })
+            onMutation?.({ type: 'add_constraint', featureId: hostFeatureId, kind: singleKind, targets: [target], value: val })
             set({ activeTool: 'select' })
           },
         })
@@ -195,7 +198,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         onConfirm: (input) => {
           const val = parseFloat(input)
           if (isNaN(val) || val <= 0) return
-          onMutation?.({ type: 'add_constraint', featureId, kind: dimKind, targets: [first, target], value: val })
+          onMutation?.({ type: 'add_constraint', featureId: hostFeatureId, kind: dimKind, targets: [first, target], value: val })
           set({ activeTool: 'select' })
         },
       })

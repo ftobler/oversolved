@@ -20,10 +20,19 @@ function findFeature(doc: PartDoc, featureId: string): PartFeature | undefined {
   return doc.features?.find(f => f.id === featureId)
 }
 
-const parseTarget = (t: string): PartTarget => {
+/** Convert a selection ID to a query string.
+ *  If the target belongs to a different feature than the host, use `@<featId><eleId>`
+ *  (absolute ref). Otherwise use `$<eleId>` (local ref). */
+const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
   const parts = t.split(':')
-  if (parts[0] === 'entity') return '$' + parts[2]
-  if (parts[0] === 'vertex') return '$' + parts[2] + parts[3]
+  if (parts[0] === 'entity') {
+    const [, featId, eleId] = parts
+    return featId === hostFeatureId ? '$' + eleId : '@' + featId + eleId
+  }
+  if (parts[0] === 'vertex') {
+    const [, featId, eleId, sub] = parts
+    return featId === hostFeatureId ? '$' + eleId + sub : '@' + featId + eleId + sub
+  }
   return '$' + t
 }
 
@@ -98,6 +107,7 @@ export function applyAddConstraint(
   if (!feature.constraints) feature.constraints = []
   const cid = uniqueConstraintId(feature.constraints, kind)
   const c: PartConstraint = { id: cid, kind }
+  const pt = (t: string) => parseTarget(t, featureId)
   if (kind === 'midpoint') {
     // midpoint needs specific keys depending on selection:
     //   entity + vertex  → line: $entity,  point: $vertex
@@ -105,21 +115,21 @@ export function applyAddConstraint(
     const entityTargets = targets.filter(t => t.startsWith('entity:'))
     const vertexTargets = targets.filter(t => t.startsWith('vertex:'))
     if (entityTargets.length === 1 && vertexTargets.length === 1) {
-      c.line = parseTarget(entityTargets[0])
-      c.point = parseTarget(vertexTargets[0])
+      c.line = pt(entityTargets[0])
+      c.point = pt(vertexTargets[0])
     } else if (vertexTargets.length === 3) {
-      c.point_a = parseTarget(vertexTargets[0])
-      c.point_b = parseTarget(vertexTargets[1])
-      c.point   = parseTarget(vertexTargets[2])
+      c.point_a = pt(vertexTargets[0])
+      c.point_b = pt(vertexTargets[1])
+      c.point   = pt(vertexTargets[2])
     } else {
       // Not enough / wrong selection — skip adding
       return
     }
   } else if (targets.length === 1) {
-    c.target = parseTarget(targets[0])
+    c.target = pt(targets[0])
   } else if (targets.length >= 2) {
-    c.a = parseTarget(targets[0])
-    c.b = parseTarget(targets[1])
+    c.a = pt(targets[0])
+    c.b = pt(targets[1])
   }
   if (value !== undefined) c.value = value
   feature.constraints.push(c)
