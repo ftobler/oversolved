@@ -34,11 +34,23 @@ def solve(yaml_str: str) -> dict:
     doc = yaml.safe_load(yaml_str)
     features = doc.get("features", [])
 
+    # Global repo accumulates solved geometry so later sketches can reference
+    # entities from earlier sketches via @absolute query strings.
+    global_repo = Repository()
+    global_repo.register("builtin_origin",      {"external_xy": [0.0, 0.0]})
+    global_repo.register("builtin_plane_front", {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 1, 0],  "normal": [0, 0, 1]})
+    global_repo.register("builtin_plane_top",   {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 0, -1], "normal": [0, 1, 0]})
+    global_repo.register("builtin_plane_right", {"type": "plane", "origin": [0, 0, 0], "x_axis": [0, 0, -1], "y_axis": [0, 1, 0], "normal": [1, 0, 0]})
+
     t0 = time.perf_counter()
     result = {}
     for feature in features:
-        feature_result = _try_solve_feature(feature)
+        feature_result = _try_solve_feature(feature, global_repo)
         result[feature["id"]] = feature_result
+        # After solving, register this sketch's geometry into global_repo so
+        # subsequent sketches can reference it via @absolute query strings.
+        if "geometry" in feature_result:
+            _register_solved_geometry(global_repo, feature["id"], feature, feature_result["geometry"])
 
     total_ms = round((time.perf_counter() - t0) * 1000, 1)
     return {
@@ -47,10 +59,34 @@ def solve(yaml_str: str) -> dict:
     }
 
 
-def _try_solve_feature(feature: Any) -> dict:
+def _register_solved_geometry(global_repo: Repository, feature_id: str, feature: dict, geometry: dict) -> None:
+    """Register solved geometry from a sketch into the global repo as fixed external references."""
+    entities = {e["id"]: e for e in feature.get("entities", [])}
+    for eid, params in geometry.items():
+        entity = entities.get(eid)
+        if entity is None:
+            continue
+        kind = entity["kind"]
+        global_repo.register(feature_id + eid, {"external_params": params, "kind": kind})
+        if kind == "line":
+            global_repo.register(feature_id + eid + "start", {"external_xy": list(params[0:2])})
+            global_repo.register(feature_id + eid + "end",   {"external_xy": list(params[2:4])})
+        elif kind == "circle":
+            global_repo.register(feature_id + eid + "center", {"external_xy": list(params[0:2])})
+        elif kind == "arc":
+            cx, cy, r = params[0], params[1], params[2]
+            a_start, a_end = params[3], params[4]
+            global_repo.register(feature_id + eid + "start",  {"external_xy": [cx + r * math.cos(math.radians(a_start)), cy + r * math.sin(math.radians(a_start))]})
+            global_repo.register(feature_id + eid + "end",    {"external_xy": [cx + r * math.cos(math.radians(a_end)),   cy + r * math.sin(math.radians(a_end))]})
+            global_repo.register(feature_id + eid + "center", {"external_xy": [cx, cy]})
+        elif kind == "point":
+            global_repo.register(feature_id + eid + "xy", {"external_xy": list(params[0:2])})
+
+
+def _try_solve_feature(feature: Any, global_repo: Repository) -> dict:
     t0 = time.perf_counter()
     try:
-        result = _solve_feature(feature)
+        result = _solve_feature(feature, global_repo)
         result["solve_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         return result
     except Exception as e:
@@ -61,10 +97,10 @@ def _try_solve_feature(feature: Any) -> dict:
         }
 
 
-def _solve_feature(feature: Any) -> dict:
+def _solve_feature(feature: Any, global_repo: Repository) -> dict:
     kind = feature.get("kind")
     if kind == "sketch":
-        feature_result = _solve_sketch(feature)
+        feature_result = _solve_sketch(feature, global_repo)
         return feature_result
     raise Exception(f"unknown feature type: '{kind}'")
 
@@ -424,7 +460,7 @@ ORIGIN_ID = "_origin"
 ORIGIN_FIX_ID = "__builtin_origin_fix__"
 
 
-def _solve_sketch(feature: dict) -> dict:
+def _solve_sketch(feature: dict, global_repo: Repository = None) -> dict:
     entities = {e["id"]: e for e in feature["entities"]}
     initial = feature.get("initial", {})
     constraints = feature.get("constraints", [])
@@ -468,10 +504,14 @@ def _solve_sketch(feature: dict) -> dict:
             repo.register(feature_id + eid + "xy", {"entity": eid, "point": "xy"})
 
     def resolve_ref(val):
-        """Resolve a constraint field value to {entity, point?}.
-        Accepts either a query string (new format) or an existing dict (old format)."""
+        """Resolve a constraint field value to {entity, point?} or {external_xy: [x,y]}.
+        Accepts either a query string (new format) or an existing dict (old format).
+        Falls back to global_repo for cross-sketch @absolute references."""
         if isinstance(val, str):
-            return repo.query(val, context=feature_id)
+            result = repo.query(val, context=feature_id)
+            if result is None and global_repo is not None:
+                result = global_repo.query(val, context=feature_id)
+            return result
         return val  # already a dict — backward compat with old {entity: ...} format
 
     # Validate that the sketch declares a plane reference.
@@ -490,9 +530,10 @@ def _solve_sketch(feature: dict) -> dict:
     _REF_FIELDS = ("target", "line", "arc", "point", "a", "b", "point_a", "point_b")
 
     def _constraint_entity_ids(c: dict) -> list:
-        """Return all entity IDs referenced by a constraint.
-        If a query string fails to resolve, None is appended so the constraint
-        is rejected by the 'all eid in entities' filter instead of passing vacuously."""
+        """Return all local entity IDs referenced by a constraint.
+        If a query string fails to resolve entirely, None is appended so the
+        constraint is rejected by the filter. External cross-sketch refs
+        (resolved to {external_xy: ...}) are not local entities and are skipped."""
         ids = []
         for key in _REF_FIELDS:
             val = c.get(key)
@@ -501,8 +542,12 @@ def _solve_sketch(feature: dict) -> dict:
             ref = resolve_ref(val)
             if isinstance(ref, dict) and "entity" in ref:
                 ids.append(ref["entity"])
+            elif isinstance(ref, dict) and "external_xy" in ref:
+                pass  # cross-sketch fixed point — no local entity needed
+            elif isinstance(ref, dict) and "external_params" in ref:
+                pass  # cross-sketch entity body — no local entity needed
             elif isinstance(val, str):
-                # Unresolvable query string — treat as a missing entity reference
+                # Truly unresolvable query string — treat as missing
                 ids.append(None)
         return ids
 
@@ -542,6 +587,8 @@ def _solve_sketch(feature: dict) -> dict:
         return x[off:off + size]
 
     def get_point(x, ref):
+        if "external_xy" in ref:
+            return np.array(ref["external_xy"], dtype=np.float64)
         eid = ref["entity"]
         ep = get_params(x, eid)
         kind = entities[eid]["kind"]
@@ -616,11 +663,16 @@ def _solve_sketch(feature: dict) -> dict:
                 vy = pb[1] - ep_a[1]
                 r.append(vx * nx + vy * ny - c["value"])
             elif kind == "coincident":
-                a_eid = c["a"]["entity"]
-                b_eid = c["b"]["entity"]
-                a_kind = entities[a_eid]["kind"]
-                b_kind = entities[b_eid]["kind"]
-                if ("point" not in c["a"] and "point" not in c["b"]
+                a_ref = c["a"]
+                b_ref = c["b"]
+                a_external = "external_xy" in a_ref
+                b_external = "external_xy" in b_ref
+                a_eid = None if a_external else a_ref["entity"]
+                b_eid = None if b_external else b_ref["entity"]
+                a_kind = None if a_external else entities[a_eid]["kind"]
+                b_kind = None if b_external else entities[b_eid]["kind"]
+                if (not a_external and not b_external
+                        and "point" not in a_ref and "point" not in b_ref
                         and a_kind == "line" and b_kind == "line"):
                     # line-to-line collinear: both lines lie on the same infinite line
                     ea = get_params(x, a_eid)
@@ -631,23 +683,23 @@ def _solve_sketch(feature: dict) -> dict:
                     n = np.sqrt(da[0]**2 + da[1]**2)
                     nx, ny = (-da[1] / n, da[0] / n) if n > 0 else (0.0, 1.0)
                     r.append((eb[0] - ea[0]) * nx + (eb[1] - ea[1]) * ny)
-                elif "point" not in c["b"] and b_kind == "line":
+                elif not b_external and "point" not in b_ref and b_kind == "line":
                     # point on line: perpendicular distance = 0
-                    pa = get_point(x, c["a"])
+                    pa = get_point(x, a_ref)
                     ep_b = get_params(x, b_eid)
                     dx, dy = ep_b[2] - ep_b[0], ep_b[3] - ep_b[1]
                     n = np.sqrt(dx**2 + dy**2)
                     nx, ny = (-dy / n, dx / n) if n > 0 else (0.0, 1.0)
                     r.append((pa[0] - ep_b[0]) * nx + (pa[1] - ep_b[1]) * ny)
-                elif "point" not in c["b"] and b_kind in ("circle", "arc"):
+                elif not b_external and "point" not in b_ref and b_kind in ("circle", "arc"):
                     # point on circle/arc: distance from center = radius
-                    pa = get_point(x, c["a"])
+                    pa = get_point(x, a_ref)
                     ep_b = get_params(x, b_eid)
                     dist = np.sqrt((pa[0] - ep_b[0])**2 + (pa[1] - ep_b[1])**2)
                     r.append(dist - ep_b[2])
                 else:
-                    pa = get_point(x, c["a"])
-                    pb = get_point(x, c["b"])
+                    pa = get_point(x, a_ref)
+                    pb = get_point(x, b_ref)
                     r.append(pa[0] - pb[0])
                     r.append(pa[1] - pb[1])
             elif kind == "normal":
