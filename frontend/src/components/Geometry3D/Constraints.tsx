@@ -68,8 +68,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId }: C
 
   for (const [eid, clist] of Object.entries(byEntity)) {
     const entity = sketch[eid] as Entity | undefined
-    if (!entity) continue
-    const bounds = getEntityBounds(entity)
+    const bounds = entity ? getEntityBounds(entity) : { minX: 0, maxX: 0, minY: 0, maxY: 0 }
 
     // Sub-group symbols by their `at` position so each distinct location gets its own Html anchor.
     // Key is a rounded grid string; value holds the canonical position and its icon list.
@@ -81,6 +80,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId }: C
       if (r.kind.startsWith('symbol_')) {
         const url = getIconUrl(r.kind)
         if (!url) continue
+        if (!r.at && !entity) continue  // no position available
         const at: [number, number] = r.at ?? [bounds.maxX, bounds.maxY]
         const atKey = `${Math.round(at[0] * 1000)}_${Math.round(at[1] * 1000)}`
         if (!atGroups.has(atKey)) atGroups.set(atKey, { at, icons: [] })
