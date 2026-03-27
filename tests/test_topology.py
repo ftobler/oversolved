@@ -59,6 +59,54 @@ def test_triangle_one_surface(topology_log):
     assert num_intersections(result) == 0  # no new intersections, just shared endpoints
 
 
+# ── 2b: detect_topology emits query on surfaces ───────────────────────────────
+
+def test_triangle_surface_has_query():
+    geom = {"a": line(0, 0, 2, 0), "b": line(2, 0, 1, 2), "c": line(1, 2, 0, 0)}
+    result = detect_topology(geom, feature_id="sketch1")
+    surface = result["surfaces"][0]
+    assert "query" in surface
+    assert surface["query"].startswith("?")
+    assert surface["query"].endswith(":face")
+    for eid in ["@sketch1a", "@sketch1b", "@sketch1c"]:
+        assert eid in surface["query"]
+
+
+# ── 2c: query is deterministic ────────────────────────────────────────────────
+
+def test_triangle_surface_query_deterministic():
+    geom = {"a": line(0, 0, 2, 0), "b": line(2, 0, 1, 2), "c": line(1, 2, 0, 0)}
+    r1 = detect_topology(geom, feature_id="sketch1")
+    r2 = detect_topology(geom, feature_id="sketch1")
+    assert r1["surfaces"][0]["query"] == r2["surfaces"][0]["query"]
+
+
+# ── 2d: different geometries produce different query strings ──────────────────
+
+def test_different_geometries_different_queries():
+    # Rectangle: 1 surface
+    rect_geom = {
+        "bottom": line(0, 0, 2, 0),
+        "right":  line(2, 0, 2, 2),
+        "top":    line(2, 2, 0, 2),
+        "left":   line(0, 2, 0, 0),
+    }
+    r_rect = detect_topology(rect_geom, feature_id="sk")
+    rect_query = r_rect["surfaces"][0]["query"]
+
+    # Rectangle + diagonal: 2 surfaces
+    diag_geom = {**rect_geom, "diag": line(0, 0, 2, 2)}
+    r_diag = detect_topology(diag_geom, feature_id="sk")
+    assert len(r_diag["surfaces"]) == 2
+    q0 = r_diag["surfaces"][0]["query"]
+    q1 = r_diag["surfaces"][1]["query"]
+    # Two surfaces in split rect have different queries from each other
+    assert q0 != q1
+    # Neither matches the single-surface rectangle query
+    assert q0 != rect_query
+    assert q1 != rect_query
+
+
 def test_rectangle_one_surface(topology_log):
     """Four lines forming a closed rectangle → 1 surface."""
     result = detect_topology(rect(0, 0, 2, 2))

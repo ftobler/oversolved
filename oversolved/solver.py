@@ -845,7 +845,7 @@ def _solve_sketch(feature: dict, global_repo: Repository = None) -> dict:
     geom_solved = _geometry_from_array(x_sol, entities, entity_offsets)
 
     # Topology: detect intersection points and bounded surfaces
-    topology = detect_topology(geom_solved)
+    topology = detect_topology(geom_solved, feature_id=feature_id)
     for vid, pt in topology['intersection_points'].items():
         geom_solved[vid] = {'x': pt['x'], 'y': pt['y'], 'intersection': True}
 

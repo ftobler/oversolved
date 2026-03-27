@@ -33,6 +33,7 @@ Output
 """
 
 import math
+from oversolved.query import make_ancestry_query
 
 _EPS = 1e-9
 _MERGE = 1e-7       # distance tolerance for vertex deduplication
@@ -294,7 +295,7 @@ def _face_area(cycle, hes, verts) -> float:
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
-def detect_topology(geometry: dict) -> dict:
+def detect_topology(geometry: dict, feature_id: str = '') -> dict:
     """Detect intersection points and bounded surfaces in solved sketch geometry."""
 
     lines, circles, arcs = {}, {}, {}
@@ -367,6 +368,7 @@ def detect_topology(geometry: dict) -> dict:
 
     # Build half-edge list: (vfrom, vto, egeom)
     hes = []
+    he_eid = []   # source entity ID for each half-edge (parallel to hes)
 
     for eid, e in lines.items():
         spl = _dedup(splits[eid])
@@ -377,6 +379,7 @@ def detect_topology(geometry: dict) -> dict:
                 continue
             eg = _line_eg(e, t0, t1)
             hes += [(v0, v1, eg), (v1, v0, _rev(eg))]
+            he_eid += [eid, eid]
 
     for eid, e in arcs.items():
         spl = _dedup(splits[eid])
@@ -387,6 +390,7 @@ def detect_topology(geometry: dict) -> dict:
                 continue
             eg = _arc_eg(e, a0, a1, ccw=True)
             hes += [(v0, v1, eg), (v1, v0, _rev(eg))]
+            he_eid += [eid, eid]
 
     for eid, e in circles.items():
         spl = _dedup(splits[eid])
@@ -401,6 +405,7 @@ def detect_topology(geometry: dict) -> dict:
                 a1 += 2 * math.pi
             eg = _arc_eg(e, a0, a1, ccw=True)
             hes += [(v0, v1, eg), (v1, v0, _rev(eg))]
+            he_eid += [eid, eid]
 
     surfaces = []
 
@@ -440,10 +445,12 @@ def detect_topology(geometry: dict) -> dict:
                 if cur == start:
                     break
             if cycle and cur == start and _face_area(cycle, hes, verts) > 1e-10:
+                abs_ids = sorted('@' + feature_id + he_eid[i] for i in cycle)
+                query = make_ancestry_query(abs_ids, 'face')
                 surfaces.append({'boundary': [
                     {**hes[i][2], 'start_vertex': hes[i][0], 'end_vertex': hes[i][1]}
                     for i in cycle
-                ]})
+                ], 'query': query})
 
     # Standalone circles (no intersections) → one surface each.
     # Represented as two semicircle arcs so the SVG path is non-degenerate
@@ -451,6 +458,7 @@ def detect_topology(geometry: dict) -> dict:
     for eid, e in circles.items():
         if len(_dedup(splits.get(eid, []))) < 2:
             cx, cy, r = e['center'][0], e['center'][1], e['radius']
+            query = make_ancestry_query(['@' + feature_id + eid], 'face')
             surfaces.append({'boundary': [
                 {'kind': 'arc', 'center': [cx, cy], 'radius': r,
                  'angle_start_deg': 0., 'angle_end_deg': 180., 'ccw': True,
@@ -460,7 +468,7 @@ def detect_topology(geometry: dict) -> dict:
                  'angle_start_deg': 180., 'angle_end_deg': 360., 'ccw': True,
                  'start': [cx - r, cy], 'end': [cx + r, cy],
                  'start_vertex': None, 'end_vertex': None},
-            ]})
+            ], 'query': query})
 
     return {
         'intersection_points': {

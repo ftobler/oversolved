@@ -5561,3 +5561,49 @@ features:
     assert result.get("status") != "exception", result.get("exception")
     surfaces = result["topology"]["surfaces"]
     assert len(surfaces) > 0, "Expected at least one boundary surface from intersecting line and arc"
+
+
+# ── 2f: solver surface query present ──────────────────────────────────────────
+
+def test_solver_surface_query_present():
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Triangle"
+    initial:
+      a: [0.0, 0.0, 2.0, 0.0]
+      b: [2.0, 0.0, 1.0, 2.0]
+      c: [1.0, 2.0, 0.0, 0.0]
+    entities:
+      - id: a
+        kind: line
+      - id: b
+        kind: line
+      - id: c
+        kind: line
+    constraints:
+      - id: c_ab
+        kind: coincident
+        a: {entity: a, point: end}
+        b: {entity: b, point: start}
+      - id: c_bc
+        kind: coincident
+        a: {entity: b, point: end}
+        b: {entity: c, point: start}
+      - id: c_ca
+        kind: coincident
+        a: {entity: c, point: end}
+        b: {entity: a, point: start}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    assert result.get("status") != "exception", result.get("exception")
+    surfaces = result["topology"]["surfaces"]
+    assert len(surfaces) == 1
+    assert "query" in surfaces[0]
+    assert surfaces[0]["query"].startswith("?")
+    assert ":face" in surfaces[0]["query"]

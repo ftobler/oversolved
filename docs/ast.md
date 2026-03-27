@@ -263,7 +263,8 @@ topology:
     ip1: {x: 5.0, y: 5.0}     # computed curve–curve intersections (no input counterpart)
 
   surfaces:
-    - boundary:
+    - query: "?9,9,9;@sketch_1a@sketch_1b@sketch_1c:face"   # stable ancestry query for this surface
+      boundary:
         - {kind: line, start_vertex: v1, end_vertex: v2}
         - {kind: line, start_vertex: v2, end_vertex: v3}
         - {kind: line, start_vertex: v3, end_vertex: v1}
@@ -272,7 +273,10 @@ topology:
 `vertices` are shared endpoints of connected entities (coincident-constrained or
 exactly meeting).  `intersection_points` are curve-curve crossings not tied to a
 constraint.  `surfaces` are closed regions bounded by entity edges, each edge
-referencing vertex IDs from `vertices`.
+referencing vertex IDs from `vertices`.  Each surface carries a `query` field —
+a stable ancestry query string (see `query.py`) built from the sorted absolute
+entity IDs of its boundary edges.  This query uniquely identifies the surface
+across re-solves and can be used as a plane reference in subsequent features.
 
 #### Constraint status (feature-level)
 
@@ -321,7 +325,8 @@ result:
       _v3: [17.32, 10.0]
     intersection_points: {}
     surfaces:
-      - boundary:
+      - query: "?e,e,e;@sketch_1line_adj@sketch_1line_hyp@sketch_1line_opp:face"
+        boundary:
         - kind: line
           start_vertex: _v1
           end_vertex: _v2

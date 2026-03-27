@@ -47,6 +47,38 @@ def test_make_ancestry_query_roundtrip():
     assert typ is None
 
 
+# ── 2a: make_ancestry_query face round-trips ───────────────────────────────────
+
+def test_make_ancestry_query_face_format():
+    """Result starts with '?' and ends with ':face'."""
+    ids = ['@sketchAlineX', '@sketchAlineY']
+    q = make_ancestry_query(ids, 'face')
+    assert q.startswith('?')
+    assert q.endswith(':face')
+
+
+def test_make_ancestry_query_face_roundtrip():
+    """_parse_ancestry round-trips any ids and type."""
+    ids = ['@sk1a', '@sk1b', '@sk1c']
+    q = make_ancestry_query(ids, 'face')
+    out_ids, out_type = _parse_ancestry(q)
+    assert out_ids == ids
+    assert out_type == 'face'
+
+
+def test_make_ancestry_query_caller_controls_sort_order():
+    """Caller is responsible for sort order — different order → different string."""
+    q_ab = make_ancestry_query(['@a', '@b'], 'face')
+    q_ba = make_ancestry_query(['@b', '@a'], 'face')
+    # Different insertion order produces different strings (no implicit sort)
+    assert q_ab != q_ba
+    # Pre-sorting by caller gives deterministic result
+    ids = ['@b', '@a']
+    q_sorted = make_ancestry_query(sorted(ids), 'face')
+    q_sorted2 = make_ancestry_query(sorted(ids), 'face')
+    assert q_sorted == q_sorted2
+
+
 def test_make_ancestry_query_with_type_roundtrip():
     q = make_ancestry_query([ELE1, ELE2], type_restriction="line")
     ids, typ = _parse_ancestry(q)
