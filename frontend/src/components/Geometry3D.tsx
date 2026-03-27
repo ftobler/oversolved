@@ -608,7 +608,7 @@ function DragPlane() {
 
   return (
     <mesh
-      position={[0, 0, 0.01]}
+      position={[0, 0, 90]}
       onPointerMove={(e) => {
         e.stopPropagation()
         setDrag({ ...drag, currentWorld: [e.point.x, e.point.y] })
