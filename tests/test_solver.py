@@ -1,4 +1,5 @@
 import math
+import textwrap
 import yaml as yaml_module
 from oversolved.solver import solve
 
@@ -3563,9 +3564,6 @@ features:
 
     # Verify the sketch is fully constrained
     assert result["status"] == "fully_constrained"
-
-
-import textwrap
 
 
 def test_circle_arc_horizontal_constraint(sketch_log):

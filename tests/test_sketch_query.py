@@ -2,7 +2,6 @@
 that reference entities in the first sketch via query strings."""
 
 import math
-import yaml as yaml_module
 from oversolved.solver import solve
 
 
@@ -133,6 +132,7 @@ def pytest_approx_list(expected, tol):
     class _Approx:
         def __eq__(self, other):
             return all(abs(a - b) < tol for a, b in zip(expected, other))
+
         def __repr__(self):
             return f"approx({expected}, tol={tol})"
     return _Approx()

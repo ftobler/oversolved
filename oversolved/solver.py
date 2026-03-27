@@ -1,6 +1,6 @@
 import math
 import time
-from typing import Any
+from typing import Any, Optional
 import yaml
 import numpy as np
 from scipy.optimize import least_squares
@@ -460,7 +460,7 @@ ORIGIN_ID = "_origin"
 ORIGIN_FIX_ID = "__builtin_origin_fix__"
 
 
-def _solve_sketch(feature: dict, global_repo: Repository = None) -> dict:
+def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> dict:
     entities = {e["id"]: e for e in feature["entities"]}
     initial = feature.get("initial", {})
     constraints = feature.get("constraints", [])
