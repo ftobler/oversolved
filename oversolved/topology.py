@@ -318,6 +318,20 @@ def detect_topology(geometry: dict) -> dict:
     for eid in circles:
         splits[eid] = []
 
+    # Normalise CW arcs to CCW by swapping start/end angles and endpoints.
+    # The arc convention is CCW when angle_end > angle_start (mod 2π), and CW otherwise.
+    # Swapping produces an equivalent CCW arc so the rest of the algorithm works uniformly.
+    for eid in list(arcs.keys()):
+        e = arcs[eid]
+        a0_mod = math.radians(e['angle_start']) % (2 * math.pi)
+        a1_mod = math.radians(e['angle_end']) % (2 * math.pi)
+        if abs(a0_mod - a1_mod) > _EPS and a1_mod < a0_mod:
+            arcs[eid] = {**e,
+                         'angle_start': e['angle_end'],
+                         'angle_end':   e['angle_start'],
+                         'start': e['end'],
+                         'end':   e['start']}
+
     for eid, e in arcs.items():
         a0 = math.radians(e['angle_start'])
         a1 = math.radians(e['angle_end'])

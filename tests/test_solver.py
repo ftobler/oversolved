@@ -5453,3 +5453,111 @@ features:
 
     render = result["constraints"]["c_angle"]["render"]
     _check_angle_render(render, 45.0)
+
+
+def test_disjoint_line_and_arc_no_boundary(sketch_log):
+    """A line and arc that do not touch should produce no boundary surfaces."""
+    yaml_str = """
+version: 1
+kind: part
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    initial:
+      cYiJ_Vy34wyjaKwY:
+        - -0.026051
+        - -0.121987
+        - 0.156042
+        - -12.755509
+        - -170.279105
+      upwIgUnx-_ijZoDG:
+        - -0.252489
+        - -0.058073
+        - 0.270697
+        - -0.110216
+    entities:
+      - id: upwIgUnx-_ijZoDG
+        kind: line
+      - id: cYiJ_Vy34wyjaKwY
+        kind: arc
+    constraints: []
+    label: thelabel
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_disjoint_line_and_arc_no_boundary", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    surfaces = result["topology"]["surfaces"]
+    assert surfaces == [], f"Expected no surfaces, got {surfaces}"
+
+
+def test_disjoint_line_and_arc_no_boundary_2(sketch_log):
+    """A second disjoint line and arc configuration should also produce no boundary surfaces."""
+    yaml_str = """
+version: 1
+kind: part
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    initial:
+      cYiJ_Vy34wyjaKwY:
+        - -0.026051
+        - -0.121987
+        - 0.156042
+        - -12.755509
+        - -170.279105
+      upwIgUnx-_ijZoDG:
+        - -0.247661
+        - 0.038927
+        - 0.171072
+        - -0.261593
+    entities:
+      - id: upwIgUnx-_ijZoDG
+        kind: line
+      - id: cYiJ_Vy34wyjaKwY
+        kind: arc
+    constraints: []
+    label: thelabel
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_disjoint_line_and_arc_no_boundary_2", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    surfaces = result["topology"]["surfaces"]
+    assert surfaces == [], f"Expected no surfaces, got {surfaces}"
+
+
+def test_intersecting_line_and_arc_creates_boundary(sketch_log):
+    """A line and arc that intersect should produce at least one boundary surface."""
+    yaml_str = """
+version: 1
+kind: part
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    initial:
+      cYiJ_Vy34wyjaKwY:
+        - -0.026051
+        - -0.121987
+        - 0.156042
+        - -12.755509
+        - -170.279105
+      upwIgUnx-_ijZoDG:
+        - -0.225752
+        - -0.167627
+        - 0.19797
+        - -0.20278
+    entities:
+      - id: upwIgUnx-_ijZoDG
+        kind: line
+      - id: cYiJ_Vy34wyjaKwY
+        kind: arc
+    constraints: []
+    label: thelabel
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_intersecting_line_and_arc_creates_boundary", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    surfaces = result["topology"]["surfaces"]
+    assert len(surfaces) > 0, "Expected at least one boundary surface from intersecting line and arc"
