@@ -1,7 +1,7 @@
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { sampleArc } from '../sketch_helpers'
+import { sampleArc, sampleArcCCW } from '../sketch_helpers'
 import { Dot } from './VertexDots'
 import { COLOR_PREVIEW } from './constants'
 
@@ -68,7 +68,7 @@ export function computePreviewPts(
     const cc = circumcircle(pts[0], pts[1], h)
     if (cc) {
       const [aStart, aEnd] = arcAnglesFromRadiusPoint(cc.cx, cc.cy, pts[0], pts[1], h)
-      return sampleArc(cc.cx, cc.cy, cc.r, aStart, aEnd)
+      return sampleArcCCW(cc.cx, cc.cy, cc.r, aStart, aEnd)
     }
     // Collinear — just show chord
     return [[pts[0][0], pts[0][1], 0], [pts[1][0], pts[1][1], 0]]

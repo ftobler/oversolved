@@ -51,6 +51,20 @@ export function sampleArc(cx: number, cy: number, r: number, a0deg: number, a1de
   return pts
 }
 
+/** Like sampleArc but always goes CCW from a0 to a1 without clamping to ≤ 180°.
+ *  Used for arc preview where the full arc through the cursor must be drawn. */
+export function sampleArcCCW(cx: number, cy: number, r: number, a0deg: number, a1deg: number): [number, number, number][] {
+  let span = ((a1deg - a0deg) + 360) % 360
+  if (span === 0) span = 360
+  const steps = Math.max(2, Math.ceil((span / 360) * 64))
+  const pts: [number, number, number][] = []
+  for (let i = 0; i <= steps; i++) {
+    const a = (a0deg + (span * i) / steps) * (Math.PI / 180)
+    pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a), 0])
+  }
+  return pts
+}
+
 export function getEntityBounds(entity: Entity): { minX: number; maxX: number; minY: number; maxY: number } {
   if ('start' in entity && 'end' in entity && 'radius' in entity) {
     const arc = entity as Arc

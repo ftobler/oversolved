@@ -168,11 +168,16 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey 
 /** Cross/plus marker at constant pixel size for a projected reference point.
  *  Clickable with the dimension tool; not draggable. */
 export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number; y: number; featureId: string; entityId: string }) {
+  const [hovered, setHovered] = useState(false)
   const groupRef = useRef<THREE.Group>(null)
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
+  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const entId = `entity:${featureId}:${entityId}`
+  const selected = useSketchEditorStore(s => s.selection.has(entId))
+  const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
 
   useFrame(() => {
     const scale = 7 * p2w(camera)
@@ -182,15 +187,21 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number;
   const onClick = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     e.stopPropagation()
     if (activeTool === 'dimension') {
-      handleDimClick(`entity:${featureId}:${entityId}`, featureId, 'entity', [e.clientX, e.clientY], 'point')
+      handleDimClick(entId, featureId, 'entity', [e.clientX, e.clientY], 'point')
+    } else {
+      toggleSelect(entId)
     }
-  }, [activeTool, featureId, entityId, handleDimClick])
+  }, [activeTool, featureId, entId, toggleSelect, handleDimClick])
+  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : COLOR_PROJECTED
   return (
-    <group ref={groupRef} position={[x, y, 0]}>
+    <group ref={groupRef} position={[x, y, 0]}
+      onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
+      onPointerOut={() => setHovered(false)}
+    >
       {/* '+' cross: vertical bar */}
-      <Line points={[[0, -1, 0], [0, 1, 0]]} color={COLOR_PROJECTED} lineWidth={1} />
+      <Line points={[[0, -1, 0], [0, 1, 0]]} color={color} lineWidth={hovered ? 2 : 1} />
       {/* '+' cross: horizontal bar */}
-      <Line points={[[-1, 0, 0], [1, 0, 0]]} color={COLOR_PROJECTED} lineWidth={1} />
+      <Line points={[[-1, 0, 0], [1, 0, 0]]} color={color} lineWidth={hovered ? 2 : 1} />
       {/* Hit sphere for clicking */}
       <mesh ref={hitRef} position={[0, 0, 0]} onClick={onClick}>
         <sphereGeometry args={[1, 8, 8]} />
