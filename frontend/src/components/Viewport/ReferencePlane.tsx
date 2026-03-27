@@ -1,7 +1,10 @@
-import { useRef } from 'react'
+import { useState, useRef } from 'react'
 import { Line, Text } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { builtinSelectionId } from '../Geometry3D/utils'
+import { COLOR_HOVER, COLOR_INACTIVE } from '../Geometry3D/constants'
 
 const PLANE_SIZE = 1
 const PH = PLANE_SIZE / 2
@@ -31,13 +34,25 @@ interface ReferencePlaneProps {
 }
 
 export default function ReferencePlane({ rotation, label }: ReferencePlaneProps) {
+  const [hovered, setHovered] = useState(false)
+  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const selId = builtinSelectionId(label)
+  const selected = useSketchEditorStore(s => s.selection.has(selId))
+
+  const color = hovered ? COLOR_HOVER : selected ? COLOR_HOVER : COLOR_INACTIVE
+  const opacity = hovered ? 0.15 : 0.05
+
   return (
     <group rotation={rotation}>
-      <mesh>
-        <planeGeometry args={[PLANE_SIZE,PLANE_SIZE]} />
-        <meshBasicMaterial color="#888888" transparent opacity={0.05} side={THREE.DoubleSide} depthWrite={false} />
+      <mesh
+        onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
+        onPointerOut={() => setHovered(false)}
+        onClick={e => { e.stopPropagation(); toggleSelect(selId) }}
+      >
+        <planeGeometry args={[PLANE_SIZE, PLANE_SIZE]} />
+        <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
-      <Line points={PLANE_BORDER} color="#666666" lineWidth={1} />
+      <Line points={PLANE_BORDER} color={hovered || selected ? COLOR_HOVER : '#666666'} lineWidth={1} />
       <PlaneLabel x={-PH} y={PH}>{label}</PlaneLabel>
     </group>
   )
