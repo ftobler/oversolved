@@ -25,26 +25,33 @@ export function DragPlane() {
       position={[0, 0, 90]}
       onPointerMove={(e) => {
         e.stopPropagation()
-        setDrag({ ...drag, currentWorld: [e.point.x, e.point.y] })
+        const sketchPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
+        const hit = new THREE.Vector3()
+        e.ray.intersectPlane(sketchPlane, hit)
+        setDrag({ ...drag, currentWorld: [hit.x, hit.y] })
       }}
       onPointerUp={(e) => {
         e.stopPropagation()
+        const sketchPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
+        const hit = new THREE.Vector3()
+        e.ray.intersectPlane(sketchPlane, hit)
+        const finalDrag = { ...drag, currentWorld: [hit.x, hit.y] as [number, number] }
         if (onMutation) {
-          if (drag.type === 'dim_label') {
+          if (finalDrag.type === 'dim_label') {
             const pos: [number, number] = [
-              drag.currentWorld[0] - drag.anchorWorld[0],
-              drag.currentWorld[1] - drag.anchorWorld[1],
+              finalDrag.currentWorld[0] - finalDrag.anchorWorld[0],
+              finalDrag.currentWorld[1] - finalDrag.anchorWorld[1],
             ]
-            onMutation({ type: 'set_constraint_pos', featureId: drag.featureId, constraintId: drag.constraintId, pos })
-          } else if (drag.type === 'edge') {
+            onMutation({ type: 'set_constraint_pos', featureId: finalDrag.featureId, constraintId: finalDrag.constraintId, pos })
+          } else if (finalDrag.type === 'edge') {
             const delta: [number, number] = [
-              drag.currentWorld[0] - drag.startWorld[0],
-              drag.currentWorld[1] - drag.startWorld[1],
+              finalDrag.currentWorld[0] - finalDrag.startWorld[0],
+              finalDrag.currentWorld[1] - finalDrag.startWorld[1],
             ]
-            onMutation({ type: 'move_entity', featureId: drag.featureId, entityId: drag.entityId, delta })
+            onMutation({ type: 'move_entity', featureId: finalDrag.featureId, entityId: finalDrag.entityId, delta })
           } else {
-            onMutation({ type: 'move_vertex', featureId: drag.featureId,
-              entityId: drag.entityId, vertexKey: drag.vertexKey, to: drag.currentWorld })
+            onMutation({ type: 'move_vertex', featureId: finalDrag.featureId,
+              entityId: finalDrag.entityId, vertexKey: finalDrag.vertexKey, to: finalDrag.currentWorld })
           }
         }
         setDrag(null)
