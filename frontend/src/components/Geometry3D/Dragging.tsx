@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import * as THREE from 'three'
 import type { Sketch, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
@@ -7,6 +8,15 @@ export function DragPlane() {
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const onMutation = useSketchEditorStore(s => s.onMutation)
+
+  // Fallback: if pointer is released outside the canvas the Three.js onPointerUp
+  // never fires, leaving orbitEnabled=false permanently. Listen on window instead.
+  useEffect(() => {
+    if (!drag) return
+    const cancel = () => { setDrag(null); setOrbitEnabled(true) }
+    window.addEventListener('pointerup', cancel)
+    return () => window.removeEventListener('pointerup', cancel)
+  }, [drag, setDrag, setOrbitEnabled])
 
   if (!drag) return null
 
