@@ -24,7 +24,7 @@ import { DrawPreview, DrawPlane } from './Drawing'
 import { planeRotation } from './utils'
 
 // Colors
-import { COLOR_SOLVED, COLOR_ERROR } from './constants'
+import { COLOR_SOLVED, COLOR_ERROR, COLOR_INACTIVE } from './constants'
 
 export interface Geometry3DProps {
   featureId: string
@@ -53,12 +53,14 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     [entities]
   )
 
-  const baseColor = (solveStatus === 'overconstrained' || solveStatus === 'exception') ? COLOR_ERROR : COLOR_SOLVED
+  const isEditing = featureId === activeFeatureId
+  const baseColor = activeFeatureId && !isEditing ? COLOR_INACTIVE
+    : (solveStatus === 'overconstrained' || solveStatus === 'exception') ? COLOR_ERROR : COLOR_SOLVED
 
   return (
     <group rotation={rot}>
       {topology && <TopologySurfaces topology={topology} />}
-      <EntityLines sketch={displaySketch} featureId={featureId} color={baseColor} lineWidth={2} kindMap={kindMap} isEditing={featureId === activeFeatureId} />
+      <EntityLines sketch={displaySketch} featureId={featureId} color={baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />
       {constraints && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
       <DragPlane />

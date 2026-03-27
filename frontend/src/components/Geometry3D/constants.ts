@@ -1,6 +1,7 @@
 // Geometry3D color palette
 export const COLOR_SOLVED = '#4fc3f7'
 export const COLOR_ERROR = '#ef5350'
+export const COLOR_INACTIVE = '#3a4048'
 export const COLOR_HOVER = '#ffffff'
 export const COLOR_SELECTED = '#ff9800'
 export const COLOR_CONSTRAINT_HOVER = '#fff176'  // entity highlighted because a constraint on it is hovered
