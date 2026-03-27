@@ -14,9 +14,10 @@ interface EntityItemProps {
   featureId: string
   baseColor: string
   lineWidth?: number
+  isEditing?: boolean
 }
 
-export function EntityItem({ entity, entityId, entityKind, featureId, baseColor, lineWidth = 1 }: EntityItemProps) {
+export function EntityItem({ entity, entityId, entityKind, featureId, baseColor, lineWidth = 1, isEditing = false }: EntityItemProps) {
   const [hovered, setHovered] = useState(false)
   const entId = `entity:${featureId}:${entityId}`
   const selected = useSketchEditorStore(s => s.selection.has(entId))
@@ -45,12 +46,12 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   }, [entId, toggleSelect, activeTool, handleDimClick, featureId, entityId, entityKind])
   // Edge drag: pointer down on the edge group initiates a full-entity move
   const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: { x: number; y: number } }) => {
-    if (activeTool !== 'select') return
+    if (!isEditing || activeTool !== 'select') return
     ev.stopPropagation()
     setOrbitEnabled(false)
     setDrag({ type: 'edge', vertexId: entId, featureId, entityId,
       vertexKey: 'edge', startWorld: [ev.point.x, ev.point.y], currentWorld: [ev.point.x, ev.point.y] })
-  }, [entId, featureId, entityId, setDrag, setOrbitEnabled, activeTool])
+  }, [isEditing, entId, featureId, entityId, setDrag, setOrbitEnabled, activeTool])
 
   if ('start' in e && 'end' in e && 'radius' in e) {
     const arc = e as Arc
@@ -63,9 +64,9 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
         </group>
-        <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" />
-        <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" />
-        <VertexDot x={arc.center[0]} y={arc.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" />
+        <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" isEditing={isEditing} />
+        <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" isEditing={isEditing} />
+        <VertexDot x={arc.center[0]} y={arc.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" isEditing={isEditing} />
       </>
     )
   } else if ('start' in e) {
@@ -79,13 +80,13 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
         </group>
-        <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" />
-        <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" />
+        <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" isEditing={isEditing} />
+        <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" isEditing={isEditing} />
       </>
     )
   } else if ('x' in e) {
     const pt = e as PointEntity
-    return <VertexDot x={pt.x} y={pt.y} px={5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="xy" />
+    return <VertexDot x={pt.x} y={pt.y} px={5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="xy" isEditing={isEditing} />
   } else {
     const circ = e as Circle
     const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
@@ -97,7 +98,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
         </group>
-        <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" />
+        <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" isEditing={isEditing} />
       </>
     )
   }
@@ -109,15 +110,16 @@ interface EntityLinesProps {
   color: string
   kindMap: Record<string, string>
   lineWidth?: number
+  isEditing?: boolean
 }
 
-export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1 }: EntityLinesProps) {
+export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, isEditing = false }: EntityLinesProps) {
   return (
     <>
       {Object.entries(sketch)
         .filter(([, entity]) => !(entity as PointEntity).projected)
         .map(([id, entity]) => (
-          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line'} featureId={featureId} baseColor={color} lineWidth={lineWidth} />
+          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line'} featureId={featureId} baseColor={color} lineWidth={lineWidth} isEditing={isEditing} />
         ))}
     </>
   )

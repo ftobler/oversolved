@@ -58,7 +58,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   return (
     <group rotation={rot}>
       {topology && <TopologySurfaces topology={topology} />}
-      <EntityLines sketch={displaySketch} featureId={featureId} color={baseColor} lineWidth={2} kindMap={kindMap} />
+      <EntityLines sketch={displaySketch} featureId={featureId} color={baseColor} lineWidth={2} kindMap={kindMap} isEditing={featureId === activeFeatureId} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />
       {constraints && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
       <DragPlane />

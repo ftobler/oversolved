@@ -82,12 +82,10 @@ export default function Part() {
   }, [doc, visibleFeatures.size])
 
   const activeSketchFeatureId = useMemo(() => {
+    if (!editingSketchId) return undefined
     const limit = rollbackPosition ?? features.length
-    const sketches = features
-      .slice(0, limit)
-      .filter(f => f.kind === 'sketch' && visibleFeatures.has(f.id))
-    if (editingSketchId && sketches.some(f => f.id === editingSketchId)) return editingSketchId
-    return sketches.length > 0 ? sketches[sketches.length - 1].id : undefined
+    const sketches = features.slice(0, limit).filter(f => f.kind === 'sketch' && visibleFeatures.has(f.id))
+    return sketches.some(f => f.id === editingSketchId) ? editingSketchId : undefined
   }, [features, rollbackPosition, visibleFeatures, editingSketchId])
 
   const setMode = useCallback((newMode: 'sketch' | 'feature' | 'code') => {

@@ -92,9 +92,9 @@ export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px:
 
 /** Vertex dot with its own independent hover state. Placed as a sibling (not child)
  *  of the edge group so hover does not bubble up and highlight the whole entity. */
-export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
+export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, isEditing = false }: {
   x: number; y: number; px: number; baseColor: string
-  featureId?: string; entityId?: string; vertexKey?: string
+  featureId?: string; entityId?: string; vertexKey?: string; isEditing?: boolean
 }) {
   const [hovered, setHovered] = useState(false)
   const hitRef = useRef<THREE.Mesh>(null)
@@ -134,7 +134,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey 
   }, [vertId, featureId, toggleSelect, activeTool, handleDimClick])
   const onPointerDown = useCallback((e: { stopPropagation: () => void; point: THREE.Vector3 }) => {
     if (!vertId || !featureId || !entityId || !vertexKey) return
-    if (activeTool !== 'select') return
+    if (!isEditing || activeTool !== 'select') return
     e.stopPropagation()
     setOrbitEnabled(false)
     setDrag({
@@ -146,7 +146,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey 
       startWorld: [x, y],
       currentWorld: [x, y],
     })
-  }, [vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool])
+  }, [isEditing, vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool])
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
   return (
     <group
