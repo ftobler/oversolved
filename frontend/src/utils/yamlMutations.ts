@@ -22,8 +22,9 @@ function findFeature(doc: PartDoc, featureId: string): PartFeature | undefined {
 
 /** Convert a selection ID to a query string.
  *  If the target belongs to a different feature than the host, use `@<featId><eleId>`
- *  (absolute ref). Otherwise use `$<eleId>` (local ref). */
-const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
+ *  (absolute ref). Otherwise use `$<eleId>` (local ref).
+ *  For `face:` IDs, returns the raw ancestry query verbatim (already globally scoped). */
+export const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
   const parts = t.split(':')
   if (parts[0] === 'entity') {
     const [, featId, eleId] = parts
@@ -33,6 +34,7 @@ const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
     const [, featId, eleId, sub] = parts
     return featId === hostFeatureId ? '$' + eleId + sub : '@' + featId + eleId + sub
   }
+  if (parts[0] === 'face') return parts.slice(2).join(':')
   return '$' + t
 }
 

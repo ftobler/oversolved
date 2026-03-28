@@ -613,6 +613,8 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                 pass  # cross-sketch fixed point — no local entity needed
             elif isinstance(ref, dict) and "external_params" in ref:
                 pass  # cross-sketch entity body — no local entity needed
+            elif isinstance(ref, dict) and ref.get("type") == "face":
+                pass  # topology face — projected to external_xy during pre-resolve
             elif isinstance(val, str):
                 # Truly unresolvable query string — treat as missing
                 ids.append(None)
@@ -631,6 +633,16 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
             if field in rc and isinstance(rc[field], str):
                 resolved = resolve_ref(rc[field])
                 if resolved is not None:
+                    # Topology face: project world-space origin onto sketch 2D coords.
+                    if isinstance(resolved, dict) and resolved.get("type") == "face":
+                        face_origin = resolved.get("origin", [0, 0, 0])
+                        sk_origin = plane_obj.get("origin", [0, 0, 0])
+                        x_axis = plane_obj.get("x_axis", [1, 0, 0])
+                        y_axis = plane_obj.get("y_axis", [0, 1, 0])
+                        dp = [face_origin[i] - sk_origin[i] for i in range(3)]
+                        u = sum(dp[i] * x_axis[i] for i in range(3))
+                        v = sum(dp[i] * y_axis[i] for i in range(3))
+                        resolved = {"external_xy": [u, v]}
                     rc[field] = resolved
         return rc
 

@@ -5742,3 +5742,93 @@ def test_solver_plane_from_topology_face():
     # The face lies in the Top plane, so rotation must not be the identity.
     assert t["rotation"] != approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-4)
     assert "origin" in t
+
+
+# ── Step 6: cross-feature constraint queries ───────────────────────────────────
+
+def doc_with_cross_feature_constraint() -> str:
+    """Two-sketch YAML where sketch1 has a coincident constraint to sketch0's
+    topology face centroid via an ancestry query string."""
+    alone_yaml = textwrap.dedent("""\
+        version: 1
+        kind: part
+        features:
+          - id: sketch0
+            kind: sketch
+            plane: "@builtin_plane_front"
+            initial:
+              la: [0.0, 0.0, 10.0, 0.0]
+              lb: [10.0, 0.0, 10.0, 10.0]
+              lc: [10.0, 10.0, 0.0, 10.0]
+              ld: [0.0, 10.0, 0.0, 0.0]
+            entities:
+              - {id: la, kind: line}
+              - {id: lb, kind: line}
+              - {id: lc, kind: line}
+              - {id: ld, kind: line}
+            constraints:
+              - {id: ca, kind: coincident, a: {entity: la, point: end}, b: {entity: lb, point: start}}
+              - {id: cb, kind: coincident, a: {entity: lb, point: end}, b: {entity: lc, point: start}}
+              - {id: cc, kind: coincident, a: {entity: lc, point: end}, b: {entity: ld, point: start}}
+              - {id: cd, kind: coincident, a: {entity: ld, point: end}, b: {entity: la, point: start}}
+              - {id: cf, kind: fixed, target: {entity: la, point: start}}
+              - {id: ch, kind: horizontal, target: {entity: la}}
+              - {id: cv, kind: vertical, target: {entity: lb}}
+              - {id: cl, kind: length, target: {entity: la}, value: 10}
+    """)
+    r0 = solve(alone_yaml)["result"]["sketch0"]
+    assert r0.get("status") != "exception", r0.get("exception")
+    face_query = r0["topology"]["surfaces"][0]["query"]
+
+    return textwrap.dedent(f"""\
+        version: 1
+        kind: part
+        features:
+          - id: sketch0
+            kind: sketch
+            plane: "@builtin_plane_front"
+            initial:
+              la: [0.0, 0.0, 10.0, 0.0]
+              lb: [10.0, 0.0, 10.0, 10.0]
+              lc: [10.0, 10.0, 0.0, 10.0]
+              ld: [0.0, 10.0, 0.0, 0.0]
+            entities:
+              - {{id: la, kind: line}}
+              - {{id: lb, kind: line}}
+              - {{id: lc, kind: line}}
+              - {{id: ld, kind: line}}
+            constraints:
+              - {{id: ca, kind: coincident, a: {{entity: la, point: end}}, b: {{entity: lb, point: start}}}}
+              - {{id: cb, kind: coincident, a: {{entity: lb, point: end}}, b: {{entity: lc, point: start}}}}
+              - {{id: cc, kind: coincident, a: {{entity: lc, point: end}}, b: {{entity: ld, point: start}}}}
+              - {{id: cd, kind: coincident, a: {{entity: ld, point: end}}, b: {{entity: la, point: start}}}}
+              - {{id: cf, kind: fixed, target: {{entity: la, point: start}}}}
+              - {{id: ch, kind: horizontal, target: {{entity: la}}}}
+              - {{id: cv, kind: vertical, target: {{entity: lb}}}}
+              - {{id: cl, kind: length, target: {{entity: la}}, value: 10}}
+          - id: sketch1
+            kind: sketch
+            plane: "@builtin_plane_front"
+            initial:
+              pt: [0.0, 0.0]
+            entities:
+              - {{id: pt, kind: point}}
+            constraints:
+              - id: c1
+                kind: coincident
+                a: "$ptxy"
+                b: "{face_query}"
+    """)
+
+
+def test_coincident_constraint_to_topology_face():
+    """6d: solver resolves an ancestry-query constraint target without crashing."""
+    doc = doc_with_cross_feature_constraint()
+    result = solve(doc)["result"]
+    assert result.get("sketch1", {}).get("status") in ("fully_constrained", "underconstrained")
+    # The point should have snapped to the face centroid (5, 5) for the 10×10 rect
+    geom = result["sketch1"].get("geometry", {})
+    assert "pt" in geom
+    pt_x, pt_y = geom["pt"]
+    assert abs(pt_x - 5.0) < 1e-3, f"Expected pt.x ≈ 5.0, got {pt_x}"
+    assert abs(pt_y - 5.0) < 1e-3, f"Expected pt.y ≈ 5.0, got {pt_y}"

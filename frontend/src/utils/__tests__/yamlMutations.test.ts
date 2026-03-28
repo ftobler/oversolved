@@ -173,3 +173,46 @@ describe('applyDeleteElements', () => {
     expect(doc.features![0].initial!.line1).toBeUndefined()
   })
 })
+
+// ── Step 6: face: selection ID handling ───────────────────────────────────────
+
+import { parseTarget, applyAddConstraint } from '../yamlMutations'
+
+const docWithSketch = (id: string): PartDoc => ({
+  version: 1, kind: 'part',
+  features: [{ id, kind: 'sketch', entities: [{ id: 'lineA', kind: 'line' }], initial: { lineA: [0,0,10,0] }, constraints: [] }],
+})
+
+// 6a: parseTarget for face: IDs
+describe('parseTarget for face IDs', () => {
+  it('returns raw query for face from different feature', () => {
+    expect(parseTarget('face:sketch0:?3;@sketch0abc', 'sketch1')).toBe('?3;@sketch0abc')
+  })
+
+  it('returns raw query for face from same feature', () => {
+    expect(parseTarget('face:sketch1:?3;@sketch1abc', 'sketch1')).toBe('?3;@sketch1abc')
+  })
+
+  it('preserves colon in type restriction suffix', () => {
+    expect(parseTarget('face:sketch0:?9,9;@sketch0la@sketch0lb:face', 'sketch1')).toBe('?9,9;@sketch0la@sketch0lb:face')
+  })
+})
+
+// 6b: applyAddConstraint stores face query verbatim
+describe('applyAddConstraint with face target', () => {
+  it('stores face ancestry query verbatim as constraint field', () => {
+    const doc = docWithSketch('sketch1')
+    applyAddConstraint(doc, 'sketch1', 'coincident',
+      ['vertex:sketch1:lineA:start', 'face:sketch0:?3;@sketch0abc'])
+    const c = doc.features![0].constraints![0]
+    expect(c.b).toBe('?3;@sketch0abc')
+  })
+
+  it('stores face query with type restriction verbatim', () => {
+    const doc = docWithSketch('sketch1')
+    applyAddConstraint(doc, 'sketch1', 'coincident',
+      ['vertex:sketch1:lineA:start', 'face:sketch0:?9,9;@sketch0la@sketch0lb:face'])
+    const c = doc.features![0].constraints![0]
+    expect(c.b).toBe('?9,9;@sketch0la@sketch0lb:face')
+  })
+})
