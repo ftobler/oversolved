@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useEffect } from 'react'
 import { Line, Html } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import type { Line2 } from 'three-stdlib'
 import type { Sketch, Constraints, Entity } from '../types/cad'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import {
@@ -40,7 +41,7 @@ export function Arrowhead({ tip, from, color }: { tip: [number, number]; from: [
 
 /** Short tail line from a point in a direction, with constant pixel length regardless of zoom. */
 function ArrowTail({ origin, dir, color }: { origin: [number, number]; dir: [number, number]; color: string }) {
-  const lineRef = useRef<any>(null)
+  const lineRef = useRef<Line2>(null)
   const { camera } = useThree()
   useFrame(() => {
     if (!lineRef.current) return
@@ -68,8 +69,7 @@ export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5
   onPointerOver?: (e: { stopPropagation: () => void }) => void
   onPointerOut?: () => void
 }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const lineRef = useRef<any>(null)
+  const lineRef = useRef<Line2>(null)
   const { camera } = useThree()
   useFrame(() => {
     const mat = lineRef.current?.material
@@ -380,6 +380,7 @@ export function RadiusDimension({ cid, dim, interaction }: {
       startWorld: [labelX, labelY],
       currentWorld: [labelX, labelY],
     })
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   }, [interaction, cid, cx, cy, labelX, labelY, resetDragMoved, setDrag, setOrbitEnabled])
 
   return (

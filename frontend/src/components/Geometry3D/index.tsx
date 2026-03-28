@@ -73,8 +73,10 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
 
 // Re-export components for external use if needed
 export { VertexDot, HitPolyline, VertexHighlight, ProjectedOriginPoint }
+// eslint-disable-next-line react-refresh/only-export-components
 export { EntityLines, ProjectedEntities, sketchExtent }
 export { ConstraintOverlays }
 export { TopologySurfaces }
+// eslint-disable-next-line react-refresh/only-export-components
 export { DragPlane, applyDragPreview }
 export { DrawPreview, DrawPlane }

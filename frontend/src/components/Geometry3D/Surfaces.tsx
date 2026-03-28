@@ -7,6 +7,7 @@ import { surfaceSelectionId } from './utils'
 
 type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
   return topology.surfaces.flatMap((surface: TopologySurface) => {
     const pts: Point[] = []

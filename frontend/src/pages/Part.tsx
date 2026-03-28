@@ -70,6 +70,7 @@ export default function Part() {
   } = usePartDoc(uuid, mode, setCodeText)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (docName) setEditName(docName)
   }, [docName])
 

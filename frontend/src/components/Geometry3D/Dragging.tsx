@@ -67,6 +67,7 @@ export function DragPlane() {
 /** Apply drag offset to sketch for optimistic preview.
  *  Dimension label drags (dim_label) don't affect entity geometry — the optimistic
  *  position is handled inside each dimension component via the drag store. */
+// eslint-disable-next-line react-refresh/only-export-components
 export function applyDragPreview(sketch: Sketch, drag: import('../../stores/sketchEditorStore').DragState): Sketch {
   if (drag.type === 'dim_label') return sketch
   const dx = drag.currentWorld[0] - drag.startWorld[0]

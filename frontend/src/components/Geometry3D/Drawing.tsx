@@ -6,6 +6,7 @@ import { Dot } from './VertexDots'
 import { COLOR_PREVIEW } from './constants'
 
 /** Compute circumcircle of 3 points. Returns null if points are collinear. */
+// eslint-disable-next-line react-refresh/only-export-components
 export function circumcircle(p1: [number, number], p2: [number, number], p3: [number, number]): { cx: number; cy: number; r: number } | null {
   const ax = p1[0], ay = p1[1]
   const bx = p2[0], by = p2[1]
@@ -21,6 +22,7 @@ export function circumcircle(p1: [number, number], p2: [number, number], p3: [nu
 /** Given arc start and end angles (degrees) and a radius point, determine the CCW arc.
  *  Returns [aStart, aEnd] such that going CCW from aStart reaches aEnd.
  *  The radius point determines which arc (short or long) was intended. */
+// eslint-disable-next-line react-refresh/only-export-components
 export function arcAnglesFromRadiusPoint(
   cx: number, cy: number,
   start: [number, number], end: [number, number], radiusPt: [number, number]
@@ -50,6 +52,7 @@ export function arcAnglesFromRadiusPoint(
   }
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function computePreviewPts(
   tool: string,
   pts: [number, number][],

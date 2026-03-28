@@ -140,6 +140,7 @@ export function ProjectedEntities({ sketch, featureId }: { sketch: Sketch; featu
 }
 
 /** Calculate the bounding box extent of a sketch. */
+// eslint-disable-next-line react-refresh/only-export-components
 export function sketchExtent(sketch: Sketch): number {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
   for (const entity of Object.values(sketch)) {
@@ -151,6 +152,7 @@ export function sketchExtent(sketch: Sketch): number {
 }
 
 /** Find all entity IDs in the sketch that have a vertex at the given point (within eps). */
+// eslint-disable-next-line react-refresh/only-export-components
 export function findEntitiesAtPoint(sketch: Sketch, pt: [number, number], eps = 1e-4): string[] {
   const [px, py] = pt
   const near = (x: number, y: number) => Math.abs(x - px) <= eps && Math.abs(y - py) <= eps

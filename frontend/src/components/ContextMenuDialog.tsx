@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect } from 'react'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import okIcon from '../assets/icons/dialog-ok.svg'
 import cancelIcon from '../assets/icons/dialog-cancel.svg'
@@ -7,12 +7,10 @@ import './ContextMenuDialog.css'
 export default function ContextMenuDialog() {
   const dialog = useSketchEditorStore(s => s.pendingDialog)
   const closeDialog = useSketchEditorStore(s => s.closeDialog)
-  const [value, setValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (dialog) {
-      setValue(dialog.defaultValue ?? '')
       // Defer focus so the input is mounted and visible first
       requestAnimationFrame(() => {
         inputRef.current?.focus()
@@ -26,7 +24,7 @@ export default function ContextMenuDialog() {
   const [x, y] = dialog.position
 
   const handleConfirm = () => {
-    dialog.onConfirm(value)
+    dialog.onConfirm(inputRef.current?.value ?? '')
     closeDialog()
   }
 
@@ -49,10 +47,10 @@ export default function ContextMenuDialog() {
     >
       <span className="context-menu-label">{dialog.label}</span>
       <input
+        key={dialog.defaultValue}
         ref={inputRef}
         type="number"
-        value={value}
-        onChange={e => setValue(e.target.value)}
+        defaultValue={dialog.defaultValue ?? ''}
         onKeyDown={handleKeyDown}
         className="context-menu-input"
       />
