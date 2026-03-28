@@ -14,17 +14,32 @@ const handlers = new Map<string, () => void>()
 // Key strings are built from KeyboardEvent: optional modifiers joined with '+',
 // then the lowercase key name. E.g. Ctrl+Z → "ctrl+z", D → "d".
 
-// Core (non-constraint) keybindings
-const CORE_KEYMAP: Record<string, string> = {
-  'ctrl+z':       'undo',
-  'ctrl+shift+z': 'redo',
-  'ctrl+y':       'redo',
-  'delete':       'delete_selected',
-  'backspace':    'delete_selected',
-  'd':            'set_tool_dimension',
-  'q':            'toggle_construction',
-  'escape':       'cancel_draw',
+export type CoreKeybinding = {
+  /** Canonical key string, e.g. "ctrl+z". */
+  key: string
+  /** Command name, e.g. "undo". */
+  command: string
+  /** Human-readable label for the Registry page. */
+  label: string
+  /** Short description for the Registry page. */
+  description: string
 }
+
+// Core (non-constraint) keybindings with labels and descriptions.
+export const CORE_KEYBINDINGS: readonly CoreKeybinding[] = [
+  { key: 'ctrl+z',       command: 'undo',                label: 'Undo',                description: 'Undo the last sketch change' },
+  { key: 'ctrl+shift+z', command: 'redo',                label: 'Redo',                description: 'Redo the last undone change' },
+  { key: 'ctrl+y',       command: 'redo',                label: 'Redo (alt)',           description: 'Redo the last undone change' },
+  { key: 'delete',       command: 'delete_selected',     label: 'Delete',              description: 'Delete selected entities or constraints' },
+  { key: 'backspace',    command: 'delete_selected',     label: 'Delete (alt)',         description: 'Delete selected entities or constraints' },
+  { key: 'd',            command: 'set_tool_dimension',  label: 'Dimension tool',       description: 'Activate the dimension tool' },
+  { key: 'q',            command: 'toggle_construction', label: 'Toggle construction',  description: 'Toggle construction mode for selected entities' },
+  { key: 'escape',       command: 'cancel_draw',         label: 'Cancel',              description: 'Cancel active draw or return to select tool' },
+]
+
+// Derive the flat key→command record from CORE_KEYBINDINGS.
+const CORE_KEYMAP: Record<string, string> =
+  Object.fromEntries(CORE_KEYBINDINGS.map(b => [b.key, b.command]))
 
 // Merge core bindings with registry-derived shortcuts
 export const KEYMAP: Record<string, string> = {

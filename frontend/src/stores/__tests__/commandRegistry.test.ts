@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import {
   KEYMAP,
+  CORE_KEYBINDINGS,
   registerCommand,
   unregisterCommand,
   executeCommand,
@@ -99,6 +100,49 @@ describe('KEYMAP', () => {
     for (const [key, cmd] of ENTITY_SHORTCUTS) {
       expect(KEYMAP[key]).toBe(cmd)
     }
+  })
+})
+
+// ── CORE_KEYBINDINGS ─────────────────────────────────────────────────────────
+
+describe('CORE_KEYBINDINGS', () => {
+  it('every entry has a non-empty label string', () => {
+    for (const b of CORE_KEYBINDINGS) {
+      expect(typeof b.label).toBe('string')
+      expect(b.label.length, `label missing for key "${b.key}"`).toBeGreaterThan(0)
+    }
+  })
+
+  it('every entry has a non-empty description string', () => {
+    for (const b of CORE_KEYBINDINGS) {
+      expect(typeof b.description).toBe('string')
+      expect(b.description.length, `description missing for key "${b.key}"`).toBeGreaterThan(0)
+    }
+  })
+
+  it('every entry has a non-empty key and command string', () => {
+    for (const b of CORE_KEYBINDINGS) {
+      expect(b.key.length).toBeGreaterThan(0)
+      expect(b.command.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('KEYMAP contains all CORE_KEYBINDINGS entries with correct command mapping', () => {
+    for (const { key, command } of CORE_KEYBINDINGS) {
+      expect(KEYMAP[key], `KEYMAP["${key}"] should be "${command}"`).toBe(command)
+    }
+  })
+
+  it('contains expected core bindings', () => {
+    const byKey = Object.fromEntries(CORE_KEYBINDINGS.map(b => [b.key, b]))
+    expect(byKey['ctrl+z'].command).toBe('undo')
+    expect(byKey['ctrl+shift+z'].command).toBe('redo')
+    expect(byKey['ctrl+y'].command).toBe('redo')
+    expect(byKey['delete'].command).toBe('delete_selected')
+    expect(byKey['backspace'].command).toBe('delete_selected')
+    expect(byKey['escape'].command).toBe('cancel_draw')
+    expect(byKey['d'].command).toBe('set_tool_dimension')
+    expect(byKey['q'].command).toBe('toggle_construction')
   })
 })
 
