@@ -11,6 +11,11 @@ export function builtinSelectionId(name: string): string {
   return `@builtin_plane_${name.toLowerCase()}`
 }
 
+/** Returns the selection ID for a topology surface face. */
+export function surfaceSelectionId(featureId: string, query: string): string {
+  return `face:${featureId}:${query}`
+}
+
 export function planeRotation(planeQuery: string | undefined): [number, number, number] {
   if (!planeQuery) return [0, 0, 0]
   const id = planeQuery.startsWith('@') ? planeQuery.slice(1) : planeQuery

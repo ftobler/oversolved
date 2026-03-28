@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react'
 import * as THREE from 'three'
 import type { Topology, TopologySurface, TopologyEdge, TopologyArcEdge, Point } from '../../types/cad'
-import { ARC_SEGMENTS } from './constants'
+import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { ARC_SEGMENTS, COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE } from './constants'
+import { surfaceSelectionId } from './utils'
 
-type SurfaceShape = { shape: THREE.Shape; pts: [number, number][] }
+type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string }
 
 export function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
   return topology.surfaces.flatMap((surface: TopologySurface) => {
@@ -29,33 +31,67 @@ export function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
     shape.moveTo(pts[0][0], pts[0][1])
     for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1])
     shape.closePath()
-    return [{ shape, pts }]
+    return [{ shape, pts, query: surface.query }]
   })
 }
 
-export function SurfaceMesh({ shape }: { shape: THREE.Shape }) {
+interface SurfaceMeshProps {
+  shape: THREE.Shape
+  featureId: string
+  query: string
+  isEditing: boolean
+  activeFeatureId?: string
+}
+
+export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureId }: SurfaceMeshProps) {
   const [hovered, setHovered] = useState(false)
+  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const selection = useSketchEditorStore(s => s.selection)
+
+  const id = surfaceSelectionId(featureId, query)
+  const isSelected = selection.has(id)
+  const isInactive = activeFeatureId !== undefined && !isEditing
+
+  let color: string = 'white'
+  let opacity = 0.10
+  if (isInactive) { color = COLOR_INACTIVE; opacity = 0.10 }
+  if (isSelected) { color = COLOR_SELECTED; opacity = 0.30 }
+  if (hovered) { color = COLOR_HOVER; opacity = 0.20 }
+
   return (
     <mesh
       position={[0, 0, -0.003]}
-      onPointerOver={() => setHovered(true)}
+      onPointerOver={(e) => { e.stopPropagation(); setHovered(true) }}
       onPointerOut={() => setHovered(false)}
+      onClick={(e) => { e.stopPropagation(); toggleSelect(id) }}
     >
       <shapeGeometry args={[shape]} />
-      <meshBasicMaterial color="white" transparent opacity={hovered ? 0.15 : 0.10} side={THREE.DoubleSide} depthWrite={false} />
+      <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
   )
 }
 
 interface TopologySurfacesProps {
   topology: Topology
+  featureId: string
+  isEditing: boolean
+  activeFeatureId?: string
 }
 
-export function TopologySurfaces({ topology }: TopologySurfacesProps) {
+export function TopologySurfaces({ topology, featureId, isEditing, activeFeatureId }: TopologySurfacesProps) {
   const surfaces = useMemo(() => buildSurfaceShapes(topology), [topology])
   return (
     <>
-      {surfaces.map((s, si) => <SurfaceMesh key={si} shape={s.shape} />)}
+      {surfaces.map((s, si) => (
+        <SurfaceMesh
+          key={si}
+          shape={s.shape}
+          featureId={featureId}
+          query={s.query}
+          isEditing={isEditing}
+          activeFeatureId={activeFeatureId}
+        />
+      ))}
     </>
   )
 }

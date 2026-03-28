@@ -188,6 +188,7 @@ export type TopologyEdge = TopologyLineEdge | TopologyArcEdge
 
 export interface TopologySurface {
   boundary: TopologyEdge[]
+  query: string
 }
 
 export interface Topology {
