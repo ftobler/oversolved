@@ -245,16 +245,7 @@ export default function Part() {
 
       <div className="doc-container">
         <aside className="doc-sidebar">
-          {editingSketchId ? (
-            <div className="sidebar-header sidebar-editing-header">
-              <span>Editing: {editingSketchId}</span>
-              <button className="exit-sketch-btn" onClick={exitEditSketch} title="Exit sketch">
-                <span className="material-icons-outlined">close</span>
-              </button>
-            </div>
-          ) : (
-            <div className="sidebar-header">Features</div>
-          )}
+          <div className="sidebar-header">Features</div>
           <ul className="features-list">
             {features.length === 0 ? (
               <li className="empty">No features</li>
@@ -300,6 +291,15 @@ export default function Part() {
                         title="Edit sketch"
                       >
                         <span className="material-icons-outlined">edit</span>
+                      </button>
+                    )}
+                    {feature.kind === 'sketch' && feature.id === editingSketchId && (
+                      <button
+                        className="exit-sketch-btn"
+                        onClick={(e) => { e.stopPropagation(); exitEditSketch() }}
+                        title="Exit sketch"
+                      >
+                        <span className="material-icons-outlined">close</span>
                       </button>
                     )}
                     <button

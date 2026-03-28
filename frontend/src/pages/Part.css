@@ -49,14 +49,6 @@
   color: #666;
 }
 
-.sidebar-editing-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: #b83b88;
-  padding: 2px 4px 2px 12px;
-}
-
 .exit-sketch-btn {
   display: flex;
   align-items: center;
