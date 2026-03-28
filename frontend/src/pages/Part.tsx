@@ -4,7 +4,8 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
 import type { Feature, PartDoc } from '../types/cad'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
-import { registerCommand, unregisterCommand, dispatchKey, SHORTCUT_CONSTRAINT_KINDS } from '../stores/commandRegistry'
+import { SHORTCUT_CONSTRAINT_KINDS } from '../stores/commandRegistry'
+import { useCommandRegistration } from './hooks/useCommandRegistration'
 import SketchToolbar from '../components/Toolbar/SketchToolbar'
 import AppHeader from '../components/AppHeader'
 import { usePartDoc } from '../hooks/usePartDoc'
@@ -117,53 +118,35 @@ export default function Part() {
     useSketchEditorStore.getState().setActiveFeatureId(activeSketchFeatureId ?? null)
   }, [activeSketchFeatureId])
 
-  useEffect(() => {
+  const commands = useMemo(() => {
     const store = useSketchEditorStore.getState
-    registerCommand('undo', handleUndo)
-    registerCommand('redo', handleRedo)
-    registerCommand('delete_selected', () => store().deleteSelected())
-    registerCommand('set_tool_select', () => store().setActiveTool('select'))
-    registerCommand('set_tool_line', () => store().setActiveTool('line'))
-    registerCommand('set_tool_circle', () => store().setActiveTool('circle'))
-    registerCommand('set_tool_arc', () => store().setActiveTool('arc'))
-    registerCommand('set_tool_point', () => store().setActiveTool('point'))
-    registerCommand('set_tool_rect', () => store().setActiveTool('rect'))
-    registerCommand('set_tool_center_rect', () => store().setActiveTool('center_rect'))
-    registerCommand('set_tool_dimension', () => store().setActiveTool('dimension'))
-    registerCommand('toggle_construction', () => store().toggleConstruction())
-    for (const kind of SHORTCUT_CONSTRAINT_KINDS) {
-      registerCommand(`apply_${kind}`, () => store().applyConstraint(kind))
-    }
-    registerCommand('cancel_draw', () => {
-      store().clearDraw()
-      store().setActiveTool('select')
-      store().setPlaneSelectionFeatureId(null)
-    })
-    registerCommand('cancel_plane_selection', () => {
-      store().setPlaneSelectionFeatureId(null)
-    })
-    window.addEventListener('keydown', dispatchKey)
-    return () => {
-      window.removeEventListener('keydown', dispatchKey)
-      unregisterCommand('undo')
-      unregisterCommand('redo')
-      unregisterCommand('delete_selected')
-      unregisterCommand('set_tool_select')
-      unregisterCommand('set_tool_line')
-      unregisterCommand('set_tool_circle')
-      unregisterCommand('set_tool_arc')
-      unregisterCommand('set_tool_point')
-      unregisterCommand('set_tool_rect')
-      unregisterCommand('set_tool_center_rect')
-      unregisterCommand('set_tool_dimension')
-      unregisterCommand('toggle_construction')
-      for (const kind of SHORTCUT_CONSTRAINT_KINDS) {
-        unregisterCommand(`apply_${kind}`)
-      }
-      unregisterCommand('cancel_draw')
-      unregisterCommand('cancel_plane_selection')
-    }
+    return [
+      { name: 'undo',               fn: handleUndo },
+      { name: 'redo',               fn: handleRedo },
+      { name: 'delete_selected',    fn: () => store().deleteSelected() },
+      { name: 'set_tool_select',    fn: () => store().setActiveTool('select') },
+      { name: 'set_tool_line',      fn: () => store().setActiveTool('line') },
+      { name: 'set_tool_circle',    fn: () => store().setActiveTool('circle') },
+      { name: 'set_tool_arc',       fn: () => store().setActiveTool('arc') },
+      { name: 'set_tool_point',     fn: () => store().setActiveTool('point') },
+      { name: 'set_tool_rect',      fn: () => store().setActiveTool('rect') },
+      { name: 'set_tool_center_rect', fn: () => store().setActiveTool('center_rect') },
+      { name: 'set_tool_dimension', fn: () => store().setActiveTool('dimension') },
+      { name: 'toggle_construction', fn: () => store().toggleConstruction() },
+      ...SHORTCUT_CONSTRAINT_KINDS.map(kind => ({
+        name: `apply_${kind}`,
+        fn: () => store().applyConstraint(kind),
+      })),
+      { name: 'cancel_draw', fn: () => {
+        store().clearDraw()
+        store().setActiveTool('select')
+        store().setPlaneSelectionFeatureId(null)
+      }},
+      { name: 'cancel_plane_selection', fn: () => store().setPlaneSelectionFeatureId(null) },
+    ]
   }, [handleUndo, handleRedo])
+
+  useCommandRegistration(commands)
 
   const handleRename = async () => {
     if (!editName.trim() || editName === docName) {
