@@ -149,7 +149,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const { planeSelectionFeatureId, onMutation } = get()
     if (!planeSelectionFeatureId) return
     const plane = selectionId.startsWith('face:')
-      ? selectionId.slice(selectionId.indexOf(':', 5) + 1)
+      ? selectionId.split(':').slice(2).join(':')
       : selectionId
     onMutation?.({ type: 'set_feature_plane', featureId: planeSelectionFeatureId, plane })
     set({ planeSelectionFeatureId: null })

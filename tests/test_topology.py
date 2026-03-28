@@ -393,3 +393,66 @@ def test_unequal_belt_one_surface(topology_log):
     result = detect_topology(geom)
     topology_log["test_unequal_belt_one_surface"] = result
     assert num_surfaces(result) == 1
+
+
+# ── Boundary edge vertex fields ───────────────────────────────────────────────
+
+def test_boundary_edges_have_vertex_references():
+    """Every line edge in a surface boundary must reference vertices that exist
+    in the topology's vertices dict."""
+    geom = {"a": line(0, 0, 2, 0), "b": line(2, 0, 1, 2), "c": line(1, 2, 0, 0)}
+    result = detect_topology(geom)
+    assert num_surfaces(result) == 1
+    vertices = result["vertices"]
+    surface = result["surfaces"][0]
+    for edge in surface["boundary"]:
+        assert "start_vertex" in edge
+        assert "end_vertex" in edge
+        assert edge["start_vertex"] in vertices or edge["start_vertex"] is None
+        assert edge["end_vertex"] in vertices or edge["end_vertex"] is None
+        # For line edges all vertices must be non-None
+        if edge["kind"] == "line":
+            assert edge["start_vertex"] is not None
+            assert edge["end_vertex"] is not None
+
+
+def test_boundary_edges_vertex_coords_match_edge_coords():
+    """Vertex coordinates referenced by boundary edges must match the edge
+    start/end coordinates within floating-point tolerance."""
+    geom = rect(0, 0, 4, 4)
+    result = detect_topology(geom)
+    assert num_surfaces(result) == 1
+    vertices = result["vertices"]
+    surface = result["surfaces"][0]
+    for edge in surface["boundary"]:
+        if edge["kind"] != "line":
+            continue
+        sv = vertices[edge["start_vertex"]]
+        ev = vertices[edge["end_vertex"]]
+        assert abs(sv["x"] - edge["start"][0]) < 1e-6
+        assert abs(sv["y"] - edge["start"][1]) < 1e-6
+        assert abs(ev["x"] - edge["end"][0]) < 1e-6
+        assert abs(ev["y"] - edge["end"][1]) < 1e-6
+
+
+# ── Mixed construction + non-construction ─────────────────────────────────────
+
+def test_only_construction_lines_no_surfaces():
+    """All construction lines cannot enclose a surface — result is empty."""
+    geom = {
+        "a": {**line(0, 0, 2, 0), "construction": True},
+        "b": {**line(2, 0, 1, 2), "construction": True},
+        "c": {**line(1, 2, 0, 0), "construction": True},
+    }
+    result = detect_topology(geom)
+    assert num_surfaces(result) == 0
+
+
+def test_construction_helpers_do_not_split_surfaces():
+    """A construction line crossing a closed rectangle does not split the surface."""
+    geom = {
+        **rect(0, 0, 4, 4),
+        "h": {**line(-1, 2, 5, 2), "construction": True},   # horizontal midline, construction
+    }
+    result = detect_topology(geom)
+    assert num_surfaces(result) == 1   # construction midline ignored; still one face

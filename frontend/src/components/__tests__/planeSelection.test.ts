@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { registerCommand, executeCommand, unregisterCommand } from '../../stores/commandRegistry'
 
@@ -58,6 +58,14 @@ describe('commitPlaneSelection with face ID', () => {
     useSketchEditorStore.getState().setPlaneSelectionFeatureId('sketch1')
     useSketchEditorStore.getState().commitPlaneSelection('face:sketch0:?3;@sketch0abc')
     expect(mutations[0].plane).toBe('?3;@sketch0abc')
+  })
+
+  it('preserves colons inside the query (type restriction suffix)', () => {
+    const mutations: { plane?: string }[] = []
+    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m as { plane?: string }))
+    useSketchEditorStore.getState().setPlaneSelectionFeatureId('sketch1')
+    useSketchEditorStore.getState().commitPlaneSelection('face:sketch0:?3;@sketch0abc:face')
+    expect(mutations[0].plane).toBe('?3;@sketch0abc:face')
   })
 })
 
