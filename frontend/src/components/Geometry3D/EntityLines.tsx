@@ -130,7 +130,7 @@ export function ProjectedEntities({ sketch, featureId }: { sketch: Sketch; featu
   return (
     <>
       {Object.entries(sketch)
-        .filter(([, e]) => (e as PointEntity).projected)
+        .filter(([id, e]) => (e as PointEntity).projected && id !== '_origin')
         .map(([id, e]) => {
           const pt = e as PointEntity
           return <ProjectedOriginPoint key={id} x={pt.x} y={pt.y} featureId={featureId} entityId={id} />

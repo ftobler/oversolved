@@ -1,36 +1,30 @@
 import { useState, useRef } from 'react'
-import { Line } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { builtinSelectionId } from '../Geometry3D/utils'
-import { COLOR_HOVER } from '../Geometry3D/constants'
-
-const AXIS_LEN = 0.35
-
-function OriginDot({ hovered, selected }: { hovered: boolean; selected: boolean }) {
-  const meshRef = useRef<THREE.Mesh>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (meshRef.current) {
-      const s = 4 * (1 / (('zoom' in camera) ? (camera as THREE.OrthographicCamera).zoom : 1))
-      meshRef.current.scale.setScalar(s)
-    }
-  })
-  const color = hovered || selected ? COLOR_HOVER : '#ffffff'
-  return (
-    <mesh ref={meshRef}>
-      <sphereGeometry args={[1, 8, 8]} />
-      <meshBasicMaterial color={color} />
-    </mesh>
-  )
-}
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET, DEBUG_HIT } from '../Geometry3D/constants'
+import { Dot } from '../Geometry3D/VertexDots'
+import { p2w } from '../sketch_helpers'
 
 export default function OriginMarker() {
   const [hovered, setHovered] = useState(false)
+  const hitRef = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const selId = builtinSelectionId('Origin')
   const selected = useSketchEditorStore(s => s.selection.has(selId))
+
+  useFrame(() => {
+    if (!hitRef.current) return
+    const scale = p2w(camera)
+    hitRef.current.scale.setScalar(POINT_HIT_PIXELS * scale)
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion)
+    const off = POINT_HIT_PIXELS_Z_OFFSET * scale
+    hitRef.current.position.set(fwd.x * off, fwd.y * off, fwd.z * off)
+  })
+
+  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_INACTIVE
 
   return (
     <group
@@ -38,10 +32,11 @@ export default function OriginMarker() {
       onPointerOut={() => setHovered(false)}
       onClick={e => { e.stopPropagation(); toggleSelect(selId) }}
     >
-      <Line points={[[0,0,0],[AXIS_LEN,0,0]]} color="#e53935" lineWidth={2} />
-      <Line points={[[0,0,0],[0,AXIS_LEN,0]]} color="#43a047" lineWidth={2} />
-      <Line points={[[0,0,0],[0,0,AXIS_LEN]]} color="#1e88e5" lineWidth={2} />
-      <OriginDot hovered={hovered} selected={selected} />
+      <Dot x={0} y={0} px={hovered ? 6 : 4} color={color} billboard />
+      <mesh ref={hitRef}>
+        <sphereGeometry args={[1, 8, 8]} />
+        <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.35 : 0} color="#00aaff" depthWrite={false} />
+      </mesh>
     </group>
   )
 }
