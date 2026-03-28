@@ -55,6 +55,13 @@ export interface EntityDef {
    */
   activeTool?: ActiveTool
 
+  /**
+   * Keyboard shortcut key string for activating this tool (e.g. "l" for line).
+   * Must not conflict with constraint shortcuts or CORE_KEYMAP entries.
+   * Omit for entities that should not have a keyboard shortcut.
+   */
+  shortcut?: string
+
   /** Icon filename (without path/extension) for the toolbar button. */
   toolbarIcon?: string
 
@@ -77,6 +84,7 @@ export const ENTITIES: readonly EntityDef[] = [
     ],
     coordPairs: [[0, 1], [2, 3]],
     activeTool: 'line',
+    shortcut: 'l',
     toolbarIcon: 'toolbar-line',
     showInToolbar: true,
   },
@@ -91,6 +99,7 @@ export const ENTITIES: readonly EntityDef[] = [
     ],
     coordPairs: [[0, 1]],
     activeTool: 'circle',
+    shortcut: 'o',
     toolbarIcon: 'toolbar-circle',
     showInToolbar: true,
   },
@@ -105,6 +114,7 @@ export const ENTITIES: readonly EntityDef[] = [
     ],
     coordPairs: [[0, 1]],
     activeTool: 'arc',
+    shortcut: 'a',
     toolbarIcon: 'toolbar-arc',
     showInToolbar: true,
   },
@@ -148,6 +158,14 @@ export const ALL_COORD_INDICES: Readonly<Record<string, [number, number][]>> =
 /** Entities that appear as toolbar drawing buttons, in display order. */
 export const TOOLBAR_ENTITIES: readonly EntityDef[] =
   ENTITIES.filter(e => e.showInToolbar)
+
+/** Map from keyboard shortcut → command name (for commandRegistry integration). */
+export const ENTITY_SHORTCUTS: ReadonlyMap<string, string> =
+  new Map(
+    ENTITIES
+      .filter(e => e.shortcut && e.activeTool)
+      .map(e => [e.shortcut!, 'set_tool_' + e.activeTool])
+  )
 
 /** Get default parameters for an entity kind. */
 export function getDefaultParams(kind: string): number[] {

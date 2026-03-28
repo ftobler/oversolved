@@ -2,7 +2,7 @@
 // Keymaps are defined here so they are testable and independently configurable.
 // Constraint shortcuts are derived from the constraint registry.
 
-import { CONSTRAINT_SHORTCUTS, CONSTRAINTS } from '../registry'
+import { CONSTRAINT_SHORTCUTS, CONSTRAINTS, ENTITY_SHORTCUTS } from '../registry'
 
 /** All constraint kinds that have a shortcut, for use in Part.tsx registration. */
 export const SHORTCUT_CONSTRAINT_KINDS: readonly string[] =
@@ -26,10 +26,11 @@ const CORE_KEYMAP: Record<string, string> = {
   'escape':       'cancel_draw',
 }
 
-// Merge core bindings with constraint-registry-derived shortcuts
+// Merge core bindings with registry-derived shortcuts
 export const KEYMAP: Record<string, string> = {
   ...CORE_KEYMAP,
   ...Object.fromEntries(CONSTRAINT_SHORTCUTS),
+  ...Object.fromEntries(ENTITY_SHORTCUTS),
 }
 
 // ── Registration ───────────────────────────────────────────────────────────

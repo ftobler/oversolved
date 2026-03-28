@@ -12,6 +12,7 @@ import {
 import {
   ENTITIES,
   ENTITY_BY_KIND,
+  ENTITY_SHORTCUTS,
   VERTEX_INDICES,
   ALL_COORD_INDICES,
   getDefaultParams,
@@ -174,6 +175,34 @@ describe('entityRegistry', () => {
     for (const e of ENTITIES.filter(e => e.showInToolbar)) {
       expect(e.toolbarIcon).toBeTruthy()
       expect(e.activeTool).toBeTruthy()
+    }
+  })
+})
+
+// ── Entity registry shortcuts ────────────────────────────────────────────────
+
+describe('entityRegistry shortcuts', () => {
+  it('every shortcut maps to exactly one entity', () => {
+    const shortcuts = ENTITIES.filter(e => e.shortcut).map(e => e.shortcut!)
+    expect(new Set(shortcuts).size).toBe(shortcuts.length)
+  })
+
+  it('ENTITY_SHORTCUTS derives correct command names', () => {
+    for (const e of ENTITIES) {
+      if (e.shortcut) {
+        expect(ENTITY_SHORTCUTS.get(e.shortcut)).toBe('set_tool_' + e.activeTool)
+      }
+    }
+  })
+
+  it('ENTITY_SHORTCUTS has an entry for each entity with a shortcut', () => {
+    const entitiesWithShortcut = ENTITIES.filter(e => e.shortcut)
+    expect(ENTITY_SHORTCUTS.size).toBe(entitiesWithShortcut.length)
+  })
+
+  it('entity shortcuts do not conflict with constraint shortcuts', () => {
+    for (const key of ENTITY_SHORTCUTS.keys()) {
+      expect(CONSTRAINT_SHORTCUTS.has(key)).toBe(false)
     }
   })
 })

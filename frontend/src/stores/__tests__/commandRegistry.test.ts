@@ -7,7 +7,7 @@ import {
   buildKeyString,
   dispatchKey,
 } from '../commandRegistry'
-import { CONSTRAINT_SHORTCUTS } from '../../registry'
+import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '../../registry'
 import { useSketchEditorStore } from '../sketchEditorStore'
 
 // Helper: build a minimal fake KeyboardEvent
@@ -91,6 +91,12 @@ describe('KEYMAP', () => {
 
   it('contains constraint-registry-derived shortcuts', () => {
     for (const [key, cmd] of CONSTRAINT_SHORTCUTS) {
+      expect(KEYMAP[key]).toBe(cmd)
+    }
+  })
+
+  it('contains entity-registry-derived shortcuts', () => {
+    for (const [key, cmd] of ENTITY_SHORTCUTS) {
       expect(KEYMAP[key]).toBe(cmd)
     }
   })
@@ -274,5 +280,19 @@ describe('tool commands via store', () => {
   it('apply_horizontal calls applyConstraint on the store without throwing', () => {
     registerCommand('apply_horizontal', () => useSketchEditorStore.getState().applyConstraint('horizontal'))
     expect(() => executeCommand('apply_horizontal')).not.toThrow()
+  })
+
+  it('entity shortcut keys in KEYMAP map to set_tool_* commands', () => {
+    // Verify the merged KEYMAP contains entity shortcuts
+    expect(KEYMAP['l']).toBe('set_tool_line')
+    expect(KEYMAP['o']).toBe('set_tool_circle')
+    expect(KEYMAP['a']).toBe('set_tool_arc')
+  })
+
+  it('dispatchKey for entity shortcut activates the tool via store', () => {
+    registerCommand('set_tool_line', () => useSketchEditorStore.getState().setActiveTool('line'))
+    const e = fakeKey('l')
+    dispatchKey(e)
+    expect(useSketchEditorStore.getState().activeTool).toBe('line')
   })
 })
