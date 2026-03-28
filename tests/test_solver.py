@@ -5845,7 +5845,7 @@ def test_top_plane_transform_exact_axes():
     t = result["plane_transform"]
     # x_axis=[1,0,0], y_axis=[0,0,-1], normal=[0,1,0]  →  row-major: [1,0,0, 0,0,-1, 0,1,0]
     assert t["rotation"] == approx([1, 0, 0,  0, 0, -1,  0, 1, 0], abs=1e-9)
-    assert t["origin"]   == approx([0, 0, 0])
+    assert t["origin"] == approx([0, 0, 0])
 
 
 def test_right_plane_transform_exact_axes():
@@ -5854,7 +5854,7 @@ def test_right_plane_transform_exact_axes():
     t = result["plane_transform"]
     # x_axis=[0,0,-1], y_axis=[0,1,0], normal=[1,0,0]  →  row-major: [0,0,-1, 0,1,0, 1,0,0]
     assert t["rotation"] == approx([0, 0, -1,  0, 1, 0,  1, 0, 0], abs=1e-9)
-    assert t["origin"]   == approx([0, 0, 0])
+    assert t["origin"] == approx([0, 0, 0])
 
 
 def test_top_plane_horizontal_length_constraint():
