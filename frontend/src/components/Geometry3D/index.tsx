@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { Sketch, Constraints, Topology } from '../../types/cad'
+import type { Sketch, Constraints, Topology, PlaneTransform } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 
 // Vertex/point rendering
@@ -21,7 +21,7 @@ import { DragPlane, applyDragPreview } from './Dragging'
 import { DrawPreview, DrawPlane } from './Drawing'
 
 // Utilities
-import { planeRotation } from './utils'
+import { planeRotation, planeRotationFromTransform } from './utils'
 
 // Colors
 import { COLOR_SOLVED, COLOR_ERROR, COLOR_INACTIVE } from './constants'
@@ -34,10 +34,11 @@ export interface Geometry3DProps {
   topology?: Topology
   activeFeatureId?: string
   plane?: string
+  planeTransform?: PlaneTransform
   solveStatus?: string
 }
 
-export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, solveStatus }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, solveStatus }: Geometry3DProps) {
   const drag = useSketchEditorStore(s => s.drag)
 
   // During drag on this feature, show optimistic preview
@@ -47,7 +48,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   }, [solved, drag, featureId])
 
   const extent = useMemo(() => sketchExtent(displaySketch), [displaySketch])
-  const rot = planeRotation(plane)
+  const rot = planeTransform ? planeRotationFromTransform(planeTransform) : planeRotation(plane)
   const kindMap = useMemo(() =>
     Object.fromEntries((entities ?? []).map(e => [e.id, e.kind])),
     [entities]

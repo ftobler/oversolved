@@ -1,6 +1,7 @@
 import math
 import textwrap
 import yaml as yaml_module
+from pytest import approx
 from oversolved.solver import solve
 
 TOL = 1e-5
@@ -154,8 +155,8 @@ def to_geom(geom_flat, entities):
     return result
 
 
-def test_missing_plane_is_error():
-    """A sketch without a plane reference must fail with a descriptive error."""
+def test_missing_plane_defaults_to_front():
+    """A sketch without a plane reference defaults to the front plane (no exception)."""
     yaml_str = """
 version: 1
 kind: part
@@ -166,12 +167,14 @@ features:
     constraints: []
 """
     result = solve(yaml_str)["result"]["sketch1"]
-    assert result["status"] == "exception"
-    assert "plane" in result["exception"].lower()
+    assert result.get("status") != "exception", result.get("exception")
+    assert "plane_transform" in result
+    t = result["plane_transform"]
+    assert t["rotation"] == approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-9)
 
 
-def test_unknown_plane_is_error():
-    """A sketch referencing a non-existent plane must also fail."""
+def test_unknown_plane_defaults_gracefully():
+    """A sketch referencing a non-existent plane defaults to the front plane."""
     yaml_str = """
 version: 1
 kind: part
@@ -183,8 +186,8 @@ features:
     constraints: []
 """
     result = solve(yaml_str)["result"]["sketch1"]
-    assert result["status"] == "exception"
-    assert "plane" in result["exception"].lower()
+    assert result.get("status") != "exception", result.get("exception")
+    assert "plane_transform" in result
 
 
 def test_horizontal_line_with_length(sketch_log):
@@ -5605,3 +5608,137 @@ features:
     assert "query" in surfaces[0]
     assert surfaces[0]["query"].startswith("?")
     assert ":face" in surfaces[0]["query"]
+
+
+# ── Step 5: plane_transform roundtrip ─────────────────────────────────────────
+
+def minimal_sketch_yaml(plane):
+    """Return a minimal sketch YAML string with the given plane query (or None)."""
+    plane_line = f'            plane: "{plane}"\n' if plane is not None else ''
+    return textwrap.dedent(f"""\
+        version: 1
+        kind: part
+        features:
+          - id: sketch_1
+            kind: sketch
+{plane_line}            entities: []
+            constraints: []
+    """)
+
+
+def test_solver_plane_transform_front():
+    """5a: solver returns identity plane_transform for @builtin_plane_front."""
+    result = solve(minimal_sketch_yaml('@builtin_plane_front'))["result"]["sketch_1"]
+    assert result.get("status") != "exception", result.get("exception")
+    t = result["plane_transform"]
+    assert t["rotation"] == approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-9)
+    assert t["origin"] == approx([0, 0, 0])
+
+
+def test_solver_plane_transform_top():
+    """5b: solver returns non-identity plane_transform for @builtin_plane_top."""
+    result = solve(minimal_sketch_yaml('@builtin_plane_top'))["result"]["sketch_1"]
+    assert result.get("status") != "exception", result.get("exception")
+    t = result["plane_transform"]
+    assert t["rotation"] != approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-9)
+    assert t["origin"] == approx([0, 0, 0])
+
+
+def test_solver_plane_transform_defaults_to_front():
+    """5c: solver returns front plane_transform when plane is absent."""
+    result = solve(minimal_sketch_yaml(None))["result"]["sketch_1"]
+    assert result.get("status") != "exception", result.get("exception")
+    t = result["plane_transform"]
+    assert t["rotation"] == approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-9)
+
+
+def test_solver_unresolvable_plane_defaults_gracefully():
+    """5d: solver does not crash on unresolvable plane query."""
+    result = solve(minimal_sketch_yaml('@nonexistent_plane'))["result"]["sketch_1"]
+    assert "plane_transform" in result
+
+
+def two_sketch_doc_with_face_plane() -> str:
+    """Return a two-sketch YAML where sketch1's plane is a topology face from sketch0.
+
+    sketch0 is a rectangle on the Top plane so its face plane_transform is not identity.
+    sketch1's plane is set to the single face of sketch0 via its ancestry query.
+    """
+    # Solve sketch0 alone to find its surface query string.
+    alone_yaml = textwrap.dedent("""\
+        version: 1
+        kind: part
+        features:
+          - id: sketch0
+            kind: sketch
+            plane: "@builtin_plane_top"
+            initial:
+              la: [0.0, 0.0, 10.0, 0.0]
+              lb: [10.0, 0.0, 10.0, 10.0]
+              lc: [10.0, 10.0, 0.0, 10.0]
+              ld: [0.0, 10.0, 0.0, 0.0]
+            entities:
+              - {id: la, kind: line}
+              - {id: lb, kind: line}
+              - {id: lc, kind: line}
+              - {id: ld, kind: line}
+            constraints:
+              - {id: ca, kind: coincident, a: {entity: la, point: end}, b: {entity: lb, point: start}}
+              - {id: cb, kind: coincident, a: {entity: lb, point: end}, b: {entity: lc, point: start}}
+              - {id: cc, kind: coincident, a: {entity: lc, point: end}, b: {entity: ld, point: start}}
+              - {id: cd, kind: coincident, a: {entity: ld, point: end}, b: {entity: la, point: start}}
+              - {id: cf, kind: fixed, target: {entity: la, point: start}}
+              - {id: ch, kind: horizontal, target: {entity: la}}
+              - {id: cv, kind: vertical, target: {entity: lb}}
+              - {id: cl, kind: length, target: {entity: la}, value: 10}
+    """)
+    r0 = solve(alone_yaml)["result"]["sketch0"]
+    assert r0.get("status") != "exception", r0.get("exception")
+    face_query = r0["topology"]["surfaces"][0]["query"]
+
+    return textwrap.dedent(f"""\
+        version: 1
+        kind: part
+        features:
+          - id: sketch0
+            kind: sketch
+            plane: "@builtin_plane_top"
+            initial:
+              la: [0.0, 0.0, 10.0, 0.0]
+              lb: [10.0, 0.0, 10.0, 10.0]
+              lc: [10.0, 10.0, 0.0, 10.0]
+              ld: [0.0, 10.0, 0.0, 0.0]
+            entities:
+              - {{id: la, kind: line}}
+              - {{id: lb, kind: line}}
+              - {{id: lc, kind: line}}
+              - {{id: ld, kind: line}}
+            constraints:
+              - {{id: ca, kind: coincident, a: {{entity: la, point: end}}, b: {{entity: lb, point: start}}}}
+              - {{id: cb, kind: coincident, a: {{entity: lb, point: end}}, b: {{entity: lc, point: start}}}}
+              - {{id: cc, kind: coincident, a: {{entity: lc, point: end}}, b: {{entity: ld, point: start}}}}
+              - {{id: cd, kind: coincident, a: {{entity: ld, point: end}}, b: {{entity: la, point: start}}}}
+              - {{id: cf, kind: fixed, target: {{entity: la, point: start}}}}
+              - {{id: ch, kind: horizontal, target: {{entity: la}}}}
+              - {{id: cv, kind: vertical, target: {{entity: lb}}}}
+              - {{id: cl, kind: length, target: {{entity: la}}, value: 10}}
+          - id: sketch1
+            kind: sketch
+            plane: "{face_query}"
+            initial:
+              pt: [1.0, 1.0]
+            entities:
+              - {{id: pt, kind: point}}
+            constraints: []
+    """)
+
+
+def test_solver_plane_from_topology_face():
+    """5f/5g: solver resolves a topology face ancestry query as a plane."""
+    doc = two_sketch_doc_with_face_plane()
+    result = solve(doc)["result"]
+    assert "sketch1" in result
+    t = result["sketch1"]["plane_transform"]
+    # The face lies in the Top plane, so rotation must not be the identity.
+    assert t["rotation"] != approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-4)
+    assert "origin" in t

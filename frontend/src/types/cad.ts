@@ -197,11 +197,17 @@ export interface Topology {
   surfaces: TopologySurface[]
 }
 
+export interface PlaneTransform {
+  rotation: number[]  // row-major 3×3 rotation matrix (9 elements)
+  origin: number[]    // world-space origin [x, y, z]
+}
+
 export interface SketchData {
   solved: Sketch
   constraints?: Constraints
   topology?: Topology
   status?: string
+  plane_transform?: PlaneTransform
 }
 
 export type EntityStatus = Record<string, ConstraintStatus>

@@ -5,7 +5,16 @@ import yaml
 import numpy as np
 from scipy.optimize import least_squares
 from oversolved.topology import detect_topology
-from oversolved.query import Repository
+from oversolved.query import Repository, _parse_ancestry
+
+
+_FRONT_PLANE: dict = {
+    "type": "plane",
+    "origin": [0, 0, 0],
+    "x_axis": [1, 0, 0],
+    "y_axis": [0, 1, 0],
+    "normal": [0, 0, 1],
+}
 
 
 ENTITY_SIZES = {
@@ -51,6 +60,18 @@ def solve(yaml_str: str) -> dict:
         # subsequent sketches can reference it via @absolute query strings.
         if "geometry" in feature_result:
             _register_solved_geometry(global_repo, feature["id"], feature, feature_result["geometry"])
+        # Register topology surfaces as face-typed planes so later sketches can
+        # use a topology face as a sketch plane via its ancestry query string.
+        if "plane_transform" in feature_result and "topology" in feature_result:
+            pt = feature_result["plane_transform"]
+            rot = pt["rotation"]
+            _register_topology_surfaces(global_repo, feature_result["topology"], {
+                "type": "face",
+                "origin": pt["origin"],
+                "x_axis": rot[0:3],
+                "y_axis": rot[3:6],
+                "normal": rot[6:9],
+            })
 
     total_ms = round((time.perf_counter() - t0) * 1000, 1)
     return {
@@ -81,6 +102,56 @@ def _register_solved_geometry(global_repo: Repository, feature_id: str, feature:
             global_repo.register(feature_id + eid + "center", {"external_xy": [cx, cy]})
         elif kind == "point":
             global_repo.register(feature_id + eid + "xy", {"external_xy": list(params[0:2])})
+
+
+def _plane_transform(plane_obj: dict) -> dict:
+    """Convert a plane object (x_axis, y_axis, normal, origin) to a plane_transform dict."""
+    x_axis = plane_obj.get("x_axis", [1, 0, 0])
+    y_axis = plane_obj.get("y_axis", [0, 1, 0])
+    normal = plane_obj.get("normal", [0, 0, 1])
+    origin = plane_obj.get("origin", [0, 0, 0])
+    return {"rotation": list(x_axis) + list(y_axis) + list(normal), "origin": list(origin)}
+
+
+def _register_topology_surfaces(global_repo: Repository, topology: dict, plane_obj: dict) -> None:
+    """Register each topology surface as a face-typed plane in the global repository."""
+    x_axis = plane_obj["x_axis"]
+    y_axis = plane_obj["y_axis"]
+    normal = plane_obj["normal"]
+    origin = plane_obj["origin"]
+
+    for surface in topology.get("surfaces", []):
+        query = surface.get("query")
+        if not query or not query.startswith('?'):
+            continue
+
+        # Compute world-space centroid from the surface boundary's 2D sketch coords.
+        pts_2d = []
+        for edge in surface["boundary"]:
+            if "start" in edge:
+                pts_2d.append(edge["start"])
+            if "end" in edge:
+                pts_2d.append(edge["end"])
+
+        if pts_2d:
+            u = sum(p[0] for p in pts_2d) / len(pts_2d)
+            v = sum(p[1] for p in pts_2d) / len(pts_2d)
+            world_origin = [
+                origin[0] + u * x_axis[0] + v * y_axis[0],
+                origin[1] + u * x_axis[1] + v * y_axis[1],
+                origin[2] + u * x_axis[2] + v * y_axis[2],
+            ]
+        else:
+            world_origin = list(origin)
+
+        ids, _ = _parse_ancestry(query)
+        global_repo.register_anchestor(ids, {
+            "type": "face",
+            "origin": world_origin,
+            "x_axis": list(x_axis),
+            "y_axis": list(y_axis),
+            "normal": list(normal),
+        })
 
 
 def _try_solve_feature(feature: Any, global_repo: Repository) -> dict:
@@ -514,18 +585,14 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
             return result
         return val  # already a dict — backward compat with old {entity: ...} format
 
-    # Validate that the sketch declares a plane reference.
+    # Resolve plane reference; default to front plane when absent or unresolvable.
     plane_query = feature.get("plane")
-    if not plane_query:
-        raise ValueError(
-            "sketch feature requires a 'plane' reference "
-            "(e.g. plane: \"@builtin_plane_front\")"
-        )
-    plane_obj = resolve_ref(plane_query)
-    if plane_obj is None or plane_obj.get("type") != "plane":
-        raise ValueError(
-            f"sketch 'plane' {plane_query!r} does not resolve to a known plane"
-        )
+    if plane_query:
+        plane_obj = resolve_ref(plane_query)
+        if plane_obj is None or plane_obj.get("type") not in ("plane", "face"):
+            plane_obj = _FRONT_PLANE
+    else:
+        plane_obj = _FRONT_PLANE
 
     _REF_FIELDS = ("target", "line", "arc", "point", "a", "b", "point_a", "point_b")
 
@@ -919,4 +986,5 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         "features": features,
         "topology": topology,
         "constraints": constraints_out,
+        "plane_transform": _plane_transform(plane_obj),
     }

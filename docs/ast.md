@@ -222,12 +222,13 @@ The response structure maps feature IDs to their individual solve results.
 
 #### Per-feature result fields
 
-| field        | type    | description |
-|--------------|---------|-------------|
-| `solve_ms`   | float   | wall-clock solve time in milliseconds |
-| `status`     | string  | `"fully_constrained"` \| `"underconstrained"` \| `"overconstrained"` |
-| `geometry`   | object  | solved entity positions (see below) |
-| `topology`   | object  | inferred points, vertices, and enclosed areas (see below) |
+| field             | type    | description |
+|-------------------|---------|-------------|
+| `solve_ms`        | float   | wall-clock solve time in milliseconds |
+| `status`          | string  | `"fully_constrained"` \| `"underconstrained"` \| `"overconstrained"` |
+| `geometry`        | object  | solved entity positions (see below) |
+| `topology`        | object  | inferred points, vertices, and enclosed areas (see below) |
+| `plane_transform` | object  | world-space coordinate frame of the sketch plane (see below) |
 
 Constraint residuals are available internally but are not included in the response —
 at a valid solution they are ~0 by definition.
@@ -247,6 +248,30 @@ geometry:
 
 Using the flat array form (same as `initial`) means the client can diff and merge
 without knowing entity kinds.
+
+#### `plane_transform` — sketch plane coordinate frame
+
+The world-space coordinate frame for the sketch plane, derived from the feature's `plane`
+reference.  When `plane` is absent or unresolvable the front plane is used as the default.
+
+```yaml
+plane_transform:
+  rotation: [1, 0, 0,   # row 0 — sketch X axis in world space
+             0, 1, 0,   # row 1 — sketch Y axis in world space
+             0, 0, 1]   # row 2 — sketch normal in world space
+  origin: [0, 0, 0]     # world-space position of the sketch origin
+```
+
+`rotation` is a row-major 3×3 rotation matrix.  Row 0 is the sketch X axis, row 1 is the
+sketch Y axis, and row 2 is the plane normal — all expressed in world coordinates.
+`origin` is the world-space position of the sketch origin point.
+
+The front plane is the identity (rotation = I, origin = [0,0,0]).  The top plane rotates
+sketch Y to world −Z: `rotation = [1,0,0, 0,0,−1, 0,1,0]`.
+
+The frontend uses `plane_transform` to orient sketch geometry in 3D via
+`planeRotationFromTransform()` in `Geometry3D/utils.ts`.  When no solve result is
+available yet (first render), the static `planeRotation()` lookup is used as a fallback.
 
 #### `topology`
 
@@ -336,4 +361,7 @@ result:
         - kind: line
           start_vertex: _v3
           end_vertex: _v1
+  plane_transform:
+    rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1]   # front plane — identity
+    origin: [0, 0, 0]
 ```
