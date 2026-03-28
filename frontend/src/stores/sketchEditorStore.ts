@@ -202,9 +202,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         return
       }
 
+      const isPoint = (t: string) => t.startsWith('vertex:') || t.startsWith('@builtin_')
       const dimKind = resolveTwoTargetDimension(
-        first.startsWith('vertex:'),
-        target.startsWith('vertex:'),
+        isPoint(first),
+        isPoint(target),
         firstEntityKind ?? undefined,
         entityKind,
       )

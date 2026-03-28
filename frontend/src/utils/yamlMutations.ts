@@ -35,6 +35,7 @@ export const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
     return featId === hostFeatureId ? '$' + eleId + sub : '@' + featId + eleId + sub
   }
   if (parts[0] === 'face') return parts.slice(2).join(':')
+  if (t.startsWith('@')) return t  // builtin/absolute query — pass through as-is
   return '$' + t
 }
 
