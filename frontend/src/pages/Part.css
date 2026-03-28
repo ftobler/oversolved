@@ -201,6 +201,18 @@
   color: #fff;
 }
 
+.feature-plane-picking {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.feature-plane-hint {
+  font-size: 10px;
+  color: #e060b0;
+  font-style: italic;
+}
+
 .feature-item.editing .feature-icon {
   filter: invert(0.6) sepia(1) saturate(3) hue-rotate(280deg);
 }

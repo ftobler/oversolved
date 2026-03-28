@@ -36,15 +36,33 @@ describe('store toggleSelect with @-prefixed IDs', () => {
   })
 })
 
-// 1f: clicking a builtin in normal mode (planeSelectionFeatureId=null) does NOT emit set_feature_plane
-describe('builtin click does not emit set_feature_plane when not in plane-selection mode', () => {
+// 1f / 4m: clicking a builtin in normal mode only selects, no set_feature_plane
+describe('builtin click in normal mode (planeSelectionFeatureId=null)', () => {
+  beforeEach(() => {
+    useSketchEditorStore.getState().clearSelection()
+    useSketchEditorStore.setState({ planeSelectionFeatureId: null })
+  })
+
   it('toggleSelect emits no mutation when onMutation is null (normal mode)', () => {
-    // In normal mode, planeSelectionFeatureId is null (Step 4 state).
+    // In normal mode, planeSelectionFeatureId is null.
     // The store's toggleSelect only updates selection, never emits mutations itself.
     const state = useSketchEditorStore.getState()
-    // Verify onMutation is null by default (no plane-selection mode active)
     expect(state.onMutation).toBeNull()
-    // Calling toggleSelect should not throw and should not emit any mutation
     expect(() => state.toggleSelect('@builtin_plane_front')).not.toThrow()
+  })
+
+  it('adds builtin to selection and emits no set_feature_plane mutation', () => {
+    const mutations: unknown[] = []
+    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    useSketchEditorStore.getState().toggleSelect('@builtin_plane_top')
+    expect(useSketchEditorStore.getState().selection.has('@builtin_plane_top')).toBe(true)
+    expect(mutations).toHaveLength(0)
+  })
+
+  it('commitPlaneSelection is no-op when planeSelectionFeatureId is null', () => {
+    const mutations: unknown[] = []
+    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    useSketchEditorStore.getState().commitPlaneSelection('@builtin_plane_top')
+    expect(mutations).toHaveLength(0)
   })
 })

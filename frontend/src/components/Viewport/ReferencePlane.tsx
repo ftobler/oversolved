@@ -36,6 +36,8 @@ interface ReferencePlaneProps {
 export default function ReferencePlane({ rotation, label }: ReferencePlaneProps) {
   const [hovered, setHovered] = useState(false)
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
+  const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const selId = builtinSelectionId(label)
   const selected = useSketchEditorStore(s => s.selection.has(selId))
 
@@ -47,7 +49,11 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
       <mesh
         onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
         onPointerOut={() => setHovered(false)}
-        onClick={e => { e.stopPropagation(); toggleSelect(selId) }}
+        onClick={e => {
+          e.stopPropagation()
+          if (planeSelectionFeatureId) commitPlaneSelection(selId)
+          else toggleSelect(selId)
+        }}
       >
         <planeGeometry args={[PLANE_SIZE, PLANE_SIZE]} />
         <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />

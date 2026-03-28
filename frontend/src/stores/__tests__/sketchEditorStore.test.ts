@@ -14,6 +14,7 @@ function reset() {
     pendingDimTarget: null,
     pendingDimEntityKind: null,
     pendingDialog: null,
+    planeSelectionFeatureId: null,
   })
 }
 

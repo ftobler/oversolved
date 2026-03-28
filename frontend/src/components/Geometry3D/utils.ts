@@ -11,6 +11,15 @@ export function builtinSelectionId(name: string): string {
   return `@builtin_plane_${name.toLowerCase()}`
 }
 
+/** Returns a human-readable label for a plane query string. */
+export function planeLabel(query: string | undefined): string {
+  if (!query) return 'None'
+  if (query === '@builtin_plane_front') return 'Front'
+  if (query === '@builtin_plane_top') return 'Top'
+  if (query === '@builtin_plane_right') return 'Right'
+  return 'Derived face'
+}
+
 /** Returns the selection ID for a topology surface face. */
 export function surfaceSelectionId(featureId: string, query: string): string {
   return `face:${featureId}:${query}`

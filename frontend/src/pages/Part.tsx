@@ -8,6 +8,7 @@ import { registerCommand, unregisterCommand, dispatchKey, SHORTCUT_CONSTRAINT_KI
 import SketchToolbar from '../components/Toolbar/SketchToolbar'
 import AppHeader from '../components/AppHeader'
 import { usePartDoc } from '../hooks/usePartDoc'
+import { planeLabel } from '../components/Geometry3D/utils'
 import './Part.css'
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
@@ -41,6 +42,8 @@ export default function Part() {
   const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
   const [viewportReset, setViewportReset] = useState(0)
   const [editingSketchId, setEditingSketchId] = useState<string | null>(null)
+  const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
+  const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
 
   const {
     doc,
@@ -125,6 +128,10 @@ export default function Part() {
     registerCommand('cancel_draw', () => {
       useSketchEditorStore.getState().clearDraw()
       useSketchEditorStore.getState().setActiveTool('select')
+      useSketchEditorStore.getState().setPlaneSelectionFeatureId(null)
+    })
+    registerCommand('cancel_plane_selection', () => {
+      useSketchEditorStore.getState().setPlaneSelectionFeatureId(null)
     })
     window.addEventListener('keydown', dispatchKey)
     return () => {
@@ -138,6 +145,7 @@ export default function Part() {
         unregisterCommand(`apply_${kind}`)
       }
       unregisterCommand('cancel_draw')
+      unregisterCommand('cancel_plane_selection')
     }
   }, [handleUndo, handleRedo])
 
@@ -304,26 +312,28 @@ export default function Part() {
                     </button>
                     {feature.kind === 'sketch' && feature.id === editingSketchId && (() => {
                       const featureDef = doc?.features?.find(f => f.id === feature.id)
-                      const currentPlane = featureDef?.plane ?? '@builtin_plane_front'
-                      const planes = [
-                        { value: '@builtin_plane_front', label: 'Front' },
-                        { value: '@builtin_plane_top',   label: 'Top' },
-                        { value: '@builtin_plane_right', label: 'Right' },
-                      ]
+                      const isPicking = planeSelectionFeatureId === feature.id
                       return (
                         <div className="feature-plane-selector">
-                          <span className="feature-plane-label">Plane</span>
-                          <div className="feature-plane-btns">
-                            {planes.map(p => (
+                          <span className="feature-plane-label">Plane: {planeLabel(featureDef?.plane)}</span>
+                          {isPicking ? (
+                            <div className="feature-plane-picking">
+                              <span className="feature-plane-hint">Click a plane or face...</span>
                               <button
-                                key={p.value}
-                                className={`feature-plane-btn ${currentPlane === p.value ? 'active' : ''}`}
-                                onClick={(e) => { e.stopPropagation(); handleMutation({ type: 'set_feature_plane', featureId: feature.id, plane: p.value }) }}
+                                className="feature-plane-btn"
+                                onClick={(e) => { e.stopPropagation(); setPlaneSelectionFeatureId(null) }}
                               >
-                                {p.label}
+                                Cancel
                               </button>
-                            ))}
-                          </div>
+                            </div>
+                          ) : (
+                            <button
+                              className="feature-plane-btn"
+                              onClick={(e) => { e.stopPropagation(); setPlaneSelectionFeatureId(feature.id) }}
+                            >
+                              Change
+                            </button>
+                          )}
                         </div>
                       )
                     })()}

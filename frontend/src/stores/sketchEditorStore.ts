@@ -53,6 +53,7 @@ interface SketchEditorState {
   pendingDimTarget: string | null       // first click target when doing two-target dimension
   pendingDimEntityKind: string | null   // entity kind of the first click target
   pendingDialog: DialogState | null
+  planeSelectionFeatureId: string | null
 
   // --- actions ---
   toggleSelect: (id: string) => void
@@ -72,6 +73,8 @@ interface SketchEditorState {
   openDialog: (opts: DialogState) => void
   closeDialog: () => void
   handleDimensionClick: (target: string, featureId: string, kind: 'entity' | 'vertex', screenPos: [number, number], entityKind?: string) => void
+  setPlaneSelectionFeatureId: (id: string | null) => void
+  commitPlaneSelection: (selectionId: string) => void
 }
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
@@ -87,6 +90,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   pendingDimTarget: null,
   pendingDimEntityKind: null,
   pendingDialog: null,
+  planeSelectionFeatureId: null,
 
   toggleSelect: (id) =>
     set(s => {
@@ -138,6 +142,18 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   openDialog: (opts) => set({ pendingDialog: opts }),
   closeDialog: () => set({ pendingDialog: null }),
+
+  setPlaneSelectionFeatureId: (id) => set({ planeSelectionFeatureId: id }),
+
+  commitPlaneSelection: (selectionId) => {
+    const { planeSelectionFeatureId, onMutation } = get()
+    if (!planeSelectionFeatureId) return
+    const plane = selectionId.startsWith('face:')
+      ? selectionId.slice(selectionId.indexOf(':', 5) + 1)
+      : selectionId
+    onMutation?.({ type: 'set_feature_plane', featureId: planeSelectionFeatureId, plane })
+    set({ planeSelectionFeatureId: null })
+  },
 
   handleDimensionClick: (target, featureId, kind, screenPos, entityKind) => {
     const { pendingDimTarget, pendingDimEntityKind, onMutation, activeFeatureId } = get()

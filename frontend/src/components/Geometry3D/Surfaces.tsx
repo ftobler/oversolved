@@ -46,6 +46,8 @@ interface SurfaceMeshProps {
 export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureId }: SurfaceMeshProps) {
   const [hovered, setHovered] = useState(false)
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
+  const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const selection = useSketchEditorStore(s => s.selection)
 
   const id = surfaceSelectionId(featureId, query)
@@ -63,7 +65,11 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
       position={[0, 0, -0.003]}
       onPointerOver={(e) => { e.stopPropagation(); setHovered(true) }}
       onPointerOut={() => setHovered(false)}
-      onClick={(e) => { e.stopPropagation(); toggleSelect(id) }}
+      onClick={(e) => {
+        e.stopPropagation()
+        if (planeSelectionFeatureId) commitPlaneSelection(id)
+        else toggleSelect(id)
+      }}
     >
       <shapeGeometry args={[shape]} />
       <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
