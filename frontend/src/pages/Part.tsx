@@ -118,21 +118,29 @@ export default function Part() {
   }, [activeSketchFeatureId])
 
   useEffect(() => {
+    const store = useSketchEditorStore.getState
     registerCommand('undo', handleUndo)
     registerCommand('redo', handleRedo)
-    registerCommand('delete_selected', () => useSketchEditorStore.getState().deleteSelected())
-    registerCommand('apply_dimension', () => useSketchEditorStore.getState().setActiveTool('dimension'))
-    registerCommand('toggle_construction', () => useSketchEditorStore.getState().toggleConstruction())
+    registerCommand('delete_selected', () => store().deleteSelected())
+    registerCommand('set_tool_select', () => store().setActiveTool('select'))
+    registerCommand('set_tool_line', () => store().setActiveTool('line'))
+    registerCommand('set_tool_circle', () => store().setActiveTool('circle'))
+    registerCommand('set_tool_arc', () => store().setActiveTool('arc'))
+    registerCommand('set_tool_point', () => store().setActiveTool('point'))
+    registerCommand('set_tool_rect', () => store().setActiveTool('rect'))
+    registerCommand('set_tool_center_rect', () => store().setActiveTool('center_rect'))
+    registerCommand('set_tool_dimension', () => store().setActiveTool('dimension'))
+    registerCommand('toggle_construction', () => store().toggleConstruction())
     for (const kind of SHORTCUT_CONSTRAINT_KINDS) {
-      registerCommand(`apply_${kind}`, () => useSketchEditorStore.getState().applyConstraint(kind))
+      registerCommand(`apply_${kind}`, () => store().applyConstraint(kind))
     }
     registerCommand('cancel_draw', () => {
-      useSketchEditorStore.getState().clearDraw()
-      useSketchEditorStore.getState().setActiveTool('select')
-      useSketchEditorStore.getState().setPlaneSelectionFeatureId(null)
+      store().clearDraw()
+      store().setActiveTool('select')
+      store().setPlaneSelectionFeatureId(null)
     })
     registerCommand('cancel_plane_selection', () => {
-      useSketchEditorStore.getState().setPlaneSelectionFeatureId(null)
+      store().setPlaneSelectionFeatureId(null)
     })
     window.addEventListener('keydown', dispatchKey)
     return () => {
@@ -140,7 +148,14 @@ export default function Part() {
       unregisterCommand('undo')
       unregisterCommand('redo')
       unregisterCommand('delete_selected')
-      unregisterCommand('apply_dimension')
+      unregisterCommand('set_tool_select')
+      unregisterCommand('set_tool_line')
+      unregisterCommand('set_tool_circle')
+      unregisterCommand('set_tool_arc')
+      unregisterCommand('set_tool_point')
+      unregisterCommand('set_tool_rect')
+      unregisterCommand('set_tool_center_rect')
+      unregisterCommand('set_tool_dimension')
       unregisterCommand('toggle_construction')
       for (const kind of SHORTCUT_CONSTRAINT_KINDS) {
         unregisterCommand(`apply_${kind}`)

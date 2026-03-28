@@ -1,13 +1,13 @@
 import { useSketchEditorStore } from '../../../stores/sketchEditorStore'
 import { TOOLBAR_ENTITIES } from '../../../registry'
 import type { EntityDef } from '../../../registry'
+import { executeCommand } from '../../../stores/commandRegistry'
 import ToolbarButton from '../ToolbarButton'
 import { iconUrl } from './toolUtils'
 
 /** Renders entity drawing tools from the entity registry (point, line, circle, arc) */
 export default function EntityTools() {
   const activeTool = useSketchEditorStore(s => s.activeTool)
-  const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
 
   return (
     <>
@@ -16,7 +16,7 @@ export default function EntityTools() {
           key={def.kind}
           title={def.label}
           icon={iconUrl(def.toolbarIcon!)}
-          onClick={() => setActiveTool(def.activeTool!)}
+          onClick={() => executeCommand('set_tool_' + def.activeTool)}
           active={activeTool === def.activeTool}
         />
       ))}

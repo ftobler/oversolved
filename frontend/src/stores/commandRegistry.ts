@@ -21,7 +21,7 @@ const CORE_KEYMAP: Record<string, string> = {
   'ctrl+y':       'redo',
   'delete':       'delete_selected',
   'backspace':    'delete_selected',
-  'd':            'apply_dimension',
+  'd':            'set_tool_dimension',
   'q':            'toggle_construction',
   'escape':       'cancel_draw',
 }

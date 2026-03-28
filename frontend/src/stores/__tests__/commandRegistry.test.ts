@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import {
   KEYMAP,
   registerCommand,
@@ -8,6 +8,7 @@ import {
   dispatchKey,
 } from '../commandRegistry'
 import { CONSTRAINT_SHORTCUTS } from '../../registry'
+import { useSketchEditorStore } from '../sketchEditorStore'
 
 // Helper: build a minimal fake KeyboardEvent
 function fakeKey(
@@ -84,6 +85,8 @@ describe('KEYMAP', () => {
     expect(KEYMAP['delete']).toBe('delete_selected')
     expect(KEYMAP['backspace']).toBe('delete_selected')
     expect(KEYMAP['escape']).toBe('cancel_draw')
+    expect(KEYMAP['d']).toBe('set_tool_dimension')
+    expect(KEYMAP['q']).toBe('toggle_construction')
   })
 
   it('contains constraint-registry-derived shortcuts', () => {
@@ -197,5 +200,79 @@ describe('dispatchKey', () => {
     const e = fakeKey('`')
     dispatchKey(e)
     expect(e.preventDefault).not.toHaveBeenCalled()
+  })
+})
+
+// ── Tool commands via store (no React) ───────────────────────────────────────
+
+describe('tool commands via store', () => {
+  beforeEach(() => {
+    // Reset to known state before each test
+    useSketchEditorStore.getState().setActiveTool('select')
+  })
+
+  afterEach(() => {
+    unregisterCommand('set_tool_line')
+    unregisterCommand('set_tool_circle')
+    unregisterCommand('set_tool_arc')
+    unregisterCommand('set_tool_point')
+    unregisterCommand('set_tool_rect')
+    unregisterCommand('set_tool_center_rect')
+    unregisterCommand('set_tool_dimension')
+    unregisterCommand('toggle_construction')
+    unregisterCommand('apply_horizontal')
+  })
+
+  it('set_tool_line activates the line tool', () => {
+    registerCommand('set_tool_line', () => useSketchEditorStore.getState().setActiveTool('line'))
+    executeCommand('set_tool_line')
+    expect(useSketchEditorStore.getState().activeTool).toBe('line')
+  })
+
+  it('set_tool_circle activates the circle tool', () => {
+    registerCommand('set_tool_circle', () => useSketchEditorStore.getState().setActiveTool('circle'))
+    executeCommand('set_tool_circle')
+    expect(useSketchEditorStore.getState().activeTool).toBe('circle')
+  })
+
+  it('set_tool_arc activates the arc tool', () => {
+    registerCommand('set_tool_arc', () => useSketchEditorStore.getState().setActiveTool('arc'))
+    executeCommand('set_tool_arc')
+    expect(useSketchEditorStore.getState().activeTool).toBe('arc')
+  })
+
+  it('set_tool_point activates the point tool', () => {
+    registerCommand('set_tool_point', () => useSketchEditorStore.getState().setActiveTool('point'))
+    executeCommand('set_tool_point')
+    expect(useSketchEditorStore.getState().activeTool).toBe('point')
+  })
+
+  it('set_tool_rect activates the rectangle tool', () => {
+    registerCommand('set_tool_rect', () => useSketchEditorStore.getState().setActiveTool('rect'))
+    executeCommand('set_tool_rect')
+    expect(useSketchEditorStore.getState().activeTool).toBe('rect')
+  })
+
+  it('set_tool_center_rect activates the center-rectangle tool', () => {
+    registerCommand('set_tool_center_rect', () => useSketchEditorStore.getState().setActiveTool('center_rect'))
+    executeCommand('set_tool_center_rect')
+    expect(useSketchEditorStore.getState().activeTool).toBe('center_rect')
+  })
+
+  it('set_tool_dimension activates the dimension tool', () => {
+    registerCommand('set_tool_dimension', () => useSketchEditorStore.getState().setActiveTool('dimension'))
+    executeCommand('set_tool_dimension')
+    expect(useSketchEditorStore.getState().activeTool).toBe('dimension')
+  })
+
+  it('toggle_construction calls toggleConstruction on the store', () => {
+    registerCommand('toggle_construction', () => useSketchEditorStore.getState().toggleConstruction())
+    // Should not throw with no selection
+    expect(() => executeCommand('toggle_construction')).not.toThrow()
+  })
+
+  it('apply_horizontal calls applyConstraint on the store without throwing', () => {
+    registerCommand('apply_horizontal', () => useSketchEditorStore.getState().applyConstraint('horizontal'))
+    expect(() => executeCommand('apply_horizontal')).not.toThrow()
   })
 })
