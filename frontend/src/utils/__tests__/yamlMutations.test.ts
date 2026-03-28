@@ -176,7 +176,7 @@ describe('applyDeleteElements', () => {
 
 // ── Step 6: face: selection ID handling ───────────────────────────────────────
 
-import { parseTarget, applyAddConstraint } from '../yamlMutations'
+import { parseTarget } from '../yamlMutations'
 
 const docWithSketch = (id: string): PartDoc => ({
   version: 1, kind: 'part',
