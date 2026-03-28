@@ -126,16 +126,11 @@
   color: #555;
   padding: 2px 4px;
   flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.15s, color 0.15s;
-}
-
-.feature-item:hover .feature-edit-btn {
-  opacity: 1;
+  transition: color 0.2s;
 }
 
 .feature-edit-btn:hover {
-  color: #b83b88;
+  color: #777;
 }
 
 .feature-edit-btn .material-icons-outlined {
@@ -145,16 +140,9 @@
 .feature-item.editing {
   background: #1a0f1a;
   color: #e060b0;
-  align-items: flex-start;
-  padding-top: 6px;
+  align-items: center;
+  align-content: flex-start;
   padding-bottom: 6px;
-}
-
-.feature-item.editing > .feature-icon,
-.feature-item.editing > .feature-name,
-.feature-item.editing > .feature-edit-btn,
-.feature-item.editing > .feature-visibility-btn {
-  margin-top: 2px;
 }
 
 .feature-plane-selector {
@@ -162,9 +150,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid #2e1a2e;
+  margin-top: 3px;
+  padding-top: 5px;
+  border-top: 1px solid #553355;
 }
 
 .feature-plane-label {
