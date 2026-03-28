@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
@@ -124,6 +125,7 @@ export function DrawPreview({ featureId, activeFeatureId }: { featureId: string;
 }
 
 export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; activeFeatureId?: string }) {
+  const meshRef = useRef<THREE.Mesh>(null)
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
   const addDrawPoint = useSketchEditorStore(s => s.addDrawPoint)
@@ -202,11 +204,20 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
     }
   }
 
+  const toLocal = (worldPt: THREE.Vector3): [number, number] => {
+    if (!meshRef.current?.parent) return [worldPt.x, worldPt.y]
+    const q = new THREE.Quaternion()
+    meshRef.current.parent.getWorldQuaternion(q)
+    const local = worldPt.clone().applyQuaternion(q.invert())
+    return [local.x, local.y]
+  }
+
   return (
     <mesh
+      ref={meshRef}
       position={[0, 0, -0.002]}
-      onPointerMove={e => { e.stopPropagation(); setDrawHover([e.point.x, e.point.y]) }}
-      onPointerDown={e => { e.stopPropagation(); handleDown(e.point.x, e.point.y) }}
+      onPointerMove={e => { e.stopPropagation(); setDrawHover(toLocal(e.point)) }}
+      onPointerDown={e => { e.stopPropagation(); const [x, y] = toLocal(e.point); handleDown(x, y) }}
       onPointerOut={() => setDrawHover(null)}
     >
       <planeGeometry args={[100000, 100000]} />

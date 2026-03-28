@@ -1,13 +1,22 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import type { Sketch, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 
 export function DragPlane() {
+  const meshRef = useRef<THREE.Mesh>(null)
   const drag = useSketchEditorStore(s => s.drag)
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const onMutation = useSketchEditorStore(s => s.onMutation)
+
+  const toLocal = (worldPt: THREE.Vector3): [number, number] => {
+    if (!meshRef.current?.parent) return [worldPt.x, worldPt.y]
+    const q = new THREE.Quaternion()
+    meshRef.current.parent.getWorldQuaternion(q)
+    const local = worldPt.clone().applyQuaternion(q.invert())
+    return [local.x, local.y]
+  }
 
   // Fallback: if pointer is released outside the canvas the Three.js onPointerUp
   // never fires, leaving orbitEnabled=false permanently. Listen on window instead.
@@ -22,20 +31,17 @@ export function DragPlane() {
 
   return (
     <mesh
+      ref={meshRef}
       position={[0, 0, 90]}
       onPointerMove={(e) => {
         e.stopPropagation()
-        const sketchPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
-        const hit = new THREE.Vector3()
-        e.ray.intersectPlane(sketchPlane, hit)
-        setDrag({ ...drag, currentWorld: [hit.x, hit.y] })
+        const [x, y] = toLocal(e.point)
+        setDrag({ ...drag, currentWorld: [x, y] })
       }}
       onPointerUp={(e) => {
         e.stopPropagation()
-        const sketchPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
-        const hit = new THREE.Vector3()
-        e.ray.intersectPlane(sketchPlane, hit)
-        const finalDrag = { ...drag, currentWorld: [hit.x, hit.y] as [number, number] }
+        const [x, y] = toLocal(e.point)
+        const finalDrag = { ...drag, currentWorld: [x, y] as [number, number] }
         if (onMutation) {
           if (finalDrag.type === 'dim_label') {
             const pos: [number, number] = [
