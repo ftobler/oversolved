@@ -34,7 +34,8 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const lw = hovered ? lineWidth + 1 : lineWidth
   const e = entity
   const construction = 'construction' in e && e.construction
-  const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
+  const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
+  const onOver = (ev: { stopPropagation: () => void }) => { if (!isDrawingTool) ev.stopPropagation(); setHovered(true) }
   const onOut = () => setHovered(false)
   const onClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     ev.stopPropagation()

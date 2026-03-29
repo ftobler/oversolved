@@ -37,10 +37,11 @@ export default function OriginMarker() {
   }, [activeTool, activeFeatureId, selId, handleDimClick, toggleSelect])
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_INACTIVE
+  const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
 
   return (
     <group
-      onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
+      onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true) }}
       onPointerOut={() => setHovered(false)}
       onClick={onClick}
     >

@@ -148,9 +148,10 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     })
   }, [isEditing, vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool])
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
+  const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
   return (
     <group
-      onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
+      onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true) }}
       onPointerOut={() => setHovered(false)}
       onClick={onClick}
       onPointerDown={onPointerDown}
@@ -193,9 +194,10 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number;
     }
   }, [activeTool, featureId, entId, toggleSelect, handleDimClick])
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : COLOR_PROJECTED
+  const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
   return (
     <group ref={groupRef} position={[x, y, 0]}
-      onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
+      onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true) }}
       onPointerOut={() => setHovered(false)}
     >
       {/* '+' cross: vertical bar */}

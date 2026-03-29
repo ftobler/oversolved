@@ -38,16 +38,18 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
+  const activeTool = useSketchEditorStore(s => s.activeTool)
   const selId = builtinSelectionId(label)
   const selected = useSketchEditorStore(s => s.selection.has(selId))
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_HOVER : COLOR_INACTIVE
   const opacity = hovered ? 0.15 : 0.05
+  const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
 
   return (
     <group rotation={rotation}>
       <mesh
-        onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
+        onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true) }}
         onPointerOut={() => setHovered(false)}
         onClick={e => {
           e.stopPropagation()
