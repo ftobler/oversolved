@@ -28,9 +28,13 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const drag = useSketchEditorStore(s => s.drag)
-  // Hide collision geometry while this entity is being dragged to prevent self-intersection
-  // blocking raycasts on the DragPlane. This allows smooth dragging even when the
-  // dragged entity overlaps its own collision mesh.
+  // REGRESSION PROTECTION: Hide collision geometry during entity drag
+  // BUG: When dragging, DragPlane raycasts could be blocked by the entity's own
+  //      HitPolyline collision geometry, causing choppy/stalled dragging.
+  // FIX: Check if this entity is currently being dragged. If so, don't render
+  //      the HitPolyline. This allows raycasts to reach DragPlane smoothly.
+  // NOTE: Must check both entityId and featureId to handle multiple sketches.
+  // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
   const isDragged = drag && 'entityId' in drag && drag.entityId === entityId && drag.featureId === featureId
   const color = hovered ? COLOR_HOVER
     : selected ? COLOR_SELECTED

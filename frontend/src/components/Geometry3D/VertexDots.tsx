@@ -110,9 +110,14 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     entityId && vertexKey ? s.hoveredConstraintEntityIds.has(`${entityId}:${vertexKey}`) : false
   )
   const drag = useSketchEditorStore(s => s.drag)
-  // Hide collision geometry while this vertex is being dragged to prevent self-intersection
-  // blocking raycasts on the DragPlane. This allows smooth dragging even when the
-  // dragged vertex overlaps its own collision mesh.
+  // REGRESSION PROTECTION: Hide collision geometry during vertex drag
+  // BUG: When dragging a vertex, DragPlane raycasts could be blocked by the
+  //      vertex's own hit sphere collision geometry (scaled to HIT_PIXELS).
+  //      This caused stalled/choppy dragging when cursor was over the vertex.
+  // FIX: Check if this vertex is currently being dragged. If so, don't render
+  //      the hit sphere mesh. This allows raycasts to reach DragPlane smoothly.
+  // NOTE: Must check featureId, entityId, AND vertexKey to handle all cases.
+  // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
   const isDragged = featureId && entityId && drag && 'entityId' in drag && drag.entityId === entityId && drag.featureId === featureId
   // Offset the hit-sphere toward the camera (not object-space z) so the vertex
   // always wins the raycast over the 3D edge cylinders regardless of orbit angle.

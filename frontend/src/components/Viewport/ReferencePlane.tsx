@@ -46,8 +46,14 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   const color = hovered ? COLOR_HOVER : selected ? COLOR_HOVER : COLOR_INACTIVE
   const opacity = hovered ? 0.15 : 0.05
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
-  // Hide collision mesh during drags to prevent blocking DragPlane raycasts.
-  // This allows smooth dragging even when the cursor moves over a reference plane.
+  // REGRESSION PROTECTION: Hide collision mesh during any drag
+  // BUG: Reference planes (XY, XZ, YZ) collision could block DragPlane raycasts,
+  //      causing dragging to fail when cursor moved over a reference plane.
+  // FIX: Hide the plane's collision mesh whenever ANY drag is in progress
+  //      (not just dragging in this sketch). This is simpler than checking
+  //      featureId since planes are global to the viewport.
+  // NOTE: Simple check: isDragging = drag !== null (checks all drag types)
+  // See: src/components/__tests__/dragging.test.ts (REGRESSION 3)
   const isDragging = drag !== null
 
   return (
