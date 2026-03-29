@@ -64,6 +64,7 @@ describe('sketchEditorStore', () => {
     it('dispatches mutation and clears selection', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleSelect('entity:S1:L1')
       useSketchEditorStore.getState().toggleSelect('constraint:S1:C1')
 

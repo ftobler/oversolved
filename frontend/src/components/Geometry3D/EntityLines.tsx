@@ -40,11 +40,12 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const onClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     ev.stopPropagation()
     if (activeTool === 'dimension') {
+      if (!isEditing) return
       handleDimClick(`entity:${featureId}:${entityId}`, featureId, 'entity', [ev.clientX, ev.clientY], entityKind)
     } else {
       toggleSelect(entId)
     }
-  }, [entId, toggleSelect, activeTool, handleDimClick, featureId, entityId, entityKind])
+  }, [entId, toggleSelect, activeTool, handleDimClick, featureId, entityId, entityKind, isEditing])
   // Edge drag: pointer down on the edge group initiates a full-entity move
   const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: { x: number; y: number } }) => {
     if (!isEditing || activeTool !== 'select') return

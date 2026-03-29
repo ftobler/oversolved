@@ -127,11 +127,12 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     if (!vertId || !featureId) return
     e.stopPropagation()
     if (activeTool === 'dimension') {
+      if (!isEditing) return
       handleDimClick(vertId, featureId, 'vertex', [e.clientX, e.clientY])
     } else {
       toggleSelect(vertId)
     }
-  }, [vertId, featureId, toggleSelect, activeTool, handleDimClick])
+  }, [vertId, featureId, toggleSelect, activeTool, handleDimClick, isEditing])
   const onPointerDown = useCallback((e: { stopPropagation: () => void; point: THREE.Vector3 }) => {
     if (!vertId || !featureId || !entityId || !vertexKey) return
     if (!isEditing || activeTool !== 'select') return
@@ -176,6 +177,7 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number;
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
   const entId = `entity:${featureId}:${entityId}`
   const selected = useSketchEditorStore(s => s.selection.has(entId))
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
@@ -188,11 +190,12 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number;
   const onClick = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     e.stopPropagation()
     if (activeTool === 'dimension') {
+      if (activeFeatureId !== featureId) return
       handleDimClick(entId, featureId, 'entity', [e.clientX, e.clientY], 'point')
     } else {
       toggleSelect(entId)
     }
-  }, [activeTool, featureId, entId, toggleSelect, handleDimClick])
+  }, [activeTool, featureId, entId, toggleSelect, handleDimClick, activeFeatureId])
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : COLOR_PROJECTED
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
   return (

@@ -130,9 +130,19 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   },
 
   deleteSelected: () => {
-    const { selection, onMutation } = get()
+    const { selection, onMutation, activeFeatureId } = get()
     if (selection.size === 0 || !onMutation) return
-    onMutation({ type: 'delete', targets: [...selection] })
+    // Only allow deleting entities/vertices/constraints from the currently edited sketch
+    const targets = [...selection].filter(target => {
+      if (target.startsWith('entity:') || target.startsWith('vertex:') || target.startsWith('constraint:')) {
+        const parts = target.split(':')
+        return parts[1] === activeFeatureId
+      }
+      // Don't allow deleting built-in elements (planes, origin)
+      return false
+    })
+    if (targets.length === 0) return
+    onMutation({ type: 'delete', targets })
     set({ selection: new Set() })
   },
 
