@@ -206,9 +206,11 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
 
   const toLocal = (worldPt: THREE.Vector3): [number, number] => {
     if (!meshRef.current?.parent) return [worldPt.x, worldPt.y]
+    const parentPos = new THREE.Vector3()
+    meshRef.current.parent.getWorldPosition(parentPos)
     const q = new THREE.Quaternion()
     meshRef.current.parent.getWorldQuaternion(q)
-    const local = worldPt.clone().applyQuaternion(q.invert())
+    const local = worldPt.clone().sub(parentPos).applyQuaternion(q.invert())
     return [local.x, local.y]
   }
 

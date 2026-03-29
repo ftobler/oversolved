@@ -109,6 +109,11 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const constraintHovered = useSketchEditorStore(s =>
     entityId && vertexKey ? s.hoveredConstraintEntityIds.has(`${entityId}:${vertexKey}`) : false
   )
+  const drag = useSketchEditorStore(s => s.drag)
+  // Hide collision geometry while this vertex is being dragged to prevent self-intersection
+  // blocking raycasts on the DragPlane. This allows smooth dragging even when the
+  // dragged vertex overlaps its own collision mesh.
+  const isDragged = featureId && entityId && drag && 'entityId' in drag && drag.entityId === entityId && drag.featureId === featureId
   // Offset the hit-sphere toward the camera (not object-space z) so the vertex
   // always wins the raycast over the 3D edge cylinders regardless of orbit angle.
   useFrame(() => {
@@ -159,10 +164,12 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     >
       <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard />
       {(hovered || selected || constraintHovered) && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
-      <mesh ref={hitRef} position={[x, y, 0]}>
-        <sphereGeometry args={[1, 8, 8]} />
-        <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.35 : 0} color="#00aaff" depthWrite={false} />
-      </mesh>
+      {!isDragged && (
+        <mesh ref={hitRef} position={[x, y, 0]}>
+          <sphereGeometry args={[1, 8, 8]} />
+          <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.35 : 0} color="#00aaff" depthWrite={false} />
+        </mesh>
+      )}
     </group>
   )
 }

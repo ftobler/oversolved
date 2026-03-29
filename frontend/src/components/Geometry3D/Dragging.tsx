@@ -10,11 +10,25 @@ export function DragPlane() {
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const onMutation = useSketchEditorStore(s => s.onMutation)
 
+  // DragPlane must be at the same z-level as the sketch plane to avoid coordinate
+  // distortion when the camera views at an angle. Raycasting to z=0.5 (or z=90)
+  // produces world coordinates that don't match the actual sketch plane geometry,
+  // causing the dragged element to shift away from the cursor.
+  // Position at z=-0.001 (between DrawPlane at z=-0.002 and geometry at z=0).
+  // Self-intersection blocking (dragged entity's collision geometry blocking raycasts)
+  // is solved by hiding the collision geometry (HitPolyline, hit spheres) during drag.
+  // This is done in EntityLines.tsx and VertexDots.tsx when isDragged=true.
+
   const toLocal = (worldPt: THREE.Vector3): [number, number] => {
     if (!meshRef.current?.parent) return [worldPt.x, worldPt.y]
+    // Convert world coordinates to local sketch plane coordinates by:
+    // 1. Translating relative to parent (sketch plane) position
+    // 2. Rotating by inverse of parent's world orientation
+    const parentPos = new THREE.Vector3()
+    meshRef.current.parent.getWorldPosition(parentPos)
     const q = new THREE.Quaternion()
     meshRef.current.parent.getWorldQuaternion(q)
-    const local = worldPt.clone().applyQuaternion(q.invert())
+    const local = worldPt.clone().sub(parentPos).applyQuaternion(q.invert())
     return [local.x, local.y]
   }
 
@@ -32,7 +46,7 @@ export function DragPlane() {
   return (
     <mesh
       ref={meshRef}
-      position={[0, 0, 90]}
+      position={[0, 0, -0.001]}
       onPointerMove={(e) => {
         e.stopPropagation()
         const [x, y] = toLocal(e.point)

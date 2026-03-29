@@ -27,6 +27,11 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
+  const drag = useSketchEditorStore(s => s.drag)
+  // Hide collision geometry while this entity is being dragged to prevent self-intersection
+  // blocking raycasts on the DragPlane. This allows smooth dragging even when the
+  // dragged entity overlaps its own collision mesh.
+  const isDragged = drag && 'entityId' in drag && drag.entityId === entityId && drag.featureId === featureId
   const color = hovered ? COLOR_HOVER
     : selected ? COLOR_SELECTED
     : constraintHovered ? COLOR_CONSTRAINT_HOVER
@@ -61,7 +66,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
+          {!isDragged && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
@@ -77,7 +82,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
+          {!isDragged && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
@@ -95,7 +100,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
+          {!isDragged && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
