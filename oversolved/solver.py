@@ -697,6 +697,23 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         a_deg = ep[3] if arc_pt != "end" else ep[4]
         return np.array([np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
 
+    # Pre-compute (line_eid, circle_eid) -> endpoint ("start"/"end") for coincident
+    # constraints that pin a specific line endpoint to a circle.  When a tangent
+    # constraint covers the same pair we use perpendicularity at that endpoint
+    # instead of also adding an end-on-circle residual (which would force BOTH
+    # endpoints onto the circle, conflicting with length/position constraints).
+    _line_circle_coincident: dict = {}
+    for _c in constraints:
+        if _c.get("kind") == "coincident" and "point" in _c.get("a", {}):
+            _a, _b = _c["a"], _c["b"]
+            _a_eid = _a.get("entity")
+            _b_eid = _b.get("entity")
+            if (_a_eid and _b_eid
+                    and entities.get(_a_eid, {}).get("kind") == "line"
+                    and entities.get(_b_eid, {}).get("kind") == "circle"
+                    and "point" not in _b):
+                _line_circle_coincident[(_a_eid, _b_eid)] = _a.get("point", "start")
+
     def residuals(x, clist=None):
         r = []
         for c in (clist if clist is not None else constraints):
@@ -833,15 +850,33 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                 # d / sqrt(|d|^2 + eps^2): gradient bounded by 1/eps; zero iff d=0.
                 _eps = 0.01
                 line_dir = line_dir / np.sqrt(np.dot(line_dir, line_dir) + _eps * _eps)
-                contact = line_ep[2:4]
-                radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
-                # perpendicularity: line direction dot radius direction == 0
-                r.append(np.dot(line_dir, radius_dir))
-                # contact point on circle: distance from center == radius
-                # (arcs use coincident constraints to pin endpoints; circles have no vertex)
                 if entities[arc_ref["entity"]]["kind"] == "circle":
-                    dist = np.sqrt((contact[0] - arc_ep[0])**2 + (contact[1] - arc_ep[1])**2)
-                    r.append(dist - arc_ep[2])
+                    line_eid = line_ref["entity"]
+                    arc_eid = arc_ref["entity"]
+                    if (line_eid, arc_eid) in _line_circle_coincident:
+                        # A coincident constraint already pins one line endpoint to
+                        # the circle; that IS the tangent contact point.  Add only
+                        # perpendicularity at that endpoint -- the on-circle condition
+                        # is already handled by the coincident constraint, so we must
+                        # not add another end-on-circle residual here.
+                        pinned_pt = _line_circle_coincident[(line_eid, arc_eid)]
+                        contact = line_ep[0:2] if pinned_pt == "start" else line_ep[2:4]
+                        radius_dir = _radius_dir(x, arc_eid, arc_ref, contact)
+                        r.append(np.dot(line_dir, radius_dir))
+                    else:
+                        # No coincident on this line+circle: pin end to circle and
+                        # enforce perpendicularity there (standard tangent-at-end
+                        # behavior).
+                        contact = line_ep[2:4]
+                        radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
+                        r.append(np.dot(line_dir, radius_dir))
+                        dist = np.sqrt((contact[0] - arc_ep[0])**2 + (contact[1] - arc_ep[1])**2)
+                        r.append(dist - arc_ep[2])
+                else:
+                    contact = line_ep[2:4]
+                    radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
+                    # perpendicularity: line direction dot radius direction == 0
+                    r.append(np.dot(line_dir, radius_dir))
             elif kind == "equal_length":
                 ea = get_params(x, c["a"]["entity"])
                 eb = get_params(x, c["b"]["entity"])
