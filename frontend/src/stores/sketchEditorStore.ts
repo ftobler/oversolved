@@ -45,6 +45,8 @@ interface SketchEditorState {
   drag: DragState | null
   orbitEnabled: boolean
   onMutation: ((m: Mutation) => void) | null
+  onRebuild: (() => void) | null
+  onExitSketch: (() => void) | null
   hoveredConstraintEntityIds: Set<string>  // entity IDs highlighted by constraint hover
   activeTool: ActiveTool
   activeFeatureId: string | null           // the sketch currently being edited
@@ -53,6 +55,7 @@ interface SketchEditorState {
   pendingDimTarget: string | null       // first click target when doing two-target dimension
   pendingDimEntityKind: string | null   // entity kind of the first click target
   pendingDialog: DialogState | null
+  contextMenu: [number, number] | null
   planeSelectionFeatureId: string | null
 
   // --- actions ---
@@ -61,6 +64,8 @@ interface SketchEditorState {
   setDrag: (drag: DragState | null) => void
   setOrbitEnabled: (enabled: boolean) => void
   setOnMutation: (cb: ((m: Mutation) => void) | null) => void
+  setOnRebuild: (cb: (() => void) | null) => void
+  setOnExitSketch: (cb: (() => void) | null) => void
   setActiveFeatureId: (id: string | null) => void
   setHoveredConstraintEntities: (ids: Set<string>) => void
   setActiveTool: (tool: ActiveTool) => void
@@ -72,6 +77,8 @@ interface SketchEditorState {
   clearDraw: () => void
   openDialog: (opts: DialogState) => void
   closeDialog: () => void
+  openContextMenu: (pos: [number, number]) => void
+  closeContextMenu: () => void
   handleDimensionClick: (target: string, featureId: string, kind: 'entity' | 'vertex', screenPos: [number, number], entityKind?: string) => void
   setPlaneSelectionFeatureId: (id: string | null) => void
   commitPlaneSelection: (selectionId: string) => void
@@ -82,6 +89,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   drag: null,
   orbitEnabled: true,
   onMutation: null,
+  onRebuild: null,
+  onExitSketch: null,
   hoveredConstraintEntityIds: new Set(),
   activeTool: 'select',
   activeFeatureId: null,
@@ -90,6 +99,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   pendingDimTarget: null,
   pendingDimEntityKind: null,
   pendingDialog: null,
+  contextMenu: null,
   planeSelectionFeatureId: null,
 
   toggleSelect: (id) =>
@@ -107,6 +117,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setOrbitEnabled: (enabled) => set({ orbitEnabled: enabled }),
 
   setOnMutation: (cb) => set({ onMutation: cb }),
+  setOnRebuild: (cb) => set({ onRebuild: cb }),
+  setOnExitSketch: (cb) => set({ onExitSketch: cb }),
 
   setActiveFeatureId: (id) => set({ activeFeatureId: id }),
 
@@ -152,6 +164,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   openDialog: (opts) => set({ pendingDialog: opts }),
   closeDialog: () => set({ pendingDialog: null }),
+  openContextMenu: (pos) => set({ contextMenu: pos }),
+  closeContextMenu: () => set({ contextMenu: null }),
 
   setPlaneSelectionFeatureId: (id) => set({ planeSelectionFeatureId: id }),
 

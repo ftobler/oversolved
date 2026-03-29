@@ -12,6 +12,7 @@ import OriginMarker from './Viewport/OriginMarker'
 import ReferencePlane from './Viewport/ReferencePlane'
 import SceneController from './Viewport/SceneController'
 import ContextMenuDialog from './ContextMenuDialog'
+import RightClickMenu from './RightClickMenu'
 
 const INITIAL_POSITION: [number, number, number] = [0, 0, 100]
 const INITIAL_ZOOM = 200
@@ -54,19 +55,22 @@ export default function Viewport({
     requestAnimationFrame(() => setReady(true))
   }, [])
 
+  const openContextMenu = useSketchEditorStore(s => s.openContextMenu)
+  const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
+
   const pointerDownPos = useRef<[number, number] | null>(null)
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 1 || e.button === 2) pointerDownPos.current = [e.clientX, e.clientY]
-  }, [])
+    if (e.button !== 2) closeContextMenu()
+  }, [closeContextMenu])
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     if (!pointerDownPos.current) return
     const dx = e.clientX - pointerDownPos.current[0]
     const dy = e.clientY - pointerDownPos.current[1]
     pointerDownPos.current = null
     if (Math.hypot(dx, dy) >= 4) return
-    if (e.button === 1) window.alert('middle mouse click')
-    if (e.button === 2) window.alert('right mouse click')
-  }, [])
+    if (e.button === 2) openContextMenu([e.clientX, e.clientY])
+  }, [openContextMenu])
 
   const showOrigin = isActive('Origin', features, rollbackPosition, visibleFeatures)
   const showFront  = isActive('Front',  features, rollbackPosition, visibleFeatures)
@@ -118,6 +122,7 @@ export default function Viewport({
 
       <CubeGizmoCanvas canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
       <ContextMenuDialog />
+      <RightClickMenu />
     </div>
   )
 }

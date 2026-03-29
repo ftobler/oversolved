@@ -114,6 +114,24 @@ export default function Part() {
     return () => useSketchEditorStore.getState().setOnMutation(null)
   }, [handleMutation])
 
+  const handleRebuild = useCallback(() => {
+    if (docRef.current) reSolve(docRef.current)
+  }, [docRef, reSolve])
+
+  const handleExitSketch = useCallback(() => {
+    setEditingSketchId(null)
+  }, [])
+
+  useEffect(() => {
+    useSketchEditorStore.getState().setOnRebuild(handleRebuild)
+    return () => useSketchEditorStore.getState().setOnRebuild(null)
+  }, [handleRebuild])
+
+  useEffect(() => {
+    useSketchEditorStore.getState().setOnExitSketch(handleExitSketch)
+    return () => useSketchEditorStore.getState().setOnExitSketch(null)
+  }, [handleExitSketch])
+
   useEffect(() => {
     useSketchEditorStore.getState().setActiveFeatureId(activeSketchFeatureId ?? null)
   }, [activeSketchFeatureId])
