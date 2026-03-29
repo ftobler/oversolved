@@ -31,5 +31,6 @@ frontend/.vite/
 *.swo
 
 docs/notes.md
+docs/feature/*
 
 *.db
