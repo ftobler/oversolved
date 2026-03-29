@@ -4,7 +4,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
 import type { Feature, PartDoc } from '../types/cad'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
-import { SHORTCUT_CONSTRAINT_KINDS } from '../stores/commandRegistry'
+import { CONSTRAINTS } from '../registry'
 import { useCommandRegistration } from './hooks/useCommandRegistration'
 import SketchToolbar from '../components/Toolbar/SketchToolbar'
 import AppHeader from '../components/AppHeader'
@@ -133,9 +133,9 @@ export default function Part() {
       { name: 'set_tool_center_rect', fn: () => getState().setActiveTool('center_rect') },
       { name: 'set_tool_dimension', fn: () => getState().setActiveTool('dimension') },
       { name: 'toggle_construction', fn: () => getState().toggleConstruction() },
-      ...SHORTCUT_CONSTRAINT_KINDS.map(kind => ({
-        name: `apply_${kind}`,
-        fn: () => getState().applyConstraint(kind),
+      ...CONSTRAINTS.filter(c => c.shortcut).map(c => ({
+        name: `apply_${c.kind}`,
+        fn: () => getState().applyConstraint(c.kind),
       })),
       { name: 'cancel_draw', fn: () => {
         getState().clearDraw()

@@ -4,8 +4,8 @@ import {
   unregisterCommand,
   executeCommand,
   KEYMAP,
-  SHORTCUT_CONSTRAINT_KINDS,
 } from '../../stores/commandRegistry'
+import { CONSTRAINTS } from '../../registry'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 
 // Commands that intentionally have no keyboard shortcut (programmatic-only).
@@ -34,7 +34,7 @@ function buildCommandConfig() {
     { name: 'set_tool_center_rect', fn: vi.fn() },
     { name: 'set_tool_dimension',fn: vi.fn() },
     { name: 'toggle_construction', fn: vi.fn() },
-    ...SHORTCUT_CONSTRAINT_KINDS.map(kind => ({ name: `apply_${kind}`, fn: vi.fn() })),
+    ...CONSTRAINTS.filter(c => c.shortcut).map(c => ({ name: `apply_${c.kind}`, fn: vi.fn() })),
     { name: 'cancel_draw',           fn: vi.fn() },
     { name: 'cancel_plane_selection', fn: vi.fn() },
   ]
@@ -69,6 +69,14 @@ describe('command config array structure', () => {
   it('every entry has a function handler', () => {
     for (const entry of config) {
       expect(typeof entry.fn).toBe('function')
+    }
+  })
+
+  it('apply_<kind> entries exist for every shortcut constraint', () => {
+    const config = buildCommandConfig()
+    const names = new Set(config.map(e => e.name))
+    for (const c of CONSTRAINTS.filter(c => c.shortcut)) {
+      expect(names.has(`apply_${c.kind}`), `missing apply_${c.kind}`).toBe(true)
     }
   })
 })
