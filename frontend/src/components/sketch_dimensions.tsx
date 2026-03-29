@@ -161,8 +161,16 @@ function useDimInteraction(cid: string, value: number, interaction: DimInteracti
   // Called at the start of each pointer-down so a fresh drag begins with the flag clear.
   const resetDragMoved = useCallback(() => { dragMoved.current = false }, [])
 
+  // REGRESSION PROTECTION: Hide hit mesh during dim_label drag
+  // BUG: When dragging a dimension label, the label's own circle hit mesh at z=0.001
+  //      blocks raycasts to the DragPlane at z=-0.001, causing choppy/stalled dragging.
+  // FIX: Check if this constraint is currently being dragged. If so, skip rendering
+  //      the hit mesh so raycasts reach the DragPlane smoothly.
+  // See: EntityLines.tsx and VertexDots.tsx for the same fix on entities/vertices.
+  const isDragged = drag?.type === 'dim_label' && drag.constraintId === cid
+
   const color = hovered ? '#ffffff' : COLOR_CONSTRAINT
-  return { hovered, color, onOver, onOut, onClick, resetDragMoved }
+  return { hovered, color, onOver, onOut, onClick, resetDragMoved, isDragged }
 }
 
 /** Returns the active dragged label position for this constraint (if being dragged), else null. */
@@ -184,7 +192,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
   dimOffset: number
   interaction?: DimInteraction
 }) {
-  const { color, onOver, onOut, onClick, resetDragMoved } = useDimInteraction(cid, dim.value, interaction)
+  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -293,10 +301,12 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
           <Line points={[[d2x, d2y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
         </>
       )}
-      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
-        <circleGeometry args={[1, 8]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
+      {!isDragged && (
+        <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
+          <circleGeometry args={[1, 8]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      )}
       <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
         <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
           {label}
@@ -311,7 +321,7 @@ export function RadiusDimension({ cid, dim, interaction }: {
   dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
 }) {
-  const { color, onOver, onOut, onClick, resetDragMoved } = useDimInteraction(cid, dim.value, interaction)
+  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -400,10 +410,12 @@ export function RadiusDimension({ cid, dim, interaction }: {
           {(() => { const td = Math.hypot(tipX - cx, tipY - cy) || 1; return <ArrowTail origin={[tipX, tipY]} dir={[(tipX - cx) / td, (tipY - cy) / td]} color={color} /> })()}
         </>
       )}
-      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
-        <circleGeometry args={[1, 8]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
+      {!isDragged && (
+        <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
+          <circleGeometry args={[1, 8]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      )}
       <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
         <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
           {label}
@@ -418,7 +430,7 @@ export function DiameterDimension({ cid, dim, interaction }: {
   dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
 }) {
-  const { color, onOver, onOut, onClick, resetDragMoved } = useDimInteraction(cid, dim.value, interaction)
+  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -501,10 +513,12 @@ export function DiameterDimension({ cid, dim, interaction }: {
           <Line points={[[ep1x, ep1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
         </>
       )}
-      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
-        <circleGeometry args={[1, 8]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
+      {!isDragged && (
+        <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
+          <circleGeometry args={[1, 8]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      )}
       <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
         <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
           {label}
@@ -519,7 +533,7 @@ export function AngleDimension({ cid, dim, interaction }: {
   dim: { kind: string; p1: [number, number]; p2: [number, number]; p3: [number, number]; p4: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
 }) {
-  const { color, onOver, onOut, onClick, resetDragMoved } = useDimInteraction(cid, dim.value, interaction, false)
+  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, false)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -674,10 +688,12 @@ export function AngleDimension({ cid, dim, interaction }: {
       )}
 
       {/* Interaction hit area */}
-      <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
-        <circleGeometry args={[1, 8]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
+      {!isDragged && (
+        <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
+          <circleGeometry args={[1, 8]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      )}
 
       {/* Label text */}
       <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>

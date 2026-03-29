@@ -16,8 +16,8 @@ export function DragPlane() {
   // causing the dragged element to shift away from the cursor.
   // Position at z=-0.001 (between DrawPlane at z=-0.002 and geometry at z=0).
   // Self-intersection blocking (dragged entity's collision geometry blocking raycasts)
-  // is solved by hiding the collision geometry (HitPolyline, hit spheres) during drag.
-  // This is done in EntityLines.tsx and VertexDots.tsx when isDragged=true.
+  // is solved by hiding the collision geometry (HitPolyline, hit spheres, dim hit meshes) during drag.
+  // This is done in EntityLines.tsx and VertexDots.tsx (isDragged) and sketch_dimensions.tsx (isDragged).
 
   const toLocal = (worldPt: THREE.Vector3): [number, number] => {
     if (!meshRef.current?.parent) return [worldPt.x, worldPt.y]
