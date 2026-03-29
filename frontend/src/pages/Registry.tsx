@@ -1,5 +1,5 @@
 import AppHeader from '../components/AppHeader'
-import { CONSTRAINTS, ENTITIES, DIMENSION_RULES, CONSTRAINT_BY_KIND, ENTITY_BY_KIND, CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '../registry'
+import { CONSTRAINTS, ENTITIES, DIMENSION_RULES, CONSTRAINT_BY_KIND, ENTITY_BY_ACTIVE_TOOL, CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '../registry'
 import { KEYMAP, CORE_KEYBINDINGS } from '../stores/commandRegistry'
 import './Registry.css'
 
@@ -51,8 +51,8 @@ function buildKeybindingRows(): KeybindingRow[] {
 
   // Entity shortcuts — derive label/description from entity registry
   for (const [key, command] of ENTITY_SHORTCUTS) {
-    const kind = command.replace(/^set_tool_/, '')
-    const def = ENTITY_BY_KIND.get(kind)
+    const activeTool = command.replace(/^set_tool_/, '')
+    const def = ENTITY_BY_ACTIVE_TOOL.get(activeTool)
     rows.push({
       key,
       command,

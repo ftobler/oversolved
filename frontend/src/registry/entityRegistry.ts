@@ -140,6 +140,14 @@ export const ENTITIES: readonly EntityDef[] = [
 export const ENTITY_BY_KIND: ReadonlyMap<string, EntityDef> =
   new Map(ENTITIES.map(e => [e.kind, e]))
 
+/** Map from activeTool value → entity definition. */
+export const ENTITY_BY_ACTIVE_TOOL: ReadonlyMap<string, EntityDef> =
+  new Map(
+    ENTITIES
+      .filter(e => e.activeTool)
+      .map(e => [e.activeTool!, e])
+  )
+
 /** Map from entity kind → vertex key → [xIndex, yIndex]. */
 export const VERTEX_INDICES: Readonly<Record<string, Record<string, [number, number]>>> =
   Object.fromEntries(

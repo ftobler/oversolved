@@ -13,6 +13,7 @@ export type { ConstraintDef, DimensionRule } from './constraintRegistry'
 export {
   ENTITIES,
   ENTITY_BY_KIND,
+  ENTITY_BY_ACTIVE_TOOL,
   ENTITY_SHORTCUTS,
   VERTEX_INDICES,
   ALL_COORD_INDICES,

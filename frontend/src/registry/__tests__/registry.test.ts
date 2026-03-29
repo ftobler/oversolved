@@ -12,6 +12,7 @@ import {
 import {
   ENTITIES,
   ENTITY_BY_KIND,
+  ENTITY_BY_ACTIVE_TOOL,
   ENTITY_SHORTCUTS,
   VERTEX_INDICES,
   ALL_COORD_INDICES,
@@ -175,6 +176,31 @@ describe('entityRegistry', () => {
     for (const e of ENTITIES.filter(e => e.showInToolbar)) {
       expect(e.toolbarIcon).toBeTruthy()
       expect(e.activeTool).toBeTruthy()
+    }
+  })
+
+  it('ENTITY_BY_ACTIVE_TOOL maps every activeTool to its definition', () => {
+    for (const e of ENTITIES) {
+      if (e.activeTool) {
+        expect(ENTITY_BY_ACTIVE_TOOL.get(e.activeTool)).toBe(e)
+      }
+    }
+  })
+
+  it('ENTITY_BY_ACTIVE_TOOL has no entries for entities without activeTool', () => {
+    const toolValues = new Set(ENTITIES.filter(e => e.activeTool).map(e => e.activeTool!))
+    for (const key of ENTITY_BY_ACTIVE_TOOL.keys()) {
+      expect(toolValues.has(key)).toBe(true)
+    }
+  })
+
+  it('every ENTITY_SHORTCUTS command resolves to an entity via ENTITY_BY_ACTIVE_TOOL', () => {
+    for (const [, command] of ENTITY_SHORTCUTS) {
+      const activeTool = command.replace(/^set_tool_/, '')
+      expect(
+        ENTITY_BY_ACTIVE_TOOL.has(activeTool),
+        `no entity found for activeTool "${activeTool}" (command "${command}")`
+      ).toBe(true)
     }
   })
 })
