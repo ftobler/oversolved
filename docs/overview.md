@@ -53,6 +53,10 @@ docs/
 * Material icons (no CDN, local font file)
 * dark mode
 
+### Frontend Architecture
+
+See [`command_system.md`](command_system.md) for the command abstraction architecture and implementation tasks. All user-visible actions (toolbar, keyboard) route through a central command registry for testability.
+
 ## CI
 
 Gitea/Github style CI. ubuntu-latest runners.
