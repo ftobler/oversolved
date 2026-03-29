@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { registerCommand, executeCommand, unregisterCommand } from '../../stores/commandRegistry'
+import { registerCommand, executeCommand, unregisterCommand, clearAllHandlers } from '../../stores/commandRegistry'
+
+// Ensure clean state before each test
+beforeEach(() => { clearAllHandlers() })
 
 function reset() {
   useSketchEditorStore.setState({

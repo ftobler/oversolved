@@ -1,6 +1,9 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { buildCommandEntries } from '../commandEntries'
-import { KEYMAP } from '../../stores/commandRegistry'
+import { KEYMAP, clearAllHandlers } from '../../stores/commandRegistry'
+
+// Ensure clean state before each test
+beforeEach(() => { clearAllHandlers() })
 
 // Commands that intentionally have no keyboard shortcut.
 const PROGRAMMATIC_ONLY = new Set([

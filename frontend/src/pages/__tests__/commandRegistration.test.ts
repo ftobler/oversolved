@@ -1,11 +1,15 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   registerCommand,
   unregisterCommand,
   executeCommand,
+  clearAllHandlers,
 } from '../../stores/commandRegistry'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { buildCommandEntries } from '../commandEntries'
+
+// Ensure clean state before each test
+beforeEach(() => { clearAllHandlers() })
 
 // ── Config array structure ────────────────────────────────────────────────────
 
@@ -34,11 +38,6 @@ describe('command config array structure', () => {
 // ── Registration lifecycle ────────────────────────────────────────────────────
 
 describe('command registration lifecycle', () => {
-  afterEach(() => {
-    unregisterCommand('__lifecycle_a__')
-    unregisterCommand('__lifecycle_b__')
-  })
-
   it('register → execute → unregister: spies are called only while registered', () => {
     const fnA = vi.fn()
     const fnB = vi.fn()
@@ -85,10 +84,6 @@ describe('command registration lifecycle', () => {
 // ── Handler execution with store methods ──────────────────────────────────────
 
 describe('handler execution with store methods', () => {
-  afterEach(() => {
-    unregisterCommand('__store_test__')
-  })
-
   it('delete_selected handler calls store.deleteSelected without throwing', () => {
     // Register handler that calls store method, as Part.tsx does
     registerCommand('__store_test__', () => useSketchEditorStore.getState().deleteSelected())

@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   KEYMAP,
   CORE_KEYBINDINGS,
   registerCommand,
   unregisterCommand,
   executeCommand,
+  clearAllHandlers,
   buildKeyString,
   dispatchKey,
 } from '../commandRegistry'
@@ -28,6 +29,9 @@ function fakeKey(
     preventDefault: vi.fn(),
   } as unknown as KeyboardEvent
 }
+
+// Ensure clean state before each test
+beforeEach(() => { clearAllHandlers() })
 
 // ── buildKeyString ───────────────────────────────────────────────────────────
 
@@ -149,12 +153,6 @@ describe('CORE_KEYBINDINGS', () => {
 // ── registerCommand / executeCommand / unregisterCommand ─────────────────────
 
 describe('registerCommand / executeCommand / unregisterCommand', () => {
-  afterEach(() => {
-    unregisterCommand('__test__')
-    unregisterCommand('__test_a__')
-    unregisterCommand('__test_b__')
-  })
-
   it('registered handler is called by executeCommand', () => {
     const fn = vi.fn()
     registerCommand('__test__', fn)
@@ -198,11 +196,6 @@ describe('registerCommand / executeCommand / unregisterCommand', () => {
 // ── dispatchKey ──────────────────────────────────────────────────────────────
 
 describe('dispatchKey', () => {
-  afterEach(() => {
-    unregisterCommand('__test__')
-    unregisterCommand('undo')
-  })
-
   it('returns false and does not call handler when target is INPUT', () => {
     const fn = vi.fn()
     registerCommand('__test__', fn)
@@ -259,18 +252,6 @@ describe('tool commands via store', () => {
   beforeEach(() => {
     // Reset to known state before each test
     useSketchEditorStore.getState().setActiveTool('select')
-  })
-
-  afterEach(() => {
-    unregisterCommand('set_tool_line')
-    unregisterCommand('set_tool_circle')
-    unregisterCommand('set_tool_arc')
-    unregisterCommand('set_tool_point')
-    unregisterCommand('set_tool_rect')
-    unregisterCommand('set_tool_center_rect')
-    unregisterCommand('set_tool_dimension')
-    unregisterCommand('toggle_construction')
-    unregisterCommand('apply_horizontal')
   })
 
   it('set_tool_line activates the line tool', () => {
@@ -338,5 +319,22 @@ describe('tool commands via store', () => {
     const e = fakeKey('l')
     dispatchKey(e)
     expect(useSketchEditorStore.getState().activeTool).toBe('line')
+  })
+})
+
+// ── clearAllHandlers ─────────────────────────────────────────────────────────
+
+describe('clearAllHandlers', () => {
+  it('removes all registered handlers', () => {
+    registerCommand('__clear_test__', vi.fn())
+    clearAllHandlers()
+    // After clearing, executeCommand must not throw and must do nothing
+    expect(() => executeCommand('__clear_test__')).not.toThrow()
+    // Registering again after clear must work
+    const fn = vi.fn()
+    registerCommand('__clear_test__', fn)
+    executeCommand('__clear_test__')
+    expect(fn).toHaveBeenCalledOnce()
+    unregisterCommand('__clear_test__')
   })
 })

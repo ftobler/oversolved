@@ -53,6 +53,14 @@ export function unregisterCommand(name: string): void {
   handlers.delete(name)
 }
 
+/**
+ * Removes every registered handler.
+ * Intended for test teardown only — do not call in production code.
+ */
+export function clearAllHandlers(): void {
+  handlers.clear()
+}
+
 export function executeCommand(name: string): void {
   handlers.get(name)?.()
 }
