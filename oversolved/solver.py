@@ -279,6 +279,15 @@ def _pick_arc_ref(c: dict, geom: dict) -> dict | None:
     return None
 
 
+def _pick_line_ref(c: dict, geom: dict) -> dict | None:
+    """When a constraint uses a/b keys, return the ref whose entity is a line."""
+    for key in ("a", "b"):
+        ref = c.get(key)
+        if ref and "start" in geom.get(ref.get("entity", ""), {}):
+            return ref
+    return None
+
+
 def _constraint_render(c: dict, geom: dict) -> dict:
     """Compute geometric render data for a single constraint using solved geometry."""
     kind = c["kind"]
@@ -420,6 +429,25 @@ def _constraint_render(c: dict, geom: dict) -> dict:
         arc = geom[eid]
         if "start" in arc:
             pt = arc["start"] if arc_ref.get("point", "start") != "end" else arc["end"]
+        elif "center" in arc:
+            # For a circle, find the tangent point: foot of perpendicular from
+            # center to the line, clamped to the actual line segment.
+            line_ref = c.get("line") or _pick_line_ref(c, geom)
+            if line_ref:
+                line = geom[line_ref["entity"]]
+                cx, cy = arc["center"]
+                x0, y0 = line["start"]
+                x1, y1 = line["end"]
+                dx, dy = x1 - x0, y1 - y0
+                seg_len2 = dx * dx + dy * dy
+                if seg_len2 > 1e-12:
+                    t = ((cx - x0) * dx + (cy - y0) * dy) / seg_len2
+                    t = max(0.0, min(1.0, t))
+                    pt = [x0 + t * dx, y0 + t * dy]
+                else:
+                    pt = [x0, y0]
+            else:
+                pt = list(arc["center"])
         else:
             pt = list(arc["center"])
         return {"kind": "symbol_tangent", "at": pt, "entity": eid}

@@ -358,8 +358,33 @@ export function computeConstraintRender(constraint: any, sketch: Sketch): any {
     if (!arcEid) return { kind: 'unknown' }
     const arcGeom = sketch[arcEid] as any
     if (!arcGeom) return { kind: 'unknown' }
-    const pt = arc.point !== 'end' ? (arcGeom.start ?? arcGeom.center) : (arcGeom.end ?? arcGeom.center)
     const lineEid = constraint.line?.entity ?? (arcEid === constraint.a?.entity ? constraint.b?.entity : constraint.a?.entity)
+    let pt: [number, number]
+    if (arcGeom.start != null) {
+      // arc: use the pinned endpoint
+      pt = arc.point !== 'end' ? arcGeom.start : arcGeom.end
+    } else if (arcGeom.center != null && lineEid) {
+      // circle + line: tangent point is foot of perpendicular from center to line
+      const lineGeom = sketch[lineEid] as any
+      if (lineGeom?.start != null && lineGeom?.end != null) {
+        const [cx, cy] = arcGeom.center as [number, number]
+        const [x0, y0] = lineGeom.start as [number, number]
+        const [x1, y1] = lineGeom.end as [number, number]
+        const dx = x1 - x0
+        const dy = y1 - y0
+        const len2 = dx * dx + dy * dy
+        if (len2 > 1e-12) {
+          const t = Math.max(0, Math.min(1, ((cx - x0) * dx + (cy - y0) * dy) / len2))
+          pt = [x0 + t * dx, y0 + t * dy]
+        } else {
+          pt = [x0, y0]
+        }
+      } else {
+        pt = arcGeom.center
+      }
+    } else {
+      pt = arcGeom.center
+    }
     return { kind: 'symbol_tangent', at: pt, entity: arcEid, entities: [lineEid, arcEid].filter(Boolean) as string[] }
   }
 
