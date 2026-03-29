@@ -6,6 +6,7 @@ import {
   KEYMAP,
   SHORTCUT_CONSTRAINT_KINDS,
 } from '../../stores/commandRegistry'
+import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 
 // Commands that intentionally have no keyboard shortcut (programmatic-only).
 // These are allowed to be absent from KEYMAP values.
@@ -120,5 +121,20 @@ describe('command registration lifecycle', () => {
 
     expect(fnA).not.toHaveBeenCalled()
     expect(fnB).toHaveBeenCalledOnce()
+  })
+})
+
+// ── Handler execution with store methods ──────────────────────────────────────
+
+describe('handler execution with store methods', () => {
+  afterEach(() => {
+    unregisterCommand('__store_test__')
+  })
+
+  it('delete_selected handler calls store.deleteSelected without throwing', () => {
+    // Register handler that calls store method, as Part.tsx does
+    registerCommand('__store_test__', () => useSketchEditorStore.getState().deleteSelected())
+    // Confirm executeCommand reaches the store without throwing
+    expect(() => executeCommand('__store_test__')).not.toThrow()
   })
 })

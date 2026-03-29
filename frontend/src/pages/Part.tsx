@@ -119,30 +119,30 @@ export default function Part() {
   }, [activeSketchFeatureId])
 
   const commands = useMemo(() => {
-    const store = useSketchEditorStore.getState
+    const getState = useSketchEditorStore.getState
     return [
       { name: 'undo',               fn: handleUndo },
       { name: 'redo',               fn: handleRedo },
-      { name: 'delete_selected',    fn: () => store().deleteSelected() },
-      { name: 'set_tool_select',    fn: () => store().setActiveTool('select') },
-      { name: 'set_tool_line',      fn: () => store().setActiveTool('line') },
-      { name: 'set_tool_circle',    fn: () => store().setActiveTool('circle') },
-      { name: 'set_tool_arc',       fn: () => store().setActiveTool('arc') },
-      { name: 'set_tool_point',     fn: () => store().setActiveTool('point') },
-      { name: 'set_tool_rect',      fn: () => store().setActiveTool('rect') },
-      { name: 'set_tool_center_rect', fn: () => store().setActiveTool('center_rect') },
-      { name: 'set_tool_dimension', fn: () => store().setActiveTool('dimension') },
-      { name: 'toggle_construction', fn: () => store().toggleConstruction() },
+      { name: 'delete_selected',    fn: () => getState().deleteSelected() },
+      { name: 'set_tool_select',    fn: () => getState().setActiveTool('select') },
+      { name: 'set_tool_line',      fn: () => getState().setActiveTool('line') },
+      { name: 'set_tool_circle',    fn: () => getState().setActiveTool('circle') },
+      { name: 'set_tool_arc',       fn: () => getState().setActiveTool('arc') },
+      { name: 'set_tool_point',     fn: () => getState().setActiveTool('point') },
+      { name: 'set_tool_rect',      fn: () => getState().setActiveTool('rect') },
+      { name: 'set_tool_center_rect', fn: () => getState().setActiveTool('center_rect') },
+      { name: 'set_tool_dimension', fn: () => getState().setActiveTool('dimension') },
+      { name: 'toggle_construction', fn: () => getState().toggleConstruction() },
       ...SHORTCUT_CONSTRAINT_KINDS.map(kind => ({
         name: `apply_${kind}`,
-        fn: () => store().applyConstraint(kind),
+        fn: () => getState().applyConstraint(kind),
       })),
       { name: 'cancel_draw', fn: () => {
-        store().clearDraw()
-        store().setActiveTool('select')
-        store().setPlaneSelectionFeatureId(null)
+        getState().clearDraw()
+        getState().setActiveTool('select')
+        getState().setPlaneSelectionFeatureId(null)
       }},
-      { name: 'cancel_plane_selection', fn: () => store().setPlaneSelectionFeatureId(null) },
+      { name: 'cancel_plane_selection', fn: () => getState().setPlaneSelectionFeatureId(null) },
     ]
   }, [handleUndo, handleRedo])
 
