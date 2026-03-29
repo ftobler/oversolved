@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import type { ActiveTool } from '../../stores/sketchEditorStore'
 import {
   CONSTRAINTS,
   CONSTRAINT_BY_KIND,
@@ -190,7 +191,7 @@ describe('entityRegistry', () => {
   it('ENTITY_BY_ACTIVE_TOOL has no entries for entities without activeTool', () => {
     const toolValues = new Set(ENTITIES.filter(e => e.activeTool).map(e => e.activeTool!))
     for (const key of ENTITY_BY_ACTIVE_TOOL.keys()) {
-      expect(toolValues.has(key)).toBe(true)
+      expect(toolValues.has(key as ActiveTool)).toBe(true)
     }
   })
 
