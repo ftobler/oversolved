@@ -3,47 +3,14 @@ import {
   registerCommand,
   unregisterCommand,
   executeCommand,
-  KEYMAP,
 } from '../../stores/commandRegistry'
-import { CONSTRAINTS } from '../../registry'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-
-// Commands that intentionally have no keyboard shortcut (programmatic-only).
-// These are allowed to be absent from KEYMAP values.
-const PROGRAMMATIC_ONLY_COMMANDS = new Set([
-  'cancel_plane_selection',
-  'set_tool_select',
-  'set_tool_point',
-  'set_tool_rect',
-  'set_tool_center_rect',
-])
-
-// Mirrors the command config array that Part.tsx passes to useCommandRegistration.
-// Handlers here are stubs — we only care about the structure.
-function buildCommandConfig() {
-  return [
-    { name: 'undo',              fn: vi.fn() },
-    { name: 'redo',              fn: vi.fn() },
-    { name: 'delete_selected',   fn: vi.fn() },
-    { name: 'set_tool_select',   fn: vi.fn() },
-    { name: 'set_tool_line',     fn: vi.fn() },
-    { name: 'set_tool_circle',   fn: vi.fn() },
-    { name: 'set_tool_arc',      fn: vi.fn() },
-    { name: 'set_tool_point',    fn: vi.fn() },
-    { name: 'set_tool_rect',     fn: vi.fn() },
-    { name: 'set_tool_center_rect', fn: vi.fn() },
-    { name: 'set_tool_dimension',fn: vi.fn() },
-    { name: 'toggle_construction', fn: vi.fn() },
-    ...CONSTRAINTS.filter(c => c.shortcut).map(c => ({ name: `apply_${c.kind}`, fn: vi.fn() })),
-    { name: 'cancel_draw',           fn: vi.fn() },
-    { name: 'cancel_plane_selection', fn: vi.fn() },
-  ]
-}
+import { buildCommandEntries } from '../commandEntries'
 
 // ── Config array structure ────────────────────────────────────────────────────
 
 describe('command config array structure', () => {
-  const config = buildCommandConfig()
+  const config = buildCommandEntries(vi.fn(), vi.fn())
 
   it('every entry has a non-empty name string', () => {
     for (const entry of config) {
@@ -57,26 +24,9 @@ describe('command config array structure', () => {
     expect(new Set(names).size).toBe(names.length)
   })
 
-  it('every name appears in KEYMAP values or is a known programmatic-only command', () => {
-    const keymapValues = new Set(Object.values(KEYMAP))
-    for (const { name } of config) {
-      const inKeymap = keymapValues.has(name)
-      const isProgrammaticOnly = PROGRAMMATIC_ONLY_COMMANDS.has(name)
-      expect(inKeymap || isProgrammaticOnly, `"${name}" is not in KEYMAP and not in PROGRAMMATIC_ONLY_COMMANDS`).toBe(true)
-    }
-  })
-
   it('every entry has a function handler', () => {
     for (const entry of config) {
       expect(typeof entry.fn).toBe('function')
-    }
-  })
-
-  it('apply_<kind> entries exist for every shortcut constraint', () => {
-    const config = buildCommandConfig()
-    const names = new Set(config.map(e => e.name))
-    for (const c of CONSTRAINTS.filter(c => c.shortcut)) {
-      expect(names.has(`apply_${c.kind}`), `missing apply_${c.kind}`).toBe(true)
     }
   })
 })

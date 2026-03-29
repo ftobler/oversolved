@@ -1,0 +1,51 @@
+import { describe, it, expect, vi } from 'vitest'
+import { buildCommandEntries } from '../commandEntries'
+import { KEYMAP } from '../../stores/commandRegistry'
+
+// Commands that intentionally have no keyboard shortcut.
+const PROGRAMMATIC_ONLY = new Set([
+  'cancel_plane_selection',
+  'set_tool_select',
+  'set_tool_point',
+  'set_tool_rect',
+  'set_tool_center_rect',
+])
+
+describe('buildCommandEntries', () => {
+  const entries = buildCommandEntries(vi.fn(), vi.fn())
+
+  it('every entry has a non-empty name', () => {
+    for (const e of entries) {
+      expect(e.name.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('no duplicate names', () => {
+    const names = entries.map(e => e.name)
+    expect(new Set(names).size).toBe(names.length)
+  })
+
+  it('every name is in KEYMAP values or is a known programmatic-only command', () => {
+    const keymapValues = new Set(Object.values(KEYMAP))
+    for (const { name } of entries) {
+      const ok = keymapValues.has(name) || PROGRAMMATIC_ONLY.has(name)
+      expect(ok, `"${name}" not in KEYMAP and not in PROGRAMMATIC_ONLY`).toBe(true)
+    }
+  })
+
+  it('every entry has a function handler', () => {
+    for (const e of entries) {
+      expect(typeof e.fn).toBe('function')
+    }
+  })
+
+  it('handleUndo and handleRedo are wired to the undo and redo entries', () => {
+    const handleUndo = vi.fn()
+    const handleRedo = vi.fn()
+    const entries = buildCommandEntries(handleUndo, handleRedo)
+    entries.find(e => e.name === 'undo')!.fn()
+    expect(handleUndo).toHaveBeenCalledOnce()
+    entries.find(e => e.name === 'redo')!.fn()
+    expect(handleRedo).toHaveBeenCalledOnce()
+  })
+})

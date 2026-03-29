@@ -4,8 +4,8 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
 import type { Feature, PartDoc } from '../types/cad'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
-import { CONSTRAINTS } from '../registry'
 import { useCommandRegistration } from './hooks/useCommandRegistration'
+import { buildCommandEntries } from './commandEntries'
 import SketchToolbar from '../components/Toolbar/SketchToolbar'
 import AppHeader from '../components/AppHeader'
 import { usePartDoc } from '../hooks/usePartDoc'
@@ -118,33 +118,10 @@ export default function Part() {
     useSketchEditorStore.getState().setActiveFeatureId(activeSketchFeatureId ?? null)
   }, [activeSketchFeatureId])
 
-  const commands = useMemo(() => {
-    const getState = useSketchEditorStore.getState
-    return [
-      { name: 'undo',               fn: handleUndo },
-      { name: 'redo',               fn: handleRedo },
-      { name: 'delete_selected',    fn: () => getState().deleteSelected() },
-      { name: 'set_tool_select',    fn: () => getState().setActiveTool('select') },
-      { name: 'set_tool_line',      fn: () => getState().setActiveTool('line') },
-      { name: 'set_tool_circle',    fn: () => getState().setActiveTool('circle') },
-      { name: 'set_tool_arc',       fn: () => getState().setActiveTool('arc') },
-      { name: 'set_tool_point',     fn: () => getState().setActiveTool('point') },
-      { name: 'set_tool_rect',      fn: () => getState().setActiveTool('rect') },
-      { name: 'set_tool_center_rect', fn: () => getState().setActiveTool('center_rect') },
-      { name: 'set_tool_dimension', fn: () => getState().setActiveTool('dimension') },
-      { name: 'toggle_construction', fn: () => getState().toggleConstruction() },
-      ...CONSTRAINTS.filter(c => c.shortcut).map(c => ({
-        name: `apply_${c.kind}`,
-        fn: () => getState().applyConstraint(c.kind),
-      })),
-      { name: 'cancel_draw', fn: () => {
-        getState().clearDraw()
-        getState().setActiveTool('select')
-        getState().setPlaneSelectionFeatureId(null)
-      }},
-      { name: 'cancel_plane_selection', fn: () => getState().setPlaneSelectionFeatureId(null) },
-    ]
-  }, [handleUndo, handleRedo])
+  const commands = useMemo(
+    () => buildCommandEntries(handleUndo, handleRedo),
+    [handleUndo, handleRedo],
+  )
 
   useCommandRegistration(commands)
 
