@@ -31,11 +31,14 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   // REGRESSION PROTECTION: Hide collision geometry during entity drag
   // BUG: When dragging, DragPlane raycasts could be blocked by the entity's own
   //      HitPolyline collision geometry, causing choppy/stalled dragging.
-  // FIX: Check if this entity is currently being dragged. If so, don't render
-  //      the HitPolyline. This allows raycasts to reach DragPlane smoothly.
+  // FIX: Hide collision only after drag movement starts (not on initial pointerDown).
+  //      Check if this entity is being dragged AND the cursor has actually moved
+  //      (currentWorld != startWorld). This allows quick clicks to still select,
+  //      but hides collision once dragging begins to prevent raycast blocking.
   // NOTE: Must check both entityId and featureId to handle multiple sketches.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
-  const isDragged = drag && 'entityId' in drag && drag.entityId === entityId && drag.featureId === featureId
+  const isDragged = drag && 'entityId' in drag && drag.entityId === entityId && drag.featureId === featureId &&
+    (drag.currentWorld[0] !== drag.startWorld[0] || drag.currentWorld[1] !== drag.startWorld[1])
   const color = hovered ? COLOR_HOVER
     : selected ? COLOR_SELECTED
     : constraintHovered ? COLOR_CONSTRAINT_HOVER

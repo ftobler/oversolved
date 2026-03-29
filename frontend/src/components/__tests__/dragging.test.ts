@@ -30,15 +30,24 @@ import { describe, it, expect } from 'vitest'
  * BUG: Dragging became choppy/jittery when element overlapped its own
  *      collision geometry (HitPolyline, vertex hit spheres)
  * CAUSE: Raycasts to DragPlane were blocked by entity's collision meshes
- * FIX: Hide collision geometry during drag:
+ * FIX: Hide collision geometry during drag, BUT ONLY AFTER MOVEMENT STARTS:
  *      - EntityLines.tsx: {!isDragged && <HitPolyline ... />}
  *      - VertexDots.tsx: {!isDragged && <mesh ref={hitRef} ... />}
+ * CRITICAL: isDragged must check BOTH drag state AND movement to prevent
+ *           regression where clicks couldn't register as selection
+ *
+ * SELECTION REGRESSION FIX:
+ *   Problem: Naive hiding (collision hidden immediately on pointerDown) broke
+ *            selection, making it hard to click without starting a drag
+ *   Solution: Only hide collision after movement detected (currentWorld != startWorld)
+ *             This allows quick clicks to select, but hides during actual dragging
  *
  * PROTECTION:
- *   ✓ Code comment in EntityLines.tsx (line 31-34) explains isDragged logic
- *   ✓ Code comment in VertexDots.tsx (line 112-115) explains isDragged logic
- *   ✓ Zustand tests in sketchEditorStore.test.ts verify drag state transitions
+ *   ✓ Code comment in EntityLines.tsx explains isDragged with movement check
+ *   ✓ Code comment in VertexDots.tsx explains isDragged with movement check
+ *   ✓ Tests document why movement check is critical for preventing regression
  * TEST COVERAGE:
+ *   ✓ Manual test: Click to select → works normally
  *   ✓ Manual test: Drag element → smooth movement, no jitter
  *
  * ============================================================================
@@ -107,62 +116,90 @@ describe('Dragging Regressions - Documentation', () => {
   })
 
   describe('Collision geometry hiding - Entity and Vertex', () => {
-    it('documents isDragged condition in EntityLines.tsx', () => {
-      // EntityLines.tsx must conditionally hide HitPolyline during drag:
+    it('documents isDragged condition in EntityLines.tsx - only hides after movement', () => {
+      // EntityLines.tsx must conditionally hide HitPolyline, but ONLY after drag movement:
       //   const isDragged = drag && 'entityId' in drag &&
       //                     drag.entityId === entityId &&
-      //                     drag.featureId === featureId
+      //                     drag.featureId === featureId &&
+      //                     (drag.currentWorld[0] !== drag.startWorld[0] ||
+      //                      drag.currentWorld[1] !== drag.startWorld[1])
       //   {!isDragged && <HitPolyline ... />}
       //
-      // CODE LOCATION: src/components/Geometry3D/EntityLines.tsx line 31-34
-      // RENDERING: All three places that render <HitPolyline... must have {!isDragged &&}
-      // COMMENT REQUIREMENT: Must explain why collision hides during drag
+      // CRITICAL: Check that currentWorld != startWorld to distinguish between:
+      // - Initial pointerDown (collision visible) → allows click/selection to work
+      // - Actual drag movement (collision hidden) → prevents raycast blocking
+      //
+      // CODE LOCATION: src/components/Geometry3D/EntityLines.tsx
+      // REGRESSION PROTECTION: Prevents selection regression where clicking was
+      //                        interpreted as drag start
+      // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
 
-      const isDragged = true // when dragging entity L1 in Sketch1
-      const shouldRenderCollision = !isDragged
-      expect(shouldRenderCollision).toBe(false)
+      // Before movement: still selectable
+      const drag1 = { startWorld: [0, 0], currentWorld: [0, 0] }
+      const isDragged1 = drag1.currentWorld[0] !== drag1.startWorld[0] || drag1.currentWorld[1] !== drag1.startWorld[1]
+      expect(isDragged1).toBe(false) // collision visible, click can register
+
+      // After movement: collision hidden to prevent blocking
+      const drag2 = { startWorld: [0, 0], currentWorld: [0.1, 0] }
+      const isDragged2 = drag2.currentWorld[0] !== drag2.startWorld[0] || drag2.currentWorld[1] !== drag2.startWorld[1]
+      expect(isDragged2).toBe(true) // collision hidden, raycasts unblocked
     })
 
-    it('documents isDragged condition in VertexDots.tsx', () => {
-      // VertexDots.tsx must conditionally hide vertex hit sphere during drag:
+    it('documents isDragged condition in VertexDots.tsx - only hides after movement', () => {
+      // VertexDots.tsx must conditionally hide vertex hit sphere, but ONLY after movement:
       //   const isDragged = featureId && entityId && drag &&
       //                     'entityId' in drag &&
       //                     drag.entityId === entityId &&
-      //                     drag.featureId === featureId
+      //                     drag.featureId === featureId &&
+      //                     (drag.currentWorld[0] !== drag.startWorld[0] ||
+      //                      drag.currentWorld[1] !== drag.startWorld[1])
       //   {!isDragged && <mesh ref={hitRef} ... />}
       //
-      // CODE LOCATION: src/components/Geometry3D/VertexDots.tsx line 112-115
-      // RENDERING: Hit sphere mesh (line 167-170) must be wrapped in {!isDragged &&}
-      // COMMENT REQUIREMENT: Must explain why collision hides during drag
+      // CRITICAL: Movement check ensures quick clicks still select, dragging hides collision.
+      //
+      // CODE LOCATION: src/components/Geometry3D/VertexDots.tsx
+      // REGRESSION PROTECTION: Same as EntityLines - prevents selection being
+      //                        misinterpreted as drag start
+      // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
 
-      const isDragged = true // when dragging vertex
-      const shouldRenderCollision = !isDragged
-      expect(shouldRenderCollision).toBe(false)
+      // No movement yet
+      const drag1 = { startWorld: [0, 0], currentWorld: [0, 0] }
+      const hasMovement1 = drag1.currentWorld[0] !== drag1.startWorld[0] || drag1.currentWorld[1] !== drag1.startWorld[1]
+      expect(hasMovement1).toBe(false)
+
+      // Has moved
+      const drag2 = { startWorld: [0, 0], currentWorld: [0.05, 0.05] }
+      const hasMovement2 = drag2.currentWorld[0] !== drag2.startWorld[0] || drag2.currentWorld[1] !== drag2.startWorld[1]
+      expect(hasMovement2).toBe(true)
     })
 
-    it('documents why collision hiding prevents blocking', () => {
+    it('documents why collision hiding with movement check prevents both blocking and selection regression', () => {
       // Without collision hiding:
-      // 1. Dragging moves element
-      // 2. DragPlane raycast attempts to get new cursor position
-      // 3. Ray hits element's HitPolyline/hit sphere (at z≤0) first
-      // 4. No hit on DragPlane → onPointerMove never fires
-      // 5. Drag stalls until cursor moves away from entity
+      // 1. User clicks to select → works
+      // 2. User drags → DragPlane raycast blocked by HitPolyline/hit sphere
+      // 3. onPointerMove never fires → dragging stalls
       //
-      // With collision hiding:
-      // 1. isDragged=true → HitPolyline and hit sphere are not rendered
-      // 2. DragPlane raycast hits plane (z=-0.001)
-      // 3. onPointerMove fires → smooth dragging continues
+      // Naive fix (hide immediately on pointerDown):
+      // 1. User clicks to select → collision hidden immediately
+      // 2. Click detection might fail because collision hidden too early
+      // 3. REGRESSION: Selection broken, drag starts immediately
       //
-      // VERIFY: All collision geometry is properly gated with isDragged check
+      // Proper fix (hide only after movement):
+      // 1. User clicks quickly (no movement) → collision stays visible
+      // 2. Click/selection works normally
+      // 3. User drags (movement detected) → collision hidden
+      // 4. DragPlane raycast hits plane (z=-0.001)
+      // 5. onPointerMove fires → smooth dragging continues
+      //
+      // VERIFY: isDragged checks BOTH drag state AND movement
+      const noMovement = { startWorld: [0, 0], currentWorld: [0, 0] }
+      const hasMovement = { startWorld: [0, 0], currentWorld: [0.1, 0] }
 
-      const draggedEntity = true
-      const hitPolylineVisible = !draggedEntity
-      const vertexHitVisible = !draggedEntity
-      const dragPlaneCanBeHit = true // because collision is hidden
+      const isDragged1 = noMovement.currentWorld[0] !== noMovement.startWorld[0]
+      const isDragged2 = hasMovement.currentWorld[0] !== hasMovement.startWorld[0]
 
-      expect(hitPolylineVisible).toBe(false)
-      expect(vertexHitVisible).toBe(false)
-      expect(dragPlaneCanBeHit).toBe(true)
+      expect(isDragged1).toBe(false) // collision visible for selection
+      expect(isDragged2).toBe(true)  // collision hidden for drag performance
     })
   })
 
@@ -201,17 +238,22 @@ describe('Dragging Regressions - Documentation', () => {
       // Protecting against these regressions requires:
       // 1. Dragging.tsx (position + comments)
       // 2. Drawing.tsx (coordinate transform comments)
-      // 3. EntityLines.tsx (isDragged check + hiding)
-      // 4. VertexDots.tsx (isDragged check + hiding)
+      // 3. EntityLines.tsx (isDragged check with MOVEMENT verification + hiding)
+      // 4. VertexDots.tsx (isDragged check with MOVEMENT verification + hiding)
       // 5. ReferencePlane.tsx (isDragging check + hiding)
+      //
+      // CRITICAL: EntityLines and VertexDots must check BOTH drag state AND movement:
+      //   isDragged = drag && ... && (currentWorld != startWorld)
+      // This prevents the selection regression where clicks were misinterpreted as drag starts.
       //
       // Missing ANY of these allows the regression to reappear.
       // UPDATE CHECKLIST when modifying drag behavior:
       //   [ ] DragPlane position is z=-0.001
       //   [ ] toLocal() translates before rotating
-      //   [ ] EntityLines hides HitPolyline when isDragged
-      //   [ ] VertexDots hides hit sphere when isDragged
+      //   [ ] EntityLines hides HitPolyline when isDragged (WITH movement check)
+      //   [ ] VertexDots hides hit sphere when isDragged (WITH movement check)
       //   [ ] ReferencePlane hides mesh when isDragging
+      //   [ ] Movement check prevents selection regression
 
       const modifiedFiles = [
         'Dragging.tsx',

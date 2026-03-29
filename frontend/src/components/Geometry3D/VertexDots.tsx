@@ -114,11 +114,15 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   // BUG: When dragging a vertex, DragPlane raycasts could be blocked by the
   //      vertex's own hit sphere collision geometry (scaled to HIT_PIXELS).
   //      This caused stalled/choppy dragging when cursor was over the vertex.
-  // FIX: Check if this vertex is currently being dragged. If so, don't render
-  //      the hit sphere mesh. This allows raycasts to reach DragPlane smoothly.
+  // FIX: Hide collision only after drag movement starts (not on initial pointerDown).
+  //      Check if this vertex is being dragged AND the cursor has actually moved.
+  //      This allows quick clicks to still select, but hides collision once dragging
+  //      begins to prevent raycast blocking.
   // NOTE: Must check featureId, entityId, AND vertexKey to handle all cases.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
-  const isDragged = featureId && entityId && drag && 'entityId' in drag && drag.entityId === entityId && drag.featureId === featureId
+  const isDragged = featureId && entityId && drag && 'entityId' in drag &&
+    drag.entityId === entityId && drag.featureId === featureId &&
+    (drag.currentWorld[0] !== drag.startWorld[0] || drag.currentWorld[1] !== drag.startWorld[1])
   // Offset the hit-sphere toward the camera (not object-space z) so the vertex
   // always wins the raycast over the 3D edge cylinders regardless of orbit angle.
   useFrame(() => {
