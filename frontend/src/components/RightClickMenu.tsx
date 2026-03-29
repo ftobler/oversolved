@@ -41,6 +41,7 @@ export default function RightClickMenu() {
       ref={menuRef}
       className="right-click-menu"
       style={{ left: x, top: y }}
+      onMouseDown={e => e.stopPropagation()}
       onPointerDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
     >
