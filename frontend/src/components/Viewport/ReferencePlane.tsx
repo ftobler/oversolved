@@ -39,27 +39,33 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const activeTool = useSketchEditorStore(s => s.activeTool)
+  const drag = useSketchEditorStore(s => s.drag)
   const selId = builtinSelectionId(label)
   const selected = useSketchEditorStore(s => s.selection.has(selId))
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_HOVER : COLOR_INACTIVE
   const opacity = hovered ? 0.15 : 0.05
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
+  // Hide collision mesh during drags to prevent blocking DragPlane raycasts.
+  // This allows smooth dragging even when the cursor moves over a reference plane.
+  const isDragging = drag !== null
 
   return (
     <group rotation={rotation}>
-      <mesh
-        onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true) }}
-        onPointerOut={() => setHovered(false)}
-        onClick={e => {
-          e.stopPropagation()
-          if (planeSelectionFeatureId) commitPlaneSelection(selId)
-          else toggleSelect(selId)
-        }}
-      >
-        <planeGeometry args={[PLANE_SIZE, PLANE_SIZE]} />
-        <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
-      </mesh>
+      {!isDragging && (
+        <mesh
+          onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true) }}
+          onPointerOut={() => setHovered(false)}
+          onClick={e => {
+            e.stopPropagation()
+            if (planeSelectionFeatureId) commitPlaneSelection(selId)
+            else toggleSelect(selId)
+          }}
+        >
+          <planeGeometry args={[PLANE_SIZE, PLANE_SIZE]} />
+          <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>
+      )}
       <Line points={PLANE_BORDER} color={hovered || selected ? COLOR_HOVER : '#666666'} lineWidth={1} />
       <PlaneLabel x={-PH} y={PH}>{label}</PlaneLabel>
     </group>
