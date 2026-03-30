@@ -5975,11 +5975,9 @@ def test_top_plane_circle_radius_constraint():
     assert abs(geom[2] - 3.0) < 1e-4, f"expected radius≈3.0, got {geom[2]}"
 
 
-
-
 def test_gnome_hat_no_tangents(sketch_log):
     """Gnome hat WITHOUT tangent constraints.
-    
+
     Circle with radius 0.5 at origin, two lines of length 1 meeting at a point.
     One line is vertical. No tangency constraints.
     Expected: Should solve successfully (baseline case).
@@ -6042,11 +6040,11 @@ features:
     sketch_log("test_gnome_hat_no_tangents", yaml_str, result)
     doc = yaml_module.safe_load(yaml_str)
     geom = to_geom(result["geometry"], doc["features"][0]["entities"])
-    
+
     circle = geom["circle"]
     left_line = geom["left_line"]
     right_line = geom["right_line"]
-    
+
     # Basic checks
     assert abs(circle["radius"] - 0.5) < TOL
     left_len = length(left_line["start"], left_line["end"])
@@ -6055,9 +6053,10 @@ features:
     assert abs(right_len - 1.0) < TOL
     assert abs(left_line["start"][0] - left_line["end"][0]) < TOL
 
+
 def test_gnome_hat_one_tangent(sketch_log):
     """Gnome hat WITH ONE tangent constraint.
-    
+
     Circle with radius 0.5 at origin, two lines of length 1 meeting at a point.
     One line is vertical. LEFT line is tangent to circle.
     RIGHT line has NO tangency constraint.
@@ -6125,11 +6124,11 @@ features:
     sketch_log("test_gnome_hat_one_tangent", yaml_str, result)
     doc = yaml_module.safe_load(yaml_str)
     geom = to_geom(result["geometry"], doc["features"][0]["entities"])
-    
+
     circle = geom["circle"]
     left_line = geom["left_line"]
     right_line = geom["right_line"]
-    
+
     # Basic checks
     assert abs(circle["radius"] - 0.5) < TOL
     left_len = length(left_line["start"], left_line["end"])
@@ -6137,14 +6136,15 @@ features:
     assert abs(left_len - 1.0) < TOL
     assert abs(right_len - 1.0) < TOL
     assert abs(left_line["start"][0] - left_line["end"][0]) < TOL
-    
+
     # Verify left line is tangent
     left_tangent_quality = is_tangent(left_line["start"], left_line["end"], circle["center"], left_line["start"])
     assert left_tangent_quality < ATOL, f"left line should be tangent, got quality: {left_tangent_quality}"
 
+
 def test_gnome_hat_two_tangents(sketch_log):
     """Gnome hat WITH TWO tangent constraints.
-    
+
     Circle with radius 0.5 at origin, two lines of length 1 meeting at a point.
     One line is vertical. BOTH lines are tangent to circle.
     This is the original gnome hat test.
@@ -6216,11 +6216,11 @@ features:
     sketch_log("test_gnome_hat_two_tangents", yaml_str, result)
     doc = yaml_module.safe_load(yaml_str)
     geom = to_geom(result["geometry"], doc["features"][0]["entities"])
-    
+
     circle = geom["circle"]
     left_line = geom["left_line"]
     right_line = geom["right_line"]
-    
+
     # Basic checks
     assert abs(circle["radius"] - 0.5) < TOL
     left_len = length(left_line["start"], left_line["end"])
@@ -6228,10 +6228,9 @@ features:
     assert abs(left_len - 1.0) < TOL
     assert abs(right_len - 1.0) < TOL
     assert abs(left_line["start"][0] - left_line["end"][0]) < TOL
-    
+
     # Verify both lines are tangent
     left_tangent_quality = is_tangent(left_line["start"], left_line["end"], circle["center"], left_line["start"])
     right_tangent_quality = is_tangent(right_line["start"], right_line["end"], circle["center"], right_line["start"])
     assert left_tangent_quality < ATOL, f"left line should be tangent, got quality: {left_tangent_quality}"
     assert right_tangent_quality < ATOL, f"right line should be tangent, got quality: {right_tangent_quality}"
-    
