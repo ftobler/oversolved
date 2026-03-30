@@ -13,6 +13,7 @@ pytest tests/
 mypy oversolved/ tests/
 flake8 oversolved/ tests/
 ```
+of simply: `just backend`
 
 ## Frontend Commands
 ```bash
@@ -21,6 +22,7 @@ npm run build
 npm run lint
 npx vitest run
 ```
+of simply: `just frontend`
 
 ## Conventions
 - Test driven development.

@@ -28,7 +28,8 @@ dev = [
     "pytest",
     "mypy",
     "flake8",
-    "pycairo"
+    "pycairo",
+    "just"
 ]
 
 [tool.pytest.ini_options]
