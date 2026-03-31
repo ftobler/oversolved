@@ -22,6 +22,10 @@ ENTITY_SIZES = {
     "circle": 3,  # cx, cy, r
     "arc": 5,  # cx, cy, r, a_start_deg, a_end_deg
     "point": 2,  # x, y
+    "projected_line": 4,
+    "projected_circle": 3,
+    "projected_arc": 5,
+    "projected_point": 2,
 }
 
 # above this the system is overconstrained (conflicting)
@@ -97,8 +101,17 @@ def solve_features(spec: dict) -> dict:
     results = []
     for feature in features:
         feature_result = _try_solve_feature(feature, global_repo)
-        results.append(feature_result)
         fid = feature.get("id", "")
+
+        # Convert flat-params geometry to rich dict format for solve_features callers.
+        if "geometry" in feature_result and feature.get("kind") == "sketch":
+            feature_result = dict(feature_result)
+            feature_result["geometry"] = _enrich_geometry(
+                feature_result["geometry"], feature
+            )
+
+        results.append(feature_result)
+
         if "geometry" in feature_result:
             _register_solved_geometry_slash(global_repo, fid, feature, feature_result["geometry"])
         # Store plane_transform and topology so extrude can access them.
@@ -117,28 +130,76 @@ def solve_features(spec: dict) -> dict:
     return {"features": results}
 
 
-def _register_solved_geometry_slash(global_repo: Repository, feature_id: str, feature: dict, geometry: dict) -> None:
-    """Register solved geometry using slash-separated query paths (@feature/entity/sub)."""
+def _enrich_geometry(flat_geometry: dict, feature: dict) -> dict:
+    """Convert flat-param geometry to rich dict format, adding projected:True for projected kinds."""
     entities = {e["id"]: e for e in feature.get("entities", [])}
-    for eid, params in geometry.items():
+    rich: dict = {}
+    for eid, params in flat_geometry.items():
+        entity = entities.get(eid)
+        kind = entity["kind"] if entity else ""
+        if kind == "line":
+            rich[eid] = {"start": list(params[0:2]), "end": list(params[2:4])}
+        elif kind == "circle":
+            rich[eid] = {"center": list(params[0:2]), "radius": float(params[2])}
+        elif kind == "arc":
+            cx, cy, r, a0, a1 = params
+            rich[eid] = {"center": [float(cx), float(cy)], "radius": float(r),
+                         "angle_start": float(a0), "angle_end": float(a1)}
+        elif kind == "point":
+            rich[eid] = {"xy": list(params[0:2])}
+        elif kind == "projected_line":
+            rich[eid] = {"start": list(params[0:2]), "end": list(params[2:4]), "projected": True}
+        elif kind == "projected_circle":
+            rich[eid] = {"center": list(params[0:2]), "radius": float(params[2]), "projected": True}
+        elif kind == "projected_arc":
+            cx, cy, r, a0, a1 = params
+            rich[eid] = {"center": [float(cx), float(cy)], "radius": float(r),
+                         "angle_start": float(a0), "angle_end": float(a1), "projected": True}
+        elif kind == "projected_point":
+            rich[eid] = {"xy": list(params[0:2]), "projected": True}
+        else:
+            rich[eid] = list(params)
+    return rich
+
+
+def _register_solved_geometry_slash(global_repo: Repository, feature_id: str, feature: dict, geometry: dict) -> None:
+    """Register solved geometry using slash-separated query paths (@feature/entity/sub).
+    Accepts both flat-params and rich-dict geometry formats."""
+    entities = {e["id"]: e for e in feature.get("entities", [])}
+    for eid, val in geometry.items():
         entity = entities.get(eid)
         if entity is None:
             continue
         kind = entity["kind"]
         prefix = feature_id + "/" + eid
+        # Normalize to flat params for registration
+        if isinstance(val, dict):
+            if kind in ("line", "projected_line"):
+                params = list(val.get("start", [0, 0])) + list(val.get("end", [0, 0]))
+            elif kind in ("circle", "projected_circle"):
+                params = list(val.get("center", [0, 0])) + [val.get("radius", 0)]
+            elif kind in ("arc", "projected_arc"):
+                cx, cy = val.get("center", [0, 0])
+                params = [cx, cy, val.get("radius", 0), val.get("angle_start", 0), val.get("angle_end", 0)]
+            elif kind in ("point", "projected_point"):
+                params = list(val.get("xy", [0, 0]))
+            else:
+                continue
+        else:
+            params = list(val)
         global_repo.register(prefix, {"external_params": params, "kind": kind})
-        if kind == "line":
+        if kind in ("line", "projected_line"):
             global_repo.register(prefix + "/start", {"external_xy": list(params[0:2])})
             global_repo.register(prefix + "/end",   {"external_xy": list(params[2:4])})
-        elif kind == "circle":
+        elif kind in ("circle", "projected_circle"):
             global_repo.register(prefix + "/center", {"external_xy": list(params[0:2])})
-        elif kind == "arc":
+        elif kind in ("arc", "projected_arc"):
             cx, cy, r = params[0], params[1], params[2]
             a_start, a_end = params[3], params[4]
             global_repo.register(prefix + "/start",  {"external_xy": [cx + r * math.cos(math.radians(a_start)), cy + r * math.sin(math.radians(a_start))]})
             global_repo.register(prefix + "/end",    {"external_xy": [cx + r * math.cos(math.radians(a_end)),   cy + r * math.sin(math.radians(a_end))]})
             global_repo.register(prefix + "/center", {"external_xy": [cx, cy]})
-        elif kind == "point":
+        elif kind in ("point", "projected_point"):
             global_repo.register(prefix + "/xy", {"external_xy": list(params[0:2])})
 
 
@@ -304,6 +365,29 @@ def _geometry_from_array(
             out[eid] = {"x": float(ep[0]), "y": float(ep[1])}
             if is_construction:
                 out[eid]["construction"] = True
+        elif kind == "projected_line":
+            out[eid] = {
+                "start": [float(ep[0]), float(ep[1])],
+                "end": [float(ep[2]), float(ep[3])],
+            }
+        elif kind == "projected_circle":
+            out[eid] = {
+                "center": [float(ep[0]), float(ep[1])],
+                "radius": float(ep[2]),
+            }
+        elif kind == "projected_arc":
+            cx, cy, r = float(ep[0]), float(ep[1]), float(ep[2])
+            a0, a1 = float(ep[3]), float(ep[4])
+            out[eid] = {
+                "center": [cx, cy],
+                "radius": r,
+                "angle_start": a0,
+                "angle_end": a1,
+                "start": [cx + r * math.cos(math.radians(a0)), cy + r * math.sin(math.radians(a0))],
+                "end": [cx + r * math.cos(math.radians(a1)), cy + r * math.sin(math.radians(a1))],
+            }
+        elif kind == "projected_point":
+            out[eid] = {"x": float(ep[0]), "y": float(ep[1])}
     return out
 
 
@@ -626,6 +710,121 @@ ORIGIN_FIX_ID = "__builtin_origin_fix__"
 
 
 # ---------------------------------------------------------------------------
+# Projection helpers (3D world <-> 2D plane)
+# ---------------------------------------------------------------------------
+
+_BUILTIN_PLANES: dict = {
+    "builtin_plane_front": _FRONT_PLANE,
+    "builtin_plane_top":   {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 0, -1], "normal": [0, 1, 0]},
+    "builtin_plane_right": {"type": "plane", "origin": [0, 0, 0], "x_axis": [0, 0, -1], "y_axis": [0, 1, 0], "normal": [1, 0, 0]},
+}
+
+_PROJECTED_KINDS = frozenset({"projected_line", "projected_circle", "projected_arc", "projected_point"})
+
+
+def _resolve_plane_early(plane_query: Optional[str], global_repo: Optional[Repository]) -> dict:
+    """Quick plane resolution without full repo setup (used before entity_offsets are built)."""
+    if not plane_query:
+        return _FRONT_PLANE
+    if plane_query.startswith("@"):
+        return _BUILTIN_PLANES.get(plane_query[1:], _FRONT_PLANE)
+    if plane_query.startswith("$") and global_repo is not None:
+        p = global_repo.elements.get(plane_query[1:])
+        if p and p.get("type") in ("plane", "face"):
+            return p
+    return _FRONT_PLANE
+
+
+def _2d_to_3d(xy: list, plane: dict) -> list:
+    """Convert 2D local coords to 3D world coords via plane transform."""
+    origin = np.array(plane["origin"])
+    x_axis = np.array(plane["x_axis"])
+    y_axis = np.array(plane["y_axis"])
+    return (origin + xy[0] * x_axis + xy[1] * y_axis).tolist()
+
+
+def _3d_to_2d(xyz: list, plane: dict) -> list:
+    """Project 3D world coords onto plane, returning [u, v]."""
+    origin = np.array(plane["origin"])
+    x_axis = np.array(plane["x_axis"])
+    y_axis = np.array(plane["y_axis"])
+    v = np.array(xyz) - origin
+    return [float(np.dot(v, x_axis)), float(np.dot(v, y_axis))]
+
+
+def _source_sketch_id(source_query: str) -> str:
+    """Extract sketch ID from '@sketch_id/...' or '@sketch_identity...' query."""
+    return source_query.lstrip("@").split("/")[0]
+
+
+def _resolve_source_geometry(source_query: str, global_repo: Repository) -> tuple:
+    """Resolve source entity to 3D geometry. Returns (kind_hint, data_3d).
+
+    data_3d is:
+    - for point: [x, y, z]
+    - for line: {'start': [x,y,z], 'end': [x,y,z]}
+    - for circle: {'center': [x,y,z], 'radius': r}
+    - for arc: {'center': [x,y,z], 'radius': r, 'start_angle': a, 'end_angle': b}
+    """
+    sketch_id = _source_sketch_id(source_query)
+    source_plane = global_repo.elements.get("_pt_" + sketch_id) or _FRONT_PLANE
+
+    data = global_repo.query(source_query)
+    if data is None:
+        raise ValueError(f"source not found: {source_query!r}")
+
+    if "external_xy" in data:
+        xy = data["external_xy"]
+        return "point", _2d_to_3d(xy, source_plane)
+
+    if "external_params" in data:
+        params = data["external_params"]
+        kind = data.get("kind", "")
+        if kind == "line":
+            return "line", {
+                "start": _2d_to_3d(params[0:2], source_plane),
+                "end":   _2d_to_3d(params[2:4], source_plane),
+            }
+        if kind == "circle":
+            return "circle", {
+                "center": _2d_to_3d(params[0:2], source_plane),
+                "radius": params[2],
+            }
+        if kind == "arc":
+            return "arc", {
+                "center":      _2d_to_3d(params[0:2], source_plane),
+                "radius":      params[2],
+                "start_angle": params[3],
+                "end_angle":   params[4],
+            }
+
+    raise ValueError(f"cannot resolve source geometry for {source_query!r}")
+
+
+def _project_source_to_params(
+        projected_kind: str, source_query: str,
+        target_plane: dict, global_repo: Repository) -> list:
+    """Compute flat 2D params for a projected entity on target_plane."""
+    kind_hint, data_3d = _resolve_source_geometry(source_query, global_repo)
+
+    if projected_kind == "projected_point":
+        u, v = _3d_to_2d(data_3d, target_plane)
+        return [u, v]
+    if projected_kind == "projected_line":
+        s2d = _3d_to_2d(data_3d["start"], target_plane)
+        e2d = _3d_to_2d(data_3d["end"], target_plane)
+        return s2d + e2d
+    if projected_kind == "projected_circle":
+        c2d = _3d_to_2d(data_3d["center"], target_plane)
+        return c2d + [data_3d["radius"]]
+    if projected_kind == "projected_arc":
+        c2d = _3d_to_2d(data_3d["center"], target_plane)
+        return c2d + [data_3d["radius"], data_3d["start_angle"], data_3d["end_angle"]]
+
+    raise ValueError(f"unknown projected kind: {projected_kind!r}")
+
+
+# ---------------------------------------------------------------------------
 # Plane solver
 # ---------------------------------------------------------------------------
 
@@ -886,8 +1085,29 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         feature = _expand_center_rect(feature)
 
     entities = {e["id"]: e for e in feature["entities"]}
-    initial = feature.get("initial", {})
-    constraints = feature.get("constraints", [])
+    initial = dict(feature.get("initial", {}))
+    constraints = list(feature.get("constraints", []))
+
+    # Pre-compute projected entity parameters and add implicit fixed constraints.
+    _projected_ids: set = set()
+    if global_repo is not None:
+        target_plane = _resolve_plane_early(feature.get("plane"), global_repo)
+        for entity in feature.get("entities", []):
+            kind = entity.get("kind", "")
+            if kind in _PROJECTED_KINDS:
+                eid = entity["id"]
+                source_query = entity.get("source", "")
+                try:
+                    proj_params = _project_source_to_params(kind, source_query, target_plane, global_repo)
+                    initial[eid] = proj_params
+                    constraints.append({
+                        "id": f"__proj_{eid}__",
+                        "kind": "fixed",
+                        "target": {"entity": eid},
+                    })
+                    _projected_ids.add(eid)
+                except Exception:
+                    pass  # leave initial as-is if projection fails
 
     # Inject the projected origin point — always present at (0, 0), not user-editable.
     entities[ORIGIN_ID] = {"id": ORIGIN_ID, "kind": "point", "projected": True}
@@ -1029,16 +1249,16 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         ep = get_params(x, eid)
         kind = entities[eid]["kind"]
         point = ref.get("point", "start")
-        if kind == "line":
+        if kind in ("line", "projected_line"):
             return ep[2:4] if point == "end" else ep[0:2]
-        elif kind == "circle":
+        elif kind in ("circle", "projected_circle"):
             return ep[0:2]
-        elif kind == "arc":
+        elif kind in ("arc", "projected_arc"):
             cx, cy, r = ep[0], ep[1], ep[2]
             a_deg = ep[3] if point != "end" else ep[4]
             return np.array([cx + r * np.cos(np.radians(a_deg)),
                              cy + r * np.sin(np.radians(a_deg))])
-        elif kind == "point":
+        elif kind in ("point", "projected_point"):
             return ep[0:2]
         raise ValueError(f"Unknown kind: {kind!r}")
 
