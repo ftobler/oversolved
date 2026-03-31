@@ -132,6 +132,19 @@ export const ENTITIES: readonly EntityDef[] = [
     toolbarIcon: 'toolbar-point',
     showInToolbar: true,
   },
+  {
+    kind: 'projected_line',
+    label: 'Project',
+    description: 'Project geometry from another sketch onto this sketch plane.',
+    paramCount: 4,
+    defaultParams: [0, 0, 0, 0],
+    vertices: [],
+    coordPairs: [[0, 1], [2, 3]],
+    activeTool: 'project',
+    shortcut: 'j',
+    toolbarIcon: 'toolbar-project',
+    showInToolbar: true,
+  },
 ] as const
 
 // -- Derived lookup tables (computed once at module load) ---------------------

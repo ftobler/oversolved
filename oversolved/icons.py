@@ -813,5 +813,73 @@ def dialog_cancel(ctx):
     stroke(ctx, 2)
 
 
+@icon("frontend/src/assets/icons/toolbar-project.svg")
+def toolbar_project(ctx):
+    """Icon for Project tool: source (dashed) -> arrow -> target (solid)."""
+    # Dashed source line (top)
+    draw_dotted_line(ctx, 0.15, 0.25, 0.85, 0.25, 5)
+
+    # Arrow pointing down
+    ctx.move_to(0.5, 0.3)
+    ctx.line_to(0.5, 0.65)
+    stroke(ctx, 1.5)
+    _arrowhead(ctx, 0.5, 0.68, -90, px(4))
+
+    # Solid projected line (bottom)
+    ctx.move_to(0.15, 0.75)
+    ctx.line_to(0.85, 0.75)
+    stroke(ctx, 2)
+
+
+@icon("frontend/src/assets/icons/context-rebuild.svg")
+def context_rebuild(ctx):
+    """Icon for Rebuild context menu entry: refresh/circular arrow."""
+    arc_radius = 0.3
+    start_angle = math.radians(60)
+    end_angle = math.radians(350)
+
+    ctx.arc(0.5, 0.5, arc_radius, start_angle, end_angle)
+    stroke(ctx, 2)
+
+    end_x = 0.5 + arc_radius * math.cos(end_angle)
+    end_y = 0.5 + arc_radius * math.sin(end_angle)
+    _arrowhead(ctx, end_x, end_y, math.degrees(end_angle), px(4))
+
+
+@icon("frontend/src/assets/icons/context-exit.svg")
+def context_exit(ctx):
+    """Icon for Exit Sketch context menu entry: door + arrow."""
+    # Door frame (left rectangle)
+    ctx.move_to(0.2, 0.2)
+    ctx.line_to(0.4, 0.2)
+    ctx.line_to(0.4, 0.8)
+    ctx.line_to(0.2, 0.8)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # Arrow pointing right out of door
+    ctx.move_to(0.5, 0.5)
+    ctx.line_to(0.8, 0.5)
+    stroke(ctx, 1.5)
+    _arrowhead(ctx, 0.8, 0.5, 0, px(4))
+
+
+@icon("frontend/src/assets/icons/context-hide.svg")
+def context_hide(ctx):
+    """Icon for Hide context menu entry: eye with strikethrough."""
+    # Eye outline
+    ctx.arc(0.5, 0.5, 0.2, 0, 2 * math.pi)
+    stroke(ctx, 1.5)
+
+    # Pupil (small filled circle)
+    ctx.arc(0.5, 0.5, px(2), 0, 2 * math.pi)
+    ctx.fill()
+
+    # Diagonal strikethrough
+    ctx.move_to(0.25, 0.25)
+    ctx.line_to(0.75, 0.75)
+    stroke(ctx, 1.5)
+
+
 if __name__ == "__main__":
     drawall()

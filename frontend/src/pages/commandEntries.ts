@@ -23,6 +23,7 @@ export function buildCommandEntries(
     { name: 'set_tool_point',        fn: () => getState().setActiveTool('point') },
     { name: 'set_tool_rect',         fn: () => getState().setActiveTool('rect') },
     { name: 'set_tool_center_rect',  fn: () => getState().setActiveTool('center_rect') },
+    { name: 'set_tool_project',      fn: () => getState().setActiveTool('project') },
     { name: 'set_tool_dimension',    fn: () => getState().setActiveTool('dimension') },
     { name: 'toggle_construction',   fn: () => getState().toggleConstruction() },
     ...CONSTRAINTS.filter(c => c.shortcut).map(c => ({

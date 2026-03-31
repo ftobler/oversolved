@@ -5,7 +5,7 @@ import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '../regi
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type { Mutation }
 
-export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'point'
+export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'point' | 'project'
 
 export interface DialogState {
   position: [number, number]
