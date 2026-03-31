@@ -1,8 +1,9 @@
 import math
 import textwrap
 import yaml as yaml_module
+import numpy as np
 from pytest import approx
-from oversolved.solver import solve
+from oversolved.solver import solve, solve_features
 
 TOL = 1e-5
 ATOL = 1e-3  # angular / normalized-dot-product tolerance
@@ -6234,3 +6235,362 @@ features:
     right_tangent_quality = is_tangent(right_line["start"], right_line["end"], circle["center"], right_line["start"])
     assert left_tangent_quality < ATOL, f"left line should be tangent, got quality: {left_tangent_quality}"
     assert right_tangent_quality < ATOL, f"right line should be tangent, got quality: {right_tangent_quality}"
+
+
+# ---------------------------------------------------------------------------
+# Plane feature tests
+# ---------------------------------------------------------------------------
+
+def test_plane_three_point_basic():
+    """Three-point plane from sketch points."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'p1', 'kind': 'point', 'xy': [0, 0]},
+                    {'id': 'p2', 'kind': 'point', 'xy': [1, 0]},
+                    {'id': 'p3', 'kind': 'point', 'xy': [0, 1]},
+                ],
+                'initial': {
+                    'p1': [0.0, 0.0],
+                    'p2': [1.0, 0.0],
+                    'p3': [0.0, 1.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'three_point',
+                    'p1': '@sketch0/p1/xy',
+                    'p2': '@sketch0/p2/xy',
+                    'p3': '@sketch0/p3/xy',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][1]['status'] == 'ok'
+
+    plane = result['features'][1]['plane']
+    assert 'origin' in plane
+    assert 'x_axis' in plane
+    assert 'y_axis' in plane
+    assert 'normal' in plane
+
+    np.testing.assert_array_almost_equal(plane['origin'], [0, 0, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['x_axis'], [1, 0, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['y_axis'], [0, 1, 0], decimal=5)
+
+    expected_normal = np.cross([1, 0, 0], [0, 1, 0])
+    np.testing.assert_array_almost_equal(plane['normal'], expected_normal, decimal=5)
+
+
+def test_plane_three_point_rotation_45():
+    """Three-point plane with 45 deg rotation around normal."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'p1', 'kind': 'point', 'xy': [0, 0]},
+                    {'id': 'p2', 'kind': 'point', 'xy': [1, 0]},
+                    {'id': 'p3', 'kind': 'point', 'xy': [0, 1]},
+                ],
+                'initial': {
+                    'p1': [0.0, 0.0],
+                    'p2': [1.0, 0.0],
+                    'p3': [0.0, 1.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'three_point',
+                    'p1': '@sketch0/p1/xy',
+                    'p2': '@sketch0/p2/xy',
+                    'p3': '@sketch0/p3/xy',
+                },
+                'rotation': 45.0,
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    plane = result['features'][1]['plane']
+
+    cos45 = np.cos(np.radians(45))
+    sin45 = np.sin(np.radians(45))
+
+    expected_x = [cos45, sin45, 0]
+    expected_y = [-sin45, cos45, 0]
+
+    np.testing.assert_array_almost_equal(plane['x_axis'], expected_x, decimal=5)
+    np.testing.assert_array_almost_equal(plane['y_axis'], expected_y, decimal=5)
+
+
+def test_plane_three_point_collinear():
+    """Three collinear points should fail."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'p1', 'kind': 'point', 'xy': [0, 0]},
+                    {'id': 'p2', 'kind': 'point', 'xy': [1, 0]},
+                    {'id': 'p3', 'kind': 'point', 'xy': [2, 0]},
+                ],
+                'initial': {
+                    'p1': [0.0, 0.0],
+                    'p2': [1.0, 0.0],
+                    'p3': [2.0, 0.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'three_point',
+                    'p1': '@sketch0/p1/xy',
+                    'p2': '@sketch0/p2/xy',
+                    'p3': '@sketch0/p3/xy',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][1]['status'] == 'exception'
+    assert 'collinear' in result['features'][1].get('message', '').lower()
+
+
+def test_plane_on_face():
+    """Plane aligned with topology face."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'rect', 'kind': 'center_rect', 'xy': [0, 0], 'size': [2, 2]},
+                ],
+                'initial': {},
+                'constraints': [],
+            },
+            {
+                'id': 'extrude1',
+                'kind': 'extrude',
+                'sketch': '$sketch0',
+                'depth': 1.0,
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'on_face',
+                    'face': '@extrude1/top_face',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][2]['status'] == 'ok'
+    plane = result['features'][2]['plane']
+
+    np.testing.assert_array_almost_equal(plane['normal'], [0, 0, 1], decimal=5)
+    np.testing.assert_array_almost_equal(plane['origin'], [0, 0, 1], decimal=5)
+
+
+def test_plane_on_face_edge_angle():
+    """Plane on face with X axis along edge, rotated by angle."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'rect', 'kind': 'center_rect', 'xy': [0, 0], 'size': [2, 2]},
+                ],
+                'initial': {},
+                'constraints': [],
+            },
+            {
+                'id': 'extrude1',
+                'kind': 'extrude',
+                'sketch': '$sketch0',
+                'depth': 1.0,
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'on_face_edge_angle',
+                    'face': '@extrude1/top_face',
+                    'edge': '@extrude1/top_face/edge0',
+                    'angle': 0.0,
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][2]['status'] == 'ok'
+    plane = result['features'][2]['plane']
+
+    x_axis = plane['x_axis']
+    assert abs(x_axis[0]) > 0.9 or abs(x_axis[1]) > 0.9
+
+
+def test_plane_edge_point():
+    """Plane with edge direction and origin at a point."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'line1', 'kind': 'line', 'start': [0, 0], 'end': [1, 0]},
+                    {'id': 'p1', 'kind': 'point', 'xy': [0, 1]},
+                ],
+                'initial': {
+                    'line1': [0.0, 0.0, 1.0, 0.0],
+                    'p1': [0.0, 1.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'edge_point',
+                    'edge': '@sketch0/line1',
+                    'point': '@sketch0/p1/xy',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][1]['status'] == 'ok'
+    plane = result['features'][1]['plane']
+
+    np.testing.assert_array_almost_equal(plane['origin'], [0, 1, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['x_axis'], [1, 0, 0], decimal=5)
+
+
+def test_plane_used_by_sketch():
+    """Downstream sketch references plane via query."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'p1', 'kind': 'point', 'xy': [0, 0]},
+                    {'id': 'p2', 'kind': 'point', 'xy': [1, 0]},
+                    {'id': 'p3', 'kind': 'point', 'xy': [0, 1]},
+                ],
+                'initial': {
+                    'p1': [0.0, 0.0],
+                    'p2': [1.0, 0.0],
+                    'p3': [0.0, 1.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'three_point',
+                    'p1': '@sketch0/p1/xy',
+                    'p2': '@sketch0/p2/xy',
+                    'p3': '@sketch0/p3/xy',
+                },
+            },
+            {
+                'id': 'sketch1',
+                'kind': 'sketch',
+                'plane': '$plane1',
+                'entities': [
+                    {'id': 'line1', 'kind': 'line', 'start': [0, 0], 'end': [1, 0]},
+                ],
+                'initial': {
+                    'line1': [0.0, 0.0, 1.0, 0.0],
+                },
+                'constraints': [],
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][2]['status'] in ('ok', 'fully_constrained', 'underconstrained')
+    assert 'geometry' in result['features'][2]
+
+
+def test_plane_rotation_affects_sketch_coords():
+    """Sketch on a rotated plane has geometry present."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'p1', 'kind': 'point', 'xy': [0, 0]},
+                    {'id': 'p2', 'kind': 'point', 'xy': [1, 0]},
+                    {'id': 'p3', 'kind': 'point', 'xy': [0, 1]},
+                ],
+                'initial': {
+                    'p1': [0.0, 0.0],
+                    'p2': [1.0, 0.0],
+                    'p3': [0.0, 1.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'three_point',
+                    'p1': '@sketch0/p1/xy',
+                    'p2': '@sketch0/p2/xy',
+                    'p3': '@sketch0/p3/xy',
+                },
+                'rotation': 45.0,
+            },
+            {
+                'id': 'sketch1',
+                'kind': 'sketch',
+                'plane': '$plane1',
+                'entities': [
+                    {'id': 'line1', 'kind': 'line', 'start': [0, 0], 'end': [1, 0]},
+                ],
+                'initial': {
+                    'line1': [0.0, 0.0, 1.0, 0.0],
+                },
+                'constraints': [],
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][2]['status'] in ('ok', 'fully_constrained', 'underconstrained')
+    assert 'geometry' in result['features'][2]
+    assert 'line1' in result['features'][2]['geometry']

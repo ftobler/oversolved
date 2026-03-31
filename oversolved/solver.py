@@ -80,6 +80,68 @@ def solve(yaml_str: str) -> dict:
     }
 
 
+def solve_features(spec: dict) -> dict:
+    """Solve a spec dict and return results as a list indexed by feature position.
+
+    Returns {'features': [result_per_feature, ...]}.
+    Results for plane features include 'plane' key; sketches include 'geometry'.
+    """
+    features = spec.get("features", [])
+
+    global_repo = Repository()
+    global_repo.register("builtin_origin",      {"external_xy": [0.0, 0.0]})
+    global_repo.register("builtin_plane_front", {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 1, 0],  "normal": [0, 0, 1]})
+    global_repo.register("builtin_plane_top",   {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 0, -1], "normal": [0, 1, 0]})
+    global_repo.register("builtin_plane_right", {"type": "plane", "origin": [0, 0, 0], "x_axis": [0, 0, -1], "y_axis": [0, 1, 0], "normal": [1, 0, 0]})
+
+    results = []
+    for feature in features:
+        feature_result = _try_solve_feature(feature, global_repo)
+        results.append(feature_result)
+        fid = feature.get("id", "")
+        if "geometry" in feature_result:
+            _register_solved_geometry_slash(global_repo, fid, feature, feature_result["geometry"])
+        # Store plane_transform and topology so extrude can access them.
+        if "plane_transform" in feature_result:
+            pt = feature_result["plane_transform"]
+            rot = pt["rotation"]
+            global_repo.register("_pt_" + fid, {
+                "origin": pt["origin"],
+                "x_axis": rot[0:3],
+                "y_axis": rot[3:6],
+                "normal": rot[6:9],
+            })
+        if "topology" in feature_result:
+            global_repo.register("_topo_" + fid, feature_result["topology"])
+
+    return {"features": results}
+
+
+def _register_solved_geometry_slash(global_repo: Repository, feature_id: str, feature: dict, geometry: dict) -> None:
+    """Register solved geometry using slash-separated query paths (@feature/entity/sub)."""
+    entities = {e["id"]: e for e in feature.get("entities", [])}
+    for eid, params in geometry.items():
+        entity = entities.get(eid)
+        if entity is None:
+            continue
+        kind = entity["kind"]
+        prefix = feature_id + "/" + eid
+        global_repo.register(prefix, {"external_params": params, "kind": kind})
+        if kind == "line":
+            global_repo.register(prefix + "/start", {"external_xy": list(params[0:2])})
+            global_repo.register(prefix + "/end",   {"external_xy": list(params[2:4])})
+        elif kind == "circle":
+            global_repo.register(prefix + "/center", {"external_xy": list(params[0:2])})
+        elif kind == "arc":
+            cx, cy, r = params[0], params[1], params[2]
+            a_start, a_end = params[3], params[4]
+            global_repo.register(prefix + "/start",  {"external_xy": [cx + r * math.cos(math.radians(a_start)), cy + r * math.sin(math.radians(a_start))]})
+            global_repo.register(prefix + "/end",    {"external_xy": [cx + r * math.cos(math.radians(a_end)),   cy + r * math.sin(math.radians(a_end))]})
+            global_repo.register(prefix + "/center", {"external_xy": [cx, cy]})
+        elif kind == "point":
+            global_repo.register(prefix + "/xy", {"external_xy": list(params[0:2])})
+
+
 def _register_solved_geometry(global_repo: Repository, feature_id: str, feature: dict, geometry: dict) -> None:
     """Register solved geometry from a sketch into the global repo as fixed external references."""
     entities = {e["id"]: e for e in feature.get("entities", [])}
@@ -173,6 +235,10 @@ def _solve_feature(feature: Any, global_repo: Repository) -> dict:
     if kind == "sketch":
         feature_result = _solve_sketch(feature, global_repo)
         return feature_result
+    if kind == "plane":
+        return _solve_plane(feature, global_repo)
+    if kind == "extrude":
+        return _solve_extrude(feature, global_repo)
     raise Exception(f"unknown feature type: '{kind}'")
 
 
@@ -559,7 +625,266 @@ ORIGIN_ID = "_origin"
 ORIGIN_FIX_ID = "__builtin_origin_fix__"
 
 
+# ---------------------------------------------------------------------------
+# Plane solver
+# ---------------------------------------------------------------------------
+
+def _normalize(v: np.ndarray) -> np.ndarray:
+    """Return unit vector in direction of v."""
+    n = np.linalg.norm(v)
+    if n < 1e-12:
+        raise ValueError("Cannot normalize zero-length vector")
+    return v / n
+
+
+def _rotate_frame_around_normal(
+        x_axis: np.ndarray, y_axis: np.ndarray,
+        normal: np.ndarray, degrees: float) -> tuple:
+    """Rotate x_axis and y_axis around normal by degrees (CW looking down normal)."""
+    radians = np.radians(degrees)
+    cos_a = np.cos(radians)
+    sin_a = np.sin(radians)
+    x_new = cos_a * x_axis + sin_a * y_axis
+    y_new = -sin_a * x_axis + cos_a * y_axis
+    return x_new, y_new
+
+
+def _plane_three_point(definition: dict, global_repo: Repository) -> tuple:
+    """Three-point plane: origin at p1, x_axis toward p2, y_axis toward p3 (Gram-Schmidt)."""
+    p1 = np.array(global_repo.query(definition['p1'])['external_xy'] + [0.0])
+    p2 = np.array(global_repo.query(definition['p2'])['external_xy'] + [0.0])
+    p3 = np.array(global_repo.query(definition['p3'])['external_xy'] + [0.0])
+
+    origin = p1.copy()
+    x_axis = _normalize(p2 - origin)
+    v = p3 - origin
+    y_axis_raw = v - np.dot(v, x_axis) * x_axis
+    if np.linalg.norm(y_axis_raw) < 1e-10:
+        raise ValueError("collinear points: cannot define a plane")
+    y_axis = _normalize(y_axis_raw)
+    normal = np.cross(x_axis, y_axis)
+    return origin, x_axis, y_axis, normal
+
+
+def _plane_on_face(definition: dict, global_repo: Repository) -> tuple:
+    """Plane aligned with a topology face."""
+    face_str = definition['face']
+    face = global_repo.query(face_str)
+    if face is None:
+        raise ValueError(f"face not found: {face_str!r}")
+
+    origin = np.array(face['centroid'])
+    normal = np.array(face['normal'])
+
+    if abs(normal[2]) < 0.9:
+        arbitrary = np.array([0.0, 0.0, 1.0])
+    else:
+        arbitrary = np.array([1.0, 0.0, 0.0])
+
+    x_axis = _normalize(np.cross(normal, arbitrary))
+    y_axis = np.cross(normal, x_axis)
+    return origin, x_axis, y_axis, normal
+
+
+def _plane_on_face_edge_angle(definition: dict, global_repo: Repository) -> tuple:
+    """Plane on face with X axis along an edge, rotated by angle."""
+    face_str = definition['face']
+    edge_str = definition['edge']
+    angle = definition.get('angle', 0.0)
+
+    face = global_repo.query(face_str)
+    if face is None:
+        raise ValueError(f"face not found: {face_str!r}")
+    edge = global_repo.query(edge_str)
+    if edge is None:
+        raise ValueError(f"edge not found: {edge_str!r}")
+
+    origin = np.array(face['centroid'])
+    normal = np.array(face['normal'])
+
+    edge_dir = _normalize(np.array(edge['end']) - np.array(edge['start']))
+    x_axis_base = edge_dir - np.dot(edge_dir, normal) * normal
+    x_axis_base = _normalize(x_axis_base)
+
+    x_axis, _ = _rotate_frame_around_normal(x_axis_base, np.cross(normal, x_axis_base), normal, angle)
+    y_axis = np.cross(normal, x_axis)
+    return origin, x_axis, y_axis, normal
+
+
+def _plane_edge_point(definition: dict, global_repo: Repository) -> tuple:
+    """Plane with X axis along an edge and origin at a point."""
+    edge_str = definition['edge']
+    point_str = definition['point']
+
+    edge = global_repo.query(edge_str)
+    if edge is None:
+        raise ValueError(f"edge not found: {edge_str!r}")
+    point_ref = global_repo.query(point_str)
+    if point_ref is None:
+        raise ValueError(f"point not found: {point_str!r}")
+
+    origin = np.array(point_ref['external_xy'] + [0.0])
+    # edge may be stored as external_params [x1,y1,x2,y2] or as {start, end}
+    if 'external_params' in edge:
+        p = edge['external_params']
+        edge_start = np.array([p[0], p[1], 0.0])
+        edge_end = np.array([p[2], p[3], 0.0])
+    else:
+        edge_start = np.array(edge['start'])
+        edge_end = np.array(edge['end'])
+    x_axis = _normalize(edge_end - edge_start)
+
+    if abs(x_axis[2]) < 0.9:
+        arbitrary = np.array([0.0, 0.0, 1.0])
+    else:
+        arbitrary = np.array([1.0, 0.0, 0.0])
+
+    y_axis = _normalize(np.cross(x_axis, arbitrary))
+    normal = np.cross(x_axis, y_axis)
+    return origin, x_axis, y_axis, normal
+
+
+def _solve_plane(feature: dict, global_repo: Repository) -> dict:
+    """Solve a plane feature, computing a 3D coordinate frame."""
+    try:
+        definition = feature.get('definition', {})
+        mode = definition.get('mode')
+
+        if mode == 'three_point':
+            origin, x_axis, y_axis, normal = _plane_three_point(definition, global_repo)
+        elif mode == 'on_face':
+            origin, x_axis, y_axis, normal = _plane_on_face(definition, global_repo)
+        elif mode == 'on_face_edge_angle':
+            origin, x_axis, y_axis, normal = _plane_on_face_edge_angle(definition, global_repo)
+        elif mode == 'edge_point':
+            origin, x_axis, y_axis, normal = _plane_edge_point(definition, global_repo)
+        else:
+            return {'status': 'exception', 'message': f'unknown plane mode: {mode!r}'}
+
+        rotation = feature.get('rotation', 0.0)
+        if rotation != 0.0:
+            x_axis, y_axis = _rotate_frame_around_normal(x_axis, y_axis, normal, rotation)
+
+        plane_id = feature['id']
+        global_repo.register(plane_id, {
+            'type': 'plane',
+            'origin': origin.tolist(),
+            'x_axis': x_axis.tolist(),
+            'y_axis': y_axis.tolist(),
+            'normal': normal.tolist(),
+        })
+
+        return {
+            'status': 'ok',
+            'plane': {
+                'origin': origin.tolist(),
+                'x_axis': x_axis.tolist(),
+                'y_axis': y_axis.tolist(),
+                'normal': normal.tolist(),
+            }
+        }
+    except Exception as e:
+        return {'status': 'exception', 'message': str(e)}
+
+
+def _solve_extrude(feature: dict, global_repo: Repository) -> dict:
+    """Minimal extrude solver: generates top/bottom faces for topology references."""
+    try:
+        sketch_ref = feature.get('sketch', '')
+        depth = float(feature.get('depth', 1.0))
+        feature_id = feature['id']
+
+        sketch_id = sketch_ref.lstrip('$')
+        pt = global_repo.elements.get('_pt_' + sketch_id)
+        if pt is None:
+            return {'status': 'exception', 'message': f'sketch {sketch_id!r} not found'}
+
+        origin = np.array(pt['origin'])
+        x_axis = np.array(pt['x_axis'])
+        y_axis = np.array(pt['y_axis'])
+        normal = np.array(pt['normal'])
+
+        topo = global_repo.elements.get('_topo_' + sketch_id, {})
+        surfaces = topo.get('surfaces', []) if topo else []
+
+        if surfaces:
+            pts_2d = []
+            for edge in surfaces[0]['boundary']:
+                for key in ('start', 'end'):
+                    if key in edge:
+                        pts_2d.append(edge[key])
+            if pts_2d:
+                u = sum(p[0] for p in pts_2d) / len(pts_2d)
+                v = sum(p[1] for p in pts_2d) / len(pts_2d)
+            else:
+                u, v = 0.0, 0.0
+        else:
+            u, v = 0.0, 0.0
+
+        sketch_centroid = origin + u * x_axis + v * y_axis
+        top_centroid = sketch_centroid + normal * depth
+
+        global_repo.register(feature_id + "/top_face", {
+            'type': 'face',
+            'centroid': top_centroid.tolist(),
+            'normal': normal.tolist(),
+            'origin': top_centroid.tolist(),
+            'x_axis': x_axis.tolist(),
+            'y_axis': y_axis.tolist(),
+        })
+
+        # Register first edge of top face for on_face_edge_angle mode
+        if surfaces and surfaces[0]['boundary']:
+            edge = surfaces[0]['boundary'][0]
+            if 'start' in edge and 'end' in edge:
+                s2d, e2d = edge['start'], edge['end']
+                s3d = (origin + s2d[0] * x_axis + s2d[1] * y_axis + normal * depth).tolist()
+                e3d = (origin + e2d[0] * x_axis + e2d[1] * y_axis + normal * depth).tolist()
+                global_repo.register(feature_id + "/top_face/edge0", {
+                    'type': 'edge',
+                    'start': s3d,
+                    'end': e3d,
+                })
+
+        return {'status': 'ok'}
+    except Exception as e:
+        return {'status': 'exception', 'message': str(e)}
+
+
+def _expand_center_rect(feature: dict) -> dict:
+    """Return a copy of feature with center_rect entities expanded to 4 line entities."""
+    initial = dict(feature.get("initial", {}))
+    expanded: list = []
+    for e in feature.get("entities", []):
+        if e.get("kind") == "center_rect":
+            cx, cy = e.get("xy", [0.0, 0.0])
+            w, h = e.get("size", [1.0, 1.0])
+            hw, hh = w / 2.0, h / 2.0
+            eid = e["id"]
+            tops = [
+                {"id": eid + "_top",    "kind": "line"},
+                {"id": eid + "_right",  "kind": "line"},
+                {"id": eid + "_bottom", "kind": "line"},
+                {"id": eid + "_left",   "kind": "line"},
+            ]
+            expanded.extend(tops)
+            initial.setdefault(eid + "_top",    [cx - hw, cy + hh, cx + hw, cy + hh])
+            initial.setdefault(eid + "_right",  [cx + hw, cy + hh, cx + hw, cy - hh])
+            initial.setdefault(eid + "_bottom", [cx + hw, cy - hh, cx - hw, cy - hh])
+            initial.setdefault(eid + "_left",   [cx - hw, cy - hh, cx - hw, cy + hh])
+        else:
+            expanded.append(e)
+    result = dict(feature)
+    result["entities"] = expanded
+    result["initial"] = initial
+    return result
+
+
 def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> dict:
+    # Expand compound entity kinds before processing.
+    if any(e.get("kind") == "center_rect" for e in feature.get("entities", [])):
+        feature = _expand_center_rect(feature)
+
     entities = {e["id"]: e for e in feature["entities"]}
     initial = feature.get("initial", {})
     constraints = feature.get("constraints", [])
@@ -617,6 +942,10 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     plane_query = feature.get("plane")
     if plane_query:
         plane_obj = resolve_ref(plane_query)
+        # If unresolved and starts with '$', try direct feature-level lookup in global_repo.
+        if (plane_obj is None or plane_obj.get("type") not in ("plane", "face")) \
+                and plane_query.startswith("$") and global_repo is not None:
+            plane_obj = global_repo.elements.get(plane_query[1:])
         if plane_obj is None or plane_obj.get("type") not in ("plane", "face"):
             plane_obj = _FRONT_PLANE
     else:
