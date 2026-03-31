@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react'
 import { Line } from '@react-three/drei'
 import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
+import { isProjectedEntity } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { sampleArc, sampleArcCCW, getEntityBounds } from '../sketch_helpers'
 import { DashedLine } from '../sketch_dimensions'
 import { VertexDot, HitPolyline, ProjectedOriginPoint } from './VertexDots'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER } from './constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED } from './constants'
 
 interface EntityItemProps {
   entity: Entity
@@ -139,15 +140,30 @@ export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, 
   )
 }
 
-/** Renders all projected entities in the sketch (those with projected: true). */
+/** Renders all projected entities in the sketch (those with projected: true) in amber. */
 export function ProjectedEntities({ sketch, featureId }: { sketch: Sketch; featureId: string }) {
   return (
     <>
       {Object.entries(sketch)
-        .filter(([id, e]) => (e as PointEntity).projected && id !== '_origin')
+        .filter(([id, e]) => isProjectedEntity(e as Entity) && id !== '_origin')
         .map(([id, e]) => {
-          const pt = e as PointEntity
-          return <ProjectedOriginPoint key={id} x={pt.x} y={pt.y} featureId={featureId} entityId={id} />
+          const entity = e as Entity
+          if ('start' in entity && 'end' in entity && 'radius' in entity) {
+            const arc = entity as Arc
+            const pts = sampleArcCCW(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
+            return <Line key={id} points={pts} color={COLOR_PROJECTED} lineWidth={1} />
+          } else if ('start' in entity && 'end' in entity) {
+            const line = entity as LineSegment
+            const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
+            return <Line key={id} points={pts} color={COLOR_PROJECTED} lineWidth={1} />
+          } else if ('center' in entity) {
+            const circ = entity as Circle
+            const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
+            return <Line key={id} points={pts} color={COLOR_PROJECTED} lineWidth={1} />
+          } else {
+            const pt = entity as PointEntity
+            return <ProjectedOriginPoint key={id} x={pt.x} y={pt.y} featureId={featureId} entityId={id} />
+          }
         })}
     </>
   )

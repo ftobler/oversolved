@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Sketch, Constraints, Point } from '../types/cad'
+import type { Sketch, Constraints, Point, ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity } from '../types/cad'
 import { getDefaultParams } from '../registry'
 
 /** Convert flat array format (from AST initial or server solve) to UI Sketch format.
@@ -42,6 +42,43 @@ export function unflattenGeometry(
       }
     } else if (kind === 'point') {
       result[id] = { x: params[0] || 0, y: params[1] || 0 }
+    } else if (kind === 'projected_line') {
+      const source = (entityDef as any).source ?? ''
+      result[id] = {
+        start: [params[0] || 0, params[1] || 0],
+        end: [params[2] || 0, params[3] || 0],
+        projected: true,
+        source,
+      } as ProjectedLineSegment
+    } else if (kind === 'projected_circle') {
+      const source = (entityDef as any).source ?? ''
+      result[id] = {
+        center: [params[0] || 0, params[1] || 0],
+        radius: params[2] || 0,
+        projected: true,
+        source,
+      } as ProjectedCircle
+    } else if (kind === 'projected_arc') {
+      const cx = params[0] || 0, cy = params[1] || 0, r = params[2] || 0, a0 = params[3] || 0, a1 = params[4] || 0
+      const source = (entityDef as any).source ?? ''
+      result[id] = {
+        center: [cx, cy],
+        radius: r,
+        angle_start: a0,
+        angle_end: a1,
+        start: [cx + r * Math.cos((a0 * Math.PI) / 180), cy + r * Math.sin((a0 * Math.PI) / 180)],
+        end: [cx + r * Math.cos((a1 * Math.PI) / 180), cy + r * Math.sin((a1 * Math.PI) / 180)],
+        projected: true,
+        source,
+      } as ProjectedArc
+    } else if (kind === 'projected_point') {
+      const source = (entityDef as any).source ?? ''
+      result[id] = {
+        x: params[0] || 0,
+        y: params[1] || 0,
+        projected: true,
+        source,
+      } as ProjectedPointEntity
     }
   }
   return result

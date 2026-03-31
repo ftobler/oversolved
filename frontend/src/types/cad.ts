@@ -89,7 +89,54 @@ export interface PointEntity {
   projected?: boolean
 }
 
-export type Entity = LineSegment | Circle | Arc | PointEntity
+// Projected entity variants — read-only reference geometry from another sketch
+export interface ProjectedLineSegment extends LineSegment {
+  projected: true
+  source: string
+}
+
+export interface ProjectedCircle extends Circle {
+  projected: true
+  source: string
+}
+
+export interface ProjectedArc extends Arc {
+  projected: true
+  source: string
+}
+
+export interface ProjectedPointEntity extends PointEntity {
+  projected: true
+  source: string
+}
+
+export type ProjectedEntity =
+  | ProjectedLineSegment
+  | ProjectedCircle
+  | ProjectedArc
+  | ProjectedPointEntity
+
+export type Entity = LineSegment | Circle | Arc | PointEntity | ProjectedEntity
+
+export function isProjectedEntity(e: Entity): e is ProjectedEntity {
+  return 'projected' in e && (e as ProjectedEntity).projected === true
+}
+
+export function isProjectedLine(e: Entity): e is ProjectedLineSegment {
+  return isProjectedEntity(e) && 'start' in e && !('radius' in e)
+}
+
+export function isProjectedCircle(e: Entity): e is ProjectedCircle {
+  return isProjectedEntity(e) && 'center' in e && !('angle_start' in e)
+}
+
+export function isProjectedArc(e: Entity): e is ProjectedArc {
+  return isProjectedEntity(e) && 'angle_start' in e
+}
+
+export function isProjectedPoint(e: Entity): e is ProjectedPointEntity {
+  return isProjectedEntity(e) && 'x' in e
+}
 
 export interface Sketch {
   [entityId: string]: Entity
