@@ -64,7 +64,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
       <EntityLines sketch={displaySketch} featureId={featureId} color={baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />
       {constraints && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
-      <DragPlane />
+      <DragPlane featureId={featureId} />
       <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} />
       <DrawPlane featureId={featureId} activeFeatureId={activeFeatureId} />
     </group>

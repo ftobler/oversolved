@@ -224,7 +224,6 @@ export default function Part() {
     })
   }, [])
 
-  // eslint-disable-next-line react-hooks/refs
   const contextMenuItems = useMemo((): ContextMenuItem[] => {
     const items: ContextMenuItem[] = [
       {

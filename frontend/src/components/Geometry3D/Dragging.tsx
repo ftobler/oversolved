@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import type { Sketch, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 
-export function DragPlane() {
+export function DragPlane({ featureId }: { featureId: string }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const drag = useSketchEditorStore(s => s.drag)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -41,7 +41,7 @@ export function DragPlane() {
     return () => window.removeEventListener('pointerup', cancel)
   }, [drag, setDrag, setOrbitEnabled])
 
-  if (!drag) return null
+  if (!drag || drag.featureId !== featureId) return null
 
   return (
     <mesh
