@@ -12,7 +12,6 @@ import OriginMarker from './Viewport/OriginMarker'
 import ReferencePlane from './Viewport/ReferencePlane'
 import SceneController from './Viewport/SceneController'
 import ContextMenuDialog from './ContextMenuDialog'
-import RightClickMenu from './RightClickMenu'
 
 const INITIAL_POSITION: [number, number, number] = [0, 0, 100]
 const INITIAL_ZOOM = 200
@@ -55,7 +54,6 @@ export default function Viewport({
     requestAnimationFrame(() => setReady(true))
   }, [])
 
-  const openContextMenu = useSketchEditorStore(s => s.openContextMenu)
   const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
 
   const pointerDownPos = useRef<[number, number] | null>(null)
@@ -63,14 +61,15 @@ export default function Viewport({
     if (e.button === 1 || e.button === 2) pointerDownPos.current = [e.clientX, e.clientY]
     if (e.button !== 2) closeContextMenu()
   }, [closeContextMenu])
+
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     if (!pointerDownPos.current) return
     const dx = e.clientX - pointerDownPos.current[0]
     const dy = e.clientY - pointerDownPos.current[1]
     pointerDownPos.current = null
     if (Math.hypot(dx, dy) >= 4) return
-    if (e.button === 2) openContextMenu([e.clientX, e.clientY])
-  }, [openContextMenu])
+    // Note: right click is handled by the parent container via onContextMenu
+  }, [])
 
   const showOrigin = isActive('Origin', features, rollbackPosition, visibleFeatures)
   const showFront  = isActive('Front',  features, rollbackPosition, visibleFeatures)
@@ -88,7 +87,6 @@ export default function Viewport({
       style={{ position: 'relative', width: '100%', height: '100%' }}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
-      onContextMenu={e => e.preventDefault()}
     >
       <Canvas
         style={{ width: '100%', height: '100%', background: '#111' }}
@@ -122,7 +120,6 @@ export default function Viewport({
 
       <CubeGizmoCanvas canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
       <ContextMenuDialog />
-      <RightClickMenu />
     </div>
   )
 }

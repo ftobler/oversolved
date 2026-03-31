@@ -1,40 +1,33 @@
 import { useEffect, useRef } from 'react'
-import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import './RightClickMenu.css'
 
-export default function RightClickMenu() {
-  const contextMenu = useSketchEditorStore(s => s.contextMenu)
-  const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
-  const onRebuild = useSketchEditorStore(s => s.onRebuild)
-  const onExitSketch = useSketchEditorStore(s => s.onExitSketch)
-  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
+export interface ContextMenuItem {
+  label: string
+  onClick: () => void
+  icon?: string
+  className?: string
+}
+
+interface RightClickMenuProps {
+  items: ContextMenuItem[]
+  position: [number, number]
+  onClose: () => void
+}
+
+export default function RightClickMenu({ items, position, onClose }: RightClickMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!contextMenu) return
     const close = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        closeContextMenu()
+        onClose()
       }
     }
-    window.addEventListener('mousedown', close)
-    return () => window.removeEventListener('mousedown', close)
-  }, [contextMenu, closeContextMenu])
+    window.addEventListener('mousedown', close, { capture: true })
+    return () => window.removeEventListener('mousedown', close, { capture: true })
+  }, [onClose])
 
-  if (!contextMenu) return null
-
-  const [x, y] = contextMenu
-  const inSketch = activeFeatureId !== null
-
-  const handleRebuild = () => {
-    onRebuild?.()
-    closeContextMenu()
-  }
-
-  const handleExitSketch = () => {
-    onExitSketch?.()
-    closeContextMenu()
-  }
+  const [x, y] = position
 
   return (
     <div
@@ -44,15 +37,23 @@ export default function RightClickMenu() {
       onMouseDown={e => e.stopPropagation()}
       onPointerDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
+      onContextMenu={e => e.preventDefault()}
     >
-      <div className="right-click-menu-item" onClick={handleRebuild}>
-        Rebuild
-      </div>
-      {inSketch && (
-        <div className="right-click-menu-item right-click-menu-item--exit" onClick={handleExitSketch}>
-          Exit Sketch
+      {items.map((item, i) => (
+        <div
+          key={`${item.label}-${i}`}
+          className={`right-click-menu-item ${item.className || ''}`}
+          onClick={() => {
+            item.onClick()
+            onClose()
+          }}
+        >
+          {item.icon && (
+            <img src={item.icon} alt="" className="right-click-menu-icon" />
+          )}
+          <span>{item.label}</span>
         </div>
-      )}
+      ))}
     </div>
   )
 }

@@ -10,7 +10,10 @@ import SketchToolbar from '../components/Toolbar/SketchToolbar'
 import AppHeader from '../components/AppHeader'
 import { usePartDoc } from '../hooks/usePartDoc'
 import { planeLabel } from '../components/Geometry3D/utils'
+import RightClickMenu from '../components/RightClickMenu'
+import type { ContextMenuItem } from '../components/RightClickMenu'
 import './Part.css'
+
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featurePartIcon from '../assets/icons/feature-part.svg'
@@ -20,6 +23,10 @@ import featurePlaneIcon from '../assets/icons/feature-plane.svg'
 import toolbarPlayIcon from '../assets/icons/toolbar-play.svg'
 import toolbarCopyCodeIcon from '../assets/icons/toolbar-copy-code.svg'
 import toolbarCopyResultIcon from '../assets/icons/toolbar-copy-result.svg'
+
+import contextRebuildIcon from '../assets/icons/context-rebuild.svg'
+import contextExitIcon from '../assets/icons/context-exit.svg'
+import contextHideIcon from '../assets/icons/context-hide.svg'
 
 const BUILT_IN_FEATURES: Array<{ id: string; kind?: string }> = [
   { id: 'Origin', kind: 'origin' },
@@ -43,6 +50,8 @@ export default function Part() {
   const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
   const [viewportReset, setViewportReset] = useState(0)
   const [editingSketchId, setEditingSketchId] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string } | null>(null)
+
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
 
@@ -68,10 +77,9 @@ export default function Part() {
     saveDoc,
     renameDoc,
     docName,
-  } = usePartDoc(uuid, mode, setCodeText)
+  } = usePartDoc(uuid, mode, setCodeText, visibleFeatures)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (docName) setEditName(docName)
   }, [docName])
 
@@ -80,7 +88,6 @@ export default function Part() {
   useEffect(() => {
     if (doc && visibleFeatures.size === 0) {
       const extracted = extractFeatures(doc)
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisibleFeatures(new Set(extracted.map(f => f.id)))
       setRollbackPosition(extracted.length)
     }
@@ -109,18 +116,20 @@ export default function Part() {
     })
   }, [codeText, docRef, setDoc, setCodeText])
 
-  useEffect(() => {
-    useSketchEditorStore.getState().setOnMutation(handleMutation)
-    return () => useSketchEditorStore.getState().setOnMutation(null)
-  }, [handleMutation])
-
   const handleRebuild = useCallback(() => {
     if (docRef.current) reSolve(docRef.current)
+    setContextMenu(null)
   }, [docRef, reSolve])
 
   const handleExitSketch = useCallback(() => {
     setEditingSketchId(null)
+    setContextMenu(null)
   }, [])
+
+  useEffect(() => {
+    useSketchEditorStore.getState().setOnMutation(handleMutation)
+    return () => useSketchEditorStore.getState().setOnMutation(null)
+  }, [handleMutation])
 
   useEffect(() => {
     useSketchEditorStore.getState().setOnRebuild(handleRebuild)
@@ -188,14 +197,15 @@ export default function Part() {
     if (featureIndex >= 1) setRollbackPosition(featureIndex + 1)
   }
 
-  const toggleVisibility = (featureId: string) => {
+  const toggleVisibility = useCallback((featureId: string) => {
     setVisibleFeatures(prev => {
       const newSet = new Set(prev)
       if (newSet.has(featureId)) newSet.delete(featureId)
       else newSet.add(featureId)
       return newSet
     })
-  }
+    setContextMenu(null)
+  }, [])
 
   const enterEditSketch = (featureId: string) => {
     setEditingSketchId(featureId)
@@ -206,8 +216,50 @@ export default function Part() {
     setEditingSketchId(null)
   }
 
+  const handleRightClick = useCallback((event: React.MouseEvent, featureId?: string) => {
+    event.preventDefault()
+    setContextMenu({
+      position: [event.clientX, event.clientY],
+      targetId: featureId,
+    })
+  }, [])
+
+  // eslint-disable-next-line react-hooks/refs
+  const contextMenuItems = useMemo((): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [
+      {
+        label: 'Rebuild',
+        icon: contextRebuildIcon,
+        onClick: handleRebuild,
+      },
+    ]
+
+    if (activeSketchFeatureId) {
+      items.push({
+        label: 'Exit Sketch',
+        icon: contextExitIcon,
+        onClick: handleExitSketch,
+        className: 'right-click-menu-item--exit',
+      })
+    }
+
+    if (contextMenu?.targetId) {
+      const target = features.find(f => f.id === contextMenu.targetId)
+      if (target?.kind === 'plane') {
+        const isVisible = visibleFeatures.has(target.id)
+        items.push({
+          label: isVisible ? 'Hide' : 'Show',
+          icon: contextHideIcon,
+          onClick: () => toggleVisibility(target.id),
+        })
+      }
+    }
+
+    return items
+  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, contextMenu?.targetId, features, visibleFeatures, toggleVisibility])
+
   return (
-    <div className="document-viewer">
+    <div className="document-viewer" onContextMenu={e => handleRightClick(e)}>
       <AppHeader>
         <button className="toolbar-btn" title="Undo" onClick={handleUndo} disabled={undoStack.length === 0}>
           <span className="material-icons-outlined">undo</span>
@@ -261,6 +313,7 @@ export default function Part() {
                     onDragOver={(e) => handleRollbackDragOver(e, index)}
                     onDrop={(e) => handleRollbackDrop(e, index)}
                     onDoubleClick={() => feature.kind === 'sketch' ? enterEditSketch(feature.id) : undefined}
+                    onContextMenu={(e) => { e.stopPropagation(); handleRightClick(e, feature.id) }}
                     style={{ flexWrap: 'wrap' }}
                   >
                     <img
@@ -297,7 +350,7 @@ export default function Part() {
                     )}
                     <button
                       className="feature-visibility-btn"
-                      onClick={() => toggleVisibility(feature.id)}
+                      onClick={(e) => { e.stopPropagation(); toggleVisibility(feature.id) }}
                       title={visibleFeatures.has(feature.id) ? 'Hide' : 'Show'}
                     >
                       <span className="material-icons-outlined">
@@ -416,6 +469,13 @@ export default function Part() {
         </div>
       </div>
       <footer className="doc-footer"><p>Copyright 2026 - Oversolved</p></footer>
+      {contextMenu && (
+        <RightClickMenu
+          items={contextMenuItems}
+          position={contextMenu.position}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   )
 }

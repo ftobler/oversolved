@@ -26,7 +26,7 @@ function healDoc(raw: unknown): PartDoc {
   } as PartDoc
 }
 
-export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void) {
+export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, visibleFeatures?: Set<string>) {
   const [doc, setDoc] = useState<PartDoc | null>(null)
   const [docName, setDocName] = useState<string>('')
   const docRef = useRef<PartDoc | null>(null)
@@ -45,10 +45,15 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     setSolveTime(null)
     const startTime = performance.now()
     try {
+      // Filter features based on visibility before solving
+      const filteredDoc = visibleFeatures 
+        ? { ...d, features: (d.features ?? []).filter(f => visibleFeatures.has(f.id)) }
+        : d
+
       const response = await fetch('/api/solve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(d),
+        body: JSON.stringify(filteredDoc),
       })
       const data = await response.json()
       const endTime = performance.now()
@@ -122,7 +127,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     } finally {
       setSolving(false)
     }
-  }, [mode, setCodeText])
+  }, [mode, setCodeText, visibleFeatures])
 
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)

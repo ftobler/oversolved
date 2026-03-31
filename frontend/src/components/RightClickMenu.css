@@ -11,6 +11,9 @@
 }
 
 .right-click-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 6px 14px;
   font-size: 13px;
   font-family: monospace;
@@ -25,6 +28,16 @@
   color: #fff;
 }
 
+.right-click-menu-icon {
+  width: 16px;
+  height: 16px;
+  filter: invert(0.8);
+}
+
+.right-click-menu-item:hover .right-click-menu-icon {
+  filter: invert(1.0);
+}
+
 .right-click-menu-item--exit {
   color: #e060b0;
 }
@@ -32,4 +45,8 @@
 .right-click-menu-item--exit:hover {
   background: #2a1a2a;
   color: #f080c8;
+}
+
+.right-click-menu-item--exit .right-click-menu-icon {
+  filter: invert(0.6) sepia(1) saturate(3) hue-rotate(280deg);
 }

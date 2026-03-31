@@ -20,8 +20,13 @@ pytest:
     pytest tests/
 
 
+icons:
+    python oversolved/icons.py
+
+
 [working-directory: "frontend"]
 frontend:
+    just icons
     npm run lint
     npx vitest run
     npm run build
