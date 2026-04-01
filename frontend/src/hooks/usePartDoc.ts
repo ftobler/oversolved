@@ -20,7 +20,7 @@ import {
 } from '../utils/yamlMutations'
 import type { PartFeature } from '../types/cad'
 
-const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
+export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
   { id: 'Origin', kind: 'origin' },
   { id: 'Top',    kind: 'plane' },
   { id: 'Front',  kind: 'plane' },
@@ -30,7 +30,7 @@ const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
 // Feature kinds that are display-only and should never be sent to the solver.
 const SOLVER_EXCLUDED_KINDS = new Set(['origin', 'plane'])
 
-function healDoc(raw: unknown): PartDoc {
+export function healDoc(raw: unknown): PartDoc {
   const doc = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const userFeatures = Array.isArray(doc.features) ? (doc.features as PartFeature[]) : []
   const existingIds = new Set(userFeatures.map(f => f.id))

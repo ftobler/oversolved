@@ -176,7 +176,8 @@ describe('applyDeleteElements', () => {
 
 // ── Step 6: face: selection ID handling ───────────────────────────────────────
 
-import { parseTarget } from '../yamlMutations'
+import { parseTarget, applySetFeatureVisibility } from '../yamlMutations'
+import { healDoc, BUILTIN_FEATURE_DEFAULTS } from '../../hooks/usePartDoc'
 
 const docWithSketch = (id: string): PartDoc => ({
   version: 1, kind: 'part',
@@ -240,5 +241,129 @@ describe('applyAddConstraint with face target', () => {
       ['vertex:sketch1:lineA:start', 'face:sketch0:?9,9;@sketch0la@sketch0lb:face'])
     const c = doc.features![0].constraints![0]
     expect(c.b).toBe('?9,9;@sketch0la@sketch0lb:face')
+  })
+})
+
+// ── Feature visibility (applySetFeatureVisibility) ────────────────────────────
+
+const docWithFeatures = (): PartDoc => ({
+  version: 1, kind: 'part',
+  features: [
+    { id: 'Origin', kind: 'origin' },
+    { id: 'Front',  kind: 'plane' },
+    { id: 'sketch1', kind: 'sketch' },
+  ],
+})
+
+describe('applySetFeatureVisibility', () => {
+  it('sets visible:false when hiding', () => {
+    const doc = docWithFeatures()
+    applySetFeatureVisibility(doc, 'sketch1', false)
+    expect(doc.features!.find(f => f.id === 'sketch1')!.visible).toBe(false)
+  })
+
+  it('removes the visible property when showing (keeps YAML clean)', () => {
+    const doc = docWithFeatures()
+    doc.features!.find(f => f.id === 'sketch1')!.visible = false
+    applySetFeatureVisibility(doc, 'sketch1', true)
+    expect('visible' in doc.features!.find(f => f.id === 'sketch1')!).toBe(false)
+  })
+
+  it('works on built-in features (origin)', () => {
+    const doc = docWithFeatures()
+    applySetFeatureVisibility(doc, 'Origin', false)
+    expect(doc.features!.find(f => f.id === 'Origin')!.visible).toBe(false)
+  })
+
+  it('works on built-in features (plane)', () => {
+    const doc = docWithFeatures()
+    applySetFeatureVisibility(doc, 'Front', false)
+    expect(doc.features!.find(f => f.id === 'Front')!.visible).toBe(false)
+  })
+
+  it('no-ops for unknown feature id', () => {
+    const doc = docWithFeatures()
+    applySetFeatureVisibility(doc, 'nonexistent', false)
+    expect(doc.features!.every(f => f.visible === undefined)).toBe(true)
+  })
+
+  it('does not affect other features when hiding one', () => {
+    const doc = docWithFeatures()
+    applySetFeatureVisibility(doc, 'sketch1', false)
+    expect(doc.features!.find(f => f.id === 'Origin')!.visible).toBeUndefined()
+    expect(doc.features!.find(f => f.id === 'Front')!.visible).toBeUndefined()
+  })
+})
+
+// ── healDoc — built-in injection and visibility preservation ──────────────────
+
+describe('healDoc built-in injection', () => {
+  it('injects all four built-ins into an empty doc', () => {
+    const doc = healDoc({})
+    const ids = doc.features!.map(f => f.id)
+    expect(ids).toContain('Origin')
+    expect(ids).toContain('Top')
+    expect(ids).toContain('Front')
+    expect(ids).toContain('Right')
+  })
+
+  it('places built-ins before user features', () => {
+    const doc = healDoc({ features: [{ id: 'sketch1', kind: 'sketch' }] })
+    const ids = doc.features!.map(f => f.id)
+    const builtinIdx = Math.max(...BUILTIN_FEATURE_DEFAULTS.map(b => ids.indexOf(b.id)))
+    const sketchIdx = ids.indexOf('sketch1')
+    expect(builtinIdx).toBeLessThan(sketchIdx)
+  })
+
+  it('does not duplicate built-ins already in the doc', () => {
+    const doc = healDoc({
+      features: [
+        { id: 'Origin', kind: 'origin' },
+        { id: 'Top',    kind: 'plane' },
+        { id: 'Front',  kind: 'plane' },
+        { id: 'Right',  kind: 'plane' },
+        { id: 'sketch1', kind: 'sketch' },
+      ],
+    })
+    const originCount = doc.features!.filter(f => f.id === 'Origin').length
+    expect(originCount).toBe(1)
+    expect(doc.features!).toHaveLength(5)
+  })
+
+  it('preserves visible:false on a built-in already in the doc', () => {
+    const doc = healDoc({
+      features: [
+        { id: 'Origin', kind: 'origin', visible: false },
+        { id: 'Top',    kind: 'plane' },
+        { id: 'Front',  kind: 'plane' },
+        { id: 'Right',  kind: 'plane' },
+      ],
+    })
+    expect(doc.features!.find(f => f.id === 'Origin')!.visible).toBe(false)
+  })
+
+  it('injects only missing built-ins when some are present', () => {
+    const doc = healDoc({
+      features: [{ id: 'Front', kind: 'plane' }],
+    })
+    const ids = doc.features!.map(f => f.id)
+    expect(ids).toContain('Origin')
+    expect(ids).toContain('Top')
+    expect(ids).toContain('Front')
+    expect(ids).toContain('Right')
+    expect(doc.features!.filter(f => f.id === 'Front')).toHaveLength(1)
+  })
+
+  it('preserves user feature order after built-ins', () => {
+    const doc = healDoc({
+      features: [
+        { id: 'sketch2', kind: 'sketch' },
+        { id: 'sketch1', kind: 'sketch' },
+      ],
+    })
+    const ids = doc.features!.map(f => f.id)
+    const sketch2Idx = ids.indexOf('sketch2')
+    const sketch1Idx = ids.indexOf('sketch1')
+    expect(sketch2Idx).toBeLessThan(sketch1Idx)
   })
 })
