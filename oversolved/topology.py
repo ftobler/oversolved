@@ -33,6 +33,7 @@ Output
 """
 
 import math
+from typing import Any
 from oversolved.query import make_ancestry_query
 
 _EPS = 1e-9
@@ -407,7 +408,7 @@ def detect_topology(geometry: dict, feature_id: str = '') -> dict:
             hes += [(v0, v1, eg), (v1, v0, _rev(eg))]
             he_eid += [eid, eid]
 
-    surfaces = []
+    surfaces: list[dict[str, Any]] = []
 
     if hes:
         # Outgoing half-edges per vertex, sorted by departure angle
@@ -446,7 +447,10 @@ def detect_topology(geometry: dict, feature_id: str = '') -> dict:
                     break
             if cycle and cur == start and _face_area(cycle, hes, verts) > 1e-10:
                 abs_ids = sorted('@' + feature_id + he_eid[i] for i in cycle)
-                query = make_ancestry_query(abs_ids, 'face')
+                # Add surface index to disambiguate queries when multiple surfaces
+                # share the same boundary entities (prevents AmbiguousQueryError).
+                abs_ids_with_index = abs_ids + [f'surface:{len(surfaces)}']
+                query = make_ancestry_query(abs_ids_with_index, 'face')
                 surfaces.append({'boundary': [
                     {**hes[i][2], 'start_vertex': hes[i][0], 'end_vertex': hes[i][1]}
                     for i in cycle
@@ -458,7 +462,9 @@ def detect_topology(geometry: dict, feature_id: str = '') -> dict:
     for eid, e in circles.items():
         if len(_dedup(splits.get(eid, []))) < 2:
             cx, cy, r = e['center'][0], e['center'][1], e['radius']
-            query = make_ancestry_query(['@' + feature_id + eid], 'face')
+            # Add surface index to disambiguate when multiple surfaces exist.
+            ancestor_ids = ['@' + feature_id + eid, f'surface:{len(surfaces)}']
+            query = make_ancestry_query(ancestor_ids, 'face')
             surfaces.append({'boundary': [
                 {'kind': 'arc', 'center': [cx, cy], 'radius': r,
                  'angle_start_deg': 0., 'angle_end_deg': 180., 'ccw': True,
