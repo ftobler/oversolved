@@ -2,11 +2,13 @@
 import { describe, it, expect } from 'vitest'
 import { unflattenGeometry } from '../../utils/geometryMapping'
 import {
+  isProjectedEntity,
   isProjectedLine,
   isProjectedCircle,
   isProjectedArc,
   isProjectedPoint
 } from '../../types/cad'
+import type { Entity } from '../../types/cad'
 
 describe('unflattenGeometry projected_line', () => {
   it('produces a projected line with correct start and end points', () => {
@@ -82,6 +84,131 @@ describe('unflattenGeometry projected_point', () => {
     expect((e as any).x).toBe(7)
     expect((e as any).y).toBe(8)
     expect((e as any).source).toBe('@sketch0/p1')
+  })
+})
+
+// Regular (non-projected) entities for negative tests
+const regularLine = { start: [0, 0] as [number, number], end: [1, 0] as [number, number] }
+const regularCircle = { center: [0, 0] as [number, number], radius: 1 }
+const regularArc = { center: [0, 0] as [number, number], radius: 1, angle_start: 0, angle_end: 90, start: [1, 0] as [number, number], end: [0, 1] as [number, number] }
+const regularPoint = { x: 0, y: 0 }
+
+describe('isProjectedEntity', () => {
+  it('returns false for a regular line', () => {
+    expect(isProjectedEntity(regularLine as Entity)).toBe(false)
+  })
+
+  it('returns false for a regular circle', () => {
+    expect(isProjectedEntity(regularCircle as Entity)).toBe(false)
+  })
+
+  it('returns false for a regular arc', () => {
+    expect(isProjectedEntity(regularArc as Entity)).toBe(false)
+  })
+
+  it('returns false for a regular point', () => {
+    expect(isProjectedEntity(regularPoint as Entity)).toBe(false)
+  })
+
+  it('returns true for a projected line', () => {
+    const e: Entity = { start: [0, 0], end: [1, 0], projected: true, source: '@sketch0/line1' } as any
+    expect(isProjectedEntity(e)).toBe(true)
+  })
+
+  it('returns true for a projected circle', () => {
+    const e: Entity = { center: [0, 0], radius: 2, projected: true, source: '@sketch0/circle1' } as any
+    expect(isProjectedEntity(e)).toBe(true)
+  })
+
+  it('returns true for a projected arc', () => {
+    const e: Entity = {
+      center: [0, 0], radius: 1, angle_start: 0, angle_end: 90,
+      start: [1, 0], end: [0, 1], projected: true, source: '@sketch0/arc1',
+    } as any
+    expect(isProjectedEntity(e)).toBe(true)
+  })
+
+  it('returns true for a projected point', () => {
+    const e: Entity = { x: 1, y: 2, projected: true, source: '@sketch0/p1' } as any
+    expect(isProjectedEntity(e)).toBe(true)
+  })
+})
+
+describe('isProjectedLine', () => {
+  it('returns false for a regular line', () => {
+    expect(isProjectedLine(regularLine as Entity)).toBe(false)
+  })
+
+  it('returns false for a projected circle (wrong kind)', () => {
+    const e: Entity = { center: [0, 0], radius: 2, projected: true, source: '@sketch0/circle1' } as any
+    expect(isProjectedLine(e)).toBe(false)
+  })
+
+  it('returns true for a projected line', () => {
+    const e: Entity = { start: [0, 0], end: [1, 0], projected: true, source: '@sketch0/line1' } as any
+    expect(isProjectedLine(e)).toBe(true)
+  })
+
+  it('returns false for a projected arc (has radius)', () => {
+    const e: Entity = {
+      center: [0, 0], radius: 1, angle_start: 0, angle_end: 90,
+      start: [1, 0], end: [0, 1], projected: true, source: '@sketch0/arc1',
+    } as any
+    expect(isProjectedLine(e)).toBe(false)
+  })
+})
+
+describe('isProjectedCircle', () => {
+  it('returns false for a regular circle', () => {
+    expect(isProjectedCircle(regularCircle as Entity)).toBe(false)
+  })
+
+  it('returns true for a projected circle', () => {
+    const e: Entity = { center: [0, 0], radius: 2, projected: true, source: '@sketch0/circle1' } as any
+    expect(isProjectedCircle(e)).toBe(true)
+  })
+
+  it('returns false for a projected arc (has angle_start)', () => {
+    const e: Entity = {
+      center: [0, 0], radius: 1, angle_start: 0, angle_end: 90,
+      start: [1, 0], end: [0, 1], projected: true, source: '@sketch0/arc1',
+    } as any
+    expect(isProjectedCircle(e)).toBe(false)
+  })
+})
+
+describe('isProjectedArc', () => {
+  it('returns false for a regular arc', () => {
+    expect(isProjectedArc(regularArc as Entity)).toBe(false)
+  })
+
+  it('returns true for a projected arc', () => {
+    const e: Entity = {
+      center: [0, 0], radius: 1, angle_start: 0, angle_end: 90,
+      start: [1, 0], end: [0, 1], projected: true, source: '@sketch0/arc1',
+    } as any
+    expect(isProjectedArc(e)).toBe(true)
+  })
+
+  it('returns false for a projected circle (no angle_start)', () => {
+    const e: Entity = { center: [0, 0], radius: 2, projected: true, source: '@sketch0/circle1' } as any
+    expect(isProjectedArc(e)).toBe(false)
+  })
+})
+
+describe('isProjectedPoint', () => {
+  it('returns false for a regular point', () => {
+    expect(isProjectedPoint(regularPoint as Entity)).toBe(false)
+  })
+
+  it('returns true for a projected point', () => {
+    const e: Entity = { x: 1, y: 2, projected: true, source: '@sketch0/p1' } as any
+    expect(isProjectedPoint(e)).toBe(true)
+  })
+
+  it('returns false for a projected line (no x field)', () => {
+    const e: Entity = { start: [0, 0], end: [1, 0], projected: true, source: '@sketch0/line1' } as any
+    expect(isProjectedPoint(e)).toBe(false)
   })
 })
 

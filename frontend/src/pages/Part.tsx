@@ -50,7 +50,7 @@ export default function Part() {
   const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
   const [viewportReset, setViewportReset] = useState(0)
   const [editingSketchId, setEditingSketchId] = useState<string | null>(null)
-  const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
 
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
@@ -80,6 +80,7 @@ export default function Part() {
   } = usePartDoc(uuid, mode, setCodeText, visibleFeatures)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (docName) setEditName(docName)
   }, [docName])
 
@@ -88,6 +89,7 @@ export default function Part() {
   useEffect(() => {
     if (doc && visibleFeatures.size === 0) {
       const extracted = extractFeatures(doc)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisibleFeatures(new Set(extracted.map(f => f.id)))
       setRollbackPosition(extracted.length)
     }
@@ -218,13 +220,6 @@ export default function Part() {
 
   const handleRightClick = useCallback((event: React.MouseEvent, featureId?: string) => {
     event.preventDefault()
-    setContextMenu({
-      position: [event.clientX, event.clientY],
-      targetId: featureId,
-    })
-  }, [])
-
-  const contextMenuItems = useMemo((): ContextMenuItem[] => {
     const items: ContextMenuItem[] = [
       {
         label: 'Rebuild',
@@ -242,8 +237,8 @@ export default function Part() {
       })
     }
 
-    if (contextMenu?.targetId) {
-      const target = features.find(f => f.id === contextMenu.targetId)
+    if (featureId) {
+      const target = features.find(f => f.id === featureId)
       if (target?.kind === 'plane') {
         const isVisible = visibleFeatures.has(target.id)
         items.push({
@@ -254,8 +249,12 @@ export default function Part() {
       }
     }
 
-    return items
-  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, contextMenu?.targetId, features, visibleFeatures, toggleVisibility])
+    setContextMenu({
+      position: [event.clientX, event.clientY],
+      targetId: featureId,
+      items,
+    })
+  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, features, visibleFeatures, toggleVisibility])
 
   return (
     <div className="document-viewer" onContextMenu={e => handleRightClick(e)}>
@@ -470,7 +469,7 @@ export default function Part() {
       <footer className="doc-footer"><p>Copyright 2026 - Oversolved</p></footer>
       {contextMenu && (
         <RightClickMenu
-          items={contextMenuItems}
+          items={contextMenu.items}
           position={contextMenu.position}
           onClose={() => setContextMenu(null)}
         />
