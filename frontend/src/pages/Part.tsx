@@ -52,8 +52,14 @@ export default function Part() {
   const [editingSketchId, setEditingSketchId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
 
+  const [debugOpen, setDebugOpen] = useState(false)
+  const [debugTab, setDebugTab] = useState<'selection'>('selection')
+
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
+  const selection = useSketchEditorStore(s => s.selection)
+  const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
+  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
 
   const {
     doc,
@@ -314,9 +320,10 @@ export default function Part() {
                   )}
                   <li
                     key={feature.id}
-                    className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingSketchId ? 'editing' : ''}`}
+                    className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingSketchId ? 'editing' : ''} ${selection.has(`feature:${feature.id}`) ? 'selected' : ''}`}
                     onDragOver={(e) => handleRollbackDragOver(e, index)}
                     onDrop={(e) => handleRollbackDrop(e, index)}
+                    onClick={() => toggleSelect(`feature:${feature.id}`)}
                     onDoubleClick={() => feature.kind === 'sketch' ? enterEditSketch(feature.id) : undefined}
                     onContextMenu={(e) => { e.stopPropagation(); handleRightClick([e.clientX, e.clientY], feature.id) }}
                     style={{ flexWrap: 'wrap' }}
@@ -472,8 +479,48 @@ export default function Part() {
             </>
           )}
         </div>
+
+        {debugOpen && (
+          <aside className="debug-drawer">
+            <div className="debug-tabs">
+              <button
+                className={`debug-tab ${debugTab === 'selection' ? 'active' : ''}`}
+                onClick={() => setDebugTab('selection')}
+              >
+                Selection
+              </button>
+            </div>
+            {debugTab === 'selection' && (
+              <div className="debug-content">
+                <div className="debug-section">
+                  <div className="debug-section-title">Hover</div>
+                  {hoveredEntityId
+                    ? <div className="debug-value">{hoveredEntityId}</div>
+                    : <div className="debug-empty">none</div>}
+                </div>
+                <div className="debug-section">
+                  <div className="debug-section-title">Selection ({selection.size})</div>
+                  {selection.size === 0
+                    ? <div className="debug-empty">none</div>
+                    : [...selection].map(id => (
+                      <div key={id} className="debug-value">{id}</div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </aside>
+        )}
       </div>
-      <footer className="doc-footer"><p>Copyright 2026 - Oversolved</p></footer>
+      <footer className="doc-footer">
+        <p>Copyright 2026 - Oversolved</p>
+        <button
+          className={`footer-debug-btn ${debugOpen ? 'active' : ''}`}
+          title="Toggle debug panel"
+          onClick={() => setDebugOpen(v => !v)}
+        >
+          <span className="material-icons-outlined">bug_report</span>
+        </button>
+      </footer>
       {contextMenu && (
         <RightClickMenu
           items={contextMenu.items}

@@ -28,6 +28,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
+  const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
   const drag = useSketchEditorStore(s => s.drag)
   // REGRESSION PROTECTION: Hide collision geometry during entity drag
   // BUG: When dragging, DragPlane raycasts could be blocked by the entity's own
@@ -48,8 +49,8 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const e = entity
   const construction = 'construction' in e && e.construction
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
-  const onOver = (ev: { stopPropagation: () => void }) => { if (!isDrawingTool) ev.stopPropagation(); setHovered(true) }
-  const onOut = () => setHovered(false)
+  const onOver = (ev: { stopPropagation: () => void }) => { if (!isDrawingTool) ev.stopPropagation(); setHovered(true); setHoveredEntity(entId) }
+  const onOut = () => { setHovered(false); setHoveredEntity(null) }
   const onClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     ev.stopPropagation()
     if (activeTool === 'dimension') {

@@ -48,6 +48,7 @@ interface SketchEditorState {
   onRebuild: (() => void) | null
   onExitSketch: (() => void) | null
   hoveredConstraintEntityIds: Set<string>  // entity IDs highlighted by constraint hover
+  hoveredEntityId: string | null           // currently hovered entity/vertex ID
   activeTool: ActiveTool
   activeFeatureId: string | null           // the sketch currently being edited
   drawPoints: [number, number][]
@@ -68,6 +69,7 @@ interface SketchEditorState {
   setOnExitSketch: (cb: (() => void) | null) => void
   setActiveFeatureId: (id: string | null) => void
   setHoveredConstraintEntities: (ids: Set<string>) => void
+  setHoveredEntity: (id: string | null) => void
   setActiveTool: (tool: ActiveTool) => void
   applyConstraint: (kind: string) => void
   toggleConstruction: () => void
@@ -92,6 +94,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   onRebuild: null,
   onExitSketch: null,
   hoveredConstraintEntityIds: new Set(),
+  hoveredEntityId: null,
   activeTool: 'select',
   activeFeatureId: null,
   drawPoints: [],
@@ -123,6 +126,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setActiveFeatureId: (id) => set({ activeFeatureId: id }),
 
   setHoveredConstraintEntities: (ids) => set({ hoveredConstraintEntityIds: ids }),
+
+  setHoveredEntity: (id) => set({ hoveredEntityId: id }),
 
   setActiveTool: (tool) => set({ activeTool: tool, drawPoints: [], drawHover: null }),
 

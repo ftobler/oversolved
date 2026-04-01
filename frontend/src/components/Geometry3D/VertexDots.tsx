@@ -106,6 +106,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
+  const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
   const constraintHovered = useSketchEditorStore(s =>
     entityId && vertexKey ? s.hoveredConstraintEntityIds.has(`${entityId}:${vertexKey}`) : false
   )
@@ -166,8 +167,8 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
   return (
     <group
-      onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true) }}
-      onPointerOut={() => setHovered(false)}
+      onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true); if (vertId) setHoveredEntity(vertId) }}
+      onPointerOut={() => { setHovered(false); setHoveredEntity(null) }}
       onClick={onClick}
       onPointerDown={onPointerDown}
     >

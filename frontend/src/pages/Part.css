@@ -553,8 +553,122 @@
   background: #111;
   font-size: 12px;
   color: #666;
+  position: relative;
 }
 
 .doc-footer p {
   margin: 0;
+}
+
+.footer-debug-btn {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #555;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: color 0.2s;
+}
+
+.footer-debug-btn:hover {
+  color: #888;
+}
+
+.footer-debug-btn.active {
+  color: #b83b88;
+}
+
+.footer-debug-btn .material-icons-outlined {
+  font-size: 16px;
+}
+
+.debug-drawer {
+  width: 260px;
+  border-left: 1px solid #333;
+  background: #111;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.debug-tabs {
+  display: flex;
+  border-bottom: 1px solid #333;
+  background: #0d0d0d;
+  flex-shrink: 0;
+}
+
+.debug-tab {
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #555;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s;
+}
+
+.debug-tab:hover {
+  color: #888;
+}
+
+.debug-tab.active {
+  color: #b83b88;
+  border-bottom-color: #b83b88;
+}
+
+.debug-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.debug-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.debug-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #555;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #222;
+}
+
+.debug-value {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 11px;
+  color: #aaa;
+  word-break: break-all;
+  padding: 2px 4px;
+  background: #1a1a1a;
+  border-radius: 3px;
+}
+
+.debug-empty {
+  font-size: 11px;
+  color: #444;
+  font-style: italic;
+  padding: 2px 4px;
+}
+
+.feature-item.selected {
+  background: #1a1a2a;
+  color: #4fc3f7;
+  outline: 1px solid #1e3a4a;
 }
