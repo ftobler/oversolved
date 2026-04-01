@@ -55,15 +55,16 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   )
 
   const isEditing = featureId === activeFeatureId
-  const baseColor = activeFeatureId && !isEditing ? COLOR_INACTIVE
-    : (solveStatus === 'overconstrained' || solveStatus === 'exception') ? COLOR_ERROR : COLOR_SOLVED
+  const baseColor = isEditing
+    ? ((solveStatus === 'overconstrained' || solveStatus === 'exception') ? COLOR_ERROR : COLOR_SOLVED)
+    : COLOR_INACTIVE
 
   return (
     <group rotation={rot}>
       {topology && <TopologySurfaces topology={topology} featureId={featureId} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />
-      {constraints && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
+      {constraints && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} isEditing={isEditing} />}
       <DragPlane featureId={featureId} />
       <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} />
       <DrawPlane featureId={featureId} activeFeatureId={activeFeatureId} />

@@ -7,15 +7,17 @@ import { LinearDimension, RadiusDimension, DiameterDimension, AngleDimension } f
 import { COLOR_SELECTED } from './constants'
 import { findEntitiesAtPoint } from './EntityLines'
 
-function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean }) {
+function ConstraintTile({ url, id, featureId, highlightIds, superfluous, inactive }: { url: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean; inactive?: boolean }) {
   const [hovered, setHovered] = useState(false)
   const cId = `constraint:${featureId}:${id}`
   const selected = useSketchEditorStore(s => s.selection.has(cId))
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
 
-  const bg_color = selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : superfluous ? '#2a1f00' : '#1C1C1C'
-  const fg_style = (hovered || selected) ? 'invert(1.0)' : superfluous ? 'invert(0.5) sepia(1) saturate(3) hue-rotate(0deg)' : 'invert(0.7)'
+  const bg_color = inactive && !hovered && !selected ? '#1a1a1a'
+    : selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : superfluous ? '#2a1f00' : '#1C1C1C'
+  const fg_style = inactive && !hovered && !selected ? 'invert(0.35)'
+    : (hovered || selected) ? 'invert(1.0)' : superfluous ? 'invert(0.5) sepia(1) saturate(3) hue-rotate(0deg)' : 'invert(0.7)'
   return (
     <div
       key={id}
@@ -51,9 +53,10 @@ interface ConstraintOverlaysProps {
   sketch: Sketch
   extent: number
   featureId: string
+  isEditing: boolean
 }
 
-export function ConstraintOverlays({ constraints, sketch, extent, featureId }: ConstraintOverlaysProps) {
+export function ConstraintOverlays({ constraints, sketch, extent, featureId, isEditing }: ConstraintOverlaysProps) {
   const dimOffset = extent * 0.1
 
   const byEntity: Record<string, [string, Constraints[string]][]> = {}
@@ -104,20 +107,20 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId }: C
 
       } else if (r.kind === 'dim_linear') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number] }
-        dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'dimension' }} />)
+        dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'dimension' }} isEditing={isEditing} />)
 
       } else if (r.kind === 'dim_radius') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
-        dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'radius' }} />)
+        dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'radius' }} isEditing={isEditing} />)
 
       } else if (r.kind === 'dim_diameter') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
-        dimElements.push(<DiameterDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'diameter' }} />)
+        dimElements.push(<DiameterDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'diameter' }} isEditing={isEditing} />)
 
       } else if (r.kind === 'dim_angle') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3: [number, number]; p4: [number, number]; value: number; pos?: [number, number] }
         if (!dim.p3 || !dim.p4) continue
-        dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'angle in degrees' }} />)
+        dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'angle in degrees' }} isEditing={isEditing} />)
       }
     }
 
@@ -128,7 +131,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId }: C
         <Html key={`icons-${eid}-${atKey}`} position={[at[0], at[1], 0.001]} style={{ pointerEvents: 'auto' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
             {icons.map(({ url, key, highlightIds, superfluous }) => (
-              <ConstraintTile key={key} url={url} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} />
+              <ConstraintTile key={key} url={url} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} inactive={!isEditing} />
             ))}
           </div>
         </Html>
