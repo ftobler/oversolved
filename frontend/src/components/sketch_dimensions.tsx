@@ -9,7 +9,6 @@ import {
   COLOR_CONSTRAINT, p2w, ARROW_SHAPE, sampleArc, getEntityBounds,
   ICON_SIZE, ICON_COLS, getIconUrl,
 } from './sketch_helpers'
-import { COLOR_INACTIVE } from './Geometry3D/constants'
 
 /** Optional interactive context for dimension components.
  *  When provided, hover highlights entities, click opens an edit prompt,
@@ -118,7 +117,7 @@ function ConstraintTile({ url, id }: { url: string; id: string }) {
 // Shared interaction helpers
 // ---------------------------------------------------------------------------
 
-function useDimInteraction(cid: string, value: number, interaction: DimInteraction | undefined, validatePositive = true, isEditing?: boolean) {
+function useDimInteraction(cid: string, value: number, interaction: DimInteraction | undefined, validatePositive = true) {
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
   const drag = useSketchEditorStore(s => s.drag)
   const [hovered, setHovered] = useState(false)
@@ -170,11 +169,7 @@ function useDimInteraction(cid: string, value: number, interaction: DimInteracti
   // See: EntityLines.tsx and VertexDots.tsx for the same fix on entities/vertices.
   const isDragged = drag?.type === 'dim_label' && drag.constraintId === cid
 
-  // NOTE: hover still brightens to white even on inactive sketches — intentional.
-  // The user may hover over inactive sketch geometry to reference it as a constraint target.
-  const color = hovered ? '#ffffff'
-    : isEditing ? COLOR_CONSTRAINT
-    : COLOR_INACTIVE
+  const color = hovered ? '#ffffff' : COLOR_CONSTRAINT
   return { hovered, color, onOver, onOut, onClick, resetDragMoved, isDragged }
 }
 
@@ -191,14 +186,13 @@ function useActiveLabelDrag(cid: string): [number, number] | null {
 // Dimension components (exported — used by both Sketch3D and Geometry3D)
 // ---------------------------------------------------------------------------
 
-export function LinearDimension({ cid, dim, dimOffset, interaction, isEditing }: {
+export function LinearDimension({ cid, dim, dimOffset, interaction }: {
   cid: string
   dim: { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number] }
   dimOffset: number
   interaction?: DimInteraction
-  isEditing?: boolean
 }) {
-  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, true, isEditing)
+  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -322,13 +316,12 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, isEditing }:
   )
 }
 
-export function RadiusDimension({ cid, dim, interaction, isEditing }: {
+export function RadiusDimension({ cid, dim, interaction }: {
   cid: string
   dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
-  isEditing?: boolean
 }) {
-  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, true, isEditing)
+  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -432,13 +425,12 @@ export function RadiusDimension({ cid, dim, interaction, isEditing }: {
   )
 }
 
-export function DiameterDimension({ cid, dim, interaction, isEditing }: {
+export function DiameterDimension({ cid, dim, interaction }: {
   cid: string
   dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
-  isEditing?: boolean
 }) {
-  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, true, isEditing)
+  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -536,13 +528,12 @@ export function DiameterDimension({ cid, dim, interaction, isEditing }: {
   )
 }
 
-export function AngleDimension({ cid, dim, interaction, isEditing }: {
+export function AngleDimension({ cid, dim, interaction }: {
   cid: string
   dim: { kind: string; p1: [number, number]; p2: [number, number]; p3: [number, number]; p4: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
-  isEditing?: boolean
 }) {
-  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, false, isEditing)
+  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, false)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setDrag = useSketchEditorStore(s => s.setDrag)
