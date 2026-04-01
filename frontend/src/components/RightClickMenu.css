@@ -50,3 +50,16 @@
 .right-click-menu-item--exit .right-click-menu-icon {
   filter: invert(0.6) sepia(1) saturate(3) hue-rotate(280deg);
 }
+
+.right-click-menu-item--delete {
+  color: #ef9a9a;
+}
+
+.right-click-menu-item--delete:hover {
+  background: #2a1a1a;
+  color: #ef5350;
+}
+
+.right-click-menu-item--delete .right-click-menu-icon {
+  filter: invert(0.7) sepia(1) saturate(3) hue-rotate(320deg);
+}

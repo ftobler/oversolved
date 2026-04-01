@@ -10,12 +10,13 @@ import type { CommandEntry } from './hooks/useCommandRegistration'
 export function buildCommandEntries(
   handleUndo: () => void,
   handleRedo: () => void,
+  handleDeleteSelectedFeatures: () => void,
 ): CommandEntry[] {
   const getState = useSketchEditorStore.getState
   return [
     { name: 'undo',                  fn: handleUndo },
     { name: 'redo',                  fn: handleRedo },
-    { name: 'delete_selected',       fn: () => getState().deleteSelected() },
+    { name: 'delete_selected',       fn: () => { getState().deleteSelected(); handleDeleteSelectedFeatures() } },
     { name: 'set_tool_select',       fn: () => getState().setActiveTool('select') },
     { name: 'set_tool_line',         fn: () => getState().setActiveTool('line') },
     { name: 'set_tool_circle',       fn: () => getState().setActiveTool('circle') },

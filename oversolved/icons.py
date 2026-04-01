@@ -881,5 +881,29 @@ def context_hide(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/context-delete.svg")
+def context_delete(ctx):
+    """Icon for Delete context menu entry: trash can."""
+    # Body of trash can
+    ctx.move_to(0.3, 0.35)
+    ctx.line_to(0.35, 0.8)
+    ctx.line_to(0.65, 0.8)
+    ctx.line_to(0.7, 0.35)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # Lid
+    ctx.move_to(0.22, 0.35)
+    ctx.line_to(0.78, 0.35)
+    stroke(ctx, 1.5)
+
+    # Handle on lid
+    ctx.move_to(0.4, 0.35)
+    ctx.line_to(0.4, 0.25)
+    ctx.line_to(0.6, 0.25)
+    ctx.line_to(0.6, 0.35)
+    stroke(ctx, 1.5)
+
+
 if __name__ == "__main__":
     drawall()

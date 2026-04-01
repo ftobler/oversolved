@@ -15,6 +15,7 @@ import {
   applyToggleConstruction,
   applySetFeaturePlane,
   applyAddSketch,
+  applyDeleteFeature,
 } from '../utils/yamlMutations'
 
 function healDoc(raw: unknown): PartDoc {
@@ -138,7 +139,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
     setSolveResults(prev => {
       const next = { ...prev }
-      if ('featureId' in m) {
+      if (m.type === 'delete_feature') {
+        delete next[m.featureId]
+      } else if ('featureId' in m) {
         delete next[m.featureId]
       } else if (m.type === 'delete') {
         return {}
@@ -185,6 +188,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'add_sketch':
         applyAddSketch(next, m.featureId)
+        break
+      case 'delete_feature':
+        applyDeleteFeature(next, m.featureId)
         break
     }
     docRef.current = next

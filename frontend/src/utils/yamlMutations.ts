@@ -343,3 +343,8 @@ export function applyAddSketch(doc: PartDoc, featureId: string): void {
   if (!doc.features) doc.features = []
   doc.features.push({ id: featureId, kind: 'sketch' })
 }
+
+export function applyDeleteFeature(doc: PartDoc, featureId: string): void {
+  if (!doc.features) return
+  doc.features = doc.features.filter(f => f.id !== featureId)
+}

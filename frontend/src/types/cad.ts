@@ -274,3 +274,4 @@ export type Mutation =
   | { type: 'toggle_construction'; targets: string[] }
   | { type: 'set_feature_plane'; featureId: string; plane: string }
   | { type: 'add_sketch'; featureId: string }
+  | { type: 'delete_feature'; featureId: string }

@@ -27,6 +27,7 @@ import toolbarCopyResultIcon from '../assets/icons/toolbar-copy-result.svg'
 import contextRebuildIcon from '../assets/icons/context-rebuild.svg'
 import contextExitIcon from '../assets/icons/context-exit.svg'
 import contextHideIcon from '../assets/icons/context-hide.svg'
+import contextDeleteIcon from '../assets/icons/context-delete.svg'
 
 const BUILT_IN_FEATURES: Array<{ id: string; kind?: string }> = [
   { id: 'Origin', kind: 'origin' },
@@ -134,6 +135,26 @@ export default function Part() {
     setContextMenu(null)
   }, [])
 
+  const handleDeleteFeature = useCallback((featureId: string) => {
+    if (BUILT_IN_FEATURES.some(f => f.id === featureId)) return
+    if (featureId === editingSketchId) setEditingSketchId(null)
+    handleMutation({ type: 'delete_feature', featureId })
+    useSketchEditorStore.getState().clearSelection()
+    setContextMenu(null)
+  }, [editingSketchId, handleMutation])
+
+  const handleDeleteSelectedFeatures = useCallback(() => {
+    const sel = useSketchEditorStore.getState().selection
+    const featureIds = [...sel]
+      .filter(id => id.startsWith('@') && !id.startsWith('@builtin_'))
+      .map(id => id.slice(1))
+    for (const featureId of featureIds) {
+      if (featureId === editingSketchId) setEditingSketchId(null)
+      handleMutation({ type: 'delete_feature', featureId })
+    }
+    if (featureIds.length > 0) useSketchEditorStore.getState().clearSelection()
+  }, [editingSketchId, handleMutation])
+
   const handleAddSketch = useCallback(() => {
     if (!doc) return
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
@@ -162,8 +183,8 @@ export default function Part() {
   }, [activeSketchFeatureId])
 
   const commands = useMemo(
-    () => buildCommandEntries(handleUndo, handleRedo),
-    [handleUndo, handleRedo],
+    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures),
+    [handleUndo, handleRedo, handleDeleteSelectedFeatures],
   )
 
   useCommandRegistration(commands)
@@ -260,6 +281,14 @@ export default function Part() {
           onClick: () => toggleVisibility(target.id),
         })
       }
+      if (!BUILT_IN_FEATURES.some(f => f.id === featureId)) {
+        items.push({
+          label: 'Delete',
+          icon: contextDeleteIcon,
+          onClick: () => handleDeleteFeature(featureId),
+          className: 'right-click-menu-item--delete',
+        })
+      }
     }
 
     setContextMenu({
@@ -267,7 +296,7 @@ export default function Part() {
       targetId: featureId,
       items,
     })
-  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, features, visibleFeatures, toggleVisibility])
+  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature])
 
   return (
     <div className="document-viewer">
