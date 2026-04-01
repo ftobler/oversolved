@@ -6923,3 +6923,305 @@ def test_plane_rotation_affects_sketch_coords():
     assert result['features'][2]['status'] in ('ok', 'fully_constrained', 'underconstrained')
     assert 'geometry' in result['features'][2]
     assert 'line1' in result['features'][2]['geometry']
+
+
+# ── Derived face plane tracking ────────────────────────────────────────────────
+
+def _rect_sketch_with_face_plane_doc(sketch1_plane: str) -> str:
+    """Build a two-sketch YAML.
+
+    sketch1 is a 10x10 rectangle on the given plane.
+    sketch2 uses one of sketch1's topology faces as its plane.
+    The face query is extracted by solving sketch1 alone first.
+    """
+    alone_yaml = textwrap.dedent(f"""\
+        version: 1
+        kind: part
+        features:
+          - id: sketch1
+            kind: sketch
+            plane: "{sketch1_plane}"
+            initial:
+              la: [0.0, 0.0, 10.0, 0.0]
+              lb: [10.0, 0.0, 10.0, 10.0]
+              lc: [10.0, 10.0, 0.0, 10.0]
+              ld: [0.0, 10.0, 0.0, 0.0]
+            entities:
+              - {{id: la, kind: line}}
+              - {{id: lb, kind: line}}
+              - {{id: lc, kind: line}}
+              - {{id: ld, kind: line}}
+            constraints:
+              - {{id: ca, kind: coincident, a: {{entity: la, point: end}}, b: {{entity: lb, point: start}}}}
+              - {{id: cb, kind: coincident, a: {{entity: lb, point: end}}, b: {{entity: lc, point: start}}}}
+              - {{id: cc, kind: coincident, a: {{entity: lc, point: end}}, b: {{entity: ld, point: start}}}}
+              - {{id: cd, kind: coincident, a: {{entity: ld, point: end}}, b: {{entity: la, point: start}}}}
+              - {{id: cf, kind: fixed, target: {{entity: la, point: start}}}}
+              - {{id: ch, kind: horizontal, target: {{entity: la}}}}
+              - {{id: cv, kind: vertical, target: {{entity: lb}}}}
+              - {{id: cl, kind: length, target: {{entity: la}}, value: 10}}
+    """)
+    r0 = solve(alone_yaml)["result"]["sketch1"]
+    assert r0.get("status") != "exception", r0.get("exception")
+    assert r0.get("topology", {}).get("surfaces"), "sketch1 must produce at least one topology surface"
+    face_query = r0["topology"]["surfaces"][0]["query"]
+
+    return textwrap.dedent(f"""\
+        version: 1
+        kind: part
+        features:
+          - id: sketch1
+            kind: sketch
+            plane: "{sketch1_plane}"
+            initial:
+              la: [0.0, 0.0, 10.0, 0.0]
+              lb: [10.0, 0.0, 10.0, 10.0]
+              lc: [10.0, 10.0, 0.0, 10.0]
+              ld: [0.0, 10.0, 0.0, 0.0]
+            entities:
+              - {{id: la, kind: line}}
+              - {{id: lb, kind: line}}
+              - {{id: lc, kind: line}}
+              - {{id: ld, kind: line}}
+            constraints:
+              - {{id: ca, kind: coincident, a: {{entity: la, point: end}}, b: {{entity: lb, point: start}}}}
+              - {{id: cb, kind: coincident, a: {{entity: lb, point: end}}, b: {{entity: lc, point: start}}}}
+              - {{id: cc, kind: coincident, a: {{entity: lc, point: end}}, b: {{entity: ld, point: start}}}}
+              - {{id: cd, kind: coincident, a: {{entity: ld, point: end}}, b: {{entity: la, point: start}}}}
+              - {{id: cf, kind: fixed, target: {{entity: la, point: start}}}}
+              - {{id: ch, kind: horizontal, target: {{entity: la}}}}
+              - {{id: cv, kind: vertical, target: {{entity: lb}}}}
+              - {{id: cl, kind: length, target: {{entity: la}}, value: 10}}
+          - id: sketch2
+            kind: sketch
+            plane: "{face_query}"
+            initial:
+              pt: [1.0, 1.0]
+            entities:
+              - {{id: pt, kind: point}}
+            constraints: []
+    """)
+
+
+def test_derived_face_plane_on_front_sketch():
+    """sketch2 plane is a face of sketch1 (on Front). plane_transform must match Front orientation."""
+    doc = _rect_sketch_with_face_plane_doc("@builtin_plane_front")
+    result = solve(doc)["result"]
+    assert result["sketch1"].get("status") != "exception"
+    assert result["sketch2"].get("status") != "exception", result["sketch2"].get("exception")
+
+    t = result["sketch2"]["plane_transform"]
+    rot = t["rotation"]
+    # Face lies in the Front plane: normal = [0,0,1], so row 3 of rotation matrix must be ~[0,0,1]
+    assert rot[6] == approx(0.0, abs=1e-4)
+    assert rot[7] == approx(0.0, abs=1e-4)
+    assert rot[8] == approx(1.0, abs=1e-4)
+
+
+def test_derived_face_plane_on_top_sketch():
+    """sketch2 plane is a face of sketch1 (on Top). plane_transform must match Top orientation."""
+    doc = _rect_sketch_with_face_plane_doc("@builtin_plane_top")
+    result = solve(doc)["result"]
+    assert result["sketch1"].get("status") != "exception"
+    assert result["sketch2"].get("status") != "exception", result["sketch2"].get("exception")
+
+    t = result["sketch2"]["plane_transform"]
+    rot = t["rotation"]
+    # Face lies in the Top plane: normal = [0,1,0], so row 3 of rotation matrix must be ~[0,1,0]
+    assert rot[6] == approx(0.0, abs=1e-4)
+    assert rot[7] == approx(1.0, abs=1e-4)
+    assert rot[8] == approx(0.0, abs=1e-4)
+
+
+def test_derived_face_plane_changes_with_sketch_plane():
+    """sketch2's plane_transform must differ when sketch1 moves from Front to Top.
+
+    This is the critical regression test: the derived face plane must 'follow'
+    the parent sketch's plane when it changes.
+    """
+    doc_front = _rect_sketch_with_face_plane_doc("@builtin_plane_front")
+    doc_top = _rect_sketch_with_face_plane_doc("@builtin_plane_top")
+
+    rot_front = solve(doc_front)["result"]["sketch2"]["plane_transform"]["rotation"]
+    rot_top = solve(doc_top)["result"]["sketch2"]["plane_transform"]["rotation"]
+
+    # The two rotations must be meaningfully different — normal vectors differ.
+    assert rot_front != approx(rot_top, abs=1e-3), (
+        "sketch2 plane_transform did not change when sketch1's plane changed from Front to Top"
+    )
+
+
+def _two_sketch_chain_doc(sketch1_plane: str) -> str:
+    """Build a three-sketch YAML to test plane chaining.
+
+    sketch1: 10x10 rectangle on the given plane (Front or Top).
+    sketch2: Uses a face from sketch1's topology as its plane; draws a 5-unit circle.
+    """
+    # Solve sketch1 alone to extract its face query.
+    alone_yaml = textwrap.dedent(f"""\
+        version: 1
+        kind: part
+        features:
+          - id: sketch1
+            kind: sketch
+            plane: "{sketch1_plane}"
+            initial:
+              la: [0.0, 0.0, 10.0, 0.0]
+              lb: [10.0, 0.0, 10.0, 10.0]
+              lc: [10.0, 10.0, 0.0, 10.0]
+              ld: [0.0, 10.0, 0.0, 0.0]
+            entities:
+              - {{id: la, kind: line}}
+              - {{id: lb, kind: line}}
+              - {{id: lc, kind: line}}
+              - {{id: ld, kind: line}}
+            constraints:
+              - {{id: ca, kind: coincident, a: {{entity: la, point: end}}, b: {{entity: lb, point: start}}}}
+              - {{id: cb, kind: coincident, a: {{entity: lb, point: end}}, b: {{entity: lc, point: start}}}}
+              - {{id: cc, kind: coincident, a: {{entity: lc, point: end}}, b: {{entity: ld, point: start}}}}
+              - {{id: cd, kind: coincident, a: {{entity: ld, point: end}}, b: {{entity: la, point: start}}}}
+              - {{id: cf, kind: fixed, target: {{entity: la, point: start}}}}
+              - {{id: ch, kind: horizontal, target: {{entity: la}}}}
+              - {{id: cv, kind: vertical, target: {{entity: lb}}}}
+              - {{id: cl, kind: length, target: {{entity: la}}, value: 10}}
+    """)
+    r1 = solve(alone_yaml)["result"]["sketch1"]
+    assert r1.get("status") != "exception", r1.get("exception")
+    assert r1.get("topology", {}).get("surfaces"), "sketch1 must produce topology"
+    face_query = r1["topology"]["surfaces"][0]["query"]
+
+    return textwrap.dedent(f"""\
+        version: 1
+        kind: part
+        features:
+          - id: sketch1
+            kind: sketch
+            plane: "{sketch1_plane}"
+            initial:
+              la: [0.0, 0.0, 10.0, 0.0]
+              lb: [10.0, 0.0, 10.0, 10.0]
+              lc: [10.0, 10.0, 0.0, 10.0]
+              ld: [0.0, 10.0, 0.0, 0.0]
+            entities:
+              - {{id: la, kind: line}}
+              - {{id: lb, kind: line}}
+              - {{id: lc, kind: line}}
+              - {{id: ld, kind: line}}
+            constraints:
+              - {{id: ca, kind: coincident, a: {{entity: la, point: end}}, b: {{entity: lb, point: start}}}}
+              - {{id: cb, kind: coincident, a: {{entity: lb, point: end}}, b: {{entity: lc, point: start}}}}
+              - {{id: cc, kind: coincident, a: {{entity: lc, point: end}}, b: {{entity: ld, point: start}}}}
+              - {{id: cd, kind: coincident, a: {{entity: ld, point: end}}, b: {{entity: la, point: start}}}}
+              - {{id: cf, kind: fixed, target: {{entity: la, point: start}}}}
+              - {{id: ch, kind: horizontal, target: {{entity: la}}}}
+              - {{id: cv, kind: vertical, target: {{entity: lb}}}}
+              - {{id: cl, kind: length, target: {{entity: la}}, value: 10}}
+          - id: sketch2
+            kind: sketch
+            plane: "{face_query}"
+            initial:
+              c: [5.0, 5.0, 5.0]
+            entities:
+              - {{id: c, kind: circle}}
+            constraints:
+              - {{id: cr, kind: radius, target: {{entity: c}}, value: 2.5}}
+    """)
+
+
+def test_plane_chain_front_to_front():
+    """sketch1 on Front → sketch2 on sketch1's face → verify sketch2 solves with correct plane.
+
+    sketch2's plane_transform should reflect sketch1's Front-plane orientation.
+    sketch2's circle should be solved and constrained to radius 2.5.
+    """
+    doc = _two_sketch_chain_doc("@builtin_plane_front")
+    result = solve(doc)["result"]
+
+    assert result["sketch1"].get("status") != "exception"
+    assert result["sketch2"].get("status") != "exception", result["sketch2"].get("exception")
+
+    # sketch1: rectangle geometry
+    s1_geom = result["sketch1"]["geometry"]
+    assert "la" in s1_geom
+    assert s1_geom["la"][2] == approx(10.0, abs=1e-3)  # line length in x
+
+    # sketch2: circle on derived plane with radius constraint
+    s2_geom = result["sketch2"]["geometry"]
+    assert "c" in s2_geom
+    assert s2_geom["c"][2] == approx(2.5, abs=1e-3)  # radius
+
+    # sketch2's plane_transform should match Front (normal [0,0,1])
+    t = result["sketch2"]["plane_transform"]
+    rot = t["rotation"]
+    assert rot[6] == approx(0.0, abs=1e-4)
+    assert rot[7] == approx(0.0, abs=1e-4)
+    assert rot[8] == approx(1.0, abs=1e-4)
+
+
+def test_plane_chain_top_to_top():
+    """sketch1 on Top → sketch2 on sketch1's face → verify sketch2 solves with correct plane.
+
+    sketch2's plane_transform should reflect sketch1's Top-plane orientation.
+    sketch2's circle should be solved and constrained to radius 2.5.
+    """
+    doc = _two_sketch_chain_doc("@builtin_plane_top")
+    result = solve(doc)["result"]
+
+    assert result["sketch1"].get("status") != "exception"
+    assert result["sketch2"].get("status") != "exception", result["sketch2"].get("exception")
+
+    # sketch2's circle on derived plane with radius constraint
+    s2_geom = result["sketch2"]["geometry"]
+    assert "c" in s2_geom
+    assert s2_geom["c"][2] == approx(2.5, abs=1e-3)  # radius
+
+    # sketch2's plane_transform should match Top (normal [0,1,0])
+    t = result["sketch2"]["plane_transform"]
+    rot = t["rotation"]
+    assert rot[6] == approx(0.0, abs=1e-4)
+    assert rot[7] == approx(1.0, abs=1e-4)
+    assert rot[8] == approx(0.0, abs=1e-4)
+
+
+def test_plane_chain_geometry_follows_when_origin_sketch_changes_plane():
+    """CRITICAL: When sketch1's plane changes, sketch2's geometry must adapt.
+
+    This is the core regression test: sketch2's circle geometry (in world coordinates)
+    must differ when sketch1 moves from Front to Top, because the derived plane changes.
+    """
+    doc_front = _two_sketch_chain_doc("@builtin_plane_front")
+    doc_top = _two_sketch_chain_doc("@builtin_plane_top")
+
+    result_front = solve(doc_front)["result"]
+    result_top = solve(doc_top)["result"]
+
+    # Both solve successfully
+    assert result_front["sketch2"].get("status") != "exception"
+    assert result_top["sketch2"].get("status") != "exception"
+
+    # Both have circle with radius 2.5
+    c_front = result_front["sketch2"]["geometry"]["c"]
+    c_top = result_top["sketch2"]["geometry"]["c"]
+    assert c_front[2] == approx(2.5, abs=1e-3)
+    assert c_top[2] == approx(2.5, abs=1e-3)
+
+    # The circle **centers** (in 2D sketch coords) are at the same local position [5, 5]
+    assert c_front[0] == approx(5.0, abs=1e-3)
+    assert c_front[1] == approx(5.0, abs=1e-3)
+    assert c_top[0] == approx(5.0, abs=1e-3)
+    assert c_top[1] == approx(5.0, abs=1e-3)
+
+    # BUT: sketch2's plane_transforms must differ (normals point in different directions)
+    rot_front = result_front["sketch2"]["plane_transform"]["rotation"]
+    rot_top = result_top["sketch2"]["plane_transform"]["rotation"]
+    assert rot_front != approx(rot_top, abs=1e-3), (
+        "sketch2 plane_transform did not follow sketch1's plane change"
+    )
+
+    # The world-space **plane origins** must differ because sketch1's face centroid
+    # is in a different world location when sketch1's plane changes.
+    origin_front = result_front["sketch2"]["plane_transform"]["origin"]
+    origin_top = result_top["sketch2"]["plane_transform"]["origin"]
+    assert origin_front != approx(origin_top, abs=1e-2), (
+        "sketch2 plane origin did not follow sketch1's plane change"
+    )

@@ -63,7 +63,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         setSolveError(data.error || `Solve failed (${response.status})`)
         setSolveRawResult(data.error || `Solve failed (${response.status})`)
       } else {
-        const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }> }>
+        const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; plane_transform?: import('../types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }> }>
 
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
@@ -104,6 +104,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
               topology: feature.topology,
               status: feature.status,
               ...(constraints && { constraints }),
+              ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
             }
           } else {
             // exception: no geometry returned — fall back to initial positions, flag status
