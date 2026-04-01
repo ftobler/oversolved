@@ -606,6 +606,53 @@ def feature_plane(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-add-plane.svg")
+def feature_add_plane(ctx):
+    # Plane icon scaled to left portion, plus sign in top-right
+    x0, y0 = 0.1, 0.75
+    x1, y1 = 0.65, 0.7
+    x2, y2 = 0.6, 0.35
+    x3, y3 = 0.05, 0.4
+
+    ctx.move_to(x0, y0)
+    ctx.line_to(x1, y1)
+    ctx.line_to(x2, y2)
+    ctx.line_to(x3, y3)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    N = 2
+    for i in range(1, N):
+        t = i / N
+        left_x = x0 + (x3 - x0) * t
+        left_y = y0 + (y3 - y0) * t
+        right_x = x1 + (x2 - x1) * t
+        right_y = y1 + (y2 - y1) * t
+        ctx.move_to(left_x, left_y)
+        ctx.line_to(right_x, right_y)
+    stroke(ctx, 1.5)
+
+    M = 2
+    for i in range(1, M):
+        t = i / M
+        bottom_x = x0 + (x1 - x0) * t
+        bottom_y = y0 + (y1 - y0) * t
+        top_x = x3 + (x2 - x3) * t
+        top_y = y3 + (y2 - y3) * t
+        ctx.move_to(bottom_x, bottom_y)
+        ctx.line_to(top_x, top_y)
+    stroke(ctx, 1.5)
+
+    # Plus sign in top-right corner
+    cx, cy, arm = 0.8, 0.22, 0.12
+    ctx.move_to(cx - arm, cy)
+    ctx.line_to(cx + arm, cy)
+    stroke(ctx, 1.5)
+    ctx.move_to(cx, cy - arm)
+    ctx.line_to(cx, cy + arm)
+    stroke(ctx, 1.5)
+
+
 @icon("frontend/src/assets/icons/viewport-reset.svg")
 def viewport_reset(ctx):
     # Square outline

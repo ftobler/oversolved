@@ -20,6 +20,7 @@ import featurePartIcon from '../assets/icons/feature-part.svg'
 import featureCodeIcon from '../assets/icons/icon-code.svg'
 import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
+import featureAddPlaneIcon from '../assets/icons/feature-add-plane.svg'
 import toolbarPlayIcon from '../assets/icons/toolbar-play.svg'
 import toolbarCopyCodeIcon from '../assets/icons/toolbar-copy-code.svg'
 import toolbarCopyResultIcon from '../assets/icons/toolbar-copy-result.svg'
@@ -479,6 +480,7 @@ export default function Part() {
               <>
                 <button className="editor-btn" title="Extrude"><img src={featureExtrudeIcon} alt="Extrude" /></button>
                 <button className="editor-btn" title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
+                <button className="editor-btn" title="Add plane"><img src={featureAddPlaneIcon} alt="Add plane" /></button>
               </>
             )}
           </div>
