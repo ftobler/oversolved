@@ -25,6 +25,7 @@ interface ViewportProps {
   solveResults?: Record<string, SketchData>
   resetTrigger?: number
   activeFeatureId?: string
+  onRightClick?: (pos: [number, number]) => void
 }
 
 function isActive(id: string, features: Feature[] | undefined, rollbackPos: number | undefined, visible: Set<string> | undefined): boolean {
@@ -42,6 +43,7 @@ export default function Viewport({
   solveResults,
   resetTrigger = 0,
   activeFeatureId,
+  onRightClick,
 }: ViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pvRef = useRef<Pv[]>([])
@@ -68,8 +70,10 @@ export default function Viewport({
     const dy = e.clientY - pointerDownPos.current[1]
     pointerDownPos.current = null
     if (Math.hypot(dx, dy) >= 4) return
-    // Note: right click is handled by the parent container via onContextMenu
-  }, [])
+    if (e.button === 2 && onRightClick) {
+      onRightClick([e.clientX, e.clientY])
+    }
+  }, [onRightClick])
 
   const showOrigin = isActive('Origin', features, rollbackPosition, visibleFeatures)
   const showFront  = isActive('Front',  features, rollbackPosition, visibleFeatures)
@@ -87,6 +91,7 @@ export default function Viewport({
       style={{ position: 'relative', width: '100%', height: '100%' }}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
+      onContextMenu={e => e.preventDefault()}
     >
       <Canvas
         style={{ width: '100%', height: '100%', background: '#111' }}

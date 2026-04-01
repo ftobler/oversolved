@@ -35,13 +35,13 @@ export function DragPlane({ featureId }: { featureId: string }) {
   // Fallback: if pointer is released outside the canvas the Three.js onPointerUp
   // never fires, leaving orbitEnabled=false permanently. Listen on window instead.
   useEffect(() => {
-    if (!drag) return
+    if (!drag || drag.featureId !== featureId) return
     const cancel = () => { setDrag(null); setOrbitEnabled(true) }
     window.addEventListener('pointerup', cancel)
     return () => window.removeEventListener('pointerup', cancel)
-  }, [drag, setDrag, setOrbitEnabled])
+  }, [drag, featureId, setDrag, setOrbitEnabled])
 
-  if (!drag || drag.featureId !== featureId) return null
+  if (!drag) return null
 
   return (
     <mesh

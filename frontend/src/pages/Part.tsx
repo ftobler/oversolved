@@ -218,8 +218,7 @@ export default function Part() {
     setEditingSketchId(null)
   }
 
-  const handleRightClick = useCallback((event: React.MouseEvent, featureId?: string) => {
-    event.preventDefault()
+  const handleRightClick = useCallback((pos: [number, number], featureId?: string) => {
     const items: ContextMenuItem[] = [
       {
         label: 'Rebuild',
@@ -250,14 +249,14 @@ export default function Part() {
     }
 
     setContextMenu({
-      position: [event.clientX, event.clientY],
+      position: pos,
       targetId: featureId,
       items,
     })
   }, [handleRebuild, activeSketchFeatureId, handleExitSketch, features, visibleFeatures, toggleVisibility])
 
   return (
-    <div className="document-viewer" onContextMenu={e => handleRightClick(e)}>
+    <div className="document-viewer">
       <AppHeader>
         <button className="toolbar-btn" title="Undo" onClick={handleUndo} disabled={undoStack.length === 0}>
           <span className="material-icons-outlined">undo</span>
@@ -311,7 +310,7 @@ export default function Part() {
                     onDragOver={(e) => handleRollbackDragOver(e, index)}
                     onDrop={(e) => handleRollbackDrop(e, index)}
                     onDoubleClick={() => feature.kind === 'sketch' ? enterEditSketch(feature.id) : undefined}
-                    onContextMenu={(e) => { e.stopPropagation(); handleRightClick(e, feature.id) }}
+                    onContextMenu={(e) => { e.stopPropagation(); handleRightClick([e.clientX, e.clientY], feature.id) }}
                     style={{ flexWrap: 'wrap' }}
                   >
                     <img
@@ -461,7 +460,7 @@ export default function Part() {
                   </div>
                 </div>
               )}
-              {mode !== 'code' && <Viewport features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} />}
+              {mode !== 'code' && <Viewport features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} />}
             </>
           )}
         </div>
