@@ -338,3 +338,8 @@ export function applySetFeaturePlane(doc: PartDoc, featureId: string, plane: str
   if (!feature) return
   feature.plane = plane
 }
+
+export function applyAddSketch(doc: PartDoc, featureId: string): void {
+  if (!doc.features) doc.features = []
+  doc.features.push({ id: featureId, kind: 'sketch' })
+}

@@ -128,6 +128,14 @@ export default function Part() {
     setContextMenu(null)
   }, [])
 
+  const handleAddSketch = useCallback(() => {
+    if (!doc) return
+    const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
+    const featureId = `sketch${sketchCount + 1}`
+    handleMutation({ type: 'add_sketch', featureId })
+    setPlaneSelectionFeatureId(featureId)
+  }, [doc, handleMutation, setPlaneSelectionFeatureId])
+
   useEffect(() => {
     useSketchEditorStore.getState().setOnMutation(handleMutation)
     return () => useSketchEditorStore.getState().setOnMutation(null)
@@ -437,7 +445,7 @@ export default function Part() {
             {mode === 'feature' && (
               <>
                 <button className="editor-btn" title="Extrude"><img src={featureExtrudeIcon} alt="Extrude" /></button>
-                <button className="editor-btn" title="Sketch"><img src={featureSketchIcon} alt="Sketch" /></button>
+                <button className="editor-btn" title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
               </>
             )}
           </div>

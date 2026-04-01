@@ -273,3 +273,4 @@ export type Mutation =
   | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point }
   | { type: 'toggle_construction'; targets: string[] }
   | { type: 'set_feature_plane'; featureId: string; plane: string }
+  | { type: 'add_sketch'; featureId: string }
