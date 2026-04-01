@@ -14,10 +14,37 @@ Each element can refer to another one by an id. There are different requirements
 | `@<FEAT><ELE><SUB>`     | absolute element lookup by id.                                      |
 | `?A,B;<idA><idB>`       | anchrestry information list.                                        |
 | `?A,B;<idA><idB>:<TYPE>`| anchrestry information list, restricted to geometry type.           |
+| `?A,B;<idA><idB>:<TYPE>@<CLASSIFIER>`| anchrestry list with geometric classifier. |
 
 In Anchestry information lists, lengths are hex encoded and comma separated. A semicolon separates it from the id strings which have no delimiters between them. Each ID string must be of valid Query Syntax. An optional `:<TYPE>` suffix after the id strings restricts resolution to a specific geometry type (e.g. `pt`, `line`, `arc`, `edge`, `face`). This is useful when an intersection produces multiple geometry types and the desired one must be unambiguous.
 
-A query is always used to refer to another element. The query should resolve unique. Anchestry information is used up until the query uniquely resolves.
+### Geometric Classifiers
+
+When multiple surfaces are created from the same ancestry (e.g., a circle cut by a line), geometric classifiers disambiguate them by encoding spatial relationships:
+
+**Line Division Classifiers** — When a geometry is divided by a line:
+- `@pos` — surface on the positive side (left/above when traversing line from start to end)
+- `@neg` — surface on the negative side (right/below when traversing)
+
+**Circle Containment Classifiers** — For surfaces relative to a circle:
+- `@inner` — surface inside the circle
+- `@outer` — surface outside the circle
+
+**Cardinal Direction Classifiers** — Surface location relative to origin:
+- `@north` — surface in positive Y direction
+- `@south` — surface in negative Y direction
+- `@east` — surface in positive X direction
+- `@west` — surface in negative X direction
+
+**Examples:**
+```
+?5;@sketch_1circle:face@inner    # Inside a standalone circle
+?5;@sketch_1circle:face@outer    # Outside a standalone circle
+?f,13;@sketch_1circle@sketch_1line:face@pos  # Above the line
+?f,13;@sketch_1circle@sketch_1line:face@neg  # Below the line
+```
+
+A query is always used to refer to another element. The query should resolve unique. Anchestry information and classifiers are used to make the resolution unambiguous.
 
 ---
 

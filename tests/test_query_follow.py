@@ -756,3 +756,151 @@ def test_indexed_queries_dont_match_both() -> None:
     print(f"\nquery0 resolves to surface0: {result0['id']}")
     print(f"query1 resolves to surface1: {result1['id']}")
     print("No ambiguity! ✓")
+
+
+def test_geometric_classifiers_disambiguate_circle_divided_by_line() -> None:
+    """
+    Test the geometric classifier concept with a circle divided by a line.
+
+    When a circle is cut by a line, two surfaces are created:
+    1. Surface on positive side of line (north if line is horizontal)
+    2. Surface on negative side of line (south if line is horizontal)
+
+    Instead of arbitrary indices like surface:0, surface:1, they should have
+    meaningful classifiers like @pos and @neg based on their position.
+    """
+    from oversolved.geometry import classify_surface_by_line_side
+
+    # Simulate a circle cut by a horizontal line
+    # The circle is divided into upper and lower regions
+
+    # Upper region (above the line)
+    upper_centroid = (0, 0.5)
+    line_start = (-1, 0)
+    line_end = (1, 0)
+
+    classifier_upper = classify_surface_by_line_side(upper_centroid, line_start, line_end)
+
+    # Lower region (below the line)
+    lower_centroid = (0, -0.5)
+    classifier_lower = classify_surface_by_line_side(lower_centroid, line_start, line_end)
+
+    # Both surfaces have the same ancestors: circle + line
+    # But different classifiers make them unambiguous
+    print("\nCircle cut by line:")
+    print(f"  Upper region classifier: {classifier_upper}")
+    print(f"  Lower region classifier: {classifier_lower}")
+    print(f"  Query for upper: ?f,13;@sketch_1circle@sketch_1line:face{classifier_upper}")
+    print(f"  Query for lower: ?f,13;@sketch_1circle@sketch_1line:face{classifier_lower}")
+
+    assert classifier_upper == '@pos', "Upper region should be @pos"
+    assert classifier_lower == '@neg', "Lower region should be @neg"
+    assert classifier_upper != classifier_lower, "Classifiers must differ"
+
+
+def test_geometric_classifiers_disambiguate_standalone_circle() -> None:
+    """
+    Test classifiers for a standalone circle (no intersections).
+
+    A circle with no intersections creates two surfaces:
+    1. Interior (inside the circle)
+    2. Exterior (outside, unbounded)
+
+    These are distinguished by @inner and @outer classifiers.
+    """
+    from oversolved.geometry import classify_surface_by_circle_side
+
+    center = (0, 0)
+    radius = 1
+
+    # Interior surface centroid (very close to center)
+    interior_centroid = (0.1, 0.1)
+    classifier_inner = classify_surface_by_circle_side(interior_centroid, center, radius)
+
+    # Exterior surface centroid (far from circle)
+    exterior_centroid = (5, 5)
+    classifier_outer = classify_surface_by_circle_side(exterior_centroid, center, radius)
+
+    print("\nStandalone circle:")
+    print(f"  Interior classifier: {classifier_inner}")
+    print(f"  Exterior classifier: {classifier_outer}")
+    print(f"  Query for interior: ?5;@sketch_1circle:face{classifier_inner}")
+    print(f"  Query for exterior: ?5;@sketch_1circle:face{classifier_outer}")
+
+    assert classifier_inner == '@inner', "Interior should be @inner"
+    assert classifier_outer == '@outer', "Exterior should be @outer"
+    assert classifier_inner != classifier_outer, "Classifiers must differ"
+
+
+def test_classifiers_are_stable_under_geometric_transformation() -> None:
+    """
+    Test that classifiers remain correct even when geometry is transformed.
+
+    This is the key benefit of semantic classifiers over synthetic indices:
+    if you rotate or translate the sketch, the @pos/@neg relationship
+    remains valid (point is still on the same side of the line).
+    """
+    from oversolved.geometry import classify_surface_by_line_side
+
+    # Original configuration
+    line_start_1 = (0, 0)
+    line_end_1 = (1, 0)
+
+    point_above_1 = (0.5, 0.5)
+    point_below_1 = (0.5, -0.5)
+
+    classifier_above_1 = classify_surface_by_line_side(point_above_1, line_start_1, line_end_1)
+    classifier_below_1 = classify_surface_by_line_side(point_below_1, line_start_1, line_end_1)
+
+    # Same configuration but rotated 90 degrees (vertical line now)
+    # Original point (0.5, 0.5) becomes (-0.5, 0.5) after 90° CCW rotation
+    # But relative to the new line (vertical through origin), it's still on one side
+
+    # For simplicity, just translate the line (preserves relationship)
+    line_start_2 = (10, 10)
+    line_end_2 = (11, 10)
+
+    point_above_2 = (10.5, 10.5)
+    point_below_2 = (10.5, 9.5)
+
+    classifier_above_2 = classify_surface_by_line_side(point_above_2, line_start_2, line_end_2)
+    classifier_below_2 = classify_surface_by_line_side(point_below_2, line_start_2, line_end_2)
+
+    print("\nClassifier stability:")
+    print(f"  Original: above={classifier_above_1}, below={classifier_below_1}")
+    print(f"  Translated: above={classifier_above_2}, below={classifier_below_2}")
+
+    # The classifiers should remain the same after geometric transformation
+    assert classifier_above_1 == classifier_above_2 == '@pos'
+    assert classifier_below_1 == classifier_below_2 == '@neg'
+    print("  ✓ Classifiers stable under translation")
+
+
+def test_cardinal_classifiers_track_position_changes() -> None:
+    """
+    Cardinal direction classifiers describe surface position relative to origin.
+
+    If geometry moves, the classification may change, which is correct:
+    the surface is now in a different cardinal direction.
+    """
+    from oversolved.geometry import classify_surface_cardinal
+
+    origin = (0, 0)
+
+    # Surface far north of origin
+    point_north = (0, 10)
+    classifier_north = classify_surface_cardinal(point_north, origin)
+
+    # Same surface moved far south
+    point_south = (0, -10)
+    classifier_south = classify_surface_cardinal(point_south, origin)
+
+    print("\nCardinal classifiers:")
+    print(f"  North of origin: {classifier_north}")
+    print(f"  South of origin: {classifier_south}")
+
+    # Classifiers should change with position
+    assert classifier_north == '@north'
+    assert classifier_south == '@south'
+    assert classifier_north != classifier_south
+    print("  ✓ Classifiers track position changes")
