@@ -43,7 +43,7 @@ export function healDoc(raw: unknown): PartDoc {
   } as PartDoc
 }
 
-export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void) {
+export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true }: { solveOnLoad?: boolean } = {}) {
   const [doc, setDoc] = useState<PartDoc | null>(null)
   const [docName, setDocName] = useState<string>('')
   const docRef = useRef<PartDoc | null>(null)
@@ -259,12 +259,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         setDoc(parsed)
         setDocName(data.name)
         setLoading(false)
+        if (solveOnLoad) reSolve(parsed)
       })
       .catch(e => {
         setError(String(e))
         setLoading(false)
       })
-  }, [uuid])
+  }, [uuid, solveOnLoad, reSolve])
 
   const saveDoc = useCallback(async (uuid: string, document: PartDoc) => {
     try {
