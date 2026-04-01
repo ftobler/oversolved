@@ -16,19 +16,34 @@ import {
   applySetFeaturePlane,
   applyAddSketch,
   applyDeleteFeature,
+  applySetFeatureVisibility,
 } from '../utils/yamlMutations'
+import type { PartFeature } from '../types/cad'
+
+const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
+  { id: 'Origin', kind: 'origin' },
+  { id: 'Top',    kind: 'plane' },
+  { id: 'Front',  kind: 'plane' },
+  { id: 'Right',  kind: 'plane' },
+]
+
+// Feature kinds that are display-only and should never be sent to the solver.
+const SOLVER_EXCLUDED_KINDS = new Set(['origin', 'plane'])
 
 function healDoc(raw: unknown): PartDoc {
   const doc = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const userFeatures = Array.isArray(doc.features) ? (doc.features as PartFeature[]) : []
+  const existingIds = new Set(userFeatures.map(f => f.id))
+  const missingBuiltins = BUILTIN_FEATURE_DEFAULTS.filter(f => !existingIds.has(f.id))
   return {
     ...doc,
-    version:  (doc.version  as number)  ?? 1,
-    kind:     (doc.kind     as string)  ?? 'part',
-    features: Array.isArray(doc.features) ? doc.features : [],
+    version:  (doc.version as number) ?? 1,
+    kind:     (doc.kind    as string) ?? 'part',
+    features: [...missingBuiltins, ...userFeatures],
   } as PartDoc
 }
 
-export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, visibleFeatures?: Set<string>) {
+export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void) {
   const [doc, setDoc] = useState<PartDoc | null>(null)
   const [docName, setDocName] = useState<string>('')
   const docRef = useRef<PartDoc | null>(null)
@@ -47,10 +62,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     setSolveTime(null)
     const startTime = performance.now()
     try {
-      // Filter features based on visibility before solving
-      const filteredDoc = visibleFeatures 
-        ? { ...d, features: (d.features ?? []).filter(f => visibleFeatures.has(f.id)) }
-        : d
+      // Filter features before solving: visible user features only (no display-only builtins)
+      const filteredDoc = {
+        ...d,
+        features: (d.features ?? []).filter(f =>
+          !SOLVER_EXCLUDED_KINDS.has(f.kind) && f.visible !== false
+        ),
+      }
 
       const response = await fetch('/api/solve', {
         method: 'POST',
@@ -130,7 +148,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     } finally {
       setSolving(false)
     }
-  }, [mode, setCodeText, visibleFeatures])
+  }, [mode, setCodeText])
 
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)
@@ -191,6 +209,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'delete_feature':
         applyDeleteFeature(next, m.featureId)
+        break
+      case 'set_feature_visibility':
+        applySetFeatureVisibility(next, m.featureId, m.visible)
         break
     }
     docRef.current = next

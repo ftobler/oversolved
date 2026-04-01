@@ -348,3 +348,13 @@ export function applyDeleteFeature(doc: PartDoc, featureId: string): void {
   if (!doc.features) return
   doc.features = doc.features.filter(f => f.id !== featureId)
 }
+
+export function applySetFeatureVisibility(doc: PartDoc, featureId: string, visible: boolean): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  if (visible) {
+    delete feature.visible
+  } else {
+    feature.visible = false
+  }
+}

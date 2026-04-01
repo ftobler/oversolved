@@ -43,6 +43,7 @@ export interface PartFeature {
   id: string
   kind: string
   label?: string
+  visible?: boolean   // absent means visible; false means hidden
   plane?: string  // query string, e.g. "@builtin_plane_front"
   entities?: PartEntityDef[]
   initial?: Record<string, number[]>
@@ -275,3 +276,4 @@ export type Mutation =
   | { type: 'set_feature_plane'; featureId: string; plane: string }
   | { type: 'add_sketch'; featureId: string }
   | { type: 'delete_feature'; featureId: string }
+  | { type: 'set_feature_visibility'; featureId: string; visible: boolean }

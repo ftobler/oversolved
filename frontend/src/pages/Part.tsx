@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
-import type { Feature, PartDoc } from '../types/cad'
+import type { Feature, PartDoc, PartFeature } from '../types/cad'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import { useCommandRegistration } from './hooks/useCommandRegistration'
 import { buildCommandEntries } from './commandEntries'
@@ -29,16 +29,11 @@ import contextExitIcon from '../assets/icons/context-exit.svg'
 import contextHideIcon from '../assets/icons/context-hide.svg'
 import contextDeleteIcon from '../assets/icons/context-delete.svg'
 
-const BUILT_IN_FEATURES: Array<{ id: string; kind?: string }> = [
-  { id: 'Origin', kind: 'origin' },
-  { id: 'Top', kind: 'plane' },
-  { id: 'Front', kind: 'plane' },
-  { id: 'Right', kind: 'plane' },
-]
+// IDs of built-in features that cannot be deleted.
+const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
 
-function extractFeatures(doc: PartDoc | null): Array<{ id: string; kind?: string }> {
-  if (!doc) return BUILT_IN_FEATURES
-  return [...BUILT_IN_FEATURES, ...(doc.features ?? []).map(f => ({ id: f.id, kind: f.kind }))]
+function extractFeatures(doc: PartDoc | null): PartFeature[] {
+  return doc?.features ?? []
 }
 
 export default function Part() {
@@ -46,9 +41,9 @@ export default function Part() {
   const [codeText, setCodeText] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
-  const [visibleFeatures, setVisibleFeatures] = useState<Set<string>>(new Set())
   const [mode, setModeRaw] = useState<'sketch' | 'feature' | 'code'>('sketch')
   const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
+  const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
   const [editingSketchId, setEditingSketchId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
@@ -84,7 +79,7 @@ export default function Part() {
     saveDoc,
     renameDoc,
     docName,
-  } = usePartDoc(uuid, mode, setCodeText, visibleFeatures)
+  } = usePartDoc(uuid, mode, setCodeText)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -93,14 +88,20 @@ export default function Part() {
 
   const features = useMemo(() => extractFeatures(doc), [doc])
 
+  // Derive visibility from the doc: features without explicit visible:false are visible.
+  const visibleFeatures = useMemo(
+    () => new Set(features.filter(f => f.visible !== false).map(f => f.id)),
+    [features]
+  )
+
+  // Initialize rollback position once on first doc load.
   useEffect(() => {
-    if (doc && visibleFeatures.size === 0) {
-      const extracted = extractFeatures(doc)
+    if (doc && !rollbackInitialized.current) {
+      rollbackInitialized.current = true
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setVisibleFeatures(new Set(extracted.map(f => f.id)))
-      setRollbackPosition(extracted.length)
+      setRollbackPosition(extractFeatures(doc).length)
     }
-  }, [doc, visibleFeatures.size])
+  }, [doc])
 
   const activeSketchFeatureId = useMemo(() => {
     if (!editingSketchId) return undefined
@@ -136,7 +137,7 @@ export default function Part() {
   }, [])
 
   const handleDeleteFeature = useCallback((featureId: string) => {
-    if (BUILT_IN_FEATURES.some(f => f.id === featureId)) return
+    if (BUILT_IN_IDS.has(featureId)) return
     if (featureId === editingSketchId) setEditingSketchId(null)
     handleMutation({ type: 'delete_feature', featureId })
     useSketchEditorStore.getState().clearSelection()
@@ -159,7 +160,6 @@ export default function Part() {
     if (!doc) return
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const featureId = `sketch${sketchCount + 1}`
-    setVisibleFeatures(prev => new Set([...prev, featureId]))
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     handleMutation({ type: 'add_sketch', featureId })
     setPlaneSelectionFeatureId(featureId)
@@ -237,14 +237,9 @@ export default function Part() {
   }
 
   const toggleVisibility = useCallback((featureId: string) => {
-    setVisibleFeatures(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(featureId)) newSet.delete(featureId)
-      else newSet.add(featureId)
-      return newSet
-    })
+    handleMutation({ type: 'set_feature_visibility', featureId, visible: !visibleFeatures.has(featureId) })
     setContextMenu(null)
-  }, [])
+  }, [handleMutation, visibleFeatures])
 
   const enterEditSketch = (featureId: string) => {
     setEditingSketchId(featureId)
@@ -283,7 +278,7 @@ export default function Part() {
           onClick: () => toggleVisibility(target.id),
         })
       }
-      if (!BUILT_IN_FEATURES.some(f => f.id === featureId)) {
+      if (!BUILT_IN_IDS.has(featureId)) {
         items.push({
           label: 'Delete',
           icon: contextDeleteIcon,
