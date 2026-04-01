@@ -36,6 +36,49 @@ describe('store toggleSelect with @-prefixed IDs', () => {
   })
 })
 
+// 1c: feature-tree selection uses @featureId query format
+// When a user clicks a sketch or other feature in the left feature list,
+// the selection ID is @<featureId> - a valid feature-plane query that the
+// solver resolves to the feature's defining plane geometry.
+describe('feature-tree selection uses @featureId', () => {
+  beforeEach(() => {
+    useSketchEditorStore.getState().clearSelection()
+  })
+
+  it('selects a sketch feature as @sketch1', () => {
+    useSketchEditorStore.getState().toggleSelect('@sketch1')
+    expect(useSketchEditorStore.getState().selection.has('@sketch1')).toBe(true)
+  })
+
+  it('deselects a sketch feature on second click', () => {
+    useSketchEditorStore.getState().toggleSelect('@sketch1')
+    useSketchEditorStore.getState().toggleSelect('@sketch1')
+    expect(useSketchEditorStore.getState().selection.has('@sketch1')).toBe(false)
+  })
+
+  it('can select multiple features simultaneously', () => {
+    useSketchEditorStore.getState().toggleSelect('@sketch1')
+    useSketchEditorStore.getState().toggleSelect('@sketch2')
+    const sel = useSketchEditorStore.getState().selection
+    expect(sel.has('@sketch1')).toBe(true)
+    expect(sel.has('@sketch2')).toBe(true)
+  })
+
+  it('feature selection and entity selection coexist', () => {
+    useSketchEditorStore.getState().toggleSelect('@sketch1')
+    useSketchEditorStore.getState().toggleSelect('entity:sketch1:line1')
+    const sel = useSketchEditorStore.getState().selection
+    expect(sel.has('@sketch1')).toBe(true)
+    expect(sel.has('entity:sketch1:line1')).toBe(true)
+  })
+
+  it('clearSelection removes feature selections', () => {
+    useSketchEditorStore.getState().toggleSelect('@sketch1')
+    useSketchEditorStore.getState().clearSelection()
+    expect(useSketchEditorStore.getState().selection.size).toBe(0)
+  })
+})
+
 // 1f / 4m: clicking a builtin in normal mode only selects, no set_feature_plane
 describe('builtin click in normal mode (planeSelectionFeatureId=null)', () => {
   beforeEach(() => {

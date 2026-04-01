@@ -320,10 +320,10 @@ export default function Part() {
                   )}
                   <li
                     key={feature.id}
-                    className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingSketchId ? 'editing' : ''} ${selection.has(`feature:${feature.id}`) ? 'selected' : ''}`}
+                    className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingSketchId ? 'editing' : ''} ${selection.has(`@${feature.id}`) ? 'selected' : ''}`}
                     onDragOver={(e) => handleRollbackDragOver(e, index)}
                     onDrop={(e) => handleRollbackDrop(e, index)}
-                    onClick={() => toggleSelect(`feature:${feature.id}`)}
+                    onClick={() => toggleSelect(`@${feature.id}`)}
                     onDoubleClick={() => feature.kind === 'sketch' ? enterEditSketch(feature.id) : undefined}
                     onContextMenu={(e) => { e.stopPropagation(); handleRightClick([e.clientX, e.clientY], feature.id) }}
                     style={{ flexWrap: 'wrap' }}

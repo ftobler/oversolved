@@ -72,6 +72,31 @@ describe('commitPlaneSelection with face ID', () => {
   })
 })
 
+// 4f: commitPlaneSelection with @featureId (feature-plane reference)
+// Selecting a sketch from the feature tree produces @sketch1 as the selection ID.
+// commitPlaneSelection must store it verbatim as the plane query so the solver
+// can resolve it to the sketch's defining plane.
+describe('commitPlaneSelection with @featureId', () => {
+  beforeEach(reset)
+
+  it('stores @sketch1 as plane verbatim', () => {
+    const mutations: unknown[] = []
+    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    useSketchEditorStore.getState().setPlaneSelectionFeatureId('sketch2')
+    useSketchEditorStore.getState().commitPlaneSelection('@sketch1')
+    expect(mutations[0]).toEqual({ type: 'set_feature_plane', featureId: 'sketch2', plane: '@sketch1' })
+    expect(useSketchEditorStore.getState().planeSelectionFeatureId).toBeNull()
+  })
+
+  it('stores @extrude1 as plane verbatim (future: resolves to top/origin face)', () => {
+    const mutations: unknown[] = []
+    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    useSketchEditorStore.getState().setPlaneSelectionFeatureId('sketch1')
+    useSketchEditorStore.getState().commitPlaneSelection('@extrude1')
+    expect(mutations[0]).toEqual({ type: 'set_feature_plane', featureId: 'sketch1', plane: '@extrude1' })
+  })
+})
+
 // 4e: commitPlaneSelection is no-op when mode is inactive
 describe('commitPlaneSelection no-op when inactive', () => {
   beforeEach(reset)

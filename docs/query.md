@@ -11,6 +11,7 @@ Each element can refer to another one by an id. There are different requirements
 |-------------------------|---------------------------------------------------------------------|
 | `$<ELE>`                | local id inside the feature.                                        |
 | `$<ELE><SUB>`           | local id inside the feature with a uniquely identified subelement.  |
+| `@<FEAT>`               | feature-plane reference: resolves to the defining plane of that feature (see below). |
 | `@<FEAT><ELE><SUB>`     | absolute element lookup by id.                                      |
 | `?A,B;<idA><idB>`       | anchrestry information list.                                        |
 | `?A,B;<idA><idB>:<TYPE>`| anchrestry information list, restricted to geometry type.           |
@@ -45,6 +46,18 @@ When multiple surfaces are created from the same ancestry (e.g., a circle cut by
 ```
 
 A query is always used to refer to another element. The query should resolve unique. Anchestry information and classifiers are used to make the resolution unambiguous.
+
+### Feature-plane references (`@<FEAT>`)
+
+When `@<id>` appears and `<id>` exactly matches a registered feature ID (with no leftover characters that would form an element ID), it is a **feature-plane reference**. The resolver looks up the feature and returns its defining plane geometry:
+
+- **Sketch** (`@sketch1`): resolves to the sketch's plane transform (origin + rotation). This is the primary use case - selecting a sketch from the feature tree and using it as a plane reference for another sketch or operation.
+- **Extrude** (`@extrude1`): resolves to the extrude's origin plane (the sketch plane it was built from) or, if more useful, its top face. The exact resolution policy for non-sketch features is TBD but should default to the most geometrically useful reference plane.
+- **Built-in planes** (`@builtin_plane_front`, `@builtin_plane_top`, `@builtin_plane_right`): these are special-cased named feature-plane references and are already fully supported.
+
+**Disambiguation rule**: when parsing `@<string>`, the resolver first checks if `<string>` is a known feature ID. If it is and nothing remains, it is a feature-plane reference. If `<string>` starts with a known feature ID and has leftover characters, those characters form the element ID (`@<FEAT><ELE>`). Machine-generated feature IDs are 24-char base64url (18 bytes), so disambiguation is unambiguous. Human-readable IDs (e.g. `sketch1`) require the resolver to check all registered feature IDs by longest prefix match.
+
+**Frontend convention**: the UI selection system uses `@<featureId>` as the selection ID when a feature is clicked in the feature tree. This is a valid query string that passes through `parseTarget` unchanged and can be used directly as a plane reference in mutations (e.g. `set_feature_plane`).
 
 ---
 

@@ -183,6 +183,32 @@ const docWithSketch = (id: string): PartDoc => ({
   features: [{ id, kind: 'sketch', entities: [{ id: 'lineA', kind: 'line' }], initial: { lineA: [0,0,10,0] }, constraints: [] }],
 })
 
+// 6c: parseTarget for @featureId feature-plane references
+// A bare @<featureId> (no element suffix) is a feature-plane reference.
+// parseTarget must pass it through unchanged so the solver can resolve
+// it to the feature's defining plane.
+describe('parseTarget for feature-plane references', () => {
+  it('passes through @featureId unchanged (sketch feature-plane ref)', () => {
+    expect(parseTarget('@sketch1', 'sketch2')).toBe('@sketch1')
+  })
+
+  it('passes through @featureId unchanged even from same feature context', () => {
+    expect(parseTarget('@sketch1', 'sketch1')).toBe('@sketch1')
+  })
+
+  it('passes through builtin plane references unchanged', () => {
+    expect(parseTarget('@builtin_plane_front', 'sketch1')).toBe('@builtin_plane_front')
+    expect(parseTarget('@builtin_plane_top', 'sketch1')).toBe('@builtin_plane_top')
+    expect(parseTarget('@builtin_plane_right', 'sketch1')).toBe('@builtin_plane_right')
+  })
+
+  it('passes through @extrude feature-plane ref unchanged', () => {
+    // @extrude1 will resolve to extrude1's origin/top plane (TBD by backend).
+    // The frontend must pass it through without modification.
+    expect(parseTarget('@extrude1', 'sketch2')).toBe('@extrude1')
+  })
+})
+
 // 6a: parseTarget for face: IDs
 describe('parseTarget for face IDs', () => {
   it('returns raw query for face from different feature', () => {
