@@ -133,9 +133,22 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
   const clearDraw = useSketchEditorStore(s => s.clearDraw)
   const onMutation = useSketchEditorStore(s => s.onMutation)
   const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
+  const clearSelection = useSketchEditorStore(s => s.clearSelection)
 
   if (featureId !== activeFeatureId) return null
-  if (activeTool === 'select' || activeTool === 'dimension') return null
+
+  // When in select/dimension mode, render a background plane for deselection
+  if (activeTool === 'select' || activeTool === 'dimension') {
+    return (
+      <mesh
+        position={[0, 0, -0.002]}
+        onClick={(e) => { e.stopPropagation(); clearSelection() }}
+      >
+        <planeGeometry args={[100000, 100000]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+    )
+  }
 
   const handleDown = (x: number, y: number) => {
     const pts = drawPoints
