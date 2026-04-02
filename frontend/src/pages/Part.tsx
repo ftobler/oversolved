@@ -46,8 +46,7 @@ export default function Part() {
   const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
   const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
-  const [editingSketchId, setEditingSketchId] = useState<string | null>(null)
-  const [editingPlaneId, setEditingPlaneId] = useState<string | null>(null)
+  const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
 
   const [debugOpen, setDebugOpen] = useState(false)
@@ -108,11 +107,13 @@ export default function Part() {
   }, [doc])
 
   const activeSketchFeatureId = useMemo(() => {
-    if (!editingSketchId) return undefined
+    if (!editingFeatureId) return undefined
+    const feature = features.find(f => f.id === editingFeatureId)
+    if (!feature || feature.kind !== 'sketch') return undefined
     const limit = rollbackPosition ?? features.length
     const sketches = features.slice(0, limit).filter(f => f.kind === 'sketch' && visibleFeatures.has(f.id))
-    return sketches.some(f => f.id === editingSketchId) ? editingSketchId : undefined
-  }, [features, rollbackPosition, visibleFeatures, editingSketchId])
+    return sketches.some(f => f.id === editingFeatureId) ? editingFeatureId : undefined
+  }, [features, rollbackPosition, visibleFeatures, editingFeatureId])
 
   const setMode = useCallback((newMode: 'sketch' | 'feature' | 'code') => {
     setModeRaw(prev => {
@@ -136,18 +137,20 @@ export default function Part() {
   }, [docRef, reSolve])
 
   const handleExitSketch = useCallback(() => {
-    setEditingSketchId(null)
+    setEditingFeatureId(null)
     setContextMenu(null)
   }, [])
 
   const handleDeleteFeature = useCallback((featureId: string) => {
     if (BUILT_IN_IDS.has(featureId)) return
-    if (featureId === editingSketchId) setEditingSketchId(null)
-    if (featureId === editingPlaneId) { setEditingPlaneId(null); setFieldPickState(null) }
+    if (featureId === editingFeatureId) {
+      setEditingFeatureId(null)
+      setFieldPickState(null)
+    }
     handleMutation({ type: 'delete_feature', featureId })
     useSketchEditorStore.getState().clearSelection()
     setContextMenu(null)
-  }, [editingSketchId, editingPlaneId, handleMutation, setFieldPickState])
+  }, [editingFeatureId, handleMutation, setFieldPickState])
 
   const handleDeleteSelectedFeatures = useCallback(() => {
     const sel = useSketchEditorStore.getState().selection
@@ -155,12 +158,14 @@ export default function Part() {
       .filter(id => id.startsWith('@') && !id.startsWith('@builtin_'))
       .map(id => id.slice(1))
     for (const featureId of featureIds) {
-      if (featureId === editingSketchId) setEditingSketchId(null)
-      if (featureId === editingPlaneId) { setEditingPlaneId(null); setFieldPickState(null) }
+      if (featureId === editingFeatureId) {
+        setEditingFeatureId(null)
+        setFieldPickState(null)
+      }
       handleMutation({ type: 'delete_feature', featureId })
     }
     if (featureIds.length > 0) useSketchEditorStore.getState().clearSelection()
-  }, [editingSketchId, editingPlaneId, handleMutation, setFieldPickState])
+  }, [editingFeatureId, handleMutation, setFieldPickState])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
@@ -168,7 +173,7 @@ export default function Part() {
     const featureId = `plane${planeCount + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     handleMutation({ type: 'add_plane', featureId })
-    setEditingPlaneId(featureId)
+    setEditingFeatureId(featureId)
   }, [doc, features.length, handleMutation])
 
   const handleAddSketch = useCallback(() => {
@@ -176,7 +181,7 @@ export default function Part() {
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const featureId = `sketch${sketchCount + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
-    setEditingPlaneId(null)
+    setEditingFeatureId(null)
     setFieldPickState(null)
     handleMutation({ type: 'add_sketch', featureId })
     setPlaneSelectionFeatureId(featureId)
@@ -259,12 +264,14 @@ export default function Part() {
   }, [handleMutation, visibleFeatures])
 
   const enterEditSketch = (featureId: string) => {
-    setEditingSketchId(featureId)
+    const idx = features.findIndex(f => f.id === featureId)
+    if (idx >= 0) setRollbackPosition(idx + 1)
+    setEditingFeatureId(featureId)
     setMode('sketch')
   }
 
   const exitEditSketch = () => {
-    setEditingSketchId(null)
+    setEditingFeatureId(null)
   }
 
   const handleRightClick = useCallback((pos: [number, number], featureId?: string) => {
@@ -363,7 +370,7 @@ export default function Part() {
                   )}
                   <li
                     key={feature.id}
-                    className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${(feature.id === editingSketchId || (!BUILT_IN_IDS.has(feature.id) && feature.id === editingPlaneId)) ? 'editing' : ''} ${selection.has(`@${feature.id}`) ? 'selected' : ''}`}
+                    className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(`@${feature.id}`) ? 'selected' : ''}`}
                     onDragOver={(e) => handleRollbackDragOver(e, index)}
                     onDrop={(e) => handleRollbackDrop(e, index)}
                     onClick={() => toggleSelect(`@${feature.id}`)}
@@ -385,7 +392,7 @@ export default function Part() {
                       className="feature-icon"
                     />
                     <span className="feature-name">{feature.id}</span>
-                    {feature.kind === 'sketch' && feature.id !== editingSketchId && (
+                    {feature.kind === 'sketch' && feature.id !== editingFeatureId && (
                       <button
                         className="feature-edit-btn"
                         onClick={() => enterEditSketch(feature.id)}
@@ -394,7 +401,7 @@ export default function Part() {
                         <span className="material-icons-outlined">edit</span>
                       </button>
                     )}
-                    {feature.kind === 'sketch' && feature.id === editingSketchId && (
+                    {feature.kind === 'sketch' && feature.id === editingFeatureId && (
                       <button
                         className="exit-sketch-btn"
                         onClick={(e) => { e.stopPropagation(); exitEditSketch() }}
@@ -403,19 +410,24 @@ export default function Part() {
                         <span className="material-icons-outlined">close</span>
                       </button>
                     )}
-                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id !== editingPlaneId && (
+                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id !== editingFeatureId && (
                       <button
                         className="feature-edit-btn"
-                        onClick={(e) => { e.stopPropagation(); setEditingPlaneId(feature.id) }}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          const idx = features.findIndex(f => f.id === feature.id)
+                          if (idx >= 0) setRollbackPosition(idx + 1)
+                          setEditingFeatureId(feature.id)
+                        }}
                         title="Edit plane"
                       >
                         <span className="material-icons-outlined">edit</span>
                       </button>
                     )}
-                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingPlaneId && (
+                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (
                       <button
                         className="exit-sketch-btn"
-                        onClick={(e) => { e.stopPropagation(); setEditingPlaneId(null); setFieldPickState(null) }}
+                        onClick={(e) => { e.stopPropagation(); setEditingFeatureId(null); setFieldPickState(null) }}
                         title="Exit plane editor"
                       >
                         <span className="material-icons-outlined">close</span>
@@ -430,7 +442,7 @@ export default function Part() {
                         {visibleFeatures.has(feature.id) ? 'visibility' : 'visibility_off'}
                       </span>
                     </button>
-                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingPlaneId && (() => {
+                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (() => {
                       const featureDef = doc?.features?.find(f => f.id === feature.id)
                       const def = featureDef?.definition ?? { mode: 'offset' }
                       const mode = def.mode ?? 'offset'
@@ -532,7 +544,7 @@ export default function Part() {
                         </div>
                       )
                     })()}
-                    {feature.kind === 'sketch' && feature.id === editingSketchId && (() => {
+                    {feature.kind === 'sketch' && feature.id === editingFeatureId && (() => {
                       const featureDef = doc?.features?.find(f => f.id === feature.id)
                       const isPicking = planeSelectionFeatureId === feature.id
                       return (
