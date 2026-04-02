@@ -69,11 +69,12 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     setSolveTime(null)
     const startTime = performance.now()
     try {
-      // Filter features before solving: visible user features only (no display-only builtins)
+      // Filter features before solving: exclude display-only builtins, but include hidden features
+      // (visibility only affects viewport rendering, not solver)
       const filteredDoc = {
         ...d,
         features: (d.features ?? []).filter(f =>
-          !BUILTIN_FEATURE_IDS.has(f.id) && f.visible !== false
+          !BUILTIN_FEATURE_IDS.has(f.id)
         ),
       }
 
