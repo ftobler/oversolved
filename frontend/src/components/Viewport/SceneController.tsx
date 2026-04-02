@@ -45,12 +45,16 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'Control' || e.key === 'Meta') && ctrlRef.current) {
+      if (!ctrlRef.current) return
+      if (e.key === 'Control' || e.key === 'Meta') {
         ctrlRef.current.mouseButtons.RIGHT = THREE.MOUSE.PAN
+      } else if (e.key === 'Shift') {
+        ctrlRef.current.mouseButtons.RIGHT = THREE.MOUSE.DOLLY
       }
     }
     const onKeyUp = (e: KeyboardEvent) => {
-      if ((e.key === 'Control' || e.key === 'Meta') && ctrlRef.current) {
+      if (!ctrlRef.current) return
+      if (e.key === 'Control' || e.key === 'Meta' || e.key === 'Shift') {
         ctrlRef.current.mouseButtons.RIGHT = THREE.MOUSE.ROTATE
       }
     }
