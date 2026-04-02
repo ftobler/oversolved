@@ -49,6 +49,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
 
   const extent = useMemo(() => sketchExtent(displaySketch), [displaySketch])
   const rot = planeTransform ? planeRotationFromTransform(planeTransform) : planeRotation(plane)
+  const pos = planeTransform?.origin as [number, number, number] | undefined
   const kindMap = useMemo(() =>
     Object.fromEntries((entities ?? []).map(e => [e.id, e.kind])),
     [entities]
@@ -60,7 +61,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     : COLOR_INACTIVE
 
   return (
-    <group rotation={rot}>
+    <group rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && <TopologySurfaces topology={topology} featureId={featureId} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />

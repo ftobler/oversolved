@@ -738,7 +738,15 @@ def _resolve_plane_early(plane_query: Optional[str], global_repo: Optional[Repos
     if not plane_query:
         return _FRONT_PLANE
     if plane_query.startswith("@"):
-        return _BUILTIN_PLANES.get(plane_query[1:], _FRONT_PLANE)
+        builtin = _BUILTIN_PLANES.get(plane_query[1:])
+        if builtin is not None:
+            return builtin
+        # Also look up user-defined planes in global_repo (e.g. @plane1)
+        if global_repo is not None:
+            p = global_repo.elements.get(plane_query[1:])
+            if p and p.get("type") in ("plane", "face"):
+                return p
+        return _FRONT_PLANE
     if plane_query.startswith("$") and global_repo is not None:
         p = global_repo.elements.get(plane_query[1:])
         if p and p.get("type") in ("plane", "face"):

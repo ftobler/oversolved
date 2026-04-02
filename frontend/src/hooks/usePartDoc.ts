@@ -49,6 +49,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [doc, setDoc] = useState<PartDoc | null>(null)
   const [docName, setDocName] = useState<string>('')
   const docRef = useRef<PartDoc | null>(null)
+  // Use a ref for mode so reSolve does not change identity on every mode switch.
+  // Without this, reSolve changing would re-trigger the document-load useEffect,
+  // discarding any unsaved in-memory mutations (e.g. a freshly added sketch).
+  const modeRef = useRef(mode)
+  modeRef.current = mode
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [solveResults, setSolveResults] = useState<Record<string, SketchData>>({})
@@ -152,7 +157,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         setSolveRawResult(stringifyYaml(data.result))
         setDoc(d)
         docRef.current = d
-        if (mode === 'code') {
+        if (modeRef.current === 'code') {
           setCodeText(stringifyYaml(d))
         }
         setSolveError(null)
@@ -163,7 +168,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     } finally {
       setSolving(false)
     }
-  }, [mode, setCodeText])
+  }, [setCodeText])
 
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)

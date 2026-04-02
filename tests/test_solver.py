@@ -7394,3 +7394,82 @@ def test_plane_three_point_3d_coords():
     np.testing.assert_array_almost_equal(plane['origin'], [0, 0, 0], decimal=5)
     np.testing.assert_array_almost_equal(plane['x_axis'], [1, 0, 0], decimal=5)
     np.testing.assert_array_almost_equal(plane['normal'], [0, 1, 0], decimal=5)
+
+
+def test_sketch_on_user_defined_plane_has_correct_transform():
+    """Sketch referencing a user-defined plane via @planeId gets the right plane_transform.
+
+    Bug: _resolve_plane_early only checked _BUILTIN_PLANES for @ queries,
+    causing sketches on user-defined planes to fall back to the front plane.
+    """
+    import numpy as np
+    spec = {
+        'features': [
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'offset',
+                    'plane': '@builtin_plane_top',
+                    'offset': 3.0,
+                },
+            },
+            {
+                'id': 'sketch1',
+                'kind': 'sketch',
+                'plane': '@plane1',
+                'entities': [
+                    {'id': 'p1', 'kind': 'point'},
+                ],
+                'initial': {
+                    'p1': [0.0, 0.0],
+                },
+                'constraints': [],
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][0]['status'] == 'ok'
+    assert result['features'][1]['status'] in ('underconstrained', 'fully_constrained', 'ok')
+
+    pt = result['features'][1]['plane_transform']
+    # plane1 is the top plane offset by 3 along Y (top plane normal = [0,1,0])
+    # so sketch1 origin should be at [0, 3, 0]
+    np.testing.assert_array_almost_equal(pt['origin'], [0, 3, 0], decimal=5)
+    # normal should still be [0,1,0] (same as top plane)
+    rot = pt['rotation']
+    # rotation is [x_axis[0..2], y_axis[0..2], normal[0..2]]
+    normal = rot[6:9]
+    np.testing.assert_array_almost_equal(normal, [0, 1, 0], decimal=5)
+
+
+def test_sketch_on_user_defined_plane_dollar_ref():
+    """Sketch referencing a user-defined plane via $planeId also works (existing behavior)."""
+    import numpy as np
+    spec = {
+        'features': [
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'offset',
+                    'plane': '@builtin_plane_top',
+                    'offset': 5.0,
+                },
+            },
+            {
+                'id': 'sketch1',
+                'kind': 'sketch',
+                'plane': '$plane1',
+                'entities': [],
+                'initial': {},
+                'constraints': [],
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][0]['status'] == 'ok'
+    pt = result['features'][1]['plane_transform']
+    np.testing.assert_array_almost_equal(pt['origin'], [0, 5, 0], decimal=5)
