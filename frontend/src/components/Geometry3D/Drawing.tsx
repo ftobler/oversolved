@@ -233,7 +233,7 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
     <mesh
       ref={meshRef}
       position={[0, 0, -0.002]}
-      onPointerMove={e => { e.stopPropagation(); setDrawHover(toLocal(e.point)) }}
+      onPointerMove={e => { e.stopPropagation(); if (e.buttons & 6) { setDrawHover(null); return }; setDrawHover(toLocal(e.point)) }}
       onPointerDown={e => { e.stopPropagation(); const [x, y] = toLocal(e.point); handleDown(x, y) }}
       onPointerOut={() => setDrawHover(null)}
     >
