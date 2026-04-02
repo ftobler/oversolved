@@ -1108,7 +1108,7 @@ def _solve_plane(feature: dict, global_repo: Repository) -> dict:
         else:
             return {'status': 'exception', 'message': f'unknown plane mode: {mode!r}'}
 
-        rotation = feature.get('rotation', 0.0)
+        rotation = definition.get('rotation', 0.0)
         if rotation != 0.0:
             x_axis, y_axis = _rotate_frame_around_normal(x_axis, y_axis, normal, rotation)
 

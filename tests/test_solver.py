@@ -6648,8 +6648,8 @@ def test_plane_three_point_rotation_45():
                     'p1': '@sketch0/p1/xy',
                     'p2': '@sketch0/p2/xy',
                     'p3': '@sketch0/p3/xy',
+                    'rotation': 45.0,
                 },
-                'rotation': 45.0,
             },
         ]
     }
