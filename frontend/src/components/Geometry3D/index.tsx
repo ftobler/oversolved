@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
+import * as THREE from 'three'
 import type { Sketch, Constraints, Topology, PlaneTransform } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 
@@ -39,6 +40,7 @@ export interface Geometry3DProps {
 }
 
 export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, solveStatus }: Geometry3DProps) {
+  const groupRef = useRef<THREE.Group>(null)
   const drag = useSketchEditorStore(s => s.drag)
 
   // During drag on this feature, show optimistic preview
@@ -61,9 +63,9 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     : COLOR_INACTIVE
 
   return (
-    <group rotation={rot} position={pos ?? [0, 0, 0]}>
+    <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && <TopologySurfaces topology={topology} featureId={featureId} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
-      <EntityLines sketch={displaySketch} featureId={featureId} color={baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} />
+      <EntityLines sketch={displaySketch} featureId={featureId} color={baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} planeGroupRef={groupRef} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />
       {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
       <DragPlane featureId={featureId} />

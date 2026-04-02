@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Line } from '@react-three/drei'
+import * as THREE from 'three'
 import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
 import { isProjectedEntity } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
@@ -16,9 +17,10 @@ interface EntityItemProps {
   baseColor: string
   lineWidth?: number
   isEditing?: boolean
+  planeGroupRef?: React.RefObject<THREE.Group | null>
 }
 
-export function EntityItem({ entity, entityId, entityKind, featureId, baseColor, lineWidth = 1, isEditing = false }: EntityItemProps) {
+export function EntityItem({ entity, entityId, entityKind, featureId, baseColor, lineWidth = 1, isEditing = false, planeGroupRef }: EntityItemProps) {
   const [hovered, setHovered] = useState(false)
   const entId = `entity:${featureId}:${entityId}`
   const selected = useSketchEditorStore(s => s.selection.has(entId))
@@ -64,14 +66,28 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
       toggleSelect(entId)
     }
   }, [entId, toggleSelect, activeTool, handleDimClick, featureId, entityId, entityKind, isEditing, fieldPickState, commitFieldPick])
+  // Convert world coordinates to sketch-local coordinates by applying inverse of plane group transform
+  const toLocal = useCallback((worldPt: { x: number; y: number; z?: number }): [number, number] => {
+    const ref = planeGroupRef?.current
+    if (!ref) return [worldPt.x, worldPt.y]
+    const parentPos = new THREE.Vector3()
+    ref.getWorldPosition(parentPos)
+    const q = new THREE.Quaternion()
+    ref.getWorldQuaternion(q)
+    const worldVec = new THREE.Vector3(worldPt.x, worldPt.y, worldPt.z ?? 0)
+    const local = worldVec.clone().sub(parentPos).applyQuaternion(q.invert())
+    return [local.x, local.y]
+  }, [planeGroupRef])
+
   // Edge drag: pointer down on the edge group initiates a full-entity move
-  const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: { x: number; y: number } }) => {
+  const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: { x: number; y: number; z?: number } }) => {
     if (!isEditing || activeTool !== 'select') return
     ev.stopPropagation()
     setOrbitEnabled(false)
+    const [sx, sy] = toLocal(ev.point)
     setDrag({ type: 'edge', vertexId: entId, featureId, entityId,
-      vertexKey: 'edge', startWorld: [ev.point.x, ev.point.y], currentWorld: [ev.point.x, ev.point.y] })
-  }, [isEditing, entId, featureId, entityId, setDrag, setOrbitEnabled, activeTool])
+      vertexKey: 'edge', startWorld: [sx, sy], currentWorld: [sx, sy] })
+  }, [isEditing, entId, featureId, entityId, setDrag, setOrbitEnabled, activeTool, toLocal])
 
   if ('start' in e && 'end' in e && 'radius' in e) {
     const arc = e as Arc
@@ -131,15 +147,16 @@ interface EntityLinesProps {
   kindMap: Record<string, string>
   lineWidth?: number
   isEditing?: boolean
+  planeGroupRef?: React.RefObject<THREE.Group | null>
 }
 
-export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, isEditing = false }: EntityLinesProps) {
+export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, isEditing = false, planeGroupRef }: EntityLinesProps) {
   return (
     <>
       {Object.entries(sketch)
         .filter(([, entity]) => !(entity as PointEntity).projected)
         .map(([id, entity]) => (
-          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line'} featureId={featureId} baseColor={color} lineWidth={lineWidth} isEditing={isEditing} />
+          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line'} featureId={featureId} baseColor={color} lineWidth={lineWidth} isEditing={isEditing} planeGroupRef={planeGroupRef} />
         ))}
     </>
   )
