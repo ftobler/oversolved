@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrthographicCamera } from '@react-three/drei'
+import { OrthographicCamera, Line } from '@react-three/drei'
 import * as THREE from 'three'
-import type { SketchData, Feature } from '../types/cad'
+import type { SketchData, Feature, PlaneTransform } from '../types/cad'
 import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
 import Geometry3D from './Geometry3D'
 import { CubeGizmoCanvas } from './CubeGizmo'
@@ -12,6 +12,7 @@ import OriginMarker from './Viewport/OriginMarker'
 import ReferencePlane from './Viewport/ReferencePlane'
 import SceneController from './Viewport/SceneController'
 import ContextMenuDialog from './ContextMenuDialog'
+import { planeRotationFromTransform } from './Geometry3D/utils'
 
 const INITIAL_POSITION: [number, number, number] = [0, 0, 100]
 const INITIAL_ZOOM = 200
@@ -33,6 +34,50 @@ function isActive(id: string, features: Feature[] | undefined, rollbackPos: numb
   const idx = features.findIndex(f => f.id === id)
   if (idx < 0) return false
   return (rollbackPos === undefined || idx < rollbackPos) && (!visible || visible.has(id))
+}
+
+const UDPLANE_SIZE = 1
+const UDPH = UDPLANE_SIZE / 2
+const UDPLANE_BORDER: [number,number,number][] = [[-UDPH,-UDPH,0],[UDPH,-UDPH,0],[UDPH,UDPH,0],[-UDPH,UDPH,0],[-UDPH,-UDPH,0]]
+
+function UserDefinedPlane({ featureId, planeTransform }: { featureId: string; label: string; planeTransform: PlaneTransform }) {
+  const [hovered, setHovered] = useState(false)
+  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
+  const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
+  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
+  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
+  const drag = useSketchEditorStore(s => s.drag)
+  const selId = `@${featureId}`
+  const selected = useSketchEditorStore(s => s.selection.has(selId))
+  const isDragging = drag !== null
+
+  const rot = planeRotationFromTransform(planeTransform)
+  const [ox, oy, oz] = planeTransform.origin
+
+  const color = hovered || selected ? '#4fc3f7' : '#444444'
+  const opacity = hovered ? 0.15 : 0.05
+
+  return (
+    <group position={[ox, oy, oz]} rotation={rot}>
+      {!isDragging && (
+        <mesh
+          onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
+          onPointerOut={() => setHovered(false)}
+          onClick={e => {
+            e.stopPropagation()
+            if (fieldPickState?.kind === 'plane') commitFieldPick(selId)
+            else if (planeSelectionFeatureId) commitPlaneSelection(selId)
+            else toggleSelect(selId)
+          }}
+        >
+          <planeGeometry args={[UDPLANE_SIZE, UDPLANE_SIZE]} />
+          <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>
+      )}
+      <Line points={UDPLANE_BORDER} color={hovered || selected ? '#4fc3f7' : '#666666'} lineWidth={1} />
+    </group>
+  )
 }
 
 export default function Viewport({
@@ -109,6 +154,15 @@ export default function Viewport({
         {showFront  && <ReferencePlane rotation={[0,0,0]} label="Front" />}
         {showTop    && <ReferencePlane rotation={[-Math.PI/2,0,0]} label="Top" />}
         {showRight  && <ReferencePlane rotation={[0,Math.PI/2,0]} label="Right" />}
+
+        {(features ?? [])
+          .filter(f => f.kind === 'plane' && !['Origin','Top','Front','Right'].includes(f.id))
+          .filter(f => isActive(f.id, features, rollbackPosition, visibleFeatures))
+          .map(f => {
+            const solveResult = solveResults?.[f.id]
+            if (!solveResult?.plane_transform) return null
+            return <UserDefinedPlane key={f.id} featureId={f.id} label={f.id} planeTransform={solveResult.plane_transform} />
+          })}
 
         {activeSketchFeatures.map(f => {
           const solveResult = solveResults?.[f.id]

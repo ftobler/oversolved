@@ -17,6 +17,8 @@ import {
   applyAddSketch,
   applyDeleteFeature,
   applySetFeatureVisibility,
+  applyAddPlane,
+  applySetPlaneDefinitionField,
 } from '../utils/yamlMutations'
 import type { PartFeature } from '../types/cad'
 
@@ -27,8 +29,8 @@ export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
   { id: 'Right',  kind: 'plane' },
 ]
 
-// Feature kinds that are display-only and should never be sent to the solver.
-const SOLVER_EXCLUDED_KINDS = new Set(['origin', 'plane'])
+// Built-in feature IDs that should never be sent to the solver.
+const BUILTIN_FEATURE_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
 
 export function healDoc(raw: unknown): PartDoc {
   const doc = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
@@ -66,7 +68,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       const filteredDoc = {
         ...d,
         features: (d.features ?? []).filter(f =>
-          !SOLVER_EXCLUDED_KINDS.has(f.kind) && f.visible !== false
+          !BUILTIN_FEATURE_IDS.has(f.id) && f.visible !== false
         ),
       }
 
@@ -82,7 +84,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         setSolveError(data.error || `Solve failed (${response.status})`)
         setSolveRawResult(data.error || `Solve failed (${response.status})`)
       } else {
-        const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; plane_transform?: import('../types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }> }>
+        const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; plane_transform?: import('../types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }>; plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] } }>
 
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
@@ -124,6 +126,19 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
               status: feature.status,
               ...(constraints && { constraints }),
               ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
+            }
+          } else if (feature.plane) {
+            results[id] = {
+              solved: {},
+              status: feature.status,
+              plane_transform: {
+                rotation: [
+                  ...(feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }).x_axis,
+                  ...(feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }).y_axis,
+                  ...(feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }).normal,
+                ],
+                origin: (feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }).origin,
+              },
             }
           } else {
             // exception: no geometry returned — fall back to initial positions, flag status
@@ -212,6 +227,12 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'set_feature_visibility':
         applySetFeatureVisibility(next, m.featureId, m.visible)
+        break
+      case 'add_plane':
+        applyAddPlane(next, m.featureId)
+        break
+      case 'set_plane_definition_field':
+        applySetPlaneDefinitionField(next, m.featureId, m.field, m.value)
         break
     }
     docRef.current = next

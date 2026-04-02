@@ -943,6 +943,20 @@ def _plane_edge_point(definition: dict, global_repo: Repository) -> tuple:
     return origin, x_axis, y_axis, normal
 
 
+def _plane_offset(definition: dict, global_repo: Repository) -> tuple:
+    """Plane parallel to a reference plane, offset along its normal."""
+    plane_query = definition.get('plane', '')
+    offset = float(definition.get('offset', 0.0))
+    plane = global_repo.query(plane_query)
+    if plane is None:
+        raise ValueError(f"plane not found: {plane_query!r}")
+    normal = np.array(plane.get('normal', [0, 0, 1]))
+    origin = np.array(plane.get('origin', [0, 0, 0])) + normal * offset
+    x_axis = np.array(plane.get('x_axis', [1, 0, 0]))
+    y_axis = np.array(plane.get('y_axis', [0, 1, 0]))
+    return origin, x_axis, y_axis, normal
+
+
 def _solve_plane(feature: dict, global_repo: Repository) -> dict:
     """Solve a plane feature, computing a 3D coordinate frame."""
     try:
@@ -957,6 +971,8 @@ def _solve_plane(feature: dict, global_repo: Repository) -> dict:
             origin, x_axis, y_axis, normal = _plane_on_face_edge_angle(definition, global_repo)
         elif mode == 'edge_point':
             origin, x_axis, y_axis, normal = _plane_edge_point(definition, global_repo)
+        elif mode == 'offset':
+            origin, x_axis, y_axis, normal = _plane_offset(definition, global_repo)
         else:
             return {'status': 'exception', 'message': f'unknown plane mode: {mode!r}'}
 

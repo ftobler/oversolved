@@ -672,3 +672,70 @@
   color: #4fc3f7;
   outline: 1px solid #1e3a4a;
 }
+
+.plane-editor {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 3px;
+  padding-top: 5px;
+  border-top: 1px solid #553355;
+}
+
+.plane-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.plane-editor-label {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  width: 42px;
+}
+
+.plane-editor-value {
+  font-size: 10px;
+  color: #bbb;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plane-editor-select {
+  flex: 1;
+  font-size: 10px;
+  background: #1a0f1a;
+  border: 1px solid #3a2a3a;
+  border-radius: 3px;
+  color: #bbb;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.plane-editor-input {
+  flex: 1;
+  font-size: 10px;
+  background: #1a0f1a;
+  border: 1px solid #3a2a3a;
+  border-radius: 3px;
+  color: #bbb;
+  padding: 2px 4px;
+  width: 0;
+}
+
+.plane-editor-input:focus {
+  outline: none;
+  border-color: #b83b88;
+  color: #e060b0;
+}
+
+.plane-editor-select:focus {
+  outline: none;
+  border-color: #b83b88;
+}

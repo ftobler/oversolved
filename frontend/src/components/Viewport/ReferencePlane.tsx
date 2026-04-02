@@ -38,6 +38,8 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
+  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
+  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const drag = useSketchEditorStore(s => s.drag)
   const selId = builtinSelectionId(label)
@@ -64,7 +66,8 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
           onPointerOut={() => setHovered(false)}
           onClick={e => {
             e.stopPropagation()
-            if (planeSelectionFeatureId) commitPlaneSelection(selId)
+            if (fieldPickState?.kind === 'plane') commitFieldPick(selId)
+            else if (planeSelectionFeatureId) commitPlaneSelection(selId)
             else toggleSelect(selId)
           }}
         >

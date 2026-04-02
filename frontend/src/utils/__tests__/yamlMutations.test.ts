@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc, PartConstraint } from '../../types/cad'
-import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos } from '../yamlMutations'
+import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField } from '../yamlMutations'
 
 const makeSampleDoc = (): PartDoc => ({
   version: 1,
@@ -365,5 +365,53 @@ describe('healDoc built-in injection', () => {
     const sketch2Idx = ids.indexOf('sketch2')
     const sketch1Idx = ids.indexOf('sketch1')
     expect(sketch2Idx).toBeLessThan(sketch1Idx)
+  })
+})
+
+describe('applyAddPlane', () => {
+  it('adds a plane feature with default offset mode', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [] }
+    applyAddPlane(doc, 'plane1')
+    expect(doc.features).toHaveLength(1)
+    expect(doc.features![0]).toEqual({ id: 'plane1', kind: 'plane', definition: { mode: 'offset' } })
+  })
+
+  it('creates features array if missing', () => {
+    const doc: PartDoc = { version: 1, kind: 'part' }
+    applyAddPlane(doc, 'plane1')
+    expect(doc.features).toHaveLength(1)
+  })
+
+  it('appends to existing features', () => {
+    const doc = makeSampleDoc()
+    applyAddPlane(doc, 'plane1')
+    expect(doc.features).toHaveLength(2)
+    expect(doc.features![1].id).toBe('plane1')
+  })
+})
+
+describe('applySetPlaneDefinitionField', () => {
+  it('sets plane field on a plane feature', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'plane1', kind: 'plane', definition: { mode: 'offset' } }] }
+    applySetPlaneDefinitionField(doc, 'plane1', 'plane', '@builtin_plane_top')
+    expect(doc.features![0].definition!.plane).toBe('@builtin_plane_top')
+  })
+
+  it('sets offset field', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'plane1', kind: 'plane', definition: { mode: 'offset' } }] }
+    applySetPlaneDefinitionField(doc, 'plane1', 'offset', 25)
+    expect(doc.features![0].definition!.offset).toBe(25)
+  })
+
+  it('creates definition if missing', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'plane1', kind: 'plane' }] }
+    applySetPlaneDefinitionField(doc, 'plane1', 'mode', 'three_point')
+    expect(doc.features![0].definition).toBeDefined()
+    expect((doc.features![0].definition as Record<string, unknown>).mode).toBe('three_point')
+  })
+
+  it('is no-op for unknown featureId', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [] }
+    expect(() => applySetPlaneDefinitionField(doc, 'nonexistent', 'plane', '@builtin_plane_top')).not.toThrow()
   })
 })

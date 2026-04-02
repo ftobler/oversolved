@@ -47,6 +47,7 @@ export default function Part() {
   const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
   const [editingSketchId, setEditingSketchId] = useState<string | null>(null)
+  const [editingPlaneId, setEditingPlaneId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
 
   const [debugOpen, setDebugOpen] = useState(false)
@@ -54,6 +55,8 @@ export default function Part() {
 
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
+  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
+  const setFieldPickState = useSketchEditorStore(s => s.setFieldPickState)
   const selection = useSketchEditorStore(s => s.selection)
   const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
@@ -156,6 +159,15 @@ export default function Part() {
     }
     if (featureIds.length > 0) useSketchEditorStore.getState().clearSelection()
   }, [editingSketchId, handleMutation])
+
+  const handleAddPlane = useCallback(() => {
+    if (!doc) return
+    const planeCount = (doc.features ?? []).filter(f => f.kind === 'plane' && !BUILT_IN_IDS.has(f.id)).length
+    const featureId = `plane${planeCount + 1}`
+    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    handleMutation({ type: 'add_plane', featureId })
+    setEditingPlaneId(featureId)
+  }, [doc, features.length, handleMutation])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
@@ -347,7 +359,7 @@ export default function Part() {
                   )}
                   <li
                     key={feature.id}
-                    className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingSketchId ? 'editing' : ''} ${selection.has(`@${feature.id}`) ? 'selected' : ''}`}
+                    className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${(feature.id === editingSketchId || (!BUILT_IN_IDS.has(feature.id) && feature.id === editingPlaneId)) ? 'editing' : ''} ${selection.has(`@${feature.id}`) ? 'selected' : ''}`}
                     onDragOver={(e) => handleRollbackDragOver(e, index)}
                     onDrop={(e) => handleRollbackDrop(e, index)}
                     onClick={() => toggleSelect(`@${feature.id}`)}
@@ -387,6 +399,24 @@ export default function Part() {
                         <span className="material-icons-outlined">close</span>
                       </button>
                     )}
+                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id !== editingPlaneId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={(e) => { e.stopPropagation(); setEditingPlaneId(feature.id) }}
+                        title="Edit plane"
+                      >
+                        <span className="material-icons-outlined">edit</span>
+                      </button>
+                    )}
+                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingPlaneId && (
+                      <button
+                        className="exit-sketch-btn"
+                        onClick={(e) => { e.stopPropagation(); setEditingPlaneId(null); setFieldPickState(null) }}
+                        title="Exit plane editor"
+                      >
+                        <span className="material-icons-outlined">close</span>
+                      </button>
+                    )}
                     <button
                       className="feature-visibility-btn"
                       onClick={(e) => { e.stopPropagation(); toggleVisibility(feature.id) }}
@@ -396,6 +426,67 @@ export default function Part() {
                         {visibleFeatures.has(feature.id) ? 'visibility' : 'visibility_off'}
                       </span>
                     </button>
+                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingPlaneId && (() => {
+                      const featureDef = doc?.features?.find(f => f.id === feature.id)
+                      const def = featureDef?.definition ?? { mode: 'offset' }
+                      const mode = def.mode ?? 'offset'
+                      const isPickingPlane = fieldPickState?.featureId === feature.id && fieldPickState.kind === 'plane'
+                      const isPickingPoint = (field: string) => fieldPickState?.featureId === feature.id && fieldPickState.field === field && fieldPickState.kind === 'point'
+                      return (
+                        <div className="plane-editor">
+                          <div className="plane-editor-row">
+                            <span className="plane-editor-label">Type:</span>
+                            <select
+                              className="plane-editor-select"
+                              value={mode}
+                              onChange={(e) => { e.stopPropagation(); handleMutation({ type: 'set_plane_definition_field', featureId: feature.id, field: 'mode', value: e.target.value }) }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="offset">Offset from plane</option>
+                              <option value="three_point">Three-point plane</option>
+                            </select>
+                          </div>
+                          {mode === 'offset' && (
+                            <>
+                              <div className="plane-editor-row">
+                                <span className="plane-editor-label">Plane:</span>
+                                <span className="plane-editor-value">{planeLabel(def.plane)}</span>
+                                {isPickingPlane ? (
+                                  <button className="feature-plane-btn active" onClick={(e) => { e.stopPropagation(); setFieldPickState(null) }}>Cancel</button>
+                                ) : (
+                                  <button className="feature-plane-btn" onClick={(e) => { e.stopPropagation(); setFieldPickState({ featureId: feature.id, field: 'plane', kind: 'plane' }) }}>Pick</button>
+                                )}
+                              </div>
+                              <div className="plane-editor-row">
+                                <span className="plane-editor-label">Offset:</span>
+                                <input
+                                  type="number"
+                                  className="plane-editor-input"
+                                  defaultValue={def.offset ?? 0}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onBlur={(e) => {
+                                    const v = parseFloat(e.target.value)
+                                    if (!isNaN(v)) handleMutation({ type: 'set_plane_definition_field', featureId: feature.id, field: 'offset', value: v })
+                                  }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur() } e.stopPropagation() }}
+                                />
+                              </div>
+                            </>
+                          )}
+                          {mode === 'three_point' && (['p1', 'p2', 'p3'] as const).map((field, i) => (
+                            <div key={field} className="plane-editor-row">
+                              <span className="plane-editor-label">P{i + 1}:</span>
+                              <span className="plane-editor-value">{def[field] ?? 'None'}</span>
+                              {isPickingPoint(field) ? (
+                                <button className="feature-plane-btn active" onClick={(e) => { e.stopPropagation(); setFieldPickState(null) }}>Cancel</button>
+                              ) : (
+                                <button className="feature-plane-btn" onClick={(e) => { e.stopPropagation(); setFieldPickState({ featureId: feature.id, field, kind: 'point' }) }}>Pick</button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
                     {feature.kind === 'sketch' && feature.id === editingSketchId && (() => {
                       const featureDef = doc?.features?.find(f => f.id === feature.id)
                       const isPicking = planeSelectionFeatureId === feature.id
@@ -480,7 +571,7 @@ export default function Part() {
               <>
                 <button className="editor-btn" title="Extrude"><img src={featureExtrudeIcon} alt="Extrude" /></button>
                 <button className="editor-btn" title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
-                <button className="editor-btn" title="Add plane"><img src={featureAddPlaneIcon} alt="Add plane" /></button>
+                <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
               </>
             )}
           </div>

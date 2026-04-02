@@ -39,6 +39,16 @@ export interface PartEntityDef {
   construction?: boolean
 }
 
+export interface PlaneDef {
+  mode?: 'offset' | 'three_point' | 'on_face'
+  plane?: string
+  offset?: number
+  p1?: string
+  p2?: string
+  p3?: string
+  face?: string
+}
+
 export interface PartFeature {
   id: string
   kind: string
@@ -48,6 +58,7 @@ export interface PartFeature {
   entities?: PartEntityDef[]
   initial?: Record<string, number[]>
   constraints?: PartConstraint[]
+  definition?: PlaneDef
 }
 
 export type Feature = PartFeature
@@ -277,3 +288,5 @@ export type Mutation =
   | { type: 'add_sketch'; featureId: string }
   | { type: 'delete_feature'; featureId: string }
   | { type: 'set_feature_visibility'; featureId: string; visible: boolean }
+  | { type: 'add_plane'; featureId: string }
+  | { type: 'set_plane_definition_field'; featureId: string; field: string; value: string | number }

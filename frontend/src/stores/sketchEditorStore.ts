@@ -58,6 +58,9 @@ interface SketchEditorState {
   pendingDialog: DialogState | null
   contextMenu: [number, number] | null
   planeSelectionFeatureId: string | null
+  fieldPickState: { featureId: string; field: string; kind: 'plane' | 'point' } | null
+  setFieldPickState: (state: { featureId: string; field: string; kind: 'plane' | 'point' } | null) => void
+  commitFieldPick: (selectionId: string) => void
 
   // --- actions ---
   toggleSelect: (id: string) => void
@@ -104,6 +107,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   pendingDialog: null,
   contextMenu: null,
   planeSelectionFeatureId: null,
+  fieldPickState: null,
 
   toggleSelect: (id) =>
     set(s => {
@@ -173,6 +177,25 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   closeContextMenu: () => set({ contextMenu: null }),
 
   setPlaneSelectionFeatureId: (id) => set({ planeSelectionFeatureId: id }),
+
+  setFieldPickState: (state) => set({ fieldPickState: state }),
+
+  commitFieldPick: (selectionId) => {
+    const { fieldPickState, onMutation } = get()
+    if (!fieldPickState) return
+    let value: string
+    if (selectionId.startsWith('face:')) {
+      value = selectionId.split(':').slice(2).join(':')
+    } else if (selectionId.startsWith('vertex:')) {
+      const parts = selectionId.split(':')
+      const [, featId, eleId, sub] = parts
+      value = '@' + featId + eleId + sub
+    } else {
+      value = selectionId
+    }
+    onMutation?.({ type: 'set_plane_definition_field', featureId: fieldPickState.featureId, field: fieldPickState.field, value })
+    set({ fieldPickState: null })
+  },
 
   commitPlaneSelection: (selectionId) => {
     const { planeSelectionFeatureId, onMutation } = get()

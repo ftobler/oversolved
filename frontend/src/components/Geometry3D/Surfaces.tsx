@@ -49,6 +49,8 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
+  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
+  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const selection = useSketchEditorStore(s => s.selection)
 
   const id = surfaceSelectionId(featureId, query)
@@ -68,7 +70,8 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
       onPointerOut={() => setHovered(false)}
       onClick={(e) => {
         e.stopPropagation()
-        if (planeSelectionFeatureId) commitPlaneSelection(id)
+        if (fieldPickState?.kind === 'plane') commitFieldPick(id)
+        else if (planeSelectionFeatureId) commitPlaneSelection(id)
         else toggleSelect(id)
       }}
     >

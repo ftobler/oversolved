@@ -107,6 +107,8 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
+  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
+  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const constraintHovered = useSketchEditorStore(s =>
     entityId && vertexKey ? s.hoveredConstraintEntityIds.has(`${entityId}:${vertexKey}`) : false
   )
@@ -144,10 +146,12 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     if (activeTool === 'dimension') {
       if (!isEditing) return
       handleDimClick(vertId, featureId, 'vertex', [e.clientX, e.clientY])
+    } else if (fieldPickState?.kind === 'point') {
+      commitFieldPick(vertId)
     } else {
       toggleSelect(vertId)
     }
-  }, [vertId, featureId, toggleSelect, activeTool, handleDimClick, isEditing])
+  }, [vertId, featureId, toggleSelect, activeTool, handleDimClick, isEditing, fieldPickState, commitFieldPick])
   const onPointerDown = useCallback((e: { stopPropagation: () => void; point: THREE.Vector3 }) => {
     if (!vertId || !featureId || !entityId || !vertexKey) return
     if (!isEditing || activeTool !== 'select') return

@@ -358,3 +358,20 @@ export function applySetFeatureVisibility(doc: PartDoc, featureId: string, visib
     feature.visible = false
   }
 }
+
+export function applyAddPlane(doc: PartDoc, featureId: string): void {
+  if (!doc.features) doc.features = []
+  doc.features.push({ id: featureId, kind: 'plane', definition: { mode: 'offset' } })
+}
+
+export function applySetPlaneDefinitionField(
+  doc: PartDoc,
+  featureId: string,
+  field: string,
+  value: string | number,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  if (!feature.definition) feature.definition = {}
+  ;(feature.definition as Record<string, string | number>)[field] = value
+}
