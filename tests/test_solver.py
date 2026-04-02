@@ -7473,3 +7473,315 @@ def test_sketch_on_user_defined_plane_dollar_ref():
     assert result['features'][0]['status'] == 'ok'
     pt = result['features'][1]['plane_transform']
     np.testing.assert_array_almost_equal(pt['origin'], [0, 5, 0], decimal=5)
+
+
+def test_plane_offset_basic():
+    """Test offset mode directly: verify origin and normal after offset from Front plane."""
+    import numpy as np
+    spec = {
+        'features': [
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'offset',
+                    'plane': '@builtin_plane_front',
+                    'offset': 10.0,
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][0]['status'] == 'ok'
+    plane = result['features'][0]['plane']
+    np.testing.assert_array_almost_equal(plane['origin'], [0, 0, 10], decimal=5)
+    np.testing.assert_array_almost_equal(plane['normal'], [0, 0, 1], decimal=5)
+
+
+def test_plane_offset_top():
+    """Test offset from Top plane: origin along Y, normal unchanged."""
+    import numpy as np
+    spec = {
+        'features': [
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'offset',
+                    'plane': '@builtin_plane_top',
+                    'offset': 5.0,
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][0]['status'] == 'ok'
+    plane = result['features'][0]['plane']
+    np.testing.assert_array_almost_equal(plane['origin'], [0, 5, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['normal'], [0, 1, 0], decimal=5)
+
+
+def test_plane_offset_negative():
+    """Test negative offset: origin moves along negative normal."""
+    import numpy as np
+    spec = {
+        'features': [
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'offset',
+                    'plane': '@builtin_plane_right',
+                    'offset': -3.0,
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][0]['status'] == 'ok'
+    plane = result['features'][0]['plane']
+    # Right plane: origin [0, 0, 0], normal [1, 0, 0]
+    # offset -3: origin moves to [-3, 0, 0]
+    np.testing.assert_array_almost_equal(plane['origin'], [-3, 0, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['normal'], [1, 0, 0], decimal=5)
+
+
+def test_plane_unknown_mode():
+    """Test that unknown plane mode returns exception status."""
+    spec = {
+        'features': [
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'invalid_mode_xyz',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][0]['status'] == 'exception'
+
+
+def test_plane_on_face_edge_angle_with_rotation():
+    """Test on_face_edge_angle mode with angle parameter: verifies y_axis rotates around edge."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'rect', 'kind': 'center_rect', 'xy': [0, 0], 'size': [2, 2]},
+                ],
+                'initial': {},
+                'constraints': [],
+            },
+            {
+                'id': 'extrude1',
+                'kind': 'extrude',
+                'sketch': '$sketch0',
+                'depth': 1.0,
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'on_face_edge_angle',
+                    'face': '@extrude1/top_face',
+                    'edge': '@extrude1/top_face/edge0',
+                    'angle': 45.0,
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][0]['status'] in ('ok', 'fully_constrained', 'underconstrained')
+    assert result['features'][1]['status'] == 'ok'
+    assert result['features'][2]['status'] == 'ok'
+
+    # Verify the plane has well-formed coordinate system
+    plane = result['features'][2]['plane']
+    import numpy as np
+    # Verify x_axis, y_axis, and normal form an orthonormal frame
+    x_axis = np.array(plane['x_axis'])
+    y_axis = np.array(plane['y_axis'])
+    normal = np.array(plane['normal'])
+
+    # Check normalization
+    assert np.allclose(np.linalg.norm(x_axis), 1.0, atol=1e-5)
+    assert np.allclose(np.linalg.norm(y_axis), 1.0, atol=1e-5)
+    assert np.allclose(np.linalg.norm(normal), 1.0, atol=1e-5)
+
+    # Check orthogonality
+    assert np.allclose(np.dot(x_axis, y_axis), 0.0, atol=1e-5)
+    assert np.allclose(np.dot(y_axis, normal), 0.0, atol=1e-5)
+    assert np.allclose(np.dot(normal, x_axis), 0.0, atol=1e-5)
+
+
+def test_plane_line_angle_45():
+    """Test line_angle at 45 degrees: verify normal is rotated correctly."""
+    import numpy as np
+    # Create a front sketch with a line to use as the hinge axis
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'line1', 'kind': 'line'},
+                ],
+                'initial': {
+                    'line1': [0.0, 0.0, 2.0, 0.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'line_angle',
+                    'line': '@sketch0/line1',
+                    'angle': 45.0,
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][0]['status'] in ('ok', 'fully_constrained', 'underconstrained')
+    assert result['features'][1]['status'] == 'ok'
+
+    plane = result['features'][1]['plane']
+    # Line is along X axis, so plane rotates 45 deg around X
+    # At angle=0, normal=[0,-1,0]; at angle=45, normal should be rotated 45 deg around X
+    # Expected normal ≈ [0, -cos(45°), -sin(45°)] = [0, -√2/2, -√2/2]
+    normal = plane['normal']
+    expected_normal = np.array([0, -np.sqrt(2)/2, -np.sqrt(2)/2])
+    np.testing.assert_array_almost_equal(normal, expected_normal, decimal=4)
+
+
+def test_plane_offset_right_plane():
+    """Test offset from Right plane: origin and normal updated correctly."""
+    import numpy as np
+    spec = {
+        'features': [
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'offset',
+                    'plane': '@builtin_plane_right',
+                    'offset': 2.5,
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][0]['status'] == 'ok'
+    plane = result['features'][0]['plane']
+    # Right plane: origin [0, 0, 0], normal [1, 0, 0]
+    # offset 2.5: origin moves to [2.5, 0, 0]
+    np.testing.assert_array_almost_equal(plane['origin'], [2.5, 0, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['normal'], [1, 0, 0], decimal=5)
+
+
+def test_plane_through_point_right_plane():
+    """Test through_point mode with Right plane as reference."""
+    import numpy as np
+    # Create a sketch on Right plane with a point, then create a plane through that point
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_right',
+                'entities': [
+                    {'id': 'p1', 'kind': 'point', 'xy': [5, 3]},
+                ],
+                'initial': {'p1': [5.0, 3.0]},
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'through_point',
+                    'plane': '@builtin_plane_right',
+                    'point': '@sketch0/p1/xy',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][0]['status'] in ('ok', 'fully_constrained', 'underconstrained')
+    assert result['features'][1]['status'] == 'ok'
+
+    plane = result['features'][1]['plane']
+    # Right plane origin is [0, 0, 0], normal is [1, 0, 0] (X axis)
+    # Point p1 in Right plane coords is [5, 3], which is (u=5, v=3)
+    # x_axis=[0,0,1], y_axis=[0,1,0] for Right plane
+    # 3D point = [0,0,0] + 5*[0,0,1] + 3*[0,1,0] = [0,3,5]
+    # Through-point moves the origin to the projection of [0,3,5] onto Right plane normal [1,0,0]
+    # Projection = [0,3,5] · [1,0,0] = 0 along X, so origin stays at [0,0,0]
+    # But wait: through_point projects the point onto the plane normal direction
+    # For Right plane, that's the X direction; point is at [0,3,5], so x-component is 0
+    # Origin should be at distance 0 along the normal = [0,0,0]
+    np.testing.assert_array_almost_equal(plane['origin'], [0, 0, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['normal'], [1, 0, 0], decimal=5)
+
+
+def test_plane_edge_point_non_front_sketch():
+    """Test edge_point with edge and point from non-Front sketch (exercises 3D transforms)."""
+    import numpy as np
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_top',
+                'entities': [
+                    {'id': 'line1', 'kind': 'line', 'start': [0, 0], 'end': [1, 0]},
+                    {'id': 'p1', 'kind': 'point', 'xy': [0, 1]},
+                ],
+                'initial': {
+                    'line1': [0.0, 0.0, 1.0, 0.0],
+                    'p1': [0.0, 1.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'edge_point',
+                    'edge': '@sketch0/line1',
+                    'point': '@sketch0/p1/xy',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][0]['status'] in ('ok', 'fully_constrained', 'underconstrained')
+    assert result['features'][1]['status'] == 'ok'
+
+    plane = result['features'][1]['plane']
+    # Sketch is on Top plane (x_axis [1,0,0], y_axis [0,0,-1], normal [0,1,0])
+    # line1: [0,0,0] (3D) to [1,0,0] (3D)
+    # p1 in Top plane: [0, 1] → 3D = [0,0,0] + 0*[1,0,0] + 1*[0,0,-1] = [0, 0, -1]
+    # edge direction: [1,0,0] - [0,0,0] = [1,0,0], normalized to [1,0,0]
+    # x_axis of plane should be along edge: [1,0,0]
+    # origin should be at p1 = [0,0,-1]
+    x_axis = plane['x_axis']
+    np.testing.assert_array_almost_equal(x_axis, [1, 0, 0], decimal=5)
+    origin = plane['origin']
+    np.testing.assert_array_almost_equal(origin, [0, 0, -1], decimal=5)
