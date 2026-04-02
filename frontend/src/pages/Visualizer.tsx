@@ -52,9 +52,9 @@ function isSketchLogEntry(entry: ResultEntry): entry is SketchLogEntry {
   return 'ast_input' in entry && 'solve_result' in entry
 }
 
-// ---------------------------------------------------------------------------
+// ----
 // Card data
-// ---------------------------------------------------------------------------
+// ----
 
 interface CardData {
   id: string
@@ -87,9 +87,9 @@ function extractCards(results: Results): CardData[] {
   return cards
 }
 
-// ---------------------------------------------------------------------------
+// ----
 // Camera fit
-// ---------------------------------------------------------------------------
+// ----
 
 const CARD_SIZE = 330
 
@@ -119,10 +119,10 @@ function sketchBounds(sketch: Sketch): { cx: number; cy: number; extent: number 
   return { cx, cy, extent }
 }
 
-// ---------------------------------------------------------------------------
+// ----
 // Render-and-forget: one hidden Canvas renders all cards one at a time,
 // captures each as a PNG data URL, then unmounts. Zero persistent GL contexts.
-// ---------------------------------------------------------------------------
+// ----
 
 function CaptureController({ card, onCapture }: { card: CardData; onCapture: (url: string) => void }) {
   const { gl, camera, invalidate } = useThree()
@@ -183,9 +183,9 @@ function SketchQueue({ cards, onSnapshot }: { cards: CardData[]; onSnapshot: (id
   )
 }
 
-// ---------------------------------------------------------------------------
+// ----
 // Page
-// ---------------------------------------------------------------------------
+// ----
 
 export default function Visualizer() {
   const navigate = useNavigate()

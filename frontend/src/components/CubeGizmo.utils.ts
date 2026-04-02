@@ -11,7 +11,7 @@ export const GIZMO_STYLE: React.CSSProperties = {
   cursor: 'default',
 }
 
-// ── Cube geometry ─────────────────────────────────────────────────────────────
+// ── Cube geometry ────
 
 const CV = [
   new THREE.Vector3(-1, -1, -1), // 0
@@ -55,7 +55,7 @@ const CUBE_EDGES: [number, number][] = [
 const BEVEL_INSET = 0.20
 const EXTRA_INSET = 0.05
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ────
 
 export type Pv = { sx: number; sy: number; z: number }
 export type Hit = { type: 'vertex' | 'edge' | 'face'; index: number; snapDir: THREE.Vector3 }
@@ -72,7 +72,7 @@ type GizmoPoly = {
   axes?: { x: THREE.Vector3; y: THREE.Vector3 }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ────
 
 function pointInPoly(px: number, py: number, poly: Pv[]): boolean {
   let inside = false

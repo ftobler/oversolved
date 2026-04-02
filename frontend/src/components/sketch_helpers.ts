@@ -13,7 +13,7 @@ export const iconModules = import.meta.glob('../assets/icons/*.svg', {
   import: 'default',
 }) as Record<string, string>
 
-/** Derived from the constraint registry — maps render kind to icon filename. */
+// Derived from the constraint registry — maps render kind to icon filename.
 export const SYMBOL_TO_ICON: Readonly<Record<string, string>> = RENDER_KIND_TO_ICON
 
 export function getIconUrl(kind: string): string | undefined {
@@ -22,12 +22,12 @@ export function getIconUrl(kind: string): string | undefined {
   return iconModules[`../assets/icons/${name}.svg`]
 }
 
-/** World units per pixel for an orthographic camera. */
+// World units per pixel for an orthographic camera.
 export function p2w(camera: THREE.Camera): number {
   return 'zoom' in camera ? 1 / (camera as THREE.OrthographicCamera).zoom : 1
 }
 
-/** Pre-built unit arrow shape: tip at origin, pointing +X, base at x=-1 */
+// Pre-built unit arrow shape: tip at origin, pointing +X, base at x=-1
 export const ARROW_SHAPE = (() => {
   const s = new THREE.Shape()
   s.moveTo(0, 0)

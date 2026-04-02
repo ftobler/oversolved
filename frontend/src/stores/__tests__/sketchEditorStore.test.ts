@@ -18,7 +18,7 @@ function reset() {
   })
 }
 
-/** Simulate user confirming the currently open dialog with a value. */
+// Simulate user confirming the currently open dialog with a value.
 function confirmDialog(value: string) {
   const dialog = useSketchEditorStore.getState().pendingDialog
   if (!dialog) throw new Error('No dialog open')

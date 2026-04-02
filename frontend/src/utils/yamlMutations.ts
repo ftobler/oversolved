@@ -1,17 +1,17 @@
 import type { PartDoc, PartFeature, PartConstraint, PartTarget } from '../types/cad'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '../registry'
 
-// ---------------------------------------------------------------------------
+// ----
 // Architecture contract
-// ---------------------------------------------------------------------------
+// ----
 //
 // PartDoc is the SOURCE OF TRUTH for the document.
 // ...
 // See ast.md for example.
 //
-// ---------------------------------------------------------------------------
+// ----
 // Internals
-// ---------------------------------------------------------------------------
+// ----
 
 const round = (v: number) => Math.round(v * 1e6) / 1e6
 
@@ -39,7 +39,7 @@ export const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
   return '$' + t
 }
 
-/** Generate a random base64url ID.  bytes=12 for elements, bytes=18 for features. */
+// Generate a random base64url ID.  bytes=12 for elements, bytes=18 for features.
 function randomId(bytes: number): string {
   const arr = new Uint8Array(bytes)
   crypto.getRandomValues(arr)
@@ -53,9 +53,9 @@ function uniqueConstraintId(constraints: PartConstraint[], kind: string): string
   return id
 }
 
-// ---------------------------------------------------------------------------
+// ----
 // Mutations — all modify the doc object in place
-// ---------------------------------------------------------------------------
+// ----
 
 export function applyMoveVertex(
   doc: PartDoc,

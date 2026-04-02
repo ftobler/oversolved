@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { GIZMO_STYLE, type Pv, type Hit, computeGizmoHit } from './CubeGizmo.utils'
 
-// ── Canvas overlay component ──────────────────────────────────────────────────
+// ── Canvas overlay component ────
 
 interface CubeGizmoCanvasProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>

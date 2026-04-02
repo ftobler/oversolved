@@ -25,7 +25,7 @@ function Badge({ text, variant }: { text: string; variant: 'geo' | 'dim' | 'yes'
   return <span className={`reg-badge reg-badge--${variant}`}>{text}</span>
 }
 
-// ── Keybindings section ──────────────────────────────────────────────────────
+// ── Keybindings section ────
 
 type KeybindingRow = { key: string; command: string; label: string; description: string }
 
@@ -90,7 +90,7 @@ function KeybindingsTable() {
   )
 }
 
-// ── Entities section ─────────────────────────────────────────────────────────
+// ── Entities section ────
 
 function EntitiesTable() {
   return (
@@ -136,7 +136,7 @@ function EntitiesTable() {
   )
 }
 
-// ── Constraints section ──────────────────────────────────────────────────────
+// ── Constraints section ────
 
 function ConstraintsTable() {
   return (
@@ -188,7 +188,7 @@ function ConstraintsTable() {
   )
 }
 
-// ── Dimension rules section ──────────────────────────────────────────────────
+// ── Dimension rules section ────
 
 function DimensionRulesTable() {
   return (
@@ -218,7 +218,7 @@ function DimensionRulesTable() {
   )
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+// ── Page ────
 
 const SECTIONS = [
   { id: 'constraints', label: 'Constraints' },

@@ -77,7 +77,7 @@ function HitPolyline({ pts, onPointerOver, onPointerOut }: {
 
 /** Vertex dot with its own independent hover state. Placed as a sibling (not child)
  *  of the edge group so hover does not bubble up and highlight the whole entity. */
-/** Square highlight rendered at z=0.001 so it's always visible above lines. */
+// Square highlight rendered at z=0.001 so it's always visible above lines.
 function VertexHighlight({ x, y, px, color }: { x: number; y: number; px: number; color: string }) {
   const groupRef = useRef<THREE.Group>(null)
   const { camera } = useThree()
@@ -136,9 +136,9 @@ function sketchExtent(sketch: Sketch): number {
   return isFinite(minX) ? Math.max(maxX - minX, maxY - minY, 0.01) : 1
 }
 
-// ---------------------------------------------------------------------------
+// ----
 // Entity rendering
-// ---------------------------------------------------------------------------
+// ----
 
 interface EntityItemProps {
   entity: Entity
@@ -222,9 +222,9 @@ function EntityLines({ sketch, color, lineWidth = 1 }: EntityLinesProps) {
   )
 }
 
-// ---------------------------------------------------------------------------
+// ----
 // Topology surface rendering
-// ---------------------------------------------------------------------------
+// ----
 
 interface TopologySurfacesProps {
   topology: Topology
@@ -283,9 +283,9 @@ function TopologySurfaces({ topology }: TopologySurfacesProps) {
   )
 }
 
-// ---------------------------------------------------------------------------
+// ----
 // Main component
-// ---------------------------------------------------------------------------
+// ----
 
 interface Sketch3DProps {
   initial: Sketch

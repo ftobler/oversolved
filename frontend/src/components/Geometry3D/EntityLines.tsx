@@ -162,7 +162,7 @@ export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, 
   )
 }
 
-/** Renders all projected entities in the sketch (those with projected: true) in amber. */
+// Renders all projected entities in the sketch (those with projected: true) in amber.
 export function ProjectedEntities({ sketch, featureId }: { sketch: Sketch; featureId: string }) {
   return (
     <>
@@ -191,7 +191,7 @@ export function ProjectedEntities({ sketch, featureId }: { sketch: Sketch; featu
   )
 }
 
-/** Calculate the bounding box extent of a sketch. */
+// Calculate the bounding box extent of a sketch.
 // eslint-disable-next-line react-refresh/only-export-components
 export function sketchExtent(sketch: Sketch): number {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
@@ -203,7 +203,7 @@ export function sketchExtent(sketch: Sketch): number {
   return isFinite(minX) ? Math.max(maxX - minX, maxY - minY, 0.01) : 1
 }
 
-/** Find all entity IDs in the sketch that have a vertex at the given point (within eps). */
+// Find all entity IDs in the sketch that have a vertex at the given point (within eps).
 // eslint-disable-next-line react-refresh/only-export-components
 export function findEntitiesAtPoint(sketch: Sketch, pt: [number, number], eps = 1e-4): string[] {
   const [px, py] = pt

@@ -1,4 +1,4 @@
-// ============================================================================
+// ====
 // Constraint Registry — single source of truth for all sketch constraints.
 //
 // Every constraint recognised by the solver is listed here exactly once.
@@ -10,18 +10,18 @@
 //   2. Add render logic in utils/geometryMapping.ts  (computeConstraintRender).
 //   3. Add solver residual in the backend  (solver.py → residuals).
 //   4. Optionally add an SVG icon in assets/icons/.
-// ============================================================================
+// ====
 
-// -- Constraint definition ----------------------------------------------------
+// -- Constraint definition ----
 
 export interface ConstraintDef {
-  /** Solver kind string — the canonical name used in the AST and solver. */
+  // Solver kind string — the canonical name used in the AST and solver.
   kind: string
 
-  /** Human-readable label shown in the toolbar tooltip and docs. */
+  // Human-readable label shown in the toolbar tooltip and docs.
   label: string
 
-  /** One-line description for auto-generated documentation. */
+  // One-line description for auto-generated documentation.
   description: string
 
   /**
@@ -31,7 +31,7 @@ export interface ConstraintDef {
    */
   category: 'geometric' | 'dimensional'
 
-  /** Whether the constraint stores a numeric `value` (dimensions do). */
+  // Whether the constraint stores a numeric `value` (dimensions do).
   hasValue: boolean
 
   /**
@@ -77,10 +77,10 @@ export interface ConstraintDef {
   showInToolbar: boolean
 }
 
-// -- Registry -----------------------------------------------------------------
+// -- Registry ----
 
 export const CONSTRAINTS: readonly ConstraintDef[] = [
-  // ── Geometric constraints ─────────────────────────────────────────────────
+  // ── Geometric constraints ────
 
   {
     kind: 'horizontal',
@@ -88,7 +88,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Constrains a line segment to be horizontal, or two points to share the same Y coordinate.',
     category: 'geometric',
     hasValue: false,
-    refPattern: 'target',    // single line, or a/b for two points (overloaded)
+    refPattern: 'target',  // single line, or a/b for two points (overloaded)
     renderKind: 'symbol_h',
     symbolIcon: 'constraint-horizontal',
     toolbarIcon: 'constraint-horizontal',
@@ -222,7 +222,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     showInToolbar: false,
   },
 
-  // ── Dimensional constraints ───────────────────────────────────────────────
+  // ── Dimensional constraints ────
   // These are normally applied via the "Dimension" tool, which auto-detects
   // the correct kind based on the clicked entity type(s).
 
@@ -289,12 +289,12 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
   },
 ] as const
 
-// -- Dimension tool auto-detection --------------------------------------------
+// -- Dimension tool auto-detection ----
 // When the user activates the Dimension tool and clicks entities/vertices,
 // these rules determine which constraint kind to create.
 
 export interface DimensionRule {
-  /** What the user clicks. */
+  // What the user clicks.
   trigger:
     | { type: 'single_entity'; entityKind: string }
     | { type: 'two_vertices' }
@@ -302,10 +302,10 @@ export interface DimensionRule {
     | { type: 'two_entities' }
     | { type: 'mixed' }
 
-  /** The constraint kind to create. */
+  // The constraint kind to create.
   constraintKind: string
 
-  /** Description for documentation. */
+  // Description for documentation.
   description: string
 }
 
@@ -347,13 +347,13 @@ export const DIMENSION_RULES: readonly DimensionRule[] = [
   },
 ] as const
 
-// -- Derived lookup tables (computed once at module load) ---------------------
+// -- Derived lookup tables (computed once at module load) ----
 
-/** Map from constraint kind → full definition. */
+// Map from constraint kind → full definition.
 export const CONSTRAINT_BY_KIND: ReadonlyMap<string, ConstraintDef> =
   new Map(CONSTRAINTS.map(c => [c.kind, c]))
 
-/** Map from render kind → icon filename (for on-canvas symbols). */
+// Map from render kind → icon filename (for on-canvas symbols).
 export const RENDER_KIND_TO_ICON: Readonly<Record<string, string>> =
   Object.fromEntries(
     CONSTRAINTS
@@ -361,11 +361,11 @@ export const RENDER_KIND_TO_ICON: Readonly<Record<string, string>> =
       .map(c => [c.renderKind, c.symbolIcon!])
   )
 
-/** Constraints that appear as direct toolbar buttons, in display order. */
+// Constraints that appear as direct toolbar buttons, in display order.
 export const TOOLBAR_CONSTRAINTS: readonly ConstraintDef[] =
   CONSTRAINTS.filter(c => c.showInToolbar)
 
-/** Map from keyboard shortcut → command name (for commandRegistry integration). */
+// Map from keyboard shortcut → command name (for commandRegistry integration).
 export const CONSTRAINT_SHORTCUTS: ReadonlyMap<string, string> =
   new Map(
     CONSTRAINTS

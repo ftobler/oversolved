@@ -6,7 +6,7 @@ import { sampleArc, sampleArcCCW } from '../sketch_helpers'
 import { Dot } from './VertexDots'
 import { COLOR_PREVIEW } from './constants'
 
-/** Compute circumcircle of 3 points. Returns null if points are collinear. */
+// Compute circumcircle of 3 points. Returns null if points are collinear.
 // eslint-disable-next-line react-refresh/only-export-components
 export function circumcircle(p1: [number, number], p2: [number, number], p3: [number, number]): { cx: number; cy: number; r: number } | null {
   const ax = p1[0], ay = p1[1]
@@ -184,9 +184,9 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
 
     } else if (activeTool === 'arc') {
       if (pts.length === 0) {
-        addDrawPoint([x, y])           // start point
+        addDrawPoint([x, y])  // start point
       } else if (pts.length === 1) {
-        addDrawPoint([x, y])           // end point
+        addDrawPoint([x, y])  // end point
       } else {
         // pts[0]=start, pts[1]=end, [x,y]=radius point
         const cc = circumcircle(pts[0], pts[1], [x, y])
@@ -210,7 +210,7 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
 
     } else if (activeTool === 'center_rect') {
       if (pts.length === 0) {
-        addDrawPoint([x, y])           // first click = center
+        addDrawPoint([x, y])  // first click = center
       } else {
         onMutation?.({ type: 'add_center_rect', featureId, center: pts[0], corner: [x, y] })
         clearDraw()

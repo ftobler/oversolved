@@ -327,9 +327,9 @@ Replace the plain `CORE_KEYMAP` string-to-string record with a typed config arra
 2. **Define `CoreKeybinding` type:**
    ```ts
    export type CoreKeybinding = {
-     key: string       // canonical key string, e.g. "ctrl+z"
-     command: string   // command name, e.g. "undo"
-     label: string     // human-readable name, e.g. "Undo"
+     key: string  // canonical key string, e.g. "ctrl+z"
+     command: string  // command name, e.g. "undo"
+     label: string  // human-readable name, e.g. "Undo"
      description: string  // short description for Registry page
    }
    ```

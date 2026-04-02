@@ -20,7 +20,7 @@ export interface DimInteraction {
   promptLabel: string
 }
 
-/** Filled triangle arrowhead with constant pixel size regardless of zoom. */
+// Filled triangle arrowhead with constant pixel size regardless of zoom.
 export function Arrowhead({ tip, from, color }: { tip: [number, number]; from: [number, number]; color: string }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
@@ -39,7 +39,7 @@ export function Arrowhead({ tip, from, color }: { tip: [number, number]; from: [
   )
 }
 
-/** Short tail line from a point in a direction, with constant pixel length regardless of zoom. */
+// Short tail line from a point in a direction, with constant pixel length regardless of zoom.
 function ArrowTail({ origin, dir, color }: { origin: [number, number]; dir: [number, number]; color: string }) {
   const lineRef = useRef<Line2>(null)
   const { camera } = useThree()
@@ -59,7 +59,7 @@ function ArrowTail({ origin, dir, color }: { origin: [number, number]; dir: [num
   )
 }
 
-/** Line with dash/gap sizes in pixels, constant regardless of zoom. */
+// Line with dash/gap sizes in pixels, constant regardless of zoom.
 export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5, onPointerOver, onPointerOut }: {
   points: [number, number, number][]
   color: string
@@ -81,9 +81,9 @@ export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5
   return <Line ref={lineRef} points={points} color={color} lineWidth={lineWidth} dashed dashSize={0.01} gapSize={0.005} onPointerOver={onPointerOver} onPointerOut={onPointerOut} />
 }
 
-// ---------------------------------------------------------------------------
+// ----
 // Constraint symbol tile (read-only, used by Sketch3D / Visualizer)
-// ---------------------------------------------------------------------------
+// ----
 
 function ConstraintTile({ url, id }: { url: string; id: string }) {
   const [hovered, setHovered] = useState(false)
@@ -113,9 +113,9 @@ function ConstraintTile({ url, id }: { url: string; id: string }) {
   )
 }
 
-// ---------------------------------------------------------------------------
+// ----
 // Shared interaction helpers
-// ---------------------------------------------------------------------------
+// ----
 
 function useDimInteraction(cid: string, value: number, interaction: DimInteraction | undefined, validatePositive = true) {
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
@@ -173,7 +173,7 @@ function useDimInteraction(cid: string, value: number, interaction: DimInteracti
   return { hovered, color, onOver, onOut, onClick, resetDragMoved, isDragged }
 }
 
-/** Returns the active dragged label position for this constraint (if being dragged), else null. */
+// Returns the active dragged label position for this constraint (if being dragged), else null.
 function useActiveLabelDrag(cid: string): [number, number] | null {
   const drag = useSketchEditorStore(s => s.drag)
   if (drag?.type === 'dim_label' && drag.constraintId === cid) {
@@ -182,9 +182,9 @@ function useActiveLabelDrag(cid: string): [number, number] | null {
   return null
 }
 
-// ---------------------------------------------------------------------------
+// ----
 // Dimension components (exported — used by both Sketch3D and Geometry3D)
-// ---------------------------------------------------------------------------
+// ----
 
 export function LinearDimension({ cid, dim, dimOffset, interaction }: {
   cid: string
@@ -235,9 +235,9 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
   // ASCII visualizations (in world coordinates, with d1 on the left, d2 on the right):
   //   Inside:        |<---X--->|
   //     Arrows at boundaries pointing outward, label sits between them.
-  //   Outside near d1:   X--->|------|<-
+  //   Outside near d1:   X--->|----|<-
   //     Both arrows point inward, leader line from d1 to label.
-  //   Outside near d2:   |----->|<------X
+  //   Outside near d2:   |---->|<----X
   //     Both arrows point inward, leader line from d2 to label.
   //
   // Note: For parallel lines, the arrows should remain aligned with the dimension line,
@@ -281,7 +281,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
         </>
       ) : tLabel < 0 ? (
         // Outside near d1: both arrows point inward (into the dimension line), leader from d1 to label.
-        // X--->|------|<-
+        // X--->|----|<-
         <>
           <Arrowhead tip={[d1x, d1y]} from={[d1x - udirX, d1y - udirY]} color={color} />
           <ArrowTail origin={[d1x, d1y]} dir={[-udirX, -udirY]} color={color} />
@@ -292,7 +292,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
       ) : (
         // Outside near d2: both arrows point inward (into the dimension line), leader from d2 to label.
         // Same arrow config as outside near d1, but different leader line.
-        // |----->|<------X
+        // |---->|<----X
         <>
           <Arrowhead tip={[d1x, d1y]} from={[d1x - udirX, d1y - udirY]} color={color} />
           <ArrowTail origin={[d1x, d1y]} dir={[-udirX, -udirY]} color={color} />
@@ -365,7 +365,7 @@ export function RadiusDimension({ cid, dim, interaction }: {
   // ASCII visualizations (center at o, edge at |):
   //   Inside (circle):   o---X--->|
   //     Line from center through label to edge, arrow at edge pointing outward.
-  //   Outside (circle):  o------|<---X
+  //   Outside (circle):  o----|<---X
   //     Line from center through edge to label, arrow at edge pointing inward.
   //
   // For arc entities, if the label direction falls outside the arc's angular range,
@@ -465,7 +465,7 @@ export function DiameterDimension({ cid, dim, interaction }: {
 
   // Determine if label is inside or outside the circle.
   // ASCII visualizations (center at o, endpoints at |):
-  //   Inside (within circle):   |<--X--o----->|
+  //   Inside (within circle):   |<--X--o---->|
   //     Arrows at endpoints pointing outward (away from center), label within circle bounds.
   //   Outside (beyond circle):  ->|---o----|<--X
   //     Arrows at endpoints pointing inward (toward center), leader line from endpoint to label.
@@ -497,7 +497,7 @@ export function DiameterDimension({ cid, dim, interaction }: {
       <Line points={[[ep1x, ep1y, 0], [ep2x, ep2y, 0]]} color={color} lineWidth={1} />
       {isInside ? (
         // Inside circle: arrows at endpoints pointing outward.
-        // |<--X--o----->|
+        // |<--X--o---->|
         <>
           <Arrowhead tip={[ep1x, ep1y]} from={[ep2x, ep2y]} color={color} />
           <Arrowhead tip={[ep2x, ep2y]} from={[ep1x, ep1y]} color={color} />
@@ -615,8 +615,8 @@ export function AngleDimension({ cid, dim, interaction }: {
   //     Label past an arc end on the extension; arrows at arc ends point inward (toward vertex).
   const relLabel = ((labelAngleDeg - a0deg) + 360) % 360
   const isInside = arcSpan >= 0
-    ? relLabel <= arcSpan           // CCW arc: inside if label is within [a0, a0+span]
-    : relLabel >= (360 + arcSpan)   // CW arc: inside if label is within [a0+span, a0] (wrapping)
+    ? relLabel <= arcSpan  // CCW arc: inside if label is within [a0, a0+span]
+    : relLabel >= (360 + arcSpan)  // CW arc: inside if label is within [a0+span, a0] (wrapping)
 
   // Arc from a0 to a1 at arcR.
   const arcPts = sampleArc(vx, vy, arcR, a0deg, a1deg)
@@ -705,9 +705,9 @@ export function AngleDimension({ cid, dim, interaction }: {
   )
 }
 
-// ---------------------------------------------------------------------------
+// ----
 // Read-only constraint overlays (used by Sketch3D / Visualizer)
-// ---------------------------------------------------------------------------
+// ----
 
 interface ConstraintOverlaysProps {
   constraints: Constraints

@@ -4,7 +4,7 @@ import { executeCommand } from '../../../stores/commandRegistry'
 import ToolbarButton from '../ToolbarButton'
 import { iconUrl, shortcutHint } from './toolUtils'
 
-/** Renders constraint tools from the constraint registry */
+// Renders constraint tools from the constraint registry
 export default function ConstraintTools() {
   return (
     <>

@@ -69,7 +69,7 @@ export function HitPolyline({ pts, onPointerOver, onPointerOut }: {
   )
 }
 
-/** Square highlight rendered at z=0.001 so it's always visible above lines. */
+// Square highlight rendered at z=0.001 so it's always visible above lines.
 export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px: number; color: string }) {
   const groupRef = useRef<THREE.Group>(null)
   const { camera } = useThree()

@@ -1,8 +1,8 @@
-// ── Base Types ──────────────────────────────────────────────────────────────
+// ── Base Types ────
 
 export type Point = [number, number]
 
-// ── Document AST Types ────────────────────────────────────────────────────────
+// ── Document AST Types ────
 
 // A query string referencing an entity or sub-element, e.g. "$line1" or "$arc1start".
 // See docs/query.md for the full query syntax.
@@ -58,7 +58,7 @@ export interface PartFeature {
   id: string
   kind: string
   label?: string
-  visible?: boolean   // absent means visible; false means hidden
+  visible?: boolean  // absent means visible; false means hidden
   plane?: string  // query string, e.g. "@builtin_plane_front"
   entities?: PartEntityDef[]
   initial?: Record<string, number[]>
@@ -75,7 +75,7 @@ export interface PartDoc {
   features?: PartFeature[]
 }
 
-// ── UI / Rendering Types ──────────────────────────────────────────────────────
+// ── UI / Rendering Types ────
 
 export interface LineSegment {
   start: Point
@@ -175,7 +175,7 @@ export interface DimLinearRender {
   normal: Point
   value: number
   entity?: string
-  /** Label offset in sketch space relative to midpoint(p1, p2). */
+  // Label offset in sketch space relative to midpoint(p1, p2).
   pos?: Point
 }
 
@@ -185,7 +185,7 @@ export interface DimRadiusRender {
   p2: Point  // edge point
   value: number
   entity?: string
-  /** Label offset in sketch space relative to center (p1). */
+  // Label offset in sketch space relative to center (p1).
   pos?: Point
 }
 
@@ -195,23 +195,23 @@ export interface DimDiameterRender {
   p2: Point
   value: number
   entity?: string
-  /** Label offset in sketch space relative to midpoint(p1, p2). */
+  // Label offset in sketch space relative to midpoint(p1, p2).
   pos?: Point
 }
 
 export interface DimAngleRender {
   kind: 'dim_angle'
-  /** Line A start. Direction da = p2 − p1. */
+  // Line A start. Direction da = p2 − p1.
   p1: Point
-  /** Line A end. */
+  // Line A end.
   p2: Point
-  /** Line B start. Direction db = p4 − p3. */
+  // Line B start. Direction db = p4 − p3.
   p3: Point
-  /** Line B end. */
+  // Line B end.
   p4: Point
   value: number
   entity?: string
-  /** Label offset in sketch space relative to the shared vertex. */
+  // Label offset in sketch space relative to the shared vertex.
   pos?: Point
 }
 
@@ -263,7 +263,7 @@ export interface Topology {
 
 export interface PlaneTransform {
   rotation: number[]  // row-major 3×3 rotation matrix (9 elements)
-  origin: number[]    // world-space origin [x, y, z]
+  origin: number[]  // world-space origin [x, y, z]
 }
 
 export interface SketchData {
@@ -276,7 +276,7 @@ export interface SketchData {
 
 export type EntityStatus = Record<string, ConstraintStatus>
 
-// ── Mutation Types ───────────────────────────────────────────────────────────
+// ── Mutation Types ────
 
 export type Mutation =
   | { type: 'move_vertex'; featureId: string; entityId: string; vertexKey: string; to: Point }

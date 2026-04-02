@@ -5,7 +5,7 @@ import { executeCommand } from '../../../stores/commandRegistry'
 import ToolbarButton from '../ToolbarButton'
 import { iconUrl, shortcutHint } from './toolUtils'
 
-/** Renders entity drawing tools from the entity registry (point, line, circle, arc) */
+// Renders entity drawing tools from the entity registry (point, line, circle, arc)
 export default function EntityTools() {
   const activeTool = useSketchEditorStore(s => s.activeTool)
 

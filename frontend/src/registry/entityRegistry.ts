@@ -1,4 +1,4 @@
-// ============================================================================
+// ====
 // Entity Registry — single source of truth for sketch entity types.
 //
 // Every entity kind recognised by the solver is listed here exactly once.
@@ -11,36 +11,36 @@
 //   3. Add solver handling in the backend  (solver.py).
 //   4. Add rendering in Geometry3D.tsx / SketchSvg.tsx.
 //   5. Optionally add an SVG icon in assets/icons/.
-// ============================================================================
+// ====
 
 import type { ActiveTool } from '../stores/sketchEditorStore'
 
-// -- Entity definition --------------------------------------------------------
+// -- Entity definition ----
 
 export interface VertexDef {
-  /** Vertex key (e.g. "start", "end", "center", "xy"). */
+  // Vertex key (e.g. "start", "end", "center", "xy").
   key: string
-  /** Indices into the flat parameter array for [x, y]. */
+  // Indices into the flat parameter array for [x, y].
   indices: [number, number]
 }
 
 export interface EntityDef {
-  /** Solver kind string — the canonical name used in the AST and solver. */
+  // Solver kind string — the canonical name used in the AST and solver.
   kind: string
 
-  /** Human-readable label shown in toolbar and docs. */
+  // Human-readable label shown in toolbar and docs.
   label: string
 
-  /** One-line description for documentation. */
+  // One-line description for documentation.
   description: string
 
-  /** Number of scalar parameters in the flat array. */
+  // Number of scalar parameters in the flat array.
   paramCount: number
 
-  /** Default parameter values when no initial data exists. */
+  // Default parameter values when no initial data exists.
   defaultParams: number[]
 
-  /** Named vertices and their parameter indices. */
+  // Named vertices and their parameter indices.
   vertices: VertexDef[]
 
   /**
@@ -62,14 +62,14 @@ export interface EntityDef {
    */
   shortcut?: string
 
-  /** Icon filename (without path/extension) for the toolbar button. */
+  // Icon filename (without path/extension) for the toolbar button.
   toolbarIcon?: string
 
-  /** Whether this entity type shows in the drawing toolbar. */
+  // Whether this entity type shows in the drawing toolbar.
   showInToolbar: boolean
 }
 
-// -- Registry -----------------------------------------------------------------
+// -- Registry ----
 
 export const ENTITIES: readonly EntityDef[] = [
   {
@@ -147,13 +147,13 @@ export const ENTITIES: readonly EntityDef[] = [
   },
 ] as const
 
-// -- Derived lookup tables (computed once at module load) ---------------------
+// -- Derived lookup tables (computed once at module load) ----
 
-/** Map from entity kind → full definition. */
+// Map from entity kind → full definition.
 export const ENTITY_BY_KIND: ReadonlyMap<string, EntityDef> =
   new Map(ENTITIES.map(e => [e.kind, e]))
 
-/** Map from activeTool value → entity definition. */
+// Map from activeTool value → entity definition.
 export const ENTITY_BY_ACTIVE_TOOL: ReadonlyMap<string, EntityDef> =
   new Map(
     ENTITIES
@@ -161,7 +161,7 @@ export const ENTITY_BY_ACTIVE_TOOL: ReadonlyMap<string, EntityDef> =
       .map(e => [e.activeTool!, e])
   )
 
-/** Map from entity kind → vertex key → [xIndex, yIndex]. */
+// Map from entity kind → vertex key → [xIndex, yIndex].
 export const VERTEX_INDICES: Readonly<Record<string, Record<string, [number, number]>>> =
   Object.fromEntries(
     ENTITIES.map(e => [
@@ -170,17 +170,17 @@ export const VERTEX_INDICES: Readonly<Record<string, Record<string, [number, num
     ])
   )
 
-/** Map from entity kind → array of [xIndex, yIndex] coordinate pairs. */
+// Map from entity kind → array of [xIndex, yIndex] coordinate pairs.
 export const ALL_COORD_INDICES: Readonly<Record<string, [number, number][]>> =
   Object.fromEntries(
     ENTITIES.map(e => [e.kind, e.coordPairs])
   )
 
-/** Entities that appear as toolbar drawing buttons, in display order. */
+// Entities that appear as toolbar drawing buttons, in display order.
 export const TOOLBAR_ENTITIES: readonly EntityDef[] =
   ENTITIES.filter(e => e.showInToolbar)
 
-/** Map from keyboard shortcut → command name (for commandRegistry integration). */
+// Map from keyboard shortcut → command name (for commandRegistry integration).
 export const ENTITY_SHORTCUTS: ReadonlyMap<string, string> =
   new Map(
     ENTITIES
@@ -188,7 +188,7 @@ export const ENTITY_SHORTCUTS: ReadonlyMap<string, string> =
       .map(e => [e.shortcut!, 'set_tool_' + e.activeTool])
   )
 
-/** Get default parameters for an entity kind. */
+// Get default parameters for an entity kind.
 export function getDefaultParams(kind: string): number[] {
   return ENTITY_BY_KIND.get(kind)?.defaultParams ?? []
 }

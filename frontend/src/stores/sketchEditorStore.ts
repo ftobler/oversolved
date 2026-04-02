@@ -15,23 +15,23 @@ export interface DialogState {
   onCancel?: () => void
 }
 
-/** Dragging a geometry vertex or whole edge. */
+// Dragging a geometry vertex or whole edge.
 export interface VertexOrEdgeDrag {
   type: 'vertex' | 'edge'
-  vertexId: string       // full composite ID (entity ID for edge drags)
+  vertexId: string  // full composite ID (entity ID for edge drags)
   featureId: string
   entityId: string
-  vertexKey: string      // "start" | "end" | "center" | "xy" | "edge"
+  vertexKey: string  // "start" | "end" | "center" | "xy" | "edge"
   startWorld: [number, number]
   currentWorld: [number, number]
 }
 
-/** Dragging a dimension label to reposition it. */
+// Dragging a dimension label to reposition it.
 export interface DimLabelDrag {
   type: 'dim_label'
   constraintId: string
   featureId: string
-  /** World-space anchor for the label (midpoint of measured points, center, or vertex). */
+  // World-space anchor for the label (midpoint of measured points, center, or vertex).
   anchorWorld: [number, number]
   startWorld: [number, number]
   currentWorld: [number, number]
@@ -48,13 +48,13 @@ interface SketchEditorState {
   onRebuild: (() => void) | null
   onExitSketch: (() => void) | null
   hoveredConstraintEntityIds: Set<string>  // entity IDs highlighted by constraint hover
-  hoveredEntityId: string | null           // currently hovered entity/vertex ID
+  hoveredEntityId: string | null  // currently hovered entity/vertex ID
   activeTool: ActiveTool
-  activeFeatureId: string | null           // the sketch currently being edited
+  activeFeatureId: string | null  // the sketch currently being edited
   drawPoints: [number, number][]
   drawHover: [number, number] | null
-  pendingDimTarget: string | null       // first click target when doing two-target dimension
-  pendingDimEntityKind: string | null   // entity kind of the first click target
+  pendingDimTarget: string | null  // first click target when doing two-target dimension
+  pendingDimEntityKind: string | null  // entity kind of the first click target
   pendingDialog: DialogState | null
   contextMenu: [number, number] | null
   planeSelectionFeatureId: string | null

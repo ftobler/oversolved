@@ -10,7 +10,7 @@ import { buildCommandEntries } from '../commandEntries'
 // Ensure clean state before each test
 beforeEach(() => { clearAllHandlers() })
 
-// ── Config array structure ────────────────────────────────────────────────────
+// ── Config array structure ────
 
 describe('command config array structure', () => {
   const config = buildCommandEntries(vi.fn(), vi.fn(), vi.fn())
@@ -34,7 +34,7 @@ describe('command config array structure', () => {
   })
 })
 
-// ── Registration lifecycle ────────────────────────────────────────────────────
+// ── Registration lifecycle ────
 
 describe('command registration lifecycle', () => {
   it('register → execute → unregister: spies are called only while registered', () => {
@@ -74,7 +74,7 @@ describe('command registration lifecycle', () => {
   })
 })
 
-// ── Handler execution with store methods ──────────────────────────────────────
+// ── Handler execution with store methods ────
 
 describe('handler execution with store methods', () => {
   it('delete_selected handler calls store.deleteSelected without throwing', () => {

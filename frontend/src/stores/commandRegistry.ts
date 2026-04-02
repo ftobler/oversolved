@@ -5,18 +5,18 @@ import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '../registry'
 
 const handlers = new Map<string, () => void>()
 
-// ── Keymap ─────────────────────────────────────────────────────────────────
+// ── Keymap ────
 // Key strings are built from KeyboardEvent: optional modifiers joined with '+',
 // then the lowercase key name. E.g. Ctrl+Z → "ctrl+z", D → "d".
 
 export type CoreKeybinding = {
-  /** Canonical key string, e.g. "ctrl+z". */
+  // Canonical key string, e.g. "ctrl+z".
   key: string
-  /** Command name, e.g. "undo". */
+  // Command name, e.g. "undo".
   command: string
-  /** Human-readable label for the Registry page. */
+  // Human-readable label for the Registry page.
   label: string
-  /** Short description for the Registry page. */
+  // Short description for the Registry page.
   description: string
 }
 
@@ -43,7 +43,7 @@ export const KEYMAP: Record<string, string> = {
   ...Object.fromEntries(ENTITY_SHORTCUTS),
 }
 
-// ── Registration ───────────────────────────────────────────────────────────
+// ── Registration ────
 
 export function registerCommand(name: string, fn: () => void): void {
   handlers.set(name, fn)
@@ -65,9 +65,9 @@ export function executeCommand(name: string): void {
   handlers.get(name)?.()
 }
 
-// ── Key dispatch ───────────────────────────────────────────────────────────
+// ── Key dispatch ────
 
-/** Build a canonical key string from a KeyboardEvent, e.g. "ctrl+shift+z" or "delete". */
+// Build a canonical key string from a KeyboardEvent, e.g. "ctrl+shift+z" or "delete".
 export function buildKeyString(e: KeyboardEvent): string {
   const parts: string[] = []
   if (e.ctrlKey || e.metaKey) parts.push('ctrl')

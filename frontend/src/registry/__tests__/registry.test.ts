@@ -20,7 +20,7 @@ import {
   getDefaultParams,
 } from '../entityRegistry'
 
-// ── Constraint registry consistency ─────────────────────────────────────────
+// ── Constraint registry consistency ────
 
 describe('constraintRegistry', () => {
   it('every constraint has a unique kind', () => {
@@ -83,7 +83,7 @@ describe('constraintRegistry', () => {
   })
 })
 
-// ── Dimension tool rules ────────────────────────────────────────────────────
+// ── Dimension tool rules ────
 
 describe('dimension rules', () => {
   it('every rule references a valid constraint kind', () => {
@@ -111,7 +111,7 @@ describe('dimension rules', () => {
   })
 })
 
-// ── Entity registry consistency ─────────────────────────────────────────────
+// ── Entity registry consistency ────
 
 describe('entityRegistry', () => {
   it('every entity has a unique kind', () => {
@@ -206,7 +206,7 @@ describe('entityRegistry', () => {
   })
 })
 
-// ── Entity registry shortcuts ────────────────────────────────────────────────
+// ── Entity registry shortcuts ────
 
 describe('entityRegistry shortcuts', () => {
   it('every shortcut maps to exactly one entity', () => {

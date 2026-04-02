@@ -174,7 +174,7 @@ describe('applyDeleteElements', () => {
   })
 })
 
-// ── Step 6: face: selection ID handling ───────────────────────────────────────
+// ── Step 6: face: selection ID handling ────
 
 import { parseTarget, applySetFeatureVisibility } from '../yamlMutations'
 import { healDoc, BUILTIN_FEATURE_DEFAULTS } from '../../hooks/usePartDoc'
@@ -244,7 +244,7 @@ describe('applyAddConstraint with face target', () => {
   })
 })
 
-// ── Feature visibility (applySetFeatureVisibility) ────────────────────────────
+// ── Feature visibility (applySetFeatureVisibility) ────
 
 const docWithFeatures = (): PartDoc => ({
   version: 1, kind: 'part',
@@ -295,7 +295,7 @@ describe('applySetFeatureVisibility', () => {
   })
 })
 
-// ── healDoc — built-in injection and visibility preservation ──────────────────
+// ── healDoc — built-in injection and visibility preservation ────
 
 describe('healDoc built-in injection', () => {
   it('injects all four built-ins into an empty doc', () => {
