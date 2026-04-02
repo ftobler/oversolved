@@ -28,8 +28,8 @@ npx vitest run
 ```
 
 ## Conventions
-- Test driven development. Frontend changes must pass `just frontend`.
-- Test driven development. Backend changes must pass `just backend`.
+- Test driven development. Frontend changes must pass `just frontend`. Backend changes must pass `just backend`.
+- For each feature try to make a test.
 - Flask and CAD solver backend lives in `oversolved/`.
 - mypy and flake8 runs on both `oversolved/` and `tests/`
 - code style: do not use em or en-dashes.
@@ -37,6 +37,7 @@ npx vitest run
 - Use two spaces before inline comments. Example: `be_nice = True  # sometimes`
 - Do not use banner comments or ASCII-art dividers (e.g. `====`, `----`). Keep any separators minimal.
 - Comments must describe intent, not restate the code.
+- try to keep files shorter than 1k lines.
 
 ## important files
 - oversolved/solver.py
