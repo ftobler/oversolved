@@ -137,12 +137,14 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
 
   if (featureId !== activeFeatureId) return null
 
-  // When in select/dimension mode, render a background plane for deselection
+  // Deselection plane: catch clicks on empty sketch space
+  // Positioned far back in local z to not interfere with plane hover geometry
   if (activeTool === 'select' || activeTool === 'dimension') {
     return (
       <mesh
-        position={[0, 0, -0.002]}
+        position={[0, 0, -1000]}
         onClick={(e) => { e.stopPropagation(); clearSelection() }}
+        onPointerOut={() => {}} // prevent propagation of pointer events
       >
         <planeGeometry args={[100000, 100000]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
