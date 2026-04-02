@@ -73,5 +73,6 @@ def draw_all():
     for entry in _registry:
         path, fn, angle = entry[:3]
         offset_x, offset_y = entry[3:5] if len(entry) > 3 else (0, 0)
-        print(f"→ {path} (angle={angle}, offset=({offset_x}, {offset_y}))")
+        # print(f"→ {path} (angle={angle}, offset=({offset_x}, {offset_y}))")
         _draw_one(path, fn, angle, offset_x, offset_y)
+    print(f"→ created {len(_registry)} icons")

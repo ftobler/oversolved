@@ -1,4 +1,4 @@
-from icon_cairo import icon, drawall, px, stroke
+from icon_cairo import icon, draw_all, px, stroke
 import math
 
 
@@ -953,4 +953,4 @@ def context_delete(ctx):
 
 
 if __name__ == "__main__":
-    drawall()
+    draw_all()
