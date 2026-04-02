@@ -58,8 +58,8 @@ interface SketchEditorState {
   pendingDialog: DialogState | null
   contextMenu: [number, number] | null
   planeSelectionFeatureId: string | null
-  fieldPickState: { featureId: string; field: string; kind: 'plane' | 'point' } | null
-  setFieldPickState: (state: { featureId: string; field: string; kind: 'plane' | 'point' } | null) => void
+  fieldPickState: { featureId: string; field: string; kind: 'plane' | 'point' | 'line' } | null
+  setFieldPickState: (state: { featureId: string; field: string; kind: 'plane' | 'point' | 'line' } | null) => void
   commitFieldPick: (selectionId: string) => void
 
   // --- actions ---
@@ -190,6 +190,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       const parts = selectionId.split(':')
       const [, featId, eleId, sub] = parts
       value = '@' + featId + eleId + sub
+    } else if (selectionId.startsWith('entity:')) {
+      const parts = selectionId.split(':')
+      const [, featId, eleId] = parts
+      value = '@' + featId + eleId
     } else {
       value = selectionId
     }

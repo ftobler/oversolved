@@ -64,6 +64,17 @@ def solve(yaml_str: str) -> dict:
         # subsequent sketches can reference it via @absolute query strings.
         if "geometry" in feature_result:
             _register_solved_geometry(global_repo, feature["id"], feature, feature_result["geometry"])
+        # Store plane_transform so downstream plane features can convert 2D sketch
+        # coordinates to 3D world coordinates (used by three_point, through_point, etc.)
+        if "plane_transform" in feature_result:
+            pt = feature_result["plane_transform"]
+            rot = pt["rotation"]
+            global_repo.register("_pt_" + feature["id"], {
+                "origin": pt["origin"],
+                "x_axis": rot[0:3],
+                "y_axis": rot[3:6],
+                "normal": rot[6:9],
+            })
         # Register topology surfaces as face-typed planes so later sketches can
         # use a topology face as a sketch plane via its ancestry query string.
         if "plane_transform" in feature_result and "topology" in feature_result:
@@ -187,20 +198,20 @@ def _register_solved_geometry_slash(global_repo: Repository, feature_id: str, fe
                 continue
         else:
             params = list(val)
-        global_repo.register(prefix, {"external_params": params, "kind": kind})
+        global_repo.register(prefix, {"external_params": params, "kind": kind, "sketch_id": feature_id})
         if kind in ("line", "projected_line"):
-            global_repo.register(prefix + "/start", {"external_xy": list(params[0:2])})
-            global_repo.register(prefix + "/end",   {"external_xy": list(params[2:4])})
+            global_repo.register(prefix + "/start", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
+            global_repo.register(prefix + "/end",   {"external_xy": list(params[2:4]), "sketch_id": feature_id})
         elif kind in ("circle", "projected_circle"):
-            global_repo.register(prefix + "/center", {"external_xy": list(params[0:2])})
+            global_repo.register(prefix + "/center", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
         elif kind in ("arc", "projected_arc"):
             cx, cy, r = params[0], params[1], params[2]
             a_start, a_end = params[3], params[4]
-            global_repo.register(prefix + "/start",  {"external_xy": [cx + r * math.cos(math.radians(a_start)), cy + r * math.sin(math.radians(a_start))]})
-            global_repo.register(prefix + "/end",    {"external_xy": [cx + r * math.cos(math.radians(a_end)),   cy + r * math.sin(math.radians(a_end))]})
-            global_repo.register(prefix + "/center", {"external_xy": [cx, cy]})
+            global_repo.register(prefix + "/start",  {"external_xy": [cx + r * math.cos(math.radians(a_start)), cy + r * math.sin(math.radians(a_start))], "sketch_id": feature_id})
+            global_repo.register(prefix + "/end",    {"external_xy": [cx + r * math.cos(math.radians(a_end)),   cy + r * math.sin(math.radians(a_end))], "sketch_id": feature_id})
+            global_repo.register(prefix + "/center", {"external_xy": [cx, cy], "sketch_id": feature_id})
         elif kind in ("point", "projected_point"):
-            global_repo.register(prefix + "/xy", {"external_xy": list(params[0:2])})
+            global_repo.register(prefix + "/xy", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
 
 
 def _register_solved_geometry(global_repo: Repository, feature_id: str, feature: dict, geometry: dict) -> None:
@@ -211,20 +222,20 @@ def _register_solved_geometry(global_repo: Repository, feature_id: str, feature:
         if entity is None:
             continue
         kind = entity["kind"]
-        global_repo.register(feature_id + eid, {"external_params": params, "kind": kind})
+        global_repo.register(feature_id + eid, {"external_params": params, "kind": kind, "sketch_id": feature_id})
         if kind == "line":
-            global_repo.register(feature_id + eid + "start", {"external_xy": list(params[0:2])})
-            global_repo.register(feature_id + eid + "end",   {"external_xy": list(params[2:4])})
+            global_repo.register(feature_id + eid + "start", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
+            global_repo.register(feature_id + eid + "end",   {"external_xy": list(params[2:4]), "sketch_id": feature_id})
         elif kind == "circle":
-            global_repo.register(feature_id + eid + "center", {"external_xy": list(params[0:2])})
+            global_repo.register(feature_id + eid + "center", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
         elif kind == "arc":
             cx, cy, r = params[0], params[1], params[2]
             a_start, a_end = params[3], params[4]
-            global_repo.register(feature_id + eid + "start",  {"external_xy": [cx + r * math.cos(math.radians(a_start)), cy + r * math.sin(math.radians(a_start))]})
-            global_repo.register(feature_id + eid + "end",    {"external_xy": [cx + r * math.cos(math.radians(a_end)),   cy + r * math.sin(math.radians(a_end))]})
-            global_repo.register(feature_id + eid + "center", {"external_xy": [cx, cy]})
+            global_repo.register(feature_id + eid + "start",  {"external_xy": [cx + r * math.cos(math.radians(a_start)), cy + r * math.sin(math.radians(a_start))], "sketch_id": feature_id})
+            global_repo.register(feature_id + eid + "end",    {"external_xy": [cx + r * math.cos(math.radians(a_end)),   cy + r * math.sin(math.radians(a_end))], "sketch_id": feature_id})
+            global_repo.register(feature_id + eid + "center", {"external_xy": [cx, cy], "sketch_id": feature_id})
         elif kind == "point":
-            global_repo.register(feature_id + eid + "xy", {"external_xy": list(params[0:2])})
+            global_repo.register(feature_id + eid + "xy", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
 
 
 def _plane_transform(plane_obj: dict) -> dict:
@@ -828,6 +839,50 @@ def _project_source_to_params(
 # Plane solver
 # ---------------------------------------------------------------------------
 
+def _get_point_3d(ref: dict, global_repo: Repository) -> np.ndarray:
+    """Convert a registered point reference to a 3D world coordinate.
+
+    Uses sketch_id + _pt_ plane transform to lift 2D local coordinates to 3D
+    world space.  Falls back to [x, y, 0] when no plane transform is known.
+    """
+    if 'external_xy' in ref:
+        xy = ref['external_xy']
+        sketch_id = ref.get('sketch_id')
+        if sketch_id:
+            pt = global_repo.elements.get('_pt_' + sketch_id)
+            if pt:
+                origin = np.array(pt['origin'])
+                x_axis = np.array(pt['x_axis'])
+                y_axis = np.array(pt['y_axis'])
+                return origin + xy[0] * x_axis + xy[1] * y_axis
+        return np.array([xy[0], xy[1], 0.0])
+    raise ValueError("point reference has no coordinates")
+
+
+def _get_edge_3d(ref: dict, global_repo: Repository) -> tuple:
+    """Return (start_3d, end_3d) for a registered edge/line reference.
+
+    Uses sketch_id + _pt_ plane transform when available.
+    Falls back to z=0 for 2D-only references.
+    """
+    if 'external_params' in ref and ref.get('kind') in ('line', 'projected_line'):
+        p = ref['external_params']
+        sketch_id = ref.get('sketch_id')
+        if sketch_id:
+            pt = global_repo.elements.get('_pt_' + sketch_id)
+            if pt:
+                origin = np.array(pt['origin'])
+                x_axis = np.array(pt['x_axis'])
+                y_axis = np.array(pt['y_axis'])
+                start = origin + p[0] * x_axis + p[1] * y_axis
+                end = origin + p[2] * x_axis + p[3] * y_axis
+                return start, end
+        return np.array([p[0], p[1], 0.0]), np.array([p[2], p[3], 0.0])
+    if 'start' in ref and 'end' in ref:
+        return np.array(ref['start']), np.array(ref['end'])
+    raise ValueError("edge reference has no line coordinates")
+
+
 def _normalize(v: np.ndarray) -> np.ndarray:
     """Return unit vector in direction of v."""
     n = np.linalg.norm(v)
@@ -850,9 +905,18 @@ def _rotate_frame_around_normal(
 
 def _plane_three_point(definition: dict, global_repo: Repository) -> tuple:
     """Three-point plane: origin at p1, x_axis toward p2, y_axis toward p3 (Gram-Schmidt)."""
-    p1 = np.array(global_repo.query(definition['p1'])['external_xy'] + [0.0])
-    p2 = np.array(global_repo.query(definition['p2'])['external_xy'] + [0.0])
-    p3 = np.array(global_repo.query(definition['p3'])['external_xy'] + [0.0])
+    r1 = global_repo.query(definition['p1'])
+    r2 = global_repo.query(definition['p2'])
+    r3 = global_repo.query(definition['p3'])
+    if r1 is None:
+        raise ValueError(f"point not found: {definition['p1']!r}")
+    if r2 is None:
+        raise ValueError(f"point not found: {definition['p2']!r}")
+    if r3 is None:
+        raise ValueError(f"point not found: {definition['p3']!r}")
+    p1 = _get_point_3d(r1, global_repo)
+    p2 = _get_point_3d(r2, global_repo)
+    p3 = _get_point_3d(r3, global_repo)
 
     origin = p1.copy()
     x_axis = _normalize(p2 - origin)
@@ -922,15 +986,8 @@ def _plane_edge_point(definition: dict, global_repo: Repository) -> tuple:
     if point_ref is None:
         raise ValueError(f"point not found: {point_str!r}")
 
-    origin = np.array(point_ref['external_xy'] + [0.0])
-    # edge may be stored as external_params [x1,y1,x2,y2] or as {start, end}
-    if 'external_params' in edge:
-        p = edge['external_params']
-        edge_start = np.array([p[0], p[1], 0.0])
-        edge_end = np.array([p[2], p[3], 0.0])
-    else:
-        edge_start = np.array(edge['start'])
-        edge_end = np.array(edge['end'])
+    origin = _get_point_3d(point_ref, global_repo)
+    edge_start, edge_end = _get_edge_3d(edge, global_repo)
     x_axis = _normalize(edge_end - edge_start)
 
     if abs(x_axis[2]) < 0.9:
@@ -939,6 +996,69 @@ def _plane_edge_point(definition: dict, global_repo: Repository) -> tuple:
         arbitrary = np.array([1.0, 0.0, 0.0])
 
     y_axis = _normalize(np.cross(x_axis, arbitrary))
+    normal = np.cross(x_axis, y_axis)
+    return origin, x_axis, y_axis, normal
+
+
+def _plane_through_point(definition: dict, global_repo: Repository) -> tuple:
+    """Plane parallel to a reference plane, with its origin positioned at a given point.
+
+    The plane keeps the same orientation (x_axis, y_axis, normal) as the reference
+    plane but its origin is set to the specified point projected onto the reference
+    plane's normal axis.
+    """
+    plane_query = definition.get('plane', '')
+    point_query = definition.get('point', '')
+    ref_plane = global_repo.query(plane_query)
+    if ref_plane is None:
+        raise ValueError(f"plane not found: {plane_query!r}")
+    point_ref = global_repo.query(point_query)
+    if point_ref is None:
+        raise ValueError(f"point not found: {point_query!r}")
+
+    normal = np.array(ref_plane.get('normal', [0, 0, 1]))
+    x_axis = np.array(ref_plane.get('x_axis', [1, 0, 0]))
+    y_axis = np.array(ref_plane.get('y_axis', [0, 1, 0]))
+    ref_origin = np.array(ref_plane.get('origin', [0, 0, 0]))
+
+    point_3d = _get_point_3d(point_ref, global_repo)
+
+    # Project point onto the normal axis to determine offset from reference origin
+    t = float(np.dot(point_3d - ref_origin, normal))
+    origin = ref_origin + normal * t
+
+    return origin, x_axis, y_axis, normal
+
+
+def _plane_line_angle(definition: dict, global_repo: Repository) -> tuple:
+    """Plane that contains a line (hinge axis) and is rotated around that line by a given angle.
+
+    At angle=0 the plane is oriented so its y_axis is perpendicular to the line and
+    points in the direction most aligned with the world Z axis (or world X when the
+    line is parallel to Z).  Increasing angle rotates the plane around the line.
+    """
+    line_str = definition.get('line', '')
+    angle = float(definition.get('angle', 0.0))
+
+    line_ref = global_repo.query(line_str)
+    if line_ref is None:
+        raise ValueError(f"line not found: {line_str!r}")
+
+    line_start, line_end = _get_edge_3d(line_ref, global_repo)
+    x_axis = _normalize(line_end - line_start)  # hinge axis = line direction
+    origin = line_start.copy()
+
+    # Build a reference y_axis perpendicular to x_axis (default at angle=0)
+    if abs(x_axis[2]) < 0.9:
+        ref = np.array([0.0, 0.0, 1.0])
+    else:
+        ref = np.array([1.0, 0.0, 0.0])
+    y_axis_default = _normalize(ref - np.dot(ref, x_axis) * x_axis)
+
+    # Rotate y_axis around x_axis by angle
+    radians = math.radians(angle)
+    z_axis_default = np.cross(x_axis, y_axis_default)
+    y_axis = math.cos(radians) * y_axis_default + math.sin(radians) * z_axis_default
     normal = np.cross(x_axis, y_axis)
     return origin, x_axis, y_axis, normal
 
@@ -965,6 +1085,10 @@ def _solve_plane(feature: dict, global_repo: Repository) -> dict:
 
         if mode == 'three_point':
             origin, x_axis, y_axis, normal = _plane_three_point(definition, global_repo)
+        elif mode == 'through_point':
+            origin, x_axis, y_axis, normal = _plane_through_point(definition, global_repo)
+        elif mode == 'line_angle':
+            origin, x_axis, y_axis, normal = _plane_line_angle(definition, global_repo)
         elif mode == 'on_face':
             origin, x_axis, y_axis, normal = _plane_on_face(definition, global_repo)
         elif mode == 'on_face_edge_angle':

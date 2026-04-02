@@ -30,6 +30,8 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
   const drag = useSketchEditorStore(s => s.drag)
+  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
+  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   // REGRESSION PROTECTION: Hide collision geometry during entity drag
   // BUG: When dragging, DragPlane raycasts could be blocked by the entity's own
   //      HitPolyline collision geometry, causing choppy/stalled dragging.
@@ -56,10 +58,12 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     if (activeTool === 'dimension') {
       if (!isEditing) return
       handleDimClick(`entity:${featureId}:${entityId}`, featureId, 'entity', [ev.clientX, ev.clientY], entityKind)
+    } else if (fieldPickState?.kind === 'line') {
+      commitFieldPick(entId)
     } else {
       toggleSelect(entId)
     }
-  }, [entId, toggleSelect, activeTool, handleDimClick, featureId, entityId, entityKind, isEditing])
+  }, [entId, toggleSelect, activeTool, handleDimClick, featureId, entityId, entityKind, isEditing, fieldPickState, commitFieldPick])
   // Edge drag: pointer down on the edge group initiates a full-entity move
   const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: { x: number; y: number } }) => {
     if (!isEditing || activeTool !== 'select') return

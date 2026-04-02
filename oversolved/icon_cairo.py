@@ -69,7 +69,7 @@ def _postprocess_svg(path: Path):
     path.write_text(txt)
 
 
-def drawall():
+def draw_all():
     for entry in _registry:
         path, fn, angle = entry[:3]
         offset_x, offset_y = entry[3:5] if len(entry) > 3 else (0, 0)

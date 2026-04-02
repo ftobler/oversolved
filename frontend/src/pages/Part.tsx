@@ -143,10 +143,11 @@ export default function Part() {
   const handleDeleteFeature = useCallback((featureId: string) => {
     if (BUILT_IN_IDS.has(featureId)) return
     if (featureId === editingSketchId) setEditingSketchId(null)
+    if (featureId === editingPlaneId) { setEditingPlaneId(null); setFieldPickState(null) }
     handleMutation({ type: 'delete_feature', featureId })
     useSketchEditorStore.getState().clearSelection()
     setContextMenu(null)
-  }, [editingSketchId, handleMutation])
+  }, [editingSketchId, editingPlaneId, handleMutation, setFieldPickState])
 
   const handleDeleteSelectedFeatures = useCallback(() => {
     const sel = useSketchEditorStore.getState().selection
@@ -155,10 +156,11 @@ export default function Part() {
       .map(id => id.slice(1))
     for (const featureId of featureIds) {
       if (featureId === editingSketchId) setEditingSketchId(null)
+      if (featureId === editingPlaneId) { setEditingPlaneId(null); setFieldPickState(null) }
       handleMutation({ type: 'delete_feature', featureId })
     }
     if (featureIds.length > 0) useSketchEditorStore.getState().clearSelection()
-  }, [editingSketchId, handleMutation])
+  }, [editingSketchId, editingPlaneId, handleMutation, setFieldPickState])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
@@ -174,9 +176,11 @@ export default function Part() {
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const featureId = `sketch${sketchCount + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    setEditingPlaneId(null)
+    setFieldPickState(null)
     handleMutation({ type: 'add_sketch', featureId })
     setPlaneSelectionFeatureId(featureId)
-  }, [doc, features.length, handleMutation, setPlaneSelectionFeatureId])
+  }, [doc, features.length, handleMutation, setPlaneSelectionFeatureId, setFieldPickState])
 
   useEffect(() => {
     useSketchEditorStore.getState().setOnMutation(handleMutation)
@@ -430,8 +434,36 @@ export default function Part() {
                       const featureDef = doc?.features?.find(f => f.id === feature.id)
                       const def = featureDef?.definition ?? { mode: 'offset' }
                       const mode = def.mode ?? 'offset'
-                      const isPickingPlane = fieldPickState?.featureId === feature.id && fieldPickState.kind === 'plane'
-                      const isPickingPoint = (field: string) => fieldPickState?.featureId === feature.id && fieldPickState.field === field && fieldPickState.kind === 'point'
+                      const fid = feature.id
+                      const isPickingKind = (field: string, kind: 'plane' | 'point' | 'line') =>
+                        fieldPickState?.featureId === fid && fieldPickState.field === field && fieldPickState.kind === kind
+                      const pickBtn = (field: string, kind: 'plane' | 'point' | 'line', label: string) =>
+                        isPickingKind(field, kind)
+                          ? <button className="feature-plane-btn active" onClick={(e) => { e.stopPropagation(); setFieldPickState(null) }}>Cancel</button>
+                          : <button className="feature-plane-btn" onClick={(e) => { e.stopPropagation(); setFieldPickState({ featureId: fid, field, kind }) }}>{label}</button>
+                      const numField = (field: 'offset' | 'angle' | 'rotation', label: string, defaultVal: number) => (
+                        <div className="plane-editor-row">
+                          <span className="plane-editor-label">{label}:</span>
+                          <input
+                            type="number"
+                            className="plane-editor-input"
+                            defaultValue={def[field] ?? defaultVal}
+                            onClick={(e) => e.stopPropagation()}
+                            onBlur={(e) => {
+                              const v = parseFloat(e.target.value)
+                              if (!isNaN(v)) handleMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: v })
+                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur() } e.stopPropagation() }}
+                          />
+                        </div>
+                      )
+                      const refPlaneRow = (
+                        <div className="plane-editor-row">
+                          <span className="plane-editor-label">Plane:</span>
+                          <span className="plane-editor-value">{planeLabel(def.plane)}</span>
+                          {pickBtn('plane', 'plane', 'Pick')}
+                        </div>
+                      )
                       return (
                         <div className="plane-editor">
                           <div className="plane-editor-row">
@@ -439,37 +471,29 @@ export default function Part() {
                             <select
                               className="plane-editor-select"
                               value={mode}
-                              onChange={(e) => { e.stopPropagation(); handleMutation({ type: 'set_plane_definition_field', featureId: feature.id, field: 'mode', value: e.target.value }) }}
+                              onChange={(e) => { e.stopPropagation(); handleMutation({ type: 'set_plane_definition_field', featureId: fid, field: 'mode', value: e.target.value }) }}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <option value="offset">Offset from plane</option>
+                              <option value="through_point">Through point</option>
                               <option value="three_point">Three-point plane</option>
+                              <option value="line_angle">Rotate on line</option>
+                              <option value="edge_point">Line and point</option>
                             </select>
                           </div>
                           {mode === 'offset' && (
                             <>
+                              {refPlaneRow}
+                              {numField('offset', 'Offset', 0)}
+                            </>
+                          )}
+                          {mode === 'through_point' && (
+                            <>
+                              {refPlaneRow}
                               <div className="plane-editor-row">
-                                <span className="plane-editor-label">Plane:</span>
-                                <span className="plane-editor-value">{planeLabel(def.plane)}</span>
-                                {isPickingPlane ? (
-                                  <button className="feature-plane-btn active" onClick={(e) => { e.stopPropagation(); setFieldPickState(null) }}>Cancel</button>
-                                ) : (
-                                  <button className="feature-plane-btn" onClick={(e) => { e.stopPropagation(); setFieldPickState({ featureId: feature.id, field: 'plane', kind: 'plane' }) }}>Pick</button>
-                                )}
-                              </div>
-                              <div className="plane-editor-row">
-                                <span className="plane-editor-label">Offset:</span>
-                                <input
-                                  type="number"
-                                  className="plane-editor-input"
-                                  defaultValue={def.offset ?? 0}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onBlur={(e) => {
-                                    const v = parseFloat(e.target.value)
-                                    if (!isNaN(v)) handleMutation({ type: 'set_plane_definition_field', featureId: feature.id, field: 'offset', value: v })
-                                  }}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur() } e.stopPropagation() }}
-                                />
+                                <span className="plane-editor-label">Point:</span>
+                                <span className="plane-editor-value">{def.point ?? 'None'}</span>
+                                {pickBtn('point', 'point', 'Pick')}
                               </div>
                             </>
                           )}
@@ -477,13 +501,34 @@ export default function Part() {
                             <div key={field} className="plane-editor-row">
                               <span className="plane-editor-label">P{i + 1}:</span>
                               <span className="plane-editor-value">{def[field] ?? 'None'}</span>
-                              {isPickingPoint(field) ? (
-                                <button className="feature-plane-btn active" onClick={(e) => { e.stopPropagation(); setFieldPickState(null) }}>Cancel</button>
-                              ) : (
-                                <button className="feature-plane-btn" onClick={(e) => { e.stopPropagation(); setFieldPickState({ featureId: feature.id, field, kind: 'point' }) }}>Pick</button>
-                              )}
+                              {pickBtn(field, 'point', 'Pick')}
                             </div>
                           ))}
+                          {mode === 'line_angle' && (
+                            <>
+                              <div className="plane-editor-row">
+                                <span className="plane-editor-label">Line:</span>
+                                <span className="plane-editor-value">{def.line ?? 'None'}</span>
+                                {pickBtn('line', 'line', 'Pick')}
+                              </div>
+                              {numField('angle', 'Angle', 0)}
+                            </>
+                          )}
+                          {mode === 'edge_point' && (
+                            <>
+                              <div className="plane-editor-row">
+                                <span className="plane-editor-label">Line:</span>
+                                <span className="plane-editor-value">{def.edge ?? 'None'}</span>
+                                {pickBtn('edge', 'line', 'Pick')}
+                              </div>
+                              <div className="plane-editor-row">
+                                <span className="plane-editor-label">Point:</span>
+                                <span className="plane-editor-value">{def.point ?? 'None'}</span>
+                                {pickBtn('point', 'point', 'Pick')}
+                              </div>
+                            </>
+                          )}
+                          {numField('rotation', 'Rotation', 0)}
                         </div>
                       )
                     })()}

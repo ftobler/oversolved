@@ -7225,3 +7225,172 @@ def test_plane_chain_geometry_follows_when_origin_sketch_changes_plane():
     assert origin_front != approx(origin_top, abs=1e-2), (
         "sketch2 plane origin did not follow sketch1's plane change"
     )
+
+
+def test_plane_through_point_offset():
+    """through_point mode: plane parallel to reference, origin at a given sketch point."""
+    import numpy as np
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'p1', 'kind': 'point'},
+                ],
+                'initial': {
+                    'p1': [3.0, 4.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'through_point',
+                    'plane': '@builtin_plane_top',
+                    'point': '@sketch0/p1/xy',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][1]['status'] == 'ok', result['features'][1]
+    plane = result['features'][1]['plane']
+    # top plane normal is [0,1,0]; sketch0 is on the front plane so p1=(3,4)
+    # maps to world (3,4,0). Project onto top plane normal [0,1,0]: offset = 4.
+    np.testing.assert_array_almost_equal(plane['origin'], [0, 4, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['normal'], [0, 1, 0], decimal=5)
+
+
+def test_plane_line_angle_zero():
+    """line_angle mode at angle=0: plane containing a horizontal line, normal is world Z."""
+    import numpy as np
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'line1', 'kind': 'line'},
+                ],
+                'initial': {
+                    'line1': [0.0, 0.0, 2.0, 0.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'line_angle',
+                    'line': '@sketch0/line1',
+                    'angle': 0,
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][1]['status'] == 'ok', result['features'][1]
+    plane = result['features'][1]['plane']
+    # line is horizontal (1,0,0); at angle=0 y_axis should be [0,0,1] (world Z)
+    # normal = cross(x_axis, y_axis) = cross([1,0,0],[0,0,1]) = [0,-1,0]
+    np.testing.assert_array_almost_equal(plane['x_axis'], [1, 0, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['normal'], [0, -1, 0], decimal=5)
+
+
+def test_plane_line_angle_90():
+    """line_angle mode at 90 deg: plane normal perpendicular to both line and world Z."""
+    import numpy as np
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'line1', 'kind': 'line'},
+                ],
+                'initial': {
+                    'line1': [0.0, 0.0, 2.0, 0.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'line_angle',
+                    'line': '@sketch0/line1',
+                    'angle': 90,
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][1]['status'] == 'ok', result['features'][1]
+    plane = result['features'][1]['plane']
+    # After 90 deg rotation around x_axis=[1,0,0]:
+    # y_axis rotates from [0,0,1] to [0,-1,0] (since z_axis_default = cross([1,0,0],[0,0,1]) = [0,1,0])
+    # wait: y_axis_default=[0,0,1], z_axis_default=cross([1,0,0],[0,0,1])=[0*1-0*1, 0*1-1*1, 1*0-0*0]=[0,-1,0]
+    # at 90: y_axis = cos(90)*[0,0,1] + sin(90)*[0,-1,0] = [0,0,0]+[0,-1,0] = [0,-1,0]
+    # normal = cross([1,0,0],[0,-1,0]) = [0*0-0*(-1), 0*1-1*0, 1*(-1)-0*1] = [0,0,-1]
+    np.testing.assert_array_almost_equal(plane['x_axis'], [1, 0, 0], decimal=5)
+    np.testing.assert_array_almost_equal(np.abs(plane['normal']), [0, 0, 1], decimal=5)
+
+
+def test_plane_three_point_3d_coords():
+    """three_point mode uses 3D world coords for points on a non-front plane."""
+    import numpy as np
+    # Sketch on the top plane, points at (1,0) and (0,1) in local top-plane coords.
+    # Top plane: x_axis=[1,0,0], y_axis=[0,0,-1], normal=[0,1,0].
+    # World coords: (1,0) -> origin + 1*x + 0*y = [1,0,0]
+    #               (0,0) -> [0,0,0]
+    #               (0,1) -> origin + 0*x + 1*y = [0,0,-1]
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_top',
+                'entities': [
+                    {'id': 'p1', 'kind': 'point'},
+                    {'id': 'p2', 'kind': 'point'},
+                    {'id': 'p3', 'kind': 'point'},
+                ],
+                'initial': {
+                    'p1': [0.0, 0.0],
+                    'p2': [1.0, 0.0],
+                    'p3': [0.0, 1.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'three_point',
+                    'p1': '@sketch0/p1/xy',
+                    'p2': '@sketch0/p2/xy',
+                    'p3': '@sketch0/p3/xy',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][1]['status'] == 'ok', result['features'][1]
+    plane = result['features'][1]['plane']
+    # With 3D coords: p1=[0,0,0], p2=[1,0,0], p3=[0,0,-1]
+    # x_axis = normalize([1,0,0]-[0,0,0]) = [1,0,0]
+    # v = [0,0,-1]-[0,0,0] = [0,0,-1]
+    # y_axis = normalize(v - dot(v,x)*x) = normalize([0,0,-1]) = [0,0,-1]
+    # normal = cross([1,0,0],[0,0,-1]) = [0*(-1)-0*0, 0*1-1*(-1), 1*0-0*1] = [0,1,0]
+    np.testing.assert_array_almost_equal(plane['origin'], [0, 0, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['x_axis'], [1, 0, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['normal'], [0, 1, 0], decimal=5)
