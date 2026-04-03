@@ -9,18 +9,16 @@ import { buildCommandEntries } from './commandEntries'
 import SketchToolbar from '../components/Toolbar/SketchToolbar'
 import AppHeader from '../components/AppHeader'
 import { usePartDoc } from '../hooks/usePartDoc'
-import { planeLabel } from '../components/Geometry3D/utils'
 import RightClickMenu from '../components/RightClickMenu'
 import type { ContextMenuItem } from '../components/RightClickMenu'
 import { BugReporter } from '../components/BugReporter'
+import { Sidebar } from '../components/Sidebar'
 import './Part.css'
 
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featurePartIcon from '../assets/icons/feature-part.svg'
 import featureCodeIcon from '../assets/icons/icon-code.svg'
-import featureOriginIcon from '../assets/icons/feature-origin.svg'
-import featurePlaneIcon from '../assets/icons/feature-plane.svg'
 import featureAddPlaneIcon from '../assets/icons/feature-add-plane.svg'
 import toolbarPlayIcon from '../assets/icons/toolbar-play.svg'
 import toolbarCopyCodeIcon from '../assets/icons/toolbar-copy-code.svg'
@@ -404,249 +402,29 @@ export default function Part() {
       </AppHeader>
 
       <div className="doc-container">
-        <aside className="doc-sidebar">
-          <div className="sidebar-header">Features</div>
-          <ul className="features-list">
-            {features.length === 0 ? (
-              <li className="empty">No features</li>
-            ) : (
-              features.map((feature, index) => (
-                <div key={`feature-${feature.id}`}>
-                  {rollbackPosition === index && (
-                    <li
-                      className="rollback-bar"
-                      title="Rollback"
-                      draggable
-                      onDragStart={handleRollbackDragStart}
-                      onDragOver={(e) => handleRollbackDragOver(e, index)}
-                      onDrop={(e) => handleRollbackDrop(e, index)}
-                    ></li>
-                  )}
-                  <li
-                    key={feature.id}
-                    className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(`@${feature.id}`) ? 'selected' : ''}`}
-                    onDragOver={(e) => handleRollbackDragOver(e, index)}
-                    onDrop={(e) => handleRollbackDrop(e, index)}
-                    onClick={() => toggleSelect(`@${feature.id}`)}
-                    onDoubleClick={() => feature.kind === 'sketch' ? enterEditSketch(feature.id) : undefined}
-                    onContextMenu={(e) => { e.stopPropagation(); handleRightClick([e.clientX, e.clientY], feature.id) }}
-                    style={{ flexWrap: 'wrap' }}
-                  >
-                    <img
-                      src={
-                        feature.kind?.toLowerCase() === 'sketch'
-                          ? featureSketchIcon
-                          : feature.kind?.toLowerCase() === 'extrude'
-                          ? featureExtrudeIcon
-                          : feature.kind?.toLowerCase() === 'origin'
-                          ? featureOriginIcon
-                          : featurePlaneIcon
-                      }
-                      alt={feature.kind || 'feature'}
-                      className="feature-icon"
-                    />
-                    <span className="feature-name">{feature.id}</span>
-                    {feature.kind === 'sketch' && feature.id !== editingFeatureId && (
-                      <button
-                        className="feature-edit-btn"
-                        onClick={() => enterEditSketch(feature.id)}
-                        title="Edit sketch"
-                      >
-                        <span className="material-icons-outlined">edit</span>
-                      </button>
-                    )}
-                    {feature.kind === 'sketch' && feature.id === editingFeatureId && (
-                      <button
-                        className="exit-sketch-btn"
-                        onClick={(e) => { e.stopPropagation(); exitEditSketch() }}
-                        title="Exit sketch"
-                      >
-                        <span className="material-icons-outlined">close</span>
-                      </button>
-                    )}
-                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id !== editingFeatureId && (
-                      <button
-                        className="feature-edit-btn"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          const idx = features.findIndex(f => f.id === feature.id)
-                          if (idx >= 0) setRollbackPosition(idx + 1)
-                          setEditingFeatureId(feature.id)
-                        }}
-                        title="Edit plane"
-                      >
-                        <span className="material-icons-outlined">edit</span>
-                      </button>
-                    )}
-                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (
-                      <button
-                        className="exit-sketch-btn"
-                        onClick={(e) => { e.stopPropagation(); setEditingFeatureId(null); setFieldPickState(null) }}
-                        title="Exit plane editor"
-                      >
-                        <span className="material-icons-outlined">close</span>
-                      </button>
-                    )}
-                    <button
-                      className="feature-visibility-btn"
-                      onClick={(e) => { e.stopPropagation(); toggleVisibility(feature.id) }}
-                      title={visibleFeatures.has(feature.id) ? 'Hide' : 'Show'}
-                    >
-                      <span className="material-icons-outlined">
-                        {visibleFeatures.has(feature.id) ? 'visibility' : 'visibility_off'}
-                      </span>
-                    </button>
-                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (() => {
-                      const featureDef = doc?.features?.find(f => f.id === feature.id)
-                      const def = featureDef?.definition ?? { mode: 'offset' }
-                      const mode = def.mode ?? 'offset'
-                      const fid = feature.id
-                      const isPickingKind = (field: string, kind: 'plane' | 'point' | 'line') =>
-                        fieldPickState?.featureId === fid && fieldPickState.field === field && fieldPickState.kind === kind
-                      const pickBtn = (field: string, kind: 'plane' | 'point' | 'line', label: string) =>
-                        isPickingKind(field, kind)
-                          ? <button className="feature-plane-btn active" onClick={(e) => { e.stopPropagation(); setFieldPickState(null) }}>Cancel</button>
-                          : <button className="feature-plane-btn" onClick={(e) => { e.stopPropagation(); setFieldPickState({ featureId: fid, field, kind }) }}>{label}</button>
-                      const numField = (field: 'offset' | 'angle' | 'rotation', label: string, defaultVal: number) => (
-                        <div className="plane-editor-row">
-                          <span className="plane-editor-label">{label}:</span>
-                          <input
-                            type="number"
-                            className="plane-editor-input"
-                            defaultValue={def[field] ?? defaultVal}
-                            onClick={(e) => e.stopPropagation()}
-                            onBlur={(e) => {
-                              const v = parseFloat(e.target.value)
-                              if (!isNaN(v)) handleMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: v })
-                            }}
-                            onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur() } e.stopPropagation() }}
-                          />
-                        </div>
-                      )
-                      const refPlaneRow = (
-                        <div className="plane-editor-row">
-                          <span className="plane-editor-label">Plane:</span>
-                          <span className="plane-editor-value">{planeLabel(def.plane)}</span>
-                          {pickBtn('plane', 'plane', 'Pick')}
-                        </div>
-                      )
-                      return (
-                        <div className="plane-editor">
-                          <div className="plane-editor-row">
-                            <span className="plane-editor-label">Type:</span>
-                            <select
-                              className="plane-editor-select"
-                              value={mode}
-                              onChange={(e) => { e.stopPropagation(); handleMutation({ type: 'set_plane_definition_field', featureId: fid, field: 'mode', value: e.target.value }) }}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <option value="offset">Offset from plane</option>
-                              <option value="through_point">Through point</option>
-                              <option value="three_point">Three-point plane</option>
-                              <option value="line_angle">Rotate on line</option>
-                              <option value="edge_point">Line and point</option>
-                            </select>
-                          </div>
-                          {mode === 'offset' && (
-                            <>
-                              {refPlaneRow}
-                              {numField('offset', 'Offset', 0)}
-                            </>
-                          )}
-                          {mode === 'through_point' && (
-                            <>
-                              {refPlaneRow}
-                              <div className="plane-editor-row">
-                                <span className="plane-editor-label">Point:</span>
-                                <span className="plane-editor-value">{def.point ?? 'None'}</span>
-                                {pickBtn('point', 'point', 'Pick')}
-                              </div>
-                            </>
-                          )}
-                          {mode === 'three_point' && (['p1', 'p2', 'p3'] as const).map((field, i) => (
-                            <div key={field} className="plane-editor-row">
-                              <span className="plane-editor-label">P{i + 1}:</span>
-                              <span className="plane-editor-value">{def[field] ?? 'None'}</span>
-                              {pickBtn(field, 'point', 'Pick')}
-                            </div>
-                          ))}
-                          {mode === 'line_angle' && (
-                            <>
-                              <div className="plane-editor-row">
-                                <span className="plane-editor-label">Line:</span>
-                                <span className="plane-editor-value">{def.line ?? 'None'}</span>
-                                {pickBtn('line', 'line', 'Pick')}
-                              </div>
-                              {numField('angle', 'Angle', 0)}
-                            </>
-                          )}
-                          {mode === 'edge_point' && (
-                            <>
-                              <div className="plane-editor-row">
-                                <span className="plane-editor-label">Line:</span>
-                                <span className="plane-editor-value">{def.edge ?? 'None'}</span>
-                                {pickBtn('edge', 'line', 'Pick')}
-                              </div>
-                              <div className="plane-editor-row">
-                                <span className="plane-editor-label">Point:</span>
-                                <span className="plane-editor-value">{def.point ?? 'None'}</span>
-                                {pickBtn('point', 'point', 'Pick')}
-                              </div>
-                            </>
-                          )}
-                          {numField('rotation', 'Rotation', 0)}
-                        </div>
-                      )
-                    })()}
-                    {feature.kind === 'sketch' && feature.id === editingFeatureId && (() => {
-                      const featureDef = doc?.features?.find(f => f.id === feature.id)
-                      const isPicking = planeSelectionFeatureId === feature.id
-                      return (
-                        <div className="feature-plane-selector">
-                          <span className="feature-plane-label">Plane: {planeLabel(featureDef?.plane)}</span>
-                          {isPicking ? (
-                            <div className="feature-plane-picking">
-                              <span className="feature-plane-hint">Click a plane or face...</span>
-                              <button
-                                className="feature-plane-btn"
-                                onClick={(e) => { e.stopPropagation(); setPlaneSelectionFeatureId(null) }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              className="feature-plane-btn"
-                              onClick={(e) => { e.stopPropagation(); setPlaneSelectionFeatureId(feature.id) }}
-                            >
-                              Change
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })()}
-                  </li>
-                </div>
-              ))
-            )}
-            {rollbackPosition === features.length && (
-              <li
-                className="rollback-bar"
-                title="Rollback"
-                draggable
-                onDragStart={handleRollbackDragStart}
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  e.dataTransfer.dropEffect = 'move'
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  setRollbackPosition(features.length)
-                }}
-              ></li>
-            )}
-          </ul>
-        </aside>
+        <Sidebar
+          features={features}
+          doc={doc}
+          rollbackPosition={rollbackPosition}
+          visibleFeatures={visibleFeatures}
+          editingFeatureId={editingFeatureId}
+          selection={selection}
+          fieldPickState={fieldPickState}
+          planeSelectionFeatureId={planeSelectionFeatureId}
+          onToggleSelect={toggleSelect}
+          onEnterEditSketch={enterEditSketch}
+          onExitEditSketch={exitEditSketch}
+          onToggleVisibility={toggleVisibility}
+          onRightClick={handleRightClick}
+          onRollbackDragStart={handleRollbackDragStart}
+          onRollbackDragOver={handleRollbackDragOver}
+          onRollbackDrop={handleRollbackDrop}
+          onMutation={handleMutation}
+          onSetRollbackPosition={setRollbackPosition}
+          onSetEditingFeatureId={setEditingFeatureId}
+          onSetFieldPickState={setFieldPickState}
+          onSetPlaneSelectionFeatureId={setPlaneSelectionFeatureId}
+        />
 
         <div className="doc-editor">
           <div className="editor-toolbar">
