@@ -460,7 +460,9 @@ export function DiameterDimension({ cid, dim, interaction }: {
   } else {
     ep1x = dim.p1[0]; ep1y = dim.p1[1]
     ep2x = dim.p2[0]; ep2y = dim.p2[1]
-    labelX = anchorX; labelY = anchorY
+    // Place label at 30% along the diameter line
+    labelX = dim.p1[0] + (dim.p2[0] - dim.p1[0]) * 0.3
+    labelY = dim.p1[1] + (dim.p2[1] - dim.p1[1]) * 0.3
   }
 
   // Determine if label is inside or outside the circle.
