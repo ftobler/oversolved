@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, SketchData, Mutation, EntityStatus } from '../types/cad'
+
+type UndoEntry = { doc: PartDoc; mutation: Mutation }
 import { unflattenGeometry } from '../utils/geometryMapping'
 import {
   applyMoveVertex,
@@ -61,8 +63,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [solveTime, setSolveTime] = useState<number | null>(null)
   const [solveError, setSolveError] = useState<string | null>(null)
   const [solveResult, setSolveRawResult] = useState<string>('')
-  const [undoStack, setUndoStack] = useState<PartDoc[]>([])
-  const [redoStack, setRedoStack] = useState<PartDoc[]>([])
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
+  const [redoStack, setRedoStack] = useState<UndoEntry[]>([])
 
   const reSolve = useCallback(async (d: PartDoc) => {
     setSolving(true)
@@ -195,7 +197,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     })
 
     const next: PartDoc = JSON.parse(JSON.stringify(current))
-    setUndoStack(prev => [...prev, current])
+    setUndoStack(prev => [...prev, { doc: current, mutation: m }])
     setRedoStack([])
     switch (m.type) {
       case 'move_vertex':
@@ -256,11 +258,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     setUndoStack(prev => {
       if (prev.length === 0) return prev
       const next = [...prev]
-      const last = next.pop()!
-      if (docRef.current) setRedoStack(r => [...r, docRef.current!])
-      docRef.current = last
-      setDoc(last)
-      reSolve(last)
+      const entry = next.pop()!
+      if (docRef.current) setRedoStack(r => [...r, { doc: docRef.current!, mutation: entry.mutation }])
+      docRef.current = entry.doc
+      setDoc(entry.doc)
+      reSolve(entry.doc)
       return next
     })
   }, [reSolve])
@@ -269,11 +271,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     setRedoStack(prev => {
       if (prev.length === 0) return prev
       const next = [...prev]
-      const last = next.pop()!
-      if (docRef.current) setUndoStack(u => [...u, docRef.current!])
-      docRef.current = last
-      setDoc(last)
-      reSolve(last)
+      const entry = next.pop()!
+      if (docRef.current) setUndoStack(u => [...u, { doc: docRef.current!, mutation: entry.mutation }])
+      docRef.current = entry.doc
+      setDoc(entry.doc)
+      reSolve(entry.doc)
       return next
     })
   }, [reSolve])

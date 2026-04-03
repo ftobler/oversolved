@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
-import type { Feature, PartDoc, PartFeature } from '../types/cad'
+import type { Feature, PartDoc, PartFeature, Mutation } from '../types/cad'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import { useCommandRegistration } from './hooks/useCommandRegistration'
 import { buildCommandEntries } from './commandEntries'
@@ -36,6 +36,43 @@ function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
 }
 
+function describeMutation(m: Mutation): string {
+  switch (m.type) {
+    case 'move_vertex':
+      return `move vertex ${m.vertexKey} on ${m.entityId} in ${m.featureId}`
+    case 'move_entity':
+      return `move ${m.entityId} in ${m.featureId}`
+    case 'add_constraint':
+      return `add ${m.kind} constraint in ${m.featureId}`
+    case 'set_constraint_value':
+      return `set ${m.constraintId} value in ${m.featureId}`
+    case 'set_constraint_pos':
+      return `set ${m.constraintId} pos in ${m.featureId}`
+    case 'delete':
+      return `delete ${m.targets.length} element(s)`
+    case 'add_entity':
+      return `add ${m.kind} in ${m.featureId}`
+    case 'add_rect':
+      return `add rect in ${m.featureId}`
+    case 'add_center_rect':
+      return `add center rect in ${m.featureId}`
+    case 'toggle_construction':
+      return `toggle construction on ${m.targets.length} element(s)`
+    case 'set_feature_plane':
+      return `set plane of ${m.featureId} to ${m.plane}`
+    case 'add_sketch':
+      return `add sketch ${m.featureId}`
+    case 'delete_feature':
+      return `delete feature ${m.featureId}`
+    case 'set_feature_visibility':
+      return `${m.visible ? 'show' : 'hide'} ${m.featureId}`
+    case 'add_plane':
+      return `add plane ${m.featureId}`
+    case 'set_plane_definition_field':
+      return `edit plane ${m.featureId}: ${m.field}`
+  }
+}
+
 export default function Part() {
   const { uuid } = useParams<{ uuid: string }>()
   const [codeText, setCodeText] = useState('')
@@ -49,7 +86,7 @@ export default function Part() {
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
 
   const [debugOpen, setDebugOpen] = useState(false)
-  const [debugTab, setDebugTab] = useState<'selection' | 'bug-report'>('selection')
+  const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo'>('selection')
   const [bugReportForm, setBugReportForm] = useState({ title: '', description: '' })
   const [bugReporting, setBugReporting] = useState(false)
   const [bugReportError, setBugReportError] = useState<string | null>(null)
@@ -503,6 +540,12 @@ export default function Part() {
               >
                 Bug Report
               </button>
+              <button
+                className={`debug-tab ${debugTab === 'undo-redo' ? 'active' : ''}`}
+                onClick={() => setDebugTab('undo-redo')}
+              >
+                Undo/Redo
+              </button>
             </div>
             {debugTab === 'selection' && (
               <div className="debug-content">
@@ -534,6 +577,36 @@ export default function Part() {
                 selectionCount={selection.size}
                 hasSolveResults={!!(editingFeatureId && solveResults?.[editingFeatureId])}
               />
+            )}
+            {debugTab === 'undo-redo' && (
+              <div className="debug-content">
+                <div className="debug-section">
+                  <div className="debug-section-title">Undo Stack ({undoStack.length})</div>
+                  {undoStack.length === 0
+                    ? <div className="debug-empty">empty</div>
+                    : undoStack.map((entry, idx) => (
+                      <div key={idx} className="debug-value">
+                        <div>[{idx}] {describeMutation(entry.mutation)}</div>
+                        <div style={{ fontSize: '9px', color: '#666', marginTop: '2px' }}>
+                          {JSON.stringify(entry.mutation).slice(0, 100)}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+                <div className="debug-section">
+                  <div className="debug-section-title">Redo Stack ({redoStack.length})</div>
+                  {redoStack.length === 0
+                    ? <div className="debug-empty">empty</div>
+                    : redoStack.map((entry, idx) => (
+                      <div key={idx} className="debug-value">
+                        <div>[{idx}] {describeMutation(entry.mutation)}</div>
+                        <div style={{ fontSize: '9px', color: '#666', marginTop: '2px' }}>
+                          {JSON.stringify(entry.mutation).slice(0, 100)}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
             )}
           </aside>
         )}

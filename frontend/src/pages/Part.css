@@ -652,12 +652,21 @@
 
 .debug-value {
   font-family: 'Roboto Mono', monospace;
-  font-size: 11px;
+  font-size: 10px;
   color: #aaa;
   word-break: break-all;
   padding: 2px 4px;
   background: #1a1a1a;
   border-radius: 3px;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.debug-value pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  text-align: left;
 }
 
 .debug-empty {
