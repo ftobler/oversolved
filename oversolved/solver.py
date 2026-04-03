@@ -1340,8 +1340,8 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                 pass  # cross-sketch entity body — no local entity needed
             elif isinstance(ref, dict) and ref.get("type") == "face":
                 pass  # topology face — projected to external_xy during pre-resolve
-            elif isinstance(val, str):
-                # Truly unresolvable query string — treat as missing
+            else:
+                # ref is None or resolved to an unexpected dict format — invalid
                 ids.append(None)
         return ids
 
