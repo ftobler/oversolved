@@ -113,6 +113,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     entityId && vertexKey ? s.hoveredConstraintEntityIds.has(`${entityId}:${vertexKey}`) : false
   )
   const drag = useSketchEditorStore(s => s.drag)
+  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
   // REGRESSION PROTECTION: Hide collision geometry during vertex drag
   // BUG: When dragging a vertex, DragPlane raycasts could be blocked by the
   //      vertex's own hit sphere collision geometry (scaled to HIT_PIXELS).
@@ -122,10 +123,12 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   //      This allows quick clicks to still select, but hides collision once dragging
   //      begins to prevent raycast blocking.
   // NOTE: Must check featureId, entityId, AND vertexKey to handle all cases.
+  // Also hide hit geometry from non-active sketches to prevent raycasting interference.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
   const isDragged = featureId && entityId && drag && 'entityId' in drag &&
     drag.entityId === entityId && drag.featureId === featureId &&
     (drag.currentWorld[0] !== drag.startWorld[0] || drag.currentWorld[1] !== drag.startWorld[1])
+  const isInactiveSketch = featureId && activeFeatureId && featureId !== activeFeatureId
   // Offset the hit-sphere toward the camera (not object-space z) so the vertex
   // always wins the raycast over the 3D edge cylinders regardless of orbit angle.
   useFrame(() => {
@@ -182,7 +185,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     >
       <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard />
       {(hovered || selected || constraintHovered) && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
-      {!isDragged && (
+      {!isDragged && !isInactiveSketch && (
         <mesh ref={hitRef} position={[x, y, 0]}>
           <sphereGeometry args={[1, 8, 8]} />
           <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.35 : 0} color="#00aaff" depthWrite={false} />

@@ -34,6 +34,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const drag = useSketchEditorStore(s => s.drag)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
+  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
   // REGRESSION PROTECTION: Hide collision geometry during entity drag
   // BUG: When dragging, DragPlane raycasts could be blocked by the entity's own
   //      HitPolyline collision geometry, causing choppy/stalled dragging.
@@ -42,9 +43,11 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   //      (currentWorld != startWorld). This allows quick clicks to still select,
   //      but hides collision once dragging begins to prevent raycast blocking.
   // NOTE: Must check both entityId and featureId to handle multiple sketches.
+  // Also hide hit geometry from non-active sketches to prevent raycasting interference.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
   const isDragged = drag && 'entityId' in drag && drag.entityId === entityId && drag.featureId === featureId &&
     (drag.currentWorld[0] !== drag.startWorld[0] || drag.currentWorld[1] !== drag.startWorld[1])
+  const isInactiveSketch = activeFeatureId && featureId !== activeFeatureId
   const color = hovered ? COLOR_HOVER
     : selected ? COLOR_SELECTED
     : constraintHovered ? COLOR_CONSTRAINT_HOVER
@@ -97,7 +100,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isDragged && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />}
+          {!isDragged && !isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
@@ -113,7 +116,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isDragged && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />}
+          {!isDragged && !isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
@@ -131,7 +134,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isDragged && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />}
+          {!isDragged && !isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
