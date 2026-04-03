@@ -1,0 +1,88 @@
+.bug-report-input {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: sans-serif;
+  box-sizing: border-box;
+  background: #0a0a0a;
+  color: #ccc;
+  border: 1px solid #333;
+  border-radius: 2px;
+  margin-top: 10px;
+}
+
+.bug-report-input:disabled {
+  opacity: 0.5;
+}
+
+.bug-report-textarea {
+  width: 100%;
+  height: 200px;
+  margin-bottom: 8px;
+  padding: 6px;
+  font-size: 12px;
+  font-family: sans-serif;
+  resize: none;
+  box-sizing: border-box;
+  background: #0a0a0a;
+  color: #ccc;
+  border: 1px solid #333;
+  border-radius: 2px;
+}
+
+.bug-report-textarea:disabled {
+  opacity: 0.5;
+}
+
+.bug-report-submit-btn {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #1a1a1a;
+  color: #aaa;
+  border: 1px solid #333;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.bug-report-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bug-report-error {
+  color: #ef5350;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.bug-report-attachments {
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+.bug-report-attachments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bug-report-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.bug-report-checkbox-label input {
+  cursor: pointer;
+}
+
+.bug-report-checkbox-label input:disabled {
+  cursor: not-allowed;
+}

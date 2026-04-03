@@ -12,6 +12,7 @@ import { usePartDoc } from '../hooks/usePartDoc'
 import { planeLabel } from '../components/Geometry3D/utils'
 import RightClickMenu from '../components/RightClickMenu'
 import type { ContextMenuItem } from '../components/RightClickMenu'
+import { BugReporter } from '../components/BugReporter'
 import './Part.css'
 
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
@@ -744,85 +745,17 @@ export default function Part() {
               </div>
             )}
             {debugTab === 'bug-report' && (
-              <div className="debug-content">
-                <div className="debug-section">
-                  <div className="debug-section-title">Submit Bug Report</div>
-                  <input
-                    type="text"
-                    placeholder="Title"
-                    value={bugReportForm.title}
-                    onChange={(e) => setBugReportForm(f => ({ ...f, title: e.target.value }))}
-                    disabled={bugReporting}
-                    style={{ width: '100%', marginBottom: 8, padding: 6, fontSize: 12, fontFamily: 'sans-serif', fontWeight: 500, boxSizing: 'border-box', background: '#0a0a0a', color: '#ccc', border: '1px solid #333', borderRadius: 2 }}
-                  />
-                  <textarea
-                    placeholder="Description (what went wrong?)"
-                    value={bugReportForm.description}
-                    onChange={(e) => setBugReportForm(f => ({ ...f, description: e.target.value }))}
-                    disabled={bugReporting}
-                    style={{ width: '100%', height: 200, marginBottom: 8, padding: 6, fontSize: 12, fontFamily: 'monospace', resize: 'none', boxSizing: 'border-box', background: '#0a0a0a', color: '#ccc', border: '1px solid #333', borderRadius: 2 }}
-                  />
-                  <button
-                    onClick={handleSubmitBugReport}
-                    disabled={bugReporting}
-                    style={{ width: '100%', padding: 8, marginBottom: 12, fontSize: 12, fontWeight: 500, cursor: bugReporting ? 'not-allowed' : 'pointer', opacity: bugReporting ? 0.5 : 1, background: '#1a1a1a', color: '#aaa', border: '1px solid #333', borderRadius: 2 }}
-                  >
-                    {bugReporting ? 'Submitting...' : 'Submit Report'}
-                  </button>
-                  {bugReportError && (
-                    <div className="debug-error" style={{ color: '#ef5350', fontSize: 12, marginBottom: 8 }}>
-                      {bugReportError}
-                    </div>
-                  )}
-                  <div className="debug-section" style={{ fontSize: 11, marginTop: 8 }}>
-                    <div className="debug-section-title">Attached Data</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11 }}>
-                        <input
-                          type="checkbox"
-                          checked={bugReportAttachments.ast}
-                          onChange={(e) => setBugReportAttachments(a => ({ ...a, ast: e.target.checked }))}
-                          disabled={bugReporting}
-                          style={{ cursor: bugReporting ? 'not-allowed' : 'pointer' }}
-                        />
-                        AST (current document)
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11 }}>
-                        <input
-                          type="checkbox"
-                          checked={bugReportAttachments.selection}
-                          onChange={(e) => setBugReportAttachments(a => ({ ...a, selection: e.target.checked }))}
-                          disabled={bugReporting}
-                          style={{ cursor: bugReporting ? 'not-allowed' : 'pointer' }}
-                        />
-                        Selection ({selection.size} items)
-                      </label>
-                      {editingFeatureId && solveResults?.[editingFeatureId] && (
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11 }}>
-                          <input
-                            type="checkbox"
-                            checked={bugReportAttachments.solveResults}
-                            onChange={(e) => setBugReportAttachments(a => ({ ...a, solveResults: e.target.checked }))}
-                            disabled={bugReporting}
-                            style={{ cursor: bugReporting ? 'not-allowed' : 'pointer' }}
-                          />
-                          Solver result
-                        </label>
-                      )}
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11 }}>
-                        <input
-                          type="checkbox"
-                          checked={bugReportAttachments.internalState}
-                          onChange={(e) => setBugReportAttachments(a => ({ ...a, internalState: e.target.checked }))}
-                          disabled={bugReporting}
-                          style={{ cursor: bugReporting ? 'not-allowed' : 'pointer' }}
-                        />
-                        Edit mode & tool state
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <BugReporter
+                bugReportForm={bugReportForm}
+                setBugReportForm={setBugReportForm}
+                bugReporting={bugReporting}
+                bugReportError={bugReportError}
+                bugReportAttachments={bugReportAttachments}
+                setBugReportAttachments={setBugReportAttachments}
+                onSubmit={handleSubmitBugReport}
+                selectionCount={selection.size}
+                hasSolveResults={!!(editingFeatureId && solveResults?.[editingFeatureId])}
+              />
             )}
           </aside>
         )}
