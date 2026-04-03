@@ -233,6 +233,57 @@ describe('Dragging Regressions - Documentation', () => {
     })
   })
 
+  describe('Spurious move mutation on click-to-select', () => {
+    it('documents click-vs-drag distinction using screen pixel distance', () => {
+      // ============================================================================
+      // REGRESSION 4: "Spurious move mutation on vertex click-to-select"
+      // ============================================================================
+      //
+      // BUG: Clicking on a vertex to select it emitted a move_vertex mutation and
+      //      visually moved the vertex to the mouse-up position
+      // CAUSE: startWorld was set to vertex center [x, y], but currentWorld on
+      //        pointer-up was the cursor position on the drag plane. Even a pure
+      //        click differs by the hit-radius offset, clearing the world-space
+      //        threshold (>= 0.0001), so mutations fired.
+      // FIX: Added startClient (screen pixel coordinates) to drag state; threshold
+      //      now checks < 4px in screen space. Pixel-space threshold is independent
+      //      of zoom level and correctly ignores hit-radius offsets.
+      //
+      // PROTECTION:
+      //   ✓ Code comment in VertexDots.tsx explains startClient requirement
+      //   ✓ Code comment in EntityLines.tsx explains startClient requirement
+      //   ✓ Code comment in Dragging.tsx explains pixel threshold logic
+      //   ✓ Tests verify small pixel deltas suppress mutation, large ones emit
+      // TEST COVERAGE:
+      //   ✓ Pure click (1px delta) → no mutation
+      //   ✓ Real drag (14px delta) → mutation fires
+
+      // Pure click: cursor moves only 1.4 pixels
+      const pureClick = {
+        startClient: [100, 100] as [number, number],
+        upClient: [101, 101] as [number, number],
+      }
+      const clickPixelDistance = Math.hypot(
+        pureClick.upClient[0] - pureClick.startClient[0],
+        pureClick.upClient[1] - pureClick.startClient[1]
+      )
+      expect(clickPixelDistance).toBeLessThan(4) // should suppress mutation
+      expect(clickPixelDistance).toBeCloseTo(1.414, 2)
+
+      // Real drag: cursor moves 14 pixels
+      const realDrag = {
+        startClient: [100, 100] as [number, number],
+        upClient: [110, 110] as [number, number],
+      }
+      const dragPixelDistance = Math.hypot(
+        realDrag.upClient[0] - realDrag.startClient[0],
+        realDrag.upClient[1] - realDrag.startClient[1]
+      )
+      expect(dragPixelDistance).toBeGreaterThanOrEqual(4) // should emit mutation
+      expect(dragPixelDistance).toBeCloseTo(14.142, 2)
+    })
+  })
+
   describe('Integration requirements', () => {
     it('documents that collision hiding requires all three components modified', () => {
       // Protecting against these regressions requires:

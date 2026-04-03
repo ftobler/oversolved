@@ -62,16 +62,32 @@ export function DragPlane({ featureId }: { featureId: string }) {
               finalDrag.currentWorld[0] - finalDrag.anchorWorld[0],
               finalDrag.currentWorld[1] - finalDrag.anchorWorld[1],
             ]
-            onMutation({ type: 'set_constraint_pos', featureId: finalDrag.featureId, constraintId: finalDrag.constraintId, pos })
-          } else if (finalDrag.type === 'edge') {
-            const delta: [number, number] = [
-              finalDrag.currentWorld[0] - finalDrag.startWorld[0],
-              finalDrag.currentWorld[1] - finalDrag.startWorld[1],
-            ]
-            onMutation({ type: 'move_entity', featureId: finalDrag.featureId, entityId: finalDrag.entityId, delta })
+            const distance = Math.hypot(pos[0], pos[1])
+            if (distance >= 0.0001) {
+              onMutation({ type: 'set_constraint_pos', featureId: finalDrag.featureId, constraintId: finalDrag.constraintId, pos })
+            }
           } else {
-            onMutation({ type: 'move_vertex', featureId: finalDrag.featureId,
-              entityId: finalDrag.entityId, vertexKey: finalDrag.vertexKey, to: finalDrag.currentWorld })
+            // For vertex and edge drags, use screen-pixel distance threshold (4px) to distinguish
+            // click-to-select from drag-to-move. Pixel-space threshold is independent of zoom level
+            // and correctly ignores the hit-radius offset that occurs even on pure clicks.
+            // See: dragging.test.ts REGRESSION 4
+            const pixelDistance = Math.hypot(e.nativeEvent.clientX - finalDrag.startClient[0], e.nativeEvent.clientY - finalDrag.startClient[1])
+            if (pixelDistance < 4) {
+              // Pure click — don't emit mutation
+              setDrag(null)
+              setOrbitEnabled(true)
+              return
+            }
+            if (finalDrag.type === 'edge') {
+              const delta: [number, number] = [
+                finalDrag.currentWorld[0] - finalDrag.startWorld[0],
+                finalDrag.currentWorld[1] - finalDrag.startWorld[1],
+              ]
+              onMutation({ type: 'move_entity', featureId: finalDrag.featureId, entityId: finalDrag.entityId, delta })
+            } else {
+              onMutation({ type: 'move_vertex', featureId: finalDrag.featureId,
+                entityId: finalDrag.entityId, vertexKey: finalDrag.vertexKey, to: finalDrag.currentWorld })
+            }
           }
         }
         setDrag(null)

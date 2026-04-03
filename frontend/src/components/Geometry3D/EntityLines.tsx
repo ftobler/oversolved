@@ -80,13 +80,15 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   }, [planeGroupRef])
 
   // Edge drag: pointer down on the edge group initiates a full-entity move
-  const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: { x: number; y: number; z?: number } }) => {
+  const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: { x: number; y: number; z?: number }; clientX: number; clientY: number }) => {
     if (!isEditing || activeTool !== 'select') return
     ev.stopPropagation()
     setOrbitEnabled(false)
     const [sx, sy] = toLocal(ev.point)
+    // startClient is screen pixel coordinates at pointer-down; used to distinguish clicks from drags.
+    // See: dragging.test.ts REGRESSION 4
     setDrag({ type: 'edge', vertexId: entId, featureId, entityId,
-      vertexKey: 'edge', startWorld: [sx, sy], currentWorld: [sx, sy] })
+      vertexKey: 'edge', startWorld: [sx, sy], currentWorld: [sx, sy], startClient: [ev.clientX, ev.clientY] })
   }, [isEditing, entId, featureId, entityId, setDrag, setOrbitEnabled, activeTool, toLocal])
 
   if ('start' in e && 'end' in e && 'radius' in e) {

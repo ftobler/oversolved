@@ -24,6 +24,7 @@ export interface VertexOrEdgeDrag {
   vertexKey: string  // "start" | "end" | "center" | "xy" | "edge"
   startWorld: [number, number]
   currentWorld: [number, number]
+  startClient: [number, number]  // screen coordinates at pointer-down (for click-vs-drag distinction)
 }
 
 // Dragging a dimension label to reposition it.

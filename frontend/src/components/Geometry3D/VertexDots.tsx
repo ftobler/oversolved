@@ -152,11 +152,14 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
       toggleSelect(vertId)
     }
   }, [vertId, featureId, toggleSelect, activeTool, handleDimClick, isEditing, fieldPickState, commitFieldPick])
-  const onPointerDown = useCallback((e: { stopPropagation: () => void; point: THREE.Vector3 }) => {
+  const onPointerDown = useCallback((e: { stopPropagation: () => void; point: THREE.Vector3; clientX: number; clientY: number }) => {
     if (!vertId || !featureId || !entityId || !vertexKey) return
     if (!isEditing || activeTool !== 'select') return
     e.stopPropagation()
     setOrbitEnabled(false)
+    // startClient is screen pixel coordinates at pointer-down; used to distinguish clicks from drags.
+    // Must be the actual cursor position, not the vertex center, so that pure clicks (cursor barely
+    // moves) don't emit spurious move mutations. See: dragging.test.ts REGRESSION 4
     setDrag({
       type: 'vertex',
       vertexId: vertId,
@@ -165,6 +168,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
       vertexKey,
       startWorld: [x, y],
       currentWorld: [x, y],
+      startClient: [e.clientX, e.clientY],
     })
   }, [isEditing, vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool])
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
