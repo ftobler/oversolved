@@ -25,7 +25,7 @@ import { DrawPreview, DrawPlane } from './Drawing'
 import { planeRotation, planeRotationFromTransform } from './utils'
 
 // Colors
-import { COLOR_SOLVED, COLOR_ERROR, COLOR_INACTIVE } from './constants'
+import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from './constants'
 
 export interface Geometry3DProps {
   featureId: string
@@ -59,7 +59,9 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
 
   const isEditing = featureId === activeFeatureId
   const baseColor = isEditing
-    ? ((solveStatus === 'overconstrained' || solveStatus === 'exception') ? COLOR_ERROR : COLOR_SOLVED)
+    ? (solveStatus === 'fully_constrained' ? COLOR_FULLY_CONSTRAINED
+      : (solveStatus === 'overconstrained' || solveStatus === 'exception') ? COLOR_ERROR
+      : COLOR_SOLVED)
     : COLOR_INACTIVE
 
   return (

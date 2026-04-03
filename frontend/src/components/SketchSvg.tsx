@@ -1,5 +1,6 @@
 import type { Sketch, Constraints, Topology, EntityStatus } from '../types/cad'
 import { renderSketch, renderTopology, renderConstraints } from '../utils/svgRenderUtils'
+import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR } from './Geometry3D/constants'
 
 interface Props {
   initial: Sketch
@@ -80,9 +81,9 @@ function fitTransform(sketches: Sketch[], size: number, topology?: Topology): { 
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  fully_constrained: '#ffffff',
-  underconstrained: '#4fc3f7',
-  overconstrained: '#ef5350',
+  fully_constrained: COLOR_FULLY_CONSTRAINED,
+  underconstrained: COLOR_SOLVED,
+  overconstrained: COLOR_ERROR,
 }
 
 export default function SketchSvg({ initial, solved, status, entityStatus, size = 300, constraints, topology }: Props) {

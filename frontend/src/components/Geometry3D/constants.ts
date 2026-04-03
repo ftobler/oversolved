@@ -1,5 +1,6 @@
 // Geometry3D color palette
-export const COLOR_SOLVED = '#4fc3f7'
+export const COLOR_SOLVED = '#0288d1'  // darker blue for underconstrained
+export const COLOR_FULLY_CONSTRAINED = '#ffffff'  // white for fully constrained
 export const COLOR_ERROR = '#ef5350'
 export const COLOR_INACTIVE = '#3a4048'
 export const COLOR_HOVER = '#ffffff'
