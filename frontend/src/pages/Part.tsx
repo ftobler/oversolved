@@ -228,11 +228,12 @@ export default function Part() {
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const featureId = `sketch${sketchCount + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
-    setEditingFeatureId(null)
     setFieldPickState(null)
     handleMutation({ type: 'add_sketch', featureId })
-    setPlaneSelectionFeatureId(featureId)
-  }, [doc, features.length, handleMutation, setPlaneSelectionFeatureId, setFieldPickState])
+    handleMutation({ type: 'set_feature_plane', featureId, plane: 'Top' })
+    setEditingFeatureId(featureId)
+    setMode('sketch')
+  }, [doc, features.length, handleMutation, setFieldPickState, setMode])
 
   useEffect(() => {
     useSketchEditorStore.getState().setOnMutation(handleMutation)
