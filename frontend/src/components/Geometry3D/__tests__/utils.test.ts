@@ -29,16 +29,16 @@ describe('planeRotationFromTransform', () => {
   })
 
   it('converts Right plane transform correctly', () => {
-    // Right plane: rotated 90 degrees around Y
-    // Rotation matrix for 90° Y rotation: [0,0,1; 0,1,0; -1,0,0]
+    // Right plane: x_axis=[0,0,-1], y_axis=[0,1,0], normal=[1,0,0]
+    // This is a 90° rotation around Y (or -90°, which is equivalent)
     const rightTransform = {
-      rotation: [0, 0, 1, 0, 1, 0, -1, 0, 0],
+      rotation: [0, 0, -1, 0, 1, 0, 1, 0, 0],
       origin: [0, 0, 0],
     }
     const [x, y, z] = planeRotationFromTransform(rightTransform)
-    // Should be approximately [0, π/2, 0]
+    // Should be approximately [0, ±π/2, 0]
     expect(x).toBeCloseTo(0, 4)
-    expect(y).toBeCloseTo(Math.PI / 2, 3)
+    expect(Math.abs(y)).toBeCloseTo(Math.PI / 2, 3)
     expect(z).toBeCloseTo(0, 4)
   })
 

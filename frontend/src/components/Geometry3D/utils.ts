@@ -33,15 +33,18 @@ export function planeRotation(planeQuery: string | undefined): [number, number, 
   return BUILTIN_PLANE_ROTATIONS[id] ?? [0, 0, 0]
 }
 
-// Convert a solver plane_transform (row-major 3×3 rotation + origin) to Three.js Euler XYZ angles.
+// Convert a solver plane_transform (axes as rows: [x_axis, y_axis, normal]) to Three.js Euler XYZ angles.
+// The rotation array is [x0, x1, x2, y0, y1, y2, n0, n1, n2] where each triplet is an axis.
+// For a proper rotation matrix, axes must be columns, so we transpose when setting the Matrix4.
 export function planeRotationFromTransform(t: { rotation: number[]; origin: number[] }): [number, number, number] {
-  const [r00, r01, r02, r10, r11, r12, r20, r21, r22] = t.rotation
+  const [x0, x1, x2, y0, y1, y2, n0, n1, n2] = t.rotation
   const m = new THREE.Matrix4()
+  // Set with transposed layout so axes become columns
   m.set(
-    r00, r01, r02, 0,
-    r10, r11, r12, 0,
-    r20, r21, r22, 0,
-    0,   0,   0,   1
+    x0, y0, n0, 0,
+    x1, y1, n1, 0,
+    x2, y2, n2, 0,
+    0,  0,  0,  1
   )
   const euler = new THREE.Euler()
   euler.setFromRotationMatrix(m, 'XYZ')

@@ -1223,3 +1223,171 @@ def test_plane_edge_point_non_front_sketch():
     np.testing.assert_array_almost_equal(x_axis, [1, 0, 0], decimal=5)
     origin = plane['origin']
     np.testing.assert_array_almost_equal(origin, [0, 0, -1], decimal=5)
+
+
+def test_plane_three_point_concatenated_format():
+    """Test three-point plane with concatenated query format (@sketchXentityYxy).
+    This tests the bug fix where solve_features now registers both slash and concatenated formats."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch1',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'pt1', 'kind': 'point'},
+                ],
+                'initial': {
+                    'pt1': [1.0, 2.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'sketch2',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_top',
+                'entities': [
+                    {'id': 'pt2', 'kind': 'point'},
+                    {'id': 'pt3', 'kind': 'point'},
+                ],
+                'initial': {
+                    'pt2': [3.0, 4.0],
+                    'pt3': [5.0, 6.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'three_point',
+                    # Use concatenated format (e.g., sketch2pt2xy) instead of slash format
+                    'p1': '@sketch2pt2xy',
+                    'p2': '@sketch1pt1xy',
+                    'p3': '@sketch2pt3xy',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][2]['status'] == 'ok'
+
+    plane = result['features'][2]['plane']
+    origin = np.array(plane['origin'])
+    normal = np.array(plane['normal'])
+
+    # Verify all three points lie on the computed plane
+    # Front plane coords: pt1 = (1, 2) → 3D = (1, 2, 0)
+    # Top plane coords: pt2 = (3, 4) → 3D = (3, 0, -4)
+    # Top plane coords: pt3 = (5, 6) → 3D = (5, 0, -6)
+    p1_3d = np.array([1.0, 2.0, 0.0])
+    p2_3d = np.array([3.0, 0.0, -4.0])
+    p3_3d = np.array([5.0, 0.0, -6.0])
+
+    # Points lie on plane if: (point - origin) · normal = 0
+    d1 = np.dot(p1_3d - origin, normal)
+    d2 = np.dot(p2_3d - origin, normal)
+    d3 = np.dot(p3_3d - origin, normal)
+
+    np.testing.assert_almost_equal(d1, 0.0, decimal=5)
+    np.testing.assert_almost_equal(d2, 0.0, decimal=5)
+    np.testing.assert_almost_equal(d3, 0.0, decimal=5)
+
+
+def test_plane_through_point_concatenated_format():
+    """Test through_point plane with concatenated query format."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch1',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'pt1', 'kind': 'point'},
+                ],
+                'initial': {
+                    'pt1': [2.0, 3.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'through_point',
+                    'plane': '@builtin_plane_top',
+                    'point': '@sketch1pt1xy',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][1]['status'] == 'ok'
+
+
+def test_plane_line_angle_concatenated_format():
+    """Test line_angle plane with concatenated query format."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch1',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'line1', 'kind': 'line'},
+                ],
+                'initial': {
+                    'line1': [0.0, 0.0, 1.0, 0.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'line_angle',
+                    'line': '@sketch1line1',  # This queries the line entity itself
+                    'angle': 45.0,
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][1]['status'] == 'ok', result['features'][1]
+
+
+def test_plane_edge_point_concatenated_format():
+    """Test edge_point plane with concatenated query format."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch1',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'line1', 'kind': 'line'},
+                    {'id': 'pt1', 'kind': 'point'},
+                ],
+                'initial': {
+                    'line1': [0.0, 0.0, 1.0, 0.0],
+                    'pt1': [0.5, 1.0],
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'edge_point',
+                    'edge': '@sketch1line1',
+                    'point': '@sketch1pt1xy',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][1]['status'] == 'ok'
