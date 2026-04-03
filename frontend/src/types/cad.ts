@@ -271,6 +271,7 @@ export interface SketchData {
   constraints?: Constraints
   topology?: Topology
   status?: string
+  features?: EntityStatus
   plane_transform?: PlaneTransform
 }
 

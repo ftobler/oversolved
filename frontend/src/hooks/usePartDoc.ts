@@ -126,11 +126,17 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
                     })
                 )
               : undefined
+            const entityStatus = feature.features
+              ? Object.fromEntries(
+                  Object.entries(feature.features).map(([eid, e]) => [eid, (e as { status?: string }).status || 'underconstrained'])
+                )
+              : undefined
             results[id] = {
               solved,
               topology: feature.topology,
               status: feature.status,
               ...(constraints && { constraints }),
+              ...(entityStatus && { features: entityStatus }),
               ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
             }
           } else if (feature.plane) {

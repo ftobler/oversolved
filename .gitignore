@@ -34,3 +34,4 @@ docs/notes.md
 docs/feature/*
 
 *.db
+bugreports/

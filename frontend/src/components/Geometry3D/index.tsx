@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import type { Sketch, Constraints, Topology, PlaneTransform } from '../../types/cad'
+import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 
 // Vertex/point rendering
@@ -37,9 +37,10 @@ export interface Geometry3DProps {
   plane?: string
   planeTransform?: PlaneTransform
   solveStatus?: string
+  entityStatus?: EntityStatus
 }
 
-export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, solveStatus }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, solveStatus, entityStatus }: Geometry3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const drag = useSketchEditorStore(s => s.drag)
 
@@ -58,6 +59,22 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   )
 
   const isEditing = featureId === activeFeatureId
+
+  const getEntityColor = (entityId: string): string => {
+    if (!isEditing) return COLOR_INACTIVE
+    if (entityStatus && entityStatus[entityId]) {
+      const status = entityStatus[entityId]
+      return status === 'fully_constrained' ? COLOR_FULLY_CONSTRAINED
+        : status === 'overconstrained' ? COLOR_ERROR
+        : COLOR_SOLVED
+    }
+    // Fallback to sketch-level status
+    return solveStatus === 'fully_constrained' ? COLOR_FULLY_CONSTRAINED
+      : (solveStatus === 'overconstrained' || solveStatus === 'exception') ? COLOR_ERROR
+      : solveStatus === 'underconstrained' ? COLOR_SOLVED
+      : COLOR_INACTIVE
+  }
+
   const baseColor = isEditing
     ? (solveStatus === 'fully_constrained' ? COLOR_FULLY_CONSTRAINED
       : (solveStatus === 'overconstrained' || solveStatus === 'exception') ? COLOR_ERROR
@@ -67,7 +84,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   return (
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && <TopologySurfaces topology={topology} featureId={featureId} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
-      <EntityLines sketch={displaySketch} featureId={featureId} color={baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} planeGroupRef={groupRef} />
+      <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} planeGroupRef={groupRef} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />
       {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
       <DragPlane featureId={featureId} />

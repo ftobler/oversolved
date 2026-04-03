@@ -50,7 +50,16 @@ export default function Part() {
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
 
   const [debugOpen, setDebugOpen] = useState(false)
-  const [debugTab, setDebugTab] = useState<'selection'>('selection')
+  const [debugTab, setDebugTab] = useState<'selection' | 'bug-report'>('selection')
+  const [bugReportForm, setBugReportForm] = useState({ title: '', description: '' })
+  const [bugReporting, setBugReporting] = useState(false)
+  const [bugReportError, setBugReportError] = useState<string | null>(null)
+  const [bugReportAttachments, setBugReportAttachments] = useState({
+    ast: true,
+    selection: true,
+    solveResults: true,
+    internalState: true,
+  })
 
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
@@ -240,6 +249,50 @@ export default function Part() {
       reSolve(parsed)
     } catch (e) {
       setSolveError(`Parse error: ${e}`)
+    }
+  }
+
+  const handleSubmitBugReport = async () => {
+    if (!bugReportForm.title.trim() || !bugReportForm.description.trim()) {
+      setBugReportError('Title and description are required')
+      return
+    }
+    setBugReporting(true)
+    setBugReportError(null)
+    try {
+      const activeTool = useSketchEditorStore.getState().activeTool
+      const report: Record<string, unknown> = {
+        title: bugReportForm.title,
+        description: bugReportForm.description,
+      }
+      if (bugReportAttachments.ast) report.ast = doc
+      if (bugReportAttachments.selection) report.selection = [...selection]
+      if (bugReportAttachments.solveResults) {
+        report.solveResults = editingFeatureId && solveResults?.[editingFeatureId] ? solveResults[editingFeatureId] : null
+      }
+      if (bugReportAttachments.internalState) {
+        report.internalState = {
+          mode,
+          activeTool,
+          editingFeatureId,
+          activeSketchFeatureId,
+        }
+      }
+      const response = await fetch('/api/bug-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(report),
+      })
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}`)
+      }
+      setBugReportForm({ title: '', description: '' })
+      alert('Bug report submitted successfully!')
+      setDebugTab('selection')
+    } catch (e) {
+      setBugReportError(`Failed to submit: ${e}`)
+    } finally {
+      setBugReporting(false)
     }
   }
 
@@ -665,6 +718,12 @@ export default function Part() {
               >
                 Selection
               </button>
+              <button
+                className={`debug-tab ${debugTab === 'bug-report' ? 'active' : ''}`}
+                onClick={() => setDebugTab('bug-report')}
+              >
+                Bug Report
+              </button>
             </div>
             {debugTab === 'selection' && (
               <div className="debug-content">
@@ -681,6 +740,87 @@ export default function Part() {
                     : [...selection].map(id => (
                       <div key={id} className="debug-value">{id}</div>
                     ))}
+                </div>
+              </div>
+            )}
+            {debugTab === 'bug-report' && (
+              <div className="debug-content">
+                <div className="debug-section">
+                  <div className="debug-section-title">Submit Bug Report</div>
+                  <input
+                    type="text"
+                    placeholder="Title"
+                    value={bugReportForm.title}
+                    onChange={(e) => setBugReportForm(f => ({ ...f, title: e.target.value }))}
+                    disabled={bugReporting}
+                    style={{ width: '100%', marginBottom: 8, padding: 6, fontSize: 12, fontFamily: 'sans-serif', fontWeight: 500, boxSizing: 'border-box', background: '#0a0a0a', color: '#ccc', border: '1px solid #333', borderRadius: 2 }}
+                  />
+                  <textarea
+                    placeholder="Description (what went wrong?)"
+                    value={bugReportForm.description}
+                    onChange={(e) => setBugReportForm(f => ({ ...f, description: e.target.value }))}
+                    disabled={bugReporting}
+                    style={{ width: '100%', height: 200, marginBottom: 8, padding: 6, fontSize: 12, fontFamily: 'monospace', resize: 'none', boxSizing: 'border-box', background: '#0a0a0a', color: '#ccc', border: '1px solid #333', borderRadius: 2 }}
+                  />
+                  <button
+                    onClick={handleSubmitBugReport}
+                    disabled={bugReporting}
+                    style={{ width: '100%', padding: 8, marginBottom: 12, fontSize: 12, fontWeight: 500, cursor: bugReporting ? 'not-allowed' : 'pointer', opacity: bugReporting ? 0.5 : 1, background: '#1a1a1a', color: '#aaa', border: '1px solid #333', borderRadius: 2 }}
+                  >
+                    {bugReporting ? 'Submitting...' : 'Submit Report'}
+                  </button>
+                  {bugReportError && (
+                    <div className="debug-error" style={{ color: '#ef5350', fontSize: 12, marginBottom: 8 }}>
+                      {bugReportError}
+                    </div>
+                  )}
+                  <div className="debug-section" style={{ fontSize: 11, marginTop: 8 }}>
+                    <div className="debug-section-title">Attached Data</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11 }}>
+                        <input
+                          type="checkbox"
+                          checked={bugReportAttachments.ast}
+                          onChange={(e) => setBugReportAttachments(a => ({ ...a, ast: e.target.checked }))}
+                          disabled={bugReporting}
+                          style={{ cursor: bugReporting ? 'not-allowed' : 'pointer' }}
+                        />
+                        AST (current document)
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11 }}>
+                        <input
+                          type="checkbox"
+                          checked={bugReportAttachments.selection}
+                          onChange={(e) => setBugReportAttachments(a => ({ ...a, selection: e.target.checked }))}
+                          disabled={bugReporting}
+                          style={{ cursor: bugReporting ? 'not-allowed' : 'pointer' }}
+                        />
+                        Selection ({selection.size} items)
+                      </label>
+                      {editingFeatureId && solveResults?.[editingFeatureId] && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={bugReportAttachments.solveResults}
+                            onChange={(e) => setBugReportAttachments(a => ({ ...a, solveResults: e.target.checked }))}
+                            disabled={bugReporting}
+                            style={{ cursor: bugReporting ? 'not-allowed' : 'pointer' }}
+                          />
+                          Solver result
+                        </label>
+                      )}
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11 }}>
+                        <input
+                          type="checkbox"
+                          checked={bugReportAttachments.internalState}
+                          onChange={(e) => setBugReportAttachments(a => ({ ...a, internalState: e.target.checked }))}
+                          disabled={bugReporting}
+                          style={{ cursor: bugReporting ? 'not-allowed' : 'pointer' }}
+                        />
+                        Edit mode & tool state
+                      </label>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
