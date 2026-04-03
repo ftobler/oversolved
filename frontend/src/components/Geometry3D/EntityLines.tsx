@@ -143,7 +143,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
 interface EntityLinesProps {
   sketch: Sketch
   featureId: string
-  color: string
+  color: string | ((entityId: string) => string)
   kindMap: Record<string, string>
   lineWidth?: number
   isEditing?: boolean
@@ -151,12 +151,13 @@ interface EntityLinesProps {
 }
 
 export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, isEditing = false, planeGroupRef }: EntityLinesProps) {
+  const getColor = typeof color === 'function' ? color : () => color
   return (
     <>
       {Object.entries(sketch)
         .filter(([, entity]) => !(entity as PointEntity).projected)
         .map(([id, entity]) => (
-          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line'} featureId={featureId} baseColor={color} lineWidth={lineWidth} isEditing={isEditing} planeGroupRef={planeGroupRef} />
+          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line'} featureId={featureId} baseColor={getColor(id)} lineWidth={lineWidth} isEditing={isEditing} planeGroupRef={planeGroupRef} />
         ))}
     </>
   )
