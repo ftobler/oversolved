@@ -6,6 +6,8 @@ export interface BugReportAttachments {
   selection: boolean
   solveResults: boolean
   internalState: boolean
+  history: boolean
+  historyCount: number
 }
 
 interface BugReporterProps {
@@ -18,6 +20,7 @@ interface BugReporterProps {
   onSubmit: () => void
   selectionCount?: number
   hasSolveResults?: boolean
+  undoStackCount?: number
 }
 
 export const BugReporter: React.FC<BugReporterProps> = ({
@@ -30,6 +33,7 @@ export const BugReporter: React.FC<BugReporterProps> = ({
   onSubmit,
   selectionCount = 0,
   hasSolveResults = false,
+  undoStackCount = 0,
 }) => {
   return (
     <div className="debug-content">
@@ -102,6 +106,25 @@ export const BugReporter: React.FC<BugReporterProps> = ({
                 disabled={bugReporting}
               />
               Edit mode & tool state
+            </label>
+            <label className="bug-report-checkbox-label">
+              <input
+                type="checkbox"
+                checked={bugReportAttachments.history}
+                onChange={(e) => setBugReportAttachments(a => ({ ...a, history: e.target.checked }))}
+                disabled={bugReporting}
+              />
+              Edit history (last
+              <input
+                type="number"
+                min="1"
+                max={undoStackCount || 50}
+                value={bugReportAttachments.historyCount}
+                onChange={(e) => setBugReportAttachments(a => ({ ...a, historyCount: Math.max(1, Math.min(undoStackCount, parseInt(e.target.value) || 1)) }))}
+                disabled={bugReporting || !bugReportAttachments.history}
+                className="bug-report-history-input"
+              />
+              of {undoStackCount} items)
             </label>
           </div>
         </div>

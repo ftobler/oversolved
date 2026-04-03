@@ -86,3 +86,19 @@
 .bug-report-checkbox-label input:disabled {
   cursor: not-allowed;
 }
+
+.bug-report-history-input {
+  width: 40px;
+  padding: 2px 4px;
+  margin: 0 4px;
+  font-size: 11px;
+  background: #0a0a0a;
+  color: #aaa;
+  border: 1px solid #333;
+  border-radius: 2px;
+}
+
+.bug-report-history-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

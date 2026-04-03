@@ -95,6 +95,8 @@ export default function Part() {
     selection: true,
     solveResults: true,
     internalState: true,
+    history: true,
+    historyCount: 5,
   })
 
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
@@ -313,6 +315,13 @@ export default function Part() {
           editingFeatureId,
           activeSketchFeatureId,
         }
+      }
+      if (bugReportAttachments.history) {
+        const historyItems = undoStack.slice(-bugReportAttachments.historyCount).map(entry => ({
+          mutation: entry.mutation,
+          label: describeMutation(entry.mutation),
+        }))
+        report.history = historyItems
       }
       const response = await fetch('/api/bug-report', {
         method: 'POST',
@@ -576,6 +585,7 @@ export default function Part() {
                 onSubmit={handleSubmitBugReport}
                 selectionCount={selection.size}
                 hasSolveResults={!!(editingFeatureId && solveResults?.[editingFeatureId])}
+                undoStackCount={undoStack.length}
               />
             )}
             {debugTab === 'undo-redo' && (
