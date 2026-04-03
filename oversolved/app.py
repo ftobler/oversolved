@@ -253,6 +253,16 @@ def create_app(config=None):
         except Exception as e:
             return jsonify({'error': str(e)}), 400
 
+    def _format_history(history):
+        """Format edit history for bug report."""
+        if not history:
+            return "*(no history)*"
+        lines = []
+        for idx, item in enumerate(history):
+            label = item.get('label', '(unknown)')
+            lines.append(f"- [{idx}] {label}")
+        return "\n".join(lines)
+
     @app.route('/api/bug-report', methods=['POST'])
     def submit_bug_report():
         content_type = request.content_type or ''
@@ -278,6 +288,8 @@ def create_app(config=None):
         selection = data.get('selection') or []
         solve_results = data.get('solveResults')
         internal_state = data.get('internalState') or {}
+        history = data.get('history') or []
+        history_section = _format_history(history)
 
         markdown = f"""# Bug Report: {title}
 
@@ -311,6 +323,10 @@ def create_app(config=None):
 ## Solver Result
 
 {f"```yaml{chr(10)}{yaml.dump(solve_results, default_flow_style=False)}{chr(10)}```" if solve_results else "*(not available)*"}
+
+## Edit History
+
+{history_section}
 
 ---
 
