@@ -413,7 +413,9 @@ def _params_from_array(x, entities: dict, entity_offsets: dict) -> dict:
 
 
 def _geom_point(geom: dict, ref: dict) -> list:
-    """Return [x, y] for a constraint point reference {entity, point?}."""
+    """Return [x, y] for a constraint point reference {entity, point?} or {external_xy: ...}."""
+    if "external_xy" in ref:
+        return ref["external_xy"]
     e = geom[ref["entity"]]
     pt = ref.get("point", "start")
     if "start" in e and "end" in e and "radius" in e:   # arc
@@ -458,8 +460,11 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             pa = _geom_point(geom, c["a"])
             pb = _geom_point(geom, c["b"])
             at = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
-            return {"kind": "symbol_h", "at": at, "entity": c["a"]["entity"]}
-        eid = c["target"]["entity"]
+            eid = c["a"].get("entity") or c["b"].get("entity") or ""
+            return {"kind": "symbol_h", "at": at, "entity": eid}
+        eid = c["target"].get("entity", "")
+        if not eid:
+            return {}  # external-only target, can't render
         e = geom[eid]
         at = [(e["start"][0] + e["end"][0]) / 2,
               (e["start"][1] + e["end"][1]) / 2]
@@ -470,8 +475,11 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             pa = _geom_point(geom, c["a"])
             pb = _geom_point(geom, c["b"])
             at = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
-            return {"kind": "symbol_v", "at": at, "entity": c["a"]["entity"]}
-        eid = c["target"]["entity"]
+            eid = c["a"].get("entity") or c["b"].get("entity") or ""
+            return {"kind": "symbol_v", "at": at, "entity": eid}
+        eid = c["target"].get("entity", "")
+        if not eid:
+            return {}  # external-only target, can't render
         e = geom[eid]
         at = [(e["start"][0] + e["end"][0]) / 2,
               (e["start"][1] + e["end"][1]) / 2]
@@ -627,12 +635,12 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "entity": eid}
 
     elif kind == "point_distance":
-        eid = c["a"]["entity"]
         pa = _geom_point(geom, c["a"])
         pb = _geom_point(geom, c["b"])
         dx, dy = pb[0] - pa[0], pb[1] - pa[1]
         n = math.hypot(dx, dy)
         normal = [-dy / n, dx / n] if n > 0 else [0.0, 1.0]
+        eid = c["a"].get("entity") or c["b"].get("entity") or ""
         return {
             "kind": "dim_linear",
             "p1": pa,
@@ -1372,6 +1380,33 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         return rc
 
     constraints = [_pre_resolve(c) for c in constraints]
+
+    # Filter out constraints that reference only external entities when the constraint
+    # type requires a local entity (e.g., horizontal/vertical on a line needs a line entity).
+    def _has_valid_local_target(c: dict) -> bool:
+        """Check if constraint has at least one resolvable local entity when required."""
+        kind = c.get("kind", "")
+        # Constraint kinds that need a local entity for their target or primary ref
+        needs_local_entity = {
+            "horizontal", "vertical", "length", "radius", "diameter", "line_distance",
+            "concentric", "equal_length", "tangent"
+        }
+        if kind not in needs_local_entity:
+            return True  # Other constraint kinds don't require local entities
+        # Check if constraint has a local entity reference
+        if "target" in c and isinstance(c["target"], dict) and "entity" in c["target"]:
+            return True
+        if "a" in c and isinstance(c["a"], dict) and "entity" in c["a"]:
+            return True
+        if "b" in c and isinstance(c["b"], dict) and "entity" in c["b"]:
+            return True
+        if "line" in c and isinstance(c["line"], dict) and "entity" in c["line"]:
+            return True
+        if "arc" in c and isinstance(c["arc"], dict) and "entity" in c["arc"]:
+            return True
+        return False
+
+    constraints = [c for c in constraints if _has_valid_local_target(c)]
 
     # Implicit constraint: pin the projected origin to (0, 0).
     # This is appended AFTER pre-resolution; it uses an already-resolved dict directly.
