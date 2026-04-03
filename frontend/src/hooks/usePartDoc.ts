@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import type { PartDoc, SketchData, Mutation } from '../types/cad'
+import type { PartDoc, SketchData, Mutation, EntityStatus } from '../types/cad'
 import { unflattenGeometry } from '../utils/geometryMapping'
 import {
   applyMoveVertex,
@@ -127,9 +127,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
                 )
               : undefined
             const entityStatus = feature.features
-              ? Object.fromEntries(
+              ? (Object.fromEntries(
                   Object.entries(feature.features).map(([eid, e]) => [eid, (e as { status?: string }).status || 'underconstrained'])
-                )
+                ) as EntityStatus)
               : undefined
             results[id] = {
               solved,
