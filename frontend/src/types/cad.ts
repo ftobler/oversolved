@@ -291,8 +291,8 @@ export type Mutation =
   | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point }
   | { type: 'toggle_construction'; targets: string[] }
   | { type: 'set_feature_plane'; featureId: string; plane: string }
-  | { type: 'add_sketch'; featureId: string }
+  | { type: 'add_sketch'; featureId: string; label?: string }
   | { type: 'delete_feature'; featureId: string }
   | { type: 'set_feature_visibility'; featureId: string; visible: boolean }
-  | { type: 'add_plane'; featureId: string }
+  | { type: 'add_plane'; featureId: string; label?: string }
   | { type: 'set_plane_definition_field'; featureId: string; field: string; value: string | number }

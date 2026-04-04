@@ -234,7 +234,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         applySetFeaturePlane(next, m.featureId, m.plane)
         break
       case 'add_sketch':
-        applyAddSketch(next, m.featureId)
+        applyAddSketch(next, m.featureId, m.label)
         break
       case 'delete_feature':
         applyDeleteFeature(next, m.featureId)
@@ -243,7 +243,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         applySetFeatureVisibility(next, m.featureId, m.visible)
         break
       case 'add_plane':
-        applyAddPlane(next, m.featureId)
+        applyAddPlane(next, m.featureId, m.label)
         break
       case 'set_plane_definition_field':
         applySetPlaneDefinitionField(next, m.featureId, m.field, m.value)

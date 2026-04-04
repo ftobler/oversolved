@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
 import type { Feature, PartDoc, PartFeature, Mutation } from '../types/cad'
+import { randomId } from '../utils/yamlMutations'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import { useCommandRegistration } from './hooks/useCommandRegistration'
 import { buildCommandEntries } from './commandEntries'
@@ -61,13 +62,13 @@ function describeMutation(m: Mutation): string {
     case 'set_feature_plane':
       return `set plane of ${m.featureId} to ${m.plane}`
     case 'add_sketch':
-      return `add sketch ${m.featureId}`
+      return `add ${m.label || m.featureId}`
     case 'delete_feature':
       return `delete feature ${m.featureId}`
     case 'set_feature_visibility':
       return `${m.visible ? 'show' : 'hide'} ${m.featureId}`
     case 'add_plane':
-      return `add plane ${m.featureId}`
+      return `add ${m.label || m.featureId}`
     case 'set_plane_definition_field':
       return `edit plane ${m.featureId}: ${m.field}`
   }
@@ -216,20 +217,22 @@ export default function Part() {
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
+    const featureId = randomId(18)
     const planeCount = (doc.features ?? []).filter(f => f.kind === 'plane' && !BUILT_IN_IDS.has(f.id)).length
-    const featureId = `plane${planeCount + 1}`
+    const label = `plane ${planeCount + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
-    handleMutation({ type: 'add_plane', featureId })
+    handleMutation({ type: 'add_plane', featureId, label })
     setEditingFeatureId(featureId)
   }, [doc, features.length, handleMutation])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
+    const featureId = randomId(18)
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
-    const featureId = `sketch${sketchCount + 1}`
+    const label = `sketch ${sketchCount + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setFieldPickState(null)
-    handleMutation({ type: 'add_sketch', featureId })
+    handleMutation({ type: 'add_sketch', featureId, label })
     handleMutation({ type: 'set_feature_plane', featureId, plane: 'Top' })
     setEditingFeatureId(featureId)
     setMode('sketch')

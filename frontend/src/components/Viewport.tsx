@@ -181,7 +181,7 @@ export default function Viewport({
           .map(f => {
             const solveResult = solveResults?.[f.id]
             if (!solveResult?.plane_transform) return null
-            return <UserDefinedPlane key={f.id} featureId={f.id} label={f.id} planeTransform={solveResult.plane_transform} />
+            return <UserDefinedPlane key={f.id} featureId={f.id} label={f.label || f.id} planeTransform={solveResult.plane_transform} />
           })}
 
         {activeSketchFeatures.map(f => {

@@ -40,7 +40,7 @@ export const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
 }
 
 // Generate a random base64url ID.  bytes=12 for elements, bytes=18 for features.
-function randomId(bytes: number): string {
+export function randomId(bytes: number): string {
   const arr = new Uint8Array(bytes)
   crypto.getRandomValues(arr)
   return btoa(String.fromCharCode(...arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
@@ -339,9 +339,11 @@ export function applySetFeaturePlane(doc: PartDoc, featureId: string, plane: str
   feature.plane = plane
 }
 
-export function applyAddSketch(doc: PartDoc, featureId: string): void {
+export function applyAddSketch(doc: PartDoc, featureId: string, label?: string): void {
   if (!doc.features) doc.features = []
-  doc.features.push({ id: featureId, kind: 'sketch' })
+  const feature: PartFeature = { id: featureId, kind: 'sketch' }
+  if (label) feature.label = label
+  doc.features.push(feature)
 }
 
 export function applyDeleteFeature(doc: PartDoc, featureId: string): void {
@@ -359,9 +361,11 @@ export function applySetFeatureVisibility(doc: PartDoc, featureId: string, visib
   }
 }
 
-export function applyAddPlane(doc: PartDoc, featureId: string): void {
+export function applyAddPlane(doc: PartDoc, featureId: string, label?: string): void {
   if (!doc.features) doc.features = []
-  doc.features.push({ id: featureId, kind: 'plane', definition: { mode: 'offset' } })
+  const feature: PartFeature = { id: featureId, kind: 'plane', definition: { mode: 'offset' } }
+  if (label) feature.label = label
+  doc.features.push(feature)
 }
 
 export function applySetPlaneDefinitionField(

@@ -1442,3 +1442,47 @@ def test_plane_edge_point_concatenated_format():
     result = solve_features(spec)
 
     assert result['features'][1]['status'] == 'ok'
+
+
+def test_plane_with_unicode_label():
+    """Verify that plane features preserve Unicode labels including emojis."""
+    spec = {
+        'features': [
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'label': '🔵 Blue Plane',
+                'definition': {
+                    'mode': 'offset',
+                    'plane': '@builtin_plane_front',
+                    'offset': 5.0,
+                },
+            },
+            {
+                'id': 'plane2',
+                'kind': 'plane',
+                'label': '飛行機 Airplane',
+                'definition': {
+                    'mode': 'offset',
+                    'plane': '@builtin_plane_top',
+                    'offset': 3.0,
+                },
+            },
+            {
+                'id': 'plane3',
+                'kind': 'plane',
+                'label': '∞ Infinite ∅',
+                'definition': {
+                    'mode': 'offset',
+                    'plane': '@builtin_plane_right',
+                    'offset': 2.0,
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    # All planes should solve successfully
+    assert result['features'][0]['status'] == 'ok'
+    assert result['features'][1]['status'] == 'ok'
+    assert result['features'][2]['status'] == 'ok'

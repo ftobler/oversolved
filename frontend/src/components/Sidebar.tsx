@@ -239,7 +239,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   alt={feature.kind || 'feature'}
                   className="feature-icon"
                 />
-                <span className="feature-name">{feature.id}</span>
+                <span className="feature-name">{feature.label || feature.id}</span>
                 {feature.kind === 'sketch' && feature.id !== editingFeatureId && (
                   <button
                     className="feature-edit-btn"
