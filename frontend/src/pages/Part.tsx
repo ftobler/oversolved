@@ -137,7 +137,6 @@ export default function Part() {
   } = usePartDoc(uuid, mode, setCodeText)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (docName) setEditName(docName)
   }, [docName])
 
@@ -153,7 +152,6 @@ export default function Part() {
   useEffect(() => {
     if (doc && !rollbackInitialized.current) {
       rollbackInitialized.current = true
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRollbackPosition(extractFeatures(doc).length)
     }
   }, [doc])
