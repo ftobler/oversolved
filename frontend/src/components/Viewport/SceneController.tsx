@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { drawCubeGizmo, type Pv, type Hit } from '../CubeGizmo.utils'
 
-const INITIAL_POSITION: [number, number, number] = [0, 0, 100]
+const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 const INITIAL_ZOOM = 200
 
 const MOUSE_BUTTONS = {

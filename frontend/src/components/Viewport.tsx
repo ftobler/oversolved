@@ -15,7 +15,7 @@ import SceneController from './Viewport/SceneController'
 import ContextMenuDialog from './ContextMenuDialog'
 import { planeRotationFromTransform } from './Geometry3D/utils'
 
-const INITIAL_POSITION: [number, number, number] = [0, 0, 100]
+const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 const INITIAL_ZOOM = 200
 
 interface ViewportProps {
