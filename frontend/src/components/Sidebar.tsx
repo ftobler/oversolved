@@ -5,6 +5,10 @@ import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
 import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
+import contextEditIcon from '../assets/icons/context-edit.svg'
+import iconEyeIcon from '../assets/icons/icon-eye.svg'
+import iconEyeOffIcon from '../assets/icons/icon-eye-off.svg'
+import exitSketchIcon from '../assets/icons/exit-sketch.svg'
 
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
 
@@ -282,7 +286,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={() => onEnterEditSketch(feature.id)}
                     title="Edit sketch"
                   >
-                    <span className="material-icons-outlined">edit</span>
+                    <img src={contextEditIcon} alt="Edit" />
                   </button>
                 )}
                 {feature.kind === 'sketch' && feature.id === editingFeatureId && (
@@ -291,7 +295,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={(e) => { e.stopPropagation(); onExitEditSketch() }}
                     title="Exit sketch"
                   >
-                    <span className="material-icons-outlined">close</span>
+                    <img src={exitSketchIcon} alt="Exit" />
                   </button>
                 )}
                 {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id !== editingFeatureId && (
@@ -305,7 +309,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }}
                     title="Edit plane"
                   >
-                    <span className="material-icons-outlined">edit</span>
+                    <img src={contextEditIcon} alt="Edit" />
                   </button>
                 )}
                 {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (
@@ -322,9 +326,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onClick={(e) => { e.stopPropagation(); onToggleVisibility(feature.id) }}
                   title={visibleFeatures.has(feature.id) ? 'Hide' : 'Show'}
                 >
-                  <span className="material-icons-outlined">
-                    {visibleFeatures.has(feature.id) ? 'visibility' : 'visibility_off'}
-                  </span>
+                  <img src={visibleFeatures.has(feature.id) ? iconEyeIcon : iconEyeOffIcon} alt={visibleFeatures.has(feature.id) ? 'Visible' : 'Hidden'} />
                 </button>
                 {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (
                   <PlaneEditor feature={feature} featureDef={doc?.features?.find(f => f.id === feature.id)} />

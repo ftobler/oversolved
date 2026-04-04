@@ -109,7 +109,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
+  flex: 1 1 0;
   text-align: left;
 }
 
@@ -124,6 +124,13 @@
   padding: 2px 4px;
   flex-shrink: 0;
   transition: color 0.2s;
+  margin-right: auto;
+}
+
+.feature-edit-btn img {
+  width: 16px;
+  height: 16px;
+  filter: invert(0.8);
 }
 
 .feature-edit-btn:hover {
@@ -219,7 +226,12 @@
   padding: 2px 4px;
   transition: color 0.2s;
   flex-shrink: 0;
-  margin-left: auto;
+}
+
+.feature-visibility-btn img {
+  width: 16px;
+  height: 16px;
+  filter: invert(0.8);
 }
 
 .feature-visibility-btn:hover {

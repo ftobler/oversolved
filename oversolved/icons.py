@@ -508,8 +508,7 @@ def toolbar_extrude(ctx):
     ctx.stroke()
 
 
-@icon("frontend/src/assets/icons/feature-sketch.svg", angle=120)
-def toolbar_sketch(ctx):
+def _pencil(ctx):
     # Sketch/pencil icon (horizontal)
     # Pencil shaft
     x0, y0 = 0.15, 0.5
@@ -532,6 +531,16 @@ def toolbar_sketch(ctx):
     ctx.line_to(x1 - tip_size, y1 + tip_thickness * 0.5)
     ctx.close_path()
     ctx.stroke()
+
+
+@icon("frontend/src/assets/icons/feature-sketch.svg", angle=120)
+def toolbar_sketch(ctx):
+    _pencil(ctx)
+
+
+@icon("frontend/src/assets/icons/context-edit.svg", angle=120)
+def context_edit(ctx):
+    _pencil(ctx)
 
 
 @icon("frontend/src/assets/icons/toolbar-play.svg")
@@ -950,6 +959,67 @@ def context_delete(ctx):
     ctx.line_to(0.6, 0.25)
     ctx.line_to(0.6, 0.35)
     stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/icon-eye.svg")
+def icon_eye(ctx):
+    """Icon for Eye symbol: visible state."""
+    x = 0.5
+    y = 0.3
+    r = 0.4
+    angle = 0.15
+
+    # Eye outline bottom half
+    ctx.arc(x, y, r, math.pi * angle, math.pi * (1 - angle))
+    stroke(ctx, 1.5)
+
+    # Eye outline top half
+    ctx.arc(x, 1 - y, r, math.pi * (1 + angle), math.pi * (1 - (1 + angle)))
+    stroke(ctx, 1.5)
+
+    # Pupil (small filled circle)
+    ctx.arc(0.5, 0.5, px(2), 0, 2 * math.pi)
+    ctx.fill()
+
+
+@icon("frontend/src/assets/icons/icon-eye-off.svg")
+def icon_eye_off(ctx):
+    """Icon for Eye with strikethrough: hidden state."""
+    x = 0.5
+    y = 0.3
+    r = 0.4
+    angle = 0.15
+
+    # Eye outline bottom half
+    ctx.arc(x, y, r, math.pi * angle, math.pi * (1 - angle))
+    stroke(ctx, 1.5)
+
+    # # Eye outline top half
+    # ctx.arc(x, 1 - y, r, math.pi * (1 + angle), math.pi * (1 - (1 + angle)))
+    # stroke(ctx, 1.5)
+
+    # # Pupil (small filled circle)
+    # ctx.arc(0.5, 0.5, px(2), 0, 2 * math.pi)
+    # ctx.fill()
+
+    # strikethrough line
+    strike = 0.25
+    ctx.move_to(strike, strike)
+    ctx.line_to(1 - strike, 1 - strike)
+    stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/exit-sketch.svg")
+def exit_sketch(ctx):
+    """Icon for Exit sketch context menu entry: simple X cross."""
+    # Draw an X shape (two crossing diagonal lines)
+    ctx.move_to(0.2, 0.2)
+    ctx.line_to(0.8, 0.8)
+    stroke(ctx, 2)
+
+    ctx.move_to(0.8, 0.2)
+    ctx.line_to(0.2, 0.8)
+    stroke(ctx, 2)
 
 
 if __name__ == "__main__":
