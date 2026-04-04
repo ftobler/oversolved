@@ -978,8 +978,9 @@ def icon_eye(ctx):
     stroke(ctx, 1.5)
 
     # Pupil (small filled circle)
-    ctx.arc(0.5, 0.5, px(2), 0, 2 * math.pi)
-    ctx.fill()
+    pup_r = 0.1
+    ctx.arc(0.5, 0.5, pup_r, 0, 2 * math.pi)
+    stroke(ctx, 1.5)
 
 
 @icon("frontend/src/assets/icons/icon-eye-off.svg")
@@ -990,7 +991,7 @@ def icon_eye_off(ctx):
     r = 0.4
     angle = 0.15
     eyelid_angle = 0.25
-    eyelid_len = 0.1
+    eyelid_len = 0.15
 
     # Eye outline bottom half
     ctx.arc(x, y, r, math.pi * angle, math.pi * (1 - angle))
@@ -1000,7 +1001,7 @@ def icon_eye_off(ctx):
     strike = 0.25
     ctx.move_to(strike, strike)
     ctx.line_to(1 - strike, 1 - strike)
-    stroke(ctx, 1.5)
+    stroke(ctx, 1.0)
 
     # Eyelids: small lines at the arc, parametric
     n_lids = 5
