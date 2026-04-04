@@ -62,13 +62,15 @@
   flex-shrink: 0;
 }
 
+.exit-sketch-btn img {
+  width: 16px;
+  height: 16px;
+  filter: invert(0.8);
+}
+
 .exit-sketch-btn:hover {
   background: #2a1a2a;
   color: #e060b0;
-}
-
-.exit-sketch-btn .material-icons-outlined {
-  font-size: 14px;
 }
 
 .features-list {
