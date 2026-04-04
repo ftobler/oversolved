@@ -73,6 +73,8 @@ function describeMutation(m: Mutation): string {
       return `edit plane ${m.featureId}: ${m.field}`
     case 'rename_feature':
       return `rename ${m.featureId} to ${m.label}`
+    case 'toggle_sketch_plane_visibility':
+      return 'toggle sketch/plane visibility'
   }
 }
 
@@ -240,6 +242,10 @@ export default function Part() {
     setMode('sketch')
   }, [doc, features.length, handleMutation, setFieldPickState, setMode])
 
+  const handleToggleSketchPlaneVisibility = useCallback(() => {
+    handleMutation({ type: 'toggle_sketch_plane_visibility' })
+  }, [handleMutation])
+
   useEffect(() => {
     useSketchEditorStore.getState().setOnMutation(handleMutation)
     return () => useSketchEditorStore.getState().setOnMutation(null)
@@ -260,8 +266,8 @@ export default function Part() {
   }, [activeSketchFeatureId])
 
   const commands = useMemo(
-    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures),
-    [handleUndo, handleRedo, handleDeleteSelectedFeatures],
+    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility),
+    [handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility],
   )
 
   useCommandRegistration(commands)

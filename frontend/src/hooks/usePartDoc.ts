@@ -22,6 +22,7 @@ import {
   applyRenameFeature,
   applyAddPlane,
   applySetPlaneDefinitionField,
+  applyToggleSketchPlaneVisibility,
 } from '../utils/yamlMutations'
 import type { PartFeature } from '../types/cad'
 
@@ -251,6 +252,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'rename_feature':
         applyRenameFeature(next, m.featureId, m.label)
+        break
+      case 'toggle_sketch_plane_visibility':
+        applyToggleSketchPlaneVisibility(next)
         break
     }
     docRef.current = next

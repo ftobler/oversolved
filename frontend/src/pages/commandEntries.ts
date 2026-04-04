@@ -11,12 +11,14 @@ export function buildCommandEntries(
   handleUndo: () => void,
   handleRedo: () => void,
   handleDeleteSelectedFeatures: () => void,
+  handleToggleSketchPlaneVisibility: () => void,
 ): CommandEntry[] {
   const getState = useSketchEditorStore.getState
   return [
     { name: 'undo',                  fn: handleUndo },
     { name: 'redo',                  fn: handleRedo },
     { name: 'delete_selected',       fn: () => { getState().deleteSelected(); handleDeleteSelectedFeatures() } },
+    { name: 'toggle_sketch_plane_visibility', fn: handleToggleSketchPlaneVisibility },
     { name: 'set_tool_select',       fn: () => getState().setActiveTool('select') },
     { name: 'set_tool_line',         fn: () => getState().setActiveTool('line') },
     { name: 'set_tool_circle',       fn: () => getState().setActiveTool('circle') },

@@ -371,6 +371,20 @@ export function applyRenameFeature(doc: PartDoc, featureId: string, label: strin
   }
 }
 
+export function applyToggleSketchPlaneVisibility(doc: PartDoc): void {
+  const targets = (doc.features ?? []).filter(
+    f => (f.kind === 'sketch' || f.kind === 'plane')
+  )
+  const anyVisible = targets.some(f => f.visible !== false)
+  for (const f of targets) {
+    if (anyVisible) {
+      f.visible = false
+    } else {
+      delete f.visible
+    }
+  }
+}
+
 export function applyAddPlane(doc: PartDoc, featureId: string, label?: string): void {
   if (!doc.features) doc.features = []
   const feature: PartFeature = { id: featureId, kind: 'plane', definition: { mode: 'offset' } }
