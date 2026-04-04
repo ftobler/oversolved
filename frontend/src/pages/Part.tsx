@@ -29,6 +29,7 @@ import contextRebuildIcon from '../assets/icons/context-rebuild.svg'
 import contextExitIcon from '../assets/icons/context-exit.svg'
 import contextHideIcon from '../assets/icons/context-hide.svg'
 import contextDeleteIcon from '../assets/icons/context-delete.svg'
+import contextEditIcon from '../assets/icons/context-edit.svg'
 
 // IDs of built-in features that cannot be deleted.
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
@@ -392,6 +393,20 @@ export default function Part() {
     ]
 
     if (activeSketchFeatureId) {
+      const target = features.find(f => f.id === activeSketchFeatureId)
+      const isVisible = target && visibleFeatures.has(target.id)
+      if (isVisible) {
+        items.push({
+          label: 'Hide',
+          icon: contextHideIcon,
+          onClick: () => toggleVisibility(activeSketchFeatureId),
+        })
+      }
+      items.push({
+        label: 'Edit',
+        icon: contextEditIcon,
+        onClick: () => enterEditSketch(activeSketchFeatureId),
+      })
       items.push({
         label: 'Exit Sketch',
         icon: contextExitIcon,
@@ -404,11 +419,40 @@ export default function Part() {
       const target = features.find(f => f.id === featureId)
       if (target?.kind === 'plane') {
         const isVisible = visibleFeatures.has(target.id)
-        items.push({
-          label: isVisible ? 'Hide' : 'Show',
-          icon: contextHideIcon,
-          onClick: () => toggleVisibility(target.id),
-        })
+        if (!BUILT_IN_IDS.has(target.id)) {
+          items.push({
+            label: 'Edit',
+            icon: contextEditIcon,
+            onClick: () => {
+              handleRightClick(pos, target.id)
+              enterEditSketch(target.id)
+            },
+          })
+          items.push({
+            label: isVisible ? 'Hide' : 'Show',
+            icon: contextHideIcon,
+            onClick: () => toggleVisibility(target.id),
+          })
+        }
+      } else if (target?.kind === 'sketch') {
+        const isVisible = visibleFeatures.has(target.id)
+        if (!BUILT_IN_IDS.has(target.id)) {
+          items.push({
+            label: 'Edit',
+            icon: contextEditIcon,
+            onClick: () => {
+              handleRightClick(pos, target.id)
+              enterEditSketch(target.id)
+            },
+          })
+        }
+        if (isVisible) {
+          items.push({
+            label: 'Hide',
+            icon: contextHideIcon,
+            onClick: () => toggleVisibility(target.id),
+          })
+        }
       }
       if (!BUILT_IN_IDS.has(featureId)) {
         items.push({

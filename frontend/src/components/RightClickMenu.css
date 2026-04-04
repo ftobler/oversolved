@@ -1,19 +1,21 @@
+/* aka context menu */
+
+
 .right-click-menu {
   position: fixed;
   z-index: 9999;
   background: #1e1e1e;
-  border: 1px solid #444;
-  border-radius: 3px;
-  padding: 2px 0;
+  border-radius: 10px;
+  padding: 0;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
-  min-width: 120px;
+  min-width: 150px;
   pointer-events: all;
+  overflow: hidden;
 }
 
 .right-click-menu-item {
   display: flex;
   align-items: center;
-  gap: 6px;
   padding: 3px 8px;
   font-size: 11px;
   font-family: monospace;
@@ -21,6 +23,9 @@
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  gap: 10px;
 }
 
 .right-click-menu-item:hover {
@@ -49,17 +54,4 @@
 
 .right-click-menu-item--exit .right-click-menu-icon {
   filter: invert(0.6) sepia(1) saturate(3) hue-rotate(280deg);
-}
-
-.right-click-menu-item--delete {
-  color: #ef9a9a;
-}
-
-.right-click-menu-item--delete:hover {
-  background: #2a1a1a;
-  color: #ef5350;
-}
-
-.right-click-menu-item--delete .right-click-menu-icon {
-  filter: invert(0.7) sepia(1) saturate(3) hue-rotate(320deg);
 }
