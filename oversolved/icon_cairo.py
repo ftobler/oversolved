@@ -60,13 +60,26 @@ def _draw_one(path, fn, angle, offset_x=0, offset_y=0):
     fn(ctx)
 
     surface.finish()
-    _postprocess_svg(path)
+    # Get the new SVG content after processing
+    new_svg = _postprocess_svg(path, dry_run=True)
+    # Only write to disk if the file doesn't exist or content differs
+    existing = path.read_text() if path.exists() else None
+    if existing is None or existing != new_svg:
+        path.write_text(new_svg)
 
 
-def _postprocess_svg(path: Path):
-    txt = path.read_text()
+def _postprocess_svg(path: Path, dry_run=False):
+    """Process the SVG content.
+
+    Args:
+        path: Path to the SVG file
+        dry_run: If True, don't write to disk, just return the processed content
+    """
+    txt = path.read_text() if path.exists() else ""
     txt = txt.replace("#000000", "currentColor")
-    path.write_text(txt)
+    if not dry_run:
+        path.write_text(txt)
+    return txt
 
 
 def draw_all():
@@ -75,4 +88,4 @@ def draw_all():
         offset_x, offset_y = entry[3:5] if len(entry) > 3 else (0, 0)
         # print(f"→ {path} (angle={angle}, offset=({offset_x}, {offset_y}))")
         _draw_one(path, fn, angle, offset_x, offset_y)
-    print(f"→ created {len(_registry)} icons")
+    print("→ icons up to date")
