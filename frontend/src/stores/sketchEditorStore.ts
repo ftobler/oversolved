@@ -45,6 +45,7 @@ interface SketchEditorState {
   selection: Set<string>
   drag: DragState | null
   orbitEnabled: boolean
+  showDebugHit: boolean
   onMutation: ((m: Mutation) => void) | null
   onRebuild: (() => void) | null
   onExitSketch: (() => void) | null
@@ -68,6 +69,7 @@ interface SketchEditorState {
   clearSelection: () => void
   setDrag: (drag: DragState | null) => void
   setOrbitEnabled: (enabled: boolean) => void
+  setShowDebugHit: (enabled: boolean) => void
   setOnMutation: (cb: ((m: Mutation) => void) | null) => void
   setOnRebuild: (cb: (() => void) | null) => void
   setOnExitSketch: (cb: (() => void) | null) => void
@@ -94,6 +96,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   selection: new Set(),
   drag: null,
   orbitEnabled: true,
+  showDebugHit: false,
   onMutation: null,
   onRebuild: null,
   onExitSketch: null,
@@ -123,6 +126,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setDrag: (drag) => set({ drag }),
 
   setOrbitEnabled: (enabled) => set({ orbitEnabled: enabled }),
+
+  setShowDebugHit: (enabled) => set({ showDebugHit: enabled }),
 
   setOnMutation: (cb) => set({ onMutation: cb }),
   setOnRebuild: (cb) => set({ onRebuild: cb }),

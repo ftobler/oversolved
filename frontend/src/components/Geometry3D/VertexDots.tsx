@@ -32,10 +32,12 @@ export function Dot({ x, y, px, color, billboard = false }: { x: number; y: numb
 /** One invisible cylinder per segment. Radius scales to HIT_PIXELS each frame so
  *  coverage is gapless at any zoom. Placed at z=-0.001 so vertex spheres (z=0,
  *  extending to z=+R) always win the raycast at endpoint positions. */
-export function HitPolyline({ pts, onPointerOver, onPointerOut }: {
+export function HitPolyline({ pts, onPointerOver, onPointerOut, showDebugCollision, showDebugHit }: {
   pts: [number, number, number][]
   onPointerOver: (e: { stopPropagation: () => void }) => void
   onPointerOut: () => void
+  showDebugCollision?: boolean
+  showDebugHit?: boolean
 }) {
   const segRefs = useRef<(THREE.Mesh | null)[]>([])
   const { camera } = useThree()
@@ -62,7 +64,7 @@ export function HitPolyline({ pts, onPointerOver, onPointerOut }: {
           onPointerOver={onPointerOver} onPointerOut={onPointerOut}
         >
           <cylinderGeometry args={[1, 1, 1, 8, 1]} />
-          <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.25 : 0} color="#ff6600" depthWrite={false} side={THREE.DoubleSide} />
+          <meshBasicMaterial transparent opacity={(showDebugCollision ?? showDebugHit) ? 0.25 : 0} color="#ff6600" depthWrite={false} side={THREE.DoubleSide} />
         </mesh>
       ))}
     </>
@@ -92,9 +94,9 @@ export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px:
 
 /** Vertex dot with its own independent hover state. Placed as a sibling (not child)
  *  of the edge group so hover does not bubble up and highlight the whole entity. */
-export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, isEditing = false }: {
+export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, isEditing = false, showDebugHit }: {
   x: number; y: number; px: number; baseColor: string
-  featureId?: string; entityId?: string; vertexKey?: string; isEditing?: boolean
+  featureId?: string; entityId?: string; vertexKey?: string; isEditing?: boolean; showDebugHit?: boolean
 }) {
   const [hovered, setHovered] = useState(false)
   const hitRef = useRef<THREE.Mesh>(null)
@@ -188,7 +190,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
       {!isDragged && !isInactiveSketch && (
         <mesh ref={hitRef} position={[x, y, 0]}>
           <sphereGeometry args={[1, 8, 8]} />
-          <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.35 : 0} color="#00aaff" depthWrite={false} />
+          <meshBasicMaterial transparent opacity={(showDebugHit ?? DEBUG_HIT) ? 0.35 : 0} color="#00aaff" depthWrite={false} />
         </mesh>
       )}
     </group>

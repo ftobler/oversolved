@@ -18,9 +18,10 @@ interface EntityItemProps {
   lineWidth?: number
   isEditing?: boolean
   planeGroupRef?: React.RefObject<THREE.Group | null>
+  showDebugHit?: boolean
 }
 
-export function EntityItem({ entity, entityId, entityKind, featureId, baseColor, lineWidth = 1, isEditing = false, planeGroupRef }: EntityItemProps) {
+export function EntityItem({ entity, entityId, entityKind, featureId, baseColor, lineWidth = 1, isEditing = false, planeGroupRef, showDebugHit }: EntityItemProps) {
   const [hovered, setHovered] = useState(false)
   const entId = `entity:${featureId}:${entityId}`
   const selected = useSketchEditorStore(s => s.selection.has(entId))
@@ -100,14 +101,14 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isDragged && !isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />}
+          {!isDragged && !isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
         </group>
-        <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" isEditing={isEditing} />
-        <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" isEditing={isEditing} />
-        <VertexDot x={arc.center[0]} y={arc.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" isEditing={isEditing} />
+        <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" isEditing={isEditing} showDebugHit={showDebugHit} />
+        <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" isEditing={isEditing} showDebugHit={showDebugHit} />
+        <VertexDot x={arc.center[0]} y={arc.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" isEditing={isEditing} showDebugHit={showDebugHit} />
       </>
     )
   } else if ('start' in e) {
@@ -116,13 +117,13 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isDragged && !isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />}
+          {!isDragged && !isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
         </group>
-        <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" isEditing={isEditing} />
-        <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" isEditing={isEditing} />
+        <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" isEditing={isEditing} showDebugHit={showDebugHit} />
+        <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" isEditing={isEditing} showDebugHit={showDebugHit} />
       </>
     )
   } else if ('x' in e) {
@@ -134,12 +135,12 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isDragged && !isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />}
+          {!isDragged && !isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
         </group>
-        <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" isEditing={isEditing} />
+        <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" isEditing={isEditing} showDebugHit={showDebugHit} />
       </>
     )
   }
@@ -153,16 +154,17 @@ interface EntityLinesProps {
   lineWidth?: number
   isEditing?: boolean
   planeGroupRef?: React.RefObject<THREE.Group | null>
+  showDebugHit?: boolean
 }
 
-export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, isEditing = false, planeGroupRef }: EntityLinesProps) {
+export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, isEditing = false, planeGroupRef, showDebugHit }: EntityLinesProps) {
   const getColor = typeof color === 'function' ? color : () => color
   return (
     <>
       {Object.entries(sketch)
         .filter(([, entity]) => !(entity as PointEntity).projected)
         .map(([id, entity]) => (
-          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line'} featureId={featureId} baseColor={getColor(id)} lineWidth={lineWidth} isEditing={isEditing} planeGroupRef={planeGroupRef} />
+          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line'} featureId={featureId} baseColor={getColor(id)} lineWidth={lineWidth} isEditing={isEditing} planeGroupRef={planeGroupRef} showDebugHit={showDebugHit} />
         ))}
     </>
   )

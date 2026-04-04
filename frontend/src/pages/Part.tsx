@@ -93,6 +93,8 @@ export default function Part() {
 
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo'>('selection')
+  const showDebugHit = useSketchEditorStore(s => s.showDebugHit)
+  const setShowDebugHit = useSketchEditorStore(s => s.setShowDebugHit)
   const [bugReportForm, setBugReportForm] = useState({ title: '', description: '' })
   const [bugReporting, setBugReporting] = useState(false)
   const [bugReportError, setBugReportError] = useState<string | null>(null)
@@ -477,9 +479,6 @@ export default function Part() {
         <button className="toolbar-btn" title="Undo" onClick={handleUndo} disabled={undoStack.length === 0}>
           <span className="material-icons-outlined">undo</span>
         </button>
-        <button className="toolbar-btn" title="Redo" onClick={handleRedo} disabled={redoStack.length === 0}>
-          <span className="material-icons-outlined">redo</span>
-        </button>
         <button className="toolbar-btn" title="Save" onClick={handleSave}>
           <span className="material-icons-outlined">save</span>
         </button>
@@ -583,7 +582,7 @@ export default function Part() {
                   </div>
                 </div>
               )}
-              {mode !== 'code' && <Viewport features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} />}
+              {mode !== 'code' && <Viewport features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} />}
             </>
           )}
         </div>
@@ -607,7 +606,7 @@ export default function Part() {
                 className={`debug-tab ${debugTab === 'undo-redo' ? 'active' : ''}`}
                 onClick={() => setDebugTab('undo-redo')}
               >
-                Undo/Redo
+                Undo
               </button>
             </div>
             {debugTab === 'selection' && (
@@ -683,6 +682,17 @@ export default function Part() {
           onClick={() => setDebugOpen(v => !v)}
         >
           <span className="material-icons-outlined">bug_report</span>
+        </button>
+        <button
+          className="footer-debug-btn"
+          title={showDebugHit ? "Hide debug collision rendering" : "Show debug collision rendering"}
+          onClick={() => setShowDebugHit(!showDebugHit)}
+        >
+          {showDebugHit ? (
+            <span className="material-icons-outlined">visibility</span>
+          ) : (
+            <span className="material-icons-outlined">visibility_off</span>
+          )}
         </button>
       </footer>
       {contextMenu && (

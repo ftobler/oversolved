@@ -38,9 +38,10 @@ export interface Geometry3DProps {
   planeTransform?: PlaneTransform
   solveStatus?: string
   entityStatus?: EntityStatus
+  showDebugHit?: boolean
 }
 
-export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, solveStatus, entityStatus }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, solveStatus, entityStatus, showDebugHit }: Geometry3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const drag = useSketchEditorStore(s => s.drag)
 
@@ -84,7 +85,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   return (
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && <TopologySurfaces topology={topology} featureId={featureId} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
-      <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} planeGroupRef={groupRef} />
+      <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} planeGroupRef={groupRef} showDebugHit={showDebugHit ?? false} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />
       {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
       {isEditing && <DragPlane featureId={featureId} />}
