@@ -361,6 +361,16 @@ export function applySetFeatureVisibility(doc: PartDoc, featureId: string, visib
   }
 }
 
+export function applyRenameFeature(doc: PartDoc, featureId: string, label: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  if (label.trim()) {
+    feature.label = label.trim()
+  } else {
+    delete feature.label
+  }
+}
+
 export function applyAddPlane(doc: PartDoc, featureId: string, label?: string): void {
   if (!doc.features) doc.features = []
   const feature: PartFeature = { id: featureId, kind: 'plane', definition: { mode: 'offset' } }

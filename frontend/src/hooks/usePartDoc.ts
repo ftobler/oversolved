@@ -19,6 +19,7 @@ import {
   applyAddSketch,
   applyDeleteFeature,
   applySetFeatureVisibility,
+  applyRenameFeature,
   applyAddPlane,
   applySetPlaneDefinitionField,
 } from '../utils/yamlMutations'
@@ -247,6 +248,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'set_plane_definition_field':
         applySetPlaneDefinitionField(next, m.featureId, m.field, m.value)
+        break
+      case 'rename_feature':
+        applyRenameFeature(next, m.featureId, m.label)
         break
     }
     docRef.current = next

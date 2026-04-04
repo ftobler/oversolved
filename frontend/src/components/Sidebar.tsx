@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type { PartFeature, PartDoc, PlaneDef, Mutation } from '../types/cad'
 import { planeLabel } from './Geometry3D/utils'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
@@ -61,6 +61,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSetFieldPickState,
   onSetPlaneSelectionFeatureId,
 }) => {
+  const [renamingFeatureId, setRenamingFeatureId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  const commitRename = (feature: PartFeature) => {
+    const trimmed = renameValue.trim()
+    if (trimmed && trimmed !== (feature.label || feature.id)) {
+      onMutation({ type: 'rename_feature', featureId: feature.id, label: trimmed })
+    }
+    setRenamingFeatureId(null)
+  }
+
   const getFeatureIcon = (kind: string | undefined) => {
     const lowerKind = kind?.toLowerCase()
     switch (lowerKind) {
@@ -239,7 +250,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   alt={feature.kind || 'feature'}
                   className="feature-icon"
                 />
-                <span className="feature-name">{feature.label || feature.id}</span>
+                {renamingFeatureId === feature.id ? (
+                  <input
+                    className="feature-name-input"
+                    value={renameValue}
+                    autoFocus
+                    onClick={e => e.stopPropagation()}
+                    onChange={e => setRenameValue(e.target.value)}
+                    onBlur={() => commitRename(feature)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.currentTarget.blur() }
+                      if (e.key === 'Escape') { setRenamingFeatureId(null) }
+                      e.stopPropagation()
+                    }}
+                  />
+                ) : (
+                  <span
+                    className="feature-name"
+                    onClick={e => {
+                      e.stopPropagation()
+                      setRenamingFeatureId(feature.id)
+                      setRenameValue(feature.label || feature.id)
+                    }}
+                  >
+                    {feature.label || feature.id}
+                  </span>
+                )}
                 {feature.kind === 'sketch' && feature.id !== editingFeatureId && (
                   <button
                     className="feature-edit-btn"

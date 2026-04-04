@@ -296,3 +296,4 @@ export type Mutation =
   | { type: 'set_feature_visibility'; featureId: string; visible: boolean }
   | { type: 'add_plane'; featureId: string; label?: string }
   | { type: 'set_plane_definition_field'; featureId: string; field: string; value: string | number }
+  | { type: 'rename_feature'; featureId: string; label: string }

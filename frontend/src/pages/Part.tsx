@@ -71,6 +71,8 @@ function describeMutation(m: Mutation): string {
       return `add ${m.label || m.featureId}`
     case 'set_plane_definition_field':
       return `edit plane ${m.featureId}: ${m.field}`
+    case 'rename_feature':
+      return `rename ${m.featureId} to ${m.label}`
   }
 }
 
