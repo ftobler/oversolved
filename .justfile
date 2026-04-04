@@ -31,9 +31,16 @@ frontend:
     npx vitest run
     npm run build
 
+
+runf:
+    just run_front
+
 [working-directory: "frontend"]
 run_front:
     npm run dev
+
+runb:
+    just run_back
 
 run_back:
     oversolved --debug
