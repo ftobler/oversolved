@@ -984,29 +984,43 @@ def icon_eye(ctx):
 
 @icon("frontend/src/assets/icons/icon-eye-off.svg")
 def icon_eye_off(ctx):
-    """Icon for Eye with strikethrough: hidden state."""
+    """Icon for Eye with strikethrough: hidden state, with eyelids."""
     x = 0.5
     y = 0.3
     r = 0.4
     angle = 0.15
+    eyelid_angle = 0.25
+    eyelid_len = 0.1
 
     # Eye outline bottom half
     ctx.arc(x, y, r, math.pi * angle, math.pi * (1 - angle))
     stroke(ctx, 1.5)
 
-    # # Eye outline top half
-    # ctx.arc(x, 1 - y, r, math.pi * (1 + angle), math.pi * (1 - (1 + angle)))
-    # stroke(ctx, 1.5)
-
-    # # Pupil (small filled circle)
-    # ctx.arc(0.5, 0.5, px(2), 0, 2 * math.pi)
-    # ctx.fill()
-
-    # strikethrough line
+    # Strikethrough line
     strike = 0.25
     ctx.move_to(strike, strike)
     ctx.line_to(1 - strike, 1 - strike)
     stroke(ctx, 1.5)
+
+    # Eyelids: small lines at the arc, parametric
+    n_lids = 5
+    arc_start = math.pi * eyelid_angle
+    arc_end = math.pi * (1 - eyelid_angle)
+    for i in range(n_lids):
+        t = i / (n_lids - 1) if n_lids > 1 else 0.5
+        theta = arc_start + (arc_end - arc_start) * t
+        # Start point on arc
+        px0 = x + r * math.cos(theta)
+        py0 = y + r * math.sin(theta)
+        # Outward normal direction
+        nx = math.cos(theta)
+        ny = math.sin(theta)
+        # End point (short line outward)
+        px1 = px0 + eyelid_len * nx
+        py1 = py0 + eyelid_len * ny
+        ctx.move_to(px0, py0)
+        ctx.line_to(px1, py1)
+        stroke(ctx, 1.5)
 
 
 @icon("frontend/src/assets/icons/exit-sketch.svg")
