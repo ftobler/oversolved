@@ -156,7 +156,7 @@ export default function Viewport({
       style={{ position: 'relative', width: '100%', height: '100%' }}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
-      onContextMenu={e => e.preventDefault()}
+      onContextMenu={e => { e.preventDefault(); }}
     >
       <Canvas
         style={{ width: '100%', height: '100%', background: '#111' }}

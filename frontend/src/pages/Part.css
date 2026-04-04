@@ -91,6 +91,11 @@
   font-size: 12px;
   color: #ccc;
   cursor: pointer;
+  /* Disable browser builtin context menu on features-list */
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .feature-icon {

@@ -242,7 +242,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onDrop={(e) => onRollbackDrop(e, index)}
                 onClick={() => onToggleSelect(`@${feature.id}`)}
                 onDoubleClick={() => feature.kind === 'sketch' ? onEnterEditSketch(feature.id) : undefined}
-                onContextMenu={(e) => { e.stopPropagation(); onRightClick([e.clientX, e.clientY], feature.id) }}
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onRightClick([e.clientX, e.clientY], feature.id) }}
                 style={{ flexWrap: 'wrap' }}
               >
                 <img
