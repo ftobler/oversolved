@@ -65,7 +65,7 @@ def solve(yaml_str: str) -> dict:
         if "geometry" in feature_result:
             _register_solved_geometry(global_repo, feature["id"], feature, feature_result["geometry"])
         # Store plane_transform so downstream plane features can convert 2D sketch
-        # coordinates to 3D world coordinates (used by three_point, through_point, etc.)
+        # coordinates to 3D world coordinates (used by three_point, plane_point, etc.)
         if "plane_transform" in feature_result:
             pt = feature_result["plane_transform"]
             rot = pt["rotation"]
@@ -1000,7 +1000,12 @@ def _plane_on_face_edge_angle(definition: dict, global_repo: Repository) -> tupl
 
 
 def _plane_edge_point(definition: dict, global_repo: Repository) -> tuple:
-    """Plane with X axis along an edge and origin at a point."""
+    """Plane with X axis along an edge and origin at a point.
+
+    The plane's origin is at the given point, x_axis is along the line direction,
+    and y_axis points from the point toward the line (perpendicular projection),
+    making the plane pivot around the line.
+    """
     edge_str = definition['edge']
     point_str = definition['point']
 
@@ -1011,16 +1016,27 @@ def _plane_edge_point(definition: dict, global_repo: Repository) -> tuple:
     if point_ref is None:
         raise ValueError(f"point not found: {point_str!r}")
 
-    origin = _get_point_3d(point_ref, global_repo)
     edge_start, edge_end = _get_edge_3d(edge, global_repo)
     x_axis = _normalize(edge_end - edge_start)
+    origin = _get_point_3d(point_ref, global_repo)
+    point_3d = origin
 
-    if abs(x_axis[2]) < 0.9:
-        arbitrary = np.array([0.0, 0.0, 1.0])
+    # Project point onto the line
+    t = float(np.dot(point_3d - edge_start, x_axis))
+    projected_point = edge_start + x_axis * t
+
+    # y_axis points from point toward its projection on the line
+    point_to_projection = projected_point - point_3d
+    if np.linalg.norm(point_to_projection) > 1e-10:
+        y_axis = _normalize(point_to_projection)
     else:
-        arbitrary = np.array([1.0, 0.0, 0.0])
+        # Point is on the line, use perpendicular direction
+        if abs(x_axis[2]) < 0.9:
+            arbitrary = np.array([0.0, 0.0, 1.0])
+        else:
+            arbitrary = np.array([1.0, 0.0, 0.0])
+        y_axis = _normalize(np.cross(x_axis, arbitrary))
 
-    y_axis = _normalize(np.cross(x_axis, arbitrary))
     normal = np.cross(x_axis, y_axis)
     return origin, x_axis, y_axis, normal
 
@@ -1110,7 +1126,7 @@ def _solve_plane(feature: dict, global_repo: Repository) -> dict:
 
         if mode == 'three_point':
             origin, x_axis, y_axis, normal = _plane_three_point(definition, global_repo)
-        elif mode == 'through_point':
+        elif mode == 'plane_point':
             origin, x_axis, y_axis, normal = _plane_through_point(definition, global_repo)
         elif mode == 'line_angle':
             origin, x_axis, y_axis, normal = _plane_line_angle(definition, global_repo)

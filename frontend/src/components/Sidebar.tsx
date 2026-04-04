@@ -120,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <option value="offset">Offset from plane</option>
-            <option value="through_point">Through point</option>
+            <option value="plane_point">Plane through point</option>
             <option value="three_point">Three-point plane</option>
             <option value="line_angle">Rotate on line</option>
             <option value="edge_point">Line and point</option>
@@ -132,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {numField('offset', 'Offset', 0)}
           </>
         )}
-        {mode === 'through_point' && (
+        {mode === 'plane_point' && (
           <>
             {refPlaneRow}
             <div className="plane-editor-row">

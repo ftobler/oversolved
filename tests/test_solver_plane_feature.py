@@ -665,8 +665,8 @@ def test_plane_chain_geometry_follows_when_origin_sketch_changes_plane():
     )
 
 
-def test_plane_through_point_offset():
-    """through_point mode: plane parallel to reference, origin at a given sketch point."""
+def test_plane_plane_point_offset():
+    """plane_point mode: plane parallel to reference, origin at a given sketch point."""
     import numpy as np
     spec = {
         'features': [
@@ -686,7 +686,7 @@ def test_plane_through_point_offset():
                 'id': 'plane1',
                 'kind': 'plane',
                 'definition': {
-                    'mode': 'through_point',
+                    'mode': 'plane_point',
                     'plane': '@builtin_plane_top',
                     'point': '@sketch0/p1/xy',
                 },
@@ -1131,8 +1131,8 @@ def test_plane_offset_right_plane():
     np.testing.assert_array_almost_equal(plane['normal'], [1, 0, 0], decimal=5)
 
 
-def test_plane_through_point_right_plane():
-    """Test through_point mode with Right plane as reference."""
+def test_plane_plane_point_right_plane():
+    """Test plane_point mode with Right plane as reference."""
     import numpy as np
     # Create a sketch on Right plane with a point, then create a plane through that point
     spec = {
@@ -1151,7 +1151,7 @@ def test_plane_through_point_right_plane():
                 'id': 'plane1',
                 'kind': 'plane',
                 'definition': {
-                    'mode': 'through_point',
+                    'mode': 'plane_point',
                     'plane': '@builtin_plane_right',
                     'point': '@sketch0/p1/xy',
                 },
@@ -1170,7 +1170,7 @@ def test_plane_through_point_right_plane():
     # 3D point = [0,0,0] + 5*[0,0,1] + 3*[0,1,0] = [0,3,5]
     # Through-point moves the origin to the projection of [0,3,5] onto Right plane normal [1,0,0]
     # Projection = [0,3,5] · [1,0,0] = 0 along X, so origin stays at [0,0,0]
-    # But wait: through_point projects the point onto the plane normal direction
+    # But wait: plane_point projects the point onto the plane normal direction
     # For Right plane, that's the X direction; point is at [0,3,5], so x-component is 0
     # Origin should be at distance 0 along the normal = [0,0,0]
     np.testing.assert_array_almost_equal(plane['origin'], [0, 0, 0], decimal=5)
@@ -1295,8 +1295,8 @@ def test_plane_three_point_concatenated_format():
     np.testing.assert_almost_equal(d3, 0.0, decimal=5)
 
 
-def test_plane_through_point_concatenated_format():
-    """Test through_point plane with concatenated query format."""
+def test_plane_plane_point_concatenated_format():
+    """Test plane_point plane with concatenated query format."""
     spec = {
         'features': [
             {
@@ -1315,7 +1315,7 @@ def test_plane_through_point_concatenated_format():
                 'id': 'plane1',
                 'kind': 'plane',
                 'definition': {
-                    'mode': 'through_point',
+                    'mode': 'plane_point',
                     'plane': '@builtin_plane_top',
                     'point': '@sketch1pt1xy',
                 },
@@ -1357,6 +1357,57 @@ def test_plane_line_angle_concatenated_format():
     result = solve_features(spec)
 
     assert result['features'][1]['status'] == 'ok', result['features'][1]
+
+
+def test_plane_edge_point_pivots_on_line():
+    """edge_point mode: plane pivots on line, passes through point.
+
+    The plane should contain the line (origin on line, x_axis along line).
+    The y_axis should point from the line toward the given point.
+    """
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'line1', 'kind': 'line'},
+                    {'id': 'pt1', 'kind': 'point'},
+                ],
+                'initial': {
+                    'line1': [1.0, 2.0, 4.0, 2.0],  # horizontal line from (1,2) to (4,2)
+                    'pt1': [2.5, 5.0],  # point above the line at (2.5, 5)
+                },
+                'constraints': [],
+            },
+            {
+                'id': 'plane1',
+                'kind': 'plane',
+                'definition': {
+                    'mode': 'edge_point',
+                    'edge': '@sketch0line1',
+                    'point': '@sketch0pt1xy',
+                },
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    assert result['features'][1]['status'] == 'ok', result['features'][1]
+    plane = result['features'][1]['plane']
+
+    # On front plane: sketch point (2.5, 5) maps to world (2.5, 5, 0)
+    # Line goes from (1, 2, 0) to (4, 2, 0), so x_axis is [1, 0, 0]
+    # Point is at (2.5, 5, 0), projecting onto line: t = dot((2.5-1, 5-2, 0), (1,0,0)) = 1.5
+    # Projection is at (2.5, 2, 0)
+    # Origin should be at point (2.5, 5, 0)
+    # y_axis points from point toward projection: (2.5, 2, 0) - (2.5, 5, 0) = [0, -3, 0], normalized = [0, -1, 0]
+    # normal = cross([1,0,0], [0,-1,0]) = [0, 0, -1]
+    np.testing.assert_array_almost_equal(plane['x_axis'], [1, 0, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['y_axis'], [0, -1, 0], decimal=5)
+    np.testing.assert_array_almost_equal(plane['normal'], [0, 0, -1], decimal=5)
+    np.testing.assert_array_almost_equal(plane['origin'], [2.5, 5, 0], decimal=5)
 
 
 def test_plane_edge_point_concatenated_format():

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { Canvas } from '@react-three/fiber'
-import { OrthographicCamera, Line } from '@react-three/drei'
+import { Canvas, useThree } from '@react-three/fiber'
+import { OrthographicCamera, Line, Text } from '@react-three/drei'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { SketchData, Feature, PlaneTransform } from '../types/cad'
 import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
@@ -40,7 +41,25 @@ const UDPLANE_SIZE = 1
 const UDPH = UDPLANE_SIZE / 2
 const UDPLANE_BORDER: [number,number,number][] = [[-UDPH,-UDPH,0],[UDPH,-UDPH,0],[UDPH,UDPH,0],[-UDPH,UDPH,0],[-UDPH,-UDPH,0]]
 
-function UserDefinedPlane({ featureId, planeTransform }: { featureId: string; label: string; planeTransform: PlaneTransform }) {
+function PlaneLabel({ x, y, children }: { x: number; y: number; children: string }) {
+  const groupRef = useRef<THREE.Group>(null)
+  const { camera } = useThree()
+  useFrame(() => {
+    if (groupRef.current) {
+      const s = 12 / (('zoom' in camera) ? (camera as THREE.OrthographicCamera).zoom : 1)
+      groupRef.current.scale.setScalar(s)
+    }
+  })
+  return (
+    <group ref={groupRef} position={[x + 0.03, y - 0.02, 0.001]}>
+      <Text fontSize={3} color="#888888" fillOpacity={0.20} anchorX="left" anchorY="top">
+        {children}
+      </Text>
+    </group>
+  )
+}
+
+function UserDefinedPlane({ featureId, label, planeTransform }: { featureId: string; label: string; planeTransform: PlaneTransform }) {
   const [hovered, setHovered] = useState(false)
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
@@ -76,6 +95,7 @@ function UserDefinedPlane({ featureId, planeTransform }: { featureId: string; la
         </mesh>
       )}
       <Line points={UDPLANE_BORDER} color={hovered || selected ? '#4fc3f7' : '#666666'} lineWidth={1} />
+      <PlaneLabel x={-UDPH} y={UDPH}>{label}</PlaneLabel>
     </group>
   )
 }

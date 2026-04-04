@@ -40,7 +40,7 @@ export interface PartEntityDef {
 }
 
 export interface PlaneDef {
-  mode?: 'offset' | 'three_point' | 'through_point' | 'line_angle' | 'edge_point' | 'on_face' | 'on_face_edge_angle'
+  mode?: 'offset' | 'three_point' | 'plane_point' | 'line_angle' | 'edge_point' | 'on_face' | 'on_face_edge_angle'
   plane?: string
   offset?: number
   p1?: string
