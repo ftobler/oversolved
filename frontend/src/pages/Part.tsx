@@ -14,6 +14,7 @@ import RightClickMenu from '../components/RightClickMenu'
 import type { ContextMenuItem } from '../components/RightClickMenu'
 import { BugReporter } from '../components/BugReporter'
 import { Sidebar } from '../components/Sidebar'
+import FooterMeasurementDisplay from '../components/FooterMeasurementDisplay'
 import './Part.css'
 
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
@@ -24,6 +25,7 @@ import featureAddPlaneIcon from '../assets/icons/feature-add-plane.svg'
 import toolbarPlayIcon from '../assets/icons/toolbar-play.svg'
 import toolbarCopyCodeIcon from '../assets/icons/toolbar-copy-code.svg'
 import toolbarCopyResultIcon from '../assets/icons/toolbar-copy-result.svg'
+import measurementIcon from '../assets/icons/measurement.svg'
 
 import contextRebuildIcon from '../assets/icons/context-rebuild.svg'
 import contextExitIcon from '../assets/icons/context-exit.svg'
@@ -676,24 +678,27 @@ export default function Part() {
       </div>
       <footer className="doc-footer">
         <p>Copyright 2026 - Oversolved</p>
-        <button
-          className={`footer-debug-btn ${debugOpen ? 'active' : ''}`}
-          title="Toggle debug panel"
-          onClick={() => setDebugOpen(v => !v)}
-        >
-          <span className="material-icons-outlined">bug_report</span>
-        </button>
-        <button
-          className="footer-debug-btn"
-          title={showDebugHit ? "Hide debug collision rendering" : "Show debug collision rendering"}
-          onClick={() => setShowDebugHit(!showDebugHit)}
-        >
-          {showDebugHit ? (
-            <span className="material-icons-outlined">visibility</span>
-          ) : (
-            <span className="material-icons-outlined">visibility_off</span>
-          )}
-        </button>
+        <FooterMeasurementDisplay activeFeatureId={editingFeatureId ?? undefined} solveResults={solveResults} measurementIcon={measurementIcon} />
+        <div className="debug-buttons">
+          <button
+            className={`footer-debug-btn ${debugOpen ? 'active' : ''}`}
+            title="Toggle debug panel"
+            onClick={() => setDebugOpen(v => !v)}
+          >
+            <span className="material-icons-outlined">bug_report</span>
+          </button>
+          <button
+            className="footer-debug-btn"
+            title={showDebugHit ? "Hide debug collision rendering" : "Show debug collision rendering"}
+            onClick={() => setShowDebugHit(!showDebugHit)}
+          >
+            {showDebugHit ? (
+              <span className="material-icons-outlined">visibility</span>
+            ) : (
+              <span className="material-icons-outlined">visibility_off</span>
+            )}
+          </button>
+        </div>
       </footer>
       {contextMenu && (
         <RightClickMenu

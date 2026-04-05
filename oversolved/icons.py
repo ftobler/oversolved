@@ -766,6 +766,30 @@ def feature_code(ctx):
     draw_brace(tip_x=0.85, outer_x=0.62, cy=cy, half_h=half_h, r=r)
 
 
+@icon("frontend/src/assets/icons/measurement.svg", angle=90)
+def measurement(ctx):
+    # Ruler icon with tick marks (centered)
+    x_start, x_end = 0.12, 0.87
+
+    # Ruler body (centered, rectangular outline)
+    y_top, y_bottom = 0.35, 0.65
+    ctx.move_to(x_start, y_top)
+    ctx.line_to(x_end, y_top)
+    ctx.line_to(x_end, y_bottom)
+    ctx.line_to(x_start, y_bottom)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # Tick marks (ruler scale) - 4 equal ticks
+    tick_positions = [0.25, 0.4167, 0.5833, 0.75]
+    tick_height = 0.18
+
+    for x in tick_positions:
+        ctx.move_to(x, y_top)
+        ctx.line_to(x, y_top + tick_height)
+        stroke(ctx, 1.5)
+
+
 @icon("frontend/src/assets/icons/constraint-line-swap.svg")
 def constraint_line_swap(ctx):
     # Dashed line at the top
