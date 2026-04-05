@@ -144,16 +144,18 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
               ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
             }
           } else if (feature.plane) {
+            const planeData = feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }
             results[id] = {
               solved: {},
               status: feature.status,
+              plane: planeData,
               plane_transform: {
                 rotation: [
-                  ...(feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }).x_axis,
-                  ...(feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }).y_axis,
-                  ...(feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }).normal,
+                  ...planeData.x_axis,
+                  ...planeData.y_axis,
+                  ...planeData.normal,
                 ],
-                origin: (feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }).origin,
+                origin: planeData.origin,
               },
             }
           } else {

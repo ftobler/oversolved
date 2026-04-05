@@ -188,38 +188,128 @@ describe('Measurement Selection and Evaluation', () => {
     })
   })
 
-  describe('15. vertex + builtin plane (filtered)', () => {
-    it('returns empty - planes are filtered', () => {
-      const result = computeMeasurements(sel(vertex('L1', 'start'), '@builtin_plane_front'), sketch)
-      expect(result).toEqual([])
+  describe('15. vertex + plane distance', () => {
+    const solveResults = {
+      builtin_plane_front: {
+        plane: {
+          origin: [0, 0, 5] as [number, number, number],
+          normal: [0, 0, 1] as [number, number, number],
+          x_axis: [1, 0, 0] as [number, number, number],
+          y_axis: [0, 1, 0] as [number, number, number],
+        },
+      },
+    }
+    it('selects plane distance measurement', () => {
+      const result = computeMeasurements(
+        sel(vertex('L1', 'start'), '@builtin_plane_front'),
+        sketch,
+        solveResults
+      )
+      expect(result).toHaveLength(1)
+      expect(result[0]).toContain('plane distance')
+    })
+    it('evaluates plane distance correctly', () => {
+      const result = computeMeasurements(
+        sel(vertex('L1', 'start'), '@builtin_plane_front'),
+        sketch,
+        solveResults
+      )
+      expect(result[0]).toMatch(/plane distance: \d+\.\d+ mm/)
+      expect(result[0]).toEqual('plane distance: 5.00 mm')
     })
   })
 
-  describe('16. vertex + boundary surface (filtered)', () => {
-    it('returns empty - faces are filtered', () => {
+  describe('16. two parallel planes distance', () => {
+    const solveResults = {
+      plane1: {
+        plane: {
+          origin: [0, 0, 0] as [number, number, number],
+          normal: [0, 0, 1] as [number, number, number],
+          x_axis: [1, 0, 0] as [number, number, number],
+          y_axis: [0, 1, 0] as [number, number, number],
+        },
+      },
+      plane2: {
+        plane: {
+          origin: [0, 0, 5] as [number, number, number],
+          normal: [0, 0, 1] as [number, number, number],
+          x_axis: [1, 0, 0] as [number, number, number],
+          y_axis: [0, 1, 0] as [number, number, number],
+        },
+      },
+    }
+    it('selects plane distance measurement', () => {
       const result = computeMeasurements(
-        sel(vertex('L1', 'start'), 'face:sketch1:?3;@sketch1abc'),
-        sketch
+        sel('@plane1', '@plane2'),
+        sketch,
+        solveResults
+      )
+      expect(result).toHaveLength(1)
+      expect(result[0]).toContain('plane distance')
+    })
+    it('evaluates plane distance correctly', () => {
+      const result = computeMeasurements(
+        sel('@plane1', '@plane2'),
+        sketch,
+        solveResults
+      )
+      expect(result[0]).toEqual('plane distance: 5.00 mm')
+    })
+  })
+
+  describe('17. two non-parallel planes', () => {
+    const solveResults = {
+      plane1: {
+        plane: {
+          origin: [0, 0, 0] as [number, number, number],
+          normal: [0, 0, 1] as [number, number, number],
+          x_axis: [1, 0, 0] as [number, number, number],
+          y_axis: [0, 1, 0] as [number, number, number],
+        },
+      },
+      plane2: {
+        plane: {
+          origin: [0, 0, 0] as [number, number, number],
+          normal: [1, 0, 0] as [number, number, number],
+          x_axis: [0, 1, 0] as [number, number, number],
+          y_axis: [0, 0, 1] as [number, number, number],
+        },
+      },
+    }
+    it('returns empty - non-parallel planes have no standard measurement', () => {
+      const result = computeMeasurements(
+        sel('@plane1', '@plane2'),
+        sketch,
+        solveResults
       )
       expect(result).toEqual([])
     })
   })
 
-  describe('17. two parallel planes/boundaries', () => {
-    it('returns empty - no 3D topology data at sketch level', () => {
+  describe('18. builtin plane pair (perpendicular)', () => {
+    const solveResults = {
+      builtin_plane_front: {
+        plane: {
+          origin: [0, 0, 0] as [number, number, number],
+          normal: [0, 0, 1] as [number, number, number],
+          x_axis: [1, 0, 0] as [number, number, number],
+          y_axis: [0, 1, 0] as [number, number, number],
+        },
+      },
+      builtin_plane_top: {
+        plane: {
+          origin: [0, 0, 0] as [number, number, number],
+          normal: [0, 1, 0] as [number, number, number],
+          x_axis: [1, 0, 0] as [number, number, number],
+          y_axis: [0, 0, 1] as [number, number, number],
+        },
+      },
+    }
+    it('returns empty - perpendicular planes have no measurement', () => {
       const result = computeMeasurements(
-        sel('@builtin_plane_front', '@builtin_plane_back'),
-        sketch
-      )
-      expect(result).toEqual([])
-    })
-  })
-
-  describe('18. two non-parallel planes/boundaries', () => {
-    it('returns empty - no 3D topology data at sketch level', () => {
-      const result = computeMeasurements(
-        sel('@builtin_plane_front', '@builtin_plane_right'),
-        sketch
+        sel('@builtin_plane_front', '@builtin_plane_top'),
+        sketch,
+        solveResults
       )
       expect(result).toEqual([])
     })

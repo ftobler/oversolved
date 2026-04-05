@@ -1,5 +1,5 @@
 import type { Sketch, LineSegment, Arc, Circle, PointEntity } from '../types/cad'
-import { measureSingleEntity, measurePair } from '../registry/measurementRegistry'
+import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, type Plane3D } from '../registry/measurementRegistry'
 
 /**
  * Compute the best measurement for a set of selected entities.
@@ -17,9 +17,19 @@ export function computeMeasurements(
   const arcs: Arc[] = []
   const circles: Circle[] = []
   const points: PointEntity[] = []
+  const planes: Plane3D[] = []
 
   for (const id of selection) {
-    if (id.startsWith('@builtin_') || id.startsWith('@feature')) {
+    // Parse plane selections starting with @
+    if (id.startsWith('@')) {
+      const featureId = id.slice(1)
+      if (solveResults) {
+        const featureData = solveResults[featureId] as Record<string, unknown> | undefined
+        const plane = featureData?.plane as Plane3D | undefined
+        if (plane) {
+          planes.push(plane)
+        }
+      }
       continue
     }
 
@@ -78,16 +88,17 @@ export function computeMeasurements(
     arc: arcs.length,
     circle: circles.length,
     point: points.length,
+    plane: planes.length,
   }
   const hasValidEntities = Object.values(entityCounts).some(count => count > 0)
 
-  // Single vertex: no measurement
-  if (points.length === 1 && lines.length === 0 && arcs.length === 0 && circles.length === 0) {
+  // Single vertex: no measurement (unless there's a plane)
+  if (points.length === 1 && lines.length === 0 && arcs.length === 0 && circles.length === 0 && planes.length === 0) {
     return []
   }
 
-  // Three or more vertices only: no measurement
-  if (points.length >= 3 && lines.length === 0 && arcs.length === 0 && circles.length === 0) {
+  // Three or more vertices only: no measurement (unless there's a plane)
+  if (points.length >= 3 && lines.length === 0 && arcs.length === 0 && circles.length === 0 && planes.length === 0) {
     return []
   }
 
@@ -109,6 +120,22 @@ export function computeMeasurements(
     for (const entity of points) {
       const result = measureSingleEntity(entity)
       if (result.length > 0) return result
+    }
+  }
+
+  // Plane-only measurements (2+ planes)
+  if (planes.length >= 2 && lines.length === 0 && arcs.length === 0 && circles.length === 0 && points.length === 0) {
+    const result = measurePlanes(planes[0], planes[1])
+    if (result.length > 0) return result
+  }
+
+  // Vertex + plane measurements
+  if (points.length > 0 && planes.length > 0 && lines.length === 0 && arcs.length === 0 && circles.length === 0) {
+    for (const point of points) {
+      for (const plane of planes) {
+        const result = measurePointToPlane(point, plane)
+        if (result.length > 0) return result
+      }
     }
   }
 
@@ -148,11 +175,16 @@ export function computeMeasurements(
 
   // No match found
   if (hasValidEntities) {
+    // If only planes are selected, return empty (non-parallel planes have no measurement)
+    if (planes.length > 0 && lines.length === 0 && arcs.length === 0 && circles.length === 0 && points.length === 0) {
+      return []
+    }
     const parts: string[] = []
     if (entityCounts.line > 0) parts.push(`${entityCounts.line}x line`)
     if (entityCounts.arc > 0) parts.push(`${entityCounts.arc}x arc`)
     if (entityCounts.circle > 0) parts.push(`${entityCounts.circle}x circle`)
     if (entityCounts.point > 0) parts.push(`${entityCounts.point}x point`)
+    if (entityCounts.plane > 0) parts.push(`${entityCounts.plane}x plane`)
     return [`No match for ${parts.join(', ')}`]
   }
 
