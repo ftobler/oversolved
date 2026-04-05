@@ -153,18 +153,6 @@ export default function Part() {
     [features]
   )
 
-  // Combine sketches from all visible features into a single sketch object for measurement display
-  const combinedSketch = useMemo(() => {
-    const sketch: Sketch = {}
-    for (const feature of features) {
-      const solveResult = solveResults?.[feature.id]
-      if (solveResult && solveResult.solved) {
-        Object.assign(sketch, solveResult.solved)
-      }
-    }
-    return sketch
-  }, [features, solveResults])
-
   // Initialize rollback position once on first doc load.
   useEffect(() => {
     if (doc && !rollbackInitialized.current) {
@@ -181,6 +169,22 @@ export default function Part() {
     const sketches = features.slice(0, limit).filter(f => f.kind === 'sketch' && visibleFeatures.has(f.id))
     return sketches.some(f => f.id === editingFeatureId) ? editingFeatureId : undefined
   }, [features, rollbackPosition, visibleFeatures, editingFeatureId])
+
+  // Measurement sketch: when editing a specific sketch, use its solve result;
+  // otherwise combine sketches from all visible features.
+  const measurementSketch = useMemo(() => {
+    if (activeSketchFeatureId && solveResults?.[activeSketchFeatureId]?.solved) {
+      return solveResults[activeSketchFeatureId].solved
+    }
+    const sketch: Sketch = {}
+    for (const feature of features) {
+      const solveResult = solveResults?.[feature.id]
+      if (solveResult && solveResult.solved) {
+        Object.assign(sketch, solveResult.solved)
+      }
+    }
+    return sketch
+  }, [activeSketchFeatureId, features, solveResults])
 
   const setMode = useCallback((newMode: 'sketch' | 'feature' | 'code') => {
     setModeRaw(prev => {
@@ -690,7 +694,7 @@ export default function Part() {
       </div>
       <footer className="doc-footer">
         <p>Copyright 2026 - Oversolved</p>
-        <FooterMeasurementDisplay sketch={combinedSketch} measurementIcon={measurementIcon} />
+        <FooterMeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} />
         <div className="debug-buttons">
           <button
             className={`footer-debug-btn ${debugOpen ? 'active' : ''}`}

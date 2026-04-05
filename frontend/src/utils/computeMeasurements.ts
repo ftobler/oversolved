@@ -26,11 +26,15 @@ export function computeMeasurements(
     }
 
     let entityId: string | undefined
+    let vertexRef: 'start' | 'end' | undefined
+
     if (id.startsWith('entity:')) {
-      entityId = id.slice(8)
+      const parts = id.split(':')
+      entityId = parts[2]
     } else if (id.startsWith('vertex:')) {
       const parts = id.split(':')
       entityId = parts[2]
+      vertexRef = (parts[3] as 'start' | 'end') || undefined
     } else {
       continue
     }
@@ -39,6 +43,16 @@ export function computeMeasurements(
 
     const entity = sketch[entityId]
     if (!entity) continue
+
+    // If this is a vertex selection, extract the actual point coordinates
+    if (vertexRef && ('start' in entity || 'end' in entity)) {
+      const e = entity as unknown as Record<string, unknown>
+      const coords = vertexRef === 'start' ? (e.start as [number, number]) : (e.end as [number, number])
+      if (coords) {
+        points.push({ x: coords[0], y: coords[1] })
+        continue
+      }
+    }
 
     // Determine entity type by checking which properties exist
     if ('start' in entity && 'end' in entity) {
@@ -99,10 +113,24 @@ export function computeMeasurements(
     for (let j = i + 1; j < allEntities.length; j++) {
       const e1 = allEntities[i]
       const e2 = allEntities[j]
-      const result = measurePair({
-        [e1.type]: e1.entity,
-        [e2.type]: e2.entity,
-      })
+
+      // Build measurement pair object
+      let pair: Record<string, LineSegment | Arc | Circle | PointEntity>
+      if (e1.type === e2.type) {
+        // Same type: use indexed keys (type1, type2)
+        pair = {
+          [`${e1.type}1`]: e1.entity,
+          [`${e1.type}2`]: e2.entity,
+        }
+      } else {
+        // Different types: use type names
+        pair = {
+          [e1.type]: e1.entity,
+          [e2.type]: e2.entity,
+        }
+      }
+
+      const result = measurePair(pair)
       if (result.length > 0) results.push(...result)
     }
   }

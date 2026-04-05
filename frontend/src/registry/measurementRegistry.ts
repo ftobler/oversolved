@@ -13,10 +13,13 @@ export interface SingleEntityRule {
 export interface MultiEntityRule {
   label: string
   evaluate: (entities: {
+    line?: LineSegment
     line1?: LineSegment
     line2?: LineSegment
+    arc?: Arc
     arc1?: Arc
     arc2?: Arc
+    point?: PointEntity
     point1?: PointEntity
     point2?: PointEntity
   }) => string[]
@@ -30,6 +33,8 @@ export const SINGLE_ENTITY_RULES: readonly SingleEntityRule[] = [
   {
     label: 'Circle radius',
     evaluate: (entity) => {
+      const e = entity as unknown as Record<string, unknown>
+      if (!('center' in e && 'radius' in e && !('angle_start' in e))) return []
       const circle = entity as Circle
       const r = circle.radius || 0
       return [`[CIRCLE] r=${r.toFixed(2)} mm`]
@@ -39,6 +44,8 @@ export const SINGLE_ENTITY_RULES: readonly SingleEntityRule[] = [
   {
     label: 'Arc sweep',
     evaluate: (entity) => {
+      const e = entity as unknown as Record<string, unknown>
+      if (!('center' in e && 'radius' in e && 'angle_start' in e)) return []
       const arc = entity as Arc
       const r = arc.radius || 0
       const sweep = arc.angle_end - arc.angle_start
@@ -49,17 +56,18 @@ export const SINGLE_ENTITY_RULES: readonly SingleEntityRule[] = [
   {
     label: 'Line length',
     evaluate: (entity) => {
+      const e = entity as unknown as Record<string, unknown>
+      if (!('start' in e && 'end' in e && !('radius' in e))) return []
       const line = entity as LineSegment
       const length = Math.hypot(line.end[0] - line.start[0], line.end[1] - line.start[1])
       return [`[LINE] ${length.toFixed(2)} mm`]
     },
   },
-  // Point: coordinates
+  // Point: no measurement (vertices are not shown)
   {
-    label: 'Point coordinates',
-    evaluate: (entity) => {
-      const point = entity as PointEntity
-      return [`[POINT] (${point.x.toFixed(2)}, ${point.y.toFixed(2)})`]
+    label: 'Point',
+    evaluate: () => {
+      return []
     },
   },
 ]
@@ -72,8 +80,8 @@ export const MULTI_ENTITY_RULES: readonly MultiEntityRule[] = [
   {
     label: 'Point to line distance',
     evaluate: (entities) => {
-      const line = entities.line1 as LineSegment | undefined
-      const point = entities.point1 as PointEntity | undefined
+      const line = entities.line || entities.line1
+      const point = entities.point || entities.point1
       if (!line || !point) return []
       const [lx0, ly0] = line.start
       const [lx1, ly1] = line.end

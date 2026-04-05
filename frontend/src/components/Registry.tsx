@@ -18,10 +18,24 @@ export function Registry({ sketch }: RegistryProps) {
     const results: string[] = []
     for (const id of selection) {
       if (id.startsWith('entity:')) {
-        const entityId = id.slice(8)
+        const parts = id.split(':')
+        const entityId = parts[2]
         const entity = sketch[entityId]
         if (entity) {
           results.push(...measureSingleEntity(entity as LineSegment | Arc | Circle | PointEntity))
+        }
+      } else if (id.startsWith('vertex:')) {
+        const parts = id.split(':')
+        const entityId = parts[2]
+        const vertexRef = parts[3] as 'start' | 'end' | undefined
+        const entity = sketch[entityId]
+        if (entity && vertexRef && ('start' in entity || 'end' in entity)) {
+          const e = entity as unknown as Record<string, unknown>
+          const coords = vertexRef === 'start' ? (e.start as [number, number]) : (e.end as [number, number])
+          if (coords) {
+            const point: PointEntity = { x: coords[0], y: coords[1] }
+            results.push(...measureSingleEntity(point))
+          }
         }
       }
     }
