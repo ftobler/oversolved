@@ -21,17 +21,20 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
   return (
     <header className="app-header">
       <div className="app-header-left">
-        <button className="toolbar-btn burger" title="Documents" onClick={() => navigate('/documents')}>
+        <Link to="/documents" className="toolbar-btn burger" title="Documents">
           <span className="material-icons-outlined">menu</span>
-        </button>
-        <button className="logo" onClick={() => navigate('/')}>
+        </Link>
+        <Link to="/" className="logo">
           Oversolved
-        </button>
+        </Link>
         {title && <h2 className="doc-name">{title}</h2>}
         {children}
       </div>
       <div className="app-header-right">
         {rightContent}
+        <a href="/registry" target="_blank" rel="noopener noreferrer" className="toolbar-btn" title="Registry">
+          <span className="material-icons-outlined">app_registration</span>
+        </a>
         <Link to="/docs" className="toolbar-btn" title="Documentation">
           <span className="material-icons-outlined">help</span>
         </Link>
