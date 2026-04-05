@@ -123,7 +123,12 @@ export const MULTI_ENTITY_RULES: readonly MultiEntityRule[] = [
         const dist = Math.abs((bx0 - ax0) * (-lY) + (by0 - ay0) * lX) / lLen
         return [`parallel lines, distance: ${dist.toFixed(2)} mm`]
       }
-      const angle = Math.acos(Math.max(-1, Math.min(1, dot / (lLen * bLen))))
+      let angle = Math.acos(Math.max(-1, Math.min(1, dot / (lLen * bLen))))
+      // Always show acute angle (< 90°)
+      const halfPi = Math.PI / 2
+      if (angle > halfPi) {
+        angle = Math.PI - angle
+      }
       return [`angle: ${(angle * 180 / Math.PI).toFixed(1)}°`]
     },
   },

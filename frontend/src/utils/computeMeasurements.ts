@@ -2,18 +2,15 @@ import type { Sketch, LineSegment, Arc, Circle, PointEntity } from '../types/cad
 import { measureSingleEntity, measurePair } from '../registry/measurementRegistry'
 
 /**
- * Compute all possible measurement combinations for a set of selected entities.
- * Returns descriptions that can be displayed in the footer.
+ * Compute the best measurement for a set of selected entities.
+ * Returns a single measurement description (or empty if no match).
  *
- * Registry-based approach: rules are ordered by specificity. First match wins.
- * All measurements are displayed (like a selection list).
+ * Registry-based approach: rules are ordered by specificity. First matching rule wins.
  */
 export function computeMeasurements(
   selection: Set<string>,
   sketch: Sketch
 ): string[] {
-  const results: string[] = []
-
   // Group selections by entity type
   const lines: LineSegment[] = []
   const arcs: Arc[] = []
@@ -26,7 +23,7 @@ export function computeMeasurements(
     }
 
     let entityId: string | undefined
-    let vertexRef: 'start' | 'end' | undefined
+    let vertexRef: string | undefined
 
     if (id.startsWith('entity:')) {
       const parts = id.split(':')
@@ -34,7 +31,7 @@ export function computeMeasurements(
     } else if (id.startsWith('vertex:')) {
       const parts = id.split(':')
       entityId = parts[2]
-      vertexRef = (parts[3] as 'start' | 'end') || undefined
+      vertexRef = parts[3]
     } else {
       continue
     }
@@ -45,9 +42,9 @@ export function computeMeasurements(
     if (!entity) continue
 
     // If this is a vertex selection, extract the actual point coordinates
-    if (vertexRef && ('start' in entity || 'end' in entity)) {
+    if (vertexRef) {
       const e = entity as unknown as Record<string, unknown>
-      const coords = vertexRef === 'start' ? (e.start as [number, number]) : (e.end as [number, number])
+      const coords = e[vertexRef] as [number, number] | undefined
       if (coords) {
         points.push({ x: coords[0], y: coords[1] })
         continue
@@ -84,21 +81,22 @@ export function computeMeasurements(
   const hasValidEntities = Object.values(entityCounts).some(count => count > 0)
 
   // Use registry to evaluate single-entity measurements
+  // Stop at first match (registry rules are ordered by specificity)
   for (const entity of arcs) {
     const result = measureSingleEntity(entity)
-    if (result.length > 0) results.push(...result)
+    if (result.length > 0) return result
   }
   for (const entity of circles) {
     const result = measureSingleEntity(entity)
-    if (result.length > 0) results.push(...result)
+    if (result.length > 0) return result
   }
   for (const entity of lines) {
     const result = measureSingleEntity(entity)
-    if (result.length > 0) results.push(...result)
+    if (result.length > 0) return result
   }
   for (const entity of points) {
     const result = measureSingleEntity(entity)
-    if (result.length > 0) results.push(...result)
+    if (result.length > 0) return result
   }
 
   // Multi-entity measurements: try all pairs
@@ -131,19 +129,19 @@ export function computeMeasurements(
       }
 
       const result = measurePair(pair)
-      if (result.length > 0) results.push(...result)
+      if (result.length > 0) return result
     }
   }
 
-  // If we have valid entities but no measurements matched, show a descriptive message
-  if (hasValidEntities && results.length === 0) {
+  // No match found
+  if (hasValidEntities) {
     const parts: string[] = []
     if (entityCounts.line > 0) parts.push(`${entityCounts.line}x line`)
     if (entityCounts.arc > 0) parts.push(`${entityCounts.arc}x arc`)
     if (entityCounts.circle > 0) parts.push(`${entityCounts.circle}x circle`)
     if (entityCounts.point > 0) parts.push(`${entityCounts.point}x point`)
-    results.push(`No match for ${parts.join(', ')}`)
+    return [`No match for ${parts.join(', ')}`]
   }
 
-  return results
+  return []
 }

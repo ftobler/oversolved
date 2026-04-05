@@ -27,11 +27,11 @@ export function Registry({ sketch }: RegistryProps) {
       } else if (id.startsWith('vertex:')) {
         const parts = id.split(':')
         const entityId = parts[2]
-        const vertexRef = parts[3] as 'start' | 'end' | undefined
+        const vertexRef = parts[3]
         const entity = sketch[entityId]
-        if (entity && vertexRef && ('start' in entity || 'end' in entity)) {
+        if (entity && vertexRef) {
           const e = entity as unknown as Record<string, unknown>
-          const coords = vertexRef === 'start' ? (e.start as [number, number]) : (e.end as [number, number])
+          const coords = e[vertexRef] as [number, number] | undefined
           if (coords) {
             const point: PointEntity = { x: coords[0], y: coords[1] }
             results.push(...measureSingleEntity(point))
