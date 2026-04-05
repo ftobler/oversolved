@@ -28,6 +28,7 @@ npx vitest run
 ```
 
 ## Conventions
+- `code_guidelines.md` should help navigate the codebase.
 - Test driven development. Frontend changes must pass `just frontend`. Backend changes must pass `just backend`.
 - For each feature try to make a test.
 - Flask and CAD solver backend lives in `oversolved/`.

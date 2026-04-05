@@ -1,0 +1,290 @@
+# Code Guidelines
+
+Comprehensive coding standards for the Oversolved CAD system.
+
+## 1. Project Philosophy
+
+### Test-Driven Development
+
+**Rule:** Write failing tests **before** implementation.
+
+- Tests live in `__tests__/` adjacent to module under test
+- Pure logic must have unit tests
+- No mocked store methods where Zustand works directly
+- Frontend changes must pass `just frontend`
+- Backend changes must pass `just backend`
+
+## 2. Code Style
+
+### Commenting
+
+- Use two spaces before inline comments: `x = 1  # comment`
+- Comments must describe **intent**, not restate the code
+- Do not add banner comments or ASCII-art dividers (e.g. `====`, `----`)
+- Keep separators minimal
+
+**Bad:**
+```python
+# Calculate the length of line segment AB
+length = ((A.x - B.x) ** 2 + (A.y - B.y) ** 2) ** 0.5
+```
+
+**Good:**
+```python
+length = distance_between(A, B)
+```
+
+### File Size
+
+- Try to keep files shorter than 1k lines
+- Split large modules into smaller, focused files
+
+### Character Usage
+
+- **Do not** use em-dashes (—) or en-dashes (–)
+- **Do not** use emojis in code and documentation
+
+## 3. Backend Conventions
+
+### Database Usage
+
+**Rule:** Always use context managers for transactions.
+
+```python
+with db.transaction():
+    cur = db.execute("INSERT INTO features VALUES (?, ?, ?)", ...)
+```
+
+- Avoid: "Cannot operate on a closed database"
+- Only affects production mode (TESTING config)
+
+### Response Format
+
+**Rule:** Return only newly computed data, not input echo.
+
+```python
+# GOOD - only computed result
+{
+  "geometry": {...}
+}
+```
+
+## 4. Frontend Conventions
+
+### Command System
+
+**Rule:** All user actions must route through `executeCommand()`.
+
+```tsx
+// GOOD - unified command path
+onClick={() => executeCommand('set_tool_line')}
+```
+
+**Keymap construction:**
+```ts
+export const KEYMAP: Record<string, string> = {
+  ...CORE_KEYMAP,
+  ...Object.fromEntries(CONSTRAINT_SHORTCUTS),
+  ...Object.fromEntries(ENTITY_SHORTCUTS),
+}
+```
+
+### Registry Pattern
+
+**Rule:** Define tools/constraints in registries, derive shortcuts automatically.
+
+```ts
+// constraintRegistry.ts
+export const CONSTRAINTS: readonly ConstraintDef[] = [
+  { kind: 'horizontal', toolbarIcon: 'horizontal', showInToolbar: true },
+  { kind: 'vertical', toolbarIcon: 'vertical', showInToolbar: true },
+]
+```
+
+**Location:** `frontend/src/registry/constraintRegistry.ts`, `frontend/src/registry/entityRegistry.ts`
+
+### State Store
+
+**Rule:** Use Zustand selectors sparingly; prefer command dispatch.
+
+```ts
+// GOOD - route through executeCommand
+onClick={() => executeCommand('apply_horizontal')}
+```
+
+**Location:** `frontend/src/stores/sketchEditorStore.ts`
+
+## 5. Query System
+
+### ID Generation
+
+**Rule:** Generate unique IDs using base64url encoding.
+
+```python
+import os, base64
+
+def generate_feature_id(length=18):
+    return base64.urlsafe_b64encode(os.urandom(length)).rstrip(b'=').decode()
+```
+
+- Features: 18 bytes (24 char base64url)
+- Elements: 12 bytes (16 char base64url)
+
+### Query Syntax
+
+**Format:** `$<ELE>`, `@<FEAT>`, `?A,B;<ids>:<TYPE>@<CLASSIFIER>`
+
+**Classifiers:**
+- `@pos` / `@neg` — positive/negative side of line
+- `@inner` / `@outer` — inside/outside circle
+- `@north` / `@south` / `@east` / `@west` — cardinal directions
+
+### Anchrestry Lists
+
+**Format:** `?A,B;<idA><idB>` where A,B are hex lengths
+
+**Disambiguation:**
+```python
+surface1_query = "?5;@sketch_1circle:face@inner"  # inside
+surface2_query = "?5;@sketch_1circle:face@outer"  # outside
+```
+
+## 6. Icon Guidelines
+
+### Drawing in `oversolved/icons.py`
+
+**Rule:** Use normalized coordinates (0-1), draw with Cairo, regenerate at build time.
+
+```python
+@icon("frontend/src/assets/icons/my-icon.svg")
+def my_icon(ctx):
+    ctx.move_to(0.2, 0.5)
+    ctx.line_to(0.8, 0.5)
+    stroke(ctx, 2)
+    ctx.arc(0.5, 0.5, px(0.1), 0, 2 * math.pi)
+    ctx.fill()
+
+drawall()  # Required at end
+```
+
+**Helpers:**
+- `px(n)` — convert pixels to normalized coordinates
+- `stroke(ctx, width)` — stroke with current color
+- `ctx.fill()` — fill closed paths only
+
+**Rules:**
+- `viewBox="0 0 24 24"`
+- Size 24×24 px
+- `fill="none"` on paths, `fill="currentColor"` on filled shapes
+- Stroke width: 2 for primary, 1.5 for secondary
+- `stroke-linecap="round"`, `stroke-linejoin="round"`
+- Monochrome — never hardcode colors
+
+**Do not:**
+- Hardcode colors (use `currentColor`)
+- Draw SVG files manually
+- Use `ctx.fill()` on open paths
+
+## 7. Command Families
+
+### Tool Activation
+
+| Command | Action |
+|---------|--------|
+| `set_tool_line` | Activate line drawing tool |
+| `set_tool_circle` | Activate circle drawing tool |
+| `set_tool_arc` | Activate arc drawing tool |
+| `set_tool_point` | Activate point tool |
+| `set_tool_dimension` | Activate dimension tool |
+
+### Constraint Application
+
+| Command | Action |
+|---------|--------|
+| `apply_horizontal` | Constrain to horizontal |
+| `apply_vertical` | Constrain to vertical |
+| `apply_equal` | Equal length constraint |
+| `apply_perpendicular` | Perpendicular constraint |
+
+### Utility Commands
+
+| Command | Action |
+|---------|--------|
+| `undo` | Undo last change |
+| `redo` | Redo undone change |
+| `delete_selected` | Delete selected entities |
+| `toggle_construction` | Toggle construction mode |
+| `cancel_draw` | Cancel active draw operation |
+
+## 8. Test Requirements
+
+### Happy Path + Edge Cases
+
+**Rule:** Test must cover:
+1. Happy path
+2. Edge cases
+3. Invariants
+
+**Example:**
+```ts
+describe('buildKeyString', () => {
+  it('handles plain keys', () => {
+    const e = new KeyboardEvent('keydown', { key: 'a' })
+    expect(buildKeyString(e)).toBe('a')
+  })
+})
+```
+
+### ESLint Rules
+
+- `npm run lint` must pass with zero warnings/errors
+- No new `// eslint-disable` suppressions without explanation
+- TypeScript strict mode — no new `any` casts
+
+## 9. Architecture Patterns
+
+### Command Registry
+
+**Location:** `frontend/src/stores/commandRegistry.ts`
+
+**Core API:**
+```ts
+export function registerCommand(name: string, fn: () => void): void
+export function executeCommand(name: string): void
+export function dispatchKey(e: KeyboardEvent): boolean
+```
+
+### Migration System
+
+**Location:** `oversolved/app.py::_register_migrations()`
+
+**Rule:** Each migration runs exactly once on startup. Track version in `schema_version` table.
+
+```python
+def migration_002_add_metadata_column(db: Database):
+    db.execute("ALTER TABLE documents ADD COLUMN metadata LONGTEXT")
+
+db.register_migration(2, 'add_metadata_column', migration_002_add_metadata_column)
+```
+
+### Geometry Mapping
+
+**Location:** `frontend/src/utils/geometryMapping.ts`
+
+- Convert flat array format to UI Sketch format
+- Resolve query strings to entity references
+- Compute constraint render positions
+
+## 10. Quick Reference
+
+| Task | Command | Location |
+|------|---------|----------|
+| Run backend tests | `pytest tests/` | `tests/` |
+| Run frontend tests | `npx vitest run` | `frontend/` |
+| Run linter | `npm run lint` | `frontend/` |
+| Run type checker | `mypy oversolved/ tests/` | root |
+| Add new command | `registerCommand()` | `frontend/src/stores/commandRegistry.ts` |
+| Add new tool | `frontend/src/registry/entityRegistry.ts` | `frontend/src/registry/` |
+| Add new constraint | `frontend/src/registry/constraintRegistry.ts` | `frontend/src/registry/` |
+| Add new measurement | `frontend/src/registry/measurementRegistry.ts` | `frontend/src/registry/` |
+| Add icon | `@icon()` decorator | `oversolved/icons.py` |
