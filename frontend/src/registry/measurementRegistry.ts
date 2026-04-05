@@ -19,6 +19,9 @@ export interface MultiEntityRule {
     arc?: Arc
     arc1?: Arc
     arc2?: Arc
+    circle?: Circle
+    circle1?: Circle
+    circle2?: Circle
     point?: PointEntity
     point1?: PointEntity
     point2?: PointEntity
@@ -229,6 +232,8 @@ export function measurePair(
     line2?: LineSegment
     arc1?: Arc
     arc2?: Arc
+    circle1?: Circle
+    circle2?: Circle
     point1?: PointEntity
     point2?: PointEntity
   }
