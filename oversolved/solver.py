@@ -1398,11 +1398,15 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
 
     # Pre-resolve all query strings to {entity, point?} dicts so the rest of
     # the solver (residuals, render) can use them without any further changes.
+    unresolved_refs = []  # Track failed reference resolutions for reporting
     def _pre_resolve(c: dict) -> dict:
         rc = dict(c)
+        constraint_id = c.get("id", "(unknown)")
+        constraint_kind = c.get("kind", "(unknown)")
         for field in _REF_FIELDS:
             if field in rc and isinstance(rc[field], str):
-                resolved = resolve_ref(rc[field])
+                ref = rc[field]
+                resolved = resolve_ref(ref)
                 if resolved is not None:
                     # Topology face: project world-space origin onto sketch 2D coords.
                     if isinstance(resolved, dict) and resolved.get("type") == "face":
@@ -1415,6 +1419,14 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                         v = sum(dp[i] * y_axis[i] for i in range(3))
                         resolved = {"external_xy": [u, v]}
                     rc[field] = resolved
+                else:
+                    # Reference failed to resolve — track it for reporting
+                    unresolved_refs.append({
+                        "constraint_id": constraint_id,
+                        "constraint_kind": constraint_kind,
+                        "field": field,
+                        "ref": ref,
+                    })
         return rc
 
     constraints = [_pre_resolve(c) for c in constraints]
@@ -1824,7 +1836,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     features = {eid: {"status": st} for eid, st in entity_status.items()
                 if not entities.get(eid, {}).get("projected")}
 
-    return {
+    result = {
         "status": status,
         "geometry": geometry_flat,
         "projected": projected_flat,
@@ -1833,3 +1845,14 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         "constraints": constraints_out,
         "plane_transform": _plane_transform(plane_obj),
     }
+
+    # Report any unresolved constraint references as warnings
+    if unresolved_refs:
+        result["warnings"] = [
+            f"Constraint {r['constraint_id']} ({r['constraint_kind']}): "
+            f"failed to resolve reference '{r['ref']}' in field '{r['field']}' "
+            f"(constraint may be ineffective)"
+            for r in unresolved_refs
+        ]
+
+    return result

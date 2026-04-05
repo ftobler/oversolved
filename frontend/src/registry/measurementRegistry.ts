@@ -29,7 +29,13 @@ export interface MultiEntityRule {
 }
 
 /**
- * Single entity rules: specific measurements (first match wins)
+ * Single entity rules: specific measurements (first match wins).
+ *
+ * **Order Matters:** Rules are ordered by property specificity. More restrictive checks first.
+ * - Circle: requires center + radius, explicitly forbids angle_start (distinguishes from arc)
+ * - Arc: requires center + radius + angle_start (more specific than line)
+ * - Line: requires start + end, forbids radius (distinguishes from arc)
+ * - Point: catches everything else; returns no measurement (vertices unmeasurable alone)
  */
 export const SINGLE_ENTITY_RULES: readonly SingleEntityRule[] = [
   // Circle: diameter measurement
@@ -77,7 +83,16 @@ export const SINGLE_ENTITY_RULES: readonly SingleEntityRule[] = [
 ]
 
 /**
- * Multi-entity rules: pair-based measurements
+ * Multi-entity rules: pair-based measurements (first match wins).
+ *
+ * **Order Matters:** Rules are ordered by measurement priority, not by specificity.
+ * - Point-to-line: basic geometric constraint (e.g., perpendicular distance)
+ * - Line-line: angle or parallel distance (2-DOF relationship)
+ * - Arc/circle pairs: center distances (simpler than angle)
+ * - Point-to-arc/circle: center distance (simpler than other relationships)
+ * - Point-point: only measured if far enough apart (distance > 0.01mm avoids numerical noise)
+ *
+ * All rules check for required properties and return empty [] if no match.
  */
 export const MULTI_ENTITY_RULES: readonly MultiEntityRule[] = [
   // Line-point normal distance

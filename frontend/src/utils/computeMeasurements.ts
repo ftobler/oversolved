@@ -3,9 +3,20 @@ import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, t
 
 /**
  * Compute the best measurement for a set of selected entities.
- * Returns a single measurement description (or empty if no match).
  *
- * Registry-based approach: rules are ordered by specificity. First matching rule wins.
+ * **Pipeline:**
+ * 1. Parse selection strings (entity:*, vertex:*) and classify by type (line, arc, circle, point, plane)
+ * 2. Apply single-entity rules if exactly one entity exists
+ * 3. Apply plane measurements if planes are selected (vertex+plane, plane+plane)
+ * 4. Apply multi-entity pair rules to find a matching measurement
+ * 5. Return empty if no rule matches
+ *
+ * **First-Match-Wins:** Registry rules are ordered by priority. Returns the first matching rule's result.
+ *
+ * @param selection - Set of selection strings (e.g., "vertex:S1:L1:start", "@builtin_plane_front")
+ * @param sketch - Current sketch geometry (resolved entities)
+ * @param solveResults - Backend solve results containing plane data and other 3D information
+ * @returns Array of measurement strings (typically 0 or 1 element)
  */
 export function computeMeasurements(
   selection: Set<string>,
