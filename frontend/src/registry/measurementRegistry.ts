@@ -29,15 +29,15 @@ export interface MultiEntityRule {
  * Single entity rules: specific measurements (first match wins)
  */
 export const SINGLE_ENTITY_RULES: readonly SingleEntityRule[] = [
-  // Circle: specific radius measurement
+  // Circle: diameter measurement
   {
-    label: 'Circle radius',
+    label: 'Circle diameter',
     evaluate: (entity) => {
       const e = entity as unknown as Record<string, unknown>
       if (!('center' in e && 'radius' in e && !('angle_start' in e))) return []
       const circle = entity as Circle
-      const r = circle.radius || 0
-      return [`[CIRCLE] r=${r.toFixed(2)} mm`]
+      const d = (circle.radius || 0) * 2
+      return [`[CIRCLE] d=${d.toFixed(2)} mm`]
     },
   },
   // Arc: specific sweep and radius
@@ -49,7 +49,8 @@ export const SINGLE_ENTITY_RULES: readonly SingleEntityRule[] = [
       const arc = entity as Arc
       const r = arc.radius || 0
       const sweep = arc.angle_end - arc.angle_start
-      return [`[ARC] r=${r.toFixed(2)} mm, θ=${Math.abs(sweep).toFixed(0)}°`]
+      const sweepDeg = Math.abs(sweep) * 180 / Math.PI
+      return [`[ARC] r=${r.toFixed(2)} mm, θ=${sweepDeg.toFixed(0)}°`]
     },
   },
   // Line: length
@@ -143,6 +144,50 @@ export const MULTI_ENTITY_RULES: readonly MultiEntityRule[] = [
       const centerB = arc2.center
       const dist = Math.hypot(centerB[0] - centerA[0], centerB[1] - centerA[1])
       return [`arc-center dist: ${dist.toFixed(2)} mm`]
+    },
+  },
+  // Arc + circle center distance
+  {
+    label: 'Arc/circle center distance',
+    evaluate: (entities) => {
+      const arc = entities.arc as Arc | undefined
+      const circle = entities.circle as Circle | undefined
+      if (!arc || !circle) return []
+      const dist = Math.hypot(circle.center[0] - arc.center[0], circle.center[1] - arc.center[1])
+      return [`center dist: ${dist.toFixed(2)} mm`]
+    },
+  },
+  // Circle-circle center distance
+  {
+    label: 'Circle center distance',
+    evaluate: (entities) => {
+      const circle1 = entities.circle1 as Circle | undefined
+      const circle2 = entities.circle2 as Circle | undefined
+      if (!circle1 || !circle2) return []
+      const dist = Math.hypot(circle2.center[0] - circle1.center[0], circle2.center[1] - circle1.center[1])
+      return [`center dist: ${dist.toFixed(2)} mm`]
+    },
+  },
+  // Point to arc center distance
+  {
+    label: 'Point/arc center distance',
+    evaluate: (entities) => {
+      const point = entities.point as PointEntity | undefined
+      const arc = entities.arc as Arc | undefined
+      if (!point || !arc) return []
+      const dist = Math.hypot(arc.center[0] - point.x, arc.center[1] - point.y)
+      return [`center dist: ${dist.toFixed(2)} mm`]
+    },
+  },
+  // Point to circle center distance
+  {
+    label: 'Point/circle center distance',
+    evaluate: (entities) => {
+      const point = entities.point as PointEntity | undefined
+      const circle = entities.circle as Circle | undefined
+      if (!point || !circle) return []
+      const dist = Math.hypot(circle.center[0] - point.x, circle.center[1] - point.y)
+      return [`center dist: ${dist.toFixed(2)} mm`]
     },
   },
   // Point-point distance

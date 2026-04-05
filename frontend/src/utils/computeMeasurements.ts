@@ -80,23 +80,35 @@ export function computeMeasurements(
   }
   const hasValidEntities = Object.values(entityCounts).some(count => count > 0)
 
-  // Use registry to evaluate single-entity measurements
-  // Stop at first match (registry rules are ordered by specificity)
-  for (const entity of arcs) {
-    const result = measureSingleEntity(entity)
-    if (result.length > 0) return result
+  // Single vertex: no measurement
+  if (points.length === 1 && lines.length === 0 && arcs.length === 0 && circles.length === 0) {
+    return []
   }
-  for (const entity of circles) {
-    const result = measureSingleEntity(entity)
-    if (result.length > 0) return result
+
+  // Three or more vertices only: no measurement
+  if (points.length >= 3 && lines.length === 0 && arcs.length === 0 && circles.length === 0) {
+    return []
   }
-  for (const entity of lines) {
-    const result = measureSingleEntity(entity)
-    if (result.length > 0) return result
-  }
-  for (const entity of points) {
-    const result = measureSingleEntity(entity)
-    if (result.length > 0) return result
+
+  // Use registry to evaluate single-entity measurements only if there's exactly one entity total
+  const totalEntities = arcs.length + circles.length + lines.length + points.length
+  if (totalEntities === 1) {
+    for (const entity of arcs) {
+      const result = measureSingleEntity(entity)
+      if (result.length > 0) return result
+    }
+    for (const entity of circles) {
+      const result = measureSingleEntity(entity)
+      if (result.length > 0) return result
+    }
+    for (const entity of lines) {
+      const result = measureSingleEntity(entity)
+      if (result.length > 0) return result
+    }
+    for (const entity of points) {
+      const result = measureSingleEntity(entity)
+      if (result.length > 0) return result
+    }
   }
 
   // Multi-entity measurements: try all pairs
