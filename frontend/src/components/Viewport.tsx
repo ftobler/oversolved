@@ -126,17 +126,31 @@ export default function Viewport({
   const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
 
   const pointerDownPos = useRef<[number, number] | null>(null)
+  const pointerDownButton = useRef<number | null>(null)
+  const wasPointerDrag = useRef(false)
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 1 || e.button === 2) pointerDownPos.current = [e.clientX, e.clientY]
+    pointerDownButton.current = e.button
+    if (e.button === 0 || e.button === 1 || e.button === 2) {
+      pointerDownPos.current = [e.clientX, e.clientY]
+    }
     if (e.button !== 2) closeContextMenu()
   }, [closeContextMenu])
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
-    if (!pointerDownPos.current) return
+    if (!pointerDownPos.current) {
+      wasPointerDrag.current = false
+      pointerDownButton.current = null
+      return
+    }
     const dx = e.clientX - pointerDownPos.current[0]
     const dy = e.clientY - pointerDownPos.current[1]
+    const wasDrag = Math.hypot(dx, dy) >= 4
+    wasPointerDrag.current = wasDrag
     pointerDownPos.current = null
-    if (Math.hypot(dx, dy) >= 4) return
+
+    if (wasDrag) return
+
     if (e.button === 2 && onRightClick) {
       onRightClick([e.clientX, e.clientY])
     }
@@ -164,7 +178,12 @@ export default function Viewport({
         style={{ width: '100%', height: '100%', background: '#111' }}
         gl={{ antialias: true }}
         onCreated={onCreated}
-        onPointerMissed={() => useSketchEditorStore.getState().clearSelection()}
+        onPointerMissed={() => {
+          // Only clear selection if this was a left-click on empty space, not a camera drag
+          if (!wasPointerDrag.current && pointerDownButton.current === 0) {
+            useSketchEditorStore.getState().clearSelection()
+          }
+        }}
       >
         <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={-1000000} far={1000000} />
         <SceneController resetTrigger={resetTrigger} canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
