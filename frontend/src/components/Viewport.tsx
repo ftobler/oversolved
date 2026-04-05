@@ -14,6 +14,7 @@ import ReferencePlane from './Viewport/ReferencePlane'
 import SceneController from './Viewport/SceneController'
 import ContextMenuDialog from './ContextMenuDialog'
 import { planeRotationFromTransform } from './Geometry3D/utils'
+import { COLOR_SELECTED, COLOR_HOVER } from './Geometry3D/constants'
 
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 const INITIAL_ZOOM = 200
@@ -75,8 +76,8 @@ function UserDefinedPlane({ featureId, label, planeTransform }: { featureId: str
   const rot = planeRotationFromTransform(planeTransform)
   const [ox, oy, oz] = planeTransform.origin
 
-  const color = hovered || selected ? '#4fc3f7' : '#444444'
-  const opacity = hovered ? 0.15 : 0.05
+  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : '#444444'
+  const opacity = hovered ? 0.15 : selected ? 0.12 : 0.05
 
   return (
     <group position={[ox, oy, oz]} rotation={rot}>
@@ -95,7 +96,7 @@ function UserDefinedPlane({ featureId, label, planeTransform }: { featureId: str
           <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
         </mesh>
       )}
-      <Line points={UDPLANE_BORDER} color={hovered || selected ? '#4fc3f7' : '#666666'} lineWidth={1} />
+      <Line points={UDPLANE_BORDER} color={hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : '#666666'} lineWidth={1} />
       <PlaneLabel x={-UDPH} y={UDPH}>{label}</PlaneLabel>
     </group>
   )

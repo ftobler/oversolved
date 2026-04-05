@@ -4,7 +4,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { builtinSelectionId } from '../Geometry3D/utils'
-import { COLOR_HOVER, COLOR_INACTIVE } from '../Geometry3D/constants'
+import { COLOR_HOVER, COLOR_INACTIVE, COLOR_SELECTED } from '../Geometry3D/constants'
 
 const PLANE_SIZE = 1
 const PH = PLANE_SIZE / 2
@@ -45,8 +45,8 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   const selId = builtinSelectionId(label)
   const selected = useSketchEditorStore(s => s.selection.has(selId))
 
-  const color = hovered ? COLOR_HOVER : selected ? COLOR_HOVER : COLOR_INACTIVE
-  const opacity = hovered ? 0.15 : 0.05
+  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_INACTIVE
+  const opacity = hovered ? 0.15 : selected ? 0.12 : 0.05
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
   // REGRESSION PROTECTION: Hide collision mesh during any drag
   // BUG: Reference planes (XY, XZ, YZ) collision could block DragPlane raycasts,
@@ -75,7 +75,7 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
           <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
         </mesh>
       )}
-      <Line points={PLANE_BORDER} color={hovered || selected ? COLOR_HOVER : '#666666'} lineWidth={1} />
+      <Line points={PLANE_BORDER} color={hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : '#666666'} lineWidth={1} />
       <PlaneLabel x={-PH} y={PH}>{label}</PlaneLabel>
     </group>
   )
