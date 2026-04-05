@@ -36,6 +36,10 @@ def _draw_one(path, fn, angle, offset_x=0, offset_y=0):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Read existing file for comparison
+    existing = path.read_text() if path.exists() else None
+
+    # Create SVG surface
     surface = cairo.SVGSurface(str(path), SIZE, SIZE)
     ctx = cairo.Context(surface)
 
@@ -49,7 +53,7 @@ def _draw_one(path, fn, angle, offset_x=0, offset_y=0):
     # ===== rotation around center =====
     if angle != 0:
         rad = math.radians(angle)
-        ctx.translate(0.5, 0.5)   # move origin to center
+        ctx.translate(0.5, 0.5)
         ctx.rotate(rad)
         ctx.translate(-0.5, -0.5)
 
@@ -60,32 +64,21 @@ def _draw_one(path, fn, angle, offset_x=0, offset_y=0):
     fn(ctx)
 
     surface.finish()
-    # Get the new SVG content after processing
-    new_svg = _postprocess_svg(path, dry_run=True)
-    # Only write to disk if the file doesn't exist or content differs
-    existing = path.read_text() if path.exists() else None
-    if existing is None or existing != new_svg:
-        path.write_text(new_svg)
 
+    # Read back what cairo wrote (it uses currentColor by default)
+    written = path.read_text()
 
-def _postprocess_svg(path: Path, dry_run=False):
-    """Process the SVG content.
+    # Strip trailing whitespace for comparison
+    existing_stripped = existing.strip() if existing else None
+    written_stripped = written.strip()
 
-    Args:
-        path: Path to the SVG file
-        dry_run: If True, don't write to disk, just return the processed content
-    """
-    txt = path.read_text() if path.exists() else ""
-    txt = txt.replace("#000000", "currentColor")
-    if not dry_run:
-        path.write_text(txt)
-    return txt
+    # Only print icons that are actually being updated
+    if existing_stripped is None or existing_stripped != written_stripped:
+        print(f"updating: {path}")
 
 
 def draw_all():
     for entry in _registry:
-        path, fn, angle = entry[:3]
-        offset_x, offset_y = entry[3:5] if len(entry) > 3 else (0, 0)
-        # print(f"→ {path} (angle={angle}, offset=({offset_x}, {offset_y}))")
+        path, fn, angle, offset_x, offset_y = entry
         _draw_one(path, fn, angle, offset_x, offset_y)
     print("→ icons up to date")
