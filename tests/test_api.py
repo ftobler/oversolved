@@ -331,7 +331,15 @@ class TestSolveAPI:
             content_type='application/json',
         )
         assert response.status_code == 200
-        assert json.loads(response.data)['result'] == {}
+        result = json.loads(response.data)['result']
+        # Result should include builtin planes but no user features
+        assert 'builtin_plane_front' in result
+        assert 'builtin_plane_top' in result
+        assert 'builtin_plane_right' in result
+        # Check plane structure
+        for plane_id in ['builtin_plane_front', 'builtin_plane_top', 'builtin_plane_right']:
+            assert 'plane' in result[plane_id]
+            assert 'status' in result[plane_id]
 
     def test_solve_empty_body(self, client):
         response = client.post(

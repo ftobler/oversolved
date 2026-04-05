@@ -89,6 +89,19 @@ def solve(yaml_str: str) -> dict:
             })
 
     total_ms = round((time.perf_counter() - t0) * 1000, 1)
+    # Add builtin planes to result so frontend can access them consistently
+    result['builtin_plane_front'] = {
+        'status': 'ok',
+        'plane': {'origin': [0, 0, 0], 'x_axis': [1, 0, 0], 'y_axis': [0, 1, 0], 'normal': [0, 0, 1]}
+    }
+    result['builtin_plane_top'] = {
+        'status': 'ok',
+        'plane': {'origin': [0, 0, 0], 'x_axis': [1, 0, 0], 'y_axis': [0, 0, -1], 'normal': [0, 1, 0]}
+    }
+    result['builtin_plane_right'] = {
+        'status': 'ok',
+        'plane': {'origin': [0, 0, 0], 'x_axis': [0, 0, -1], 'y_axis': [0, 1, 0], 'normal': [1, 0, 0]}
+    }
     return {
         "solve_ms": total_ms,
         "result": result

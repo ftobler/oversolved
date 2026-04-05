@@ -359,7 +359,8 @@ features:
     result = solve(yaml_str)["result"]
     sketch_log("test_sketch_order_determines_solve_sequence", yaml_str, result["sketch_1"])
 
-    keys = list(result.keys())
+    # Filter out builtin planes to check sketch order
+    keys = [k for k in result.keys() if not k.startswith("builtin_")]
     assert keys.index("sketch_1") < keys.index("sketch_2")
 
 
@@ -552,7 +553,9 @@ features:
     result = solve(yaml_str)["result"]
     sketch_log("test_three_sketches_independent", yaml_str, result["sk1"])
 
-    assert set(result.keys()) == {"sk1", "sk2", "sk3"}
+    # Filter out builtin planes from result keys
+    user_keys = {k for k in result.keys() if not k.startswith("builtin_")}
+    assert user_keys == {"sk1", "sk2", "sk3"}
     for sk_id, expected in [("sk1", [1.0, 1.0]), ("sk2", [2.0, 2.0]), ("sk3", [3.0, 3.0])]:
         geom = result[sk_id]["geometry"]
         assert abs(geom["pt"][0] - expected[0]) < TOL
