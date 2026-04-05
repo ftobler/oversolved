@@ -240,3 +240,53 @@ export function measurePair(
   }
   return []
 }
+
+export interface Plane3D {
+  origin: [number, number, number]
+  normal: [number, number, number]
+  x_axis: [number, number, number]
+  y_axis: [number, number, number]
+}
+
+/**
+ * Measure distance between point and plane: perpendicular distance from point to plane.
+ */
+export function measurePointToPlane(point: PointEntity, plane: Plane3D): string[] {
+  // Convert 2D point to 3D (assume z=0 in sketch plane)
+  const p = [point.x, point.y, 0]
+  const n = plane.normal
+  const o = plane.origin
+
+  // Distance = |dot(p - o, normal)|
+  const toPlane = [p[0] - o[0], p[1] - o[1], p[2] - o[2]]
+  const dist = Math.abs(toPlane[0] * n[0] + toPlane[1] * n[1] + toPlane[2] * n[2])
+
+  return [`plane distance: ${dist.toFixed(2)} mm`]
+}
+
+/**
+ * Measure distance/angle between two planes.
+ * Parallel planes: distance between them.
+ * Non-parallel planes: no measurement (would need angle, but spec says none).
+ */
+export function measurePlanes(plane1: Plane3D, plane2: Plane3D): string[] {
+  const n1 = plane1.normal
+  const n2 = plane2.normal
+
+  // Check if planes are parallel: normals point in same/opposite directions
+  const dot = Math.abs(n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2])
+  const parallel = Math.abs(dot - 1.0) < 1e-6
+
+  if (!parallel) {
+    // Non-parallel planes: spec says no measurement
+    return []
+  }
+
+  // Parallel planes: compute distance between origins projected onto normal
+  const o1 = plane1.origin
+  const o2 = plane2.origin
+  const toPlane = [o2[0] - o1[0], o2[1] - o1[1], o2[2] - o1[2]]
+  const dist = Math.abs(toPlane[0] * n1[0] + toPlane[1] * n1[1] + toPlane[2] * n1[2])
+
+  return [`plane distance: ${dist.toFixed(2)} mm`]
+}

@@ -6,18 +6,20 @@ import type { Sketch } from '../types/cad'
 interface FooterMeasurementDisplayProps {
   sketch: Sketch
   measurementIcon?: string
+  solveResults?: Record<string, unknown>
 }
 
 export default function FooterMeasurementDisplay({
   sketch,
   measurementIcon,
+  solveResults,
 }: FooterMeasurementDisplayProps) {
   const selection = useSketchEditorStore(s => s.selection)
 
   // Compute measurements for current selection
   const measurements = useMemo(() => {
-    return computeMeasurements(selection, sketch)
-  }, [selection, sketch])
+    return computeMeasurements(selection, sketch, solveResults)
+  }, [selection, sketch, solveResults])
 
   if (measurements.length === 0) {
     return null

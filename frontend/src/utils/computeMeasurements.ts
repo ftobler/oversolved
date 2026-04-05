@@ -9,7 +9,8 @@ import { measureSingleEntity, measurePair } from '../registry/measurementRegistr
  */
 export function computeMeasurements(
   selection: Set<string>,
-  sketch: Sketch
+  sketch: Sketch,
+  solveResults?: Record<string, unknown>
 ): string[] {
   // Group selections by entity type
   const lines: LineSegment[] = []

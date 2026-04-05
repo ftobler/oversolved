@@ -694,7 +694,7 @@ export default function Part() {
       </div>
       <footer className="doc-footer">
         <p>Copyright 2026 - Oversolved</p>
-        <FooterMeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} />
+        <FooterMeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} />
         <div className="debug-buttons">
           <button
             className={`footer-debug-btn ${debugOpen ? 'active' : ''}`}
