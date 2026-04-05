@@ -1,28 +1,18 @@
 import { useMemo } from 'react'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import { computeMeasurements } from '../utils/computeMeasurements'
+import type { Sketch } from '../types/cad'
 
 interface FooterMeasurementDisplayProps {
-  activeFeatureId?: string
-  solveResults?: Record<string, any>
+  sketch: Sketch
   measurementIcon?: string
 }
 
 export default function FooterMeasurementDisplay({
-  activeFeatureId,
-  solveResults = {},
+  sketch,
   measurementIcon,
 }: FooterMeasurementDisplayProps) {
   const selection = useSketchEditorStore(s => s.selection)
-
-  // Get sketch data for active feature
-  const sketch = useMemo(() => {
-    const sr = activeFeatureId && solveResults?.[activeFeatureId]
-    if (!sr) {
-      return {}
-    }
-    return sr.solved || {}
-  }, [activeFeatureId, solveResults])
 
   // Compute measurements for current selection
   const measurements = useMemo(() => {

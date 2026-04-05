@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport from '../components/Viewport'
-import type { Feature, PartDoc, PartFeature, Mutation } from '../types/cad'
+import type { Feature, PartDoc, PartFeature, Mutation, Sketch } from '../types/cad'
 import { randomId } from '../utils/yamlMutations'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import { useCommandRegistration } from './hooks/useCommandRegistration'
@@ -152,6 +152,18 @@ export default function Part() {
     () => new Set(features.filter(f => f.visible !== false).map(f => f.id)),
     [features]
   )
+
+  // Combine sketches from all visible features into a single sketch object for measurement display
+  const combinedSketch = useMemo(() => {
+    const sketch: Sketch = {}
+    for (const feature of features) {
+      const solveResult = solveResults?.[feature.id]
+      if (solveResult && solveResult.solved) {
+        Object.assign(sketch, solveResult.solved)
+      }
+    }
+    return sketch
+  }, [features, solveResults])
 
   // Initialize rollback position once on first doc load.
   useEffect(() => {
@@ -678,7 +690,7 @@ export default function Part() {
       </div>
       <footer className="doc-footer">
         <p>Copyright 2026 - Oversolved</p>
-        <FooterMeasurementDisplay activeFeatureId={editingFeatureId ?? undefined} solveResults={solveResults} measurementIcon={measurementIcon} />
+        <FooterMeasurementDisplay sketch={combinedSketch} measurementIcon={measurementIcon} />
         <div className="debug-buttons">
           <button
             className={`footer-debug-btn ${debugOpen ? 'active' : ''}`}
