@@ -117,6 +117,9 @@ export default function Part() {
   const setFieldPickState = useSketchEditorStore(s => s.setFieldPickState)
   const selection = useSketchEditorStore(s => s.selection)
   const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
+  const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
+  const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)
+  const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
 
   const {
@@ -635,7 +638,13 @@ export default function Part() {
                   <div className="debug-section-title">Hover</div>
                   {hoveredEntityId
                     ? <div className="debug-value">{hoveredEntityId}</div>
-                    : <div className="debug-empty">none</div>}
+                    : hoveredVertexId
+                      ? <div className="debug-value">{hoveredVertexId}</div>
+                      : hoveredPlaneId
+                        ? <div className="debug-value">{hoveredPlaneId}</div>
+                        : hoveredSurfaceId
+                          ? <div className="debug-value">{hoveredSurfaceId}</div>
+                          : <div className="debug-empty">none</div>}
                 </div>
                 <div className="debug-section">
                   <div className="debug-section-title">Selection ({selection.size})</div>

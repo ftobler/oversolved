@@ -344,6 +344,17 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().hoveredPlaneId).toBeNull()
     })
 
+    it('setHoveredSurface updates hovered surface', () => {
+      useSketchEditorStore.getState().setHoveredSurface('face:sketch1:?3;@sketch1abc')
+      expect(useSketchEditorStore.getState().hoveredSurfaceId).toBe('face:sketch1:?3;@sketch1abc')
+    })
+
+    it('setHoveredSurface clears on null', () => {
+      useSketchEditorStore.getState().setHoveredSurface('face:sketch1:?3;@sketch1abc')
+      useSketchEditorStore.getState().setHoveredSurface(null)
+      expect(useSketchEditorStore.getState().hoveredSurfaceId).toBeNull()
+    })
+
     it('hoveredSnapKind can be path', () => {
       useSketchEditorStore.getState().setHoveredVertex('vertex:S1:L1:start', [5, 5], 'path')
       expect(useSketchEditorStore.getState().hoveredSnapKind).toBe('path')
