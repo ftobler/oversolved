@@ -16,6 +16,7 @@ describe('snapRegistry', () => {
       expect(SNAP_KINDS).toContain('vertex')
       expect(SNAP_KINDS).toContain('midpoint')
       expect(SNAP_KINDS).toContain('center')
+      expect(SNAP_KINDS).toContain('path')
       expect(SNAP_KINDS).toContain('grid')
     })
 
@@ -141,6 +142,24 @@ describe('snapRegistry', () => {
     it('line vertex suggests coincident for center snap (circle/arc centers)', () => {
       expect(suggestConstraint('line', 'start', 'center')).toBe('coincident')
       expect(suggestConstraint('line', 'end', 'center')).toBe('coincident')
+    })
+
+    it('line vertex suggests coincident for path snap (edge snapping)', () => {
+      expect(suggestConstraint('line', 'start', 'path')).toBe('coincident')
+      expect(suggestConstraint('line', 'end', 'path')).toBe('coincident')
+    })
+
+    it('arc endpoints suggest coincident for path snap', () => {
+      expect(suggestConstraint('arc', 'start', 'path')).toBe('coincident')
+      expect(suggestConstraint('arc', 'end', 'path')).toBe('coincident')
+    })
+
+    it('circle center does not suggest path snap', () => {
+      expect(suggestConstraint('circle', 'center', 'path')).toBeNull()
+    })
+
+    it('point suggests coincident for path snap', () => {
+      expect(suggestConstraint('point', 'xy', 'path')).toBe('coincident')
     })
 
     it('circle center suggests concentric for center snap', () => {

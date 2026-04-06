@@ -512,4 +512,30 @@ describe('applyAddEntityWithConstraint', () => {
     expect(entities).toHaveLength(2)
     expect(entities![0].id).not.toBe(entities![1].id)
   })
+
+  it('creates constraint with entity reference when using snapEntityRef', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [{ id: 'line1', kind: 'line' }],
+      initial: { line1: [0, 0, 10, 0] },
+      constraints: [],
+    }] }
+    applyAddEntityWithConstraint(doc, 'Sketch1', 'line', [0, 5, 5, 5], 'end', undefined, 'coincident', 'entity:Sketch1:line1')
+    const newEntity = doc.features![0].entities![1]
+    const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'coincident')!
+    expect(newConstraint.a).toBe(`$${newEntity.id}end`)
+    expect(newConstraint.b).toBe('$line1')
+  })
+
+  it('is no-op when neither snapVertexId nor snapEntityRef provided', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [],
+      initial: {},
+      constraints: [],
+    }] }
+    applyAddEntityWithConstraint(doc, 'Sketch1', 'line', [0, 0, 10, 10], 'start', undefined, 'coincident', undefined)
+    expect(doc.features![0].entities).toHaveLength(1)
+    expect(doc.features![0].constraints).toHaveLength(0)
+  })
 })

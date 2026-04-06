@@ -116,6 +116,24 @@ describe('sketchEditorStore', () => {
       })
     })
 
+    it('dispatches parallel constraint with two selected lines', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().toggleSelect('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleSelect('entity:Sketch1:L2')
+
+      useSketchEditorStore.getState().applyConstraint('parallel')
+
+      expect(handler).toHaveBeenCalledOnce()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'Sketch1',
+        kind: 'parallel',
+        targets: expect.arrayContaining(['entity:Sketch1:L1', 'entity:Sketch1:L2']),
+      })
+    })
+
     it('does nothing with empty selection', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
@@ -302,6 +320,22 @@ describe('sketchEditorStore', () => {
       const ids = new Set(['entity:S1:L1', 'entity:S1:L2'])
       useSketchEditorStore.getState().setHoveredConstraintEntities(ids)
       expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(ids)
+    })
+
+    it('setHoveredPathSnap updates path snap state', () => {
+      useSketchEditorStore.getState().setHoveredPathSnap({ entityId: 'L1', position: [5, 5] })
+      expect(useSketchEditorStore.getState().hoveredPathSnap).toEqual({ entityId: 'L1', position: [5, 5] })
+    })
+
+    it('setHoveredPathSnap clears on null', () => {
+      useSketchEditorStore.getState().setHoveredPathSnap({ entityId: 'L1', position: [5, 5] })
+      useSketchEditorStore.getState().setHoveredPathSnap(null)
+      expect(useSketchEditorStore.getState().hoveredPathSnap).toBeNull()
+    })
+
+    it('hoveredSnapKind can be path', () => {
+      useSketchEditorStore.getState().setHoveredVertex('vertex:S1:L1:start', [5, 5], 'path')
+      expect(useSketchEditorStore.getState().hoveredSnapKind).toBe('path')
     })
   })
 

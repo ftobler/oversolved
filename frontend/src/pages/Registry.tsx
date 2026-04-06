@@ -1,6 +1,7 @@
 import AppHeader from '../components/AppHeader'
-import { CONSTRAINTS, ENTITIES, DIMENSION_RULES, CONSTRAINT_BY_KIND, ENTITY_BY_ACTIVE_TOOL, CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '../registry'
+import { CONSTRAINTS, ENTITIES, DIMENSION_RULES, CONSTRAINT_BY_KIND, ENTITY_BY_ACTIVE_TOOL, CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS, SNAP_RULES, SNAP_KINDS } from '../registry'
 import { KEYMAP, CORE_KEYBINDINGS } from '../stores/commandRegistry'
+import { SINGLE_ENTITY_RULES, MULTI_ENTITY_RULES } from '../registry/measurementRegistry'
 import './Registry.css'
 
 // Eager-load all icons so we can display them inline.
@@ -218,12 +219,85 @@ function DimensionRulesTable() {
   )
 }
 
+// ── Snap rules section ────
+
+function SnapRulesTable() {
+  return (
+    <table className="reg-table">
+      <thead>
+        <tr>
+          <th>Entity</th>
+          <th>Vertex</th>
+          <th>Snap Kinds</th>
+          <th>Suggest</th>
+          <th>Auto-Apply</th>
+        </tr>
+      </thead>
+      <tbody>
+        {Object.entries(SNAP_RULES).flatMap(([entityKind, vertices]) =>
+          Object.entries(vertices).map(([vertexKey, rule]) => (
+            <tr key={`${entityKind}-${vertexKey}`}>
+              <td><code>{entityKind}</code></td>
+              <td><code>{vertexKey}</code></td>
+              <td>{rule.snapKinds.map(k => <Badge key={k} text={k} variant="neutral" />)}</td>
+              <td><code>{rule.suggest}</code></td>
+              <td className="reg-cell-center">
+                {rule.autoApply ? <Badge text="yes" variant="yes" /> : <Badge text="no" variant="no" />}
+              </td>
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  )
+}
+
+// ── Measurements section ────
+
+function MeasurementsTable() {
+  return (
+    <table className="reg-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Label</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td colSpan={3} className="reg-cell-section">Single Entity Rules</td>
+        </tr>
+        {SINGLE_ENTITY_RULES.map((r, i) => (
+          <tr key={`single-${i}`}>
+            <td><Badge text="single" variant="neutral" /></td>
+            <td>{r.label}</td>
+            <td className="reg-cell-desc">Measures individual entities</td>
+          </tr>
+        ))}
+        <tr>
+          <td colSpan={3} className="reg-cell-section">Multi-Entity Rules</td>
+        </tr>
+        {MULTI_ENTITY_RULES.map((r, i) => (
+          <tr key={`multi-${i}`}>
+            <td><Badge text="multi" variant="neutral" /></td>
+            <td>{r.label}</td>
+            <td className="reg-cell-desc">Measures entity pairs</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 // ── Page ────
 
 const SECTIONS = [
   { id: 'constraints', label: 'Constraints' },
   { id: 'dim-rules',   label: 'Dimension Rules' },
   { id: 'entities',    label: 'Entities' },
+  { id: 'snap-rules',  label: 'Snap Rules' },
+  { id: 'measurements',label: 'Measurements' },
   { id: 'keybindings', label: 'Keybindings' },
 ] as const
 
@@ -291,6 +365,26 @@ export default function Registry() {
             </p>
             <div className="reg-table-wrap">
               <EntitiesTable />
+            </div>
+          </section>
+
+          <section id="snap-rules">
+            <h2>Snap Rules <span className="reg-count">({SNAP_KINDS.length} kinds)</span></h2>
+            <p>
+              Defines where each entity vertex can snap and what constraint to suggest.
+            </p>
+            <div className="reg-table-wrap">
+              <SnapRulesTable />
+            </div>
+          </section>
+
+          <section id="measurements">
+            <h2>Measurements <span className="reg-count">({SINGLE_ENTITY_RULES.length + MULTI_ENTITY_RULES.length} rules)</span></h2>
+            <p>
+              Rules for displaying measurements on the canvas. First matching rule wins.
+            </p>
+            <div className="reg-table-wrap">
+              <MeasurementsTable />
             </div>
           </section>
 

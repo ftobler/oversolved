@@ -239,3 +239,15 @@
   font-size: 11px;
   color: #555;
 }
+
+/* ── Section rows ───────────────────────────────────────────────────────────── */
+
+.reg-cell-section {
+  background: #161616 !important;
+  color: #888;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 10px 12px !important;
+}

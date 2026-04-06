@@ -56,38 +56,6 @@ export function arcAnglesFromRadiusPoint(
   }
 }
 
-function findNearestVertex(sketch: Sketch | undefined, entityId: string, px: number, py: number): string | null {
-  if (!sketch) return null
-  const entity = sketch[entityId]
-  if (!entity) return null
-  
-  let bestVertex: string | null = null
-  let bestDist = Infinity
-  
-  const checkVertex = (vx: number, vy: number, key: string) => {
-    const dist = Math.hypot(px - vx, py - vy)
-    if (dist < bestDist) {
-      bestDist = dist
-      bestVertex = `vertex:sketch:${entityId}:${key}`
-    }
-  }
-  
-  if ('start' in entity && 'end' in entity && 'radius' in entity) {
-    checkVertex(entity.start[0], entity.start[1], 'start')
-    checkVertex(entity.end[0], entity.end[1], 'end')
-    checkVertex(entity.center[0], entity.center[1], 'center')
-  } else if ('start' in entity && 'end' in entity) {
-    checkVertex(entity.start[0], entity.start[1], 'start')
-    checkVertex(entity.end[0], entity.end[1], 'end')
-  } else if ('center' in entity) {
-    checkVertex(entity.center[0], entity.center[1], 'center')
-  } else if ('x' in entity) {
-    checkVertex(entity.x, entity.y, 'xy')
-  }
-  
-  return bestVertex
-}
-
 // eslint-disable-next-line react-refresh/only-export-components
 export function computePreviewPts(
   tool: string,
@@ -229,17 +197,10 @@ export function DrawPlane({ featureId, activeFeatureId, sketch }: { featureId: s
           onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
             params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: hoveredVertexId, constraintKind })
         } else if (pathSnap && hoveredEntityId) {
-          // Path snap: find the nearest vertex of the hovered entity to create coincident constraint
-          const parts = hoveredEntityId.split(':')
-          const entityId = parts[2]
-          const nearestVertex = findNearestVertex(sketch, entityId, px, py)
-          if (nearestVertex) {
-            onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
-              params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: nearestVertex, constraintKind: 'coincident' })
-          } else {
-            onMutation?.({ type: 'add_entity', featureId, kind: 'line',
-              params: [pts[0][0], pts[0][1], px, py] })
-          }
+          // Path snap: create constraint with the entity directly (not a vertex)
+          // hoveredEntityId format: "entity:featureId:entityId"
+          onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
+            params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', constraintKind: 'coincident', snapEntityRef: hoveredEntityId })
         } else {
           onMutation?.({ type: 'add_entity', featureId, kind: 'line',
             params: [pts[0][0], pts[0][1], px, py] })

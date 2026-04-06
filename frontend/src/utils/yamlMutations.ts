@@ -230,8 +230,9 @@ export function applyAddEntityWithConstraint(
   kind: string,
   params: number[],
   vertexKey: string,
-  snapVertexId: string,
+  snapVertexId: string | undefined,
   constraintKind: string,
+  snapEntityRef?: string,
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature) return
@@ -243,14 +244,25 @@ export function applyAddEntityWithConstraint(
   while (existing.has(eid)) eid = randomId(12)
   feature.entities.push({ id: eid, kind })
   feature.initial[eid] = params.map(round)
-  // Parse snap vertex ID to get the existing entity reference
-  // snapVertexId format: "vertex:featId:entityId:vertexKey"
-  const snapParts = snapVertexId.split(':')
-  const snapEntityId = snapParts[2]
-  // Create constraint between new entity vertex and snapped vertex
+
+  let target: string
+  if (snapEntityRef) {
+    // Entity path snap: constraint references the entity directly
+    target = snapEntityRef
+  } else if (snapVertexId) {
+    // Vertex snap: parse vertex ID to get existing entity reference
+    // snapVertexId format: "vertex:featId:entityId:vertexKey"
+    const snapParts = snapVertexId.split(':')
+    const snapEntityId = snapParts[2]
+    target = `vertex:${featureId}:${snapEntityId}:${snapParts[3] || 'start'}`
+  } else {
+    return
+  }
+
+  // Create constraint between new entity vertex and snapped target
   applyAddConstraint(doc, featureId, constraintKind, [
     `vertex:${featureId}:${eid}:${vertexKey}`,
-    `vertex:${featureId}:${snapEntityId}:${snapParts[3] || 'start'}`,
+    target,
   ])
 }
 

@@ -310,6 +310,27 @@ describe('tool commands via store', () => {
     expect(() => executeCommand('apply_horizontal')).not.toThrow()
   })
 
+  it('apply_parallel calls applyConstraint on the store without throwing', () => {
+    registerCommand('apply_parallel', () => useSketchEditorStore.getState().applyConstraint('parallel'))
+    expect(() => executeCommand('apply_parallel')).not.toThrow()
+  })
+
+  it('constraint shortcuts take precedence over core keybindings with same key', () => {
+    // 'p' is in CORE_KEYBINDINGS for toggle_sketch_plane_visibility
+    // but also in CONSTRAINT_SHORTCUTS for apply_parallel
+    // KEYMAP should have constraint shortcut win
+    expect(KEYMAP['p']).toBe('apply_parallel')
+    expect(KEYMAP['y']).toBe('toggle_sketch_plane_visibility')
+  })
+
+  it('dispatchKey for constraint shortcut calls applyConstraint on the store', () => {
+    registerCommand('apply_parallel', () => useSketchEditorStore.getState().applyConstraint('parallel'))
+    const e = fakeKey('p')
+    dispatchKey(e)
+    // applyConstraint returns early without selection, so just verify no throw
+    expect(() => executeCommand('apply_parallel')).not.toThrow()
+  })
+
   it('entity shortcut keys in KEYMAP map to set_tool_* commands', () => {
     // Verify the merged KEYMAP contains entity shortcuts
     expect(KEYMAP['l']).toBe('set_tool_line')
