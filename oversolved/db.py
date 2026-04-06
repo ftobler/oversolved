@@ -320,7 +320,10 @@ class DocumentStore:
     def list_by_owner(self, owner_id: int) -> list[dict]:
         """List all documents for an owner, ordered by name."""
         cursor = self.db.execute(
-            "SELECT uuid, name FROM documents WHERE owner_id = ? ORDER BY name",
+            "SELECT uuid, name, preview_image FROM documents WHERE owner_id = ? ORDER BY name",
             (owner_id,),
         )
-        return [{"uuid": row[0], "name": row[1]} for row in cursor.fetchall()]
+        return [
+            {"uuid": row[0], "name": row[1], "preview_image": row[2]}
+            for row in cursor.fetchall()
+        ]

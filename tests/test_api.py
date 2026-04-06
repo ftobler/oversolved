@@ -240,6 +240,44 @@ class TestDocumentAPI:
         assert response.status_code == 200
         assert json.loads(response.data)["documents"] == []
 
+    def test_list_documents_includes_preview_image(self, authed_client):
+        uuid = json.loads(
+            authed_client.post(
+                "/api/documents",
+                data=json.dumps({"name": "WithPreview"}),
+                content_type="application/json",
+            ).data
+        )["uuid"]
+
+        import base64
+
+        image_data = b"\x89PNG\r\n\x1a\nfake"
+        encoded = base64.b64encode(image_data).decode("utf-8")
+        authed_client.put(
+            f"/api/documents/{uuid}",
+            data=json.dumps({"content": "version: 1\n", "preview_image": encoded}),
+            content_type="application/json",
+        )
+
+        response = authed_client.get("/api/documents")
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        doc = next(d for d in data["documents"] if d["uuid"] == uuid)
+        assert doc["preview_image"] == encoded
+
+    def test_list_documents_without_preview_image(self, authed_client):
+        authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "NoPreview"}),
+            content_type="application/json",
+        )
+
+        response = authed_client.get("/api/documents")
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        doc = next(d for d in data["documents"] if d["name"] == "NoPreview")
+        assert doc["preview_image"] is None
+
     def test_large_document(self, authed_client):
         uuid = json.loads(
             authed_client.post(

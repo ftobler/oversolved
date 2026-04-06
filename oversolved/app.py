@@ -180,7 +180,14 @@ def create_app(config=None):
     @app.route("/api/documents", methods=["GET"])
     @require_auth
     def list_documents():
+        import base64
+
         docs = DocumentStore(get_db()).list_by_owner(g.current_user["id"])
+        for doc in docs:
+            if doc["preview_image"]:
+                doc["preview_image"] = base64.b64encode(doc["preview_image"]).decode(
+                    "utf-8"
+                )
         return jsonify({"documents": docs})
 
     @app.route("/api/documents", methods=["POST"])
@@ -206,7 +213,10 @@ def create_app(config=None):
         response = {"uuid": doc["uuid"], "name": doc["name"], "content": doc["content"]}
         if doc["preview_image"]:
             import base64
-            response["preview_image"] = base64.b64encode(doc["preview_image"]).decode("utf-8")
+
+            response["preview_image"] = base64.b64encode(doc["preview_image"]).decode(
+                "utf-8"
+            )
         return jsonify(response)
 
     @app.route("/api/documents/<uuid>", methods=["PUT"])
@@ -232,6 +242,7 @@ def create_app(config=None):
         doc_store.store_content(uuid, content)
         if data.get("preview_image"):
             import base64
+
             image_data = base64.b64decode(data["preview_image"])
             doc_store.store_preview_image(uuid, image_data)
         return jsonify({"uuid": uuid, "status": "stored"}), 200

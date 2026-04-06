@@ -265,6 +265,7 @@ class TestDocumentStore:
         for d in docs:
             assert "uuid" in d
             assert "name" in d
+            assert "preview_image" in d
 
     def test_list_by_owner_empty(self, doc_store, user_id):
         assert doc_store.list_by_owner(user_id) == []

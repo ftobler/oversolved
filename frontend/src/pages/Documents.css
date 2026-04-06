@@ -4,12 +4,10 @@
   height: 100vh;
 }
 
-
-.doc-list {
+.doc-grid-container {
   flex: 1;
   padding: 16px;
   overflow-y: auto;
-  max-width: 500px;
 }
 
 .doc-controls {
@@ -18,14 +16,14 @@
   gap: 8px;
 }
 
-.doc-list .status {
+.status {
   text-align: left;
   padding: 16px 0;
   color: #888;
   font-size: 14px;
 }
 
-.doc-list .status.error {
+.status.error {
   color: #ef5350;
 }
 
@@ -104,17 +102,6 @@
   color: #fff;
 }
 
-.btn-delete {
-  background: #ef5350;
-  color: #fff;
-  padding: 6px 8px;
-  flex-shrink: 0;
-}
-
-.btn-delete:hover {
-  background: #f44336;
-}
-
 .btn .material-icons {
   font-size: 16px;
   width: 16px;
@@ -124,64 +111,108 @@
   justify-content: center;
 }
 
-.doc-list ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.doc-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
 }
 
-.doc-item {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.doc-link {
-  flex: 1;
-  display: block;
-  padding: 12px;
+.doc-tile {
+  position: relative;
   background: #1a1a1a;
   border: 1px solid #333;
-  border-radius: 4px;
-  text-decoration: none;
-  transition: all 0.2s;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.2s;
 }
 
-.doc-link:hover {
-  background: #222;
+.doc-tile:hover {
   border-color: #4fc3f7;
 }
 
-.doc-link .doc-name {
+.doc-tile-link {
   display: block;
-  color: #4fc3f7;
-  font-weight: 600;
-  margin-bottom: 2px;
-  font-size: 14px;
+  text-decoration: none;
+  color: inherit;
 }
 
-.doc-preview {
-  display: block;
-  color: #999;
-  font-size: 12px;
-  line-height: 1.3;
+.doc-tile-preview {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: #111;
+  overflow: hidden;
+}
+
+.doc-tile-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.doc-tile-placeholder {
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(135deg, #1a1a1a 25%, #222 25%, #222 50%, #1a1a1a 50%, #1a1a1a 75%, #222 75%);
+  background-size: 20px 20px;
+}
+
+.doc-tile-info {
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+}
+
+.doc-tile-name {
+  color: #4fc3f7;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-delete-tile {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #ef5350;
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.doc-tile:hover .btn-delete-tile {
+  opacity: 1;
+}
+
+.btn-delete-tile:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.btn-delete-tile .material-icons {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
 }
 
 @media (max-width: 768px) {
-  .doc-list {
-    max-width: 100%;
+  .doc-grid-container {
     padding: 12px;
   }
 
-  .doc-list ul {
-    gap: 6px;
-  }
-
-  .doc-link {
-    padding: 10px;
+  .doc-tiles {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
   }
 }

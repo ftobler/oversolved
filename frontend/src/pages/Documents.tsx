@@ -6,6 +6,7 @@ import './Documents.css'
 interface DocumentMeta {
   uuid: string
   name: string
+  preview_image?: string
 }
 
 export default function Documents() {
@@ -88,7 +89,7 @@ export default function Documents() {
     <div className="documents">
       <AppHeader title="Documents" />
 
-      <div className="doc-list">
+      <div className="doc-grid-container">
         <div className="doc-controls">
           <button className="btn btn-add" onClick={() => setShowAddForm(!showAddForm)}>
             <span className="material-icons">add</span>
@@ -122,15 +123,22 @@ export default function Documents() {
         {error && <p className="status error">Error: {error}</p>}
         {!loading && documents.length === 0 && <p className="status">No documents yet.</p>}
 
-        {documents.length > 0 && (
-          <ul>
+        {!loading && documents.length > 0 && (
+          <div className="doc-tiles">
             {documents.map(doc => (
-              <li key={doc.uuid} className="doc-item">
-                <Link to={`/documents/${doc.uuid}`} className="doc-link">
-                  <span className="doc-name">{doc.name}</span>
+              <div key={doc.uuid} className="doc-tile">
+                <Link to={`/documents/${doc.uuid}`} className="doc-tile-link">
+                  <div className="doc-tile-preview">
+                    {doc.preview_image
+                      ? <img src={`data:image/png;base64,${doc.preview_image}`} alt={doc.name} />
+                      : <div className="doc-tile-placeholder" />}
+                  </div>
+                  <div className="doc-tile-info">
+                    <span className="doc-tile-name" title={doc.name}>{doc.name}</span>
+                  </div>
                 </Link>
                 <button
-                  className="btn btn-delete"
+                  className="btn btn-delete-tile"
                   onClick={e => {
                     e.preventDefault()
                     handleDeleteDocument(doc.uuid, doc.name)
@@ -139,9 +147,9 @@ export default function Documents() {
                 >
                   <span className="material-icons">delete</span>
                 </button>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>
