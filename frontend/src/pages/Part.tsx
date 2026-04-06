@@ -435,7 +435,7 @@ export default function Part() {
       })
     }
 
-    if (featureId) {
+    if (featureId && featureId !== activeSketchFeatureId) {
       const target = features.find(f => f.id === featureId)
       if (target?.kind === 'plane') {
         const isVisible = visibleFeatures.has(target.id)

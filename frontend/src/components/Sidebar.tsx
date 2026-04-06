@@ -90,22 +90,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   }
 
+  const PickChip: React.FC<{ value: string | undefined; isPicking: boolean; onActivate: () => void; onClear: () => void }> = ({ value, isPicking, onActivate, onClear }) => {
+    const isEmpty = !value || value === 'None'
+    return (
+      <div
+        className={`feature-pick-chip ${isEmpty ? 'empty' : ''} ${isPicking ? 'picking' : ''}`}
+        onClick={(e) => { e.stopPropagation(); onActivate() }}
+      >
+        {!isEmpty && (
+          <div className="feature-pick-chip-item">
+            <span className="feature-pick-chip-item-text">{value}</span>
+            <button
+              className="feature-pick-chip-item-remove"
+              onClick={(e) => { e.stopPropagation(); onClear() }}
+              title="Clear selection"
+            >×</button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const PlaneEditor: React.FC<{ feature: PartFeature; featureDef?: PartFeature }> = ({ feature, featureDef }) => {
     const def = (featureDef?.definition as PlaneDef | undefined) ?? { mode: 'offset' }
     const mode = def.mode ?? 'offset'
     const fid = feature.id
     const isPickingKind = (field: string, kind: 'plane' | 'point' | 'line') =>
       fieldPickState?.featureId === fid && fieldPickState.field === field && fieldPickState.kind === kind
-    const pickBtn = (field: string, kind: 'plane' | 'point' | 'line', label: string) =>
-      isPickingKind(field, kind)
-        ? <button className="feature-plane-btn active" onClick={(e) => { e.stopPropagation(); onSetFieldPickState(null) }}>Cancel</button>
-        : <button className="feature-plane-btn" onClick={(e) => { e.stopPropagation(); onSetFieldPickState({ featureId: fid, field, kind }) }}>{label}</button>
+    const pickChip = (field: string, kind: 'plane' | 'point' | 'line', value: string | undefined) => {
+      const isPicking = isPickingKind(field, kind)
+      return <PickChip
+        value={value}
+        isPicking={isPicking}
+        onActivate={() => {
+          if (isPicking) onSetFieldPickState(null)
+          else onSetFieldPickState({ featureId: fid, field, kind })
+        }}
+        onClear={() => onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: '' })}
+      />
+    }
     const numField = (field: 'offset' | 'angle' | 'rotation', label: string, defaultVal: number) => (
-      <div className="plane-editor-row">
-        <span className="plane-editor-label">{label}:</span>
+      <div className="feature-field-row">
+        <span className="feature-field-label">{label}</span>
         <input
           type="number"
-          className="plane-editor-input"
+          className="feature-field-input"
           defaultValue={def[field] ?? defaultVal}
           onClick={(e) => e.stopPropagation()}
           onBlur={(e) => {
@@ -116,20 +145,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
       </div>
     )
-    const refPlaneRow = (
-      <div className="plane-editor-row">
-        <span className="plane-editor-label">Plane:</span>
-        <span className="plane-editor-value">{planeLabel(def.plane)}</span>
-        {pickBtn('plane', 'plane', 'Pick')}
-      </div>
-    )
 
     return (
       <div className="plane-editor">
-        <div className="plane-editor-row">
-          <span className="plane-editor-label">Type:</span>
+        <div className="feature-field-row">
+          <span className="feature-field-label">Type</span>
           <select
-            className="plane-editor-select"
+            className="feature-field-select"
             value={mode}
             onChange={(e) => { e.stopPropagation(); onMutation({ type: 'set_plane_definition_field', featureId: fid, field: 'mode', value: e.target.value }) }}
             onClick={(e) => e.stopPropagation()}
@@ -143,48 +165,49 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
         {mode === 'offset' && (
           <>
-            {refPlaneRow}
+            <div className="feature-field-row">
+              <span className="feature-field-label">Plane</span>
+              {pickChip('plane', 'plane', planeLabel(def.plane))}
+            </div>
             {numField('offset', 'Offset', 0)}
           </>
         )}
         {mode === 'plane_point' && (
           <>
-            {refPlaneRow}
-            <div className="plane-editor-row">
-              <span className="plane-editor-label">Point:</span>
-              <span className="plane-editor-value">{def.point ?? 'None'}</span>
-              {pickBtn('point', 'point', 'Pick')}
+            <div className="feature-field-row">
+              <span className="feature-field-label">Plane</span>
+              {pickChip('plane', 'plane', planeLabel(def.plane))}
+            </div>
+            <div className="feature-field-row">
+              <span className="feature-field-label">Point</span>
+              {pickChip('point', 'point', def.point)}
             </div>
           </>
         )}
         {mode === 'three_point' && (['p1', 'p2', 'p3'] as const).map((field, i) => (
-          <div key={field} className="plane-editor-row">
-            <span className="plane-editor-label">P{i + 1}:</span>
-            <span className="plane-editor-value">{def[field] ?? 'None'}</span>
-            {pickBtn(field, 'point', 'Pick')}
+          <div key={field} className="feature-field-row">
+            <span className="feature-field-label">P{i + 1}</span>
+            {pickChip(field, 'point', def[field])}
           </div>
         ))}
         {mode === 'line_angle' && (
           <>
-            <div className="plane-editor-row">
-              <span className="plane-editor-label">Line:</span>
-              <span className="plane-editor-value">{def.line ?? 'None'}</span>
-              {pickBtn('line', 'line', 'Pick')}
+            <div className="feature-field-row">
+              <span className="feature-field-label">Line</span>
+              {pickChip('line', 'line', def.line)}
             </div>
             {numField('angle', 'Angle', 0)}
           </>
         )}
         {mode === 'edge_point' && (
           <>
-            <div className="plane-editor-row">
-              <span className="plane-editor-label">Line:</span>
-              <span className="plane-editor-value">{def.edge ?? 'None'}</span>
-              {pickBtn('edge', 'line', 'Pick')}
+            <div className="feature-field-row">
+              <span className="feature-field-label">Line</span>
+              {pickChip('edge', 'line', def.edge)}
             </div>
-            <div className="plane-editor-row">
-              <span className="plane-editor-label">Point:</span>
-              <span className="plane-editor-value">{def.point ?? 'None'}</span>
-              {pickBtn('point', 'point', 'Pick')}
+            <div className="feature-field-row">
+              <span className="feature-field-label">Point</span>
+              {pickChip('point', 'point', def.point)}
             </div>
           </>
         )}
@@ -196,26 +219,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const PlaneSelector: React.FC<{ feature: PartFeature; featureDef?: PartFeature }> = ({ feature, featureDef }) => {
     const isPicking = planeSelectionFeatureId === feature.id
     return (
-      <div className="feature-plane-selector">
-        <span className="feature-plane-label">Plane: {planeLabel(featureDef?.plane)}</span>
-        {isPicking ? (
-          <div className="feature-plane-picking">
-            <span className="feature-plane-hint">Click a plane or face...</span>
-            <button
-              className="feature-plane-btn"
-              onClick={(e) => { e.stopPropagation(); onSetPlaneSelectionFeatureId(null) }}
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button
-            className="feature-plane-btn"
-            onClick={(e) => { e.stopPropagation(); onSetPlaneSelectionFeatureId(feature.id) }}
-          >
-            Change
-          </button>
-        )}
+      <div className="plane-editor">
+        <div className="feature-field-row">
+          <span className="feature-field-label">Plane</span>
+          <PickChip
+            value={planeLabel(featureDef?.plane)}
+            isPicking={isPicking}
+            onActivate={() => {
+              if (isPicking) onSetPlaneSelectionFeatureId(null)
+              else onSetPlaneSelectionFeatureId(feature.id)
+            }}
+            onClear={() => onSetPlaneSelectionFeatureId(null)}
+          />
+        </div>
       </div>
     )
   }
@@ -249,85 +265,89 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onRightClick([e.clientX, e.clientY], feature.id) }}
                 style={{ flexWrap: 'wrap' }}
               >
-                <img
-                  src={getFeatureIcon(feature.kind)}
-                  alt={feature.kind || 'feature'}
-                  className="feature-icon"
-                />
-                {renamingFeatureId === feature.id ? (
-                  <input
-                    className="feature-name-input"
-                    value={renameValue}
-                    autoFocus
-                    onClick={e => e.stopPropagation()}
-                    onChange={e => setRenameValue(e.target.value)}
-                    onBlur={() => commitRename(feature)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { e.currentTarget.blur() }
-                      if (e.key === 'Escape') { setRenamingFeatureId(null) }
-                      e.stopPropagation()
-                    }}
+                <div className="feature-item-title">
+                  <img
+                    src={getFeatureIcon(feature.kind)}
+                    alt={feature.kind || 'feature'}
+                    className="feature-icon"
                   />
-                ) : (
-                  <span
-                    className="feature-name"
-                    onClick={e => {
-                      e.stopPropagation()
-                      setRenamingFeatureId(feature.id)
-                      setRenameValue(feature.label || feature.id)
-                    }}
-                  >
-                    {feature.label || feature.id}
-                  </span>
-                )}
-                {feature.kind === 'sketch' && feature.id !== editingFeatureId && (
-                  <button
-                    className="feature-edit-btn"
-                    onClick={() => onEnterEditSketch(feature.id)}
-                    title="Edit sketch"
-                  >
-                    <img src={contextEditIcon} alt="Edit" />
-                  </button>
-                )}
-                {feature.kind === 'sketch' && feature.id === editingFeatureId && (
-                  <button
-                    className="exit-sketch-btn"
-                    onClick={(e) => { e.stopPropagation(); onExitEditSketch() }}
-                    title="Exit sketch"
-                  >
-                    <img src={exitSketchIcon} alt="Exit" />
-                  </button>
-                )}
-                {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id !== editingFeatureId && (
-                  <button
-                    className="feature-edit-btn"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      const idx = features.findIndex(f => f.id === feature.id)
-                      if (idx >= 0) onSetRollbackPosition(idx + 1)
-                      onSetEditingFeatureId(feature.id)
-                    }}
-                    title="Edit plane"
-                  >
-                    <img src={contextEditIcon} alt="Edit" />
-                  </button>
-                )}
-                {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (
-                  <button
-                    className="exit-sketch-btn"
-                    onClick={(e) => { e.stopPropagation(); onSetEditingFeatureId(null); onSetFieldPickState(null) }}
-                    title="Exit plane editor"
-                  >
-                    <span className="material-icons-outlined">close</span>
-                  </button>
-                )}
-                <button
-                  className="feature-visibility-btn"
-                  onClick={(e) => { e.stopPropagation(); onToggleVisibility(feature.id) }}
-                  title={visibleFeatures.has(feature.id) ? 'Hide' : 'Show'}
-                >
-                  <img src={visibleFeatures.has(feature.id) ? iconEyeIcon : iconEyeOffIcon} alt={visibleFeatures.has(feature.id) ? 'Visible' : 'Hidden'} />
-                </button>
+                  {renamingFeatureId === feature.id ? (
+                    <input
+                      className="feature-name-input"
+                      value={renameValue}
+                      autoFocus
+                      onClick={e => e.stopPropagation()}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onBlur={() => commitRename(feature)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.currentTarget.blur() }
+                        if (e.key === 'Escape') { setRenamingFeatureId(null) }
+                        e.stopPropagation()
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="feature-name"
+                      onClick={e => {
+                        e.stopPropagation()
+                        setRenamingFeatureId(feature.id)
+                        setRenameValue(feature.label || feature.id)
+                      }}
+                    >
+                      {feature.label || feature.id}
+                    </span>
+                  )}
+                  <div className="feature-item-actions">
+                    {feature.kind === 'sketch' && feature.id !== editingFeatureId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={() => onEnterEditSketch(feature.id)}
+                        title="Edit sketch"
+                      >
+                        <img src={contextEditIcon} alt="Edit" />
+                      </button>
+                    )}
+                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id !== editingFeatureId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          const idx = features.findIndex(f => f.id === feature.id)
+                          if (idx >= 0) onSetRollbackPosition(idx + 1)
+                          onSetEditingFeatureId(feature.id)
+                        }}
+                        title="Edit plane"
+                      >
+                        <img src={contextEditIcon} alt="Edit" />
+                      </button>
+                    )}
+                    {feature.kind === 'sketch' && feature.id === editingFeatureId && (
+                      <button
+                        className="exit-sketch-btn"
+                        onClick={(e) => { e.stopPropagation(); onExitEditSketch() }}
+                        title="Exit sketch"
+                      >
+                        <img src={exitSketchIcon} alt="Exit" />
+                      </button>
+                    )}
+                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (
+                      <button
+                        className="exit-sketch-btn"
+                        onClick={(e) => { e.stopPropagation(); onSetEditingFeatureId(null); onSetFieldPickState(null) }}
+                        title="Exit plane editor"
+                      >
+                        <span className="material-icons-outlined">close</span>
+                      </button>
+                    )}
+                    <button
+                      className="feature-visibility-btn"
+                      onClick={(e) => { e.stopPropagation(); onToggleVisibility(feature.id) }}
+                      title={visibleFeatures.has(feature.id) ? 'Hide' : 'Show'}
+                    >
+                      <img src={visibleFeatures.has(feature.id) ? iconEyeIcon : iconEyeOffIcon} alt={visibleFeatures.has(feature.id) ? 'Visible' : 'Hidden'} />
+                    </button>
+                  </div>
+                </div>
                 {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (
                   <PlaneEditor feature={feature} featureDef={doc?.features?.find(f => f.id === feature.id)} />
                 )}

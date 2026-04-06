@@ -39,13 +39,13 @@ describe('setFieldPickState', () => {
 describe('commitFieldPick with builtin plane', () => {
   beforeEach(reset)
 
-  it('dispatches set_plane_definition_field and clears fieldPickState', () => {
+  it('dispatches set_plane_definition_field and keeps fieldPickState active', () => {
     const mutations: unknown[] = []
     useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
     useSketchEditorStore.getState().setFieldPickState({ featureId: 'plane1', field: 'plane', kind: 'plane' })
     useSketchEditorStore.getState().commitFieldPick('@builtin_plane_top')
     expect(mutations[0]).toEqual({ type: 'set_plane_definition_field', featureId: 'plane1', field: 'plane', value: '@builtin_plane_top' })
-    expect(useSketchEditorStore.getState().fieldPickState).toBeNull()
+    expect(useSketchEditorStore.getState().fieldPickState).toEqual({ featureId: 'plane1', field: 'plane', kind: 'plane' })
   })
 })
 

@@ -204,7 +204,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       value = selectionId
     }
     onMutation?.({ type: 'set_plane_definition_field', featureId: fieldPickState.featureId, field: fieldPickState.field, value })
-    set({ fieldPickState: null })
   },
 
   commitPlaneSelection: (selectionId) => {
@@ -214,7 +213,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
     onMutation?.({ type: 'set_feature_plane', featureId: planeSelectionFeatureId, plane })
-    set({ planeSelectionFeatureId: null })
   },
 
   handleDimensionClick: (target, featureId, kind, screenPos, entityKind) => {

@@ -41,13 +41,13 @@ describe('setPlaneSelectionFeatureId', () => {
 describe('commitPlaneSelection with builtin ID', () => {
   beforeEach(reset)
 
-  it('dispatches set_feature_plane and exits mode', () => {
+  it('dispatches set_feature_plane and keeps selection mode active', () => {
     const mutations: unknown[] = []
     useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
     useSketchEditorStore.getState().setPlaneSelectionFeatureId('sketch1')
     useSketchEditorStore.getState().commitPlaneSelection('@builtin_plane_top')
     expect(mutations[0]).toEqual({ type: 'set_feature_plane', featureId: 'sketch1', plane: '@builtin_plane_top' })
-    expect(useSketchEditorStore.getState().planeSelectionFeatureId).toBeNull()
+    expect(useSketchEditorStore.getState().planeSelectionFeatureId).toBe('sketch1')
   })
 })
 
@@ -85,7 +85,7 @@ describe('commitPlaneSelection with @featureId', () => {
     useSketchEditorStore.getState().setPlaneSelectionFeatureId('sketch2')
     useSketchEditorStore.getState().commitPlaneSelection('@sketch1')
     expect(mutations[0]).toEqual({ type: 'set_feature_plane', featureId: 'sketch2', plane: '@sketch1' })
-    expect(useSketchEditorStore.getState().planeSelectionFeatureId).toBeNull()
+    expect(useSketchEditorStore.getState().planeSelectionFeatureId).toBe('sketch2')
   })
 
   it('stores @extrude1 as plane verbatim (future: resolves to top/origin face)', () => {
