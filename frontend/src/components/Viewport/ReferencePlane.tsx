@@ -42,6 +42,8 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const drag = useSketchEditorStore(s => s.drag)
+  const setHoveredPlane = useSketchEditorStore(s => s.setHoveredPlane)
+  const isRotating = useSketchEditorStore(s => s.isRotating)
   const selId = builtinSelectionId(label)
   const selected = useSketchEditorStore(s => s.selection.has(selId))
 
@@ -62,8 +64,8 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
     <group rotation={rotation}>
       {!isDragging && (
         <mesh
-          onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true) }}
-          onPointerOut={() => setHovered(false)}
+          onPointerOver={e => { if (isRotating) return; if (!isDrawingTool) e.stopPropagation(); setHovered(true); setHoveredPlane(selId) }}
+          onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredPlane(null) }}
           onClick={e => {
             e.stopPropagation()
             if (fieldPickState?.kind === 'plane') commitFieldPick(selId)

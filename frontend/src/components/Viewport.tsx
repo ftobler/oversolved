@@ -69,6 +69,8 @@ function UserDefinedPlane({ featureId, label, planeTransform }: { featureId: str
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const drag = useSketchEditorStore(s => s.drag)
+  const setHoveredPlane = useSketchEditorStore(s => s.setHoveredPlane)
+  const isRotating = useSketchEditorStore(s => s.isRotating)
   const selId = `@${featureId}`
   const selected = useSketchEditorStore(s => s.selection.has(selId))
   const isDragging = drag !== null
@@ -83,8 +85,8 @@ function UserDefinedPlane({ featureId, label, planeTransform }: { featureId: str
     <group position={[ox, oy, oz]} rotation={rot}>
       {!isDragging && (
         <mesh
-          onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
-          onPointerOut={() => setHovered(false)}
+          onPointerOver={e => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredPlane(selId) }}
+          onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredPlane(null) }}
           onClick={e => {
             e.stopPropagation()
             if (fieldPickState?.kind === 'plane') commitFieldPick(selId)

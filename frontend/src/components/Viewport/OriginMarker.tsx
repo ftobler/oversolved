@@ -12,11 +12,13 @@ export default function OriginMarker() {
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
   const selId = builtinSelectionId('Origin')
   const selected = useSketchEditorStore(s => s.selection.has(selId))
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
+  const isRotating = useSketchEditorStore(s => s.isRotating)
 
   useFrame(() => {
     if (!hitRef.current) return
@@ -41,8 +43,8 @@ export default function OriginMarker() {
 
   return (
     <group
-      onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true) }}
-      onPointerOut={() => setHovered(false)}
+      onPointerOver={e => { if (isRotating) return; if (!isDrawingTool) e.stopPropagation(); setHovered(true); setHoveredEntity(selId) }}
+      onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredEntity(null) }}
       onClick={onClick}
     >
       <Dot x={0} y={0} px={hovered ? 6 : 4} color={color} billboard />

@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import type { Sketch, Constraints, Topology, Point, TopologySurface, TopologyEdge, TopologyArcEdge, Entity, LineSegment, Circle, Arc, PointEntity } from '../types/cad'
 import { p2w, sampleArc, getEntityBounds } from './sketch_helpers'
 import { DashedLine, ConstraintOverlays } from './sketch_dimensions'
+import { useSketchEditorStore } from '../stores/sketchEditorStore'
 
 const COLOR_SOLVED = '#4fc3f7'
 const COLOR_HOVER = '#ffffff'
@@ -99,6 +100,7 @@ function VertexDot({ x, y, px, baseColor }: { x: number; y: number; px: number; 
   const [hovered, setHovered] = useState(false)
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
+  const isRotating = useSketchEditorStore(s => s.isRotating)
   // Offset the hit-sphere toward the camera (not object-space z) so the vertex
   // always wins the raycast over the 3D edge cylinders regardless of orbit angle.
   useFrame(() => {
@@ -113,8 +115,8 @@ function VertexDot({ x, y, px, baseColor }: { x: number; y: number; px: number; 
   const color = hovered ? COLOR_HOVER : baseColor
   return (
     <group
-      onPointerOver={e => { e.stopPropagation(); setHovered(true) }}
-      onPointerOut={() => setHovered(false)}
+      onPointerOver={e => { if (isRotating) return; e.stopPropagation(); setHovered(true) }}
+      onPointerOut={() => { if (isRotating) return; setHovered(false) }}
     >
       <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard />
       {hovered && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
@@ -148,12 +150,13 @@ interface EntityItemProps {
 
 function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
   const [hovered, setHovered] = useState(false)
+  const isRotating = useSketchEditorStore(s => s.isRotating)
   const color = hovered ? COLOR_HOVER : baseColor
   const lw = hovered ? lineWidth + 1 : lineWidth
   const e = entity
   const construction = 'construction' in e && e.construction
-  const onOver = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); setHovered(true) }
-  const onOut = () => setHovered(false)
+  const onOver = (ev: { stopPropagation: () => void }) => { if (isRotating) return; ev.stopPropagation(); setHovered(true) }
+  const onOut = () => { if (isRotating) return; setHovered(false) }
 
   if ('start' in e && 'end' in e && 'radius' in e) {
     const arc = e as Arc
@@ -262,11 +265,12 @@ function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
 
 function SurfaceMesh({ shape }: { shape: THREE.Shape }) {
   const [hovered, setHovered] = useState(false)
+  const isRotating = useSketchEditorStore(s => s.isRotating)
   return (
     <mesh
       position={[0, 0, -0.003]}
-      onPointerOver={() => setHovered(true)}
-      onPointerOut={() => setHovered(false)}
+      onPointerOver={() => { if (isRotating) return; setHovered(true) }}
+      onPointerOut={() => { if (isRotating) return; setHovered(false) }}
     >
       <shapeGeometry args={[shape]} />
       <meshBasicMaterial color="white" transparent opacity={hovered ? 0.15 : 0.10} side={THREE.DoubleSide} depthWrite={false} />

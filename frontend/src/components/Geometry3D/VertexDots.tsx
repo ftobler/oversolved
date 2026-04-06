@@ -116,6 +116,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const activeTool = useSketchEditorStore(s => s.activeTool)
+  const isRotating = useSketchEditorStore(s => s.isRotating)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const setHoveredVertex = useSketchEditorStore(s => s.setHoveredVertex)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
@@ -188,10 +189,21 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
   const snapKind = determineSnapKind(entityKind, vertexKey)
+  const handlePointerOver = (e: { stopPropagation: () => void }) => {
+    if (isRotating) return
+    if (!isDrawingTool) e.stopPropagation()
+    setHovered(true)
+    if (vertId) setHoveredVertex(vertId, [x, y], snapKind)
+  }
+  const handlePointerOut = () => {
+    if (isRotating) return
+    setHovered(false)
+    setHoveredVertex(null, null, null)
+  }
   return (
     <group
-      onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true); if (vertId) setHoveredVertex(vertId, [x, y], snapKind) }}
-      onPointerOut={() => { setHovered(false); setHoveredVertex(null, null, null) }}
+      onPointerOver={handlePointerOver}
+      onPointerOut={handlePointerOut}
       onClick={onClick}
       onPointerDown={onPointerDown}
     >
@@ -218,6 +230,7 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number;
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
+  const isRotating = useSketchEditorStore(s => s.isRotating)
   const entId = `entity:${featureId}:${entityId}`
   const selected = useSketchEditorStore(s => s.selection.has(entId))
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
@@ -238,10 +251,19 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number;
   }, [activeTool, featureId, entId, toggleSelect, handleDimClick, activeFeatureId])
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : COLOR_PROJECTED
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
+  const handlePointerOver = (e: { stopPropagation: () => void }) => {
+    if (isRotating) return
+    if (!isDrawingTool) e.stopPropagation()
+    setHovered(true)
+  }
+  const handlePointerOut = () => {
+    if (isRotating) return
+    setHovered(false)
+  }
   return (
     <group ref={groupRef} position={[x, y, 0]}
-      onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true) }}
-      onPointerOut={() => setHovered(false)}
+      onPointerOver={handlePointerOver}
+      onPointerOut={handlePointerOut}
     >
       {/* '+' cross: vertical bar */}
       <Line points={[[0, -1, 0], [0, 1, 0]]} color={color} lineWidth={hovered ? 2 : 1} />

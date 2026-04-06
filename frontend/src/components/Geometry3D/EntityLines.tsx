@@ -57,8 +57,9 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const e = entity
   const construction = 'construction' in e && e.construction
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
-  const onOver = (ev: { stopPropagation: () => void }) => { if (!isDrawingTool) ev.stopPropagation(); setHovered(true); setHoveredEntity(entId) }
-  const onOut = () => { setHovered(false); setHoveredEntity(null) }
+  const isRotating = useSketchEditorStore(s => s.isRotating)
+  const onOver = (ev: { stopPropagation: () => void }) => { if (isRotating) return; if (!isDrawingTool) ev.stopPropagation(); setHovered(true); setHoveredEntity(entId) }
+  const onOut = () => { if (isRotating) return; setHovered(false); setHoveredEntity(null) }
   const onClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     ev.stopPropagation()
     if (activeTool === 'dimension') {

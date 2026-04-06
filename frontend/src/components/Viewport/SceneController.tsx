@@ -78,6 +78,7 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
   })
 
   const orbitEnabled = useSketchEditorStore(s => s.orbitEnabled)
+  const setIsRotating = useSketchEditorStore(s => s.setIsRotating)
 
   return (
     <OrbitControls
@@ -88,6 +89,8 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
       enableZoom
       enablePan
       enableDamping={false}
+      onStart={() => setIsRotating(true)}
+      onEnd={() => setIsRotating(false)}
     />
   )
 }

@@ -46,13 +46,15 @@ interface SketchEditorState {
   selection: Set<string>
   drag: DragState | null
   orbitEnabled: boolean
+  isRotating: boolean
   showDebugHit: boolean
   onMutation: ((m: Mutation) => void) | null
   onRebuild: (() => void) | null
   onExitSketch: (() => void) | null
   hoveredConstraintEntityIds: Set<string>  // entity IDs highlighted by constraint hover
-  hoveredEntityId: string | null  // currently hovered entity/vertex ID
+  hoveredEntityId: string | null  // currently hovered entity ID
   hoveredVertexId: string | null  // hovered vertex ID (e.g., "vertex:S1:L1:start")
+  hoveredPlaneId: string | null  // currently hovered plane ID (e.g., "@builtin_plane_front" or "@featureId")
   hoveredVertexPosition: [number, number] | null  // world position of hovered vertex for snap
   hoveredSnapKind: SnapKind | null  // what kind of snap target we're hovering (vertex, midpoint, center, path)
   hoveredPathSnap: { entityId: string; position: [number, number] } | null  // path snap: nearest point on entity geometry
@@ -74,6 +76,7 @@ interface SketchEditorState {
   clearSelection: () => void
   setDrag: (drag: DragState | null) => void
   setOrbitEnabled: (enabled: boolean) => void
+  setIsRotating: (rotating: boolean) => void
   setShowDebugHit: (enabled: boolean) => void
   setOnMutation: (cb: ((m: Mutation) => void) | null) => void
   setOnRebuild: (cb: (() => void) | null) => void
@@ -82,6 +85,7 @@ interface SketchEditorState {
   setHoveredConstraintEntities: (ids: Set<string>) => void
   setHoveredEntity: (id: string | null) => void
   setHoveredVertex: (id: string | null, position: [number, number] | null, snapKind?: SnapKind | null) => void
+  setHoveredPlane: (id: string | null) => void
   setHoveredPathSnap: (snap: { entityId: string; position: [number, number] } | null) => void
   setActiveTool: (tool: ActiveTool) => void
   applyConstraint: (kind: string) => void
@@ -103,6 +107,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   selection: new Set(),
   drag: null,
   orbitEnabled: true,
+  isRotating: false,
   showDebugHit: false,
   onMutation: null,
   onRebuild: null,
@@ -110,6 +115,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   hoveredConstraintEntityIds: new Set(),
   hoveredEntityId: null,
   hoveredVertexId: null,
+  hoveredPlaneId: null,
   hoveredVertexPosition: null,
   hoveredSnapKind: null,
   hoveredPathSnap: null,
@@ -138,6 +144,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setOrbitEnabled: (enabled) => set({ orbitEnabled: enabled }),
 
+  setIsRotating: (rotating: boolean) => set({ isRotating: rotating }),
+
   setShowDebugHit: (enabled) => set({ showDebugHit: enabled }),
 
   setOnMutation: (cb) => set({ onMutation: cb }),
@@ -151,6 +159,9 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setHoveredEntity: (id) => set({ hoveredEntityId: id }),
 
   setHoveredVertex: (id, position, snapKind) => set({ hoveredVertexId: id, hoveredVertexPosition: position, hoveredSnapKind: snapKind ?? null }),
+
+  setHoveredPlane: (id) => set({ hoveredPlaneId: id }),
+
   setHoveredPathSnap: (snap) => set({ hoveredPathSnap: snap }),
 
   setActiveTool: (tool) => set({ activeTool: tool, drawPoints: [], drawHover: null }),
