@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  backend:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - DB_TYPE=mariadb
+      - DB_HOST=mariadb
+      - DB_USER=oversolved
+      - DB_PASSWORD=devpass
+      - DB_NAME=oversolved
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  mariadb:
+    image: mariadb:10.11
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpass
+      - MYSQL_DATABASE=oversolved
+      - MYSQL_USER=oversolved
+      - MYSQL_PASSWORD=devpass
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mariadb_data:
