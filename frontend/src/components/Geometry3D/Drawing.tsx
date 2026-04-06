@@ -134,6 +134,8 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
   const onMutation = useSketchEditorStore(s => s.onMutation)
   const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
   const clearSelection = useSketchEditorStore(s => s.clearSelection)
+  const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
+  const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
 
   if (featureId !== activeFeatureId) return null
 
@@ -153,27 +155,41 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
   }
 
   const handleDown = (x: number, y: number) => {
+    // Snap to hovered vertex position if available
+    const [px, py] = hoveredVertexPosition ?? [x, y]
     const pts = drawPoints
 
     if (activeTool === 'point') {
-      onMutation?.({ type: 'add_entity', featureId, kind: 'point', params: [x, y] })
+      onMutation?.({ type: 'add_entity', featureId, kind: 'point', params: [px, py] })
       // keep tool active for repeated point insertion
 
     } else if (activeTool === 'line') {
       if (pts.length === 0) {
-        addDrawPoint([x, y])
+        if (hoveredVertexId) {
+          onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
+            params: [px, py, px, py], vertexKey: 'start', snapVertexId: hoveredVertexId })
+          clearDraw()
+          setActiveTool('select')
+        } else {
+          addDrawPoint([px, py])
+        }
       } else {
-        onMutation?.({ type: 'add_entity', featureId, kind: 'line',
-          params: [pts[0][0], pts[0][1], x, y] })
+        if (hoveredVertexId) {
+          onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
+            params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: hoveredVertexId })
+        } else {
+          onMutation?.({ type: 'add_entity', featureId, kind: 'line',
+            params: [pts[0][0], pts[0][1], px, py] })
+        }
         clearDraw()
         setActiveTool('select')
       }
 
     } else if (activeTool === 'circle') {
       if (pts.length === 0) {
-        addDrawPoint([x, y])
+        addDrawPoint([px, py])
       } else {
-        const r = Math.hypot(x - pts[0][0], y - pts[0][1])
+        const r = Math.hypot(px - pts[0][0], py - pts[0][1])
         if (r > 0) {
           onMutation?.({ type: 'add_entity', featureId, kind: 'circle',
             params: [pts[0][0], pts[0][1], r] })
@@ -184,14 +200,14 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
 
     } else if (activeTool === 'arc') {
       if (pts.length === 0) {
-        addDrawPoint([x, y])  // start point
+        addDrawPoint([px, py])  // start point
       } else if (pts.length === 1) {
-        addDrawPoint([x, y])  // end point
+        addDrawPoint([px, py])  // end point
       } else {
-        // pts[0]=start, pts[1]=end, [x,y]=radius point
-        const cc = circumcircle(pts[0], pts[1], [x, y])
+        // pts[0]=start, pts[1]=end, [px,py]=radius point
+        const cc = circumcircle(pts[0], pts[1], [px, py])
         if (cc && cc.r > 0) {
-          const [aStart, aEnd] = arcAnglesFromRadiusPoint(cc.cx, cc.cy, pts[0], pts[1], [x, y])
+          const [aStart, aEnd] = arcAnglesFromRadiusPoint(cc.cx, cc.cy, pts[0], pts[1], [px, py])
           onMutation?.({ type: 'add_entity', featureId, kind: 'arc',
             params: [cc.cx, cc.cy, cc.r, aStart, aEnd] })
         }
@@ -201,18 +217,18 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
 
     } else if (activeTool === 'rect') {
       if (pts.length === 0) {
-        addDrawPoint([x, y])
+        addDrawPoint([px, py])
       } else {
-        onMutation?.({ type: 'add_rect', featureId, p0: pts[0], p1: [x, y] })
+        onMutation?.({ type: 'add_rect', featureId, p0: pts[0], p1: [px, py] })
         clearDraw()
         setActiveTool('select')
       }
 
     } else if (activeTool === 'center_rect') {
       if (pts.length === 0) {
-        addDrawPoint([x, y])  // first click = center
+        addDrawPoint([px, py])  // first click = center
       } else {
-        onMutation?.({ type: 'add_center_rect', featureId, center: pts[0], corner: [x, y] })
+        onMutation?.({ type: 'add_center_rect', featureId, center: pts[0], corner: [px, py] })
         clearDraw()
         setActiveTool('select')
       }

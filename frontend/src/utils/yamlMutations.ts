@@ -224,6 +224,35 @@ export function applyAddEntity(
   feature.initial[eid] = params.map(round)
 }
 
+export function applyAddEntityWithConstraint(
+  doc: PartDoc,
+  featureId: string,
+  kind: string,
+  params: number[],
+  vertexKey: string,
+  snapVertexId: string,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  if (!feature.entities) feature.entities = []
+  if (!feature.initial) feature.initial = {}
+  if (!feature.constraints) feature.constraints = []
+  const existing = new Set(feature.entities.map(e => e.id))
+  let eid = randomId(12)
+  while (existing.has(eid)) eid = randomId(12)
+  feature.entities.push({ id: eid, kind })
+  feature.initial[eid] = params.map(round)
+  // Parse snap vertex ID to get the existing entity reference
+  // snapVertexId format: "vertex:featId:entityId:vertexKey"
+  const snapParts = snapVertexId.split(':')
+  const snapEntityId = snapParts[2]
+  // Create coincident constraint between new entity vertex and snapped vertex
+  applyAddConstraint(doc, featureId, 'coincident', [
+    `vertex:${featureId}:${eid}:${vertexKey}`,
+    `vertex:${featureId}:${snapEntityId}:${snapParts[3] || 'start'}`,
+  ])
+}
+
 /** Helper: add 4 rectangle lines with corner/edge/dimension constraints.
  *  Returns the 4 line IDs [lA, lB, lC, lD] for use in additional constraints.
  */

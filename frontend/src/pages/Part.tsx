@@ -56,6 +56,8 @@ function describeMutation(m: Mutation): string {
       return `delete ${m.targets.length} element(s)`
     case 'add_entity':
       return `add ${m.kind} in ${m.featureId}`
+    case 'add_entity_with_constraint':
+      return `add ${m.kind} with constraint in ${m.featureId}`
     case 'add_rect':
       return `add rect in ${m.featureId}`
     case 'add_center_rect':
