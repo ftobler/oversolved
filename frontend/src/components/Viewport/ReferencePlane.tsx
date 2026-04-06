@@ -34,6 +34,8 @@ interface ReferencePlaneProps {
 }
 
 export default function ReferencePlane({ rotation, label }: ReferencePlaneProps) {
+  // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
+  // DO NOT use local hovered state alone - must also call setHoveredPlane().
   const [hovered, setHovered] = useState(false)
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)

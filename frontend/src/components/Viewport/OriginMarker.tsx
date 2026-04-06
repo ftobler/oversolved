@@ -8,6 +8,8 @@ import { Dot, VertexHighlight } from '../Geometry3D/VertexDots'
 import { p2w } from '../sketch_helpers'
 
 export default function OriginMarker() {
+  // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
+  // DO NOT use local hovered state alone - must also call setHoveredEntity().
   const [hovered, setHovered] = useState(false)
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()

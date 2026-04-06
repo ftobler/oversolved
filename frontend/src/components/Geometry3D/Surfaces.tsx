@@ -45,6 +45,8 @@ interface SurfaceMeshProps {
 }
 
 export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureId }: SurfaceMeshProps) {
+  // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
+  // DO NOT use local hovered state alone - must also call setHoveredSurface().
   const [hovered, setHovered] = useState(false)
   const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)

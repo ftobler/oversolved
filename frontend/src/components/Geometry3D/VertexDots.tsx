@@ -107,6 +107,8 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   featureId?: string; entityId?: string; vertexKey?: string; entityKind?: string
   isEditing?: boolean; showDebugHit?: boolean
 }) {
+  // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
+  // DO NOT use local hovered state alone - must also call setHoveredVertex().
   const [hovered, setHovered] = useState(false)
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()

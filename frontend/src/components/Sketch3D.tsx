@@ -97,6 +97,8 @@ function VertexHighlight({ x, y, px, color }: { x: number; y: number; px: number
 }
 
 function VertexDot({ x, y, px, baseColor }: { x: number; y: number; px: number; baseColor: string }) {
+  // NOTE: This is the 2D SVG-based sketch view - uses local state only.
+  // Different rendering context from the 3D canvas components.
   const [hovered, setHovered] = useState(false)
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
@@ -149,6 +151,8 @@ interface EntityItemProps {
 }
 
 function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
+  // NOTE: This is the 2D SVG-based sketch view - uses local state only.
+  // Different rendering context from the 3D canvas components.
   const [hovered, setHovered] = useState(false)
   const isRotating = useSketchEditorStore(s => s.isRotating)
   const color = hovered ? COLOR_HOVER : baseColor
@@ -264,6 +268,8 @@ function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
 }
 
 function SurfaceMesh({ shape }: { shape: THREE.Shape }) {
+  // NOTE: This is the 2D SVG-based sketch view - uses local state only.
+  // Different rendering context from the 3D canvas components.
   const [hovered, setHovered] = useState(false)
   const isRotating = useSketchEditorStore(s => s.isRotating)
   return (

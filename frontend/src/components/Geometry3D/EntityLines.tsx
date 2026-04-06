@@ -22,6 +22,8 @@ interface EntityItemProps {
 }
 
 export function EntityItem({ entity, entityId, entityKind, featureId, baseColor, lineWidth = 1, isEditing = false, planeGroupRef, showDebugHit }: EntityItemProps) {
+  // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
+  // DO NOT use local hovered state alone - must also call setHoveredEntity().
   const [hovered, setHovered] = useState(false)
   const entId = `entity:${featureId}:${entityId}`
   const selected = useSketchEditorStore(s => s.selection.has(entId))
