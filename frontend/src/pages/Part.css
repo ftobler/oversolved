@@ -115,6 +115,25 @@
   text-align: left;
 }
 
+.feature-name-input {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 0;
+  text-align: left;
+  font-size: 12px;
+  color: #ccc;
+  background: #1a1a1a;
+  border: 2px solid #4fc3f7;
+  border-radius: 4px;
+  padding: 2px 6px;
+  outline: none;
+  height: 14px;
+  line-height: 14px;
+  width: 0;
+  min-width: 0;
+}
+
 .feature-edit-btn {
   display: flex;
   align-items: center;
