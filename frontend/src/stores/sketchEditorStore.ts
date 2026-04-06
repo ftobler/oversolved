@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Mutation } from '../types/cad'
 import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '../registry'
+import type { SnapKind } from '../registry'
 
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type { Mutation }
@@ -53,6 +54,7 @@ interface SketchEditorState {
   hoveredEntityId: string | null  // currently hovered entity/vertex ID
   hoveredVertexId: string | null  // hovered vertex ID (e.g., "vertex:S1:L1:start")
   hoveredVertexPosition: [number, number] | null  // world position of hovered vertex for snap
+  hoveredSnapKind: SnapKind | null  // what kind of snap target we're hovering (vertex, midpoint, center)
   activeTool: ActiveTool
   activeFeatureId: string | null  // the sketch currently being edited
   drawPoints: [number, number][]
@@ -78,7 +80,7 @@ interface SketchEditorState {
   setActiveFeatureId: (id: string | null) => void
   setHoveredConstraintEntities: (ids: Set<string>) => void
   setHoveredEntity: (id: string | null) => void
-  setHoveredVertex: (id: string | null, position: [number, number] | null) => void
+  setHoveredVertex: (id: string | null, position: [number, number] | null, snapKind?: SnapKind | null) => void
   setActiveTool: (tool: ActiveTool) => void
   applyConstraint: (kind: string) => void
   toggleConstruction: () => void
@@ -107,6 +109,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   hoveredEntityId: null,
   hoveredVertexId: null,
   hoveredVertexPosition: null,
+  hoveredSnapKind: null,
   activeTool: 'select',
   activeFeatureId: null,
   drawPoints: [],
@@ -144,7 +147,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setHoveredEntity: (id) => set({ hoveredEntityId: id }),
 
-  setHoveredVertex: (id, position) => set({ hoveredVertexId: id, hoveredVertexPosition: position }),
+  setHoveredVertex: (id, position, snapKind) => set({ hoveredVertexId: id, hoveredVertexPosition: position, hoveredSnapKind: snapKind ?? null }),
 
   setActiveTool: (tool) => set({ activeTool: tool, drawPoints: [], drawHover: null }),
 

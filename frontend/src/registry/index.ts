@@ -21,3 +21,12 @@ export {
   getDefaultParams,
 } from './entityRegistry'
 export type { EntityDef, VertexDef } from './entityRegistry'
+
+export {
+  SNAP_RULES,
+  SNAP_KINDS,
+  getSnapRule,
+  canSnapTo,
+  suggestConstraint,
+} from './snapRegistry'
+export type { SnapKind, SnapRule, SnapRules, SnapRulesEntity } from './snapRegistry'

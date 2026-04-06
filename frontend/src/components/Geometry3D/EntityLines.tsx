@@ -106,9 +106,9 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
         </group>
-        <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" isEditing={isEditing} showDebugHit={showDebugHit} />
-        <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" isEditing={isEditing} showDebugHit={showDebugHit} />
-        <VertexDot x={arc.center[0]} y={arc.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" isEditing={isEditing} showDebugHit={showDebugHit} />
+        <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" entityKind={entityKind} isEditing={isEditing} showDebugHit={showDebugHit} />
+        <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" entityKind={entityKind} isEditing={isEditing} showDebugHit={showDebugHit} />
+        <VertexDot x={arc.center[0]} y={arc.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" entityKind={entityKind} isEditing={isEditing} showDebugHit={showDebugHit} />
       </>
     )
   } else if ('start' in e) {
@@ -122,13 +122,13 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
         </group>
-        <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" isEditing={isEditing} showDebugHit={showDebugHit} />
-        <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" isEditing={isEditing} showDebugHit={showDebugHit} />
+        <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" entityKind={entityKind} isEditing={isEditing} showDebugHit={showDebugHit} />
+        <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end" entityKind={entityKind} isEditing={isEditing} showDebugHit={showDebugHit} />
       </>
     )
   } else if ('x' in e) {
     const pt = e as PointEntity
-    return <VertexDot x={pt.x} y={pt.y} px={5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="xy" isEditing={isEditing} />
+    return <VertexDot x={pt.x} y={pt.y} px={5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="xy" entityKind={entityKind} isEditing={isEditing} />
   } else {
     const circ = e as Circle
     const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
@@ -140,7 +140,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
         </group>
-        <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" isEditing={isEditing} showDebugHit={showDebugHit} />
+        <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center" entityKind={entityKind} isEditing={isEditing} showDebugHit={showDebugHit} />
       </>
     )
   }

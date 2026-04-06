@@ -5,6 +5,7 @@ import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { sampleArc, sampleArcCCW } from '../sketch_helpers'
 import { Dot } from './VertexDots'
 import { COLOR_PREVIEW } from './constants'
+import { suggestConstraint } from '../../registry'
 
 // Compute circumcircle of 3 points. Returns null if points are collinear.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -136,6 +137,7 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
   const clearSelection = useSketchEditorStore(s => s.clearSelection)
   const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
+  const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
 
   if (featureId !== activeFeatureId) return null
 
@@ -165,18 +167,20 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
 
     } else if (activeTool === 'line') {
       if (pts.length === 0) {
-        if (hoveredVertexId) {
+        if (hoveredVertexId && hoveredSnapKind) {
+          const constraintKind = suggestConstraint('line', 'start', hoveredSnapKind) ?? 'coincident'
           onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
-            params: [px, py, px, py], vertexKey: 'start', snapVertexId: hoveredVertexId })
+            params: [px, py, px, py], vertexKey: 'start', snapVertexId: hoveredVertexId, constraintKind })
           clearDraw()
           setActiveTool('select')
         } else {
           addDrawPoint([px, py])
         }
       } else {
-        if (hoveredVertexId) {
+        if (hoveredVertexId && hoveredSnapKind) {
+          const constraintKind = suggestConstraint('line', 'end', hoveredSnapKind) ?? 'coincident'
           onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
-            params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: hoveredVertexId })
+            params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: hoveredVertexId, constraintKind })
         } else {
           onMutation?.({ type: 'add_entity', featureId, kind: 'line',
             params: [pts[0][0], pts[0][1], px, py] })

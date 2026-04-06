@@ -5,6 +5,14 @@ import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { p2w } from '../sketch_helpers'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET, DEBUG_HIT } from './constants'
+import type { SnapKind } from '../../registry'
+
+function determineSnapKind(entityKind: string | undefined, vertexKey: string | undefined): SnapKind {
+  if (vertexKey === 'center') return 'center'
+  if (entityKind === 'point') return 'vertex'
+  if (entityKind === 'circle') return 'center'
+  return 'vertex'
+}
 
 /** 10-gon dot with constant pixel radius regardless of zoom.
  *  If billboard=true the dot always faces the camera. */
@@ -94,9 +102,10 @@ export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px:
 
 /** Vertex dot with its own independent hover state. Placed as a sibling (not child)
  *  of the edge group so hover does not bubble up and highlight the whole entity. */
-export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, isEditing = false, showDebugHit }: {
+export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, entityKind, isEditing = false, showDebugHit }: {
   x: number; y: number; px: number; baseColor: string
-  featureId?: string; entityId?: string; vertexKey?: string; isEditing?: boolean; showDebugHit?: boolean
+  featureId?: string; entityId?: string; vertexKey?: string; entityKind?: string
+  isEditing?: boolean; showDebugHit?: boolean
 }) {
   const [hovered, setHovered] = useState(false)
   const hitRef = useRef<THREE.Mesh>(null)
@@ -178,10 +187,11 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   }, [isEditing, vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool])
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
+  const snapKind = determineSnapKind(entityKind, vertexKey)
   return (
     <group
-      onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true); if (vertId) setHoveredVertex(vertId, [x, y]) }}
-      onPointerOut={() => { setHovered(false); setHoveredVertex(null, null) }}
+      onPointerOver={e => { if (!isDrawingTool) e.stopPropagation(); setHovered(true); if (vertId) setHoveredVertex(vertId, [x, y], snapKind) }}
+      onPointerOut={() => { setHovered(false); setHoveredVertex(null, null, null) }}
       onClick={onClick}
       onPointerDown={onPointerDown}
     >

@@ -15,6 +15,11 @@ function reset() {
     pendingDimEntityKind: null,
     pendingDialog: null,
     planeSelectionFeatureId: null,
+    hoveredEntityId: null,
+    hoveredVertexId: null,
+    hoveredVertexPosition: null,
+    hoveredSnapKind: null,
+    hoveredConstraintEntityIds: new Set(),
   })
 }
 
@@ -266,6 +271,63 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().orbitEnabled).toBe(false)
       useSketchEditorStore.getState().setOrbitEnabled(true)
       expect(useSketchEditorStore.getState().orbitEnabled).toBe(true)
+    })
+  })
+
+  describe('hover tracking', () => {
+    it('setHoveredVertex updates vertex id and position', () => {
+      useSketchEditorStore.getState().setHoveredVertex('vertex:S1:L1:start', [5.5, 10.2], null)
+      expect(useSketchEditorStore.getState().hoveredVertexId).toBe('vertex:S1:L1:start')
+      expect(useSketchEditorStore.getState().hoveredVertexPosition).toEqual([5.5, 10.2])
+      expect(useSketchEditorStore.getState().hoveredSnapKind).toBeNull()
+    })
+
+    it('setHoveredVertex updates snap kind', () => {
+      useSketchEditorStore.getState().setHoveredVertex('vertex:S1:L1:start', [5, 5], 'midpoint')
+      expect(useSketchEditorStore.getState().hoveredSnapKind).toBe('midpoint')
+    })
+
+    it('setHoveredEntity updates hovered entity', () => {
+      useSketchEditorStore.getState().setHoveredEntity('entity:S1:L1')
+      expect(useSketchEditorStore.getState().hoveredEntityId).toBe('entity:S1:L1')
+    })
+
+    it('setHoveredEntity clears on null', () => {
+      useSketchEditorStore.getState().setHoveredEntity('entity:S1:L1')
+      useSketchEditorStore.getState().setHoveredEntity(null)
+      expect(useSketchEditorStore.getState().hoveredEntityId).toBeNull()
+    })
+
+    it('setHoveredConstraintEntities updates constraint-highlighted entities', () => {
+      const ids = new Set(['entity:S1:L1', 'entity:S1:L2'])
+      useSketchEditorStore.getState().setHoveredConstraintEntities(ids)
+      expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(ids)
+    })
+  })
+
+  describe('plane selection', () => {
+    it('setPlaneSelectionFeatureId sets the plane feature being edited', () => {
+      useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
+      expect(useSketchEditorStore.getState().planeSelectionFeatureId).toBe('Sketch1')
+    })
+
+    it('commitPlaneSelection dispatches mutation with face query', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
+      useSketchEditorStore.getState().commitPlaneSelection('face:sketch0:?3;@sketch0abc')
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_feature_plane',
+        featureId: 'Sketch1',
+        plane: '?3;@sketch0abc',
+      })
+    })
+
+    it('commitPlaneSelection is no-op when no feature selected', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().commitPlaneSelection('face:sketch0:?3;@sketch0abc')
+      expect(handler).not.toHaveBeenCalled()
     })
   })
 })

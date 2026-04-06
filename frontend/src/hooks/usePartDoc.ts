@@ -233,7 +233,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         applyAddEntity(next, m.featureId, m.kind, m.params)
         break
       case 'add_entity_with_constraint':
-        applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId)
+        applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind)
         break
       case 'add_rect':
         applyAddRect(next, m.featureId, m.p0, m.p1)

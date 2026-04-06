@@ -231,6 +231,7 @@ export function applyAddEntityWithConstraint(
   params: number[],
   vertexKey: string,
   snapVertexId: string,
+  constraintKind: string,
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature) return
@@ -246,8 +247,8 @@ export function applyAddEntityWithConstraint(
   // snapVertexId format: "vertex:featId:entityId:vertexKey"
   const snapParts = snapVertexId.split(':')
   const snapEntityId = snapParts[2]
-  // Create coincident constraint between new entity vertex and snapped vertex
-  applyAddConstraint(doc, featureId, 'coincident', [
+  // Create constraint between new entity vertex and snapped vertex
+  applyAddConstraint(doc, featureId, constraintKind, [
     `vertex:${featureId}:${eid}:${vertexKey}`,
     `vertex:${featureId}:${snapEntityId}:${snapParts[3] || 'start'}`,
   ])
