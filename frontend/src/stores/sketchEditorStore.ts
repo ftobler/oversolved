@@ -51,6 +51,8 @@ interface SketchEditorState {
   onExitSketch: (() => void) | null
   hoveredConstraintEntityIds: Set<string>  // entity IDs highlighted by constraint hover
   hoveredEntityId: string | null  // currently hovered entity/vertex ID
+  hoveredVertexId: string | null  // hovered vertex ID (e.g., "vertex:S1:L1:start")
+  hoveredVertexPosition: [number, number] | null  // world position of hovered vertex for snap
   activeTool: ActiveTool
   activeFeatureId: string | null  // the sketch currently being edited
   drawPoints: [number, number][]
@@ -76,6 +78,7 @@ interface SketchEditorState {
   setActiveFeatureId: (id: string | null) => void
   setHoveredConstraintEntities: (ids: Set<string>) => void
   setHoveredEntity: (id: string | null) => void
+  setHoveredVertex: (id: string | null, position: [number, number] | null) => void
   setActiveTool: (tool: ActiveTool) => void
   applyConstraint: (kind: string) => void
   toggleConstruction: () => void
@@ -102,6 +105,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   onExitSketch: null,
   hoveredConstraintEntityIds: new Set(),
   hoveredEntityId: null,
+  hoveredVertexId: null,
+  hoveredVertexPosition: null,
   activeTool: 'select',
   activeFeatureId: null,
   drawPoints: [],
@@ -138,6 +143,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setHoveredConstraintEntities: (ids) => set({ hoveredConstraintEntityIds: ids }),
 
   setHoveredEntity: (id) => set({ hoveredEntityId: id }),
+
+  setHoveredVertex: (id, position) => set({ hoveredVertexId: id, hoveredVertexPosition: position }),
 
   setActiveTool: (tool) => set({ activeTool: tool, drawPoints: [], drawHover: null }),
 
