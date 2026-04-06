@@ -39,9 +39,10 @@ export interface Geometry3DProps {
   solveStatus?: string
   entityStatus?: EntityStatus
   showDebugHit?: boolean
+  otherSketches?: Record<string, Sketch>
 }
 
-export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, solveStatus, entityStatus, showDebugHit }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, solveStatus, entityStatus, showDebugHit, otherSketches }: Geometry3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const drag = useSketchEditorStore(s => s.drag)
 
@@ -90,7 +91,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
       {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
       {isEditing && <DragPlane featureId={featureId} />}
       <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} />
-      <DrawPlane featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} />
+      <DrawPlane featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} otherSketches={otherSketches} />
     </group>
   )
 }

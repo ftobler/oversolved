@@ -127,7 +127,7 @@ export function DrawPreview({ featureId, activeFeatureId }: { featureId: string;
   )
 }
 
-export function DrawPlane({ featureId, activeFeatureId, sketch }: { featureId: string; activeFeatureId?: string; sketch?: Sketch }) {
+export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }: { featureId: string; activeFeatureId?: string; sketch?: Sketch; otherSketches?: Record<string, Sketch> }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
@@ -255,6 +255,31 @@ export function DrawPlane({ featureId, activeFeatureId, sketch }: { featureId: s
         onMutation?.({ type: 'add_center_rect', featureId, center: pts[0], corner: [px, py] })
         clearDraw()
         setActiveTool('select')
+      }
+
+    } else if (activeTool === 'project') {
+      if (hoveredEntityId && hoveredEntityId.startsWith('entity:')) {
+        const parts = hoveredEntityId.split(':')
+        if (parts.length >= 3) {
+          const sourceFeatureId = parts[1]
+          const sourceEntityId = parts[2]
+          if (sourceFeatureId !== featureId) {
+            const source = `@${sourceFeatureId}/${sourceEntityId}`
+            let kind = 'projected_line'
+            const entity = (otherSketches?.[sourceFeatureId] ?? sketch)?.[sourceEntityId]
+            if (entity) {
+              if ('radius' in entity && 'angle_start' in entity) {
+                kind = 'projected_arc'
+              } else if ('radius' in entity) {
+                kind = 'projected_circle'
+              } else if ('x' in entity) {
+                kind = 'projected_point'
+              }
+            }
+            onMutation?.({ type: 'add_projected_entity', featureId, kind, source })
+            setActiveTool('select')
+          }
+        }
       }
     }
   }

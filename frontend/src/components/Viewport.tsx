@@ -3,7 +3,7 @@ import { Canvas, useThree } from '@react-three/fiber'
 import { OrthographicCamera, Line, Text } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { SketchData, Feature, PlaneTransform } from '../types/cad'
+import type { SketchData, Feature, PlaneTransform, Sketch } from '../types/cad'
 import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
 import Geometry3D from './Geometry3D'
 import { CubeGizmoCanvas } from './CubeGizmo'
@@ -30,6 +30,7 @@ interface ViewportProps {
   activeFeatureId?: string
   onRightClick?: (pos: [number, number]) => void
   showDebugHit?: boolean
+  otherSketches?: Record<string, Sketch>  // sketches from other features (for project tool)
 }
 
 function isActive(id: string, features: Feature[] | undefined, rollbackPos: number | undefined, visible: Set<string> | undefined): boolean {

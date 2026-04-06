@@ -224,6 +224,21 @@ export function applyAddEntity(
   feature.initial[eid] = params.map(round)
 }
 
+export function applyAddProjectedEntity(
+  doc: PartDoc,
+  featureId: string,
+  kind: string,
+  source: string,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  if (!feature.entities) feature.entities = []
+  const existing = new Set(feature.entities.map(e => e.id))
+  let eid = randomId(12)
+  while (existing.has(eid)) eid = randomId(12)
+  feature.entities.push({ id: eid, kind, source })
+}
+
 export function applyAddEntityWithConstraint(
   doc: PartDoc,
   featureId: string,

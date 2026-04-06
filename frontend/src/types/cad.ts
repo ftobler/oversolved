@@ -37,6 +37,7 @@ export interface PartEntityDef {
   id: string
   kind: string
   construction?: boolean
+  source?: string  // for projected entities: reference to source entity (e.g. "@sketch0/line1")
 }
 
 export interface PlaneDef {
@@ -289,6 +290,7 @@ export type Mutation =
   | { type: 'delete'; targets: string[] }
   | { type: 'add_entity'; featureId: string; kind: string; params: number[] }
   | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string }
+  | { type: 'add_projected_entity'; featureId: string; kind: string; source: string }
   | { type: 'add_rect'; featureId: string; p0: Point; p1: Point }
   | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point }
   | { type: 'toggle_construction'; targets: string[] }

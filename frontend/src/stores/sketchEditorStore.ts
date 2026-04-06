@@ -66,6 +66,7 @@ interface SketchEditorState {
   pendingDimTarget: string | null  // first click target when doing two-target dimension
   pendingDimEntityKind: string | null  // entity kind of the first click target
   pendingDialog: DialogState | null
+  pendingProjectTarget: { sourceFeatureId: string; sourceEntityId: string } | null
   contextMenu: [number, number] | null
   planeSelectionFeatureId: string | null
   fieldPickState: { featureId: string; field: string; kind: 'plane' | 'point' | 'line' } | null
@@ -98,6 +99,7 @@ interface SketchEditorState {
   clearDraw: () => void
   openDialog: (opts: DialogState) => void
   closeDialog: () => void
+  setPendingProjectTarget: (target: { sourceFeatureId: string; sourceEntityId: string } | null) => void
   openContextMenu: (pos: [number, number]) => void
   closeContextMenu: () => void
   handleDimensionClick: (target: string, featureId: string, kind: 'entity' | 'vertex', screenPos: [number, number], entityKind?: string) => void
@@ -129,6 +131,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   pendingDimTarget: null,
   pendingDimEntityKind: null,
   pendingDialog: null,
+  pendingProjectTarget: null,
   contextMenu: null,
   planeSelectionFeatureId: null,
   fieldPickState: null,
@@ -209,6 +212,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   openDialog: (opts) => set({ pendingDialog: opts }),
   closeDialog: () => set({ pendingDialog: null }),
+  setPendingProjectTarget: (target) => set({ pendingProjectTarget: target }),
   openContextMenu: (pos) => set({ contextMenu: pos }),
   closeContextMenu: () => set({ contextMenu: null }),
 

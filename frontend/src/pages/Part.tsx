@@ -58,6 +58,8 @@ function describeMutation(m: Mutation): string {
       return `add ${m.kind} in ${m.featureId}`
     case 'add_entity_with_constraint':
       return `add ${m.kind} with ${m.constraintKind} constraint in ${m.featureId}`
+    case 'add_projected_entity':
+      return `add ${m.kind} from ${m.source} in ${m.featureId}`
     case 'add_rect':
       return `add rect in ${m.featureId}`
     case 'add_center_rect':
@@ -190,6 +192,21 @@ export default function Part() {
     }
     return sketch
   }, [activeSketchFeatureId, features, solveResults])
+
+  // Other sketches: for project tool - all sketches except the active one
+  const otherSketches = useMemo(() => {
+    const result: Record<string, Sketch> = {}
+    for (const feature of features) {
+      if (feature.kind !== 'sketch') continue
+      if (!visibleFeatures.has(feature.id)) continue
+      if (feature.id === activeSketchFeatureId) continue
+      const solveResult = solveResults?.[feature.id]
+      if (solveResult?.solved) {
+        result[feature.id] = solveResult.solved
+      }
+    }
+    return result
+  }, [features, visibleFeatures, activeSketchFeatureId, solveResults])
 
   const setMode = useCallback((newMode: 'sketch' | 'feature' | 'code') => {
     setModeRaw(prev => {
@@ -605,7 +622,7 @@ export default function Part() {
                   </div>
                 </div>
               )}
-              {mode !== 'code' && <Viewport features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} />}
+              {mode !== 'code' && <Viewport features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} />}
             </>
           )}
         </div>
