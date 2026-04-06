@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
@@ -6,6 +6,8 @@ import { sampleArc, sampleArcCCW } from '../sketch_helpers'
 import { Dot } from './VertexDots'
 import { COLOR_PREVIEW } from './constants'
 import { suggestConstraint } from '../../registry'
+import type { Sketch } from '../../types/cad'
+import { nearestPointOnEntity } from './nearestPoint'
 
 // Compute circumcircle of 3 points. Returns null if points are collinear.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -52,6 +54,38 @@ export function arcAnglesFromRadiusPoint(
     // Radius point is in the CW arc — flip to get CCW arc that contains it
     return [aEnd, aStart]
   }
+}
+
+function findNearestVertex(sketch: Sketch | undefined, entityId: string, px: number, py: number): string | null {
+  if (!sketch) return null
+  const entity = sketch[entityId]
+  if (!entity) return null
+  
+  let bestVertex: string | null = null
+  let bestDist = Infinity
+  
+  const checkVertex = (vx: number, vy: number, key: string) => {
+    const dist = Math.hypot(px - vx, py - vy)
+    if (dist < bestDist) {
+      bestDist = dist
+      bestVertex = `vertex:sketch:${entityId}:${key}`
+    }
+  }
+  
+  if ('start' in entity && 'end' in entity && 'radius' in entity) {
+    checkVertex(entity.start[0], entity.start[1], 'start')
+    checkVertex(entity.end[0], entity.end[1], 'end')
+    checkVertex(entity.center[0], entity.center[1], 'center')
+  } else if ('start' in entity && 'end' in entity) {
+    checkVertex(entity.start[0], entity.start[1], 'start')
+    checkVertex(entity.end[0], entity.end[1], 'end')
+  } else if ('center' in entity) {
+    checkVertex(entity.center[0], entity.center[1], 'center')
+  } else if ('x' in entity) {
+    checkVertex(entity.x, entity.y, 'xy')
+  }
+  
+  return bestVertex
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -125,7 +159,7 @@ export function DrawPreview({ featureId, activeFeatureId }: { featureId: string;
   )
 }
 
-export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; activeFeatureId?: string }) {
+export function DrawPlane({ featureId, activeFeatureId, sketch }: { featureId: string; activeFeatureId?: string; sketch?: Sketch }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
@@ -138,6 +172,25 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
   const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
+  const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
+
+  const drawHover = useSketchEditorStore(s => s.drawHover)
+
+  const pathSnap = useMemo(() => {
+    // Use hovered entity (not vertex) for path snapping
+    if (!sketch || !drawHover || !hoveredEntityId) return null
+    if (hoveredEntityId.startsWith('vertex:')) return null  // vertex hover takes priority
+    
+    // Parse hoveredEntityId: "entity:featureId:entityId"
+    const parts = hoveredEntityId.split(':')
+    if (parts.length < 3 || parts[0] !== 'entity') return null
+    const entityId = parts[2]
+    const entity = sketch[entityId]
+    if (!entity) return null
+    
+    const [hx, hy] = drawHover
+    return nearestPointOnEntity(hx, hy, entity)
+  }, [sketch, drawHover, hoveredEntityId])
 
   if (featureId !== activeFeatureId) return null
 
@@ -157,8 +210,8 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
   }
 
   const handleDown = (x: number, y: number) => {
-    // Snap to hovered vertex position if available
-    const [px, py] = hoveredVertexPosition ?? [x, y]
+    // Snap priority: vertex > path
+    const [px, py] = hoveredVertexPosition ?? pathSnap?.position ?? [x, y]
     const pts = drawPoints
 
     if (activeTool === 'point') {
@@ -167,20 +220,26 @@ export function DrawPlane({ featureId, activeFeatureId }: { featureId: string; a
 
     } else if (activeTool === 'line') {
       if (pts.length === 0) {
-        if (hoveredVertexId && hoveredSnapKind) {
-          const constraintKind = suggestConstraint('line', 'start', hoveredSnapKind) ?? 'coincident'
-          onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
-            params: [px, py, px, py], vertexKey: 'start', snapVertexId: hoveredVertexId, constraintKind })
-          clearDraw()
-          setActiveTool('select')
-        } else {
-          addDrawPoint([px, py])
-        }
+        // First click: store start point (snapped or not), constraint applied on second click
+        addDrawPoint([px, py])
       } else {
+        // Second click: create line with constraint if snapped
         if (hoveredVertexId && hoveredSnapKind) {
           const constraintKind = suggestConstraint('line', 'end', hoveredSnapKind) ?? 'coincident'
           onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
             params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: hoveredVertexId, constraintKind })
+        } else if (pathSnap && hoveredEntityId) {
+          // Path snap: find the nearest vertex of the hovered entity to create coincident constraint
+          const parts = hoveredEntityId.split(':')
+          const entityId = parts[2]
+          const nearestVertex = findNearestVertex(sketch, entityId, px, py)
+          if (nearestVertex) {
+            onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
+              params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: nearestVertex, constraintKind: 'coincident' })
+          } else {
+            onMutation?.({ type: 'add_entity', featureId, kind: 'line',
+              params: [pts[0][0], pts[0][1], px, py] })
+          }
         } else {
           onMutation?.({ type: 'add_entity', featureId, kind: 'line',
             params: [pts[0][0], pts[0][1], px, py] })

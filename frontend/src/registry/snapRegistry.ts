@@ -13,7 +13,7 @@
 //   4. Everything else is automatic
 // ====
 
-export type SnapKind = 'vertex' | 'midpoint' | 'center' | 'grid'
+export type SnapKind = 'vertex' | 'midpoint' | 'center' | 'path' | 'grid'
 
 export interface SnapRule {
   snapKinds: SnapKind[]
@@ -25,23 +25,23 @@ export type SnapRules = Record<string, SnapRulesEntity>
 
 export type SnapRulesEntity = Record<string, SnapRule>
 
-export const SNAP_KINDS: readonly SnapKind[] = ['vertex', 'midpoint', 'center', 'grid']
+export const SNAP_KINDS: readonly SnapKind[] = ['vertex', 'midpoint', 'center', 'path', 'grid']
 
 export const SNAP_RULES: SnapRules = {
   line: {
-    start: { snapKinds: ['vertex', 'midpoint', 'grid'], suggest: 'coincident' },
-    end:   { snapKinds: ['vertex', 'midpoint', 'grid'], suggest: 'coincident' },
+    start: { snapKinds: ['vertex', 'midpoint', 'center', 'path', 'grid'], suggest: 'coincident' },
+    end:   { snapKinds: ['vertex', 'midpoint', 'center', 'path', 'grid'], suggest: 'coincident' },
   },
   circle: {
     center: { snapKinds: ['vertex', 'center', 'grid'], suggest: 'concentric' },
   },
   arc: {
-    start:  { snapKinds: ['vertex', 'midpoint', 'center'], suggest: 'coincident' },
-    end:    { snapKinds: ['vertex', 'midpoint', 'center'], suggest: 'coincident' },
+    start:  { snapKinds: ['vertex', 'midpoint', 'center', 'path'], suggest: 'coincident' },
+    end:    { snapKinds: ['vertex', 'midpoint', 'center', 'path'], suggest: 'coincident' },
     center: { snapKinds: ['vertex', 'center'], suggest: 'concentric' },
   },
   point: {
-    xy: { snapKinds: ['vertex', 'midpoint', 'center', 'grid'], suggest: 'coincident' },
+    xy: { snapKinds: ['vertex', 'midpoint', 'center', 'path', 'grid'], suggest: 'coincident' },
   },
 }
 

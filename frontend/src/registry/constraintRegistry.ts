@@ -156,6 +156,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     renderKind: 'symbol_parallel',
     symbolIcon: 'constraint-parallel',
     toolbarIcon: 'constraint-parallel',
+    shortcut: 'p',
     showInToolbar: true,
   },
   {

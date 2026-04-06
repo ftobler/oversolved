@@ -54,7 +54,8 @@ interface SketchEditorState {
   hoveredEntityId: string | null  // currently hovered entity/vertex ID
   hoveredVertexId: string | null  // hovered vertex ID (e.g., "vertex:S1:L1:start")
   hoveredVertexPosition: [number, number] | null  // world position of hovered vertex for snap
-  hoveredSnapKind: SnapKind | null  // what kind of snap target we're hovering (vertex, midpoint, center)
+  hoveredSnapKind: SnapKind | null  // what kind of snap target we're hovering (vertex, midpoint, center, path)
+  hoveredPathSnap: { entityId: string; position: [number, number] } | null  // path snap: nearest point on entity geometry
   activeTool: ActiveTool
   activeFeatureId: string | null  // the sketch currently being edited
   drawPoints: [number, number][]
@@ -81,6 +82,7 @@ interface SketchEditorState {
   setHoveredConstraintEntities: (ids: Set<string>) => void
   setHoveredEntity: (id: string | null) => void
   setHoveredVertex: (id: string | null, position: [number, number] | null, snapKind?: SnapKind | null) => void
+  setHoveredPathSnap: (snap: { entityId: string; position: [number, number] } | null) => void
   setActiveTool: (tool: ActiveTool) => void
   applyConstraint: (kind: string) => void
   toggleConstruction: () => void
@@ -110,6 +112,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   hoveredVertexId: null,
   hoveredVertexPosition: null,
   hoveredSnapKind: null,
+  hoveredPathSnap: null,
   activeTool: 'select',
   activeFeatureId: null,
   drawPoints: [],
@@ -148,6 +151,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setHoveredEntity: (id) => set({ hoveredEntityId: id }),
 
   setHoveredVertex: (id, position, snapKind) => set({ hoveredVertexId: id, hoveredVertexPosition: position, hoveredSnapKind: snapKind ?? null }),
+  setHoveredPathSnap: (snap) => set({ hoveredPathSnap: snap }),
 
   setActiveTool: (tool) => set({ activeTool: tool, drawPoints: [], drawHover: null }),
 

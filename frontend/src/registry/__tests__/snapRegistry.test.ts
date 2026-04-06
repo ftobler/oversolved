@@ -138,6 +138,11 @@ describe('snapRegistry', () => {
       expect(suggestConstraint('line', 'end', 'midpoint')).toBe('coincident')
     })
 
+    it('line vertex suggests coincident for center snap (circle/arc centers)', () => {
+      expect(suggestConstraint('line', 'start', 'center')).toBe('coincident')
+      expect(suggestConstraint('line', 'end', 'center')).toBe('coincident')
+    })
+
     it('circle center suggests concentric for center snap', () => {
       expect(suggestConstraint('circle', 'center', 'center')).toBe('concentric')
     })

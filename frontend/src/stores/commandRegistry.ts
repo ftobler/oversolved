@@ -29,7 +29,7 @@ export const CORE_KEYBINDINGS: readonly CoreKeybinding[] = [
   { key: 'backspace',    command: 'delete_selected',     label: 'Delete (alt)',         description: 'Delete selected entities or constraints' },
   { key: 'd',            command: 'set_tool_dimension',  label: 'Dimension tool',       description: 'Activate the dimension tool' },
   { key: 'q',            command: 'toggle_construction', label: 'Toggle construction',  description: 'Toggle construction mode for selected entities' },
-  { key: 'p',            command: 'toggle_sketch_plane_visibility', label: 'Toggle sketches/planes', description: 'Hide or show all sketch and plane features' },
+  { key: 'y',            command: 'toggle_sketch_plane_visibility', label: 'Toggle sketches/planes', description: 'Hide or show all sketch and plane features' },
   { key: 'escape',       command: 'cancel_draw',         label: 'Cancel',              description: 'Cancel active draw or return to select tool' },
 ]
 
@@ -38,6 +38,7 @@ const CORE_KEYMAP: Record<string, string> =
   Object.fromEntries(CORE_KEYBINDINGS.map(b => [b.key, b.command]))
 
 // Merge core bindings with registry-derived shortcuts
+// Constraint shortcuts take precedence over CORE_KEYBINDINGS (last wins)
 export const KEYMAP: Record<string, string> = {
   ...CORE_KEYMAP,
   ...Object.fromEntries(CONSTRAINT_SHORTCUTS),

@@ -30,7 +30,7 @@ ENTITY_SIZES = {
 
 # above this the system is overconstrained (conflicting)
 LOSS_THRESHOLD = 1e-4
-RANK_TOL = 1e-6         # tolerance for numerical rank computation
+RANK_TOL = 1e-6  # tolerance for numerical rank computation
 
 
 def solve(yaml_str: str) -> dict:
@@ -50,10 +50,37 @@ def solve(yaml_str: str) -> dict:
     # Global repo accumulates solved geometry so later sketches can reference
     # entities from earlier sketches via @absolute query strings.
     global_repo = Repository()
-    global_repo.register("builtin_origin",      {"external_xy": [0.0, 0.0]})
-    global_repo.register("builtin_plane_front", {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 1, 0],  "normal": [0, 0, 1]})
-    global_repo.register("builtin_plane_top",   {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 0, -1], "normal": [0, 1, 0]})
-    global_repo.register("builtin_plane_right", {"type": "plane", "origin": [0, 0, 0], "x_axis": [0, 0, -1], "y_axis": [0, 1, 0], "normal": [1, 0, 0]})
+    global_repo.register("builtin_origin", {"external_xy": [0.0, 0.0]})
+    global_repo.register(
+        "builtin_plane_front",
+        {
+            "type": "plane",
+            "origin": [0, 0, 0],
+            "x_axis": [1, 0, 0],
+            "y_axis": [0, 1, 0],
+            "normal": [0, 0, 1],
+        },
+    )
+    global_repo.register(
+        "builtin_plane_top",
+        {
+            "type": "plane",
+            "origin": [0, 0, 0],
+            "x_axis": [1, 0, 0],
+            "y_axis": [0, 0, -1],
+            "normal": [0, 1, 0],
+        },
+    )
+    global_repo.register(
+        "builtin_plane_right",
+        {
+            "type": "plane",
+            "origin": [0, 0, 0],
+            "x_axis": [0, 0, -1],
+            "y_axis": [0, 1, 0],
+            "normal": [1, 0, 0],
+        },
+    )
 
     t0 = time.perf_counter()
     result = {}
@@ -63,49 +90,70 @@ def solve(yaml_str: str) -> dict:
         # After solving, register this sketch's geometry into global_repo so
         # subsequent sketches can reference it via @absolute query strings.
         if "geometry" in feature_result:
-            _register_solved_geometry(global_repo, feature["id"], feature, feature_result["geometry"])
+            _register_solved_geometry(
+                global_repo, feature["id"], feature, feature_result["geometry"]
+            )
         # Store plane_transform so downstream plane features can convert 2D sketch
         # coordinates to 3D world coordinates (used by three_point, plane_point, etc.)
         if "plane_transform" in feature_result:
             pt = feature_result["plane_transform"]
             rot = pt["rotation"]
-            global_repo.register("_pt_" + feature["id"], {
-                "origin": pt["origin"],
-                "x_axis": rot[0:3],
-                "y_axis": rot[3:6],
-                "normal": rot[6:9],
-            })
+            global_repo.register(
+                "_pt_" + feature["id"],
+                {
+                    "origin": pt["origin"],
+                    "x_axis": rot[0:3],
+                    "y_axis": rot[3:6],
+                    "normal": rot[6:9],
+                },
+            )
         # Register topology surfaces as face-typed planes so later sketches can
         # use a topology face as a sketch plane via its ancestry query string.
         if "plane_transform" in feature_result and "topology" in feature_result:
             pt = feature_result["plane_transform"]
             rot = pt["rotation"]
-            _register_topology_surfaces(global_repo, feature_result["topology"], {
-                "type": "face",
-                "origin": pt["origin"],
-                "x_axis": rot[0:3],
-                "y_axis": rot[3:6],
-                "normal": rot[6:9],
-            })
+            _register_topology_surfaces(
+                global_repo,
+                feature_result["topology"],
+                {
+                    "type": "face",
+                    "origin": pt["origin"],
+                    "x_axis": rot[0:3],
+                    "y_axis": rot[3:6],
+                    "normal": rot[6:9],
+                },
+            )
 
     total_ms = round((time.perf_counter() - t0) * 1000, 1)
     # Add builtin planes to result so frontend can access them consistently
-    result['builtin_plane_front'] = {
-        'status': 'ok',
-        'plane': {'origin': [0, 0, 0], 'x_axis': [1, 0, 0], 'y_axis': [0, 1, 0], 'normal': [0, 0, 1]}
+    result["builtin_plane_front"] = {
+        "status": "ok",
+        "plane": {
+            "origin": [0, 0, 0],
+            "x_axis": [1, 0, 0],
+            "y_axis": [0, 1, 0],
+            "normal": [0, 0, 1],
+        },
     }
-    result['builtin_plane_top'] = {
-        'status': 'ok',
-        'plane': {'origin': [0, 0, 0], 'x_axis': [1, 0, 0], 'y_axis': [0, 0, -1], 'normal': [0, 1, 0]}
+    result["builtin_plane_top"] = {
+        "status": "ok",
+        "plane": {
+            "origin": [0, 0, 0],
+            "x_axis": [1, 0, 0],
+            "y_axis": [0, 0, -1],
+            "normal": [0, 1, 0],
+        },
     }
-    result['builtin_plane_right'] = {
-        'status': 'ok',
-        'plane': {'origin': [0, 0, 0], 'x_axis': [0, 0, -1], 'y_axis': [0, 1, 0], 'normal': [1, 0, 0]}
+    result["builtin_plane_right"] = {
+        "status": "ok",
+        "plane": {
+            "origin": [0, 0, 0],
+            "x_axis": [0, 0, -1],
+            "y_axis": [0, 1, 0],
+            "normal": [1, 0, 0],
+        },
     }
-    return {
-        "solve_ms": total_ms,
-        "result": result
-    }
+    return {"solve_ms": total_ms, "result": result}
 
 
 def solve_features(spec: dict) -> dict:
@@ -117,10 +165,37 @@ def solve_features(spec: dict) -> dict:
     features = spec.get("features", [])
 
     global_repo = Repository()
-    global_repo.register("builtin_origin",      {"external_xy": [0.0, 0.0]})
-    global_repo.register("builtin_plane_front", {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 1, 0],  "normal": [0, 0, 1]})
-    global_repo.register("builtin_plane_top",   {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 0, -1], "normal": [0, 1, 0]})
-    global_repo.register("builtin_plane_right", {"type": "plane", "origin": [0, 0, 0], "x_axis": [0, 0, -1], "y_axis": [0, 1, 0], "normal": [1, 0, 0]})
+    global_repo.register("builtin_origin", {"external_xy": [0.0, 0.0]})
+    global_repo.register(
+        "builtin_plane_front",
+        {
+            "type": "plane",
+            "origin": [0, 0, 0],
+            "x_axis": [1, 0, 0],
+            "y_axis": [0, 1, 0],
+            "normal": [0, 0, 1],
+        },
+    )
+    global_repo.register(
+        "builtin_plane_top",
+        {
+            "type": "plane",
+            "origin": [0, 0, 0],
+            "x_axis": [1, 0, 0],
+            "y_axis": [0, 0, -1],
+            "normal": [0, 1, 0],
+        },
+    )
+    global_repo.register(
+        "builtin_plane_right",
+        {
+            "type": "plane",
+            "origin": [0, 0, 0],
+            "x_axis": [0, 0, -1],
+            "y_axis": [0, 1, 0],
+            "normal": [1, 0, 0],
+        },
+    )
 
     results = []
     for feature in features:
@@ -137,17 +212,22 @@ def solve_features(spec: dict) -> dict:
         results.append(feature_result)
 
         if "geometry" in feature_result:
-            _register_solved_geometry_slash(global_repo, fid, feature, feature_result["geometry"])
+            _register_solved_geometry_slash(
+                global_repo, fid, feature, feature_result["geometry"]
+            )
         # Store plane_transform and topology so extrude can access them.
         if "plane_transform" in feature_result:
             pt = feature_result["plane_transform"]
             rot = pt["rotation"]
-            global_repo.register("_pt_" + fid, {
-                "origin": pt["origin"],
-                "x_axis": rot[0:3],
-                "y_axis": rot[3:6],
-                "normal": rot[6:9],
-            })
+            global_repo.register(
+                "_pt_" + fid,
+                {
+                    "origin": pt["origin"],
+                    "x_axis": rot[0:3],
+                    "y_axis": rot[3:6],
+                    "normal": rot[6:9],
+                },
+            )
         if "topology" in feature_result:
             global_repo.register("_topo_" + fid, feature_result["topology"])
 
@@ -167,18 +247,35 @@ def _enrich_geometry(flat_geometry: dict, feature: dict) -> dict:
             rich[eid] = {"center": list(params[0:2]), "radius": float(params[2])}
         elif kind == "arc":
             cx, cy, r, a0, a1 = params
-            rich[eid] = {"center": [float(cx), float(cy)], "radius": float(r),
-                         "angle_start": float(a0), "angle_end": float(a1)}
+            rich[eid] = {
+                "center": [float(cx), float(cy)],
+                "radius": float(r),
+                "angle_start": float(a0),
+                "angle_end": float(a1),
+            }
         elif kind == "point":
             rich[eid] = {"xy": list(params[0:2])}
         elif kind == "projected_line":
-            rich[eid] = {"start": list(params[0:2]), "end": list(params[2:4]), "projected": True}
+            rich[eid] = {
+                "start": list(params[0:2]),
+                "end": list(params[2:4]),
+                "projected": True,
+            }
         elif kind == "projected_circle":
-            rich[eid] = {"center": list(params[0:2]), "radius": float(params[2]), "projected": True}
+            rich[eid] = {
+                "center": list(params[0:2]),
+                "radius": float(params[2]),
+                "projected": True,
+            }
         elif kind == "projected_arc":
             cx, cy, r, a0, a1 = params
-            rich[eid] = {"center": [float(cx), float(cy)], "radius": float(r),
-                         "angle_start": float(a0), "angle_end": float(a1), "projected": True}
+            rich[eid] = {
+                "center": [float(cx), float(cy)],
+                "radius": float(r),
+                "angle_start": float(a0),
+                "angle_end": float(a1),
+                "projected": True,
+            }
         elif kind == "projected_point":
             rich[eid] = {"xy": list(params[0:2]), "projected": True}
         else:
@@ -186,7 +283,9 @@ def _enrich_geometry(flat_geometry: dict, feature: dict) -> dict:
     return rich
 
 
-def _register_solved_geometry_slash(global_repo: Repository, feature_id: str, feature: dict, geometry: dict) -> None:
+def _register_solved_geometry_slash(
+    global_repo: Repository, feature_id: str, feature: dict, geometry: dict
+) -> None:
     """Register solved geometry using slash-separated query paths (@feature/entity/sub).
     Accepts both flat-params and rich-dict geometry formats."""
     entities = {e["id"]: e for e in feature.get("entities", [])}
@@ -205,38 +304,116 @@ def _register_solved_geometry_slash(global_repo: Repository, feature_id: str, fe
                 params = list(val.get("center", [0, 0])) + [val.get("radius", 0)]
             elif kind in ("arc", "projected_arc"):
                 cx, cy = val.get("center", [0, 0])
-                params = [cx, cy, val.get("radius", 0), val.get("angle_start", 0), val.get("angle_end", 0)]
+                params = [
+                    cx,
+                    cy,
+                    val.get("radius", 0),
+                    val.get("angle_start", 0),
+                    val.get("angle_end", 0),
+                ]
             elif kind in ("point", "projected_point"):
                 params = list(val.get("xy", [0, 0]))
             else:
                 continue
         else:
             params = list(val)
-        global_repo.register(prefix, {"external_params": params, "kind": kind, "sketch_id": feature_id})
-        global_repo.register(concat_prefix, {"external_params": params, "kind": kind, "sketch_id": feature_id})
+        global_repo.register(
+            prefix, {"external_params": params, "kind": kind, "sketch_id": feature_id}
+        )
+        global_repo.register(
+            concat_prefix,
+            {"external_params": params, "kind": kind, "sketch_id": feature_id},
+        )
         if kind in ("line", "projected_line"):
-            global_repo.register(prefix + "/start", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
-            global_repo.register(prefix + "/end",   {"external_xy": list(params[2:4]), "sketch_id": feature_id})
-            global_repo.register(concat_prefix + "start", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
-            global_repo.register(concat_prefix + "end",   {"external_xy": list(params[2:4]), "sketch_id": feature_id})
+            global_repo.register(
+                prefix + "/start",
+                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
+            )
+            global_repo.register(
+                prefix + "/end",
+                {"external_xy": list(params[2:4]), "sketch_id": feature_id},
+            )
+            global_repo.register(
+                concat_prefix + "start",
+                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
+            )
+            global_repo.register(
+                concat_prefix + "end",
+                {"external_xy": list(params[2:4]), "sketch_id": feature_id},
+            )
         elif kind in ("circle", "projected_circle"):
-            global_repo.register(prefix + "/center", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
-            global_repo.register(concat_prefix + "center", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
+            global_repo.register(
+                prefix + "/center",
+                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
+            )
+            global_repo.register(
+                concat_prefix + "center",
+                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
+            )
         elif kind in ("arc", "projected_arc"):
             cx, cy, r = params[0], params[1], params[2]
             a_start, a_end = params[3], params[4]
-            global_repo.register(prefix + "/start",  {"external_xy": [cx + r * math.cos(math.radians(a_start)), cy + r * math.sin(math.radians(a_start))], "sketch_id": feature_id})
-            global_repo.register(prefix + "/end",    {"external_xy": [cx + r * math.cos(math.radians(a_end)),   cy + r * math.sin(math.radians(a_end))], "sketch_id": feature_id})
-            global_repo.register(prefix + "/center", {"external_xy": [cx, cy], "sketch_id": feature_id})
-            global_repo.register(concat_prefix + "start",  {"external_xy": [cx + r * math.cos(math.radians(a_start)), cy + r * math.sin(math.radians(a_start))], "sketch_id": feature_id})
-            global_repo.register(concat_prefix + "end",    {"external_xy": [cx + r * math.cos(math.radians(a_end)),   cy + r * math.sin(math.radians(a_end))], "sketch_id": feature_id})
-            global_repo.register(concat_prefix + "center", {"external_xy": [cx, cy], "sketch_id": feature_id})
+            global_repo.register(
+                prefix + "/start",
+                {
+                    "external_xy": [
+                        cx + r * math.cos(math.radians(a_start)),
+                        cy + r * math.sin(math.radians(a_start)),
+                    ],
+                    "sketch_id": feature_id,
+                },
+            )
+            global_repo.register(
+                prefix + "/end",
+                {
+                    "external_xy": [
+                        cx + r * math.cos(math.radians(a_end)),
+                        cy + r * math.sin(math.radians(a_end)),
+                    ],
+                    "sketch_id": feature_id,
+                },
+            )
+            global_repo.register(
+                prefix + "/center", {"external_xy": [cx, cy], "sketch_id": feature_id}
+            )
+            global_repo.register(
+                concat_prefix + "start",
+                {
+                    "external_xy": [
+                        cx + r * math.cos(math.radians(a_start)),
+                        cy + r * math.sin(math.radians(a_start)),
+                    ],
+                    "sketch_id": feature_id,
+                },
+            )
+            global_repo.register(
+                concat_prefix + "end",
+                {
+                    "external_xy": [
+                        cx + r * math.cos(math.radians(a_end)),
+                        cy + r * math.sin(math.radians(a_end)),
+                    ],
+                    "sketch_id": feature_id,
+                },
+            )
+            global_repo.register(
+                concat_prefix + "center",
+                {"external_xy": [cx, cy], "sketch_id": feature_id},
+            )
         elif kind in ("point", "projected_point"):
-            global_repo.register(prefix + "/xy", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
-            global_repo.register(concat_prefix + "xy", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
+            global_repo.register(
+                prefix + "/xy",
+                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
+            )
+            global_repo.register(
+                concat_prefix + "xy",
+                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
+            )
 
 
-def _register_solved_geometry(global_repo: Repository, feature_id: str, feature: dict, geometry: dict) -> None:
+def _register_solved_geometry(
+    global_repo: Repository, feature_id: str, feature: dict, geometry: dict
+) -> None:
     """Register solved geometry from a sketch into the global repo as fixed external references."""
     entities = {e["id"]: e for e in feature.get("entities", [])}
     for eid, params in geometry.items():
@@ -244,20 +421,56 @@ def _register_solved_geometry(global_repo: Repository, feature_id: str, feature:
         if entity is None:
             continue
         kind = entity["kind"]
-        global_repo.register(feature_id + eid, {"external_params": params, "kind": kind, "sketch_id": feature_id})
+        global_repo.register(
+            feature_id + eid,
+            {"external_params": params, "kind": kind, "sketch_id": feature_id},
+        )
         if kind == "line":
-            global_repo.register(feature_id + eid + "start", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
-            global_repo.register(feature_id + eid + "end",   {"external_xy": list(params[2:4]), "sketch_id": feature_id})
+            global_repo.register(
+                feature_id + eid + "start",
+                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
+            )
+            global_repo.register(
+                feature_id + eid + "end",
+                {"external_xy": list(params[2:4]), "sketch_id": feature_id},
+            )
         elif kind == "circle":
-            global_repo.register(feature_id + eid + "center", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
+            global_repo.register(
+                feature_id + eid + "center",
+                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
+            )
         elif kind == "arc":
             cx, cy, r = params[0], params[1], params[2]
             a_start, a_end = params[3], params[4]
-            global_repo.register(feature_id + eid + "start",  {"external_xy": [cx + r * math.cos(math.radians(a_start)), cy + r * math.sin(math.radians(a_start))], "sketch_id": feature_id})
-            global_repo.register(feature_id + eid + "end",    {"external_xy": [cx + r * math.cos(math.radians(a_end)),   cy + r * math.sin(math.radians(a_end))], "sketch_id": feature_id})
-            global_repo.register(feature_id + eid + "center", {"external_xy": [cx, cy], "sketch_id": feature_id})
+            global_repo.register(
+                feature_id + eid + "start",
+                {
+                    "external_xy": [
+                        cx + r * math.cos(math.radians(a_start)),
+                        cy + r * math.sin(math.radians(a_start)),
+                    ],
+                    "sketch_id": feature_id,
+                },
+            )
+            global_repo.register(
+                feature_id + eid + "end",
+                {
+                    "external_xy": [
+                        cx + r * math.cos(math.radians(a_end)),
+                        cy + r * math.sin(math.radians(a_end)),
+                    ],
+                    "sketch_id": feature_id,
+                },
+            )
+            global_repo.register(
+                feature_id + eid + "center",
+                {"external_xy": [cx, cy], "sketch_id": feature_id},
+            )
         elif kind == "point":
-            global_repo.register(feature_id + eid + "xy", {"external_xy": list(params[0:2]), "sketch_id": feature_id})
+            global_repo.register(
+                feature_id + eid + "xy",
+                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
+            )
 
 
 def _plane_transform(plane_obj: dict) -> dict:
@@ -266,10 +479,15 @@ def _plane_transform(plane_obj: dict) -> dict:
     y_axis = plane_obj.get("y_axis", [0, 1, 0])
     normal = plane_obj.get("normal", [0, 0, 1])
     origin = plane_obj.get("origin", [0, 0, 0])
-    return {"rotation": list(x_axis) + list(y_axis) + list(normal), "origin": list(origin)}
+    return {
+        "rotation": list(x_axis) + list(y_axis) + list(normal),
+        "origin": list(origin),
+    }
 
 
-def _register_topology_surfaces(global_repo: Repository, topology: dict, plane_obj: dict) -> None:
+def _register_topology_surfaces(
+    global_repo: Repository, topology: dict, plane_obj: dict
+) -> None:
     """Register each topology surface as a face-typed plane in the global repository."""
     x_axis = plane_obj["x_axis"]
     y_axis = plane_obj["y_axis"]
@@ -278,7 +496,7 @@ def _register_topology_surfaces(global_repo: Repository, topology: dict, plane_o
 
     for surface in topology.get("surfaces", []):
         query = surface.get("query")
-        if not query or not query.startswith('?'):
+        if not query or not query.startswith("?"):
             continue
 
         # Compute world-space centroid from the surface boundary's 2D sketch coords.
@@ -301,13 +519,16 @@ def _register_topology_surfaces(global_repo: Repository, topology: dict, plane_o
             world_origin = list(origin)
 
         ids, _ = _parse_ancestry(query)
-        global_repo.register_anchestor(ids, {
-            "type": "face",
-            "origin": world_origin,
-            "x_axis": list(x_axis),
-            "y_axis": list(y_axis),
-            "normal": list(normal),
-        })
+        global_repo.register_anchestor(
+            ids,
+            {
+                "type": "face",
+                "origin": world_origin,
+                "x_axis": list(x_axis),
+                "y_axis": list(y_axis),
+                "normal": list(normal),
+            },
+        )
 
 
 def _try_solve_feature(feature: Any, global_repo: Repository) -> dict:
@@ -320,7 +541,7 @@ def _try_solve_feature(feature: Any, global_repo: Repository) -> dict:
         return {
             "solve_ms": round((time.perf_counter() - t0) * 1000, 1),
             "status": "exception",
-            "exception": str(e)
+            "exception": str(e),
         }
 
 
@@ -340,13 +561,12 @@ def _solve_feature(feature: Any, global_repo: Repository) -> dict:
 # Geometry helpers
 # ---------------------------------------------------------------------------
 
-def _geometry_from_array(
-        x, entities: dict,
-        entity_offsets: dict) -> dict[str, Any]:  # noqa: E501
+
+def _geometry_from_array(x, entities: dict, entity_offsets: dict) -> dict[str, Any]:  # noqa: E501
     out: dict[str, Any] = {}
     for eid, entity in entities.items():
         off = entity_offsets[eid]
-        ep = x[off:off + ENTITY_SIZES[entity["kind"]]]
+        ep = x[off : off + ENTITY_SIZES[entity["kind"]]]
         kind = entity["kind"]
         is_construction = entity.get("construction", False)
         if kind == "line":
@@ -367,30 +587,18 @@ def _geometry_from_array(
             cx, cy, r = float(ep[0]), float(ep[1]), float(ep[2])
             a0, a1 = float(ep[3]), float(ep[4])
             out[eid] = {
-                "center": [
-                    cx,
-                    cy],
+                "center": [cx, cy],
                 "radius": r,
                 "angle_start": a0,
                 "angle_end": a1,
                 "start": [
-                    cx +
-                    r *
-                    math.cos(
-                        math.radians(a0)),
-                    cy +
-                    r *
-                    math.sin(
-                        math.radians(a0))],
+                    cx + r * math.cos(math.radians(a0)),
+                    cy + r * math.sin(math.radians(a0)),
+                ],
                 "end": [
-                    cx +
-                    r *
-                    math.cos(
-                        math.radians(a1)),
-                    cy +
-                    r *
-                    math.sin(
-                        math.radians(a1))],
+                    cx + r * math.cos(math.radians(a1)),
+                    cy + r * math.sin(math.radians(a1)),
+                ],
             }
             if is_construction:
                 out[eid]["construction"] = True
@@ -416,8 +624,14 @@ def _geometry_from_array(
                 "radius": r,
                 "angle_start": a0,
                 "angle_end": a1,
-                "start": [cx + r * math.cos(math.radians(a0)), cy + r * math.sin(math.radians(a0))],
-                "end": [cx + r * math.cos(math.radians(a1)), cy + r * math.sin(math.radians(a1))],
+                "start": [
+                    cx + r * math.cos(math.radians(a0)),
+                    cy + r * math.sin(math.radians(a0)),
+                ],
+                "end": [
+                    cx + r * math.cos(math.radians(a1)),
+                    cy + r * math.sin(math.radians(a1)),
+                ],
             }
         elif kind == "projected_point":
             out[eid] = {"x": float(ep[0]), "y": float(ep[1])}
@@ -430,7 +644,7 @@ def _params_from_array(x, entities: dict, entity_offsets: dict) -> dict:
     for eid, entity in entities.items():
         off = entity_offsets[eid]
         size = ENTITY_SIZES[entity["kind"]]
-        out[eid] = [round(float(v), 10) for v in x[off:off + size]]
+        out[eid] = [round(float(v), 10) for v in x[off : off + size]]
     return out
 
 
@@ -440,19 +654,20 @@ def _geom_point(geom: dict, ref: dict) -> list:
         return ref["external_xy"]
     e = geom[ref["entity"]]
     pt = ref.get("point", "start")
-    if "start" in e and "end" in e and "radius" in e:   # arc
+    if "start" in e and "end" in e and "radius" in e:  # arc
         return e["start"] if pt != "end" else e["end"]
-    elif "start" in e:                                   # line
+    elif "start" in e:  # line
         return e["end"] if pt == "end" else e["start"]
-    elif "center" in e:                                  # circle
+    elif "center" in e:  # circle
         return list(e["center"])
-    else:                                                # point
+    else:  # point
         return [e["x"], e["y"]]
 
 
 # ---------------------------------------------------------------------------
 # Constraint render data
 # ---------------------------------------------------------------------------
+
 
 def _pick_arc_ref(c: dict, geom: dict) -> dict | None:
     """When a constraint uses a/b keys instead of line/arc, return the ref whose
@@ -488,8 +703,7 @@ def _constraint_render(c: dict, geom: dict) -> dict:
         if not eid:
             return {}  # external-only target, can't render
         e = geom[eid]
-        at = [(e["start"][0] + e["end"][0]) / 2,
-              (e["start"][1] + e["end"][1]) / 2]
+        at = [(e["start"][0] + e["end"][0]) / 2, (e["start"][1] + e["end"][1]) / 2]
         return {"kind": "symbol_h", "at": at, "entity": eid}
 
     elif kind == "vertical":
@@ -503,8 +717,7 @@ def _constraint_render(c: dict, geom: dict) -> dict:
         if not eid:
             return {}  # external-only target, can't render
         e = geom[eid]
-        at = [(e["start"][0] + e["end"][0]) / 2,
-              (e["start"][1] + e["end"][1]) / 2]
+        at = [(e["start"][0] + e["end"][0]) / 2, (e["start"][1] + e["end"][1]) / 2]
         return {"kind": "symbol_v", "at": at, "entity": eid}
 
     elif kind == "length":
@@ -520,20 +733,25 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "p2": e["end"],
             "value": c["value"],
             "normal": normal,
-            "entity": eid}
+            "entity": eid,
+        }
 
     elif kind == "radius":
         eid = c["target"]["entity"]
         e = geom[eid]
         center = e["center"]
-        edge = e["start"] if "start" in e else [
-            e["center"][0] + e["radius"], e["center"][1]]
+        edge = (
+            e["start"]
+            if "start" in e
+            else [e["center"][0] + e["radius"], e["center"][1]]
+        )
         return {
             "kind": "dim_radius",
             "p1": center,
             "p2": edge,
             "value": c["value"],
-            "entity": eid}
+            "entity": eid,
+        }
 
     elif kind == "diameter":
         eid = c["target"]["entity"]
@@ -544,7 +762,8 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "p1": [cx - r, cy],
             "p2": [cx + r, cy],
             "value": c["value"],
-            "entity": eid}
+            "entity": eid,
+        }
 
     elif kind == "line_distance":
         eid_a = c["a"]["entity"]
@@ -563,15 +782,22 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "p2": list(pb),
             "value": c["value"],
             "normal": [nx, ny],
-            "entity": eid_a}
+            "entity": eid_a,
+        }
 
     elif kind == "coincident":
         a_eid = c["a"]["entity"]
         ea = geom[a_eid]
-        if "point" not in c["a"] and "start" in ea and "start" in geom.get(c["b"]["entity"], {}):
+        if (
+            "point" not in c["a"]
+            and "start" in ea
+            and "start" in geom.get(c["b"]["entity"], {})
+        ):
             # line-to-line collinear: place symbol at midpoint of a
-            at = [(ea["start"][0] + ea["end"][0]) / 2,
-                  (ea["start"][1] + ea["end"][1]) / 2]
+            at = [
+                (ea["start"][0] + ea["end"][0]) / 2,
+                (ea["start"][1] + ea["end"][1]) / 2,
+            ]
         else:
             at = _geom_point(geom, c["a"])
         return {"kind": "symbol_coincident", "at": at, "entity": a_eid}
@@ -582,10 +808,18 @@ def _constraint_render(c: dict, geom: dict) -> dict:
         ea = geom[ea_id]
         eb = geom[eb_id]
         if "center" in eb:
-            pt = eb["start"] if "start" in eb and c["b"].get("point", "start") != "end" else list(eb["center"])
+            pt = (
+                eb["start"]
+                if "start" in eb and c["b"].get("point", "start") != "end"
+                else list(eb["center"])
+            )
             return {"kind": "symbol_normal", "at": pt, "entity": eb_id}
         elif "center" in ea:
-            pt = ea["start"] if "start" in ea and c["a"].get("point", "start") != "end" else list(ea["center"])
+            pt = (
+                ea["start"]
+                if "start" in ea and c["a"].get("point", "start") != "end"
+                else list(ea["center"])
+            )
             return {"kind": "symbol_normal", "at": pt, "entity": ea_id}
         else:
             return {"kind": "symbol_normal", "at": ea["end"], "entity": ea_id}
@@ -610,7 +844,8 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "p3": eb["start"],
             "p4": eb["end"],
             "value": c["value"],
-            "entity": eid}
+            "entity": eid,
+        }
 
     elif kind == "tangent":
         arc_ref = c.get("arc") or (_pick_arc_ref(c, geom))
@@ -646,15 +881,15 @@ def _constraint_render(c: dict, geom: dict) -> dict:
     elif kind == "equal_length":
         eid = c["a"]["entity"]
         ea, eb = geom[eid], geom[c["b"]["entity"]]
-        at_a = [(ea["start"][0] + ea["end"][0]) / 2,
-                (ea["start"][1] + ea["end"][1]) / 2]
-        at_b = [(eb["start"][0] + eb["end"][0]) / 2,
-                (eb["start"][1] + eb["end"][1]) / 2]
-        return {
-            "kind": "symbol_equal",
-            "at_a": at_a,
-            "at_b": at_b,
-            "entity": eid}
+        at_a = [
+            (ea["start"][0] + ea["end"][0]) / 2,
+            (ea["start"][1] + ea["end"][1]) / 2,
+        ]
+        at_b = [
+            (eb["start"][0] + eb["end"][0]) / 2,
+            (eb["start"][1] + eb["end"][1]) / 2,
+        ]
+        return {"kind": "symbol_equal", "at_a": at_a, "at_b": at_b, "entity": eid}
 
     elif kind == "point_distance":
         pa = _geom_point(geom, c["a"])
@@ -669,14 +904,14 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "p2": pb,
             "value": c["value"],
             "normal": normal,
-            "entity": eid}
+            "entity": eid,
+        }
 
     elif kind == "midpoint":
         if "line" in c:
             eid = c["line"]["entity"]
             e = geom[eid]
-            at = [(e["start"][0] + e["end"][0]) / 2,
-                  (e["start"][1] + e["end"][1]) / 2]
+            at = [(e["start"][0] + e["end"][0]) / 2, (e["start"][1] + e["end"][1]) / 2]
         else:
             eid = c["point_a"]["entity"]
             pa = _geom_point(geom, c["point_a"])
@@ -686,7 +921,8 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "kind": "symbol_midpoint",
             "at": at,
             "axis": c.get("axis", "both"),
-            "entity": eid}
+            "entity": eid,
+        }
 
     elif kind == "concentric":
         eid = c["a"]["entity"]
@@ -702,7 +938,8 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "at": at,
             "x": c.get("x", at[0]),
             "y": c.get("y", at[1]),
-            "entity": eid}
+            "entity": eid,
+        }
 
     return {"kind": "unknown"}
 
@@ -711,13 +948,8 @@ def _constraint_render(c: dict, geom: dict) -> dict:
 # Per-entity constraint status
 # ---------------------------------------------------------------------------
 
-def _entity_status(
-        J,
-        rank,
-        entities,
-        entity_offsets,
-        n_params,
-        overall_status):
+
+def _entity_status(J, rank, entities, entity_offsets, n_params, overall_status):
     """Return per-entity 'fully_constrained' | 'underconstrained' | 'overconstrained'.
 
     For each entity, temporarily pin all its parameters (augment J with identity
@@ -756,14 +988,30 @@ ORIGIN_FIX_ID = "__builtin_origin_fix__"
 
 _BUILTIN_PLANES: dict = {
     "builtin_plane_front": _FRONT_PLANE,
-    "builtin_plane_top":   {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 0, -1], "normal": [0, 1, 0]},
-    "builtin_plane_right": {"type": "plane", "origin": [0, 0, 0], "x_axis": [0, 0, -1], "y_axis": [0, 1, 0], "normal": [1, 0, 0]},
+    "builtin_plane_top": {
+        "type": "plane",
+        "origin": [0, 0, 0],
+        "x_axis": [1, 0, 0],
+        "y_axis": [0, 0, -1],
+        "normal": [0, 1, 0],
+    },
+    "builtin_plane_right": {
+        "type": "plane",
+        "origin": [0, 0, 0],
+        "x_axis": [0, 0, -1],
+        "y_axis": [0, 1, 0],
+        "normal": [1, 0, 0],
+    },
 }
 
-_PROJECTED_KINDS = frozenset({"projected_line", "projected_circle", "projected_arc", "projected_point"})
+_PROJECTED_KINDS = frozenset(
+    {"projected_line", "projected_circle", "projected_arc", "projected_point"}
+)
 
 
-def _resolve_plane_early(plane_query: Optional[str], global_repo: Optional[Repository]) -> dict:
+def _resolve_plane_early(
+    plane_query: Optional[str], global_repo: Optional[Repository]
+) -> dict:
     """Quick plane resolution without full repo setup (used before entity_offsets are built)."""
     if not plane_query:
         return _FRONT_PLANE
@@ -832,7 +1080,7 @@ def _resolve_source_geometry(source_query: str, global_repo: Repository) -> tupl
         if kind == "line":
             return "line", {
                 "start": _2d_to_3d(params[0:2], source_plane),
-                "end":   _2d_to_3d(params[2:4], source_plane),
+                "end": _2d_to_3d(params[2:4], source_plane),
             }
         if kind == "circle":
             return "circle", {
@@ -841,18 +1089,18 @@ def _resolve_source_geometry(source_query: str, global_repo: Repository) -> tupl
             }
         if kind == "arc":
             return "arc", {
-                "center":      _2d_to_3d(params[0:2], source_plane),
-                "radius":      params[2],
+                "center": _2d_to_3d(params[0:2], source_plane),
+                "radius": params[2],
                 "start_angle": params[3],
-                "end_angle":   params[4],
+                "end_angle": params[4],
             }
 
     raise ValueError(f"cannot resolve source geometry for {source_query!r}")
 
 
 def _project_source_to_params(
-        projected_kind: str, source_query: str,
-        target_plane: dict, global_repo: Repository) -> list:
+    projected_kind: str, source_query: str, target_plane: dict, global_repo: Repository
+) -> list:
     """Compute flat 2D params for a projected entity on target_plane."""
     kind_hint, data_3d = _resolve_source_geometry(source_query, global_repo)
 
@@ -877,21 +1125,22 @@ def _project_source_to_params(
 # Plane solver
 # ---------------------------------------------------------------------------
 
+
 def _get_point_3d(ref: dict, global_repo: Repository) -> np.ndarray:
     """Convert a registered point reference to a 3D world coordinate.
 
     Uses sketch_id + _pt_ plane transform to lift 2D local coordinates to 3D
     world space.  Falls back to [x, y, 0] when no plane transform is known.
     """
-    if 'external_xy' in ref:
-        xy = ref['external_xy']
-        sketch_id = ref.get('sketch_id')
+    if "external_xy" in ref:
+        xy = ref["external_xy"]
+        sketch_id = ref.get("sketch_id")
         if sketch_id:
-            pt = global_repo.elements.get('_pt_' + sketch_id)
+            pt = global_repo.elements.get("_pt_" + sketch_id)
             if pt:
-                origin = np.array(pt['origin'])
-                x_axis = np.array(pt['x_axis'])
-                y_axis = np.array(pt['y_axis'])
+                origin = np.array(pt["origin"])
+                x_axis = np.array(pt["x_axis"])
+                y_axis = np.array(pt["y_axis"])
                 return origin + xy[0] * x_axis + xy[1] * y_axis
         return np.array([xy[0], xy[1], 0.0])
     raise ValueError("point reference has no coordinates")
@@ -903,21 +1152,21 @@ def _get_edge_3d(ref: dict, global_repo: Repository) -> tuple:
     Uses sketch_id + _pt_ plane transform when available.
     Falls back to z=0 for 2D-only references.
     """
-    if 'external_params' in ref and ref.get('kind') in ('line', 'projected_line'):
-        p = ref['external_params']
-        sketch_id = ref.get('sketch_id')
+    if "external_params" in ref and ref.get("kind") in ("line", "projected_line"):
+        p = ref["external_params"]
+        sketch_id = ref.get("sketch_id")
         if sketch_id:
-            pt = global_repo.elements.get('_pt_' + sketch_id)
+            pt = global_repo.elements.get("_pt_" + sketch_id)
             if pt:
-                origin = np.array(pt['origin'])
-                x_axis = np.array(pt['x_axis'])
-                y_axis = np.array(pt['y_axis'])
+                origin = np.array(pt["origin"])
+                x_axis = np.array(pt["x_axis"])
+                y_axis = np.array(pt["y_axis"])
                 start = origin + p[0] * x_axis + p[1] * y_axis
                 end = origin + p[2] * x_axis + p[3] * y_axis
                 return start, end
         return np.array([p[0], p[1], 0.0]), np.array([p[2], p[3], 0.0])
-    if 'start' in ref and 'end' in ref:
-        return np.array(ref['start']), np.array(ref['end'])
+    if "start" in ref and "end" in ref:
+        return np.array(ref["start"]), np.array(ref["end"])
     raise ValueError("edge reference has no line coordinates")
 
 
@@ -930,8 +1179,8 @@ def _normalize(v: np.ndarray) -> np.ndarray:
 
 
 def _rotate_frame_around_normal(
-        x_axis: np.ndarray, y_axis: np.ndarray,
-        normal: np.ndarray, degrees: float) -> tuple:
+    x_axis: np.ndarray, y_axis: np.ndarray, normal: np.ndarray, degrees: float
+) -> tuple:
     """Rotate x_axis and y_axis around normal by degrees (CW looking down normal)."""
     radians = np.radians(degrees)
     cos_a = np.cos(radians)
@@ -943,9 +1192,9 @@ def _rotate_frame_around_normal(
 
 def _plane_three_point(definition: dict, global_repo: Repository) -> tuple:
     """Three-point plane: origin at p1, x_axis toward p2, y_axis toward p3 (Gram-Schmidt)."""
-    r1 = global_repo.query(definition['p1'])
-    r2 = global_repo.query(definition['p2'])
-    r3 = global_repo.query(definition['p3'])
+    r1 = global_repo.query(definition["p1"])
+    r2 = global_repo.query(definition["p2"])
+    r3 = global_repo.query(definition["p3"])
     if r1 is None:
         raise ValueError(f"point not found: {definition['p1']!r}")
     if r2 is None:
@@ -969,13 +1218,13 @@ def _plane_three_point(definition: dict, global_repo: Repository) -> tuple:
 
 def _plane_on_face(definition: dict, global_repo: Repository) -> tuple:
     """Plane aligned with a topology face."""
-    face_str = definition['face']
+    face_str = definition["face"]
     face = global_repo.query(face_str)
     if face is None:
         raise ValueError(f"face not found: {face_str!r}")
 
-    origin = np.array(face['centroid'])
-    normal = np.array(face['normal'])
+    origin = np.array(face["centroid"])
+    normal = np.array(face["normal"])
 
     if abs(normal[2]) < 0.9:
         arbitrary = np.array([0.0, 0.0, 1.0])
@@ -989,9 +1238,9 @@ def _plane_on_face(definition: dict, global_repo: Repository) -> tuple:
 
 def _plane_on_face_edge_angle(definition: dict, global_repo: Repository) -> tuple:
     """Plane on face with X axis along an edge, rotated by angle."""
-    face_str = definition['face']
-    edge_str = definition['edge']
-    angle = definition.get('angle', 0.0)
+    face_str = definition["face"]
+    edge_str = definition["edge"]
+    angle = definition.get("angle", 0.0)
 
     face = global_repo.query(face_str)
     if face is None:
@@ -1000,14 +1249,16 @@ def _plane_on_face_edge_angle(definition: dict, global_repo: Repository) -> tupl
     if edge is None:
         raise ValueError(f"edge not found: {edge_str!r}")
 
-    origin = np.array(face['centroid'])
-    normal = np.array(face['normal'])
+    origin = np.array(face["centroid"])
+    normal = np.array(face["normal"])
 
-    edge_dir = _normalize(np.array(edge['end']) - np.array(edge['start']))
+    edge_dir = _normalize(np.array(edge["end"]) - np.array(edge["start"]))
     x_axis_base = edge_dir - np.dot(edge_dir, normal) * normal
     x_axis_base = _normalize(x_axis_base)
 
-    x_axis, _ = _rotate_frame_around_normal(x_axis_base, np.cross(normal, x_axis_base), normal, angle)
+    x_axis, _ = _rotate_frame_around_normal(
+        x_axis_base, np.cross(normal, x_axis_base), normal, angle
+    )
     y_axis = np.cross(normal, x_axis)
     return origin, x_axis, y_axis, normal
 
@@ -1019,8 +1270,8 @@ def _plane_edge_point(definition: dict, global_repo: Repository) -> tuple:
     and y_axis points from the point toward the line (perpendicular projection),
     making the plane pivot around the line.
     """
-    edge_str = definition['edge']
-    point_str = definition['point']
+    edge_str = definition["edge"]
+    point_str = definition["point"]
 
     edge = global_repo.query(edge_str)
     if edge is None:
@@ -1061,8 +1312,8 @@ def _plane_through_point(definition: dict, global_repo: Repository) -> tuple:
     plane but its origin is set to the specified point projected onto the reference
     plane's normal axis.
     """
-    plane_query = definition.get('plane', '')
-    point_query = definition.get('point', '')
+    plane_query = definition.get("plane", "")
+    point_query = definition.get("point", "")
     ref_plane = global_repo.query(plane_query)
     if ref_plane is None:
         raise ValueError(f"plane not found: {plane_query!r}")
@@ -1070,10 +1321,10 @@ def _plane_through_point(definition: dict, global_repo: Repository) -> tuple:
     if point_ref is None:
         raise ValueError(f"point not found: {point_query!r}")
 
-    normal = np.array(ref_plane.get('normal', [0, 0, 1]))
-    x_axis = np.array(ref_plane.get('x_axis', [1, 0, 0]))
-    y_axis = np.array(ref_plane.get('y_axis', [0, 1, 0]))
-    ref_origin = np.array(ref_plane.get('origin', [0, 0, 0]))
+    normal = np.array(ref_plane.get("normal", [0, 0, 1]))
+    x_axis = np.array(ref_plane.get("x_axis", [1, 0, 0]))
+    y_axis = np.array(ref_plane.get("y_axis", [0, 1, 0]))
+    ref_origin = np.array(ref_plane.get("origin", [0, 0, 0]))
 
     point_3d = _get_point_3d(point_ref, global_repo)
 
@@ -1091,8 +1342,8 @@ def _plane_line_angle(definition: dict, global_repo: Repository) -> tuple:
     points in the direction most aligned with the world Z axis (or world X when the
     line is parallel to Z).  Increasing angle rotates the plane around the line.
     """
-    line_str = definition.get('line', '')
-    angle = float(definition.get('angle', 0.0))
+    line_str = definition.get("line", "")
+    angle = float(definition.get("angle", 0.0))
 
     line_ref = global_repo.query(line_str)
     if line_ref is None:
@@ -1119,91 +1370,100 @@ def _plane_line_angle(definition: dict, global_repo: Repository) -> tuple:
 
 def _plane_offset(definition: dict, global_repo: Repository) -> tuple:
     """Plane parallel to a reference plane, offset along its normal."""
-    plane_query = definition.get('plane', '')
-    offset = float(definition.get('offset', 0.0))
+    plane_query = definition.get("plane", "")
+    offset = float(definition.get("offset", 0.0))
     plane = global_repo.query(plane_query)
     if plane is None:
         raise ValueError(f"plane not found: {plane_query!r}")
-    normal = np.array(plane.get('normal', [0, 0, 1]))
-    origin = np.array(plane.get('origin', [0, 0, 0])) + normal * offset
-    x_axis = np.array(plane.get('x_axis', [1, 0, 0]))
-    y_axis = np.array(plane.get('y_axis', [0, 1, 0]))
+    normal = np.array(plane.get("normal", [0, 0, 1]))
+    origin = np.array(plane.get("origin", [0, 0, 0])) + normal * offset
+    x_axis = np.array(plane.get("x_axis", [1, 0, 0]))
+    y_axis = np.array(plane.get("y_axis", [0, 1, 0]))
     return origin, x_axis, y_axis, normal
 
 
 def _solve_plane(feature: dict, global_repo: Repository) -> dict:
     """Solve a plane feature, computing a 3D coordinate frame."""
     try:
-        definition = feature.get('definition', {})
-        mode = definition.get('mode')
+        definition = feature.get("definition", {})
+        mode = definition.get("mode")
 
-        if mode == 'three_point':
+        if mode == "three_point":
             origin, x_axis, y_axis, normal = _plane_three_point(definition, global_repo)
-        elif mode == 'plane_point':
-            origin, x_axis, y_axis, normal = _plane_through_point(definition, global_repo)
-        elif mode == 'line_angle':
+        elif mode == "plane_point":
+            origin, x_axis, y_axis, normal = _plane_through_point(
+                definition, global_repo
+            )
+        elif mode == "line_angle":
             origin, x_axis, y_axis, normal = _plane_line_angle(definition, global_repo)
-        elif mode == 'on_face':
+        elif mode == "on_face":
             origin, x_axis, y_axis, normal = _plane_on_face(definition, global_repo)
-        elif mode == 'on_face_edge_angle':
-            origin, x_axis, y_axis, normal = _plane_on_face_edge_angle(definition, global_repo)
-        elif mode == 'edge_point':
+        elif mode == "on_face_edge_angle":
+            origin, x_axis, y_axis, normal = _plane_on_face_edge_angle(
+                definition, global_repo
+            )
+        elif mode == "edge_point":
             origin, x_axis, y_axis, normal = _plane_edge_point(definition, global_repo)
-        elif mode == 'offset':
+        elif mode == "offset":
             origin, x_axis, y_axis, normal = _plane_offset(definition, global_repo)
         else:
-            return {'status': 'exception', 'message': f'unknown plane mode: {mode!r}'}
+            return {"status": "exception", "message": f"unknown plane mode: {mode!r}"}
 
-        rotation = definition.get('rotation', 0.0)
+        rotation = definition.get("rotation", 0.0)
         if rotation != 0.0:
-            x_axis, y_axis = _rotate_frame_around_normal(x_axis, y_axis, normal, rotation)
+            x_axis, y_axis = _rotate_frame_around_normal(
+                x_axis, y_axis, normal, rotation
+            )
 
-        plane_id = feature['id']
-        global_repo.register(plane_id, {
-            'type': 'plane',
-            'origin': origin.tolist(),
-            'x_axis': x_axis.tolist(),
-            'y_axis': y_axis.tolist(),
-            'normal': normal.tolist(),
-        })
+        plane_id = feature["id"]
+        global_repo.register(
+            plane_id,
+            {
+                "type": "plane",
+                "origin": origin.tolist(),
+                "x_axis": x_axis.tolist(),
+                "y_axis": y_axis.tolist(),
+                "normal": normal.tolist(),
+            },
+        )
 
         return {
-            'status': 'ok',
-            'plane': {
-                'origin': origin.tolist(),
-                'x_axis': x_axis.tolist(),
-                'y_axis': y_axis.tolist(),
-                'normal': normal.tolist(),
-            }
+            "status": "ok",
+            "plane": {
+                "origin": origin.tolist(),
+                "x_axis": x_axis.tolist(),
+                "y_axis": y_axis.tolist(),
+                "normal": normal.tolist(),
+            },
         }
     except Exception as e:
-        return {'status': 'exception', 'message': str(e)}
+        return {"status": "exception", "message": str(e)}
 
 
 def _solve_extrude(feature: dict, global_repo: Repository) -> dict:
     """Minimal extrude solver: generates top/bottom faces for topology references."""
     try:
-        sketch_ref = feature.get('sketch', '')
-        depth = float(feature.get('depth', 1.0))
-        feature_id = feature['id']
+        sketch_ref = feature.get("sketch", "")
+        depth = float(feature.get("depth", 1.0))
+        feature_id = feature["id"]
 
-        sketch_id = sketch_ref.lstrip('$')
-        pt = global_repo.elements.get('_pt_' + sketch_id)
+        sketch_id = sketch_ref.lstrip("$")
+        pt = global_repo.elements.get("_pt_" + sketch_id)
         if pt is None:
-            return {'status': 'exception', 'message': f'sketch {sketch_id!r} not found'}
+            return {"status": "exception", "message": f"sketch {sketch_id!r} not found"}
 
-        origin = np.array(pt['origin'])
-        x_axis = np.array(pt['x_axis'])
-        y_axis = np.array(pt['y_axis'])
-        normal = np.array(pt['normal'])
+        origin = np.array(pt["origin"])
+        x_axis = np.array(pt["x_axis"])
+        y_axis = np.array(pt["y_axis"])
+        normal = np.array(pt["normal"])
 
-        topo = global_repo.elements.get('_topo_' + sketch_id, {})
-        surfaces = topo.get('surfaces', []) if topo else []
+        topo = global_repo.elements.get("_topo_" + sketch_id, {})
+        surfaces = topo.get("surfaces", []) if topo else []
 
         if surfaces:
             pts_2d = []
-            for edge in surfaces[0]['boundary']:
-                for key in ('start', 'end'):
+            for edge in surfaces[0]["boundary"]:
+                for key in ("start", "end"):
                     if key in edge:
                         pts_2d.append(edge[key])
             if pts_2d:
@@ -1217,31 +1477,41 @@ def _solve_extrude(feature: dict, global_repo: Repository) -> dict:
         sketch_centroid = origin + u * x_axis + v * y_axis
         top_centroid = sketch_centroid + normal * depth
 
-        global_repo.register(feature_id + "/top_face", {
-            'type': 'face',
-            'centroid': top_centroid.tolist(),
-            'normal': normal.tolist(),
-            'origin': top_centroid.tolist(),
-            'x_axis': x_axis.tolist(),
-            'y_axis': y_axis.tolist(),
-        })
+        global_repo.register(
+            feature_id + "/top_face",
+            {
+                "type": "face",
+                "centroid": top_centroid.tolist(),
+                "normal": normal.tolist(),
+                "origin": top_centroid.tolist(),
+                "x_axis": x_axis.tolist(),
+                "y_axis": y_axis.tolist(),
+            },
+        )
 
         # Register first edge of top face for on_face_edge_angle mode
-        if surfaces and surfaces[0]['boundary']:
-            edge = surfaces[0]['boundary'][0]
-            if 'start' in edge and 'end' in edge:
-                s2d, e2d = edge['start'], edge['end']
-                s3d = (origin + s2d[0] * x_axis + s2d[1] * y_axis + normal * depth).tolist()
-                e3d = (origin + e2d[0] * x_axis + e2d[1] * y_axis + normal * depth).tolist()
-                global_repo.register(feature_id + "/top_face/edge0", {
-                    'type': 'edge',
-                    'start': s3d,
-                    'end': e3d,
-                })
+        if surfaces and surfaces[0]["boundary"]:
+            edge = surfaces[0]["boundary"][0]
+            if "start" in edge and "end" in edge:
+                s2d, e2d = edge["start"], edge["end"]
+                s3d = (
+                    origin + s2d[0] * x_axis + s2d[1] * y_axis + normal * depth
+                ).tolist()
+                e3d = (
+                    origin + e2d[0] * x_axis + e2d[1] * y_axis + normal * depth
+                ).tolist()
+                global_repo.register(
+                    feature_id + "/top_face/edge0",
+                    {
+                        "type": "edge",
+                        "start": s3d,
+                        "end": e3d,
+                    },
+                )
 
-        return {'status': 'ok'}
+        return {"status": "ok"}
     except Exception as e:
-        return {'status': 'exception', 'message': str(e)}
+        return {"status": "exception", "message": str(e)}
 
 
 def _expand_center_rect(feature: dict) -> dict:
@@ -1255,16 +1525,16 @@ def _expand_center_rect(feature: dict) -> dict:
             hw, hh = w / 2.0, h / 2.0
             eid = e["id"]
             tops = [
-                {"id": eid + "_top",    "kind": "line"},
-                {"id": eid + "_right",  "kind": "line"},
+                {"id": eid + "_top", "kind": "line"},
+                {"id": eid + "_right", "kind": "line"},
                 {"id": eid + "_bottom", "kind": "line"},
-                {"id": eid + "_left",   "kind": "line"},
+                {"id": eid + "_left", "kind": "line"},
             ]
             expanded.extend(tops)
-            initial.setdefault(eid + "_top",    [cx - hw, cy + hh, cx + hw, cy + hh])
-            initial.setdefault(eid + "_right",  [cx + hw, cy + hh, cx + hw, cy - hh])
+            initial.setdefault(eid + "_top", [cx - hw, cy + hh, cx + hw, cy + hh])
+            initial.setdefault(eid + "_right", [cx + hw, cy + hh, cx + hw, cy - hh])
             initial.setdefault(eid + "_bottom", [cx + hw, cy - hh, cx - hw, cy - hh])
-            initial.setdefault(eid + "_left",   [cx - hw, cy - hh, cx - hw, cy + hh])
+            initial.setdefault(eid + "_left", [cx - hw, cy - hh, cx - hw, cy + hh])
         else:
             expanded.append(e)
     result = dict(feature)
@@ -1292,13 +1562,17 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                 eid = entity["id"]
                 source_query = entity.get("source", "")
                 try:
-                    proj_params = _project_source_to_params(kind, source_query, target_plane, global_repo)
+                    proj_params = _project_source_to_params(
+                        kind, source_query, target_plane, global_repo
+                    )
                     initial[eid] = proj_params
-                    constraints.append({
-                        "id": f"__proj_{eid}__",
-                        "kind": "fixed",
-                        "target": {"entity": eid},
-                    })
+                    constraints.append(
+                        {
+                            "id": f"__proj_{eid}__",
+                            "kind": "fixed",
+                            "target": {"entity": eid},
+                        }
+                    )
                     _projected_ids.add(eid)
                 except Exception:
                     pass  # leave initial as-is if projection fails
@@ -1321,23 +1595,54 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     # Register globally available built-in entities (queried via @builtin_... syntax).
     # @builtin_origin resolves to the injected _origin entity so YAML constraints
     # that reference "@builtin_origin" work correctly.
-    repo.register("builtin_origin",      {"entity": ORIGIN_ID, "point": "xy"})
-    repo.register("builtin_plane_front", {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 1, 0],  "normal": [0, 0, 1]})
-    repo.register("builtin_plane_top",   {"type": "plane", "origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 0, -1], "normal": [0, 1, 0]})
-    repo.register("builtin_plane_right", {"type": "plane", "origin": [0, 0, 0], "x_axis": [0, 0, -1], "y_axis": [0, 1, 0], "normal": [1, 0, 0]})
+    repo.register("builtin_origin", {"entity": ORIGIN_ID, "point": "xy"})
+    repo.register(
+        "builtin_plane_front",
+        {
+            "type": "plane",
+            "origin": [0, 0, 0],
+            "x_axis": [1, 0, 0],
+            "y_axis": [0, 1, 0],
+            "normal": [0, 0, 1],
+        },
+    )
+    repo.register(
+        "builtin_plane_top",
+        {
+            "type": "plane",
+            "origin": [0, 0, 0],
+            "x_axis": [1, 0, 0],
+            "y_axis": [0, 0, -1],
+            "normal": [0, 1, 0],
+        },
+    )
+    repo.register(
+        "builtin_plane_right",
+        {
+            "type": "plane",
+            "origin": [0, 0, 0],
+            "x_axis": [0, 0, -1],
+            "y_axis": [0, 1, 0],
+            "normal": [1, 0, 0],
+        },
+    )
 
     for eid, entity in entities.items():
         kind = entity["kind"]
         repo.register(feature_id + eid, {"entity": eid})
         if kind == "line":
             repo.register(feature_id + eid + "start", {"entity": eid, "point": "start"})
-            repo.register(feature_id + eid + "end",   {"entity": eid, "point": "end"})
+            repo.register(feature_id + eid + "end", {"entity": eid, "point": "end"})
         elif kind == "circle":
-            repo.register(feature_id + eid + "center", {"entity": eid, "point": "center"})
+            repo.register(
+                feature_id + eid + "center", {"entity": eid, "point": "center"}
+            )
         elif kind == "arc":
-            repo.register(feature_id + eid + "start",  {"entity": eid, "point": "start"})
-            repo.register(feature_id + eid + "end",    {"entity": eid, "point": "end"})
-            repo.register(feature_id + eid + "center", {"entity": eid, "point": "center"})
+            repo.register(feature_id + eid + "start", {"entity": eid, "point": "start"})
+            repo.register(feature_id + eid + "end", {"entity": eid, "point": "end"})
+            repo.register(
+                feature_id + eid + "center", {"entity": eid, "point": "center"}
+            )
         elif kind == "point":
             repo.register(feature_id + eid + "xy", {"entity": eid, "point": "xy"})
 
@@ -1357,8 +1662,11 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     if plane_query:
         plane_obj = resolve_ref(plane_query)
         # If unresolved and starts with '$', try direct feature-level lookup in global_repo.
-        if (plane_obj is None or plane_obj.get("type") not in ("plane", "face")) \
-                and plane_query.startswith("$") and global_repo is not None:
+        if (
+            (plane_obj is None or plane_obj.get("type") not in ("plane", "face"))
+            and plane_query.startswith("$")
+            and global_repo is not None
+        ):
             plane_obj = global_repo.elements.get(plane_query[1:])
         if plane_obj is None or plane_obj.get("type") not in ("plane", "face"):
             plane_obj = _FRONT_PLANE
@@ -1392,13 +1700,15 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         return ids
 
     constraints = [
-        c for c in constraints
+        c
+        for c in constraints
         if all(eid in entities for eid in _constraint_entity_ids(c))
     ]
 
     # Pre-resolve all query strings to {entity, point?} dicts so the rest of
     # the solver (residuals, render) can use them without any further changes.
     unresolved_refs = []  # Track failed reference resolutions for reporting
+
     def _pre_resolve(c: dict) -> dict:
         rc = dict(c)
         constraint_id = c.get("id", "(unknown)")
@@ -1421,12 +1731,14 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                     rc[field] = resolved
                 else:
                     # Reference failed to resolve — track it for reporting
-                    unresolved_refs.append({
-                        "constraint_id": constraint_id,
-                        "constraint_kind": constraint_kind,
-                        "field": field,
-                        "ref": ref,
-                    })
+                    unresolved_refs.append(
+                        {
+                            "constraint_id": constraint_id,
+                            "constraint_kind": constraint_kind,
+                            "field": field,
+                            "ref": ref,
+                        }
+                    )
         return rc
 
     constraints = [_pre_resolve(c) for c in constraints]
@@ -1438,8 +1750,15 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         kind = c.get("kind", "")
         # Constraint kinds that need a local entity for their target or primary ref
         needs_local_entity = {
-            "horizontal", "vertical", "length", "radius", "diameter", "line_distance",
-            "concentric", "equal_length", "tangent"
+            "horizontal",
+            "vertical",
+            "length",
+            "radius",
+            "diameter",
+            "line_distance",
+            "concentric",
+            "equal_length",
+            "tangent",
         }
         if kind not in needs_local_entity:
             return True  # Other constraint kinds don't require local entities
@@ -1460,20 +1779,22 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
 
     # Implicit constraint: pin the projected origin to (0, 0).
     # This is appended AFTER pre-resolution; it uses an already-resolved dict directly.
-    constraints.append({
-        "id": ORIGIN_FIX_ID,
-        "kind": "fixed",
-        "target": {"entity": ORIGIN_ID, "point": "xy"},
-        "x": 0.0,
-        "y": 0.0,
-    })
+    constraints.append(
+        {
+            "id": ORIGIN_FIX_ID,
+            "kind": "fixed",
+            "target": {"entity": ORIGIN_ID, "point": "xy"},
+            "x": 0.0,
+            "y": 0.0,
+        }
+    )
 
     x0 = np.array(params, dtype=np.float64)
 
     def get_params(x, eid):
         off = entity_offsets[eid]
         size = ENTITY_SIZES[entities[eid]["kind"]]
-        return x[off:off + size]
+        return x[off : off + size]
 
     def get_point(x, ref):
         if "external_xy" in ref:
@@ -1489,8 +1810,9 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         elif kind in ("arc", "projected_arc"):
             cx, cy, r = ep[0], ep[1], ep[2]
             a_deg = ep[3] if point != "end" else ep[4]
-            return np.array([cx + r * np.cos(np.radians(a_deg)),
-                             cy + r * np.sin(np.radians(a_deg))])
+            return np.array(
+                [cx + r * np.cos(np.radians(a_deg)), cy + r * np.sin(np.radians(a_deg))]
+            )
         elif kind in ("point", "projected_point"):
             return ep[0:2]
         raise ValueError(f"Unknown kind: {kind!r}")
@@ -1518,15 +1840,18 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
             _a, _b = _c["a"], _c["b"]
             _a_eid = _a.get("entity")
             _b_eid = _b.get("entity")
-            if (_a_eid and _b_eid
-                    and entities.get(_a_eid, {}).get("kind") == "line"
-                    and entities.get(_b_eid, {}).get("kind") == "circle"
-                    and "point" not in _b):
+            if (
+                _a_eid
+                and _b_eid
+                and entities.get(_a_eid, {}).get("kind") == "line"
+                and entities.get(_b_eid, {}).get("kind") == "circle"
+                and "point" not in _b
+            ):
                 _line_circle_coincident[(_a_eid, _b_eid)] = _a.get("point", "start")
 
     def residuals(x, clist=None):
         r = []
-        for c in (clist if clist is not None else constraints):
+        for c in clist if clist is not None else constraints:
             kind = c["kind"]
             if kind == "horizontal":
                 if "a" in c:
@@ -1577,16 +1902,21 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                 b_eid = None if b_external else b_ref["entity"]
                 a_kind = None if a_external else entities[a_eid]["kind"]
                 b_kind = None if b_external else entities[b_eid]["kind"]
-                if (not a_external and not b_external
-                        and "point" not in a_ref and "point" not in b_ref
-                        and a_kind == "line" and b_kind == "line"):
+                if (
+                    not a_external
+                    and not b_external
+                    and "point" not in a_ref
+                    and "point" not in b_ref
+                    and a_kind == "line"
+                    and b_kind == "line"
+                ):
                     # line-to-line collinear: both lines lie on the same infinite line
                     ea = get_params(x, a_eid)
                     eb = get_params(x, b_eid)
                     da = ea[2:4] - ea[0:2]
                     db = eb[2:4] - eb[0:2]
                     r.append(da[0] * db[1] - da[1] * db[0])  # parallel
-                    n = np.sqrt(da[0]**2 + da[1]**2)
+                    n = np.sqrt(da[0] ** 2 + da[1] ** 2)
                     nx, ny = (-da[1] / n, da[0] / n) if n > 0 else (0.0, 1.0)
                     r.append((eb[0] - ea[0]) * nx + (eb[1] - ea[1]) * ny)
                 elif not b_external and "point" not in b_ref and b_kind == "line":
@@ -1597,11 +1927,15 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                     n = np.sqrt(dx**2 + dy**2)
                     nx, ny = (-dy / n, dx / n) if n > 0 else (0.0, 1.0)
                     r.append((pa[0] - ep_b[0]) * nx + (pa[1] - ep_b[1]) * ny)
-                elif not b_external and "point" not in b_ref and b_kind in ("circle", "arc"):
+                elif (
+                    not b_external
+                    and "point" not in b_ref
+                    and b_kind in ("circle", "arc")
+                ):
                     # point on circle/arc: distance from center = radius
                     pa = get_point(x, a_ref)
                     ep_b = get_params(x, b_eid)
-                    dist = np.sqrt((pa[0] - ep_b[0])**2 + (pa[1] - ep_b[1])**2)
+                    dist = np.sqrt((pa[0] - ep_b[0]) ** 2 + (pa[1] - ep_b[1]) ** 2)
                     r.append(dist - ep_b[2])
                 else:
                     pa = get_point(x, a_ref)
@@ -1627,8 +1961,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                     line_dir = line_ep[2:4] - line_ep[0:2]
                     contact = line_ep[2:4]
                     radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
-                    r.append(
-                        line_dir[0] * radius_dir[1] - line_dir[1] * radius_dir[0])
+                    r.append(line_dir[0] * radius_dir[1] - line_dir[1] * radius_dir[0])
             elif kind == "parallel":
                 ea = get_params(x, c["a"]["entity"])
                 eb = get_params(x, c["b"]["entity"])
@@ -1640,8 +1973,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                 eb = get_params(x, c["b"]["entity"])
                 da = ea[2:4] - ea[0:2]
                 db = eb[2:4] - eb[0:2]
-                cos_val = np.dot(da, db) / (np.linalg.norm(da)
-                                            * np.linalg.norm(db))
+                cos_val = np.dot(da, db) / (np.linalg.norm(da) * np.linalg.norm(db))
                 r.append(cos_val - np.cos(np.radians(c["value"])))
             elif kind == "tangent":
                 if "line" in c and "arc" in c:
@@ -1680,7 +2012,10 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                         contact = line_ep[2:4]
                         radius_dir = _radius_dir(x, arc_ref["entity"], arc_ref, contact)
                         r.append(np.dot(line_dir, radius_dir))
-                        dist = np.sqrt((contact[0] - arc_ep[0])**2 + (contact[1] - arc_ep[1])**2)
+                        dist = np.sqrt(
+                            (contact[0] - arc_ep[0]) ** 2
+                            + (contact[1] - arc_ep[1]) ** 2
+                        )
                         r.append(dist - arc_ep[2])
                 else:
                     contact = line_ep[2:4]
@@ -1690,13 +2025,13 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
             elif kind == "equal_length":
                 ea = get_params(x, c["a"]["entity"])
                 eb = get_params(x, c["b"]["entity"])
-                len_a = np.sqrt((ea[2] - ea[0])**2 + (ea[3] - ea[1])**2)
-                len_b = np.sqrt((eb[2] - eb[0])**2 + (eb[3] - eb[1])**2)
+                len_a = np.sqrt((ea[2] - ea[0]) ** 2 + (ea[3] - ea[1]) ** 2)
+                len_b = np.sqrt((eb[2] - eb[0]) ** 2 + (eb[3] - eb[1]) ** 2)
                 r.append(len_a - len_b)
             elif kind == "point_distance":
                 pa = get_point(x, c["a"])
                 pb = get_point(x, c["b"])
-                dist = np.sqrt((pb[0] - pa[0])**2 + (pb[1] - pa[1])**2)
+                dist = np.sqrt((pb[0] - pa[0]) ** 2 + (pb[1] - pa[1]) ** 2)
                 r.append(dist - c["value"])
             elif kind == "midpoint":
                 if "line" in c:
@@ -1736,15 +2071,26 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                 raise ValueError(f"Unknown constraint kind: {kind!r}")
         return np.array(r) if r else np.zeros(0)
 
-    opt = least_squares(residuals, x0, method="trf", jac="3-point",
-                        ftol=1e-10, xtol=1e-10, gtol=1e-10, max_nfev=10000)
+    opt = least_squares(
+        residuals,
+        x0,
+        method="trf",
+        jac="3-point",
+        ftol=1e-10,
+        xtol=1e-10,
+        gtol=1e-10,
+        max_nfev=10000,
+    )
     x_sol = opt.x
     # least_squares cost = 0.5 * sum(residuals**2)
     final_loss = 2.0 * float(opt.cost)
 
     # Constraint status via Jacobian rank
-    J = opt.jac if opt.jac is not None and opt.jac.shape[0] > 0 else np.zeros(
-        (0, len(x_sol)))
+    J = (
+        opt.jac
+        if opt.jac is not None and opt.jac.shape[0] > 0
+        else np.zeros((0, len(x_sol)))
+    )
     rank = int(np.linalg.matrix_rank(J, tol=RANK_TOL))
     n_params = len(x_sol)
 
@@ -1755,7 +2101,8 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         ENTITY_SIZES[entities[c["target"]["entity"]]["kind"]]
         if ("point" not in c.get("target", {}) and "x" not in c and "y" not in c)
         else 2
-        for c in constraints if c["kind"] == "fixed"
+        for c in constraints
+        if c["kind"] == "fixed"
     )
     rigid_body_dof = max(0, 3 - n_fixed_pinned)
 
@@ -1770,15 +2117,14 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
 
     # Topology: detect intersection points and bounded surfaces
     topology = detect_topology(geom_solved, feature_id=feature_id)
-    for vid, pt in topology['intersection_points'].items():
-        geom_solved[vid] = {'x': pt['x'], 'y': pt['y'], 'intersection': True}
+    for vid, pt in topology["intersection_points"].items():
+        geom_solved[vid] = {"x": pt["x"], "y": pt["y"], "intersection": True}
 
     # Per-entity status via null-space analysis.
     # The null space of J encodes all unconstrained directions. We project out
     # the 3 rigid-body modes (translation x/y, rotation) so that a freely
     # floating but shape-determined sketch doesn't flag its entities as free.
-    entity_status = _entity_status(
-        J, rank, entities, entity_offsets, n_params, status)
+    entity_status = _entity_status(J, rank, entities, entity_offsets, n_params, status)
 
     # Per-constraint residual (sum of squares), render data, and superfluous flag.
     # A constraint is superfluous when removing its Jacobian rows does not reduce
@@ -1810,7 +2156,9 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
             remaining = [r for r in active_rows if r not in crows]
             J_active = J[active_rows + list(origin_fix_rows), :]
             J_remaining = J[remaining + list(origin_fix_rows), :]
-            if int(np.linalg.matrix_rank(J_remaining, tol=RANK_TOL)) == int(np.linalg.matrix_rank(J_active, tol=RANK_TOL)):
+            if int(np.linalg.matrix_rank(J_remaining, tol=RANK_TOL)) == int(
+                np.linalg.matrix_rank(J_active, tol=RANK_TOL)
+            ):
                 superfluous_ids.add(cid)
                 active_rows = remaining
 
@@ -1833,8 +2181,11 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     projected_flat = _params_from_array(x_sol, projected_entities, entity_offsets)
 
     # Convert entity_status to features format, excluding projected entities.
-    features = {eid: {"status": st} for eid, st in entity_status.items()
-                if not entities.get(eid, {}).get("projected")}
+    features = {
+        eid: {"status": st}
+        for eid, st in entity_status.items()
+        if not entities.get(eid, {}).get("projected")
+    }
 
     result = {
         "status": status,
