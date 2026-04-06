@@ -326,12 +326,19 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       })
   }, [uuid, solveOnLoad, reSolve])
 
-  const saveDoc = useCallback(async (uuid: string, document: PartDoc) => {
+  const saveDoc = useCallback(async (uuid: string, document: PartDoc, screenshot?: () => Promise<string | null>) => {
     try {
+      const body: { content: string; preview_image?: string } = { content: stringifyYaml(document) }
+      if (screenshot) {
+        const dataUrl = await screenshot()
+        if (dataUrl) {
+          body.preview_image = dataUrl.split(',')[1]
+        }
+      }
       const response = await fetch(`/api/documents/${uuid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: stringifyYaml(document) }),
+        body: JSON.stringify(body),
       })
       if (!response.ok) throw new Error('Failed to save document')
       return true

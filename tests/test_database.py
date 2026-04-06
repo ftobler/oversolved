@@ -1,11 +1,17 @@
 """Tests for database layer."""
 
 import pytest
-from oversolved.db import Database, SQLiteConnection, DocumentStore, UserStore, SessionStore
+from oversolved.db import (
+    Database,
+    SQLiteConnection,
+    DocumentStore,
+    UserStore,
+    SessionStore,
+)
 
 
 def _make_db():
-    conn = SQLiteConnection(':memory:')
+    conn = SQLiteConnection(":memory:")
     database = Database(conn)
 
     def migration_001(db: Database):
@@ -38,7 +44,12 @@ def _make_db():
             )
         """)
 
-    database.register_migration(1, 'initial_schema', migration_001)
+    database.register_migration(1, "initial_schema", migration_001)
+
+    def migration_002(db: Database):
+        db.execute("ALTER TABLE documents ADD COLUMN preview_image BLOB")
+
+    database.register_migration(2, "add_preview_image", migration_002)
     database.init()
     return database
 
@@ -67,21 +78,21 @@ def doc_store(db):
 
 @pytest.fixture
 def user_id(user_store):
-    return user_store.create('testuser', 'hashed_pw')
+    return user_store.create("testuser", "hashed_pw")
 
 
 class TestSQLiteConnection:
     """Tests for SQLite connection."""
 
     def test_execute_query(self):
-        conn = SQLiteConnection(':memory:')
+        conn = SQLiteConnection(":memory:")
         cursor = conn.execute("SELECT 1 as num")
         row = cursor.fetchone()
         assert row[0] == 1
         conn.close()
 
     def test_commit_rollback(self):
-        conn = SQLiteConnection(':memory:')
+        conn = SQLiteConnection(":memory:")
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.commit()
 
@@ -104,7 +115,9 @@ class TestDatabase:
     """Tests for Database class."""
 
     def test_init_creates_schema_version_table(self, db):
-        cursor = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'")
+        cursor = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+        )
         assert cursor.fetchone() is not None
 
     def test_migration_runs_once(self, db):
@@ -115,7 +128,7 @@ class TestDatabase:
             call_count += 1
             database.execute("CREATE TABLE test_once (id INTEGER)")
 
-        db.register_migration(10, 'test_migration', test_migration)
+        db.register_migration(10, "test_migration", test_migration)
         db.init()
         assert call_count == 1
 
@@ -151,28 +164,28 @@ class TestUserStore:
     """Tests for UserStore."""
 
     def test_create_and_find(self, user_store):
-        uid = user_store.create('alice', 'hash123')
+        uid = user_store.create("alice", "hash123")
         assert isinstance(uid, int)
 
-        user = user_store.find_by_username('alice')
+        user = user_store.find_by_username("alice")
         assert user is not None
-        assert user['username'] == 'alice'
-        assert user['password_hash'] == 'hash123'
-        assert user['must_change_password'] is False
+        assert user["username"] == "alice"
+        assert user["password_hash"] == "hash123"
+        assert user["must_change_password"] is False
 
     def test_create_with_must_change_password(self, user_store):
-        user_store.create('bob', 'hash', must_change_password=True)
-        user = user_store.find_by_username('bob')
-        assert user['must_change_password'] is True
+        user_store.create("bob", "hash", must_change_password=True)
+        user = user_store.find_by_username("bob")
+        assert user["must_change_password"] is True
 
     def test_find_by_id(self, user_store):
-        uid = user_store.create('charlie', 'hash')
+        uid = user_store.create("charlie", "hash")
         user = user_store.find_by_id(uid)
         assert user is not None
-        assert user['username'] == 'charlie'
+        assert user["username"] == "charlie"
 
     def test_find_nonexistent(self, user_store):
-        assert user_store.find_by_username('nobody') is None
+        assert user_store.find_by_username("nobody") is None
         assert user_store.find_by_id(9999) is None
 
 
@@ -186,10 +199,10 @@ class TestSessionStore:
 
         session = session_store.find(token)
         assert session is not None
-        assert session['user_id'] == user_id
+        assert session["user_id"] == user_id
 
     def test_find_nonexistent(self, session_store):
-        assert session_store.find('no-such-token') is None
+        assert session_store.find("no-such-token") is None
 
     def test_delete(self, session_store, user_id):
         token = session_store.create(user_id)
@@ -201,65 +214,94 @@ class TestDocumentStore:
     """Tests for DocumentStore."""
 
     def test_create_returns_uuid(self, doc_store, user_id):
-        uuid = doc_store.create('My Doc', user_id)
+        uuid = doc_store.create("My Doc", user_id)
         assert isinstance(uuid, str)
         assert len(uuid) > 10
 
     def test_retrieve(self, doc_store, user_id):
-        uuid = doc_store.create('Test', user_id)
-        doc_store.store_content(uuid, 'version: 1\n')
+        uuid = doc_store.create("Test", user_id)
+        doc_store.store_content(uuid, "version: 1\n")
 
         doc = doc_store.retrieve(uuid)
         assert doc is not None
-        assert doc['uuid'] == uuid
-        assert doc['name'] == 'Test'
-        assert doc['content'] == 'version: 1\n'
-        assert doc['owner_id'] == user_id
+        assert doc["uuid"] == uuid
+        assert doc["name"] == "Test"
+        assert doc["content"] == "version: 1\n"
+        assert doc["owner_id"] == user_id
 
     def test_retrieve_nonexistent(self, doc_store):
-        assert doc_store.retrieve('no-such-uuid') is None
+        assert doc_store.retrieve("no-such-uuid") is None
 
     def test_store_content_updates(self, doc_store, user_id):
-        uuid = doc_store.create('Doc', user_id)
-        doc_store.store_content(uuid, 'v1')
-        doc_store.store_content(uuid, 'v2')
-        assert doc_store.retrieve(uuid)['content'] == 'v2'
+        uuid = doc_store.create("Doc", user_id)
+        doc_store.store_content(uuid, "v1")
+        doc_store.store_content(uuid, "v2")
+        assert doc_store.retrieve(uuid)["content"] == "v2"
 
     def test_rename(self, doc_store, user_id):
-        uuid = doc_store.create('Old Name', user_id)
-        result = doc_store.rename(uuid, 'New Name')
+        uuid = doc_store.create("Old Name", user_id)
+        result = doc_store.rename(uuid, "New Name")
         assert result is True
-        assert doc_store.retrieve(uuid)['name'] == 'New Name'
+        assert doc_store.retrieve(uuid)["name"] == "New Name"
 
     def test_rename_nonexistent(self, doc_store):
-        assert doc_store.rename('no-uuid', 'Name') is False
+        assert doc_store.rename("no-uuid", "Name") is False
 
     def test_delete(self, doc_store, user_id):
-        uuid = doc_store.create('Doc', user_id)
+        uuid = doc_store.create("Doc", user_id)
         assert doc_store.delete(uuid) is True
         assert doc_store.retrieve(uuid) is None
 
     def test_delete_nonexistent(self, doc_store):
-        assert doc_store.delete('no-uuid') is False
+        assert doc_store.delete("no-uuid") is False
 
     def test_list_by_owner(self, doc_store, user_id):
-        doc_store.create('Beta', user_id)
-        doc_store.create('Alpha', user_id)
+        doc_store.create("Beta", user_id)
+        doc_store.create("Alpha", user_id)
         docs = doc_store.list_by_owner(user_id)
         assert len(docs) == 2
-        assert docs[0]['name'] == 'Alpha'
-        assert docs[1]['name'] == 'Beta'
+        assert docs[0]["name"] == "Alpha"
+        assert docs[1]["name"] == "Beta"
         for d in docs:
-            assert 'uuid' in d
-            assert 'name' in d
+            assert "uuid" in d
+            assert "name" in d
 
     def test_list_by_owner_empty(self, doc_store, user_id):
         assert doc_store.list_by_owner(user_id) == []
 
     def test_list_by_owner_isolation(self, doc_store, user_store):
-        uid1 = user_store.create('user1', 'h')
-        uid2 = user_store.create('user2', 'h')
-        doc_store.create('Doc A', uid1)
-        doc_store.create('Doc B', uid2)
+        uid1 = user_store.create("user1", "h")
+        uid2 = user_store.create("user2", "h")
+        doc_store.create("Doc A", uid1)
+        doc_store.create("Doc B", uid2)
         assert len(doc_store.list_by_owner(uid1)) == 1
         assert len(doc_store.list_by_owner(uid2)) == 1
+
+    def test_store_and_retrieve_preview_image(self, doc_store, user_id):
+        uuid = doc_store.create("Img Doc", user_id)
+        image_data = b"\x89PNG\r\n\x1a\n"  # PNG magic header bytes
+        doc_store.store_preview_image(uuid, image_data)
+
+        doc = doc_store.retrieve(uuid)
+        assert doc is not None
+        assert doc["preview_image"] == image_data
+
+    def test_preview_image_is_none_by_default(self, doc_store, user_id):
+        uuid = doc_store.create("No Img", user_id)
+        doc = doc_store.retrieve(uuid)
+        assert doc is not None
+        assert doc["preview_image"] is None
+
+    def test_store_preview_image_overwrites(self, doc_store, user_id):
+        uuid = doc_store.create("Time Doc", user_id)
+        doc_store.store_preview_image(uuid, b"first_image")
+
+        doc = doc_store.retrieve(uuid)
+        assert doc is not None
+        assert doc["preview_image"] == b"first_image"
+
+        doc_store.store_preview_image(uuid, b"second_image")
+
+        doc = doc_store.retrieve(uuid)
+        assert doc is not None
+        assert doc["preview_image"] == b"second_image"

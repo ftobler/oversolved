@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import Viewport from '../components/Viewport'
+import Viewport, { type ViewportHandle } from '../components/Viewport'
 import type { Feature, PartDoc, PartFeature, Mutation, Sketch } from '../types/cad'
 import { randomId } from '../utils/yamlMutations'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
@@ -96,6 +96,7 @@ export default function Part() {
   const [viewportReset, setViewportReset] = useState(0)
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
+  const viewportRef = useRef<ViewportHandle>(null)
 
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo'>('selection')
@@ -328,7 +329,7 @@ export default function Part() {
 
   const handleSave = async () => {
     if (!uuid || !doc) return
-    const success = await saveDoc(uuid, doc)
+    const success = await saveDoc(uuid, doc, viewportRef.current?.captureScreenshot)
     if (success) setError(null)
   }
 
@@ -622,7 +623,7 @@ export default function Part() {
                   </div>
                 </div>
               )}
-              {mode !== 'code' && <Viewport features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} />}
+              {mode !== 'code' && <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} />}
             </>
           )}
         </div>

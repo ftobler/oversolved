@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrthographicCamera, Line, Text } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
@@ -107,7 +107,11 @@ function UserDefinedPlane({ featureId, label, planeTransform }: { featureId: str
   )
 }
 
-export default function Viewport({
+export interface ViewportHandle {
+  captureScreenshot: () => Promise<string | null>
+}
+
+export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   features,
   featureDefs,
   rollbackPosition,
@@ -117,17 +121,32 @@ export default function Viewport({
   activeFeatureId,
   onRightClick,
   showDebugHit = false,
-}: ViewportProps) {
+}: ViewportProps, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pvRef = useRef<Pv[]>([])
   const hoverRef = useRef<Hit | null>(null)
   const snapRef = useRef<THREE.Vector3 | null>(null)
   const cameraRef = useRef<THREE.Camera | null>(null)
+  const glRef = useRef<THREE.WebGLRenderer | null>(null)
+  const sceneRef = useRef<THREE.Scene | null>(null)
 
   const [ready, setReady] = useState(false)
-  const onCreated = useCallback(() => {
+  const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
+    glRef.current = state.gl
+    sceneRef.current = state.scene
     requestAnimationFrame(() => setReady(true))
   }, [])
+
+  const captureScreenshot = useCallback(async (): Promise<string | null> => {
+    const gl = glRef.current
+    const scene = sceneRef.current
+    const camera = cameraRef.current
+    if (!gl || !scene || !camera) return null
+    gl.render(scene, camera)
+    return gl.domElement.toDataURL('image/png')
+  }, [])
+
+  useImperativeHandle(ref, () => ({ captureScreenshot }), [captureScreenshot])
 
   const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
 
@@ -228,4 +247,4 @@ export default function Viewport({
       <ContextMenuDialog />
     </div>
   )
-}
+})
