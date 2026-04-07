@@ -4,7 +4,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore, type VertexOrEdgeDrag } from '../../stores/sketchEditorStore'
 import { p2w } from '../sketch_helpers'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET, DEBUG_HIT } from './constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET } from './constants'
 import type { SnapKind } from '../../registry'
 
 function determineSnapKind(entityKind: string | undefined, vertexKey: string | undefined): SnapKind {
@@ -236,7 +236,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
       {!isDragged && !isInactiveSketch && (
         <mesh ref={hitRef} position={[x, y, 0]}>
           <sphereGeometry args={[1, 8, 8]} />
-          <meshBasicMaterial transparent opacity={(showDebugHit ?? DEBUG_HIT) ? 0.35 : 0} color="#00aaff" depthWrite={false} />
+          <meshBasicMaterial transparent opacity={showDebugHit ? 0.35 : 0} color="#00aaff" depthWrite={false} />
         </mesh>
       )}
     </group>

@@ -23,4 +23,3 @@ export const POINT_HIT_PIXELS_Z_OFFSET = 10
 
 // Visualization
 export const ARC_SEGMENTS = 64
-export const DEBUG_HIT = false  // Set to true to visualize hit geometry (orange cylinders, blue spheres)
