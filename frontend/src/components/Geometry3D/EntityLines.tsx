@@ -117,6 +117,9 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     ev.stopPropagation()
     setOrbitEnabled(false)
 
+    // Add to selection if not already selected - ensures drag uses normal selection path
+    if (!selected) toggleSelect(entId)
+
     // Mark this entity as the click initiator - prevents it from being added to dynamic selection
     clickedEntityRef.current = entId
 
@@ -128,7 +131,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     // See: dragging.test.ts REGRESSION 4
     setDrag({ type: 'edge', vertexId: entId, featureId, entityId,
       vertexKey: 'edge', startWorld: [sx, sy], currentWorld: [sx, sy], startClient: [ev.clientX, ev.clientY] })
-  }, [isEditing, entId, featureId, entityId, setDrag, setOrbitEnabled, activeTool, toLocal, setIsPointerDown])
+  }, [isEditing, entId, featureId, entityId, setDrag, setOrbitEnabled, activeTool, toLocal, setIsPointerDown, selected, toggleSelect])
 
   if ('start' in e && 'end' in e && 'radius' in e) {
     const arc = e as Arc
