@@ -19,7 +19,10 @@ export const DRAG_SNAP_ENTITY_RADIUS_PX = 8    // point-on-entity coincident sna
 // Hit detection & collision geometry
 export const HIT_PIXELS = 8
 export const POINT_HIT_PIXELS = 20
-export const POINT_HIT_PIXELS_Z_OFFSET = 10
 
 // Visualization
 export const ARC_SEGMENTS = 64
+
+// Debug and z-offset (re-exported from Sketch3D constants)
+export const POINT_HIT_PIXELS_Z_OFFSET = 10
+export const DEBUG_HIT = false

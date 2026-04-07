@@ -2,9 +2,9 @@ import { useRef, useMemo, useState, useCallback } from 'react'
 import { Line } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { useSketchEditorStore, type VertexOrEdgeDrag } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { p2w } from '../sketch_helpers'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET } from './constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS } from './constants'
 import type { SnapKind } from '../../registry'
 
 function determineSnapKind(entityKind: string | undefined, vertexKey: string | undefined): SnapKind {
@@ -126,7 +126,6 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const constraintHovered = useSketchEditorStore(s =>
     entityId && vertexKey ? s.hoveredConstraintEntityIds.has(`${entityId}:${vertexKey}`) : false
   )
-  const drag = useSketchEditorStore(s => s.drag)
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
   const toggleDynamicSelection = useSketchEditorStore(s => s.toggleDynamicSelection)
@@ -134,8 +133,6 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const lastHoveredRef = useRef<string | null>(null)
   // Ref to track vertex that was clicked - prevents it from being added to dynamic selection
   const clickedVertexRef = useRef<string | null>(null)
-  // Hide hit geometry when any drag is in progress on this sketch (immediate, not just after movement)
-  const isAnyDragOnThisSketch = drag && drag.featureId === featureId && 'entityId' in drag
   // REGRESSION PROTECTION: Hide collision geometry during vertex drag
   // BUG: When dragging a vertex, DragPlane raycasts could be blocked by the
   //      vertex's own hit sphere collision geometry (scaled to HIT_PIXELS).
@@ -144,21 +141,10 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   // NOTE: Must check featureId, entityId, AND vertexKey to handle all cases.
   // Also hide hit geometry from non-active sketches to prevent raycasting interference.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
-  const isDragged = isAnyDragOnThisSketch && (drag as VertexOrEdgeDrag).entityId === entityId && (drag as VertexOrEdgeDrag).vertexKey === vertexKey
   const isInactiveSketch = featureId && activeFeatureId && featureId !== activeFeatureId
-  // Offset the hit-sphere toward the camera (not object-space z) so the vertex
-  // always wins the raycast over the 3D edge cylinders regardless of orbit angle.
   useFrame(() => {
     if (!hitRef.current) return
-    const scale = p2w(camera)
-    hitRef.current.scale.setScalar(POINT_HIT_PIXELS * scale)
-    // Camera view direction in world space, transformed into local (sketch plane) space
-    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion)
-    const parentQuat = new THREE.Quaternion()
-    hitRef.current.parent?.getWorldQuaternion(parentQuat)
-    fwd.applyQuaternion(parentQuat.invert())
-    const off = POINT_HIT_PIXELS_Z_OFFSET * scale
-    hitRef.current.position.set(x + fwd.x * off, y + fwd.y * off, fwd.z * off)
+    hitRef.current.scale.setScalar(POINT_HIT_PIXELS * p2w(camera))
   })
   const onClick = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!vertId || !featureId) return
@@ -233,7 +219,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     >
       <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard />
       {(hovered || selected || constraintHovered) && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
-      {!isDragged && !isInactiveSketch && (
+      {!isInactiveSketch && (
         <mesh ref={hitRef} position={[x, y, 0]}>
           <sphereGeometry args={[1, 8, 8]} />
           <meshBasicMaterial transparent opacity={showDebugHit ? 0.35 : 0} color="#00aaff" depthWrite={false} />

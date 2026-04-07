@@ -138,7 +138,7 @@ export function findSnapTarget(
   return bestEntity
 }
 
-export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: Sketch }) {
+export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: string; sketch?: Sketch; showDebugHit?: boolean }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const drag = useSketchEditorStore(s => s.drag)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -192,25 +192,20 @@ export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: S
     return pos
   }, [dynamicSelection, sketch])
 
-  // DragPlane must be at the same z-level as the sketch plane to avoid coordinate
-  // distortion when the camera views at an angle. Raycasting to z=0.5 (or z=90)
-  // produces world coordinates that don't match the actual sketch plane geometry,
-  // causing the dragged element to shift away from the cursor.
-  // Position at z=0.001 (just in front of geometry at z=0) to ensure raycasts hit
-  // the drag plane, not the dragged entity's geometry.
+  // DragPlane is at z=0, perfectly aligned with the sketch plane.
   // Self-intersection blocking (dragged entity's collision geometry blocking raycasts)
   // is solved by hiding the collision geometry (HitPolyline, hit spheres, dim hit meshes) during drag.
   // This is done in EntityLines.tsx and VertexDots.tsx (isDragged) and sketch_dimensions.tsx (isDragged).
 
-  const toLocal = (worldPt: THREE.Vector3): [number, number] => {
-    if (!meshRef.current?.parent) return [worldPt.x, worldPt.y]
-    // Convert world coordinates to local sketch plane coordinates by:
-    // 1. Translating relative to parent (sketch plane) position
-    // 2. Rotating by inverse of parent's world orientation
+  const toLocal = (worldPt: THREE.Vector3): [number, number] | null => {
+    const parent = meshRef.current?.parent
+    if (!parent) return null
+    // If Z is far from sketch plane (0), we're likely over an HTML overlay that shouldn't be raycasted
+    if (Math.abs(worldPt.z) > 1) return null
     const parentPos = new THREE.Vector3()
-    meshRef.current.parent.getWorldPosition(parentPos)
+    parent.getWorldPosition(parentPos)
     const q = new THREE.Quaternion()
-    meshRef.current.parent.getWorldQuaternion(q)
+    parent.getWorldQuaternion(q)
     const local = worldPt.clone().sub(parentPos).applyQuaternion(q.invert())
     return [local.x, local.y]
   }
@@ -229,10 +224,28 @@ export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: S
   return (
     <mesh
       ref={meshRef}
-      position={[0, 0, 0.001]}
+      position={[0, 0, 0]}  // drag plane has not offset. is is perfectly at the sketch plane.
       onPointerMove={(e) => {
         e.stopPropagation()
-        const [x, y] = toLocal(e.point)
+        // Use manual raycasting to hit only the drag plane, ignoring other collision geometry
+        const scene = e.eventObject.parent?.parent?.parent ?? e.eventObject.parent
+        if (!scene) return
+        // Use the ray from the event instead of creating our own
+        const ray = (e as unknown as { ray?: THREE.Ray }).ray
+        if (!ray) return
+        // Create raycaster and set its ray
+        const raycaster = new THREE.Raycaster()
+        raycaster.ray.copy(ray)
+        // Only intersect the drag plane mesh
+        const planeHit = raycaster.intersectObject(e.eventObject, false)
+        if (planeHit.length === 0) return
+        const worldPt = planeHit[0].point
+        const local = toLocal(worldPt)
+        if (!local) return
+        const [x, y] = local
+        if (showDebugHit) {
+          console.log('DEBUG RAYCAST:', { clientX: e.clientX, clientY: e.clientY, rayOrigin: ray?.origin, rayDir: ray?.direction, world: worldPt ? { x: worldPt.x, y: worldPt.y, z: worldPt.z } : 'no hit' })
+        }
         setDrag({ ...drag, currentWorld: [x, y] })
 
         // Snap detection: vertex then entity, only for vertex drags.
@@ -263,7 +276,9 @@ export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: S
       }}
       onPointerUp={(e) => {
         e.stopPropagation()
-        const [x, y] = toLocal(e.point)
+        const local = toLocal(e.point)
+        if (!local) return
+        const [x, y] = local
         // Read drag and dragSnap from store directly — not from the render closure.
         // onPointerUp may fire before React re-renders after the final onPointerMove,
         // so the closure could hold stale values. getState() always returns the latest.

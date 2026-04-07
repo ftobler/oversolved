@@ -3,7 +3,7 @@ import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
 import { isProjectedEntity } from '../../types/cad'
-import { useSketchEditorStore, type VertexOrEdgeDrag } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { sampleArc, sampleArcCCW, getEntityBounds } from '../sketch_helpers'
 import { DashedLine } from '../sketch_dimensions'
 import { VertexDot, HitPolyline, ProjectedOriginPoint } from './VertexDots'
@@ -34,12 +34,9 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
-  const drag = useSketchEditorStore(s => s.drag)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
-  // Hide hit geometry when any drag is in progress on this sketch (immediate, not just after movement)
-  const isAnyDragOnThisSketch = drag && drag.featureId === featureId && 'entityId' in drag
   // REGRESSION PROTECTION: Hide collision geometry during entity drag
   // BUG: When dragging, DragPlane raycasts could be blocked by the entity's own
   //      HitPolyline collision geometry, causing choppy/stalled dragging.
@@ -47,7 +44,6 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   // NOTE: Must check both entityId and featureId to handle multiple sketches.
   // Also hide hit geometry from non-active sketches to prevent raycasting interference.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
-  const isDragged = isAnyDragOnThisSketch && (drag as VertexOrEdgeDrag).entityId === entityId
   const isInactiveSketch = activeFeatureId && featureId !== activeFeatureId
   const color = hovered ? COLOR_HOVER
     : selected ? COLOR_SELECTED
@@ -137,7 +133,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isDragged && !isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
+          {!isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
@@ -153,7 +149,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isDragged && !isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
+          {!isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
@@ -171,7 +167,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isDragged && !isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
+          {!isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
