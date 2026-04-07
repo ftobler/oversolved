@@ -109,6 +109,7 @@ function UserDefinedPlane({ featureId, label, planeTransform }: { featureId: str
 
 export interface ViewportHandle {
   captureScreenshot: () => Promise<string | null>
+  captureScreenshotForSaving: () => Promise<string | null>
 }
 
 export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
@@ -146,7 +147,64 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     return gl.domElement.toDataURL('image/png')
   }, [])
 
-  useImperativeHandle(ref, () => ({ captureScreenshot }), [captureScreenshot])
+  const captureScreenshotForSaving = useCallback(async (): Promise<string | null> => {
+    const gl = glRef.current
+    const scene = sceneRef.current
+    const camera = cameraRef.current as THREE.OrthographicCamera | null
+    if (!gl || !scene || !camera) return null
+
+    const originalSize = gl.getSize(new THREE.Vector2())
+    const smallWidth = Math.floor(originalSize.width / 4)
+    const smallHeight = Math.floor(originalSize.height / 4)
+
+    const originalLeft = camera.left
+    const originalRight = camera.right
+    const originalTop = camera.top
+    const originalBottom = camera.bottom
+
+    const widthScale = smallWidth / originalSize.width
+    const heightScale = smallHeight / originalSize.height
+
+    camera.left = originalLeft * widthScale
+    camera.right = originalRight * widthScale
+    camera.top = originalTop * heightScale
+    camera.bottom = originalBottom * heightScale
+    camera.updateProjectionMatrix()
+
+    gl.setSize(smallWidth, smallHeight)
+    gl.render(scene, camera)
+    const dataUrl = gl.domElement.toDataURL('image/png')
+
+    gl.setSize(originalSize.width, originalSize.height)
+    camera.left = originalLeft
+    camera.right = originalRight
+    camera.top = originalTop
+    camera.bottom = originalBottom
+    camera.updateProjectionMatrix()
+
+    const img = new Image()
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('Failed to load image'))
+      img.src = dataUrl
+    })
+
+    const MAX_SIZE = 512
+    const finalScale = Math.min(MAX_SIZE / img.width, MAX_SIZE / img.height, 1)
+    const newWidth = Math.floor(img.width * finalScale)
+    const newHeight = Math.floor(img.height * finalScale)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = newWidth
+    canvas.height = newHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+
+    ctx.drawImage(img, 0, 0, newWidth, newHeight)
+    return canvas.toDataURL('image/png')
+  }, [])
+
+  useImperativeHandle(ref, () => ({ captureScreenshot, captureScreenshotForSaving }), [captureScreenshot, captureScreenshotForSaving])
 
   const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
 

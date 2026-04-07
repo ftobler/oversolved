@@ -5,6 +5,8 @@ from pathlib import Path
 from datetime import datetime
 import re
 import yaml
+from io import BytesIO
+from PIL import Image
 from flask import Flask, g, jsonify, request, send_from_directory, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
 from oversolved.db import (
@@ -244,6 +246,14 @@ def create_app(config=None):
             import base64
 
             image_data = base64.b64decode(data["preview_image"])
+            try:
+                img = Image.open(BytesIO(image_data))
+                if img.width > 512 or img.height > 512:
+                    return jsonify(
+                        {"error": "Preview image must be at most 512x512 pixels"}
+                    ), 400
+            except Exception:
+                return jsonify({"error": "Invalid image data"}), 400
             doc_store.store_preview_image(uuid, image_data)
         return jsonify({"uuid": uuid, "status": "stored"}), 200
 

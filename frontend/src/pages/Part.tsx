@@ -329,7 +329,7 @@ export default function Part() {
 
   const handleSave = async () => {
     if (!uuid || !doc) return
-    const success = await saveDoc(uuid, doc, viewportRef.current?.captureScreenshot)
+    const success = await saveDoc(uuid, doc, viewportRef.current?.captureScreenshotForSaving)
     if (success) setError(null)
   }
 

@@ -250,9 +250,13 @@ class TestDocumentAPI:
         )["uuid"]
 
         import base64
+        from io import BytesIO
+        from PIL import Image
 
-        image_data = b"\x89PNG\r\n\x1a\nfake"
-        encoded = base64.b64encode(image_data).decode("utf-8")
+        img = Image.new("RGB", (100, 100), color="blue")
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
         authed_client.put(
             f"/api/documents/{uuid}",
             data=json.dumps({"content": "version: 1\n", "preview_image": encoded}),
@@ -306,9 +310,13 @@ class TestDocumentAPI:
         )["uuid"]
 
         import base64
+        from io import BytesIO
+        from PIL import Image
 
-        image_data = b"\x89PNG\r\n\x1a\nfake_image_data"
-        encoded = base64.b64encode(image_data).decode("utf-8")
+        img = Image.new("RGB", (100, 100), color="red")
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
 
         response = authed_client.put(
             f"/api/documents/{uuid}",
@@ -338,6 +346,32 @@ class TestDocumentAPI:
 
         data = json.loads(authed_client.get(f"/api/documents/{uuid}").data)
         assert "preview_image" not in data
+
+    def test_preview_image_too_large_rejected(self, authed_client):
+        uuid = json.loads(
+            authed_client.post(
+                "/api/documents",
+                data=json.dumps({"name": "LargePreview"}),
+                content_type="application/json",
+            ).data
+        )["uuid"]
+
+        import base64
+        from io import BytesIO
+        from PIL import Image
+
+        img = Image.new("RGB", (600, 400), color="red")
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+        response = authed_client.put(
+            f"/api/documents/{uuid}",
+            data=json.dumps({"content": "version: 1\n", "preview_image": encoded}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert "512x512" in json.loads(response.data)["error"]
 
 
 class TestDocsAPI:
