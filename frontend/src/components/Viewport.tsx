@@ -18,7 +18,6 @@ import { COLOR_SELECTED, COLOR_HOVER } from './Geometry3D/constants'
 
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 const INITIAL_ZOOM = 200
-const SCREENSHOT_TILT_POSITION: [number, number, number] = [20, 20, 100]
 
 interface ViewportProps {
   features?: Feature[]
@@ -162,16 +161,18 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     const originalZoom = camera.zoom
     const originalPosition = camera.position.clone()
 
-    camera.zoom = originalZoom
-    camera.position.set(...SCREENSHOT_TILT_POSITION)
+    camera.zoom = INITIAL_ZOOM
+    camera.position.set(...INITIAL_POSITION)
     camera.updateProjectionMatrix()
+
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
 
     gl.setSize(smallWidth, smallHeight)
     gl.render(scene, camera)
     const dataUrl = gl.domElement.toDataURL('image/png')
 
     gl.setSize(originalSize.width, originalSize.height)
-    camera.position.copy(originalPosition)
+    camera.position.set(originalPosition.x, originalPosition.y, originalPosition.z)
     camera.zoom = originalZoom
     camera.updateProjectionMatrix()
 
