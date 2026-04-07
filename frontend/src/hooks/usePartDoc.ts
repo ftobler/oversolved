@@ -51,7 +51,7 @@ export function healDoc(raw: unknown): PartDoc {
   } as PartDoc
 }
 
-export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true }: { solveOnLoad?: boolean } = {}) {
+export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
   const [doc, setDoc] = useState<PartDoc | null>(null)
   const [docName, setDocName] = useState<string>('')
   const docRef = useRef<PartDoc | null>(null)
@@ -69,11 +69,14 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [solveResult, setSolveRawResult] = useState<string>('')
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [redoStack, setRedoStack] = useState<UndoEntry[]>([])
+  const firstSolveDone = useRef(false)
 
   const reSolve = useCallback(async (d: PartDoc) => {
     setSolving(true)
     setSolveTime(null)
     const startTime = performance.now()
+    const isFirstSolve = !firstSolveDone.current
+    if (isFirstSolve) firstSolveDone.current = true
     try {
       // Filter features before solving: exclude display-only builtins, but include hidden features
       // (visibility only affects viewport rendering, not solver)
@@ -182,6 +185,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
           setCodeText(stringifyYaml(d))
         }
         setSolveError(null)
+        if (isFirstSolve && onFirstSolve) {
+          setTimeout(onFirstSolve, 0)
+        }
       }
     } catch (e) {
       setSolveError(String(e))

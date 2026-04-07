@@ -18,6 +18,7 @@ import { COLOR_SELECTED, COLOR_HOVER } from './Geometry3D/constants'
 
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 const INITIAL_ZOOM = 200
+const SCREENSHOT_TILT_POSITION: [number, number, number] = [20, 20, 100]
 
 interface ViewportProps {
   features?: Feature[]
@@ -110,6 +111,7 @@ function UserDefinedPlane({ featureId, label, planeTransform }: { featureId: str
 export interface ViewportHandle {
   captureScreenshot: () => Promise<string | null>
   captureScreenshotForSaving: () => Promise<string | null>
+  autoZoomToFit: () => void
 }
 
 export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
@@ -157,18 +159,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     const smallWidth = Math.floor(originalSize.width / 4)
     const smallHeight = Math.floor(originalSize.height / 4)
 
-    const originalLeft = camera.left
-    const originalRight = camera.right
-    const originalTop = camera.top
-    const originalBottom = camera.bottom
+    const originalZoom = camera.zoom
+    const originalPosition = camera.position.clone()
 
-    const widthScale = smallWidth / originalSize.width
-    const heightScale = smallHeight / originalSize.height
-
-    camera.left = originalLeft * widthScale
-    camera.right = originalRight * widthScale
-    camera.top = originalTop * heightScale
-    camera.bottom = originalBottom * heightScale
+    camera.zoom = originalZoom
+    camera.position.set(...SCREENSHOT_TILT_POSITION)
     camera.updateProjectionMatrix()
 
     gl.setSize(smallWidth, smallHeight)
@@ -176,10 +171,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     const dataUrl = gl.domElement.toDataURL('image/png')
 
     gl.setSize(originalSize.width, originalSize.height)
-    camera.left = originalLeft
-    camera.right = originalRight
-    camera.top = originalTop
-    camera.bottom = originalBottom
+    camera.position.copy(originalPosition)
+    camera.zoom = originalZoom
     camera.updateProjectionMatrix()
 
     const img = new Image()
@@ -204,7 +197,57 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     return canvas.toDataURL('image/png')
   }, [])
 
-  useImperativeHandle(ref, () => ({ captureScreenshot, captureScreenshotForSaving }), [captureScreenshot, captureScreenshotForSaving])
+  const autoZoomToFit = useCallback(() => {
+    const camera = cameraRef.current as THREE.OrthographicCamera | null
+    const scene = sceneRef.current
+    if (!camera || !scene) return
+
+    const box = new THREE.Box3()
+    let hasContent = false
+
+    scene.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry.computeBoundingBox()
+        const geoBox = obj.geometry.boundingBox
+        if (geoBox) {
+          const worldBox = geoBox.clone().applyMatrix4(obj.matrixWorld)
+          box.union(worldBox)
+          hasContent = true
+        }
+      }
+    })
+
+    if (!hasContent) return
+
+    const size = box.getSize(new THREE.Vector3())
+    const center = box.getCenter(new THREE.Vector3())
+
+    const gl = glRef.current
+    if (!gl) return
+
+    const aspect = gl.domElement.width / gl.domElement.height
+    const margin = 1.2
+
+    const viewHeight = size.y * margin
+    const viewWidth = size.x * margin
+
+    let targetViewHeight = viewHeight
+    let targetViewWidth = viewWidth
+    if (targetViewWidth / aspect > targetViewHeight) {
+      targetViewHeight = targetViewWidth / aspect
+    } else {
+      targetViewWidth = targetViewHeight * aspect
+    }
+
+    const zoom = gl.domElement.height / targetViewHeight
+    if (zoom > 0) {
+      camera.zoom = zoom
+      camera.position.set(center.x, center.y, 100)
+      camera.updateProjectionMatrix()
+    }
+  }, [])
+
+  useImperativeHandle(ref, () => ({ captureScreenshot, captureScreenshotForSaving, autoZoomToFit }), [captureScreenshot, captureScreenshotForSaving, autoZoomToFit])
 
   const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
 
