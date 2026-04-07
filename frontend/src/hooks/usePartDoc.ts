@@ -11,7 +11,6 @@ import {
   applyDeleteElements,
   applyAddEntity,
   applyAddEntityWithConstraint,
-  applyAddPointWithConstraint,
   applyAddProjectedEntity,
   applyAddRect,
   applyAddCenterRect,
@@ -251,10 +250,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         applyAddEntity(next, m.featureId, m.kind, m.params)
         break
       case 'add_entity_with_constraint':
-        applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef)
-        break
-      case 'add_point_with_constraint':
-        applyAddPointWithConstraint(next, m.featureId, m.params, m.snapVertexId, m.snapEntityRef, m.constraintKind)
+        applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId)
         break
       case 'add_projected_entity':
         applyAddProjectedEntity(next, m.featureId, m.kind, m.source)

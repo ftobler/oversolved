@@ -9,6 +9,7 @@ import { COLOR_PREVIEW } from './constants'
 import { suggestConstraint, detectAlignmentSnap } from '../../registry'
 import type { Sketch, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
 import { nearestPointOnEntity } from './nearestPoint'
+import { randomId } from '../../utils/yamlMutations'
 
 // Compute circumcircle of 3 points. Returns null if points are collinear.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -150,6 +151,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }:
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
   const addDrawPoint = useSketchEditorStore(s => s.addDrawPoint)
   const setDrawHover = useSketchEditorStore(s => s.setDrawHover)
+  const setDrawSnap = useSketchEditorStore(s => s.setDrawSnap)
   const clearDraw = useSketchEditorStore(s => s.clearDraw)
   const onMutation = useSketchEditorStore(s => s.onMutation)
   const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
@@ -263,43 +265,64 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }:
 
     if (activeTool === 'point') {
       onMutation?.({ type: 'add_entity', featureId, kind: 'point', params: [px, py] })
-      // keep tool active for repeated point insertion
 
     } else if (activeTool === 'line') {
       if (pts.length === 0) {
-        // First click: create point with constraint if snapped
-        if (hoveredVertexId && hoveredSnapKind) {
-          onMutation?.({ type: 'add_point_with_constraint', featureId, params: [px, py],
-            snapVertexId: hoveredVertexId, constraintKind: 'coincident' })
-          addDrawPoint([px, py])  // store coords for line params
+        // First click: store point and snap info for second click
+        addDrawPoint([px, py])
+        if (hoveredVertexId) {
+          setDrawSnap(hoveredVertexId, null)
         } else if (pathSnap && hoveredEntityId) {
-          onMutation?.({ type: 'add_point_with_constraint', featureId, params: [px, py],
-            snapEntityRef: hoveredEntityId, constraintKind: 'coincident' })
-          addDrawPoint([px, py])
-        } else {
-          // No snap: store plain point
-          addDrawPoint([px, py])
+          setDrawSnap(null, hoveredEntityId)
         }
       } else {
-        // Second click: create line with constraint if snapped
-        // Priority: alignment snap > vertex snap > path snap > none
-        const alignmentSnapPoint = useSketchEditorStore.getState().alignmentSnapPoint
-        const alignmentSnapKind = useSketchEditorStore.getState().alignmentSnapKind
-        const alignmentSnapVertexId = useSketchEditorStore.getState().alignmentSnapVertexId
+        // Second click: create line with constraint
+        const state = useSketchEditorStore.getState()
+        const startSnapVertexId = state.drawSnapVertexId
+        const startSnapEntityRef = state.drawSnapEntityRef
 
-        if (alignmentSnapPoint && alignmentSnapKind && alignmentSnapVertexId) {
-          const constraintKind = alignmentSnapKind === 'kinda_horizontal' ? 'horizontal' : 'vertical'
-          onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
-            params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: alignmentSnapVertexId, constraintKind })
-        } else if (hoveredVertexId && hoveredSnapKind) {
-          const constraintKind = suggestConstraint('vertex', hoveredSnapKind) ?? 'coincident'
-          onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
-            params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: hoveredVertexId, constraintKind })
-        } else if (pathSnap && hoveredEntityId) {
-          // Path snap: create constraint with the entity directly (not a vertex)
-          // hoveredEntityId format: "entity:featureId:entityId"
-          onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
-            params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', constraintKind: 'coincident', snapEntityRef: hoveredEntityId })
+        // Priority for end point: alignment > vertex > path > none
+        const alignmentSnapPoint = state.alignmentSnapPoint
+        const alignmentSnapKind = state.alignmentSnapKind
+        const alignmentSnapVertexId = state.alignmentSnapVertexId
+
+        // Build params and constraint for the start vertex
+        const hasStartSnap = startSnapVertexId || startSnapEntityRef
+        const hasEndSnap = (alignmentSnapPoint && alignmentSnapKind && alignmentSnapVertexId) ||
+                          (hoveredVertexId && hoveredSnapKind) ||
+                          (pathSnap && hoveredEntityId)
+
+        if (hasStartSnap || hasEndSnap) {
+          // Generate entity ID upfront so we can reference it in constraints
+          const lineId = randomId(12)
+
+          // Use add_entity_with_constraint for the start vertex
+          if (startSnapVertexId) {
+            onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
+              params: [pts[0][0], pts[0][1], px, py], vertexKey: 'start',
+              snapVertexId: startSnapVertexId, constraintKind: 'coincident', entityId: lineId })
+          } else if (startSnapEntityRef) {
+            onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
+              params: [pts[0][0], pts[0][1], px, py], vertexKey: 'start',
+              constraintKind: 'coincident', snapEntityRef: startSnapEntityRef, entityId: lineId })
+          } else {
+            onMutation?.({ type: 'add_entity', featureId, kind: 'line',
+              params: [pts[0][0], pts[0][1], px, py] })
+          }
+
+          // Add constraint for end vertex
+          if (alignmentSnapPoint && alignmentSnapKind && alignmentSnapVertexId) {
+            const constraintKind = alignmentSnapKind === 'kinda_horizontal' ? 'horizontal' : 'vertical'
+            onMutation?.({ type: 'add_constraint', featureId, kind: constraintKind,
+              targets: [`vertex:${featureId}:${lineId}:end`, alignmentSnapVertexId] })
+          } else if (hoveredVertexId && hoveredSnapKind) {
+            const constraintKind = suggestConstraint('vertex', hoveredSnapKind) ?? 'coincident'
+            onMutation?.({ type: 'add_constraint', featureId, kind: constraintKind,
+              targets: [`vertex:${featureId}:${lineId}:end`, hoveredVertexId] })
+          } else if (pathSnap && hoveredEntityId) {
+            onMutation?.({ type: 'add_constraint', featureId, kind: 'coincident',
+              targets: [`vertex:${featureId}:${lineId}:end`, `entity:${featureId}:*`] })
+          }
         } else {
           onMutation?.({ type: 'add_entity', featureId, kind: 'line',
             params: [pts[0][0], pts[0][1], px, py] })
@@ -310,23 +333,32 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }:
 
     } else if (activeTool === 'circle') {
       if (pts.length === 0) {
-        // First click: create point with constraint if snapped
-        if (hoveredVertexId && hoveredSnapKind) {
-          onMutation?.({ type: 'add_point_with_constraint', featureId, params: [px, py],
-            snapVertexId: hoveredVertexId, constraintKind: 'coincident' })
-          addDrawPoint([px, py])
+        addDrawPoint([px, py])
+        if (hoveredVertexId) {
+          setDrawSnap(hoveredVertexId, null)
         } else if (pathSnap && hoveredEntityId) {
-          onMutation?.({ type: 'add_point_with_constraint', featureId, params: [px, py],
-            snapEntityRef: hoveredEntityId, constraintKind: 'coincident' })
-          addDrawPoint([px, py])
-        } else {
-          addDrawPoint([px, py])
+          setDrawSnap(null, hoveredEntityId)
         }
       } else {
+        const state = useSketchEditorStore.getState()
+        const centerSnapVertexId = state.drawSnapVertexId
+        const centerSnapEntityRef = state.drawSnapEntityRef
         const r = Math.hypot(px - pts[0][0], py - pts[0][1])
         if (r > 0) {
-          onMutation?.({ type: 'add_entity', featureId, kind: 'circle',
-            params: [pts[0][0], pts[0][1], r] })
+          if (centerSnapVertexId || centerSnapEntityRef) {
+            if (centerSnapVertexId) {
+              onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'circle',
+                params: [pts[0][0], pts[0][1], r], vertexKey: 'center',
+                snapVertexId: centerSnapVertexId, constraintKind: 'coincident' })
+            } else {
+              onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'circle',
+                params: [pts[0][0], pts[0][1], r], vertexKey: 'center',
+                constraintKind: 'coincident', snapEntityRef: centerSnapEntityRef! })
+            }
+          } else {
+            onMutation?.({ type: 'add_entity', featureId, kind: 'circle',
+              params: [pts[0][0], pts[0][1], r] })
+          }
         }
         clearDraw()
         setActiveTool('select')
@@ -334,23 +366,15 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }:
 
     } else if (activeTool === 'arc') {
       if (pts.length === 0) {
-        // First click: create point with constraint if snapped
-        if (hoveredVertexId && hoveredSnapKind) {
-          onMutation?.({ type: 'add_point_with_constraint', featureId, params: [px, py],
-            snapVertexId: hoveredVertexId, constraintKind: 'coincident' })
-          addDrawPoint([px, py])
+        addDrawPoint([px, py])
+        if (hoveredVertexId) {
+          setDrawSnap(hoveredVertexId, null)
         } else if (pathSnap && hoveredEntityId) {
-          onMutation?.({ type: 'add_point_with_constraint', featureId, params: [px, py],
-            snapEntityRef: hoveredEntityId, constraintKind: 'coincident' })
-          addDrawPoint([px, py])
-        } else {
-          addDrawPoint([px, py])
+          setDrawSnap(null, hoveredEntityId)
         }
       } else if (pts.length === 1) {
-        // Second click: end point
         addDrawPoint([px, py])
       } else {
-        // Third click: create arc
         const cc = circumcircle(pts[0], pts[1], [px, py])
         if (cc && cc.r > 0) {
           const [aStart, aEnd] = arcAnglesFromRadiusPoint(cc.cx, cc.cy, pts[0], pts[1], [px, py])
@@ -363,17 +387,11 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }:
 
     } else if (activeTool === 'rect') {
       if (pts.length === 0) {
-        // First click: create point with constraint if snapped
-        if (hoveredVertexId && hoveredSnapKind) {
-          onMutation?.({ type: 'add_point_with_constraint', featureId, params: [px, py],
-            snapVertexId: hoveredVertexId, constraintKind: 'coincident' })
-          addDrawPoint([px, py])
+        addDrawPoint([px, py])
+        if (hoveredVertexId) {
+          setDrawSnap(hoveredVertexId, null)
         } else if (pathSnap && hoveredEntityId) {
-          onMutation?.({ type: 'add_point_with_constraint', featureId, params: [px, py],
-            snapEntityRef: hoveredEntityId, constraintKind: 'coincident' })
-          addDrawPoint([px, py])
-        } else {
-          addDrawPoint([px, py])
+          setDrawSnap(null, hoveredEntityId)
         }
       } else {
         onMutation?.({ type: 'add_rect', featureId, p0: pts[0], p1: [px, py] })
@@ -383,17 +401,11 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }:
 
     } else if (activeTool === 'center_rect') {
       if (pts.length === 0) {
-        // First click: create point with constraint if snapped (this is the center)
-        if (hoveredVertexId && hoveredSnapKind) {
-          onMutation?.({ type: 'add_point_with_constraint', featureId, params: [px, py],
-            snapVertexId: hoveredVertexId, constraintKind: 'coincident' })
-          addDrawPoint([px, py])
+        addDrawPoint([px, py])
+        if (hoveredVertexId) {
+          setDrawSnap(hoveredVertexId, null)
         } else if (pathSnap && hoveredEntityId) {
-          onMutation?.({ type: 'add_point_with_constraint', featureId, params: [px, py],
-            snapEntityRef: hoveredEntityId, constraintKind: 'coincident' })
-          addDrawPoint([px, py])
-        } else {
-          addDrawPoint([px, py])
+          setDrawSnap(null, hoveredEntityId)
         }
       } else {
         onMutation?.({ type: 'add_center_rect', featureId, center: pts[0], corner: [px, py] })

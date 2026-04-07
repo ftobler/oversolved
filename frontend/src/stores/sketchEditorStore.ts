@@ -71,6 +71,8 @@ interface SketchEditorState {
   activeFeatureId: string | null  // the sketch currently being edited
   drawPoints: [number, number][]
   drawHover: [number, number] | null
+  drawSnapVertexId: string | null  // snap target from first click
+  drawSnapEntityRef: string | null  // entity ref snap target from first click
   pendingDimTarget: string | null  // first click target when doing two-target dimension
   pendingDimEntityKind: string | null  // entity kind of the first click target
   pendingDialog: DialogState | null
@@ -109,6 +111,7 @@ interface SketchEditorState {
   deleteSelected: () => void
   addDrawPoint: (pt: [number, number]) => void
   setDrawHover: (pt: [number, number] | null) => void
+  setDrawSnap: (vertexId: string | null, entityRef: string | null) => void
   clearDraw: () => void
   openDialog: (opts: DialogState) => void
   closeDialog: () => void
@@ -147,6 +150,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   activeFeatureId: null,
   drawPoints: [],
   drawHover: null,
+  drawSnapVertexId: null,
+  drawSnapEntityRef: null,
   pendingDimTarget: null,
   pendingDimEntityKind: null,
   pendingDialog: null,
@@ -242,7 +247,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),
   setDrawHover: (pt) => set({ drawHover: pt }),
-  clearDraw: () => set({ drawPoints: [], drawHover: null }),
+  setDrawSnap: (vertexId, entityRef) => set({ drawSnapVertexId: vertexId, drawSnapEntityRef: entityRef }),
+  clearDraw: () => set({ drawPoints: [], drawHover: null, drawSnapVertexId: null, drawSnapEntityRef: null }),
 
   openDialog: (opts) => set({ pendingDialog: opts }),
   closeDialog: () => set({ pendingDialog: null }),

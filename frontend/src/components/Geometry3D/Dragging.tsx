@@ -240,6 +240,7 @@ export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: stri
             DRAG_SNAP_VERTEX_RADIUS_PX * pw,
             DRAG_SNAP_ENTITY_RADIUS_PX * pw,
           )
+          console.log('ONPOINTERMOVE SNAP:', { x, y, snapFound: !!snap, snapPos: snap?.position })
           setDragSnap(snap)
           if (snap?.position) {
             snapPosition = snap.position
@@ -302,8 +303,10 @@ export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: stri
             } else if (finalDrag.type === 'vertex') {
               // Check for alignment snap first, then regular snap
               const { alignmentSnapKind, alignmentSnapPoint, alignmentSnapVertexId } = useSketchEditorStore.getState()
+              console.log('DEBUG ONPOINTERUP:', { alignmentSnapKind, currentDragSnap, vertexId: currentDragSnap?.vertexId })
               if (alignmentSnapKind && alignmentSnapPoint && alignmentSnapVertexId) {
                 const constraintKind = alignmentSnapKind === 'kinda_horizontal' ? 'horizontal' : 'vertical'
+                console.log('EMIT: alignment snap constraint')
                 onMutation({
                   type: 'move_vertex_with_constraint',
                   featureId: finalDrag.featureId,
@@ -314,6 +317,7 @@ export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: stri
                   snapVertexId: alignmentSnapVertexId,
                 })
               } else if (currentDragSnap?.kind === 'vertex') {
+                console.log('EMIT: vertex snap constraint', { snapVertexId: currentDragSnap.vertexId })
                 onMutation({
                   type: 'move_vertex_with_constraint',
                   featureId: finalDrag.featureId,
@@ -334,6 +338,7 @@ export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: stri
                   snapEntityRef: currentDragSnap.entityRef,
                 })
               } else {
+                console.log('EMIT: move_vertex (NO CONSTRAINT)', { to: finalDrag.currentWorld })
                 onMutation({ type: 'move_vertex', featureId: finalDrag.featureId,
                   entityId: finalDrag.entityId, vertexKey: finalDrag.vertexKey, to: finalDrag.currentWorld })
               }
