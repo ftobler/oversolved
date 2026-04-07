@@ -3,7 +3,7 @@ import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
 import { isProjectedEntity } from '../../types/cad'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore, type VertexOrEdgeDrag } from '../../stores/sketchEditorStore'
 import { sampleArc, sampleArcCCW, getEntityBounds } from '../sketch_helpers'
 import { DashedLine } from '../sketch_dimensions'
 import { VertexDot, HitPolyline, ProjectedOriginPoint } from './VertexDots'
@@ -38,18 +38,16 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
+  // Hide hit geometry when any drag is in progress on this sketch (immediate, not just after movement)
+  const isAnyDragOnThisSketch = drag && drag.featureId === featureId && 'entityId' in drag
   // REGRESSION PROTECTION: Hide collision geometry during entity drag
   // BUG: When dragging, DragPlane raycasts could be blocked by the entity's own
   //      HitPolyline collision geometry, causing choppy/stalled dragging.
-  // FIX: Hide collision only after drag movement starts (not on initial pointerDown).
-  //      Check if this entity is being dragged AND the cursor has actually moved
-  //      (currentWorld != startWorld). This allows quick clicks to still select,
-  //      but hides collision once dragging begins to prevent raycast blocking.
+  // FIX: Hide collision immediately when drag starts (not just after movement begins).
   // NOTE: Must check both entityId and featureId to handle multiple sketches.
   // Also hide hit geometry from non-active sketches to prevent raycasting interference.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
-  const isDragged = drag && 'entityId' in drag && drag.entityId === entityId && drag.featureId === featureId &&
-    (drag.currentWorld[0] !== drag.startWorld[0] || drag.currentWorld[1] !== drag.startWorld[1])
+  const isDragged = isAnyDragOnThisSketch && (drag as VertexOrEdgeDrag).entityId === entityId
   const isInactiveSketch = activeFeatureId && featureId !== activeFeatureId
   const color = hovered ? COLOR_HOVER
     : selected ? COLOR_SELECTED
@@ -64,6 +62,8 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const toggleDynamicSelection = useSketchEditorStore(s => s.toggleDynamicSelection)
   const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
   const lastHoveredRef = useRef<string | null>(null)
+  // Ref to track entity that was clicked - prevents it from being added to dynamic selection
+  const clickedEntityRef = useRef<string | null>(null)
 
   const onOver = (ev: { stopPropagation: () => void }) => {
     if (isRotating) return
@@ -72,12 +72,22 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     setHoveredEntity(entId)
 
     // Dynamic selection: add to set if pointer is down and not already processed
-    if (isPointerDown && lastHoveredRef.current !== entId) {
+    // Exclude the entity that was clicked (drag initiator) to avoid self-referencing
+    if (isPointerDown && lastHoveredRef.current !== entId && clickedEntityRef.current !== entId) {
       lastHoveredRef.current = entId
       toggleDynamicSelection(entId)
     }
   }
-  const onOut = () => { if (isRotating) return; lastHoveredRef.current = null; setHovered(false); setHoveredEntity(null) }
+  const onOut = () => {
+    if (isRotating) return
+    lastHoveredRef.current = null
+    // Clear click initiator when leaving the entity
+    if (clickedEntityRef.current === entId) {
+      clickedEntityRef.current = null
+    }
+    setHovered(false)
+    setHoveredEntity(null)
+  }
   const onClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     ev.stopPropagation()
     if (activeTool === 'dimension') {
@@ -108,16 +118,18 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     ev.stopPropagation()
     setOrbitEnabled(false)
 
+    // Mark this entity as the click initiator - prevents it from being added to dynamic selection
+    clickedEntityRef.current = entId
+
     // Dynamic selection: track pointer down state
     setIsPointerDown(true)
-    toggleDynamicSelection(entId)
 
     const [sx, sy] = toLocal(ev.point)
     // startClient is screen pixel coordinates at pointer-down; used to distinguish clicks from drags.
     // See: dragging.test.ts REGRESSION 4
     setDrag({ type: 'edge', vertexId: entId, featureId, entityId,
       vertexKey: 'edge', startWorld: [sx, sy], currentWorld: [sx, sy], startClient: [ev.clientX, ev.clientY] })
-  }, [isEditing, entId, featureId, entityId, setDrag, setOrbitEnabled, activeTool, toLocal, setIsPointerDown, toggleDynamicSelection])
+  }, [isEditing, entId, featureId, entityId, setDrag, setOrbitEnabled, activeTool, toLocal, setIsPointerDown])
 
   if ('start' in e && 'end' in e && 'radius' in e) {
     const arc = e as Arc

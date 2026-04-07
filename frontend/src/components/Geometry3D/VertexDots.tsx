@@ -2,7 +2,7 @@ import { useRef, useMemo, useState, useCallback } from 'react'
 import { Line } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore, type VertexOrEdgeDrag } from '../../stores/sketchEditorStore'
 import { p2w } from '../sketch_helpers'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET, DEBUG_HIT } from './constants'
 import type { SnapKind } from '../../registry'
@@ -132,20 +132,19 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const toggleDynamicSelection = useSketchEditorStore(s => s.toggleDynamicSelection)
   const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
   const lastHoveredRef = useRef<string | null>(null)
+  // Ref to track vertex that was clicked - prevents it from being added to dynamic selection
+  const clickedVertexRef = useRef<string | null>(null)
+  // Hide hit geometry when any drag is in progress on this sketch (immediate, not just after movement)
+  const isAnyDragOnThisSketch = drag && drag.featureId === featureId && 'entityId' in drag
   // REGRESSION PROTECTION: Hide collision geometry during vertex drag
   // BUG: When dragging a vertex, DragPlane raycasts could be blocked by the
   //      vertex's own hit sphere collision geometry (scaled to HIT_PIXELS).
   //      This caused stalled/choppy dragging when cursor was over the vertex.
-  // FIX: Hide collision only after drag movement starts (not on initial pointerDown).
-  //      Check if this vertex is being dragged AND the cursor has actually moved.
-  //      This allows quick clicks to still select, but hides collision once dragging
-  //      begins to prevent raycast blocking.
+  // FIX: Hide collision immediately when drag starts (not just after movement begins).
   // NOTE: Must check featureId, entityId, AND vertexKey to handle all cases.
   // Also hide hit geometry from non-active sketches to prevent raycasting interference.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
-  const isDragged = featureId && entityId && drag && 'entityId' in drag &&
-    drag.entityId === entityId && drag.featureId === featureId &&
-    (drag.currentWorld[0] !== drag.startWorld[0] || drag.currentWorld[1] !== drag.startWorld[1])
+  const isDragged = isAnyDragOnThisSketch && (drag as VertexOrEdgeDrag).entityId === entityId && (drag as VertexOrEdgeDrag).vertexKey === vertexKey
   const isInactiveSketch = featureId && activeFeatureId && featureId !== activeFeatureId
   // Offset the hit-sphere toward the camera (not object-space z) so the vertex
   // always wins the raycast over the 3D edge cylinders regardless of orbit angle.
@@ -179,9 +178,11 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     e.stopPropagation()
     setOrbitEnabled(false)
 
+    // Mark this vertex as the click initiator - prevents it from being added to dynamic selection
+    clickedVertexRef.current = vertId
+
     // Dynamic selection: track pointer down state
     setIsPointerDown(true)
-    toggleDynamicSelection(vertId)
 
     // startClient is screen pixel coordinates at pointer-down; used to distinguish clicks from drags.
     // Must be the actual cursor position, not the vertex center, so that pure clicks (cursor barely
@@ -196,7 +197,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
       currentWorld: [x, y],
       startClient: [e.clientX, e.clientY],
     })
-  }, [isEditing, vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool, setIsPointerDown, toggleDynamicSelection])
+  }, [isEditing, vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool, setIsPointerDown])
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
   const snapKind = determineSnapKind(entityKind, vertexKey)
@@ -207,7 +208,8 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     if (vertId) setHoveredVertex(vertId, [x, y], snapKind)
 
     // Dynamic selection: add to set if pointer is down and not already processed
-    if (isPointerDown && vertId && lastHoveredRef.current !== vertId) {
+    // Exclude the vertex that was clicked (drag initiator) to avoid self-referencing
+    if (isPointerDown && vertId && lastHoveredRef.current !== vertId && clickedVertexRef.current !== vertId) {
       lastHoveredRef.current = vertId
       toggleDynamicSelection(vertId)
     }
@@ -215,6 +217,10 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const handlePointerOut = () => {
     if (isRotating) return
     lastHoveredRef.current = null
+    // Clear click initiator when leaving the vertex
+    if (clickedVertexRef.current === vertId) {
+      clickedVertexRef.current = null
+    }
     setHovered(false)
     setHoveredVertex(null, null, null)
   }

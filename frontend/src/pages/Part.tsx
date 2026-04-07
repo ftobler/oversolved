@@ -121,6 +121,7 @@ export default function Part() {
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const setFieldPickState = useSketchEditorStore(s => s.setFieldPickState)
   const selection = useSketchEditorStore(s => s.selection)
+  const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
   const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)
@@ -665,6 +666,14 @@ export default function Part() {
                         : hoveredSurfaceId
                           ? <div className="debug-value">{hoveredSurfaceId}</div>
                           : <div className="debug-empty">none</div>}
+                </div>
+                <div className="debug-section">
+                  <div className="debug-section-title">Dynamic ({dynamicSelection.size})</div>
+                  {dynamicSelection.size === 0
+                    ? <div className="debug-empty">none</div>
+                    : [...dynamicSelection].map(id => (
+                      <div key={id} className="debug-value">{id}</div>
+                    ))}
                 </div>
                 <div className="debug-section">
                   <div className="debug-section-title">Selection ({selection.size})</div>

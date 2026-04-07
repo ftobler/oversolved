@@ -196,7 +196,8 @@ export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: S
   // distortion when the camera views at an angle. Raycasting to z=0.5 (or z=90)
   // produces world coordinates that don't match the actual sketch plane geometry,
   // causing the dragged element to shift away from the cursor.
-  // Position at z=-0.001 (between DrawPlane at z=-0.002 and geometry at z=0).
+  // Position at z=0.001 (just in front of geometry at z=0) to ensure raycasts hit
+  // the drag plane, not the dragged entity's geometry.
   // Self-intersection blocking (dragged entity's collision geometry blocking raycasts)
   // is solved by hiding the collision geometry (HitPolyline, hit spheres, dim hit meshes) during drag.
   // This is done in EntityLines.tsx and VertexDots.tsx (isDragged) and sketch_dimensions.tsx (isDragged).
@@ -228,7 +229,7 @@ export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: S
   return (
     <mesh
       ref={meshRef}
-      position={[0, 0, -0.001]}
+      position={[0, 0, 0.001]}
       onPointerMove={(e) => {
         e.stopPropagation()
         const [x, y] = toLocal(e.point)
