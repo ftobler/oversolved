@@ -36,7 +36,6 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
-  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
   // REGRESSION PROTECTION: Hide collision geometry during entity drag
   // BUG: When dragging, DragPlane raycasts could be blocked by the entity's own
   //      HitPolyline collision geometry, causing choppy/stalled dragging.
@@ -44,7 +43,11 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   // NOTE: Must check both entityId and featureId to handle multiple sketches.
   // Also hide hit geometry from non-active sketches to prevent raycasting interference.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
+  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
+  const drag = useSketchEditorStore(s => s.drag)
   const isInactiveSketch = activeFeatureId && featureId !== activeFeatureId
+  const isDraggedEntity = drag && drag.type === 'edge' && drag.entityId === entityId && drag.featureId === featureId
+  const isDraggedVertex = drag && drag.type === 'vertex' && drag.entityId === entityId && drag.featureId === featureId
   const color = hovered ? COLOR_HOVER
     : selected ? COLOR_SELECTED
     : constraintHovered ? COLOR_CONSTRAINT_HOVER
@@ -133,7 +136,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
+          {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
@@ -149,7 +152,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
+          {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
@@ -167,7 +170,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     return (
       <>
         <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isInactiveSketch && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
+          {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}

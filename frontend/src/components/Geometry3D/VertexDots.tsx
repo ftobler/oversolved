@@ -141,7 +141,9 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   // NOTE: Must check featureId, entityId, AND vertexKey to handle all cases.
   // Also hide hit geometry from non-active sketches to prevent raycasting interference.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
+  const drag = useSketchEditorStore(s => s.drag)
   const isInactiveSketch = featureId && activeFeatureId && featureId !== activeFeatureId
+  const isDraggedVertex = drag && drag.type === 'vertex' && drag.entityId === entityId && drag.featureId === featureId
   useFrame(() => {
     if (!hitRef.current) return
     hitRef.current.scale.setScalar(POINT_HIT_PIXELS * p2w(camera))
@@ -219,7 +221,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     >
       <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard />
       {(hovered || selected || constraintHovered) && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
-      {!isInactiveSketch && (
+      {!isInactiveSketch && !isDraggedVertex && (
         <mesh ref={hitRef} position={[x, y, 0]}>
           <sphereGeometry args={[1, 8, 8]} />
           <meshBasicMaterial transparent opacity={showDebugHit ? 0.35 : 0} color="#00aaff" depthWrite={false} />
