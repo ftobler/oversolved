@@ -676,7 +676,7 @@ export default function Part() {
                     ))}
                 </div>
                 <div className="debug-section">
-                  <div className="debug-section-title">Selection ({selection.size})</div>
+                  <div className="debug-section-title">Normal ({selection.size})</div>
                   {selection.size === 0
                     ? <div className="debug-empty">none</div>
                     : [...selection].map(id => (
