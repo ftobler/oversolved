@@ -227,10 +227,10 @@ export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: stri
         if (showDebugHit) {
           console.log('DEBUG RAYCAST:', { clientX: e.clientX, clientY: e.clientY, rayOrigin: ray?.origin, rayDir: ray?.direction, world: worldPt ? { x: worldPt.x, y: worldPt.y, z: worldPt.z } : 'no hit' })
         }
-        setDrag({ ...drag, currentWorld: [x, y] })
 
-        // Snap detection: vertex then entity, only for vertex drags.
-        // Uses same registry (suggestConstraint) as the drawing tool snap.
+        // Snap detection and constraint application: vertex then entity, only for vertex drags.
+        // When snap is detected, apply snap position immediately for visual feedback + constraint on release.
+        let snapPosition: [number, number] | null = null
         if (drag.type === 'vertex' && sketch) {
           const pw = p2w(camera)
           const snap = findSnapTarget(
@@ -241,23 +241,27 @@ export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: stri
             DRAG_SNAP_ENTITY_RADIUS_PX * pw,
           )
           setDragSnap(snap)
+          if (snap?.position) {
+            snapPosition = snap.position
+          }
 
           // Alignment detection for kinda_horizontal/kinda_vertical
           if (dynamicSelection.size > 0) {
-            const alignment = detectAlignmentSnap(dynamicSelection, [x, y], dynamicSelectionPositions)
+            const alignment = detectAlignmentSnap(dynamicSelection, snapPosition ?? [x, y], dynamicSelectionPositions)
             if (alignment) {
               setAlignmentSnap(alignment.point, alignment.kind, alignment.vertexId)
+              snapPosition = alignment.point
             } else {
               setAlignmentSnap(null, null, null)
             }
           }
         }
+
+        // Apply snap position if detected, otherwise use raw cursor position
+        setDrag({ ...drag, currentWorld: snapPosition ?? [x, y] })
       }}
       onPointerUp={(e) => {
         e.stopPropagation()
-        const local = toLocal(e.point)
-        if (!local) return
-        const [x, y] = local
         // Read drag and dragSnap from store directly — not from the render closure.
         // onPointerUp may fire before React re-renders after the final onPointerMove,
         // so the closure could hold stale values. getState() always returns the latest.
@@ -265,7 +269,7 @@ export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: stri
         if (!currentDrag || currentDrag.featureId !== featureId) {
           setDrag(null); setDragSnap(null); setOrbitEnabled(true); return
         }
-        const finalDrag = { ...currentDrag, currentWorld: [x, y] as [number, number] }
+        const finalDrag = { ...currentDrag }
         if (onMutation) {
           if (finalDrag.type === 'dim_label') {
             const pos: [number, number] = [

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc, PartConstraint } from '../../types/cad'
-import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint } from '../yamlMutations'
+import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddPointWithConstraint } from '../yamlMutations'
 
 const makeSampleDoc = (): PartDoc => ({
   version: 1,
@@ -566,5 +566,114 @@ describe('applyAddEntityWithConstraint', () => {
     applyAddEntityWithConstraint(doc, 'Sketch1', 'line', [0, 0, 10, 10], 'start', undefined, 'coincident', undefined)
     expect(doc.features![0].entities).toHaveLength(1)
     expect(doc.features![0].constraints).toHaveLength(0)
+  })
+})
+
+describe('applyAddPointWithConstraint', () => {
+  it('creates point entity at specified coordinates', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [],
+      initial: {},
+      constraints: [],
+    }] }
+    applyAddPointWithConstraint(doc, 'Sketch1', [5.5, 10.25])
+    expect(doc.features![0].entities).toHaveLength(1)
+    expect(doc.features![0].entities![0].kind).toBe('point')
+    expect(doc.features![0].initial![doc.features![0].entities![0].id]).toEqual([5.5, 10.25])
+  })
+
+  it('adds coincident constraint when snapVertexId provided', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [{ id: 'line1', kind: 'line' }],
+      initial: { line1: [0, 0, 10, 0] },
+      constraints: [],
+    }] }
+    applyAddPointWithConstraint(doc, 'Sketch1', [5, 5], 'vertex:Sketch1:line1:end', undefined, 'coincident')
+    expect(doc.features![0].entities).toHaveLength(2)
+    expect(doc.features![0].constraints).toHaveLength(1)
+    const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'coincident')!
+    expect(newConstraint).toBeDefined()
+  })
+
+  it('adds coincident constraint when snapEntityRef provided', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [{ id: 'line1', kind: 'line' }],
+      initial: { line1: [0, 0, 10, 0] },
+      constraints: [],
+    }] }
+    applyAddPointWithConstraint(doc, 'Sketch1', [5, 5], undefined, 'entity:Sketch1:line1', 'coincident')
+    expect(doc.features![0].entities).toHaveLength(2)
+    expect(doc.features![0].constraints).toHaveLength(1)
+    const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'coincident')!
+    expect(newConstraint.b).toBe('$line1')
+  })
+
+  it('does not add constraint when constraintKind is undefined', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [{ id: 'line1', kind: 'line' }],
+      initial: { line1: [0, 0, 10, 0] },
+      constraints: [],
+    }] }
+    applyAddPointWithConstraint(doc, 'Sketch1', [5, 5], 'vertex:Sketch1:line1:end', undefined, undefined)
+    expect(doc.features![0].entities).toHaveLength(2)
+    expect(doc.features![0].constraints).toHaveLength(0)
+  })
+
+  it('rounds coordinates to 6 decimal places', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [],
+      initial: {},
+      constraints: [],
+    }] }
+    applyAddPointWithConstraint(doc, 'Sketch1', [1.23456789, 9.87654321])
+    const newEntity = doc.features![0].entities![0]
+    expect(doc.features![0].initial![newEntity.id]![0]).toBe(1.234568)
+    expect(doc.features![0].initial![newEntity.id]![1]).toBe(9.876543)
+  })
+
+  it('constraint references new point entity and existing vertex', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [{ id: 'line1', kind: 'line' }],
+      initial: { line1: [0, 0, 10, 0] },
+      constraints: [],
+    }] }
+    applyAddPointWithConstraint(doc, 'Sketch1', [0, 0], 'vertex:Sketch1:line1:start', undefined, 'coincident')
+    const newEntity = doc.features![0].entities![1]
+    const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'coincident')!
+    expect(newConstraint.a).toBe(`$${newEntity.id}xy`)
+    expect(newConstraint.b).toBe('$line1start')
+  })
+
+  it('is no-op for unknown feature', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [],
+      initial: {},
+      constraints: [],
+    }] }
+    applyAddPointWithConstraint(doc, 'Nonexistent', [5, 5], 'vertex:Sketch1:line1:end', undefined, 'coincident')
+    expect(doc.features![0].entities).toHaveLength(0)
+    expect(doc.features![0].constraints).toHaveLength(0)
+  })
+
+  it('generates unique entity ids', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [],
+      initial: {},
+      constraints: [],
+    }] }
+    applyAddPointWithConstraint(doc, 'Sketch1', [1, 1])
+    applyAddPointWithConstraint(doc, 'Sketch1', [2, 2])
+    applyAddPointWithConstraint(doc, 'Sketch1', [3, 3])
+    expect(doc.features![0].entities).toHaveLength(3)
+    const ids = doc.features![0].entities!.map(e => e.id)
+    expect(new Set(ids).size).toBe(3)
   })
 })

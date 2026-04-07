@@ -281,6 +281,44 @@ export function applyAddEntityWithConstraint(
   ])
 }
 
+export function applyAddPointWithConstraint(
+  doc: PartDoc,
+  featureId: string,
+  params: [number, number],
+  snapVertexId?: string,
+  snapEntityRef?: string,
+  constraintKind?: string,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  if (!feature.entities) feature.entities = []
+  if (!feature.initial) feature.initial = {}
+  const existing = new Set(feature.entities.map(e => e.id))
+  let eid = randomId(12)
+  while (existing.has(eid)) eid = randomId(12)
+  feature.entities.push({ id: eid, kind: 'point' })
+  feature.initial[eid] = [round(params[0]), round(params[1])]
+
+  if (!constraintKind) return
+  if (!feature.constraints) feature.constraints = []
+
+  let target: string
+  if (snapEntityRef) {
+    target = snapEntityRef
+  } else if (snapVertexId) {
+    const snapParts = snapVertexId.split(':')
+    const snapEntityId = snapParts[2]
+    target = `vertex:${featureId}:${snapEntityId}:${snapParts[3] || 'xy'}`
+  } else {
+    return
+  }
+
+  applyAddConstraint(doc, featureId, constraintKind, [
+    `vertex:${featureId}:${eid}:xy`,
+    target,
+  ])
+}
+
 /** Helper: add 4 rectangle lines with corner/edge/dimension constraints.
  *  Returns the 4 line IDs [lA, lB, lC, lD] for use in additional constraints.
  */
