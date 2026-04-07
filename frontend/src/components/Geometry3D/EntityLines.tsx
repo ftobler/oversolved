@@ -67,12 +67,14 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const onOver = (ev: { stopPropagation: () => void }) => {
     if (isRotating) return
     if (!isDrawingTool) ev.stopPropagation()
-    setHovered(true)
+    // Don't set hovered state if already selected - keep selected color
+    if (!selected) setHovered(true)
     setHoveredEntity(entId)
 
     // Dynamic selection: add to set if pointer is down and not already processed
     // Exclude the entity that was clicked (drag initiator) to avoid self-referencing
-    if (isPointerDown && lastHoveredRef.current !== entId && clickedEntityRef.current !== entId) {
+    // Also exclude already-selected elements
+    if (isPointerDown && !selected && lastHoveredRef.current !== entId && clickedEntityRef.current !== entId) {
       lastHoveredRef.current = entId
       toggleDynamicSelection(entId)
     }

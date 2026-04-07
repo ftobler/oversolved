@@ -195,12 +195,14 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const handlePointerOver = (e: { stopPropagation: () => void }) => {
     if (isRotating) return
     if (!isDrawingTool) e.stopPropagation()
-    setHovered(true)
+    // Don't set hovered state if already selected - keep selected color
+    if (!selected) setHovered(true)
     if (vertId) setHoveredVertex(vertId, [x, y], snapKind)
 
     // Dynamic selection: add to set if pointer is down and not already processed
     // Exclude the vertex that was clicked (drag initiator) to avoid self-referencing
-    if (isPointerDown && vertId && lastHoveredRef.current !== vertId && clickedVertexRef.current !== vertId) {
+    // Also exclude already-selected elements
+    if (isPointerDown && vertId && !selected && lastHoveredRef.current !== vertId && clickedVertexRef.current !== vertId) {
       lastHoveredRef.current = vertId
       toggleDynamicSelection(vertId)
     }
