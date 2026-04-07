@@ -226,27 +226,17 @@ function SnapRulesTable() {
     <table className="reg-table">
       <thead>
         <tr>
-          <th>Entity</th>
-          <th>Vertex</th>
+          <th>Dragged Element</th>
           <th>Snap Kinds</th>
-          <th>Suggest</th>
-          <th>Auto-Apply</th>
         </tr>
       </thead>
       <tbody>
-        {Object.entries(SNAP_RULES).flatMap(([entityKind, vertices]) =>
-          Object.entries(vertices).map(([vertexKey, rule]) => (
-            <tr key={`${entityKind}-${vertexKey}`}>
-              <td><code>{entityKind}</code></td>
-              <td><code>{vertexKey}</code></td>
-              <td>{rule.snapKinds.map(k => <Badge key={k} text={k} variant="neutral" />)}</td>
-              <td><code>{rule.suggest}</code></td>
-              <td className="reg-cell-center">
-                {rule.autoApply ? <Badge text="yes" variant="yes" /> : <Badge text="no" variant="no" />}
-              </td>
-            </tr>
-          ))
-        )}
+        {Object.entries(SNAP_RULES).map(([draggedType, snapKinds]) => (
+          <tr key={draggedType}>
+            <td><code>{draggedType}</code></td>
+            <td>{snapKinds.map(k => <Badge key={k} text={k} variant="neutral" />)}</td>
+          </tr>
+        ))}
       </tbody>
     </table>
   )

@@ -281,7 +281,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }:
           onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
             params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: alignmentSnapVertexId, constraintKind })
         } else if (hoveredVertexId && hoveredSnapKind) {
-          const constraintKind = suggestConstraint('line', 'end', hoveredSnapKind) ?? 'coincident'
+          const constraintKind = suggestConstraint('vertex', hoveredSnapKind) ?? 'coincident'
           onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
             params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: hoveredVertexId, constraintKind })
         } else if (pathSnap && hoveredEntityId) {

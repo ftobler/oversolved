@@ -8,8 +8,7 @@ import { Dot, VertexHighlight } from './VertexDots'
 import { DashedLine } from '../sketch_dimensions'
 import { p2w } from '../sketch_helpers'
 import { nearestPointOnEntity } from './nearestPoint'
-import { suggestConstraint, detectAlignmentSnap } from '../../registry'
-import type { SnapKind } from '../../registry'
+import { suggestConstraint, detectAlignmentSnap, type DraggedElementType, type SnapKind } from '../../registry'
 import { COLOR_SNAP, COLOR_PREVIEW, DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX, POINT_HIT_PIXELS } from './constants'
 
 // Snap kind discriminator:
@@ -26,25 +25,7 @@ export interface SnapTarget {
   entityRef?: string       // set when kind === 'entity';  format: "entity:featureId:entityId"
 }
 
-/** Derive the entity kind string from an entity's structure.
- *  Mirrors the kind values in the entity registry (line, circle, arc, point). */
-// eslint-disable-next-line react-refresh/only-export-components
-export function entityKindOf(entity: Entity): string {
-  if ('start' in entity && 'angle_start' in entity) return 'arc'
-  if ('start' in entity) return 'line'
-  if ('center' in entity) return 'circle'
-  return 'point'
-}
 
-/** Derive the SnapKind for a target vertex, matching VertexDots.determineSnapKind.
- *  Used to look up the correct constraint via suggestConstraint. */
-// eslint-disable-next-line react-refresh/only-export-components
-export function vertexSnapKind(entityKind: string, vertexKey: string): SnapKind {
-  if (vertexKey === 'center') return 'center'
-  if (entityKind === 'point') return 'vertex'
-  if (entityKind === 'circle') return 'center'
-  return 'vertex'
-}
 
 interface VertexCandidate {
   vertexId: string
@@ -53,7 +34,8 @@ interface VertexCandidate {
 }
 
 /** Collect all discrete vertex positions from a sketch with their snap kinds.
- *  Excludes projected entities and the entity currently being dragged. */
+ *  Excludes projected entities and the entity currently being dragged.
+ *  All point handles are treated as 'vertex' snap kind (broad categorization). */
 // eslint-disable-next-line react-refresh/only-export-components
 export function collectVertexTargets(sketch: Sketch, featureId: string, skipEntityId: string): VertexCandidate[] {
   const targets: VertexCandidate[] = []
@@ -61,17 +43,17 @@ export function collectVertexTargets(sketch: Sketch, featureId: string, skipEnti
     if (isProjectedEntity(entity as Entity)) continue
     if (entityId === skipEntityId) continue
 
-    const eKind = entityKindOf(entity as Entity)
     if ('start' in entity && 'end' in entity) {
       const l = entity as LineSegment | Arc
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:start`, position: l.start, snapKind: vertexSnapKind(eKind, 'start') })
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:end`,   position: l.end,   snapKind: vertexSnapKind(eKind, 'end') })
+      targets.push({ vertexId: `vertex:${featureId}:${entityId}:start`, position: l.start, snapKind: 'vertex' })
+      targets.push({ vertexId: `vertex:${featureId}:${entityId}:end`,   position: l.end,   snapKind: 'vertex' })
+      // Arc center is just another vertex point
       if ('radius' in l && 'angle_start' in l) {
-        targets.push({ vertexId: `vertex:${featureId}:${entityId}:center`, position: (l as Arc).center, snapKind: 'center' })
+        targets.push({ vertexId: `vertex:${featureId}:${entityId}:center`, position: (l as Arc).center, snapKind: 'vertex' })
       }
     } else if ('center' in entity && 'radius' in entity) {
       const c = entity as Circle
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:center`, position: c.center, snapKind: 'center' })
+      targets.push({ vertexId: `vertex:${featureId}:${entityId}:center`, position: c.center, snapKind: 'vertex' })
     } else if ('x' in entity) {
       const p = entity as PointEntity
       targets.push({ vertexId: `vertex:${featureId}:${entityId}:xy`, position: [p.x, p.y], snapKind: 'vertex' })
@@ -89,8 +71,7 @@ export function findSnapTarget(
   sketch: Sketch,
   featureId: string,
   skipEntityId: string,
-  draggedEntityKind: string,  // kind of the entity being dragged (for registry lookup)
-  draggedVertexKey: string,   // vertex key being dragged (for registry lookup)
+  draggedType: DraggedElementType,  // 'vertex' or 'entity' being dragged
   x: number,
   y: number,
   vertexThreshold: number,    // world units, for vertex snap (larger)
@@ -103,7 +84,7 @@ export function findSnapTarget(
   for (const t of collectVertexTargets(sketch, featureId, skipEntityId)) {
     const d = Math.hypot(t.position[0] - x, t.position[1] - y)
     if (d < bestVertexDist) {
-      const cKind = suggestConstraint(draggedEntityKind, draggedVertexKey, t.snapKind)
+      const cKind = suggestConstraint(draggedType, t.snapKind)
       if (cKind !== null) {
         bestVertexDist = d
         bestVertex = { ...t, dist: d }
@@ -111,7 +92,7 @@ export function findSnapTarget(
     }
   }
   if (bestVertex) {
-    const cKind = suggestConstraint(draggedEntityKind, draggedVertexKey, bestVertex.snapKind)!
+    const cKind = suggestConstraint(draggedType, bestVertex.snapKind)!
     return { kind: 'vertex', position: bestVertex.position, constraintKind: cKind, vertexId: bestVertex.vertexId }
   }
 
@@ -122,8 +103,8 @@ export function findSnapTarget(
   for (const [entityId, entity] of Object.entries(sketch)) {
     if (isProjectedEntity(entity as Entity)) continue
     if (entityId === skipEntityId) continue
-    const cKind = suggestConstraint(draggedEntityKind, draggedVertexKey, 'path')
-    if (cKind === null) continue  // registry disallows path snap for this vertex
+    const cKind = suggestConstraint(draggedType, 'path')
+    if (cKind === null) continue  // registry disallows path snap for this dragged type
     const result = nearestPointOnEntity(x, y, entity as Entity)
     if (result && result.distance < bestEntityDist) {
       bestEntityDist = result.distance
@@ -251,12 +232,10 @@ export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: stri
         // Snap detection: vertex then entity, only for vertex drags.
         // Uses same registry (suggestConstraint) as the drawing tool snap.
         if (drag.type === 'vertex' && sketch) {
-          const draggedEntity = sketch[drag.entityId]
-          const draggedEntityKind = draggedEntity ? entityKindOf(draggedEntity as Entity) : 'line'
           const pw = p2w(camera)
           const snap = findSnapTarget(
             sketch, drag.featureId, drag.entityId,
-            draggedEntityKind, drag.vertexKey,
+            'vertex',  // dragging a vertex handle
             x, y,
             DRAG_SNAP_VERTEX_RADIUS_PX * pw,
             DRAG_SNAP_ENTITY_RADIUS_PX * pw,

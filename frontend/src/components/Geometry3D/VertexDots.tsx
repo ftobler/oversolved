@@ -7,10 +7,9 @@ import { p2w } from '../sketch_helpers'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS } from './constants'
 import type { SnapKind } from '../../registry'
 
-function determineSnapKind(entityKind: string | undefined, vertexKey: string | undefined): SnapKind {
-  if (vertexKey === 'center') return 'center'
-  if (entityKind === 'point') return 'vertex'
-  if (entityKind === 'circle') return 'center'
+/** Derive snap kind from the hover target. All point handles (line endpoints,
+ *  circle centers, point xy) are broadly categorized as 'vertex'. */
+function determineSnapKind(): SnapKind {
   return 'vertex'
 }
 
@@ -102,9 +101,9 @@ export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px:
 
 /** Vertex dot with its own independent hover state. Placed as a sibling (not child)
  *  of the edge group so hover does not bubble up and highlight the whole entity. */
-export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, entityKind, isEditing = false, showDebugHit }: {
+export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, isEditing = false, showDebugHit }: {
   x: number; y: number; px: number; baseColor: string
-  featureId?: string; entityId?: string; vertexKey?: string; entityKind?: string
+  featureId?: string; entityId?: string; vertexKey?: string
   isEditing?: boolean; showDebugHit?: boolean
 }) {
   // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
@@ -188,7 +187,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   }, [isEditing, vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool, setIsPointerDown])
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
-  const snapKind = determineSnapKind(entityKind, vertexKey)
+  const snapKind = determineSnapKind()
   const handlePointerOver = (e: { stopPropagation: () => void }) => {
     if (isRotating) return
     if (!isDrawingTool) e.stopPropagation()

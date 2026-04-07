@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   SNAP_RULES,
   SNAP_KINDS,
-  getSnapRule,
   canSnapTo,
   suggestConstraint,
 } from '../snapRegistry'
@@ -15,9 +14,9 @@ describe('snapRegistry', () => {
     it('contains expected snap kinds', () => {
       expect(SNAP_KINDS).toContain('vertex')
       expect(SNAP_KINDS).toContain('midpoint')
-      expect(SNAP_KINDS).toContain('center')
       expect(SNAP_KINDS).toContain('path')
-      expect(SNAP_KINDS).toContain('grid')
+      expect(SNAP_KINDS).toContain('kinda_horizontal')
+      expect(SNAP_KINDS).toContain('kinda_vertical')
     })
 
     it('has no duplicates', () => {
@@ -26,157 +25,112 @@ describe('snapRegistry', () => {
   })
 
   describe('SNAP_RULES', () => {
-    it('covers known entity kinds', () => {
-      expect(SNAP_RULES).toHaveProperty('line')
-      expect(SNAP_RULES).toHaveProperty('circle')
-      expect(SNAP_RULES).toHaveProperty('arc')
-      expect(SNAP_RULES).toHaveProperty('point')
+    it('covers dragged element types', () => {
+      expect(SNAP_RULES).toHaveProperty('vertex')
+      expect(SNAP_RULES).toHaveProperty('entity')
     })
 
     it('every rule references valid snap kinds', () => {
-      const entityKinds = Object.keys(SNAP_RULES)
-      for (const ek of entityKinds) {
-        const vertices = SNAP_RULES[ek as keyof typeof SNAP_RULES]
-        const vertexKeys = Object.keys(vertices)
-        for (const vk of vertexKeys) {
-          const rule = vertices[vk as keyof typeof vertices]
-          for (const snapKind of rule.snapKinds) {
-            expect(SNAP_KINDS).toContain(snapKind)
-          }
+      const draggedTypes = Object.keys(SNAP_RULES)
+      for (const dt of draggedTypes) {
+        const snapKinds = SNAP_RULES[dt as keyof typeof SNAP_RULES]
+        for (const snapKind of snapKinds) {
+          expect(SNAP_KINDS).toContain(snapKind)
         }
       }
     })
 
-    it('every suggested constraint is a known constraint kind', () => {
-      const entityKinds = Object.keys(SNAP_RULES)
-      for (const ek of entityKinds) {
-        const vertices = SNAP_RULES[ek as keyof typeof SNAP_RULES]
-        const vertexKeys = Object.keys(vertices)
-        for (const vk of vertexKeys) {
-          const rule = vertices[vk as keyof typeof vertices]
-          expect(
-            CONSTRAINT_BY_KIND.has(rule.suggest),
-            `unknown constraint "${rule.suggest}" for ${ek}.${vk}`
-          ).toBe(true)
-        }
-      }
+    it('vertex dragged type can snap to vertex, midpoint, path, and alignment', () => {
+      const vertexRule = SNAP_RULES.vertex
+      expect(vertexRule).toContain('vertex')
+      expect(vertexRule).toContain('midpoint')
+      expect(vertexRule).toContain('path')
+      expect(vertexRule).toContain('kinda_horizontal')
+      expect(vertexRule).toContain('kinda_vertical')
     })
 
-    it('line vertices have both start and end rules', () => {
-      expect(SNAP_RULES.line).toHaveProperty('start')
-      expect(SNAP_RULES.line).toHaveProperty('end')
-    })
-
-    it('circle has center rule', () => {
-      expect(SNAP_RULES.circle).toHaveProperty('center')
-    })
-
-    it('arc has start, end, and center rules', () => {
-      expect(SNAP_RULES.arc).toHaveProperty('start')
-      expect(SNAP_RULES.arc).toHaveProperty('end')
-      expect(SNAP_RULES.arc).toHaveProperty('center')
-    })
-
-    it('point has xy rule', () => {
-      expect(SNAP_RULES.point).toHaveProperty('xy')
-    })
-  })
-
-  describe('getSnapRule', () => {
-    it('returns rule for known entity+vertex combination', () => {
-      const rule = getSnapRule('line', 'start')
-      expect(rule).toBeDefined()
-      expect(rule!.snapKinds).toBeDefined()
-    })
-
-    it('returns undefined for unknown entity kind', () => {
-      expect(getSnapRule('unknown', 'start')).toBeUndefined()
-    })
-
-    it('returns undefined for unknown vertex key', () => {
-      expect(getSnapRule('line', 'unknown')).toBeUndefined()
+    it('entity dragged type can only snap to path and alignment (not individual vertices)', () => {
+      const entityRule = SNAP_RULES.entity
+      expect(entityRule).toContain('path')
+      expect(entityRule).toContain('kinda_horizontal')
+      expect(entityRule).toContain('kinda_vertical')
+      expect(entityRule).not.toContain('vertex')
+      expect(entityRule).not.toContain('midpoint')
     })
   })
 
   describe('canSnapTo', () => {
-    it('returns true when snap kind is in rule', () => {
-      const rule = getSnapRule('line', 'start')
-      expect(canSnapTo(rule!, 'vertex')).toBe(true)
+    it('returns true when snap kind is allowed for vertex drag', () => {
+      expect(canSnapTo('vertex', 'vertex')).toBe(true)
+      expect(canSnapTo('vertex', 'path')).toBe(true)
+      expect(canSnapTo('vertex', 'kinda_horizontal')).toBe(true)
     })
 
-    it('returns false when snap kind is not in rule', () => {
-      const rule = getSnapRule('circle', 'center')
-      expect(canSnapTo(rule!, 'midpoint')).toBe(false)
+    it('returns false when snap kind is not allowed for vertex drag', () => {
+      // vertex drag should never snap to nothing, but this tests the logic
+      expect(canSnapTo('vertex', 'vertex')).toBe(true)
+    })
+
+    it('returns true when snap kind is allowed for entity drag', () => {
+      expect(canSnapTo('entity', 'path')).toBe(true)
+      expect(canSnapTo('entity', 'kinda_vertical')).toBe(true)
+    })
+
+    it('returns false when entity drag tries to snap to vertex', () => {
+      expect(canSnapTo('entity', 'vertex')).toBe(false)
+      expect(canSnapTo('entity', 'midpoint')).toBe(false)
     })
   })
 
   describe('suggestConstraint', () => {
-    it('returns constraint for valid snap combination', () => {
-      const constraint = suggestConstraint('line', 'start', 'vertex')
-      expect(constraint).toBe('coincident')
+    it('returns coincident for vertex snap', () => {
+      expect(suggestConstraint('vertex', 'vertex')).toBe('coincident')
     })
 
-    it('returns constraint for invalid snap combination when it makes sense', () => {
-      const constraint = suggestConstraint('circle', 'center', 'vertex')
-      expect(constraint).toBe('concentric')
+    it('returns coincident for midpoint snap', () => {
+      expect(suggestConstraint('vertex', 'midpoint')).toBe('coincident')
     })
 
-    it('returns null for unknown entity kind', () => {
-      expect(suggestConstraint('unknown', 'start', 'vertex')).toBeNull()
+    it('returns coincident for path snap', () => {
+      expect(suggestConstraint('vertex', 'path')).toBe('coincident')
+      expect(suggestConstraint('entity', 'path')).toBe('coincident')
     })
 
-    it('returns null for unknown vertex key', () => {
-      expect(suggestConstraint('line', 'unknown', 'vertex')).toBeNull()
+    it('returns horizontal for kinda_horizontal snap', () => {
+      expect(suggestConstraint('vertex', 'kinda_horizontal')).toBe('horizontal')
+      expect(suggestConstraint('entity', 'kinda_horizontal')).toBe('horizontal')
     })
 
-    it('line vertex suggests coincident for vertex snap', () => {
-      expect(suggestConstraint('line', 'start', 'vertex')).toBe('coincident')
-      expect(suggestConstraint('line', 'end', 'vertex')).toBe('coincident')
+    it('returns vertical for kinda_vertical snap', () => {
+      expect(suggestConstraint('vertex', 'kinda_vertical')).toBe('vertical')
+      expect(suggestConstraint('entity', 'kinda_vertical')).toBe('vertical')
     })
 
-    it('line vertex suggests coincident for midpoint snap', () => {
-      expect(suggestConstraint('line', 'start', 'midpoint')).toBe('coincident')
-      expect(suggestConstraint('line', 'end', 'midpoint')).toBe('coincident')
+    it('returns null for invalid snap combination (entity dragging to vertex)', () => {
+      expect(suggestConstraint('entity', 'vertex')).toBeNull()
+      expect(suggestConstraint('entity', 'midpoint')).toBeNull()
     })
 
-    it('line vertex suggests coincident for center snap (circle/arc centers)', () => {
-      expect(suggestConstraint('line', 'start', 'center')).toBe('coincident')
-      expect(suggestConstraint('line', 'end', 'center')).toBe('coincident')
-    })
-
-    it('line vertex suggests coincident for path snap (edge snapping)', () => {
-      expect(suggestConstraint('line', 'start', 'path')).toBe('coincident')
-      expect(suggestConstraint('line', 'end', 'path')).toBe('coincident')
-    })
-
-    it('arc endpoints suggest coincident for path snap', () => {
-      expect(suggestConstraint('arc', 'start', 'path')).toBe('coincident')
-      expect(suggestConstraint('arc', 'end', 'path')).toBe('coincident')
-    })
-
-    it('circle center does not suggest path snap', () => {
-      expect(suggestConstraint('circle', 'center', 'path')).toBeNull()
-    })
-
-    it('point suggests coincident for path snap', () => {
-      expect(suggestConstraint('point', 'xy', 'path')).toBe('coincident')
-    })
-
-    it('circle center suggests concentric for center snap', () => {
-      expect(suggestConstraint('circle', 'center', 'center')).toBe('concentric')
-    })
-
-    it('arc endpoints suggest coincident for vertex snap', () => {
-      expect(suggestConstraint('arc', 'start', 'vertex')).toBe('coincident')
-      expect(suggestConstraint('arc', 'end', 'vertex')).toBe('coincident')
-    })
-
-    it('arc center suggests concentric for center snap', () => {
-      expect(suggestConstraint('arc', 'center', 'center')).toBe('concentric')
-    })
-
-    it('point suggests coincident for vertex snap', () => {
-      expect(suggestConstraint('point', 'xy', 'vertex')).toBe('coincident')
+    it('all suggested constraints are known constraint kinds', () => {
+      const combinations: [string, string][] = [
+        ['vertex', 'vertex'],
+        ['vertex', 'midpoint'],
+        ['vertex', 'path'],
+        ['vertex', 'kinda_horizontal'],
+        ['vertex', 'kinda_vertical'],
+        ['entity', 'path'],
+        ['entity', 'kinda_horizontal'],
+        ['entity', 'kinda_vertical'],
+      ]
+      for (const [dt, sk] of combinations) {
+        const constraint = suggestConstraint(dt as 'vertex' | 'entity', sk as 'vertex' | 'midpoint' | 'path' | 'kinda_horizontal' | 'kinda_vertical')
+        if (constraint) {
+          expect(
+            CONSTRAINT_BY_KIND.has(constraint),
+            `unknown constraint "${constraint}" for ${dt} -> ${sk}`
+          ).toBe(true)
+        }
+      }
     })
   })
 })

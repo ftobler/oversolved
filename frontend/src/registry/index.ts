@@ -25,10 +25,9 @@ export type { EntityDef, VertexDef } from './entityRegistry'
 export {
   SNAP_RULES,
   SNAP_KINDS,
-  getSnapRule,
   canSnapTo,
   suggestConstraint,
   detectAlignmentSnap,
   ALIGNMENT_TOLERANCE_DEG,
 } from './snapRegistry'
-export type { SnapKind, SnapRule, SnapRules, SnapRulesEntity, AlignmentSnapResult } from './snapRegistry'
+export type { SnapKind, DraggedElementType, AlignmentSnapResult } from './snapRegistry'
