@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { Mutation } from '../types/cad'
 import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '../registry'
 import type { SnapKind } from '../registry'
+import type { SnapTarget } from '../components/Geometry3D/Dragging'
 
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type { Mutation }
@@ -45,7 +46,7 @@ interface SketchEditorState {
   // --- state ---
   selection: Set<string>
   drag: DragState | null
-  dragSnap: { vertexId: string; position: [number, number] } | null
+  dragSnap: SnapTarget | null
   orbitEnabled: boolean
   isRotating: boolean
   showDebugHit: boolean
@@ -78,7 +79,7 @@ interface SketchEditorState {
   toggleSelect: (id: string) => void
   clearSelection: () => void
   setDrag: (drag: DragState | null) => void
-  setDragSnap: (snap: { vertexId: string; position: [number, number] } | null) => void
+  setDragSnap: (snap: SnapTarget | null) => void
   setOrbitEnabled: (enabled: boolean) => void
   setIsRotating: (rotating: boolean) => void
   setShowDebugHit: (enabled: boolean) => void

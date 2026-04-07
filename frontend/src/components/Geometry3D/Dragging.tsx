@@ -6,42 +6,51 @@ import { isProjectedEntity } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { Dot, VertexHighlight } from './VertexDots'
 import { p2w } from '../sketch_helpers'
+import { nearestPointOnEntity } from './nearestPoint'
 import { COLOR_SNAP, DRAG_SNAP_RADIUS_PX, POINT_HIT_PIXELS } from './constants'
 
+// Snap kind discriminator:
+//   'vertex' — cursor is close to a specific named vertex (point-to-point coincident)
+//   'entity' — cursor is close to an entity body but not to a vertex (point-on-entity coincident)
+// Vertex snap takes priority over entity snap at the same distance.
+export type DragSnapKind = 'vertex' | 'entity'
+
 export interface SnapTarget {
-  vertexId: string
+  kind: DragSnapKind
   position: [number, number]
+  vertexId?: string   // set when kind === 'vertex'; format: "vertex:featureId:entityId:key"
+  entityRef?: string  // set when kind === 'entity'; format: "entity:featureId:entityId"
 }
 
-/** Collect all vertex positions from a sketch, excluding those belonging to skipEntityId.
- *  Returns entries of { vertexId, position } for snap detection. */
+/** Collect all discrete vertex positions from a sketch.
+ *  Excludes projected entities and the entity currently being dragged. */
 // eslint-disable-next-line react-refresh/only-export-components
-export function collectSnapTargets(sketch: Sketch, featureId: string, skipEntityId: string): SnapTarget[] {
+export function collectVertexTargets(sketch: Sketch, featureId: string, skipEntityId: string): SnapTarget[] {
   const targets: SnapTarget[] = []
   for (const [entityId, entity] of Object.entries(sketch)) {
-    if (isProjectedEntity(entity as Entity)) continue  // skip projected reference entities
-    if (entityId === skipEntityId) continue  // skip dragged entity's own vertices
+    if (isProjectedEntity(entity as Entity)) continue
+    if (entityId === skipEntityId) continue
 
     if ('start' in entity && 'end' in entity) {
       const l = entity as LineSegment | Arc
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:start`, position: l.start })
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:end`, position: l.end })
+      targets.push({ kind: 'vertex', vertexId: `vertex:${featureId}:${entityId}:start`, position: l.start })
+      targets.push({ kind: 'vertex', vertexId: `vertex:${featureId}:${entityId}:end`, position: l.end })
       if ('radius' in l && 'angle_start' in l) {
-        // Arc also has center
-        targets.push({ vertexId: `vertex:${featureId}:${entityId}:center`, position: (l as Arc).center })
+        targets.push({ kind: 'vertex', vertexId: `vertex:${featureId}:${entityId}:center`, position: (l as Arc).center })
       }
     } else if ('center' in entity && 'radius' in entity) {
       const c = entity as Circle
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:center`, position: c.center })
+      targets.push({ kind: 'vertex', vertexId: `vertex:${featureId}:${entityId}:center`, position: c.center })
     } else if ('x' in entity) {
       const p = entity as PointEntity
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:xy`, position: [p.x, p.y] })
+      targets.push({ kind: 'vertex', vertexId: `vertex:${featureId}:${entityId}:xy`, position: [p.x, p.y] })
     }
   }
   return targets
 }
 
-/** Find the nearest snap target within threshold world units. Returns null if none found. */
+/** Find the best snap target within threshold world units.
+ *  Vertex snap takes priority over entity/path snap at the same distance. */
 // eslint-disable-next-line react-refresh/only-export-components
 export function findSnapTarget(
   sketch: Sketch,
@@ -51,17 +60,35 @@ export function findSnapTarget(
   y: number,
   threshold: number,
 ): SnapTarget | null {
-  const targets = collectSnapTargets(sketch, featureId, skipEntityId)
-  let best: SnapTarget | null = null
-  let bestDist = threshold
-  for (const t of targets) {
+  // First pass: find nearest vertex (highest priority)
+  let bestVertex: SnapTarget | null = null
+  let bestVertexDist = threshold
+  for (const t of collectVertexTargets(sketch, featureId, skipEntityId)) {
     const d = Math.hypot(t.position[0] - x, t.position[1] - y)
-    if (d < bestDist) {
-      bestDist = d
-      best = t
+    if (d < bestVertexDist) {
+      bestVertexDist = d
+      bestVertex = t
     }
   }
-  return best
+  if (bestVertex) return bestVertex
+
+  // Second pass: find nearest point on any entity body (fallback)
+  let bestEntity: SnapTarget | null = null
+  let bestEntityDist = threshold
+  for (const [entityId, entity] of Object.entries(sketch)) {
+    if (isProjectedEntity(entity as Entity)) continue
+    if (entityId === skipEntityId) continue
+    const result = nearestPointOnEntity(x, y, entity as Entity)
+    if (result && result.distance < bestEntityDist) {
+      bestEntityDist = result.distance
+      bestEntity = {
+        kind: 'entity',
+        position: result.position as [number, number],
+        entityRef: `entity:${featureId}:${entityId}`,
+      }
+    }
+  }
+  return bestEntity
 }
 
 export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: Sketch }) {
@@ -116,7 +143,7 @@ export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: S
         const [x, y] = toLocal(e.point)
         setDrag({ ...drag, currentWorld: [x, y] })
 
-        // Snap detection: only for vertex drags
+        // Snap detection: vertex then entity, only for vertex drags
         if (drag.type === 'vertex' && sketch) {
           const threshold = DRAG_SNAP_RADIUS_PX * p2w(camera)
           const snap = findSnapTarget(sketch, drag.featureId, drag.entityId, x, y, threshold)
@@ -156,8 +183,7 @@ export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: S
                 finalDrag.currentWorld[1] - finalDrag.startWorld[1],
               ]
               onMutation({ type: 'move_entity', featureId: finalDrag.featureId, entityId: finalDrag.entityId, delta })
-            } else if (dragSnap) {
-              // Snap: move vertex to snapped position and add coincident constraint
+            } else if (dragSnap?.kind === 'vertex') {
               onMutation({
                 type: 'move_vertex_with_constraint',
                 featureId: finalDrag.featureId,
@@ -166,6 +192,16 @@ export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: S
                 to: dragSnap.position,
                 constraintKind: 'coincident',
                 snapVertexId: dragSnap.vertexId,
+              })
+            } else if (dragSnap?.kind === 'entity') {
+              onMutation({
+                type: 'move_vertex_with_constraint',
+                featureId: finalDrag.featureId,
+                entityId: finalDrag.entityId,
+                vertexKey: finalDrag.vertexKey,
+                to: dragSnap.position,
+                constraintKind: 'coincident',
+                snapEntityRef: dragSnap.entityRef,
               })
             } else {
               onMutation({ type: 'move_vertex', featureId: finalDrag.featureId,

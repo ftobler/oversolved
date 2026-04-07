@@ -221,13 +221,16 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       case 'move_vertex':
         applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to)
         break
-      case 'move_vertex_with_constraint':
+      case 'move_vertex_with_constraint': {
         applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to)
-        applyAddConstraint(next, m.featureId, m.constraintKind, [
-          `vertex:${m.featureId}:${m.entityId}:${m.vertexKey}`,
-          m.snapVertexId,
-        ])
+        const draggedRef = `vertex:${m.featureId}:${m.entityId}:${m.vertexKey}`
+        // snapVertexId: point-to-point coincident; snapEntityRef: point-on-entity coincident
+        const snapRef = m.snapVertexId ?? m.snapEntityRef
+        if (snapRef) {
+          applyAddConstraint(next, m.featureId, m.constraintKind, [draggedRef, snapRef])
+        }
         break
+      }
       case 'move_entity':
         applyMoveEntity(next, m.featureId, m.entityId, m.delta)
         break
