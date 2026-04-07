@@ -164,7 +164,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     )
   } else if ('x' in e) {
     const pt = e as PointEntity
-    return <VertexDot x={pt.x} y={pt.y} px={5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="xy" entityKind={entityKind} isEditing={isEditing} />
+    return <VertexDot x={pt.x} y={pt.y} px={5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="xy" entityKind={entityKind} isEditing={isEditing} showDebugHit={showDebugHit} />
   } else {
     const circ = e as Circle
     const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
