@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Html } from '@react-three/drei'
 import type { Sketch, Constraints, Entity } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import type { DragState } from '../../stores/sketchEditorStore'
 import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl } from '../sketch_helpers'
 import { LinearDimension, RadiusDimension, DiameterDimension, AngleDimension } from '../sketch_dimensions'
 import { COLOR_SELECTED } from './constants'
@@ -54,6 +55,10 @@ interface ConstraintOverlaysProps {
 }
 
 export function ConstraintOverlays({ constraints, sketch, extent, featureId }: ConstraintOverlaysProps) {
+  const drag = useSketchEditorStore(s => s.drag)
+
+  if (drag) return null
+
   const dimOffset = extent * 0.1
 
   const byEntity: Record<string, [string, Constraints[string]][]> = {}
