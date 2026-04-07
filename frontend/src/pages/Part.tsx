@@ -329,7 +329,6 @@ export default function Part() {
 
   const handleSave = async () => {
     if (!uuid || !doc) return
-    viewportRef.current?.autoZoomToFit()
     const success = await saveDoc(uuid, doc, viewportRef.current?.captureScreenshotForSaving)
     if (success) setError(null)
   }
