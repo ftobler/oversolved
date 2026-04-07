@@ -28,5 +28,7 @@ export {
   getSnapRule,
   canSnapTo,
   suggestConstraint,
+  detectAlignmentSnap,
+  ALIGNMENT_TOLERANCE_DEG,
 } from './snapRegistry'
-export type { SnapKind, SnapRule, SnapRules, SnapRulesEntity } from './snapRegistry'
+export type { SnapKind, SnapRule, SnapRules, SnapRulesEntity, AlignmentSnapResult } from './snapRegistry'

@@ -265,6 +265,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   }, [closeContextMenu])
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    // Clear dynamic selection on pointer up (tools have already processed their events)
+    const { isPointerDown, clearDynamicSelection, setIsPointerDown } = useSketchEditorStore.getState()
+    if (isPointerDown) {
+      setIsPointerDown(false)
+      clearDynamicSelection()
+    }
+
     if (!pointerDownPos.current) {
       wasPointerDrag.current = false
       pointerDownButton.current = null

@@ -16,7 +16,7 @@ import { ConstraintOverlays } from './Constraints'
 import { TopologySurfaces } from './Surfaces'
 
 // Dragging
-import { DragPlane, DragSnapIndicator, applyDragPreview } from './Dragging'
+import { DragPlane, DragSnapIndicator, DragAlignmentIndicator, applyDragPreview } from './Dragging'
 
 // Drawing tools
 import { DrawPreview, DrawPlane } from './Drawing'
@@ -91,6 +91,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
       {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
       {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} />}
       {isEditing && <DragSnapIndicator />}
+      {isEditing && <DragAlignmentIndicator />}
       <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} />
       <DrawPlane featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} otherSketches={otherSketches} />
     </group>
@@ -104,5 +105,5 @@ export { EntityLines, ProjectedEntities, sketchExtent }
 export { ConstraintOverlays }
 export { TopologySurfaces }
 // eslint-disable-next-line react-refresh/only-export-components
-export { DragPlane, DragSnapIndicator, applyDragPreview }
+export { DragPlane, DragSnapIndicator, DragAlignmentIndicator, applyDragPreview }
 export { DrawPreview, DrawPlane }

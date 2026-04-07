@@ -45,6 +45,12 @@ export type DragState = VertexOrEdgeDrag | DimLabelDrag
 interface SketchEditorState {
   // --- state ---
   selection: Set<string>
+  dynamicSelection: Set<string>   // temporarily selected elements while mouse pressed
+  isPointerDown: boolean          // track if pointer is currently pressed
+  // --- alignment snap state for kinda_horizontal/kinda_vertical ---
+  alignmentSnapPoint: [number, number] | null  // point to snap to for alignment
+  alignmentSnapKind: 'kinda_horizontal' | 'kinda_vertical' | null  // which alignment is active
+  alignmentSnapVertexId: string | null  // vertex ID to create constraint with
   drag: DragState | null
   dragSnap: SnapTarget | null
   orbitEnabled: boolean
@@ -78,6 +84,10 @@ interface SketchEditorState {
   // --- actions ---
   toggleSelect: (id: string) => void
   clearSelection: () => void
+  setIsPointerDown: (down: boolean) => void
+  toggleDynamicSelection: (id: string) => void
+  clearDynamicSelection: () => void
+  setAlignmentSnap: (point: [number, number] | null, kind: 'kinda_horizontal' | 'kinda_vertical' | null, vertexId: string | null) => void
   setDrag: (drag: DragState | null) => void
   setDragSnap: (snap: SnapTarget | null) => void
   setOrbitEnabled: (enabled: boolean) => void
@@ -112,6 +122,11 @@ interface SketchEditorState {
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   selection: new Set(),
+  dynamicSelection: new Set(),
+  isPointerDown: false,
+  alignmentSnapPoint: null,
+  alignmentSnapKind: null,
+  alignmentSnapVertexId: null,
   drag: null,
   dragSnap: null,
   orbitEnabled: true,
@@ -149,6 +164,20 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     }),
 
   clearSelection: () => set({ selection: new Set() }),
+
+  setIsPointerDown: (down) => set({ isPointerDown: down }),
+
+  toggleDynamicSelection: (id) =>
+    set(s => {
+      const next = new Set(s.dynamicSelection)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return { dynamicSelection: next }
+    }),
+
+  clearDynamicSelection: () => set({ dynamicSelection: new Set() }),
+
+  setAlignmentSnap: (point, kind, vertexId) => set({ alignmentSnapPoint: point, alignmentSnapKind: kind, alignmentSnapVertexId: vertexId }),
 
   setDrag: (drag) => set({ drag }),
   setDragSnap: (snap) => set({ dragSnap: snap }),

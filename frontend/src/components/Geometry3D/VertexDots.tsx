@@ -128,6 +128,10 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   )
   const drag = useSketchEditorStore(s => s.drag)
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
+  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
+  const toggleDynamicSelection = useSketchEditorStore(s => s.toggleDynamicSelection)
+  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
+  const lastHoveredRef = useRef<string | null>(null)
   // REGRESSION PROTECTION: Hide collision geometry during vertex drag
   // BUG: When dragging a vertex, DragPlane raycasts could be blocked by the
   //      vertex's own hit sphere collision geometry (scaled to HIT_PIXELS).
@@ -174,6 +178,11 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     if (!isEditing || activeTool !== 'select') return
     e.stopPropagation()
     setOrbitEnabled(false)
+
+    // Dynamic selection: track pointer down state
+    setIsPointerDown(true)
+    toggleDynamicSelection(vertId)
+
     // startClient is screen pixel coordinates at pointer-down; used to distinguish clicks from drags.
     // Must be the actual cursor position, not the vertex center, so that pure clicks (cursor barely
     // moves) don't emit spurious move mutations. See: dragging.test.ts REGRESSION 4
@@ -187,7 +196,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
       currentWorld: [x, y],
       startClient: [e.clientX, e.clientY],
     })
-  }, [isEditing, vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool])
+  }, [isEditing, vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool, setIsPointerDown, toggleDynamicSelection])
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
   const snapKind = determineSnapKind(entityKind, vertexKey)
@@ -196,9 +205,16 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     if (!isDrawingTool) e.stopPropagation()
     setHovered(true)
     if (vertId) setHoveredVertex(vertId, [x, y], snapKind)
+
+    // Dynamic selection: add to set if pointer is down and not already processed
+    if (isPointerDown && vertId && lastHoveredRef.current !== vertId) {
+      lastHoveredRef.current = vertId
+      toggleDynamicSelection(vertId)
+    }
   }
   const handlePointerOut = () => {
     if (isRotating) return
+    lastHoveredRef.current = null
     setHovered(false)
     setHoveredVertex(null, null, null)
   }

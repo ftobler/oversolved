@@ -1,12 +1,13 @@
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, useEffect } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { sampleArc, sampleArcCCW } from '../sketch_helpers'
 import { Dot } from './VertexDots'
+import { DashedLine } from '../sketch_dimensions'
 import { COLOR_PREVIEW } from './constants'
-import { suggestConstraint } from '../../registry'
-import type { Sketch } from '../../types/cad'
+import { suggestConstraint, detectAlignmentSnap } from '../../registry'
+import type { Sketch, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
 import { nearestPointOnEntity } from './nearestPoint'
 
 // Compute circumcircle of 3 points. Returns null if points are collinear.
@@ -105,11 +106,16 @@ export function DrawPreview({ featureId, activeFeatureId }: { featureId: string;
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
   const drawHover = useSketchEditorStore(s => s.drawHover)
+  const alignmentSnapPoint = useSketchEditorStore(s => s.alignmentSnapPoint)
+  const alignmentSnapKind = useSketchEditorStore(s => s.alignmentSnapKind)
 
   if (featureId !== activeFeatureId) return null
   if (activeTool === 'select') return null
 
   const previewPts = computePreviewPts(activeTool, drawPoints, drawHover)
+
+  // Compute the actual endpoint position (handles snapping)
+  const endpoint = drawHover
 
   return (
     <>
@@ -123,6 +129,17 @@ export function DrawPreview({ featureId, activeFeatureId }: { featureId: string;
       )}
       {/* Preview line/shape */}
       {previewPts && <Line points={previewPts} color={COLOR_PREVIEW} lineWidth={1} />}
+      {/* Alignment guide lines */}
+      {alignmentSnapPoint && endpoint && alignmentSnapKind && (
+        <DashedLine
+          points={[
+            [alignmentSnapPoint[0], alignmentSnapPoint[1], 0],
+            [endpoint[0], endpoint[1], 0],
+          ]}
+          color={COLOR_PREVIEW}
+          lineWidth={1}
+        />
+      )}
     </>
   )
 }
@@ -141,6 +158,8 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }:
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
   const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
+  const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
+  const setAlignmentSnap = useSketchEditorStore(s => s.setAlignmentSnap)
 
   const drawHover = useSketchEditorStore(s => s.drawHover)
 
@@ -159,6 +178,66 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }:
     const [hx, hy] = drawHover
     return nearestPointOnEntity(hx, hy, entity)
   }, [sketch, drawHover, hoveredEntityId])
+
+  // Build map of dynamic selection positions for alignment detection
+  const dynamicSelectionPositions = useMemo(() => {
+    const pos = new Map<string, [number, number]>()
+    if (!sketch) return pos
+    for (const id of dynamicSelection) {
+      if (id.startsWith('vertex:')) {
+        // Format: vertex:featureId:entityId:key
+        const parts = id.split(':')
+        if (parts.length >= 4) {
+          const [, , entityId, vertexKey] = parts
+          const entity = sketch[entityId]
+          if (entity) {
+            if ('start' in entity && 'end' in entity) {
+              const lineEntity = entity as LineSegment | Arc
+              if (vertexKey === 'start') pos.set(id, lineEntity.start)
+              else if (vertexKey === 'end') pos.set(id, lineEntity.end)
+              else if (vertexKey === 'center' && 'radius' in entity) pos.set(id, (entity as Arc).center)
+            } else if ('center' in entity && vertexKey === 'center') {
+              pos.set(id, (entity as Circle).center)
+            } else if ('x' in entity && vertexKey === 'xy') {
+              const ptEntity = entity as PointEntity
+              pos.set(id, [ptEntity.x, ptEntity.y])
+            }
+          }
+        }
+      } else if (id.startsWith('entity:')) {
+        // Use entity center for entity references
+        const parts = id.split(':')
+        if (parts.length >= 3) {
+          const [, , entityId] = parts
+          const entity = sketch[entityId]
+          if (entity) {
+            if ('start' in entity && 'end' in entity) {
+              const mid: [number, number] = [(entity.start[0] + entity.end[0]) / 2, (entity.start[1] + entity.end[1]) / 2]
+              pos.set(id, mid)
+            } else if ('center' in entity) {
+              pos.set(id, (entity as Circle).center)
+            }
+          }
+        }
+      }
+    }
+    return pos
+  }, [dynamicSelection, sketch])
+
+  // Detect alignment snap when drawing with dynamic selection
+  useEffect(() => {
+    if (!drawHover || dynamicSelection.size === 0) {
+      setAlignmentSnap(null, null, null)
+      return
+    }
+
+    const alignment = detectAlignmentSnap(dynamicSelection, drawHover, dynamicSelectionPositions)
+    if (alignment) {
+      setAlignmentSnap(alignment.point, alignment.kind, alignment.vertexId)
+    } else {
+      setAlignmentSnap(null, null, null)
+    }
+  }, [drawHover, dynamicSelection, dynamicSelectionPositions, setAlignmentSnap])
 
   if (featureId !== activeFeatureId) return null
 
@@ -192,7 +271,16 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }:
         addDrawPoint([px, py])
       } else {
         // Second click: create line with constraint if snapped
-        if (hoveredVertexId && hoveredSnapKind) {
+        // Priority: alignment snap > vertex snap > path snap > none
+        const alignmentSnapPoint = useSketchEditorStore.getState().alignmentSnapPoint
+        const alignmentSnapKind = useSketchEditorStore.getState().alignmentSnapKind
+        const alignmentSnapVertexId = useSketchEditorStore.getState().alignmentSnapVertexId
+
+        if (alignmentSnapPoint && alignmentSnapKind && alignmentSnapVertexId) {
+          const constraintKind = alignmentSnapKind === 'kinda_horizontal' ? 'horizontal' : 'vertical'
+          onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
+            params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: alignmentSnapVertexId, constraintKind })
+        } else if (hoveredVertexId && hoveredSnapKind) {
           const constraintKind = suggestConstraint('line', 'end', hoveredSnapKind) ?? 'coincident'
           onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
             params: [pts[0][0], pts[0][1], px, py], vertexKey: 'end', snapVertexId: hoveredVertexId, constraintKind })

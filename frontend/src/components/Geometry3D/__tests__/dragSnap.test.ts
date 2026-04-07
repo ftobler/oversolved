@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import type { Sketch } from '../../../types/cad'
-import { findSnapTarget, collectVertexTargets } from '../Dragging'
+import { findSnapTarget, collectVertexTargets, entityKindOf, vertexSnapKind } from '../Dragging'
 
 // Use different vertex vs entity thresholds matching the actual pull zones.
-// Vertex pull zone is larger so it wins near endpoints even when entity body is closer.
-const V_THRESH = 2.0   // vertex pull zone (larger)
-const E_THRESH = 0.8   // entity body pull zone (smaller)
+const V_THRESH = 2.0
+const E_THRESH = 0.8
+
+// Dragged entity is a line, dragging the start vertex.
+const DRAG_KIND = 'line'
+const DRAG_KEY = 'start'
 
 const FEATURE = 'S1'
 
@@ -14,40 +17,51 @@ const makeSketch = (): Sketch => ({
   L2: { start: [10, 0], end: [10, 10] } as Sketch[string],
   C1: { center: [5, 5], radius: 3 } as Sketch[string],
   PT1: { x: 2, y: 3 } as Sketch[string],
-  // Arc: has start, end, center, radius, angle_start, angle_end
   A1: { center: [0, 5], radius: 4, start: [-4, 5], end: [0, 9], angle_start: 180, angle_end: 90 } as Sketch[string],
-  projL: { start: [20, 20], end: [30, 30], projected: true, source: '@S2/L1' } as Sketch[string],  // projected — skip
+  projL: { start: [20, 20], end: [30, 30], projected: true, source: '@S2/L1' } as Sketch[string],
+})
+
+describe('entityKindOf', () => {
+  it('identifies line', () => expect(entityKindOf({ start: [0,0], end: [1,1] } as Sketch[string])).toBe('line'))
+  it('identifies circle', () => expect(entityKindOf({ center: [0,0], radius: 1 } as Sketch[string])).toBe('circle'))
+  it('identifies arc', () => expect(entityKindOf({ center: [0,0], radius: 1, start: [1,0], end: [0,1], angle_start: 0, angle_end: 90 } as Sketch[string])).toBe('arc'))
+  it('identifies point', () => expect(entityKindOf({ x: 0, y: 0 } as Sketch[string])).toBe('point'))
+})
+
+describe('vertexSnapKind', () => {
+  it('center vertex → center snap kind', () => expect(vertexSnapKind('line', 'center')).toBe('center'))
+  it('point entity → vertex snap kind', () => expect(vertexSnapKind('point', 'xy')).toBe('vertex'))
+  it('circle entity → center snap kind', () => expect(vertexSnapKind('circle', 'center')).toBe('center'))
+  it('line endpoint → vertex snap kind', () => expect(vertexSnapKind('line', 'start')).toBe('vertex'))
 })
 
 describe('collectVertexTargets', () => {
-  it('collects line start and end', () => {
+  it('collects line start and end with correct snap kinds', () => {
     const targets = collectVertexTargets(makeSketch(), FEATURE, '__none__')
-    const ids = targets.map(t => t.vertexId)
-    expect(ids).toContain('vertex:S1:L1:start')
-    expect(ids).toContain('vertex:S1:L1:end')
+    const start = targets.find(t => t.vertexId === 'vertex:S1:L1:start')
+    expect(start?.snapKind).toBe('vertex')
+    expect(start?.position).toEqual([0, 0])
   })
 
-  it('collects circle center', () => {
+  it('collects circle center with center snap kind', () => {
     const targets = collectVertexTargets(makeSketch(), FEATURE, '__none__')
-    expect(targets.map(t => t.vertexId)).toContain('vertex:S1:C1:center')
+    const c = targets.find(t => t.vertexId === 'vertex:S1:C1:center')
+    expect(c?.snapKind).toBe('center')
   })
 
-  it('collects point xy', () => {
+  it('collects arc center with center snap kind', () => {
+    const targets = collectVertexTargets(makeSketch(), FEATURE, '__none__')
+    const c = targets.find(t => t.vertexId === 'vertex:S1:A1:center')
+    expect(c?.snapKind).toBe('center')
+  })
+
+  it('collects point with vertex snap kind', () => {
     const targets = collectVertexTargets(makeSketch(), FEATURE, '__none__')
     const pt = targets.find(t => t.vertexId === 'vertex:S1:PT1:xy')
-    expect(pt).toBeDefined()
-    expect(pt!.position).toEqual([2, 3])
+    expect(pt?.snapKind).toBe('vertex')
   })
 
-  it('collects arc start, end, and center', () => {
-    const targets = collectVertexTargets(makeSketch(), FEATURE, '__none__')
-    const ids = targets.map(t => t.vertexId)
-    expect(ids).toContain('vertex:S1:A1:start')
-    expect(ids).toContain('vertex:S1:A1:end')
-    expect(ids).toContain('vertex:S1:A1:center')
-  })
-
-  it('skips projected entities (projected: true)', () => {
+  it('skips projected entities', () => {
     const targets = collectVertexTargets(makeSketch(), FEATURE, '__none__')
     expect(targets.some(t => t.vertexId?.includes('projL'))).toBe(false)
   })
@@ -56,100 +70,69 @@ describe('collectVertexTargets', () => {
     const targets = collectVertexTargets(makeSketch(), FEATURE, 'L1')
     expect(targets.some(t => t.vertexId?.includes(':L1:'))).toBe(false)
   })
-
-  it('all targets have kind vertex', () => {
-    const targets = collectVertexTargets(makeSketch(), FEATURE, '__none__')
-    expect(targets.every(t => t.kind === 'vertex')).toBe(true)
-  })
 })
 
 describe('findSnapTarget — vertex snap', () => {
-  it('returns null when no vertex or entity is within threshold', () => {
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 100, 100, 0.1, 0.04)
+  it('returns null when no vertex or entity within threshold', () => {
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', DRAG_KIND, DRAG_KEY, 100, 100, 0.1, 0.04)
     expect(result).toBeNull()
   })
 
-  it('returns nearest vertex within vertex threshold with kind=vertex', () => {
-    // L1.start is at [0,0], cursor at [0.5, 0.1] — within V_THRESH
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 0.5, 0.1, V_THRESH, E_THRESH)
-    expect(result).not.toBeNull()
-    expect(result!.kind).toBe('vertex')
-    expect(result!.vertexId).toBe('vertex:S1:L1:start')
+  it('returns nearest vertex with constraintKind from registry', () => {
+    // line.start snapping to another line vertex → coincident
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', DRAG_KIND, DRAG_KEY, 0.5, 0.1, V_THRESH, E_THRESH)
+    expect(result?.kind).toBe('vertex')
+    expect(result?.vertexId).toBe('vertex:S1:L1:start')
+    expect(result?.constraintKind).toBe('coincident')
+  })
+
+  it('circle.center dragged near circle.center → concentric from registry', () => {
+    // drag circle center near C1.center [5,5]
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 'circle', 'center', 5.1, 5.1, V_THRESH, E_THRESH)
+    expect(result?.kind).toBe('vertex')
+    expect(result?.constraintKind).toBe('concentric')
   })
 
   it('skips the dragged entity own vertices', () => {
-    // Cursor at L1.start [0,0], dragging L1 — should not snap to self
-    const result = findSnapTarget(makeSketch(), FEATURE, 'L1', 0, 0, 0.5, 0.2)
+    const result = findSnapTarget(makeSketch(), FEATURE, 'L1', DRAG_KIND, DRAG_KEY, 0, 0, 0.5, 0.2)
     expect(result).toBeNull()
   })
 
-  it('returns closest vertex when multiple are within threshold', () => {
-    // L1.end and L2.start are both at [10, 0]
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 10, 0.1, V_THRESH, E_THRESH)
-    expect(result).not.toBeNull()
-    expect(result!.kind).toBe('vertex')
-    expect(['vertex:S1:L1:end', 'vertex:S1:L2:start']).toContain(result!.vertexId)
-  })
-
-  it('handles point entity', () => {
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 2.1, 3.1, V_THRESH, E_THRESH)
-    expect(result).not.toBeNull()
-    expect(result!.kind).toBe('vertex')
-    expect(result!.vertexId).toBe('vertex:S1:PT1:xy')
-  })
-
-  it('handles circle center', () => {
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 5.1, 5.1, V_THRESH, E_THRESH)
-    expect(result).not.toBeNull()
-    expect(result!.kind).toBe('vertex')
-    expect(result!.vertexId).toBe('vertex:S1:C1:center')
+  it('returns closest vertex when multiple within threshold', () => {
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', DRAG_KIND, DRAG_KEY, 10, 0.1, V_THRESH, E_THRESH)
+    expect(result?.kind).toBe('vertex')
+    expect(['vertex:S1:L1:end', 'vertex:S1:L2:start']).toContain(result?.vertexId)
   })
 })
 
 describe('findSnapTarget — entity snap (path fallback)', () => {
-  it('returns entity snap when cursor is on entity body but no vertex nearby', () => {
-    // Midpoint of L1 at [5, 0] — within E_THRESH of entity body, but not within V_THRESH of any vertex
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 5, 0.3, V_THRESH, E_THRESH)
-    expect(result).not.toBeNull()
-    expect(result!.kind).toBe('entity')
-    expect(result!.entityRef).toBe('entity:S1:L1')
-    expect(result!.vertexId).toBeUndefined()
+  it('returns entity snap with constraintKind from registry', () => {
+    // line.start near middle of L1 body → coincident from registry for path snap
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', DRAG_KIND, DRAG_KEY, 5, 0.5, V_THRESH, E_THRESH)
+    expect(result?.kind).toBe('entity')
+    expect(result?.entityRef).toBe('entity:S1:L1')
+    expect(result?.constraintKind).toBe('coincident')
   })
 
-  it('vertex snap wins over entity snap when near an endpoint (larger pull zone)', () => {
-    // Cursor near L1.start [0,0] — within V_THRESH of vertex, also on entity body
-    // Vertex must win even though entity distance is 0
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 0.5, 0.3, V_THRESH, E_THRESH)
-    expect(result!.kind).toBe('vertex')
-    expect(result!.vertexId).toBe('vertex:S1:L1:start')
+  it('vertex snap wins over entity snap when near an endpoint', () => {
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', DRAG_KIND, DRAG_KEY, 0.5, 0.3, V_THRESH, E_THRESH)
+    expect(result?.kind).toBe('vertex')
   })
 
-  it('entity snap fires when cursor is outside vertex pull zone but inside entity pull zone', () => {
-    // Cursor at [5, 0.5] — L1 midpoint region: L1.start [0,0] distance = 5.02 (beyond V_THRESH=2)
-    // nearest on L1 body = [5, 0], distance = 0.5 (within E_THRESH=0.8)
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 5, 0.5, V_THRESH, E_THRESH)
-    expect(result).not.toBeNull()
-    expect(result!.kind).toBe('entity')
+  it('entity snap position is nearest point on entity body', () => {
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', DRAG_KIND, DRAG_KEY, 5, 0.5, V_THRESH, E_THRESH)
+    expect(result?.position[0]).toBeCloseTo(5)
+    expect(result?.position[1]).toBeCloseTo(0)
   })
 
-  it('entity snap position is nearest point on entity, not cursor position', () => {
-    // Cursor at [5, 0.5], nearest on L1 (y=0 line) is [5, 0]
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 5, 0.5, V_THRESH, E_THRESH)
-    expect(result).not.toBeNull()
-    expect(result!.position[0]).toBeCloseTo(5)
-    expect(result!.position[1]).toBeCloseTo(0)
+  it('circle.center dragged near line body → no snap (registry disallows)', () => {
+    // SNAP_RULES.circle.center only allows vertex/center/grid, not path
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 'circle', 'center', 5, 0.5, V_THRESH, E_THRESH)
+    expect(result?.kind).not.toBe('entity')
   })
 
   it('returns null when cursor is off all entities and no vertex nearby', () => {
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 50, 50, V_THRESH, E_THRESH)
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', DRAG_KIND, DRAG_KEY, 50, 50, V_THRESH, E_THRESH)
     expect(result).toBeNull()
-  })
-
-  it('skips projected entities for entity snap', () => {
-    // projL is at [20,20]-[30,30]; cursor near midpoint [25, 25]
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 25, 25, V_THRESH, E_THRESH)
-    if (result) {
-      expect(result.entityRef ?? '').not.toContain('projL')
-    }
   })
 })

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
@@ -60,8 +60,24 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const construction = 'construction' in e && e.construction
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
   const isRotating = useSketchEditorStore(s => s.isRotating)
-  const onOver = (ev: { stopPropagation: () => void }) => { if (isRotating) return; if (!isDrawingTool) ev.stopPropagation(); setHovered(true); setHoveredEntity(entId) }
-  const onOut = () => { if (isRotating) return; setHovered(false); setHoveredEntity(null) }
+  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
+  const toggleDynamicSelection = useSketchEditorStore(s => s.toggleDynamicSelection)
+  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
+  const lastHoveredRef = useRef<string | null>(null)
+
+  const onOver = (ev: { stopPropagation: () => void }) => {
+    if (isRotating) return
+    if (!isDrawingTool) ev.stopPropagation()
+    setHovered(true)
+    setHoveredEntity(entId)
+
+    // Dynamic selection: add to set if pointer is down and not already processed
+    if (isPointerDown && lastHoveredRef.current !== entId) {
+      lastHoveredRef.current = entId
+      toggleDynamicSelection(entId)
+    }
+  }
+  const onOut = () => { if (isRotating) return; lastHoveredRef.current = null; setHovered(false); setHoveredEntity(null) }
   const onClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     ev.stopPropagation()
     if (activeTool === 'dimension') {
@@ -91,12 +107,17 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     if (!isEditing || activeTool !== 'select') return
     ev.stopPropagation()
     setOrbitEnabled(false)
+
+    // Dynamic selection: track pointer down state
+    setIsPointerDown(true)
+    toggleDynamicSelection(entId)
+
     const [sx, sy] = toLocal(ev.point)
     // startClient is screen pixel coordinates at pointer-down; used to distinguish clicks from drags.
     // See: dragging.test.ts REGRESSION 4
     setDrag({ type: 'edge', vertexId: entId, featureId, entityId,
       vertexKey: 'edge', startWorld: [sx, sy], currentWorld: [sx, sy], startClient: [ev.clientX, ev.clientY] })
-  }, [isEditing, entId, featureId, entityId, setDrag, setOrbitEnabled, activeTool, toLocal])
+  }, [isEditing, entId, featureId, entityId, setDrag, setOrbitEnabled, activeTool, toLocal, setIsPointerDown, toggleDynamicSelection])
 
   if ('start' in e && 'end' in e && 'radius' in e) {
     const arc = e as Arc
