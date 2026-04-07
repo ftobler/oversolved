@@ -115,6 +115,35 @@ describe('applyAddConstraint', () => {
   })
 })
 
+describe('move_vertex_with_constraint (combined applyMoveVertex + applyAddConstraint)', () => {
+  it('moves vertex and adds constraint atomically', () => {
+    const doc = makeSampleDoc()
+    applyMoveVertex(doc, 'Sketch1', 'line1', 'end', [20, 5])
+    applyAddConstraint(doc, 'Sketch1', 'coincident', [
+      'vertex:Sketch1:line1:end',
+      'vertex:Sketch1:circ1:center',
+    ])
+    expect(doc.features![0].initial!.line1).toEqual([0, 0, 20, 5])
+    const constraints = doc.features![0].constraints!
+    const added = constraints.find(c => c.kind === 'coincident')
+    expect(added).toBeDefined()
+    expect(added!.a).toEqual('$line1end')
+    expect(added!.b).toEqual('$circ1center')
+  })
+
+  it('vertex moves before constraint is added (order matters)', () => {
+    const doc = makeSampleDoc()
+    const countBefore = doc.features![0].constraints!.length
+    applyMoveVertex(doc, 'Sketch1', 'line1', 'start', [3, 4])
+    applyAddConstraint(doc, 'Sketch1', 'coincident', [
+      'vertex:Sketch1:line1:start',
+      'vertex:Sketch1:pt1:xy',
+    ])
+    expect(doc.features![0].initial!.line1).toEqual([3, 4, 10, 0])
+    expect(doc.features![0].constraints!.length).toBe(countBefore + 1)
+  })
+})
+
 describe('applySetConstraintPos', () => {
   it('sets pos on an existing constraint', () => {
     const doc = makeSampleDoc()

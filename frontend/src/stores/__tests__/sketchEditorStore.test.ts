@@ -386,4 +386,23 @@ describe('sketchEditorStore', () => {
       expect(handler).not.toHaveBeenCalled()
     })
   })
+
+  describe('dragSnap', () => {
+    beforeEach(reset)
+
+    it('starts as null', () => {
+      expect(useSketchEditorStore.getState().dragSnap).toBeNull()
+    })
+
+    it('setDragSnap stores snap target', () => {
+      useSketchEditorStore.getState().setDragSnap({ vertexId: 'vertex:S1:L1:start', position: [3, 4] })
+      expect(useSketchEditorStore.getState().dragSnap).toEqual({ vertexId: 'vertex:S1:L1:start', position: [3, 4] })
+    })
+
+    it('setDragSnap(null) clears snap target', () => {
+      useSketchEditorStore.getState().setDragSnap({ vertexId: 'vertex:S1:L1:start', position: [3, 4] })
+      useSketchEditorStore.getState().setDragSnap(null)
+      expect(useSketchEditorStore.getState().dragSnap).toBeNull()
+    })
+  })
 })

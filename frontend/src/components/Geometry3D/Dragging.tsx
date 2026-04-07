@@ -1,14 +1,78 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
-import type { Sketch, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
+import { useThree } from '@react-three/fiber'
+import type { Sketch, LineSegment, Circle, Arc, PointEntity, Entity } from '../../types/cad'
+import { isProjectedEntity } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { Dot, VertexHighlight } from './VertexDots'
+import { p2w } from '../sketch_helpers'
+import { COLOR_SNAP, DRAG_SNAP_RADIUS_PX, POINT_HIT_PIXELS } from './constants'
 
-export function DragPlane({ featureId }: { featureId: string }) {
+export interface SnapTarget {
+  vertexId: string
+  position: [number, number]
+}
+
+/** Collect all vertex positions from a sketch, excluding those belonging to skipEntityId.
+ *  Returns entries of { vertexId, position } for snap detection. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function collectSnapTargets(sketch: Sketch, featureId: string, skipEntityId: string): SnapTarget[] {
+  const targets: SnapTarget[] = []
+  for (const [entityId, entity] of Object.entries(sketch)) {
+    if (isProjectedEntity(entity as Entity)) continue  // skip projected reference entities
+    if (entityId === skipEntityId) continue  // skip dragged entity's own vertices
+
+    if ('start' in entity && 'end' in entity) {
+      const l = entity as LineSegment | Arc
+      targets.push({ vertexId: `vertex:${featureId}:${entityId}:start`, position: l.start })
+      targets.push({ vertexId: `vertex:${featureId}:${entityId}:end`, position: l.end })
+      if ('radius' in l && 'angle_start' in l) {
+        // Arc also has center
+        targets.push({ vertexId: `vertex:${featureId}:${entityId}:center`, position: (l as Arc).center })
+      }
+    } else if ('center' in entity && 'radius' in entity) {
+      const c = entity as Circle
+      targets.push({ vertexId: `vertex:${featureId}:${entityId}:center`, position: c.center })
+    } else if ('x' in entity) {
+      const p = entity as PointEntity
+      targets.push({ vertexId: `vertex:${featureId}:${entityId}:xy`, position: [p.x, p.y] })
+    }
+  }
+  return targets
+}
+
+/** Find the nearest snap target within threshold world units. Returns null if none found. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function findSnapTarget(
+  sketch: Sketch,
+  featureId: string,
+  skipEntityId: string,
+  x: number,
+  y: number,
+  threshold: number,
+): SnapTarget | null {
+  const targets = collectSnapTargets(sketch, featureId, skipEntityId)
+  let best: SnapTarget | null = null
+  let bestDist = threshold
+  for (const t of targets) {
+    const d = Math.hypot(t.position[0] - x, t.position[1] - y)
+    if (d < bestDist) {
+      bestDist = d
+      best = t
+    }
+  }
+  return best
+}
+
+export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: Sketch }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const drag = useSketchEditorStore(s => s.drag)
+  const dragSnap = useSketchEditorStore(s => s.dragSnap)
   const setDrag = useSketchEditorStore(s => s.setDrag)
+  const setDragSnap = useSketchEditorStore(s => s.setDragSnap)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const onMutation = useSketchEditorStore(s => s.onMutation)
+  const { camera } = useThree()
 
   // DragPlane must be at the same z-level as the sketch plane to avoid coordinate
   // distortion when the camera views at an angle. Raycasting to z=0.5 (or z=90)
@@ -36,10 +100,10 @@ export function DragPlane({ featureId }: { featureId: string }) {
   // never fires, leaving orbitEnabled=false permanently. Listen on window instead.
   useEffect(() => {
     if (!drag || drag.featureId !== featureId) return
-    const cancel = () => { setDrag(null); setOrbitEnabled(true) }
+    const cancel = () => { setDrag(null); setDragSnap(null); setOrbitEnabled(true) }
     window.addEventListener('pointerup', cancel)
     return () => window.removeEventListener('pointerup', cancel)
-  }, [drag, featureId, setDrag, setOrbitEnabled])
+  }, [drag, featureId, setDrag, setDragSnap, setOrbitEnabled])
 
   if (!drag) return null
 
@@ -51,6 +115,13 @@ export function DragPlane({ featureId }: { featureId: string }) {
         e.stopPropagation()
         const [x, y] = toLocal(e.point)
         setDrag({ ...drag, currentWorld: [x, y] })
+
+        // Snap detection: only for vertex drags
+        if (drag.type === 'vertex' && sketch) {
+          const threshold = DRAG_SNAP_RADIUS_PX * p2w(camera)
+          const snap = findSnapTarget(sketch, drag.featureId, drag.entityId, x, y, threshold)
+          setDragSnap(snap)
+        }
       }}
       onPointerUp={(e) => {
         e.stopPropagation()
@@ -75,6 +146,7 @@ export function DragPlane({ featureId }: { featureId: string }) {
             if (pixelDistance < 4) {
               // Pure click — don't emit mutation
               setDrag(null)
+              setDragSnap(null)
               setOrbitEnabled(true)
               return
             }
@@ -84,6 +156,17 @@ export function DragPlane({ featureId }: { featureId: string }) {
                 finalDrag.currentWorld[1] - finalDrag.startWorld[1],
               ]
               onMutation({ type: 'move_entity', featureId: finalDrag.featureId, entityId: finalDrag.entityId, delta })
+            } else if (dragSnap) {
+              // Snap: move vertex to snapped position and add coincident constraint
+              onMutation({
+                type: 'move_vertex_with_constraint',
+                featureId: finalDrag.featureId,
+                entityId: finalDrag.entityId,
+                vertexKey: finalDrag.vertexKey,
+                to: dragSnap.position,
+                constraintKind: 'coincident',
+                snapVertexId: dragSnap.vertexId,
+              })
             } else {
               onMutation({ type: 'move_vertex', featureId: finalDrag.featureId,
                 entityId: finalDrag.entityId, vertexKey: finalDrag.vertexKey, to: finalDrag.currentWorld })
@@ -91,12 +174,26 @@ export function DragPlane({ featureId }: { featureId: string }) {
           }
         }
         setDrag(null)
+        setDragSnap(null)
         setOrbitEnabled(true)
       }}
     >
       <planeGeometry args={[10000, 10000]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
     </mesh>
+  )
+}
+
+/** Visual indicator shown at the snap target position while dragging. */
+export function DragSnapIndicator() {
+  const dragSnap = useSketchEditorStore(s => s.dragSnap)
+  if (!dragSnap) return null
+  const [x, y] = dragSnap.position
+  return (
+    <>
+      <Dot x={x} y={y} px={6} color={COLOR_SNAP} billboard />
+      <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={COLOR_SNAP} />
+    </>
   )
 }
 

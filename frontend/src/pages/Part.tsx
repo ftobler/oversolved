@@ -44,6 +44,8 @@ function describeMutation(m: Mutation): string {
   switch (m.type) {
     case 'move_vertex':
       return `move vertex ${m.vertexKey} on ${m.entityId} in ${m.featureId}`
+    case 'move_vertex_with_constraint':
+      return `snap vertex ${m.vertexKey} on ${m.entityId} with ${m.constraintKind} constraint`
     case 'move_entity':
       return `move ${m.entityId} in ${m.featureId}`
     case 'add_constraint':

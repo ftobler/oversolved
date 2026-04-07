@@ -8,6 +8,10 @@ export const COLOR_SELECTED = '#ff9800'
 export const COLOR_CONSTRAINT_HOVER = '#fff176'  // entity highlighted because a constraint on it is hovered
 export const COLOR_PREVIEW = '#aaaaaa'
 export const COLOR_PROJECTED = '#ffca28'  // amber — projected/reference geometry
+export const COLOR_SNAP = '#aaaaaa'  // snap indicator during drag (same hue as preview by default)
+
+// Drag snap
+export const DRAG_SNAP_RADIUS_PX = 20  // pixel radius for snap detection when dragging a vertex
 
 // Hit detection & collision geometry
 export const HIT_PIXELS = 8

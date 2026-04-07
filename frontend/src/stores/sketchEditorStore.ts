@@ -45,6 +45,7 @@ interface SketchEditorState {
   // --- state ---
   selection: Set<string>
   drag: DragState | null
+  dragSnap: { vertexId: string; position: [number, number] } | null
   orbitEnabled: boolean
   isRotating: boolean
   showDebugHit: boolean
@@ -77,6 +78,7 @@ interface SketchEditorState {
   toggleSelect: (id: string) => void
   clearSelection: () => void
   setDrag: (drag: DragState | null) => void
+  setDragSnap: (snap: { vertexId: string; position: [number, number] } | null) => void
   setOrbitEnabled: (enabled: boolean) => void
   setIsRotating: (rotating: boolean) => void
   setShowDebugHit: (enabled: boolean) => void
@@ -110,6 +112,7 @@ interface SketchEditorState {
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   selection: new Set(),
   drag: null,
+  dragSnap: null,
   orbitEnabled: true,
   isRotating: false,
   showDebugHit: false,
@@ -147,6 +150,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   clearSelection: () => set({ selection: new Set() }),
 
   setDrag: (drag) => set({ drag }),
+  setDragSnap: (snap) => set({ dragSnap: snap }),
 
   setOrbitEnabled: (enabled) => set({ orbitEnabled: enabled }),
 

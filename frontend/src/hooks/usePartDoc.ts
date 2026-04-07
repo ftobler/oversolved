@@ -221,6 +221,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       case 'move_vertex':
         applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to)
         break
+      case 'move_vertex_with_constraint':
+        applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to)
+        applyAddConstraint(next, m.featureId, m.constraintKind, [
+          `vertex:${m.featureId}:${m.entityId}:${m.vertexKey}`,
+          m.snapVertexId,
+        ])
+        break
       case 'move_entity':
         applyMoveEntity(next, m.featureId, m.entityId, m.delta)
         break

@@ -16,7 +16,7 @@ import { ConstraintOverlays } from './Constraints'
 import { TopologySurfaces } from './Surfaces'
 
 // Dragging
-import { DragPlane, applyDragPreview } from './Dragging'
+import { DragPlane, DragSnapIndicator, applyDragPreview } from './Dragging'
 
 // Drawing tools
 import { DrawPreview, DrawPlane } from './Drawing'
@@ -89,7 +89,8 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} planeGroupRef={groupRef} showDebugHit={showDebugHit ?? false} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />
       {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
-      {isEditing && <DragPlane featureId={featureId} />}
+      {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} />}
+      {isEditing && <DragSnapIndicator />}
       <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} />
       <DrawPlane featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} otherSketches={otherSketches} />
     </group>
@@ -103,5 +104,5 @@ export { EntityLines, ProjectedEntities, sketchExtent }
 export { ConstraintOverlays }
 export { TopologySurfaces }
 // eslint-disable-next-line react-refresh/only-export-components
-export { DragPlane, applyDragPreview }
+export { DragPlane, DragSnapIndicator, applyDragPreview }
 export { DrawPreview, DrawPlane }
