@@ -2,6 +2,11 @@ import { describe, it, expect } from 'vitest'
 import type { Sketch } from '../../../types/cad'
 import { findSnapTarget, collectVertexTargets } from '../Dragging'
 
+// Use different vertex vs entity thresholds matching the actual pull zones.
+// Vertex pull zone is larger so it wins near endpoints even when entity body is closer.
+const V_THRESH = 2.0   // vertex pull zone (larger)
+const E_THRESH = 0.8   // entity body pull zone (smaller)
+
 const FEATURE = 'S1'
 
 const makeSketch = (): Sketch => ({
@@ -59,40 +64,42 @@ describe('collectVertexTargets', () => {
 })
 
 describe('findSnapTarget — vertex snap', () => {
-  it('returns null when no vertex is within threshold', () => {
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 100, 100, 0.1)
+  it('returns null when no vertex or entity is within threshold', () => {
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 100, 100, 0.1, 0.04)
     expect(result).toBeNull()
   })
 
-  it('returns nearest vertex within threshold with kind=vertex', () => {
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 0.5, 0.1, 2)
+  it('returns nearest vertex within vertex threshold with kind=vertex', () => {
+    // L1.start is at [0,0], cursor at [0.5, 0.1] — within V_THRESH
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 0.5, 0.1, V_THRESH, E_THRESH)
     expect(result).not.toBeNull()
     expect(result!.kind).toBe('vertex')
     expect(result!.vertexId).toBe('vertex:S1:L1:start')
   })
 
   it('skips the dragged entity own vertices', () => {
-    const result = findSnapTarget(makeSketch(), FEATURE, 'L1', 0, 0, 0.5)
+    // Cursor at L1.start [0,0], dragging L1 — should not snap to self
+    const result = findSnapTarget(makeSketch(), FEATURE, 'L1', 0, 0, 0.5, 0.2)
     expect(result).toBeNull()
   })
 
   it('returns closest vertex when multiple are within threshold', () => {
-    // L1 end and L2 start are both at [10, 0]
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 10, 0.1, 2)
+    // L1.end and L2.start are both at [10, 0]
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 10, 0.1, V_THRESH, E_THRESH)
     expect(result).not.toBeNull()
     expect(result!.kind).toBe('vertex')
     expect(['vertex:S1:L1:end', 'vertex:S1:L2:start']).toContain(result!.vertexId)
   })
 
   it('handles point entity', () => {
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 2.1, 3.1, 0.5)
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 2.1, 3.1, V_THRESH, E_THRESH)
     expect(result).not.toBeNull()
     expect(result!.kind).toBe('vertex')
     expect(result!.vertexId).toBe('vertex:S1:PT1:xy')
   })
 
   it('handles circle center', () => {
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 5.1, 5.1, 0.5)
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 5.1, 5.1, V_THRESH, E_THRESH)
     expect(result).not.toBeNull()
     expect(result!.kind).toBe('vertex')
     expect(result!.vertexId).toBe('vertex:S1:C1:center')
@@ -101,38 +108,46 @@ describe('findSnapTarget — vertex snap', () => {
 
 describe('findSnapTarget — entity snap (path fallback)', () => {
   it('returns entity snap when cursor is on entity body but no vertex nearby', () => {
-    // Midpoint of L1 is at [5, 0], no vertex is within threshold=0.5
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 5, 0, 0.5)
+    // Midpoint of L1 at [5, 0] — within E_THRESH of entity body, but not within V_THRESH of any vertex
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 5, 0.3, V_THRESH, E_THRESH)
     expect(result).not.toBeNull()
     expect(result!.kind).toBe('entity')
     expect(result!.entityRef).toBe('entity:S1:L1')
     expect(result!.vertexId).toBeUndefined()
   })
 
-  it('vertex snap takes priority over entity snap at same distance', () => {
-    // L1 start is at [0, 0] — near it, vertex snap should win over entity snap
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 0.2, 0.1, 2)
+  it('vertex snap wins over entity snap when near an endpoint (larger pull zone)', () => {
+    // Cursor near L1.start [0,0] — within V_THRESH of vertex, also on entity body
+    // Vertex must win even though entity distance is 0
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 0.5, 0.3, V_THRESH, E_THRESH)
     expect(result!.kind).toBe('vertex')
+    expect(result!.vertexId).toBe('vertex:S1:L1:start')
+  })
+
+  it('entity snap fires when cursor is outside vertex pull zone but inside entity pull zone', () => {
+    // Cursor at [5, 0.5] — L1 midpoint region: L1.start [0,0] distance = 5.02 (beyond V_THRESH=2)
+    // nearest on L1 body = [5, 0], distance = 0.5 (within E_THRESH=0.8)
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 5, 0.5, V_THRESH, E_THRESH)
+    expect(result).not.toBeNull()
+    expect(result!.kind).toBe('entity')
   })
 
   it('entity snap position is nearest point on entity, not cursor position', () => {
-    // Cursor at [5, 1], nearest point on L1 (y=0 line) is [5, 0]
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 5, 0.3, 0.5)
+    // Cursor at [5, 0.5], nearest on L1 (y=0 line) is [5, 0]
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 5, 0.5, V_THRESH, E_THRESH)
     expect(result).not.toBeNull()
-    expect(result!.kind).toBe('entity')
     expect(result!.position[0]).toBeCloseTo(5)
     expect(result!.position[1]).toBeCloseTo(0)
   })
 
   it('returns null when cursor is off all entities and no vertex nearby', () => {
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 50, 50, 0.1)
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 50, 50, V_THRESH, E_THRESH)
     expect(result).toBeNull()
   })
 
   it('skips projected entities for entity snap', () => {
-    // projL is at [20,20]–[30,30]; cursor near its midpoint [25, 25]
-    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 25, 25, 1)
-    // should not snap to projected entity; result is null or has a different ref
+    // projL is at [20,20]-[30,30]; cursor near midpoint [25, 25]
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', 25, 25, V_THRESH, E_THRESH)
     if (result) {
       expect(result.entityRef ?? '').not.toContain('projL')
     }

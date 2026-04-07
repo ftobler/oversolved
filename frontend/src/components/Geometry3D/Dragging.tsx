@@ -7,7 +7,7 @@ import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { Dot, VertexHighlight } from './VertexDots'
 import { p2w } from '../sketch_helpers'
 import { nearestPointOnEntity } from './nearestPoint'
-import { COLOR_SNAP, DRAG_SNAP_RADIUS_PX, POINT_HIT_PIXELS } from './constants'
+import { COLOR_SNAP, DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX, POINT_HIT_PIXELS } from './constants'
 
 // Snap kind discriminator:
 //   'vertex' — cursor is close to a specific named vertex (point-to-point coincident)
@@ -49,8 +49,10 @@ export function collectVertexTargets(sketch: Sketch, featureId: string, skipEnti
   return targets
 }
 
-/** Find the best snap target within threshold world units.
- *  Vertex snap takes priority over entity/path snap at the same distance. */
+/** Find the best snap target.
+ *  Vertex snap uses a larger pull radius than entity snap, mirroring how
+ *  POINT_HIT_PIXELS > HIT_PIXELS in click detection. This ensures dragging
+ *  near an endpoint always snaps to the vertex rather than the entity body. */
 // eslint-disable-next-line react-refresh/only-export-components
 export function findSnapTarget(
   sketch: Sketch,
@@ -58,11 +60,12 @@ export function findSnapTarget(
   skipEntityId: string,
   x: number,
   y: number,
-  threshold: number,
+  vertexThreshold: number,  // world units, for point-to-point snap (larger)
+  entityThreshold: number,  // world units, for point-on-entity snap (smaller)
 ): SnapTarget | null {
-  // First pass: find nearest vertex (highest priority)
+  // First pass: find nearest vertex within its (larger) pull zone
   let bestVertex: SnapTarget | null = null
-  let bestVertexDist = threshold
+  let bestVertexDist = vertexThreshold
   for (const t of collectVertexTargets(sketch, featureId, skipEntityId)) {
     const d = Math.hypot(t.position[0] - x, t.position[1] - y)
     if (d < bestVertexDist) {
@@ -72,9 +75,10 @@ export function findSnapTarget(
   }
   if (bestVertex) return bestVertex
 
-  // Second pass: find nearest point on any entity body (fallback)
+  // Second pass: find nearest point on entity body (smaller pull zone, only
+  // fires when no vertex is within its larger zone)
   let bestEntity: SnapTarget | null = null
-  let bestEntityDist = threshold
+  let bestEntityDist = entityThreshold
   for (const [entityId, entity] of Object.entries(sketch)) {
     if (isProjectedEntity(entity as Entity)) continue
     if (entityId === skipEntityId) continue
@@ -94,7 +98,6 @@ export function findSnapTarget(
 export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: Sketch }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const drag = useSketchEditorStore(s => s.drag)
-  const dragSnap = useSketchEditorStore(s => s.dragSnap)
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setDragSnap = useSketchEditorStore(s => s.setDragSnap)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
@@ -145,15 +148,26 @@ export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: S
 
         // Snap detection: vertex then entity, only for vertex drags
         if (drag.type === 'vertex' && sketch) {
-          const threshold = DRAG_SNAP_RADIUS_PX * p2w(camera)
-          const snap = findSnapTarget(sketch, drag.featureId, drag.entityId, x, y, threshold)
+          const pw = p2w(camera)
+          const snap = findSnapTarget(
+            sketch, drag.featureId, drag.entityId, x, y,
+            DRAG_SNAP_VERTEX_RADIUS_PX * pw,
+            DRAG_SNAP_ENTITY_RADIUS_PX * pw,
+          )
           setDragSnap(snap)
         }
       }}
       onPointerUp={(e) => {
         e.stopPropagation()
         const [x, y] = toLocal(e.point)
-        const finalDrag = { ...drag, currentWorld: [x, y] as [number, number] }
+        // Read drag and dragSnap from store directly — not from the render closure.
+        // onPointerUp may fire before React re-renders after the final onPointerMove,
+        // so the closure could hold stale values. getState() always returns the latest.
+        const { drag: currentDrag, dragSnap: currentDragSnap } = useSketchEditorStore.getState()
+        if (!currentDrag || currentDrag.featureId !== featureId) {
+          setDrag(null); setDragSnap(null); setOrbitEnabled(true); return
+        }
+        const finalDrag = { ...currentDrag, currentWorld: [x, y] as [number, number] }
         if (onMutation) {
           if (finalDrag.type === 'dim_label') {
             const pos: [number, number] = [
@@ -183,25 +197,25 @@ export function DragPlane({ featureId, sketch }: { featureId: string; sketch?: S
                 finalDrag.currentWorld[1] - finalDrag.startWorld[1],
               ]
               onMutation({ type: 'move_entity', featureId: finalDrag.featureId, entityId: finalDrag.entityId, delta })
-            } else if (dragSnap?.kind === 'vertex') {
+            } else if (currentDragSnap?.kind === 'vertex') {
               onMutation({
                 type: 'move_vertex_with_constraint',
                 featureId: finalDrag.featureId,
                 entityId: finalDrag.entityId,
                 vertexKey: finalDrag.vertexKey,
-                to: dragSnap.position,
+                to: currentDragSnap.position,
                 constraintKind: 'coincident',
-                snapVertexId: dragSnap.vertexId,
+                snapVertexId: currentDragSnap.vertexId,
               })
-            } else if (dragSnap?.kind === 'entity') {
+            } else if (currentDragSnap?.kind === 'entity') {
               onMutation({
                 type: 'move_vertex_with_constraint',
                 featureId: finalDrag.featureId,
                 entityId: finalDrag.entityId,
                 vertexKey: finalDrag.vertexKey,
-                to: dragSnap.position,
+                to: currentDragSnap.position,
                 constraintKind: 'coincident',
-                snapEntityRef: dragSnap.entityRef,
+                snapEntityRef: currentDragSnap.entityRef,
               })
             } else {
               onMutation({ type: 'move_vertex', featureId: finalDrag.featureId,

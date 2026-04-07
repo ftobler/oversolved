@@ -10,8 +10,11 @@ export const COLOR_PREVIEW = '#aaaaaa'
 export const COLOR_PROJECTED = '#ffca28'  // amber — projected/reference geometry
 export const COLOR_SNAP = '#aaaaaa'  // snap indicator during drag (same hue as preview by default)
 
-// Drag snap
-export const DRAG_SNAP_RADIUS_PX = 20  // pixel radius for snap detection when dragging a vertex
+// Drag snap — vertex pull zone must be larger than entity body pull zone so that
+// dragging near an endpoint always snaps to the vertex, not the entity body.
+// Mirrors POINT_HIT_PIXELS vs HIT_PIXELS in the hover/click system.
+export const DRAG_SNAP_VERTEX_RADIUS_PX = 20   // point-to-point coincident snap radius
+export const DRAG_SNAP_ENTITY_RADIUS_PX = 8    // point-on-entity coincident snap radius
 
 // Hit detection & collision geometry
 export const HIT_PIXELS = 8
