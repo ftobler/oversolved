@@ -166,9 +166,6 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     e.stopPropagation()
     setOrbitEnabled(false)
 
-    // Add to selection if not already selected - ensures drag uses normal selection path
-    if (!selected) toggleSelect(vertId)
-
     // Mark this vertex as the click initiator - prevents it from being added to dynamic selection
     clickedVertexRef.current = vertId
 
@@ -188,7 +185,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
       currentWorld: [x, y],
       startClient: [e.clientX, e.clientY],
     })
-  }, [isEditing, vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool, setIsPointerDown, selected, toggleSelect])
+  }, [isEditing, vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool, setIsPointerDown])
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
   const snapKind = determineSnapKind(entityKind, vertexKey)
