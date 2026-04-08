@@ -55,9 +55,7 @@ interface ConstraintOverlaysProps {
 
 export function ConstraintOverlays({ constraints, sketch, extent, featureId }: ConstraintOverlaysProps) {
   const drag = useSketchEditorStore(s => s.drag)
-
-  if (drag) return null
-
+  const isDragging = drag !== null
   const dimOffset = extent * 0.1
 
   const byEntity: Record<string, [string, Constraints[string]][]> = {}
@@ -81,7 +79,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId }: C
     for (const [cid, c] of clist) {
       const r = c.render as { kind: string; at?: [number, number]; point?: string; entities?: string[]; [key: string]: unknown }
 
-      if (r.kind.startsWith('symbol_')) {
+      if (!isDragging && r.kind.startsWith('symbol_')) {
         const url = getIconUrl(r.kind)
         if (!url) continue
         if (!r.at && !entity) continue  // no position available
