@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect } from 'react'
+import { useRef, useEffect, useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
@@ -7,7 +7,8 @@ import { Dot } from './VertexDots'
 import { DashedLine } from '../sketch_dimensions'
 import { COLOR_PREVIEW } from './constants'
 import { suggestConstraint, detectAlignmentSnap } from '../../registry'
-import type { Sketch, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
+import { useDynamicSelectionPositions } from '../interaction/snapHooks'
+import type { Sketch } from '../../types/cad'
 import { nearestPointOnEntity } from './nearestPoint'
 import { randomId } from '../../utils/yamlMutations'
 
@@ -182,49 +183,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }:
   }, [sketch, drawHover, hoveredEntityId])
 
   // Build map of dynamic selection positions for alignment detection
-  const dynamicSelectionPositions = useMemo(() => {
-    const pos = new Map<string, [number, number]>()
-    if (!sketch) return pos
-    for (const id of dynamicSelection) {
-      if (id.startsWith('vertex:')) {
-        // Format: vertex:featureId:entityId:key
-        const parts = id.split(':')
-        if (parts.length >= 4) {
-          const [, , entityId, vertexKey] = parts
-          const entity = sketch[entityId]
-          if (entity) {
-            if ('start' in entity && 'end' in entity) {
-              const lineEntity = entity as LineSegment | Arc
-              if (vertexKey === 'start') pos.set(id, lineEntity.start)
-              else if (vertexKey === 'end') pos.set(id, lineEntity.end)
-              else if (vertexKey === 'center' && 'radius' in entity) pos.set(id, (entity as Arc).center)
-            } else if ('center' in entity && vertexKey === 'center') {
-              pos.set(id, (entity as Circle).center)
-            } else if ('x' in entity && vertexKey === 'xy') {
-              const ptEntity = entity as PointEntity
-              pos.set(id, [ptEntity.x, ptEntity.y])
-            }
-          }
-        }
-      } else if (id.startsWith('entity:')) {
-        // Use entity center for entity references
-        const parts = id.split(':')
-        if (parts.length >= 3) {
-          const [, , entityId] = parts
-          const entity = sketch[entityId]
-          if (entity) {
-            if ('start' in entity && 'end' in entity) {
-              const mid: [number, number] = [(entity.start[0] + entity.end[0]) / 2, (entity.start[1] + entity.end[1]) / 2]
-              pos.set(id, mid)
-            } else if ('center' in entity) {
-              pos.set(id, (entity as Circle).center)
-            }
-          }
-        }
-      }
-    }
-    return pos
-  }, [dynamicSelection, sketch])
+  const dynamicSelectionPositions = useDynamicSelectionPositions(sketch, dynamicSelection)
 
   // Detect alignment snap when drawing with dynamic selection
   useEffect(() => {

@@ -1,5 +1,5 @@
 // interaction/index.ts
-// Re-export interaction module types and helpers
+// Re-export interaction module types and shared hooks.
 
 export type {
   DragInit,
@@ -9,14 +9,4 @@ export type {
   DimensionClickHandlers,
 } from './interaction-actions'
 
-export {
-  buildClickHandler,
-  buildDragPointerDownHandler,
-  buildDragPointerUpHandler,
-  buildPointerOverHandler,
-  buildDimensionClickHandler,
-} from './handler-helpers'
-
-export {
-  TOOL_HANDLER_CONTRACTS,
-} from './handler-contracts'
+export { useDynamicSelectionPositions } from './snapHooks'

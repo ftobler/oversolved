@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react'
+import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import type { Sketch, LineSegment, Circle, Arc, PointEntity, Entity } from '../../types/cad'
@@ -9,6 +9,7 @@ import { DashedLine } from '../sketch_dimensions'
 import { p2w } from '../sketch_helpers'
 import { nearestPointOnEntity } from './nearestPoint'
 import { suggestConstraint, detectAlignmentSnap, type DraggedElementType, type SnapKind } from '../../registry'
+import { useDynamicSelectionPositions } from '../interaction/snapHooks'
 import { COLOR_SNAP, COLOR_PREVIEW, DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX, POINT_HIT_PIXELS } from './constants'
 
 // Snap kind discriminator:
@@ -131,47 +132,7 @@ export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: stri
   const { camera } = useThree()
 
   // Build map of dynamic selection positions for alignment detection
-  const dynamicSelectionPositions = useMemo(() => {
-    const pos = new Map<string, [number, number]>()
-    if (!sketch) return pos
-    for (const id of dynamicSelection) {
-      if (id.startsWith('vertex:')) {
-        const parts = id.split(':')
-        if (parts.length >= 4) {
-          const [, , entityId, vertexKey] = parts
-          const entity = sketch[entityId]
-          if (entity) {
-            if ('start' in entity && 'end' in entity) {
-              const lineEntity = entity as LineSegment | Arc
-              if (vertexKey === 'start') pos.set(id, lineEntity.start)
-              else if (vertexKey === 'end') pos.set(id, lineEntity.end)
-              else if (vertexKey === 'center' && 'radius' in entity) pos.set(id, (entity as Arc).center)
-            } else if ('center' in entity && vertexKey === 'center') {
-              pos.set(id, (entity as Circle).center)
-            } else if ('x' in entity && vertexKey === 'xy') {
-              const ptEntity = entity as PointEntity
-              pos.set(id, [ptEntity.x, ptEntity.y])
-            }
-          }
-        }
-      } else if (id.startsWith('entity:')) {
-        const parts = id.split(':')
-        if (parts.length >= 3) {
-          const [, , entityId] = parts
-          const entity = sketch[entityId]
-          if (entity) {
-            if ('start' in entity && 'end' in entity) {
-              const mid: [number, number] = [(entity.start[0] + entity.end[0]) / 2, (entity.start[1] + entity.end[1]) / 2]
-              pos.set(id, mid)
-            } else if ('center' in entity) {
-              pos.set(id, (entity as Circle).center)
-            }
-          }
-        }
-      }
-    }
-    return pos
-  }, [dynamicSelection, sketch])
+  const dynamicSelectionPositions = useDynamicSelectionPositions(sketch, dynamicSelection)
 
   // DragPlane is at z=0, perfectly aligned with the sketch plane.
   // Self-intersection blocking (dragged entity's collision geometry blocking raycasts)

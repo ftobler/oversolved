@@ -83,6 +83,18 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
       : COLOR_SOLVED)
     : COLOR_INACTIVE
 
+  // POINTER EVENT PRIORITY STACK (highest to lowest, enforced by Three.js raycast z-depth):
+  //   1. Vertex hit spheres      (z=0, sphere geometry wins at endpoints)
+  //   2. Entity HitPolylines     (z=-0.001)
+  //   3. DragPlane mesh          (z=0, mounted only when drag != null - owns all move/up events during drag)
+  //   4. DrawPlane mesh          (z=-0.002, mounted only when activeTool is a drawing tool)
+  //   5. Deselect plane          (z=-1000, catch-all for click-on-empty)
+  //   6. OrbitControls           (canvas div level, suppressed via orbitEnabled=false during drag)
+  //
+  // New interaction consumers must fit into this stack via z-positioning.
+  // Do not change z-offsets without understanding this ordering.
+  // Drag-time snap uses findSnapTarget() in Dragging.tsx (full scan, dragged element hidden).
+  // Draw-time snap reads hoveredVertexPosition from the store (VertexDots does the raycast hover).
   return (
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && <TopologySurfaces topology={topology} featureId={featureId} isEditing={isEditing} activeFeatureId={activeFeatureId} />}

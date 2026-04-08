@@ -1,7 +1,7 @@
 // interaction-actions.ts
 // Type definitions for interaction handlers.
 // These interfaces describe what each handler needs to do.
-// No implementations here — those live in handler-helpers.ts.
+// No implementations here — implementations live in the components that use them.
 
 import type { Point } from '../../types/cad'
 import type { ActiveTool } from '../../stores/sketchEditorStore'

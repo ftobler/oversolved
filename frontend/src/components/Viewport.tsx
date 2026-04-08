@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, forwardRef, useImperativeHandle } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrthographicCamera, Line, Text } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
@@ -255,6 +255,20 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const pointerDownPos = useRef<[number, number] | null>(null)
   const pointerDownButton = useRef<number | null>(null)
   const wasPointerDrag = useRef(false)
+
+  // Clear isPointerDown if pointer is released outside the viewport div (e.g., over UI panels).
+  // Without this, isPointerDown stays true and every subsequent hover triggers dynamic selection.
+  useEffect(() => {
+    const cleanup = () => {
+      const { isPointerDown, clearDynamicSelection, setIsPointerDown } = useSketchEditorStore.getState()
+      if (isPointerDown) {
+        setIsPointerDown(false)
+        clearDynamicSelection()
+      }
+    }
+    window.addEventListener('pointerup', cleanup)
+    return () => window.removeEventListener('pointerup', cleanup)
+  }, [])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     pointerDownButton.current = e.button
