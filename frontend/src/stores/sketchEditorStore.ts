@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Mutation } from '../types/cad'
 import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '../registry'
 import type { SnapKind } from '../registry'
-import type { SnapTarget } from '../components/Geometry3D/Dragging'
+import type { SnapTarget } from '../components/Geometry3D/snapDetection'
 
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type { Mutation }
@@ -43,76 +43,85 @@ export interface DimLabelDrag {
 export type DragState = VertexOrEdgeDrag | DimLabelDrag
 
 interface SketchEditorState {
-  // --- state ---
+  // SELECTION SUBSYSTEM
+  // Persistent user-chosen selection, cleared only by explicit action.
   selection: Set<string>
-  dynamicSelection: Set<string>   // temporarily selected elements while mouse pressed
-  isPointerDown: boolean          // track if pointer is currently pressed
-  // --- alignment snap state for kinda_horizontal/kinda_vertical ---
-  alignmentSnapPoint: [number, number] | null  // point to snap to for alignment
-  alignmentSnapKind: 'kinda_horizontal' | 'kinda_vertical' | null  // which alignment is active
-  alignmentSnapVertexId: string | null  // vertex ID to create constraint with
-  drag: DragState | null
-  dragSnap: SnapTarget | null
-  orbitEnabled: boolean
-  isRotating: boolean
-  showDebugHit: boolean
-  onMutation: ((m: Mutation) => void) | null
-  onRebuild: (() => void) | null
-  onExitSketch: (() => void) | null
-  hoveredConstraintEntityIds: Set<string>  // entity IDs highlighted by constraint hover
-  hoveredEntityId: string | null  // currently hovered entity ID
-  hoveredVertexId: string | null  // hovered vertex ID (e.g., "vertex:S1:L1:start")
-  hoveredPlaneId: string | null  // currently hovered plane ID (e.g., "@builtin_plane_front" or "@featureId")
-  hoveredSurfaceId: string | null  // currently hovered surface/face ID
-  hoveredVertexPosition: [number, number] | null  // world position of hovered vertex for snap
-  hoveredSnapKind: SnapKind | null  // what kind of snap target we're hovering (vertex, midpoint, center, path)
-  hoveredPathSnap: { entityId: string; position: [number, number] } | null  // path snap: nearest point on entity geometry
-  activeTool: ActiveTool
-  activeFeatureId: string | null  // the sketch currently being edited
-  drawPoints: [number, number][]
-  drawHover: [number, number] | null
-  drawSnapVertexId: string | null  // snap target from first click
-  drawSnapEntityRef: string | null  // entity ref snap target from first click
-  pendingDimTarget: string | null  // first click target when doing two-target dimension
-  pendingDimEntityKind: string | null  // entity kind of the first click target
-  pendingDialog: DialogState | null
-  pendingProjectTarget: { sourceFeatureId: string; sourceEntityId: string } | null
-  contextMenu: [number, number] | null
-  planeSelectionFeatureId: string | null
-  fieldPickState: { featureId: string; field: string; kind: 'plane' | 'point' | 'line' } | null
-  setFieldPickState: (state: { featureId: string; field: string; kind: 'plane' | 'point' | 'line' } | null) => void
-  commitFieldPick: (selectionId: string) => void
-
-  // --- actions ---
+  // Temporary accumulation while pointer is held; cleared on pointer-up.
+  dynamicSelection: Set<string>
+  isPointerDown: boolean
   toggleSelect: (id: string) => void
   clearSelection: () => void
   setIsPointerDown: (down: boolean) => void
   toggleDynamicSelection: (id: string) => void
   clearDynamicSelection: () => void
-  setAlignmentSnap: (point: [number, number] | null, kind: 'kinda_horizontal' | 'kinda_vertical' | null, vertexId: string | null) => void
-  setDrag: (drag: DragState | null) => void
-  setDragSnap: (snap: SnapTarget | null) => void
-  setOrbitEnabled: (enabled: boolean) => void
-  setIsRotating: (rotating: boolean) => void
-  setShowDebugHit: (enabled: boolean) => void
-  setOnMutation: (cb: ((m: Mutation) => void) | null) => void
-  setOnRebuild: (cb: (() => void) | null) => void
-  setOnExitSketch: (cb: (() => void) | null) => void
-  setActiveFeatureId: (id: string | null) => void
-  setHoveredConstraintEntities: (ids: Set<string>) => void
+
+  // HOVER STATE
+  // Written by hit geometry (EntityLines, VertexDots, planes, surfaces);
+  // read by tools (drawing snap, constraint highlighting, debug overlay).
+  hoveredEntityId: string | null
+  hoveredVertexId: string | null
+  hoveredVertexPosition: [number, number] | null
+  hoveredSnapKind: SnapKind | null
+  hoveredPathSnap: { entityId: string; position: [number, number] } | null
+  hoveredConstraintEntityIds: Set<string>
+  hoveredPlaneId: string | null
+  hoveredSurfaceId: string | null
   setHoveredEntity: (id: string | null) => void
   setHoveredVertex: (id: string | null, position: [number, number] | null, snapKind?: SnapKind | null) => void
+  setHoveredPathSnap: (snap: { entityId: string; position: [number, number] } | null) => void
+  setHoveredConstraintEntities: (ids: Set<string>) => void
   setHoveredPlane: (id: string | null) => void
   setHoveredSurface: (id: string | null) => void
-  setHoveredPathSnap: (snap: { entityId: string; position: [number, number] } | null) => void
-  setActiveTool: (tool: ActiveTool) => void
-  applyConstraint: (kind: string) => void
-  toggleConstruction: () => void
-  deleteSelected: () => void
+
+  // DRAG TOOL STATE
+  drag: DragState | null
+  dragSnap: SnapTarget | null
+  alignmentSnapPoint: [number, number] | null
+  alignmentSnapKind: 'kinda_horizontal' | 'kinda_vertical' | null
+  alignmentSnapVertexId: string | null
+  setDrag: (drag: DragState | null) => void
+  setDragSnap: (snap: SnapTarget | null) => void
+  setAlignmentSnap: (point: [number, number] | null, kind: 'kinda_horizontal' | 'kinda_vertical' | null, vertexId: string | null) => void
+
+  // DRAW TOOL STATE
+  drawPoints: [number, number][]
+  drawHover: [number, number] | null
+  drawSnapVertexId: string | null
+  drawSnapEntityRef: string | null
   addDrawPoint: (pt: [number, number]) => void
   setDrawHover: (pt: [number, number] | null) => void
   setDrawSnap: (vertexId: string | null, entityRef: string | null) => void
   clearDraw: () => void
+
+  // NAVIGATION SUBSYSTEM
+  orbitEnabled: boolean
+  isRotating: boolean
+  setOrbitEnabled: (enabled: boolean) => void
+  setIsRotating: (rotating: boolean) => void
+
+  // TOOL / SESSION STATE
+  activeTool: ActiveTool
+  activeFeatureId: string | null
+  showDebugHit: boolean
+  onMutation: ((m: Mutation) => void) | null
+  onRebuild: (() => void) | null
+  onExitSketch: (() => void) | null
+  pendingDimTarget: string | null
+  pendingDimEntityKind: string | null
+  pendingDialog: DialogState | null
+  pendingProjectTarget: { sourceFeatureId: string; sourceEntityId: string } | null
+  contextMenu: [number, number] | null
+  planeSelectionFeatureId: string | null
+  fieldPickState: { featureId: string; field: string; kind: 'plane' | 'point' | 'line' } | null
+  setActiveTool: (tool: ActiveTool) => void
+  setActiveFeatureId: (id: string | null) => void
+  setShowDebugHit: (enabled: boolean) => void
+  setOnMutation: (cb: ((m: Mutation) => void) | null) => void
+  setOnRebuild: (cb: (() => void) | null) => void
+  setOnExitSketch: (cb: (() => void) | null) => void
+  applyConstraint: (kind: string) => void
+  toggleConstruction: () => void
+  deleteSelected: () => void
   openDialog: (opts: DialogState) => void
   closeDialog: () => void
   setPendingProjectTarget: (target: { sourceFeatureId: string; sourceEntityId: string } | null) => void
@@ -121,6 +130,8 @@ interface SketchEditorState {
   handleDimensionClick: (target: string, featureId: string, kind: 'entity' | 'vertex', screenPos: [number, number], entityKind?: string) => void
   setPlaneSelectionFeatureId: (id: string | null) => void
   commitPlaneSelection: (selectionId: string) => void
+  setFieldPickState: (state: { featureId: string; field: string; kind: 'plane' | 'point' | 'line' } | null) => void
+  commitFieldPick: (selectionId: string) => void
 }
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({

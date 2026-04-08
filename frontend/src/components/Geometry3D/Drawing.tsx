@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { sanitizePointerEvent } from './pointerAbstraction'
 import { sampleArc, sampleArcCCW } from '../sketch_helpers'
 import { Dot } from './VertexDots'
 import { DashedLine } from '../sketch_dimensions'
@@ -146,7 +147,13 @@ export function DrawPreview({ featureId, activeFeatureId }: { featureId: string;
   )
 }
 
-export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }: { featureId: string; activeFeatureId?: string; sketch?: Sketch; otherSketches?: Record<string, Sketch> }) {
+export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, otherSketches }: {
+  featureId: string
+  activeFeatureId?: string
+  sketch?: Sketch
+  sketchGroupRef?: React.RefObject<THREE.Group | null>
+  otherSketches?: Record<string, Sketch>
+}) {
   const meshRef = useRef<THREE.Mesh>(null)
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
@@ -399,22 +406,28 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, otherSketches }:
     }
   }
 
-  const toLocal = (worldPt: THREE.Vector3): [number, number] => {
-    if (!meshRef.current?.parent) return [worldPt.x, worldPt.y]
-    const parentPos = new THREE.Vector3()
-    meshRef.current.parent.getWorldPosition(parentPos)
-    const q = new THREE.Quaternion()
-    meshRef.current.parent.getWorldQuaternion(q)
-    const local = worldPt.clone().sub(parentPos).applyQuaternion(q.invert())
-    return [local.x, local.y]
+  // Resolve the sketch group ref: prefer explicit prop, fall back to mesh parent.
+  const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? {
+    get current() { return meshRef.current?.parent ?? null },
   }
 
   return (
     <mesh
       ref={meshRef}
       position={[0, 0, -0.002]}
-      onPointerMove={e => { e.stopPropagation(); if (e.buttons & 6) { setDrawHover(null); return }; setDrawHover(toLocal(e.point)) }}
-      onPointerDown={e => { e.stopPropagation(); const [x, y] = toLocal(e.point); handleDown(x, y) }}
+      onPointerMove={e => {
+        e.stopPropagation()
+        if (e.buttons & 6) { setDrawHover(null); return }
+        const sanitized = sanitizePointerEvent(e, resolvedGroupRef)
+        setDrawHover(sanitized?.localPoint ?? null)
+      }}
+      onPointerDown={e => {
+        e.stopPropagation()
+        const sanitized = sanitizePointerEvent(e, resolvedGroupRef)
+        if (!sanitized) return
+        const [x, y] = sanitized.localPoint
+        handleDown(x, y)
+      }}
       onPointerOut={() => setDrawHover(null)}
     >
       <planeGeometry args={[100000, 100000]} />

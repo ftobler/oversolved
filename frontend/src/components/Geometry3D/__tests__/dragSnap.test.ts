@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Sketch } from '../../../types/cad'
-import { findSnapTarget, collectVertexTargets } from '../Dragging'
+import { findSnapTarget, collectVertexTargets } from '../snapDetection'
 
 // Use different vertex vs entity thresholds matching the actual pull zones.
 const V_THRESH = 2.0

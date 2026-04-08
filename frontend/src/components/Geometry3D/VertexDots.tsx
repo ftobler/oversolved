@@ -6,6 +6,7 @@ import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { p2w } from '../sketch_helpers'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS } from './constants'
 import type { SnapKind } from '../../registry'
+import { useHoverAndDynamicSelection } from './useHoverAndDynamicSelection'
 
 /** Derive snap kind from the hover target. All point handles (line endpoints,
  *  circle centers, point xy) are broadly categorized as 'vertex'. */
@@ -106,47 +107,45 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   featureId?: string; entityId?: string; vertexKey?: string
   isEditing?: boolean; showDebugHit?: boolean
 }) {
-  // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
-  // DO NOT use local hovered state alone - must also call setHoveredVertex().
-  const [hovered, setHovered] = useState(false)
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
   const vertId = featureId && entityId && vertexKey ? `vertex:${featureId}:${entityId}:${vertexKey}` : undefined
-  const selected = useSketchEditorStore(s => vertId ? s.selection.has(vertId) : false)
-  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
-  const setDrag = useSketchEditorStore(s => s.setDrag)
-  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
-  const activeTool = useSketchEditorStore(s => s.activeTool)
-  const isRotating = useSketchEditorStore(s => s.isRotating)
-  const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
+
+  // Store reads for display and collision hiding.
   const setHoveredVertex = useSketchEditorStore(s => s.setHoveredVertex)
-  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
-  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const constraintHovered = useSketchEditorStore(s =>
     entityId && vertexKey ? s.hoveredConstraintEntityIds.has(`${entityId}:${vertexKey}`) : false
   )
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
-  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
-  const toggleDynamicSelection = useSketchEditorStore(s => s.toggleDynamicSelection)
-  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
-  const lastHoveredRef = useRef<string | null>(null)
-  // Ref to track vertex that was clicked - prevents it from being added to dynamic selection
-  const clickedVertexRef = useRef<string | null>(null)
-  // REGRESSION PROTECTION: Hide collision geometry during vertex drag
-  // BUG: When dragging a vertex, DragPlane raycasts could be blocked by the
-  //      vertex's own hit sphere collision geometry (scaled to HIT_PIXELS).
-  //      This caused stalled/choppy dragging when cursor was over the vertex.
-  // FIX: Hide collision immediately when drag starts (not just after movement begins).
-  // NOTE: Must check featureId, entityId, AND vertexKey to handle all cases.
+  // REGRESSION PROTECTION: Hide collision geometry during vertex drag.
+  // Must check featureId, entityId, AND vertexKey to handle all cases.
   // Also hide hit geometry from non-active sketches to prevent raycasting interference.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
   const drag = useSketchEditorStore(s => s.drag)
+  const selected = useSketchEditorStore(s => vertId ? s.selection.has(vertId) : false)
   const isInactiveSketch = featureId && activeFeatureId && featureId !== activeFeatureId
   const isDraggedVertex = drag && drag.type === 'vertex' && drag.entityId === entityId && drag.featureId === featureId
-  useFrame(() => {
-    if (!hitRef.current) return
-    hitRef.current.scale.setScalar(POINT_HIT_PIXELS * p2w(camera))
+
+  const snapKind = determineSnapKind()
+
+  // Layer 3B: hover state and dynamic selection accumulation.
+  const { hovered, onOver, onOut, markAsClicked } = useHoverAndDynamicSelection({
+    id: vertId ?? '',
+    hoverPayload: () => { if (vertId) setHoveredVertex(vertId, [x, y], snapKind) },
+    clearHoverPayload: () => setHoveredVertex(null, null, null),
   })
+
+  // Store reads for tool-layer dispatch.
+  const activeTool = useSketchEditorStore(s => s.activeTool)
+  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
+  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
+  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
+  const setDrag = useSketchEditorStore(s => s.setDrag)
+  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
+  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
+
+  // Layer 4 — Tool Layer: dimension / fieldPick / select dispatch on click.
   const onClick = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!vertId || !featureId) return
     e.stopPropagation()
@@ -158,22 +157,19 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     } else {
       toggleSelect(vertId)
     }
-  }, [vertId, featureId, toggleSelect, activeTool, handleDimClick, isEditing, fieldPickState, commitFieldPick])
-  const onPointerDown = useCallback((e: { stopPropagation: () => void; point: THREE.Vector3; clientX: number; clientY: number }) => {
+  }, [vertId, featureId, activeTool, isEditing, handleDimClick, fieldPickState, commitFieldPick, toggleSelect])
+
+  // Layer 4 — Tool Layer: vertex drag initiation via DragPlane.
+  // startWorld is the vertex position, not the hit point, so dragging begins from
+  // the exact vertex center. startClient is screen pixels for click-vs-drag.
+  // See: dragging.test.ts REGRESSION 4
+  const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!vertId || !featureId || !entityId || !vertexKey) return
     if (!isEditing || activeTool !== 'select') return
     e.stopPropagation()
+    markAsClicked()
     setOrbitEnabled(false)
-
-    // Mark this vertex as the click initiator - prevents it from being added to dynamic selection
-    clickedVertexRef.current = vertId
-
-    // Dynamic selection: track pointer down state
     setIsPointerDown(true)
-
-    // startClient is screen pixel coordinates at pointer-down; used to distinguish clicks from drags.
-    // Must be the actual cursor position, not the vertex center, so that pure clicks (cursor barely
-    // moves) don't emit spurious move mutations. See: dragging.test.ts REGRESSION 4
     setDrag({
       type: 'vertex',
       vertexId: vertId,
@@ -184,39 +180,19 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
       currentWorld: [x, y],
       startClient: [e.clientX, e.clientY],
     })
-  }, [isEditing, vertId, featureId, entityId, vertexKey, x, y, setDrag, setOrbitEnabled, activeTool, setIsPointerDown])
-  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
-  const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
-  const snapKind = determineSnapKind()
-  const handlePointerOver = (e: { stopPropagation: () => void }) => {
-    if (isRotating) return
-    if (!isDrawingTool) e.stopPropagation()
-    // Don't set hovered state if already selected - keep selected color
-    if (!selected) setHovered(true)
-    if (vertId) setHoveredVertex(vertId, [x, y], snapKind)
+  }, [vertId, featureId, entityId, vertexKey, isEditing, activeTool, x, y, markAsClicked, setOrbitEnabled, setIsPointerDown, setDrag])
 
-    // Dynamic selection: add to set if pointer is down and not already processed
-    // Exclude the vertex that was clicked (drag initiator) to avoid self-referencing
-    // Also exclude already-selected elements
-    if (isPointerDown && vertId && !selected && lastHoveredRef.current !== vertId && clickedVertexRef.current !== vertId) {
-      lastHoveredRef.current = vertId
-      toggleDynamicSelection(vertId)
-    }
-  }
-  const handlePointerOut = () => {
-    if (isRotating) return
-    lastHoveredRef.current = null
-    // Clear click initiator when leaving the vertex
-    if (clickedVertexRef.current === vertId) {
-      clickedVertexRef.current = null
-    }
-    setHovered(false)
-    setHoveredVertex(null, null, null)
-  }
+  useFrame(() => {
+    if (!hitRef.current) return
+    hitRef.current.scale.setScalar(POINT_HIT_PIXELS * p2w(camera))
+  })
+
+  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
+
   return (
     <group
-      onPointerOver={handlePointerOver}
-      onPointerOut={handlePointerOut}
+      onPointerOver={onOver}
+      onPointerOut={onOut}
       onClick={onClick}
       onPointerDown={onPointerDown}
     >

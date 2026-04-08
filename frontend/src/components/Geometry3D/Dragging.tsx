@@ -1,126 +1,23 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
-import type { Sketch, LineSegment, Circle, Arc, PointEntity, Entity } from '../../types/cad'
-import { isProjectedEntity } from '../../types/cad'
+import type { Sketch, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { Dot, VertexHighlight } from './VertexDots'
 import { DashedLine } from '../sketch_dimensions'
 import { p2w } from '../sketch_helpers'
-import { nearestPointOnEntity } from './nearestPoint'
-import { suggestConstraint, detectAlignmentSnap, type DraggedElementType, type SnapKind } from '../../registry'
+import { detectAlignmentSnap } from '../../registry'
 import { useDynamicSelectionPositions } from '../interaction/snapHooks'
 import { COLOR_SNAP, COLOR_PREVIEW, DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX, POINT_HIT_PIXELS } from './constants'
+import { worldToSketchLocal } from './coordTransform'
+import { findSnapTarget } from './snapDetection'
 
-// Snap kind discriminator:
-//   'vertex' — cursor is close to a specific named vertex
-//   'entity' — cursor is close to an entity body but not to a vertex
-// Vertex snap uses a larger pull radius and takes priority.
-export type DragSnapKind = 'vertex' | 'entity'
-
-export interface SnapTarget {
-  kind: DragSnapKind
-  position: [number, number]
-  constraintKind: string   // from suggestConstraint — same registry as drawing snap
-  vertexId?: string        // set when kind === 'vertex'; format: "vertex:featureId:entityId:key"
-  entityRef?: string       // set when kind === 'entity';  format: "entity:featureId:entityId"
-}
-
-
-
-interface VertexCandidate {
-  vertexId: string
-  position: [number, number]
-  snapKind: SnapKind  // what kind of snap target this vertex is
-}
-
-/** Collect all discrete vertex positions from a sketch with their snap kinds.
- *  Excludes projected entities and the entity currently being dragged.
- *  All point handles are treated as 'vertex' snap kind (broad categorization). */
-// eslint-disable-next-line react-refresh/only-export-components
-export function collectVertexTargets(sketch: Sketch, featureId: string, skipEntityId: string): VertexCandidate[] {
-  const targets: VertexCandidate[] = []
-  for (const [entityId, entity] of Object.entries(sketch)) {
-    if (isProjectedEntity(entity as Entity)) continue
-    if (entityId === skipEntityId) continue
-
-    if ('start' in entity && 'end' in entity) {
-      const l = entity as LineSegment | Arc
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:start`, position: l.start, snapKind: 'vertex' })
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:end`,   position: l.end,   snapKind: 'vertex' })
-      // Arc center is just another vertex point
-      if ('radius' in l && 'angle_start' in l) {
-        targets.push({ vertexId: `vertex:${featureId}:${entityId}:center`, position: (l as Arc).center, snapKind: 'vertex' })
-      }
-    } else if ('center' in entity && 'radius' in entity) {
-      const c = entity as Circle
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:center`, position: c.center, snapKind: 'vertex' })
-    } else if ('x' in entity) {
-      const p = entity as PointEntity
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:xy`, position: [p.x, p.y], snapKind: 'vertex' })
-    }
-  }
-  return targets
-}
-
-/** Find the best snap target using the same snap registry as the drawing tools.
- *  Vertex snap uses a larger pull radius than entity snap, mirroring
- *  POINT_HIT_PIXELS > HIT_PIXELS in click detection.
- *  Returns null if the registry does not allow snapping in the current configuration. */
-// eslint-disable-next-line react-refresh/only-export-components
-export function findSnapTarget(
-  sketch: Sketch,
-  featureId: string,
-  skipEntityId: string,
-  draggedType: DraggedElementType,  // 'vertex' or 'entity' being dragged
-  x: number,
-  y: number,
-  vertexThreshold: number,    // world units, for vertex snap (larger)
-  entityThreshold: number,    // world units, for entity body snap (smaller)
-): SnapTarget | null {
-  // First pass: find nearest vertex within its (larger) pull zone.
-  // Only keep candidates that the snap registry allows.
-  let bestVertex: (VertexCandidate & { dist: number }) | null = null
-  let bestVertexDist = vertexThreshold
-  for (const t of collectVertexTargets(sketch, featureId, skipEntityId)) {
-    const d = Math.hypot(t.position[0] - x, t.position[1] - y)
-    if (d < bestVertexDist) {
-      const cKind = suggestConstraint(draggedType, t.snapKind)
-      if (cKind !== null) {
-        bestVertexDist = d
-        bestVertex = { ...t, dist: d }
-      }
-    }
-  }
-  if (bestVertex) {
-    const cKind = suggestConstraint(draggedType, bestVertex.snapKind)!
-    return { kind: 'vertex', position: bestVertex.position, constraintKind: cKind, vertexId: bestVertex.vertexId }
-  }
-
-  // Second pass: find nearest point on entity body (smaller pull zone,
-  // only fires when no vertex is within its larger zone).
-  let bestEntity: SnapTarget | null = null
-  let bestEntityDist = entityThreshold
-  for (const [entityId, entity] of Object.entries(sketch)) {
-    if (isProjectedEntity(entity as Entity)) continue
-    if (entityId === skipEntityId) continue
-    const cKind = suggestConstraint(draggedType, 'path')
-    if (cKind === null) continue  // registry disallows path snap for this dragged type
-    const result = nearestPointOnEntity(x, y, entity as Entity)
-    if (result && result.distance < bestEntityDist) {
-      bestEntityDist = result.distance
-      bestEntity = {
-        kind: 'entity',
-        position: result.position as [number, number],
-        constraintKind: cKind,
-        entityRef: `entity:${featureId}:${entityId}`,
-      }
-    }
-  }
-  return bestEntity
-}
-
-export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: string; sketch?: Sketch; showDebugHit?: boolean }) {
+export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
+  featureId: string
+  sketch?: Sketch
+  sketchGroupRef?: React.RefObject<THREE.Group | null>
+  showDebugHit?: boolean
+}) {
   const meshRef = useRef<THREE.Mesh>(null)
   const drag = useSketchEditorStore(s => s.drag)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -139,17 +36,9 @@ export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: stri
   // is solved by hiding the collision geometry (HitPolyline, hit spheres, dim hit meshes) during drag.
   // This is done in EntityLines.tsx and VertexDots.tsx (isDragged) and sketch_dimensions.tsx (isDragged).
 
-  const toLocal = (worldPt: THREE.Vector3): [number, number] | null => {
-    const parent = meshRef.current?.parent
-    if (!parent) return null
-    // If Z is far from sketch plane (0), we're likely over an HTML overlay that shouldn't be raycasted
-    if (Math.abs(worldPt.z) > 1) return null
-    const parentPos = new THREE.Vector3()
-    parent.getWorldPosition(parentPos)
-    const q = new THREE.Quaternion()
-    parent.getWorldQuaternion(q)
-    const local = worldPt.clone().sub(parentPos).applyQuaternion(q.invert())
-    return [local.x, local.y]
+  // Resolve the sketch group ref: prefer explicit prop, fall back to mesh parent.
+  const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? {
+    get current() { return meshRef.current?.parent ?? null },
   }
 
   // Fallback: if pointer is released outside the canvas the Three.js onPointerUp
@@ -182,7 +71,7 @@ export function DragPlane({ featureId, sketch, showDebugHit }: { featureId: stri
         const planeHit = raycaster.intersectObject(e.eventObject, false)
         if (planeHit.length === 0) return
         const worldPt = planeHit[0].point
-        const local = toLocal(worldPt)
+        const local = worldToSketchLocal(worldPt, resolvedGroupRef)
         if (!local) return
         const [x, y] = local
         if (showDebugHit) {
