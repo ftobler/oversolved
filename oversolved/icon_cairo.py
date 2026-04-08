@@ -1,5 +1,6 @@
 import math
 import cairo
+from io import BytesIO
 from pathlib import Path
 
 SIZE = 24
@@ -10,6 +11,7 @@ def icon(path, angle=0, offset_x=0, offset_y=0):
     def wrapper(fn):
         _registry.append((path, fn, angle, offset_x, offset_y))
         return fn
+
     return wrapper
 
 
@@ -36,28 +38,24 @@ def _draw_one(path, fn, angle, offset_x=0, offset_y=0):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Read existing file for comparison
     existing = path.read_text() if path.exists() else None
 
-    # Create SVG surface
-    surface = cairo.SVGSurface(str(path), SIZE, SIZE)
+    buffer = BytesIO()
+    surface = cairo.SVGSurface(buffer, SIZE, SIZE)
     ctx = cairo.Context(surface)
 
-    # transparent background
     ctx.set_source_rgba(0, 0, 0, 0)
     ctx.paint()
 
     setup_ctx(ctx)
     source_default(ctx)
 
-    # ===== rotation around center =====
     if angle != 0:
         rad = math.radians(angle)
         ctx.translate(0.5, 0.5)
         ctx.rotate(rad)
         ctx.translate(-0.5, -0.5)
 
-    # ===== offset translation =====
     if offset_x != 0 or offset_y != 0:
         ctx.translate(offset_x, offset_y)
 
@@ -65,16 +63,17 @@ def _draw_one(path, fn, angle, offset_x=0, offset_y=0):
 
     surface.finish()
 
-    # Read back what cairo wrote (it uses currentColor by default)
-    written = path.read_text()
+    written = buffer.getvalue().decode("utf-8")
 
-    # Strip trailing whitespace for comparison
-    existing_stripped = existing.strip() if existing else None
-    written_stripped = written.strip()
+    if existing is not None and existing.strip() == written.strip():
+        return
 
-    # Only print icons that are actually being updated
-    if existing_stripped is None or existing_stripped != written_stripped:
+    if existing is None:
+        print(f"creating: {path}")
+    else:
         print(f"updating: {path}")
+
+    path.write_text(written)
 
 
 def draw_all():
