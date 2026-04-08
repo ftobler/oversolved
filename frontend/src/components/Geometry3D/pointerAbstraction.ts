@@ -1,5 +1,8 @@
 import * as THREE from 'three'
 import { worldToSketchLocal } from './coordTransform'
+import { CLICK_THRESHOLD_PX } from './constants'
+
+export { CLICK_THRESHOLD_PX }
 
 /** A pointer event after coordinate sanitization by the abstraction layer.
  *  All downstream consumers (selection subsystem, tool layer) operate on
@@ -29,7 +32,12 @@ export function sanitizePointerEvent(
 }
 
 /** Pixel distance between two screen-space points.
- *  Used for click-vs-drag disambiguation (threshold: CLICK_THRESHOLD_PX). */
+ *  Used for click-vs-drag disambiguation against CLICK_THRESHOLD_PX. */
 export function screenPixelDistance(a: [number, number], b: [number, number]): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1])
+}
+
+/** True when the pointer moved less than CLICK_THRESHOLD_PX pixels — treat as a click, not a drag. */
+export function isPureClick(startClient: [number, number], endClient: [number, number]): boolean {
+  return screenPixelDistance(startClient, endClient) < CLICK_THRESHOLD_PX
 }

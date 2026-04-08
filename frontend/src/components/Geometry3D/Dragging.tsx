@@ -9,7 +9,7 @@ import { p2w } from '../sketch_helpers'
 import { detectAlignmentSnap } from '../../registry'
 import { useDynamicSelectionPositions } from '../interaction/snapHooks'
 import { COLOR_SNAP, COLOR_PREVIEW, DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX, POINT_HIT_PIXELS } from './constants'
-import { worldToSketchLocal } from './coordTransform'
+import { sanitizePointerEvent, isPureClick } from './pointerAbstraction'
 import { findSnapTarget } from './snapDetection'
 
 export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
@@ -58,7 +58,10 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
       position={[0, 0, 0]}  // drag plane has not offset. is is perfectly at the sketch plane.
       onPointerMove={(e) => {
         e.stopPropagation()
-        // Use manual raycasting to hit only the drag plane, ignoring other collision geometry
+        // Manual raycasting is intentional here: R3F's e.point is resolved against the entire scene,
+        // which can return a hit on a vertex sphere or edge cylinder instead of the drag plane.
+        // We must raycast exclusively against this mesh so the coordinate reflects the drag plane position.
+        // sanitizePointerEvent() then converts worldPt to sketch-local 2D via the shared abstraction.
         const scene = e.eventObject.parent?.parent?.parent ?? e.eventObject.parent
         if (!scene) return
         // Use the ray from the event instead of creating our own
@@ -71,15 +74,17 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
         const planeHit = raycaster.intersectObject(e.eventObject, false)
         if (planeHit.length === 0) return
         const worldPt = planeHit[0].point
-        const local = worldToSketchLocal(worldPt, resolvedGroupRef)
-        if (!local) return
-        const [x, y] = local
+        const sanitized = sanitizePointerEvent({ point: worldPt, clientX: e.clientX, clientY: e.clientY }, resolvedGroupRef)
+        if (!sanitized) return
+        const [x, y] = sanitized.localPoint
         if (showDebugHit) {
           console.log('DEBUG RAYCAST:', { clientX: e.clientX, clientY: e.clientY, rayOrigin: ray?.origin, rayDir: ray?.direction, world: worldPt ? { x: worldPt.x, y: worldPt.y, z: worldPt.z } : 'no hit' })
         }
 
-        // Snap detection and constraint application: vertex then entity, only for vertex drags.
-        // When snap is detected, apply snap position immediately for visual feedback + constraint on release.
+        // Drag-snap uses proactive full-scan (findSnapTarget) here, synchronously during pointer-move,
+        // so snapPosition can be applied to currentWorld in the same frame (no render-delay stutter).
+        // Draw-snap is different: it reads hoveredVertexPosition from the store reactively, because the
+        // draw tool does not need to override currentWorld — it just reads what the hover system found.
         let snapPosition: [number, number] | null = null
         if (drag.type === 'vertex' && sketch) {
           const pw = p2w(camera)
@@ -131,12 +136,12 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
               onMutation({ type: 'set_constraint_pos', featureId: finalDrag.featureId, constraintId: finalDrag.constraintId, pos })
             }
           } else {
-            // For vertex and edge drags, use screen-pixel distance threshold (4px) to distinguish
-            // click-to-select from drag-to-move. Pixel-space threshold is independent of zoom level
-            // and correctly ignores the hit-radius offset that occurs even on pure clicks.
+            // For vertex and edge drags, use screen-pixel distance threshold to distinguish
+            // click-to-select from drag-to-move. Pixel-space is zoom-independent and correctly
+            // ignores the hit-radius offset that occurs even on pure clicks.
             // See: dragging.test.ts REGRESSION 4
-            const pixelDistance = Math.hypot(e.nativeEvent.clientX - finalDrag.startClient[0], e.nativeEvent.clientY - finalDrag.startClient[1])
-            if (pixelDistance < 4) {
+            const endClient: [number, number] = [e.nativeEvent.clientX, e.nativeEvent.clientY]
+            if (isPureClick(finalDrag.startClient, endClient)) {
               // Pure click — don't emit mutation
               setDrag(null)
               setDragSnap(null)

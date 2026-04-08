@@ -10,6 +10,7 @@ import { VertexDot, HitPolyline, ProjectedOriginPoint } from './VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED } from './constants'
 import { sanitizePointerEvent } from './pointerAbstraction'
 import { useHoverAndDynamicSelection } from './useHoverAndDynamicSelection'
+import { useToolClickDispatch } from './useToolClickDispatch'
 
 interface EntityItemProps {
   entity: Entity
@@ -48,28 +49,16 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     clearHoverPayload: () => setHoveredEntity(null),
   })
 
-  // Store reads for tool-layer dispatch.
+  // Store reads for drag initiation.
   const activeTool = useSketchEditorStore(s => s.activeTool)
-  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
-  const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
-  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
-  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
 
   // Layer 4 — Tool Layer: dimension / fieldPick / select dispatch on click.
-  const onClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
-    ev.stopPropagation()
-    if (activeTool === 'dimension') {
-      if (!isEditing) return
-      handleDimClick(entId, featureId, 'entity', [ev.clientX, ev.clientY], entityKind)
-    } else if (fieldPickState?.kind === 'line') {
-      commitFieldPick(entId)
-    } else {
-      toggleSelect(entId)
-    }
-  }, [entId, featureId, entityKind, activeTool, isEditing, handleDimClick, fieldPickState, commitFieldPick, toggleSelect])
+  const onClick = useToolClickDispatch({
+    id: entId, featureId, isEditing, dimensionKind: 'entity', entityKind, fieldPickKind: 'line',
+  })
 
   // Layer 4 — Tool Layer: edge drag initiation via DragPlane.
   // startWorld is the sanitized local hit point on the edge (not the entity origin).

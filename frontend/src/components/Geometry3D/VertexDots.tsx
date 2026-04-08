@@ -1,4 +1,4 @@
-import { useRef, useMemo, useState, useCallback } from 'react'
+import { useRef, useMemo, useCallback } from 'react'
 import { Line } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -7,6 +7,7 @@ import { p2w } from '../sketch_helpers'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS } from './constants'
 import type { SnapKind } from '../../registry'
 import { useHoverAndDynamicSelection } from './useHoverAndDynamicSelection'
+import { useToolClickDispatch } from './useToolClickDispatch'
 
 /** Derive snap kind from the hover target. All point handles (line endpoints,
  *  circle centers, point xy) are broadly categorized as 'vertex'. */
@@ -135,34 +136,26 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     clearHoverPayload: () => setHoveredVertex(null, null, null),
   })
 
-  // Store reads for tool-layer dispatch.
+  // Store reads for drag initiation.
   const activeTool = useSketchEditorStore(s => s.activeTool)
-  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
-  const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
-  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
-  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
 
   // Layer 4 — Tool Layer: dimension / fieldPick / select dispatch on click.
-  const onClick = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
-    if (!vertId || !featureId) return
-    e.stopPropagation()
-    if (activeTool === 'dimension') {
-      if (!isEditing) return
-      handleDimClick(vertId, featureId, 'vertex', [e.clientX, e.clientY])
-    } else if (fieldPickState?.kind === 'point') {
-      commitFieldPick(vertId)
-    } else {
-      toggleSelect(vertId)
-    }
-  }, [vertId, featureId, activeTool, isEditing, handleDimClick, fieldPickState, commitFieldPick, toggleSelect])
+  // Guard: vertId/featureId may be absent for purely decorative vertex dots.
+  const onClick = useToolClickDispatch({
+    id: vertId ?? '', featureId: featureId ?? '', isEditing: isEditing && !!vertId && !!featureId,
+    dimensionKind: 'vertex', fieldPickKind: 'point',
+  })
 
   // Layer 4 — Tool Layer: vertex drag initiation via DragPlane.
   // startWorld is the vertex position, not the hit point, so dragging begins from
   // the exact vertex center. startClient is screen pixels for click-vs-drag.
-  // See: dragging.test.ts REGRESSION 4
+  // startWorld is set to [x, y] (vertex center) rather than the sanitized hit point intentionally:
+  // the drag should begin from the exact vertex position so snap offsets are computed correctly.
+  // sanitizePointerEvent is not used here because no 3D→2D transform is needed — x, y are already
+  // sketch-local coordinates passed as props. See: dragging.test.ts REGRESSION 4
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!vertId || !featureId || !entityId || !vertexKey) return
     if (!isEditing || activeTool !== 'select') return
@@ -211,55 +204,47 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
 /** Cross/plus marker at constant pixel size for a projected reference point.
  *  Clickable with the dimension tool; not draggable. */
 export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number; y: number; featureId: string; entityId: string }) {
-  const [hovered, setHovered] = useState(false)
   const groupRef = useRef<THREE.Group>(null)
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
-  const activeTool = useSketchEditorStore(s => s.activeTool)
-  const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
-  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
-  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
-  const isRotating = useSketchEditorStore(s => s.isRotating)
   const entId = `entity:${featureId}:${entityId}`
+  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
   const selected = useSketchEditorStore(s => s.selection.has(entId))
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
+  const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
+
+  // Layer 3B: hover state (no dynamic selection — projected points are not draggable).
+  const { hovered, onOver, onOut } = useHoverAndDynamicSelection({
+    id: entId,
+    hoverPayload: () => setHoveredEntity(entId),
+    clearHoverPayload: () => setHoveredEntity(null),
+  })
+
+  // Layer 4: dimension tool only for the active sketch's projected points.
+  const isEditing = activeFeatureId === featureId
+  const onClick = useToolClickDispatch({
+    id: entId, featureId, isEditing, dimensionKind: 'entity', entityKind: 'point', fieldPickKind: 'line',
+  })
 
   useFrame(() => {
     const scale = 7 * p2w(camera)
     if (groupRef.current) groupRef.current.scale.setScalar(scale)
     if (hitRef.current) hitRef.current.scale.setScalar(POINT_HIT_PIXELS * p2w(camera))
   })
-  const onClick = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
-    e.stopPropagation()
-    if (activeTool === 'dimension') {
-      if (activeFeatureId !== featureId) return
-      handleDimClick(entId, featureId, 'entity', [e.clientX, e.clientY], 'point')
-    } else {
-      toggleSelect(entId)
-    }
-  }, [activeTool, featureId, entId, toggleSelect, handleDimClick, activeFeatureId])
+
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : COLOR_PROJECTED
-  const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
-  const handlePointerOver = (e: { stopPropagation: () => void }) => {
-    if (isRotating) return
-    if (!isDrawingTool) e.stopPropagation()
-    setHovered(true)
-  }
-  const handlePointerOut = () => {
-    if (isRotating) return
-    setHovered(false)
-  }
   return (
     <group ref={groupRef} position={[x, y, 0]}
-      onPointerOver={handlePointerOver}
-      onPointerOut={handlePointerOut}
+      onPointerOver={onOver}
+      onPointerOut={onOut}
+      onClick={onClick}
     >
       {/* '+' cross: vertical bar */}
       <Line points={[[0, -1, 0], [0, 1, 0]]} color={color} lineWidth={hovered ? 2 : 1} />
       {/* '+' cross: horizontal bar */}
       <Line points={[[-1, 0, 0], [1, 0, 0]]} color={color} lineWidth={hovered ? 2 : 1} />
       {/* Hit sphere for clicking */}
-      <mesh ref={hitRef} position={[0, 0, 0]} onClick={onClick}>
+      <mesh ref={hitRef} position={[0, 0, 0]}>
         <sphereGeometry args={[1, 8, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>

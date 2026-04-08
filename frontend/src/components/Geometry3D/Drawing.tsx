@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo } from 'react'
+import { useRef, useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
@@ -7,8 +7,8 @@ import { sampleArc, sampleArcCCW } from '../sketch_helpers'
 import { Dot } from './VertexDots'
 import { DashedLine } from '../sketch_dimensions'
 import { COLOR_PREVIEW } from './constants'
-import { suggestConstraint, detectAlignmentSnap } from '../../registry'
-import { useDynamicSelectionPositions } from '../interaction/snapHooks'
+import { suggestConstraint } from '../../registry'
+import { useAlignmentSnapEffect } from '../interaction/useAlignmentSnapEffect'
 import type { Sketch } from '../../types/cad'
 import { nearestPointOnEntity } from './nearestPoint'
 import { randomId } from '../../utils/yamlMutations'
@@ -168,10 +168,9 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
   const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
-  const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
-  const setAlignmentSnap = useSketchEditorStore(s => s.setAlignmentSnap)
-
   const drawHover = useSketchEditorStore(s => s.drawHover)
+
+  useAlignmentSnapEffect(sketch, drawHover)
 
   const pathSnap = useMemo(() => {
     // Use hovered entity (not vertex) for path snapping
@@ -188,24 +187,6 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     const [hx, hy] = drawHover
     return nearestPointOnEntity(hx, hy, entity)
   }, [sketch, drawHover, hoveredEntityId])
-
-  // Build map of dynamic selection positions for alignment detection
-  const dynamicSelectionPositions = useDynamicSelectionPositions(sketch, dynamicSelection)
-
-  // Detect alignment snap when drawing with dynamic selection
-  useEffect(() => {
-    if (!drawHover || dynamicSelection.size === 0) {
-      setAlignmentSnap(null, null, null)
-      return
-    }
-
-    const alignment = detectAlignmentSnap(dynamicSelection, drawHover, dynamicSelectionPositions)
-    if (alignment) {
-      setAlignmentSnap(alignment.point, alignment.kind, alignment.vertexId)
-    } else {
-      setAlignmentSnap(null, null, null)
-    }
-  }, [drawHover, dynamicSelection, dynamicSelectionPositions, setAlignmentSnap])
 
   if (featureId !== activeFeatureId) return null
 

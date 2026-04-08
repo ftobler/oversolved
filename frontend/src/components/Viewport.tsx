@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from 'react'
+import { useCallback, useMemo, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrthographicCamera, Line, Text } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
@@ -14,7 +14,8 @@ import ReferencePlane from './Viewport/ReferencePlane'
 import SceneController from './Viewport/SceneController'
 import ContextMenuDialog from './ContextMenuDialog'
 import { planeRotationFromTransform } from './Geometry3D/utils'
-import { COLOR_SELECTED, COLOR_HOVER } from './Geometry3D/constants'
+import { COLOR_SELECTED, COLOR_HOVER, CLICK_THRESHOLD_PX } from './Geometry3D/constants'
+import { useSelectionPointerUpCleanup } from './interaction/useSelectionPointerUpCleanup'
 
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 const INITIAL_ZOOM = 200
@@ -256,19 +257,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const pointerDownButton = useRef<number | null>(null)
   const wasPointerDrag = useRef(false)
 
-  // Clear isPointerDown if pointer is released outside the viewport div (e.g., over UI panels).
-  // Without this, isPointerDown stays true and every subsequent hover triggers dynamic selection.
-  useEffect(() => {
-    const cleanup = () => {
-      const { isPointerDown, clearDynamicSelection, setIsPointerDown } = useSketchEditorStore.getState()
-      if (isPointerDown) {
-        setIsPointerDown(false)
-        clearDynamicSelection()
-      }
-    }
-    window.addEventListener('pointerup', cleanup)
-    return () => window.removeEventListener('pointerup', cleanup)
-  }, [])
+  // Layer 3B: clear isPointerDown and dynamicSelection on any pointer-up (including off-canvas releases).
+  useSelectionPointerUpCleanup()
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     pointerDownButton.current = e.button
@@ -279,13 +269,6 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   }, [closeContextMenu])
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
-    // Clear dynamic selection on pointer up (tools have already processed their events)
-    const { isPointerDown, clearDynamicSelection, setIsPointerDown } = useSketchEditorStore.getState()
-    if (isPointerDown) {
-      setIsPointerDown(false)
-      clearDynamicSelection()
-    }
-
     if (!pointerDownPos.current) {
       wasPointerDrag.current = false
       pointerDownButton.current = null
@@ -293,7 +276,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     }
     const dx = e.clientX - pointerDownPos.current[0]
     const dy = e.clientY - pointerDownPos.current[1]
-    const wasDrag = Math.hypot(dx, dy) >= 4
+    const wasDrag = Math.hypot(dx, dy) >= CLICK_THRESHOLD_PX
     wasPointerDrag.current = wasDrag
     pointerDownPos.current = null
 

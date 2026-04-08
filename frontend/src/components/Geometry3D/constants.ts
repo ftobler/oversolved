@@ -20,6 +20,10 @@ export const DRAG_SNAP_ENTITY_RADIUS_PX = 8    // point-on-entity coincident sna
 export const HIT_PIXELS = 8
 export const POINT_HIT_PIXELS = 20
 
+// Click-vs-drag disambiguation: pointer moves smaller than this (in screen pixels)
+// are treated as pure clicks and do not emit geometry mutations.
+export const CLICK_THRESHOLD_PX = 4
+
 // Visualization
 export const ARC_SEGMENTS = 64
 
