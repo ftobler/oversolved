@@ -85,8 +85,13 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     const pts = sampleArcCCW(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
     return (
       <>
-        <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
+        {/* Collision volume must be the click/hover target — never use the thin visual line (Line/DashedLine)
+         * for pointer events, as it provides inconsistent hit detection compared to hover. */}
+        <group>
+          {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && (
+            <HitPolyline pts={pts} showDebugHit={showDebugHit}
+              onClick={onClick} onPointerDown={onPointerDown} onPointerOver={onOver} onPointerOut={onOut} />
+          )}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
@@ -101,8 +106,11 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
     return (
       <>
-        <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
+        <group>
+          {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && (
+            <HitPolyline pts={pts} showDebugHit={showDebugHit}
+              onClick={onClick} onPointerDown={onPointerDown} onPointerOver={onOver} onPointerOut={onOut} />
+          )}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}
@@ -119,8 +127,11 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
     return (
       <>
-        <group onClick={onClick} onPointerDown={onPointerDown}>
-          {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} showDebugHit={showDebugHit} />}
+        <group>
+          {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && (
+            <HitPolyline pts={pts} showDebugHit={showDebugHit}
+              onClick={onClick} onPointerDown={onPointerDown} onPointerOver={onOver} onPointerOut={onOut} />
+          )}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
             : <Line points={pts} color={color} lineWidth={lw} />}

@@ -41,12 +41,17 @@ export function Dot({ x, y, px, color, billboard = false }: { x: number; y: numb
 /** One invisible cylinder per segment. Radius scales to HIT_PIXELS each frame so
  *  coverage is gapless at any zoom. Placed at z=-0.001 so vertex spheres (z=0,
  *  extending to z=+R) always win the raycast at endpoint positions. */
-export function HitPolyline({ pts, onPointerOver, onPointerOut, showDebugCollision, showDebugHit }: {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PointerHandler = (e: any) => void
+
+export function HitPolyline({ pts, showDebugCollision, showDebugHit, onClick, onPointerDown, onPointerOver, onPointerOut }: {
   pts: [number, number, number][]
-  onPointerOver: (e: { stopPropagation: () => void }) => void
-  onPointerOut: () => void
   showDebugCollision?: boolean
   showDebugHit?: boolean
+  onClick?: PointerHandler
+  onPointerDown?: PointerHandler
+  onPointerOver?: PointerHandler
+  onPointerOut?: PointerHandler
 }) {
   const segRefs = useRef<(THREE.Mesh | null)[]>([])
   const { camera } = useThree()
@@ -70,10 +75,13 @@ export function HitPolyline({ pts, onPointerOver, onPointerOut, showDebugCollisi
       {segs.map((s, i) => s.len > 0 && (
         <mesh key={i} ref={el => { segRefs.current[i] = el }}
           position={[s.cx, s.cy, -0.001]} rotation={[0, 0, s.angle]}
-          onPointerOver={onPointerOver} onPointerOut={onPointerOut}
+          onClick={onClick}
+          onPointerDown={onPointerDown}
+          onPointerOver={onPointerOver}
+          onPointerOut={onPointerOut}
         >
           <cylinderGeometry args={[1, 1, 1, 8, 1]} />
-          <meshBasicMaterial transparent opacity={(showDebugCollision ?? showDebugHit) ? 0.25 : 0} color="#ff6600" depthWrite={false} side={THREE.DoubleSide} />
+          <meshBasicMaterial transparent opacity={(showDebugCollision ?? showDebugHit) ? 0.25 : 0} color="#ff6600" depthWrite={false} side={THREE.DoubleSide} visible={true} />
         </mesh>
       ))}
     </>
