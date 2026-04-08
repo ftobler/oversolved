@@ -146,7 +146,8 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
 
   // Store reads for drag initiation.
   const activeTool = useSketchEditorStore(s => s.activeTool)
-  const setDrag = useSketchEditorStore(s => s.setDrag)
+  const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
+  const setDragPending = useSketchEditorStore(s => s.setDragPending)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
 
@@ -164,6 +165,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   // the drag should begin from the exact vertex position so snap offsets are computed correctly.
   // sanitizePointerEvent is not used here because no 3D→2D transform is needed — x, y are already
   // sketch-local coordinates passed as props. See: dragging.test.ts REGRESSION 4
+  // We defer drag initiation to Dragging.tsx which checks if movement exceeds CLICK_THRESHOLD_PX.
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!vertId || !featureId || !entityId || !vertexKey) return
     if (!isEditing || activeTool !== 'select') return
@@ -171,17 +173,10 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     markAsClicked()
     setOrbitEnabled(false)
     setIsPointerDown(true)
-    setDrag({
-      type: 'vertex',
-      vertexId: vertId,
-      featureId,
-      entityId,
-      vertexKey,
-      startWorld: [x, y],
-      currentWorld: [x, y],
-      startClient: [e.clientX, e.clientY],
-    })
-  }, [vertId, featureId, entityId, vertexKey, isEditing, activeTool, x, y, markAsClicked, setOrbitEnabled, setIsPointerDown, setDrag])
+    // Store pending drag info and start client for lazy initiation
+    setDragStartClient([e.clientX, e.clientY])
+    setDragPending({ type: 'vertex', vertexId: vertId, featureId, entityId, vertexKey, startWorld: [x, y] })
+  }, [vertId, featureId, entityId, vertexKey, isEditing, activeTool, x, y, markAsClicked, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
   useFrame(() => {
     if (!hitRef.current) return

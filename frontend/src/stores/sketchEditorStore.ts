@@ -75,11 +75,15 @@ interface SketchEditorState {
 
   // DRAG TOOL STATE
   drag: DragState | null
+  dragStartClient: [number, number] | null  // screen coordinates at pointer-down, before drag initiated (for lazy initiation)
+  dragPending: { type: 'edge' | 'vertex'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: [number, number] } | null  // pending drag info from onPointerDown, used for lazy initiation
   dragSnap: SnapTarget | null
   alignmentSnapPoint: [number, number] | null
   alignmentSnapKind: 'kinda_horizontal' | 'kinda_vertical' | null
   alignmentSnapVertexId: string | null
   setDrag: (drag: DragState | null) => void
+  setDragStartClient: (pos: [number, number] | null) => void
+  setDragPending: (pending: { type: 'edge' | 'vertex'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: [number, number] } | null) => void
   setDragSnap: (snap: SnapTarget | null) => void
   setAlignmentSnap: (point: [number, number] | null, kind: 'kinda_horizontal' | 'kinda_vertical' | null, vertexId: string | null) => void
 
@@ -142,6 +146,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   alignmentSnapKind: null,
   alignmentSnapVertexId: null,
   drag: null,
+  dragStartClient: null,
+  dragPending: null,
   dragSnap: null,
   orbitEnabled: true,
   isRotating: false,
@@ -196,6 +202,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setAlignmentSnap: (point, kind, vertexId) => set({ alignmentSnapPoint: point, alignmentSnapKind: kind, alignmentSnapVertexId: vertexId }),
 
   setDrag: (drag) => set({ drag }),
+  setDragStartClient: (pos) => set({ dragStartClient: pos }),
+  setDragPending: (pending) => set({ dragPending: pending }),
   setDragSnap: (snap) => set({ dragSnap: snap }),
 
   setOrbitEnabled: (enabled) => set({ orbitEnabled: enabled }),

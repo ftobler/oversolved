@@ -9,7 +9,7 @@ import { p2w } from '../sketch_helpers'
 import { detectAlignmentSnap } from '../../registry'
 import { useDynamicSelectionPositions } from '../interaction/snapHooks'
 import { COLOR_SNAP, COLOR_PREVIEW, DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX, POINT_HIT_PIXELS } from './constants'
-import { sanitizePointerEvent, isPureClick } from './pointerAbstraction'
+import { sanitizePointerEvent, isPureClick, CLICK_THRESHOLD_PX } from './pointerAbstraction'
 import { findSnapTarget } from './snapDetection'
 
 export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
@@ -20,11 +20,16 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
 }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const drag = useSketchEditorStore(s => s.drag)
+  const dragPending = useSketchEditorStore(s => s.dragPending)
+  const dragStartClient = useSketchEditorStore(s => s.dragStartClient)
   const setDrag = useSketchEditorStore(s => s.setDrag)
+  const setDragPending = useSketchEditorStore(s => s.setDragPending)
+  const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
   const setDragSnap = useSketchEditorStore(s => s.setDragSnap)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const onMutation = useSketchEditorStore(s => s.onMutation)
   const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
+  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
   const setAlignmentSnap = useSketchEditorStore(s => s.setAlignmentSnap)
   const { camera } = useThree()
 
@@ -44,13 +49,21 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
   // Fallback: if pointer is released outside the canvas the Three.js onPointerUp
   // never fires, leaving orbitEnabled=false permanently. Listen on window instead.
   useEffect(() => {
-    if (!drag || drag.featureId !== featureId) return
-    const cancel = () => { setDrag(null); setDragSnap(null); setOrbitEnabled(true) }
+    if (!drag && !dragPending) return
+    const cancel = () => {
+      setDrag(null)
+      setDragPending(null)
+      setDragStartClient(null)
+      setDragSnap(null)
+      setOrbitEnabled(true)
+    }
     window.addEventListener('pointerup', cancel)
     return () => window.removeEventListener('pointerup', cancel)
-  }, [drag, featureId, setDrag, setDragSnap, setOrbitEnabled])
+  }, [drag, dragPending, setDrag, setDragPending, setDragStartClient, setDragSnap, setOrbitEnabled])
 
-  if (!drag) return null
+  // Render DragPlane when drag is active OR when there's a pending drag (waiting for movement threshold)
+  const shouldRender = drag !== null || dragPending !== null
+  if (!shouldRender) return null
 
   return (
     <mesh
@@ -80,6 +93,27 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
         if (showDebugHit) {
           console.log('DEBUG RAYCAST:', { clientX: e.clientX, clientY: e.clientY, rayOrigin: ray?.origin, rayDir: ray?.direction, world: worldPt ? { x: worldPt.x, y: worldPt.y, z: worldPt.z } : 'no hit' })
         }
+
+        // Lazy drag initiation: if drag not yet started but we have pending drag and movement exceeded threshold
+        if (!drag && dragPending && dragStartClient && isPointerDown && dragPending.featureId === featureId) {
+          const dx = e.clientX - dragStartClient[0]
+          const dy = e.clientY - dragStartClient[1]
+          if (Math.hypot(dx, dy) >= CLICK_THRESHOLD_PX) {
+            setDrag({
+              type: dragPending.type,
+              vertexId: dragPending.vertexId,
+              featureId: dragPending.featureId,
+              entityId: dragPending.entityId,
+              vertexKey: dragPending.vertexKey,
+              startWorld: dragPending.startWorld,
+              currentWorld: dragPending.startWorld,
+              startClient: dragStartClient,
+            })
+          }
+        }
+
+        // If drag not yet initiated, skip drag logic
+        if (!drag) return
 
         // Drag-snap uses proactive full-scan (findSnapTarget) here, synchronously during pointer-move,
         // so snapPosition can be applied to currentWorld in the same frame (no render-delay stutter).
@@ -120,7 +154,16 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
         // Read drag and dragSnap from store directly — not from the render closure.
         // onPointerUp may fire before React re-renders after the final onPointerMove,
         // so the closure could hold stale values. getState() always returns the latest.
-        const { drag: currentDrag, dragSnap: currentDragSnap } = useSketchEditorStore.getState()
+        const { drag: currentDrag, dragSnap: currentDragSnap, dragPending } = useSketchEditorStore.getState()
+
+        // If drag never initiated (pure click), clear pending state and return
+        if (!currentDrag && dragPending && dragPending.featureId === featureId) {
+          setDragPending(null)
+          setDragStartClient(null)
+          setOrbitEnabled(true)
+          return
+        }
+
         if (!currentDrag || currentDrag.featureId !== featureId) {
           setDrag(null); setDragSnap(null); setOrbitEnabled(true); return
         }

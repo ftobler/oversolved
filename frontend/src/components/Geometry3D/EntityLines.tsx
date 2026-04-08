@@ -51,7 +51,8 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
 
   // Store reads for drag initiation.
   const activeTool = useSketchEditorStore(s => s.activeTool)
-  const setDrag = useSketchEditorStore(s => s.setDrag)
+  const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
+  const setDragPending = useSketchEditorStore(s => s.setDragPending)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
 
@@ -63,6 +64,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   // Layer 4 — Tool Layer: edge drag initiation via DragPlane.
   // startWorld is the sanitized local hit point on the edge (not the entity origin).
   // startClient is screen pixels for click-vs-drag disambiguation. See: dragging.test.ts REGRESSION 4
+  // We defer drag initiation to Dragging.tsx which checks if movement exceeds CLICK_THRESHOLD_PX.
   const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: THREE.Vector3; clientX: number; clientY: number }) => {
     if (!isEditing || activeTool !== 'select') return
     ev.stopPropagation()
@@ -71,9 +73,10 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     setIsPointerDown(true)
     const sanitized = planeGroupRef ? sanitizePointerEvent(ev, planeGroupRef) : null
     const [sx, sy] = sanitized?.localPoint ?? [ev.point.x, ev.point.y]
-    setDrag({ type: 'edge', vertexId: entId, featureId, entityId,
-      vertexKey: 'edge', startWorld: [sx, sy], currentWorld: [sx, sy], startClient: [ev.clientX, ev.clientY] })
-  }, [isEditing, activeTool, entId, featureId, entityId, planeGroupRef, markAsClicked, setOrbitEnabled, setIsPointerDown, setDrag])
+    // Store pending drag info and start client for lazy initiation
+    setDragStartClient([ev.clientX, ev.clientY])
+    setDragPending({ type: 'edge', vertexId: entId, featureId, entityId, vertexKey: 'edge', startWorld: [sx, sy] })
+  }, [isEditing, activeTool, entId, featureId, entityId, planeGroupRef, markAsClicked, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
   const e = entity
   const construction = 'construction' in e && e.construction
