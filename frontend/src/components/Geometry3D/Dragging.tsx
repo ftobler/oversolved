@@ -19,6 +19,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
   showDebugHit?: boolean
 }) {
   const meshRef = useRef<THREE.Mesh>(null)
+  const prevNearbyRef = useRef<Set<string>>(new Set())
   const drag = useSketchEditorStore(s => s.drag)
   const dragPending = useSketchEditorStore(s => s.dragPending)
   const dragStartClient = useSketchEditorStore(s => s.dragStartClient)
@@ -136,16 +137,20 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
             snapPosition = snap.position
           }
 
-          // Populate dynamic selection with nearby vertices for alignment snap reference.
-          // onPointerOver is blocked by this DragPlane, so we scan proximity here instead.
-          // Uses 3x snap radius so vertices are "touched" before the cursor reaches snap range.
+          // Populate dynamic selection as cursor passes near vertices (alignment snap refs).
+          // onPointerOver is blocked by this DragPlane, so proximity is tracked here instead.
+          // Toggle on enter (like onPointerOver), do nothing on leave — staying lasso-like.
           const scanRadius = DRAG_SNAP_VERTEX_RADIUS_PX * p2w(camera) * 3
           const nearby = collectVertexTargets(sketch, featureId, drag.entityId)
             .filter(t => Math.hypot(t.position[0] - x, t.position[1] - y) <= scanRadius)
           const nearbyIds = new Set(nearby.map(t => t.vertexId))
-          if (nearbyIds.size !== dynamicSelection.size || [...nearbyIds].some(id => !dynamicSelection.has(id))) {
-            useSketchEditorStore.setState({ dynamicSelection: nearbyIds })
+          const { updateDynamicSelection } = useSketchEditorStore.getState()
+          for (const id of nearbyIds) {
+            if (!prevNearbyRef.current.has(id)) {
+              updateDynamicSelection(id)  // entered radius: toggle in (or out if re-touched)
+            }
           }
+          prevNearbyRef.current = nearbyIds
 
           // Alignment detection for kinda_horizontal/kinda_vertical
           const currentDynamic = useSketchEditorStore.getState().dynamicSelection
@@ -171,6 +176,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
         // Setting isPointerDown=false here causes runPointerUpCleanup to return early.
         useSketchEditorStore.getState().setIsPointerDown(false)
         useSketchEditorStore.setState({ dynamicSelection: new Set() })
+        prevNearbyRef.current = new Set()
 
         // Read drag and dragSnap from store directly — not from the render closure.
         // onPointerUp may fire before React re-renders after the final onPointerMove,
