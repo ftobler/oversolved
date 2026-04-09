@@ -359,7 +359,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
       } else {
         onMutation?.({ type: 'add_center_rect', featureId, center: pts[0], corner: [px, py] })
         clearDraw()
-        setActiveTool('select')
+        setActiveTool(null)
       }
 
     } else if (effectiveTool === 'project') {

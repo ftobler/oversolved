@@ -254,7 +254,7 @@ describe('dispatchKey', () => {
 describe('tool commands via store', () => {
   beforeEach(() => {
     // Reset to known state before each test
-    useSketchEditorStore.getState().setActiveTool('select')
+    useSketchEditorStore.getState().setActiveTool(null)
   })
 
   it('set_tool_line activates the line tool', () => {
