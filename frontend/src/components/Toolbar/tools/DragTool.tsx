@@ -8,7 +8,7 @@ export default function DragTool() {
   const drag = useSketchEditorStore(s => s.drag)
 
   const isDragActive = drag !== null
-  const isActive = isDragActive || activeTool === 'drag'
+  const isActive = isDragActive || activeTool === 'drag' || activeTool === null
 
   return (
     <ToolbarButton

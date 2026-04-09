@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore, getEffectiveTool } from '../../stores/sketchEditorStore'
 import { toolRegistry } from '../../registry/toolRegistry'
 import type { Point } from '../../types/cad'
 
@@ -52,7 +52,8 @@ export function useToolClickDispatch({
   return useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     e.stopPropagation()
 
-    const tool = toolRegistry.get(activeTool)
+    const effectiveTool = getEffectiveTool(activeTool)
+    const tool = toolRegistry.get(effectiveTool)
 
     const context = {
       normalSelection,
@@ -68,7 +69,7 @@ export function useToolClickDispatch({
       onMutation,
     }
 
-    if (tool?.handlers.onClick && activeTool !== 'dimension' && !fieldPickState?.kind) {
+    if (tool?.handlers.onClick && effectiveTool !== 'dimension' && !fieldPickState?.kind) {
       tool.handlers.onClick(
         { clientX: e.clientX, clientY: e.clientY } as PointerEvent,
         [0, 0] as Point,

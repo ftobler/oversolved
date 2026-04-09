@@ -191,7 +191,7 @@ describe('entityRegistry', () => {
   it('ENTITY_BY_ACTIVE_TOOL has no entries for entities without activeTool', () => {
     const toolValues = new Set(ENTITIES.filter(e => e.activeTool).map(e => e.activeTool!))
     for (const key of ENTITY_BY_ACTIVE_TOOL.keys()) {
-      expect(toolValues.has(key as ActiveTool)).toBe(true)
+      expect(toolValues.has(key as Exclude<ActiveTool, null>)).toBe(true)
     }
   })
 

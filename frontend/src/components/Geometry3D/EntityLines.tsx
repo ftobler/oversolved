@@ -72,8 +72,8 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
    // NOTE: setDragPending is a "rogue handler" that bypasses the tool system. This is intentional
    // for now because Dragging.tsx depends on dragPending being set. After the tool system fully
    // handles drag initiation, this could be refactored. See feature_selection_system2.md
-   const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: THREE.Vector3; clientX: number; clientY: number }) => {
-     if (!isEditing || activeTool !== 'select') return
+    const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: THREE.Vector3; clientX: number; clientY: number }) => {
+      if (!isEditing || (activeTool !== null && activeTool !== 'select')) return
      ev.stopPropagation()
      markAsClicked()
      setOrbitEnabled(false)

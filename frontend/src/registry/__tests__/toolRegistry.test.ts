@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { ToolRegistry } from '../toolRegistry'
+import { getEffectiveTool } from '../../stores/sketchEditorStore'
 
 import type { Tool, ToolCategory, ToolId, ToolContext, ToolHandlers } from '../toolRegistry'
 
@@ -186,6 +187,18 @@ describe('ToolRegistry', () => {
       registry.register(createMockTool('drag', 'drag'))
 
       expect(registry.getRegisteredHandlerCount()).toBeGreaterThan(0)
+    })
+  })
+
+  describe('fallback tool behavior', () => {
+    it('returns drag tool when activeTool is null', () => {
+      expect(getEffectiveTool(null)).toBe('drag')
+    })
+
+    it('returns the same tool when activeTool is set', () => {
+      expect(getEffectiveTool('select')).toBe('select')
+      expect(getEffectiveTool('line')).toBe('line')
+      expect(getEffectiveTool('dimension')).toBe('dimension')
     })
   })
 })

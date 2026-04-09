@@ -105,17 +105,18 @@ export function computePreviewPts(
   return null
 }
 
-export function DrawPreview({ featureId, activeFeatureId }: { featureId: string; activeFeatureId?: string }) {
+export function DrawPreview({ activeFeatureId }: { activeFeatureId?: string }) {
   const activeTool = useSketchEditorStore(s => s.activeTool)
+  const effectiveTool = activeTool ?? 'drag'
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
   const drawHover = useSketchEditorStore(s => s.drawHover)
   const alignmentSnapPoint = useSketchEditorStore(s => s.alignmentSnapPoint)
   const alignmentSnapKind = useSketchEditorStore(s => s.alignmentSnapKind)
 
-  if (featureId !== activeFeatureId) return null
-  if (activeTool === 'select') return null
+  if (activeFeatureId === null) return null
+  if (effectiveTool === 'select') return null
 
-  const previewPts = computePreviewPts(activeTool, drawPoints, drawHover)
+  const previewPts = computePreviewPts(effectiveTool, drawPoints, drawHover)
 
   // Compute the actual endpoint position (handles snapping)
   const endpoint = drawHover
@@ -127,7 +128,7 @@ export function DrawPreview({ featureId, activeFeatureId }: { featureId: string;
         <Dot key={i} x={pt[0]} y={pt[1]} px={4} color={COLOR_PREVIEW} billboard />
       ))}
       {/* Hover cursor dot */}
-      {drawHover && activeTool === 'point' && (
+      {drawHover && effectiveTool === 'point' && (
         <Dot x={drawHover[0]} y={drawHover[1]} px={4} color={COLOR_PREVIEW} billboard />
       )}
       {/* Preview line/shape */}
@@ -156,6 +157,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
 }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const activeTool = useSketchEditorStore(s => s.activeTool)
+  const effectiveTool = activeTool ?? 'drag'
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
   const addDrawPoint = useSketchEditorStore(s => s.addDrawPoint)
   const setDrawHover = useSketchEditorStore(s => s.setDrawHover)
@@ -192,7 +194,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
 
   // Deselection plane: catch clicks on empty sketch space
   // Positioned far back in local z to not interfere with plane hover geometry
-  if (activeTool === 'select' || activeTool === 'dimension') {
+  if (effectiveTool === 'select' || effectiveTool === 'dimension' || effectiveTool === 'drag') {
     return (
       <mesh
         position={[0, 0, -1000]}
@@ -210,10 +212,10 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     const [px, py] = hoveredVertexPosition ?? pathSnap?.position ?? [x, y]
     const pts = drawPoints
 
-    if (activeTool === 'point') {
+    if (effectiveTool === 'point') {
       onMutation?.({ type: 'add_entity', featureId, kind: 'point', params: [px, py] })
 
-    } else if (activeTool === 'line') {
+    } else if (effectiveTool === 'line') {
       if (pts.length === 0) {
         // First click: store point and snap info for second click
         addDrawPoint([px, py])
@@ -275,10 +277,10 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
             params: [pts[0][0], pts[0][1], px, py] })
         }
         clearDraw()
-        setActiveTool('select')
+        setActiveTool(null)
       }
 
-    } else if (activeTool === 'circle') {
+    } else if (effectiveTool === 'circle') {
       if (pts.length === 0) {
         addDrawPoint([px, py])
         if (hoveredVertexId) {
@@ -308,10 +310,10 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           }
         }
         clearDraw()
-        setActiveTool('select')
+        setActiveTool(null)
       }
 
-    } else if (activeTool === 'arc') {
+    } else if (effectiveTool === 'arc') {
       if (pts.length === 0) {
         addDrawPoint([px, py])
         if (hoveredVertexId) {
@@ -329,10 +331,10 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
             params: [cc.cx, cc.cy, cc.r, aStart, aEnd] })
         }
         clearDraw()
-        setActiveTool('select')
+        setActiveTool(null)
       }
 
-    } else if (activeTool === 'rect') {
+    } else if (effectiveTool === 'rect') {
       if (pts.length === 0) {
         addDrawPoint([px, py])
         if (hoveredVertexId) {
@@ -343,10 +345,10 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
       } else {
         onMutation?.({ type: 'add_rect', featureId, p0: pts[0], p1: [px, py] })
         clearDraw()
-        setActiveTool('select')
+        setActiveTool(null)
       }
 
-    } else if (activeTool === 'center_rect') {
+    } else if (effectiveTool === 'center_rect') {
       if (pts.length === 0) {
         addDrawPoint([px, py])
         if (hoveredVertexId) {
@@ -360,7 +362,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
         setActiveTool('select')
       }
 
-    } else if (activeTool === 'project') {
+    } else if (effectiveTool === 'project') {
       if (hoveredEntityId && hoveredEntityId.startsWith('entity:')) {
         const parts = hoveredEntityId.split(':')
         if (parts.length >= 3) {
@@ -380,7 +382,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
               }
             }
             onMutation?.({ type: 'add_projected_entity', featureId, kind, source })
-            setActiveTool('select')
+            setActiveTool(null)
           }
         }
       }

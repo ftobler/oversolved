@@ -48,7 +48,7 @@ export function useHoverAndDynamicSelection({
 
   const clickedRef = useRef<string | null>(null)
 
-  const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
+  const isDrawingTool = (activeTool ?? 'drag') !== 'select' && (activeTool ?? 'drag') !== 'dimension'
   const isInNormalSelection = normalSelection.has(id)
 
   const onOver = useCallback((e: { stopPropagation: () => void }) => {

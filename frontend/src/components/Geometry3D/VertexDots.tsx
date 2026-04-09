@@ -174,7 +174,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     // handles drag initiation, this could be refactored. See feature_selection_system2.md
     const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
       if (!vertId || !featureId || !entityId || !vertexKey) return
-      if (!isEditing || activeTool !== 'select') return
+      if (!isEditing || (activeTool !== null && activeTool !== 'select')) return
       e.stopPropagation()
       markAsClicked()
       setOrbitEnabled(false)

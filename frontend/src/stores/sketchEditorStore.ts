@@ -7,7 +7,9 @@ import type { SnapTarget } from '../components/Geometry3D/snapDetection'
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type { Mutation }
 
-export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'point' | 'project' | 'drag'
+export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'point' | 'project' | 'drag' | null
+
+export const getEffectiveTool = (activeTool: ActiveTool): NonNullable<ActiveTool> => activeTool ?? 'drag'
 
 export interface DialogState {
   position: [number, number]
@@ -168,7 +170,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   hoveredVertexPosition: null,
   hoveredSnapKind: null,
   hoveredPathSnap: null,
-  activeTool: 'select',
+  activeTool: null,
   activeFeatureId: null,
   drawPoints: [],
   drawHover: null,
@@ -250,7 +252,9 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setHoveredPathSnap: (snap) => set({ hoveredPathSnap: snap }),
 
-  setActiveTool: (tool) => set({ activeTool: tool, drawPoints: [], drawHover: null }),
+  setActiveTool: (tool) => {
+    set({ activeTool: tool, drawPoints: [], drawHover: null })
+  },
 
   applyConstraint: (kind) => {
     const { normalSelection: selection, onMutation, activeFeatureId } = get()
@@ -342,7 +346,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
               const val = parseFloat(input)
               if (isNaN(val) || val <= 0) return
               onMutation?.({ type: 'add_constraint', featureId: hostFeatureId, kind: dimKind, targets: [target], value: val })
-              set({ activeTool: 'select', pendingDimTarget: null, pendingDimEntityKind: null })
+              set({ activeTool: null, pendingDimTarget: null, pendingDimEntityKind: null })
             },
           })
           return
@@ -367,13 +371,13 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
             const val = parseFloat(input)
             if (isNaN(val) || val <= 0) return
             onMutation?.({ type: 'add_constraint', featureId: hostFeatureId, kind: singleKind, targets: [target], value: val })
-            set({ activeTool: 'select' })
-          },
-        })
-        return
-      }
+            set({ activeTool: null })
+            },
+            })
+            return
+            }
 
-      const isPoint = (t: string) => t.startsWith('vertex:') || t.startsWith('@builtin_')
+            const isPoint = (t: string) => t.startsWith('vertex:') || t.startsWith('@builtin_')
       const dimKind = resolveTwoTargetDimension(
         isPoint(first),
         isPoint(target),
@@ -387,7 +391,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
           const val = parseFloat(input)
           if (isNaN(val) || val <= 0) return
           onMutation?.({ type: 'add_constraint', featureId: hostFeatureId, kind: dimKind, targets: [first, target], value: val })
-          set({ activeTool: 'select' })
+          set({ activeTool: null })
         },
       })
     }

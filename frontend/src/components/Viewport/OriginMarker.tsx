@@ -41,7 +41,7 @@ export default function OriginMarker() {
   }, [activeTool, activeFeatureId, selId, handleDimClick, toggleNormalSelection])
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_INACTIVE
-  const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
+  const isDrawingTool = (activeTool ?? 'drag') !== 'select' && (activeTool ?? 'drag') !== 'dimension'
 
   return (
     <group
