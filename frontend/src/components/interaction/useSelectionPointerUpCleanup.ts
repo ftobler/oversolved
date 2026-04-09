@@ -15,6 +15,11 @@ import { useSketchEditorStore } from '../../stores/sketchEditorStore'
  *
  * DragPlane has its own window pointerup handler to cancel mid-drag. This hook
  * handles the non-drag case: any pointer-up should reset selection state.
+ *
+ * Implements the pointer-up behavior from feature_dynamic_select.md:
+ * - On pointerup: Clear dynamic selection and set isPointerDown = false
+ * - Ensures dynamic selection is properly cleared even when pointer leaves canvas
+ * - Prevents accumulation of stale dynamic selection state
  */
 export function useSelectionPointerUpCleanup() {
   useEffect(() => {

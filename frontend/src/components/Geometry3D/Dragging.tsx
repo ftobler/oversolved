@@ -28,9 +28,11 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
   const setDragSnap = useSketchEditorStore(s => s.setDragSnap)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const onMutation = useSketchEditorStore(s => s.onMutation)
-  const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
-  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
-  const setAlignmentSnap = useSketchEditorStore(s => s.setAlignmentSnap)
+   const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
+   // Tracks if pointer is currently down for dynamic selection accumulation
+   // (see feature_dynamic_select.md for dynamic selection behavior)
+   const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
+   const setAlignmentSnap = useSketchEditorStore(s => s.setAlignmentSnap)
   const { camera } = useThree()
 
   // Build map of dynamic selection positions for alignment detection

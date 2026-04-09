@@ -52,19 +52,22 @@ export function useHoverAndDynamicSelection({
 
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
 
-  const onOver = useCallback((e: { stopPropagation: () => void }) => {
-    if (isRotating) return
-    if (!isDrawingTool) e.stopPropagation()
-    if (!selected) setHovered(true)
-    hoverPayload()
+   const onOver = useCallback((e: { stopPropagation: () => void }) => {
+     if (isRotating) return
+     if (!isDrawingTool) e.stopPropagation()
+     if (!selected) setHovered(true)
+     hoverPayload()
 
-    // Accumulate into dynamicSelection while pointer is held, excluding self and
-    // already-selected elements. lastHoveredRef prevents double-adding on re-entry.
-    if (isPointerDown && !selected && lastHoveredRef.current !== id && clickedRef.current !== id) {
-      lastHoveredRef.current = id
-      toggleDynamicSelection(id)
-    }
-  }, [isRotating, isDrawingTool, selected, hoverPayload, isPointerDown, id, toggleDynamicSelection])
+     // Accumulate into dynamicSelection while pointer is held, excluding self and
+     // already-selected elements. lastHoveredRef prevents double-adding on re-entry.
+     // Implements dynamic selection behavior from feature_dynamic_select.md:
+     // - Entry: When mouse is pressed AND hovering over an element, add to dynamic selection
+     // - Toggle: Re-hovering over an element already in dynamic selection removes it
+     if (isPointerDown && !selected && lastHoveredRef.current !== id && clickedRef.current !== id) {
+       lastHoveredRef.current = id
+       toggleDynamicSelection(id)
+     }
+   }, [isRotating, isDrawingTool, selected, hoverPayload, isPointerDown, id, toggleDynamicSelection])
 
   const onOut = useCallback(() => {
     if (isRotating) return

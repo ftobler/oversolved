@@ -21,6 +21,12 @@ import { useDynamicSelectionPositions } from './snapHooks'
  * it must compute the alignment-snapped position synchronously in order to
  * set currentWorld in the same pointer-move event — a one-render delay would
  * produce visible stutter in the drag preview.
+ *
+ * Implements the alignment snap feature from feature_entity_snap.md:
+ * - kinda_horizontal/kinda_vertical snapping for constraint inference
+ * - Uses dynamicSelection as reference points for alignment detection
+ * - Visual feedback via dashed lines when cursor is aligned
+ * - Applies horizontal/vertical constraints on tool completion
  */
 export function useAlignmentSnapEffect(
   sketch: Sketch | undefined,

@@ -122,11 +122,11 @@ def constraint_colinear(ctx):
 @icon("frontend/src/assets/icons/constraint-dimension.svg")  # double use: toolbar
 def constraint_dimension(ctx):
     # Parameters
-    x0, x1 = 0.15, 0.85   # left/right x of the measured feature
-    y_obj1 = 0.25          # y of the object line (thing being measured)
-    y_obj2 = 0.75          # y of the object line (thing being measured)
-    y_dim = 0.5           # y of the dimension line
-    arr = px(6)         # arrowhead size (base half-width = arr/2)
+    x0, x1 = 0.15, 0.85  # left/right x of the measured feature
+    y_obj1 = 0.25  # y of the object line (thing being measured)
+    y_obj2 = 0.75  # y of the object line (thing being measured)
+    y_dim = 0.5  # y of the dimension line
+    arr = px(6)  # arrowhead size (base half-width = arr/2)
 
     # Extension lines (from just below object line down to dimension line)
     ctx.move_to(x0, y_obj1)
@@ -142,9 +142,9 @@ def constraint_dimension(ctx):
 @icon("frontend/src/assets/icons/constraint-square.svg")  # double use: toolbar (normal)
 def constraint_square(ctx):
     # Parameters
-    cx, cy = 0.2, 0.8    # corner (vertex of the right angle)
-    leg = 0.65        # length of each leg
-    marker = 0.22        # size of the right-angle square marker
+    cx, cy = 0.2, 0.8  # corner (vertex of the right angle)
+    leg = 0.65  # length of each leg
+    marker = 0.22  # size of the right-angle square marker
 
     # Vertical and horizontal legs (drawn in one stroke)
     ctx.move_to(cx, cy - leg)
@@ -162,9 +162,9 @@ def constraint_square(ctx):
 @icon("frontend/src/assets/icons/constraint-horizontal.svg")  # double use: toolbar
 def constraint_horizontal(ctx):
     # Parameters
-    x0, x1 = 0.15, 0.85   # left and right endpoints
-    y = 0.5         # vertical center
-    cap_half = 0.08        # half-height of the end caps
+    x0, x1 = 0.15, 0.85  # left and right endpoints
+    y = 0.5  # vertical center
+    cap_half = 0.08  # half-height of the end caps
 
     # Main horizontal line
     ctx.move_to(x0, y)
@@ -185,9 +185,9 @@ def constraint_horizontal(ctx):
 @icon("frontend/src/assets/icons/constraint-vertical.svg")  # double use: toolbar
 def constraint_vertical(ctx):
     # Parameters
-    y0, y1 = 0.15, 0.85   # top and bottom endpoints
-    x = 0.5          # horizontal center
-    cap_half = 0.08         # half-width of the end caps
+    y0, y1 = 0.15, 0.85  # top and bottom endpoints
+    x = 0.5  # horizontal center
+    cap_half = 0.08  # half-width of the end caps
 
     # Main vertical line
     ctx.move_to(x, y0)
@@ -224,8 +224,8 @@ def constraint_equal(ctx):
 @icon("frontend/src/assets/icons/constraint-tangent.svg", angle=-20, offset_x=0.1)  # double use: toolbar
 def constraint_tangent(ctx):
     # Parameters
-    cx, cy = 0.34, 0.5   # circle center
-    r = 0.22        # circle radius
+    cx, cy = 0.34, 0.5  # circle center
+    r = 0.22  # circle radius
     y0, y1 = 0.08, 0.92  # tangent line extent
 
     # Circle
@@ -271,8 +271,8 @@ def constraint_midpoint(ctx):
 @icon("frontend/src/assets/icons/constraint-concentric.svg")  # double use: toolbar
 def constraint_concentric(ctx):
     # Parameters
-    cx, cy = 0.5, 0.5   # shared center
-    r_outer = 0.3        # outer ring radius
+    cx, cy = 0.5, 0.5  # shared center
+    r_outer = 0.3  # outer ring radius
     # r_inner = 0.20        # inner ring radius
 
     ctx.arc(cx, cy, r_outer, 0, 2 * math.pi)
@@ -289,11 +289,11 @@ def constraint_concentric(ctx):
 @icon("frontend/src/assets/icons/constraint-fixed.svg")  # double use: toolbar
 def constraint_fixed(ctx):
     # Parameters
-    x0, x1 = 0.2, 0.8        # endpoints of the fixed line
-    x0d, x1d = 0.23, 0.83        # endpoints of the fixed line
-    y_line = 0.5            # y of the fixed line
-    y_base = 0.45            # y of the solid base
-    dash_n = 3               # number of dashes for the base
+    x0, x1 = 0.2, 0.8  # endpoints of the fixed line
+    x0d, x1d = 0.23, 0.83  # endpoints of the fixed line
+    y_line = 0.5  # y of the fixed line
+    y_base = 0.45  # y of the solid base
+    dash_n = 3  # number of dashes for the base
 
     # Fixed line (the constrained object)
     ctx.move_to(x0, y_line)
@@ -346,6 +346,21 @@ def constraint_parallel(ctx):
 
 
 # Toolbar icons
+@icon("frontend/src/assets/icons/toolbar-select.svg")
+def toolbar_select(ctx):
+    """Select tool icon: simple cursor arrow pointing up-left."""
+    # Arrow pointing up-left (like a mouse cursor)
+    cx, cy = 0.5, 0.5
+
+    # Arrow shaft/line from bottom-right to top-left
+    ctx.move_to(0.75, 0.75)
+    ctx.line_to(0.35, 0.35)
+    stroke(ctx, 1.5)
+
+    # Arrowhead at the top-left
+    _arrowhead(ctx, 0.35, 0.35, 225, px(5))  # 225 degrees = up-left
+
+
 @icon("frontend/src/assets/icons/toolbar-menu.svg")
 def toolbar_menu(ctx):
     # Hamburger menu icon (three horizontal lines)
@@ -683,11 +698,11 @@ def feature_part(ctx):
     # Hexagon vertices (isometric cube corners)
     hex_points = [
         (0.5, 0.15),  # top
-        (0.8, 0.3),   # top-right
-        (0.8, 0.6),   # bottom-right
+        (0.8, 0.3),  # top-right
+        (0.8, 0.6),  # bottom-right
         (0.5, 0.75),  # bottom
-        (0.2, 0.6),   # bottom-left
-        (0.2, 0.3),   # top-left
+        (0.2, 0.6),  # bottom-left
+        (0.2, 0.3),  # top-left
     ]
     center_point = (0.5, 0.45)
 
@@ -725,9 +740,12 @@ def feature_code(ctx):
         # Top hook: starts at (outer_x, top), curves inward
         ctx.move_to(outer_x, top)
         ctx.curve_to(
-            outer_x - r * 1.2 * d, top,
-            outer_x - r * 1.2 * d, top + r * 1.5,
-            outer_x - r * 1.2 * d, top + r * 1.5
+            outer_x - r * 1.2 * d,
+            top,
+            outer_x - r * 1.2 * d,
+            top + r * 1.5,
+            outer_x - r * 1.2 * d,
+            top + r * 1.5,
         )
 
         # Upper straight segment down to middle
@@ -735,25 +753,22 @@ def feature_code(ctx):
 
         # Middle point curve
         ctx.curve_to(
-            outer_x - r * 1.2 * d, cy - r * 0.3,
-            tip_x, cy - r * 0.3,
-            tip_x, cy
+            outer_x - r * 1.2 * d, cy - r * 0.3, tip_x, cy - r * 0.3, tip_x, cy
         )
         ctx.curve_to(
-            tip_x, cy + r * 0.3,
-            outer_x - r * 1.2 * d, cy + r * 0.3,
-            outer_x - r * 1.2 * d, cy + r * 0.8
+            tip_x,
+            cy + r * 0.3,
+            outer_x - r * 1.2 * d,
+            cy + r * 0.3,
+            outer_x - r * 1.2 * d,
+            cy + r * 0.8,
         )
 
         # Lower straight segment
         ctx.line_to(outer_x - r * 1.2 * d, bot - r * 1.5)
 
         # Bottom hook: curves back out to (outer_x, bot)
-        ctx.curve_to(
-            outer_x - r * 1.2 * d, bot,
-            outer_x, bot,
-            outer_x, bot
-        )
+        ctx.curve_to(outer_x - r * 1.2 * d, bot, outer_x, bot, outer_x, bot)
         stroke(ctx, 1.5)
 
     half_h = 0.32

@@ -43,12 +43,16 @@ export interface DimLabelDrag {
 export type DragState = VertexOrEdgeDrag | DimLabelDrag
 
 interface SketchEditorState {
-  // SELECTION SUBSYSTEM
-  // Persistent user-chosen selection, cleared only by explicit action.
-  selection: Set<string>
-  // Temporary accumulation while pointer is held; cleared on pointer-up.
-  dynamicSelection: Set<string>
-  isPointerDown: boolean
+   // SELECTION SUBSYSTEM
+   // Persistent user-chosen selection, cleared only by explicit action.
+   selection: Set<string>
+   // Temporary accumulation while pointer is held; cleared on pointer-up.
+   // Used for dynamic selection during mouse-down + hover (see feature_dynamic_select.md)
+   // Implements the three-selection-mode system: hover, selection, dynamic selection
+   dynamicSelection: Set<string>
+   // Tracks if pointer is currently down for dynamic selection accumulation
+   // (see feature_dynamic_select.md for dynamic selection behavior)
+   isPointerDown: boolean
   toggleSelect: (id: string) => void
   clearSelection: () => void
   setIsPointerDown: (down: boolean) => void
@@ -189,13 +193,14 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setIsPointerDown: (down) => set({ isPointerDown: down }),
 
-  toggleDynamicSelection: (id) =>
-    set(s => {
-      const next = new Set(s.dynamicSelection)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return { dynamicSelection: next }
-    }),
+   toggleDynamicSelection: (id) =>
+     set(s => {
+       const next = new Set(s.dynamicSelection)
+       if (next.has(id)) next.delete(id)
+       else next.add(id)
+       return { dynamicSelection: next }
+     }), // Toggle element in dynamic selection (add if not present, remove if present)
+       // Used for dynamic selection during mouse-down + hover (see feature_dynamic_select.md)
 
   clearDynamicSelection: () => set({ dynamicSelection: new Set() }),
 

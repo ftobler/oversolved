@@ -120,8 +120,10 @@ export default function Part() {
   const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const setFieldPickState = useSketchEditorStore(s => s.setFieldPickState)
-  const selection = useSketchEditorStore(s => s.selection)
-  const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
+   const selection = useSketchEditorStore(s => s.selection)
+   // Temporary accumulation of elements while pointer is held down
+   // Used for dynamic selection during mouse-down + hover (see feature_dynamic_select.md)
+   const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
   const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)

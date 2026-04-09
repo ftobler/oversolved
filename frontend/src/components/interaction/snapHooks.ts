@@ -1,5 +1,9 @@
 // snapHooks.ts
 // Shared hooks for snap and alignment detection used by dragging and drawing.
+//
+// Implements utilities for feature_dynamic_select.md and feature_entity_snap.md:
+// - useDynamicSelectionPositions: Maps selection IDs to world positions for alignment detection
+// - Supports kinda_horizontal/kinda_vertical snapping by providing reference points
 
 import { useMemo } from 'react'
 import type { Sketch, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
