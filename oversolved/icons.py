@@ -83,7 +83,9 @@ def constraint_angle(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/constraint-coincident.svg", angle=-10, offset_y=-0.15)  # double use: toolbar
+@icon(
+    "frontend/src/assets/icons/constraint-coincident.svg", angle=-10, offset_y=-0.15
+)  # double use: toolbar
 def constraint_coincident(ctx):
     # a line with a point on it and a dotted line coming off that point
 
@@ -103,7 +105,9 @@ def constraint_coincident(ctx):
     draw_dotted_line(ctx, x0, y0, x1, y1, num_dots)
 
 
-@icon("frontend/src/assets/icons/constraint-colinear.svg", angle=15)  # double use: toolbar
+@icon(
+    "frontend/src/assets/icons/constraint-colinear.svg", angle=15
+)  # double use: toolbar
 def constraint_colinear(ctx):
     # two parallel lines, one dotted. shifted at an angle.
 
@@ -221,7 +225,9 @@ def constraint_equal(ctx):
     stroke(ctx, 2)
 
 
-@icon("frontend/src/assets/icons/constraint-tangent.svg", angle=-20, offset_x=0.1)  # double use: toolbar
+@icon(
+    "frontend/src/assets/icons/constraint-tangent.svg", angle=-20, offset_x=0.1
+)  # double use: toolbar
 def constraint_tangent(ctx):
     # Parameters
     cx, cy = 0.34, 0.5  # circle center
@@ -243,7 +249,9 @@ def constraint_tangent(ctx):
     # ctx.fill()
 
 
-@icon("frontend/src/assets/icons/constraint-midpoint.svg", angle=-15)  # double use: toolbar
+@icon(
+    "frontend/src/assets/icons/constraint-midpoint.svg", angle=-15
+)  # double use: toolbar
 def constraint_midpoint(ctx):
     # Parameters
     x0, y0 = 0.1, 0.5  # segment endpoints
@@ -311,7 +319,9 @@ def constraint_fixed(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/constraint-parallel.svg", angle=20)  # double use: toolbar
+@icon(
+    "frontend/src/assets/icons/constraint-parallel.svg", angle=20
+)  # double use: toolbar
 def constraint_parallel(ctx):
     # Two parallel lines with arrow indicators
     y1 = 0.35
@@ -346,19 +356,20 @@ def constraint_parallel(ctx):
 
 
 # Toolbar icons
-@icon("frontend/src/assets/icons/toolbar-select.svg")
+@icon(
+    "frontend/src/assets/icons/toolbar-select.svg", angle=-30
+)  # double use: constraint-horizontal (normal)
 def toolbar_select(ctx):
     """Select tool icon: simple cursor arrow pointing up-left."""
     # Arrow pointing up-left (like a mouse cursor)
-    cx, cy = 0.5, 0.5
 
     # Arrow shaft/line from bottom-right to top-left
-    ctx.move_to(0.75, 0.75)
-    ctx.line_to(0.35, 0.35)
-    stroke(ctx, 1.5)
+    ctx.move_to(0.49, 0.8)
+    ctx.line_to(0.49, 0.4)
+    stroke(ctx, 3.5)
 
     # Arrowhead at the top-left
-    _arrowhead(ctx, 0.35, 0.35, 225, px(5))  # 225 degrees = up-left
+    _arrowhead(ctx, 0.5, 0.2, 270, px(10))
 
 
 @icon("frontend/src/assets/icons/toolbar-menu.svg")
