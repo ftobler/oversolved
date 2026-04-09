@@ -219,13 +219,20 @@ export function drawCubeGizmo(canvas: HTMLCanvasElement, camera: THREE.Camera, h
   for (const poly of polys) {
     if (poly.nz < 0) continue // Back-face cull
 
+    const isHover = hover?.type === poly.type && hover.index === poly.index
+
     ctx.beginPath()
     poly.pts.forEach((p, j) => j ? ctx.lineTo(p.sx, p.sy) : ctx.moveTo(p.sx, p.sy))
     ctx.closePath()
 
-    const isHover = hover?.type === poly.type && hover.index === poly.index
-    ctx.fillStyle = isHover ? 'rgba(255,255,255,0.5)' : poly.fill
-    ctx.fill()
+    // Faces always visible, edges/vertices only on hover
+    if (poly.type === 'face') {
+      ctx.fillStyle = isHover ? 'rgba(255,255,255,0.5)' : poly.fill
+      ctx.fill()
+    } else if (isHover) {
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'
+      ctx.fill()
+    }
 
     if (poly.type === 'face' && poly.label && poly.axes && poly.nz > 0) {
       const fcx = poly.pts.reduce((sum, p) => sum + p.sx, 0) / poly.pts.length
