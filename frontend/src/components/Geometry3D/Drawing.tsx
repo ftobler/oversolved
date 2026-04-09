@@ -257,14 +257,21 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
               constraintKind: 'coincident', snapEntityRef: startSnapEntityRef, entityId: lineId })
           } else {
             onMutation?.({ type: 'add_entity', featureId, kind: 'line',
-              params: [pts[0][0], pts[0][1], px, py] })
+              params: [pts[0][0], pts[0][1], px, py], entityId: lineId })
           }
 
           // Add constraint for end vertex
           if (alignmentSnapPoint && alignmentSnapKind && alignmentSnapVertexId) {
             const constraintKind = alignmentSnapKind === 'kinda_horizontal' ? 'horizontal' : 'vertical'
-            onMutation?.({ type: 'add_constraint', featureId, kind: constraintKind,
-              targets: [`vertex:${featureId}:${lineId}:end`, alignmentSnapVertexId] })
+            if (alignmentSnapVertexId === 'draw:last') {
+              // Alignment was with the previous draw point (synthetic ref, not a real vertex).
+              // Constrain the whole line entity to be horizontal/vertical.
+              onMutation?.({ type: 'add_constraint', featureId, kind: constraintKind,
+                targets: [`entity:${featureId}:${lineId}`] })
+            } else {
+              onMutation?.({ type: 'add_constraint', featureId, kind: constraintKind,
+                targets: [`vertex:${featureId}:${lineId}:end`, alignmentSnapVertexId] })
+            }
           } else if (hoveredVertexId && hoveredSnapKind) {
             const constraintKind = suggestConstraint('vertex', hoveredSnapKind) ?? 'coincident'
             onMutation?.({ type: 'add_constraint', featureId, kind: constraintKind,

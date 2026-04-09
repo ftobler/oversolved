@@ -212,14 +212,15 @@ export function applyAddEntity(
   featureId: string,
   kind: string,
   params: number[],
+  entityId?: string,
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature) return
   if (!feature.entities) feature.entities = []
   if (!feature.initial) feature.initial = {}
   const existing = new Set(feature.entities.map(e => e.id))
-  let eid = randomId(12)
-  while (existing.has(eid)) eid = randomId(12)
+  let eid = entityId ?? randomId(12)
+  while (!entityId && existing.has(eid)) eid = randomId(12)
   feature.entities.push({ id: eid, kind })
   feature.initial[eid] = params.map(round)
 }

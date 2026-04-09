@@ -247,7 +247,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         applyDeleteElements(next, m.targets)
         break
       case 'add_entity':
-        applyAddEntity(next, m.featureId, m.kind, m.params)
+        applyAddEntity(next, m.featureId, m.kind, m.params, m.entityId)
         break
       case 'add_entity_with_constraint':
         applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId)
