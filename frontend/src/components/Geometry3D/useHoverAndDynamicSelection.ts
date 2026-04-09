@@ -18,6 +18,19 @@ import { useSketchEditorStore } from '../../stores/sketchEditorStore'
  *   // In component's onPointerDown: call markAsClicked() before setDrag()
  *   // to prevent the clicked element from accumulating into dynamicSelection.
  */
+
+export function applyDynamicHover(
+  id: string,
+  isPointerDown: boolean,
+  lastHoveredRef: { current: string | null },
+  updateDynamicSelection: (id: string) => void,
+): void {
+  if (isPointerDown && lastHoveredRef.current !== id) {
+    lastHoveredRef.current = id
+    updateDynamicSelection(id)
+  }
+}
+
 export function useHoverAndDynamicSelection({
   id,
   hoverPayload,
@@ -45,8 +58,8 @@ export function useHoverAndDynamicSelection({
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const setInternalHoverSelection = useSketchEditorStore(s => s.setInternalHoverSelection)
-
   const clickedRef = useRef<string | null>(null)
+  const lastHoveredRef = useRef<string | null>(null)
 
   const isDrawingTool = (activeTool ?? 'drag') !== 'select' && (activeTool ?? 'drag') !== 'dimension'
   const isInNormalSelection = normalSelection.has(id)
@@ -57,12 +70,18 @@ export function useHoverAndDynamicSelection({
     if (!isInNormalSelection) setHovered(true)
     setInternalHoverSelection(id)
     hoverPayload()
+
+    // Read imperatively to avoid stale closure: isPointerDown is set on pointerdown
+    // and onOver fires before React re-renders with the updated value.
+    const { isPointerDown, updateDynamicSelection } = useSketchEditorStore.getState()
+    applyDynamicHover(id, isPointerDown, lastHoveredRef, updateDynamicSelection)
   }, [isRotating, isDrawingTool, isInNormalSelection, setInternalHoverSelection, hoverPayload, id])
 
   const onOut = useCallback(() => {
     if (isRotating) return
     setInternalHoverSelection(null)
     if (clickedRef.current === id) clickedRef.current = null
+    lastHoveredRef.current = null
     setHovered(false)
     clearHoverPayload()
   }, [isRotating, id, setInternalHoverSelection, clearHoverPayload])

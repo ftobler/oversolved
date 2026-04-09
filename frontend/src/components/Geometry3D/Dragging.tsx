@@ -10,7 +10,7 @@ import { detectAlignmentSnap } from '../../registry'
 import { useDynamicSelectionPositions } from '../interaction/snapHooks'
 import { COLOR_SNAP, COLOR_PREVIEW, DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX, POINT_HIT_PIXELS } from './constants'
 import { sanitizePointerEvent, isPureClick, CLICK_THRESHOLD_PX } from './pointerAbstraction'
-import { findSnapTarget } from './snapDetection'
+import { findSnapTarget, collectVertexTargets } from './snapDetection'
 
 export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
   featureId: string
@@ -136,9 +136,21 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
             snapPosition = snap.position
           }
 
+          // Populate dynamic selection with nearby vertices for alignment snap reference.
+          // onPointerOver is blocked by this DragPlane, so we scan proximity here instead.
+          // Uses 3x snap radius so vertices are "touched" before the cursor reaches snap range.
+          const scanRadius = DRAG_SNAP_VERTEX_RADIUS_PX * p2w(camera) * 3
+          const nearby = collectVertexTargets(sketch, featureId, drag.entityId)
+            .filter(t => Math.hypot(t.position[0] - x, t.position[1] - y) <= scanRadius)
+          const nearbyIds = new Set(nearby.map(t => t.vertexId))
+          if (nearbyIds.size !== dynamicSelection.size || [...nearbyIds].some(id => !dynamicSelection.has(id))) {
+            useSketchEditorStore.setState({ dynamicSelection: nearbyIds })
+          }
+
           // Alignment detection for kinda_horizontal/kinda_vertical
-          if (dynamicSelection.size > 0) {
-            const alignment = detectAlignmentSnap(dynamicSelection, snapPosition ?? [x, y], dynamicSelectionPositions)
+          const currentDynamic = useSketchEditorStore.getState().dynamicSelection
+          if (currentDynamic.size > 0) {
+            const alignment = detectAlignmentSnap(currentDynamic, snapPosition ?? [x, y], dynamicSelectionPositions)
             if (alignment) {
               setAlignmentSnap(alignment.point, alignment.kind, alignment.vertexId)
               snapPosition = alignment.point
@@ -153,6 +165,13 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
       }}
       onPointerUp={(e) => {
         e.stopPropagation()
+        // Clear drag-mode dynamic selection before the window pointerup listener fires.
+        // The drag plane populates dynamicSelection with proximity-scanned alignment refs
+        // during drag — these must not be applied to normalSelection on pointer-up.
+        // Setting isPointerDown=false here causes runPointerUpCleanup to return early.
+        useSketchEditorStore.getState().setIsPointerDown(false)
+        useSketchEditorStore.setState({ dynamicSelection: new Set() })
+
         // Read drag and dragSnap from store directly — not from the render closure.
         // onPointerUp may fire before React re-renders after the final onPointerMove,
         // so the closure could hold stale values. getState() always returns the latest.

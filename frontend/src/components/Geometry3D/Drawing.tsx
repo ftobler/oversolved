@@ -172,7 +172,8 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
   const drawHover = useSketchEditorStore(s => s.drawHover)
 
-  useAlignmentSnapEffect(sketch, drawHover)
+  const drawLastPoint = drawPoints.length > 0 ? drawPoints[drawPoints.length - 1] : null
+  useAlignmentSnapEffect(sketch, drawHover, drawLastPoint)
 
   const pathSnap = useMemo(() => {
     // Use hovered entity (not vertex) for path snapping

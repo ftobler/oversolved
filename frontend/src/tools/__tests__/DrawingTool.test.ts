@@ -102,4 +102,27 @@ describe('DrawingTool', () => {
       expect(tool.entityKind).toBe('line')
     })
   })
+
+  describe('alignment snap integration', () => {
+    it('line tool creates entity on second click (prerequisite for alignment snap test)', () => {
+      const onMutation = vi.fn()
+      const addDrawPoint = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
+      const context = createMockContext({
+        onMutation,
+        addDrawPoint,
+        drawPoints: [[0, 0]],
+        activeFeatureId: 'S1',
+      })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
+
+      expect(onMutation).toHaveBeenCalledWith({
+        type: 'add_entity',
+        featureId: 'S1',
+        kind: 'line',
+        params: expect.any(Array),
+      })
+    })
+  })
 })

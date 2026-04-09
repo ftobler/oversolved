@@ -1,5 +1,4 @@
 import type { Tool, ToolCategory, ToolContext, ToolHandlers } from '../registry/toolRegistry'
-import { useSketchEditorStore } from '../stores/sketchEditorStore'
 
 export interface SelectionToolContext extends ToolContext {
   internalHoverSelection: string | null
@@ -20,31 +19,6 @@ export function createSelectionTool(): SelectionTool {
   const handlers: ToolHandlers<SelectionToolContext> = {
     onPointerDown: () => {
       return null
-    },
-
-    onPointerUp: (_e, _worldPt, _drag, context) => {
-      const state = useSketchEditorStore.getState()
-      const dynamic = state.dynamicSelection
-
-      if (dynamic.size > 0) {
-        for (const id of dynamic) {
-          context.toggleNormalSelection(id)
-        }
-        context.clearDynamicSelection()
-      }
-    },
-
-    onPointerOver: (_e, _worldPt, context) => {
-      if (context.isPointerDown && context.internalHoverSelection) {
-        context.updateDynamicSelection(context.internalHoverSelection)
-      }
-    },
-
-    onPointerOut: (context) => {
-      if (context.isPointerDown) {
-        context.setInternalHoverSelection(null)
-        context.updateDynamicSelection(null)
-      }
     },
 
     onClick: (_e, _worldPt, context) => {

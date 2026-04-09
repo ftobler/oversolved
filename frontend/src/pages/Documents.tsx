@@ -135,18 +135,19 @@ export default function Documents() {
                   </div>
                   <div className="doc-tile-info">
                     <span className="doc-tile-name" title={doc.name}>{doc.name}</span>
+                    <button
+                      className="btn btn-delete-tile"
+                      onClick={e => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        handleDeleteDocument(doc.uuid, doc.name)
+                      }}
+                      title="Delete document"
+                    >
+                      <span className="material-icons">delete</span>
+                    </button>
                   </div>
                 </Link>
-                <button
-                  className="btn btn-delete-tile"
-                  onClick={e => {
-                    e.preventDefault()
-                    handleDeleteDocument(doc.uuid, doc.name)
-                  }}
-                  title="Delete document"
-                >
-                  <span className="material-icons">delete</span>
-                </button>
               </div>
             ))}
           </div>

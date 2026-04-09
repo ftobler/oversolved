@@ -36,36 +36,6 @@ describe('SelectionTool', () => {
     })
   })
 
-  describe('onPointerOver', () => {
-    it('updates dynamic selection when pointer is down', () => {
-      const tool = createSelectionTool()
-      const updateDynamicSelection = vi.fn()
-      const context = createMockContext({
-        isPointerDown: true,
-        internalHoverSelection: 'entity:S1:L1',
-        updateDynamicSelection,
-      })
-
-      tool.handlers.onPointerOver!({} as PointerEvent, [0, 0], context)
-
-      expect(updateDynamicSelection).toHaveBeenCalledWith('entity:S1:L1')
-    })
-
-    it('does not update dynamic selection when pointer is up', () => {
-      const tool = createSelectionTool()
-      const updateDynamicSelection = vi.fn()
-      const context = createMockContext({
-        isPointerDown: false,
-        internalHoverSelection: 'entity:S1:L1',
-        updateDynamicSelection,
-      })
-
-      tool.handlers.onPointerOver!({} as PointerEvent, [0, 0], context)
-
-      expect(updateDynamicSelection).not.toHaveBeenCalled()
-    })
-  })
-
   describe('onClick', () => {
     it('toggles element in normal selection when clicked', () => {
       const tool = createSelectionTool()
@@ -91,6 +61,21 @@ describe('SelectionTool', () => {
       tool.handlers.onClick!({} as PointerEvent, [0, 0], context)
 
       expect(clearNormalSelection).toHaveBeenCalled()
+    })
+
+    it('single click does not conflict with dynamic selection', () => {
+      const tool = createSelectionTool()
+      const toggleNormalSelection = vi.fn()
+      const context = createMockContext({
+        internalHoverSelection: 'entity:S1:L1',
+        toggleNormalSelection,
+        dynamicSelection: new Set(),  // empty dynamic selection
+      })
+
+      tool.handlers.onClick!({} as PointerEvent, [0, 0], context)
+
+      expect(toggleNormalSelection).toHaveBeenCalledTimes(1)
+      expect(toggleNormalSelection).toHaveBeenCalledWith('entity:S1:L1')
     })
   })
 
