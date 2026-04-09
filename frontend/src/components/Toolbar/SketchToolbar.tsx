@@ -1,4 +1,5 @@
 import {
+  DragTool,
   ResetViewportTool,
   DimensionTool,
   EntityTools,
@@ -15,6 +16,8 @@ interface SketchToolbarProps {
 export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
   return (
     <>
+      <DragTool />
+
       <ResetViewportTool onResetViewport={onResetViewport} />
 
       <div className="toolbar-separator" />

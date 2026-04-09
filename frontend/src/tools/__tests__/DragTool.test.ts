@@ -172,9 +172,9 @@ describe('DragTool', () => {
       expect(tool.category).toBe('drag')
     })
 
-    it('does not show in toolbar', () => {
+    it('shows in toolbar', () => {
       const tool = createDragTool()
-      expect(tool.showInToolbar).toBe(false)
+      expect(tool.showInToolbar).toBe(true)
     })
 
     it('supports vertex, edge, and dim_label drag modes', () => {

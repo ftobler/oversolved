@@ -20,6 +20,7 @@ export function buildCommandEntries(
     { name: 'delete_selected',       fn: () => { getState().deleteSelected(); handleDeleteSelectedFeatures() } },
     { name: 'toggle_sketch_plane_visibility', fn: handleToggleSketchPlaneVisibility },
     { name: 'set_tool_select',       fn: () => getState().setActiveTool('select') },
+    { name: 'set_tool_drag',         fn: () => getState().setActiveTool('drag') },
     { name: 'set_tool_line',         fn: () => getState().setActiveTool('line') },
     { name: 'set_tool_circle',       fn: () => getState().setActiveTool('circle') },
     { name: 'set_tool_arc',          fn: () => getState().setActiveTool('arc') },

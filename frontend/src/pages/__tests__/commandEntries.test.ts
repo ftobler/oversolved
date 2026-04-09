@@ -9,6 +9,7 @@ beforeEach(() => { clearAllHandlers() })
 const PROGRAMMATIC_ONLY = new Set([
   'cancel_plane_selection',
   'set_tool_select',
+  'set_tool_drag',
   'set_tool_point',
   'set_tool_rect',
   'set_tool_center_rect',
