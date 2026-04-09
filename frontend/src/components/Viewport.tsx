@@ -67,7 +67,7 @@ function UserDefinedPlane({ featureId, label, planeTransform }: { featureId: str
   // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
   // DO NOT use local hovered state alone - must also call setHoveredPlane().
   const [hovered, setHovered] = useState(false)
-  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
@@ -76,7 +76,7 @@ function UserDefinedPlane({ featureId, label, planeTransform }: { featureId: str
   const setHoveredPlane = useSketchEditorStore(s => s.setHoveredPlane)
   const isRotating = useSketchEditorStore(s => s.isRotating)
   const selId = `@${featureId}`
-  const selected = useSketchEditorStore(s => s.selection.has(selId))
+  const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
   const isDragging = drag !== null
 
   const rot = planeRotationFromTransform(planeTransform)
@@ -95,7 +95,7 @@ function UserDefinedPlane({ featureId, label, planeTransform }: { featureId: str
             e.stopPropagation()
             if (fieldPickState?.kind === 'plane') commitFieldPick(selId)
             else if (planeSelectionFeatureId) commitPlaneSelection(selId)
-            else toggleSelect(selId)
+            else toggleNormalSelection(selId)
           }}
         >
           <planeGeometry args={[UDPLANE_SIZE, UDPLANE_SIZE]} />
@@ -312,7 +312,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         onPointerMissed={() => {
           // Only clear selection if this was a left-click on empty space, not a camera drag
           if (!wasPointerDrag.current && pointerDownButton.current === 0) {
-            useSketchEditorStore.getState().clearSelection()
+            useSketchEditorStore.getState().clearNormalSelection()
           }
         }}
       >

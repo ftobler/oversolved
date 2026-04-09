@@ -37,7 +37,7 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
   // DO NOT use local hovered state alone - must also call setHoveredPlane().
   const [hovered, setHovered] = useState(false)
-  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
@@ -47,7 +47,7 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   const setHoveredPlane = useSketchEditorStore(s => s.setHoveredPlane)
   const isRotating = useSketchEditorStore(s => s.isRotating)
   const selId = builtinSelectionId(label)
-  const selected = useSketchEditorStore(s => s.selection.has(selId))
+  const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_INACTIVE
   const opacity = hovered ? 0.15 : selected ? 0.12 : 0.05
@@ -72,7 +72,7 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
             e.stopPropagation()
             if (fieldPickState?.kind === 'plane') commitFieldPick(selId)
             else if (planeSelectionFeatureId) commitPlaneSelection(selId)
-            else toggleSelect(selId)
+            else toggleNormalSelection(selId)
           }}
         >
           <planeGeometry args={[PLANE_SIZE, PLANE_SIZE]} />

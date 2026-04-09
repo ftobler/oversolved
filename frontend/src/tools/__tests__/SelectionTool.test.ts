@@ -4,17 +4,22 @@ import type { SelectionToolContext } from '../SelectionTool'
 
 function createMockContext(overrides: Partial<SelectionToolContext> = {}): SelectionToolContext {
   return {
+    normalSelection: new Set<string>(),
+    internalHoverSelection: null,
     selection: new Set<string>(),
+    hoveredEntityId: null,
     dynamicSelection: new Set<string>(),
     isPointerDown: false,
     activeFeatureId: 'S1',
-    hoveredEntityId: null,
     hoveredVertexId: null,
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
     onMutation: null,
-    toggleSelect: vi.fn(),
-    toggleDynamicSelection: vi.fn(),
+    setInternalHoverSelection: vi.fn(),
+    clearNormalSelection: vi.fn(),
+    clearDynamicSelection: vi.fn(),
+    toggleNormalSelection: vi.fn(),
+    updateDynamicSelection: vi.fn(),
     ...overrides,
   }
 }
@@ -32,41 +37,60 @@ describe('SelectionTool', () => {
   })
 
   describe('onPointerOver', () => {
-    it('toggles dynamic selection when pointer is down', () => {
+    it('updates dynamic selection when pointer is down', () => {
       const tool = createSelectionTool()
-      const toggleDynamicSelection = vi.fn()
+      const updateDynamicSelection = vi.fn()
       const context = createMockContext({
         isPointerDown: true,
-        hoveredEntityId: 'entity:S1:L1',
-        toggleDynamicSelection,
+        internalHoverSelection: 'entity:S1:L1',
+        updateDynamicSelection,
       })
 
       tool.handlers.onPointerOver!({} as PointerEvent, [0, 0], context)
 
-      expect(toggleDynamicSelection).toHaveBeenCalledWith('entity:S1:L1')
+      expect(updateDynamicSelection).toHaveBeenCalledWith('entity:S1:L1')
     })
 
-    it('does not toggle dynamic selection when pointer is up', () => {
+    it('does not update dynamic selection when pointer is up', () => {
       const tool = createSelectionTool()
-      const toggleDynamicSelection = vi.fn()
+      const updateDynamicSelection = vi.fn()
       const context = createMockContext({
         isPointerDown: false,
-        hoveredEntityId: 'entity:S1:L1',
-        toggleDynamicSelection,
+        internalHoverSelection: 'entity:S1:L1',
+        updateDynamicSelection,
       })
 
       tool.handlers.onPointerOver!({} as PointerEvent, [0, 0], context)
 
-      expect(toggleDynamicSelection).not.toHaveBeenCalled()
+      expect(updateDynamicSelection).not.toHaveBeenCalled()
     })
   })
 
   describe('onClick', () => {
-    it('does nothing (handled by useToolClickDispatch)', () => {
+    it('toggles element in normal selection when clicked', () => {
       const tool = createSelectionTool()
-      const context = createMockContext()
+      const toggleNormalSelection = vi.fn()
+      const context = createMockContext({
+        internalHoverSelection: 'entity:S1:L1',
+        toggleNormalSelection,
+      })
 
       tool.handlers.onClick!({} as PointerEvent, [0, 0], context)
+
+      expect(toggleNormalSelection).toHaveBeenCalledWith('entity:S1:L1')
+    })
+
+    it('clears normal selection when clicking nothing', () => {
+      const tool = createSelectionTool()
+      const clearNormalSelection = vi.fn()
+      const context = createMockContext({
+        internalHoverSelection: null,
+        clearNormalSelection,
+      })
+
+      tool.handlers.onClick!({} as PointerEvent, [0, 0], context)
+
+      expect(clearNormalSelection).toHaveBeenCalled()
     })
   })
 

@@ -163,7 +163,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const clearDraw = useSketchEditorStore(s => s.clearDraw)
   const onMutation = useSketchEditorStore(s => s.onMutation)
   const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
-  const clearSelection = useSketchEditorStore(s => s.clearSelection)
+  const clearNormalSelection = useSketchEditorStore(s => s.clearNormalSelection)
   const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
@@ -196,7 +196,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     return (
       <mesh
         position={[0, 0, -1000]}
-        onClick={(e) => { e.stopPropagation(); clearSelection() }}
+        onClick={(e) => { e.stopPropagation(); clearNormalSelection() }}
         onPointerOut={() => {}} // prevent propagation of pointer events
       >
         <planeGeometry args={[100000, 100000]} />

@@ -35,15 +35,15 @@ export function useToolClickDispatch({
   fieldPickKind: 'line' | 'point'
 }): (e: { stopPropagation: () => void; clientX: number; clientY: number }) => void {
   const activeTool = useSketchEditorStore(s => s.activeTool)
-  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
-  const selection = useSketchEditorStore(s => s.selection)
+  const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
   const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
-  const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
+  const internalHoverSelection = useSketchEditorStore(s => s.internalHoverSelection)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
   const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
@@ -55,11 +55,13 @@ export function useToolClickDispatch({
     const tool = toolRegistry.get(activeTool)
 
     const context = {
-      selection,
+      normalSelection,
+      internalHoverSelection,
+      selection: normalSelection,  // Legacy alias
+      hoveredEntityId: internalHoverSelection,  // Legacy alias
       dynamicSelection,
       isPointerDown,
       activeFeatureId,
-      hoveredEntityId,
       hoveredVertexId,
       hoveredVertexPosition,
       hoveredSnapKind,
@@ -81,10 +83,10 @@ export function useToolClickDispatch({
     } else if (fieldPickState?.kind === fieldPickKind) {
       commitFieldPick(id)
     } else {
-      toggleSelect(id)
+      toggleNormalSelection(id)
     }
   }, [activeTool, isEditing, id, featureId, dimensionKind, entityKind, fieldPickKind,
-    handleDimClick, fieldPickState, commitFieldPick, toggleSelect,
-    selection, dynamicSelection, isPointerDown, activeFeatureId,
-    hoveredEntityId, hoveredVertexId, hoveredVertexPosition, hoveredSnapKind, onMutation])
+    handleDimClick, fieldPickState, commitFieldPick, toggleNormalSelection,
+    normalSelection, dynamicSelection, isPointerDown, activeFeatureId,
+    internalHoverSelection, hoveredVertexId, hoveredVertexPosition, hoveredSnapKind, onMutation])
 }

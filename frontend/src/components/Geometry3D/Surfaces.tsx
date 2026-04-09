@@ -48,17 +48,17 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
   // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
   // DO NOT use local hovered state alone - must also call setHoveredSurface().
   const [hovered, setHovered] = useState(false)
-  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
-  const selection = useSketchEditorStore(s => s.selection)
+  const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
   const setHoveredSurface = useSketchEditorStore(s => s.setHoveredSurface)
 
   const id = surfaceSelectionId(featureId, query)
-  const isSelected = selection.has(id)
+  const isSelected = normalSelection.has(id)
   const isInactive = activeFeatureId !== undefined && !isEditing
 
   let color: string = 'white'
@@ -76,7 +76,7 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
         e.stopPropagation()
         if (fieldPickState?.kind === 'plane') commitFieldPick(id)
         else if (planeSelectionFeatureId) commitPlaneSelection(id)
-        else toggleSelect(id)
+        else toggleNormalSelection(id)
       }}
     >
       <shapeGeometry args={[shape]} />

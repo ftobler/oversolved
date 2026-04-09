@@ -7,7 +7,10 @@ beforeEach(() => { clearAllHandlers() })
 
 function reset() {
   useSketchEditorStore.setState({
-    selection: new Set(),
+    normalSelection: new Set(),
+    internalHoverSelection: null,
+    dynamicSelection: new Set(),
+    isPointerDown: false,
     onMutation: null,
     planeSelectionFeatureId: null,
   })

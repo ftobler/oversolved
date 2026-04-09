@@ -14,7 +14,7 @@ export default function FooterMeasurementDisplay({
   measurementIcon,
   solveResults,
 }: FooterMeasurementDisplayProps) {
-  const selection = useSketchEditorStore(s => s.selection)
+  const selection = useSketchEditorStore(s => s.normalSelection)
 
   // Compute measurements for current selection
   const measurements = useMemo(() => {

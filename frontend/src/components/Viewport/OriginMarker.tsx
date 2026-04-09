@@ -13,10 +13,10 @@ export default function OriginMarker() {
   const [hovered, setHovered] = useState(false)
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
-  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
   const selId = builtinSelectionId('Origin')
-  const selected = useSketchEditorStore(s => s.selection.has(selId))
+  const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
@@ -36,9 +36,9 @@ export default function OriginMarker() {
     if (activeTool === 'dimension' && activeFeatureId) {
       handleDimClick(selId, activeFeatureId, 'vertex', [e.clientX, e.clientY])
     } else {
-      toggleSelect(selId)
+      toggleNormalSelection(selId)
     }
-  }, [activeTool, activeFeatureId, selId, handleDimClick, toggleSelect])
+  }, [activeTool, activeFeatureId, selId, handleDimClick, toggleNormalSelection])
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_INACTIVE
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'

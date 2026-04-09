@@ -12,7 +12,7 @@ interface RegistryProps {
 }
 
 export function Registry({ sketch }: RegistryProps) {
-  const selection = useSketchEditorStore(s => s.selection)
+  const selection = useSketchEditorStore(s => s.normalSelection)
 
   const measurements = useMemo(() => {
     const results: string[] = []

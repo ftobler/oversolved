@@ -131,7 +131,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   // Also hide hit geometry from non-active sketches to prevent raycasting interference.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
   const drag = useSketchEditorStore(s => s.drag)
-  const selected = useSketchEditorStore(s => vertId ? s.selection.has(vertId) : false)
+  const selected = useSketchEditorStore(s => vertId ? s.normalSelection.has(vertId) : false)
   const isInactiveSketch = featureId && activeFeatureId && featureId !== activeFeatureId
   const isDraggedVertex = drag && drag.type === 'vertex' && drag.entityId === entityId && drag.featureId === featureId
 
@@ -158,26 +158,30 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
     dimensionKind: 'vertex', fieldPickKind: 'point',
   })
 
-   // Layer 4 — Tool Layer: vertex drag initiation via DragPlane.
-   // startWorld is the vertex position, not the hit point, so dragging begins from
-   // the exact vertex center. startClient is screen pixels for click-vs-drag.
-   // startWorld is set to [x, y] (vertex center) rather than the sanitized hit point intentionally:
-   // the drag should begin from the exact vertex position so snap offsets are computed correctly.
-   // sanitizePointerEvent is not used here because no 3D→2D transform is needed — x, y are already
-   // sketch-local coordinates passed as props. See: dragging.test.ts REGRESSION 4
-   // We defer drag initiation to Dragging.tsx which checks if movement exceeds CLICK_THRESHOLD_PX.
-   // Also sets isPointerDown=true to enable dynamic selection accumulation during mouse-down + hover
-   // (see feature_dynamic_select.md for dynamic selection behavior)
-  const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
-    if (!vertId || !featureId || !entityId || !vertexKey) return
-    if (!isEditing || activeTool !== 'select') return
-    e.stopPropagation()
-    markAsClicked()
-    setOrbitEnabled(false)
-    setIsPointerDown(true)
-    setDragStartClient([e.clientX, e.clientY])
-    setDragPending({ type: 'vertex', vertexId: vertId, featureId, entityId, vertexKey, startWorld: [x, y] })
-  }, [vertId, featureId, entityId, vertexKey, isEditing, activeTool, x, y, markAsClicked, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
+    // Layer 4 — Tool Layer: vertex drag initiation via DragPlane.
+    // startWorld is the vertex position, not the hit point, so dragging begins from
+    // the exact vertex center. startClient is screen pixels for click-vs-drag.
+    // startWorld is set to [x, y] (vertex center) rather than the sanitized hit point intentionally:
+    // the drag should begin from the exact vertex position so snap offsets are computed correctly.
+    // sanitizePointerEvent is not used here because no 3D→2D transform is needed — x, y are already
+    // sketch-local coordinates passed as props. See: dragging.test.ts REGRESSION 4
+    // We defer drag initiation to Dragging.tsx which checks if movement exceeds CLICK_THRESHOLD_PX.
+    // Also sets isPointerDown=true to enable dynamic selection accumulation during mouse-down + hover
+    // (see feature_dynamic_select.md for dynamic selection behavior)
+    //
+    // NOTE: setDragPending is a "rogue handler" that bypasses the tool system. This is intentional
+    // for now because Dragging.tsx depends on dragPending being set. After the tool system fully
+    // handles drag initiation, this could be refactored. See feature_selection_system2.md
+    const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
+      if (!vertId || !featureId || !entityId || !vertexKey) return
+      if (!isEditing || activeTool !== 'select') return
+      e.stopPropagation()
+      markAsClicked()
+      setOrbitEnabled(false)
+      setIsPointerDown(true)
+      setDragStartClient([e.clientX, e.clientY])
+      setDragPending({ type: 'vertex', vertexId: vertId, featureId, entityId, vertexKey, startWorld: [x, y] })
+    }, [vertId, featureId, entityId, vertexKey, isEditing, activeTool, x, y, markAsClicked, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
   useFrame(() => {
     if (!hitRef.current) return
@@ -213,15 +217,15 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number;
   const { camera } = useThree()
   const entId = `entity:${featureId}:${entityId}`
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
-  const selected = useSketchEditorStore(s => s.selection.has(entId))
+  const selected = useSketchEditorStore(s => s.normalSelection.has(entId))
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
-  const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
+  const setInternalHoverSelection = useSketchEditorStore(s => s.setInternalHoverSelection)
 
   // Layer 3B: hover state (no dynamic selection — projected points are not draggable).
   const { hovered, onOver, onOut } = useHoverAndDynamicSelection({
     id: entId,
-    hoverPayload: () => setHoveredEntity(entId),
-    clearHoverPayload: () => setHoveredEntity(null),
+    hoverPayload: () => setInternalHoverSelection(entId),
+    clearHoverPayload: () => setInternalHoverSelection(null),
   })
 
   // Layer 4: dimension tool only for the active sketch's projected points.

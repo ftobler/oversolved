@@ -44,20 +44,20 @@ export type DragState = VertexOrEdgeDrag | DimLabelDrag
 
 interface SketchEditorState {
    // SELECTION SUBSYSTEM
-   // Persistent user-chosen selection, cleared only by explicit action.
-   selection: Set<string>
-   // Temporary accumulation while pointer is held; cleared on pointer-up.
-   // Used for dynamic selection during mouse-down + hover (see feature_dynamic_select.md)
-   // Implements the three-selection-mode system: hover, selection, dynamic selection
+   // Internal hover selection — always reflects what's directly under cursor.
+   internalHoverSelection: string | null
+   // Normal selection — traditional selection, persists until explicitly changed.
+   normalSelection: Set<string>
+   // Dynamic selection — elements being added/removed during drag selection.
    dynamicSelection: Set<string>
-   // Tracks if pointer is currently down for dynamic selection accumulation
-   // (see feature_dynamic_select.md for dynamic selection behavior)
-   isPointerDown: boolean
-  toggleSelect: (id: string) => void
-  clearSelection: () => void
+   // Tracks if pointer is currently down for dynamic selection accumulation.
+  isPointerDown: boolean
+  setInternalHoverSelection: (id: string | null) => void
   setIsPointerDown: (down: boolean) => void
-  toggleDynamicSelection: (id: string) => void
+  clearNormalSelection: () => void
   clearDynamicSelection: () => void
+  toggleNormalSelection: (id: string) => void
+  updateDynamicSelection: (hoverId: string | null) => void
 
   // HOVER STATE
   // Written by hit geometry (EntityLines, VertexDots, planes, surfaces);
@@ -143,7 +143,8 @@ interface SketchEditorState {
 }
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
-  selection: new Set(),
+  normalSelection: new Set(),
+  internalHoverSelection: null,
   dynamicSelection: new Set(),
   isPointerDown: false,
   alignmentSnapPoint: null,
@@ -181,28 +182,42 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   planeSelectionFeatureId: null,
   fieldPickState: null,
 
-  toggleSelect: (id) =>
-    set(s => {
-      const next = new Set(s.selection)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return { selection: next }
-    }),
+  setInternalHoverSelection: (id) => set(s => {
+    if (s.internalHoverSelection === id) return s
+    return { internalHoverSelection: id }
+  }),
 
-  clearSelection: () => set({ selection: new Set() }),
+  setIsPointerDown: (down: boolean) => set({ isPointerDown: down }),
 
-  setIsPointerDown: (down) => set({ isPointerDown: down }),
-
-   toggleDynamicSelection: (id) =>
-     set(s => {
-       const next = new Set(s.dynamicSelection)
-       if (next.has(id)) next.delete(id)
-       else next.add(id)
-       return { dynamicSelection: next }
-     }), // Toggle element in dynamic selection (add if not present, remove if present)
-       // Used for dynamic selection during mouse-down + hover (see feature_dynamic_select.md)
+  clearNormalSelection: () => set({ normalSelection: new Set(), dynamicSelection: new Set() }),
 
   clearDynamicSelection: () => set({ dynamicSelection: new Set() }),
+
+  toggleNormalSelection: (id) =>
+    set(s => {
+      const next = new Set(s.normalSelection)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return { normalSelection: next }
+    }),
+
+  updateDynamicSelection: (hoverId) => set(s => {
+    if (!hoverId) return { dynamicSelection: new Set() }
+
+    if (hoverId === s.internalHoverSelection && s.internalHoverSelection !== null) {
+      return s
+    }
+
+    const isInNormal = s.normalSelection.has(hoverId)
+    const isInDynamic = s.dynamicSelection.has(hoverId)
+    const next = new Set(s.dynamicSelection)
+    if (isInNormal) {
+      if (isInDynamic) next.delete(hoverId)
+    } else {
+      if (!isInDynamic) next.add(hoverId)
+    }
+    return { dynamicSelection: next }
+  }),
 
   setAlignmentSnap: (point, kind, vertexId) => set({ alignmentSnapPoint: point, alignmentSnapKind: kind, alignmentSnapVertexId: vertexId }),
 
@@ -238,14 +253,14 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setActiveTool: (tool) => set({ activeTool: tool, drawPoints: [], drawHover: null }),
 
   applyConstraint: (kind) => {
-    const { selection, onMutation, activeFeatureId } = get()
+    const { normalSelection: selection, onMutation, activeFeatureId } = get()
     if (selection.size === 0 || !onMutation || !activeFeatureId) return
     const targets = [...selection]
     onMutation({ type: 'add_constraint', featureId: activeFeatureId, kind, targets })
   },
 
   toggleConstruction: () => {
-    const { selection, onMutation } = get()
+    const { normalSelection: selection, onMutation } = get()
     if (selection.size === 0 || !onMutation) return
     const targets = [...selection].filter(t => t.startsWith('entity:'))
     if (targets.length === 0) return
@@ -253,20 +268,18 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   },
 
   deleteSelected: () => {
-    const { selection, onMutation, activeFeatureId } = get()
+    const { normalSelection: selection, onMutation, activeFeatureId } = get()
     if (selection.size === 0 || !onMutation) return
-    // Only allow deleting entities/vertices/constraints from the currently edited sketch
     const targets = [...selection].filter(target => {
       if (target.startsWith('entity:') || target.startsWith('vertex:') || target.startsWith('constraint:')) {
         const parts = target.split(':')
         return parts[1] === activeFeatureId
       }
-      // Don't allow deleting built-in elements (planes, origin)
       return false
     })
     if (targets.length === 0) return
     onMutation({ type: 'delete', targets })
-    set({ selection: new Set() })
+    set({ normalSelection: new Set() })
   },
 
   addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),

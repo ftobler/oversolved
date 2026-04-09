@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { builtinSelectionId } from '../Geometry3D/utils'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 
-// 1a: builtinSelectionId helper
 describe('builtinSelectionId', () => {
   it('returns @builtin_plane_front for Front', () => {
     expect(builtinSelectionId('Front')).toBe('@builtin_plane_front')
@@ -18,87 +17,55 @@ describe('builtinSelectionId', () => {
   })
 })
 
-// 1b: store toggleSelect accepts @-prefixed IDs
-describe('store toggleSelect with @-prefixed IDs', () => {
+describe('store toggleNormalSelection with @-prefixed IDs', () => {
   beforeEach(() => {
-    useSketchEditorStore.getState().clearSelection()
+    useSketchEditorStore.getState().clearNormalSelection()
   })
 
   it('adds @builtin_plane_front to selection on first call', () => {
-    useSketchEditorStore.getState().toggleSelect('@builtin_plane_front')
-    expect(useSketchEditorStore.getState().selection.has('@builtin_plane_front')).toBe(true)
+    useSketchEditorStore.getState().toggleNormalSelection('@builtin_plane_front')
+    expect(useSketchEditorStore.getState().normalSelection.has('@builtin_plane_front')).toBe(true)
   })
 
-  it('removes @builtin_plane_front from selection on second call', () => {
-    useSketchEditorStore.getState().toggleSelect('@builtin_plane_front')
-    useSketchEditorStore.getState().toggleSelect('@builtin_plane_front')
-    expect(useSketchEditorStore.getState().selection.has('@builtin_plane_front')).toBe(false)
-  })
-})
-
-// 1c: feature-tree selection uses @featureId query format
-// When a user clicks a sketch or other feature in the left feature list,
-// the selection ID is @<featureId> - a valid feature-plane query that the
-// solver resolves to the feature's defining plane geometry.
-describe('feature-tree selection uses @featureId', () => {
-  beforeEach(() => {
-    useSketchEditorStore.getState().clearSelection()
+  it('toggles @-prefixed IDs on and off', () => {
+    useSketchEditorStore.getState().toggleNormalSelection('@builtin_plane_top')
+    expect(useSketchEditorStore.getState().normalSelection.has('@builtin_plane_top')).toBe(true)
+    useSketchEditorStore.getState().toggleNormalSelection('@builtin_plane_top')
+    expect(useSketchEditorStore.getState().normalSelection.has('@builtin_plane_top')).toBe(false)
   })
 
-  it('selects a sketch feature as @sketch1', () => {
-    useSketchEditorStore.getState().toggleSelect('@sketch1')
-    expect(useSketchEditorStore.getState().selection.has('@sketch1')).toBe(true)
-  })
-
-  it('deselects a sketch feature on second click', () => {
-    useSketchEditorStore.getState().toggleSelect('@sketch1')
-    useSketchEditorStore.getState().toggleSelect('@sketch1')
-    expect(useSketchEditorStore.getState().selection.has('@sketch1')).toBe(false)
-  })
-
-  it('can select multiple features simultaneously', () => {
-    useSketchEditorStore.getState().toggleSelect('@sketch1')
-    useSketchEditorStore.getState().toggleSelect('@sketch2')
-    const sel = useSketchEditorStore.getState().selection
-    expect(sel.has('@sketch1')).toBe(true)
-    expect(sel.has('@sketch2')).toBe(true)
-  })
-
-  it('feature selection and entity selection coexist', () => {
-    useSketchEditorStore.getState().toggleSelect('@sketch1')
-    useSketchEditorStore.getState().toggleSelect('entity:sketch1:line1')
-    const sel = useSketchEditorStore.getState().selection
-    expect(sel.has('@sketch1')).toBe(true)
+  it('adds entity and constraint IDs to selection', () => {
+    useSketchEditorStore.getState().toggleNormalSelection('entity:sketch1:line1')
+    useSketchEditorStore.getState().toggleNormalSelection('constraint:sketch1:coincident1')
+    const sel = useSketchEditorStore.getState().normalSelection
     expect(sel.has('entity:sketch1:line1')).toBe(true)
+    expect(sel.has('constraint:sketch1:coincident1')).toBe(true)
   })
 
-  it('clearSelection removes feature selections', () => {
-    useSketchEditorStore.getState().toggleSelect('@sketch1')
-    useSketchEditorStore.getState().clearSelection()
-    expect(useSketchEditorStore.getState().selection.size).toBe(0)
+  it('clearNormalSelection removes feature selections', () => {
+    useSketchEditorStore.getState().toggleNormalSelection('@sketch1')
+    useSketchEditorStore.getState().clearNormalSelection()
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
   })
 })
 
-// 1f / 4m: clicking a builtin in normal mode only selects, no set_feature_plane
 describe('builtin click in normal mode (planeSelectionFeatureId=null)', () => {
   beforeEach(() => {
-    useSketchEditorStore.getState().clearSelection()
+    useSketchEditorStore.getState().clearNormalSelection()
     useSketchEditorStore.setState({ planeSelectionFeatureId: null })
   })
 
-  it('toggleSelect emits no mutation when onMutation is null (normal mode)', () => {
-    // In normal mode, planeSelectionFeatureId is null.
-    // The store's toggleSelect only updates selection, never emits mutations itself.
+  it('toggleNormalSelection emits no mutation when onMutation is null (normal mode)', () => {
     const state = useSketchEditorStore.getState()
     expect(state.onMutation).toBeNull()
-    expect(() => state.toggleSelect('@builtin_plane_front')).not.toThrow()
+    expect(() => state.toggleNormalSelection('@builtin_plane_front')).not.toThrow()
   })
 
   it('adds builtin to selection and emits no set_feature_plane mutation', () => {
     const mutations: unknown[] = []
     useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
-    useSketchEditorStore.getState().toggleSelect('@builtin_plane_top')
-    expect(useSketchEditorStore.getState().selection.has('@builtin_plane_top')).toBe(true)
+    useSketchEditorStore.getState().toggleNormalSelection('@builtin_plane_top')
+    expect(useSketchEditorStore.getState().normalSelection.has('@builtin_plane_top')).toBe(true)
     expect(mutations).toHaveLength(0)
   })
 

@@ -12,20 +12,20 @@ describe('surfaceSelectionId', () => {
 })
 
 // 3b: store toggleSelect accepts face:-prefixed IDs
-describe('store toggleSelect with face:-prefixed IDs', () => {
+describe('store toggleNormalSelection with face:-prefixed IDs', () => {
   beforeEach(() => {
-    useSketchEditorStore.getState().clearSelection()
+    useSketchEditorStore.getState().clearNormalSelection()
   })
 
   it('adds face:-prefixed ID to selection', () => {
-    useSketchEditorStore.getState().toggleSelect('face:sketch1:?3;@sketch1abc')
-    expect(useSketchEditorStore.getState().selection.has('face:sketch1:?3;@sketch1abc')).toBe(true)
+    useSketchEditorStore.getState().toggleNormalSelection('face:sketch1:?3;@sketch1abc')
+    expect(useSketchEditorStore.getState().normalSelection.has('face:sketch1:?3;@sketch1abc')).toBe(true)
   })
 
   it('removes face:-prefixed ID from selection on second call', () => {
-    useSketchEditorStore.getState().toggleSelect('face:sketch1:?3;@sketch1abc')
-    useSketchEditorStore.getState().toggleSelect('face:sketch1:?3;@sketch1abc')
-    expect(useSketchEditorStore.getState().selection.has('face:sketch1:?3;@sketch1abc')).toBe(false)
+    useSketchEditorStore.getState().toggleNormalSelection('face:sketch1:?3;@sketch1abc')
+    useSketchEditorStore.getState().toggleNormalSelection('face:sketch1:?3;@sketch1abc')
+    expect(useSketchEditorStore.getState().normalSelection.has('face:sketch1:?3;@sketch1abc')).toBe(false)
   })
 })
 

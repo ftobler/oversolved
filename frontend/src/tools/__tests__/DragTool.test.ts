@@ -4,11 +4,13 @@ import type { DragToolContext } from '../DragTool'
 
 function createMockContext(overrides: Partial<DragToolContext> = {}): DragToolContext {
   return {
+    normalSelection: new Set<string>(),
+    internalHoverSelection: null,
     selection: new Set<string>(),
+    hoveredEntityId: null,
     dynamicSelection: new Set<string>(),
     isPointerDown: false,
     activeFeatureId: 'S1',
-    hoveredEntityId: null,
     hoveredVertexId: 'vertex:S1:L1:start',
     hoveredVertexPosition: [0, 0],
     hoveredSnapKind: null,

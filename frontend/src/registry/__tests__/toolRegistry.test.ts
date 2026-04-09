@@ -79,11 +79,13 @@ describe('ToolRegistry', () => {
       const activate = vi.fn()
       const deactivate = vi.fn()
       const context: ToolContext = {
+        normalSelection: new Set(),
+        internalHoverSelection: null,
         selection: new Set(),
+        hoveredEntityId: null,
         dynamicSelection: new Set(),
         isPointerDown: false,
         activeFeatureId: null,
-        hoveredEntityId: null,
         hoveredVertexId: null,
         hoveredVertexPosition: null,
         hoveredSnapKind: null,

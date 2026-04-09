@@ -5,7 +5,10 @@ const POS: [number, number] = [0, 0]
 
 function reset() {
   useSketchEditorStore.setState({
-    selection: new Set(),
+    normalSelection: new Set(),
+    internalHoverSelection: null,
+    dynamicSelection: new Set(),
+    isPointerDown: false,
     drag: null,
     orbitEnabled: true,
     onMutation: null,
@@ -34,34 +37,34 @@ function confirmDialog(value: string) {
 describe('sketchEditorStore', () => {
   beforeEach(reset)
 
-  describe('toggleSelect', () => {
+  describe('toggleNormalSelection', () => {
     it('adds an id when absent', () => {
-      useSketchEditorStore.getState().toggleSelect('entity:S1:L1')
-      expect(useSketchEditorStore.getState().selection.has('entity:S1:L1')).toBe(true)
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      expect(useSketchEditorStore.getState().normalSelection.has('entity:S1:L1')).toBe(true)
     })
 
     it('removes an id when present', () => {
-      useSketchEditorStore.getState().toggleSelect('entity:S1:L1')
-      useSketchEditorStore.getState().toggleSelect('entity:S1:L1')
-      expect(useSketchEditorStore.getState().selection.has('entity:S1:L1')).toBe(false)
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      expect(useSketchEditorStore.getState().normalSelection.has('entity:S1:L1')).toBe(false)
     })
 
     it('accumulates multiple selections', () => {
-      const { toggleSelect } = useSketchEditorStore.getState()
-      toggleSelect('entity:S1:L1')
-      toggleSelect('vertex:S1:L1:start')
-      const sel = useSketchEditorStore.getState().selection
+      const { toggleNormalSelection } = useSketchEditorStore.getState()
+      toggleNormalSelection('entity:S1:L1')
+      toggleNormalSelection('vertex:S1:L1:start')
+      const sel = useSketchEditorStore.getState().normalSelection
       expect(sel.size).toBe(2)
       expect(sel.has('entity:S1:L1')).toBe(true)
       expect(sel.has('vertex:S1:L1:start')).toBe(true)
     })
   })
 
-  describe('clearSelection', () => {
+  describe('clearNormalSelection', () => {
     it('empties the selection', () => {
-      useSketchEditorStore.getState().toggleSelect('entity:S1:L1')
-      useSketchEditorStore.getState().clearSelection()
-      expect(useSketchEditorStore.getState().selection.size).toBe(0)
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().clearNormalSelection()
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
     })
   })
 
@@ -70,8 +73,8 @@ describe('sketchEditorStore', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
       useSketchEditorStore.getState().setActiveFeatureId('S1')
-      useSketchEditorStore.getState().toggleSelect('entity:S1:L1')
-      useSketchEditorStore.getState().toggleSelect('constraint:S1:C1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('constraint:S1:C1')
 
       useSketchEditorStore.getState().deleteSelected()
 
@@ -80,7 +83,7 @@ describe('sketchEditorStore', () => {
         type: 'delete',
         targets: expect.arrayContaining(['entity:S1:L1', 'constraint:S1:C1']),
       })
-      expect(useSketchEditorStore.getState().selection.size).toBe(0)
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
     })
 
     it('does nothing with no selection', () => {
@@ -91,7 +94,7 @@ describe('sketchEditorStore', () => {
     })
 
     it('does nothing with no mutation handler', () => {
-      useSketchEditorStore.getState().toggleSelect('entity:S1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
       // no handler set — should not throw
       expect(() => useSketchEditorStore.getState().deleteSelected()).not.toThrow()
     })
@@ -102,8 +105,8 @@ describe('sketchEditorStore', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
       useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
-      useSketchEditorStore.getState().toggleSelect('entity:Sketch1:L1')
-      useSketchEditorStore.getState().toggleSelect('entity:Sketch1:L2')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L2')
 
       useSketchEditorStore.getState().applyConstraint('horizontal')
 
@@ -120,8 +123,8 @@ describe('sketchEditorStore', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
       useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
-      useSketchEditorStore.getState().toggleSelect('entity:Sketch1:L1')
-      useSketchEditorStore.getState().toggleSelect('entity:Sketch1:L2')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L2')
 
       useSketchEditorStore.getState().applyConstraint('parallel')
 

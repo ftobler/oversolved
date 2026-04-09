@@ -43,39 +43,29 @@ export function useHoverAndDynamicSelection({
 
   const isRotating = useSketchEditorStore(s => s.isRotating)
   const activeTool = useSketchEditorStore(s => s.activeTool)
-  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
-  const selected = useSketchEditorStore(s => s.selection.has(id))
-  const toggleDynamicSelection = useSketchEditorStore(s => s.toggleDynamicSelection)
+  const normalSelection = useSketchEditorStore(s => s.normalSelection)
+  const setInternalHoverSelection = useSketchEditorStore(s => s.setInternalHoverSelection)
 
-  const lastHoveredRef = useRef<string | null>(null)
   const clickedRef = useRef<string | null>(null)
 
   const isDrawingTool = activeTool !== 'select' && activeTool !== 'dimension'
+  const isInNormalSelection = normalSelection.has(id)
 
-   const onOver = useCallback((e: { stopPropagation: () => void }) => {
-     if (isRotating) return
-     if (!isDrawingTool) e.stopPropagation()
-     if (!selected) setHovered(true)
-     hoverPayload()
-
-     // Accumulate into dynamicSelection while pointer is held, excluding self and
-     // already-selected elements. lastHoveredRef prevents double-adding on re-entry.
-     // Implements dynamic selection behavior from feature_dynamic_select.md:
-     // - Entry: When mouse is pressed AND hovering over an element, add to dynamic selection
-     // - Toggle: Re-hovering over an element already in dynamic selection removes it
-     if (isPointerDown && !selected && lastHoveredRef.current !== id && clickedRef.current !== id) {
-       lastHoveredRef.current = id
-       toggleDynamicSelection(id)
-     }
-   }, [isRotating, isDrawingTool, selected, hoverPayload, isPointerDown, id, toggleDynamicSelection])
+  const onOver = useCallback((e: { stopPropagation: () => void }) => {
+    if (isRotating) return
+    if (!isDrawingTool) e.stopPropagation()
+    if (!isInNormalSelection) setHovered(true)
+    setInternalHoverSelection(id)
+    hoverPayload()
+  }, [isRotating, isDrawingTool, isInNormalSelection, setInternalHoverSelection, hoverPayload, id])
 
   const onOut = useCallback(() => {
     if (isRotating) return
-    lastHoveredRef.current = null
+    setInternalHoverSelection(null)
     if (clickedRef.current === id) clickedRef.current = null
     setHovered(false)
     clearHoverPayload()
-  }, [isRotating, id, clearHoverPayload])
+  }, [isRotating, id, setInternalHoverSelection, clearHoverPayload])
 
   const markAsClicked = useCallback(() => {
     clickedRef.current = id

@@ -29,10 +29,11 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
 
   // Store reads for selection display and collision hiding.
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
-  const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
+  const setInternalHoverSelection = useSketchEditorStore(s => s.setInternalHoverSelection)
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
   const drag = useSketchEditorStore(s => s.drag)
-  const selected = useSketchEditorStore(s => s.selection.has(entId))
+  const normalSelection = useSketchEditorStore(s => s.normalSelection)
+  const selected = normalSelection.has(entId)
 
   // REGRESSION PROTECTION: Hide collision geometry during entity drag.
   // Must check both entityId and featureId to handle multiple sketches.
@@ -45,8 +46,8 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   // Layer 3B: hover state and dynamic selection accumulation.
   const { hovered, onOver, onOut, markAsClicked } = useHoverAndDynamicSelection({
     id: entId,
-    hoverPayload: () => setHoveredEntity(entId),
-    clearHoverPayload: () => setHoveredEntity(null),
+    hoverPayload: () => setInternalHoverSelection(entId),
+    clearHoverPayload: () => setInternalHoverSelection(null),
   })
 
   // Store reads for drag initiation.
@@ -67,6 +68,10 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
    // We defer drag initiation to Dragging.tsx which checks if movement exceeds CLICK_THRESHOLD_PX.
    // Also sets isPointerDown=true to enable dynamic selection accumulation during mouse-down + hover
    // (see feature_dynamic_select.md for dynamic selection behavior)
+   //
+   // NOTE: setDragPending is a "rogue handler" that bypasses the tool system. This is intentional
+   // for now because Dragging.tsx depends on dragPending being set. After the tool system fully
+   // handles drag initiation, this could be refactored. See feature_selection_system2.md
    const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: THREE.Vector3; clientX: number; clientY: number }) => {
      if (!isEditing || activeTool !== 'select') return
      ev.stopPropagation()

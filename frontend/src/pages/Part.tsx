@@ -120,7 +120,7 @@ export default function Part() {
   const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const setFieldPickState = useSketchEditorStore(s => s.setFieldPickState)
-   const selection = useSketchEditorStore(s => s.selection)
+   const selection = useSketchEditorStore(s => s.normalSelection)
    // Temporary accumulation of elements while pointer is held down
    // Used for dynamic selection during mouse-down + hover (see feature_dynamic_select.md)
    const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
@@ -128,7 +128,7 @@ export default function Part() {
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)
   const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
-  const toggleSelect = useSketchEditorStore(s => s.toggleSelect)
+  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
 
   const {
     doc,
@@ -247,12 +247,12 @@ export default function Part() {
       setFieldPickState(null)
     }
     handleMutation({ type: 'delete_feature', featureId })
-    useSketchEditorStore.getState().clearSelection()
+    useSketchEditorStore.getState().clearNormalSelection()
     setContextMenu(null)
   }, [editingFeatureId, handleMutation, setFieldPickState])
 
   const handleDeleteSelectedFeatures = useCallback(() => {
-    const sel = useSketchEditorStore.getState().selection
+    const sel = useSketchEditorStore.getState().normalSelection
     const featureIds = [...sel]
       .filter(id => id.startsWith('@') && !id.startsWith('@builtin_'))
       .map(id => id.slice(1))
@@ -263,7 +263,7 @@ export default function Part() {
       }
       handleMutation({ type: 'delete_feature', featureId })
     }
-    if (featureIds.length > 0) useSketchEditorStore.getState().clearSelection()
+    if (featureIds.length > 0) useSketchEditorStore.getState().clearNormalSelection()
   }, [editingFeatureId, handleMutation, setFieldPickState])
 
   const handleAddPlane = useCallback(() => {
@@ -556,7 +556,7 @@ export default function Part() {
           selection={selection}
           fieldPickState={fieldPickState}
           planeSelectionFeatureId={planeSelectionFeatureId}
-          onToggleSelect={toggleSelect}
+          onToggleSelect={toggleNormalSelection}
           onEnterEditSketch={enterEditSketch}
           onExitEditSketch={exitEditSketch}
           onToggleVisibility={toggleVisibility}

@@ -20,11 +20,15 @@ export type ToolCategory = 'navigation' | 'drawing' | 'constraint' | 'selection'
 
 // What the tool system provides to each tool
 export interface ToolContext {
+  // New selection system
+  normalSelection: Set<string>
+  internalHoverSelection: string | null
+  // Legacy - for backward compatibility
   selection: Set<string>
+  hoveredEntityId: string | null
   dynamicSelection: Set<string>
   isPointerDown: boolean
   activeFeatureId: string | null
-  hoveredEntityId: string | null
   hoveredVertexId: string | null
   hoveredVertexPosition: Point | null
   hoveredSnapKind: string | null
