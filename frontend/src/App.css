@@ -1,28 +1,64 @@
-.home {
-  padding: 2rem;
-}
-
-.home nav {
-  margin-top: 2rem;
+.landing {
   display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
+  padding: 64px 2rem 32px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: #0a0a0a;
 }
 
-.home nav a {
-  padding: 0.75rem 1.5rem;
-  background: #4fc3f7;
-  color: #111;
-  border-radius: 4px;
+.landing > *:first-child {
+  margin-top: 15vh;
+}
+
+.landing-logo {
+  font-size: 48px;
+  font-weight: 700;
+  background: linear-gradient(90deg, #81c784, #f06292);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+  line-height: normal;
+}
+
+.landing-tagline {
+  color: #666;
+  font-size: 18px;
+  margin: 16px 0 48px;
+}
+
+.landing-nav {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.landing-nav a {
+  padding: 12px 24px;
+  background: #1a1a1a;
+  color: #ccc;
+  border: 1px solid #333;
+  border-radius: 6px;
   text-decoration: none;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 500;
   transition: all 0.2s;
 }
 
-.home nav a:hover {
-  background: #81d4fa;
-  transform: translateY(-2px);
-  box-shadow: 0 2px 8px rgba(79, 195, 247, 0.3);
+.landing-nav a:hover {
+  background: #252525;
+  color: #fff;
+  border-color: #444;
+}
+
+.landing-footer {
+  position: absolute;
+  bottom: 32px;
+  color: #444;
+  font-size: 13px;
 }
 
 .counter {

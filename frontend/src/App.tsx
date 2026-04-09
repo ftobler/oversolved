@@ -17,15 +17,18 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function Home() {
   return (
-    <div className="home">
-      <h1>Oversolved</h1>
-      <p>Exploratory CAD project.</p>
-      <nav>
+    <div className="landing">
+      <div className="landing-logo">Oversolved</div>
+      <p className="landing-tagline">Browser-based mechanical CAD</p>
+      <nav className="landing-nav">
         <Link to="/visualizer">Sketch Visualizer</Link>
         <Link to="/documents">Documents</Link>
-        <Link to="/docs">Documentation</Link>
         <Link to="/registry">Registry</Link>
+        <Link to="/docs">Documentation</Link>
       </nav>
+      <footer className="landing-footer">
+        Copyright 2026
+      </footer>
     </div>
   )
 }
