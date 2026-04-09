@@ -31,3 +31,21 @@ export {
   ALIGNMENT_TOLERANCE_DEG,
 } from './snapRegistry'
 export type { SnapKind, DraggedElementType, AlignmentSnapResult } from './snapRegistry'
+
+export {
+  toolRegistry,
+} from './toolRegistry'
+export type {
+  ToolId,
+  ToolCategory,
+  ToolContext,
+  ToolDragInit,
+  ToolHandlers,
+  Tool,
+  DrawingTool,
+  ConstraintTool,
+  DimensionTool,
+  SelectionTool,
+  DragTool,
+  ToolRegistry,
+} from './toolRegistry'

@@ -168,17 +168,16 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
    // We defer drag initiation to Dragging.tsx which checks if movement exceeds CLICK_THRESHOLD_PX.
    // Also sets isPointerDown=true to enable dynamic selection accumulation during mouse-down + hover
    // (see feature_dynamic_select.md for dynamic selection behavior)
-   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
-     if (!vertId || !featureId || !entityId || !vertexKey) return
-     if (!isEditing || activeTool !== 'select') return
-     e.stopPropagation()
-     markAsClicked()
-     setOrbitEnabled(false)
-     setIsPointerDown(true)  // Enable dynamic selection tracking
-     // Store pending drag info and start client for lazy initiation
-     setDragStartClient([e.clientX, e.clientY])
-     setDragPending({ type: 'vertex', vertexId: vertId, featureId, entityId, vertexKey, startWorld: [x, y] })
-   }, [vertId, featureId, entityId, vertexKey, isEditing, activeTool, x, y, markAsClicked, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
+  const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
+    if (!vertId || !featureId || !entityId || !vertexKey) return
+    if (!isEditing || activeTool !== 'select') return
+    e.stopPropagation()
+    markAsClicked()
+    setOrbitEnabled(false)
+    setIsPointerDown(true)
+    setDragStartClient([e.clientX, e.clientY])
+    setDragPending({ type: 'vertex', vertexId: vertId, featureId, entityId, vertexKey, startWorld: [x, y] })
+  }, [vertId, featureId, entityId, vertexKey, isEditing, activeTool, x, y, markAsClicked, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
   useFrame(() => {
     if (!hitRef.current) return

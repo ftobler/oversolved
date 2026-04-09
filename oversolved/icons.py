@@ -372,6 +372,20 @@ def toolbar_select(ctx):
     _arrowhead(ctx, 0.5, 0.2, 270, px(10))
 
 
+@icon(
+    "frontend/src/assets/icons/toolbar-select.svg", angle=-30
+)  # same as toolbar_select
+def arrow(ctx):
+    """Arrow icon for selection tool - alias for toolbar_select."""
+    # Arrow shaft/line from bottom-right to top-left
+    ctx.move_to(0.49, 0.8)
+    ctx.line_to(0.49, 0.4)
+    stroke(ctx, 3.5)
+
+    # Arrowhead at the top-left
+    _arrowhead(ctx, 0.5, 0.2, 270, px(10))
+
+
 @icon("frontend/src/assets/icons/toolbar-menu.svg")
 def toolbar_menu(ctx):
     # Hamburger menu icon (three horizontal lines)

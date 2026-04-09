@@ -1,5 +1,7 @@
 import { useCallback } from 'react'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { toolRegistry } from '../../registry/toolRegistry'
+import type { Point } from '../../types/cad'
 
 /**
  * Layer 4 — Tool Layer: shared click dispatch for interactive sketch elements.
@@ -37,9 +39,42 @@ export function useToolClickDispatch({
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
+  const selection = useSketchEditorStore(s => s.selection)
+  const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
+  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
+  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
+  const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
+  const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
+  const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
+  const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
+  const onMutation = useSketchEditorStore(s => s.onMutation)
 
   return useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     e.stopPropagation()
+
+    const tool = toolRegistry.get(activeTool)
+
+    const context = {
+      selection,
+      dynamicSelection,
+      isPointerDown,
+      activeFeatureId,
+      hoveredEntityId,
+      hoveredVertexId,
+      hoveredVertexPosition,
+      hoveredSnapKind,
+      onMutation,
+    }
+
+    if (tool?.handlers.onClick && activeTool !== 'dimension' && !fieldPickState?.kind) {
+      tool.handlers.onClick(
+        { clientX: e.clientX, clientY: e.clientY } as PointerEvent,
+        [0, 0] as Point,
+        context
+      )
+      return
+    }
+
     if (activeTool === 'dimension') {
       if (!isEditing) return
       handleDimClick(id, featureId, dimensionKind, [e.clientX, e.clientY], entityKind)
@@ -49,5 +84,7 @@ export function useToolClickDispatch({
       toggleSelect(id)
     }
   }, [activeTool, isEditing, id, featureId, dimensionKind, entityKind, fieldPickKind,
-    handleDimClick, fieldPickState, commitFieldPick, toggleSelect])
+    handleDimClick, fieldPickState, commitFieldPick, toggleSelect,
+    selection, dynamicSelection, isPointerDown, activeFeatureId,
+    hoveredEntityId, hoveredVertexId, hoveredVertexPosition, hoveredSnapKind, onMutation])
 }

@@ -72,10 +72,9 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
      ev.stopPropagation()
      markAsClicked()
      setOrbitEnabled(false)
-     setIsPointerDown(true)  // Enable dynamic selection tracking
+     setIsPointerDown(true)
      const sanitized = planeGroupRef ? sanitizePointerEvent(ev, planeGroupRef) : null
      const [sx, sy] = sanitized?.localPoint ?? [ev.point.x, ev.point.y]
-     // Store pending drag info and start client for lazy initiation
      setDragStartClient([ev.clientX, ev.clientY])
      setDragPending({ type: 'edge', vertexId: entId, featureId, entityId, vertexKey: 'edge', startWorld: [sx, sy] })
    }, [isEditing, activeTool, entId, featureId, entityId, planeGroupRef, markAsClicked, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
