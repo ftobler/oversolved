@@ -1397,7 +1397,7 @@ def _solve_plane(feature: dict, global_repo: Repository) -> dict:
         elif mode == "offset":
             origin, x_axis, y_axis, normal = _plane_offset(definition, global_repo)
         else:
-            return {"status": "exception", "message": f"unknown plane mode: {mode!r}"}
+            return {"status": "exception", "exception": f"unknown plane mode: {mode!r}"}
 
         rotation = definition.get("rotation", 0.0)
         if rotation != 0.0:
@@ -1427,7 +1427,7 @@ def _solve_plane(feature: dict, global_repo: Repository) -> dict:
             },
         }
     except Exception as e:
-        return {"status": "exception", "message": str(e)}
+        return {"status": "exception", "exception": str(e)}
 
 
 def _extract_profile_loops(
@@ -1673,8 +1673,8 @@ def _solve_import_step(
             shape=shape,
         )
         return {"status": "ok", "body_id": body_id}
-    except Exception as e:
-        return {"status": "exception", "message": str(e)}
+    except Exception as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _expand_center_rect(feature: dict) -> dict:

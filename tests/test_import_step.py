@@ -11,7 +11,7 @@ from OCP.STEPControl import STEPControl_Writer, STEPControl_AsIs  # noqa: E402
 from OCP.IFSelect import IFSelect_RetDone  # noqa: E402
 
 from oversolved.geometry import step_file_to_shape, solid_to_mesh  # noqa: E402
-from oversolved.solver import _solve_import_step  # noqa: E402
+from oversolved.solver import _solve_import_step, _try_solve_feature  # noqa: E402
 from oversolved.query import Repository  # noqa: E402
 from oversolved.builder import build  # noqa: E402
 from solver_helpers import assert_mesh_valid  # noqa: E402
@@ -107,9 +107,9 @@ def test_missing_file_id_raises():
 
     feature = {"id": "import1", "kind": "import_step", "file_id": ""}
 
-    result = _solve_import_step(feature, global_repo, body_store)
+    result = _try_solve_feature(feature, global_repo, body_store)
     assert result["status"] == "exception"
-    assert "file_id" in result["message"]
+    assert "file_id" in result["exception"]
 
 
 def test_file_not_found():
@@ -123,9 +123,9 @@ def test_file_not_found():
         "file_id": "nonexistent123.step",
     }
 
-    result = _solve_import_step(feature, global_repo, body_store)
+    result = _try_solve_feature(feature, global_repo, body_store)
     assert result["status"] == "exception"
-    assert "file not found" in result.get("message", "")
+    assert "file not found" in result.get("exception", "")
 
 
 def test_status_ok_in_result(step_cube_file):
@@ -158,9 +158,9 @@ def test_path_traversal_rejected():
         "file_id": "../../../etc/passwd",
     }
 
-    result = _solve_import_step(feature, global_repo, body_store)
+    result = _try_solve_feature(feature, global_repo, body_store)
     assert result["status"] == "exception"
-    assert "invalid file_id" in result.get("message", "")
+    assert "invalid file_id" in result.get("exception", "")
 
 
 def test_partial_rebuild_reuses_body(step_cube_file, monkeypatch):

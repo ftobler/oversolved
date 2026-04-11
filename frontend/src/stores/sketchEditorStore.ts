@@ -144,6 +144,7 @@ interface SketchEditorState {
   commitPlaneSelection: (selectionId: string) => void
   setFieldPickState: (state: FieldPickState | null) => void
   commitFieldPick: (selectionId: string) => void
+  commitSketchPick: (sketchFeatureId: string) => void
 }
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
@@ -326,6 +327,13 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       value = selectionId
     }
     onMutation?.({ type: 'set_plane_definition_field', featureId: fieldPickState.featureId, field: fieldPickState.field, value })
+  },
+
+  commitSketchPick: (sketchFeatureId) => {
+    const { fieldPickState, onMutation } = get()
+    if (!fieldPickState || fieldPickState.kind !== 'sketch') return
+    onMutation?.({ type: 'set_extrude_sketch', featureId: fieldPickState.featureId, sketchQuery: '$' + sketchFeatureId })
+    set({ fieldPickState: null })
   },
 
   commitPlaneSelection: (selectionId) => {

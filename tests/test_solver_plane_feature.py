@@ -140,7 +140,7 @@ def test_plane_three_point_collinear():
     result = solve_features(spec)
 
     assert result['features'][1]['status'] == 'exception'
-    assert 'collinear' in result['features'][1].get('message', '').lower()
+    assert 'collinear' in result['features'][1].get('exception', '').lower()
 
 
 def test_plane_on_face():

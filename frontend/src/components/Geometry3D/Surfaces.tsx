@@ -53,6 +53,7 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
+  const commitSketchPick = useSketchEditorStore(s => s.commitSketchPick)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
   const setHoveredSurface = useSketchEditorStore(s => s.setHoveredSurface)
@@ -74,7 +75,8 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
       onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredSurface(null) }}
       onClick={(e) => {
         e.stopPropagation()
-        if (fieldPickState?.kind === 'plane') commitFieldPick(id)
+        if (fieldPickState?.kind === 'sketch') commitSketchPick(featureId)
+        else if (fieldPickState?.kind === 'plane') commitFieldPick(id)
         else if (planeSelectionFeatureId) commitPlaneSelection(id)
         else toggleNormalSelection(id)
       }}
