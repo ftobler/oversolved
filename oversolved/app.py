@@ -1,5 +1,6 @@
 """Flask application for the Oversolved solver API."""
 
+import json
 import os
 import uuid
 from functools import wraps
@@ -9,7 +10,15 @@ import re
 import yaml
 from io import BytesIO
 from PIL import Image
-from flask import Flask, g, jsonify, request, send_from_directory, make_response
+from flask import (
+    Flask,
+    Response,
+    g,
+    jsonify,
+    request,
+    send_from_directory,
+    make_response,
+)
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from oversolved.db import (
@@ -20,6 +29,7 @@ from oversolved.db import (
     UserStore,
     SessionStore,
 )
+
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 ALLOWED_EXTENSIONS = {".step", ".stp", ".iges", ".igs"}
 
@@ -328,7 +338,7 @@ def create_app(config=None):
 
         _build_state_cache[doc_id] = build_result.pop("_build_state")
 
-        return jsonify(build_result)
+        return Response(json.dumps(build_result), mimetype="application/json")
 
     def _format_history(history):
         """Format edit history for bug report."""
