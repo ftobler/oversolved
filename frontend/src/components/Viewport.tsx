@@ -18,6 +18,7 @@ import { COLOR_SELECTED, COLOR_HOVER, CLICK_THRESHOLD_PX } from './Geometry3D/co
 import { useSelectionPointerUpCleanup } from './interaction/useSelectionPointerUpCleanup'
 
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
+
 const INITIAL_ZOOM = 200
 
 interface ViewportProps {
@@ -313,6 +314,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           // Only clear selection if this was a left-click on empty space, not a camera drag
           if (!wasPointerDrag.current && pointerDownButton.current === 0) {
             useSketchEditorStore.getState().clearNormalSelection()
+            useSketchEditorStore.getState().setHoveredBodyId(null)
           }
         }}
       >
