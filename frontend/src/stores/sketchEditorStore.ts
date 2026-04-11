@@ -79,7 +79,7 @@ interface SketchEditorState {
   setHoveredConstraintEntities: (ids: Set<string>) => void
   setHoveredPlane: (id: string | null) => void
   setHoveredSurface: (id: string | null) => void
-  setHoveredBodyId: (id: string | null) => void
+  setHoveredBodyId: (id: string | null | ((current: string | null) => string | null)) => void
 
   // DRAG TOOL STATE
   drag: DragState | null
@@ -253,7 +253,9 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setHoveredSurface: (id) => set({ hoveredSurfaceId: id }),
 
-  setHoveredBodyId: (id) => set({ hoveredBodyId: id }),
+  setHoveredBodyId: (id) => set(s => ({
+    hoveredBodyId: typeof id === 'function' ? id(s.hoveredBodyId) : id,
+  })),
 
   setHoveredPathSnap: (snap) => set({ hoveredPathSnap: snap }),
 

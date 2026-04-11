@@ -3,12 +3,13 @@ import { Canvas, useThree } from '@react-three/fiber'
 import { OrthographicCamera, Line, Text } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { SketchData, Feature, PlaneTransform, Sketch } from '../types/cad'
+import type { SketchData, Feature, PlaneTransform, Sketch, BodyResult } from '../types/cad'
 import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
 import Geometry3D from './Geometry3D'
 import { CubeGizmoCanvas } from './CubeGizmo'
 import { type Hit, type Pv } from './CubeGizmo.utils'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
+import Body3D from './Geometry3D/Body3D'
 import OriginMarker from './Viewport/OriginMarker'
 import ReferencePlane from './Viewport/ReferencePlane'
 import SceneController from './Viewport/SceneController'
@@ -33,6 +34,7 @@ interface ViewportProps {
   onRightClick?: (pos: [number, number]) => void
   showDebugHit?: boolean
   otherSketches?: Record<string, Sketch>  // sketches from other features (for project tool)
+  bodies?: Record<string, BodyResult>
 }
 
 function isActive(id: string, features: Feature[] | undefined, rollbackPos: number | undefined, visible: Set<string> | undefined): boolean {
@@ -125,6 +127,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   activeFeatureId,
   onRightClick,
   showDebugHit = false,
+  bodies,
 }: ViewportProps, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pvRef = useRef<Pv[]>([])
@@ -346,6 +349,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           return (
             <Geometry3D key={f.id} featureId={f.id} solved={sketch} entities={fullFeatureDef.entities} constraints={constraints} topology={solveResult?.topology} activeFeatureId={activeFeatureId} plane={fullFeatureDef.plane} planeTransform={solveResult?.plane_transform} solveStatus={solveResult?.status} entityStatus={solveResult?.features} showDebugHit={showDebugHit} />
           )
+        })}
+
+        {Object.entries(bodies ?? {}).map(([bodyId, body]) => {
+          const featureId = body.created_by
+          if (!isActive(featureId, features, rollbackPosition, visibleFeatures)) return null
+          if (!body.mesh) return null
+          return <Body3D key={bodyId} featureId={featureId} mesh={body.mesh} visible={visibleFeatures ? visibleFeatures.has(featureId) : true} />
         })}
       </Canvas>
 

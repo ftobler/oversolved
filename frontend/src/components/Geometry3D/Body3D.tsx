@@ -77,7 +77,7 @@ export default function Body3D({ featureId, mesh, visible = true }: Body3DProps)
         onPointerOut={(e) => {
           e.stopPropagation()
           // Functional update avoids stale closure over hoveredBodyId.
-          setHoveredBodyId(hoveredBodyId === featureId ? null : hoveredBodyId)
+          setHoveredBodyId(current => current === featureId ? null : current)
         }}
         onClick={(e) => {
           e.stopPropagation()
