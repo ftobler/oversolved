@@ -8,6 +8,89 @@ from oversolved.topology import detect_topology
 from oversolved.query import Repository, _parse_ancestry
 
 
+def _init_global_repo() -> Repository:
+    """Create and populate the global repository with built-in planes and origin."""
+    repo = Repository()
+    repo.register("builtin_origin", {"external_xy": [0.0, 0.0]})
+    repo.register("builtin_plane_front", {
+        "type": "plane", "origin": [0, 0, 0],
+        "x_axis": [1, 0, 0], "y_axis": [0, 1, 0], "normal": [0, 0, 1],
+    })
+    repo.register("builtin_plane_top", {
+        "type": "plane", "origin": [0, 0, 0],
+        "x_axis": [1, 0, 0], "y_axis": [0, 0, -1], "normal": [0, 1, 0],
+    })
+    repo.register("builtin_plane_right", {
+        "type": "plane", "origin": [0, 0, 0],
+        "x_axis": [0, 0, -1], "y_axis": [0, 1, 0], "normal": [1, 0, 0],
+    })
+    return repo
+
+
+def _post_register(
+    global_repo: Repository,
+    feature_id: str,
+    feature: dict,
+    feature_result: dict,
+) -> None:
+    """Register solved state from feature_result into global_repo for downstream use."""
+    if feature_result.get("status") == "exception":
+        return
+    if "geometry" in feature_result:
+        _register_solved_geometry_slash(
+            global_repo, feature_id, feature, feature_result["geometry"]
+        )
+        # Also register in legacy format for backward compatibility with plane features
+        # that query via feature_id+entity_id (no slash)
+        if feature.get("kind") == "sketch":
+            def to_flat_params(val):
+                if not isinstance(val, dict):
+                    return list(val)
+                if "start" in val and "end" in val:
+                    return list(val.get("start", [])) + list(val.get("end", []))
+                if "center" in val and "radius" in val:
+                    c = val.get("center", [0, 0])
+                    r = val.get("radius", 0)
+                    a0 = val.get("angle_start", 0)
+                    a1 = val.get("angle_end", 0)
+                    return [c[0], c[1], r, a0, a1]
+                if "xy" in val:
+                    return list(val.get("xy", []))
+                return list(val)
+            flat_geometry = {k: to_flat_params(v) for k, v in feature_result["geometry"].items()}
+            _register_solved_geometry(
+                global_repo, feature_id, feature, flat_geometry
+            )
+    if "plane_transform" in feature_result:
+        pt = feature_result["plane_transform"]
+        rot = pt["rotation"]
+        global_repo.register(
+            "_pt_" + feature_id,
+            {
+                "origin": pt["origin"],
+                "x_axis": rot[0:3],
+                "y_axis": rot[3:6],
+                "normal": rot[6:9],
+            },
+        )
+    if "topology" in feature_result:
+        global_repo.register("_topo_" + feature_id, feature_result["topology"])
+        pt = feature_result.get("plane_transform")
+        if pt:
+            rot = pt["rotation"]
+            _register_topology_surfaces(
+                global_repo,
+                feature_result["topology"],
+                {
+                    "type": "face",
+                    "origin": pt["origin"],
+                    "x_axis": rot[0:3],
+                    "y_axis": rot[3:6],
+                    "normal": rot[6:9],
+                },
+            )
+
+
 _FRONT_PLANE: dict = {
     "type": "plane",
     "origin": [0, 0, 0],
@@ -47,82 +130,15 @@ def solve(yaml_str: str) -> dict:
     doc = yaml.safe_load(yaml_str)
     features = doc.get("features", [])
 
-    # Global repo accumulates solved geometry so later sketches can reference
-    # entities from earlier sketches via @absolute query strings.
-    global_repo = Repository()
-    global_repo.register("builtin_origin", {"external_xy": [0.0, 0.0]})
-    global_repo.register(
-        "builtin_plane_front",
-        {
-            "type": "plane",
-            "origin": [0, 0, 0],
-            "x_axis": [1, 0, 0],
-            "y_axis": [0, 1, 0],
-            "normal": [0, 0, 1],
-        },
-    )
-    global_repo.register(
-        "builtin_plane_top",
-        {
-            "type": "plane",
-            "origin": [0, 0, 0],
-            "x_axis": [1, 0, 0],
-            "y_axis": [0, 0, -1],
-            "normal": [0, 1, 0],
-        },
-    )
-    global_repo.register(
-        "builtin_plane_right",
-        {
-            "type": "plane",
-            "origin": [0, 0, 0],
-            "x_axis": [0, 0, -1],
-            "y_axis": [0, 1, 0],
-            "normal": [1, 0, 0],
-        },
-    )
+    global_repo = _init_global_repo()
 
     t0 = time.perf_counter()
     result = {}
+    body_store: dict = {}
     for feature in features:
-        feature_result = _try_solve_feature(feature, global_repo)
+        feature_result = _try_solve_feature(feature, global_repo, body_store)
         result[feature["id"]] = feature_result
-        # After solving, register this sketch's geometry into global_repo so
-        # subsequent sketches can reference it via @absolute query strings.
-        if "geometry" in feature_result:
-            _register_solved_geometry(
-                global_repo, feature["id"], feature, feature_result["geometry"]
-            )
-        # Store plane_transform so downstream plane features can convert 2D sketch
-        # coordinates to 3D world coordinates (used by three_point, plane_point, etc.)
-        if "plane_transform" in feature_result:
-            pt = feature_result["plane_transform"]
-            rot = pt["rotation"]
-            global_repo.register(
-                "_pt_" + feature["id"],
-                {
-                    "origin": pt["origin"],
-                    "x_axis": rot[0:3],
-                    "y_axis": rot[3:6],
-                    "normal": rot[6:9],
-                },
-            )
-        # Register topology surfaces as face-typed planes so later sketches can
-        # use a topology face as a sketch plane via its ancestry query string.
-        if "plane_transform" in feature_result and "topology" in feature_result:
-            pt = feature_result["plane_transform"]
-            rot = pt["rotation"]
-            _register_topology_surfaces(
-                global_repo,
-                feature_result["topology"],
-                {
-                    "type": "face",
-                    "origin": pt["origin"],
-                    "x_axis": rot[0:3],
-                    "y_axis": rot[3:6],
-                    "normal": rot[6:9],
-                },
-            )
+        _post_register(global_repo, feature["id"], feature, feature_result)
 
     total_ms = round((time.perf_counter() - t0) * 1000, 1)
     # Add builtin planes to result so frontend can access them consistently
@@ -164,42 +180,12 @@ def solve_features(spec: dict) -> dict:
     """
     features = spec.get("features", [])
 
-    global_repo = Repository()
-    global_repo.register("builtin_origin", {"external_xy": [0.0, 0.0]})
-    global_repo.register(
-        "builtin_plane_front",
-        {
-            "type": "plane",
-            "origin": [0, 0, 0],
-            "x_axis": [1, 0, 0],
-            "y_axis": [0, 1, 0],
-            "normal": [0, 0, 1],
-        },
-    )
-    global_repo.register(
-        "builtin_plane_top",
-        {
-            "type": "plane",
-            "origin": [0, 0, 0],
-            "x_axis": [1, 0, 0],
-            "y_axis": [0, 0, -1],
-            "normal": [0, 1, 0],
-        },
-    )
-    global_repo.register(
-        "builtin_plane_right",
-        {
-            "type": "plane",
-            "origin": [0, 0, 0],
-            "x_axis": [0, 0, -1],
-            "y_axis": [0, 1, 0],
-            "normal": [1, 0, 0],
-        },
-    )
+    global_repo = _init_global_repo()
+    body_store: dict = {}
 
     results = []
     for feature in features:
-        feature_result = _try_solve_feature(feature, global_repo)
+        feature_result = _try_solve_feature(feature, global_repo, body_store)
         fid = feature.get("id", "")
 
         # Convert flat-params geometry to rich dict format for solve_features callers.
@@ -210,26 +196,7 @@ def solve_features(spec: dict) -> dict:
             )
 
         results.append(feature_result)
-
-        if "geometry" in feature_result:
-            _register_solved_geometry_slash(
-                global_repo, fid, feature, feature_result["geometry"]
-            )
-        # Store plane_transform and topology so extrude can access them.
-        if "plane_transform" in feature_result:
-            pt = feature_result["plane_transform"]
-            rot = pt["rotation"]
-            global_repo.register(
-                "_pt_" + fid,
-                {
-                    "origin": pt["origin"],
-                    "x_axis": rot[0:3],
-                    "y_axis": rot[3:6],
-                    "normal": rot[6:9],
-                },
-            )
-        if "topology" in feature_result:
-            global_repo.register("_topo_" + fid, feature_result["topology"])
+        _post_register(global_repo, fid, feature, feature_result)
 
     return {"features": results}
 
@@ -531,10 +498,10 @@ def _register_topology_surfaces(
         )
 
 
-def _try_solve_feature(feature: Any, global_repo: Repository) -> dict:
+def _try_solve_feature(feature: Any, global_repo: Repository, body_store: dict) -> dict:
     t0 = time.perf_counter()
     try:
-        result = _solve_feature(feature, global_repo)
+        result = _solve_feature(feature, global_repo, body_store)
         result["solve_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         return result
     except Exception as e:
@@ -545,7 +512,7 @@ def _try_solve_feature(feature: Any, global_repo: Repository) -> dict:
         }
 
 
-def _solve_feature(feature: Any, global_repo: Repository) -> dict:
+def _solve_feature(feature: Any, global_repo: Repository, body_store: dict) -> dict:
     kind = feature.get("kind")
     if kind == "sketch":
         feature_result = _solve_sketch(feature, global_repo)
@@ -553,7 +520,7 @@ def _solve_feature(feature: Any, global_repo: Repository) -> dict:
     if kind == "plane":
         return _solve_plane(feature, global_repo)
     if kind == "extrude":
-        return _solve_extrude(feature, global_repo)
+        return _solve_extrude(feature, global_repo, body_store)
     raise Exception(f"unknown feature type: '{kind}'")
 
 
@@ -1440,7 +1407,7 @@ def _solve_plane(feature: dict, global_repo: Repository) -> dict:
         return {"status": "exception", "message": str(e)}
 
 
-def _solve_extrude(feature: dict, global_repo: Repository) -> dict:
+def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:
     """Minimal extrude solver: generates top/bottom faces for topology references."""
     try:
         sketch_ref = feature.get("sketch", "")

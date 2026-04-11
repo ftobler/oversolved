@@ -52,7 +52,6 @@ class Geom:
         if self._kind == "line":
             return list(self._data[0:2])
         elif self._kind == "arc":
-            # Arc: [cx, cy, r, a_start, a_end], compute start point from angle
             cx, cy, r, a_start = self._data[0], self._data[1], self._data[2], self._data[3]
             return [cx + r * math.cos(math.radians(a_start)), cy + r * math.sin(math.radians(a_start))]
         raise AttributeError(f"start not available for {self._kind}")
@@ -62,7 +61,6 @@ class Geom:
         if self._kind == "line":
             return list(self._data[2:4])
         elif self._kind == "arc":
-            # Arc: [cx, cy, r, a_start, a_end], compute end point from angle
             cx, cy, r, a_end = self._data[0], self._data[1], self._data[2], self._data[4]
             return [cx + r * math.cos(math.radians(a_end)), cy + r * math.sin(math.radians(a_end))]
         raise AttributeError(f"end not available for {self._kind}")
@@ -107,7 +105,6 @@ class Geom:
         """Support 'key' in geom checks."""
         if key in ("start", "end", "center", "radius", "angle_start", "angle_end", "x", "y"):
             try:
-                # Try to access the property; if it raises AttributeError, it's not available
                 getattr(self, key)
                 return True
             except AttributeError:
@@ -117,7 +114,6 @@ class Geom:
     def get(self, key):
         """Support .get("construction") for construction flag."""
         if key == "construction":
-            # Construction flag is not in the array; would need to be passed separately
             return None
         raise AttributeError(f"get({key}) not supported")
 
@@ -167,3 +163,119 @@ def minimal_sketch_yaml(plane):
 {plane_line}            entities: []
             constraints: []
     """)
+
+
+def rect_sketch_spec(
+    w: float = 10.0,
+    h: float = 10.0,
+    sketch_id: str = 'sk1',
+    plane: str = '@builtin_plane_front',
+) -> dict:
+    """Fully-constrained rectangle sketch spec (dict, not YAML string).
+
+    Entities: bottom, right, top, left (lines).
+    Constraints: 4 coincident (corners), horizontal bottom+top,
+    vertical left+right, length bottom (=w), length left (=h).
+    Origin is at [0,0]; rectangle spans [0,w] x [0,h].
+    """
+    return {
+        'id': sketch_id,
+        'kind': 'sketch',
+        'label': 'Rectangle',
+        'plane': plane,
+        'entities': [
+            {'id': 'bottom', 'kind': 'line'},
+            {'id': 'right', 'kind': 'line'},
+            {'id': 'top', 'kind': 'line'},
+            {'id': 'left', 'kind': 'line'},
+        ],
+        'initial': {
+            'bottom': [0, 0, w, 0],
+            'right': [w, 0, w, h],
+            'top': [w, h, 0, h],
+            'left': [0, h, 0, 0],
+        },
+        'constraints': [
+            {'id': 'c1', 'kind': 'coincident', 'a': {'entity': 'bottom', 'point': 'end'}, 'b': {'entity': 'right', 'point': 'start'}},
+            {'id': 'c2', 'kind': 'coincident', 'a': {'entity': 'right', 'point': 'end'}, 'b': {'entity': 'top', 'point': 'start'}},
+            {'id': 'c3', 'kind': 'coincident', 'a': {'entity': 'top', 'point': 'end'}, 'b': {'entity': 'left', 'point': 'start'}},
+            {'id': 'c4', 'kind': 'coincident', 'a': {'entity': 'left', 'point': 'end'}, 'b': {'entity': 'bottom', 'point': 'start'}},
+            {'id': 'c5', 'kind': 'horizontal', 'target': {'entity': 'bottom'}},
+            {'id': 'c6', 'kind': 'horizontal', 'target': {'entity': 'top'}},
+            {'id': 'c7', 'kind': 'vertical', 'target': {'entity': 'right'}},
+            {'id': 'c8', 'kind': 'vertical', 'target': {'entity': 'left'}},
+            {'id': 'c9', 'kind': 'length', 'target': {'entity': 'bottom'}, 'value': w},
+            {'id': 'c10', 'kind': 'length', 'target': {'entity': 'left'}, 'value': h},
+        ],
+    }
+
+
+def extrude_spec(
+    sketch_id: str,
+    extrude_id: str,
+    distance: float,
+    direction: str = 'normal',
+) -> dict:
+    """Single extrude feature dict."""
+    return {
+        'id': extrude_id,
+        'kind': 'extrude',
+        'label': 'Extrude',
+        'sketch': '$' + sketch_id,
+        'distance': distance,
+        'direction': direction,
+    }
+
+
+def full_rect_extrude_spec(
+    w: float = 10.0,
+    h: float = 10.0,
+    d: float = 5.0,
+    direction: str = 'normal',
+) -> dict:
+    """Complete spec: one fully-constrained rect sketch + one extrude."""
+    sk = rect_sketch_spec(w, h)
+    ex = extrude_spec('sk1', 'ex1', d, direction)
+    return {'features': [sk, ex]}
+
+
+def assert_mesh_valid(mesh: dict) -> None:
+    """Assert structural invariants for any mesh dict."""
+    verts = mesh['vertices']
+    faces = mesh['faces']
+    normals = mesh['normals']
+    n = len(verts)
+
+    assert n > 0, "mesh has no vertices"
+    assert len(faces) > 0, "mesh has no faces"
+    assert len(normals) == len(faces), (
+        f"normals count {len(normals)} != faces count {len(faces)}"
+    )
+
+    for i, (a, b, c) in enumerate(faces):
+        assert 0 <= a < n, f"face {i}: index a={a} out of range [0, {n})"
+        assert 0 <= b < n, f"face {i}: index b={b} out of range [0, {n})"
+        assert 0 <= c < n, f"face {i}: index c={c} out of range [0, {n})"
+        assert a != b and b != c and a != c, f"face {i} is degenerate: ({a},{b},{c})"
+
+    for i, n_vec in enumerate(normals):
+        mag = math.sqrt(sum(x*x for x in n_vec))
+        assert abs(mag - 1.0) < 1e-5, f"normal {i} not unit length: mag={mag}"
+
+
+def assert_mesh_bbox(mesh: dict, x_range, y_range, z_range, tol: float = 0.1) -> None:
+    """Assert mesh bounding box matches expected ranges within tolerance."""
+    xs = [v[0] for v in mesh['vertices']]
+    ys = [v[1] for v in mesh['vertices']]
+    zs = [v[2] for v in mesh['vertices']]
+
+    def check(vals, lo, hi, axis):
+        actual_lo, actual_hi = min(vals), max(vals)
+        assert actual_lo >= lo - tol, f"{axis} min={actual_lo:.4f} expected >= {lo}"
+        assert actual_hi <= hi + tol, f"{axis} max={actual_hi:.4f} expected <= {hi}"
+        assert actual_lo <= lo + tol, f"{axis} min={actual_lo:.4f} not close to {lo}"
+        assert actual_hi >= hi - tol, f"{axis} max={actual_hi:.4f} not close to {hi}"
+
+    check(xs, x_range[0], x_range[1], 'x')
+    check(ys, y_range[0], y_range[1], 'y')
+    check(zs, z_range[0], z_range[1], 'z')
