@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   KEYMAP,
+  FEATURE_KEYMAP,
   CORE_KEYBINDINGS,
   registerCommand,
   unregisterCommand,
@@ -134,9 +135,10 @@ describe('CORE_KEYBINDINGS', () => {
     }
   })
 
-  it('KEYMAP contains all CORE_KEYBINDINGS entries with correct command mapping', () => {
+  it('KEYMAP or FEATURE_KEYMAP contains all CORE_KEYBINDINGS entries with correct command mapping', () => {
     for (const { key, command } of CORE_KEYBINDINGS) {
-      expect(KEYMAP[key], `KEYMAP["${key}"] should be "${command}"`).toBe(command)
+      const resolved = FEATURE_KEYMAP[key] ?? KEYMAP[key]
+      expect(resolved, `KEYMAP/FEATURE_KEYMAP["${key}"] should be "${command}"`).toBe(command)
     }
   })
 

@@ -284,6 +284,16 @@ export default function Part() {
     setEditingFeatureId(featureId)
   }, [doc, features.length, handleMutation])
 
+  const handleAddExtrude = useCallback(() => {
+    if (!doc) return
+    const fid = randomId(18)
+    const extrudeCount = (doc.features ?? []).filter(f => f.kind === 'extrude').length
+    const label = `extrude ${extrudeCount + 1}`
+    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    handleMutation({ type: 'add_extrude', featureId: fid, label, sketchQuery: '', distance: 10 })
+    setEditingFeatureId(fid)
+  }, [doc, features.length, handleMutation])
+
   const handleAddSketch = useCallback(() => {
     if (!doc) return
     const featureId = randomId(18)
@@ -321,8 +331,8 @@ export default function Part() {
   }, [activeSketchFeatureId])
 
   const commands = useMemo(
-    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility),
-    [handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility],
+    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddExtrude),
+    [handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddExtrude],
   )
 
   useCommandRegistration(commands)
@@ -611,7 +621,7 @@ export default function Part() {
             {mode === 'sketch' && <SketchToolbar onResetViewport={() => setViewportReset(v => v + 1)} />}
             {mode === 'feature' && (
               <>
-                <button className="editor-btn" title="Extrude"><img src={featureExtrudeIcon} alt="Extrude" /></button>
+                <button className="editor-btn" title="Add Extrude (E)" onClick={handleAddExtrude}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
                 <button className="editor-btn" title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
               </>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import type { PartFeature, PartDoc, PlaneDef, Mutation, FieldPickState } from '../types/cad'
+import type { PartFeature, PartDoc, PlaneDef, Mutation, FieldPickState, ExtrudeDirection } from '../types/cad'
 import { planeLabel } from './Geometry3D/utils'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
@@ -210,6 +210,66 @@ export const Sidebar: React.FC<SidebarProps> = ({
     )
   }
 
+  const ExtrudeEditor: React.FC<{ feature: PartFeature }> = ({ feature }) => {
+    const extrude = feature.extrude ?? { sketch: '', distance: 10, direction: 'normal' }
+    const fid = feature.id
+    const isPickingSketch = fieldPickState?.featureId === fid
+      && fieldPickState.field === 'sketch'
+      && fieldPickState.kind === 'sketch'
+
+    return (
+      <div className="plane-editor">
+        <div className="feature-field-row">
+          <span className="feature-field-label">Sketch</span>
+          <PickChip
+            value={extrude.sketch || undefined}
+            isPicking={isPickingSketch}
+            onActivate={() => {
+              if (isPickingSketch) onSetFieldPickState(null)
+              else onSetFieldPickState({ featureId: fid, field: 'sketch', kind: 'sketch' })
+            }}
+            onClear={() => onMutation({ type: 'set_extrude_sketch', featureId: fid, sketchQuery: '' })}
+          />
+        </div>
+        <div className="feature-field-row">
+          <span className="feature-field-label">Distance</span>
+          <input
+            type="number"
+            className="feature-field-input"
+            defaultValue={extrude.distance ?? 10}
+            onClick={(e) => e.stopPropagation()}
+            onBlur={(e) => {
+              const v = parseFloat(e.target.value)
+              if (!isNaN(v) && v > 0)
+                onMutation({ type: 'set_extrude_distance', featureId: fid, distance: v })
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
+          />
+        </div>
+        <div className="feature-field-row">
+          <span className="feature-field-label">Direction</span>
+          <select
+            className="feature-field-select"
+            value={extrude.direction ?? 'normal'}
+            onChange={(e) => {
+              e.stopPropagation()
+              onMutation({
+                type: 'set_extrude_direction',
+                featureId: fid,
+                direction: e.target.value as ExtrudeDirection,
+              })
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <option value="normal">Normal</option>
+            <option value="reverse">Reverse</option>
+            <option value="symmetric">Symmetric</option>
+          </select>
+        </div>
+      </div>
+    )
+  }
+
   const PlaneSelector: React.FC<{ feature: PartFeature; featureDef?: PartFeature }> = ({ feature, featureDef }) => {
     const isPicking = planeSelectionFeatureId === feature.id
     return (
@@ -254,7 +314,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(`@${feature.id}`) ? 'selected' : ''}`}
                 onDragOver={(e) => onRollbackDragOver(e, index)}
                 onDrop={(e) => onRollbackDrop(e, index)}
-                onClick={() => onToggleSelect(`@${feature.id}`)}
+                onClick={() => {
+                  if (fieldPickState?.kind === 'sketch' && feature.kind === 'sketch') {
+                    onMutation({ type: 'set_extrude_sketch', featureId: fieldPickState.featureId, sketchQuery: '$' + feature.id })
+                    onSetFieldPickState(null)
+                  } else {
+                    onToggleSelect(`@${feature.id}`)
+                  }
+                }}
                 onDoubleClick={() => feature.kind === 'sketch' ? onEnterEditSketch(feature.id) : undefined}
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onRightClick([e.clientX, e.clientY], feature.id) }}
                 style={{ flexWrap: 'wrap' }}
@@ -315,6 +382,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <img src={contextEditIcon} alt="Edit" />
                       </button>
                     )}
+                    {feature.kind === 'extrude' && feature.id !== editingFeatureId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onSetEditingFeatureId(feature.id)
+                        }}
+                        title="Edit extrude"
+                      >
+                        <img src={contextEditIcon} alt="Edit" />
+                      </button>
+                    )}
+                    {feature.kind === 'extrude' && feature.id === editingFeatureId && (
+                      <button
+                        className="exit-sketch-btn"
+                        onClick={(e) => { e.stopPropagation(); onSetEditingFeatureId(null); onSetFieldPickState(null) }}
+                        title="Exit extrude editor"
+                      >
+                        <span className="material-icons-outlined">close</span>
+                      </button>
+                    )}
                     {feature.kind === 'sketch' && feature.id === editingFeatureId && (
                       <button
                         className="exit-sketch-btn"
@@ -347,6 +435,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
                 {feature.kind === 'sketch' && feature.id === editingFeatureId && (
                   <PlaneSelector feature={feature} featureDef={doc?.features?.find(f => f.id === feature.id)} />
+                )}
+                {feature.kind === 'extrude' && editingFeatureId === feature.id && (
+                  <ExtrudeEditor feature={feature} />
                 )}
               </li>
             </div>

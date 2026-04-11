@@ -20,9 +20,6 @@ from oversolved.db import (
     UserStore,
     SessionStore,
 )
-from oversolved.solver import solve
-
-
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 ALLOWED_EXTENSIONS = {".step", ".stp", ".iges", ".igs"}
 
@@ -313,20 +310,25 @@ def create_app(config=None):
 
     # ── Solver ─────────────────────────────────────────────────────────────────
 
+    # Keyed by document id. Not persisted; clears on server restart (full rebuild on restart).
+    _build_state_cache: dict = {}
+
     @app.route("/api/solve", methods=["POST"])
     def solve_document():
-        content_type = request.content_type or ""
-        if "application/json" not in content_type:
-            return jsonify({"error": "Content-Type must be application/json"}), 400
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Empty request body"}), 400
-        try:
-            yaml_str = yaml.dump(data)
-            result = solve(yaml_str)
-            return jsonify(result)
-        except Exception as e:
-            return jsonify({"error": str(e)}), 400
+        data = request.get_json(silent=True)
+        if not data or "features" not in data:
+            return jsonify({"error": "features required"}), 400
+
+        from oversolved.builder import build
+
+        doc_id = data.get("id", "__default__")
+        prev_state = _build_state_cache.get(doc_id)
+
+        build_result = build(data, prev_state=prev_state)
+
+        _build_state_cache[doc_id] = build_result.pop("_build_state")
+
+        return jsonify(build_result)
 
     def _format_history(history):
         """Format edit history for bug report."""

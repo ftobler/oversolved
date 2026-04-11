@@ -454,7 +454,7 @@ class TestSolveAPI:
     def test_solve_empty_features(self, client):
         response = client.post(
             "/api/solve",
-            data=json.dumps({"version": 1, "kind": "part"}),
+            data=json.dumps({"version": 1, "kind": "part", "features": []}),
             content_type="application/json",
         )
         assert response.status_code == 200
@@ -471,6 +471,15 @@ class TestSolveAPI:
         ]:
             assert "plane" in result[plane_id]
             assert "status" in result[plane_id]
+
+    def test_solve_missing_features_key(self, client):
+        response = client.post(
+            "/api/solve",
+            data=json.dumps({"version": 1, "kind": "part"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert "features required" in json.loads(response.data)["error"]
 
     def test_solve_empty_body(self, client):
         response = client.post(

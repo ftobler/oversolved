@@ -2,6 +2,7 @@
 // Keymaps are defined here so they are testable and independently configurable.
 
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '../registry'
+import { useSketchEditorStore } from './sketchEditorStore'
 
 const handlers = new Map<string, () => void>()
 
@@ -30,6 +31,7 @@ export const CORE_KEYBINDINGS: readonly CoreKeybinding[] = [
   { key: 'd',            command: 'set_tool_dimension',  label: 'Dimension tool',       description: 'Activate the dimension tool' },
   { key: 'q',            command: 'toggle_construction', label: 'Toggle construction',  description: 'Toggle construction mode for selected entities' },
   { key: 'y',            command: 'toggle_sketch_plane_visibility', label: 'Toggle sketches/planes', description: 'Hide or show all sketch and plane features' },
+  { key: 'e',            command: 'add_extrude',          label: 'Add Extrude',         description: 'Add a new extrude feature (feature mode only)' },
   { key: 'escape',       command: 'cancel_draw',         label: 'Cancel',              description: 'Cancel active draw or return to select tool' },
 ]
 
@@ -37,12 +39,18 @@ export const CORE_KEYBINDINGS: readonly CoreKeybinding[] = [
 const CORE_KEYMAP: Record<string, string> =
   Object.fromEntries(CORE_KEYBINDINGS.map(b => [b.key, b.command]))
 
-// Merge core bindings with registry-derived shortcuts
-// Constraint shortcuts take precedence over CORE_KEYBINDINGS (last wins)
+// Merge core bindings with registry-derived shortcuts.
+// Constraint shortcuts take precedence over CORE_KEYBINDINGS (last wins).
 export const KEYMAP: Record<string, string> = {
   ...CORE_KEYMAP,
   ...Object.fromEntries(CONSTRAINT_SHORTCUTS),
   ...Object.fromEntries(ENTITY_SHORTCUTS),
+}
+
+// Keys that are only active outside of sketch-edit mode.
+// These override KEYMAP entries when no sketch is being edited.
+export const FEATURE_KEYMAP: Record<string, string> = {
+  'e': 'add_extrude',
 }
 
 // ── Registration ────
@@ -88,7 +96,8 @@ export function dispatchKey(e: KeyboardEvent): boolean {
   const tag = (e.target as HTMLElement)?.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA') return false
   const key = buildKeyString(e)
-  const cmd = KEYMAP[key]
+  const inSketchEdit = !!useSketchEditorStore.getState().activeFeatureId
+  const cmd = (!inSketchEdit && FEATURE_KEYMAP[key]) || KEYMAP[key]
   if (!cmd) return false
   e.preventDefault()
   executeCommand(cmd)
