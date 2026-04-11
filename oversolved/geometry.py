@@ -160,7 +160,11 @@ def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> Any:
         circ = gp_Circ(ax2, radius)
 
         # Full circle when span is ~360 degrees.
-        span = ((a1_deg - a0_deg) + 360) % 360 if ccw else -(((a0_deg - a1_deg) + 360) % 360)
+        span = (
+            ((a1_deg - a0_deg) + 360) % 360
+            if ccw
+            else -(((a0_deg - a1_deg) + 360) % 360)
+        )
         if abs(abs(span) - 360.0) < 1e-6:
             return BRepBuilderAPI_MakeEdge(circ).Edge()
 
@@ -297,7 +301,6 @@ def solid_to_mesh(solid: Any) -> dict:
         faces = []
         normals = []
 
-        default_loc = TopLoc_Location()
         explorer = TopExp_Explorer(s, TopAbs_FACE)
 
         while explorer.More():
@@ -307,16 +310,37 @@ def solid_to_mesh(solid: Any) -> dict:
                 face.TShape(face_shape.TShape())
                 face.Location(face_shape.Location())
                 face.Orientation(face_shape.Orientation())
-                tri = BRep_Tool.Triangulation_s(face, default_loc)
+                location = TopLoc_Location()
+                tri = BRep_Tool.Triangulation_s(face, location)
 
                 if tri is not None:
                     node_count = tri.NbNodes()
                     tri_count = tri.NbTriangles()
                     offset = len(verts)
+                    trsf = location.Transformation()
 
                     for i in range(1, node_count + 1):
                         pt = tri.Node(i)
-                        verts.append([pt.X(), pt.Y(), pt.Z()])
+                        # Apply face location transformation
+                        x = (
+                            trsf.Value(1, 1) * pt.X()
+                            + trsf.Value(1, 2) * pt.Y()
+                            + trsf.Value(1, 3) * pt.Z()
+                            + trsf.Value(1, 4)
+                        )
+                        y = (
+                            trsf.Value(2, 1) * pt.X()
+                            + trsf.Value(2, 2) * pt.Y()
+                            + trsf.Value(2, 3) * pt.Z()
+                            + trsf.Value(2, 4)
+                        )
+                        z = (
+                            trsf.Value(3, 1) * pt.X()
+                            + trsf.Value(3, 2) * pt.Y()
+                            + trsf.Value(3, 3) * pt.Z()
+                            + trsf.Value(3, 4)
+                        )
+                        verts.append([x, y, z])
 
                     for i in range(1, tri_count + 1):
                         tri_data = tri.Triangle(i)
@@ -438,11 +462,13 @@ def solid_to_edges(solid: Any) -> list[dict]:
         if kind == GeomAbs_Line:
             p1 = c.Value(c.FirstParameter())
             p2 = c.Value(c.LastParameter())
-            edges.append({
-                "kind": "line",
-                "start": [p1.X(), p1.Y(), p1.Z()],
-                "end": [p2.X(), p2.Y(), p2.Z()],
-            })
+            edges.append(
+                {
+                    "kind": "line",
+                    "start": [p1.X(), p1.Y(), p1.Z()],
+                    "end": [p2.X(), p2.Y(), p2.Z()],
+                }
+            )
 
         elif kind == GeomAbs_Circle:
             circ = c.Circle()
@@ -455,15 +481,17 @@ def solid_to_edges(solid: Any) -> list[dict]:
             span = u1 - u0
             is_full = abs(abs(span) - TWO_PI) < CIRCLE_TOL or abs(span) < CIRCLE_TOL
             edge_kind = "circle" if is_full else "arc"
-            edges.append({
-                "kind": edge_kind,
-                "center": [center.X(), center.Y(), center.Z()],
-                "radius": radius,
-                "axis": [ax.X(), ax.Y(), ax.Z()],
-                "x_axis": [xdir.X(), xdir.Y(), xdir.Z()],
-                "angle_start": u0,
-                "angle_end": u1,
-            })
+            edges.append(
+                {
+                    "kind": edge_kind,
+                    "center": [center.X(), center.Y(), center.Z()],
+                    "radius": radius,
+                    "axis": [ax.X(), ax.Y(), ax.Z()],
+                    "x_axis": [xdir.X(), xdir.Y(), xdir.Z()],
+                    "angle_start": u0,
+                    "angle_end": u1,
+                }
+            )
 
         else:
             # Fallback: tessellate the edge

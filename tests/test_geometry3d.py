@@ -39,7 +39,11 @@ def pts_to_edge_loop(points_2d: list) -> list:
     """Convert a list of 2D UV points to a loop of line edge dicts."""
     n = len(points_2d)
     return [
-        {"kind": "line", "start": list(points_2d[i]), "end": list(points_2d[(i + 1) % n])}
+        {
+            "kind": "line",
+            "start": list(points_2d[i]),
+            "end": list(points_2d[(i + 1) % n]),
+        }
         for i in range(n)
     ]
 
@@ -147,10 +151,16 @@ def test_boolean_union_produces_larger_shape():
 def test_solid_to_mesh_on_cut_result():
     """9. solid_to_mesh on cut result returns valid mesh with all three keys"""
     target = extrude_profile(
-        [pts_to_edge_loop([[0, 0], [2, 0], [2, 2], [0, 2]])], FRONT_PLANE, [0, 0, 1], 2.0
+        [pts_to_edge_loop([[0, 0], [2, 0], [2, 2], [0, 2]])],
+        FRONT_PLANE,
+        [0, 0, 1],
+        2.0,
     )
     tool = extrude_profile(
-        [pts_to_edge_loop([[0, 0], [1, 0], [1, 1], [0, 1]])], FRONT_PLANE, [0, 0, 1], 1.0
+        [pts_to_edge_loop([[0, 0], [1, 0], [1, 1], [0, 1]])],
+        FRONT_PLANE,
+        [0, 0, 1],
+        1.0,
     )
     cut_result = boolean_cut(target, tool)
     mesh = solid_to_mesh(cut_result)
@@ -204,3 +214,57 @@ def test_step_file_to_shape_scale():
         xs_scaled = [v[0] for v in mesh_scaled["vertices"]]
         size_scaled = max(xs_scaled) - min(xs_scaled)
         assert abs(size_scaled / size_normal - 2.0) < 0.1
+
+
+def test_triangular_extrude_has_five_faces():
+    """Triangle extrusion must have 2 end caps (z=0, z=1) and 3 side faces."""
+    # Right triangle with vertices at (0,0), (2,0), (0,1)
+    loops = [pts_to_edge_loop([[0, 0], [2, 0], [0, 1]])]
+    solid = extrude_profile(loops, FRONT_PLANE, [0, 0, 1], 1.0)
+    mesh = solid_to_mesh(solid)
+
+    # Must have vertices at both z=0 and z=1
+    zs = [v[2] for v in mesh["vertices"]]
+    assert min(zs) < 0.01, f"expected vertices near z=0, got min={min(zs)}"
+    assert max(zs) > 0.99, f"expected vertices near z=1, got max={max(zs)}"
+
+    # Analyze triangles by their centroid Z coordinate
+    bottom_tris = []  # z ≈ 0
+    top_tris = []  # z ≈ 1
+    side_tris = []  # 0 < z < 1
+
+    for tri in mesh["faces"]:
+        v0 = mesh["vertices"][tri[0]]
+        v1 = mesh["vertices"][tri[1]]
+        v2 = mesh["vertices"][tri[2]]
+        cz = (v0[2] + v1[2] + v2[2]) / 3
+        if cz < 0.01:
+            bottom_tris.append(tri)
+        elif cz > 0.99:
+            top_tris.append(tri)
+        else:
+            side_tris.append(tri)
+
+    # Triangle has 2 triangular end caps (each triangular face needs only 1 triangle)
+    assert len(bottom_tris) == 1, f"expected 1 bottom triangle, got {len(bottom_tris)}"
+    assert len(top_tris) == 1, f"expected 1 top triangle, got {len(top_tris)}"
+
+    # 3 rectangular side faces (each rect is 2 triangles) = 6 side triangles
+    assert len(side_tris) == 6, f"expected 6 side triangles, got {len(side_tris)}"
+
+    # Verify bottom triangle is at z=0
+    for tri in bottom_tris:
+        for vi in tri:
+            v = mesh["vertices"][vi]
+            assert v[2] < 0.01, f"bottom vertex at wrong z: {v[2]}"
+
+    # Verify top triangle is at z=1
+    for tri in top_tris:
+        for vi in tri:
+            v = mesh["vertices"][vi]
+            assert v[2] > 0.99, f"top vertex at wrong z: {v[2]}"
+
+    # Verify total triangle count: 1 bottom + 1 top + 6 side = 8
+    assert len(mesh["faces"]) == 8, (
+        f"expected 8 triangles for triangular prism, got {len(mesh['faces'])}"
+    )
