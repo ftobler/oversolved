@@ -337,6 +337,9 @@ export default function Body3D({ featureId, mesh, edges = [], visible = true }: 
           metalness={0.1}
           side={THREE.DoubleSide}
           vertexColors={faceColors !== null}
+          polygonOffset
+          polygonOffsetFactor={1}
+          polygonOffsetUnits={1}
         />
       </mesh>
       {edges.length > 0 && (
