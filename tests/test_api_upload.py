@@ -4,11 +4,12 @@ import os
 import re
 import pytest
 
-from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
-from OCP.STEPControl import STEPControl_Writer, STEPControl_AsIs
-from OCP.IFSelect import IFSelect_RetDone
+pytest.importorskip("OCP.BRep", reason="OCP not installed")
+from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
+from OCP.STEPControl import STEPControl_Writer, STEPControl_AsIs  # noqa: E402
+from OCP.IFSelect import IFSelect_RetDone  # noqa: E402
 
-from oversolved.app import create_app, UPLOAD_DIR
+from oversolved.app import create_app, UPLOAD_DIR  # noqa: E402
 
 
 @pytest.fixture
@@ -82,7 +83,9 @@ def test_file_id_is_uuid_like(client, step_file):
     data = response.get_json()
     file_id = data["file_id"]
     pattern = r"[0-9a-f\-]{36}\.step"
-    assert re.match(pattern, file_id), f"file_id {file_id!r} does not match UUID pattern"
+    assert re.match(pattern, file_id), (
+        f"file_id {file_id!r} does not match UUID pattern"
+    )
 
 
 def test_file_persisted(client, step_file):
