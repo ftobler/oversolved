@@ -4,12 +4,11 @@ import os
 import re
 import pytest
 
-pytest.importorskip("OCP.BRep", reason="OCP not installed")
-from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
-from OCP.STEPControl import STEPControl_Writer, STEPControl_AsIs  # noqa: E402
-from OCP.IFSelect import IFSelect_RetDone  # noqa: E402
+from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+from OCP.STEPControl import STEPControl_Writer, STEPControl_AsIs
+from OCP.IFSelect import IFSelect_RetDone
 
-from oversolved.app import create_app, UPLOAD_DIR  # noqa: E402
+from oversolved.app import create_app, UPLOAD_DIR
 
 
 @pytest.fixture
