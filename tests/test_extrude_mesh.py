@@ -2,7 +2,7 @@ import pytest
 from pytest import approx
 
 pytestmark = pytest.mark.skipif(
-    not __import__("importlib").util.find_spec("OCC"), reason="OCC not installed"
+    not __import__("importlib").util.find_spec("OCP"), reason="OCP not installed"
 )
 
 
@@ -190,6 +190,91 @@ def test_two_extrudes_stacked():
     assert max(zs) == approx(8.0, abs=0.2), (
         f"ex2 should end at z=8, got max z={max(zs)}"
     )
+
+
+def test_extrude_sketch_on_builtin_plane_bare_id():
+    """Extrude with sketch plane given as bare builtin ID ('Top', 'Front', 'Right').
+
+    Regression: handleAddSketch in the UI writes plane: 'Top' (no @ prefix).
+    The solver must resolve these bare IDs to the correct builtin planes.
+    """
+    from oversolved.builder import build
+    from solver_helpers import assert_mesh_bbox
+
+    # Circle sketch (r=0.5 centred at origin) on the Top plane.
+    # Top plane: origin=[0,0,0], normal=[0,1,0] → extrude normal goes in +Y.
+    spec = {
+        "features": [
+            {
+                "id": "sk1",
+                "kind": "sketch",
+                "plane": "Top",  # bare ID as written by the UI
+                "entities": [{"id": "c1", "kind": "circle"}],
+                "initial": {"c1": [0, 0, 0.5]},
+                "constraints": [
+                    {"id": "co1", "kind": "coincident",
+                     "a": "$sk1/c1center", "b": "@builtin_origin"},
+                    {"id": "d1", "kind": "diameter", "target": "$sk1/c1", "value": 1},
+                ],
+            },
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": "$sk1",
+                "distance": 2,
+                "direction": "normal",
+            },
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["sk1"]["status"] != "exception", r["result"]["sk1"]
+    assert r["result"]["ex1"]["status"] == "ok", r["result"]["ex1"]
+    assert "body_ex1" in r["bodies"]
+    mesh = r["bodies"]["body_ex1"]["mesh"]
+    # Top plane extrudes in +Y direction, so y spans [0, 2]
+    assert_mesh_bbox(mesh, x_range=(-0.5, 0.5), y_range=(0, 2), z_range=(-0.5, 0.5))
+
+
+def test_extrude_nested_ui_format():
+    """Regression: UI serializes extrude as {kind, id, extrude: {sketch, distance, direction}}.
+
+    The solver must read sketch/distance/direction from the nested sub-dict.
+    """
+    from oversolved.builder import build
+    from solver_helpers import assert_mesh_bbox
+
+    spec = {
+        "features": [
+            {
+                "id": "sk1",
+                "kind": "sketch",
+                "plane": "Top",
+                "entities": [{"id": "c1", "kind": "circle"}],
+                "initial": {"c1": [0, 0, 0.5]},
+                "constraints": [
+                    {"id": "co1", "kind": "coincident",
+                     "a": "$sk1/c1center", "b": "@builtin_origin"},
+                    {"id": "d1", "kind": "diameter", "target": "$sk1/c1", "value": 1},
+                ],
+            },
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "label": "extrude 1",
+                "extrude": {
+                    "sketch": "$sk1",
+                    "distance": 2,
+                    "direction": "normal",
+                },
+            },
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["sk1"]["status"] != "exception", r["result"]["sk1"]
+    assert r["result"]["ex1"]["status"] == "ok", r["result"]["ex1"]
+    assert "body_ex1" in r["bodies"]
+    mesh = r["bodies"]["body_ex1"]["mesh"]
+    assert_mesh_bbox(mesh, x_range=(-0.5, 0.5), y_range=(0, 2), z_range=(-0.5, 0.5))
 
 
 def test_two_independent_extrudes_produce_two_bodies():

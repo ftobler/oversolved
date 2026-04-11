@@ -1003,8 +1003,11 @@ def _resolve_plane_early(
     plane_query: Optional[str], global_repo: Optional[Repository]
 ) -> dict:
     """Quick plane resolution without full repo setup (used before entity_offsets are built)."""
+    _BARE_ID_MAP = {"Top": "builtin_plane_top", "Front": "builtin_plane_front", "Right": "builtin_plane_right"}
     if not plane_query:
         return _FRONT_PLANE
+    if plane_query in _BARE_ID_MAP:
+        return _BUILTIN_PLANES[_BARE_ID_MAP[plane_query]]
     if plane_query.startswith("@"):
         builtin = _BUILTIN_PLANES.get(plane_query[1:])
         if builtin is not None:
@@ -1360,8 +1363,8 @@ def _plane_line_angle(definition: dict, global_repo: Repository) -> tuple:
 
 def _plane_offset(definition: dict, global_repo: Repository) -> tuple:
     """Plane parallel to a reference plane, offset along its normal."""
-    plane_query = definition.get("plane", "")
-    offset = float(definition.get("offset", 0.0))
+    plane_query = definition.get("plane") or definition.get("reference", "")
+    offset = float(definition.get("offset") or definition.get("distance") or 0.0)
     plane = global_repo.query(plane_query)
     if plane is None:
         raise ValueError(f"plane not found: {plane_query!r}")
@@ -1430,6 +1433,38 @@ def _solve_plane(feature: dict, global_repo: Repository) -> dict:
         return {"status": "exception", "exception": str(e)}
 
 
+_ARC_SEGMENTS = 32  # tessellation resolution for arc edges in profiles
+
+
+def _tessellate_edge(edge: dict) -> list[list[float]]:
+    """Return ordered 2D [u, v] sample points for a boundary edge (exclusive of start).
+
+    For line edges returns just the end point.
+    For arc edges returns ARC_SEGMENTS-proportional intermediate points plus the end.
+    """
+    import math
+    kind = edge.get("kind", "line")
+    start = edge.get("start")
+    end = edge.get("end")
+    if kind == "arc":
+        center = edge.get("center", [0, 0])
+        radius = edge.get("radius", 1.0)
+        a0 = edge.get("angle_start_deg", 0.0)
+        a1 = edge.get("angle_end_deg", 360.0)
+        ccw = edge.get("ccw", True)
+        span = ((a1 - a0) + 360) % 360 if ccw else -(((a0 - a1) + 360) % 360)
+        steps = max(4, int(abs(span) / 360 * _ARC_SEGMENTS))
+        pts = []
+        for i in range(1, steps + 1):
+            a = (a0 + span * i / steps) * math.pi / 180
+            pts.append([center[0] + radius * math.cos(a), center[1] + radius * math.sin(a)])
+        return pts
+    # line: just the endpoint
+    if end is not None:
+        return [list(end)]
+    return []
+
+
 def _extract_profile_loops(
     surfaces: list[dict],
     plane_transform: dict,
@@ -1438,6 +1473,7 @@ def _extract_profile_loops(
 
     Returns a list of loops where loops[0] is the outer boundary and
     loops[1:] are holes. Each loop is a list of [u, v] pairs.
+    Arcs are tessellated so circular profiles are represented faithfully.
     Returns empty list if no closed surface is found.
     """
     if not surfaces:
@@ -1454,42 +1490,50 @@ def _extract_profile_loops(
         if not boundary:
             continue
 
-        edges = [(e.get("start"), e.get("end")) for e in boundary]
-        edges = [e for e in edges if e[0] is not None and e[1] is not None]
-        if len(edges) < 2:
+        # Build (start, end, edge_dict) triples; skip edges missing endpoints.
+        raw_edges = []
+        for e in boundary:
+            s = e.get("start")
+            en = e.get("end")
+            if s is not None and en is not None:
+                raw_edges.append((s, en, e))
+        if len(raw_edges) < 1:
             continue
 
         used = set()
-        current = edges[0][0]
-        loop = [current]
+        current = raw_edges[0][0]
+        loop = [list(current)]
 
-        for _ in range(len(edges)):
+        for _ in range(len(raw_edges)):
             found_next = False
-            for i, (s, e) in enumerate(edges):
+            for i, (s, e, edict) in enumerate(raw_edges):
                 if i in used:
                     continue
-                if dist2d(current, s) <= TOL:
-                    loop.append(e)
+                forward = dist2d(current, s) <= TOL
+                reverse = dist2d(current, e) <= TOL
+                if forward or reverse:
+                    if forward:
+                        pts = _tessellate_edge(edict)
+                        loop.extend(pts)
+                        current = list(e)
+                    else:
+                        # Reverse: build a reversed edge dict for tessellation.
+                        rev = dict(edict)
+                        rev["start"], rev["end"] = edict["end"], edict["start"]
+                        if edict.get("kind") == "arc":
+                            rev["angle_start_deg"] = edict.get("angle_end_deg", 0)
+                            rev["angle_end_deg"] = edict.get("angle_start_deg", 0)
+                            rev["ccw"] = not edict.get("ccw", True)
+                        pts = _tessellate_edge(rev)
+                        loop.extend(pts)
+                        current = list(s)
                     used.add(i)
-                    current = e
-                    found_next = True
-                    break
-                elif dist2d(current, e) <= TOL:
-                    loop.append(s)
-                    used.add(i)
-                    current = s
                     found_next = True
                     break
             if not found_next:
-                if len(loop) >= 3:
-                    fallback = [e[0] for e in edges if e[0] is not None]
-                    if fallback:
-                        all_loops.append(fallback)
                 break
             if dist2d(loop[0], current) <= TOL and len(loop) >= 3:
-                # Remove the duplicate closing point (it equals loop[0])
-                if len(loop) > 0:
-                    loop = loop[:-1]
+                loop = loop[:-1]  # drop duplicate closing point
                 all_loops.append(loop)
                 break
 
@@ -1592,6 +1636,9 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
 
     try:
         feature_id = feature.get("id", "")
+        # Support both flat format and the nested {"extrude": {...}} format written by the UI.
+        sub = feature.get("extrude") or {}
+        feature = {**sub, **feature}
         sketch_ref = feature.get("sketch", "")
         sketch_id = sketch_ref.lstrip("$")
         distance = float(feature.get("distance") or feature.get("depth") or 1.0)
@@ -1832,7 +1879,8 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         ):
             plane_obj = global_repo.elements.get(plane_query[1:])
         if plane_obj is None or plane_obj.get("type") not in ("plane", "face"):
-            plane_obj = _FRONT_PLANE
+            _bare = {"Top": "builtin_plane_top", "Front": "builtin_plane_front", "Right": "builtin_plane_right"}
+            plane_obj = _BUILTIN_PLANES.get(_bare.get(plane_query, ""), _FRONT_PLANE)
     else:
         plane_obj = _FRONT_PLANE
 

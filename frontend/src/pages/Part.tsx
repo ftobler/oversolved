@@ -302,7 +302,7 @@ export default function Part() {
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setFieldPickState(null)
     handleMutation({ type: 'add_sketch', featureId, label })
-    handleMutation({ type: 'set_feature_plane', featureId, plane: 'Top' })
+    handleMutation({ type: 'set_feature_plane', featureId, plane: '@builtin_plane_top' })
     setEditingFeatureId(featureId)
     setMode('sketch')
   }, [doc, features.length, handleMutation, setFieldPickState, setMode])
