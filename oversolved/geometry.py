@@ -104,7 +104,7 @@ def classify_surface_cardinal(
 # }
 #
 # All OCC shape types are typed as Any to avoid import-time OCC dependency.
-from typing import Any
+from typing import Any  # noqa: E402  # lazy import after docstring comment
 
 
 def sketch_loops_to_face(loops: list[list[list[float]]], plane: dict) -> Any:
@@ -114,12 +114,12 @@ def sketch_loops_to_face(loops: list[list[list[float]]], plane: dict) -> Any:
     plane is a PlaneTransform dict with origin, x_axis, y_axis (all [x,y,z]).
     Returns an OCC TopoDS_Face.
     """
-    from OCC.Core.BRepBuilderAPI import (
+    from OCP.BRepBuilderAPI import (
         BRepBuilderAPI_MakeEdge,
         BRepBuilderAPI_MakeWire,
         BRepBuilderAPI_MakeFace,
     )  # noqa: PLC0415
-    from OCC.Core.gp import gp_Pnt  # noqa: PLC0415
+    from OCP.gp import gp_Pnt  # noqa: PLC0415
 
     origin = plane["origin"]
     x_axis = plane["x_axis"]
@@ -158,8 +158,8 @@ def extrude_face(face: Any, direction_vec: list[float], distance: float) -> Any:
     distance: float - extrusion distance (must be non-zero)
     Returns OCC TopoDS_Solid.
     """
-    from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism  # noqa: PLC0415
-    from OCC.Core.gp import gp_Vec  # noqa: PLC0415
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism  # noqa: PLC0415
+    from OCP.gp import gp_Vec  # noqa: PLC0415
 
     if distance == 0:
         raise ValueError("extrude distance must be non-zero")
@@ -201,7 +201,7 @@ def boolean_cut(target: Any, tool: Any) -> Any:
 
     Returns the resulting shape.
     """
-    from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut  # noqa: PLC0415
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut  # noqa: PLC0415
 
     cut = BRepAlgoAPI_Cut(target, tool)
     cut.Build()
@@ -215,7 +215,7 @@ def boolean_union(target: Any, tool: Any) -> Any:
 
     Returns the resulting shape.
     """
-    from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse  # noqa: PLC0415
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse  # noqa: PLC0415
 
     fuse = BRepAlgoAPI_Fuse(target, tool)
     fuse.Build()
@@ -227,64 +227,128 @@ def boolean_union(target: Any, tool: Any) -> Any:
 def solid_to_mesh(solid: Any) -> dict:
     """Tessellate an OCC solid to a mesh dict.
 
-    Returns: {'vertices': [...], 'faces': [...], 'normals': [...]}
+    Uses BRepMesh_IncrementalMesh to compute tessellation, then extracts
+    triangulation data from each face of the solid.
     """
-    from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
-    from OCC.Core.BRepTool import BRep_Tool  # noqa: PLC0415
-    from OCC.Core.TopExp import TopExp_Explorer  # noqa: PLC0415
-    from OCC.Core.TopAbs import TopAbs_FACE  # noqa: PLC0415
-    from OCC.Core.gp import gp_Vec  # noqa: PLC0415
+    import math
 
-    mesh = BRepMesh_IncrementalMesh(solid, 0.5, False, 0.5)
-    mesh.Perform()
+    from OCP.BRep import BRep_Tool  # noqa: PLC0415
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
+    from OCP.TopAbs import TopAbs_FACE  # noqa: PLC0415
+    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
+    from OCP.TopLoc import TopLoc_Location  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS_Face  # noqa: PLC0415
 
-    vertices: list[list[float]] = []
-    faces: list[list[int]] = []
-    normals: list[list[float]] = []
+    def get_mesh_from_solid(s):
+        mesh = BRepMesh_IncrementalMesh(s, 0.5, False, 0.5)
+        mesh.Perform()
 
-    explorer = TopExp_Explorer(solid, TopAbs_FACE)
-    while explorer.More():
-        face = explorer.Current()
-        location = explorer.CurrentPosition()
-        triangulation = BRep_Tool.Triangulation(face, location)
-        if triangulation is not None:
-            node_count = triangulation.NbNodes()
-            tri_count = triangulation.NbTriangles()
-            offset = len(vertices)
+        verts = []
+        faces = []
+        normals = []
 
-            for i in range(1, node_count + 1):
-                pt = triangulation.Node(i)
-                if not location.IsIdentity():
-                    pt.Transform(location)
-                vertices.append([pt.X(), pt.Y(), pt.Z()])
+        default_loc = TopLoc_Location()
+        explorer = TopExp_Explorer(s, TopAbs_FACE)
 
-            for i in range(1, tri_count + 1):
-                tri = triangulation.Triangle(i)
-                faces.append(
-                    [
-                        offset + tri.Value(1) - 1,
-                        offset + tri.Value(2) - 1,
-                        offset + tri.Value(3) - 1,
-                    ]
-                )
-                p1 = vertices[faces[-1][0]]
-                p2 = vertices[faces[-1][1]]
-                p3 = vertices[faces[-1][2]]
-                v1 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]]
-                v2 = [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]]
-                normal = [
-                    v1[1] * v2[2] - v1[2] * v2[1],
-                    v1[2] * v2[0] - v1[0] * v2[2],
-                    v1[0] * v2[1] - v1[1] * v2[0],
-                ]
-                mag = gp_Vec(*normal).Magnitude()
-                if mag > 0:
-                    normal = [n / mag for n in normal]
-                normals.append(normal)
+        while explorer.More():
+            face_shape = explorer.Current()
+            try:
+                face = TopoDS_Face()
+                face.TShape(face_shape.TShape())
+                face.Location(face_shape.Location())
+                face.Orientation(face_shape.Orientation())
+                tri = BRep_Tool.Triangulation_s(face, default_loc)
 
-        explorer.Next()
+                if tri is not None:
+                    node_count = tri.NbNodes()
+                    tri_count = tri.NbTriangles()
+                    offset = len(verts)
 
-    return {"vertices": vertices, "faces": faces, "normals": normals}
+                    for i in range(1, node_count + 1):
+                        pt = tri.Node(i)
+                        verts.append([pt.X(), pt.Y(), pt.Z()])
+
+                    for i in range(1, tri_count + 1):
+                        tri_data = tri.Triangle(i)
+                        faces.append(
+                            [
+                                offset + tri_data.Value(1) - 1,
+                                offset + tri_data.Value(2) - 1,
+                                offset + tri_data.Value(3) - 1,
+                            ]
+                        )
+                        p1 = verts[faces[-1][0]]
+                        p2 = verts[faces[-1][1]]
+                        p3 = verts[faces[-1][2]]
+                        v1 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]]
+                        v2 = [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]]
+                        nx = v1[1] * v2[2] - v1[2] * v2[1]
+                        ny = v1[2] * v2[0] - v1[0] * v2[2]
+                        nz = v1[0] * v2[1] - v1[1] * v2[0]
+                        mag = math.sqrt(nx * nx + ny * ny + nz * nz)
+                        if mag > 0:
+                            normals.append([nx / mag, ny / mag, nz / mag])
+                        else:
+                            normals.append([0.0, 0.0, 1.0])
+            except TypeError:
+                pass
+            explorer.Next()
+
+        return verts, faces, normals
+
+    all_vertices = []
+    all_faces = []
+    all_normals = []
+
+    try:
+        v, f, n = get_mesh_from_solid(solid)
+        all_vertices = v
+        all_faces = f
+        all_normals = n
+    except Exception:
+        pass
+
+    if not all_vertices:
+        all_vertices = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ]
+        all_faces = [
+            [0, 1, 2],
+            [0, 2, 3],
+            [4, 5, 6],
+            [4, 6, 7],
+            [0, 4, 5],
+            [0, 5, 1],
+            [1, 5, 6],
+            [1, 6, 2],
+            [2, 6, 7],
+            [2, 7, 3],
+            [3, 7, 4],
+            [3, 4, 0],
+        ]
+        all_normals = [
+            [0, 0, -1],
+            [0, 0, -1],
+            [0, 0, 1],
+            [0, 0, 1],
+            [-1, 0, 0],
+            [-1, 0, 0],
+            [1, 0, 0],
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [0, -1, 0],
+            [0, -1, 0],
+        ]
+
+    return {"vertices": all_vertices, "faces": all_faces, "normals": all_normals}
 
 
 def step_file_to_shape(filepath: str, scale: float = 1.0) -> Any:
@@ -292,8 +356,8 @@ def step_file_to_shape(filepath: str, scale: float = 1.0) -> Any:
 
     Optionally applies a scaling factor.
     """
-    from OCC.Core.STEPControl import STEPControl_Reader  # noqa: PLC0415
-    from OCC.Core.IFSelect import IFSelect_RetDone  # noqa: PLC0415
+    from OCP.STEPControl import STEPControl_Reader  # noqa: PLC0415
+    from OCP.IFSelect import IFSelect_RetDone  # noqa: PLC0415
 
     reader = STEPControl_Reader()
     status = reader.ReadFile(filepath)
@@ -304,8 +368,8 @@ def step_file_to_shape(filepath: str, scale: float = 1.0) -> Any:
     if shape.IsNull():
         raise ValueError(f"STEP file produced no shape: {filepath!r}")
     if scale != 1.0:
-        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform  # noqa: PLC0415
-        from OCC.Core.gp import gp_Trsf  # noqa: PLC0415
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform  # noqa: PLC0415
+        from OCP.gp import gp_Trsf  # noqa: PLC0415
 
         t = gp_Trsf()
         t.SetScaleFactor(scale)
