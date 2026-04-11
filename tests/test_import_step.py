@@ -14,6 +14,7 @@ from oversolved.geometry import step_file_to_shape, solid_to_mesh  # noqa: E402
 from oversolved.solver import _solve_import_step  # noqa: E402
 from oversolved.query import Repository  # noqa: E402
 from oversolved.builder import build  # noqa: E402
+from solver_helpers import assert_mesh_valid  # noqa: E402
 
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "oversolved", "uploads")
@@ -43,6 +44,7 @@ def test_reads_cube(step_cube_file):
     """1. reads cube - tessellate; assert mesh has >= 8 vertices and >= 10 faces."""
     shape = step_file_to_shape(step_cube_file)
     mesh = solid_to_mesh(shape)
+    assert_mesh_valid(mesh)
     assert len(mesh["vertices"]) >= 8
     assert len(mesh["faces"]) >= 10
 
@@ -51,6 +53,7 @@ def test_scale(step_cube_file):
     """2. scale - scale=2.0; all vertices in [0, 2.0] within 0.01."""
     shape = step_file_to_shape(step_cube_file, scale=2.0)
     mesh = solid_to_mesh(shape)
+    assert_mesh_valid(mesh)
     for v in mesh["vertices"]:
         for coord in v:
             assert -0.01 <= coord <= 2.01, f"vertex {v} outside [0, 2]"

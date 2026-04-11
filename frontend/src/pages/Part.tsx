@@ -288,12 +288,11 @@ export default function Part() {
   const handleAddExtrude = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
-    const extrudeCount = (doc.features ?? []).filter(f => f.kind === 'extrude').length
-    const label = `extrude ${extrudeCount + 1}`
+    const label = `extrude ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     handleMutation({ type: 'add_extrude', featureId: fid, label, sketchQuery: '', distance: 10 })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation])
+  }, [doc, features.length, handleMutation, bodies])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
@@ -588,6 +587,8 @@ export default function Part() {
           onSetEditingFeatureId={setEditingFeatureId}
           onSetFieldPickState={setFieldPickState}
           onSetPlaneSelectionFeatureId={setPlaneSelectionFeatureId}
+          solveResults={solveResults}
+          bodies={bodies}
         />
 
         <div className="doc-editor">

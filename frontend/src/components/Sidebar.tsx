@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import type { PartFeature, PartDoc, PlaneDef, Mutation, FieldPickState, ExtrudeDirection } from '../types/cad'
+import type { PartFeature, PartDoc, PlaneDef, Mutation, FieldPickState, ExtrudeDirection, BodyResult } from '../types/cad'
+import { isBodyFeatureResult } from '../types/cad'
 import { planeLabel } from './Geometry3D/utils'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
@@ -34,6 +35,8 @@ interface SidebarProps {
   onSetEditingFeatureId: (id: string | null) => void
   onSetFieldPickState: (state: FieldPickState | null) => void
   onSetPlaneSelectionFeatureId: (id: string | null) => void
+  solveResults?: Record<string, unknown>
+  bodies?: Record<string, BodyResult>
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -58,6 +61,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSetEditingFeatureId,
   onSetFieldPickState,
   onSetPlaneSelectionFeatureId,
+  solveResults,
+  bodies,
 }) => {
   const [renamingFeatureId, setRenamingFeatureId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -358,6 +363,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       {feature.label || feature.id}
                     </span>
                   )}
+                  {feature.kind === 'extrude' && (() => {
+                    const r = solveResults?.[feature.id]
+                    const bodyResult = r && isBodyFeatureResult(r) ? r : undefined
+                    const hasBody = bodyResult && bodyResult.body_id
+                      && bodies?.[bodyResult.body_id]?.mesh != null
+                    const dot = !r ? 'grey'
+                      : (r as { status?: string }).status !== 'ok' ? 'red'
+                      : hasBody ? 'green'
+                      : 'orange'
+                    const errMsg: string = bodyResult?.exception
+                      ?? (bodyResult?.body_id ? bodies?.[bodyResult.body_id]?.mesh_error : undefined)
+                      ?? ''
+                    return <span className={`feature-status-dot ${dot}`} title={errMsg} />
+                  })()}
                   <div className="feature-item-actions">
                     {feature.kind === 'sketch' && feature.id !== editingFeatureId && (
                       <button

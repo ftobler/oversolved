@@ -1503,7 +1503,9 @@ def _register_top_face(
     surfaces: list[dict],
     distance: float,
 ) -> None:
-    """Register named topology references for the extrude result faces."""
+    # Named topology: semantic names (top, bottom) are stable across re-solves.
+    # Index-based names (side/N, edge/N) are fragile: they change if the sketch
+    # profile gains or loses edges. Full Named Topology (OCC TNaming) is future work.
     origin = np.array(pt["origin"])
     x_axis = np.array(pt["x_axis"])
     y_axis = np.array(pt["y_axis"])

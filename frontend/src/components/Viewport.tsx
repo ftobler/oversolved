@@ -17,6 +17,7 @@ import ContextMenuDialog from './ContextMenuDialog'
 import { planeRotationFromTransform } from './Geometry3D/utils'
 import { COLOR_SELECTED, COLOR_HOVER, CLICK_THRESHOLD_PX } from './Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from './interaction/useSelectionPointerUpCleanup'
+import { getBodiesToRender } from './Viewport/bodyUtils'
 
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 
@@ -296,6 +297,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const showTop    = isActive('Top',    features, rollbackPosition, visibleFeatures)
   const showRight  = isActive('Right',  features, rollbackPosition, visibleFeatures)
 
+  const bodyItems = useMemo(
+    () => getBodiesToRender(bodies, features, rollbackPosition, visibleFeatures),
+    [bodies, features, rollbackPosition, visibleFeatures]
+  )
+
   const activeSketchFeatures = useMemo(() => {
     if (!features) return []
     const limit = rollbackPosition ?? features.length
@@ -351,12 +357,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           )
         })}
 
-        {Object.entries(bodies ?? {}).map(([bodyId, body]) => {
-          const featureId = body.created_by
-          if (!isActive(featureId, features, rollbackPosition, visibleFeatures)) return null
-          if (!body.mesh) return null
-          return <Body3D key={bodyId} featureId={featureId} mesh={body.mesh} visible={visibleFeatures ? visibleFeatures.has(featureId) : true} />
-        })}
+        {bodyItems.map(b => (
+          <Body3D key={b.key} featureId={b.featureId} mesh={b.mesh} visible={b.visible} />
+        ))}
       </Canvas>
 
       {!ready && <div style={{ position: 'absolute', inset: 0, background: '#111', zIndex: 1 }} />}
