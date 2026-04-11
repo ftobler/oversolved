@@ -53,8 +53,9 @@ def _tessellate_bodies(body_store: dict[str, Body]) -> dict[str, dict]:
             entry["mesh_error"] = "no shape"
         else:
             try:
-                from oversolved.geometry import solid_to_mesh  # type: ignore[attr-defined]
+                from oversolved.geometry import solid_to_mesh, solid_to_edges  # type: ignore[attr-defined]
                 entry["mesh"] = solid_to_mesh(body.shape)
+                entry["edges"] = solid_to_edges(body.shape)
             except ImportError:
                 entry["mesh_error"] = "geometry.solid_to_mesh not available (F2 pending)"
             except Exception as exc:

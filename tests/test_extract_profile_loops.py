@@ -14,12 +14,17 @@ def surface_from_edges(edges):
     return {"boundary": [{"start": list(s), "end": list(e)} for s, e in edges]}
 
 
+def loop_points(loop):
+    """Extract unique UV points from a loop of edge dicts (start of each edge)."""
+    return [e["start"] for e in loop]
+
+
 def test_ordered_square_produces_one_loop():
     edges = [([0, 0], [1, 0]), ([1, 0], [1, 1]), ([1, 1], [0, 1]), ([0, 1], [0, 0])]
     loops = _extract_profile_loops([surface_from_edges(edges)], DUMMY_PLANE)
     assert len(loops) == 1
     assert len(loops[0]) == 4
-    pts = set(map(tuple, map(tuple, loops[0])))
+    pts = {tuple(e["start"]) for e in loops[0]}
     assert (0.0, 0.0) in pts
     assert (1.0, 0.0) in pts
     assert (1.0, 1.0) in pts
@@ -77,12 +82,13 @@ def test_two_surfaces_outer_and_hole():
     assert len(loops) == 2
     areas = []
     for loop in loops:
-        n = len(loop)
+        pts = loop_points(loop)
+        n = len(pts)
         area = (
             abs(
                 sum(
-                    loop[i][0] * loop[(i + 1) % n][1]
-                    - loop[(i + 1) % n][0] * loop[i][1]
+                    pts[i][0] * pts[(i + 1) % n][1]
+                    - pts[(i + 1) % n][0] * pts[i][1]
                     for i in range(n)
                 )
             )
@@ -124,9 +130,10 @@ def test_loop_from_solved_rect_sketch():
     assert len(surfaces) >= 1, "rect sketch should have at least 1 surface"
     loops = _extract_profile_loops(surfaces, pt)
     assert len(loops) >= 1
-    loop = loops[0]
-    xs = [p[0] for p in loop]
-    ys = [p[1] for p in loop]
+    # Extract start points from edge dicts for bounds checking.
+    starts = [e["start"] for e in loops[0]]
+    xs = [p[0] for p in starts]
+    ys = [p[1] for p in starts]
     assert max(xs) == approx(6.0, abs=0.1)
     assert max(ys) == approx(4.0, abs=0.1)
     assert min(xs) == approx(0.0, abs=0.1)

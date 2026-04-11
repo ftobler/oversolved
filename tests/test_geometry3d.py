@@ -35,15 +35,24 @@ TOP_PLANE = {
 }
 
 
+def pts_to_edge_loop(points_2d: list) -> list:
+    """Convert a list of 2D UV points to a loop of line edge dicts."""
+    n = len(points_2d)
+    return [
+        {"kind": "line", "start": list(points_2d[i]), "end": list(points_2d[(i + 1) % n])}
+        for i in range(n)
+    ]
+
+
 def make_polygon_face(points_2d):
     """Make a face from 2D points for testing."""
-    loops = [points_2d]
+    loops = [pts_to_edge_loop(points_2d)]
     return sketch_loops_to_face(loops, FRONT_PLANE)
 
 
 def test_unit_square_extrude():
     """1. unit square extrude - loops=[[[0,0],[1,0],[1,1],[0,1]]]，FRONT_PLANE，direction=[0,0,1]，distance=1.0"""
-    loops = [[[0, 0], [1, 0], [1, 1], [0, 1]]]
+    loops = [pts_to_edge_loop([[0, 0], [1, 0], [1, 1], [0, 1]])]
     solid = extrude_profile(loops, FRONT_PLANE, [0, 0, 1], 1.0)
     mesh = solid_to_mesh(solid)
     assert_mesh_valid(mesh)
@@ -62,7 +71,7 @@ def test_unit_circle_extrude():
     for i in range(n):
         angle = math.radians(i * angle_step)
         circle_points.append([math.cos(angle), math.sin(angle)])
-    loops = [circle_points]
+    loops = [pts_to_edge_loop(circle_points)]
     solid = extrude_profile(loops, FRONT_PLANE, [0, 0, 1], 2.0)
     mesh = solid_to_mesh(solid)
     assert_mesh_valid(mesh)
@@ -73,7 +82,7 @@ def test_unit_circle_extrude():
 
 def test_top_plane_extrude():
     """3. top-plane extrude - square on TOP_PLANE (normal=[0,1,0])"""
-    loops = [[[0, 0], [1, 0], [1, 1], [0, 1]]]
+    loops = [pts_to_edge_loop([[0, 0], [1, 0], [1, 1], [0, 1]])]
     solid = extrude_profile(loops, TOP_PLANE, [0, 1, 0], 1.0)
     mesh = solid_to_mesh(solid)
     assert_mesh_valid(mesh)
@@ -84,7 +93,7 @@ def test_top_plane_extrude():
 
 def test_normals_are_unit_length():
     """4. normals are unit length"""
-    loops = [[[0, 0], [1, 0], [1, 1], [0, 1]]]
+    loops = [pts_to_edge_loop([[0, 0], [1, 0], [1, 1], [0, 1]])]
     solid = extrude_profile(loops, FRONT_PLANE, [0, 0, 1], 1.0)
     mesh = solid_to_mesh(solid)
     assert_mesh_valid(mesh)
@@ -95,8 +104,8 @@ def test_normals_are_unit_length():
 
 def test_hole_in_profile():
     """5. hole in profile - outer [[0,0],[4,0],[4,4],[0,4]], hole [[1,1],[3,1],[3,3],[1,3]]"""
-    outer = [[0, 0], [4, 0], [4, 4], [0, 4]]
-    hole = [[1, 1], [3, 1], [3, 3], [1, 3]]
+    outer = pts_to_edge_loop([[0, 0], [4, 0], [4, 4], [0, 4]])
+    hole = pts_to_edge_loop([[1, 1], [3, 1], [3, 3], [1, 3]])
     loops = [outer, hole]
     solid = extrude_profile(loops, FRONT_PLANE, [0, 0, 1], 1.0)
     mesh = solid_to_mesh(solid)
@@ -106,17 +115,15 @@ def test_hole_in_profile():
 
 def test_zero_distance_raises():
     """6. zero distance raises ValueError"""
-    loops = [[[0, 0], [1, 0], [1, 1], [0, 1]]]
+    loops = [pts_to_edge_loop([[0, 0], [1, 0], [1, 1], [0, 1]])]
     with pytest.raises(ValueError):
         extrude_profile(loops, FRONT_PLANE, [0, 0, 1], 0.0)
 
 
 def test_boolean_cut_produces_smaller_shape():
     """7. boolean_cut produces smaller shape - cut unit cube [0-1] from 2x2x2 cube"""
-    outer = [[0, 0], [2, 0], [2, 2], [0, 2]]
-    inner = [[0, 0], [1, 0], [1, 1], [0, 1]]
-    loops_outer = [outer]
-    loops_inner = [inner]
+    loops_outer = [pts_to_edge_loop([[0, 0], [2, 0], [2, 2], [0, 2]])]
+    loops_inner = [pts_to_edge_loop([[0, 0], [1, 0], [1, 1], [0, 1]])]
     target = extrude_profile(loops_outer, FRONT_PLANE, [0, 0, 1], 2.0)
     tool = extrude_profile(loops_inner, FRONT_PLANE, [0, 0, 1], 1.0)
     result = boolean_cut(target, tool)
@@ -126,8 +133,8 @@ def test_boolean_cut_produces_smaller_shape():
 
 def test_boolean_union_produces_larger_shape():
     """8. boolean_union produces larger shape - union two unit cubes side by side"""
-    left = [[[0, 0], [1, 0], [1, 1], [0, 1]]]
-    right = [[[1, 0], [2, 0], [2, 1], [1, 1]]]
+    left = [pts_to_edge_loop([[0, 0], [1, 0], [1, 1], [0, 1]])]
+    right = [pts_to_edge_loop([[1, 0], [2, 0], [2, 1], [1, 1]])]
     solid1 = extrude_profile(left, FRONT_PLANE, [0, 0, 1], 1.0)
     solid2 = extrude_profile(right, FRONT_PLANE, [0, 0, 1], 1.0)
     result = boolean_union(solid1, solid2)
@@ -139,10 +146,12 @@ def test_boolean_union_produces_larger_shape():
 
 def test_solid_to_mesh_on_cut_result():
     """9. solid_to_mesh on cut result returns valid mesh with all three keys"""
-    outer = [[0, 0], [2, 0], [2, 2], [0, 2]]
-    inner = [[0, 0], [1, 0], [1, 1], [0, 1]]
-    target = extrude_profile([outer], FRONT_PLANE, [0, 0, 1], 2.0)
-    tool = extrude_profile([inner], FRONT_PLANE, [0, 0, 1], 1.0)
+    target = extrude_profile(
+        [pts_to_edge_loop([[0, 0], [2, 0], [2, 2], [0, 2]])], FRONT_PLANE, [0, 0, 1], 2.0
+    )
+    tool = extrude_profile(
+        [pts_to_edge_loop([[0, 0], [1, 0], [1, 1], [0, 1]])], FRONT_PLANE, [0, 0, 1], 1.0
+    )
     cut_result = boolean_cut(target, tool)
     mesh = solid_to_mesh(cut_result)
     assert "vertices" in mesh

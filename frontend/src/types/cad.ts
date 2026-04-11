@@ -16,12 +16,36 @@ export interface Mesh3D {
   normals:  [number, number, number][]
 }
 
+export interface EdgeDataLine {
+  kind: 'line'
+  start: [number, number, number]
+  end: [number, number, number]
+}
+
+export interface EdgeDataCircleArc {
+  kind: 'circle' | 'arc'
+  center: [number, number, number]
+  radius: number
+  axis: [number, number, number]
+  x_axis: [number, number, number]
+  angle_start: number
+  angle_end: number
+}
+
+export interface EdgeDataSpline {
+  kind: 'spline'
+  points: [number, number, number][]
+}
+
+export type EdgeData = EdgeDataLine | EdgeDataCircleArc | EdgeDataSpline
+
 export interface BodyResult {
   id: string
   created_by: string
   modified_by: string[]
   mesh?: Mesh3D
   mesh_error?: string
+  edges?: EdgeData[]
 }
 
 export interface BuildResponse {

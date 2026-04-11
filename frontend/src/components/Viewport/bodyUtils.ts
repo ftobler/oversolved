@@ -1,9 +1,10 @@
-import type { Feature, BodyResult } from '../../types/cad'
+import type { Feature, BodyResult, EdgeData } from '../../types/cad'
 
 export interface BodyRenderItem {
   key: string
   featureId: string
   mesh: NonNullable<BodyResult['mesh']>
+  edges: EdgeData[]
   visible: boolean
 }
 
@@ -30,6 +31,7 @@ export function getBodiesToRender(
       key: bodyId,
       featureId: bodyId,
       mesh: body.mesh,
+      edges: body.edges ?? [],
       visible: visibleFeatures ? visibleFeatures.has(createdBy) : true,
     })
   }

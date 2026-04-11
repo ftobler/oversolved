@@ -1444,7 +1444,6 @@ def _tessellate_edge(edge: dict) -> list[list[float]]:
     """
     import math
     kind = edge.get("kind", "line")
-    start = edge.get("start")
     end = edge.get("end")
     if kind == "arc":
         center = edge.get("center", [0, 0])
@@ -1468,12 +1467,13 @@ def _tessellate_edge(edge: dict) -> list[list[float]]:
 def _extract_profile_loops(
     surfaces: list[dict],
     plane_transform: dict,
-) -> list[list[list[float]]]:
-    """Extract ordered 2D profile loops from topology surfaces.
+) -> list[list[dict]]:
+    """Extract ordered boundary-edge loops from topology surfaces.
 
     Returns a list of loops where loops[0] is the outer boundary and
-    loops[1:] are holes. Each loop is a list of [u, v] pairs.
-    Arcs are tessellated so circular profiles are represented faithfully.
+    loops[1:] are holes. Each loop is a list of edge dicts (kind, start, end,
+    and arc fields where applicable), ordered so each edge's end connects to
+    the next edge's start.
     Returns empty list if no closed surface is found.
     """
     if not surfaces:
@@ -1481,10 +1481,10 @@ def _extract_profile_loops(
 
     TOL = 1e-6
 
-    def dist2d(a, b):
+    def dist2d(a: list, b: list) -> float:
         return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
-    all_loops = []
+    all_loops: list[list[dict]] = []
     for surface in surfaces:
         boundary = surface.get("boundary", [])
         if not boundary:
@@ -1500,9 +1500,9 @@ def _extract_profile_loops(
         if len(raw_edges) < 1:
             continue
 
-        used = set()
-        current = raw_edges[0][0]
-        loop = [list(current)]
+        used: set[int] = set()
+        current = list(raw_edges[0][0])
+        loop: list[dict] = []
 
         for _ in range(len(raw_edges)):
             found_next = False
@@ -1513,27 +1513,25 @@ def _extract_profile_loops(
                 reverse = dist2d(current, e) <= TOL
                 if forward or reverse:
                     if forward:
-                        pts = _tessellate_edge(edict)
-                        loop.extend(pts)
+                        loop.append(edict)
                         current = list(e)
                     else:
-                        # Reverse: build a reversed edge dict for tessellation.
-                        rev = dict(edict)
-                        rev["start"], rev["end"] = edict["end"], edict["start"]
+                        # Reverse orientation: flip start/end and arc direction.
+                        rev: dict = dict(edict)
+                        rev["start"] = list(edict["end"])
+                        rev["end"] = list(edict["start"])
                         if edict.get("kind") == "arc":
                             rev["angle_start_deg"] = edict.get("angle_end_deg", 0)
                             rev["angle_end_deg"] = edict.get("angle_start_deg", 0)
                             rev["ccw"] = not edict.get("ccw", True)
-                        pts = _tessellate_edge(rev)
-                        loop.extend(pts)
+                        loop.append(rev)
                         current = list(s)
                     used.add(i)
                     found_next = True
                     break
             if not found_next:
                 break
-            if dist2d(loop[0], current) <= TOL and len(loop) >= 3:
-                loop = loop[:-1]  # drop duplicate closing point
+            if dist2d(list(raw_edges[0][0]), current) <= TOL and len(loop) >= 1:
                 all_loops.append(loop)
                 break
 

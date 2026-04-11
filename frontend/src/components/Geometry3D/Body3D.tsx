@@ -1,15 +1,18 @@
 import { useMemo, useEffect } from 'react'
 import * as THREE from 'three'
-import type { Mesh3D } from '../../types/cad'
+import type { Mesh3D, EdgeData } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import {
-  COLOR_BODY_DEFAULT, COLOR_BODY_EDGE,
-  COLOR_BODY_HOVER, COLOR_BODY_SELECTED, COLOR_BODY_EDGE_SEL,
+  COLOR_BODY_DEFAULT,
+  COLOR_BODY_HOVER, COLOR_BODY_SELECTED,
+  COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL,
+  ARC_SEGMENTS,
 } from './constants'
 
 interface Body3DProps {
   featureId: string
   mesh: Mesh3D
+  edges?: EdgeData[]
   visible?: boolean
 }
 
@@ -30,7 +33,55 @@ export function buildBodyGeometry(mesh: Mesh3D): {
   return { positions, indices }
 }
 
-export default function Body3D({ featureId, mesh, visible = true }: Body3DProps) {
+// Build a flat Float32Array of line segment endpoints from edge descriptors.
+// Each segment contributes 6 floats: [x0,y0,z0, x1,y1,z1].
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
+  const parts: number[] = []
+
+  for (const edge of edges) {
+    if (edge.kind === 'line') {
+      parts.push(...edge.start, ...edge.end)
+    } else if (edge.kind === 'circle' || edge.kind === 'arc') {
+      const { center, radius, x_axis, axis, angle_start, angle_end } = edge
+      const sweep = angle_end - angle_start
+      // Proportional segment count, at least 2, max ARC_SEGMENTS for full circle.
+      const segs = Math.max(2, Math.round(ARC_SEGMENTS * Math.abs(sweep) / (2 * Math.PI)))
+
+      // Orthonormal basis: u = x_axis, v = axis cross u (right-hand y of the circle plane).
+      const ux = x_axis[0], uy = x_axis[1], uz = x_axis[2]
+      const ax = axis[0],   ay = axis[1],   az = axis[2]
+      // v = axis cross x_axis
+      const vx = ay * uz - az * uy
+      const vy = az * ux - ax * uz
+      const vz = ax * uy - ay * ux
+
+      const cx = center[0], cy = center[1], cz = center[2]
+
+      let prevX = cx + radius * (Math.cos(angle_start) * ux + Math.sin(angle_start) * vx)
+      let prevY = cy + radius * (Math.cos(angle_start) * uy + Math.sin(angle_start) * vy)
+      let prevZ = cz + radius * (Math.cos(angle_start) * uz + Math.sin(angle_start) * vz)
+
+      for (let i = 1; i <= segs; i++) {
+        const t = angle_start + sweep * (i / segs)
+        const nx = cx + radius * (Math.cos(t) * ux + Math.sin(t) * vx)
+        const ny = cy + radius * (Math.cos(t) * uy + Math.sin(t) * vy)
+        const nz = cz + radius * (Math.cos(t) * uz + Math.sin(t) * vz)
+        parts.push(prevX, prevY, prevZ, nx, ny, nz)
+        prevX = nx; prevY = ny; prevZ = nz
+      }
+    } else if (edge.kind === 'spline') {
+      const pts = edge.points
+      for (let i = 0; i < pts.length - 1; i++) {
+        parts.push(...pts[i], ...pts[i + 1])
+      }
+    }
+  }
+
+  return new Float32Array(parts)
+}
+
+export default function Body3D({ featureId, mesh, edges = [], visible = true }: Body3DProps) {
   const hoveredBodyId = useSketchEditorStore(s => s.hoveredBodyId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
@@ -53,16 +104,21 @@ export default function Body3D({ featureId, mesh, visible = true }: Body3DProps)
     return () => { geometry.dispose() }
   }, [geometry])
 
-  const edgeGeo = useMemo(() => new THREE.EdgesGeometry(geometry, 30), [geometry])
-  // 30 degree threshold - only render edges between faces meeting at >30 degrees
+  const edgeGeometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry()
+    const pts = buildEdgeSegments(edges)
+    geo.setAttribute('position', new THREE.BufferAttribute(pts, 3))
+    return geo
+  }, [edges])
 
   useEffect(() => {
-    return () => { edgeGeo.dispose() }
-  }, [edgeGeo])
+    return () => { edgeGeometry.dispose() }
+  }, [edgeGeometry])
 
   const bodyColor = isSelected
     ? COLOR_BODY_SELECTED
     : isHovered ? COLOR_BODY_HOVER : COLOR_BODY_DEFAULT
+
   const edgeColor = isSelected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE
 
   return (
@@ -91,9 +147,11 @@ export default function Body3D({ featureId, mesh, visible = true }: Body3DProps)
           side={THREE.DoubleSide}
         />
       </mesh>
-      <lineSegments geometry={edgeGeo}>
-        <lineBasicMaterial color={edgeColor} linewidth={1} />
-      </lineSegments>
+      {edges.length > 0 && (
+        <lineSegments geometry={edgeGeometry}>
+          <lineBasicMaterial color={edgeColor} />
+        </lineSegments>
+      )}
     </group>
   )
 }

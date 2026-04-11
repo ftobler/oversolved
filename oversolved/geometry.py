@@ -107,39 +107,88 @@ def classify_surface_cardinal(
 from typing import Any  # noqa: E402  # lazy import after docstring comment
 
 
-def sketch_loops_to_face(loops: list[list[list[float]]], plane: dict) -> Any:
-    """Convert 2D profile loops to an OCC face with holes.
+def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> Any:
+    """Convert 2D profile boundary-edge loops to an OCC face with holes.
 
     loops[0] = outer boundary, loops[1:] = holes.
-    plane is a PlaneTransform dict with origin, x_axis, y_axis (all [x,y,z]).
+    Each loop is a list of edge dicts with keys: kind, start, end,
+    and for arcs: center, radius, angle_start_deg, angle_end_deg, ccw.
+    plane is a PlaneTransform dict with origin, x_axis, y_axis, normal (all [x,y,z]).
     Returns an OCC TopoDS_Face.
     """
+    import math
+
     from OCP.BRepBuilderAPI import (
         BRepBuilderAPI_MakeEdge,
         BRepBuilderAPI_MakeWire,
         BRepBuilderAPI_MakeFace,
     )  # noqa: PLC0415
-    from OCP.gp import gp_Pnt  # noqa: PLC0415
+    from OCP.gp import gp_Pnt, gp_Dir, gp_Ax2, gp_Circ  # noqa: PLC0415
 
     origin = plane["origin"]
     x_axis = plane["x_axis"]
     y_axis = plane["y_axis"]
+    normal = plane.get("normal", [0.0, 0.0, 1.0])
 
-    def uv_to_3d(u: float, v: float) -> list[float]:
+    def uv_to_gp_pnt(uv: list) -> Any:
+        x = origin[0] + uv[0] * x_axis[0] + uv[1] * y_axis[0]
+        y = origin[1] + uv[0] * x_axis[1] + uv[1] * y_axis[1]
+        z = origin[2] + uv[0] * x_axis[2] + uv[1] * y_axis[2]
+        return gp_Pnt(x, y, z)
+
+    def uv_to_3d_list(uv: list) -> list:
         return [
-            origin[0] + u * x_axis[0] + v * y_axis[0],
-            origin[1] + u * x_axis[1] + v * y_axis[1],
-            origin[2] + u * x_axis[2] + v * y_axis[2],
+            origin[0] + uv[0] * x_axis[0] + uv[1] * y_axis[0],
+            origin[1] + uv[0] * x_axis[1] + uv[1] * y_axis[1],
+            origin[2] + uv[0] * x_axis[2] + uv[1] * y_axis[2],
         ]
 
-    def make_wire(loop: list[list[float]]) -> Any:
+    def make_arc_edge(edge: dict) -> Any:
+        center_uv = edge.get("center", [0.0, 0.0])
+        radius = float(edge.get("radius", 1.0))
+        a0_deg = float(edge.get("angle_start_deg", 0.0))
+        a1_deg = float(edge.get("angle_end_deg", 360.0))
+        ccw = edge.get("ccw", True)
+
+        center_3d = uv_to_3d_list(center_uv)
+        # Build the OCC circle: axis2 with center, z = plane normal, x = plane x_axis.
+        ax2 = gp_Ax2(
+            gp_Pnt(*center_3d),
+            gp_Dir(*normal),
+            gp_Dir(*x_axis),
+        )
+        circ = gp_Circ(ax2, radius)
+
+        # Full circle when span is ~360 degrees.
+        span = ((a1_deg - a0_deg) + 360) % 360 if ccw else -(((a0_deg - a1_deg) + 360) % 360)
+        if abs(abs(span) - 360.0) < 1e-6:
+            return BRepBuilderAPI_MakeEdge(circ).Edge()
+
+        # Partial arc: convert angles to OCC parametric angles on the circle.
+        # OCC gp_Circ is parameterised from x_axis CCW in the plane defined by ax2.
+        u0 = math.radians(a0_deg)
+        u1 = math.radians(a1_deg)
+        if ccw:
+            if u1 <= u0:
+                u1 += 2 * math.pi
+        else:
+            if u0 <= u1:
+                u0 += 2 * math.pi
+            u0, u1 = u1, u0  # MakeEdge expects u1 < u2
+
+        return BRepBuilderAPI_MakeEdge(circ, u0, u1).Edge()
+
+    def make_wire(loop: list[dict]) -> Any:
         wire_builder = BRepBuilderAPI_MakeWire()
-        pts = [uv_to_3d(u, v) for u, v in loop]
-        for i in range(len(pts)):
-            p1 = pts[i]
-            p2 = pts[(i + 1) % len(pts)]
-            edge = BRepBuilderAPI_MakeEdge(gp_Pnt(*p1), gp_Pnt(*p2)).Edge()
-            wire_builder.Add(edge)
+        for edge in loop:
+            kind = edge.get("kind", "line")
+            if kind == "arc":
+                occ_edge = make_arc_edge(edge)
+            else:
+                p1 = uv_to_gp_pnt(edge["start"])
+                p2 = uv_to_gp_pnt(edge["end"])
+                occ_edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
+            wire_builder.Add(occ_edge)
         return wire_builder.Wire()
 
     outer_wire = make_wire(loops[0])
@@ -170,13 +219,14 @@ def extrude_face(face: Any, direction_vec: list[float], distance: float) -> Any:
 
 
 def extrude_profile(
-    loops: list[list[list[float]]],
+    loops: list[list[dict]],
     plane: dict,
     direction_vec: list[float],
     distance: float,
 ) -> Any:
-    """Convenience wrapper to extrude profile loops to a solid.
+    """Convenience wrapper to extrude boundary-edge loops to a solid.
 
+    loops is a list of loops, each a list of edge dicts (see sketch_loops_to_face).
     Returns OCC solid (not mesh dict). Tessellation happens later in builder._tessellate_bodies.
     """
     face = sketch_loops_to_face(loops, plane)
@@ -349,6 +399,87 @@ def solid_to_mesh(solid: Any) -> dict:
         ]
 
     return {"vertices": all_vertices, "faces": all_faces, "normals": all_normals}
+
+
+def solid_to_edges(solid: Any) -> list[dict]:
+    """Extract exact edge geometry from an OCC solid.
+
+    Returns a list of edge dicts, one per unique edge, with kind "line",
+    "circle", "arc", or "spline".
+    """
+    import math
+
+    from OCP.BRepAdaptor import BRepAdaptor_Curve  # noqa: PLC0415
+    from OCP.GeomAbs import (  # noqa: PLC0415
+        GeomAbs_Line,
+        GeomAbs_Circle,
+    )
+    from OCP.TopAbs import TopAbs_EDGE  # noqa: PLC0415
+    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS  # noqa: PLC0415
+
+    TWO_PI = 2.0 * math.pi
+    CIRCLE_TOL = 1e-4
+
+    edges: list[dict] = []
+    seen: list[Any] = []  # TopoDS_Edge objects for IsSame deduplication
+
+    explorer = TopExp_Explorer(solid, TopAbs_EDGE)
+    while explorer.More():
+        edge_typed = TopoDS.Edge_s(explorer.Current())
+        if any(edge_typed.IsSame(s) for s in seen):
+            explorer.Next()
+            continue
+        seen.append(edge_typed)
+
+        c = BRepAdaptor_Curve(edge_typed)
+        kind = c.GetType()
+
+        if kind == GeomAbs_Line:
+            p1 = c.Value(c.FirstParameter())
+            p2 = c.Value(c.LastParameter())
+            edges.append({
+                "kind": "line",
+                "start": [p1.X(), p1.Y(), p1.Z()],
+                "end": [p2.X(), p2.Y(), p2.Z()],
+            })
+
+        elif kind == GeomAbs_Circle:
+            circ = c.Circle()
+            center = circ.Location()
+            ax = circ.Axis().Direction()
+            xdir = circ.XAxis().Direction()
+            radius = circ.Radius()
+            u0 = c.FirstParameter()
+            u1 = c.LastParameter()
+            span = u1 - u0
+            is_full = abs(abs(span) - TWO_PI) < CIRCLE_TOL or abs(span) < CIRCLE_TOL
+            edge_kind = "circle" if is_full else "arc"
+            edges.append({
+                "kind": edge_kind,
+                "center": [center.X(), center.Y(), center.Z()],
+                "radius": radius,
+                "axis": [ax.X(), ax.Y(), ax.Z()],
+                "x_axis": [xdir.X(), xdir.Y(), xdir.Z()],
+                "angle_start": u0,
+                "angle_end": u1,
+            })
+
+        else:
+            # Fallback: tessellate the edge
+            n_pts = 16
+            u0 = c.FirstParameter()
+            u1 = c.LastParameter()
+            points = []
+            for i in range(n_pts + 1):
+                t = u0 + (u1 - u0) * i / n_pts
+                pt = c.Value(t)
+                points.append([pt.X(), pt.Y(), pt.Z()])
+            edges.append({"kind": "spline", "points": points})
+
+        explorer.Next()
+
+    return edges
 
 
 def step_file_to_shape(filepath: str, scale: float = 1.0) -> Any:
