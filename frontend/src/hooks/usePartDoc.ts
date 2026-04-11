@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import type { PartDoc, SketchData, Mutation, EntityStatus } from '../types/cad'
+import type { PartDoc, SketchData, Mutation, EntityStatus, BuildResponse } from '../types/cad'
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
 import { unflattenGeometry } from '../utils/geometryMapping'
@@ -25,6 +25,10 @@ import {
   applyAddPlane,
   applySetPlaneDefinitionField,
   applyToggleSketchPlaneVisibility,
+  applyAddExtrude,
+  applySetExtrudeDistance,
+  applySetExtrudeDirection,
+  applySetExtrudeSketch,
 } from '../utils/yamlMutations'
 import type { PartFeature } from '../types/cad'
 
@@ -63,6 +67,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [solveResults, setSolveResults] = useState<Record<string, SketchData>>({})
+  const [bodies, setBodies] = useState<Record<string, import('../types/cad').BodyResult>>({})
   const [solving, setSolving] = useState(false)
   const [solveTime, setSolveTime] = useState<number | null>(null)
   const [solveError, setSolveError] = useState<string | null>(null)
@@ -178,6 +183,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
           }
         }
         setSolveResults(prev => ({ ...prev, ...results }))
+        const response = data as BuildResponse
+        setBodies(response.bodies ?? {})
         setSolveRawResult(stringifyYaml(data.result))
         setDoc(d)
         docRef.current = d
@@ -288,6 +295,18 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       case 'toggle_sketch_plane_visibility':
         applyToggleSketchPlaneVisibility(next)
         break
+      case 'add_extrude':
+        applyAddExtrude(next, m.featureId, m.label, m.sketchQuery, m.distance)
+        break
+      case 'set_extrude_distance':
+        applySetExtrudeDistance(next, m.featureId, m.distance)
+        break
+      case 'set_extrude_direction':
+        applySetExtrudeDirection(next, m.featureId, m.direction)
+        break
+      case 'set_extrude_sketch':
+        applySetExtrudeSketch(next, m.featureId, m.sketchQuery)
+        break
     }
     docRef.current = next
     setDoc(next)
@@ -391,6 +410,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     setError,
     solveResults,
     setSolveResults,
+    bodies,
     solving,
     solveTime,
     solveError,

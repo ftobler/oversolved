@@ -1,4 +1,5 @@
 import math
+import os
 import time
 from typing import Any, Optional
 import yaml
@@ -12,18 +13,36 @@ def _init_global_repo() -> Repository:
     """Create and populate the global repository with built-in planes and origin."""
     repo = Repository()
     repo.register("builtin_origin", {"external_xy": [0.0, 0.0]})
-    repo.register("builtin_plane_front", {
-        "type": "plane", "origin": [0, 0, 0],
-        "x_axis": [1, 0, 0], "y_axis": [0, 1, 0], "normal": [0, 0, 1],
-    })
-    repo.register("builtin_plane_top", {
-        "type": "plane", "origin": [0, 0, 0],
-        "x_axis": [1, 0, 0], "y_axis": [0, 0, -1], "normal": [0, 1, 0],
-    })
-    repo.register("builtin_plane_right", {
-        "type": "plane", "origin": [0, 0, 0],
-        "x_axis": [0, 0, -1], "y_axis": [0, 1, 0], "normal": [1, 0, 0],
-    })
+    repo.register(
+        "builtin_plane_front",
+        {
+            "type": "plane",
+            "origin": [0, 0, 0],
+            "x_axis": [1, 0, 0],
+            "y_axis": [0, 1, 0],
+            "normal": [0, 0, 1],
+        },
+    )
+    repo.register(
+        "builtin_plane_top",
+        {
+            "type": "plane",
+            "origin": [0, 0, 0],
+            "x_axis": [1, 0, 0],
+            "y_axis": [0, 0, -1],
+            "normal": [0, 1, 0],
+        },
+    )
+    repo.register(
+        "builtin_plane_right",
+        {
+            "type": "plane",
+            "origin": [0, 0, 0],
+            "x_axis": [0, 0, -1],
+            "y_axis": [0, 1, 0],
+            "normal": [1, 0, 0],
+        },
+    )
     return repo
 
 
@@ -43,6 +62,7 @@ def _post_register(
         # Also register in legacy format for backward compatibility with plane features
         # that query via feature_id+entity_id (no slash)
         if feature.get("kind") == "sketch":
+
             def to_flat_params(val):
                 if not isinstance(val, dict):
                     return list(val)
@@ -57,10 +77,11 @@ def _post_register(
                 if "xy" in val:
                     return list(val.get("xy", []))
                 return list(val)
-            flat_geometry = {k: to_flat_params(v) for k, v in feature_result["geometry"].items()}
-            _register_solved_geometry(
-                global_repo, feature_id, feature, flat_geometry
-            )
+
+            flat_geometry = {
+                k: to_flat_params(v) for k, v in feature_result["geometry"].items()
+            }
+            _register_solved_geometry(global_repo, feature_id, feature, flat_geometry)
     if "plane_transform" in feature_result:
         pt = feature_result["plane_transform"]
         rot = pt["rotation"]
@@ -521,6 +542,8 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict) -> d
         return _solve_plane(feature, global_repo)
     if kind == "extrude":
         return _solve_extrude(feature, global_repo, body_store)
+    if kind == "import_step":
+        return _solve_import_step(feature, global_repo, body_store)
     raise Exception(f"unknown feature type: '{kind}'")
 
 
@@ -1407,76 +1430,247 @@ def _solve_plane(feature: dict, global_repo: Repository) -> dict:
         return {"status": "exception", "message": str(e)}
 
 
-def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:
-    """Minimal extrude solver: generates top/bottom faces for topology references."""
-    try:
-        sketch_ref = feature.get("sketch", "")
-        depth = float(feature.get("depth", 1.0))
-        feature_id = feature["id"]
+def _extract_profile_loops(
+    surfaces: list[dict],
+    plane_transform: dict,
+) -> list[list[list[float]]]:
+    """Extract ordered 2D profile loops from topology surfaces.
 
+    Returns a list of loops where loops[0] is the outer boundary and
+    loops[1:] are holes. Each loop is a list of [u, v] pairs.
+    Returns empty list if no closed surface is found.
+    """
+    if not surfaces:
+        return []
+
+    TOL = 1e-6
+
+    def dist2d(a, b):
+        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+
+    all_loops = []
+    for surface in surfaces:
+        boundary = surface.get("boundary", [])
+        if not boundary:
+            continue
+
+        edges = [(e.get("start"), e.get("end")) for e in boundary]
+        edges = [e for e in edges if e[0] is not None and e[1] is not None]
+        if len(edges) < 2:
+            continue
+
+        used = set()
+        current = edges[0][0]
+        loop = [current]
+
+        for _ in range(len(edges)):
+            found_next = False
+            for i, (s, e) in enumerate(edges):
+                if i in used:
+                    continue
+                if dist2d(current, s) <= TOL:
+                    loop.append(e)
+                    used.add(i)
+                    current = e
+                    found_next = True
+                    break
+                elif dist2d(current, e) <= TOL:
+                    loop.append(s)
+                    used.add(i)
+                    current = s
+                    found_next = True
+                    break
+            if not found_next:
+                if len(loop) >= 3:
+                    fallback = [e[0] for e in edges if e[0] is not None]
+                    if fallback:
+                        all_loops.append(fallback)
+                break
+            if dist2d(loop[0], current) <= TOL and len(loop) >= 3:
+                # Remove the duplicate closing point (it equals loop[0])
+                if len(loop) > 0:
+                    loop = loop[:-1]
+                all_loops.append(loop)
+                break
+
+    return all_loops
+
+
+def _register_top_face(
+    global_repo: Repository,
+    feature_id: str,
+    pt: dict,
+    surfaces: list[dict],
+    distance: float,
+) -> None:
+    """Register named topology references for the extrude result faces."""
+    origin = np.array(pt["origin"])
+    x_axis = np.array(pt["x_axis"])
+    y_axis = np.array(pt["y_axis"])
+    normal = np.array(pt["normal"])
+
+    if surfaces:
+        pts_2d = []
+        for edge in surfaces[0].get("boundary", []):
+            for key in ("start", "end"):
+                if key in edge:
+                    pts_2d.append(edge[key])
+        if pts_2d:
+            u = sum(p[0] for p in pts_2d) / len(pts_2d)
+            v = sum(p[1] for p in pts_2d) / len(pts_2d)
+        else:
+            u, v = 0.0, 0.0
+    else:
+        u, v = 0.0, 0.0
+
+    sketch_centroid = origin + u * x_axis + v * y_axis
+    top_centroid = sketch_centroid + normal * distance
+
+    global_repo.register(
+        feature_id + "/top_face",
+        {
+            "type": "face",
+            "centroid": top_centroid.tolist(),
+            "normal": normal.tolist(),
+            "origin": top_centroid.tolist(),
+            "x_axis": x_axis.tolist(),
+            "y_axis": y_axis.tolist(),
+        },
+    )
+
+    if surfaces and surfaces[0].get("boundary"):
+        edge = surfaces[0]["boundary"][0]
+        if "start" in edge and "end" in edge:
+            s2d, e2d = edge["start"], edge["end"]
+            s3d = (
+                origin + s2d[0] * x_axis + s2d[1] * y_axis + normal * distance
+            ).tolist()
+            e3d = (
+                origin + e2d[0] * x_axis + e2d[1] * y_axis + normal * distance
+            ).tolist()
+            global_repo.register(
+                feature_id + "/top_face/edge0",
+                {
+                    "type": "edge",
+                    "start": s3d,
+                    "end": e3d,
+                },
+            )
+
+
+def _resolve_direction(
+    normal: list, pt: dict, direction: str, distance: float
+) -> tuple[list, float, dict]:
+    """Resolve direction mode to direction_vec, effective_distance, and effective_plane."""
+    if direction == "reverse":
+        direction_vec = [-n for n in normal]
+        return direction_vec, distance, pt
+    elif direction == "symmetric":
+        direction_vec = list(normal)
+        shift = [-n * distance / 2 for n in normal]
+        shifted_origin = [
+            pt["origin"][0] + shift[0],
+            pt["origin"][1] + shift[1],
+            pt["origin"][2] + shift[2],
+        ]
+        effective_plane = {
+            "origin": shifted_origin,
+            "x_axis": pt["x_axis"],
+            "y_axis": pt["y_axis"],
+            "normal": pt["normal"],
+        }
+        return direction_vec, distance, effective_plane
+    else:
+        return list(normal), distance, pt
+
+
+def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:
+    """Extrude solver with OCC-backed geometry that writes to body_store."""
+    from oversolved.types3d import Body
+
+    try:
+        feature_id = feature.get("id", "")
+        sketch_ref = feature.get("sketch", "")
         sketch_id = sketch_ref.lstrip("$")
+        distance = float(feature.get("distance") or feature.get("depth") or 1.0)
+
+        if distance == 0:
+            raise ValueError("extrude distance must be non-zero")
+
         pt = global_repo.elements.get("_pt_" + sketch_id)
         if pt is None:
-            return {"status": "exception", "message": f"sketch {sketch_id!r} not found"}
+            raise ValueError(f"sketch not found: {sketch_id!r}")
 
-        origin = np.array(pt["origin"])
-        x_axis = np.array(pt["x_axis"])
-        y_axis = np.array(pt["y_axis"])
-        normal = np.array(pt["normal"])
+        normal = pt.get("normal", [0, 0, 1])
 
         topo = global_repo.elements.get("_topo_" + sketch_id, {})
         surfaces = topo.get("surfaces", []) if topo else []
 
-        if surfaces:
-            pts_2d = []
-            for edge in surfaces[0]["boundary"]:
-                for key in ("start", "end"):
-                    if key in edge:
-                        pts_2d.append(edge[key])
-            if pts_2d:
-                u = sum(p[0] for p in pts_2d) / len(pts_2d)
-                v = sum(p[1] for p in pts_2d) / len(pts_2d)
+        _register_top_face(global_repo, feature_id, pt, surfaces, distance)
+
+        body_id = "body_" + feature_id
+        result: dict = {"status": "ok", "body_id": body_id}
+
+        body = Body(id=body_id, created_by=feature_id, shape=None)
+        body_store[body_id] = body
+
+        try:
+            from oversolved.geometry import extrude_profile as _ep
+
+            loops = _extract_profile_loops(surfaces, pt)
+
+            if not loops:
+                result["mesh_warning"] = "no closed profile found; body has no shape"
             else:
-                u, v = 0.0, 0.0
-        else:
-            u, v = 0.0, 0.0
-
-        sketch_centroid = origin + u * x_axis + v * y_axis
-        top_centroid = sketch_centroid + normal * depth
-
-        global_repo.register(
-            feature_id + "/top_face",
-            {
-                "type": "face",
-                "centroid": top_centroid.tolist(),
-                "normal": normal.tolist(),
-                "origin": top_centroid.tolist(),
-                "x_axis": x_axis.tolist(),
-                "y_axis": y_axis.tolist(),
-            },
-        )
-
-        # Register first edge of top face for on_face_edge_angle mode
-        if surfaces and surfaces[0]["boundary"]:
-            edge = surfaces[0]["boundary"][0]
-            if "start" in edge and "end" in edge:
-                s2d, e2d = edge["start"], edge["end"]
-                s3d = (
-                    origin + s2d[0] * x_axis + s2d[1] * y_axis + normal * depth
-                ).tolist()
-                e3d = (
-                    origin + e2d[0] * x_axis + e2d[1] * y_axis + normal * depth
-                ).tolist()
-                global_repo.register(
-                    feature_id + "/top_face/edge0",
-                    {
-                        "type": "edge",
-                        "start": s3d,
-                        "end": e3d,
-                    },
+                direction = feature.get("direction", "normal")
+                direction_vec, effective_distance, effective_plane = _resolve_direction(
+                    normal, pt, direction, distance
                 )
+                body.shape = _ep(
+                    loops, effective_plane, direction_vec, effective_distance
+                )
+        except Exception as exc:
+            result["mesh_warning"] = str(exc)
 
-        return {"status": "ok"}
+        return result
+    except Exception as exc:
+        return {"status": "exception", "exception": str(exc)}
+
+
+def _solve_import_step(
+    feature: dict,
+    global_repo: Repository,
+    body_store: dict,
+) -> dict:
+    """Import a STEP file as a body."""
+    try:
+        from oversolved.types3d import Body
+
+        feature_id = feature.get("id", "")
+        file_id = feature.get("file_id", "")
+        if not file_id:
+            raise ValueError("import_step requires 'file_id'")
+
+        if os.sep in file_id or "/" in file_id or ".." in file_id:
+            raise ValueError(f"invalid file_id: {file_id!r}")
+
+        upload_dir = os.path.join(os.path.dirname(__file__), "uploads")
+        filepath = os.path.join(upload_dir, file_id)
+        if not os.path.isfile(filepath):
+            raise ValueError(f"file not found: {file_id!r}")
+
+        scale = float(feature.get("scale", 1.0))
+        body_id = "body_" + feature_id
+
+        from oversolved.geometry import step_file_to_shape
+
+        shape = step_file_to_shape(filepath, scale=scale)
+        body_store[body_id] = Body(
+            id=body_id,
+            created_by=feature_id,
+            shape=shape,
+        )
+        return {"status": "ok", "body_id": body_id}
     except Exception as e:
         return {"status": "exception", "message": str(e)}
 

@@ -500,3 +500,55 @@ export function applySetPlaneDefinitionField(
   if (!feature.definition) feature.definition = {}
   ;(feature.definition as Record<string, string | number>)[field] = value
 }
+
+export function applyAddExtrude(
+  doc: PartDoc,
+  featureId: string,
+  label: string | undefined,
+  sketchQuery: string,
+  distance: number,
+): void {
+  if (!doc.features) doc.features = []
+  const feature: PartFeature = {
+    id: featureId,
+    kind: 'extrude',
+    label: label ?? 'Extrude',
+    extrude: {
+      sketch: sketchQuery,
+      distance,
+      direction: 'normal',
+    },
+  }
+  doc.features.push(feature)
+}
+
+export function applySetExtrudeDistance(doc: PartDoc, featureId: string, distance: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.extrude) {
+    console.warn(`applySetExtrudeDistance: feature ${featureId} has no extrude`)
+    return
+  }
+  feature.extrude.distance = distance
+}
+
+export function applySetExtrudeDirection(
+  doc: PartDoc,
+  featureId: string,
+  direction: 'normal' | 'reverse' | 'symmetric',
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.extrude) {
+    console.warn(`applySetExtrudeDirection: feature ${featureId} has no extrude`)
+    return
+  }
+  feature.extrude.direction = direction
+}
+
+export function applySetExtrudeSketch(doc: PartDoc, featureId: string, sketchQuery: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.extrude) {
+    console.warn(`applySetExtrudeSketch: feature ${featureId} has no extrude`)
+    return
+  }
+  feature.extrude.sketch = sketchQuery
+}

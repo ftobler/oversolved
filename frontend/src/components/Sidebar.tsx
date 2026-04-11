@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import type { PartFeature, PartDoc, PlaneDef, Mutation } from '../types/cad'
+import type { PartFeature, PartDoc, PlaneDef, Mutation, FieldPickState } from '../types/cad'
 import { planeLabel } from './Geometry3D/utils'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
@@ -11,12 +11,6 @@ import iconEyeOffIcon from '../assets/icons/icon-eye-off.svg'
 import exitSketchIcon from '../assets/icons/exit-sketch.svg'
 
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
-
-export interface FieldPickState {
-  featureId: string
-  field: string
-  kind: 'plane' | 'point' | 'line'
-}
 
 interface SidebarProps {
   features: PartFeature[]

@@ -84,6 +84,14 @@ function describeMutation(m: Mutation): string {
       return `rename ${m.featureId} to ${m.label}`
     case 'toggle_sketch_plane_visibility':
       return 'toggle sketch/plane visibility'
+    case 'add_extrude':
+      return `add extrude ${m.label ?? m.featureId}`
+    case 'set_extrude_distance':
+      return `set extrude distance to ${m.distance}`
+    case 'set_extrude_direction':
+      return `set extrude direction to ${m.direction}`
+    case 'set_extrude_sketch':
+      return `set extrude sketch to ${m.sketchQuery}`
   }
 }
 

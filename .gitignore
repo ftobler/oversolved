@@ -35,3 +35,9 @@ docs/feature/*
 
 *.db
 bugreports/
+
+# Uploads
+oversolved/uploads/*.step
+oversolved/uploads/*.stp
+oversolved/uploads/*.iges
+oversolved/uploads/*.igs

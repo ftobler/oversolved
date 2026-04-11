@@ -1,5 +1,7 @@
 """Flask application for the Oversolved solver API."""
 
+import os
+import uuid
 from functools import wraps
 from pathlib import Path
 from datetime import datetime
@@ -8,6 +10,7 @@ import yaml
 from io import BytesIO
 from PIL import Image
 from flask import Flask, g, jsonify, request, send_from_directory, make_response
+from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from oversolved.db import (
     Database,
@@ -18,6 +21,10 @@ from oversolved.db import (
     SessionStore,
 )
 from oversolved.solver import solve
+
+
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+ALLOWED_EXTENSIONS = {".step", ".stp", ".iges", ".igs"}
 
 
 def _get_database(config):
@@ -286,6 +293,23 @@ def create_app(config=None):
             return jsonify({"error": "Forbidden"}), 403
         DocumentStore(db).delete(uuid)
         return jsonify({"uuid": uuid, "status": "deleted"}), 200
+
+    # ── Upload ───────────────────────────────────────────────────────────────────────
+
+    @app.route("/api/upload", methods=["POST"])
+    def upload_file():
+        """Accept a STEP/IGES file, store it, return a file_id."""
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        if "file" not in request.files:
+            return jsonify({"error": "no file field"}), 400
+        f = request.files["file"]
+        ext = os.path.splitext(secure_filename(f.filename or ""))[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            return jsonify({"error": f"unsupported extension {ext!r}"}), 400
+        file_id = str(uuid.uuid4()) + ext
+        assert "/" not in file_id and "\\" not in file_id
+        f.save(os.path.join(UPLOAD_DIR, file_id))
+        return jsonify({"file_id": file_id})
 
     # ── Solver ─────────────────────────────────────────────────────────────────
 

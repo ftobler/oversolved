@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Mutation } from '../types/cad'
+import type { Mutation, FieldPickState } from '../types/cad'
 import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '../registry'
 import type { SnapKind } from '../registry'
 import type { SnapTarget } from '../components/Geometry3D/snapDetection'
@@ -122,7 +122,7 @@ interface SketchEditorState {
   pendingProjectTarget: { sourceFeatureId: string; sourceEntityId: string } | null
   contextMenu: [number, number] | null
   planeSelectionFeatureId: string | null
-  fieldPickState: { featureId: string; field: string; kind: 'plane' | 'point' | 'line' } | null
+  fieldPickState: FieldPickState | null
   setActiveTool: (tool: ActiveTool) => void
   setActiveFeatureId: (id: string | null) => void
   setShowDebugHit: (enabled: boolean) => void
@@ -140,7 +140,7 @@ interface SketchEditorState {
   handleDimensionClick: (target: string, featureId: string, kind: 'entity' | 'vertex', screenPos: [number, number], entityKind?: string) => void
   setPlaneSelectionFeatureId: (id: string | null) => void
   commitPlaneSelection: (selectionId: string) => void
-  setFieldPickState: (state: { featureId: string; field: string; kind: 'plane' | 'point' | 'line' } | null) => void
+  setFieldPickState: (state: FieldPickState | null) => void
   commitFieldPick: (selectionId: string) => void
 }
 

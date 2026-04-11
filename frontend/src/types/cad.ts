@@ -2,6 +2,52 @@
 
 export type Point = [number, number]
 
+export type ExtrudeDirection = 'normal' | 'reverse' | 'symmetric'
+
+export interface ExtrudeFeatureDef {
+  sketch: string
+  distance: number
+  direction?: ExtrudeDirection
+}
+
+export interface Mesh3D {
+  vertices: [number, number, number][]
+  faces:    [number, number, number][]
+  normals:  [number, number, number][]
+}
+
+export interface BodyResult {
+  id: string
+  created_by: string
+  modified_by: string[]
+  mesh?: Mesh3D
+  mesh_error?: string
+}
+
+export interface BuildResponse {
+  solve_ms: number
+  result: Record<string, unknown>
+  bodies: Record<string, BodyResult>
+}
+
+export interface BodyFeatureResult {
+  status: 'ok' | 'exception'
+  body_id?: string
+  exception?: string
+  mesh_warning?: string
+  solve_ms?: number
+}
+
+export function isBodyFeatureResult(r: unknown): r is BodyFeatureResult {
+  return typeof r === 'object' && r !== null && 'body_id' in r
+}
+
+export interface FieldPickState {
+  featureId: string
+  field: string
+  kind: 'plane' | 'point' | 'line' | 'sketch'
+}
+
 // ── Document AST Types ────
 
 // A query string referencing an entity or sub-element, e.g. "$line1" or "$arc1start".
@@ -65,6 +111,7 @@ export interface PartFeature {
   initial?: Record<string, number[]>
   constraints?: PartConstraint[]
   definition?: PlaneDef
+  extrude?: ExtrudeFeatureDef  // present when kind === 'extrude'
 }
 
 export type Feature = PartFeature
@@ -303,3 +350,7 @@ export type Mutation =
   | { type: 'set_plane_definition_field'; featureId: string; field: string; value: string | number }
   | { type: 'rename_feature'; featureId: string; label: string }
   | { type: 'toggle_sketch_plane_visibility' }
+  | { type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number }
+  | { type: 'set_extrude_distance'; featureId: string; distance: number }
+  | { type: 'set_extrude_direction'; featureId: string; direction: ExtrudeDirection }
+  | { type: 'set_extrude_sketch'; featureId: string; sketchQuery: string }

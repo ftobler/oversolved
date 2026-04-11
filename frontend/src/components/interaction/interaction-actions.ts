@@ -5,7 +5,7 @@
 
 import type { Point } from '../../types/cad'
 import type { ActiveTool } from '../../stores/sketchEditorStore'
-import type { FieldPickState } from '../../components/Sidebar'
+import type { FieldPickState } from '../../types/cad'
 
 /**
  * Drag initiation state — captured when user presses on an entity/vertex.
