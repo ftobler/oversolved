@@ -317,7 +317,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     >
       <Canvas
         style={{ width: '100%', height: '100%', background: '#111' }}
-        gl={{ antialias: true }}
+        gl={{ antialias: true, logarithmicDepthBuffer: true }}
         onCreated={onCreated}
         onPointerMissed={() => {
           // Only clear selection if this was a left-click on empty space, not a camera drag
@@ -327,7 +327,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           }
         }}
       >
-        <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={-1000000} far={1000000} />
+        <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={-10} far={1000} /* clipping planes */ />
         <SceneController resetTrigger={resetTrigger} canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
 
         <ambientLight intensity={0.8} />
