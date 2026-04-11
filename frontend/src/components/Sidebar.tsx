@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import type { PartFeature, PartDoc, PlaneDef, Mutation, FieldPickState, ExtrudeDirection, BodyResult } from '../types/cad'
 import { isBodyFeatureResult } from '../types/cad'
 import { planeLabel } from './Geometry3D/utils'
@@ -12,6 +12,9 @@ import iconEyeOffIcon from '../assets/icons/icon-eye-off.svg'
 import exitSketchIcon from '../assets/icons/exit-sketch.svg'
 
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
+const MIN_SPLIT_PERCENT = 20
+const MAX_SPLIT_PERCENT = 80
+const DEFAULT_SPLIT_PERCENT = 70
 
 interface SidebarProps {
   features: PartFeature[]
@@ -66,6 +69,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [renamingFeatureId, setRenamingFeatureId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
+  const isDraggingRef = useRef(false)
+  const sidebarRef = useRef<HTMLElement>(null)
+
+  const handleMouseDown = useCallback(() => {
+    isDraggingRef.current = true
+  }, [])
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDraggingRef.current || !sidebarRef.current) return
+    const rect = sidebarRef.current.getBoundingClientRect()
+    const newPercent = ((e.clientY - rect.top) / rect.height) * 100
+    setSplitPercent(Math.max(MIN_SPLIT_PERCENT, Math.min(MAX_SPLIT_PERCENT, newPercent)))
+  }, [])
+
+  const handleMouseUp = useCallback(() => {
+    isDraggingRef.current = false
+  }, [])
+
+  useEffect(() => {
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [handleMouseMove, handleMouseUp])
 
   const commitRename = (feature: PartFeature) => {
     const trimmed = renameValue.trim()
@@ -296,9 +326,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }
 
   return (
-    <aside className="doc-sidebar">
-      <div className="sidebar-header">Features</div>
-      <ul className="features-list">
+    <aside className="doc-sidebar" ref={sidebarRef}>
+      <div className="sidebar-top" style={{ height: `${splitPercent}%` }}>
+        <div className="sidebar-header">Features</div>
+        <ul className="features-list">
         {features.length === 0 ? (
           <li className="empty">No features</li>
         ) : (
@@ -479,6 +510,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ></li>
         )}
       </ul>
+      </div>
+      <div
+        className="resize-handle"
+        onMouseDown={handleMouseDown}
+        title="Drag to resize"
+      />
+      <div className="sidebar-bottom" style={{ height: `${100 - splitPercent}%` }}>
+        <div className="sidebar-header">Parts</div>
+        <ul className="parts-list">
+          {Object.keys(bodies || {}).length === 0 ? (
+            <li className="empty">No parts</li>
+          ) : (
+            Object.entries(bodies || {}).map(([bodyId]) => (
+              <li
+                key={bodyId}
+                className={`part-item ${selection.has(`@${bodyId}`) ? 'selected' : ''}`}
+                onClick={() => onToggleSelect(`@${bodyId}`)}
+              >
+                <span className="part-name">{bodyId}</span>
+              </li>
+            ))
+          )}
+        </ul>
+      </div>
     </aside>
   )
 }

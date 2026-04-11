@@ -36,9 +36,71 @@
   width: 240px;
   border-right: 1px solid #333;
   background: #111;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-top {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 60px;
+}
+
+.sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 60px;
+}
+
+.resize-handle {
+  height: 4px;
+  background: #333;
+  cursor: row-resize;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.resize-handle:hover {
+  background: #555;
+}
+
+.parts-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.part-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px;
+  margin: 4px 0;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #ccc;
+  cursor: pointer;
+  user-select: none;
+}
+
+.part-item:hover {
+  background: #222;
+  color: #4fc3f7;
+}
+
+.part-item.selected {
+  background: #1a1a2a;
+  color: #4fc3f7;
+  outline: 1px solid #1e3a4a;
+}
+
+.part-name {
+  flex: 1;
 }
 
 .sidebar-header {
@@ -287,7 +349,8 @@
   opacity: 1;
 }
 
-.features-list .empty {
+.features-list .empty,
+.parts-list .empty {
   padding: 8px 12px;
   color: #666;
   font-size: 12px;

@@ -1,9 +1,9 @@
 // 3D body colors
-export const COLOR_BODY_DEFAULT  = '#6a9fb5'
-export const COLOR_BODY_EDGE     = '#3d5a66'
-export const COLOR_BODY_HOVER    = '#8fbfd4'
-export const COLOR_BODY_SELECTED = '#e8a045'
-export const COLOR_BODY_EDGE_SEL = '#b07030'
+export const COLOR_BODY_DEFAULT  = '#6ab59b'
+export const COLOR_BODY_EDGE     = '#d3ede4'
+export const COLOR_BODY_HOVER    = '#91ccb7'
+export const COLOR_BODY_SELECTED = '#b5a16a'
+export const COLOR_BODY_EDGE_SEL = '#ffffff'
 
 // Geometry3D color palette
 export const COLOR_SOLVED = '#0288d1'  // darker blue for underconstrained
