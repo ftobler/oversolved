@@ -438,12 +438,12 @@ export default function Part() {
     setContextMenu(null)
   }, [handleMutation, visibleFeatures])
 
-  const enterEditSketch = (featureId: string) => {
+  const enterEditSketch = useCallback((featureId: string) => {
     const idx = features.findIndex(f => f.id === featureId)
     if (idx >= 0) setRollbackPosition(idx + 1)
     setEditingFeatureId(featureId)
     setMode('sketch')
-  }
+  }, [features, setMode])
 
   const exitEditSketch = () => {
     setEditingFeatureId(null)
@@ -535,7 +535,7 @@ export default function Part() {
       targetId: featureId,
       items,
     })
-  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature])
+  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature])
 
   return (
     <div className="document-viewer">

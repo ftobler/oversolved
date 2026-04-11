@@ -202,7 +202,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     } finally {
       setSolving(false)
     }
-  }, [setCodeText])
+  }, [setCodeText, onFirstSolve])
 
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)
