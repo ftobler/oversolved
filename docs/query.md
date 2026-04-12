@@ -59,6 +59,45 @@ When `@<id>` appears and `<id>` exactly matches a registered feature ID (with no
 
 **Frontend convention**: the UI selection system uses `@<featureId>` as the selection ID when a feature is clicked in the feature tree. This is a valid query string that passes through `parseTarget` unchanged and can be used directly as a plane reference in mutations (e.g. `set_feature_plane`).
 
+### 3D B-rep Face Queries
+
+The ancestry query pattern extends to 3D B-rep faces from solid bodies. This enables referencing specific faces of extruded volumes, STEP imports, and other 3D geometry.
+
+**Query format**: Same ancestry pattern `?A,B;<idA><idB>:<TYPE>` with `:face` type restriction.
+
+**ID construction**: For 3D B-rep faces, the ancestor ID combines:
+- The feature ID that created the body (e.g., `extrude1`)
+- The face index in OCC explorer order (e.g., `face0`, `face1`)
+
+**Example queries:**
+```
+?d,d;@extrude1face0:face    # Face 0 of extrude1 feature
+?d,d;@extrude1face1:face    # Face 1 of extrude1 feature
+?14,14;@myextrudeface0@myextrudeface1:face  # Multiple faces
+```
+
+**Breaking down the query:**
+- `?d,d;` — hex-encoded lengths: `d` (13 in decimal) = len("@extrude1face0")
+- `@extrude1face0` — absolute element ID: `@` prefix + feature ID + element ID
+- `:face` — type restriction to faces only
+
+**Frontend usage**: When clicking a mesh face in the 3D viewport:
+1. Three.js returns `faceIndex` — the triangle index (unstable, changes with tessellation)
+2. Backend provides `triangle_to_face` mapping array to convert triangle → B-rep face
+3. Backend provides `face_queries` array indexed by B-rep face number
+4. Frontend uses the pre-computed query from `face_queries[faceIndex]`
+
+**Resolution path:**
+```
+Query: "?d,d;@extrude1face0:face"
+   ↓ parse (query.py:_parse_ancestry)
+IDs: ["@extrude1face0"]
+   ↓ lookup (Repository.anchestral)
+Registered under: frozenset({"@extrude1face0"})
+   ↓ match → return registered object
+Result: {"type": "face", "centroid": [...], "normal": [...]}
+```
+
 ---
 
 When a element is created it's id must be registered. This is done with a dictionary. Elements which do not have a id but only anchestral information are given a new random ID. In a separate anchestral dictionary its anchesters resolve to that random id.

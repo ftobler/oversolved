@@ -163,7 +163,15 @@ The selection subsystem manages three distinct classes of selection state, each 
 | Constraint | `constraint:{featureId}:{constraintId}` | `constraint:S1:C1` |
 | Builtin plane | `@builtin_plane_{name}` | `@builtin_plane_front` |
 | Feature plane | `@{featureId}` | `@myPlane` |
-| Topology face | `face:{featureId}:{query}` | `face:Extrude0:face0` |
+| B-rep face (3D) | `?A,B;<ID>:<TYPE>` | `?d,d;@extrude1face0:face` |
+
+**3D B-rep face selection**: Clicking on a 3D body face involves a conversion step:
+1. Three.js raycaster returns `faceIndex` — the triangle index in the tessellated mesh
+2. Backend provides `triangle_to_face` array mapping triangle → B-rep face index
+3. Backend provides `face_queries` array pre-computed ancestry queries per B-rep face
+4. Frontend converts: `query = face_queries[triangle_to_face[faceIndex]]`
+
+This ensures stable queries that survive tessellation parameter changes.
 
 **Behavior**:
 - Click on element: Add to selection (or set as sole selection, depending on modifier keys)
