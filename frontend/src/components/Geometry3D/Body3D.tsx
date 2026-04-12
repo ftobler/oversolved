@@ -332,12 +332,15 @@ export default function Body3D({ featureId, mesh, edges = [], visible = true }: 
         onClick={handleMeshClick}
       >
         <meshStandardMaterial
+          // metallness and roughness of the part material
           color={bodyColor}
-          roughness={0.6}
+          // roughness={0.6}
+          // metalness={0.1}
+          roughness={0.5}
           metalness={0.1}
           side={THREE.DoubleSide}
           vertexColors={faceColors !== null}
-          polygonOffset
+          polygonOffset={true}
           polygonOffsetFactor={1}
           polygonOffsetUnits={1}
         />
