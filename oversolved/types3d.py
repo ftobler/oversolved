@@ -16,7 +16,7 @@ class FeatureCheckpoint:
     """Cached state at a single feature boundary for partial rebuild."""
     spec: dict
     result: dict
-    repo_snapshot: dict
+    repo_snapshot: dict[str, Any]
     body_store_snapshot: dict[str, 'Body']  # shallow copy (shapes are immutable)
 
 

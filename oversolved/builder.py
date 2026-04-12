@@ -1,6 +1,7 @@
 import copy
 import time
 from typing import Any
+from oversolved.query import Repository
 from oversolved.types3d import Body, FeatureCheckpoint, BuildState
 from oversolved.solver import _init_global_repo, _try_solve_feature, _post_register
 
@@ -40,7 +41,92 @@ def _find_first_dirty(features: list[dict], prev_state: BuildState | None) -> in
     return len(features)
 
 
-def _tessellate_bodies(body_store: dict[str, Body]) -> dict[str, dict]:
+def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
+    """Register B-rep face ancestry objects in the global query repository."""
+    if global_repo is None or body.shape is None or not body.created_by:
+        return
+
+    face_data = mesh.get("face_data") or []
+    for face_idx, face_info in enumerate(face_data):
+        ancestor_ids = [f"@{body.created_by}face{face_idx}"]
+        payload = {
+            "type": "face",
+            "body_id": body.id,
+            "created_by": body.created_by,
+            "face_index": face_idx,
+            "centroid": face_info.get("centroid", [0.0, 0.0, 0.0]),
+            "normal": face_info.get("normal", [0.0, 0.0, 1.0]),
+        }
+        key = frozenset(ancestor_ids)
+        existing_ids = global_repo.anchestral.get(key, [])
+        for element_id in existing_ids:
+            if global_repo.elements.get(element_id) == payload:
+                break
+        else:
+            global_repo.register_anchestor(ancestor_ids, payload)
+
+
+def _dedupe_repo(repo: Repository) -> None:
+    """Drop duplicate identical ancestry registrations from a repo snapshot."""
+    for key, element_ids in list(repo.anchestral.items()):
+        unique_ids: list[str] = []
+        unique_payloads: list[dict[str, Any]] = []
+        for element_id in element_ids:
+            payload = repo.elements.get(element_id)
+            if payload is None:
+                continue
+            if any(existing_payload == payload for existing_payload in unique_payloads):
+                repo.elements.pop(element_id, None)
+                continue
+            unique_ids.append(element_id)
+            unique_payloads.append(payload)
+        if unique_ids:
+            repo.anchestral[key] = unique_ids
+        else:
+            repo.anchestral.pop(key, None)
+
+
+def _repo_from_snapshot(repo_snapshot: dict) -> Repository:
+    """Rehydrate a repository snapshot, including ancestry index state."""
+    repo = Repository()
+    if "elements" in repo_snapshot or "anchestral" in repo_snapshot:
+        repo.elements = copy.deepcopy(repo_snapshot.get("elements", {}))
+        repo.anchestral = copy.deepcopy(repo_snapshot.get("anchestral", {}))
+    else:
+        # Backward compatibility for older snapshots that only stored elements.
+        repo.elements = copy.deepcopy(repo_snapshot)
+        repo.anchestral = {}
+    _dedupe_repo(repo)
+    return repo
+
+
+def _snapshot_repo(repo: Repository) -> dict[str, Any]:
+    """Serialize the repository state needed for partial rebuild restoration."""
+    return {
+        "elements": copy.deepcopy(repo.elements),
+        "anchestral": copy.deepcopy(repo.anchestral),
+    }
+
+
+def _snapshot_with_brep_faces(
+    checkpoint: FeatureCheckpoint,
+    bodies_out: dict[str, dict],
+) -> dict[str, Any]:
+    """Return a repo snapshot augmented with B-rep face ancestry for this checkpoint."""
+    repo = _repo_from_snapshot(checkpoint.repo_snapshot)
+
+    for body_id, body in checkpoint.body_store_snapshot.items():
+        body_out = bodies_out.get(body_id) or {}
+        mesh = body_out.get("mesh")
+        if mesh is not None:
+            _register_brep_face_ancestry(repo, body, mesh)
+
+    return _snapshot_repo(repo)
+
+
+def _tessellate_bodies(
+    body_store: dict[str, Body], global_repo=None
+) -> dict[str, dict]:
     """Convert all OCC shapes in body_store to mesh dicts."""
     out: dict[str, dict] = {}
     for body_id, body in body_store.items():
@@ -54,8 +140,9 @@ def _tessellate_bodies(body_store: dict[str, Body]) -> dict[str, dict]:
         else:
             try:
                 from oversolved.geometry import solid_to_mesh, solid_to_edges  # type: ignore[attr-defined]
-                entry["mesh"] = solid_to_mesh(body.shape)
+                entry["mesh"] = solid_to_mesh(body.shape, created_by=body.created_by)
                 entry["edges"] = solid_to_edges(body.shape)
+                _register_brep_face_ancestry(global_repo, body, entry["mesh"])
             except ImportError:
                 entry["mesh_error"] = "geometry.solid_to_mesh not available (F2 pending)"
             except Exception as exc:
@@ -84,7 +171,7 @@ def build(spec: dict, prev_state: BuildState | None = None) -> dict:
     if prev_state and first_dirty > 0:
         last_clean_fid = features[first_dirty - 1].get("id", "")
         checkpoint = prev_state.checkpoints[last_clean_fid]
-        global_repo.elements = copy.deepcopy(checkpoint.repo_snapshot)
+        global_repo = _repo_from_snapshot(checkpoint.repo_snapshot)
         body_store = copy.copy(checkpoint.body_store_snapshot)
         for fid in prev_state.feature_order[:first_dirty]:
             result[fid] = prev_state.checkpoints[fid].result
@@ -98,11 +185,20 @@ def build(spec: dict, prev_state: BuildState | None = None) -> dict:
         new_checkpoints[fid] = FeatureCheckpoint(
             spec=copy.deepcopy(feature),
             result=feature_result,
-            repo_snapshot=copy.deepcopy(global_repo.elements),
+            repo_snapshot=_snapshot_repo(global_repo),
             body_store_snapshot=copy.copy(body_store),
         )
 
-    bodies_out = _tessellate_bodies(body_store)
+    bodies_out = _tessellate_bodies(body_store, global_repo)
+    new_checkpoints = {
+        fid: FeatureCheckpoint(
+            spec=checkpoint.spec,
+            result=checkpoint.result,
+            repo_snapshot=_snapshot_with_brep_faces(checkpoint, bodies_out),
+            body_store_snapshot=copy.copy(checkpoint.body_store_snapshot),
+        )
+        for fid, checkpoint in new_checkpoints.items()
+    }
     build_ms = round((time.perf_counter() - t0) * 1000, 1)
     result.update(_BUILTIN_PLANE_RESULTS)
 

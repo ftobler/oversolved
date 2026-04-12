@@ -1,5 +1,9 @@
+import pytest
+
 from oversolved.builder import build
-from solver_helpers import rect_sketch_spec
+from oversolved.query import Repository, make_ancestry_query
+from oversolved.types3d import Body
+from solver_helpers import rect_sketch_spec, full_rect_extrude_spec
 
 
 def test_round_trip_sketch():
@@ -84,3 +88,38 @@ def test_bodies_empty_for_sketch_only_doc():
     spec = rect_sketch_spec(w=6, h=4)
     r = build({'features': [spec]})
     assert len(r['bodies']) == 0
+
+
+def test_build_mesh_includes_brep_face_metadata_and_queries():
+    """Extrude bodies should emit stable face metadata and ancestry queries."""
+    spec = full_rect_extrude_spec(w=5.0, h=5.0, d=3.0)
+    r = build(spec)
+
+    mesh = r["bodies"]["body_ex1"]["mesh"]
+    assert len(mesh["face_data"]) > 0
+    assert len(mesh["triangle_to_face"]) == len(mesh["faces"])
+    assert len(mesh["face_queries"]) == len(mesh["face_data"])
+    assert mesh["face_queries"][0] == make_ancestry_query(["@ex1face0"], "face")
+
+
+def test_tessellate_bodies_registers_brep_face_queries_in_repo():
+    """Builder should register B-rep face ancestries into a query repo when available."""
+    pytest.importorskip("OCP.gp")
+
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    from oversolved.builder import _tessellate_bodies
+
+    repo = Repository()
+    body = Body(
+        id="body_ext1",
+        created_by="ext1",
+        shape=BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape(),
+    )
+
+    bodies = _tessellate_bodies({"body_ext1": body}, repo)
+    mesh = bodies["body_ext1"]["mesh"]
+
+    face = repo.query(make_ancestry_query(["@ext1face0"], "face"))
+    assert face is not None
+    assert face["type"] == "face"
+    assert face["centroid"] == mesh["face_data"][0]["centroid"]

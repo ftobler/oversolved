@@ -278,7 +278,46 @@ def boolean_union(target: Any, tool: Any) -> Any:
     return fuse.Shape()
 
 
-def solid_to_mesh(solid: Any) -> dict:
+def _point_xyz(point) -> list[float]:
+    """Return [x, y, z] for an OCC point-like object or 3-sequence."""
+    if hasattr(point, "X"):
+        return [point.X(), point.Y(), point.Z()]
+    return [float(point[0]), float(point[1]), float(point[2])]
+
+
+def _compute_face_centroid(face_shape) -> list[float]:
+    """Compute the analytical centroid of an OCC face."""
+    from OCP.BRepGProp import BRepGProp  # noqa: PLC0415
+    from OCP.GProp import GProp_GProps  # noqa: PLC0415
+
+    props = GProp_GProps()
+    BRepGProp.SurfaceProperties_s(face_shape, props)
+    return _point_xyz(props.CentreOfMass())
+
+
+def _compute_face_normal(face_shape) -> list[float]:
+    """Compute the analytical face normal from the OCC surface."""
+    from OCP.BRepAdaptor import BRepAdaptor_Surface  # noqa: PLC0415
+    from OCP.BRepTools import BRepTools  # noqa: PLC0415
+    from OCP.GeomLProp import GeomLProp_SLProps  # noqa: PLC0415
+    from OCP.TopAbs import TopAbs_REVERSED  # noqa: PLC0415
+
+    umin, umax, vmin, vmax = BRepTools.UVBounds_s(face_shape)
+    u = (umin + umax) / 2.0
+    v = (vmin + vmax) / 2.0
+
+    surface = BRepAdaptor_Surface(face_shape, True).Surface().Surface()
+    props = GeomLProp_SLProps(surface, u, v, 1, 1e-7)
+    if not props.IsNormalDefined():
+        return [0.0, 0.0, 1.0]
+
+    normal = props.Normal()
+    if face_shape.Orientation() == TopAbs_REVERSED:
+        normal = normal.Reversed()
+    return [normal.X(), normal.Y(), normal.Z()]
+
+
+def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
     """Tessellate an OCC solid to a mesh dict.
 
     Uses BRepMesh_IncrementalMesh to compute tessellation, then extracts
@@ -294,14 +333,20 @@ def solid_to_mesh(solid: Any) -> dict:
     from OCP.TopoDS import TopoDS_Face  # noqa: PLC0415
 
     def get_mesh_from_solid(s):
-        mesh = BRepMesh_IncrementalMesh(s, 0.5, False, 0.5)
+        nonlocal face_data, triangle_to_face
+
+        mesh = BRepMesh_IncrementalMesh(s, 0.1, False, 0.1)
         mesh.Perform()
 
         verts = []
         faces = []
         normals = []
+        face_data = []
+        triangle_to_face = []
 
         explorer = TopExp_Explorer(s, TopAbs_FACE)
+
+        face_idx = 0
 
         while explorer.More():
             face_shape = explorer.Current()
@@ -312,7 +357,6 @@ def solid_to_mesh(solid: Any) -> dict:
                 face.Orientation(face_shape.Orientation())
                 location = TopLoc_Location()
                 tri = BRep_Tool.Triangulation_s(face, location)
-
                 if tri is not None:
                     node_count = tri.NbNodes()
                     tri_count = tri.NbTriangles()
@@ -340,7 +384,8 @@ def solid_to_mesh(solid: Any) -> dict:
                             + trsf.Value(3, 3) * pt.Z()
                             + trsf.Value(3, 4)
                         )
-                        verts.append([x, y, z])
+                        transformed = [x, y, z]
+                        verts.append(transformed)
 
                     for i in range(1, tri_count + 1):
                         tri_data = tri.Triangle(i)
@@ -364,12 +409,36 @@ def solid_to_mesh(solid: Any) -> dict:
                             normals.append([nx / mag, ny / mag, nz / mag])
                         else:
                             normals.append([0.0, 0.0, 1.0])
+                        triangle_to_face.append(face_idx)
+                centroid = _compute_face_centroid(face)
+                normal = _compute_face_normal(face)
+                face_data.append({"centroid": centroid, "normal": normal})
+                if created_by:
+                    from oversolved.query import make_ancestry_query
+
+                    element_id = f"face{face_idx}"
+                    abs_id = "@" + created_by + element_id
+                    query = make_ancestry_query([abs_id], "face")
+                    face_queries.append(query)
             except TypeError:
-                pass
+                face_data.append(
+                    {"centroid": [0.0, 0.0, 0.0], "normal": [0.0, 0.0, 1.0]}
+                )
+                if created_by:
+                    from oversolved.query import make_ancestry_query
+
+                    element_id = f"face{face_idx}"
+                    abs_id = "@" + created_by + element_id
+                    query = make_ancestry_query([abs_id], "face")
+                    face_queries.append(query)
             explorer.Next()
+            face_idx += 1
 
         return verts, faces, normals
 
+    face_data: list[dict] = []
+    triangle_to_face: list[int] = []
+    face_queries: list[str] = []
     all_vertices = []
     all_faces = []
     all_normals = []
@@ -380,9 +449,15 @@ def solid_to_mesh(solid: Any) -> dict:
         all_faces = f
         all_normals = n
     except Exception:
+        face_data = []
+        triangle_to_face = []
+        face_queries = []
         pass
 
     if not all_vertices:
+        face_data = []
+        triangle_to_face = []
+        face_queries = []
         all_vertices = [
             [0.0, 0.0, 0.0],
             [1.0, 0.0, 0.0],
@@ -422,7 +497,14 @@ def solid_to_mesh(solid: Any) -> dict:
             [0, -1, 0],
         ]
 
-    return {"vertices": all_vertices, "faces": all_faces, "normals": all_normals}
+    return {
+        "vertices": all_vertices,
+        "faces": all_faces,
+        "normals": all_normals,
+        "face_data": face_data,
+        "triangle_to_face": triangle_to_face,
+        "face_queries": face_queries,
+    }
 
 
 def solid_to_edges(solid: Any) -> list[dict]:

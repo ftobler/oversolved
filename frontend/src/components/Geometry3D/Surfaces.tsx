@@ -107,6 +107,13 @@ function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
   const start = edge.start
   const end = edge.end
 
+  // Hoisted before conditional return to satisfy rules-of-hooks.
+  const lineGeometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([...start, ...end]), 3))
+    return geo
+  }, [start, end])
+
   if (edge.kind === 'arc' && edge.center && edge.radius !== undefined) {
     const cx = edge.center[0]
     const cy = edge.center[1]
@@ -116,7 +123,7 @@ function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
 
     const curve = new THREE.EllipseCurve(cx, cy, r, r, (a0 * Math.PI) / 180, (a1 * Math.PI) / 180, false, 0)
     const points = curve.getPoints(32)
-    const geometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, 0)))
+    const arcGeometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, 0)))
 
     return (
       <line
@@ -124,17 +131,11 @@ function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
         onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }}
         onClick={(e) => { e.stopPropagation(); toggleNormalSelection(id) }}
       >
-        <primitive object={geometry} attach="geometry" />
+        <primitive object={arcGeometry} attach="geometry" />
         <lineBasicMaterial color={color} linewidth={2} />
       </line>
     )
   }
-
-  const geometry = useMemo(() => {
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([...start, ...end]), 3))
-    return geo
-  }, [start, end])
 
   return (
     <line
@@ -142,7 +143,7 @@ function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
       onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }}
       onClick={(e) => { e.stopPropagation(); toggleNormalSelection(id) }}
     >
-      <primitive object={geometry} attach="geometry" />
+      <primitive object={lineGeometry} attach="geometry" />
       <lineBasicMaterial color={color} linewidth={2} />
     </line>
   )

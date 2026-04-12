@@ -10,10 +10,18 @@ export interface ExtrudeFeatureDef {
   direction?: ExtrudeDirection
 }
 
+export interface FaceData {
+  centroid: [number, number, number]
+  normal: [number, number, number]
+}
+
 export interface Mesh3D {
   vertices: [number, number, number][]
   faces:    [number, number, number][]
   normals:  [number, number, number][]
+  face_data?: FaceData[]
+  triangle_to_face?: number[]
+  face_queries?: string[]
 }
 
 export interface EdgeDataLine {

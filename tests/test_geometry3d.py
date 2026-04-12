@@ -17,7 +17,9 @@ from oversolved.geometry import (  # noqa: E402
     solid_to_mesh,
     step_file_to_shape,
 )
+from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
 from OCP.STEPControl import STEPControl_Writer, STEPControl_StepModelType  # noqa: E402
+from oversolved.query import make_ancestry_query  # noqa: E402
 
 
 FRONT_PLANE = {
@@ -168,6 +170,48 @@ def test_solid_to_mesh_on_cut_result():
     assert "faces" in mesh
     assert "normals" in mesh
     assert_mesh_valid(mesh)
+
+
+def test_solid_to_mesh_includes_brep_face_metadata():
+    """solid_to_mesh returns stable face metadata aligned with B-rep face order."""
+    box = BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()
+    mesh = solid_to_mesh(box)
+
+    assert "face_data" in mesh
+    assert "triangle_to_face" in mesh
+    assert len(mesh["face_data"]) == 6
+    assert len(mesh["triangle_to_face"]) == len(mesh["faces"])
+    assert all(0 <= face_idx < len(mesh["face_data"]) for face_idx in mesh["triangle_to_face"])
+
+
+def test_solid_to_mesh_generates_face_queries_from_created_by():
+    """created_by should produce stable ancestry queries for each B-rep face."""
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    mesh = solid_to_mesh(box, created_by="test_feature")
+
+    assert "face_queries" in mesh
+    assert len(mesh["face_queries"]) == len(mesh["face_data"]) == 6
+    assert mesh["face_queries"][0] == make_ancestry_query(["@test_featureface0"], "face")
+
+
+def test_cylinder_side_face_uses_analytical_surface_normal():
+    """Cylinder side faces should report a horizontal analytical normal."""
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeCylinder  # noqa: PLC0415
+
+    mesh = solid_to_mesh(BRepPrimAPI_MakeCylinder(1.0, 2.0).Shape())
+    side_faces = [
+        face for face in mesh["face_data"] if abs(face["normal"][2]) < 0.25
+    ]
+
+    assert len(side_faces) == 1
+    side_face = side_faces[0]
+    assert math.isclose(side_face["centroid"][2], 1.0, abs_tol=0.05)
+    assert math.sqrt(
+        side_face["normal"][0] ** 2 + side_face["normal"][1] ** 2
+    ) > 0.95
+    assert math.sqrt(
+        sum(component * component for component in side_face["normal"])
+    ) == pytest.approx(1.0, abs=1e-6)
 
 
 def test_revolve_face_stub():

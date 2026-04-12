@@ -114,10 +114,18 @@ export default function Body3D({ featureId, mesh, edges = [], visible = true }: 
   const isHovered = hoveredBodyId === featureId
   const isBodySelected = normalSelection.has('@' + featureId)
 
-  // Check if a specific face is selected
-  const getIsFaceSelected = useCallback((faceIndex: number): boolean => {
-    return normalSelection.has(`@${featureId}/face/${faceIndex}`)
-  }, [normalSelection, featureId])
+  // Check if a specific triangle face is selected (resolves to B-rep query when available)
+  const getIsFaceSelected = useCallback((triangleIndex: number): boolean => {
+    const { triangle_to_face, face_queries } = mesh
+    if (triangle_to_face && face_queries) {
+      const brepFaceIndex = triangle_to_face[triangleIndex]
+      if (brepFaceIndex !== undefined) {
+        const query = face_queries[brepFaceIndex]
+        if (query !== undefined) return normalSelection.has(query)
+      }
+    }
+    return normalSelection.has(`@${featureId}/face/${triangleIndex}`)
+  }, [normalSelection, featureId, mesh])
 
   // Check if a specific edge is selected
   const getIsEdgeSelected = useCallback((edgeIndex: number): boolean => {
@@ -168,16 +176,29 @@ export default function Body3D({ featureId, mesh, edges = [], visible = true }: 
 
   const edgeColor = isBodySelected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE
 
+  // Resolve a triangle index to a stable B-rep face query, or fall back to triangle-based query.
+  const resolveFaceQuery = useCallback((triangleIndex: number): string => {
+    const { triangle_to_face, face_queries } = mesh
+    if (triangle_to_face && face_queries) {
+      const brepFaceIndex = triangle_to_face[triangleIndex]
+      if (brepFaceIndex !== undefined) {
+        const query = face_queries[brepFaceIndex]
+        if (query !== undefined) return query
+      }
+    }
+    return `@${featureId}/face/${triangleIndex}`
+  }, [mesh, featureId])
+
   // Handle face click on the mesh
   const handleMeshClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event; faceIndex?: number }) => {
     e.stopPropagation()
     const nativeEvent = e.nativeEvent as MouseEvent | undefined
     const isMultiSelect = nativeEvent?.ctrlKey || nativeEvent?.metaKey
 
-    // Get face index from the event - Three.js raycaster provides faceIndex
-    const faceIndex = e.faceIndex
-    if (faceIndex !== undefined && faceIndex !== null) {
-      const query = `@${featureId}/face/${faceIndex}`
+    // Get triangle index from the event - Three.js raycaster provides faceIndex
+    const triangleIndex = e.faceIndex
+    if (triangleIndex !== undefined && triangleIndex !== null) {
+      const query = resolveFaceQuery(triangleIndex)
       if (isMultiSelect) {
         toggleNormalSelection(query)
       } else {
@@ -188,7 +209,7 @@ export default function Body3D({ featureId, mesh, edges = [], visible = true }: 
       // Fallback: toggle body selection
       toggleNormalSelection('@' + featureId)
     }
-  }, [featureId, toggleNormalSelection])
+  }, [featureId, resolveFaceQuery, toggleNormalSelection])
 
   // Handle edge click on line segments
   const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event; intersection?: { index?: number } }) => {

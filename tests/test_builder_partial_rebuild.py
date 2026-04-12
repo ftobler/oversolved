@@ -1,5 +1,7 @@
-from oversolved.builder import build
-from solver_helpers import rect_sketch_spec
+import pytest
+
+from oversolved.builder import build, _repo_from_snapshot
+from solver_helpers import extrude_spec, rect_sketch_spec
 
 
 def test_partial_rebuild_restores_geometry_exactly():
@@ -68,3 +70,46 @@ def test_build_state_is_separate_key():
     r2 = copy.copy(r)
     r2.pop('_build_state')
     assert '_build_state' not in r2
+
+
+def test_partial_rebuild_restores_brep_face_ancestry_queries():
+    """A cached build state must keep ?face ancestry queries alive for later solves."""
+    pytest.importorskip("OCP.gp")
+
+    sketch = rect_sketch_spec(sketch_id="sk1")
+    extrude = extrude_spec("sk1", "ex1", 3.0)
+    r1 = build({'features': [sketch, extrude]})
+
+    face_query = r1["bodies"]["body_ex1"]["mesh"]["face_queries"][0]
+    plane = {
+        "id": "pl1",
+        "kind": "plane",
+        "definition": {
+            "mode": "on_face",
+            "face": face_query,
+        },
+    }
+
+    r2 = build({'features': [sketch, extrude, plane]}, prev_state=r1["_build_state"])
+
+    assert r2["result"]["pl1"]["status"] == "ok"
+
+
+def test_partial_rebuild_reusing_state_does_not_duplicate_brep_face_ancestry():
+    """Rebuilding from the same cached state twice must not duplicate face ancestry."""
+    pytest.importorskip("OCP.gp")
+
+    sketch = rect_sketch_spec(sketch_id="sk1")
+    extrude = extrude_spec("sk1", "ex1", 3.0)
+    spec = {'features': [sketch, extrude]}
+
+    r1 = build(spec)
+    r2 = build(spec, prev_state=r1["_build_state"])
+    r3 = build(spec, prev_state=r2["_build_state"])
+
+    face_query = r3["bodies"]["body_ex1"]["mesh"]["face_queries"][0]
+    repo = _repo_from_snapshot(r3["_build_state"].checkpoints["ex1"].repo_snapshot)
+    ancestry_ids = repo.anchestral[frozenset(["@ex1face0"])]
+
+    assert repo.query(face_query)["body_id"] == "body_ex1"
+    assert len(ancestry_ids) == 1
