@@ -1088,6 +1088,33 @@ def icon_eye_off(ctx):
         stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/icon-upload.svg")
+def icon_upload(ctx):
+    """Icon for Upload: upward arrow from a bracket."""
+    # Left bracket
+    box_top = 0.65
+    box_bottom = 0.8
+    box_left = 0.25
+    box_right = 1 - box_left
+    ctx.move_to(box_left, box_top)
+    ctx.line_to(box_left, box_bottom)
+    ctx.line_to(box_right, box_bottom)
+    ctx.line_to(box_right, box_top)
+    stroke(ctx, 1.5)
+
+    # Upward arrow
+    ctx.move_to(0.5, 0.35)
+    ctx.line_to(0.5, 0.6)
+    stroke(ctx, 1.5)
+    _arrowhead(ctx, 0.5, 0.20, -90, px(6))
+
+
+@icon("frontend/src/assets/icons/icon-download.svg", angle=180)
+def icon_download(ctx):
+    """Icon for Download: downward arrow from a bracket (flipped upload)."""
+    icon_upload(ctx)
+
+
 @icon("frontend/src/assets/icons/exit-sketch.svg")
 def exit_sketch(ctx):
     """Icon for Exit sketch context menu entry: simple X cross."""

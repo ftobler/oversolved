@@ -29,6 +29,7 @@ import {
   applySetExtrudeDistance,
   applySetExtrudeDirection,
   applySetExtrudeSketch,
+  applyAddImportStep,
 } from '../utils/yamlMutations'
 import type { PartFeature } from '../types/cad'
 
@@ -306,6 +307,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'set_extrude_sketch':
         applySetExtrudeSketch(next, m.featureId, m.sketchQuery)
+        break
+      case 'add_import_step':
+        applyAddImportStep(next, m.featureId, m.fileId, m.label)
         break
     }
     docRef.current = next

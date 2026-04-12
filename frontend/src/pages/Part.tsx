@@ -26,6 +26,7 @@ import toolbarPlayIcon from '../assets/icons/toolbar-play.svg'
 import toolbarCopyCodeIcon from '../assets/icons/toolbar-copy-code.svg'
 import toolbarCopyResultIcon from '../assets/icons/toolbar-copy-result.svg'
 import measurementIcon from '../assets/icons/measurement.svg'
+import featureImportIcon from '../assets/icons/icon-upload.svg'
 
 import contextRebuildIcon from '../assets/icons/context-rebuild.svg'
 import contextExitIcon from '../assets/icons/context-exit.svg'
@@ -92,6 +93,8 @@ function describeMutation(m: Mutation): string {
       return `set extrude direction to ${m.direction}`
     case 'set_extrude_sketch':
       return `set extrude sketch to ${m.sketchQuery}`
+    case 'add_import_step':
+      return `import STEP ${m.label ?? m.featureId}`
   }
 }
 
@@ -306,6 +309,26 @@ export default function Part() {
     setEditingFeatureId(featureId)
     setMode('sketch')
   }, [doc, features.length, handleMutation, setFieldPickState, setMode])
+
+  const handleImportStep = useCallback(() => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.step,.stp'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: form })
+      if (!res.ok) return
+      const data = await res.json() as { file_id?: string }
+      if (!data.file_id) return
+      const featureId = randomId(18)
+      const label = file.name.replace(/\.(step|stp)$/i, '')
+      handleMutation({ type: 'add_import_step', featureId, fileId: data.file_id, label })
+    }
+    input.click()
+  }, [handleMutation])
 
   const handleToggleSketchPlaneVisibility = useCallback(() => {
     handleMutation({ type: 'toggle_sketch_plane_visibility' })
@@ -626,6 +649,7 @@ export default function Part() {
                 <button className="editor-btn" title="Add Extrude (E)" onClick={handleAddExtrude}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
                 <button className="editor-btn" title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
+                <button className="editor-btn" title="Import STEP" onClick={handleImportStep}><img src={featureImportIcon} alt="Import STEP" /></button>
               </>
             )}
           </div>

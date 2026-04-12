@@ -6,6 +6,7 @@ import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
 import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
+import featureImportIcon from '../assets/icons/icon-upload.svg'
 import contextEditIcon from '../assets/icons/context-edit.svg'
 import iconEyeIcon from '../assets/icons/icon-eye.svg'
 import iconEyeOffIcon from '../assets/icons/icon-eye-off.svg'
@@ -114,6 +115,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         return featureExtrudeIcon
       case 'origin':
         return featureOriginIcon
+      case 'import_step':
+        return featureImportIcon
       default:
         return featurePlaneIcon
     }
@@ -488,6 +491,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
                 {feature.kind === 'extrude' && editingFeatureId === feature.id && (
                   <ExtrudeEditor feature={feature} />
+                )}
+                {feature.kind === 'import_step' && feature.id === editingFeatureId && (
+                  <div className="plane-editor">
+                    <div className="feature-field-row">
+                      <span className="feature-field-label">File</span>
+                      <span className="feature-field-value">{feature.file_id ?? '—'}</span>
+                    </div>
+                  </div>
                 )}
               </li>
             </div>

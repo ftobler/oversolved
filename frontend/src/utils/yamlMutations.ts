@@ -552,3 +552,15 @@ export function applySetExtrudeSketch(doc: PartDoc, featureId: string, sketchQue
   }
   feature.extrude.sketch = sketchQuery
 }
+
+export function applyAddImportStep(
+  doc: PartDoc,
+  featureId: string,
+  fileId: string,
+  label?: string,
+): void {
+  if (!doc.features) doc.features = []
+  const feature: PartFeature = { id: featureId, kind: 'import_step', file_id: fileId }
+  if (label) feature.label = label
+  doc.features.push(feature)
+}

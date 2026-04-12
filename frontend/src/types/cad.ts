@@ -136,6 +136,7 @@ export interface PartFeature {
   constraints?: PartConstraint[]
   definition?: PlaneDef
   extrude?: ExtrudeFeatureDef  // present when kind === 'extrude'
+  file_id?: string  // present when kind === 'import_step'
 }
 
 export type Feature = PartFeature
@@ -378,3 +379,4 @@ export type Mutation =
   | { type: 'set_extrude_distance'; featureId: string; distance: number }
   | { type: 'set_extrude_direction'; featureId: string; direction: ExtrudeDirection }
   | { type: 'set_extrude_sketch'; featureId: string; sketchQuery: string }
+  | { type: 'add_import_step'; featureId: string; fileId: string; label?: string }

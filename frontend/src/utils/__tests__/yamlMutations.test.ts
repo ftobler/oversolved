@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc, PartConstraint } from '../../types/cad'
-import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddPointWithConstraint } from '../yamlMutations'
+import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddPointWithConstraint, applyAddImportStep } from '../yamlMutations'
 
 const makeSampleDoc = (): PartDoc => ({
   version: 1,
@@ -675,5 +675,26 @@ describe('applyAddPointWithConstraint', () => {
     expect(doc.features![0].entities).toHaveLength(3)
     const ids = doc.features![0].entities!.map(e => e.id)
     expect(new Set(ids).size).toBe(3)
+  })
+})
+
+describe('applyAddImportStep', () => {
+  it('adds an import_step feature with file_id', () => {
+    const doc: PartDoc = { features: [] }
+    applyAddImportStep(doc, 'f1', 'abc123.step')
+    expect(doc.features).toHaveLength(1)
+    expect(doc.features![0]).toMatchObject({ id: 'f1', kind: 'import_step', file_id: 'abc123.step' })
+  })
+
+  it('sets label when provided', () => {
+    const doc: PartDoc = { features: [] }
+    applyAddImportStep(doc, 'f1', 'abc123.step', 'My Part')
+    expect(doc.features![0].label).toBe('My Part')
+  })
+
+  it('initialises features array when absent', () => {
+    const doc: PartDoc = {}
+    applyAddImportStep(doc, 'f1', 'abc123.step')
+    expect(doc.features).toHaveLength(1)
   })
 })
