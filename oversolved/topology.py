@@ -37,22 +37,25 @@ from typing import Any
 from oversolved.query import make_ancestry_query
 
 _EPS = 1e-9
-_MERGE = 1e-7       # distance tolerance for vertex deduplication
-_SPLIT_EPS = 1e-7   # parametric tolerance for split deduplication
+_MERGE = 1e-7  # distance tolerance for vertex deduplication
+_SPLIT_EPS = 1e-7  # parametric tolerance for split deduplication
 
 
 # ── Geometry helpers ──────────────────────────────────────────────────────────
+
 
 def _angle_in_arc(a_rad: float, start_deg: float, end_deg: float) -> bool:
     """True if angle a_rad lies inside arc [start_deg, end_deg] (CCW, degrees)."""
     s = math.radians(start_deg) % (2 * math.pi)
     e = math.radians(end_deg) % (2 * math.pi)
     a = a_rad % (2 * math.pi)
-    if abs(s - e) < _EPS or abs(s - e) > 2 * math.pi - _EPS:   # full circle or near full circle
+    if (
+        abs(s - e) < _EPS or abs(s - e) > 2 * math.pi - _EPS
+    ):  # full circle or near full circle
         return True
     if s < e:
         return s - _EPS <= a <= e + _EPS
-    return a >= s - _EPS or a <= e + _EPS   # wraps past 0
+    return a >= s - _EPS or a <= e + _EPS  # wraps past 0
 
 
 def _arc_tangent(a_rad: float, ccw: bool = True) -> tuple:
@@ -62,6 +65,7 @@ def _arc_tangent(a_rad: float, ccw: bool = True) -> tuple:
 
 
 # ── Intersection primitives ───────────────────────────────────────────────────
+
 
 def _ll(p1, p2, p3, p4):
     """Segment–segment → (t, u, pt) or None."""
@@ -75,7 +79,7 @@ def _ll(p1, p2, p3, p4):
     u = (dx3 * dy1 - dy3 * dx1) / det
     if not (-_EPS <= t <= 1 + _EPS and -_EPS <= u <= 1 + _EPS):
         return None
-    t, u = max(0., min(1., t)), max(0., min(1., u))
+    t, u = max(0.0, min(1.0, t)), max(0.0, min(1.0, u))
     return t, u, [p1[0] + t * dx1, p1[1] + t * dy1]
 
 
@@ -91,13 +95,13 @@ def _lc(p1, p2, cx, cy, r):
     disc = b * b - 4 * a * c
     if disc < 0:
         return []
-    sd = math.sqrt(max(0., disc))
+    sd = math.sqrt(max(0.0, disc))
     out, seen = [], set()
     for sign in (-1, 1):
         raw = (-b + sign * sd) / (2 * a)
         if not (-_EPS <= raw <= 1 + _EPS):
             continue
-        t = max(0., min(1., raw))
+        t = max(0.0, min(1.0, raw))
         key = round(t, 7)
         if key in seen:
             continue
@@ -116,7 +120,7 @@ def _cc(cx1, cy1, r1, cx2, cy2, r2):
     h2 = r1 * r1 - a * a
     if h2 < 0:
         return []
-    h = math.sqrt(max(0., h2))
+    h = math.sqrt(max(0.0, h2))
     mx = cx1 + a * (cx2 - cx1) / d
     my = cy1 + a * (cy2 - cy1) / d
     ox = h * (cy2 - cy1) / d
@@ -124,75 +128,137 @@ def _cc(cx1, cy1, r1, cx2, cy2, r2):
     pts = [(mx + ox, my - oy), (mx - ox, my + oy)]
     if h < _EPS:
         pts = pts[:1]
-    return [(math.atan2(sy - cy1, sx - cx1), math.atan2(sy - cy2, sx - cx2), [sx, sy])
-            for sx, sy in pts]
+    return [
+        (math.atan2(sy - cy1, sx - cx1), math.atan2(sy - cy2, sx - cx2), [sx, sy])
+        for sx, sy in pts
+    ]
 
 
 def _intersect(eid_a, ea, eid_b, eb, lines, circles, arcs):
     """All (param_a, param_b, pt) intersections between two entities."""
-    ta = 'l' if eid_a in lines else ('c' if eid_a in circles else 'a')
-    tb = 'l' if eid_b in lines else ('c' if eid_b in circles else 'a')
+    ta = "l" if eid_a in lines else ("c" if eid_a in circles else "a")
+    tb = "l" if eid_b in lines else ("c" if eid_b in circles else "a")
 
-    def ia(e, ang): return _angle_in_arc(ang, e['angle_start'], e['angle_end'])
+    def ia(e, ang):
+        return _angle_in_arc(ang, e["angle_start"], e["angle_end"])
 
-    if ta == 'l' and tb == 'l':
-        r = _ll(ea['start'], ea['end'], eb['start'], eb['end'])
+    if ta == "l" and tb == "l":
+        r = _ll(ea["start"], ea["end"], eb["start"], eb["end"])
         return [(r[0], r[1], r[2])] if r else []
 
-    if ta == 'l' and tb == 'c':
-        return [(t, ang, pt)
-                for t, ang, pt in _lc(ea['start'], ea['end'],
-                                      ea if False else eb['center'][0], eb['center'][1], eb['radius'])
+    if ta == "l" and tb == "c":
+        return (
+            [
+                (t, ang, pt)
+                for t, ang, pt in _lc(
+                    ea["start"],
+                    ea["end"],
+                    ea if False else eb["center"][0],
+                    eb["center"][1],
+                    eb["radius"],
+                )
                 # inline expand to avoid *-unpack confusion
-                ] if False else [
-            (t, ang, pt) for t, ang, pt in
-            _lc(ea['start'], ea['end'], eb['center'][0], eb['center'][1], eb['radius'])
+            ]
+            if False
+            else [
+                (t, ang, pt)
+                for t, ang, pt in _lc(
+                    ea["start"],
+                    ea["end"],
+                    eb["center"][0],
+                    eb["center"][1],
+                    eb["radius"],
+                )
+            ]
+        )
+
+    if ta == "c" and tb == "l":
+        return [
+            (ang, t, pt)
+            for t, ang, pt in _lc(
+                eb["start"], eb["end"], ea["center"][0], ea["center"][1], ea["radius"]
+            )
         ]
 
-    if ta == 'c' and tb == 'l':
-        return [(ang, t, pt) for t, ang, pt in
-                _lc(eb['start'], eb['end'], ea['center'][0], ea['center'][1], ea['radius'])]
+    if ta == "l" and tb == "a":
+        return [
+            (t, ang, pt)
+            for t, ang, pt in _lc(
+                ea["start"], ea["end"], eb["center"][0], eb["center"][1], eb["radius"]
+            )
+            if ia(eb, ang)
+        ]
 
-    if ta == 'l' and tb == 'a':
-        return [(t, ang, pt) for t, ang, pt in
-                _lc(ea['start'], ea['end'], eb['center'][0], eb['center'][1], eb['radius'])
-                if ia(eb, ang)]
+    if ta == "a" and tb == "l":
+        return [
+            (ang, t, pt)
+            for t, ang, pt in _lc(
+                eb["start"], eb["end"], ea["center"][0], ea["center"][1], ea["radius"]
+            )
+            if ia(ea, ang)
+        ]
 
-    if ta == 'a' and tb == 'l':
-        return [(ang, t, pt) for t, ang, pt in
-                _lc(eb['start'], eb['end'], ea['center'][0], ea['center'][1], ea['radius'])
-                if ia(ea, ang)]
+    if ta == "c" and tb == "c":
+        return _cc(
+            ea["center"][0],
+            ea["center"][1],
+            ea["radius"],
+            eb["center"][0],
+            eb["center"][1],
+            eb["radius"],
+        )
 
-    if ta == 'c' and tb == 'c':
-        return _cc(ea['center'][0], ea['center'][1], ea['radius'],
-                   eb['center'][0], eb['center'][1], eb['radius'])
+    if ta == "c" and tb == "a":
+        return [
+            (a1, a2, pt)
+            for a1, a2, pt in _cc(
+                ea["center"][0],
+                ea["center"][1],
+                ea["radius"],
+                eb["center"][0],
+                eb["center"][1],
+                eb["radius"],
+            )
+            if ia(eb, a2)
+        ]
 
-    if ta == 'c' and tb == 'a':
-        return [(a1, a2, pt) for a1, a2, pt in
-                _cc(ea['center'][0], ea['center'][1], ea['radius'],
-                    eb['center'][0], eb['center'][1], eb['radius'])
-                if ia(eb, a2)]
+    if ta == "a" and tb == "c":
+        return [
+            (a1, a2, pt)
+            for a1, a2, pt in _cc(
+                ea["center"][0],
+                ea["center"][1],
+                ea["radius"],
+                eb["center"][0],
+                eb["center"][1],
+                eb["radius"],
+            )
+            if ia(ea, a1)
+        ]
 
-    if ta == 'a' and tb == 'c':
-        return [(a1, a2, pt) for a1, a2, pt in
-                _cc(ea['center'][0], ea['center'][1], ea['radius'],
-                    eb['center'][0], eb['center'][1], eb['radius'])
-                if ia(ea, a1)]
-
-    if ta == 'a' and tb == 'a':
-        return [(a1, a2, pt) for a1, a2, pt in
-                _cc(ea['center'][0], ea['center'][1], ea['radius'],
-                    eb['center'][0], eb['center'][1], eb['radius'])
-                if ia(ea, a1) and ia(eb, a2)]
+    if ta == "a" and tb == "a":
+        return [
+            (a1, a2, pt)
+            for a1, a2, pt in _cc(
+                ea["center"][0],
+                ea["center"][1],
+                ea["radius"],
+                eb["center"][0],
+                eb["center"][1],
+                eb["radius"],
+            )
+            if ia(ea, a1) and ia(eb, a2)
+        ]
 
     return []
 
 
 # ── Vertex registry ───────────────────────────────────────────────────────────
 
+
 def _vid(verts: dict, pt) -> str:
     for k, v in verts.items():
-        if (v[0] - pt[0]) ** 2 + (v[1] - pt[1]) ** 2 < _MERGE ** 2:
+        if (v[0] - pt[0]) ** 2 + (v[1] - pt[1]) ** 2 < _MERGE**2:
             return k
     k = f"_v{len(verts)}"
     verts[k] = [float(pt[0]), float(pt[1])]
@@ -224,54 +290,104 @@ def _dedup(spl):
     return out
 
 
+def _build_edge_queries(hes, he_eid, feature_id, verts) -> list[dict]:
+    """Build ancestry queries for each unique edge in the half-edge graph.
+
+    Each edge is identified by the two boundary entities it connects.
+    Returns list of {query, start, end, kind, ...} for each edge.
+    """
+    edge_map: dict[tuple, dict] = {}  # (entity_a, entity_b, edge_idx) -> edge data
+
+    for i, (v0, v1, eg) in enumerate(hes):
+        eid = he_eid[i]
+        edge_key = (eid, i)
+        if edge_key not in edge_map:
+            edge_map[edge_key] = {
+                **eg,
+                "start_vertex": v0,
+                "end_vertex": v1,
+            }
+
+    edges = []
+    edge_idx = 0
+    for i, (v0, v1, eg) in enumerate(hes):
+        if i % 2 == 0:
+            eid = he_eid[i]
+            edge_data = {
+                **eg,
+                "start_vertex": v0,
+                "end_vertex": v1,
+            }
+            ancestor_ids = ["@" + feature_id + eid, f"edge:{edge_idx}"]
+            query = make_ancestry_query(ancestor_ids, "edge")
+            edges.append(
+                {
+                    "query": query,
+                    "entity_id": eid,
+                    "edge_index": edge_idx,
+                    "start": edge_data["start"],
+                    "end": edge_data["end"],
+                    "kind": edge_data["kind"],
+                }
+            )
+            if "center" in edge_data:
+                edges[-1]["center"] = edge_data["center"]
+                edges[-1]["radius"] = edge_data["radius"]
+            edge_idx += 1
+
+    return edges
+
+
 # ── Half-edge geometry constructors ──────────────────────────────────────────
 
+
 def _line_eg(e, t0: float, t1: float) -> dict:
-    p1, p2 = e['start'], e['end']
+    p1, p2 = e["start"], e["end"]
     s = [p1[0] + t0 * (p2[0] - p1[0]), p1[1] + t0 * (p2[1] - p1[1])]
     d = [p1[0] + t1 * (p2[0] - p1[0]), p1[1] + t1 * (p2[1] - p1[1])]
-    return {'kind': 'line', 'start': s, 'end': d}
+    return {"kind": "line", "start": s, "end": d}
 
 
 def _arc_eg(e, a0: float, a1: float, ccw: bool = True) -> dict:
-    cx, cy, r = e['center'][0], e['center'][1], e['radius']
+    cx, cy, r = e["center"][0], e["center"][1], e["radius"]
     return {
-        'kind': 'arc',
-        'center': [cx, cy],
-        'radius': r,
-        'angle_start_deg': math.degrees(a0),
-        'angle_end_deg': math.degrees(a1),
-        'ccw': ccw,
-        'start': [cx + r * math.cos(a0), cy + r * math.sin(a0)],
-        'end':   [cx + r * math.cos(a1), cy + r * math.sin(a1)],
+        "kind": "arc",
+        "center": [cx, cy],
+        "radius": r,
+        "angle_start_deg": math.degrees(a0),
+        "angle_end_deg": math.degrees(a1),
+        "ccw": ccw,
+        "start": [cx + r * math.cos(a0), cy + r * math.sin(a0)],
+        "end": [cx + r * math.cos(a1), cy + r * math.sin(a1)],
     }
 
 
 def _rev(eg: dict) -> dict:
     """Reverse a half-edge geometry (swap start/end, flip arc direction)."""
-    if eg['kind'] == 'line':
-        return {'kind': 'line', 'start': eg['end'], 'end': eg['start']}
+    if eg["kind"] == "line":
+        return {"kind": "line", "start": eg["end"], "end": eg["start"]}
     return {
         **eg,
-        'angle_start_deg': eg['angle_end_deg'],
-        'angle_end_deg':   eg['angle_start_deg'],
-        'ccw': not eg.get('ccw', True),
-        'start': eg['end'],
-        'end':   eg['start'],
+        "angle_start_deg": eg["angle_end_deg"],
+        "angle_end_deg": eg["angle_start_deg"],
+        "ccw": not eg.get("ccw", True),
+        "start": eg["end"],
+        "end": eg["start"],
     }
 
 
 def _depart(egeom: dict, verts: dict, vf_id: str) -> float:
     """Departure angle of a half-edge leaving vertex vf_id."""
-    if egeom['kind'] == 'line':
-        s, d = egeom['start'], egeom['end']
+    if egeom["kind"] == "line":
+        s, d = egeom["start"], egeom["end"]
         return math.atan2(d[1] - s[1], d[0] - s[0])
-    a = math.radians(egeom['angle_start_deg'])
-    tx, ty = _arc_tangent(a, egeom.get('ccw', True))
+    a = math.radians(egeom["angle_start_deg"])
+    tx, ty = _arc_tangent(a, egeom.get("ccw", True))
     return math.atan2(ty, tx)
 
 
 # ── Signed area of a face cycle ───────────────────────────────────────────────
+
 
 def _face_area(cycle, hes, verts) -> float:
     """Shoelace area, sampling arc midpoints for curved edges."""
@@ -279,43 +395,49 @@ def _face_area(cycle, hes, verts) -> float:
     for i in cycle:
         vf, _vt, eg = hes[i]
         pts.append(verts[vf])
-        if eg['kind'] == 'arc':
-            a0 = math.radians(eg['angle_start_deg'])
-            a1 = math.radians(eg['angle_end_deg'])
-            if not eg.get('ccw', True):
+        if eg["kind"] == "arc":
+            a0 = math.radians(eg["angle_start_deg"])
+            a1 = math.radians(eg["angle_end_deg"])
+            if not eg.get("ccw", True):
                 a0, a1 = a1, a0
             if a1 < a0:
                 a1 += 2 * math.pi
             am = (a0 + a1) / 2
-            cx, cy, r = eg['center'][0], eg['center'][1], eg['radius']
+            cx, cy, r = eg["center"][0], eg["center"][1], eg["radius"]
             pts.append([cx + r * math.cos(am), cy + r * math.sin(am)])
     n = len(pts)
-    return sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1]
-               for i in range(n)) / 2.0
+    return (
+        sum(
+            pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1]
+            for i in range(n)
+        )
+        / 2.0
+    )
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
-def detect_topology(geometry: dict, feature_id: str = '') -> dict:
+
+def detect_topology(geometry: dict, feature_id: str = "") -> dict:
     """Detect intersection points and bounded surfaces in solved sketch geometry."""
 
     lines, circles, arcs = {}, {}, {}
     for eid, e in geometry.items():
-        if e.get('construction'):
+        if e.get("construction"):
             continue
-        if 'start' in e and 'radius' in e:
+        if "start" in e and "radius" in e:
             arcs[eid] = e
-        elif 'start' in e:
+        elif "start" in e:
             lines[eid] = e
-        elif 'center' in e:
+        elif "center" in e:
             circles[eid] = e
 
-    verts: dict = {}     # vid -> [x, y]
-    splits: dict = {}    # eid -> [(param, vid)]
-    arc_a0: dict = {}    # eid -> arc start angle (for parameter normalisation)
+    verts: dict = {}  # vid -> [x, y]
+    splits: dict = {}  # eid -> [(param, vid)]
+    arc_a0: dict = {}  # eid -> arc start angle (for parameter normalisation)
 
     for eid, e in lines.items():
-        splits[eid] = [(0.0, _vid(verts, e['start'])), (1.0, _vid(verts, e['end']))]
+        splits[eid] = [(0.0, _vid(verts, e["start"])), (1.0, _vid(verts, e["end"]))]
 
     for eid in circles:
         splits[eid] = []
@@ -326,29 +448,31 @@ def detect_topology(geometry: dict, feature_id: str = '') -> dict:
     # Swapping produces an equivalent CCW arc so the rest of the algorithm works uniformly.
     for eid in list(arcs.keys()):
         e = arcs[eid]
-        a0_rad = math.radians(e['angle_start'])
-        a1_rad = math.radians(e['angle_end'])
-        ccw_span = (a1_rad - a0_rad) % (2 * math.pi)   # always in [0, 2π)
-        if ccw_span > math.pi + _EPS:                   # > 180° → arc is actually CW
-            arcs[eid] = {**e,
-                         'angle_start': e['angle_end'],
-                         'angle_end':   e['angle_start'],
-                         'start': e['end'],
-                         'end':   e['start']}
+        a0_rad = math.radians(e["angle_start"])
+        a1_rad = math.radians(e["angle_end"])
+        ccw_span = (a1_rad - a0_rad) % (2 * math.pi)  # always in [0, 2π)
+        if ccw_span > math.pi + _EPS:  # > 180° → arc is actually CW
+            arcs[eid] = {
+                **e,
+                "angle_start": e["angle_end"],
+                "angle_end": e["angle_start"],
+                "start": e["end"],
+                "end": e["start"],
+            }
 
     for eid, e in arcs.items():
-        a0 = math.radians(e['angle_start'])
-        a1 = math.radians(e['angle_end'])
+        a0 = math.radians(e["angle_start"])
+        a1 = math.radians(e["angle_end"])
         # Normalise a1 into [a0, a0+2π) so that CCW arcs crossing 0° sort correctly.
         a1 = _norm_arc_param(a1, a0)
         arc_a0[eid] = a0
-        splits[eid] = [(a0, _vid(verts, e['start'])), (a1, _vid(verts, e['end']))]
+        splits[eid] = [(a0, _vid(verts, e["start"])), (a1, _vid(verts, e["end"]))]
 
     # Track which vertex IDs come from entity endpoints (not intersections)
     endpoint_vids = set(verts.keys())
 
     # Find all pairwise intersections and record splits
-    elist = (list(lines.items()) + list(circles.items()) + list(arcs.items()))
+    elist = list(lines.items()) + list(circles.items()) + list(arcs.items())
     for i in range(len(elist)):
         eid_a, ea = elist[i]
         for j in range(i + 1, len(elist)):
@@ -369,7 +493,7 @@ def detect_topology(geometry: dict, feature_id: str = '') -> dict:
 
     # Build half-edge list: (vfrom, vto, egeom)
     hes = []
-    he_eid = []   # source entity ID for each half-edge (parallel to hes)
+    he_eid = []  # source entity ID for each half-edge (parallel to hes)
 
     for eid, e in lines.items():
         spl = _dedup(splits[eid])
@@ -446,41 +570,71 @@ def detect_topology(geometry: dict, feature_id: str = '') -> dict:
                 if cur == start:
                     break
             if cycle and cur == start and _face_area(cycle, hes, verts) > 1e-10:
-                abs_ids = sorted('@' + feature_id + he_eid[i] for i in cycle)
+                abs_ids = sorted("@" + feature_id + he_eid[i] for i in cycle)
                 # Add surface index to disambiguate queries when multiple surfaces
                 # share the same boundary entities (prevents AmbiguousQueryError).
-                abs_ids_with_index = abs_ids + [f'surface:{len(surfaces)}']
-                query = make_ancestry_query(abs_ids_with_index, 'face')
-                surfaces.append({'boundary': [
-                    {**hes[i][2], 'start_vertex': hes[i][0], 'end_vertex': hes[i][1]}
-                    for i in cycle
-                ], 'query': query})
+                abs_ids_with_index = abs_ids + [f"surface:{len(surfaces)}"]
+                query = make_ancestry_query(abs_ids_with_index, "face")
+                surfaces.append(
+                    {
+                        "boundary": [
+                            {
+                                **hes[i][2],
+                                "start_vertex": hes[i][0],
+                                "end_vertex": hes[i][1],
+                            }
+                            for i in cycle
+                        ],
+                        "query": query,
+                    }
+                )
 
     # Standalone circles (no intersections) → one surface each.
     # Represented as two semicircle arcs so the SVG path is non-degenerate
     # (a single arc from a point back to itself collapses to zero in SVG).
     for eid, e in circles.items():
         if len(_dedup(splits.get(eid, []))) < 2:
-            cx, cy, r = e['center'][0], e['center'][1], e['radius']
+            cx, cy, r = e["center"][0], e["center"][1], e["radius"]
             # Add surface index to disambiguate when multiple surfaces exist.
-            ancestor_ids = ['@' + feature_id + eid, f'surface:{len(surfaces)}']
-            query = make_ancestry_query(ancestor_ids, 'face')
-            surfaces.append({'boundary': [
-                {'kind': 'arc', 'center': [cx, cy], 'radius': r,
-                 'angle_start_deg': 0., 'angle_end_deg': 180., 'ccw': True,
-                 'start': [cx + r, cy], 'end': [cx - r, cy],
-                 'start_vertex': None, 'end_vertex': None},
-                {'kind': 'arc', 'center': [cx, cy], 'radius': r,
-                 'angle_start_deg': 180., 'angle_end_deg': 360., 'ccw': True,
-                 'start': [cx - r, cy], 'end': [cx + r, cy],
-                 'start_vertex': None, 'end_vertex': None},
-            ], 'query': query})
+            ancestor_ids = ["@" + feature_id + eid, f"surface:{len(surfaces)}"]
+            query = make_ancestry_query(ancestor_ids, "face")
+            surfaces.append(
+                {
+                    "boundary": [
+                        {
+                            "kind": "arc",
+                            "center": [cx, cy],
+                            "radius": r,
+                            "angle_start_deg": 0.0,
+                            "angle_end_deg": 180.0,
+                            "ccw": True,
+                            "start": [cx + r, cy],
+                            "end": [cx - r, cy],
+                            "start_vertex": None,
+                            "end_vertex": None,
+                        },
+                        {
+                            "kind": "arc",
+                            "center": [cx, cy],
+                            "radius": r,
+                            "angle_start_deg": 180.0,
+                            "angle_end_deg": 360.0,
+                            "ccw": True,
+                            "start": [cx - r, cy],
+                            "end": [cx + r, cy],
+                            "start_vertex": None,
+                            "end_vertex": None,
+                        },
+                    ],
+                    "query": query,
+                }
+            )
 
     return {
-        'intersection_points': {
-            vid: {'x': verts[vid][0], 'y': verts[vid][1]}
-            for vid in intersection_vids
+        "intersection_points": {
+            vid: {"x": verts[vid][0], "y": verts[vid][1]} for vid in intersection_vids
         },
-        'vertices': {vid: {'x': v[0], 'y': v[1]} for vid, v in verts.items()},
-        'surfaces': surfaces,
+        "vertices": {vid: {"x": v[0], "y": v[1]} for vid, v in verts.items()},
+        "edges": _build_edge_queries(hes, he_eid, feature_id, verts),
+        "surfaces": surfaces,
     }

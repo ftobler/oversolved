@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react'
 import * as THREE from 'three'
-import type { Topology, TopologySurface, TopologyEdge, TopologyArcEdge, Point } from '../../types/cad'
+import type { Topology, TopologySurface, TopologyEdge, TopologyArcEdge, TopologyEdgeQuery, Point } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { ARC_SEGMENTS, COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE } from './constants'
-import { surfaceSelectionId } from './utils'
+import { surfaceSelectionId, edgeSelectionId } from './utils'
 
 type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string }
 
@@ -84,6 +84,83 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
       <shapeGeometry args={[shape]} />
       <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
+  )
+}
+
+interface EdgeMeshProps {
+  edge: TopologyEdgeQuery
+  featureId: string
+}
+
+function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
+  const [hovered, setHovered] = useState(false)
+  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
+  const normalSelection = useSketchEditorStore(s => s.normalSelection)
+  const isRotating = useSketchEditorStore(s => s.isRotating)
+  const setHoveredEdge = useSketchEditorStore(s => s.setHoveredEdge)
+
+  const id = edgeSelectionId(featureId, edge.query)
+  const isSelected = normalSelection.has(id)
+
+  const color = isSelected ? COLOR_SELECTED : (hovered ? COLOR_HOVER : 'white')
+
+  const start = edge.start
+  const end = edge.end
+
+  if (edge.kind === 'arc' && edge.center && edge.radius !== undefined) {
+    const cx = edge.center[0]
+    const cy = edge.center[1]
+    const r = edge.radius
+    const a0 = edge.angle_start_deg ?? 0
+    const a1 = edge.angle_end_deg ?? 0
+
+    const curve = new THREE.EllipseCurve(cx, cy, r, r, (a0 * Math.PI) / 180, (a1 * Math.PI) / 180, false, 0)
+    const points = curve.getPoints(32)
+    const geometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, 0)))
+
+    return (
+      <line
+        onPointerOver={(e) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredEdge(id) }}
+        onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }}
+        onClick={(e) => { e.stopPropagation(); toggleNormalSelection(id) }}
+      >
+        <primitive object={geometry} attach="geometry" />
+        <lineBasicMaterial color={color} linewidth={2} />
+      </line>
+    )
+  }
+
+  const geometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([...start, ...end]), 3))
+    return geo
+  }, [start, end])
+
+  return (
+    <line
+      onPointerOver={(e) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredEdge(id) }}
+      onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }}
+      onClick={(e) => { e.stopPropagation(); toggleNormalSelection(id) }}
+    >
+      <primitive object={geometry} attach="geometry" />
+      <lineBasicMaterial color={color} linewidth={2} />
+    </line>
+  )
+}
+
+interface TopologyEdgesProps {
+  topology: Topology
+  featureId: string
+}
+
+export function TopologyEdges({ topology, featureId }: TopologyEdgesProps) {
+  const edges = topology.edges ?? []
+  return (
+    <>
+      {edges.map((edge, ei) => (
+        <EdgeMesh key={ei} edge={edge} featureId={featureId} />
+      ))}
+    </>
   )
 }
 

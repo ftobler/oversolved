@@ -6,7 +6,7 @@ import yaml
 import numpy as np
 from scipy.optimize import least_squares
 from oversolved.topology import detect_topology
-from oversolved.query import Repository, _parse_ancestry
+from oversolved.query import Repository, _parse_ancestry, make_ancestry_query
 
 
 def _init_global_repo() -> Repository:
@@ -99,16 +99,19 @@ def _post_register(
         pt = feature_result.get("plane_transform")
         if pt:
             rot = pt["rotation"]
+            plane_obj = {
+                "type": "face",
+                "origin": pt["origin"],
+                "x_axis": rot[0:3],
+                "y_axis": rot[3:6],
+                "normal": rot[6:9],
+            }
             _register_topology_surfaces(
-                global_repo,
-                feature_result["topology"],
-                {
-                    "type": "face",
-                    "origin": pt["origin"],
-                    "x_axis": rot[0:3],
-                    "y_axis": rot[3:6],
-                    "normal": rot[6:9],
-                },
+                global_repo, feature_result["topology"], plane_obj
+            )
+            _register_topology_edges(global_repo, feature_result["topology"], plane_obj)
+            _register_topology_vertices(
+                global_repo, feature_result["topology"], plane_obj
             )
 
 
@@ -519,6 +522,88 @@ def _register_topology_surfaces(
         )
 
 
+def _register_topology_edges(
+    global_repo: Repository, topology: dict, plane_obj: dict
+) -> None:
+    """Register each topology edge with its ancestry query."""
+    x_axis = plane_obj["x_axis"]
+    y_axis = plane_obj["y_axis"]
+    origin = plane_obj["origin"]
+
+    for edge in topology.get("edges", []):
+        query = edge.get("query")
+        if not query or not query.startswith("?"):
+            continue
+
+        start_2d = edge.get("start", [0, 0])
+        end_2d = edge.get("end", [0, 0])
+
+        world_start = [
+            origin[0] + start_2d[0] * x_axis[0] + start_2d[1] * y_axis[0],
+            origin[1] + start_2d[0] * x_axis[1] + start_2d[1] * y_axis[1],
+            origin[2] + start_2d[0] * x_axis[2] + start_2d[1] * y_axis[2],
+        ]
+        world_end = [
+            origin[0] + end_2d[0] * x_axis[0] + end_2d[1] * y_axis[0],
+            origin[1] + end_2d[0] * x_axis[1] + end_2d[1] * y_axis[1],
+            origin[2] + end_2d[0] * x_axis[2] + end_2d[1] * y_axis[2],
+        ]
+
+        edge_data = {
+            "type": "edge",
+            "kind": edge.get("kind", "line"),
+            "start": world_start,
+            "end": world_end,
+        }
+
+        if "center" in edge:
+            cx_2d, cy_2d = edge["center"]
+            edge_data["center"] = [
+                origin[0] + cx_2d * x_axis[0] + cy_2d * y_axis[0],
+                origin[1] + cx_2d * x_axis[1] + cy_2d * y_axis[1],
+                origin[2] + cx_2d * x_axis[2] + cy_2d * y_axis[2],
+            ]
+            edge_data["radius"] = edge["radius"]
+
+        ids, _ = _parse_ancestry(query)
+        global_repo.register_anchestor(ids, edge_data)
+
+
+def _register_topology_vertices(
+    global_repo: Repository, topology: dict, plane_obj: dict
+) -> None:
+    """Register each topology vertex with its ancestry query."""
+    x_axis = plane_obj["x_axis"]
+    y_axis = plane_obj["y_axis"]
+    origin = plane_obj["origin"]
+
+    all_vertices = {}
+    all_vertices.update(topology.get("vertices", {}))
+    all_vertices.update(topology.get("intersection_points", {}))
+
+    for vid, v in all_vertices.items():
+        xy_2d = [v.get("x", 0), v.get("y", 0)]
+        world_xy = [
+            origin[0] + xy_2d[0] * x_axis[0] + xy_2d[1] * y_axis[0],
+            origin[1] + xy_2d[0] * x_axis[1] + xy_2d[1] * y_axis[1],
+            origin[2] + xy_2d[0] * x_axis[2] + xy_2d[1] * y_axis[2],
+        ]
+
+        ancestor_ids = [vid, "pt"]
+        query = make_ancestry_query(ancestor_ids, "pt")
+
+        ids, _ = _parse_ancestry(query)
+        global_repo.register_anchestor(
+            ids,
+            {
+                "type": "pt",
+                "x": world_xy[0],
+                "y": world_xy[1],
+                "z": world_xy[2],
+            },
+        )
+
+
 def _try_solve_feature(feature: Any, global_repo: Repository, body_store: dict) -> dict:
     t0 = time.perf_counter()
     try:
@@ -556,7 +641,7 @@ def _geometry_from_array(x, entities: dict, entity_offsets: dict) -> dict[str, A
     out: dict[str, Any] = {}
     for eid, entity in entities.items():
         off = entity_offsets[eid]
-        ep = x[off:off + ENTITY_SIZES[entity["kind"]]]
+        ep = x[off : off + ENTITY_SIZES[entity["kind"]]]
         kind = entity["kind"]
         is_construction = entity.get("construction", False)
         if kind == "line":
@@ -634,7 +719,7 @@ def _params_from_array(x, entities: dict, entity_offsets: dict) -> dict:
     for eid, entity in entities.items():
         off = entity_offsets[eid]
         size = ENTITY_SIZES[entity["kind"]]
-        out[eid] = [round(float(v), 10) for v in x[off:off + size]]
+        out[eid] = [round(float(v), 10) for v in x[off : off + size]]
     return out
 
 
@@ -1003,7 +1088,11 @@ def _resolve_plane_early(
     plane_query: Optional[str], global_repo: Optional[Repository]
 ) -> dict:
     """Quick plane resolution without full repo setup (used before entity_offsets are built)."""
-    _BARE_ID_MAP = {"Top": "builtin_plane_top", "Front": "builtin_plane_front", "Right": "builtin_plane_right"}
+    _BARE_ID_MAP = {
+        "Top": "builtin_plane_top",
+        "Front": "builtin_plane_front",
+        "Right": "builtin_plane_right",
+    }
     if not plane_query:
         return _FRONT_PLANE
     if plane_query in _BARE_ID_MAP:
@@ -1443,6 +1532,7 @@ def _tessellate_edge(edge: dict) -> list[list[float]]:
     For arc edges returns ARC_SEGMENTS-proportional intermediate points plus the end.
     """
     import math
+
     kind = edge.get("kind", "line")
     end = edge.get("end")
     if kind == "arc":
@@ -1456,7 +1546,9 @@ def _tessellate_edge(edge: dict) -> list[list[float]]:
         pts = []
         for i in range(1, steps + 1):
             a = (a0 + span * i / steps) * math.pi / 180
-            pts.append([center[0] + radius * math.cos(a), center[1] + radius * math.sin(a)])
+            pts.append(
+                [center[0] + radius * math.cos(a), center[1] + radius * math.sin(a)]
+            )
         return pts
     # line: just the endpoint
     if end is not None:
@@ -1877,7 +1969,11 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         ):
             plane_obj = global_repo.elements.get(plane_query[1:])
         if plane_obj is None or plane_obj.get("type") not in ("plane", "face"):
-            _bare = {"Top": "builtin_plane_top", "Front": "builtin_plane_front", "Right": "builtin_plane_right"}
+            _bare = {
+                "Top": "builtin_plane_top",
+                "Front": "builtin_plane_front",
+                "Right": "builtin_plane_right",
+            }
             plane_obj = _BUILTIN_PLANES.get(_bare.get(plane_query, ""), _FRONT_PLANE)
     else:
         plane_obj = _FRONT_PLANE
@@ -2003,7 +2099,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     def get_params(x, eid):
         off = entity_offsets[eid]
         size = ENTITY_SIZES[entities[eid]["kind"]]
-        return x[off:off + size]
+        return x[off : off + size]
 
     def get_point(x, ref):
         if "external_xy" in ref:

@@ -13,7 +13,7 @@ import { EntityLines, ProjectedEntities, sketchExtent } from './EntityLines'
 import { ConstraintOverlays } from './Constraints'
 
 // Topology surface rendering
-import { TopologySurfaces } from './Surfaces'
+import { TopologySurfaces, TopologyEdges } from './Surfaces'
 
 // Dragging
 import { DragPlane, DragSnapIndicator, DragAlignmentIndicator, applyDragPreview } from './Dragging'
@@ -98,6 +98,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   return (
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && <TopologySurfaces topology={topology} featureId={featureId} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
+      {topology && <TopologyEdges topology={topology} featureId={featureId} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} planeGroupRef={groupRef} showDebugHit={showDebugHit ?? false} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />
       {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} />}
@@ -115,7 +116,7 @@ export { VertexDot, HitPolyline, VertexHighlight, ProjectedOriginPoint }
 // eslint-disable-next-line react-refresh/only-export-components
 export { EntityLines, ProjectedEntities, sketchExtent }
 export { ConstraintOverlays }
-export { TopologySurfaces }
+export { TopologySurfaces, TopologyEdges }
 // eslint-disable-next-line react-refresh/only-export-components
 export { DragPlane, DragSnapIndicator, DragAlignmentIndicator, applyDragPreview }
 export { DrawPreview, DrawPlane }

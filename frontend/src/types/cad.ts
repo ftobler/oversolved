@@ -328,9 +328,23 @@ export interface TopologySurface {
   query: string
 }
 
+export interface TopologyEdgeQuery {
+  query: string
+  entity_id: string
+  edge_index: number
+  start: Point
+  end: Point
+  kind: string
+  center?: Point
+  radius?: number
+  angle_start_deg?: number
+  angle_end_deg?: number
+}
+
 export interface Topology {
   intersection_points: Record<string, { x: number; y: number }>
   vertices: Record<string, { x: number; y: number }>
+  edges: TopologyEdgeQuery[]
   surfaces: TopologySurface[]
 }
 

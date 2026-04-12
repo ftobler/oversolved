@@ -54,6 +54,7 @@ describe('buildSurfaceShapes', () => {
     const topology: Topology = {
       vertices: {},
       intersection_points: {},
+      edges: [],
       surfaces: [{
         query: '?3;@sketcha',
         boundary: [
@@ -75,6 +76,7 @@ describe('buildSurfaceShapes', () => {
     const topology: Topology = {
       vertices: {},
       intersection_points: {},
+      edges: [],
       surfaces: [{
         query: '?1;@a',
         boundary: [
@@ -91,6 +93,7 @@ describe('buildSurfaceShapes', () => {
     const topology: Topology = {
       vertices: {},
       intersection_points: {},
+      edges: [],
       surfaces: [{
         query: '?2;@ab',
         boundary: [
@@ -118,7 +121,7 @@ describe('buildSurfaceShapes', () => {
   })
 
   it('returns an empty array when topology has no surfaces', () => {
-    const topology: Topology = { vertices: {}, intersection_points: {}, surfaces: [] }
+    const topology: Topology = { vertices: {}, intersection_points: {}, edges: [], surfaces: [] }
     expect(buildSurfaceShapes(topology)).toHaveLength(0)
   })
 })
