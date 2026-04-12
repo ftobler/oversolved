@@ -5,6 +5,9 @@ export interface BodyRenderItem {
   featureId: string
   mesh: NonNullable<BodyResult['mesh']>
   edges: EdgeData[]
+  edgeQueries?: string[]
+  vertices?: [number, number, number][]
+  vertexQueries?: string[]
   visible: boolean
 }
 
@@ -32,6 +35,9 @@ export function getBodiesToRender(
       featureId: bodyId,
       mesh: body.mesh,
       edges: body.edges ?? [],
+      edgeQueries: body.edge_queries,
+      vertices: body.vertices,
+      vertexQueries: body.vertex_queries,
       visible: visibleFeatures ? visibleFeatures.has(createdBy) : true,
     })
   }

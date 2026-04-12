@@ -507,11 +507,12 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
     }
 
 
-def solid_to_edges(solid: Any) -> list[dict]:
+def solid_to_edges(solid: Any, created_by: str | None = None) -> dict:
     """Extract exact edge geometry from an OCC solid.
 
-    Returns a list of edge dicts, one per unique edge, with kind "line",
-    "circle", "arc", or "spline".
+    Returns a dict with keys "edges" (list of edge dicts, one per unique edge,
+    with kind "line", "circle", "arc", or "spline") and "edge_queries" (list of
+    ancestry query strings, populated only when created_by is set).
     """
     import math
 
@@ -528,7 +529,9 @@ def solid_to_edges(solid: Any) -> list[dict]:
     CIRCLE_TOL = 1e-4
 
     edges: list[dict] = []
+    edge_queries: list[str] = []
     seen: list[Any] = []  # TopoDS_Edge objects for IsSame deduplication
+    idx = 0
 
     explorer = TopExp_Explorer(solid, TopAbs_EDGE)
     while explorer.More():
@@ -587,9 +590,42 @@ def solid_to_edges(solid: Any) -> list[dict]:
                 points.append([pt.X(), pt.Y(), pt.Z()])
             edges.append({"kind": "spline", "points": points})
 
+        if created_by:
+            from oversolved.query import make_ancestry_query  # noqa: PLC0415
+            edge_queries.append(make_ancestry_query([f"@{created_by}edge{idx}"], "edge"))
+        idx += 1
         explorer.Next()
 
-    return edges
+    return {"edges": edges, "edge_queries": edge_queries}
+
+
+def solid_to_vertices(solid: Any, created_by: str | None = None) -> dict:
+    """Extract unique B-rep vertices from an OCC solid."""
+    from OCP.BRep import BRep_Tool  # noqa: PLC0415
+    from OCP.TopAbs import TopAbs_VERTEX  # noqa: PLC0415
+    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS  # noqa: PLC0415
+
+    vertices: list[list[float]] = []
+    vertex_queries: list[str] = []
+    seen: list[Any] = []
+
+    explorer = TopExp_Explorer(solid, TopAbs_VERTEX)
+    while explorer.More():
+        v = TopoDS.Vertex_s(explorer.Current())
+        if any(v.IsSame(s) for s in seen):
+            explorer.Next()
+            continue
+        seen.append(v)
+        pt = BRep_Tool.Pnt_s(v)
+        vertices.append([pt.X(), pt.Y(), pt.Z()])
+        if created_by:
+            from oversolved.query import make_ancestry_query  # noqa: PLC0415
+            idx = len(vertices) - 1
+            vertex_queries.append(make_ancestry_query([f"@{created_by}vertex{idx}"], "vertex"))
+        explorer.Next()
+
+    return {"vertices": vertices, "vertex_queries": vertex_queries}
 
 
 def step_file_to_shape(filepath: str, scale: float = 1.0) -> Any:

@@ -33,6 +33,7 @@ export const CLICK_THRESHOLD_PX = 4
 
 // Visualization
 export const ARC_SEGMENTS = 64
+export const VERTEX_RADIUS = 0.04
 
 // Debug and z-offset (re-exported from Sketch3D constants)
 export const POINT_HIT_PIXELS_Z_OFFSET = 10

@@ -358,7 +358,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         })}
 
         {bodyItems.map(b => (
-          <Body3D key={b.key} featureId={b.featureId} mesh={b.mesh} edges={b.edges} visible={b.visible} />
+          <Body3D key={b.key} featureId={b.featureId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} />
         ))}
       </Canvas>
 

@@ -15,6 +15,8 @@ from oversolved.geometry import (  # noqa: E402
     boolean_cut,
     boolean_union,
     solid_to_mesh,
+    solid_to_edges,
+    solid_to_vertices,
     step_file_to_shape,
 )
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
@@ -312,3 +314,44 @@ def test_triangular_extrude_has_five_faces():
     assert len(mesh["faces"]) == 8, (
         f"expected 8 triangles for triangular prism, got {len(mesh['faces'])}"
     )
+
+
+def test_solid_to_edges_returns_dict_with_edge_queries():
+    """solid_to_edges returns dict with edges and edge_queries when created_by provided."""
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    result = solid_to_edges(box, created_by="ext1")
+    assert "edges" in result
+    assert "edge_queries" in result
+    assert len(result["edge_queries"]) == len(result["edges"])
+    for q in result["edge_queries"]:
+        assert q.startswith("?")
+        assert q.endswith(":edge")
+        assert "ext1" in q
+
+
+def test_solid_to_edges_no_created_by_returns_empty_queries():
+    """solid_to_edges without created_by returns edges but no queries."""
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    result = solid_to_edges(box)
+    assert result["edge_queries"] == []
+    assert len(result["edges"]) > 0
+
+
+def test_solid_to_vertices_box_has_eight_vertices():
+    """A unit box should have exactly 8 unique vertices."""
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    result = solid_to_vertices(box)
+    assert "vertices" in result
+    assert "vertex_queries" in result
+    assert len(result["vertices"]) == 8
+
+
+def test_solid_to_vertices_generates_queries():
+    """solid_to_vertices with created_by generates one query per vertex."""
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    result = solid_to_vertices(box, created_by="ext1")
+    assert len(result["vertex_queries"]) == 8
+    for q in result["vertex_queries"]:
+        assert q.startswith("?")
+        assert q.endswith(":vertex")
+        assert "ext1" in q

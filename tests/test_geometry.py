@@ -128,7 +128,7 @@ def test_profile_solid_is_valid():
 def test_solid_to_edges_box():
     """A box solid must yield exactly 12 unique line edges."""
     solid = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
-    edges = solid_to_edges(solid)
+    edges = solid_to_edges(solid)["edges"]
     line_edges = [e for e in edges if e["kind"] == "line"]
     assert len(line_edges) == 12, f"expected 12 line edges, got {len(line_edges)}"
 
@@ -136,7 +136,7 @@ def test_solid_to_edges_box():
 def test_solid_to_edges_cylinder():
     """A cylinder solid must yield exactly 2 circle edges and 1 line (seam)."""
     solid = BRepPrimAPI_MakeCylinder(1.0, 2.0).Shape()
-    edges = solid_to_edges(solid)
+    edges = solid_to_edges(solid)["edges"]
     circle_edges = [e for e in edges if e["kind"] == "circle"]
     line_edges = [e for e in edges if e["kind"] == "line"]
     assert len(circle_edges) == 2, f"expected 2 circle edges, got {len(circle_edges)}"
@@ -146,7 +146,7 @@ def test_solid_to_edges_cylinder():
 def test_solid_to_edges_circle_fields():
     """A circle edge must have all required keys and radius > 0."""
     solid = BRepPrimAPI_MakeCylinder(1.5, 1.0).Shape()
-    edges = solid_to_edges(solid)
+    edges = solid_to_edges(solid)["edges"]
     circle_edges = [e for e in edges if e["kind"] == "circle"]
     assert circle_edges, "no circle edges found"
     e = circle_edges[0]
@@ -161,7 +161,7 @@ def test_solid_to_edges_circle_fields():
 def test_solid_to_edges_line_fields():
     """A line edge must have start and end, each a 3-element float list, start != end."""
     solid = BRepPrimAPI_MakeBox(2.0, 3.0, 4.0).Shape()
-    edges = solid_to_edges(solid)
+    edges = solid_to_edges(solid)["edges"]
     line_edges = [e for e in edges if e["kind"] == "line"]
     assert line_edges, "no line edges found"
     e = line_edges[0]

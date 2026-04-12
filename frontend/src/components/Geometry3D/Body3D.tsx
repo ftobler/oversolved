@@ -1,20 +1,27 @@
-import { useMemo, useEffect, useState, useCallback } from 'react'
+import { useMemo, useEffect, useState, useCallback, useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Mesh3D, EdgeData } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { p2w } from '../sketch_helpers'
 import {
   COLOR_BODY_DEFAULT,
   COLOR_BODY_HOVER, COLOR_BODY_SELECTED,
   COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL,
   COLOR_SELECTED, COLOR_HOVER,
   ARC_SEGMENTS,
+  HIT_PIXELS, POINT_HIT_PIXELS,
 } from './constants'
 
 interface Body3DProps {
   featureId: string
   mesh: Mesh3D
   edges?: EdgeData[]
+  edgeQueries?: string[]
+  vertices?: [number, number, number][]
+  vertexQueries?: string[]
   visible?: boolean
+  showDebugHit?: boolean
 }
 
 // Export for unit testing without a WebGL context.
@@ -101,7 +108,7 @@ export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
   return counts
 }
 
-export default function Body3D({ featureId, mesh, edges = [], visible = true }: Body3DProps) {
+export default function Body3D({ featureId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false }: Body3DProps) {
   const hoveredBodyId = useSketchEditorStore(s => s.hoveredBodyId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
@@ -127,10 +134,11 @@ export default function Body3D({ featureId, mesh, edges = [], visible = true }: 
     return normalSelection.has(`@${featureId}/face/${triangleIndex}`)
   }, [normalSelection, featureId, mesh])
 
-  // Check if a specific edge is selected
+  // Check if a specific edge is selected, using stable query when available
   const getIsEdgeSelected = useCallback((edgeIndex: number): boolean => {
+    if (edgeQueries?.[edgeIndex]) return normalSelection.has(edgeQueries[edgeIndex])
     return normalSelection.has(`@${featureId}/edge/${edgeIndex}`)
-  }, [normalSelection, featureId])
+  }, [normalSelection, featureId, edgeQueries])
 
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry()
@@ -212,29 +220,30 @@ export default function Body3D({ featureId, mesh, edges = [], visible = true }: 
   }, [featureId, resolveFaceQuery, toggleNormalSelection])
 
   // Handle edge click on line segments
-  const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event; intersection?: { index?: number } }) => {
+  const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event }) => {
     e.stopPropagation()
     const nativeEvent = e.nativeEvent as MouseEvent | undefined
     const isMultiSelect = nativeEvent?.ctrlKey || nativeEvent?.metaKey
 
-    // For line segments, we need to find which segment was clicked
-    // The intersection point can help us determine the closest segment
-    const intersection = e.intersection
-    const segmentIndex = intersection?.index ?? hoveredEdgeIndex
+    // R3F ThreeEvent spreads THREE.Intersection directly: e.index is the vertex index
+    // in the LineSegments buffer. Divide by 2 to get segment index.
+    const rawIndex = (e as unknown as { index?: number }).index
+    let edgeIndex: number | undefined
+    if (rawIndex !== undefined) {
+      edgeIndex = segmentToEdgeMap[Math.floor(rawIndex / 2)]
+    } else {
+      edgeIndex = hoveredEdgeIndex ?? undefined
+    }
 
-    if (segmentIndex !== undefined && segmentIndex !== null && segmentIndex >= 0) {
-      // Map segment index to edge index
-      const edgeIndex = segmentToEdgeMap[segmentIndex]
-      if (edgeIndex !== undefined) {
-        const query = `@${featureId}/edge/${edgeIndex}`
-        if (isMultiSelect) {
-          toggleNormalSelection(query)
-        } else {
-          toggleNormalSelection(query)
-        }
+    if (edgeIndex !== undefined) {
+      const query = edgeQueries?.[edgeIndex] ?? `@${featureId}/edge/${edgeIndex}`
+      if (isMultiSelect) {
+        toggleNormalSelection(query)
+      } else {
+        toggleNormalSelection(query)
       }
     }
-  }, [featureId, segmentToEdgeMap, hoveredEdgeIndex, toggleNormalSelection])
+  }, [featureId, edgeQueries, segmentToEdgeMap, hoveredEdgeIndex, toggleNormalSelection])
 
   // Compute color attribute for faces if any are selected or hovered
   const faceColors = useMemo(() => {
@@ -323,6 +332,36 @@ export default function Body3D({ featureId, mesh, edges = [], visible = true }: 
     }
   }, [edgeGeometry, edgeColors, edges.length])
 
+  const vertexMeshRef = useRef<THREE.InstancedMesh>(null)
+
+  // Reusable objects to avoid per-frame allocation
+  const _vtxPos = useMemo(() => new THREE.Vector3(), [])
+  const _vtxQuat = useMemo(() => new THREE.Quaternion(), [])  // identity
+  const _vtxScale = useMemo(() => new THREE.Vector3(), [])
+  const _vtxMatrix = useMemo(() => new THREE.Matrix4(), [])
+
+  useFrame(({ camera, raycaster }) => {
+    // Scale Line raycaster threshold to match HIT_PIXELS in screen space.
+    // Without this, LineSegments hit detection uses a fixed world-unit threshold
+    // that doesn't track camera zoom.
+    raycaster.params.Line = { threshold: HIT_PIXELS * p2w(camera) }
+
+    const vmesh = vertexMeshRef.current
+    if (!vmesh || !vertices?.length) return
+
+    // Scale vertex spheres to POINT_HIT_PIXELS screen radius (same as 2D vertex dots).
+    const s = POINT_HIT_PIXELS * p2w(camera)
+    _vtxScale.set(s, s, s)
+
+    vertices.forEach(([x, y, z], i) => {
+      _vtxPos.set(x, y, z)
+      _vtxMatrix.compose(_vtxPos, _vtxQuat, _vtxScale)
+      vmesh.setMatrixAt(i, _vtxMatrix)
+    })
+
+    vmesh.instanceMatrix.needsUpdate = true
+  })
+
   return (
     <group visible={visible} userData={{ featureId }}>
       <mesh
@@ -371,11 +410,12 @@ export default function Body3D({ featureId, mesh, edges = [], visible = true }: 
           geometry={edgeGeometry}
           onPointerOver={(e) => {
             e.stopPropagation()
-            // Find which segment is being hovered using intersection
-            const intersection = (e as unknown as { intersection?: { index?: number } }).intersection
-            const index = intersection?.index
+            // R3F ThreeEvent spreads THREE.Intersection directly onto e.
+            // For LineSegments, e.index is the vertex index of the segment's
+            // first vertex (0, 2, 4...). Divide by 2 to get segment index.
+            const index = (e as unknown as { index?: number }).index
             if (index !== undefined && index >= 0) {
-              const edgeIndex = segmentToEdgeMap[index]
+              const edgeIndex = segmentToEdgeMap[Math.floor(index / 2)]
               if (edgeIndex !== undefined) {
                 setHoveredEdgeIndex(edgeIndex)
               }
@@ -383,10 +423,9 @@ export default function Body3D({ featureId, mesh, edges = [], visible = true }: 
           }}
           onPointerMove={(e) => {
             e.stopPropagation()
-            const intersection = (e as unknown as { intersection?: { index?: number } }).intersection
-            const index = intersection?.index
+            const index = (e as unknown as { index?: number }).index
             if (index !== undefined && index >= 0) {
-              const edgeIndex = segmentToEdgeMap[index]
+              const edgeIndex = segmentToEdgeMap[Math.floor(index / 2)]
               if (edgeIndex !== undefined) {
                 setHoveredEdgeIndex(edgeIndex)
               }
@@ -403,6 +442,32 @@ export default function Body3D({ featureId, mesh, edges = [], visible = true }: 
             vertexColors={edgeColors !== null}
           />
         </lineSegments>
+      )}
+      {vertices && vertices.length > 0 && (
+        <instancedMesh
+          ref={vertexMeshRef}
+          args={[undefined, undefined, vertices.length]}
+          onPointerOver={(e) => { e.stopPropagation() }}
+          onPointerOut={(e) => { e.stopPropagation() }}
+          onClick={(e) => {
+            e.stopPropagation()
+            const idx = e.instanceId
+            if (idx !== undefined) {
+              const query = vertexQueries?.[idx] ?? `@${featureId}/vertex/${idx}`
+              toggleNormalSelection(query)
+            }
+          }}
+        >
+          {/* Radius 1 — scaled to POINT_HIT_PIXELS screen px by useFrame */}
+          <sphereGeometry args={[1, 8, 8]} />
+          {/* Invisible normally (opacity 0), orange 25% in debug — matches HitPolyline. */}
+          <meshBasicMaterial
+            color="#ff6600"
+            transparent
+            opacity={showDebugHit ? 0.25 : 0}
+            depthWrite={false}
+          />
+        </instancedMesh>
       )}
     </group>
   )

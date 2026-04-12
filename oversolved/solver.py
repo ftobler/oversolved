@@ -641,7 +641,7 @@ def _geometry_from_array(x, entities: dict, entity_offsets: dict) -> dict[str, A
     out: dict[str, Any] = {}
     for eid, entity in entities.items():
         off = entity_offsets[eid]
-        ep = x[off : off + ENTITY_SIZES[entity["kind"]]]
+        ep = x[off:off + ENTITY_SIZES[entity["kind"]]]
         kind = entity["kind"]
         is_construction = entity.get("construction", False)
         if kind == "line":
@@ -719,7 +719,7 @@ def _params_from_array(x, entities: dict, entity_offsets: dict) -> dict:
     for eid, entity in entities.items():
         off = entity_offsets[eid]
         size = ENTITY_SIZES[entity["kind"]]
-        out[eid] = [round(float(v), 10) for v in x[off : off + size]]
+        out[eid] = [round(float(v), 10) for v in x[off:off + size]]
     return out
 
 
@@ -2099,7 +2099,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     def get_params(x, eid):
         off = entity_offsets[eid]
         size = ENTITY_SIZES[entities[eid]["kind"]]
-        return x[off : off + size]
+        return x[off: off + size]
 
     def get_point(x, ref):
         if "external_xy" in ref:

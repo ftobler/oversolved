@@ -54,6 +54,9 @@ export interface BodyResult {
   mesh?: Mesh3D
   mesh_error?: string
   edges?: EdgeData[]
+  edge_queries?: string[]
+  vertices?: [number, number, number][]
+  vertex_queries?: string[]
 }
 
 export interface BuildResponse {

@@ -102,6 +102,18 @@ def test_build_mesh_includes_brep_face_metadata_and_queries():
     assert mesh["face_queries"][0] == make_ancestry_query(["@ex1face0"], "face")
 
 
+def test_build_returns_edge_queries_and_vertices():
+    """Extrude bodies include edge_queries and vertices in output."""
+    spec = full_rect_extrude_spec(w=5.0, h=5.0, d=3.0)
+    r = build(spec)
+    body = r["bodies"]["body_ex1"]
+    assert "edge_queries" in body
+    assert len(body["edge_queries"]) == len(body["edges"])
+    assert "vertices" in body
+    assert "vertex_queries" in body
+    assert len(body["vertex_queries"]) == len(body["vertices"])
+
+
 def test_tessellate_bodies_registers_brep_face_queries_in_repo():
     """Builder should register B-rep face ancestries into a query repo when available."""
     pytest.importorskip("OCP.gp")
