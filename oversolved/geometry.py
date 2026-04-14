@@ -107,6 +107,25 @@ def classify_surface_cardinal(
 from typing import Any  # noqa: E402  # lazy import after docstring comment
 
 
+def plane_dict_to_gp_pln(plane: dict) -> Any:
+    """Convert a PlaneTransform dict to an OCP gp_Pln object.
+
+    This ensures OCP's coordinate system is derived directly from the plane's
+    axes, eliminating any risk of desynchronisation when constructing geometry.
+    """
+    from OCP.gp import gp_Pnt, gp_Dir, gp_Ax3, gp_Pln  # noqa: PLC0415
+
+    origin = plane["origin"]
+    normal = plane.get("normal", [0.0, 0.0, 1.0])
+    x_axis = plane["x_axis"]
+    ax3 = gp_Ax3(
+        gp_Pnt(*origin),
+        gp_Dir(*normal),
+        gp_Dir(*x_axis),
+    )
+    return gp_Pln(ax3)
+
+
 def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> Any:
     """Convert 2D profile boundary-edge loops to an OCC face with holes.
 
@@ -123,12 +142,20 @@ def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> Any:
         BRepBuilderAPI_MakeWire,
         BRepBuilderAPI_MakeFace,
     )  # noqa: PLC0415
-    from OCP.gp import gp_Pnt, gp_Dir, gp_Ax2, gp_Circ  # noqa: PLC0415
+    from OCP.gp import gp_Pnt, gp_Ax2, gp_Circ  # noqa: PLC0415
 
-    origin = plane["origin"]
-    x_axis = plane["x_axis"]
-    y_axis = plane["y_axis"]
-    normal = plane.get("normal", [0.0, 0.0, 1.0])
+    # Build a gp_Pln from the plane dict so that all OCP geometry is derived
+    # from OCP's own coordinate system, preventing axis/normal mismatches.
+    ocp_pln = plane_dict_to_gp_pln(plane)
+    ax3 = ocp_pln.Position()
+    origin_pt = ax3.Location()
+    x_dir = ax3.XDirection()
+    y_dir = ax3.YDirection()
+    normal_dir = ax3.Direction()
+
+    origin = [origin_pt.X(), origin_pt.Y(), origin_pt.Z()]
+    x_axis = [x_dir.X(), x_dir.Y(), x_dir.Z()]
+    y_axis = [y_dir.X(), y_dir.Y(), y_dir.Z()]
 
     def uv_to_gp_pnt(uv: list) -> Any:
         x = origin[0] + uv[0] * x_axis[0] + uv[1] * y_axis[0]
@@ -151,11 +178,11 @@ def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> Any:
         ccw = edge.get("ccw", True)
 
         center_3d = uv_to_3d_list(center_uv)
-        # Build the OCC circle: axis2 with center, z = plane normal, x = plane x_axis.
+        # Build the OCC circle using axes derived from gp_Pln to stay in sync.
         ax2 = gp_Ax2(
             gp_Pnt(*center_3d),
-            gp_Dir(*normal),
-            gp_Dir(*x_axis),
+            normal_dir,
+            x_dir,
         )
         circ = gp_Circ(ax2, radius)
 
@@ -196,7 +223,8 @@ def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> Any:
         return wire_builder.Wire()
 
     outer_wire = make_wire(loops[0])
-    face_builder = BRepBuilderAPI_MakeFace(outer_wire)
+    # Pass gp_Pln explicitly so OCP binds the face to the correct coordinate system.
+    face_builder = BRepBuilderAPI_MakeFace(ocp_pln, outer_wire)
     for hole_loop in loops[1:]:
         hole_wire = make_wire(hole_loop)
         BRepBuilderAPI_MakeFace.Add(face_builder, hole_wire)
