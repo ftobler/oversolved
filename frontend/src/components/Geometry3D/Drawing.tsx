@@ -2,16 +2,17 @@ import { useRef, useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { sanitizePointerEvent } from './pointerAbstraction'
+import { sanitizePointerEvent } from './pointerAbstractionAdapters'
 import { sampleArc, sampleArcCCW } from '../sketch_helpers'
 import { Dot } from './VertexDots'
 import { DashedLine } from '../sketch_dimensions'
 import { COLOR_PREVIEW } from './constants'
-import { suggestConstraint } from '../../registry'
 import { useAlignmentSnapEffect } from '../interaction/useAlignmentSnapEffect'
 import type { Sketch } from '../../types/cad'
 import { nearestPointOnEntity } from './nearestPoint'
 import { randomId } from '../../utils/yamlMutations'
+import { computeDrawClick } from './drawLogic'
+import type { DrawSnapState } from './drawLogic'
 
 // Compute circumcircle of 3 points. Returns null if points are collinear.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -39,23 +40,17 @@ export function arcAnglesFromRadiusPoint(
   const aEnd = Math.atan2(end[1] - cy, end[0] - cx) * (180 / Math.PI)
   const aRadius = Math.atan2(radiusPt[1] - cy, radiusPt[0] - cx) * (180 / Math.PI)
 
-  // Normalize all to [0, 360)
   const norm = (a: number) => ((a % 360) + 360) % 360
   const s = norm(aStart)
   const e = norm(aEnd)
   const rp = norm(aRadius)
 
-  // CCW span from s to e
   const spanCCW = ((e - s) + 360) % 360
-
-  // Is the radius point in the CCW arc from s to e?
   const rpInCCW = ((rp - s) + 360) % 360 < spanCCW
 
   if (rpInCCW) {
-    // Short/long CCW arc contains the radius point — use it as-is
     return [aStart, aEnd]
   } else {
-    // Radius point is in the CW arc — flip to get CCW arc that contains it
     return [aEnd, aStart]
   }
 }
@@ -75,17 +70,14 @@ export function computePreviewPts(
     return sampleArc(pts[0][0], pts[0][1], r, 0, 0)
   }
   if (tool === 'arc' && pts.length === 2 && h) {
-    // pts[0]=start, pts[1]=end, h=radius point — show live arc preview
     const cc = circumcircle(pts[0], pts[1], h)
     if (cc) {
       const [aStart, aEnd] = arcAnglesFromRadiusPoint(cc.cx, cc.cy, pts[0], pts[1], h)
       return sampleArcCCW(cc.cx, cc.cy, cc.r, aStart, aEnd)
     }
-    // Collinear — just show chord
     return [[pts[0][0], pts[0][1], 0], [pts[1][0], pts[1][1], 0]]
   }
   if (tool === 'arc' && pts.length === 1 && h) {
-    // Show chord from start to hover (indicating end point placement)
     return [[pts[0][0], pts[0][1], 0], [h[0], h[1], 0]]
   }
   if (tool === 'rect' && pts.length === 1 && h) {
@@ -97,7 +89,6 @@ export function computePreviewPts(
     const [cx, cy] = pts[0]
     const [x, y] = h
     const dx = x - cx, dy = y - cy
-    // Symmetric rectangle around center
     const x0 = cx - dx, x1 = cx + dx
     const y0 = cy - dy, y1 = cy + dy
     return [[x0, y0, 0], [x1, y0, 0], [x1, y1, 0], [x0, y1, 0], [x0, y0, 0]]
@@ -117,23 +108,17 @@ export function DrawPreview({ activeFeatureId }: { activeFeatureId?: string }) {
   if (effectiveTool === 'select') return null
 
   const previewPts = computePreviewPts(effectiveTool, drawPoints, drawHover)
-
-  // Compute the actual endpoint position (handles snapping)
   const endpoint = drawHover
 
   return (
     <>
-      {/* Placed points (already clicked) */}
       {drawPoints.map((pt, i) => (
         <Dot key={i} x={pt[0]} y={pt[1]} px={4} color={COLOR_PREVIEW} billboard />
       ))}
-      {/* Hover cursor dot */}
       {drawHover && effectiveTool === 'point' && (
         <Dot x={drawHover[0]} y={drawHover[1]} px={4} color={COLOR_PREVIEW} billboard />
       )}
-      {/* Preview line/shape */}
       {previewPts && <Line points={previewPts} color={COLOR_PREVIEW} lineWidth={1} />}
-      {/* Alignment guide lines */}
       {alignmentSnapPoint && endpoint && alignmentSnapKind && (
         <DashedLine
           points={[
@@ -159,7 +144,6 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const effectiveTool = activeTool ?? 'drag'
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
-  const addDrawPoint = useSketchEditorStore(s => s.addDrawPoint)
   const setDrawHover = useSketchEditorStore(s => s.setDrawHover)
   const setDrawSnap = useSketchEditorStore(s => s.setDrawSnap)
   const clearDraw = useSketchEditorStore(s => s.clearDraw)
@@ -176,225 +160,32 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   useAlignmentSnapEffect(sketch, drawHover, drawLastPoint)
 
   const pathSnap = useMemo(() => {
-    // Use hovered entity (not vertex) for path snapping
     if (!sketch || !drawHover || !hoveredEntityId) return null
-    if (hoveredEntityId.startsWith('vertex:')) return null  // vertex hover takes priority
-    
-    // Parse hoveredEntityId: "entity:featureId:entityId"
+    if (hoveredEntityId.startsWith('vertex:')) return null
+
     const parts = hoveredEntityId.split(':')
     if (parts.length < 3 || parts[0] !== 'entity') return null
     const entityId = parts[2]
     const entity = sketch[entityId]
     if (!entity) return null
-    
+
     const [hx, hy] = drawHover
     return nearestPointOnEntity(hx, hy, entity)
   }, [sketch, drawHover, hoveredEntityId])
 
   if (featureId !== activeFeatureId) return null
 
-  // Deselection plane: catch clicks on empty sketch space
-  // Positioned far back in local z to not interfere with plane hover geometry
   if (effectiveTool === 'select' || effectiveTool === 'dimension' || effectiveTool === 'drag') {
     return (
       <mesh
         position={[0, 0, -1000]}
         onClick={(e) => { e.stopPropagation(); clearNormalSelection() }}
-        onPointerOut={() => {}} // prevent propagation of pointer events
+        onPointerOut={() => {}}
       >
         <planeGeometry args={[100000, 100000]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
     )
-  }
-
-  const handleDown = (x: number, y: number) => {
-    // Snap priority: vertex > path
-    const [px, py] = hoveredVertexPosition ?? pathSnap?.position ?? [x, y]
-    const pts = drawPoints
-
-    if (effectiveTool === 'point') {
-      onMutation?.({ type: 'add_entity', featureId, kind: 'point', params: [px, py] })
-
-    } else if (effectiveTool === 'line') {
-      if (pts.length === 0) {
-        // First click: store point and snap info for second click
-        addDrawPoint([px, py])
-        if (hoveredVertexId) {
-          setDrawSnap(hoveredVertexId, null)
-        } else if (pathSnap && hoveredEntityId) {
-          setDrawSnap(null, hoveredEntityId)
-        }
-      } else {
-        // Second click: create line with constraint
-        const state = useSketchEditorStore.getState()
-        const startSnapVertexId = state.drawSnapVertexId
-        const startSnapEntityRef = state.drawSnapEntityRef
-
-        // Priority for end point: alignment > vertex > path > none
-        const alignmentSnapPoint = state.alignmentSnapPoint
-        const alignmentSnapKind = state.alignmentSnapKind
-        const alignmentSnapVertexId = state.alignmentSnapVertexId
-
-        // Build params and constraint for the start vertex
-        const hasStartSnap = startSnapVertexId || startSnapEntityRef
-        const hasEndSnap = (alignmentSnapPoint && alignmentSnapKind && alignmentSnapVertexId) ||
-                          (hoveredVertexId && hoveredSnapKind) ||
-                          (pathSnap && hoveredEntityId)
-
-        if (hasStartSnap || hasEndSnap) {
-          // Generate entity ID upfront so we can reference it in constraints
-          const lineId = randomId(12)
-
-          // Use add_entity_with_constraint for the start vertex
-          if (startSnapVertexId) {
-            onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
-              params: [pts[0][0], pts[0][1], px, py], vertexKey: 'start',
-              snapVertexId: startSnapVertexId, constraintKind: 'coincident', entityId: lineId })
-          } else if (startSnapEntityRef) {
-            onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'line',
-              params: [pts[0][0], pts[0][1], px, py], vertexKey: 'start',
-              constraintKind: 'coincident', snapEntityRef: startSnapEntityRef, entityId: lineId })
-          } else {
-            onMutation?.({ type: 'add_entity', featureId, kind: 'line',
-              params: [pts[0][0], pts[0][1], px, py], entityId: lineId })
-          }
-
-          // Add constraint for end vertex
-          if (alignmentSnapPoint && alignmentSnapKind && alignmentSnapVertexId) {
-            const constraintKind = alignmentSnapKind === 'kinda_horizontal' ? 'horizontal' : 'vertical'
-            if (alignmentSnapVertexId === 'draw:last') {
-              // Alignment was with the previous draw point (synthetic ref, not a real vertex).
-              // Constrain the whole line entity to be horizontal/vertical.
-              onMutation?.({ type: 'add_constraint', featureId, kind: constraintKind,
-                targets: [`entity:${featureId}:${lineId}`] })
-            } else {
-              onMutation?.({ type: 'add_constraint', featureId, kind: constraintKind,
-                targets: [`vertex:${featureId}:${lineId}:end`, alignmentSnapVertexId] })
-            }
-          } else if (hoveredVertexId && hoveredSnapKind) {
-            const constraintKind = suggestConstraint('vertex', hoveredSnapKind) ?? 'coincident'
-            onMutation?.({ type: 'add_constraint', featureId, kind: constraintKind,
-              targets: [`vertex:${featureId}:${lineId}:end`, hoveredVertexId] })
-          } else if (pathSnap && hoveredEntityId) {
-            onMutation?.({ type: 'add_constraint', featureId, kind: 'coincident',
-              targets: [`vertex:${featureId}:${lineId}:end`, `entity:${featureId}:*`] })
-          }
-        } else {
-          onMutation?.({ type: 'add_entity', featureId, kind: 'line',
-            params: [pts[0][0], pts[0][1], px, py] })
-        }
-        clearDraw()
-        setActiveTool(null)
-      }
-
-    } else if (effectiveTool === 'circle') {
-      if (pts.length === 0) {
-        addDrawPoint([px, py])
-        if (hoveredVertexId) {
-          setDrawSnap(hoveredVertexId, null)
-        } else if (pathSnap && hoveredEntityId) {
-          setDrawSnap(null, hoveredEntityId)
-        }
-      } else {
-        const state = useSketchEditorStore.getState()
-        const centerSnapVertexId = state.drawSnapVertexId
-        const centerSnapEntityRef = state.drawSnapEntityRef
-        const r = Math.hypot(px - pts[0][0], py - pts[0][1])
-        if (r > 0) {
-          if (centerSnapVertexId || centerSnapEntityRef) {
-            if (centerSnapVertexId) {
-              onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'circle',
-                params: [pts[0][0], pts[0][1], r], vertexKey: 'center',
-                snapVertexId: centerSnapVertexId, constraintKind: 'coincident' })
-            } else {
-              onMutation?.({ type: 'add_entity_with_constraint', featureId, kind: 'circle',
-                params: [pts[0][0], pts[0][1], r], vertexKey: 'center',
-                constraintKind: 'coincident', snapEntityRef: centerSnapEntityRef! })
-            }
-          } else {
-            onMutation?.({ type: 'add_entity', featureId, kind: 'circle',
-              params: [pts[0][0], pts[0][1], r] })
-          }
-        }
-        clearDraw()
-        setActiveTool(null)
-      }
-
-    } else if (effectiveTool === 'arc') {
-      if (pts.length === 0) {
-        addDrawPoint([px, py])
-        if (hoveredVertexId) {
-          setDrawSnap(hoveredVertexId, null)
-        } else if (pathSnap && hoveredEntityId) {
-          setDrawSnap(null, hoveredEntityId)
-        }
-      } else if (pts.length === 1) {
-        addDrawPoint([px, py])
-      } else {
-        const cc = circumcircle(pts[0], pts[1], [px, py])
-        if (cc && cc.r > 0) {
-          const [aStart, aEnd] = arcAnglesFromRadiusPoint(cc.cx, cc.cy, pts[0], pts[1], [px, py])
-          onMutation?.({ type: 'add_entity', featureId, kind: 'arc',
-            params: [cc.cx, cc.cy, cc.r, aStart, aEnd] })
-        }
-        clearDraw()
-        setActiveTool(null)
-      }
-
-    } else if (effectiveTool === 'rect') {
-      if (pts.length === 0) {
-        addDrawPoint([px, py])
-        if (hoveredVertexId) {
-          setDrawSnap(hoveredVertexId, null)
-        } else if (pathSnap && hoveredEntityId) {
-          setDrawSnap(null, hoveredEntityId)
-        }
-      } else {
-        onMutation?.({ type: 'add_rect', featureId, p0: pts[0], p1: [px, py] })
-        clearDraw()
-        setActiveTool(null)
-      }
-
-    } else if (effectiveTool === 'center_rect') {
-      if (pts.length === 0) {
-        addDrawPoint([px, py])
-        if (hoveredVertexId) {
-          setDrawSnap(hoveredVertexId, null)
-        } else if (pathSnap && hoveredEntityId) {
-          setDrawSnap(null, hoveredEntityId)
-        }
-      } else {
-        onMutation?.({ type: 'add_center_rect', featureId, center: pts[0], corner: [px, py] })
-        clearDraw()
-        setActiveTool(null)
-      }
-
-    } else if (effectiveTool === 'project') {
-      if (hoveredEntityId && hoveredEntityId.startsWith('entity:')) {
-        const parts = hoveredEntityId.split(':')
-        if (parts.length >= 3) {
-          const sourceFeatureId = parts[1]
-          const sourceEntityId = parts[2]
-          if (sourceFeatureId !== featureId) {
-            const source = `@${sourceFeatureId}/${sourceEntityId}`
-            let kind = 'projected_line'
-            const entity = (otherSketches?.[sourceFeatureId] ?? sketch)?.[sourceEntityId]
-            if (entity) {
-              if ('radius' in entity && 'angle_start' in entity) {
-                kind = 'projected_arc'
-              } else if ('radius' in entity) {
-                kind = 'projected_circle'
-              } else if ('x' in entity) {
-                kind = 'projected_point'
-              }
-            }
-            onMutation?.({ type: 'add_projected_entity', featureId, kind, source })
-            setActiveTool(null)
-          }
-        }
-      }
-    }
   }
 
   // Resolve the sketch group ref: prefer explicit prop, fall back to mesh parent.
@@ -417,7 +208,50 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
         const sanitized = sanitizePointerEvent(e, resolvedGroupRef)
         if (!sanitized) return
         const [x, y] = sanitized.localPoint
-        handleDown(x, y)
+
+        // Read alignment snap state imperatively -- set reactively by useAlignmentSnapEffect
+        const state = useSketchEditorStore.getState()
+        const snap: DrawSnapState = {
+          hoveredVertexId,
+          hoveredVertexPosition,
+          hoveredSnapKind,
+          hoveredEntityId,
+          pathSnapPosition: pathSnap?.position ?? null,
+          pathSnapEntityRef: pathSnap ? hoveredEntityId : null,
+          drawSnapVertexId: state.drawSnapVertexId,
+          drawSnapEntityRef: state.drawSnapEntityRef,
+          alignmentSnapPoint: state.alignmentSnapPoint,
+          alignmentSnapKind: state.alignmentSnapKind,
+          alignmentSnapVertexId: state.alignmentSnapVertexId,
+        }
+
+        const result = computeDrawClick(
+          effectiveTool,
+          drawPoints,
+          [x, y],
+          snap,
+          featureId,
+          () => randomId(12),
+          sketch as Record<string, import('../../types/cad').Entity> | undefined,
+          otherSketches as Record<string, Record<string, import('../../types/cad').Entity>> | undefined,
+        )
+
+        for (const m of result.mutations) {
+          onMutation?.(m)
+        }
+
+        if (result.clearTool) {
+          // Second click or single-click completion: clear draw state and tool
+          clearDraw()
+          setActiveTool(null)
+        } else if (result.nextDrawPoints !== null) {
+          // Replace draw points in place (preserves drawSnap for intermediate arc clicks)
+          useSketchEditorStore.setState({ drawPoints: result.nextDrawPoints })
+        }
+
+        if (result.nextDrawSnap !== null) {
+          setDrawSnap(result.nextDrawSnap.vertexId, result.nextDrawSnap.entityRef)
+        }
       }}
       onPointerOut={() => setDrawHover(null)}
     >

@@ -2,6 +2,62 @@
 
 This document describes the frontend viewport interaction system architecture.
 
+## Layer Contracts
+
+One wall separates testable logic from the untestable R3F canvas zone. Only plain
+TypeScript primitives may cross it: `string`, `number`, `boolean`, `[number, number]`,
+and plain objects. No `THREE.*` types, no `React.RefObject`, no R3F hooks.
+
+### Pure Logic Layer (testable without DOM)
+
+These files carry the header `// PURE LOGIC -- no Three.js, no React refs, no R3F hooks.`
+and must import without a DOM in plain vitest tests:
+
+| File | Role |
+|---|---|
+| `Geometry3D/coordTransform.ts` | Quaternion math on plain arrays |
+| `Geometry3D/pointerAbstraction.ts` | Click-vs-drag, pixel distance |
+| `Geometry3D/snapDetection.ts` | Snap target resolution |
+| `Geometry3D/nearestPoint.ts` | Nearest-point-on-entity math |
+| `Geometry3D/dragLogic.ts` | Drag state machine |
+| `Geometry3D/drawLogic.ts` | Draw state machine |
+| `Geometry3D/useDragInitiation.ts` | Shared drag-initiation hook (no Three.js deps) |
+| `registry/toolRegistry.ts` | Tool dispatch interface |
+| `registry/snapRegistry.ts` | Snap rules configuration |
+| `registry/constraintRegistry.ts` | Constraint definitions |
+| `registry/entityRegistry.ts` | Entity type definitions |
+| `registry/measurementRegistry.ts` | Measurement rules |
+| `stores/sketchEditorStore.ts` | Zustand state store |
+
+### Viewport Adapter Layer (Three.js allowed, not tested directly)
+
+These files translate R3F events and Three.js types to plain data before passing to the
+pure layer. Logic must be under ~10 lines per function with no branching decisions:
+
+| File | Role |
+|---|---|
+| `Geometry3D/coordTransformAdapters.ts` | Extracts plain arrays from THREE.Object3D |
+| `Geometry3D/pointerAbstractionAdapters.ts` | R3F event -> SanitizedPointerEvent via Three.js |
+
+### Viewport Components (Three.js + R3F, untestable zone)
+
+These components are thin adapters over pure logic. They may import Three.js:
+
+| File | Role |
+|---|---|
+| `Geometry3D/Dragging.tsx` | Thin adapter over `dragLogic.ts` |
+| `Geometry3D/Drawing.tsx` | Thin adapter over `drawLogic.ts` |
+| `Geometry3D/EntityLines.tsx` | Uses `useDragInitiation` |
+| `Geometry3D/VertexDots.tsx` | Uses `useDragInitiation` |
+| `components/Viewport.tsx` | Root canvas and scene graph |
+| `Viewport/UserDefinedPlane.tsx` | Plane hover/click using established patterns |
+
+### Allowed Bypasses
+
+- **Navigation** (orbit, pan, zoom, cube gizmo): no state changes, no mutations.
+- **Highlight feedback**: components read selection state from store to set mesh color.
+  One-way read in render path, not production logic.
+
 ## Layer Overview
 
 The viewport interaction system is organized as a layered architecture where raw pointer events enter at the bottom, are sanitized and abstracted, then flow upward through two parallel subsystems (navigation and selection), and finally reach the tool layer where domain logic operates.

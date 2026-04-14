@@ -1,9 +1,7 @@
 import type { Tool, ToolContext, ToolHandlers, ToolId } from '../registry/toolRegistry'
 import { CONSTRAINT_BY_KIND } from '../registry'
 
-export interface ConstraintToolContext extends ToolContext {
-  selection: Set<string>
-}
+export type ConstraintToolContext = ToolContext
 
 export interface ConstraintTool extends Tool {
   readonly category: 'constraint'
@@ -25,7 +23,7 @@ export function createConstraintTool(config: ConstraintToolConfig): ConstraintTo
     },
 
     onPointerUp: (_e, _worldPt, _drag, context) => {
-      const selectionArray = Array.from(context.selection)
+      const selectionArray = Array.from(context.normalSelection)
       if (selectionArray.length < config.requiresSelection) {
         return
       }

@@ -6,8 +6,6 @@ function createMockContext(overrides: Partial<DragToolContext> = {}): DragToolCo
   return {
     normalSelection: new Set<string>(),
     internalHoverSelection: null,
-    selection: new Set<string>(),
-    hoveredEntityId: null,
     dynamicSelection: new Set<string>(),
     isPointerDown: false,
     activeFeatureId: 'S1',

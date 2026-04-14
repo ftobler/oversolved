@@ -58,8 +58,6 @@ export function useToolClickDispatch({
     const context = {
       normalSelection,
       internalHoverSelection,
-      selection: normalSelection,  // Legacy alias
-      hoveredEntityId: internalHoverSelection,  // Legacy alias
       dynamicSelection,
       isPointerDown,
       activeFeatureId,

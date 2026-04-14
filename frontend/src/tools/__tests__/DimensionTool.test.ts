@@ -6,8 +6,6 @@ function createMockContext(overrides: Partial<DimensionToolContext> = {}): Dimen
   return {
     normalSelection: new Set<string>(),
     internalHoverSelection: null,
-    selection: new Set<string>(),
-    hoveredEntityId: null,
     dynamicSelection: new Set<string>(),
     isPointerDown: false,
     activeFeatureId: 'S1',
@@ -31,7 +29,7 @@ describe('DimensionTool', () => {
       const context = createMockContext({
         setPendingDim,
         activeFeatureId: 'S1',
-        hoveredEntityId: 'entity:S1:L1',
+        internalHoverSelection: 'entity:S1:L1',
       })
 
       tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)
@@ -45,7 +43,7 @@ describe('DimensionTool', () => {
       const context = createMockContext({
         setPendingDim,
         activeFeatureId: 'S1',
-        hoveredEntityId: 'entity:S1:L1',
+        internalHoverSelection: 'entity:S1:L1',
       })
 
       tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)

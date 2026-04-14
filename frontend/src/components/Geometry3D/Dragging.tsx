@@ -6,11 +6,10 @@ import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { Dot, VertexHighlight } from './VertexDots'
 import { DashedLine } from '../sketch_dimensions'
 import { p2w } from '../sketch_helpers'
-import { detectAlignmentSnap } from '../../registry'
 import { useDynamicSelectionPositions } from '../interaction/snapHooks'
-import { COLOR_SNAP, COLOR_PREVIEW, DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX, POINT_HIT_PIXELS } from './constants'
-import { sanitizePointerEvent, isPureClick, CLICK_THRESHOLD_PX } from './pointerAbstraction'
-import { findSnapTarget, collectVertexTargets } from './snapDetection'
+import { COLOR_SNAP, COLOR_PREVIEW, POINT_HIT_PIXELS } from './constants'
+import { sanitizePointerEvent } from './pointerAbstractionAdapters'
+import { computeDragMove, computeDragMutation, shouldActivateDrag } from './dragLogic'
 
 export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
   featureId: string
@@ -27,13 +26,12 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
   const setDragPending = useSketchEditorStore(s => s.setDragPending)
   const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
   const setDragSnap = useSketchEditorStore(s => s.setDragSnap)
+  const setAlignmentSnap = useSketchEditorStore(s => s.setAlignmentSnap)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const onMutation = useSketchEditorStore(s => s.onMutation)
-   const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
-   // Tracks if pointer is currently down for dynamic selection accumulation
-   // (see feature_dynamic_select.md for dynamic selection behavior)
-   const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
-   const setAlignmentSnap = useSketchEditorStore(s => s.setAlignmentSnap)
+  const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
+  const normalSelection = useSketchEditorStore(s => s.normalSelection)
+  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
   const { camera } = useThree()
 
   // Build map of dynamic selection positions for alignment detection
@@ -71,37 +69,29 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
   return (
     <mesh
       ref={meshRef}
-      position={[0, 0, 0]}  // drag plane has not offset. is is perfectly at the sketch plane.
+      position={[0, 0, 0]}
       onPointerMove={(e) => {
         e.stopPropagation()
         // Manual raycasting is intentional here: R3F's e.point is resolved against the entire scene,
         // which can return a hit on a vertex sphere or edge cylinder instead of the drag plane.
         // We must raycast exclusively against this mesh so the coordinate reflects the drag plane position.
-        // sanitizePointerEvent() then converts worldPt to sketch-local 2D via the shared abstraction.
-        const scene = e.eventObject.parent?.parent?.parent ?? e.eventObject.parent
-        if (!scene) return
-        // Use the ray from the event instead of creating our own
         const ray = (e as unknown as { ray?: THREE.Ray }).ray
         if (!ray) return
-        // Create raycaster and set its ray
         const raycaster = new THREE.Raycaster()
         raycaster.ray.copy(ray)
-        // Only intersect the drag plane mesh
         const planeHit = raycaster.intersectObject(e.eventObject, false)
         if (planeHit.length === 0) return
         const worldPt = planeHit[0].point
         const sanitized = sanitizePointerEvent({ point: worldPt, clientX: e.clientX, clientY: e.clientY }, resolvedGroupRef)
         if (!sanitized) return
-        const [x, y] = sanitized.localPoint
+        const localPoint = sanitized.localPoint
         if (showDebugHit) {
           console.log('DEBUG RAYCAST:', { clientX: e.clientX, clientY: e.clientY, rayOrigin: ray?.origin, rayDir: ray?.direction, world: worldPt ? { x: worldPt.x, y: worldPt.y, z: worldPt.z } : 'no hit' })
         }
 
-        // Lazy drag initiation: if drag not yet started but we have pending drag and movement exceeded threshold
+        // Lazy drag initiation: activate when movement exceeds the click threshold
         if (!drag && dragPending && dragStartClient && isPointerDown && dragPending.featureId === featureId) {
-          const dx = e.clientX - dragStartClient[0]
-          const dy = e.clientY - dragStartClient[1]
-          if (Math.hypot(dx, dy) >= CLICK_THRESHOLD_PX) {
+          if (shouldActivateDrag(dragStartClient, [e.clientX, e.clientY])) {
             setDrag({
               type: dragPending.type,
               vertexId: dragPending.vertexId,
@@ -115,73 +105,54 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
           }
         }
 
-        // If drag not yet initiated, skip drag logic
         if (!drag) return
 
-        // Drag-snap uses proactive full-scan (findSnapTarget) here, synchronously during pointer-move,
-        // so snapPosition can be applied to currentWorld in the same frame (no render-delay stutter).
-        // Draw-snap is different: it reads hoveredVertexPosition from the store reactively, because the
-        // draw tool does not need to override currentWorld — it just reads what the hover system found.
-        let snapPosition: [number, number] | null = null
         if (drag.type === 'vertex' && sketch) {
-          const pw = p2w(camera)
-          const snap = findSnapTarget(
-            sketch, drag.featureId, drag.entityId,
-            'vertex',  // dragging a vertex handle
-            x, y,
-            DRAG_SNAP_VERTEX_RADIUS_PX * pw,
-            DRAG_SNAP_ENTITY_RADIUS_PX * pw,
+          const pixelsPerUnit = p2w(camera)
+          const result = computeDragMove(
+            localPoint,
+            sketch,
+            featureId,
+            drag,
+            dynamicSelection,
+            normalSelection,
+            dynamicSelectionPositions,
+            prevNearbyRef.current,
+            pixelsPerUnit,
           )
-          setDragSnap(snap)
-          if (snap?.position) {
-            snapPosition = snap.position
+
+          setDragSnap(result.snapTarget)
+
+          if (result.alignmentSnap) {
+            setAlignmentSnap(result.alignmentSnap.point, result.alignmentSnap.kind, result.alignmentSnap.vertexId)
+          } else {
+            setAlignmentSnap(null, null, null)
           }
 
-          // Populate dynamic selection as cursor passes near vertices (alignment snap refs).
-          // onPointerOver is blocked by this DragPlane, so proximity is tracked here instead.
-          // Toggle on enter (like onPointerOver), do nothing on leave — staying lasso-like.
-          const scanRadius = DRAG_SNAP_VERTEX_RADIUS_PX * p2w(camera) * 3
-          const nearby = collectVertexTargets(sketch, featureId, drag.entityId)
-            .filter(t => Math.hypot(t.position[0] - x, t.position[1] - y) <= scanRadius)
-          const nearbyIds = new Set(nearby.map(t => t.vertexId))
+          // Dispatch newly-entered proximity IDs to dynamic selection
           const { updateDynamicSelection } = useSketchEditorStore.getState()
-          for (const id of nearbyIds) {
-            if (!prevNearbyRef.current.has(id)) {
-              updateDynamicSelection(id)  // entered radius: toggle in (or out if re-touched)
-            }
+          for (const id of result.newProximityIds) {
+            updateDynamicSelection(id)
           }
-          prevNearbyRef.current = nearbyIds
+          prevNearbyRef.current = result.allProximityIds
 
-          // Alignment detection for kinda_horizontal/kinda_vertical
-          const currentDynamic = useSketchEditorStore.getState().dynamicSelection
-          if (currentDynamic.size > 0) {
-            const alignment = detectAlignmentSnap(currentDynamic, snapPosition ?? [x, y], dynamicSelectionPositions)
-            if (alignment) {
-              setAlignmentSnap(alignment.point, alignment.kind, alignment.vertexId)
-              snapPosition = alignment.point
-            } else {
-              setAlignmentSnap(null, null, null)
-            }
-          }
+          setDrag({ ...drag, currentWorld: result.effectivePosition })
+        } else {
+          // Edge drag: just update position with raw local point
+          setDrag({ ...drag, currentWorld: localPoint })
         }
-
-        // Apply snap position if detected, otherwise use raw cursor position
-        setDrag({ ...drag, currentWorld: snapPosition ?? [x, y] })
       }}
       onPointerUp={(e) => {
         e.stopPropagation()
         // Clear drag-mode dynamic selection before the window pointerup listener fires.
         // The drag plane populates dynamicSelection with proximity-scanned alignment refs
-        // during drag — these must not be applied to normalSelection on pointer-up.
-        // Setting isPointerDown=false here causes runPointerUpCleanup to return early.
+        // during drag -- these must not be applied to normalSelection on pointer-up.
         useSketchEditorStore.getState().setIsPointerDown(false)
         useSketchEditorStore.setState({ dynamicSelection: new Set() })
         prevNearbyRef.current = new Set()
 
-        // Read drag and dragSnap from store directly — not from the render closure.
-        // onPointerUp may fire before React re-renders after the final onPointerMove,
-        // so the closure could hold stale values. getState() always returns the latest.
-        const { drag: currentDrag, dragSnap: currentDragSnap, dragPending } = useSketchEditorStore.getState()
+        // Read from store directly -- not from the render closure -- to avoid stale values.
+        const { drag: currentDrag, dragSnap: currentDragSnap, dragPending, alignmentSnapKind, alignmentSnapPoint, alignmentSnapVertexId } = useSketchEditorStore.getState()
 
         // If drag never initiated (pure click), clear pending state and return
         if (!currentDrag && dragPending && dragPending.featureId === featureId) {
@@ -194,77 +165,29 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
         if (!currentDrag || currentDrag.featureId !== featureId) {
           setDrag(null); setDragSnap(null); setOrbitEnabled(true); return
         }
-        const finalDrag = { ...currentDrag }
-        if (onMutation) {
-          if (finalDrag.type === 'dim_label') {
+
+        if (currentDrag.type === 'dim_label') {
+          // Dimension label drag: emit position mutation
+          if (onMutation) {
             const pos: [number, number] = [
-              finalDrag.currentWorld[0] - finalDrag.anchorWorld[0],
-              finalDrag.currentWorld[1] - finalDrag.anchorWorld[1],
+              currentDrag.currentWorld[0] - currentDrag.anchorWorld[0],
+              currentDrag.currentWorld[1] - currentDrag.anchorWorld[1],
             ]
             const distance = Math.hypot(pos[0], pos[1])
             if (distance >= 0.0001) {
-              onMutation({ type: 'set_constraint_pos', featureId: finalDrag.featureId, constraintId: finalDrag.constraintId, pos })
-            }
-          } else {
-            // For vertex and edge drags, use screen-pixel distance threshold to distinguish
-            // click-to-select from drag-to-move. Pixel-space is zoom-independent and correctly
-            // ignores the hit-radius offset that occurs even on pure clicks.
-            // See: dragging.test.ts REGRESSION 4
-            const endClient: [number, number] = [e.nativeEvent.clientX, e.nativeEvent.clientY]
-            if (isPureClick(finalDrag.startClient, endClient)) {
-              // Pure click — don't emit mutation
-              setDrag(null)
-              setDragSnap(null)
-              setOrbitEnabled(true)
-              return
-            }
-            if (finalDrag.type === 'edge') {
-              const delta: [number, number] = [
-                finalDrag.currentWorld[0] - finalDrag.startWorld[0],
-                finalDrag.currentWorld[1] - finalDrag.startWorld[1],
-              ]
-              onMutation({ type: 'move_entity', featureId: finalDrag.featureId, entityId: finalDrag.entityId, delta })
-            } else if (finalDrag.type === 'vertex') {
-              // Check for alignment snap first, then regular snap
-              const { alignmentSnapKind, alignmentSnapPoint, alignmentSnapVertexId } = useSketchEditorStore.getState()
-              if (alignmentSnapKind && alignmentSnapPoint && alignmentSnapVertexId) {
-                const constraintKind = alignmentSnapKind === 'kinda_horizontal' ? 'horizontal' : 'vertical'
-                onMutation({
-                  type: 'move_vertex_with_constraint',
-                  featureId: finalDrag.featureId,
-                  entityId: finalDrag.entityId,
-                  vertexKey: finalDrag.vertexKey,
-                  to: alignmentSnapPoint,
-                  constraintKind,
-                  snapVertexId: alignmentSnapVertexId,
-                })
-              } else if (currentDragSnap?.kind === 'vertex') {
-                onMutation({
-                  type: 'move_vertex_with_constraint',
-                  featureId: finalDrag.featureId,
-                  entityId: finalDrag.entityId,
-                  vertexKey: finalDrag.vertexKey,
-                  to: currentDragSnap.position,
-                  constraintKind: currentDragSnap.constraintKind,
-                  snapVertexId: currentDragSnap.vertexId,
-                })
-              } else if (currentDragSnap?.kind === 'entity') {
-                onMutation({
-                  type: 'move_vertex_with_constraint',
-                  featureId: finalDrag.featureId,
-                  entityId: finalDrag.entityId,
-                  vertexKey: finalDrag.vertexKey,
-                  to: currentDragSnap.position,
-                  constraintKind: currentDragSnap.constraintKind,
-                  snapEntityRef: currentDragSnap.entityRef,
-                })
-              } else {
-                onMutation({ type: 'move_vertex', featureId: finalDrag.featureId,
-                  entityId: finalDrag.entityId, vertexKey: finalDrag.vertexKey, to: finalDrag.currentWorld })
-              }
+              onMutation({ type: 'set_constraint_pos', featureId: currentDrag.featureId, constraintId: currentDrag.constraintId, pos })
             }
           }
+        } else {
+          // Vertex or edge drag: delegate to pure dragLogic
+          const endClient: [number, number] = [e.nativeEvent.clientX, e.nativeEvent.clientY]
+          const alignmentSnap = (alignmentSnapKind && alignmentSnapPoint && alignmentSnapVertexId)
+            ? { point: alignmentSnapPoint, kind: alignmentSnapKind, vertexId: alignmentSnapVertexId }
+            : null
+          const mutation = computeDragMutation(endClient, currentDrag, currentDragSnap, alignmentSnap)
+          if (mutation && onMutation) onMutation(mutation)
         }
+
         setDrag(null)
         setDragSnap(null)
         setOrbitEnabled(true)
@@ -311,7 +234,7 @@ export function DragAlignmentIndicator() {
 }
 
 /** Apply drag offset to sketch for optimistic preview.
- *  Dimension label drags (dim_label) don't affect entity geometry — the optimistic
+ *  Dimension label drags (dim_label) don't affect entity geometry -- the optimistic
  *  position is handled inside each dimension component via the drag store. */
 // eslint-disable-next-line react-refresh/only-export-components
 export function applyDragPreview(sketch: Sketch, drag: import('../../stores/sketchEditorStore').DragState): Sketch {
@@ -325,7 +248,6 @@ export function applyDragPreview(sketch: Sketch, drag: import('../../stores/sket
 
   const d = drag as { type: string; entityId: string; vertexKey: string }
   if (d.type === 'edge') {
-    // Translate the entire entity by delta
     if ('start' in entity && 'end' in entity) {
       const l = entity as LineSegment
       l.start = [l.start[0] + dx, l.start[1] + dy]

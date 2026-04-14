@@ -21,7 +21,7 @@ export function createDimensionTool(): DimensionTool {
     onPointerUp: () => {},
 
     onClick: (e, _worldPt, context) => {
-      const target = context.hoveredEntityId ?? context.hoveredVertexId
+      const target = context.internalHoverSelection ?? context.hoveredVertexId
       if (!target || !context.activeFeatureId) return
 
       const isVertex = target.startsWith('vertex:')

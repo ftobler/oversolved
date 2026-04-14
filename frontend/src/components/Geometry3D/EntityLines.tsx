@@ -8,9 +8,10 @@ import { sampleArc, sampleArcCCW, getEntityBounds } from '../sketch_helpers'
 import { DashedLine } from '../sketch_dimensions'
 import { VertexDot, HitPolyline, ProjectedOriginPoint } from './VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED } from './constants'
-import { sanitizePointerEvent } from './pointerAbstraction'
+import { sanitizePointerEvent } from './pointerAbstractionAdapters'
 import { useHoverAndDynamicSelection } from './useHoverAndDynamicSelection'
 import { useToolClickDispatch } from './useToolClickDispatch'
+import { useDragInitiation } from './useDragInitiation'
 
 interface EntityItemProps {
   entity: Entity
@@ -50,39 +51,22 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     clearHoverPayload: () => setInternalHoverSelection(null),
   })
 
-  // Store reads for drag initiation.
-  const activeTool = useSketchEditorStore(s => s.activeTool)
-  const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
-  const setDragPending = useSketchEditorStore(s => s.setDragPending)
-  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
-  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
-
   // Layer 4 — Tool Layer: dimension / fieldPick / select dispatch on click.
   const onClick = useToolClickDispatch({
     id: entId, featureId, isEditing, dimensionKind: 'entity', entityKind, fieldPickKind: 'line',
   })
 
-   // Layer 4 — Tool Layer: edge drag initiation via DragPlane.
-   // startWorld is the sanitized local hit point on the edge (not the entity origin).
-   // startClient is screen pixels for click-vs-drag disambiguation. See: dragging.test.ts REGRESSION 4
-   // We defer drag initiation to Dragging.tsx which checks if movement exceeds CLICK_THRESHOLD_PX.
-   // Also sets isPointerDown=true to enable dynamic selection accumulation during mouse-down + hover
-   // (see feature_dynamic_select.md for dynamic selection behavior)
-   //
-   // NOTE: setDragPending is a "rogue handler" that bypasses the tool system. This is intentional
-   // for now because Dragging.tsx depends on dragPending being set. After the tool system fully
-   // handles drag initiation, this could be refactored. See feature_selection_system2.md
-    const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: THREE.Vector3; clientX: number; clientY: number }) => {
-      if (!isEditing || (activeTool !== null && activeTool !== 'select')) return
-     ev.stopPropagation()
-     markAsClicked()
-     setOrbitEnabled(false)
-     setIsPointerDown(true)
-     const sanitized = planeGroupRef ? sanitizePointerEvent(ev, planeGroupRef) : null
-     const [sx, sy] = sanitized?.localPoint ?? [ev.point.x, ev.point.y]
-     setDragStartClient([ev.clientX, ev.clientY])
-     setDragPending({ type: 'edge', vertexId: entId, featureId, entityId, vertexKey: 'edge', startWorld: [sx, sy] })
-   }, [isEditing, activeTool, entId, featureId, entityId, planeGroupRef, markAsClicked, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
+  // Layer 4 — Tool Layer: edge drag initiation via DragPlane.
+  // startWorld is the sanitized local hit point on the edge (not the entity origin).
+  // startClient is screen pixels for click-vs-drag disambiguation. See: dragging.test.ts REGRESSION 4
+  // We defer drag initiation to Dragging.tsx which checks if movement exceeds CLICK_THRESHOLD_PX.
+  // Also sets isPointerDown=true to enable dynamic selection accumulation during mouse-down + hover.
+  const { initDrag } = useDragInitiation()
+  const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: THREE.Vector3; clientX: number; clientY: number }) => {
+    const sanitized = planeGroupRef ? sanitizePointerEvent(ev, planeGroupRef) : null
+    const [sx, sy] = sanitized?.localPoint ?? [ev.point.x, ev.point.y]
+    initDrag(ev, { type: 'edge', id: entId, featureId, entityId, vertexKey: 'edge', startWorld: [sx, sy], isEditing, markAsClicked })
+  }, [isEditing, entId, featureId, entityId, planeGroupRef, markAsClicked, initDrag])
 
   const e = entity
   const construction = 'construction' in e && e.construction

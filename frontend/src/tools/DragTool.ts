@@ -16,6 +16,10 @@ export interface DragTool extends Tool {
 
 const CLICK_VS_DRAG_THRESHOLD = 4
 
+// Mode marker only. The actual drag behavior (snap detection, mutation generation,
+// state transitions) is implemented in DragPlane (Dragging.tsx) via dragLogic.ts.
+// Tests for drag behavior target dragLogic.ts functions directly, not this handler.
+// See feature/feature_headless_viewport.md Step 7.
 export function createDragTool(): DragTool {
   const handlers: ToolHandlers<DragToolContext> = {
     onPointerDown: (_e, worldPt, context) => {

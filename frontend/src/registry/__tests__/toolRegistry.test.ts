@@ -82,8 +82,6 @@ describe('ToolRegistry', () => {
       const context: ToolContext = {
         normalSelection: new Set(),
         internalHoverSelection: null,
-        selection: new Set(),
-        hoveredEntityId: null,
         dynamicSelection: new Set(),
         isPointerDown: false,
         activeFeatureId: null,

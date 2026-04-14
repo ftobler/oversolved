@@ -1,9 +1,8 @@
 import { useCallback, useMemo, useRef, useState, forwardRef, useImperativeHandle } from 'react'
-import { Canvas, useThree } from '@react-three/fiber'
-import { OrthographicCamera, Line, Text } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { Canvas } from '@react-three/fiber'
+import { OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
-import type { SketchData, Feature, PlaneTransform, Sketch, BodyResult } from '../types/cad'
+import type { SketchData, Feature, Sketch, BodyResult } from '../types/cad'
 import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
 import Geometry3D from './Geometry3D'
 import { CubeGizmoCanvas } from './CubeGizmo'
@@ -13,9 +12,9 @@ import Body3D from './Geometry3D/Body3D'
 import OriginMarker from './Viewport/OriginMarker'
 import ReferencePlane from './Viewport/ReferencePlane'
 import SceneController from './Viewport/SceneController'
+import UserDefinedPlane from './Viewport/UserDefinedPlane'
 import ContextMenuDialog from './ContextMenuDialog'
-import { planeRotationFromTransform } from './Geometry3D/utils'
-import { COLOR_SELECTED, COLOR_HOVER, CLICK_THRESHOLD_PX } from './Geometry3D/constants'
+import { CLICK_THRESHOLD_PX } from './Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from './interaction/useSelectionPointerUpCleanup'
 import { getBodiesToRender } from './Viewport/bodyUtils'
 
@@ -45,72 +44,6 @@ function isActive(id: string, features: Feature[] | undefined, rollbackPos: numb
   return (rollbackPos === undefined || idx < rollbackPos) && (!visible || visible.has(id))
 }
 
-const UDPLANE_SIZE = 1
-const UDPH = UDPLANE_SIZE / 2
-const UDPLANE_BORDER: [number,number,number][] = [[-UDPH,-UDPH,0],[UDPH,-UDPH,0],[UDPH,UDPH,0],[-UDPH,UDPH,0],[-UDPH,-UDPH,0]]
-
-function PlaneLabel({ x, y, children }: { x: number; y: number; children: string }) {
-  const groupRef = useRef<THREE.Group>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (groupRef.current) {
-      const s = 12 / (('zoom' in camera) ? (camera as THREE.OrthographicCamera).zoom : 1)
-      groupRef.current.scale.setScalar(s)
-    }
-  })
-  return (
-    <group ref={groupRef} position={[x + 0.03, y - 0.02, 0.001]}>
-      <Text fontSize={3} color="#888888" fillOpacity={0.20} anchorX="left" anchorY="top">
-        {children}
-      </Text>
-    </group>
-  )
-}
-
-function UserDefinedPlane({ featureId, label, planeTransform }: { featureId: string; label: string; planeTransform: PlaneTransform }) {
-  // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
-  // DO NOT use local hovered state alone - must also call setHoveredPlane().
-  const [hovered, setHovered] = useState(false)
-  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
-  const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
-  const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
-  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
-  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
-  const drag = useSketchEditorStore(s => s.drag)
-  const setHoveredPlane = useSketchEditorStore(s => s.setHoveredPlane)
-  const isRotating = useSketchEditorStore(s => s.isRotating)
-  const selId = `@${featureId}`
-  const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
-  const isDragging = drag !== null
-
-  const rot = planeRotationFromTransform(planeTransform)
-  const [ox, oy, oz] = planeTransform.origin
-
-  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : '#444444'
-  const opacity = hovered ? 0.15 : selected ? 0.12 : 0.05
-
-  return (
-    <group position={[ox, oy, oz]} rotation={rot}>
-      {!isDragging && (
-        <mesh
-          onPointerOver={e => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredPlane(selId) }}
-          onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredPlane(null) }}
-          onClick={e => {
-            e.stopPropagation()
-            if (fieldPickState?.kind === 'plane') commitFieldPick(selId)
-            else if (planeSelectionFeatureId) commitPlaneSelection(selId)
-            else toggleNormalSelection(selId)
-          }}
-        >
-          <planeGeometry args={[UDPLANE_SIZE, UDPLANE_SIZE]} />
-          <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
-        </mesh>
-      )}
-      <Line points={UDPLANE_BORDER} color={hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : '#666666'} lineWidth={1} />
-      <PlaneLabel x={-UDPH} y={UDPH}>{label}</PlaneLabel>
-    </group>
-  )
-}
 
 export interface ViewportHandle {
   captureScreenshot: () => Promise<string | null>
