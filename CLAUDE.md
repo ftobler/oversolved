@@ -28,6 +28,7 @@ npx vitest run
 ```
 
 ## Conventions
+- The frontend goal is: If I delete the Viewport, the logic should still pass unit tests.
 - `code_guidelines.md` should help navigate the codebase.
 - Test driven development. Frontend changes must pass `just frontend`. Backend changes must pass `just backend`.
 - For each feature try to make a test.
