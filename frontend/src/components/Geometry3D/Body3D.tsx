@@ -574,6 +574,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
             ref={vertexDotRef}
             args={[undefined, undefined, vertices.length]}
             visible={false}
+            renderOrder={999}
           >
             <sphereGeometry args={[1, 6, 6]} />
             <meshBasicMaterial color="white" depthTest={false} depthWrite={false} />
