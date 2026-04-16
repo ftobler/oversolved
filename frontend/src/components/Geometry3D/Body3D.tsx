@@ -140,7 +140,6 @@ export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
 }
 
 export default function Body3D({ featureId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false }: Body3DProps) {
-  const hoveredBodyId = useSketchEditorStore(s => s.hoveredBodyId)
   const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
@@ -150,21 +149,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
 
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
 
-  const isHovered = hoveredBodyId === featureId
   const isBodySelected = normalSelection.has('@' + featureId)
-
-  // Check if a specific triangle face is selected (resolves to B-rep query when available)
-  const getIsFaceSelected = useCallback((triangleIndex: number): boolean => {
-    const { triangle_to_face, face_queries } = mesh
-    if (triangle_to_face && face_queries) {
-      const brepFaceIndex = triangle_to_face[triangleIndex]
-      if (brepFaceIndex !== undefined) {
-        const query = face_queries[brepFaceIndex]
-        if (query !== undefined) return normalSelection.has(query)
-      }
-    }
-    return normalSelection.has(`@${featureId}/face/${triangleIndex}`)
-  }, [normalSelection, featureId, mesh])
 
   // Check if a specific edge is selected, using stable query when available
   const getIsEdgeSelected = useCallback((edgeIndex: number): boolean => {
@@ -250,19 +235,6 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     return () => { wireframeGeometry?.dispose() }
   }, [wireframeGeometry])
 
-  // Debug: centroid spheres -- one per B-rep face, positioned at face_data centroid.
-  const centroidMeshRef = useRef<THREE.InstancedMesh>(null)
-  useEffect(() => {
-    const cmesh = centroidMeshRef.current
-    const faceData = mesh.face_data
-    if (!cmesh || !faceData || !showDebugHit) return
-    const mat = new THREE.Matrix4()
-    faceData.forEach(({ centroid }, i) => {
-      mat.makeTranslation(centroid[0], centroid[1], centroid[2])
-      cmesh.setMatrixAt(i, mat)
-    })
-    cmesh.instanceMatrix.needsUpdate = true
-  }, [mesh.face_data, showDebugHit])
 
   // Build boundary edge geometries for every B-rep face, keyed by face query.
   // Used to render the outline of a hovered or selected face.
@@ -399,8 +371,8 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
   // Always update the color attribute -- faceColors is always non-null so vertexColors
   // stays permanently enabled, avoiding shader recompilation on selection change.
   useEffect(() => {
-    geometry.setAttribute('color', new THREE.BufferAttribute(activeColors, 3))
-    geometry.attributes.color.needsUpdate = true
+    const attr = new THREE.BufferAttribute(activeColors, 3)
+    geometry.setAttribute('color', attr)
   }, [geometry, activeColors])
 
   // Apply edge colors to edge geometry when they change
@@ -542,15 +514,6 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
             opacity={showDebugHit ? 0.25 : 0}
             depthWrite={false}
           />
-        </instancedMesh>
-      )}
-      {showDebugHit && mesh.face_data && mesh.face_data.length > 0 && (
-        <instancedMesh
-          ref={centroidMeshRef}
-          args={[undefined, undefined, mesh.face_data.length]}
-        >
-          <sphereGeometry args={[0.06, 6, 6]} />
-          <meshBasicMaterial color="#ff00ff" depthTest={false} />
         </instancedMesh>
       )}
       {faceBoundaryGeos && hoveredSurfaceId && faceBoundaryGeos.has(hoveredSurfaceId) && (
