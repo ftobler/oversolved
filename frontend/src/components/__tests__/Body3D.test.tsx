@@ -38,6 +38,18 @@ describe('buildBodyGeometry', () => {
     expect(positions.length).toBe(CUBE_MESH.vertices.length * 3)  // 24
   })
 
+  it('toNonIndexed vertex count equals faces * 3 for per-face color alignment', () => {
+    const { positions, indices } = buildBodyGeometry(CUBE_MESH)
+    const indexed = new THREE.BufferGeometry()
+    indexed.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    indexed.setIndex(new THREE.BufferAttribute(indices, 1))
+    const geo = indexed.toNonIndexed()
+    const posAttr = geo.getAttribute('position')
+    expect(posAttr.count).toBe(CUBE_MESH.faces.length * 3)  // 36, not 8
+    indexed.dispose()
+    geo.dispose()
+  })
+
   it('indices array length matches face count', () => {
     const { indices } = buildBodyGeometry(CUBE_MESH)
     expect(indices.length).toBe(CUBE_MESH.faces.length * 3)  // 36

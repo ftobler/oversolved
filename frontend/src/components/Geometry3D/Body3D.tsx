@@ -141,11 +141,15 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
   }, [normalSelection, featureId, edgeQueries])
 
   const geometry = useMemo(() => {
-    const geo = new THREE.BufferGeometry()
+    const indexed = new THREE.BufferGeometry()
     const { positions, indices } = buildBodyGeometry(mesh)
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    geo.setIndex(new THREE.BufferAttribute(indices, 1))
-    geo.computeVertexNormals()
+    indexed.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    indexed.setIndex(new THREE.BufferAttribute(indices, 1))
+    indexed.computeVertexNormals()
+    // toNonIndexed gives each triangle its own vertex slots so faceColors[i*9..i*9+8]
+    // maps 1:1 to face i without bleeding into shared-vertex neighbors.
+    const geo = indexed.toNonIndexed()
+    indexed.dispose()
     return geo
   }, [mesh])
 
