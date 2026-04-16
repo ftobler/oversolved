@@ -1,4 +1,5 @@
 import copy
+import math
 import time
 from typing import Any
 from oversolved.query import Repository
@@ -41,6 +42,29 @@ def _find_first_dirty(features: list[dict], prev_state: BuildState | None) -> in
     return len(features)
 
 
+def _face_plane_axes(normal: list) -> tuple[list, list]:
+    """Compute orthonormal x_axis and y_axis for a face given its unit normal."""
+    nx, ny, nz = normal
+    if abs(nz) < 0.9:
+        ax, ay, az = 0.0, 0.0, 1.0
+    else:
+        ax, ay, az = 1.0, 0.0, 0.0
+    # x_axis = normalize(cross(normal, arbitrary))
+    cx = ny * az - nz * ay
+    cy = nz * ax - nx * az
+    cz = nx * ay - ny * ax
+    mag = math.sqrt(cx * cx + cy * cy + cz * cz)
+    if mag > 1e-12:
+        cx, cy, cz = cx / mag, cy / mag, cz / mag
+    else:
+        cx, cy, cz = 1.0, 0.0, 0.0
+    # y_axis = cross(normal, x_axis)
+    yx = ny * cz - nz * cy
+    yy = nz * cx - nx * cz
+    yz = nx * cy - ny * cx
+    return [cx, cy, cz], [yx, yy, yz]
+
+
 def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
     """Register B-rep face ancestry objects in the global query repository."""
     if global_repo is None or body.shape is None or not body.created_by:
@@ -49,13 +73,19 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
     face_data = mesh.get("face_data") or []
     for face_idx, face_info in enumerate(face_data):
         ancestor_ids = [f"@{body.created_by}face{face_idx}"]
+        centroid = face_info.get("centroid", [0.0, 0.0, 0.0])
+        normal = face_info.get("normal", [0.0, 0.0, 1.0])
+        x_axis, y_axis = _face_plane_axes(normal)
         payload = {
             "type": "face",
             "body_id": body.id,
             "created_by": body.created_by,
             "face_index": face_idx,
-            "centroid": face_info.get("centroid", [0.0, 0.0, 0.0]),
-            "normal": face_info.get("normal", [0.0, 0.0, 1.0]),
+            "centroid": centroid,
+            "normal": normal,
+            "origin": centroid,
+            "x_axis": x_axis,
+            "y_axis": y_axis,
         }
         key = frozenset(ancestor_ids)
         existing_ids = global_repo.anchestral.get(key, [])
@@ -218,11 +248,25 @@ def build(spec: dict, prev_state: BuildState | None = None) -> dict:
             result[fid] = prev_state.checkpoints[fid].result
             new_checkpoints[fid] = prev_state.checkpoints[fid]
 
+    registered_body_ids: set[str] = set(body_store.keys())
+
     for feature in features[first_dirty:]:
         fid = feature.get("id", "")
         feature_result = _try_solve_feature(feature, global_repo, body_store)
         _post_register(global_repo, fid, feature, feature_result)
         result[fid] = feature_result
+
+        # Register faces for any newly-created bodies so that downstream
+        # sketch features can use face queries as plane references.
+        for body_id, body in body_store.items():
+            if body_id not in registered_body_ids and body.shape is not None:
+                try:
+                    from oversolved.geometry import solid_to_mesh  # type: ignore[attr-defined]
+                    mesh_early = solid_to_mesh(body.shape, created_by=body.created_by)
+                    _register_brep_face_ancestry(global_repo, body, mesh_early)
+                except Exception:
+                    pass
+                registered_body_ids.add(body_id)
         new_checkpoints[fid] = FeatureCheckpoint(
             spec=copy.deepcopy(feature),
             result=feature_result,

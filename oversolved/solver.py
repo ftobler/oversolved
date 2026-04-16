@@ -1107,6 +1107,20 @@ def _resolve_plane_early(
             if p and p.get("type") in ("plane", "face"):
                 return p
         return _FRONT_PLANE
+    if plane_query.startswith("?") and global_repo is not None:
+        # Ancestry query -- resolves to a registered face (e.g. from a 3D body mesh)
+        try:
+            origin, x_axis, y_axis, normal = _plane_on_face(
+                {"face": plane_query}, global_repo
+            )
+            return {
+                "origin": origin.tolist(),
+                "x_axis": x_axis.tolist(),
+                "y_axis": y_axis.tolist(),
+                "normal": normal.tolist(),
+            }
+        except (ValueError, KeyError, TypeError):
+            pass
     if plane_query.startswith("$") and global_repo is not None:
         p = global_repo.elements.get(plane_query[1:])
         if p and p.get("type") in ("plane", "face"):

@@ -1,7 +1,7 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-import type { LineSegment, Arc, Circle, PointEntity } from '../types/cad'
+import type { LineSegment, Arc, Circle, PointEntity, BodyResult, EdgeDataCircleArc } from '../types/cad'
 
 /**
  * Measurement Registry — defines measurement rules in order of specificity.
@@ -285,6 +285,82 @@ export function measurePointToPlane(point: PointEntity, plane: Plane3D): string[
   const dist = Math.abs(toPlane[0] * n[0] + toPlane[1] * n[1] + toPlane[2] * n[2])
 
   return [`plane distance: ${dist.toFixed(2)} mm`]
+}
+
+// Resolve a selection ID to a body + element kind + index by reverse-lookup in bodies.
+function findBodyElement(
+  id: string,
+  bodies: Record<string, BodyResult>
+): { body: BodyResult; kind: 'edge' | 'face'; index: number } | null {
+  // Simple slash format: @featureId/edge/N or @featureId/face/N
+  if (id.startsWith('@') && id.includes('/')) {
+    const slash1 = id.indexOf('/', 1)
+    const slash2 = id.indexOf('/', slash1 + 1)
+    if (slash1 > 0 && slash2 > 0) {
+      const featureId = id.slice(1, slash1)
+      const kind = id.slice(slash1 + 1, slash2) as 'edge' | 'face'
+      const index = parseInt(id.slice(slash2 + 1), 10)
+      const body = bodies[featureId]
+      if (body && (kind === 'edge' || kind === 'face') && !isNaN(index)) {
+        return { body, kind, index }
+      }
+    }
+  }
+  // Ancestry / query format: search all bodies for a matching query string
+  for (const body of Object.values(bodies)) {
+    if (body.edge_queries) {
+      const idx = body.edge_queries.indexOf(id)
+      if (idx >= 0) return { body, kind: 'edge', index: idx }
+    }
+    if (body.mesh?.face_queries) {
+      const idx = body.mesh.face_queries.indexOf(id)
+      if (idx >= 0) return { body, kind: 'face', index: idx }
+    }
+  }
+  return null
+}
+
+/**
+ * Measure a single 3D body element (edge length or face area).
+ * Returns [] when selection is not a single 3D element or data is unavailable.
+ */
+export function measure3dSelection(
+  ids: Set<string>,
+  bodies: Record<string, BodyResult>
+): string[] {
+  if (ids.size !== 1) return []
+  const id = [...ids][0]
+  const found = findBodyElement(id, bodies)
+  if (!found) return []
+  const { body, kind, index } = found
+
+  if (kind === 'edge') {
+    const edge = body.edges?.[index]
+    if (!edge) return []
+    if (edge.kind === 'line') {
+      const [ax, ay, az] = edge.start
+      const [bx, by, bz] = edge.end
+      const len = Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2 + (bz - az) ** 2)
+      return [`[EDGE] ${len.toFixed(2)} mm`]
+    }
+    if (edge.kind === 'arc' || edge.kind === 'circle') {
+      const arcEdge = edge as EdgeDataCircleArc
+      const sweep = Math.abs(arcEdge.angle_end - arcEdge.angle_start)
+      const deg = (sweep * 180 / Math.PI).toFixed(1)
+      return [`[EDGE] r=${arcEdge.radius.toFixed(2)} mm, \u03b8=${deg}\u00b0`]
+    }
+    return []
+  }
+
+  if (kind === 'face') {
+    const faceData = body.mesh?.face_data?.[index]
+    if (faceData?.area != null) {
+      return [`[FACE] area=${faceData.area.toFixed(2)} mm\u00b2`]
+    }
+    return []
+  }
+
+  return []
 }
 
 /**

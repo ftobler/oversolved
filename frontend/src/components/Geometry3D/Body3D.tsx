@@ -146,6 +146,8 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
   const setHoveredBodyId = useSketchEditorStore(s => s.setHoveredBodyId)
   const setHoveredSurface = useSketchEditorStore(s => s.setHoveredSurface)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
+  const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
+  const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
 
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
   const [hoveredVertexIndex, setHoveredVertexIndex] = useState<number | null>(null)
@@ -292,11 +294,16 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
 
   // Promote hover to normal-selection. Click never re-searches -- it confirms whatever
   // is already in hoveredSurfaceId so selection and highlight are always the same element.
+  // When plane selection mode is active, commit the face as a plane reference instead.
   const handleMeshClick = useCallback((e: { stopPropagation: () => void }) => {
     e.stopPropagation()
     if (!hoveredSurfaceId) return
-    toggleNormalSelection(hoveredSurfaceId)
-  }, [hoveredSurfaceId, toggleNormalSelection])
+    if (planeSelectionFeatureId) {
+      commitPlaneSelection(hoveredSurfaceId)
+    } else {
+      toggleNormalSelection(hoveredSurfaceId)
+    }
+  }, [hoveredSurfaceId, planeSelectionFeatureId, commitPlaneSelection, toggleNormalSelection])
 
   // Handle edge click on line segments
   const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event }) => {

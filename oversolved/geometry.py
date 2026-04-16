@@ -385,6 +385,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
                 face.Orientation(face_shape.Orientation())
                 location = TopLoc_Location()
                 tri = BRep_Tool.Triangulation_s(face, location)
+                face_area = 0.0
                 if tri is not None:
                     node_count = tri.NbNodes()
                     tri_count = tri.NbTriangles()
@@ -438,9 +439,10 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
                         else:
                             normals.append([0.0, 0.0, 1.0])
                         triangle_to_face.append(face_idx)
+                        face_area += 0.5 * mag
                 centroid = _compute_face_centroid(face)
                 normal = _compute_face_normal(face)
-                face_data.append({"centroid": centroid, "normal": normal})
+                face_data.append({"centroid": centroid, "normal": normal, "area": face_area})
                 if created_by:
                     from oversolved.query import make_ancestry_query
 
@@ -450,7 +452,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
                     face_queries.append(query)
             except TypeError:
                 face_data.append(
-                    {"centroid": [0.0, 0.0, 0.0], "normal": [0.0, 0.0, 1.0]}
+                    {"centroid": [0.0, 0.0, 0.0], "normal": [0.0, 0.0, 1.0], "area": 0.0}
                 )
                 if created_by:
                     from oversolved.query import make_ancestry_query

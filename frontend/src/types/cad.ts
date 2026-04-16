@@ -2,6 +2,9 @@
 
 export type Point = [number, number]
 
+// Which geometric space the current selection lives in.
+export type SelectionDomain = 'sketch_2d' | 'body_3d' | 'plane_3d' | 'mixed'
+
 export type ExtrudeDirection = 'normal' | 'reverse' | 'symmetric'
 
 export interface ExtrudeFeatureDef {
@@ -13,6 +16,7 @@ export interface ExtrudeFeatureDef {
 export interface FaceData {
   centroid: [number, number, number]
   normal: [number, number, number]
+  area?: number
 }
 
 export interface Mesh3D {

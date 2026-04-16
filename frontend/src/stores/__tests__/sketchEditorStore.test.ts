@@ -408,4 +408,53 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().dragSnap).toBeNull()
     })
   })
+
+  describe('selectionDomain', () => {
+    beforeEach(reset)
+
+    it('starts as sketch_2d', () => {
+      expect(useSketchEditorStore.getState().selectionDomain).toBe('sketch_2d')
+    })
+
+    it('sketch entity sets sketch_2d', () => {
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      expect(useSketchEditorStore.getState().selectionDomain).toBe('sketch_2d')
+    })
+
+    it('3D edge sets body_3d', () => {
+      useSketchEditorStore.getState().toggleNormalSelection('@ex1/edge/0')
+      expect(useSketchEditorStore.getState().selectionDomain).toBe('body_3d')
+    })
+
+    it('ancestry query sets body_3d', () => {
+      useSketchEditorStore.getState().toggleNormalSelection('?9;@ex1face0:face')
+      expect(useSketchEditorStore.getState().selectionDomain).toBe('body_3d')
+    })
+
+    it('builtin plane sets plane_3d', () => {
+      useSketchEditorStore.getState().toggleNormalSelection('@builtin_plane_front')
+      expect(useSketchEditorStore.getState().selectionDomain).toBe('plane_3d')
+    })
+
+    it('mixed selection sets mixed', () => {
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('@ex1/edge/0')
+      expect(useSketchEditorStore.getState().selectionDomain).toBe('mixed')
+    })
+
+    it('reverts to sketch_2d after clearNormalSelection', () => {
+      useSketchEditorStore.getState().toggleNormalSelection('@ex1/edge/0')
+      useSketchEditorStore.getState().clearNormalSelection()
+      expect(useSketchEditorStore.getState().selectionDomain).toBe('sketch_2d')
+    })
+
+    it('applyConstraint does nothing when domain is body_3d', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('@ex1/edge/0')
+      useSketchEditorStore.getState().applyConstraint('horizontal')
+      expect(handler).not.toHaveBeenCalled()
+    })
+  })
 })

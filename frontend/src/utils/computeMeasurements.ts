@@ -1,5 +1,5 @@
-import type { Sketch, LineSegment, Arc, Circle, PointEntity } from '../types/cad'
-import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, type Plane3D } from '../registry/measurementRegistry'
+import type { Sketch, LineSegment, Arc, Circle, PointEntity, BodyResult } from '../types/cad'
+import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, measure3dSelection, type Plane3D } from '../registry/measurementRegistry'
 
 /**
  * Compute the best measurement for a set of selected entities.
@@ -21,7 +21,8 @@ import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, t
 export function computeMeasurements(
   selection: Set<string>,
   sketch: Sketch,
-  solveResults?: Record<string, unknown>
+  solveResults?: Record<string, unknown>,
+  bodies?: Record<string, BodyResult>
 ): string[] {
   // Group selections by entity type
   const lines: LineSegment[] = []
@@ -29,8 +30,15 @@ export function computeMeasurements(
   const circles: Circle[] = []
   const points: PointEntity[] = []
   const planes: Plane3D[] = []
+  const body3dIds = new Set<string>()
 
   for (const id of selection) {
+    // 3D body element: @featureId/edge/N, @featureId/face/N, or ancestry query (?...)
+    if (id.startsWith('?') || (id.startsWith('@') && id.includes('/'))) {
+      body3dIds.add(id)
+      continue
+    }
+
     // Parse plane selections starting with @
     if (id.startsWith('@')) {
       const featureId = id.slice(1)
@@ -91,6 +99,12 @@ export function computeMeasurements(
     } else if ('x' in entity) {
       points.push(entity as PointEntity)
     }
+  }
+
+  // 3D body element measurements (single edge or face)
+  if (body3dIds.size > 0 && bodies) {
+    const result = measure3dSelection(body3dIds, bodies)
+    if (result.length > 0) return result
   }
 
   // Track entity counts for "no match" message

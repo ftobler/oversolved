@@ -310,6 +310,19 @@ export default function Part() {
     setMode('sketch')
   }, [doc, features.length, handleMutation, setFieldPickState, setMode])
 
+  const handleAddSketchOnFace = useCallback(() => {
+    if (!doc) return
+    const featureId = randomId(18)
+    const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
+    const label = `sketch ${sketchCount + 1}`
+    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    setFieldPickState(null)
+    handleMutation({ type: 'add_sketch', featureId, label })
+    // Plane will be committed when user clicks a face (planeSelectionFeatureId drives that).
+    setPlaneSelectionFeatureId(featureId)
+    setEditingFeatureId(featureId)
+  }, [doc, features.length, handleMutation, setFieldPickState, setPlaneSelectionFeatureId])
+
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -460,6 +473,24 @@ export default function Part() {
     handleMutation({ type: 'set_feature_visibility', featureId, visible: !visibleFeatures.has(featureId) })
     setContextMenu(null)
   }, [handleMutation, visibleFeatures])
+
+  // When the sketch-on-face plane selection completes (planeSelectionFeatureId clears),
+  // open the pending sketch for editing if one was created via handleAddSketchOnFace.
+  const pendingSketchOnFaceId = useRef<string | null>(null)
+  useEffect(() => {
+    if (planeSelectionFeatureId) {
+      pendingSketchOnFaceId.current = planeSelectionFeatureId
+    } else if (pendingSketchOnFaceId.current) {
+      const fid = pendingSketchOnFaceId.current
+      pendingSketchOnFaceId.current = null
+      const feature = features.find(f => f.id === fid)
+      if (feature?.kind === 'sketch') {
+        const idx = features.findIndex(f => f.id === fid)
+        if (idx >= 0) setRollbackPosition(idx + 1)
+        setMode('sketch')
+      }
+    }
+  }, [planeSelectionFeatureId, features, setMode])
 
   const enterEditSketch = useCallback((featureId: string) => {
     const idx = features.findIndex(f => f.id === featureId)
@@ -648,6 +679,7 @@ export default function Part() {
               <>
                 <button className="editor-btn" title="Add Extrude (E)" onClick={handleAddExtrude}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
                 <button className="editor-btn" title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
+                <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch on face" onClick={handleAddSketchOnFace}><img src={featureSketchIcon} alt="Sketch on face" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
                 <button className="editor-btn" title="Import STEP" onClick={handleImportStep}><img src={featureImportIcon} alt="Import STEP" /></button>
               </>
@@ -780,7 +812,7 @@ export default function Part() {
       </div>
       <footer className="doc-footer">
         <p>Copyright 2026 - Oversolved</p>
-        <FooterMeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} />
+        <FooterMeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
         <div className="debug-buttons">
           <button
             className={`footer-debug-btn ${debugOpen ? 'active' : ''}`}

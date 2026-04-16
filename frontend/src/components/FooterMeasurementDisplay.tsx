@@ -1,25 +1,27 @@
 import { useMemo } from 'react'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import { computeMeasurements } from '../utils/computeMeasurements'
-import type { Sketch } from '../types/cad'
+import type { Sketch, BodyResult } from '../types/cad'
 
 interface FooterMeasurementDisplayProps {
   sketch: Sketch
   measurementIcon?: string
   solveResults?: Record<string, unknown>
+  bodies?: Record<string, BodyResult>
 }
 
 export default function FooterMeasurementDisplay({
   sketch,
   measurementIcon,
   solveResults,
+  bodies,
 }: FooterMeasurementDisplayProps) {
   const selection = useSketchEditorStore(s => s.normalSelection)
 
   // Compute measurements for current selection
   const measurements = useMemo(() => {
-    return computeMeasurements(selection, sketch, solveResults)
-  }, [selection, sketch, solveResults])
+    return computeMeasurements(selection, sketch, solveResults, bodies)
+  }, [selection, sketch, solveResults, bodies])
 
   if (measurements.length === 0) {
     return null

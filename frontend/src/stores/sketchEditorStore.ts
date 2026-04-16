@@ -2,7 +2,7 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import { create } from 'zustand'
-import type { Mutation, FieldPickState } from '../types/cad'
+import type { Mutation, FieldPickState, SelectionDomain } from '../types/cad'
 import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '../registry'
 import type { SnapKind } from '../registry'
 import type { SnapTarget } from '../components/Geometry3D/snapDetection'
@@ -13,6 +13,26 @@ export type { Mutation }
 export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'point' | 'project' | 'drag' | null
 
 export const getEffectiveTool = (activeTool: ActiveTool): NonNullable<ActiveTool> => activeTool ?? 'drag'
+
+export function deriveSelectionDomain(ids: Set<string>): SelectionDomain {
+  if (ids.size === 0) return 'sketch_2d'
+  let hasSketch = false
+  let has3d = false
+  let hasPlane = false
+  for (const id of ids) {
+    if (id.startsWith('entity:') || id.startsWith('vertex:') || id.startsWith('face:') || id.startsWith('constraint:')) {
+      hasSketch = true
+    } else if (id.startsWith('?') || (id.startsWith('@') && id.includes('/'))) {
+      has3d = true
+    } else if (id.startsWith('@')) {
+      hasPlane = true
+    }
+  }
+  if (hasSketch && !has3d && !hasPlane) return 'sketch_2d'
+  if (has3d && !hasSketch && !hasPlane) return 'body_3d'
+  if (hasPlane && !hasSketch && !has3d) return 'plane_3d'
+  return 'mixed'
+}
 
 export interface DialogState {
   position: [number, number]
@@ -53,6 +73,8 @@ interface SketchEditorState {
    internalHoverSelection: string | null
    // Normal selection — traditional selection, persists until explicitly changed.
    normalSelection: Set<string>
+   // Derived domain of the current normal selection.
+   selectionDomain: SelectionDomain
    // Dynamic selection — elements being added/removed during drag selection.
    dynamicSelection: Set<string>
    // Tracks if pointer is currently down for dynamic selection accumulation.
@@ -154,6 +176,7 @@ interface SketchEditorState {
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   normalSelection: new Set(),
+  selectionDomain: 'sketch_2d',
   internalHoverSelection: null,
   dynamicSelection: new Set(),
   isPointerDown: false,
@@ -201,7 +224,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setIsPointerDown: (down: boolean) => set({ isPointerDown: down }),
 
-  clearNormalSelection: () => set({ normalSelection: new Set(), dynamicSelection: new Set() }),
+  clearNormalSelection: () => set({ normalSelection: new Set(), selectionDomain: 'sketch_2d', dynamicSelection: new Set() }),
 
   clearDynamicSelection: () => set({ dynamicSelection: new Set() }),
 
@@ -210,7 +233,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       const next = new Set(s.normalSelection)
       if (next.has(id)) next.delete(id)
       else next.add(id)
-      return { normalSelection: next }
+      return { normalSelection: next, selectionDomain: deriveSelectionDomain(next) }
     }),
 
   updateDynamicSelection: (hoverId) => set(s => {
@@ -273,8 +296,9 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   },
 
   applyConstraint: (kind) => {
-    const { normalSelection: selection, onMutation, activeFeatureId } = get()
+    const { normalSelection: selection, onMutation, activeFeatureId, selectionDomain } = get()
     if (selection.size === 0 || !onMutation || !activeFeatureId) return
+    if (selectionDomain !== 'sketch_2d') return
     const targets = [...selection]
     onMutation({ type: 'add_constraint', featureId: activeFeatureId, kind, targets })
   },

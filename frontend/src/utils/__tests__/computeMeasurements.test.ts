@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { computeMeasurements } from '../computeMeasurements'
-import type { Sketch } from '../../types/cad'
+import type { Sketch, BodyResult } from '../../types/cad'
 
 const sketch: Sketch = {
   P1: { x: 0, y: 0 },
@@ -312,6 +312,91 @@ describe('Measurement Selection and Evaluation', () => {
         solveResults
       )
       expect(result).toEqual([])
+    })
+  })
+
+  describe('19. 3D body edge and face measurements', () => {
+    const bodyResult: BodyResult = {
+      id: 'body_ex1',
+      created_by: 'ex1',
+      modified_by: [],
+      edges: [
+        { kind: 'line', start: [0, 0, 0], end: [3, 4, 0] },
+        { kind: 'arc', center: [0, 0, 0], radius: 2, axis: [0, 0, 1],
+          x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2 },
+      ],
+      mesh: {
+        vertices: [],
+        faces: [],
+        normals: [],
+        face_data: [
+          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 12.5 },
+          { centroid: [1, 1, 0], normal: [1, 0, 0], area: 0.0 },
+        ],
+        face_queries: ['?9;@ex1face0:face', '?9;@ex1face1:face'],
+      },
+    }
+    const bodies = { ex1: bodyResult }
+
+    it('measures line edge length via simple format', () => {
+      const r = computeMeasurements(new Set(['@ex1/edge/0']), sketch, undefined, bodies)
+      expect(r).toEqual(['[EDGE] 5.00 mm'])
+    })
+
+    it('measures arc edge via simple format', () => {
+      const r = computeMeasurements(new Set(['@ex1/edge/1']), sketch, undefined, bodies)
+      expect(r[0]).toMatch(/\[EDGE\] r=2\.00 mm/)
+    })
+
+    it('measures face area via simple format', () => {
+      const r = computeMeasurements(new Set(['@ex1/face/0']), sketch, undefined, bodies)
+      expect(r).toEqual(['[FACE] area=12.50 mm\u00b2'])
+    })
+
+    it('measures edge via ancestry query format', () => {
+      const edgeQueries = ['?9;@ex1edge0:edge', '?9;@ex1edge1:edge']
+      const bodyWithQueries: BodyResult = { ...bodyResult, edge_queries: edgeQueries }
+      const r = computeMeasurements(
+        new Set(['?9;@ex1edge0:edge']),
+        sketch,
+        undefined,
+        { ex1: bodyWithQueries }
+      )
+      expect(r).toEqual(['[EDGE] 5.00 mm'])
+    })
+
+    it('measures face via ancestry query format', () => {
+      const r = computeMeasurements(
+        new Set(['?9;@ex1face0:face']),
+        sketch,
+        undefined,
+        bodies
+      )
+      expect(r).toEqual(['[FACE] area=12.50 mm\u00b2'])
+    })
+
+    it('returns empty for multi-3d selection', () => {
+      const r = computeMeasurements(
+        new Set(['@ex1/edge/0', '@ex1/edge/1']),
+        sketch,
+        undefined,
+        bodies
+      )
+      expect(r).toEqual([])
+    })
+
+    it('returns empty when bodies not passed', () => {
+      const r = computeMeasurements(new Set(['@ex1/edge/0']), sketch)
+      expect(r).toEqual([])
+    })
+
+    it('returns empty for face with no area data', () => {
+      const bodyNoArea: BodyResult = {
+        ...bodyResult,
+        mesh: { ...bodyResult.mesh!, face_data: [{ centroid: [0,0,0], normal: [0,0,1] }] },
+      }
+      const r = computeMeasurements(new Set(['@ex1/face/0']), sketch, undefined, { ex1: bodyNoArea })
+      expect(r).toEqual([])
     })
   })
 })
