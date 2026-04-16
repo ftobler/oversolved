@@ -32,7 +32,7 @@ export function getBodiesToRender(
     if (!body.mesh) continue
     items.push({
       key: bodyId,
-      featureId: bodyId,
+      featureId: createdBy,
       mesh: body.mesh,
       edges: body.edges ?? [],
       edgeQueries: body.edge_queries,
