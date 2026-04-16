@@ -4,6 +4,7 @@ import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 beforeEach(() => {
   useSketchEditorStore.setState({
     hoveredBodyId: null,
+    hoveredSurfaceId: null,
     normalSelection: new Set(),
   })
 })
@@ -79,6 +80,26 @@ describe('Body3D selection - edge queries', () => {
     const query = `@${featureId}/edge/${edgeIndex}`
     useSketchEditorStore.getState().toggleNormalSelection(query)
     expect(useSketchEditorStore.getState().normalSelection.has('@ex1/edge/3')).toBe(true)
+  })
+})
+
+describe('Body3D hover surface - store behavior', () => {
+  it('setHoveredSurface sets hoveredSurfaceId', () => {
+    useSketchEditorStore.getState().setHoveredSurface('?d,d;@extrude1face0:face')
+    expect(useSketchEditorStore.getState().hoveredSurfaceId).toBe('?d,d;@extrude1face0:face')
+  })
+
+  it('setHoveredSurface(null) clears hoveredSurfaceId', () => {
+    useSketchEditorStore.getState().setHoveredSurface('?d,d;@extrude1face0:face')
+    useSketchEditorStore.getState().setHoveredSurface(null)
+    expect(useSketchEditorStore.getState().hoveredSurfaceId).toBeNull()
+  })
+
+  it('hoveredSurfaceId is independent from normalSelection', () => {
+    useSketchEditorStore.getState().setHoveredSurface('?d,d;@extrude1face0:face')
+    useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
+    expect(useSketchEditorStore.getState().hoveredSurfaceId).toBe('?d,d;@extrude1face0:face')
+    expect(useSketchEditorStore.getState().normalSelection.has('@ex1/face/0')).toBe(true)
   })
 })
 

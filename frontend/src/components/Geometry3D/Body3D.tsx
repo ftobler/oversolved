@@ -110,12 +110,13 @@ export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
 
 export default function Body3D({ featureId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false }: Body3DProps) {
   const hoveredBodyId = useSketchEditorStore(s => s.hoveredBodyId)
+  const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
   const setHoveredBodyId = useSketchEditorStore(s => s.setHoveredBodyId)
+  const setHoveredSurface = useSketchEditorStore(s => s.setHoveredSurface)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
 
-  const [hoveredFaceIndex, setHoveredFaceIndex] = useState<number | null>(null)
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
 
   const isHovered = hoveredBodyId === featureId
@@ -249,39 +250,36 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     }
   }, [featureId, edgeQueries, segmentToEdgeMap, hoveredEdgeIndex, toggleNormalSelection])
 
-  // Compute color attribute for faces if any are selected or hovered
+  // Compute color attribute for faces if any are selected or hovered.
+  // Uses hoveredSurfaceId (query string) so all triangles of a B-rep face highlight together.
   const faceColors = useMemo(() => {
     const hasSelection = mesh.faces.some((_, i) => getIsFaceSelected(i))
-    const hasHover = hoveredFaceIndex !== null
+    const hasHover = hoveredSurfaceId !== null
     if (!hasSelection && !hasHover) return null
 
-    const colors = new Float32Array(mesh.faces.length * 3 * 3)  // 3 vertices per face, 3 components per color
+    const colors = new Float32Array(mesh.faces.length * 3 * 3)
     const defaultColor = new THREE.Color(bodyColor)
     const selectedColor = new THREE.Color(COLOR_SELECTED)
     const hoverColor = new THREE.Color(COLOR_HOVER)
 
     for (let i = 0; i < mesh.faces.length; i++) {
       let color = defaultColor
-      if (getIsFaceSelected(i)) {
+      const query = resolveFaceQuery(i)
+      if (normalSelection.has(query)) {
         color = selectedColor
-      } else if (i === hoveredFaceIndex) {
+      } else if (query === hoveredSurfaceId) {
         color = hoverColor
       }
 
-      // Set color for all 3 vertices of this face
       const baseIdx = i * 9
-      colors[baseIdx] = color.r
-      colors[baseIdx + 1] = color.g
-      colors[baseIdx + 2] = color.b
-      colors[baseIdx + 3] = color.r
-      colors[baseIdx + 4] = color.g
-      colors[baseIdx + 5] = color.b
-      colors[baseIdx + 6] = color.r
-      colors[baseIdx + 7] = color.g
-      colors[baseIdx + 8] = color.b
+      for (let v = 0; v < 9; v += 3) {
+        colors[baseIdx + v] = color.r
+        colors[baseIdx + v + 1] = color.g
+        colors[baseIdx + v + 2] = color.b
+      }
     }
     return colors
-  }, [mesh.faces, getIsFaceSelected, hoveredFaceIndex, bodyColor])
+  }, [mesh.faces, normalSelection, hoveredSurfaceId, bodyColor, resolveFaceQuery])
 
   // Build edge colors array for selected/hovered edges
   const edgeColors = useMemo(() => {
@@ -374,24 +372,22 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           e.stopPropagation()
           if (isRotating) return
           setHoveredBodyId(featureId)
-          // Set hovered face index from intersection
           const faceIndex = (e as unknown as { faceIndex?: number }).faceIndex
           if (faceIndex !== undefined) {
-            setHoveredFaceIndex(faceIndex)
+            setHoveredSurface(resolveFaceQuery(faceIndex))
           }
         }}
         onPointerMove={(e) => {
           e.stopPropagation()
-          // Update hovered face as mouse moves over different faces
           const faceIndex = (e as unknown as { faceIndex?: number }).faceIndex
           if (faceIndex !== undefined) {
-            setHoveredFaceIndex(faceIndex)
+            setHoveredSurface(resolveFaceQuery(faceIndex))
           }
         }}
         onPointerOut={(e) => {
           e.stopPropagation()
           setHoveredBodyId(current => current === featureId ? null : current)
-          setHoveredFaceIndex(null)
+          setHoveredSurface(null)
         }}
         onClick={handleMeshClick}
       >
