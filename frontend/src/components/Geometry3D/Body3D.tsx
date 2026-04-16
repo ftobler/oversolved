@@ -10,7 +10,7 @@ import {
   COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL,
   COLOR_SELECTED, COLOR_HOVER,
   ARC_SEGMENTS,
-  HIT_PIXELS, POINT_HIT_PIXELS,
+  HIT_PIXELS, POINT_HIT_PIXELS, POINT_VIS_PIXELS,
 } from './constants'
 
 interface Body3DProps {
@@ -148,6 +148,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
 
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
+  const [hoveredVertexIndex, setHoveredVertexIndex] = useState<number | null>(null)
 
   const isBodySelected = normalSelection.has('@' + featureId)
 
@@ -385,12 +386,14 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
   }, [edgeGeometry, edgeColors, edges.length])
 
   const vertexMeshRef = useRef<THREE.InstancedMesh>(null)
+  const vertexDotRef = useRef<THREE.InstancedMesh>(null)
 
   // Reusable objects to avoid per-frame allocation
   const _vtxPos = useMemo(() => new THREE.Vector3(), [])
   const _vtxQuat = useMemo(() => new THREE.Quaternion(), [])  // identity
   const _vtxScale = useMemo(() => new THREE.Vector3(), [])
   const _vtxMatrix = useMemo(() => new THREE.Matrix4(), [])
+  const _dotScale = useMemo(() => new THREE.Vector3(), [])
 
   useFrame(({ camera, raycaster }) => {
     // Scale Line raycaster threshold to match HIT_PIXELS in screen space.
@@ -412,6 +415,50 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     })
 
     vmesh.instanceMatrix.needsUpdate = true
+
+    const dmesh = vertexDotRef.current
+    if (dmesh && vertices?.length) {
+      // Only show visual dots when vertex is hovered or selected
+      const hasHover = hoveredVertexIndex !== null
+      const hasSelection = vertices.some((_, i) => {
+        const query = vertexQueries?.[i] ?? `@${featureId}/vertex/${i}`
+        return normalSelection.has(query)
+      })
+
+      if (!hasHover && !hasSelection) {
+        dmesh.visible = false
+      } else {
+        dmesh.visible = true
+        const ds = POINT_VIS_PIXELS * p2w(camera)
+        _dotScale.set(ds, ds, ds)
+
+        const hoverColorObj = new THREE.Color(COLOR_HOVER)
+        const selectedColorObj = new THREE.Color(COLOR_SELECTED)
+
+        vertices.forEach(([x, y, z], i) => {
+          _vtxPos.set(x, y, z)
+          _vtxMatrix.compose(_vtxPos, _vtxQuat, _dotScale)
+          dmesh.setMatrixAt(i, _vtxMatrix)
+
+          const query = vertexQueries?.[i] ?? `@${featureId}/vertex/${i}`
+          let color: THREE.Color
+          if (normalSelection.has(query)) {
+            color = selectedColorObj
+          } else if (i === hoveredVertexIndex) {
+            color = hoverColorObj
+          } else {
+            // Hide non-hovered, non-selected vertices by scaling to 0
+            _vtxMatrix.compose(_vtxPos, _vtxQuat, _vtxScale.set(0, 0, 0))
+            dmesh.setMatrixAt(i, _vtxMatrix)
+            return  // skip setColorAt
+          }
+          dmesh.setColorAt(i, color)
+        })
+
+        dmesh.instanceMatrix.needsUpdate = true
+        if (dmesh.instanceColor) dmesh.instanceColor.needsUpdate = true
+      }
+    }
   })
 
   return (
@@ -491,30 +538,47 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
         </lineSegments>
       )}
       {vertices && vertices.length > 0 && (
-        <instancedMesh
-          ref={vertexMeshRef}
-          args={[undefined, undefined, vertices.length]}
-          onPointerOver={(e) => { e.stopPropagation() }}
-          onPointerOut={(e) => { e.stopPropagation() }}
-          onClick={(e) => {
-            e.stopPropagation()
-            const idx = e.instanceId
-            if (idx !== undefined) {
-              const query = vertexQueries?.[idx] ?? `@${featureId}/vertex/${idx}`
-              toggleNormalSelection(query)
-            }
-          }}
-        >
-          {/* Radius 1 — scaled to POINT_HIT_PIXELS screen px by useFrame */}
-          <sphereGeometry args={[1, 8, 8]} />
-          {/* Invisible normally (opacity 0), orange 25% in debug — matches HitPolyline. */}
-          <meshBasicMaterial
-            color="#ff6600"
-            transparent
-            opacity={showDebugHit ? 0.25 : 0}
-            depthWrite={false}
-          />
-        </instancedMesh>
+        <>
+          <instancedMesh
+            ref={vertexMeshRef}
+            args={[undefined, undefined, vertices.length]}
+            onPointerOver={(e) => {
+              e.stopPropagation()
+              const idx = e.instanceId
+              if (idx !== undefined) setHoveredVertexIndex(idx)
+            }}
+            onPointerOut={(e) => {
+              e.stopPropagation()
+              setHoveredVertexIndex(null)
+            }}
+            onClick={(e) => {
+              e.stopPropagation()
+              const idx = e.instanceId
+              if (idx !== undefined) {
+                const query = vertexQueries?.[idx] ?? `@${featureId}/vertex/${idx}`
+                toggleNormalSelection(query)
+              }
+            }}
+          >
+            {/* Radius 1 — scaled to POINT_HIT_PIXELS screen px by useFrame */}
+            <sphereGeometry args={[1, 8, 8]} />
+            {/* Invisible normally (opacity 0), orange 25% in debug — matches HitPolyline. */}
+            <meshBasicMaterial
+              color="#ff6600"
+              transparent
+              opacity={showDebugHit ? 0.25 : 0}
+              depthWrite={false}
+            />
+          </instancedMesh>
+          <instancedMesh
+            ref={vertexDotRef}
+            args={[undefined, undefined, vertices.length]}
+            visible={false}
+          >
+            <sphereGeometry args={[1, 6, 6]} />
+            <meshBasicMaterial color="white" depthTest={false} depthWrite={false} />
+          </instancedMesh>
+        </>
       )}
       {faceBoundaryGeos && hoveredSurfaceId && faceBoundaryGeos.has(hoveredSurfaceId) && (
         <lineSegments geometry={faceBoundaryGeos.get(hoveredSurfaceId)}>
