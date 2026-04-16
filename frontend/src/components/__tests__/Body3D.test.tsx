@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { buildBodyGeometry, buildEdgeSegments, getEdgeSegmentCounts } from '../Geometry3D/Body3D'
+import { buildBodyGeometry, buildEdgeSegments, getEdgeSegmentCounts, buildFaceBoundarySegments } from '../Geometry3D/Body3D'
 import type { Mesh3D, EdgeData } from '../../types/cad'
 import { ARC_SEGMENTS } from '../Geometry3D/constants'
 
@@ -18,6 +18,13 @@ const CUBE_MESH: Mesh3D = {
     [3,7,4],[3,4,0],
   ],
   normals: [],
+}
+
+// Same cube with triangle_to_face mapping: 2 triangles per face, 6 faces.
+const CUBE_MESH_BREP: Mesh3D = {
+  ...CUBE_MESH,
+  triangle_to_face: [0,0, 1,1, 2,2, 3,3, 4,4, 5,5],
+  face_queries: ['?f0', '?f1', '?f2', '?f3', '?f4', '?f5'],
 }
 
 describe('no EdgesGeometry from mesh', () => {
@@ -68,6 +75,38 @@ describe('buildBodyGeometry', () => {
     for (const idx of indices) {
       expect(idx).toBeLessThan(CUBE_MESH.vertices.length)
     }
+  })
+})
+
+describe('buildFaceBoundarySegments', () => {
+  it('returns empty array when triangle_to_face is missing', () => {
+    const result = buildFaceBoundarySegments(CUBE_MESH, 0)
+    expect(result.length).toBe(0)
+  })
+
+  it('bottom face (face 0) has 4 boundary edges = 8 points = 24 floats', () => {
+    const result = buildFaceBoundarySegments(CUBE_MESH_BREP, 0)
+    // 4 edges × 2 endpoints × 3 floats = 24
+    expect(result.length).toBe(24)
+  })
+
+  it('boundary segments are multiples of 6 floats (one segment = 2 endpoints × 3 coords)', () => {
+    for (let face = 0; face < 6; face++) {
+      const result = buildFaceBoundarySegments(CUBE_MESH_BREP, face)
+      expect(result.length % 6).toBe(0)
+    }
+  })
+
+  it('all 6 cube faces have 4 boundary edges each', () => {
+    for (let face = 0; face < 6; face++) {
+      const result = buildFaceBoundarySegments(CUBE_MESH_BREP, face)
+      expect(result.length).toBe(24)  // 4 edges × 2 × 3
+    }
+  })
+
+  it('out-of-range face index returns empty array', () => {
+    const result = buildFaceBoundarySegments(CUBE_MESH_BREP, 99)
+    expect(result.length).toBe(0)
   })
 })
 

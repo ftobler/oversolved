@@ -6,7 +6,7 @@ import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { p2w } from '../sketch_helpers'
 import {
   COLOR_BODY_DEFAULT,
-  COLOR_BODY_HOVER, COLOR_BODY_SELECTED,
+  COLOR_BODY_SELECTED,
   COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL,
   COLOR_SELECTED, COLOR_HOVER,
   ARC_SEGMENTS,
@@ -39,6 +39,37 @@ export function buildBodyGeometry(mesh: Mesh3D): {
     indices[i * 3] = a; indices[i * 3 + 1] = b; indices[i * 3 + 2] = c
   })
   return { positions, indices }
+}
+
+// Return line segment positions for the outer boundary of one B-rep face.
+// Uses the original indexed mesh: edges shared by two triangles within the same
+// face are interior tessellation edges; edges appearing once are on the boundary.
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildFaceBoundarySegments(mesh: Mesh3D, brepFaceIndex: number): Float32Array {
+  const { faces, vertices, triangle_to_face } = mesh
+  if (!triangle_to_face) return new Float32Array(0)
+
+  const edgeCount = new Map<string, number>()
+  const edgeVerts = new Map<string, [number, number]>()
+
+  for (let i = 0; i < faces.length; i++) {
+    if (triangle_to_face[i] !== brepFaceIndex) continue
+    const [a, b, c] = faces[i]
+    for (const [v1, v2] of [[a, b], [b, c], [c, a]] as [number, number][]) {
+      const key = v1 < v2 ? `${v1}:${v2}` : `${v2}:${v1}`
+      edgeCount.set(key, (edgeCount.get(key) ?? 0) + 1)
+      if (!edgeVerts.has(key)) edgeVerts.set(key, [v1, v2])
+    }
+  }
+
+  const pts: number[] = []
+  for (const [key, count] of edgeCount) {
+    if (count === 1) {
+      const [v1, v2] = edgeVerts.get(key)!
+      pts.push(...vertices[v1], ...vertices[v2])
+    }
+  }
+  return new Float32Array(pts)
 }
 
 // Build a flat Float32Array of line segment endpoints from edge descriptors.
@@ -183,9 +214,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     return map
   }, [edgeSegmentCounts])
 
-  const bodyColor = isBodySelected
-    ? COLOR_BODY_SELECTED
-    : isHovered ? COLOR_BODY_HOVER : COLOR_BODY_DEFAULT
+  const bodyColor = isBodySelected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT
 
   const edgeColor = isBodySelected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE
 
@@ -235,6 +264,26 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     cmesh.instanceMatrix.needsUpdate = true
   }, [mesh.face_data, showDebugHit])
 
+  // Build boundary edge geometries for every B-rep face, keyed by face query.
+  // Used to render the outline of a hovered or selected face.
+  const faceBoundaryGeos = useMemo(() => {
+    const { face_queries } = mesh
+    if (!face_queries) return null
+    const geos = new Map<string, THREE.BufferGeometry>()
+    for (let i = 0; i < face_queries.length; i++) {
+      const pts = buildFaceBoundarySegments(mesh, i)
+      if (pts.length === 0) continue
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(pts, 3))
+      geos.set(face_queries[i], geo)
+    }
+    return geos
+  }, [mesh])
+
+  useEffect(() => {
+    return () => { faceBoundaryGeos?.forEach(geo => geo.dispose()) }
+  }, [faceBoundaryGeos])
+
   // Resolve a triangle index to a stable B-rep face query, or fall back to triangle-based query.
   const resolveFaceQuery = useCallback((triangleIndex: number): string => {
     const { triangle_to_face, face_queries } = mesh
@@ -282,13 +331,9 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     }
   }, [featureId, edgeQueries, segmentToEdgeMap, hoveredEdgeIndex, toggleNormalSelection])
 
-  // Compute color attribute for faces if any are selected or hovered.
-  // Uses hoveredSurfaceId (query string) so all triangles of a B-rep face highlight together.
+  // Always compute face colors -- avoids toggling vertexColors on the material which
+  // causes shader recompilation and a black-frame artifact.
   const faceColors = useMemo(() => {
-    const hasSelection = mesh.faces.some((_, i) => getIsFaceSelected(i))
-    const hasHover = hoveredSurfaceId !== null
-    if (!hasSelection && !hasHover) return null
-
     const colors = new Float32Array(mesh.faces.length * 3 * 3)
     const defaultColor = new THREE.Color(bodyColor)
     const selectedColor = new THREE.Color(COLOR_SELECTED)
@@ -348,16 +393,14 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     return colors
   }, [segmentToEdgeMap, edges, getIsEdgeSelected, hoveredEdgeIndex, edgeColor])
 
-  // debugFaceColors takes precedence over selection/hover colors when showDebugHit is on.
+  // debugFaceColors takes precedence when showDebugHit is on.
   const activeColors = debugFaceColors ?? faceColors
 
-  // Apply face colors to geometry when they change
+  // Always update the color attribute -- faceColors is always non-null so vertexColors
+  // stays permanently enabled, avoiding shader recompilation on selection change.
   useEffect(() => {
-    if (activeColors) {
-      geometry.setAttribute('color', new THREE.BufferAttribute(activeColors, 3))
-    } else {
-      geometry.deleteAttribute('color')
-    }
+    geometry.setAttribute('color', new THREE.BufferAttribute(activeColors, 3))
+    geometry.attributes.color.needsUpdate = true
   }, [geometry, activeColors])
 
   // Apply edge colors to edge geometry when they change
@@ -427,12 +470,11 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
         onClick={handleMeshClick}
       >
         <meshStandardMaterial
-          // White when vertex colors are active so they render without multiplication tint.
-          color={activeColors !== null ? 'white' : bodyColor}
+          color="white"
           roughness={0.35}
           metalness={0.3}
           side={THREE.DoubleSide}
-          vertexColors={activeColors !== null}
+          vertexColors={true}
           polygonOffset={true}
           polygonOffsetFactor={1}
           polygonOffsetUnits={1}
@@ -511,6 +553,20 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           <meshBasicMaterial color="#ff00ff" depthTest={false} />
         </instancedMesh>
       )}
+      {faceBoundaryGeos && hoveredSurfaceId && faceBoundaryGeos.has(hoveredSurfaceId) && (
+        <lineSegments geometry={faceBoundaryGeos.get(hoveredSurfaceId)}>
+          <lineBasicMaterial color={COLOR_HOVER} linewidth={2} depthTest={false} />
+        </lineSegments>
+      )}
+      {faceBoundaryGeos && [...normalSelection].map(query => {
+        const geo = faceBoundaryGeos.get(query)
+        if (!geo) return null
+        return (
+          <lineSegments key={query} geometry={geo}>
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={2} depthTest={false} />
+          </lineSegments>
+        )
+      })}
     </group>
   )
 }
