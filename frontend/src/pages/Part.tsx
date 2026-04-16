@@ -305,20 +305,8 @@ export default function Part() {
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setFieldPickState(null)
     handleMutation({ type: 'add_sketch', featureId, label })
-    handleMutation({ type: 'set_feature_plane', featureId, plane: '@builtin_plane_top' })
-    setEditingFeatureId(featureId)
-    setMode('sketch')
-  }, [doc, features.length, handleMutation, setFieldPickState, setMode])
-
-  const handleAddSketchOnFace = useCallback(() => {
-    if (!doc) return
-    const featureId = randomId(18)
-    const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
-    const label = `sketch ${sketchCount + 1}`
-    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
-    setFieldPickState(null)
-    handleMutation({ type: 'add_sketch', featureId, label })
-    // Plane will be committed when user clicks a face (planeSelectionFeatureId drives that).
+    // Activate plane-pick mode: the user clicks any plane or face to set the sketch plane.
+    // commitPlaneSelection (in the store) issues set_feature_plane when they click.
     setPlaneSelectionFeatureId(featureId)
     setEditingFeatureId(featureId)
   }, [doc, features.length, handleMutation, setFieldPickState, setPlaneSelectionFeatureId])
@@ -678,8 +666,7 @@ export default function Part() {
             {mode === 'feature' && (
               <>
                 <button className="editor-btn" title="Add Extrude (E)" onClick={handleAddExtrude}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
-                <button className="editor-btn" title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
-                <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch on face" onClick={handleAddSketchOnFace}><img src={featureSketchIcon} alt="Sketch on face" /></button>
+                <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
                 <button className="editor-btn" title="Import STEP" onClick={handleImportStep}><img src={featureImportIcon} alt="Import STEP" /></button>
               </>
