@@ -139,6 +139,7 @@ export default function Part() {
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)
   const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
+  const hoveredBodyId = useSketchEditorStore(s => s.hoveredBodyId)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
 
   const {
@@ -729,6 +730,22 @@ export default function Part() {
                       <div key={id} className="debug-value">{id}</div>
                     ))}
                 </div>
+                {hoveredBodyId && bodies[hoveredBodyId]?.mesh && (() => {
+                  const mesh = bodies[hoveredBodyId]!.mesh!
+                  const faceCount = mesh.face_queries?.length ?? 0
+                  const triCount = mesh.faces.length
+                  return (
+                    <div className="debug-section">
+                      <div className="debug-section-title">Body mesh: {hoveredBodyId}</div>
+                      <div className="debug-value">{faceCount} B-rep faces, {triCount} triangles</div>
+                      {mesh.face_queries
+                        ? mesh.face_queries.map((q, i) => (
+                          <div key={i} className="debug-value">{i}: {q}</div>
+                        ))
+                        : <div className="debug-empty">no face_queries</div>}
+                    </div>
+                  )
+                })()}
               </div>
             )}
             {debugTab === 'bug-report' && (

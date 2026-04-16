@@ -189,6 +189,52 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
 
   const edgeColor = isBodySelected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE
 
+  // Debug: rainbow color per B-rep face -- makes face boundaries immediately visible.
+  // Replaces normal face colors when showDebugHit is true.
+  const debugFaceColors = useMemo(() => {
+    if (!showDebugHit) return null
+    const { triangle_to_face, face_queries } = mesh
+    if (!triangle_to_face || !face_queries || face_queries.length === 0) return null
+
+    const faceCount = face_queries.length
+    const colors = new Float32Array(mesh.faces.length * 3 * 3)
+    for (let i = 0; i < mesh.faces.length; i++) {
+      const brepFaceIdx = triangle_to_face[i] ?? 0
+      const color = new THREE.Color().setHSL(brepFaceIdx / faceCount, 0.9, 0.55)
+      const baseIdx = i * 9
+      for (let v = 0; v < 9; v += 3) {
+        colors[baseIdx + v] = color.r
+        colors[baseIdx + v + 1] = color.g
+        colors[baseIdx + v + 2] = color.b
+      }
+    }
+    return colors
+  }, [showDebugHit, mesh])
+
+  //Debug: wireframe overlay showing every tessellation triangle edge.
+  const wireframeGeometry = useMemo(() => {
+    if (!showDebugHit) return null
+    return new THREE.WireframeGeometry(geometry)
+  }, [showDebugHit, geometry])
+
+  useEffect(() => {
+    return () => { wireframeGeometry?.dispose() }
+  }, [wireframeGeometry])
+
+  // Debug: centroid spheres -- one per B-rep face, positioned at face_data centroid.
+  const centroidMeshRef = useRef<THREE.InstancedMesh>(null)
+  useEffect(() => {
+    const cmesh = centroidMeshRef.current
+    const faceData = mesh.face_data
+    if (!cmesh || !faceData || !showDebugHit) return
+    const mat = new THREE.Matrix4()
+    faceData.forEach(({ centroid }, i) => {
+      mat.makeTranslation(centroid[0], centroid[1], centroid[2])
+      cmesh.setMatrixAt(i, mat)
+    })
+    cmesh.instanceMatrix.needsUpdate = true
+  }, [mesh.face_data, showDebugHit])
+
   // Resolve a triangle index to a stable B-rep face query, or fall back to triangle-based query.
   const resolveFaceQuery = useCallback((triangleIndex: number): string => {
     const { triangle_to_face, face_queries } = mesh
@@ -302,14 +348,17 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     return colors
   }, [segmentToEdgeMap, edges, getIsEdgeSelected, hoveredEdgeIndex, edgeColor])
 
+  // debugFaceColors takes precedence over selection/hover colors when showDebugHit is on.
+  const activeColors = debugFaceColors ?? faceColors
+
   // Apply face colors to geometry when they change
   useEffect(() => {
-    if (faceColors) {
-      geometry.setAttribute('color', new THREE.BufferAttribute(faceColors, 3))
+    if (activeColors) {
+      geometry.setAttribute('color', new THREE.BufferAttribute(activeColors, 3))
     } else {
       geometry.deleteAttribute('color')
     }
-  }, [geometry, faceColors])
+  }, [geometry, activeColors])
 
   // Apply edge colors to edge geometry when they change
   useEffect(() => {
@@ -378,14 +427,12 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
         onClick={handleMeshClick}
       >
         <meshStandardMaterial
-          // metallness and roughness of the part material
-          color={bodyColor}
-          // roughness={0.6}
-          // metalness={0.1}
+          // White when vertex colors are active so they render without multiplication tint.
+          color={activeColors !== null ? 'white' : bodyColor}
           roughness={0.35}
           metalness={0.3}
           side={THREE.DoubleSide}
-          vertexColors={faceColors !== null}
+          vertexColors={activeColors !== null}
           polygonOffset={true}
           polygonOffsetFactor={1}
           polygonOffsetUnits={1}
@@ -453,6 +500,15 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
             opacity={showDebugHit ? 0.25 : 0}
             depthWrite={false}
           />
+        </instancedMesh>
+      )}
+      {showDebugHit && mesh.face_data && mesh.face_data.length > 0 && (
+        <instancedMesh
+          ref={centroidMeshRef}
+          args={[undefined, undefined, mesh.face_data.length]}
+        >
+          <sphereGeometry args={[0.06, 6, 6]} />
+          <meshBasicMaterial color="#ff00ff" depthTest={false} />
         </instancedMesh>
       )}
     </group>
