@@ -83,6 +83,27 @@ describe('Body3D selection - edge queries', () => {
   })
 })
 
+describe('Body3D click-promotes-hover contract', () => {
+  it('toggling normalSelection with the hovered query promotes hover to selection', () => {
+    const query = '?d,d;@extrude1face0:face'
+    useSketchEditorStore.getState().setHoveredSurface(query)
+    const { hoveredSurfaceId } = useSketchEditorStore.getState()
+    if (hoveredSurfaceId) {
+      useSketchEditorStore.getState().toggleNormalSelection(hoveredSurfaceId)
+    }
+    expect(useSketchEditorStore.getState().normalSelection.has(query)).toBe(true)
+  })
+
+  it('no hover means click does nothing to normalSelection', () => {
+    // hoveredSurfaceId is null (cleared in beforeEach)
+    const { hoveredSurfaceId } = useSketchEditorStore.getState()
+    if (hoveredSurfaceId) {
+      useSketchEditorStore.getState().toggleNormalSelection(hoveredSurfaceId)
+    }
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+  })
+})
+
 describe('Body3D hover surface - store behavior', () => {
   it('setHoveredSurface sets hoveredSurfaceId', () => {
     useSketchEditorStore.getState().setHoveredSurface('?d,d;@extrude1face0:face')

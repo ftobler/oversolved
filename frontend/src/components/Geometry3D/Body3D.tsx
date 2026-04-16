@@ -202,27 +202,13 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     return `@${featureId}/face/${triangleIndex}`
   }, [mesh, featureId])
 
-  // Handle face click on the mesh
-  const handleMeshClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event; faceIndex?: number }) => {
+  // Promote hover to normal-selection. Click never re-searches -- it confirms whatever
+  // is already in hoveredSurfaceId so selection and highlight are always the same element.
+  const handleMeshClick = useCallback((e: { stopPropagation: () => void }) => {
     e.stopPropagation()
-    const nativeEvent = e.nativeEvent as MouseEvent | undefined
-    const isMultiSelect = nativeEvent?.ctrlKey || nativeEvent?.metaKey
-
-    // Get triangle index from the event - Three.js raycaster provides faceIndex
-    const triangleIndex = e.faceIndex
-    if (triangleIndex !== undefined && triangleIndex !== null) {
-      const query = resolveFaceQuery(triangleIndex)
-      if (isMultiSelect) {
-        toggleNormalSelection(query)
-      } else {
-        // Single select: clear other selections and select just this face
-        toggleNormalSelection(query)
-      }
-    } else {
-      // Fallback: toggle body selection
-      toggleNormalSelection('@' + featureId)
-    }
-  }, [featureId, resolveFaceQuery, toggleNormalSelection])
+    if (!hoveredSurfaceId) return
+    toggleNormalSelection(hoveredSurfaceId)
+  }, [hoveredSurfaceId, toggleNormalSelection])
 
   // Handle edge click on line segments
   const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event }) => {
