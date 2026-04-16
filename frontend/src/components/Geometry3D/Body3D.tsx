@@ -237,6 +237,26 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
   }, [wireframeGeometry])
 
 
+  // Build segment geometries for every B-rep edge, keyed by edge query.
+  // Used to render the overlay of a hovered or selected edge.
+  const edgeBoundaryGeos = useMemo(() => {
+    if (edges.length === 0) return null
+    const geos = new Map<string, THREE.BufferGeometry>()
+    edges.forEach((edge, i) => {
+      const pts = buildEdgeSegments([edge])
+      if (pts.length === 0) return
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(pts, 3))
+      const query = edgeQueries?.[i] ?? `@${featureId}/edge/${i}`
+      geos.set(query, geo)
+    })
+    return geos
+  }, [edges, edgeQueries, featureId])
+
+  useEffect(() => {
+    return () => { edgeBoundaryGeos?.forEach(geo => geo.dispose()) }
+  }, [edgeBoundaryGeos])
+
   // Build boundary edge geometries for every B-rep face, keyed by face query.
   // Used to render the outline of a hovered or selected face.
   const faceBoundaryGeos = useMemo(() => {
@@ -336,10 +356,6 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     const totalSegments = segmentToEdgeMap.length
     if (totalSegments === 0) return null
 
-    const hasSelection = edges.some((_, i) => getIsEdgeSelected(i))
-    const hasHover = hoveredEdgeIndex !== null
-    if (!hasSelection && !hasHover) return null
-
     const colors = new Float32Array(totalSegments * 2 * 3)  // 2 vertices per segment, 3 components per color
     const defaultColor = new THREE.Color(edgeColor)
     const selectedColor = new THREE.Color(COLOR_SELECTED)
@@ -364,7 +380,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
       colors[baseIdx + 5] = color.b
     }
     return colors
-  }, [segmentToEdgeMap, edges, getIsEdgeSelected, hoveredEdgeIndex, edgeColor])
+  }, [segmentToEdgeMap, getIsEdgeSelected, hoveredEdgeIndex, edgeColor])
 
   // debugFaceColors takes precedence when showDebugHit is on.
   const activeColors = debugFaceColors ?? faceColors
@@ -376,14 +392,13 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     geometry.setAttribute('color', attr)
   }, [geometry, activeColors])
 
-  // Apply edge colors to edge geometry when they change
+  // Always update the color attribute -- edgeColors is always non-null so vertexColors
+  // stays permanently enabled, avoiding shader recompilation on selection change.
   useEffect(() => {
-    if (edgeColors && edges.length > 0) {
+    if (edgeColors) {
       edgeGeometry.setAttribute('color', new THREE.BufferAttribute(edgeColors, 3))
-    } else {
-      edgeGeometry.deleteAttribute('color')
     }
-  }, [edgeGeometry, edgeColors, edges.length])
+  }, [edgeGeometry, edgeColors])
 
   const vertexMeshRef = useRef<THREE.InstancedMesh>(null)
   const vertexDotRef = useRef<THREE.InstancedMesh>(null)
@@ -532,8 +547,8 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           onClick={handleEdgeClick}
         >
           <lineBasicMaterial
-            color={edgeColor}
-            vertexColors={edgeColors !== null}
+            color="white"
+            vertexColors={true}
           />
         </lineSegments>
       )}
@@ -581,6 +596,24 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           </instancedMesh>
         </>
       )}
+      {edgeBoundaryGeos && hoveredEdgeIndex !== null && (() => {
+        const query = edgeQueries?.[hoveredEdgeIndex] ?? `@${featureId}/edge/${hoveredEdgeIndex}`
+        const geo = edgeBoundaryGeos.get(query)
+        return geo ? (
+          <lineSegments geometry={geo}>
+            <lineBasicMaterial color={COLOR_HOVER} linewidth={2} depthTest={false} />
+          </lineSegments>
+        ) : null
+      })()}
+      {edgeBoundaryGeos && [...normalSelection].map(query => {
+        const geo = edgeBoundaryGeos.get(query)
+        if (!geo) return null
+        return (
+          <lineSegments key={query} geometry={geo}>
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={2} depthTest={false} />
+          </lineSegments>
+        )
+      })}
       {faceBoundaryGeos && hoveredSurfaceId && faceBoundaryGeos.has(hoveredSurfaceId) && (
         <lineSegments geometry={faceBoundaryGeos.get(hoveredSurfaceId)}>
           <lineBasicMaterial color={COLOR_HOVER} linewidth={2} depthTest={false} />
