@@ -36,7 +36,7 @@ describe('getBodiesToRender - vertex_queries handling', () => {
     }
     const features: Feature[] = [
       { id: 'Origin', kind: 'origin' },
-      { id: 'import1', kind: 'import_step', import_step: { file_id: 'test.step' } },
+      { id: 'import1', kind: 'import_step', file_id: 'test.step' },
     ]
     const items = getBodiesToRender(bodies, features, undefined, new Set(['import1']))
     expect(items).toHaveLength(1)
