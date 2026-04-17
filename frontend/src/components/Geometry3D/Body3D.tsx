@@ -170,6 +170,13 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     // maps 1:1 to face i without bleeding into shared-vertex neighbors.
     const geo = indexed.toNonIndexed()
     indexed.dispose()
+    // Pre-fill color attribute so vertexColors=true doesn't flash black on first render.
+    const { r, g, b } = new THREE.Color(COLOR_BODY_DEFAULT)
+    const initialColors = new Float32Array(mesh.faces.length * 9)
+    for (let i = 0; i < mesh.faces.length * 3; i++) {
+      initialColors[i * 3] = r; initialColors[i * 3 + 1] = g; initialColors[i * 3 + 2] = b
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(initialColors, 3))
     return geo
   }, [mesh])
 
@@ -181,6 +188,13 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     const geo = new THREE.BufferGeometry()
     const pts = buildEdgeSegments(edges)
     geo.setAttribute('position', new THREE.BufferAttribute(pts, 3))
+    // Pre-fill color attribute so vertexColors=true doesn't flash black on first render.
+    const { r, g, b } = new THREE.Color(COLOR_BODY_EDGE)
+    const initialColors = new Float32Array(pts.length)
+    for (let i = 0; i < pts.length / 3; i++) {
+      initialColors[i * 3] = r; initialColors[i * 3 + 1] = g; initialColors[i * 3 + 2] = b
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(initialColors, 3))
     return geo
   }, [edges])
 

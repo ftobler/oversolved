@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, forwardRef, useImperativeHandle } from 'react'
+import { useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
@@ -72,11 +72,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const glRef = useRef<THREE.WebGLRenderer | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
 
-  const [ready, setReady] = useState(false)
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
     glRef.current = state.gl
     sceneRef.current = state.scene
-    requestAnimationFrame(() => setReady(true))
   }, [])
 
   const captureScreenshot = useCallback(async (): Promise<string | null> => {
@@ -295,9 +293,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         ))}
       </Canvas>
 
-      {!ready && <div style={{ position: 'absolute', inset: 0, background: '#111', zIndex: 1 }} />}
 
-      <CubeGizmoCanvas canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
+<CubeGizmoCanvas canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
       <ContextMenuDialog />
     </div>
   )
