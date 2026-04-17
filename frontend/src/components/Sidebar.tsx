@@ -29,6 +29,8 @@ interface SidebarProps {
   onToggleSelect: (id: string) => void
   onEnterEditSketch: (featureId: string) => void
   onExitEditSketch: () => void
+  onEnterEditFeature: (featureId: string) => void
+  onExitEditFeature: () => void
   onToggleVisibility: (featureId: string) => void
   onRightClick: (pos: [number, number], targetId?: string) => void
   onRollbackDragStart: (e: React.DragEvent) => void
@@ -36,7 +38,6 @@ interface SidebarProps {
   onRollbackDrop: (e: React.DragEvent, featureIndex: number) => void
   onMutation: (mutation: Mutation) => void
   onSetRollbackPosition: (pos: number | null) => void
-  onSetEditingFeatureId: (id: string | null) => void
   onSetFieldPickState: (state: FieldPickState | null) => void
   onSetPlaneSelectionFeatureId: (id: string | null) => void
   solveResults?: Record<string, unknown>
@@ -55,6 +56,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleSelect,
   onEnterEditSketch,
   onExitEditSketch,
+  onEnterEditFeature,
+  onExitEditFeature,
   onToggleVisibility,
   onRightClick,
   onRollbackDragStart,
@@ -62,7 +65,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRollbackDrop,
   onMutation,
   onSetRollbackPosition,
-  onSetEditingFeatureId,
   onSetFieldPickState,
   onSetPlaneSelectionFeatureId,
   solveResults,
@@ -421,12 +423,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id !== editingFeatureId && (
                       <button
                         className="feature-edit-btn"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          const idx = features.findIndex(f => f.id === feature.id)
-                          if (idx >= 0) onSetRollbackPosition(idx + 1)
-                          onSetEditingFeatureId(feature.id)
-                        }}
+                        onClick={(e) => { e.stopPropagation(); onEnterEditFeature(feature.id) }}
                         title="Edit plane"
                       >
                         <img src={contextEditIcon} alt="Edit" />
@@ -435,10 +432,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {feature.kind === 'extrude' && feature.id !== editingFeatureId && (
                       <button
                         className="feature-edit-btn"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onSetEditingFeatureId(feature.id)
-                        }}
+                        onClick={(e) => { e.stopPropagation(); onEnterEditFeature(feature.id) }}
                         title="Edit extrude"
                       >
                         <img src={contextEditIcon} alt="Edit" />
@@ -447,7 +441,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {feature.kind === 'extrude' && feature.id === editingFeatureId && (
                       <button
                         className="exit-sketch-btn"
-                        onClick={(e) => { e.stopPropagation(); onSetEditingFeatureId(null); onSetFieldPickState(null) }}
+                        onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
                         title="Exit extrude editor"
                       >
                         <span className="material-icons-outlined">close</span>
@@ -465,7 +459,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (
                       <button
                         className="exit-sketch-btn"
-                        onClick={(e) => { e.stopPropagation(); onSetEditingFeatureId(null); onSetFieldPickState(null) }}
+                        onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
                         title="Exit plane editor"
                       >
                         <span className="material-icons-outlined">close</span>

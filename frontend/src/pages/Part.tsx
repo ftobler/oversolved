@@ -105,6 +105,8 @@ export default function Part() {
   const [editName, setEditName] = useState('')
   const [mode, setModeRaw] = useState<'sketch' | 'feature' | 'code'>('sketch')
   const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
+  const [savedRollbackPosition, setSavedRollbackPosition] = useState<number | null>(null)
+  const [editForcedVisible, setEditForcedVisible] = useState<Set<string>>(new Set())
   const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
@@ -172,10 +174,13 @@ export default function Part() {
 
   const features = useMemo(() => extractFeatures(doc), [doc])
 
-  // Derive visibility from the doc: features without explicit visible:false are visible.
+  // Derive visibility from the doc; also include features forced visible while editing.
   const visibleFeatures = useMemo(
-    () => new Set(features.filter(f => f.visible !== false).map(f => f.id)),
-    [features]
+    () => new Set([
+      ...features.filter(f => f.visible !== false).map(f => f.id),
+      ...editForcedVisible,
+    ]),
+    [features, editForcedVisible]
   )
 
   // Initialize rollback position once on first doc load.
@@ -473,23 +478,39 @@ export default function Part() {
       pendingSketchOnFaceId.current = null
       const feature = features.find(f => f.id === fid)
       if (feature?.kind === 'sketch') {
-        const idx = features.findIndex(f => f.id === fid)
-        if (idx >= 0) setRollbackPosition(idx + 1)
+        enterEditFeature(fid)
         setMode('sketch')
       }
     }
-  }, [planeSelectionFeatureId, features, setMode])
+  }, [planeSelectionFeatureId, features, enterEditFeature, setMode])
+
+  const enterEditFeature = useCallback((featureId: string) => {
+    const idx = features.findIndex(f => f.id === featureId)
+    if (idx < 0) return
+    setSavedRollbackPosition(rollbackPosition ?? features.length)
+    setRollbackPosition(idx + 1)
+    setEditForcedVisible(new Set([featureId]))
+    setEditingFeatureId(featureId)
+  }, [features, rollbackPosition])
+
+  const exitEditFeature = useCallback(() => {
+    if (savedRollbackPosition !== null) {
+      setRollbackPosition(savedRollbackPosition)
+      setSavedRollbackPosition(null)
+    }
+    setEditForcedVisible(new Set())
+    setEditingFeatureId(null)
+    setFieldPickState(null)
+  }, [savedRollbackPosition, setFieldPickState])
 
   const enterEditSketch = useCallback((featureId: string) => {
-    const idx = features.findIndex(f => f.id === featureId)
-    if (idx >= 0) setRollbackPosition(idx + 1)
-    setEditingFeatureId(featureId)
+    enterEditFeature(featureId)
     setMode('sketch')
-  }, [features, setMode])
+  }, [enterEditFeature, setMode])
 
-  const exitEditSketch = () => {
-    setEditingFeatureId(null)
-  }
+  const exitEditSketch = useCallback(() => {
+    exitEditFeature()
+  }, [exitEditFeature])
 
   const handleRightClick = useCallback((pos: [number, number], featureId?: string) => {
     const items: ContextMenuItem[] = [
@@ -619,6 +640,8 @@ export default function Part() {
           onToggleSelect={toggleNormalSelection}
           onEnterEditSketch={enterEditSketch}
           onExitEditSketch={exitEditSketch}
+          onEnterEditFeature={enterEditFeature}
+          onExitEditFeature={exitEditFeature}
           onToggleVisibility={toggleVisibility}
           onRightClick={handleRightClick}
           onRollbackDragStart={handleRollbackDragStart}
@@ -626,7 +649,6 @@ export default function Part() {
           onRollbackDrop={handleRollbackDrop}
           onMutation={handleMutation}
           onSetRollbackPosition={setRollbackPosition}
-          onSetEditingFeatureId={setEditingFeatureId}
           onSetFieldPickState={setFieldPickState}
           onSetPlaneSelectionFeatureId={setPlaneSelectionFeatureId}
           solveResults={solveResults}
