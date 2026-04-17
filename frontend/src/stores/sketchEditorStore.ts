@@ -2,7 +2,7 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import { create } from 'zustand'
-import type { Mutation, FieldPickState, SelectionDomain } from '../types/cad'
+import type { Mutation, FieldPickState, PendingPickField, SelectionDomain } from '../types/cad'
 import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '../registry'
 import type { SnapKind } from '../registry'
 import type { SnapTarget } from '../components/Geometry3D/snapDetection'
@@ -152,6 +152,7 @@ interface SketchEditorState {
   contextMenu: [number, number] | null
   planeSelectionFeatureId: string | null
   fieldPickState: FieldPickState | null
+  pendingPickField: PendingPickField | null
   setActiveTool: (tool: ActiveTool) => void
   setActiveFeatureId: (id: string | null) => void
   setShowDebugHit: (enabled: boolean) => void
@@ -170,7 +171,8 @@ interface SketchEditorState {
   setPlaneSelectionFeatureId: (id: string | null) => void
   commitPlaneSelection: (selectionId: string) => void
   setFieldPickState: (state: FieldPickState | null) => void
-  commitFieldPick: (selectionId: string) => void
+  setPendingPickField: (state: PendingPickField | null) => void
+  commitFieldPick: () => void
   commitSketchPick: (sketchFeatureId: string) => void
 }
 
@@ -216,6 +218,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   contextMenu: null,
   planeSelectionFeatureId: null,
   fieldPickState: null,
+  pendingPickField: null,
 
   setInternalHoverSelection: (id) => set(s => {
     if (s.internalHoverSelection === id) return s
@@ -341,9 +344,13 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setFieldPickState: (state) => set({ fieldPickState: state }),
 
-  commitFieldPick: (selectionId) => {
-    const { fieldPickState, onMutation } = get()
-    if (!fieldPickState) return
+  setPendingPickField: (state) => set({ pendingPickField: state }),
+
+  commitFieldPick: () => {
+    const { pendingPickField, normalSelection, onMutation } = get()
+    if (!pendingPickField) return
+    const selectionId = [...normalSelection].pop()
+    if (!selectionId) return
     let value: string
     if (selectionId.startsWith('face:')) {
       value = selectionId.split(':').slice(2).join(':')
@@ -358,7 +365,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     } else {
       value = selectionId
     }
-    onMutation?.({ type: 'set_plane_definition_field', featureId: fieldPickState.featureId, field: fieldPickState.field, value })
+    onMutation?.({ type: 'set_plane_definition_field', featureId: pendingPickField.featureId, field: pendingPickField.field, value })
+    set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
   },
 
   commitSketchPick: (sketchFeatureId) => {
@@ -375,6 +383,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
     onMutation?.({ type: 'set_feature_plane', featureId: planeSelectionFeatureId, plane })
+    set({ planeSelectionFeatureId: null })
   },
 
   handleDimensionClick: (target, featureId, kind, screenPos, entityKind) => {

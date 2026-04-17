@@ -52,6 +52,7 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
+  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const commitSketchPick = useSketchEditorStore(s => s.commitSketchPick)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
@@ -76,9 +77,11 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
       onClick={(e) => {
         e.stopPropagation()
         if (fieldPickState?.kind === 'sketch') commitSketchPick(featureId)
-        else if (fieldPickState?.kind === 'plane') commitFieldPick(id)
         else if (planeSelectionFeatureId) commitPlaneSelection(id)
-        else toggleNormalSelection(id)
+        else {
+          toggleNormalSelection(id)
+          if (pendingPickField) commitFieldPick()
+        }
       }}
     >
       <shapeGeometry args={[shape]} />

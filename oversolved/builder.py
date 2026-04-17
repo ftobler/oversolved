@@ -256,14 +256,19 @@ def build(spec: dict, prev_state: BuildState | None = None) -> dict:
         _post_register(global_repo, fid, feature, feature_result)
         result[fid] = feature_result
 
-        # Register faces for any newly-created bodies so that downstream
-        # sketch features can use face queries as plane references.
+        # Register faces and vertices for any newly-created bodies so that
+        # downstream plane features can use face/vertex queries as references.
         for body_id, body in body_store.items():
             if body_id not in registered_body_ids and body.shape is not None:
                 try:
-                    from oversolved.geometry import solid_to_mesh  # type: ignore[attr-defined]
+                    from oversolved.geometry import solid_to_mesh, solid_to_vertices  # type: ignore[attr-defined]
                     mesh_early = solid_to_mesh(body.shape, created_by=body.created_by)
                     _register_brep_face_ancestry(global_repo, body, mesh_early)
+                    verts_early = solid_to_vertices(body.shape, created_by=body.created_by)
+                    _register_brep_vertex_ancestry(
+                        global_repo, body,
+                        verts_early["vertices"], verts_early["vertex_queries"]
+                    )
                 except Exception:
                     pass
                 registered_body_ids.add(body_id)

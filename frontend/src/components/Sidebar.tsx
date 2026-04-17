@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import type { PartFeature, PartDoc, PlaneDef, Mutation, FieldPickState, ExtrudeDirection, BodyResult } from '../types/cad'
+import type { PartFeature, PartDoc, PlaneDef, Mutation, FieldPickState, PendingPickField, ExtrudeDirection, BodyResult } from '../types/cad'
 import { isBodyFeatureResult } from '../types/cad'
 import { planeLabel } from './Geometry3D/utils'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
@@ -25,6 +25,7 @@ interface SidebarProps {
   editingFeatureId: string | null
   selection: Set<string>
   fieldPickState: FieldPickState | null
+  pendingPickField: PendingPickField | null
   planeSelectionFeatureId: string | null
   onToggleSelect: (id: string) => void
   onEnterEditSketch: (featureId: string) => void
@@ -39,6 +40,7 @@ interface SidebarProps {
   onMutation: (mutation: Mutation) => void
   onSetRollbackPosition: (pos: number | null) => void
   onSetFieldPickState: (state: FieldPickState | null) => void
+  onSetPendingPickField: (state: PendingPickField | null) => void
   onSetPlaneSelectionFeatureId: (id: string | null) => void
   solveResults?: Record<string, unknown>
   bodies?: Record<string, BodyResult>
@@ -52,6 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   editingFeatureId,
   selection,
   fieldPickState,
+  pendingPickField,
   planeSelectionFeatureId,
   onToggleSelect,
   onEnterEditSketch,
@@ -66,6 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onMutation,
   onSetRollbackPosition,
   onSetFieldPickState,
+  onSetPendingPickField,
   onSetPlaneSelectionFeatureId,
   solveResults,
   bodies,
@@ -124,6 +128,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   }
 
+  // Extract the first usable query string from the current selection.
+  // Ancestry queries (?...) and direct refs (@...) are used as-is.
+  // face:/edge: prefixed IDs (from 2D topology surfaces) are stripped to their query.
+  const selectionQuery = (() => {
+    for (const id of selection) {
+      if (id.startsWith('?')) return id
+      if (id.startsWith('@') && !id.includes('/')) return id
+      if (id.startsWith('face:')) return id.split(':').slice(2).join(':')
+      if (id.startsWith('edge:')) return id.split(':').slice(2).join(':')
+    }
+    return null
+  })()
+
   const PickChip: React.FC<{ value: string | undefined; isPicking: boolean; onActivate: () => void; onClear: () => void }> = ({ value, isPicking, onActivate, onClear }) => {
     const isEmpty = !value || value === 'None'
     return (
@@ -149,16 +166,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const def = (featureDef?.definition as PlaneDef | undefined) ?? { mode: 'offset' }
     const mode = def.mode ?? 'offset'
     const fid = feature.id
-    const isPickingKind = (field: string, kind: 'plane' | 'point' | 'line') =>
-      fieldPickState?.featureId === fid && fieldPickState.field === field && fieldPickState.kind === kind
-    const pickChip = (field: string, kind: 'plane' | 'point' | 'line', value: string | undefined) => {
-      const isPicking = isPickingKind(field, kind)
+    const isPickingField = (field: string) =>
+      pendingPickField?.featureId === fid && pendingPickField.field === field
+    const pickChip = (field: string, _kind: 'plane' | 'point' | 'line', value: string | undefined) => {
+      const isPicking = isPickingField(field)
       return <PickChip
         value={value}
         isPicking={isPicking}
         onActivate={() => {
-          if (isPicking) onSetFieldPickState(null)
-          else onSetFieldPickState({ featureId: fid, field, kind })
+          if (isPicking) {
+            onSetPendingPickField(null)
+          } else if (selectionQuery) {
+            onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: selectionQuery })
+          } else {
+            onSetPendingPickField({ featureId: fid, field })
+          }
         }}
         onClear={() => onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: '' })}
       />
@@ -195,6 +217,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <option value="three_point">Three-point plane</option>
             <option value="line_angle">Rotate on line</option>
             <option value="edge_point">Line and point</option>
+            <option value="on_face">On face</option>
           </select>
         </div>
         {mode === 'offset' && (
@@ -244,6 +267,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {pickChip('point', 'point', def.point)}
             </div>
           </>
+        )}
+        {mode === 'on_face' && (
+          <div className="feature-field-row">
+            <span className="feature-field-label">Face</span>
+            {pickChip('face', 'plane', def.face)}
+          </div>
         )}
         {numField('rotation', 'Rotation', 0)}
       </div>
@@ -320,10 +349,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             value={planeLabel(featureDef?.plane)}
             isPicking={isPicking}
             onActivate={() => {
-              if (isPicking) onSetPlaneSelectionFeatureId(null)
-              else onSetPlaneSelectionFeatureId(feature.id)
+              if (isPicking) {
+                onSetPlaneSelectionFeatureId(null)
+              } else if (selectionQuery) {
+                onMutation({ type: 'set_feature_plane', featureId: feature.id, plane: selectionQuery })
+              } else {
+                onSetPlaneSelectionFeatureId(feature.id)
+              }
             }}
-            onClear={() => onSetPlaneSelectionFeatureId(null)}
+            onClear={() => {
+              onMutation({ type: 'set_feature_plane', featureId: feature.id, plane: '' })
+              onSetPlaneSelectionFeatureId(null)
+            }}
           />
         </div>
       </div>

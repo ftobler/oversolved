@@ -7,10 +7,10 @@ import type { Point } from '../../types/cad'
  * Layer 4 — Tool Layer: shared click dispatch for interactive sketch elements.
  *
  * Both EntityItem (entities/edges) and VertexDot (vertices) need the same
- * three-way dispatch on click:
+ * dispatch on click:
  *   1. dimension tool  → open dimension dialog via handleDimensionClick
- *   2. field pick mode → commit the selection to a parameter field
- *   3. otherwise       → toggle static selection
+ *   2. otherwise       → toggle normal selection; if pendingPickField is set,
+ *                        also auto-commit the pick from normalSelection
  *
  * Parameters that differ between element types are passed as arguments so this
  * hook has no knowledge of what kind of element it operates on.
@@ -21,7 +21,6 @@ export function useToolClickDispatch({
   isEditing,
   dimensionKind,
   entityKind,
-  fieldPickKind,
 }: {
   /** Full composite element ID. */
   id: string
@@ -31,13 +30,12 @@ export function useToolClickDispatch({
   dimensionKind: 'entity' | 'vertex'
   /** Passed to handleDimensionClick for entity-level dimension resolution. */
   entityKind?: string
-  /** The fieldPick kind this element responds to: 'line' for entities, 'point' for vertices. */
-  fieldPickKind: 'line' | 'point'
 }): (e: { stopPropagation: () => void; clientX: number; clientY: number }) => void {
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
+  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
@@ -67,7 +65,7 @@ export function useToolClickDispatch({
       onMutation,
     }
 
-    if (tool?.handlers.onClick && effectiveTool !== 'dimension' && !fieldPickState?.kind) {
+    if (tool?.handlers.onClick && effectiveTool !== 'dimension' && !fieldPickState?.kind && !pendingPickField) {
       tool.handlers.onClick(
         { clientX: e.clientX, clientY: e.clientY } as PointerEvent,
         [0, 0] as Point,
@@ -79,13 +77,12 @@ export function useToolClickDispatch({
     if (activeTool === 'dimension') {
       if (!isEditing) return
       handleDimClick(id, featureId, dimensionKind, [e.clientX, e.clientY], entityKind)
-    } else if (fieldPickState?.kind === fieldPickKind) {
-      commitFieldPick(id)
     } else {
       toggleNormalSelection(id)
+      if (pendingPickField) commitFieldPick()
     }
-  }, [activeTool, isEditing, id, featureId, dimensionKind, entityKind, fieldPickKind,
-    handleDimClick, fieldPickState, commitFieldPick, toggleNormalSelection,
+  }, [activeTool, isEditing, id, featureId, dimensionKind, entityKind,
+    handleDimClick, fieldPickState, pendingPickField, commitFieldPick, toggleNormalSelection,
     normalSelection, dynamicSelection, isPointerDown, activeFeatureId,
     internalHoverSelection, hoveredVertexId, hoveredVertexPosition, hoveredSnapKind, onMutation])
 }

@@ -30,6 +30,7 @@ function makeSidebarProps(overrides: Record<string, unknown> = {}) {
     editingFeatureId: null,
     selection: new Set<string>(),
     fieldPickState: null,
+    pendingPickField: null,
     planeSelectionFeatureId: null,
     onToggleSelect: vi.fn(),
     onEnterEditSketch: vi.fn(),
@@ -44,6 +45,7 @@ function makeSidebarProps(overrides: Record<string, unknown> = {}) {
     onMutation: vi.fn(),
     onSetRollbackPosition: vi.fn(),
     onSetFieldPickState: vi.fn(),
+    onSetPendingPickField: vi.fn(),
     onSetPlaneSelectionFeatureId: vi.fn(),
     ...overrides,
   }

@@ -87,6 +87,14 @@ export interface FieldPickState {
   kind: 'plane' | 'point' | 'line' | 'sketch'
 }
 
+// Lightweight marker that a sidebar pick chip is waiting for a viewport selection.
+// Replaces FieldPickState for plane/point/line fields — viewport clicks go through
+// normalSelection first, then commitFieldPick() reads from it.
+export interface PendingPickField {
+  featureId: string
+  field: string
+}
+
 // ── Document AST Types ────
 
 // A query string referencing an entity or sub-element, e.g. "$line1" or "$arc1start".
@@ -400,7 +408,7 @@ export type Mutation =
   | { type: 'add_sketch'; featureId: string; label?: string }
   | { type: 'delete_feature'; featureId: string }
   | { type: 'set_feature_visibility'; featureId: string; visible: boolean }
-  | { type: 'add_plane'; featureId: string; label?: string }
+  | { type: 'add_plane'; featureId: string; label?: string; definition?: PlaneDef }
   | { type: 'set_plane_definition_field'; featureId: string; field: string; value: string | number }
   | { type: 'rename_feature'; featureId: string; label: string }
   | { type: 'toggle_sketch_plane_visibility' }

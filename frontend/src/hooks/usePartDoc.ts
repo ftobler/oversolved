@@ -285,7 +285,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         applySetFeatureVisibility(next, m.featureId, m.visible)
         break
       case 'add_plane':
-        applyAddPlane(next, m.featureId, m.label)
+        applyAddPlane(next, m.featureId, m.label, m.definition as Record<string, unknown> | undefined)
         break
       case 'set_plane_definition_field':
         applySetPlaneDefinitionField(next, m.featureId, m.field, m.value)

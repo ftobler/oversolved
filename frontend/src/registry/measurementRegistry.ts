@@ -321,42 +321,94 @@ function findBodyElement(
 }
 
 /**
- * Measure a single 3D body element (edge length or face area).
- * Returns [] when selection is not a single 3D element or data is unavailable.
+ * Measure a single or pair of 3D body elements.
+ * - 1 edge: length (line) or radius+sweep (arc/circle)
+ * - 1 face: area
+ * - 2 line edges: angle or parallel distance
+ * - 2 arc/circle edges: center-to-center distance
+ * Returns [] when no rule matches or data is unavailable.
  */
 export function measure3dSelection(
   ids: Set<string>,
   bodies: Record<string, BodyResult>
 ): string[] {
-  if (ids.size !== 1) return []
-  const id = [...ids][0]
-  const found = findBodyElement(id, bodies)
-  if (!found) return []
-  const { body, kind, index } = found
+  if (ids.size === 1) {
+    const id = [...ids][0]
+    const found = findBodyElement(id, bodies)
+    if (!found) return []
+    const { body, kind, index } = found
 
-  if (kind === 'edge') {
-    const edge = body.edges?.[index]
-    if (!edge) return []
-    if (edge.kind === 'line') {
-      const [ax, ay, az] = edge.start
-      const [bx, by, bz] = edge.end
-      const len = Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2 + (bz - az) ** 2)
-      return [`[EDGE] ${len.toFixed(2)} mm`]
+    if (kind === 'edge') {
+      const edge = body.edges?.[index]
+      if (!edge) return []
+      if (edge.kind === 'line') {
+        const [ax, ay, az] = edge.start
+        const [bx, by, bz] = edge.end
+        const len = Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2 + (bz - az) ** 2)
+        return [`[EDGE] ${len.toFixed(2)} mm`]
+      }
+      if (edge.kind === 'arc' || edge.kind === 'circle') {
+        const arcEdge = edge as EdgeDataCircleArc
+        const sweep = Math.abs(arcEdge.angle_end - arcEdge.angle_start)
+        const deg = (sweep * 180 / Math.PI).toFixed(1)
+        return [`[EDGE] r=${arcEdge.radius.toFixed(2)} mm, \u03b8=${deg}\u00b0`]
+      }
+      return []
     }
-    if (edge.kind === 'arc' || edge.kind === 'circle') {
-      const arcEdge = edge as EdgeDataCircleArc
-      const sweep = Math.abs(arcEdge.angle_end - arcEdge.angle_start)
-      const deg = (sweep * 180 / Math.PI).toFixed(1)
-      return [`[EDGE] r=${arcEdge.radius.toFixed(2)} mm, \u03b8=${deg}\u00b0`]
+
+    if (kind === 'face') {
+      const faceData = body.mesh?.face_data?.[index]
+      if (faceData?.area != null) {
+        return [`[FACE] area=${faceData.area.toFixed(2)} mm\u00b2`]
+      }
+      return []
     }
+
     return []
   }
 
-  if (kind === 'face') {
-    const faceData = body.mesh?.face_data?.[index]
-    if (faceData?.area != null) {
-      return [`[FACE] area=${faceData.area.toFixed(2)} mm\u00b2`]
+  if (ids.size === 2) {
+    const [idA, idB] = [...ids]
+    const foundA = findBodyElement(idA, bodies)
+    const foundB = findBodyElement(idB, bodies)
+    if (!foundA || !foundB) return []
+    if (foundA.kind !== 'edge' || foundB.kind !== 'edge') return []
+
+    const edgeA = foundA.body.edges?.[foundA.index]
+    const edgeB = foundB.body.edges?.[foundB.index]
+    if (!edgeA || !edgeB) return []
+
+    if (edgeA.kind === 'line' && edgeB.kind === 'line') {
+      const [ax0, ay0, az0] = edgeA.start
+      const [ax1, ay1, az1] = edgeA.end
+      const [bx0, by0, bz0] = edgeB.start
+      const [bx1, by1, bz1] = edgeB.end
+      const dax = ax1 - ax0, day = ay1 - ay0, daz = az1 - az0
+      const dbx = bx1 - bx0, dby = by1 - by0, dbz = bz1 - bz0
+      const lenA = Math.sqrt(dax * dax + day * day + daz * daz)
+      const lenB = Math.sqrt(dbx * dbx + dby * dby + dbz * dbz)
+      if (lenA < 1e-10 || lenB < 1e-10) return []
+      const dot = Math.abs(dax * dbx + day * dby + daz * dbz) / (lenA * lenB)
+      const clampedDot = Math.max(0, Math.min(1, dot))
+      const angle = Math.acos(clampedDot)
+      if (angle < 1e-4) {
+        // Parallel: compute perpendicular distance between the infinite lines
+        const [cx, cy, cz] = [bx0 - ax0, by0 - ay0, bz0 - az0]
+        const crossX = cy * daz - cz * day, crossY = cz * dax - cx * daz, crossZ = cx * day - cy * dax
+        const dist = Math.sqrt(crossX * crossX + crossY * crossY + crossZ * crossZ) / lenA
+        return [`parallel edges, distance: ${dist.toFixed(2)} mm`]
+      }
+      return [`edge angle: ${(angle * 180 / Math.PI).toFixed(1)}\u00b0`]
     }
+
+    if ((edgeA.kind === 'arc' || edgeA.kind === 'circle') && (edgeB.kind === 'arc' || edgeB.kind === 'circle')) {
+      const a = edgeA as EdgeDataCircleArc
+      const b = edgeB as EdgeDataCircleArc
+      const [cx, cy, cz] = [b.center[0] - a.center[0], b.center[1] - a.center[1], b.center[2] - a.center[2]]
+      const dist = Math.sqrt(cx * cx + cy * cy + cz * cz)
+      return [`center dist: ${dist.toFixed(2)} mm`]
+    }
+
     return []
   }
 

@@ -1083,6 +1083,17 @@ _PROJECTED_KINDS = frozenset(
     {"projected_line", "projected_circle", "projected_arc", "projected_point"}
 )
 
+_PLANE_TYPES = ("plane", "face")
+_POINT_TYPES = ("point", "vertex")
+
+
+def is_plane_type(obj: dict) -> bool:
+    return obj.get("type") in _PLANE_TYPES
+
+
+def is_point_type(obj: dict) -> bool:
+    return obj.get("type") in _POINT_TYPES
+
 
 def _resolve_plane_early(
     plane_query: Optional[str], global_repo: Optional[Repository]
@@ -1104,7 +1115,7 @@ def _resolve_plane_early(
         # Also look up user-defined planes in global_repo (e.g. @plane1)
         if global_repo is not None:
             p = global_repo.elements.get(plane_query[1:])
-            if p and p.get("type") in ("plane", "face"):
+            if p and is_plane_type(p):
                 return p
         return _FRONT_PLANE
     if plane_query.startswith("?") and global_repo is not None:
@@ -1123,7 +1134,7 @@ def _resolve_plane_early(
             pass
     if plane_query.startswith("$") and global_repo is not None:
         p = global_repo.elements.get(plane_query[1:])
-        if p and p.get("type") in ("plane", "face"):
+        if p and is_plane_type(p):
             return p
     return _FRONT_PLANE
 
@@ -1227,6 +1238,8 @@ def _get_point_3d(ref: dict, global_repo: Repository) -> np.ndarray:
 
     Uses sketch_id + _pt_ plane transform to lift 2D local coordinates to 3D
     world space.  Falls back to [x, y, 0] when no plane transform is known.
+    Also accepts vertex objects (type == "vertex") and generic dicts with
+    an "origin" field (but no "normal", which would indicate a plane).
     """
     if "external_xy" in ref:
         xy = ref["external_xy"]
@@ -1239,6 +1252,12 @@ def _get_point_3d(ref: dict, global_repo: Repository) -> np.ndarray:
                 y_axis = np.array(pt["y_axis"])
                 return origin + xy[0] * x_axis + xy[1] * y_axis
         return np.array([xy[0], xy[1], 0.0])
+    if ref.get("type") == "vertex" and "origin" in ref:
+        return np.array(ref["origin"], dtype=float)
+    if "origin" in ref and "normal" not in ref:
+        return np.array(ref["origin"], dtype=float)
+    if "origin" in ref and "normal" in ref:
+        raise ValueError("reference is a plane, not a point")
     raise ValueError("point reference has no coordinates")
 
 
@@ -1977,12 +1996,12 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         plane_obj = resolve_ref(plane_query)
         # If unresolved and starts with '$', try direct feature-level lookup in global_repo.
         if (
-            (plane_obj is None or plane_obj.get("type") not in ("plane", "face"))
+            (plane_obj is None or not is_plane_type(plane_obj))
             and plane_query.startswith("$")
             and global_repo is not None
         ):
             plane_obj = global_repo.elements.get(plane_query[1:])
-        if plane_obj is None or plane_obj.get("type") not in ("plane", "face"):
+        if plane_obj is None or not is_plane_type(plane_obj):
             _bare = {
                 "Top": "builtin_plane_top",
                 "Front": "builtin_plane_front",

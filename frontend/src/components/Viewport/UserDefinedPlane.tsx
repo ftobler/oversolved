@@ -33,23 +33,25 @@ function PlaneLabel({ x, y, children }: { x: number; y: number; children: string
   )
 }
 
-/** Encapsulates the three-way click routing for plane elements:
- *  1. field pick mode (plane kind) -> commitFieldPick
- *  2. plane selection mode active  -> commitPlaneSelection
+/** Encapsulates click routing for plane elements:
+ *  1. plane selection mode active  -> commitPlaneSelection
+ *  2. pendingPickField set         -> toggleNormalSelection + commitFieldPick
  *  3. otherwise                    -> toggleNormalSelection */
 function usePlaneClickDispatch(selId: string): (e: { stopPropagation: () => void }) => void {
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
-  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
+  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
 
   return useCallback((e: { stopPropagation: () => void }) => {
     e.stopPropagation()
-    if (fieldPickState?.kind === 'plane') commitFieldPick(selId)
-    else if (planeSelectionFeatureId) commitPlaneSelection(selId)
-    else toggleNormalSelection(selId)
-  }, [selId, fieldPickState, commitFieldPick, planeSelectionFeatureId, commitPlaneSelection, toggleNormalSelection])
+    if (planeSelectionFeatureId) commitPlaneSelection(selId)
+    else {
+      toggleNormalSelection(selId)
+      if (pendingPickField) commitFieldPick()
+    }
+  }, [selId, pendingPickField, commitFieldPick, planeSelectionFeatureId, commitPlaneSelection, toggleNormalSelection])
 }
 
 export default function UserDefinedPlane({
