@@ -131,8 +131,6 @@ export default function Part() {
 
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
-  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
-  const setFieldPickState = useSketchEditorStore(s => s.setFieldPickState)
   const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
   const setPendingPickField = useSketchEditorStore(s => s.setPendingPickField)
    const selection = useSketchEditorStore(s => s.normalSelection)
@@ -263,13 +261,12 @@ export default function Part() {
     if (BUILT_IN_IDS.has(featureId)) return
     if (featureId === editingFeatureId) {
       setEditingFeatureId(null)
-      setFieldPickState(null)
       setPendingPickField(null)
     }
     handleMutation({ type: 'delete_feature', featureId })
     useSketchEditorStore.getState().clearNormalSelection()
     setContextMenu(null)
-  }, [editingFeatureId, handleMutation, setFieldPickState, setPendingPickField])
+  }, [editingFeatureId, handleMutation, setPendingPickField])
 
   const handleDeleteSelectedFeatures = useCallback(() => {
     const sel = useSketchEditorStore.getState().normalSelection
@@ -279,13 +276,12 @@ export default function Part() {
     for (const featureId of featureIds) {
       if (featureId === editingFeatureId) {
         setEditingFeatureId(null)
-        setFieldPickState(null)
         setPendingPickField(null)
       }
       handleMutation({ type: 'delete_feature', featureId })
     }
     if (featureIds.length > 0) useSketchEditorStore.getState().clearNormalSelection()
-  }, [editingFeatureId, handleMutation, setFieldPickState, setPendingPickField])
+  }, [editingFeatureId, handleMutation, setPendingPickField])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
@@ -315,12 +311,11 @@ export default function Part() {
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const label = `sketch ${sketchCount + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
-    setFieldPickState(null)
     setPendingPickField(null)
     handleMutation({ type: 'add_sketch', featureId, label })
     setPlaneSelectionFeatureId(featureId)
     setEditingFeatureId(featureId)
-  }, [doc, features.length, handleMutation, setFieldPickState, setPendingPickField, setPlaneSelectionFeatureId])
+  }, [doc, features.length, handleMutation, setPendingPickField, setPlaneSelectionFeatureId])
 
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')
@@ -489,9 +484,8 @@ export default function Part() {
     }
     setEditForcedVisible(new Set())
     setEditingFeatureId(null)
-    setFieldPickState(null)
     setPendingPickField(null)
-  }, [savedRollbackPosition, setFieldPickState, setPendingPickField])
+  }, [savedRollbackPosition, setPendingPickField])
 
   const enterEditSketch = useCallback((featureId: string) => {
     enterEditFeature(featureId)
@@ -642,7 +636,6 @@ export default function Part() {
           visibleFeatures={visibleFeatures}
           editingFeatureId={editingFeatureId}
           selection={selection}
-          fieldPickState={fieldPickState}
           pendingPickField={pendingPickField}
           planeSelectionFeatureId={planeSelectionFeatureId}
           onToggleSelect={toggleNormalSelection}
@@ -657,7 +650,6 @@ export default function Part() {
           onRollbackDrop={handleRollbackDrop}
           onMutation={handleMutation}
           onSetRollbackPosition={setRollbackPosition}
-          onSetFieldPickState={setFieldPickState}
           onSetPendingPickField={setPendingPickField}
           onSetPlaneSelectionFeatureId={setPlaneSelectionFeatureId}
           solveResults={solveResults}

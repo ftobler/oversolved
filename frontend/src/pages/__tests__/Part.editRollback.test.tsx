@@ -11,7 +11,6 @@ function makeSidebarProps(overrides: Record<string, unknown> = {}) {
     visibleFeatures: new Set<string>(),
     editingFeatureId: null,
     selection: new Set<string>(),
-    fieldPickState: null,
     pendingPickField: null,
     planeSelectionFeatureId: null,
     onToggleSelect: vi.fn(),
@@ -26,7 +25,6 @@ function makeSidebarProps(overrides: Record<string, unknown> = {}) {
     onRollbackDrop: vi.fn(),
     onMutation: vi.fn(),
     onSetRollbackPosition: vi.fn(),
-    onSetFieldPickState: vi.fn(),
     onSetPendingPickField: vi.fn(),
     onSetPlaneSelectionFeatureId: vi.fn(),
     ...overrides,
@@ -78,16 +76,16 @@ describe('extrude exit button', () => {
     expect(onExitEditFeature).toHaveBeenCalled()
   })
 
-  it('does not call onSetFieldPickState directly', () => {
-    const onSetFieldPickState = vi.fn()
+  it('does not call onSetPendingPickField directly on exit', () => {
+    const onSetPendingPickField = vi.fn()
     render(<Sidebar {...makeSidebarProps({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-      onSetFieldPickState,
+      onSetPendingPickField,
     })} />)
     fireEvent.click(screen.getByTitle('Exit extrude editor'))
-    expect(onSetFieldPickState).not.toHaveBeenCalled()
+    expect(onSetPendingPickField).not.toHaveBeenCalled()
   })
 })
 

@@ -5,7 +5,6 @@
 
 import type { Point } from '../../types/cad'
 import type { ActiveTool } from '../../stores/sketchEditorStore'
-import type { FieldPickState } from '../../types/cad'
 
 /**
  * Drag initiation state — captured when user presses on an entity/vertex.
@@ -55,7 +54,6 @@ export interface ToolHandlerContract {
     worldPt: Point,
     activeTool: ActiveTool,
     isEditing: boolean,
-    fieldPickState: FieldPickState | null,
   ) => DragInit | null
   /** Called while dragging (optional for some tools) */
   onPointerMove?: (

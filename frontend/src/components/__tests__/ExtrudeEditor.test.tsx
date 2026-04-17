@@ -11,7 +11,6 @@ function makeSidebarProps(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}
     visibleFeatures: new Set<string>(),
     editingFeatureId: null,
     selection: new Set<string>(),
-    fieldPickState: null,
     pendingPickField: null,
     planeSelectionFeatureId: null,
     onToggleSelect: vi.fn(),
@@ -26,7 +25,6 @@ function makeSidebarProps(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}
     onRollbackDrop: vi.fn(),
     onMutation: vi.fn(),
     onSetRollbackPosition: vi.fn(),
-    onSetFieldPickState: vi.fn(),
     onSetPendingPickField: vi.fn(),
     onSetPlaneSelectionFeatureId: vi.fn(),
     ...overrides,
@@ -153,19 +151,19 @@ describe('direction select', () => {
   })
 })
 
-// 4: sketch pick - clicking a sketch row while kind === 'sketch' pick is active
+// 4: sketch pick - clicking a sketch row while pendingPickField.field === 'sketch' is active
 describe('sketch pick resolution', () => {
-  it('dispatches set_extrude_sketch and clears fieldPickState when sketch row is clicked', () => {
+  it('dispatches set_extrude_sketch and clears pendingPickField when sketch row is clicked', () => {
     const onMutation = vi.fn()
-    const onSetFieldPickState = vi.fn()
+    const onSetPendingPickField = vi.fn()
     const sketchFeature: PartFeature = { id: 'sk1', kind: 'sketch' }
     render(<Sidebar {...makeSidebarProps({
       features: [extrudeFeature, sketchFeature],
       visibleFeatures: new Set(['ex1', 'sk1']),
       editingFeatureId: 'ex1',
-      fieldPickState: { featureId: 'ex1', field: 'sketch', kind: 'sketch' },
+      pendingPickField: { featureId: 'ex1', field: 'sketch' },
       onMutation,
-      onSetFieldPickState,
+      onSetPendingPickField,
     })} />)
     // Click the feature row li, not the inner name span (which stops propagation for renaming).
     const sketchRow = screen.getByText('sk1').closest('li')!
@@ -175,6 +173,6 @@ describe('sketch pick resolution', () => {
       featureId: 'ex1',
       sketchQuery: '$sk1',
     })
-    expect(onSetFieldPickState).toHaveBeenCalledWith(null)
+    expect(onSetPendingPickField).toHaveBeenCalledWith(null)
   })
 })

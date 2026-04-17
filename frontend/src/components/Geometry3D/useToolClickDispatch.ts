@@ -34,7 +34,6 @@ export function useToolClickDispatch({
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
-  const fieldPickState = useSketchEditorStore(s => s.fieldPickState)
   const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
@@ -65,7 +64,7 @@ export function useToolClickDispatch({
       onMutation,
     }
 
-    if (tool?.handlers.onClick && effectiveTool !== 'dimension' && !fieldPickState?.kind && !pendingPickField) {
+    if (tool?.handlers.onClick && effectiveTool !== 'dimension' && !pendingPickField) {
       tool.handlers.onClick(
         { clientX: e.clientX, clientY: e.clientY } as PointerEvent,
         [0, 0] as Point,
@@ -82,7 +81,7 @@ export function useToolClickDispatch({
       if (pendingPickField) commitFieldPick()
     }
   }, [activeTool, isEditing, id, featureId, dimensionKind, entityKind,
-    handleDimClick, fieldPickState, pendingPickField, commitFieldPick, toggleNormalSelection,
+    handleDimClick, pendingPickField, commitFieldPick, toggleNormalSelection,
     normalSelection, dynamicSelection, isPointerDown, activeFeatureId,
     internalHoverSelection, hoveredVertexId, hoveredVertexPosition, hoveredSnapKind, onMutation])
 }

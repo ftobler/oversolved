@@ -81,15 +81,8 @@ export function isBodyFeatureResult(r: unknown): r is BodyFeatureResult {
   return typeof r === 'object' && r !== null && 'body_id' in r
 }
 
-export interface FieldPickState {
-  featureId: string
-  field: string
-  kind: 'plane' | 'point' | 'line' | 'sketch'
-}
-
 // Lightweight marker that a sidebar pick chip is waiting for a viewport selection.
-// Replaces FieldPickState for plane/point/line fields — viewport clicks go through
-// normalSelection first, then commitFieldPick() reads from it.
+// Viewport clicks go through normalSelection first, then commitFieldPick() reads from it.
 export interface PendingPickField {
   featureId: string
   field: string

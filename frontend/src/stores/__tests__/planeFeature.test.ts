@@ -91,6 +91,21 @@ describe('commitFieldPick no-op when pendingPickField is null', () => {
   })
 })
 
+describe('commitFieldPick with sketch field and face ID in normalSelection', () => {
+  beforeEach(reset)
+
+  it('dispatches set_extrude_sketch using featureId from face: prefix', () => {
+    const mutations: unknown[] = []
+    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    useSketchEditorStore.getState().setPendingPickField({ featureId: 'extrude1', field: 'sketch' })
+    useSketchEditorStore.setState({ normalSelection: new Set(['face:sketch1:?some;query']) })
+    useSketchEditorStore.getState().commitFieldPick()
+    expect(mutations[0]).toEqual({ type: 'set_extrude_sketch', featureId: 'extrude1', sketchQuery: '$sketch1' })
+    expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+  })
+})
+
 describe('commitFieldPick no-op when normalSelection is empty', () => {
   beforeEach(reset)
 

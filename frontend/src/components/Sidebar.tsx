@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import type { PartFeature, PartDoc, PlaneDef, Mutation, FieldPickState, PendingPickField, ExtrudeDirection, BodyResult } from '../types/cad'
+import type { PartFeature, PartDoc, PlaneDef, Mutation, PendingPickField, ExtrudeDirection, BodyResult } from '../types/cad'
 import { isBodyFeatureResult } from '../types/cad'
 import { planeLabel } from './Geometry3D/utils'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
@@ -24,7 +24,6 @@ interface SidebarProps {
   visibleFeatures: Set<string>
   editingFeatureId: string | null
   selection: Set<string>
-  fieldPickState: FieldPickState | null
   pendingPickField: PendingPickField | null
   planeSelectionFeatureId: string | null
   onToggleSelect: (id: string) => void
@@ -39,7 +38,6 @@ interface SidebarProps {
   onRollbackDrop: (e: React.DragEvent, featureIndex: number) => void
   onMutation: (mutation: Mutation) => void
   onSetRollbackPosition: (pos: number | null) => void
-  onSetFieldPickState: (state: FieldPickState | null) => void
   onSetPendingPickField: (state: PendingPickField | null) => void
   onSetPlaneSelectionFeatureId: (id: string | null) => void
   solveResults?: Record<string, unknown>
@@ -53,7 +51,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   visibleFeatures,
   editingFeatureId,
   selection,
-  fieldPickState,
   pendingPickField,
   planeSelectionFeatureId,
   onToggleSelect,
@@ -68,7 +65,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRollbackDrop,
   onMutation,
   onSetRollbackPosition,
-  onSetFieldPickState,
   onSetPendingPickField,
   onSetPlaneSelectionFeatureId,
   solveResults,
@@ -282,9 +278,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const ExtrudeEditor: React.FC<{ feature: PartFeature }> = ({ feature }) => {
     const extrude = feature.extrude ?? { sketch: '', distance: 10, direction: 'normal' }
     const fid = feature.id
-    const isPickingSketch = fieldPickState?.featureId === fid
-      && fieldPickState.field === 'sketch'
-      && fieldPickState.kind === 'sketch'
+    const isPickingSketch = pendingPickField?.featureId === fid && pendingPickField.field === 'sketch'
 
     return (
       <div className="plane-editor">
@@ -294,8 +288,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             value={extrude.sketch || undefined}
             isPicking={isPickingSketch}
             onActivate={() => {
-              if (isPickingSketch) onSetFieldPickState(null)
-              else onSetFieldPickState({ featureId: fid, field: 'sketch', kind: 'sketch' })
+              if (isPickingSketch) onSetPendingPickField(null)
+              else onSetPendingPickField({ featureId: fid, field: 'sketch' })
             }}
             onClear={() => onMutation({ type: 'set_extrude_sketch', featureId: fid, sketchQuery: '' })}
           />
@@ -393,9 +387,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onDragOver={(e) => onRollbackDragOver(e, index)}
                 onDrop={(e) => onRollbackDrop(e, index)}
                 onClick={() => {
-                  if (fieldPickState?.kind === 'sketch' && feature.kind === 'sketch') {
-                    onMutation({ type: 'set_extrude_sketch', featureId: fieldPickState.featureId, sketchQuery: '$' + feature.id })
-                    onSetFieldPickState(null)
+                  if (pendingPickField?.field === 'sketch' && feature.kind === 'sketch') {
+                    onMutation({ type: 'set_extrude_sketch', featureId: pendingPickField.featureId, sketchQuery: '$' + feature.id })
+                    onSetPendingPickField(null)
                   } else {
                     onToggleSelect(`@${feature.id}`)
                   }
