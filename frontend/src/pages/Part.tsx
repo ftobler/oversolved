@@ -445,7 +445,7 @@ export default function Part() {
   const handleRollbackDragOver = (e: React.DragEvent, featureIndex: number) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
-    if (featureIndex >= 1) setRollbackPosition(featureIndex + 1)
+    if (featureIndex >= BUILT_IN_IDS.size - 1) setRollbackPosition(featureIndex + 1)
   }
 
   const handleRollbackDragStart = (e: React.DragEvent) => {
@@ -454,7 +454,7 @@ export default function Part() {
 
   const handleRollbackDrop = (e: React.DragEvent, featureIndex: number) => {
     e.preventDefault()
-    if (featureIndex >= 1) setRollbackPosition(featureIndex + 1)
+    if (featureIndex >= BUILT_IN_IDS.size - 1) setRollbackPosition(featureIndex + 1)
   }
 
   const toggleVisibility = useCallback((featureId: string) => {

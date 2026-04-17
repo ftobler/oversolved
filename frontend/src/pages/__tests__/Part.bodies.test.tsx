@@ -48,20 +48,19 @@ function makeSidebarProps(overrides: Record<string, unknown> = {}) {
   }
 }
 
-describe('extrude status dot', () => {
-  it('shows green dot when status ok and mesh present', () => {
+describe('extrude feature name error state', () => {
+  it('shows neutral name when status ok and mesh present', () => {
     render(<Sidebar {...makeSidebarProps({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       solveResults: { ex1: { status: 'ok', body_id: 'body_ex1' } },
       bodies: TEST_BODIES,
     })} />)
-    const dot = screen.getByTitle('')
-    expect(dot.classList.contains('green')).toBe(true)
-    expect(dot.classList.contains('feature-status-dot')).toBe(true)
+    const name = document.querySelector('.feature-name')
+    expect(name?.classList.contains('feature-name-error')).toBe(false)
   })
 
-  it('shows orange dot when status ok but no mesh (mesh_error)', () => {
+  it('shows error name when status ok but no mesh (mesh_error)', () => {
     const bodiesWithError: Record<string, BodyResult> = {
       body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh_error: 'no shape' },
     }
@@ -71,33 +70,33 @@ describe('extrude status dot', () => {
       solveResults: { ex1: { status: 'ok', body_id: 'body_ex1' } },
       bodies: bodiesWithError,
     })} />)
-    const dot = screen.getByTitle('no shape')
-    expect(dot.classList.contains('orange')).toBe(true)
+    const name = screen.getByTitle('no shape')
+    expect(name.classList.contains('feature-name-error')).toBe(true)
   })
 
-  it('shows red dot when feature has exception', () => {
+  it('shows error name when feature has exception', () => {
     render(<Sidebar {...makeSidebarProps({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       solveResults: { ex1: { status: 'exception', body_id: 'body_ex1', exception: 'sketch not found' } },
       bodies: TEST_BODIES,
     })} />)
-    const dot = screen.getByTitle('sketch not found')
-    expect(dot.classList.contains('red')).toBe(true)
+    const name = screen.getByTitle('sketch not found')
+    expect(name.classList.contains('feature-name-error')).toBe(true)
   })
 
-  it('shows grey dot when no solve result', () => {
+  it('shows neutral name when no solve result', () => {
     render(<Sidebar {...makeSidebarProps({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       solveResults: undefined,
       bodies: undefined,
     })} />)
-    const dot = screen.getByTitle('')
-    expect(dot.classList.contains('grey')).toBe(true)
+    const name = document.querySelector('.feature-name')
+    expect(name?.classList.contains('feature-name-error')).toBe(false)
   })
 
-  it('does not show status dot for non-extrude features', () => {
+  it('does not show error for non-extrude features', () => {
     const sketchFeature: PartFeature = { id: 'sk1', kind: 'sketch' }
     render(<Sidebar {...makeSidebarProps({
       features: [sketchFeature],
@@ -105,8 +104,8 @@ describe('extrude status dot', () => {
       solveResults: { sk1: { status: 'ok' } },
       bodies: {},
     })} />)
-    const dots = document.querySelectorAll('.feature-status-dot')
-    expect(dots.length).toBe(0)
+    const name = document.querySelector('.feature-name')
+    expect(name?.classList.contains('feature-name-error')).toBe(false)
   })
 })
 

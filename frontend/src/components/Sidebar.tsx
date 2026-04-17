@@ -371,45 +371,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     alt={feature.kind || 'feature'}
                     className="feature-icon"
                   />
-                  {renamingFeatureId === feature.id ? (
-                    <input
-                      className="feature-name-input"
-                      value={renameValue}
-                      autoFocus
-                      onClick={e => e.stopPropagation()}
-                      onChange={e => setRenameValue(e.target.value)}
-                      onBlur={() => commitRename(feature)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') { e.currentTarget.blur() }
-                        if (e.key === 'Escape') { setRenamingFeatureId(null) }
-                        e.stopPropagation()
-                      }}
-                    />
-                  ) : (
-                    <span
-                      className="feature-name"
-                      onClick={e => {
-                        e.stopPropagation()
-                        setRenamingFeatureId(feature.id)
-                        setRenameValue(feature.label || feature.id)
-                      }}
-                    >
-                      {feature.label || feature.id}
-                    </span>
-                  )}
-                  {feature.kind === 'extrude' && (() => {
-                    const r = solveResults?.[feature.id]
+                  {(() => {
+                    const r = feature.kind === 'extrude' ? solveResults?.[feature.id] : undefined
                     const bodyResult = r && isBodyFeatureResult(r) ? r : undefined
                     const hasBody = bodyResult && bodyResult.body_id
                       && bodies?.[bodyResult.body_id]?.mesh != null
-                    const dot = !r ? 'grey'
-                      : (r as { status?: string }).status !== 'ok' ? 'red'
-                      : hasBody ? 'green'
-                      : 'orange'
+                    const isError = !!r && ((r as { status?: string }).status !== 'ok' || !hasBody)
                     const errMsg: string = bodyResult?.exception
                       ?? (bodyResult?.body_id ? bodies?.[bodyResult.body_id]?.mesh_error : undefined)
                       ?? ''
-                    return <span className={`feature-status-dot ${dot}`} title={errMsg} />
+                    return renamingFeatureId === feature.id ? (
+                      <input
+                        className="feature-name-input"
+                        value={renameValue}
+                        autoFocus
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => setRenameValue(e.target.value)}
+                        onBlur={() => commitRename(feature)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.currentTarget.blur() }
+                          if (e.key === 'Escape') { setRenamingFeatureId(null) }
+                          e.stopPropagation()
+                        }}
+                      />
+                    ) : (
+                      <span
+                        className={`feature-name${isError ? ' feature-name-error' : ''}`}
+                        title={errMsg}
+                        onClick={e => {
+                          e.stopPropagation()
+                          setRenamingFeatureId(feature.id)
+                          setRenameValue(feature.label || feature.id)
+                        }}
+                      >
+                        {feature.label || feature.id}
+                      </span>
+                    )
                   })()}
                   <div className="feature-item-actions">
                     {feature.kind === 'sketch' && feature.id !== editingFeatureId && (
