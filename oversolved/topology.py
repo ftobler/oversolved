@@ -592,43 +592,73 @@ def detect_topology(geometry: dict, feature_id: str = "") -> dict:
     # Standalone circles (no intersections) → one surface each.
     # Represented as two semicircle arcs so the SVG path is non-degenerate
     # (a single arc from a point back to itself collapses to zero in SVG).
-    for eid, e in circles.items():
-        if len(_dedup(splits.get(eid, []))) < 2:
+    # Concentric standalone circles (same center) produce nested surfaces:
+    # the innermost is a filled circle; each outer circle becomes an annulus
+    # with the next-inner circle as a hole.
+    standalone = [
+        (eid, e)
+        for eid, e in circles.items()
+        if len(_dedup(splits.get(eid, []))) < 2
+    ]
+
+    def _circle_arcs(cx: float, cy: float, r: float) -> list:
+        return [
+            {
+                "kind": "arc",
+                "center": [cx, cy],
+                "radius": r,
+                "angle_start_deg": 0.0,
+                "angle_end_deg": 180.0,
+                "ccw": True,
+                "start": [cx + r, cy],
+                "end": [cx - r, cy],
+                "start_vertex": None,
+                "end_vertex": None,
+            },
+            {
+                "kind": "arc",
+                "center": [cx, cy],
+                "radius": r,
+                "angle_start_deg": 180.0,
+                "angle_end_deg": 360.0,
+                "ccw": True,
+                "start": [cx - r, cy],
+                "end": [cx + r, cy],
+                "start_vertex": None,
+                "end_vertex": None,
+            },
+        ]
+
+    # Group standalone circles by center (within tolerance).
+    _CENTER_TOL = 1e-6
+    groups: list[list[tuple]] = []
+    for eid, e in standalone:
+        cx, cy = e["center"][0], e["center"][1]
+        placed = False
+        for grp in groups:
+            gcx, gcy = grp[0][1]["center"][0], grp[0][1]["center"][1]
+            if abs(cx - gcx) < _CENTER_TOL and abs(cy - gcy) < _CENTER_TOL:
+                grp.append((eid, e))
+                placed = True
+                break
+        if not placed:
+            groups.append([(eid, e)])
+
+    for grp in groups:
+        # Sort ascending by radius so smallest is innermost.
+        grp_sorted = sorted(grp, key=lambda t: t[1]["radius"])
+
+        for idx, (eid, e) in enumerate(grp_sorted):
             cx, cy, r = e["center"][0], e["center"][1], e["radius"]
-            # Add surface index to disambiguate when multiple surfaces exist.
             ancestor_ids = ["@" + feature_id + eid, f"surface:{len(surfaces)}"]
             query = make_ancestry_query(ancestor_ids, "face")
-            surfaces.append(
-                {
-                    "boundary": [
-                        {
-                            "kind": "arc",
-                            "center": [cx, cy],
-                            "radius": r,
-                            "angle_start_deg": 0.0,
-                            "angle_end_deg": 180.0,
-                            "ccw": True,
-                            "start": [cx + r, cy],
-                            "end": [cx - r, cy],
-                            "start_vertex": None,
-                            "end_vertex": None,
-                        },
-                        {
-                            "kind": "arc",
-                            "center": [cx, cy],
-                            "radius": r,
-                            "angle_start_deg": 180.0,
-                            "angle_end_deg": 360.0,
-                            "ccw": True,
-                            "start": [cx - r, cy],
-                            "end": [cx + r, cy],
-                            "start_vertex": None,
-                            "end_vertex": None,
-                        },
-                    ],
-                    "query": query,
-                }
-            )
+            boundary = _circle_arcs(cx, cy, r)
+            if idx > 0:
+                # Annulus: append hole arcs from the next-inner circle.
+                inner_eid, inner_e = grp_sorted[idx - 1]
+                icx, icy, ir = inner_e["center"][0], inner_e["center"][1], inner_e["radius"]
+                boundary += _circle_arcs(icx, icy, ir)
+            surfaces.append({"boundary": boundary, "query": query})
 
     return {
         "intersection_points": {

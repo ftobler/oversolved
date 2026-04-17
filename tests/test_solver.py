@@ -611,3 +611,55 @@ features:
     assert abs(length(sk["line1"][0:2], sk["line1"][2:4]) - 8.0) < TOL
     assert length(line_end, center) < TOL
     assert abs(sk["circ"][2] - 2.0) < TOL
+
+
+def test_concentric_circles_two_surfaces():
+    """Two concentric circles produce two boundary surfaces: inner filled circle and outer annulus."""
+    import textwrap
+    yaml_str = textwrap.dedent("""\
+        version: 1
+        kind: part
+        features:
+          - id: sketch_1
+            kind: sketch
+            plane: "@builtin_plane_front"
+            initial:
+              inner_circle: [0.0, 0.0, 2.0]
+              outer_circle: [0.0, 0.0, 5.0]
+            entities:
+              - id: inner_circle
+                kind: circle
+              - id: outer_circle
+                kind: circle
+            constraints:
+              - id: c_inner_radius
+                kind: radius
+                target: {entity: inner_circle}
+                value: 2
+              - id: c_outer_radius
+                kind: radius
+                target: {entity: outer_circle}
+                value: 5
+            label: "Concentric circles"
+    """)
+    result = solve(yaml_str)["result"]["sketch_1"]
+    assert result.get("status") != "exception", result.get("exception")
+
+    surfaces = result["topology"]["surfaces"]
+    assert len(surfaces) == 2, f"Expected 2 surfaces, got {len(surfaces)}"
+
+    radii_in_surfaces = []
+    for surf in surfaces:
+        bounds = surf.get("boundary", [])
+        radii = sorted(set(round(b.get("radius", 0), 1) for b in bounds if b.get("radius")))
+        radii_in_surfaces.append(radii)
+
+    inner_radii = next((r for r in radii_in_surfaces if 2.0 in r and 5.0 not in r), None)
+    outer_radii = next((r for r in radii_in_surfaces if 2.0 in r and 5.0 in r), None)
+
+    assert inner_radii is not None, (
+        f"Inner surface (radius 2 only) not found. Got: {radii_in_surfaces}"
+    )
+    assert outer_radii is not None, (
+        f"Outer annulus surface (radii 2+5) not found. Got: {radii_in_surfaces}"
+    )

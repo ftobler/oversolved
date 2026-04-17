@@ -114,6 +114,42 @@ export function renderSketch(
   })
 }
 
+const _LOOP_TOL = 1e-6
+
+export function buildSurfacePath(
+  surface: { boundary: TopologyEdge[] },
+  px: (x: number, y: number) => [number, number],
+  pxScale: number,
+): string {
+  const parts: string[] = []
+  let prevEnd: [number, number] | null = null
+  for (const edge of surface.boundary) {
+    const [sx, sy] = px(edge.start[0], edge.start[1])
+    const [ex, ey] = px(edge.end[0], edge.end[1])
+    const gapFromPrev = prevEnd === null
+      || Math.hypot(sx - prevEnd[0], sy - prevEnd[1]) > _LOOP_TOL
+    if (gapFromPrev) {
+      if (prevEnd !== null) parts.push('Z')
+      parts.push(`M ${sx} ${sy}`)
+    }
+    if (edge.kind === 'line') {
+      parts.push(`L ${ex} ${ey}`)
+    } else {
+      const ae = edge as TopologyArcEdge
+      const r = ae.radius * pxScale
+      const span = ae.ccw
+        ? ((ae.angle_end_deg - ae.angle_start_deg) + 360) % 360
+        : ((ae.angle_start_deg - ae.angle_end_deg) + 360) % 360
+      const largeArc = span > 180 ? 1 : 0
+      const sweep = ae.ccw ? 0 : 1
+      parts.push(`A ${r} ${r} 0 ${largeArc} ${sweep} ${ex} ${ey}`)
+    }
+    prevEnd = [ex, ey]
+  }
+  if (parts.length > 0) parts.push('Z')
+  return parts.join(' ')
+}
+
 export function renderTopology(
   topology: Topology,
   px: (x: number, y: number) => [number, number],
@@ -121,29 +157,11 @@ export function renderTopology(
 ) {
   const elements: React.ReactNode[] = []
   topology.surfaces.forEach((surface, si) => {
-    const parts: string[] = []
-    surface.boundary.forEach((edge, ei) => {
-      const [ex, ey] = px(edge.end[0], edge.end[1])
-      if (ei === 0) {
-        const [sx, sy] = px(edge.start[0], edge.start[1])
-        parts.push(`M ${sx} ${sy}`)
-      }
-      if (edge.kind === 'line') {
-        parts.push(`L ${ex} ${ey}`)
-      } else {
-        const ae = edge as TopologyArcEdge
-        const r = ae.radius * pxScale
-        const span = ae.ccw
-          ? ((ae.angle_end_deg - ae.angle_start_deg) + 360) % 360
-          : ((ae.angle_start_deg - ae.angle_end_deg) + 360) % 360
-        const largeArc = span > 180 ? 1 : 0
-        const sweep = ae.ccw ? 0 : 1
-        parts.push(`A ${r} ${r} 0 ${largeArc} ${sweep} ${ex} ${ey}`)
-      }
-    })
-    if (parts.length > 0) {
-      parts.push('Z')
-      elements.push(<path key={`topo-surface-${si}`} d={parts.join(' ')} fill="white" fillOpacity={0.10} stroke="none" />)
+    const d = buildSurfacePath(surface, px, pxScale)
+    if (d) {
+      elements.push(
+        <path key={`topo-surface-${si}`} d={d} fill="white" fillOpacity={0.10} stroke="none" fillRule="evenodd" />,
+      )
     }
   })
   Object.entries(topology.intersection_points).forEach(([vid, pt]) => {
