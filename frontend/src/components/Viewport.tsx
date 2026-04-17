@@ -12,6 +12,7 @@ import Body3D from './Geometry3D/Body3D'
 import OriginMarker from './Viewport/OriginMarker'
 import ReferencePlane from './Viewport/ReferencePlane'
 import SceneController from './Viewport/SceneController'
+import CameraLight from './Viewport/CameraLight'
 import UserDefinedPlane from './Viewport/UserDefinedPlane'
 import ContextMenuDialog from './ContextMenuDialog'
 import { CLICK_THRESHOLD_PX } from './Geometry3D/constants'
@@ -263,8 +264,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={-10} far={1000} /* clipping planes */ />
         <SceneController resetTrigger={resetTrigger} canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
 
-        <ambientLight intensity={0.8} />
-        <directionalLight position={[2,2,3]} intensity={0.6} />
+        <CameraLight />
 
         {showOrigin && <OriginMarker />}
         {showFront  && <ReferencePlane rotation={[0,0,0]} label="Front" />}
