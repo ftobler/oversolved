@@ -462,7 +462,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
 
                     element_id = f"face{face_idx}"
                     abs_id = "@" + created_by + element_id
-                    query = make_ancestry_query([abs_id], surface_type)
+                    query = make_ancestry_query([abs_id, f"@{created_by}"], surface_type)
                     face_queries.append(query)
             except TypeError:
                 face_data.append(
@@ -473,7 +473,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
 
                     element_id = f"face{face_idx}"
                     abs_id = "@" + created_by + element_id
-                    query = make_ancestry_query([abs_id], "face")
+                    query = make_ancestry_query([abs_id, f"@{created_by}"], "face")
                     face_queries.append(query)
             explorer.Next()
             face_idx += 1
@@ -637,7 +637,7 @@ def solid_to_edges(solid: Any, created_by: str | None = None) -> dict:
         if created_by:
             from oversolved.query import make_ancestry_query  # noqa: PLC0415
             edge_type = "straightedge" if edges[-1]["kind"] == "line" else "edge"
-            edge_queries.append(make_ancestry_query([f"@{created_by}edge{idx}"], edge_type))
+            edge_queries.append(make_ancestry_query([f"@{created_by}edge{idx}", f"@{created_by}"], edge_type))
         idx += 1
         explorer.Next()
 
@@ -667,7 +667,7 @@ def solid_to_vertices(solid: Any, created_by: str | None = None) -> dict:
         if created_by:
             from oversolved.query import make_ancestry_query  # noqa: PLC0415
             idx = len(vertices) - 1
-            vertex_queries.append(make_ancestry_query([f"@{created_by}vertex{idx}"], "vertex"))
+            vertex_queries.append(make_ancestry_query([f"@{created_by}vertex{idx}", f"@{created_by}"], "vertex"))
         explorer.Next()
 
     return {"vertices": vertices, "vertex_queries": vertex_queries}

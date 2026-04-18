@@ -193,7 +193,7 @@ def test_solid_to_mesh_generates_face_queries_from_created_by():
 
     assert "face_queries" in mesh
     assert len(mesh["face_queries"]) == len(mesh["face_data"]) == 6
-    assert mesh["face_queries"][0] == make_ancestry_query(["@test_featureface0"], "flatface")
+    assert mesh["face_queries"][0] == make_ancestry_query(["@test_featureface0", "@test_feature"], "flatface")
 
 
 def test_cylinder_side_face_uses_analytical_surface_normal():

@@ -318,7 +318,7 @@ def _build_edge_queries(hes, he_eid, feature_id, verts) -> list[dict]:
                 "start_vertex": v0,
                 "end_vertex": v1,
             }
-            ancestor_ids = ["@" + feature_id + eid, f"edge:{edge_idx}"]
+            ancestor_ids = ["@" + feature_id + eid, f"edge:{edge_idx}", f"@{feature_id}"]
             edge_type = "straightedge" if eg.get("kind") == "line" else "edge"
             query = make_ancestry_query(ancestor_ids, edge_type)
             edges.append(
@@ -574,7 +574,7 @@ def detect_topology(geometry: dict, feature_id: str = "") -> dict:
                 abs_ids = sorted("@" + feature_id + he_eid[i] for i in cycle)
                 # Add surface index to disambiguate queries when multiple surfaces
                 # share the same boundary entities (prevents AmbiguousQueryError).
-                abs_ids_with_index = abs_ids + [f"surface:{len(surfaces)}"]
+                abs_ids_with_index = abs_ids + [f"surface:{len(surfaces)}", f"@{feature_id}"]
                 query = make_ancestry_query(abs_ids_with_index, "flatface")
                 surfaces.append(
                     {
@@ -651,7 +651,7 @@ def detect_topology(geometry: dict, feature_id: str = "") -> dict:
 
         for idx, (eid, e) in enumerate(grp_sorted):
             cx, cy, r = e["center"][0], e["center"][1], e["radius"]
-            ancestor_ids = ["@" + feature_id + eid, f"surface:{len(surfaces)}"]
+            ancestor_ids = ["@" + feature_id + eid, f"surface:{len(surfaces)}", f"@{feature_id}"]
             query = make_ancestry_query(ancestor_ids, "flatface")
             boundary = _circle_arcs(cx, cy, r)
             if idx > 0:

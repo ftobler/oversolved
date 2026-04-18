@@ -72,7 +72,7 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
 
     face_data = mesh.get("face_data") or []
     for face_idx, face_info in enumerate(face_data):
-        ancestor_ids = [f"@{body.created_by}face{face_idx}"]
+        ancestor_ids = [f"@{body.created_by}face{face_idx}", f"@{body.created_by}"]
         centroid = face_info.get("centroid", [0.0, 0.0, 0.0])
         normal = face_info.get("normal", [0.0, 0.0, 1.0])
         x_axis, y_axis = _face_plane_axes(normal)
@@ -94,6 +94,26 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
                 break
         else:
             global_repo.register_anchestor(ancestor_ids, payload)
+
+
+def _register_solid_ancestry(global_repo, body: Body) -> None:
+    """Register the solid body itself as a queryable solid entity."""
+    if global_repo is None or not body.created_by:
+        return
+    global_repo.register_anchestor(
+        [f"@{body.created_by}"],
+        {"type": "solid", "body_id": body.id, "created_by": body.created_by},
+    )
+
+
+def _register_extrusion_feature(global_repo, feature_id: str, sketch_id: str = "") -> None:
+    """Register an extrusion feature as a queryable extrusion-feature entity."""
+    if global_repo is None or not feature_id:
+        return
+    global_repo.register_anchestor(
+        [f"@{feature_id}"],
+        {"type": "extrusion-feature", "feature_id": feature_id, "sketch_id": sketch_id},
+    )
 
 
 def _dedupe_repo(repo: Repository) -> None:
@@ -138,11 +158,15 @@ def _snapshot_repo(repo: Repository) -> dict[str, Any]:
     }
 
 
-def _snapshot_with_brep_faces(
+def _snapshot_with_brep_geometry(
     checkpoint: FeatureCheckpoint,
     bodies_out: dict[str, dict],
 ) -> dict[str, Any]:
-    """Return a repo snapshot augmented with B-rep face ancestry for this checkpoint."""
+    """Return a repo snapshot with all B-rep ancestry for this checkpoint.
+
+    Augments the checkpoint's existing repo snapshot with faces, edges, vertices,
+    solid entities, and feature entities derived from the final tessellation.
+    """
     repo = _repo_from_snapshot(checkpoint.repo_snapshot)
 
     for body_id, body in checkpoint.body_store_snapshot.items():
@@ -150,8 +174,23 @@ def _snapshot_with_brep_faces(
         mesh = body_out.get("mesh")
         if mesh is not None:
             _register_brep_face_ancestry(repo, body, mesh)
+        edges = body_out.get("edges") or []
+        edge_queries = body_out.get("edge_queries") or []
+        if edges and edge_queries:
+            _register_brep_edge_ancestry(repo, body, edges, edge_queries)
+        vertices = body_out.get("vertices") or []
+        vertex_queries = body_out.get("vertex_queries") or []
+        if vertices and vertex_queries:
+            _register_brep_vertex_ancestry(repo, body, vertices, vertex_queries)
+        if body.created_by:
+            _register_solid_ancestry(repo, body)
+            _register_extrusion_feature(repo, body.created_by, body.sketch_id)
 
     return _snapshot_repo(repo)
+
+
+# Keep old name as alias so any external callers are not broken.
+_snapshot_with_brep_faces = _snapshot_with_brep_geometry
 
 
 def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_queries: list) -> None:
@@ -159,7 +198,7 @@ def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_quer
     if global_repo is None or not body.created_by or not edge_queries:
         return
     for idx, (edge, query) in enumerate(zip(edges, edge_queries)):
-        ancestor_ids = [f"@{body.created_by}edge{idx}"]
+        ancestor_ids = [f"@{body.created_by}edge{idx}", f"@{body.created_by}"]
         edge_type = "straightedge" if edge.get("kind") == "line" else "edge"
         payload: dict[str, Any] = {
             "type": edge_type,
@@ -178,7 +217,7 @@ def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vert
     if global_repo is None or not body.created_by or not vertex_queries:
         return
     for idx, (pt, query) in enumerate(zip(vertices, vertex_queries)):
-        ancestor_ids = [f"@{body.created_by}vertex{idx}"]
+        ancestor_ids = [f"@{body.created_by}vertex{idx}", f"@{body.created_by}"]
         payload: dict[str, Any] = {
             "type": "vertex",
             "body_id": body.id,
@@ -215,6 +254,8 @@ def _tessellate_bodies(
                 _register_brep_face_ancestry(global_repo, body, entry["mesh"])
                 _register_brep_edge_ancestry(global_repo, body, entry["edges"], entry["edge_queries"])
                 _register_brep_vertex_ancestry(global_repo, body, entry["vertices"], entry["vertex_queries"])
+                _register_solid_ancestry(global_repo, body)
+                _register_extrusion_feature(global_repo, body.created_by or "", body.sketch_id)
             except ImportError:
                 entry["mesh_error"] = "geometry.solid_to_mesh not available (F2 pending)"
             except Exception as exc:
@@ -270,6 +311,8 @@ def build(spec: dict, prev_state: BuildState | None = None) -> dict:
                         global_repo, body,
                         verts_early["vertices"], verts_early["vertex_queries"]
                     )
+                    _register_solid_ancestry(global_repo, body)
+                    _register_extrusion_feature(global_repo, body.created_by or "", body.sketch_id)
                 except Exception:
                     pass
                 registered_body_ids.add(body_id)
@@ -285,7 +328,7 @@ def build(spec: dict, prev_state: BuildState | None = None) -> dict:
         fid: FeatureCheckpoint(
             spec=checkpoint.spec,
             result=checkpoint.result,
-            repo_snapshot=_snapshot_with_brep_faces(checkpoint, bodies_out),
+            repo_snapshot=_snapshot_with_brep_geometry(checkpoint, bodies_out),
             body_store_snapshot=copy.copy(checkpoint.body_store_snapshot),
         )
         for fid, checkpoint in new_checkpoints.items()

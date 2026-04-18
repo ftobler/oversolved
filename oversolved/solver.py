@@ -111,8 +111,9 @@ def _post_register(
             )
             _register_topology_edges(global_repo, feature_result["topology"], plane_obj)
             _register_topology_vertices(
-                global_repo, feature_result["topology"], plane_obj
+                global_repo, feature_result["topology"], plane_obj, feature_id
             )
+        _register_sketch_feature(global_repo, feature_id, feature_result)
 
 
 _FRONT_PLANE: dict = {
@@ -570,8 +571,20 @@ def _register_topology_edges(
         global_repo.register_anchestor(ids, edge_data)
 
 
+def _register_sketch_feature(
+    global_repo: Repository, feature_id: str, feature_result: dict
+) -> None:
+    """Register the sketch feature itself as a sketch-feature entity."""
+    if not feature_id or "topology" not in feature_result:
+        return
+    global_repo.register_anchestor(
+        [f"@{feature_id}"],
+        {"type": "sketch-feature", "feature_id": feature_id},
+    )
+
+
 def _register_topology_vertices(
-    global_repo: Repository, topology: dict, plane_obj: dict
+    global_repo: Repository, topology: dict, plane_obj: dict, feature_id: str = ""
 ) -> None:
     """Register each topology vertex with its ancestry query."""
     x_axis = plane_obj["x_axis"]
@@ -591,6 +604,8 @@ def _register_topology_vertices(
         ]
 
         ancestor_ids = [vid, "vertex"]
+        if feature_id:
+            ancestor_ids.append(f"@{feature_id}")
         query = make_ancestry_query(ancestor_ids, "vertex")
 
         ids, _ = _parse_ancestry(query)
@@ -1785,7 +1800,7 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
         body_id = "body_" + feature_id
         result: dict = {"status": "ok", "body_id": body_id}
 
-        body = Body(id=body_id, created_by=feature_id, shape=None)
+        body = Body(id=body_id, created_by=feature_id, shape=None, sketch_id=sketch_id)
         body_store[body_id] = body
 
         try:

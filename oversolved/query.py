@@ -121,3 +121,26 @@ class Repository:
             return self.elements.get(candidate_ids[0])
 
         return None
+
+    def query_all(self, query_str: str) -> list[Any]:
+        """Return all elements whose ancestor set is a superset of the query's IDs.
+
+        The inverse of query(): where query() finds a single element given its full
+        ancestry, query_all() enumerates all elements that belong to a given ancestor
+        (e.g. all flat faces of a feature). A type restriction in the query string
+        filters by element type.
+        """
+        if not query_str or query_str[0] != '?':
+            return []
+        ids, type_restriction = _parse_ancestry(query_str)
+        query_set = frozenset(ids)
+        candidate_ids: list[str] = []
+        for registered_key, element_ids in self.anchestral.items():
+            if query_set <= registered_key:  # query IDs are contained in registered ancestry
+                candidate_ids.extend(element_ids)
+        if type_restriction is not None:
+            candidate_ids = [
+                eid for eid in candidate_ids
+                if _obj_type(self.elements.get(eid)) == type_restriction
+            ]
+        return [self.elements[eid] for eid in candidate_ids if eid in self.elements]

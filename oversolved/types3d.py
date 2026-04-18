@@ -9,6 +9,7 @@ class Body:
     created_by: str
     modified_by: list[str] = field(default_factory=list)
     shape: Any = None  # TopoDS_Shape when OCC is available, else None
+    sketch_id: str = ""  # sketch feature that was extruded to create this body
 
 
 @dataclass
