@@ -513,7 +513,7 @@ def _register_topology_surfaces(
         global_repo.register_anchestor(
             ids,
             {
-                "type": "face",
+                "type": "flatface",
                 "origin": world_origin,
                 "x_axis": list(x_axis),
                 "y_axis": list(y_axis),
@@ -549,8 +549,9 @@ def _register_topology_edges(
             origin[2] + end_2d[0] * x_axis[2] + end_2d[1] * y_axis[2],
         ]
 
+        edge_type = "straightedge" if edge.get("kind", "line") == "line" else "edge"
         edge_data = {
-            "type": "edge",
+            "type": edge_type,
             "kind": edge.get("kind", "line"),
             "start": world_start,
             "end": world_end,
@@ -589,14 +590,14 @@ def _register_topology_vertices(
             origin[2] + xy_2d[0] * x_axis[2] + xy_2d[1] * y_axis[2],
         ]
 
-        ancestor_ids = [vid, "pt"]
-        query = make_ancestry_query(ancestor_ids, "pt")
+        ancestor_ids = [vid, "vertex"]
+        query = make_ancestry_query(ancestor_ids, "vertex")
 
         ids, _ = _parse_ancestry(query)
         global_repo.register_anchestor(
             ids,
             {
-                "type": "pt",
+                "type": "vertex",
                 "x": world_xy[0],
                 "y": world_xy[1],
                 "z": world_xy[2],
@@ -1083,7 +1084,8 @@ _PROJECTED_KINDS = frozenset(
     {"projected_line", "projected_circle", "projected_arc", "projected_point"}
 )
 
-_PLANE_TYPES = ("plane", "face")
+_FACE_TYPES = frozenset({"face", "flatface", "cylinderface"})
+_PLANE_TYPES = ("plane", "face", "flatface")
 _POINT_TYPES = ("point", "vertex")
 
 
@@ -1698,7 +1700,7 @@ def _register_top_face(
     global_repo.register(
         feature_id + "/top_face",
         {
-            "type": "face",
+            "type": "flatface",
             "centroid": top_centroid.tolist(),
             "normal": normal.tolist(),
             "origin": top_centroid.tolist(),
@@ -1720,7 +1722,7 @@ def _register_top_face(
             global_repo.register(
                 feature_id + "/top_face/edge0",
                 {
-                    "type": "edge",
+                    "type": "straightedge",
                     "start": s3d,
                     "end": e3d,
                 },
@@ -2030,7 +2032,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                 pass  # cross-sketch fixed point — no local entity needed
             elif isinstance(ref, dict) and "external_params" in ref:
                 pass  # cross-sketch entity body — no local entity needed
-            elif isinstance(ref, dict) and ref.get("type") == "face":
+            elif isinstance(ref, dict) and ref.get("type") in _FACE_TYPES:
                 pass  # topology face — projected to external_xy during pre-resolve
             else:
                 # ref is None or resolved to an unexpected dict format — invalid
@@ -2057,7 +2059,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                 resolved = resolve_ref(ref)
                 if resolved is not None:
                     # Topology face: project world-space origin onto sketch 2D coords.
-                    if isinstance(resolved, dict) and resolved.get("type") == "face":
+                    if isinstance(resolved, dict) and resolved.get("type") in _FACE_TYPES:
                         face_origin = resolved.get("origin", [0, 0, 0])
                         sk_origin = plane_obj.get("origin", [0, 0, 0])
                         x_axis = plane_obj.get("x_axis", [1, 0, 0])

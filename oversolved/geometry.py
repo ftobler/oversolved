@@ -345,6 +345,19 @@ def _compute_face_normal(face_shape) -> list[float]:
     return [normal.X(), normal.Y(), normal.Z()]
 
 
+def _get_face_surface_type(face_shape) -> str:
+    """Classify an OCC face as flatface, cylinderface, or face."""
+    from OCP.BRepAdaptor import BRepAdaptor_Surface  # noqa: PLC0415
+    from OCP.GeomAbs import GeomAbs_Cylinder, GeomAbs_Plane  # noqa: PLC0415
+
+    surface_type = BRepAdaptor_Surface(face_shape, True).GetType()
+    if surface_type == GeomAbs_Plane:
+        return "flatface"
+    if surface_type == GeomAbs_Cylinder:
+        return "cylinderface"
+    return "face"
+
+
 def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
     """Tessellate an OCC solid to a mesh dict.
 
@@ -442,17 +455,18 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
                         face_area += 0.5 * mag
                 centroid = _compute_face_centroid(face)
                 normal = _compute_face_normal(face)
-                face_data.append({"centroid": centroid, "normal": normal, "area": face_area})
+                surface_type = _get_face_surface_type(face)
+                face_data.append({"centroid": centroid, "normal": normal, "area": face_area, "surface_type": surface_type})
                 if created_by:
                     from oversolved.query import make_ancestry_query
 
                     element_id = f"face{face_idx}"
                     abs_id = "@" + created_by + element_id
-                    query = make_ancestry_query([abs_id], "face")
+                    query = make_ancestry_query([abs_id], surface_type)
                     face_queries.append(query)
             except TypeError:
                 face_data.append(
-                    {"centroid": [0.0, 0.0, 0.0], "normal": [0.0, 0.0, 1.0], "area": 0.0}
+                    {"centroid": [0.0, 0.0, 0.0], "normal": [0.0, 0.0, 1.0], "area": 0.0, "surface_type": "face"}
                 )
                 if created_by:
                     from oversolved.query import make_ancestry_query
@@ -622,7 +636,8 @@ def solid_to_edges(solid: Any, created_by: str | None = None) -> dict:
 
         if created_by:
             from oversolved.query import make_ancestry_query  # noqa: PLC0415
-            edge_queries.append(make_ancestry_query([f"@{created_by}edge{idx}"], "edge"))
+            edge_type = "straightedge" if edges[-1]["kind"] == "line" else "edge"
+            edge_queries.append(make_ancestry_query([f"@{created_by}edge{idx}"], edge_type))
         idx += 1
         explorer.Next()
 

@@ -439,7 +439,7 @@ features:
     assert len(surfaces) == 1
     assert "query" in surfaces[0]
     assert surfaces[0]["query"].startswith("?")
-    assert ":face" in surfaces[0]["query"]
+    assert ":flatface" in surfaces[0]["query"]
 
 
 # ── Step 5: plane_transform roundtrip ─────────────────────────────────────────

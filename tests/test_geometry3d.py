@@ -193,7 +193,7 @@ def test_solid_to_mesh_generates_face_queries_from_created_by():
 
     assert "face_queries" in mesh
     assert len(mesh["face_queries"]) == len(mesh["face_data"]) == 6
-    assert mesh["face_queries"][0] == make_ancestry_query(["@test_featureface0"], "face")
+    assert mesh["face_queries"][0] == make_ancestry_query(["@test_featureface0"], "flatface")
 
 
 def test_cylinder_side_face_uses_analytical_surface_normal():
@@ -325,7 +325,7 @@ def test_solid_to_edges_returns_dict_with_edge_queries():
     assert len(result["edge_queries"]) == len(result["edges"])
     for q in result["edge_queries"]:
         assert q.startswith("?")
-        assert q.endswith(":edge")
+        assert q.endswith(":straightedge")
         assert "ext1" in q
 
 

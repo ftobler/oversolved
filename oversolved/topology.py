@@ -319,7 +319,8 @@ def _build_edge_queries(hes, he_eid, feature_id, verts) -> list[dict]:
                 "end_vertex": v1,
             }
             ancestor_ids = ["@" + feature_id + eid, f"edge:{edge_idx}"]
-            query = make_ancestry_query(ancestor_ids, "edge")
+            edge_type = "straightedge" if eg.get("kind") == "line" else "edge"
+            query = make_ancestry_query(ancestor_ids, edge_type)
             edges.append(
                 {
                     "query": query,
@@ -574,7 +575,7 @@ def detect_topology(geometry: dict, feature_id: str = "") -> dict:
                 # Add surface index to disambiguate queries when multiple surfaces
                 # share the same boundary entities (prevents AmbiguousQueryError).
                 abs_ids_with_index = abs_ids + [f"surface:{len(surfaces)}"]
-                query = make_ancestry_query(abs_ids_with_index, "face")
+                query = make_ancestry_query(abs_ids_with_index, "flatface")
                 surfaces.append(
                     {
                         "boundary": [
@@ -651,7 +652,7 @@ def detect_topology(geometry: dict, feature_id: str = "") -> dict:
         for idx, (eid, e) in enumerate(grp_sorted):
             cx, cy, r = e["center"][0], e["center"][1], e["radius"]
             ancestor_ids = ["@" + feature_id + eid, f"surface:{len(surfaces)}"]
-            query = make_ancestry_query(ancestor_ids, "face")
+            query = make_ancestry_query(ancestor_ids, "flatface")
             boundary = _circle_arcs(cx, cy, r)
             if idx > 0:
                 # Annulus: append hole arcs from the next-inner circle.

@@ -17,7 +17,18 @@ Each element can refer to another one by an id. There are different requirements
 | `?A,B;<idA><idB>:<TYPE>`| anchrestry information list, restricted to geometry type.           |
 | `?A,B;<idA><idB>:<TYPE>@<CLASSIFIER>`| anchrestry list with geometric classifier. |
 
-In Anchestry information lists, lengths are hex encoded and comma separated. A semicolon separates it from the id strings which have no delimiters between them. Each ID string must be of valid Query Syntax. An optional `:<TYPE>` suffix after the id strings restricts resolution to a specific geometry type (e.g. `pt`, `line`, `arc`, `edge`, `face`). This is useful when an intersection produces multiple geometry types and the desired one must be unambiguous.
+In Anchestry information lists, lengths are hex encoded and comma separated. A semicolon separates it from the id strings which have no delimiters between them. Each ID string must be of valid Query Syntax. An optional `:<TYPE>` suffix after the id strings restricts resolution to a specific geometry type. This is useful when an intersection produces multiple geometry types and the desired one must be unambiguous.
+
+**Geometry types:**
+
+| Type | Description |
+|------|-------------|
+| `vertex` | Point / topological vertex, single coordinate |
+| `straightedge` | Straight edge (line segment) with two endpoints |
+| `edge` | Non-straight edge (arc, circle, spline) |
+| `flatface` | Planar face with a clear boundary |
+| `cylinderface` | Cylindrical face with a defined center axis |
+| `face` | General face (not flat or cylindrical) |
 
 ### Geometric Classifiers
 
@@ -39,10 +50,10 @@ When multiple surfaces are created from the same ancestry (e.g., a circle cut by
 
 **Examples:**
 ```
-?5;@sketch_1circle:face@inner    # Inside a standalone circle
-?5;@sketch_1circle:face@outer    # Outside a standalone circle
-?f,13;@sketch_1circle@sketch_1line:face@pos  # Above the line
-?f,13;@sketch_1circle@sketch_1line:face@neg  # Below the line
+?5;@sketch_1circle:flatface@inner    # Inside a standalone circle
+?5;@sketch_1circle:flatface@outer    # Outside a standalone circle
+?f,13;@sketch_1circle@sketch_1line:flatface@pos  # Above the line
+?f,13;@sketch_1circle@sketch_1line:flatface@neg  # Below the line
 ```
 
 A query is always used to refer to another element. The query should resolve unique. Anchestry information and classifiers are used to make the resolution unambiguous.
@@ -63,7 +74,7 @@ When `@<id>` appears and `<id>` exactly matches a registered feature ID (with no
 
 The ancestry query pattern extends to 3D B-rep faces from solid bodies. This enables referencing specific faces of extruded volumes, STEP imports, and other 3D geometry.
 
-**Query format**: Same ancestry pattern `?A,B;<idA><idB>:<TYPE>` with `:face` type restriction.
+**Query format**: Same ancestry pattern `?A,B;<idA><idB>:<TYPE>`. The type reflects the surface classification: `flatface` for planar faces, `cylinderface` for cylindrical faces, `face` for other surfaces.
 
 **ID construction**: For 3D B-rep faces, the ancestor ID combines:
 - The feature ID that created the body (e.g., `extrude1`)
@@ -71,15 +82,15 @@ The ancestry query pattern extends to 3D B-rep faces from solid bodies. This ena
 
 **Example queries:**
 ```
-?d,d;@extrude1face0:face    # Face 0 of extrude1 feature
-?d,d;@extrude1face1:face    # Face 1 of extrude1 feature
-?14,14;@myextrudeface0@myextrudeface1:face  # Multiple faces
+?d,d;@extrude1face0:flatface    # Flat face 0 of extrude1 feature
+?d,d;@extrude1face1:cylinderface  # Cylindrical face 1
+?14,14;@myextrudeface0@myextrudeface1:flatface  # Multiple flat faces
 ```
 
 **Breaking down the query:**
 - `?d,d;` — hex-encoded lengths: `d` (13 in decimal) = len("@extrude1face0")
 - `@extrude1face0` — absolute element ID: `@` prefix + feature ID + element ID
-- `:face` — type restriction to faces only
+- `:flatface` — type restriction (flatface / cylinderface / face)
 
 **Frontend usage**: When clicking a mesh face in the 3D viewport:
 1. Three.js returns `faceIndex` — the triangle index (unstable, changes with tessellation)
@@ -89,13 +100,13 @@ The ancestry query pattern extends to 3D B-rep faces from solid bodies. This ena
 
 **Resolution path:**
 ```
-Query: "?d,d;@extrude1face0:face"
+Query: "?d,d;@extrude1face0:flatface"
    ↓ parse (query.py:_parse_ancestry)
 IDs: ["@extrude1face0"]
    ↓ lookup (Repository.anchestral)
 Registered under: frozenset({"@extrude1face0"})
-   ↓ match → return registered object
-Result: {"type": "face", "centroid": [...], "normal": [...]}
+   ↓ match + type filter → return registered object
+Result: {"type": "flatface", "centroid": [...], "normal": [...]}
 ```
 
 ---

@@ -99,7 +99,7 @@ def test_build_mesh_includes_brep_face_metadata_and_queries():
     assert len(mesh["face_data"]) > 0
     assert len(mesh["triangle_to_face"]) == len(mesh["faces"])
     assert len(mesh["face_queries"]) == len(mesh["face_data"])
-    assert mesh["face_queries"][0] == make_ancestry_query(["@ex1face0"], "face")
+    assert mesh["face_queries"][0] == make_ancestry_query(["@ex1face0"], "flatface")
 
 
 def test_build_returns_edge_queries_and_vertices():
@@ -131,7 +131,7 @@ def test_tessellate_bodies_registers_brep_face_queries_in_repo():
     bodies = _tessellate_bodies({"body_ext1": body}, repo)
     mesh = bodies["body_ext1"]["mesh"]
 
-    face = repo.query(make_ancestry_query(["@ext1face0"], "face"))
+    face = repo.query(make_ancestry_query(["@ext1face0"], "flatface"))
     assert face is not None
-    assert face["type"] == "face"
+    assert face["type"] == "flatface"
     assert face["centroid"] == mesh["face_data"][0]["centroid"]

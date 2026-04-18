@@ -77,7 +77,7 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
         normal = face_info.get("normal", [0.0, 0.0, 1.0])
         x_axis, y_axis = _face_plane_axes(normal)
         payload = {
-            "type": "face",
+            "type": face_info.get("surface_type", "face"),
             "body_id": body.id,
             "created_by": body.created_by,
             "face_index": face_idx,
@@ -160,8 +160,9 @@ def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_quer
         return
     for idx, (edge, query) in enumerate(zip(edges, edge_queries)):
         ancestor_ids = [f"@{body.created_by}edge{idx}"]
+        edge_type = "straightedge" if edge.get("kind") == "line" else "edge"
         payload: dict[str, Any] = {
-            "type": "edge",
+            "type": edge_type,
             "body_id": body.id,
             "created_by": body.created_by,
             "edge_index": idx,

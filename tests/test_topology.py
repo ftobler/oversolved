@@ -67,7 +67,7 @@ def test_triangle_surface_has_query():
     surface = result["surfaces"][0]
     assert "query" in surface
     assert surface["query"].startswith("?")
-    assert surface["query"].endswith(":face")
+    assert surface["query"].endswith(":flatface")
     for eid in ["@sketch1a", "@sketch1b", "@sketch1c"]:
         assert eid in surface["query"]
 
