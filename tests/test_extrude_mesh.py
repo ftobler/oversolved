@@ -401,6 +401,65 @@ def test_extrude_from_sketch_surface_query():
     assert_mesh_valid(r["bodies"]["body_ex1"]["mesh"])
 
 
+def test_extrude_surface_query_uses_only_selected_surface():
+    """When a sketch has multiple surfaces and one is selected via ? query,
+    only that surface should be extruded, not the whole sketch.
+
+    Two circles side-by-side: c1 at origin (surface:0), c2 at x=3 (surface:1).
+    Extruding surface:1 must produce a solid whose x-range is near 3, not near 0.
+    """
+    from oversolved.builder import build
+    from oversolved.query import make_ancestry_query
+    from solver_helpers import assert_mesh_bbox
+
+    sk = "sk1"
+    # Select only c2 (surface:1).
+    surface_query = make_ancestry_query(
+        [f"@{sk}c2", "surface:1", f"@{sk}"],
+        "flatface",
+    )
+
+    spec = {
+        "features": [
+            {
+                "id": sk,
+                "kind": "sketch",
+                "plane": "@builtin_plane_front",
+                "entities": [
+                    {"id": "c1", "kind": "circle"},
+                    {"id": "c2", "kind": "circle"},
+                ],
+                "initial": {
+                    "c1": [0, 0, 0.5],
+                    "c2": [3, 0, 0.5],
+                },
+                "constraints": [
+                    {"id": "co1", "kind": "coincident",
+                     "a": f"${sk}c1center", "b": "@builtin_origin"},
+                    {"id": "d1", "kind": "diameter",
+                     "target": f"${sk}c1", "value": 1},
+                    {"id": "d2", "kind": "diameter",
+                     "target": f"${sk}c2", "value": 1},
+                ],
+            },
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": surface_query,
+                "distance": 1.0,
+                "direction": "normal",
+            },
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["ex1"]["status"] == "ok", r["result"]["ex1"]
+    mesh = r["bodies"]["body_ex1"]["mesh"]
+    # c2 is near x=3 -- if both surfaces were extruded the x-range would span 0 too.
+    xs = [v[0] for v in mesh["vertices"]]
+    assert min(xs) > 1.0, f"x min={min(xs):.3f}: c1 surface was incorrectly included"
+    assert_mesh_bbox(mesh, x_range=(2.5, 3.5), y_range=(-0.5, 0.5), z_range=(0, 1))
+
+
 def test_extrude_from_top_face_named_query():
     """Extrude2 references @ex1/top_face as its profile.
 

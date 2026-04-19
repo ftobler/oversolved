@@ -1866,9 +1866,10 @@ def _resolve_face_profile(
         return loops, effective_plane
 
     # Ancestry query (?...) resolving to a sketch surface (no body_id/face_index):
-    # find the parent sketch from the ancestry IDs, use its topology directly.
+    # find the parent sketch from the ancestry IDs, then extract only the matched surface.
     if sketch_ref.startswith("?"):
         ids, _ = _parse_ancestry(sketch_ref)
+        target_set = frozenset(ids)
         sketch_id = None
         for aid in ids:
             if aid.startswith("@"):
@@ -1885,8 +1886,15 @@ def _resolve_face_profile(
             raise ValueError(f"Sketch plane not found for: {sketch_id!r}")
         surface_pt: dict = pt_raw
         topo = global_repo.elements.get("_topo_" + sketch_id, {})
-        surfaces = topo.get("surfaces", []) if topo else []
-        loops = _extract_profile_loops(surfaces, surface_pt)
+        all_surfaces = topo.get("surfaces", []) if topo else []
+
+        # Filter to the single surface whose ancestry matches the query.
+        matched = [
+            s for s in all_surfaces
+            if s.get("query", "").startswith("?")
+            and frozenset(_parse_ancestry(s["query"])[0]) == target_set
+        ]
+        loops = _extract_profile_loops(matched or all_surfaces, surface_pt)
         return loops, surface_pt
 
     raise ValueError(f"Cannot resolve profile from: {sketch_ref!r}")
