@@ -348,3 +348,94 @@ def test_two_independent_extrudes_produce_two_bodies():
     assert "body_ex1" in r["bodies"]
     assert "body_ex2" in r["bodies"]
     assert len(r["bodies"]) == 2
+
+
+def test_extrude_from_sketch_surface_query():
+    """Extrude uses a ?-ancestry query for a sketch surface flatface as the profile.
+
+    This reproduces the 2026-04-19 bug where clicking a sketch surface face in the
+    viewport stored a ?-prefixed ancestry query in the extrude sketch field, causing
+    'Cannot resolve profile from' exception because _resolve_face_profile only handled
+    the @ branch after checking for body_id/face_index.
+    """
+    from oversolved.builder import build
+    from oversolved.query import make_ancestry_query
+    from solver_helpers import assert_mesh_valid
+
+    sketch_id = "sk1"
+    circle_id = "c1"
+    # The topology code builds the surface query with these ancestor ids.
+    surface_query = make_ancestry_query(
+        [f"@{sketch_id}{circle_id}", "surface:0", f"@{sketch_id}"],
+        "flatface",
+    )
+
+    spec = {
+        "features": [
+            {
+                "id": sketch_id,
+                "kind": "sketch",
+                "plane": "@builtin_plane_front",
+                "entities": [{"id": circle_id, "kind": "circle"}],
+                "initial": {circle_id: [0, 0, 0.5]},
+                "constraints": [
+                    {"id": "co1", "kind": "coincident",
+                     "a": f"${sketch_id}{circle_id}center", "b": "@builtin_origin"},
+                    {"id": "d1", "kind": "diameter",
+                     "target": f"${sketch_id}{circle_id}", "value": 1},
+                ],
+            },
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": surface_query,
+                "distance": 2.0,
+                "direction": "normal",
+            },
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["sk1"]["status"] != "exception", r["result"]["sk1"]
+    assert r["result"]["ex1"]["status"] == "ok", r["result"]["ex1"]
+    assert "body_ex1" in r["bodies"]
+    assert_mesh_valid(r["bodies"]["body_ex1"]["mesh"])
+
+
+def test_extrude_from_top_face_named_query():
+    """Extrude2 references @ex1/top_face as its profile.
+
+    The second extrude must resolve the face query, use the sketch topology
+    of ex1, and produce a solid starting at z=5 (top of ex1).
+    """
+    from oversolved.builder import build
+    from solver_helpers import rect_sketch_spec, assert_mesh_valid
+
+    spec = {
+        "features": [
+            rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": "$sk1",
+                "distance": 5.0,
+                "direction": "normal",
+            },
+            {
+                "id": "ex2",
+                "kind": "extrude",
+                "sketch": "@ex1/top_face",
+                "distance": 3.0,
+                "direction": "normal",
+            },
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["ex1"]["status"] == "ok", r["result"]["ex1"]
+    assert r["result"]["ex2"]["status"] == "ok", r["result"]["ex2"]
+    assert "body_ex2" in r["bodies"]
+    mesh2 = r["bodies"]["body_ex2"]["mesh"]
+    assert_mesh_valid(mesh2)
+    zs = [v[2] for v in mesh2["vertices"]]
+    from pytest import approx
+    assert min(zs) == approx(5.0, abs=0.2), f"ex2 should start at z=5, got {min(zs)}"
+    assert max(zs) == approx(8.0, abs=0.2), f"ex2 should end at z=8, got {max(zs)}"

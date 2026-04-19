@@ -283,7 +283,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return (
       <div className="plane-editor">
         <div className="feature-field-row">
-          <span className="feature-field-label">Sketch</span>
+          <span className="feature-field-label">Profile</span>
           <PickChip
             value={extrude.sketch || undefined}
             isPicking={isPickingSketch}

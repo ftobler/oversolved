@@ -346,10 +346,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const selectionId = [...normalSelection].pop()
     if (!selectionId) return
     if (pendingPickField.field === 'sketch') {
-      const sketchFeatureId = selectionId.startsWith('face:')
-        ? selectionId.split(':')[1]
-        : selectionId.startsWith('@') ? selectionId.slice(1) : selectionId
-      onMutation?.({ type: 'set_extrude_sketch', featureId: pendingPickField.featureId, sketchQuery: '$' + sketchFeatureId })
+      const sketchQuery = selectionId.startsWith('face:')
+        ? selectionId.split(':').slice(2).join(':')  // face pick: pass ancestry query through unchanged
+        : '$' + selectionId  // sketch feature pick: local-ref format
+      onMutation?.({ type: 'set_extrude_sketch', featureId: pendingPickField.featureId, sketchQuery })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
       return
     }

@@ -1711,6 +1711,7 @@ def _register_top_face(
 
     sketch_centroid = origin + u * x_axis + v * y_axis
     top_centroid = sketch_centroid + normal * distance
+    top_plane_origin = (origin + normal * distance).tolist()
 
     global_repo.register(
         feature_id + "/top_face",
@@ -1718,7 +1719,7 @@ def _register_top_face(
             "type": "flatface",
             "centroid": top_centroid.tolist(),
             "normal": normal.tolist(),
-            "origin": top_centroid.tolist(),
+            "origin": top_plane_origin,
             "x_axis": x_axis.tolist(),
             "y_axis": y_axis.tolist(),
         },
@@ -1742,6 +1743,153 @@ def _register_top_face(
                     "end": e3d,
                 },
             )
+
+
+def _extract_loops_from_occ_face(
+    shape: Any, face_index: int
+) -> tuple[list[list[dict]], dict]:
+    """Extract boundary loops and effective plane from an OCC solid face by index.
+
+    Returns (loops, plane_dict) in the same formats expected by extrude_profile.
+    Raises ValueError if the face is not planar or index is out of range.
+    """
+    from OCP.BRep import BRep_Tool  # noqa: PLC0415
+    from OCP.BRepAdaptor import BRepAdaptor_Surface  # noqa: PLC0415
+    from OCP.BRepTools import BRepTools, BRepTools_WireExplorer  # noqa: PLC0415
+    from OCP.GeomAbs import GeomAbs_Plane  # noqa: PLC0415
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_WIRE  # noqa: PLC0415
+    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS  # noqa: PLC0415
+    from OCP.gp import gp_Pnt2d  # noqa: PLC0415
+
+    explorer = TopExp_Explorer(shape, TopAbs_FACE)
+    for _ in range(face_index):
+        if not explorer.More():
+            raise ValueError(f"face_index {face_index} out of range")
+        explorer.Next()
+    if not explorer.More():
+        raise ValueError(f"face_index {face_index} out of range")
+    occ_face = explorer.Current()
+
+    adaptor = BRepAdaptor_Surface(occ_face, True)
+    if adaptor.GetType() != GeomAbs_Plane:
+        raise ValueError("Only flat faces can be used as extrude profiles")
+
+    gp_pln = adaptor.Plane()
+    ax3 = gp_pln.Position()
+    loc = ax3.Location()
+    xdir = ax3.XDirection()
+    ydir = ax3.YDirection()
+    ndir = ax3.Direction()
+
+    effective_plane: dict = {
+        "origin": [loc.X(), loc.Y(), loc.Z()],
+        "x_axis": [xdir.X(), xdir.Y(), xdir.Z()],
+        "y_axis": [ydir.X(), ydir.Y(), ydir.Z()],
+        "normal": [ndir.X(), ndir.Y(), ndir.Z()],
+    }
+
+    outer_wire = BRepTools.OuterWire_s(occ_face)
+    all_wires = [outer_wire]
+    wire_exp = TopExp_Explorer(occ_face, TopAbs_WIRE)
+    while wire_exp.More():
+        w = TopoDS.Wire_s(wire_exp.Current())
+        if not w.IsSame(outer_wire):
+            all_wires.append(w)
+        wire_exp.Next()
+
+    loops: list[list[dict]] = []
+    for wire in all_wires:
+        loop: list[dict] = []
+        we = BRepTools_WireExplorer(wire, occ_face)
+        while we.More():
+            edge = we.Current()
+            crv2d, first, last = BRep_Tool.CurveOnSurface_s(edge, occ_face)
+            if crv2d is None:
+                we.Next()
+                continue
+            p_s = gp_Pnt2d()
+            p_e = gp_Pnt2d()
+            crv2d.D0(first, p_s)
+            crv2d.D0(last, p_e)
+            loop.append({
+                "kind": "line",
+                "start": [p_s.X(), p_s.Y()],
+                "end": [p_e.X(), p_e.Y()],
+            })
+            we.Next()
+        if loop:
+            loops.append(loop)
+
+    return loops, effective_plane
+
+
+def _resolve_face_profile(
+    sketch_ref: str, global_repo: Repository, body_store: dict
+) -> tuple[list[list[dict]], dict]:
+    """Resolve a face reference (@/? prefixed) to profile loops and an effective plane.
+
+    Handles two cases:
+    - Ancestry query (?...): resolves to a B-rep face entry with body_id and face_index;
+      extracts loops directly from the OCC solid via TopExp traversal.
+    - Named query (@featureId/top_face): resolves to the registered flatface entry;
+      uses the original sketch topology paired with the shifted plane origin.
+    """
+    face_entry = global_repo.query(sketch_ref)
+    if face_entry is None:
+        raise ValueError(f"Profile face not found: {sketch_ref!r}")
+
+    body_id = face_entry.get("body_id")
+    face_index = face_entry.get("face_index")
+    if body_id is not None and face_index is not None:
+        body = body_store.get(body_id)
+        if body is None or body.shape is None:
+            raise ValueError(f"Body {body_id!r} not found or has no shape")
+        return _extract_loops_from_occ_face(body.shape, face_index)
+
+    # Named registration (e.g. @featureId/top_face): derive sketch topology.
+    if sketch_ref.startswith("@"):
+        feat_id = sketch_ref[1:].split("/")[0]
+        body = body_store.get("body_" + feat_id)
+        if body is None:
+            raise ValueError(f"No body found for feature {feat_id!r}")
+        topo = global_repo.elements.get("_topo_" + body.sketch_id, {})
+        surfaces = topo.get("surfaces", []) if topo else []
+        effective_plane = {
+            "origin": face_entry.get("origin", [0, 0, 0]),
+            "x_axis": face_entry.get("x_axis", [1, 0, 0]),
+            "y_axis": face_entry.get("y_axis", [0, 1, 0]),
+            "normal": face_entry.get("normal", [0, 0, 1]),
+        }
+        sketch_pt = global_repo.elements.get("_pt_" + body.sketch_id) or effective_plane
+        loops = _extract_profile_loops(surfaces, sketch_pt)
+        return loops, effective_plane
+
+    # Ancestry query (?...) resolving to a sketch surface (no body_id/face_index):
+    # find the parent sketch from the ancestry IDs, use its topology directly.
+    if sketch_ref.startswith("?"):
+        ids, _ = _parse_ancestry(sketch_ref)
+        sketch_id = None
+        for aid in ids:
+            if aid.startswith("@"):
+                candidate = aid[1:]
+                if global_repo.elements.get("_pt_" + candidate) is not None:
+                    sketch_id = candidate
+                    break
+        if sketch_id is None:
+            raise ValueError(
+                f"Cannot find parent sketch for surface query: {sketch_ref!r}"
+            )
+        pt_raw = global_repo.elements.get("_pt_" + sketch_id)
+        if pt_raw is None:
+            raise ValueError(f"Sketch plane not found for: {sketch_id!r}")
+        surface_pt: dict = pt_raw
+        topo = global_repo.elements.get("_topo_" + sketch_id, {})
+        surfaces = topo.get("surfaces", []) if topo else []
+        loops = _extract_profile_loops(surfaces, surface_pt)
+        return loops, surface_pt
+
+    raise ValueError(f"Cannot resolve profile from: {sketch_ref!r}")
 
 
 def _resolve_direction(
@@ -1780,23 +1928,30 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
         sub = feature.get("extrude") or {}
         feature = {**sub, **feature}
         sketch_ref = feature.get("sketch", "")
-        sketch_id = sketch_ref.lstrip("$")
         distance = float(feature.get("distance") or feature.get("depth") or 1.0)
 
         if distance == 0:
             raise ValueError("extrude distance must be non-zero")
 
-        pt = global_repo.elements.get("_pt_" + sketch_id)
-        if pt is None:
-            raise ValueError(f"sketch not found: {sketch_id!r}")
+        pt: dict
+        loops: list
+        if sketch_ref.startswith("?") or sketch_ref.startswith("@"):
+            # Face reference path: resolve via query system then OCC or sketch topology.
+            loops, pt = _resolve_face_profile(sketch_ref, global_repo, body_store)
+            sketch_id = ""
+        else:
+            # Sketch reference path (existing behaviour).
+            sketch_id = sketch_ref.lstrip("$")
+            pt_raw = global_repo.elements.get("_pt_" + sketch_id)
+            if pt_raw is None:
+                raise ValueError(f"sketch not found: {sketch_id!r}")
+            pt = pt_raw
+            topo = global_repo.elements.get("_topo_" + sketch_id, {})
+            surfaces = topo.get("surfaces", []) if topo else []
+            _register_top_face(global_repo, feature_id, pt, surfaces, distance)
+            loops = _extract_profile_loops(surfaces, pt)
 
         normal = pt.get("normal", [0, 0, 1])
-
-        topo = global_repo.elements.get("_topo_" + sketch_id, {})
-        surfaces = topo.get("surfaces", []) if topo else []
-
-        _register_top_face(global_repo, feature_id, pt, surfaces, distance)
-
         body_id = "body_" + feature_id
         result: dict = {"status": "ok", "body_id": body_id}
 
@@ -1805,8 +1960,6 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
 
         try:
             from oversolved.geometry import extrude_profile as _ep
-
-            loops = _extract_profile_loops(surfaces, pt)
 
             if not loops:
                 result["mesh_warning"] = "no closed profile found; body has no shape"

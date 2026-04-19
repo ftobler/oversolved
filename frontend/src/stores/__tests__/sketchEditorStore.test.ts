@@ -457,4 +457,38 @@ describe('sketchEditorStore', () => {
       expect(handler).not.toHaveBeenCalled()
     })
   })
+
+  describe('commitFieldPick (sketch field)', () => {
+    it('passes face ancestry query through unchanged when a face is picked', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'ex2', field: 'sketch' },
+      })
+      const faceQuery = '?9,2;@ex1face0@ex1:flatface'
+      useSketchEditorStore.getState().toggleNormalSelection(`face:ex1:${faceQuery}`)
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_extrude_sketch',
+        featureId: 'ex2',
+        sketchQuery: faceQuery,
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
+
+    it('prefixes sketch feature id with $ when a sketch row is clicked', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'ex1', field: 'sketch' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('sk1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_extrude_sketch',
+        featureId: 'ex1',
+        sketchQuery: '$sk1',
+      })
+    })
+  })
 })
