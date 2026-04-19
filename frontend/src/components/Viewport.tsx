@@ -17,7 +17,7 @@ import UserDefinedPlane from './Viewport/UserDefinedPlane'
 import ContextMenuDialog from './ContextMenuDialog'
 import { CLICK_THRESHOLD_PX } from './Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from './interaction/useSelectionPointerUpCleanup'
-import { getBodiesToRender } from './Viewport/bodyUtils'
+import { getBodiesToRender, getSketchesToRender } from './Viewport/bodyUtils'
 
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 
@@ -234,11 +234,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     [bodies, features, rollbackPosition, visibleFeatures]
   )
 
-  const activeSketchFeatures = useMemo(() => {
-    if (!features) return []
-    const limit = rollbackPosition ?? features.length
-    return features.slice(0, limit).filter(f => f.kind === 'sketch' && (!visibleFeatures || visibleFeatures.has(f.id)))
-  }, [features, rollbackPosition, visibleFeatures])
+  const activeSketchFeatures = useMemo(
+    () => getSketchesToRender(features, rollbackPosition, visibleFeatures),
+    [features, rollbackPosition, visibleFeatures]
+  )
 
   return (
     <div

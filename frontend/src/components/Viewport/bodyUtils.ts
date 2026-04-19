@@ -1,5 +1,20 @@
 import type { Feature, BodyResult, EdgeData } from '../../types/cad'
 
+// Returns the subset of sketch features that should be rendered (visible and within rollback range).
+// A hidden sketch's EntityLines and VertexDots are not mounted at all, so its collision
+// geometry cannot interfere with raycasting against features behind it.
+export function getSketchesToRender(
+  features: Feature[] | undefined,
+  rollbackPosition: number | undefined,
+  visibleFeatures: Set<string> | undefined,
+): Feature[] {
+  if (!features || features.length === 0) return []
+  const limit = rollbackPosition ?? features.length
+  return features
+    .slice(0, limit)
+    .filter(f => f.kind === 'sketch' && (!visibleFeatures || visibleFeatures.has(f.id)))
+}
+
 export interface BodyRenderItem {
   key: string
   featureId: string

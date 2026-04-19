@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getBodiesToRender } from '../bodyUtils'
+import { getBodiesToRender, getSketchesToRender } from '../bodyUtils'
 import type { Feature, BodyResult, Mesh3D } from '../../../types/cad'
 
 const TEST_CUBE_MESH: Mesh3D = {
@@ -157,5 +157,74 @@ describe('getBodiesToRender', () => {
     const items = getBodiesToRender(TEST_BODIES, FEATURES, undefined, undefined)
     expect(items).toHaveLength(1)
     expect(items[0].visible).toBe(true)
+  })
+})
+
+describe('getSketchesToRender', () => {
+  const SKETCH_FEATURES: Feature[] = [
+    { id: 'Origin', kind: 'origin' },
+    { id: 'Front', kind: 'plane' },
+    { id: 'sk1', kind: 'sketch' },
+    { id: 'sk2', kind: 'sketch' },
+    { id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 10, direction: 'normal' } },
+  ]
+
+  it('returns all sketch features when visibleFeatures is undefined', () => {
+    const result = getSketchesToRender(SKETCH_FEATURES, undefined, undefined)
+    expect(result.map(f => f.id)).toEqual(['sk1', 'sk2'])
+  })
+
+  it('excludes hidden sketch features when visibleFeatures is provided', () => {
+    const result = getSketchesToRender(SKETCH_FEATURES, undefined, new Set(['sk1']))
+    expect(result.map(f => f.id)).toEqual(['sk1'])
+  })
+
+  it('excludes all sketches when visibleFeatures is empty set', () => {
+    const result = getSketchesToRender(SKETCH_FEATURES, undefined, new Set())
+    expect(result).toHaveLength(0)
+  })
+
+  it('excludes non-sketch features (origin, plane, extrude)', () => {
+    const result = getSketchesToRender(SKETCH_FEATURES, undefined, new Set(['sk1', 'sk2', 'ex1', 'Origin', 'Front']))
+    expect(result.map(f => f.id)).toEqual(['sk1', 'sk2'])
+  })
+
+  it('respects rollback position - excludes features at or after rollback', () => {
+    // sk1 is at index 2, sk2 at index 3; rollback at 3 means sk2 is excluded
+    const result = getSketchesToRender(SKETCH_FEATURES, 3, new Set(['sk1', 'sk2']))
+    expect(result.map(f => f.id)).toEqual(['sk1'])
+  })
+
+  it('returns empty array when features is undefined', () => {
+    const result = getSketchesToRender(undefined, undefined, undefined)
+    expect(result).toHaveLength(0)
+  })
+
+  it('returns empty array when features is empty', () => {
+    const result = getSketchesToRender([], undefined, undefined)
+    expect(result).toHaveLength(0)
+  })
+
+  it('a feature with visible: false is excluded when not in visibleFeatures set', () => {
+    const features: Feature[] = [
+      { id: 'sk1', kind: 'sketch', visible: false },
+      { id: 'sk2', kind: 'sketch' },
+    ]
+    // sk1 not added to visibleFeatures because visible: false
+    const result = getSketchesToRender(features, undefined, new Set(['sk2']))
+    expect(result.map(f => f.id)).toEqual(['sk2'])
+  })
+
+  it('hidden sketch excluded means no EntityLines rendered, no collision geometry to block raycasting', () => {
+    // This is the core invariant: hidden sketch features produce zero render items,
+    // so their HitPolyline and VertexDot collision meshes are never mounted.
+    const features: Feature[] = [
+      { id: 'front_sketch', kind: 'sketch', visible: false },
+      { id: 'back_sketch', kind: 'sketch' },
+    ]
+    const visibleFeatures = new Set(['back_sketch'])  // front_sketch hidden
+    const result = getSketchesToRender(features, undefined, visibleFeatures)
+    expect(result.map(f => f.id)).toEqual(['back_sketch'])
+    expect(result.find(f => f.id === 'front_sketch')).toBeUndefined()
   })
 })
