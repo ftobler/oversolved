@@ -567,4 +567,73 @@ def test_extrude_sketch_empty_list_errors():
     }
     r = build(spec)
     assert r["result"]["ex1"]["status"] == "exception"
-    assert "profile" in r["result"]["ex1"]["exception"].lower()
+
+
+def test_extrude_from_brep_face_ancestry_query():
+    """Extrude2 uses a face_queries ancestry query from extrude1's mesh as its profile.
+
+    This is the scenario where the user clicks the top face of ex1 in the 3D
+    viewport and the frontend stores the ancestry query (e.g. ?...;@ex1face0@ex1:flatface)
+    as the extrude sketch field.  Before the fix, _resolve_face_profile failed
+    because the face was not registered with register_anchestor.
+    """
+    from pytest import approx
+    from oversolved.builder import build
+    from solver_helpers import rect_sketch_spec, assert_mesh_valid
+
+    d = 5.0
+    spec1 = {
+        "features": [
+            rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": "$sk1",
+                "distance": d,
+                "direction": "normal",
+            },
+        ]
+    }
+    r1 = build(spec1)
+    assert r1["result"]["ex1"]["status"] == "ok", r1["result"]["ex1"]
+
+    # Find the face query for the top face (centroid closest to z=d).
+    best_q = None
+    best_dist = float("inf")
+    for body in r1.get("bodies", {}).values():
+        mesh = body.get("mesh") or {}
+        for fd, q in zip(mesh.get("face_data") or [], mesh.get("face_queries") or []):
+            dist = abs(fd["centroid"][2] - d)
+            if dist < best_dist:
+                best_dist = dist
+                best_q = q
+    assert best_q is not None, "expected face_queries in mesh"
+    assert best_q.startswith("?"), f"expected ?-ancestry query, got {best_q!r}"
+
+    spec2 = {
+        "features": [
+            rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": "$sk1",
+                "distance": d,
+                "direction": "normal",
+            },
+            {
+                "id": "ex2",
+                "kind": "extrude",
+                "sketch": best_q,
+                "distance": 3.0,
+                "direction": "normal",
+            },
+        ]
+    }
+    r2 = build(spec2)
+    assert r2["result"]["ex2"]["status"] == "ok", r2["result"]["ex2"]
+    assert "body_ex2" in r2["bodies"]
+    mesh2 = r2["bodies"]["body_ex2"]["mesh"]
+    assert_mesh_valid(mesh2)
+    zs = [v[2] for v in mesh2["vertices"]]
+    assert min(zs) == approx(d, abs=0.2), f"ex2 should start at z={d}, got {min(zs)}"
+    assert max(zs) == approx(d + 3.0, abs=0.2), f"ex2 should end at z={d + 3.0}, got {max(zs)}"

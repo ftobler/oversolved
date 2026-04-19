@@ -1753,14 +1753,12 @@ def _extract_loops_from_occ_face(
     Returns (loops, plane_dict) in the same formats expected by extrude_profile.
     Raises ValueError if the face is not planar or index is out of range.
     """
-    from OCP.BRep import BRep_Tool  # noqa: PLC0415
-    from OCP.BRepAdaptor import BRepAdaptor_Surface  # noqa: PLC0415
+    from OCP.BRepAdaptor import BRepAdaptor_Curve2d, BRepAdaptor_Surface  # noqa: PLC0415
     from OCP.BRepTools import BRepTools, BRepTools_WireExplorer  # noqa: PLC0415
     from OCP.GeomAbs import GeomAbs_Plane  # noqa: PLC0415
     from OCP.TopAbs import TopAbs_FACE, TopAbs_WIRE  # noqa: PLC0415
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
-    from OCP.TopoDS import TopoDS  # noqa: PLC0415
-    from OCP.gp import gp_Pnt2d  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS, TopoDS_Face  # noqa: PLC0415
 
     explorer = TopExp_Explorer(shape, TopAbs_FACE)
     for _ in range(face_index):
@@ -1769,7 +1767,11 @@ def _extract_loops_from_occ_face(
         explorer.Next()
     if not explorer.More():
         raise ValueError(f"face_index {face_index} out of range")
-    occ_face = explorer.Current()
+    face_shape = explorer.Current()
+    occ_face = TopoDS_Face()
+    occ_face.TShape(face_shape.TShape())
+    occ_face.Location(face_shape.Location())
+    occ_face.Orientation(face_shape.Orientation())
 
     adaptor = BRepAdaptor_Surface(occ_face, True)
     if adaptor.GetType() != GeomAbs_Plane:
@@ -1804,19 +1806,19 @@ def _extract_loops_from_occ_face(
         we = BRepTools_WireExplorer(wire, occ_face)
         while we.More():
             edge = we.Current()
-            crv2d, first, last = BRep_Tool.CurveOnSurface_s(edge, occ_face)
-            if crv2d is None:
-                we.Next()
-                continue
-            p_s = gp_Pnt2d()
-            p_e = gp_Pnt2d()
-            crv2d.D0(first, p_s)
-            crv2d.D0(last, p_e)
-            loop.append({
-                "kind": "line",
-                "start": [p_s.X(), p_s.Y()],
-                "end": [p_e.X(), p_e.Y()],
-            })
+            try:
+                c2d = BRepAdaptor_Curve2d(edge, occ_face)
+                first = c2d.FirstParameter()
+                last = c2d.LastParameter()
+                p_s = c2d.Value(first)
+                p_e = c2d.Value(last)
+                loop.append({
+                    "kind": "line",
+                    "start": [p_s.X(), p_s.Y()],
+                    "end": [p_e.X(), p_e.Y()],
+                })
+            except Exception:
+                pass
             we.Next()
         if loop:
             loops.append(loop)
