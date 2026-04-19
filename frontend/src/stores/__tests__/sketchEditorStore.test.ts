@@ -143,6 +143,194 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().applyConstraint('horizontal')
       expect(handler).not.toHaveBeenCalled()
     })
+
+    it('does nothing with no activeFeatureId', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().applyConstraint('horizontal')
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('does nothing with no mutation handler', () => {
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      expect(() => useSketchEditorStore.getState().applyConstraint('horizontal')).not.toThrow()
+    })
+  })
+
+  describe('toggleConstruction', () => {
+    it('dispatches toggle_construction with entity targets', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L2')
+      useSketchEditorStore.getState().toggleConstruction()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'toggle_construction',
+        targets: expect.arrayContaining(['entity:S1:L1', 'entity:S1:L2']),
+      })
+    })
+
+    it('filters out non-entity selection items', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
+      useSketchEditorStore.getState().toggleNormalSelection('constraint:S1:C1')
+      useSketchEditorStore.getState().toggleConstruction()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'toggle_construction',
+        targets: ['entity:S1:L1'],
+      })
+    })
+
+    it('does nothing when only non-entity items are selected', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
+      useSketchEditorStore.getState().toggleConstruction()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('does nothing with empty selection', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().toggleConstruction()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('does nothing with no mutation handler', () => {
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      expect(() => useSketchEditorStore.getState().toggleConstruction()).not.toThrow()
+    })
+  })
+
+  describe('deleteSelected', () => {
+    it('skips entities from a different feature', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S2:L1')
+      useSketchEditorStore.getState().deleteSelected()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'delete',
+        targets: ['entity:S1:L1'],
+      })
+    })
+
+    it('does nothing when all selected entities belong to other features', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S2:L1')
+      useSketchEditorStore.getState().deleteSelected()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('clears selection after dispatch', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().deleteSelected()
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    })
+  })
+
+  describe('setActiveTool', () => {
+    it('clears drawPoints and drawHover when switching tool', () => {
+      useSketchEditorStore.getState().addDrawPoint([1, 2])
+      useSketchEditorStore.getState().setDrawHover([3, 4])
+      useSketchEditorStore.getState().setActiveTool('line')
+      expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+      expect(useSketchEditorStore.getState().drawHover).toBeNull()
+    })
+
+    it('sets the active tool', () => {
+      useSketchEditorStore.getState().setActiveTool('circle')
+      expect(useSketchEditorStore.getState().activeTool).toBe('circle')
+    })
+
+    it('accepts null to clear tool', () => {
+      useSketchEditorStore.getState().setActiveTool('line')
+      useSketchEditorStore.getState().setActiveTool(null)
+      expect(useSketchEditorStore.getState().activeTool).toBeNull()
+    })
+  })
+
+  describe('draw tool state', () => {
+    it('addDrawPoint accumulates points', () => {
+      useSketchEditorStore.getState().addDrawPoint([1, 2])
+      useSketchEditorStore.getState().addDrawPoint([3, 4])
+      expect(useSketchEditorStore.getState().drawPoints).toEqual([[1, 2], [3, 4]])
+    })
+
+    it('setDrawHover updates hover position', () => {
+      useSketchEditorStore.getState().setDrawHover([5, 6])
+      expect(useSketchEditorStore.getState().drawHover).toEqual([5, 6])
+    })
+
+    it('setDrawHover clears on null', () => {
+      useSketchEditorStore.getState().setDrawHover([5, 6])
+      useSketchEditorStore.getState().setDrawHover(null)
+      expect(useSketchEditorStore.getState().drawHover).toBeNull()
+    })
+
+    it('setDrawSnap stores vertexId and entityRef', () => {
+      useSketchEditorStore.getState().setDrawSnap('vertex:S1:L1:start', 'entity:S1:L1')
+      expect(useSketchEditorStore.getState().drawSnapVertexId).toBe('vertex:S1:L1:start')
+      expect(useSketchEditorStore.getState().drawSnapEntityRef).toBe('entity:S1:L1')
+    })
+
+    it('clearDraw resets all draw state', () => {
+      useSketchEditorStore.getState().addDrawPoint([1, 2])
+      useSketchEditorStore.getState().setDrawHover([3, 4])
+      useSketchEditorStore.getState().setDrawSnap('vertex:S1:L1:start', 'entity:S1:L1')
+      useSketchEditorStore.getState().clearDraw()
+      expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+      expect(useSketchEditorStore.getState().drawHover).toBeNull()
+      expect(useSketchEditorStore.getState().drawSnapVertexId).toBeNull()
+      expect(useSketchEditorStore.getState().drawSnapEntityRef).toBeNull()
+    })
+  })
+
+  describe('updateDynamicSelection', () => {
+    it('adds a new id to dynamicSelection', () => {
+      useSketchEditorStore.getState().updateDynamicSelection('entity:S1:L1')
+      expect(useSketchEditorStore.getState().dynamicSelection.has('entity:S1:L1')).toBe(true)
+    })
+
+    it('clears dynamicSelection when called with null', () => {
+      useSketchEditorStore.getState().updateDynamicSelection('entity:S1:L1')
+      useSketchEditorStore.getState().updateDynamicSelection(null)
+      expect(useSketchEditorStore.getState().dynamicSelection.size).toBe(0)
+    })
+
+    it('marks id for removal when id is already in normalSelection', () => {
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().updateDynamicSelection('entity:S1:L1')
+      // items in normal selection are not added to dynamic (they would be toggled off)
+      expect(useSketchEditorStore.getState().dynamicSelection.has('entity:S1:L1')).toBe(false)
+    })
+  })
+
+  describe('contextMenu', () => {
+    it('starts as null', () => {
+      expect(useSketchEditorStore.getState().contextMenu).toBeNull()
+    })
+
+    it('openContextMenu stores position', () => {
+      useSketchEditorStore.getState().openContextMenu([100, 200])
+      expect(useSketchEditorStore.getState().contextMenu).toEqual([100, 200])
+    })
+
+    it('closeContextMenu clears position', () => {
+      useSketchEditorStore.getState().openContextMenu([100, 200])
+      useSketchEditorStore.getState().closeContextMenu()
+      expect(useSketchEditorStore.getState().contextMenu).toBeNull()
+    })
   })
 
   describe('handleDimClick', () => {
@@ -279,6 +467,53 @@ describe('sketchEditorStore', () => {
         targets: ['entity:S1:A1', 'entity:S1:A2'],
         value: 3,
       })
+    })
+
+    it('dialog cancel does not dispatch mutation', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
+      // cancel dialog without confirming
+      const dialog = useSketchEditorStore.getState().pendingDialog
+      dialog?.onCancel?.()
+      useSketchEditorStore.getState().closeDialog()
+
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('invalid dialog value (NaN) does not dispatch mutation', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
+      confirmDialog('not-a-number')
+
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('invalid dialog value (zero) does not dispatch mutation', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
+      confirmDialog('0')
+
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('negative value does not dispatch mutation', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
+      useSketchEditorStore.getState().handleDimensionClick('entity:S1:L1', 'S1', 'entity', POS, 'line')
+      confirmDialog('-5')
+
+      expect(handler).not.toHaveBeenCalled()
     })
   })
 
@@ -517,6 +752,74 @@ describe('sketchEditorStore', () => {
         featureId: 'ex1',
         sketchQuery: 'sk1',
       })
+    })
+
+    it('face pick dispatches set_plane_definition_field with ancestry query', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'plane1', field: 'origin' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('face:sk1:?3;@sk1abc')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_plane_definition_field',
+        featureId: 'plane1',
+        field: 'origin',
+        value: '?3;@sk1abc',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    })
+
+    it('vertex pick dispatches set_plane_definition_field with @ reference', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'plane1', field: 'x_axis' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_plane_definition_field',
+        featureId: 'plane1',
+        field: 'x_axis',
+        value: '@S1L1start',
+      })
+    })
+
+    it('entity pick dispatches set_plane_definition_field with @ reference', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'plane1', field: 'normal' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_plane_definition_field',
+        featureId: 'plane1',
+        field: 'normal',
+        value: '@S1L1',
+      })
+    })
+
+    it('does nothing when no pendingPickField', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('does nothing when selection is empty', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'plane1', field: 'origin' },
+      })
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).not.toHaveBeenCalled()
     })
   })
 })
