@@ -569,6 +569,101 @@ def test_extrude_sketch_empty_list_errors():
     assert r["result"]["ex1"]["status"] == "exception"
 
 
+def test_cut_extrude_removes_volume():
+    """Cut extrusion subtracts from a base body, leaving a partial solid."""
+    from oversolved.builder import build
+    from solver_helpers import rect_sketch_spec, extrude_spec, assert_mesh_valid, assert_mesh_bbox
+
+    # Base: 10x10x10 box; cut: same profile, distance=5 (removes z=0..5).
+    spec = {
+        "features": [
+            rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
+            extrude_spec("sk1", "ex1", distance=10.0, direction="normal"),
+            extrude_spec("sk1", "ex2", distance=5.0, direction="normal", operation="cut"),
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["ex1"]["status"] == "ok", r["result"]["ex1"]
+    assert r["result"]["ex2"]["status"] == "ok", r["result"]["ex2"]
+    # Cut tool body must not appear in output.
+    assert "body_ex2" not in r["bodies"]
+    # Base body is modified but still valid.
+    assert "body_ex1" in r["bodies"]
+    mesh = r["bodies"]["body_ex1"]["mesh"]
+    assert_mesh_valid(mesh)
+    assert_mesh_bbox(mesh, x_range=(0, 10), y_range=(0, 10), z_range=(5, 10))
+
+
+def test_cut_extrude_no_body_stored():
+    """Cut extrude feature must not produce a body in the output bodies dict."""
+    from oversolved.builder import build
+    from solver_helpers import rect_sketch_spec, extrude_spec
+
+    spec = {
+        "features": [
+            rect_sketch_spec(w=6, h=6, sketch_id="sk1"),
+            extrude_spec("sk1", "ex1", distance=8.0),
+            extrude_spec("sk1", "ex2", distance=4.0, operation="cut"),
+        ]
+    }
+    r = build(spec)
+    assert "body_ex2" not in r["bodies"]
+    assert "body_ex1" in r["bodies"]
+
+
+def test_cut_extrude_nested_ui_format():
+    """Cut operation read from nested extrude sub-dict (UI serialization format)."""
+    from oversolved.builder import build
+    from solver_helpers import rect_sketch_spec, assert_mesh_valid, assert_mesh_bbox
+
+    spec = {
+        "features": [
+            rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "label": "Base",
+                "extrude": {"sketch": "$sk1", "distance": 10.0, "direction": "normal"},
+            },
+            {
+                "id": "ex2",
+                "kind": "extrude",
+                "label": "Cut",
+                "extrude": {
+                    "sketch": "$sk1",
+                    "distance": 5.0,
+                    "direction": "normal",
+                    "operation": "cut",
+                },
+            },
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["ex1"]["status"] == "ok", r["result"]["ex1"]
+    assert r["result"]["ex2"]["status"] == "ok", r["result"]["ex2"]
+    assert "body_ex2" not in r["bodies"]
+    assert "body_ex1" in r["bodies"]
+    mesh = r["bodies"]["body_ex1"]["mesh"]
+    assert_mesh_valid(mesh)
+    assert_mesh_bbox(mesh, x_range=(0, 10), y_range=(0, 10), z_range=(5, 10))
+
+
+def test_cut_extrude_with_no_target_body():
+    """Cut extrude with no prior body must succeed without crashing."""
+    from oversolved.builder import build
+    from solver_helpers import rect_sketch_spec, extrude_spec
+
+    spec = {
+        "features": [
+            rect_sketch_spec(w=6, h=6, sketch_id="sk1"),
+            extrude_spec("sk1", "ex1", distance=5.0, operation="cut"),
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["ex1"]["status"] == "ok", r["result"]["ex1"]
+    assert "body_ex1" not in r["bodies"]
+
+
 def test_extrude_from_brep_face_ancestry_query():
     """Extrude2 uses a face_queries ancestry query from extrude1's mesh as its profile.
 

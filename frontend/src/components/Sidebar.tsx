@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import type { PartFeature, PartDoc, PlaneDef, Mutation, PendingPickField, ExtrudeDirection, BodyResult } from '../types/cad'
+import type { PartFeature, PartDoc, PlaneDef, Mutation, PendingPickField, ExtrudeDirection, ExtrudeOperation, BodyResult } from '../types/cad'
 import { isBodyFeatureResult } from '../types/cad'
 import { normalizeExtrudeSketch } from '../utils/yamlMutations'
 import { planeLabel } from './Geometry3D/utils'
@@ -333,9 +333,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
         </div>
         <div className="feature-field-row">
+          <span className="feature-field-label">Operation</span>
+          <select
+            className="feature-field-select"
+            aria-label="Operation"
+            value={extrude.operation ?? 'add'}
+            onChange={(e) => {
+              e.stopPropagation()
+              onMutation({
+                type: 'set_extrude_operation',
+                featureId: fid,
+                operation: e.target.value as ExtrudeOperation,
+              })
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <option value="add">Add</option>
+            <option value="cut">Cut</option>
+          </select>
+        </div>
+        <div className="feature-field-row">
           <span className="feature-field-label">Direction</span>
           <select
             className="feature-field-select"
+            aria-label="Direction"
             value={extrude.direction ?? 'normal'}
             onChange={(e) => {
               e.stopPropagation()

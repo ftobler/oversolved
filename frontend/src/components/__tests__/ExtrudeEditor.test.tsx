@@ -46,7 +46,7 @@ describe('ExtrudeEditor renders in Sidebar', () => {
       editingFeatureId: 'ex1',
     })} />)
     expect(screen.getByRole('spinbutton')).toBeInTheDocument()
-    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    expect(screen.getAllByRole('combobox')).toHaveLength(2)
   })
 
   it('does not render editor when editingFeatureId is null', () => {
@@ -126,7 +126,7 @@ describe('direction select', () => {
       editingFeatureId: 'ex1',
       onMutation,
     })} />)
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'symmetric' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Direction' }), { target: { value: 'symmetric' } })
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
       type: 'set_extrude_direction',
       featureId: 'ex1',
@@ -142,7 +142,7 @@ describe('direction select', () => {
       editingFeatureId: 'ex1',
       onMutation,
     })} />)
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'reverse' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Direction' }), { target: { value: 'reverse' } })
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
       type: 'set_extrude_direction',
       featureId: 'ex1',
@@ -151,7 +151,47 @@ describe('direction select', () => {
   })
 })
 
-// 4: sketch pick - clicking a sketch row while pendingPickField.field === 'sketch' is active
+// 4: operation select change dispatches set_extrude_operation
+describe('operation select', () => {
+  it('dispatches set_extrude_operation on change to cut', () => {
+    const onMutation = vi.fn()
+    render(<Sidebar {...makeSidebarProps({
+      features: [extrudeFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+      onMutation,
+    })} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Operation' }), { target: { value: 'cut' } })
+    expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
+      type: 'set_extrude_operation',
+      featureId: 'ex1',
+      operation: 'cut',
+    })
+  })
+
+  it('dispatches set_extrude_operation on change to add', () => {
+    const onMutation = vi.fn()
+    const cutFeature: PartFeature = {
+      id: 'ex1',
+      kind: 'extrude',
+      extrude: { sketch: '$sk1', distance: 10, direction: 'normal', operation: 'cut' },
+    }
+    render(<Sidebar {...makeSidebarProps({
+      features: [cutFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+      onMutation,
+    })} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Operation' }), { target: { value: 'add' } })
+    expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
+      type: 'set_extrude_operation',
+      featureId: 'ex1',
+      operation: 'add',
+    })
+  })
+})
+
+// 5: sketch pick - clicking a sketch row while pendingPickField.field === 'sketch' is active
 describe('sketch pick resolution', () => {
   it('dispatches set_extrude_sketch and clears pendingPickField when sketch row is clicked', () => {
     const onMutation = vi.fn()

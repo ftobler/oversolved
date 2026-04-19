@@ -28,6 +28,7 @@ import {
   applyAddExtrude,
   applySetExtrudeDistance,
   applySetExtrudeDirection,
+  applySetExtrudeOperation,
   applyAddExtrudeProfile,
   applyRemoveExtrudeProfile,
   applyAddImportStep,
@@ -308,6 +309,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'set_extrude_direction':
         applySetExtrudeDirection(next, m.featureId, m.direction)
+        break
+      case 'set_extrude_operation':
+        applySetExtrudeOperation(next, m.featureId, m.operation)
         break
       case 'add_extrude_profile':
         applyAddExtrudeProfile(next, m.featureId, m.sketchQuery)

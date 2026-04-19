@@ -91,6 +91,8 @@ function describeMutation(m: Mutation): string {
       return `set extrude distance to ${m.distance}`
     case 'set_extrude_direction':
       return `set extrude direction to ${m.direction}`
+    case 'set_extrude_operation':
+      return `set extrude operation to ${m.operation}`
     case 'add_extrude_profile':
       return `add extrude profile ${m.sketchQuery}`
     case 'remove_extrude_profile':

@@ -215,6 +215,7 @@ def extrude_spec(
     extrude_id: str,
     distance: float,
     direction: str = 'normal',
+    operation: str = 'add',
 ) -> dict:
     """Single extrude feature dict."""
     return {
@@ -224,6 +225,7 @@ def extrude_spec(
         'sketch': '$' + sketch_id,
         'distance': distance,
         'direction': direction,
+        'operation': operation,
     }
 
 

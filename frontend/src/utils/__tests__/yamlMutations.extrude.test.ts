@@ -5,6 +5,7 @@ import {
   applyAddExtrude,
   applySetExtrudeDistance,
   applySetExtrudeDirection,
+  applySetExtrudeOperation,
   applyAddExtrudeProfile,
   applyRemoveExtrudeProfile,
   normalizeExtrudeSketch,
@@ -232,6 +233,57 @@ describe('set_extrude_direction', () => {
       features: [{ id: 'ex1', kind: 'sketch' }],
     }
     expect(() => applySetExtrudeDirection(doc, 'ex1', 'symmetric')).not.toThrow()
+  })
+})
+
+describe('set_extrude_operation', () => {
+  it('updates extrude operation to cut', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'ex1',
+          kind: 'extrude',
+          extrude: { sketch: '$sk1', distance: 10, operation: 'add' },
+        },
+      ],
+    }
+    applySetExtrudeOperation(doc, 'ex1', 'cut')
+    expect(doc.features![0].extrude!.operation).toBe('cut')
+  })
+
+  it('updates extrude operation back to add', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'ex1',
+          kind: 'extrude',
+          extrude: { sketch: '$sk1', distance: 10, operation: 'cut' },
+        },
+      ],
+    }
+    applySetExtrudeOperation(doc, 'ex1', 'add')
+    expect(doc.features![0].extrude!.operation).toBe('add')
+  })
+
+  it('sets operation when field is absent', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'ex1',
+          kind: 'extrude',
+          extrude: { sketch: '$sk1', distance: 10 },
+        },
+      ],
+    }
+    applySetExtrudeOperation(doc, 'ex1', 'cut')
+    expect(doc.features![0].extrude!.operation).toBe('cut')
+  })
+
+  it('does nothing if extrude is undefined', () => {
+    const doc: PartDoc = {
+      features: [{ id: 'ex1', kind: 'sketch' }],
+    }
+    expect(() => applySetExtrudeOperation(doc, 'ex1', 'cut')).not.toThrow()
   })
 })
 

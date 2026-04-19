@@ -572,6 +572,19 @@ export function applySetExtrudeDirection(
   feature.extrude.direction = direction
 }
 
+export function applySetExtrudeOperation(
+  doc: PartDoc,
+  featureId: string,
+  operation: 'add' | 'cut',
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.extrude) {
+    console.warn(`applySetExtrudeOperation: feature ${featureId} has no extrude`)
+    return
+  }
+  feature.extrude.operation = operation
+}
+
 
 export function applyAddImportStep(
   doc: PartDoc,
