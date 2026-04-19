@@ -295,10 +295,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   },
 
   applyConstraint: (kind) => {
-    const { normalSelection: selection, onMutation, activeFeatureId, selectionDomain } = get()
+    const { normalSelection: selection, onMutation, activeFeatureId } = get()
     if (selection.size === 0 || !onMutation || !activeFeatureId) return
-    if (selectionDomain !== 'sketch_2d') return
-    const targets = [...selection]
+    const targets = [...selection].filter(t =>
+      t.startsWith('entity:') || t.startsWith('vertex:') || t.startsWith('constraint:')
+    )
+    if (targets.length === 0) return
     onMutation({ type: 'add_constraint', featureId: activeFeatureId, kind, targets })
   },
 

@@ -456,6 +456,32 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().applyConstraint('horizontal')
       expect(handler).not.toHaveBeenCalled()
     })
+
+    it('applyConstraint applies to sketch entities even in mixed domain', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('@ex1/edge/0')
+      expect(useSketchEditorStore.getState().selectionDomain).toBe('mixed')
+      useSketchEditorStore.getState().applyConstraint('horizontal')
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'S1',
+        kind: 'horizontal',
+        targets: ['entity:S1:L1'],
+      })
+    })
+
+    it('applyConstraint does nothing in mixed domain with no sketch entities', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('@ex1/edge/0')
+      useSketchEditorStore.getState().toggleNormalSelection('@plane1')
+      useSketchEditorStore.getState().applyConstraint('horizontal')
+      expect(handler).not.toHaveBeenCalled()
+    })
   })
 
   describe('commitFieldPick (sketch field)', () => {
