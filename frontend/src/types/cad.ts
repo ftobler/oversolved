@@ -377,6 +377,8 @@ export interface SketchData {
   features?: EntityStatus
   plane_transform?: PlaneTransform
   plane?: { origin: [number, number, number]; x_axis: [number, number, number]; y_axis: [number, number, number]; normal: [number, number, number] }
+  body_id?: string
+  exception?: string
 }
 
 export type EntityStatus = Record<string, ConstraintStatus>

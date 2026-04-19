@@ -105,7 +105,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         setSolveError(data.error || `Solve failed (${response.status})`)
         setSolveRawResult(data.error || `Solve failed (${response.status})`)
       } else {
-        const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; plane_transform?: import('../types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }>; plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] } }>
+        const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; plane_transform?: import('../types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }>; plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }; body_id?: string; exception?: string }>
 
         const results: Record<string, SketchData> = {}
         for (const [id, feature] of Object.entries(result)) {
@@ -176,10 +176,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
               },
             }
           } else {
-            // exception: no geometry returned — fall back to initial positions, flag status
+            // No geometry (e.g. extrude) or exception — fall back to initial positions.
+            // Propagate body_id and exception so Sidebar can show correct error state.
             results[id] = {
               solved: unflattenGeometry(featureDef?.initial, featureDef?.entities),
               status: feature.status ?? 'exception',
+              ...(feature.body_id !== undefined && { body_id: feature.body_id }),
+              ...(feature.exception !== undefined && { exception: feature.exception }),
             }
           }
         }

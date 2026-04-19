@@ -277,6 +277,61 @@ def test_extrude_nested_ui_format():
     assert_mesh_bbox(mesh, x_range=(-0.5, 0.5), y_range=(0, 2), z_range=(-0.5, 0.5))
 
 
+def test_extrude_circle_sketch_with_ghost_line_constraints():
+    """Regression (bugreport 20260419): sketch has old-format constraints referencing
+    non-existent line entities alongside a valid circle entity.
+
+    The solver must ignore the ghost constraints, solve the circle, and produce a
+    valid extruded cylinder. The extrude must not return status 'exception' and the
+    body must have a mesh.
+    """
+    from oversolved.builder import build
+    from solver_helpers import assert_mesh_valid
+
+    spec = {
+        "features": [
+            {
+                "id": "sk1",
+                "kind": "sketch",
+                "plane": "Top",
+                "entities": [{"id": "circ1", "kind": "circle"}],
+                "initial": {"circ1": [0, 0, 0.5]},
+                "constraints": [
+                    # Valid: circle center at origin (old-format, no slash)
+                    {"id": "c_co", "kind": "coincident",
+                     "a": "$sk1circ1center", "b": "@builtin_origin"},
+                    {"id": "c_diam", "kind": "diameter",
+                     "target": "$sk1circ1", "value": 1},
+                    # Ghost constraints referencing non-existent line entities
+                    {"id": "c_ghost1", "kind": "coincident",
+                     "a": "$sk1line1end", "b": "$sk1line2start"},
+                    {"id": "c_ghost2", "kind": "equal_length",
+                     "a": "$sk1line1", "b": "$sk1line3"},
+                    {"id": "c_ghost3", "kind": "horizontal",
+                     "target": "$sk1line1"},
+                ],
+            },
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "label": "extrude 1",
+                "extrude": {
+                    "sketch": "$sk1",
+                    "distance": 1,
+                    "direction": "normal",
+                },
+            },
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["sk1"]["status"] != "exception", r["result"]["sk1"]
+    assert r["result"]["ex1"]["status"] == "ok", r["result"]["ex1"]
+    body = r["bodies"].get("body_ex1")
+    assert body is not None, "body_ex1 missing from bodies"
+    assert body.get("mesh") is not None, "extrude body has no mesh"
+    assert_mesh_valid(body["mesh"])
+
+
 def test_two_independent_extrudes_produce_two_bodies():
     from oversolved.builder import build
     from solver_helpers import rect_sketch_spec, extrude_spec
