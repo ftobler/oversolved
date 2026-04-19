@@ -459,7 +459,7 @@ describe('sketchEditorStore', () => {
   })
 
   describe('commitFieldPick (sketch field)', () => {
-    it('passes face ancestry query through unchanged when a face is picked', () => {
+    it('dispatches add_extrude_profile with face ancestry query and keeps pick mode open', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
       useSketchEditorStore.setState({
@@ -469,14 +469,16 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection(`face:ex1:${faceQuery}`)
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_extrude_sketch',
+        type: 'add_extrude_profile',
         featureId: 'ex2',
         sketchQuery: faceQuery,
       })
-      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+      // pick mode stays open for multi-selection
+      expect(useSketchEditorStore.getState().pendingPickField).toEqual({ featureId: 'ex2', field: 'sketch' })
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
     })
 
-    it('prefixes sketch feature id with $ when a sketch row is clicked', () => {
+    it('passes raw selection id through for non-face picks', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
       useSketchEditorStore.setState({
@@ -485,9 +487,9 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('sk1')
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_extrude_sketch',
+        type: 'add_extrude_profile',
         featureId: 'ex1',
-        sketchQuery: '$sk1',
+        sketchQuery: 'sk1',
       })
     })
   })

@@ -514,12 +514,40 @@ export function applyAddExtrude(
     kind: 'extrude',
     label: label ?? 'Extrude',
     extrude: {
-      sketch: sketchQuery,
+      sketch: sketchQuery ? [sketchQuery] : [],
       distance,
       direction: 'normal',
     },
   }
   doc.features.push(feature)
+}
+
+export function normalizeExtrudeSketch(sketch: string | string[]): string[] {
+  if (Array.isArray(sketch)) return sketch
+  return sketch ? [sketch] : []
+}
+
+export function applyAddExtrudeProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.extrude) {
+    console.warn(`applyAddExtrudeProfile: feature ${featureId} has no extrude`)
+    return
+  }
+  const current = normalizeExtrudeSketch(feature.extrude.sketch)
+  if (!current.includes(sketchQuery)) {
+    feature.extrude.sketch = [...current, sketchQuery]
+  }
+}
+
+export function applyRemoveExtrudeProfile(doc: PartDoc, featureId: string, index: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.extrude) {
+    console.warn(`applyRemoveExtrudeProfile: feature ${featureId} has no extrude`)
+    return
+  }
+  const current = normalizeExtrudeSketch(feature.extrude.sketch)
+  current.splice(index, 1)
+  feature.extrude.sketch = current
 }
 
 export function applySetExtrudeDistance(doc: PartDoc, featureId: string, distance: number): void {
@@ -544,14 +572,6 @@ export function applySetExtrudeDirection(
   feature.extrude.direction = direction
 }
 
-export function applySetExtrudeSketch(doc: PartDoc, featureId: string, sketchQuery: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.extrude) {
-    console.warn(`applySetExtrudeSketch: feature ${featureId} has no extrude`)
-    return
-  }
-  feature.extrude.sketch = sketchQuery
-}
 
 export function applyAddImportStep(
   doc: PartDoc,

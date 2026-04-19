@@ -498,3 +498,73 @@ def test_extrude_from_top_face_named_query():
     from pytest import approx
     assert min(zs) == approx(5.0, abs=0.2), f"ex2 should start at z=5, got {min(zs)}"
     assert max(zs) == approx(8.0, abs=0.2), f"ex2 should end at z=8, got {max(zs)}"
+
+
+def test_extrude_sketch_list_two_profiles():
+    """sketch field as a list of two sketch refs extrudes both profiles into one body."""
+    from oversolved.builder import build
+    from solver_helpers import rect_sketch_spec
+
+    spec = {
+        "features": [
+            rect_sketch_spec(w=2, h=2, sketch_id="sk1"),
+            rect_sketch_spec(w=2, h=2, sketch_id="sk2"),
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": ["$sk1", "$sk2"],
+                "distance": 3.0,
+                "direction": "normal",
+            },
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["ex1"]["status"] == "ok", r["result"]["ex1"]
+    assert "body_ex1" in r["bodies"]
+    mesh = r["bodies"]["body_ex1"]["mesh"]
+    # Both rectangles are centered at origin (rect_sketch_spec default), so
+    # a valid mesh with vertices should exist.
+    assert len(mesh["vertices"]) > 0
+    assert len(mesh["faces"]) > 0
+
+
+def test_extrude_sketch_list_single_element():
+    """A list with one sketch ref behaves like the string form."""
+    from oversolved.builder import build
+    from solver_helpers import rect_sketch_spec, assert_mesh_bbox
+
+    spec = {
+        "features": [
+            rect_sketch_spec(w=4, h=4, sketch_id="sk1"),
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": ["$sk1"],
+                "distance": 2.0,
+                "direction": "normal",
+            },
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["ex1"]["status"] == "ok", r["result"]["ex1"]
+    mesh = r["bodies"]["body_ex1"]["mesh"]
+    assert_mesh_bbox(mesh, x_range=(0, 4), y_range=(0, 4), z_range=(0, 2))
+
+
+def test_extrude_sketch_empty_list_errors():
+    """An empty sketch list must return a clear error, not an exception crash."""
+    from oversolved.builder import build
+
+    spec = {
+        "features": [
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": [],
+                "distance": 2.0,
+            }
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["ex1"]["status"] == "exception"
+    assert "profile" in r["result"]["ex1"]["exception"].lower()

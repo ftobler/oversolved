@@ -94,15 +94,30 @@ describe('commitFieldPick no-op when pendingPickField is null', () => {
 describe('commitFieldPick with sketch field and face ID in normalSelection', () => {
   beforeEach(reset)
 
-  it('passes the face ancestry query through unchanged', () => {
+  it('dispatches add_extrude_profile and keeps pick mode open', () => {
     const mutations: unknown[] = []
     useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
     useSketchEditorStore.getState().setPendingPickField({ featureId: 'extrude1', field: 'sketch' })
     useSketchEditorStore.setState({ normalSelection: new Set(['face:sketch1:?some;query']) })
     useSketchEditorStore.getState().commitFieldPick()
-    expect(mutations[0]).toEqual({ type: 'set_extrude_sketch', featureId: 'extrude1', sketchQuery: '?some;query' })
-    expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    expect(mutations[0]).toEqual({ type: 'add_extrude_profile', featureId: 'extrude1', sketchQuery: '?some;query' })
+    // pick mode stays open for multi-selection
+    expect(useSketchEditorStore.getState().pendingPickField).toEqual({ featureId: 'extrude1', field: 'sketch' })
     expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+  })
+
+  it('can add a second profile without closing pick mode', () => {
+    const mutations: unknown[] = []
+    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    useSketchEditorStore.getState().setPendingPickField({ featureId: 'ex1', field: 'sketch' })
+    useSketchEditorStore.setState({ normalSelection: new Set(['face:sk1:?q1;id']) })
+    useSketchEditorStore.getState().commitFieldPick()
+    useSketchEditorStore.setState({ normalSelection: new Set(['face:sk2:?q2;id']) })
+    useSketchEditorStore.getState().commitFieldPick()
+    expect(mutations).toHaveLength(2)
+    expect(mutations[0]).toEqual({ type: 'add_extrude_profile', featureId: 'ex1', sketchQuery: '?q1;id' })
+    expect(mutations[1]).toEqual({ type: 'add_extrude_profile', featureId: 'ex1', sketchQuery: '?q2;id' })
+    expect(useSketchEditorStore.getState().pendingPickField).toEqual({ featureId: 'ex1', field: 'sketch' })
   })
 })
 

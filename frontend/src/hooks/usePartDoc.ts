@@ -28,7 +28,8 @@ import {
   applyAddExtrude,
   applySetExtrudeDistance,
   applySetExtrudeDirection,
-  applySetExtrudeSketch,
+  applyAddExtrudeProfile,
+  applyRemoveExtrudeProfile,
   applyAddImportStep,
 } from '../utils/yamlMutations'
 import type { PartFeature } from '../types/cad'
@@ -308,8 +309,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       case 'set_extrude_direction':
         applySetExtrudeDirection(next, m.featureId, m.direction)
         break
-      case 'set_extrude_sketch':
-        applySetExtrudeSketch(next, m.featureId, m.sketchQuery)
+      case 'add_extrude_profile':
+        applyAddExtrudeProfile(next, m.featureId, m.sketchQuery)
+        break
+      case 'remove_extrude_profile':
+        applyRemoveExtrudeProfile(next, m.featureId, m.index)
         break
       case 'add_import_step':
         applyAddImportStep(next, m.featureId, m.fileId, m.label)

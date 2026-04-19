@@ -927,3 +927,12 @@
 .feature-pick-chip-item-remove:hover {
   color: #fff;
 }
+
+.feature-pick-chip-list {
+  height: auto;
+  min-height: 20px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  padding: 2px 4px;
+  gap: 3px;
+}

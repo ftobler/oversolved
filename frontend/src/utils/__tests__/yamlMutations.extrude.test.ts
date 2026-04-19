@@ -5,13 +5,15 @@ import {
   applyAddExtrude,
   applySetExtrudeDistance,
   applySetExtrudeDirection,
-  applySetExtrudeSketch,
+  applyAddExtrudeProfile,
+  applyRemoveExtrudeProfile,
+  normalizeExtrudeSketch,
 } from '../yamlMutations'
 
 const baseDoc: PartDoc = { features: [] }
 
 describe('add_extrude', () => {
-  it('adds an extrude feature with correct properties', () => {
+  it('adds an extrude feature with sketch as an array', () => {
     const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
     applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10)
     expect(doc.features).toHaveLength(1)
@@ -19,7 +21,13 @@ describe('add_extrude', () => {
     expect(doc.features![0].id).toBe('ex1')
     expect(doc.features![0].extrude).toBeDefined()
     expect(doc.features![0].extrude!.distance).toBe(10)
-    expect(doc.features![0].extrude!.sketch).toBe('$sk1')
+    expect(doc.features![0].extrude!.sketch).toEqual(['$sk1'])
+  })
+
+  it('stores empty array when sketchQuery is empty string', () => {
+    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    applyAddExtrude(doc, 'ex1', undefined, '', 10)
+    expect(doc.features![0].extrude!.sketch).toEqual([])
   })
 
   it('uses label when provided', () => {
@@ -38,6 +46,126 @@ describe('add_extrude', () => {
     const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
     applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10)
     expect(doc.features![0].extrude!.direction).toBe('normal')
+  })
+})
+
+describe('normalizeExtrudeSketch', () => {
+  it('returns array unchanged', () => {
+    expect(normalizeExtrudeSketch(['$sk1', '$sk2'])).toEqual(['$sk1', '$sk2'])
+  })
+
+  it('wraps non-empty string in array', () => {
+    expect(normalizeExtrudeSketch('$sk1')).toEqual(['$sk1'])
+  })
+
+  it('returns empty array for empty string', () => {
+    expect(normalizeExtrudeSketch('')).toEqual([])
+  })
+
+  it('returns empty array for empty array', () => {
+    expect(normalizeExtrudeSketch([])).toEqual([])
+  })
+})
+
+describe('add_extrude_profile', () => {
+  it('appends a profile query to an existing list', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'ex1',
+          kind: 'extrude',
+          extrude: { sketch: ['$sk1'], distance: 10 },
+        },
+      ],
+    }
+    applyAddExtrudeProfile(doc, 'ex1', '$sk2')
+    expect(doc.features![0].extrude!.sketch).toEqual(['$sk1', '$sk2'])
+  })
+
+  it('normalizes a string sketch before appending', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'ex1',
+          kind: 'extrude',
+          extrude: { sketch: '$sk1', distance: 10 },
+        },
+      ],
+    }
+    applyAddExtrudeProfile(doc, 'ex1', '$sk2')
+    expect(doc.features![0].extrude!.sketch).toEqual(['$sk1', '$sk2'])
+  })
+
+  it('does not add duplicate entries', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'ex1',
+          kind: 'extrude',
+          extrude: { sketch: ['$sk1'], distance: 10 },
+        },
+      ],
+    }
+    applyAddExtrudeProfile(doc, 'ex1', '$sk1')
+    expect(doc.features![0].extrude!.sketch).toEqual(['$sk1'])
+  })
+
+  it('does nothing if extrude is undefined', () => {
+    const doc: PartDoc = {
+      features: [{ id: 'ex1', kind: 'sketch' }],
+    }
+    expect(() => applyAddExtrudeProfile(doc, 'ex1', '$sk2')).not.toThrow()
+  })
+})
+
+describe('remove_extrude_profile', () => {
+  it('removes the profile at the given index', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'ex1',
+          kind: 'extrude',
+          extrude: { sketch: ['$sk1', '$sk2', '$sk3'], distance: 10 },
+        },
+      ],
+    }
+    applyRemoveExtrudeProfile(doc, 'ex1', 1)
+    expect(doc.features![0].extrude!.sketch).toEqual(['$sk1', '$sk3'])
+  })
+
+  it('removes the only profile leaving empty list', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'ex1',
+          kind: 'extrude',
+          extrude: { sketch: ['$sk1'], distance: 10 },
+        },
+      ],
+    }
+    applyRemoveExtrudeProfile(doc, 'ex1', 0)
+    expect(doc.features![0].extrude!.sketch).toEqual([])
+  })
+
+  it('normalizes string sketch before removing', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'ex1',
+          kind: 'extrude',
+          extrude: { sketch: '$sk1', distance: 10 },
+        },
+      ],
+    }
+    applyRemoveExtrudeProfile(doc, 'ex1', 0)
+    expect(doc.features![0].extrude!.sketch).toEqual([])
+  })
+
+  it('does nothing if extrude is undefined', () => {
+    const doc: PartDoc = {
+      features: [{ id: 'ex1', kind: 'sketch' }],
+    }
+    expect(() => applyRemoveExtrudeProfile(doc, 'ex1', 0)).not.toThrow()
   })
 })
 
@@ -107,29 +235,6 @@ describe('set_extrude_direction', () => {
   })
 })
 
-describe('set_extrude_sketch', () => {
-  it('updates extrude sketch', () => {
-    const doc: PartDoc = {
-      features: [
-        {
-          id: 'ex1',
-          kind: 'extrude',
-          extrude: { sketch: '$sk1', distance: 10 },
-        },
-      ],
-    }
-    applySetExtrudeSketch(doc, 'ex1', '$sk2')
-    expect(doc.features![0].extrude!.sketch).toBe('$sk2')
-  })
-
-  it('does nothing if extrude is undefined', () => {
-    const doc: PartDoc = {
-      features: [{ id: 'ex1', kind: 'sketch' }],
-    }
-    expect(() => applySetExtrudeSketch(doc, 'ex1', '$sk2')).not.toThrow()
-  })
-})
-
 describe('mutation does not mutate original doc', () => {
   it('add_extrude does not mutate original', () => {
     const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
@@ -149,13 +254,6 @@ describe('mutation does not mutate original doc', () => {
     const doc = JSON.parse(JSON.stringify(original))
     applySetExtrudeDirection(doc, 'ex1', 'symmetric')
     expect(original.features![0].extrude!.direction).toBe('normal')
-  })
-
-  it('set_extrude_sketch does not mutate original', () => {
-    const original = { features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 10 } }] }
-    const doc = JSON.parse(JSON.stringify(original))
-    applySetExtrudeSketch(doc, 'ex1', '$sk2')
-    expect(original.features![0].extrude!.sketch).toBe('$sk1')
   })
 })
 

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import type { PartFeature, PartDoc, PlaneDef, Mutation, PendingPickField, ExtrudeDirection, BodyResult } from '../types/cad'
 import { isBodyFeatureResult } from '../types/cad'
+import { normalizeExtrudeSketch } from '../utils/yamlMutations'
 import { planeLabel } from './Geometry3D/utils'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
@@ -158,6 +159,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
     )
   }
 
+  const ListPickChip: React.FC<{ values: string[]; isPicking: boolean; onActivate: () => void; onRemove: (index: number) => void }> = ({ values, isPicking, onActivate, onRemove }) => {
+    const isEmpty = values.length === 0
+    return (
+      <div
+        className={`feature-pick-chip feature-pick-chip-list ${isEmpty ? 'empty' : ''} ${isPicking ? 'picking' : ''}`}
+        onClick={(e) => { e.stopPropagation(); onActivate() }}
+      >
+        {values.map((v, i) => (
+          <div key={i} className="feature-pick-chip-item">
+            <span className="feature-pick-chip-item-text">{v}</span>
+            <button
+              className="feature-pick-chip-item-remove"
+              onClick={(e) => { e.stopPropagation(); onRemove(i) }}
+              title="Remove"
+            >×</button>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   const PlaneEditor: React.FC<{ feature: PartFeature; featureDef?: PartFeature }> = ({ feature, featureDef }) => {
     const def = (featureDef?.definition as PlaneDef | undefined) ?? { mode: 'offset' }
     const mode = def.mode ?? 'offset'
@@ -276,22 +298,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }
 
   const ExtrudeEditor: React.FC<{ feature: PartFeature }> = ({ feature }) => {
-    const extrude = feature.extrude ?? { sketch: '', distance: 10, direction: 'normal' }
+    const extrude = feature.extrude ?? { sketch: [], distance: 10, direction: 'normal' }
     const fid = feature.id
     const isPickingSketch = pendingPickField?.featureId === fid && pendingPickField.field === 'sketch'
+    const profiles = normalizeExtrudeSketch(extrude.sketch)
 
     return (
       <div className="plane-editor">
         <div className="feature-field-row">
           <span className="feature-field-label">Profile</span>
-          <PickChip
-            value={extrude.sketch || undefined}
+          <ListPickChip
+            values={profiles}
             isPicking={isPickingSketch}
             onActivate={() => {
               if (isPickingSketch) onSetPendingPickField(null)
               else onSetPendingPickField({ featureId: fid, field: 'sketch' })
             }}
-            onClear={() => onMutation({ type: 'set_extrude_sketch', featureId: fid, sketchQuery: '' })}
+            onRemove={(index) => onMutation({ type: 'remove_extrude_profile', featureId: fid, index })}
           />
         </div>
         <div className="feature-field-row">
@@ -388,8 +411,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onDrop={(e) => onRollbackDrop(e, index)}
                 onClick={() => {
                   if (pendingPickField?.field === 'sketch' && feature.kind === 'sketch') {
-                    onMutation({ type: 'set_extrude_sketch', featureId: pendingPickField.featureId, sketchQuery: '$' + feature.id })
-                    onSetPendingPickField(null)
+                    onMutation({ type: 'add_extrude_profile', featureId: pendingPickField.featureId, sketchQuery: '$' + feature.id })
                   } else {
                     onToggleSelect(`@${feature.id}`)
                   }

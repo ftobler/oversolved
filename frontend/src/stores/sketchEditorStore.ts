@@ -348,9 +348,9 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     if (pendingPickField.field === 'sketch') {
       const sketchQuery = selectionId.startsWith('face:')
         ? selectionId.split(':').slice(2).join(':')  // face pick: pass ancestry query through unchanged
-        : '$' + selectionId  // sketch feature pick: local-ref format
-      onMutation?.({ type: 'set_extrude_sketch', featureId: pendingPickField.featureId, sketchQuery })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
+        : selectionId  // raw selection id
+      onMutation?.({ type: 'add_extrude_profile', featureId: pendingPickField.featureId, sketchQuery })
+      set({ normalSelection: new Set() })  // clear selection but keep pick mode open
       return
     }
     let value: string

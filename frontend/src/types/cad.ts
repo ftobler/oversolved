@@ -8,7 +8,7 @@ export type SelectionDomain = 'sketch_2d' | 'body_3d' | 'plane_3d' | 'mixed'
 export type ExtrudeDirection = 'normal' | 'reverse' | 'symmetric'
 
 export interface ExtrudeFeatureDef {
-  sketch: string
+  sketch: string | string[]
   distance: number
   direction?: ExtrudeDirection
 }
@@ -410,5 +410,6 @@ export type Mutation =
   | { type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number }
   | { type: 'set_extrude_distance'; featureId: string; distance: number }
   | { type: 'set_extrude_direction'; featureId: string; direction: ExtrudeDirection }
-  | { type: 'set_extrude_sketch'; featureId: string; sketchQuery: string }
+  | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
+  | { type: 'remove_extrude_profile'; featureId: string; index: number }
   | { type: 'add_import_step'; featureId: string; fileId: string; label?: string }

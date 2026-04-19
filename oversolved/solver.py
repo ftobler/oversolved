@@ -1926,6 +1926,30 @@ def _resolve_direction(
         return list(normal), distance, pt
 
 
+def _collect_extrude_loops(
+    sketch_ref: str,
+    feature_id: str,
+    feature: dict,
+    distance: float,
+    global_repo: Repository,
+    body_store: dict,
+) -> tuple[list, dict, str]:
+    """Resolve one sketch reference to (loops, pt, sketch_id)."""
+    pt: dict
+    if sketch_ref.startswith("?") or sketch_ref.startswith("@"):
+        loops, pt = _resolve_face_profile(sketch_ref, global_repo, body_store)
+        return loops, pt, ""
+    sketch_id = sketch_ref.lstrip("$")
+    pt_raw = global_repo.elements.get("_pt_" + sketch_id)
+    if pt_raw is None:
+        raise ValueError(f"sketch not found: {sketch_id!r}")
+    pt = pt_raw
+    topo = global_repo.elements.get("_topo_" + sketch_id, {})
+    surfaces = topo.get("surfaces", []) if topo else []
+    _register_top_face(global_repo, feature_id, pt, surfaces, distance)
+    return _extract_profile_loops(surfaces, pt), pt, sketch_id
+
+
 def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:
     """Extrude solver with OCC-backed geometry that writes to body_store."""
     from oversolved.types3d import Body
@@ -1935,49 +1959,51 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
         # Support both flat format and the nested {"extrude": {...}} format written by the UI.
         sub = feature.get("extrude") or {}
         feature = {**sub, **feature}
-        sketch_ref = feature.get("sketch", "")
+        sketch_raw = feature.get("sketch", "")
+        # Normalize sketch to a list of refs.
+        if isinstance(sketch_raw, list):
+            sketch_refs: list[str] = [s for s in sketch_raw if s]
+        else:
+            sketch_refs = [sketch_raw] if sketch_raw else []
         distance = float(feature.get("distance") or feature.get("depth") or 1.0)
 
         if distance == 0:
             raise ValueError("extrude distance must be non-zero")
 
-        pt: dict
-        loops: list
-        if sketch_ref.startswith("?") or sketch_ref.startswith("@"):
-            # Face reference path: resolve via query system then OCC or sketch topology.
-            loops, pt = _resolve_face_profile(sketch_ref, global_repo, body_store)
-            sketch_id = ""
-        else:
-            # Sketch reference path (existing behaviour).
-            sketch_id = sketch_ref.lstrip("$")
-            pt_raw = global_repo.elements.get("_pt_" + sketch_id)
-            if pt_raw is None:
-                raise ValueError(f"sketch not found: {sketch_id!r}")
-            pt = pt_raw
-            topo = global_repo.elements.get("_topo_" + sketch_id, {})
-            surfaces = topo.get("surfaces", []) if topo else []
-            _register_top_face(global_repo, feature_id, pt, surfaces, distance)
-            loops = _extract_profile_loops(surfaces, pt)
+        if not sketch_refs:
+            raise ValueError("extrude requires at least one profile reference")
 
-        normal = pt.get("normal", [0, 0, 1])
+        all_loops: list = []
+        first_pt: dict = {}
+        first_sketch_id = ""
+        for sketch_ref in sketch_refs:
+            loops, pt, sketch_id = _collect_extrude_loops(
+                sketch_ref, feature_id, feature, distance, global_repo, body_store
+            )
+            all_loops.extend(loops)
+            if not first_pt:
+                first_pt = pt
+                first_sketch_id = sketch_id
+
+        normal = first_pt.get("normal", [0, 0, 1])
         body_id = "body_" + feature_id
         result: dict = {"status": "ok", "body_id": body_id}
 
-        body = Body(id=body_id, created_by=feature_id, shape=None, sketch_id=sketch_id)
+        body = Body(id=body_id, created_by=feature_id, shape=None, sketch_id=first_sketch_id)
         body_store[body_id] = body
 
         try:
             from oversolved.geometry import extrude_profile as _ep
 
-            if not loops:
+            if not all_loops:
                 result["mesh_warning"] = "no closed profile found; body has no shape"
             else:
                 direction = feature.get("direction", "normal")
                 direction_vec, effective_distance, effective_plane = _resolve_direction(
-                    normal, pt, direction, distance
+                    normal, first_pt, direction, distance
                 )
                 body.shape = _ep(
-                    loops, effective_plane, direction_vec, effective_distance
+                    all_loops, effective_plane, direction_vec, effective_distance
                 )
         except Exception as exc:
             result["mesh_warning"] = str(exc)

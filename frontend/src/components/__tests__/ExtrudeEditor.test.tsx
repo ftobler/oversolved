@@ -169,10 +169,11 @@ describe('sketch pick resolution', () => {
     const sketchRow = screen.getByText('sk1').closest('li')!
     fireEvent.click(sketchRow)
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
-      type: 'set_extrude_sketch',
+      type: 'add_extrude_profile',
       featureId: 'ex1',
       sketchQuery: '$sk1',
     })
-    expect(onSetPendingPickField).toHaveBeenCalledWith(null)
+    // pick mode stays open after each selection
+    expect(onSetPendingPickField).not.toHaveBeenCalledWith(null)
   })
 })
