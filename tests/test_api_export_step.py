@@ -104,3 +104,49 @@ def test_export_reads_back(client):
         assert len(mesh["vertices"]) > 0
     finally:
         os.unlink(tmp_path)
+
+
+def test_export_multiple_bodies(client):
+    """6. export multiple bodies - both extrudes should be in exported STEP."""
+    from OCP.STEPControl import STEPControl_Reader
+    from OCP.IFSelect import IFSelect_RetDone
+    from oversolved.geometry import solid_to_mesh
+
+    response = client.post(
+        "/api/export/step",
+        json={
+            "features": [
+                rect_sketch_spec(w=6.0, h=4.0, sketch_id="sk1"),
+                extrude_spec("sk1", "ex1", 2.0),
+                rect_sketch_spec(w=3.0, h=3.0, sketch_id="sk2", plane="@builtin_plane_right"),
+                extrude_spec("sk2", "ex2", 2.0),
+            ]
+        },
+    )
+    assert response.status_code == 200
+    data = response.data
+    import tempfile
+    import os
+
+    with tempfile.NamedTemporaryFile(suffix=".step", delete=False) as f:
+        f.write(data)
+        tmp_path = f.name
+    try:
+        reader = STEPControl_Reader()
+        status = reader.ReadFile(tmp_path)
+        assert status == IFSelect_RetDone
+        reader.TransferRoots()
+        shape = reader.OneShape()
+        assert not shape.IsNull()
+        mesh = solid_to_mesh(shape)
+        xs = [v[0] for v in mesh["vertices"]]
+        ys = [v[1] for v in mesh["vertices"]]
+        zs = [v[2] for v in mesh["vertices"]]
+        x_range = max(xs) - min(xs)
+        y_range = max(ys) - min(ys)
+        z_range = max(zs) - min(zs)
+        assert x_range >= 6.0, f"x_range {x_range} < 6.0 (first body width)"
+        assert y_range >= 4.0, f"y_range {y_range} < 4.0 (first body height)"
+        assert z_range >= 4.0, f"z_range {z_range} < 4.0 (combined height)"
+    finally:
+        os.unlink(tmp_path)

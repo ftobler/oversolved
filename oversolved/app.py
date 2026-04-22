@@ -320,7 +320,7 @@ def create_app(config=None):
 
     @app.route("/api/export/step", methods=["POST"])
     def export_step():
-        """Export bodies to a STEP file and return it as a download."""
+        """Export all bodies to a STEP file and return it as a download."""
         data = request.get_json(silent=True)
         if not data or "features" not in data:
             return jsonify({"error": "features required"}), 400
@@ -339,10 +339,15 @@ def create_app(config=None):
         export_id = str(uuid.uuid4()) + ".step"
         export_path = os.path.join(export_dir, export_id)
 
-        from oversolved.geometry import shape_to_step_file
+        from oversolved.geometry import shape_to_step_file, fuse_shapes
 
-        shape = list(body_shapes.values())[0]
-        shape_to_step_file(shape, export_path)
+        if len(body_shapes) == 1:
+            shape = list(body_shapes.values())[0]
+            shape_to_step_file(shape, export_path)
+        else:
+            shapes = list(body_shapes.values())
+            fused = fuse_shapes(shapes)
+            shape_to_step_file(fused, export_path)
 
         return send_from_directory(export_dir, export_id, as_attachment=True, download_name="export.step")
 

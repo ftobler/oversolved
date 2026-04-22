@@ -306,6 +306,21 @@ def boolean_union(target: Any, tool: Any) -> Any:
     return fuse.Shape()
 
 
+def fuse_shapes(shapes: list[Any]) -> Any:
+    """Fuse multiple shapes into one compound.
+
+    Returns a single shape representing all inputs fused together.
+    """
+    if not shapes:
+        raise ValueError("no shapes to fuse")
+    if len(shapes) == 1:
+        return shapes[0]
+    result = shapes[0]
+    for shape in shapes[1:]:
+        result = boolean_union(result, shape)
+    return result
+
+
 def _point_xyz(point) -> list[float]:
     """Return [x, y, z] for an OCC point-like object or 3-sequence."""
     if hasattr(point, "X"):
