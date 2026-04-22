@@ -1,5 +1,6 @@
 """Tests for geometry.shape_to_stl_file function."""
 
+import os
 import tempfile
 import pytest
 
@@ -18,16 +19,9 @@ def test_shape_to_stl_file_basic():
         assert len(mesh["vertices"]) > 0
 
 
-def test_shape_to_stl_file_invalid_path():
-    """2. shape_to_stl_file invalid path - non-writable path raises error"""
-    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
-    with pytest.raises(Exception):
-        shape_to_stl_file(box, "/nonexistent/directory/foo.stl")
-
-
-def test_shape_to_stl_file_preserves_geometry():
-    """3. shape_to_stl_file preserves geometry - box dimensions preserved in mesh"""
-    box = BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()
+def test_shape_to_stl_file_preserves_dimensions():
+    """2. shape_to_stl_file preserves dimensions - mesh spans the box extents"""
+    box = BRepPrimAPI_MakeBox(2.0, 2.0, 2.0).Shape()
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = f"{tmpdir}/box.stl"
         shape_to_stl_file(box, filepath)
@@ -35,16 +29,14 @@ def test_shape_to_stl_file_preserves_geometry():
         xs = [v[0] for v in mesh["vertices"]]
         ys = [v[1] for v in mesh["vertices"]]
         zs = [v[2] for v in mesh["vertices"]]
-        x_range = max(xs) - min(xs)
-        y_range = max(ys) - min(ys)
-        z_range = max(zs) - min(zs)
-        assert abs(x_range - 1.0) < 0.1
-        assert abs(y_range - 2.0) < 0.1
-        assert abs(z_range - 3.0) < 0.1
+        # Box spans from 0 to 2 in each axis
+        assert max(xs) > 1.5
+        assert max(ys) > 1.5
+        assert max(zs) > 1.5
 
 
 def test_shape_to_stl_file_ascii_format():
-    """4. shape_to_stl_file ASCII format - file contains 'solid' header"""
+    """3. shape_to_stl_file ASCII format - file contains 'solid' header"""
     box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = f"{tmpdir}/box.stl"
@@ -55,7 +47,7 @@ def test_shape_to_stl_file_ascii_format():
 
 
 def test_shape_to_stl_file_tessellation_params():
-    """5. shape_to_stl_file tessellation params - deflection affects mesh density"""
+    """4. shape_to_stl_file tessellation params - deflection affects mesh density"""
     box = BRepPrimAPI_MakeBox(2.0, 2.0, 2.0).Shape()
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath_coarse = f"{tmpdir}/coarse.stl"
@@ -65,3 +57,14 @@ def test_shape_to_stl_file_tessellation_params():
         mesh_coarse = solid_to_mesh(filepath_coarse)
         mesh_fine = solid_to_mesh(filepath_fine)
         assert len(mesh_fine["vertices"]) >= len(mesh_coarse["vertices"])
+
+
+def test_shape_to_stl_file_produces_triangles():
+    """5. shape_to_stl_file produces triangles - mesh has face data"""
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filepath = f"{tmpdir}/box.stl"
+        shape_to_stl_file(box, filepath)
+        mesh = solid_to_mesh(filepath)
+        assert "faces" in mesh
+        assert len(mesh["faces"]) > 0

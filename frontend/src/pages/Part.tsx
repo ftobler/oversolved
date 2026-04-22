@@ -370,18 +370,14 @@ export default function Part() {
       }
       const blob = await res.blob()
       const filename = format === 'step' ? `${docName || 'export'}.step` : `${docName || 'export'}.stl`
-      if (window.navigator.msSaveBlob) {
-        window.navigator.msSaveBlob(blob, filename)
-      } else {
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = filename
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        URL.revokeObjectURL(url)
-      }
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
     } catch (e) {
       console.error('Export error:', e)
       alert(`Export error: ${e}`)

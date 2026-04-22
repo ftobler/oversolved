@@ -341,7 +341,7 @@ def test_two_independent_extrudes_produce_two_bodies():
             rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
             extrude_spec("sk1", "ex1", distance=5.0),
             rect_sketch_spec(w=5, h=5, sketch_id="sk2"),
-            extrude_spec("sk2", "ex2", distance=3.0),
+            extrude_spec("sk2", "ex2", distance=3.0, operation="new"),
         ]
     }
     r = build(spec)

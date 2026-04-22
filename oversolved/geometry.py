@@ -303,7 +303,24 @@ def boolean_union(target: Any, tool: Any) -> Any:
     fuse.Build()
     if not fuse.IsDone():
         raise ValueError("boolean union failed")
-    return fuse.Shape()
+    result = fuse.Shape()
+    return _cleanup_shape(result)
+
+
+def _cleanup_shape(shape: Any) -> Any:
+    """Remove superfluous internal edges that share the same geometric support.
+
+    After boolean operations, faces may have internal edges along the same
+    geometric curve. This function fuses adjacent edges with matching
+    geometry and removes the redundant vertices.
+    """
+    from OCP.BRepLib import BRepLib_FuseEdges  # noqa: PLC0415
+
+    fuse = BRepLib_FuseEdges(shape, True)
+    fuse.Perform()
+    if fuse.NbVertices() > 0:
+        return fuse.Shape()
+    return shape
 
 
 def fuse_shapes(shapes: list[Any]) -> Any:
@@ -711,6 +728,21 @@ def step_file_to_shape(filepath: str, scale: float = 1.0) -> Any:
         t = gp_Trsf()
         t.SetScaleFactor(scale)
         shape = BRepBuilderAPI_Transform(shape, t, True).Shape()
+    return shape
+
+
+def stl_file_to_shape(filepath: str) -> Any:
+    """Read an STL file and return an OCC shape.
+
+    Uses StlAPI_Reader to parse the STL file and create a TopoDS_Shape.
+    """
+    from OCP.StlAPI import StlAPI_Reader  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS  # noqa: PLC0415
+
+    reader = StlAPI_Reader()
+    shape = TopoDS.Shape()
+    if not reader.Read(shape, filepath):
+        raise ValueError(f"STL read failed for {filepath!r}")
     return shape
 
 

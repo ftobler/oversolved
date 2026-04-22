@@ -1994,10 +1994,6 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
         operation = feature.get("operation", "add")
         body = Body(id=body_id, created_by=feature_id, shape=None, sketch_id=first_sketch_id)
 
-        # Only register add/new bodies in body_store; cut tool has no persistent shape.
-        if operation != "cut":
-            body_store[body_id] = body
-
         try:
             from oversolved.geometry import extrude_profile as _ep
 
@@ -2021,6 +2017,8 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
                     result["operation"] = "cut"
                 elif operation == "new":
                     body.shape = tool_shape
+                    body_store[body_id] = body
+                    result["operation"] = "new"
                 else:
                     from oversolved.geometry import boolean_union
                     fused = False
@@ -2030,9 +2028,12 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
                             existing_body.modified_by.append(feature_id)
                             fused = True
                             break
-                    if not fused:
+                    if fused:
+                        result["operation"] = "add"
+                    else:
                         body.shape = tool_shape
-                    result["operation"] = "add"
+                        body_store[body_id] = body
+                        result["operation"] = "add"
         except Exception as exc:
             result["mesh_warning"] = str(exc)
 
