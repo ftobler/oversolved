@@ -69,6 +69,7 @@ export interface BuildResponse {
   solve_ms: number
   result: Record<string, unknown>
   bodies: Record<string, BodyResult>
+  _build_state?: unknown
 }
 
 export interface BodyFeatureResult {

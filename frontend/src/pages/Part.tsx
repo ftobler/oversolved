@@ -198,6 +198,18 @@ export default function Part() {
     }
   }, [doc])
 
+  // Re-solve when rollback position changes (but not on initial mount).
+  const rollbackInitializedForSolve = useRef(false)
+  const currentFeaturesLength = useRef(features.length)
+  currentFeaturesLength.current = features.length
+useEffect(() => {
+    if (!rollbackInitializedForSolve.current) {
+      rollbackInitializedForSolve.current = true
+      return
+    }
+    if (docRef.current) reSolve(docRef.current, rollbackPosition ?? currentFeaturesLength.current)
+  }, [rollbackPosition])
+
   const activeSketchFeatureId = useMemo(() => {
     if (!editingFeatureId) return undefined
     const feature = features.find(f => f.id === editingFeatureId)
@@ -255,9 +267,9 @@ export default function Part() {
   }, [codeText, docRef, setDoc, setCodeText])
 
   const handleRebuild = useCallback(() => {
-    if (docRef.current) reSolve(docRef.current)
+    if (docRef.current) reSolve(docRef.current, rollbackPosition ?? features.length)
     setContextMenu(null)
-  }, [docRef, reSolve])
+  }, [docRef, reSolve, rollbackPosition, features.length])
 
   const handleExitSketch = useCallback(() => {
     setEditingFeatureId(null)

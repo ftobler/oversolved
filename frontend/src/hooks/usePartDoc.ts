@@ -42,9 +42,6 @@ export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
   { id: 'Right',  kind: 'plane' },
 ]
 
-// Built-in feature IDs that should never be sent to the solver.
-const BUILTIN_FEATURE_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
-
 export function healDoc(raw: unknown): PartDoc {
   const doc = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const userFeatures = Array.isArray(doc.features) ? (doc.features as PartFeature[]) : []
@@ -78,27 +75,34 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [redoStack, setRedoStack] = useState<UndoEntry[]>([])
   const firstSolveDone = useRef(false)
+  const buildStateRef = useRef<unknown>(null)
+  const rollbackPosRef = useRef<number | null>(null)
 
-  const reSolve = useCallback(async (d: PartDoc) => {
+  const reSolve = useCallback(async (d: PartDoc, rollbackPosition?: number | null) => {
     setSolving(true)
     setSolveTime(null)
     const startTime = performance.now()
     const isFirstSolve = !firstSolveDone.current
     if (isFirstSolve) firstSolveDone.current = true
     try {
-      // Filter features before solving: exclude display-only builtins, but include hidden features
-      // (visibility only affects viewport rendering, not solver)
-      const filteredDoc = {
+      const allFeatures = d.features ?? []
+      const effectiveRollback = rollbackPosition ?? rollbackPosRef.current ?? allFeatures.length
+      rollbackPosRef.current = effectiveRollback
+
+      const solvePayload: Record<string, unknown> = {
         ...d,
-        features: (d.features ?? []).filter(f =>
-          !BUILTIN_FEATURE_IDS.has(f.id)
-        ),
+        features: allFeatures.slice(0, effectiveRollback),
+        rollback_position: effectiveRollback,
+      }
+
+      if (buildStateRef.current) {
+        solvePayload.prev_state = buildStateRef.current
       }
 
       const response = await fetch('/api/solve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(filteredDoc),
+        body: JSON.stringify(solvePayload),
       })
       const data = await response.json()
       const endTime = performance.now()
@@ -188,9 +192,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
             }
           }
         }
-        setSolveResults(prev => ({ ...prev, ...results }))
+setSolveResults(results)
         const response = data as BuildResponse
         setBodies(response.bodies ?? {})
+        buildStateRef.current = response._build_state
         setSolveRawResult(stringifyYaml(data.result))
         setDoc(d)
         docRef.current = d
@@ -440,5 +445,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     handleRedo,
     saveDoc,
     renameDoc,
+    setRollbackPos: (pos: number | null) => { rollbackPosRef.current = pos },
   }
 }
