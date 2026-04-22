@@ -2010,10 +2010,16 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
 
                 if operation == "cut":
                     from oversolved.geometry import boolean_cut
+                    cut_body_id = None
                     for existing_body in body_store.values():
                         if existing_body.shape is not None:
                             existing_body.shape = boolean_cut(existing_body.shape, tool_shape)
                             existing_body.modified_by.append(feature_id)
+                            if cut_body_id is None:
+                                cut_body_id = existing_body.id
+                    # Return the body that was cut (if any)
+                    if cut_body_id is not None:
+                        result["body_id"] = cut_body_id
                     result["operation"] = "cut"
                 elif operation == "new":
                     body.shape = tool_shape
@@ -2022,13 +2028,18 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
                 else:
                     from oversolved.geometry import boolean_union
                     fused = False
+                    fused_body_id = None
                     for existing_body in body_store.values():
                         if existing_body.shape is not None:
                             existing_body.shape = boolean_union(existing_body.shape, tool_shape)
                             existing_body.modified_by.append(feature_id)
                             fused = True
+                            fused_body_id = existing_body.id
                             break
                     if fused:
+                        # When fusing with existing body, return the existing body's ID
+                        # so the frontend can find the mesh
+                        result["body_id"] = fused_body_id
                         result["operation"] = "add"
                     else:
                         body.shape = tool_shape
