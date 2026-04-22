@@ -726,3 +726,23 @@ def shape_to_step_file(shape: Any, filepath: str) -> None:
     write_status = writer.Write(filepath)
     if write_status != IFSelect_RetDone:
         raise ValueError(f"STEP write failed: write returned {write_status}")
+
+
+def shape_to_stl_file(shape: Any, filepath: str, deflection: float = 0.5, angular_deflection: float = 0.3) -> None:
+    """Write an OCC shape to an STL file.
+
+    Args:
+        shape: The OCC shape to export.
+        filepath: Path to write the STL file.
+        deflection: Linear deflection for mesh tessellation (default 0.5).
+        angular_deflection: Angular deflection for mesh tessellation (default 0.3 radians).
+    """
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
+    from OCP.StlAPI import StlAPI_Writer  # noqa: PLC0415
+
+    mesh = BRepMesh_IncrementalMesh(shape, deflection, False, angular_deflection, True)
+    mesh.Perform()
+
+    writer = StlAPI_Writer()
+    writer.ASCIIMode = True
+    writer.Write(shape, filepath)

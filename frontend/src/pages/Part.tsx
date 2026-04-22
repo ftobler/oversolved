@@ -15,6 +15,7 @@ import type { ContextMenuItem } from '../components/RightClickMenu'
 import { BugReporter } from '../components/BugReporter'
 import { Sidebar } from '../components/Sidebar'
 import FooterMeasurementDisplay from '../components/FooterMeasurementDisplay'
+import ExportDialog, { type ExportFormat } from '../components/ExportDialog'
 import './Part.css'
 
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
@@ -125,6 +126,7 @@ export default function Part() {
   const [bugReportForm, setBugReportForm] = useState({ title: '', description: '' })
   const [bugReporting, setBugReporting] = useState(false)
   const [bugReportError, setBugReportError] = useState<string | null>(null)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [bugReportAttachments, setBugReportAttachments] = useState({
     ast: true,
     selection: true,
@@ -343,21 +345,53 @@ export default function Part() {
   }, [handleMutation])
 
   const handleExportStep = useCallback(async () => {
+    setExportDialogOpen(true)
+  }, [])
+
+  const handleExportDownload = useCallback(async (format: ExportFormat, tessellation: number) => {
     if (!doc?.features) return
-    const res = await fetch('/api/export/step', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ features: doc.features }),
-    })
-    if (!res.ok) return
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'export.step'
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [doc])
+    const endpoint = format === 'step' ? '/api/export/step' : '/api/export/stl'
+    const body: Record<string, unknown> = { features: doc.features }
+    if (format === 'stl') {
+      body.deflection = tessellation * 2
+      body.angular_deflection = tessellation * 0.6
+    }
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const err = await res.text()
+        console.error('Export failed:', res.status, err)
+        alert(`Export failed: ${err}`)
+        return
+      }
+      const blob = await res.blob()
+      const filename = format === 'step' ? `${docName || 'export'}.step` : `${docName || 'export'}.stl`
+      if (window.navigator.msSaveBlob) {
+        window.navigator.msSaveBlob(blob, filename)
+      } else {
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+      }
+    } catch (e) {
+      console.error('Export error:', e)
+      alert(`Export error: ${e}`)
+    }
+    setExportDialogOpen(false)
+  }, [doc, docName])
+
+  const handleExportCancel = useCallback(() => {
+    setExportDialogOpen(false)
+  }, [])
 
   const handleToggleSketchPlaneVisibility = useCallback(() => {
     handleMutation({ type: 'toggle_sketch_plane_visibility' })
@@ -714,7 +748,7 @@ export default function Part() {
                 <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
                 <button className="editor-btn" title="Import STEP" onClick={handleImportStep}><img src={featureImportIcon} alt="Import STEP" /></button>
-                <button className="editor-btn" title="Export STEP" onClick={handleExportStep}><img src={featureExportIcon} alt="Export STEP" /></button>
+                <button className="editor-btn" title="Export" onClick={handleExportStep}><img src={featureExportIcon} alt="Export" /></button>
               </>
             )}
           </div>
@@ -874,6 +908,12 @@ export default function Part() {
           onClose={() => setContextMenu(null)}
         />
       )}
+      <ExportDialog
+        isOpen={exportDialogOpen}
+        defaultName={docName || 'export'}
+        onDownload={handleExportDownload}
+        onCancel={handleExportCancel}
+      />
     </div>
   )
 }

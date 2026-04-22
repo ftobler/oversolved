@@ -351,6 +351,42 @@ def create_app(config=None):
 
         return send_from_directory(export_dir, export_id, as_attachment=True, download_name="export.step")
 
+    @app.route("/api/export/stl", methods=["POST"])
+    def export_stl():
+        """Export all bodies to an STL file and return it as a download."""
+        data = request.get_json(silent=True)
+        if not data or "features" not in data:
+            return jsonify({"error": "features required"}), 400
+
+        from oversolved.builder import build
+
+        build_result = build(data)
+
+        body_shapes = build_result.get("_body_shapes", {})
+        if not body_shapes:
+            return jsonify({"error": "no bodies to export"}), 400
+
+        export_dir = os.path.join(os.path.dirname(__file__), "exports")
+        os.makedirs(export_dir, exist_ok=True)
+
+        export_id = str(uuid.uuid4()) + ".stl"
+        export_path = os.path.join(export_dir, export_id)
+
+        from oversolved.geometry import shape_to_stl_file, fuse_shapes
+
+        deflection = data.get("deflection", 0.5)
+        angular_deflection = data.get("angular_deflection", 0.3)
+
+        if len(body_shapes) == 1:
+            shape = list(body_shapes.values())[0]
+            shape_to_stl_file(shape, export_path, deflection, angular_deflection)
+        else:
+            shapes = list(body_shapes.values())
+            fused = fuse_shapes(shapes)
+            shape_to_stl_file(fused, export_path, deflection, angular_deflection)
+
+        return send_from_directory(export_dir, export_id, as_attachment=True, download_name="export.stl")
+
     # ── Solver ─────────────────────────────────────────────────────────────────
 
     # Keyed by document id. Not persisted; clears on server restart (full rebuild on restart).

@@ -285,6 +285,20 @@ describe('set_extrude_operation', () => {
     }
     expect(() => applySetExtrudeOperation(doc, 'ex1', 'cut')).not.toThrow()
   })
+
+  it('sets extrude operation to new', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'ex1',
+          kind: 'extrude',
+          extrude: { sketch: '$sk1', distance: 10, operation: 'add' },
+        },
+      ],
+    }
+    applySetExtrudeOperation(doc, 'ex1', 'new')
+    expect(doc.features![0].extrude!.operation).toBe('new')
+  })
 })
 
 describe('mutation does not mutate original doc', () => {

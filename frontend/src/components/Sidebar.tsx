@@ -350,6 +350,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <option value="add">Add</option>
             <option value="cut">Cut</option>
+            <option value="new">New</option>
           </select>
         </div>
         <div className="feature-field-row">

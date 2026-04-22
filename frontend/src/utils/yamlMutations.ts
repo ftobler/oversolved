@@ -575,7 +575,7 @@ export function applySetExtrudeDirection(
 export function applySetExtrudeOperation(
   doc: PartDoc,
   featureId: string,
-  operation: 'add' | 'cut',
+  operation: 'add' | 'cut' | 'new',
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.extrude) {

@@ -6,7 +6,7 @@ export type Point = [number, number]
 export type SelectionDomain = 'sketch_2d' | 'body_3d' | 'plane_3d' | 'mixed'
 
 export type ExtrudeDirection = 'normal' | 'reverse' | 'symmetric'
-export type ExtrudeOperation = 'add' | 'cut'
+export type ExtrudeOperation = 'add' | 'cut' | 'new'
 
 export interface ExtrudeFeatureDef {
   sketch: string | string[]

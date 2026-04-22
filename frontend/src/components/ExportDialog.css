@@ -1,0 +1,117 @@
+.export-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.export-dialog {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 16px 20px;
+  min-width: 280px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  color: #ddd;
+}
+
+.export-dialog-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #aaa;
+}
+
+.export-dialog-section {
+  margin-bottom: 14px;
+}
+
+.export-dialog-label {
+  display: block;
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+.export-dialog-radio-group {
+  display: flex;
+  gap: 16px;
+}
+
+.export-dialog-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.export-dialog-radio input {
+  accent-color: #4fc3f7;
+}
+
+.export-dialog-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.export-dialog-slider {
+  flex: 1;
+  accent-color: #4fc3f7;
+}
+
+.export-dialog-slider-value {
+  font-size: 12px;
+  color: #888;
+  min-width: 28px;
+  text-align: right;
+}
+
+.export-dialog-filename {
+  margin-bottom: 16px;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+}
+
+.export-dialog-filename-text {
+  font-size: 13px;
+  color: #ccc;
+  font-family: monospace;
+}
+
+.export-dialog-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.export-dialog-btn {
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid #555;
+  background: #2a2a2a;
+  color: #ccc;
+}
+
+.export-dialog-btn:hover {
+  border-color: #888;
+}
+
+.export-dialog-btn-download {
+  background: #2a5a8a;
+  border-color: #4fc3f7;
+  color: #fff;
+}
+
+.export-dialog-btn-download:hover {
+  background: #3a6a9a;
+}

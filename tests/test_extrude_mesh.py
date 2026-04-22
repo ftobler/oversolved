@@ -176,7 +176,7 @@ def test_two_extrudes_stacked():
                     },
                 ],
             },
-            extrude_spec("sk2", "ex2", distance=3.0),
+            extrude_spec("sk2", "ex2", distance=3.0, operation="new"),
         ]
     }
     r = build(spec)
@@ -485,6 +485,7 @@ def test_extrude_from_top_face_named_query():
                 "sketch": "@ex1/top_face",
                 "distance": 3.0,
                 "direction": "normal",
+                "operation": "new",
             },
         ]
     }
@@ -721,6 +722,7 @@ def test_extrude_from_brep_face_ancestry_query():
                 "sketch": best_q,
                 "distance": 3.0,
                 "direction": "normal",
+                "operation": "new",
             },
         ]
     }
