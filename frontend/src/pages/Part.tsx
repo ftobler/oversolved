@@ -27,6 +27,7 @@ import toolbarCopyCodeIcon from '../assets/icons/toolbar-copy-code.svg'
 import toolbarCopyResultIcon from '../assets/icons/toolbar-copy-result.svg'
 import measurementIcon from '../assets/icons/measurement.svg'
 import featureImportIcon from '../assets/icons/icon-upload.svg'
+import featureExportIcon from '../assets/icons/icon-download.svg'
 
 import contextRebuildIcon from '../assets/icons/context-rebuild.svg'
 import contextExitIcon from '../assets/icons/context-exit.svg'
@@ -340,6 +341,23 @@ export default function Part() {
     }
     input.click()
   }, [handleMutation])
+
+  const handleExportStep = useCallback(async () => {
+    if (!doc?.features) return
+    const res = await fetch('/api/export/step', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ features: doc.features }),
+    })
+    if (!res.ok) return
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'export.step'
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [doc])
 
   const handleToggleSketchPlaneVisibility = useCallback(() => {
     handleMutation({ type: 'toggle_sketch_plane_visibility' })
@@ -696,6 +714,7 @@ export default function Part() {
                 <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
                 <button className="editor-btn" title="Import STEP" onClick={handleImportStep}><img src={featureImportIcon} alt="Import STEP" /></button>
+                <button className="editor-btn" title="Export STEP" onClick={handleExportStep}><img src={featureExportIcon} alt="Export STEP" /></button>
               </>
             )}
           </div>

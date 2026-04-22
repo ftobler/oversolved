@@ -697,3 +697,17 @@ def step_file_to_shape(filepath: str, scale: float = 1.0) -> Any:
         t.SetScaleFactor(scale)
         shape = BRepBuilderAPI_Transform(shape, t, True).Shape()
     return shape
+
+
+def shape_to_step_file(shape: Any, filepath: str) -> None:
+    """Write an OCC shape to a STEP file."""
+    from OCP.STEPControl import STEPControl_Writer, STEPControl_StepModelType  # noqa: PLC0415
+    from OCP.IFSelect import IFSelect_RetDone  # noqa: PLC0415
+
+    writer = STEPControl_Writer()
+    status = writer.Transfer(shape, STEPControl_StepModelType.STEPControl_AsIs)
+    if status != IFSelect_RetDone:
+        raise ValueError(f"STEP write failed: transfer returned {status}")
+    write_status = writer.Write(filepath)
+    if write_status != IFSelect_RetDone:
+        raise ValueError(f"STEP write failed: write returned {write_status}")

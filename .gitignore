@@ -37,7 +37,5 @@ docs/feature/*
 bugreports/
 
 # Uploads
-oversolved/uploads/*.step
-oversolved/uploads/*.stp
-oversolved/uploads/*.iges
-oversolved/uploads/*.igs
+oversolved/uploads/*
+oversolved/exports/*

@@ -318,6 +318,34 @@ def create_app(config=None):
         f.save(os.path.join(UPLOAD_DIR, file_id))
         return jsonify({"file_id": file_id})
 
+    @app.route("/api/export/step", methods=["POST"])
+    def export_step():
+        """Export bodies to a STEP file and return it as a download."""
+        data = request.get_json(silent=True)
+        if not data or "features" not in data:
+            return jsonify({"error": "features required"}), 400
+
+        from oversolved.builder import build
+
+        build_result = build(data)
+
+        body_shapes = build_result.get("_body_shapes", {})
+        if not body_shapes:
+            return jsonify({"error": "no bodies to export"}), 400
+
+        export_dir = os.path.join(os.path.dirname(__file__), "exports")
+        os.makedirs(export_dir, exist_ok=True)
+
+        export_id = str(uuid.uuid4()) + ".step"
+        export_path = os.path.join(export_dir, export_id)
+
+        from oversolved.geometry import shape_to_step_file
+
+        shape = list(body_shapes.values())[0]
+        shape_to_step_file(shape, export_path)
+
+        return send_from_directory(export_dir, export_id, as_attachment=True, download_name="export.step")
+
     # ── Solver ─────────────────────────────────────────────────────────────────
 
     # Keyed by document id. Not persisted; clears on server restart (full rebuild on restart).
@@ -337,6 +365,7 @@ def create_app(config=None):
         build_result = build(data, prev_state=prev_state)
 
         _build_state_cache[doc_id] = build_result.pop("_build_state")
+        build_result.pop("_body_shapes", None)
 
         return Response(json.dumps(build_result), mimetype="application/json")
 

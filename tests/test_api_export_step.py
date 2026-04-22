@@ -1,0 +1,106 @@
+"""Tests for POST /api/export/step route."""
+
+import pytest
+
+from oversolved.app import create_app
+from solver_helpers import rect_sketch_spec, extrude_spec
+
+
+@pytest.fixture
+def app(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    test_app = create_app(
+        {
+            "DB_TYPE": "sqlite",
+            "DB_PATH": db_path,
+        }
+    )
+    test_app.config["TESTING"] = True
+    return test_app
+
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+
+def test_missing_features(client):
+    """1. missing features - POST /api/export/step without features returns 400."""
+    response = client.post("/api/export/step", json={})
+    assert response.status_code == 400
+    data = response.get_json()
+    assert "error" in data
+
+
+def test_empty_features(client):
+    """2. empty features - POST with empty features list returns 400."""
+    response = client.post("/api/export/step", json={"features": []})
+    assert response.status_code == 400
+    data = response.get_json()
+    assert "error" in data
+
+
+def test_no_bodies_to_export(client):
+    """3. no bodies to export - features with no bodies returns 400."""
+    response = client.post(
+        "/api/export/step",
+        json={"features": [{"id": "sk1", "kind": "sketch"}]},
+    )
+    assert response.status_code == 400
+    data = response.get_json()
+    assert "error" in data
+
+
+def test_export_single_extrude(client):
+    """4. export single extrude - POST extrude feature; returns STEP file."""
+    response = client.post(
+        "/api/export/step",
+        json={
+            "features": [
+                rect_sketch_spec(w=6.0, h=4.0),
+                extrude_spec("sk1", "ex1", 2.0),
+            ]
+        },
+    )
+    if response.status_code != 200:
+        print("ERROR:", response.get_json())
+    assert response.status_code == 200
+    assert "model/step" in response.content_type
+    assert "attachment" in response.headers["Content-Disposition"]
+
+
+def test_export_reads_back(client):
+    """5. export reads back - exported STEP can be imported and produces mesh."""
+    from OCP.STEPControl import STEPControl_Reader
+    from OCP.IFSelect import IFSelect_RetDone
+    from oversolved.geometry import solid_to_mesh
+
+    response = client.post(
+        "/api/export/step",
+        json={
+            "features": [
+                rect_sketch_spec(w=6.0, h=4.0),
+                extrude_spec("sk1", "ex1", 2.0),
+            ]
+        },
+    )
+    assert response.status_code == 200
+    data = response.data
+    import tempfile
+    import os
+
+    with tempfile.NamedTemporaryFile(suffix=".step", delete=False) as f:
+        f.write(data)
+        tmp_path = f.name
+    try:
+        reader = STEPControl_Reader()
+        status = reader.ReadFile(tmp_path)
+        assert status == IFSelect_RetDone
+        reader.TransferRoots()
+        shape = reader.OneShape()
+        assert not shape.IsNull()
+        mesh = solid_to_mesh(shape)
+        assert "vertices" in mesh
+        assert len(mesh["vertices"]) > 0
+    finally:
+        os.unlink(tmp_path)

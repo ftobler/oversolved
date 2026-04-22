@@ -341,9 +341,12 @@ def build(spec: dict, prev_state: BuildState | None = None) -> dict:
         checkpoints=new_checkpoints,
     )
 
+    body_shapes: dict[str, Any] = {bid: body.shape for bid, body in body_store.items() if body.shape is not None}
+
     return {
         "solve_ms": build_ms,
         "result": result,
         "bodies": bodies_out,
         "_build_state": new_state,
+        "_body_shapes": body_shapes,
     }
