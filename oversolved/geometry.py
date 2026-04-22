@@ -395,8 +395,24 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
 
     Uses BRepMesh_IncrementalMesh to compute tessellation, then extracts
     triangulation data from each face of the solid.
+
+    Args:
+        solid: Either an OCC shape or a filepath string (STEP or STL file).
+        created_by: Optional feature ID for ancestry queries.
     """
+    import os as os_module
     import math
+
+    # If solid is a string, treat it as a file path
+    if isinstance(solid, str):
+        filepath = solid
+        if not os_module.path.isfile(filepath):
+            raise ValueError(f"File not found: {filepath!r}")
+        ext = os_module.path.splitext(filepath)[1].lower()
+        if ext in (".stl",):
+            solid = stl_file_to_shape(filepath)
+        else:
+            solid = step_file_to_shape(filepath)
 
     from OCP.BRep import BRep_Tool  # noqa: PLC0415
     from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
@@ -737,10 +753,10 @@ def stl_file_to_shape(filepath: str) -> Any:
     Uses StlAPI_Reader to parse the STL file and create a TopoDS_Shape.
     """
     from OCP.StlAPI import StlAPI_Reader  # noqa: PLC0415
-    from OCP.TopoDS import TopoDS  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS_Shape  # noqa: PLC0415
 
     reader = StlAPI_Reader()
-    shape = TopoDS.Shape()
+    shape = TopoDS_Shape()
     if not reader.Read(shape, filepath):
         raise ValueError(f"STL read failed for {filepath!r}")
     return shape

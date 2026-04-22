@@ -54,6 +54,7 @@ def test_shape_to_stl_file_tessellation_params():
         filepath_fine = f"{tmpdir}/fine.stl"
         shape_to_stl_file(box, filepath_coarse, deflection=1.0, angular_deflection=0.5)
         shape_to_stl_file(box, filepath_fine, deflection=0.1, angular_deflection=0.1)
+        # After reading back via STL reader, both should produce valid meshes
         mesh_coarse = solid_to_mesh(filepath_coarse)
         mesh_fine = solid_to_mesh(filepath_fine)
         assert len(mesh_fine["vertices"]) >= len(mesh_coarse["vertices"])
