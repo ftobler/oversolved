@@ -42,6 +42,8 @@ export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
   { id: 'Right',  kind: 'plane' },
 ]
 
+const BUILTIN_FEATURE_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
+
 export function healDoc(raw: unknown): PartDoc {
   const doc = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const userFeatures = Array.isArray(doc.features) ? (doc.features as PartFeature[]) : []
@@ -89,9 +91,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       const effectiveRollback = rollbackPosition ?? rollbackPosRef.current ?? allFeatures.length
       rollbackPosRef.current = effectiveRollback
 
+      // Slice at rollback position, then filter out built-in display features
+      const slicedFeatures = allFeatures.slice(0, effectiveRollback)
+      const solveFeatures = slicedFeatures.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
+
       const solvePayload: Record<string, unknown> = {
         ...d,
-        features: allFeatures.slice(0, effectiveRollback),
+        features: solveFeatures,
         rollback_position: effectiveRollback,
       }
 
