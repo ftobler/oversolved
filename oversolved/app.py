@@ -333,23 +333,21 @@ def create_app(config=None):
         if not body_shapes:
             return jsonify({"error": "no bodies to export"}), 400
 
-        export_dir = os.path.join(os.path.dirname(__file__), "exports")
-        os.makedirs(export_dir, exist_ok=True)
-
-        export_id = str(uuid.uuid4()) + ".step"
-        export_path = os.path.join(export_dir, export_id)
-
-        from oversolved.geometry import shape_to_step_file, fuse_shapes
+        from oversolved.geometry import shape_to_step_file_buffer, fuse_shapes
 
         if len(body_shapes) == 1:
             shape = list(body_shapes.values())[0]
-            shape_to_step_file(shape, export_path)
+            buffer = shape_to_step_file_buffer(shape)
         else:
             shapes = list(body_shapes.values())
             fused = fuse_shapes(shapes)
-            shape_to_step_file(fused, export_path)
+            buffer = shape_to_step_file_buffer(fused)
 
-        return send_from_directory(export_dir, export_id, as_attachment=True, download_name="export.step")
+        return Response(
+            buffer.getvalue(),
+            mimetype="application/step",
+            headers={"Content-Disposition": "attachment; filename=export.step"},
+        )
 
     @app.route("/api/export/stl", methods=["POST"])
     def export_stl():
@@ -366,26 +364,24 @@ def create_app(config=None):
         if not body_shapes:
             return jsonify({"error": "no bodies to export"}), 400
 
-        export_dir = os.path.join(os.path.dirname(__file__), "exports")
-        os.makedirs(export_dir, exist_ok=True)
-
-        export_id = str(uuid.uuid4()) + ".stl"
-        export_path = os.path.join(export_dir, export_id)
-
-        from oversolved.geometry import shape_to_stl_file, fuse_shapes
+        from oversolved.geometry import shape_to_stl_file_buffer, fuse_shapes
 
         deflection = data.get("deflection", 0.5)
         angular_deflection = data.get("angular_deflection", 0.3)
 
         if len(body_shapes) == 1:
             shape = list(body_shapes.values())[0]
-            shape_to_stl_file(shape, export_path, deflection, angular_deflection)
+            buffer = shape_to_stl_file_buffer(shape, deflection, angular_deflection)
         else:
             shapes = list(body_shapes.values())
             fused = fuse_shapes(shapes)
-            shape_to_stl_file(fused, export_path, deflection, angular_deflection)
+            buffer = shape_to_stl_file_buffer(fused, deflection, angular_deflection)
 
-        return send_from_directory(export_dir, export_id, as_attachment=True, download_name="export.stl")
+        return Response(
+            buffer.getvalue(),
+            mimetype="application/sla",
+            headers={"Content-Disposition": "attachment; filename=export.stl"},
+        )
 
     # ── Solver ─────────────────────────────────────────────────────────────────
 

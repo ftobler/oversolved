@@ -1,5 +1,7 @@
 """geometry.py — Geometric classification helpers for topology surfaces."""
 
+from io import BytesIO
+
 
 def signed_distance_to_line(
     point: tuple[float, float],
@@ -774,6 +776,67 @@ def shape_to_step_file(shape: Any, filepath: str) -> None:
     write_status = writer.Write(filepath)
     if write_status != IFSelect_RetDone:
         raise ValueError(f"STEP write failed: write returned {write_status}")
+
+
+def shape_to_step_file_buffer(shape: Any) -> BytesIO:
+    """Write an OCC shape to a STEP file in memory."""
+    import tempfile
+
+    from OCP.STEPControl import STEPControl_Writer, STEPControl_StepModelType  # noqa: PLC0415
+    from OCP.IFSelect import IFSelect_RetDone  # noqa: PLC0415
+
+    with tempfile.NamedTemporaryFile(suffix=".step", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        writer = STEPControl_Writer()
+        status = writer.Transfer(shape, STEPControl_StepModelType.STEPControl_AsIs)
+        if status != IFSelect_RetDone:
+            raise ValueError(f"STEP write failed: transfer returned {status}")
+        write_status = writer.Write(tmp_path)
+        if write_status != IFSelect_RetDone:
+            raise ValueError(f"STEP write failed: write returned {write_status}")
+
+        with open(tmp_path, "rb") as f:
+            buffer = BytesIO(f.read())
+        buffer.seek(0)
+        return buffer
+    finally:
+        import os
+        os.unlink(tmp_path)
+
+
+def shape_to_stl_file_buffer(shape: Any, deflection: float = 0.5, angular_deflection: float = 0.3) -> BytesIO:
+    """Write an OCC shape to an STL file in memory.
+
+    Args:
+        shape: The OCC shape to export.
+        deflection: Linear deflection for mesh tessellation (default 0.5).
+        angular_deflection: Angular deflection for mesh tessellation (default 0.3 radians).
+    """
+    import tempfile
+
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
+    from OCP.StlAPI import StlAPI_Writer  # noqa: PLC0415
+
+    mesh = BRepMesh_IncrementalMesh(shape, deflection, False, angular_deflection, True)
+    mesh.Perform()
+
+    with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        writer = StlAPI_Writer()
+        writer.ASCIIMode = True
+        writer.Write(shape, tmp_path)
+
+        with open(tmp_path, "rb") as f:
+            buffer = BytesIO(f.read())
+        buffer.seek(0)
+        return buffer
+    finally:
+        import os
+        os.unlink(tmp_path)
 
 
 def shape_to_stl_file(shape: Any, filepath: str, deflection: float = 0.5, angular_deflection: float = 0.3) -> None:
