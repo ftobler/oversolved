@@ -87,7 +87,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
           )}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
-            : <Line points={pts} color={color} lineWidth={lw} />}
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} />}
         </group>
         <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start"  isEditing={isEditing} showDebugHit={showDebugHit} />
         <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end"  isEditing={isEditing} showDebugHit={showDebugHit} />
@@ -106,7 +106,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
           )}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
-            : <Line points={pts} color={color} lineWidth={lw} />}
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} />}
         </group>
         <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start"  isEditing={isEditing} showDebugHit={showDebugHit} />
         <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end"  isEditing={isEditing} showDebugHit={showDebugHit} />
@@ -127,7 +127,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
           )}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
-            : <Line points={pts} color={color} lineWidth={lw} />}
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} />}
         </group>
         <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center"  isEditing={isEditing} showDebugHit={showDebugHit} />
       </>
@@ -170,15 +170,15 @@ export function ProjectedEntities({ sketch, featureId }: { sketch: Sketch; featu
           if ('start' in entity && 'end' in entity && 'radius' in entity) {
             const arc = entity as Arc
             const pts = sampleArcCCW(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
-            return <Line key={id} points={pts} color={COLOR_PROJECTED} lineWidth={1} />
+            return <Line key={id} points={pts} color={COLOR_PROJECTED} lineWidth={1} depthTest={false} />
           } else if ('start' in entity && 'end' in entity) {
             const line = entity as LineSegment
             const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
-            return <Line key={id} points={pts} color={COLOR_PROJECTED} lineWidth={1} />
+            return <Line key={id} points={pts} color={COLOR_PROJECTED} lineWidth={1} depthTest={false} />
           } else if ('center' in entity) {
             const circ = entity as Circle
             const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
-            return <Line key={id} points={pts} color={COLOR_PROJECTED} lineWidth={1} />
+            return <Line key={id} points={pts} color={COLOR_PROJECTED} lineWidth={1} depthTest={false} />
           } else {
             const pt = entity as PointEntity
             return <ProjectedOriginPoint key={id} x={pt.x} y={pt.y} featureId={featureId} entityId={id} />

@@ -171,7 +171,7 @@ function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
           <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
-            : <Line points={pts} color={color} lineWidth={lw} />}
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} />}
         </group>
         <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} />
         <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} />
@@ -187,7 +187,7 @@ function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
           <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
-            : <Line points={pts} color={color} lineWidth={lw} />}
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} />}
         </group>
         <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} />
         <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} />
@@ -205,7 +205,7 @@ function EntityItem({ entity, baseColor, lineWidth = 1 }: EntityItemProps) {
           <HitPolyline pts={pts} onPointerOver={onOver} onPointerOut={onOut} />
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} />
-            : <Line points={pts} color={color} lineWidth={lw} />}
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} />}
         </group>
         <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} />
       </>
