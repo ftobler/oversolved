@@ -290,6 +290,8 @@ export function applyAddEntityWithConstraint(
   if (snapEntityRef) {
     // Entity path snap: constraint references the entity directly
     target = snapEntityRef
+  } else if (snapVertexId && snapVertexId.startsWith('@builtin_')) {
+    target = snapVertexId
   } else if (snapVertexId) {
     // Vertex snap: parse vertex ID to get existing entity reference
     // snapVertexId format: "vertex:featId:entityId:vertexKey"
@@ -331,6 +333,8 @@ export function applyAddPointWithConstraint(
   let target: string
   if (snapEntityRef) {
     target = snapEntityRef
+  } else if (snapVertexId && snapVertexId.startsWith('@builtin_')) {
+    target = snapVertexId
   } else if (snapVertexId) {
     const snapParts = snapVertexId.split(':')
     const snapEntityId = snapParts[2]

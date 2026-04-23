@@ -113,6 +113,19 @@ describe('applyAddConstraint', () => {
     const added = constraints.find(c => c.id.startsWith('c_length'))
     expect(added!.value).toBe(42)
   })
+
+  it('adds coincident constraint with @builtin_origin target', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'coincident', [
+      'vertex:Sketch1:line1:start',
+      '@builtin_origin',
+    ])
+    const constraints = doc.features![0].constraints!
+    const added = constraints.find(c => c.kind === 'coincident')
+    expect(added).toBeDefined()
+    expect(added!.a).toBe('$line1start')
+    expect(added!.b).toBe('@builtin_origin')
+  })
 })
 
 describe('move_vertex_with_constraint (combined applyMoveVertex + applyAddConstraint)', () => {
@@ -791,5 +804,39 @@ describe('applyDeleteFeature', () => {
     ] }
     applyDeleteFeature(doc, 'Right')
     expect(doc.features!.map(f => f.id)).toContain('Right')
+  })
+})
+
+describe('applyAddEntityWithConstraint with @builtin_origin', () => {
+  it('creates coincident constraint with @builtin_origin snap target', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [],
+      initial: {},
+      constraints: [],
+    }] }
+    applyAddEntityWithConstraint(doc, 'Sketch1', 'point', [3, 4], 'xy', '@builtin_origin', 'coincident')
+    expect(doc.features![0].entities).toHaveLength(1)
+    expect(doc.features![0].constraints).toHaveLength(1)
+    const c = doc.features![0].constraints![0]
+    expect(c.kind).toBe('coincident')
+    expect(c.b).toBe('@builtin_origin')
+  })
+})
+
+describe('applyAddPointWithConstraint with @builtin_origin', () => {
+  it('creates point coincident with @builtin_origin', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [],
+      initial: {},
+      constraints: [],
+    }] }
+    applyAddPointWithConstraint(doc, 'Sketch1', [0, 0], '@builtin_origin', undefined, 'coincident')
+    expect(doc.features![0].entities).toHaveLength(1)
+    expect(doc.features![0].constraints).toHaveLength(1)
+    const c = doc.features![0].constraints![0]
+    expect(c.kind).toBe('coincident')
+    expect(c.b).toBe('@builtin_origin')
   })
 })

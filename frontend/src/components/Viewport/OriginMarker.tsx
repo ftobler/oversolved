@@ -15,6 +15,7 @@ export default function OriginMarker() {
   const { camera } = useThree()
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
+  const setHoveredVertex = useSketchEditorStore(s => s.setHoveredVertex)
   const selId = builtinSelectionId('Origin')
   const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
   const activeTool = useSketchEditorStore(s => s.activeTool)
@@ -43,10 +44,25 @@ export default function OriginMarker() {
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_INACTIVE
   const isDrawingTool = (activeTool ?? 'drag') !== 'select' && (activeTool ?? 'drag') !== 'dimension'
 
+  const handlePointerOver = useCallback((e: { stopPropagation: () => void }) => {
+    if (isRotating) return
+    if (!isDrawingTool) e.stopPropagation()
+    setHovered(true)
+    setHoveredEntity(selId)
+    setHoveredVertex(selId, [0, 0], 'vertex')
+  }, [isRotating, isDrawingTool, selId, setHoveredEntity, setHoveredVertex])
+
+  const handlePointerOut = useCallback(() => {
+    if (isRotating) return
+    setHovered(false)
+    setHoveredEntity(null)
+    setHoveredVertex(null, null, null)
+  }, [isRotating, setHoveredEntity, setHoveredVertex])
+
   return (
     <group
-      onPointerOver={e => { if (isRotating) return; if (!isDrawingTool) e.stopPropagation(); setHovered(true); setHoveredEntity(selId) }}
-      onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredEntity(null) }}
+      onPointerOver={handlePointerOver}
+      onPointerOut={handlePointerOut}
       onClick={onClick}
     >
       <Dot x={0} y={0} px={hovered ? 6 : 4} color={color} billboard />

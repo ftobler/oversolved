@@ -708,6 +708,21 @@ describe('sketchEditorStore', () => {
       })
     })
 
+    it('applyConstraint includes @builtin_origin in targets for coincident constraint', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
+      useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
+      useSketchEditorStore.getState().applyConstraint('coincident')
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'S1',
+        kind: 'coincident',
+        targets: expect.arrayContaining(['vertex:S1:L1:start', '@builtin_origin']),
+      })
+    })
+
     it('applyConstraint does nothing in mixed domain with no sketch entities', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
