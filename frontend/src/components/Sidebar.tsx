@@ -128,7 +128,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const selectionQuery = (() => {
     for (const id of selection) {
       if (id.startsWith('?')) return id
-      if (id.startsWith('@') && !id.includes('/')) return id
+      if (id.startsWith('@') && !id.includes('/')) {
+        const refId = id.slice(1)
+        const refFeature = features.find(f => f.id === refId)
+        if (!refFeature || refFeature.kind === 'plane') return id
+      }
       if (id.startsWith('face:')) return id.split(':').slice(2).join(':')
       if (id.startsWith('edge:')) return id.split(':').slice(2).join(':')
     }
