@@ -546,15 +546,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </button>
                     )}
                     {(feature.kind === 'sketch' || feature.kind === 'plane') && feature.id !== editingFeatureId && (
-                    <button
+                      <button
                         className="feature-visibility-btn"
                         onClick={(e) => { e.stopPropagation(); onToggleVisibility(feature.id) }}
                         title={visibleFeatures.has(feature.id) ? 'Hide' : 'Show'}
-                    >
+                      >
                         <img src={visibleFeatures.has(feature.id) ? iconEyeIcon : iconEyeOffIcon} alt={visibleFeatures.has(feature.id) ? 'Visible' : 'Hidden'} />
                       </button>
                     )}
-                    {feature.kind === 'sketch' && feature.id === editingFeatureId && (
+                    {(feature.kind === 'sketch' && feature.id === editingFeatureId) && (
                       <button
                         className="feature-visibility-btn disabled"
                         title="Visible while editing"
@@ -562,6 +562,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       >
                         <img src={iconEyeIcon} alt="Visible" />
                       </button>
+                    )}
+                    {(feature.kind === 'extrude' || feature.kind === 'import_step') && (
+                      <span className="feature-visibility-placeholder" />
                     )}
                   </div>
                 </div>
