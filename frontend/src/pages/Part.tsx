@@ -28,6 +28,7 @@ import toolbarCopyCodeIcon from '../assets/icons/toolbar-copy-code.svg'
 import toolbarCopyResultIcon from '../assets/icons/toolbar-copy-result.svg'
 import measurementIcon from '../assets/icons/measurement.svg'
 import featureImportIcon from '../assets/icons/icon-upload.svg'
+import iconRenameIcon from '../assets/icons/rename.svg'
 import featureExportIcon from '../assets/icons/icon-download.svg'
 
 import contextRebuildIcon from '../assets/icons/context-rebuild.svg'
@@ -533,6 +534,12 @@ useEffect(() => {
     setContextMenu(null)
   }, [handleMutation, visibleFeatures])
 
+  const handleFeatureRename = useCallback((featureId: string, label: string) => {
+    const trimmed = label.trim()
+    if (!trimmed) return
+    handleMutation({ type: 'rename_feature', featureId, label: trimmed })
+  }, [handleMutation])
+
   const toggleBodyVisibility = useCallback((bodyId: string) => {
     setBodiesVisibility(prev => {
       const isHidden = prev[bodyId] === false
@@ -662,6 +669,17 @@ useEffect(() => {
         }
       }
       if (!BUILT_IN_IDS.has(featureId)) {
+        const target = features.find(f => f.id === featureId)
+        items.push({
+          label: 'Rename',
+          icon: iconRenameIcon,
+          onClick: () => {
+            const newLabel = window.prompt('Enter new name:', target?.label || target?.id)
+            if (newLabel && newLabel.trim()) {
+              handleFeatureRename(featureId, newLabel.trim())
+            }
+          },
+        })
         items.push({
           label: 'Delete',
           icon: contextDeleteIcon,
@@ -676,7 +694,7 @@ useEffect(() => {
       targetId: featureId,
       items,
     })
-  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature])
+  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename])
 
   return (
     <div className="document-viewer">
@@ -722,6 +740,7 @@ useEffect(() => {
           onExitEditFeature={exitEditFeature}
           onToggleVisibility={toggleVisibility}
           onRightClick={handleRightClick}
+          onRename={handleFeatureRename}
           onRollbackDragStart={handleRollbackDragStart}
           onRollbackDragOver={handleRollbackDragOver}
           onRollbackDrop={handleRollbackDrop}

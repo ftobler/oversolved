@@ -90,13 +90,15 @@
 
 .part-item:hover {
   background: #222;
-  color: #4fc3f7;
+  /* color: #4fc3f7; */
+  color: white;
 }
 
 .part-item.selected {
   background: #1a1a2a;
-  color: #4fc3f7;
-  outline: 1px solid #1e3a4a;
+  /* color: #4fc3f7; */
+  color: white;
+  outline: 1px solid #208fd0;
 }
 
 .part-name {
@@ -347,7 +349,8 @@
 .feature-item:hover {
   background: #222;
   border-color: #4fc3f7;
-  color: #4fc3f7;
+  /* color: #4fc3f7; */
+  color: white;
 }
 
 .feature-item.rolled-back {
@@ -885,7 +888,8 @@
 
 .feature-item.selected {
   background: #1a1a2a;
-  color: #4fc3f7;
+   /* color: #4fc3f7; */
+  color: white;
   outline: 1px solid #1e3a4a;
 }
 

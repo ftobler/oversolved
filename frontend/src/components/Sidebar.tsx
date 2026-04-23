@@ -36,6 +36,7 @@ interface SidebarProps {
   onExitEditFeature: () => void
   onToggleVisibility: (featureId: string) => void
   onRightClick: (pos: [number, number], targetId?: string) => void
+  onRename?: (featureId: string, label: string) => void
   onRollbackDragStart: (e: React.DragEvent) => void
   onRollbackDragOver: (e: React.DragEvent, featureIndex: number) => void
   onRollbackDrop: (e: React.DragEvent, featureIndex: number) => void
@@ -77,8 +78,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   solveResults,
   bodies,
 }) => {
-  const [renamingFeatureId, setRenamingFeatureId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
   const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
   const isDraggingRef = useRef(false)
   const sidebarRef = useRef<HTMLElement>(null)
@@ -106,14 +105,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       document.removeEventListener('mouseup', handleMouseUp)
     }
   }, [handleMouseMove, handleMouseUp])
-
-  const commitRename = (feature: PartFeature) => {
-    const trimmed = renameValue.trim()
-    if (trimmed && trimmed !== (feature.label || feature.id)) {
-      onMutation({ type: 'rename_feature', featureId: feature.id, label: trimmed })
-    }
-    setRenamingFeatureId(null)
-  }
 
   const getFeatureIcon = (kind: string | undefined) => {
     const lowerKind = kind?.toLowerCase()
@@ -462,29 +453,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     const errMsg: string = bodyResult?.exception
                       ?? (bodyResult?.body_id ? bodies?.[bodyResult.body_id]?.mesh_error : undefined)
                       ?? ''
-                    return renamingFeatureId === feature.id ? (
-                      <input
-                        className="feature-name-input"
-                        value={renameValue}
-                        autoFocus
-                        onClick={e => e.stopPropagation()}
-                        onChange={e => setRenameValue(e.target.value)}
-                        onBlur={() => commitRename(feature)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') { e.currentTarget.blur() }
-                          if (e.key === 'Escape') { setRenamingFeatureId(null) }
-                          e.stopPropagation()
-                        }}
-                      />
-                    ) : (
+                    return (
                       <span
                         className={`feature-name${isError ? ' feature-name-error' : ''}`}
                         title={errMsg}
-                        onClick={e => {
-                          e.stopPropagation()
-                          setRenamingFeatureId(feature.id)
-                          setRenameValue(feature.label || feature.id)
-                        }}
                       >
                         {feature.label || feature.id}
                       </span>

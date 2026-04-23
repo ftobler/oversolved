@@ -1140,5 +1140,20 @@ def icon_dots(ctx):
     ctx.fill()
 
 
+@icon("frontend/src/assets/icons/rename.svg")
+def icon_rename(ctx):
+    """Icon for Rename: a text cursor"""
+    ctx.move_to(0.5, 0.2)
+    ctx.line_to(0.5, 0.8)
+    stroke(ctx, 1.5)
+    # serif at top and bottom
+    serif_len = 0.15
+    ctx.move_to(0.5 + serif_len, 0.2)
+    ctx.line_to(0.5 - serif_len, 0.2)
+    ctx.move_to(0.5 + serif_len, 0.8)
+    ctx.line_to(0.5 - serif_len, 0.8)
+    stroke(ctx, 1.5)
+
+
 if __name__ == "__main__":
     draw_all()
