@@ -93,7 +93,7 @@ describe('getBodiesToRender - vertex_queries handling', () => {
 
 describe('getBodiesToRender', () => {
   it('renders body with mesh', () => {
-    const items = getBodiesToRender(TEST_BODIES, FEATURES, undefined, new Set(['ex1']))
+    const items = getBodiesToRender(TEST_BODIES, FEATURES, undefined, new Set(['body_ex1']))
     expect(items).toHaveLength(1)
     expect(items[0].key).toBe('body_ex1')
     expect(items[0].featureId).toBe('ex1')  // Uses createdBy, not bodyId
@@ -105,18 +105,18 @@ describe('getBodiesToRender', () => {
     const bodies: Record<string, BodyResult> = {
       body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh_error: 'no shape' },
     }
-    const items = getBodiesToRender(bodies, FEATURES, undefined, new Set(['ex1']))
+    const items = getBodiesToRender(bodies, FEATURES, undefined, new Set(['body_ex1']))
     expect(items).toHaveLength(0)
   })
 
-  it('sets visible=false when created_by feature is hidden', () => {
+  it('sets visible=false when body is hidden', () => {
     const items = getBodiesToRender(TEST_BODIES, FEATURES, undefined, new Set())
     expect(items).toHaveLength(1)
     expect(items[0].visible).toBe(false)
   })
 
   it('returns empty array when bodies is undefined', () => {
-    const items = getBodiesToRender(undefined, FEATURES, undefined, new Set(['ex1']))
+    const items = getBodiesToRender(undefined, FEATURES, undefined, new Set(['body_ex1']))
     expect(items).toHaveLength(0)
   })
 
@@ -126,7 +126,7 @@ describe('getBodiesToRender', () => {
   })
 
   it('skips body when created_by feature not found in features', () => {
-    const items = getBodiesToRender(TEST_BODIES, FEATURES.slice(0, 3), undefined, new Set(['ex1']))
+    const items = getBodiesToRender(TEST_BODIES, FEATURES.slice(0, 3), undefined, new Set(['body_ex1']))
     expect(items).toHaveLength(0)
   })
 
@@ -139,7 +139,7 @@ describe('getBodiesToRender', () => {
       ...FEATURES,
       { id: 'ex2', kind: 'extrude', extrude: { sketch: '$sk1', distance: 20, direction: 'normal' } },
     ]
-    const items = getBodiesToRender(bodies, features, undefined, new Set(['ex1', 'ex2']))
+    const items = getBodiesToRender(bodies, features, undefined, new Set(['body_ex1', 'body_ex2']))
     expect(items).toHaveLength(2)
     expect(items.map(i => i.key)).toContain('body_ex1')
     expect(items.map(i => i.key)).toContain('body_ex2')
@@ -149,11 +149,11 @@ describe('getBodiesToRender', () => {
     const bodies: Record<string, BodyResult> = {
       body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh_error: 'tessellation failed' },
     }
-    const items = getBodiesToRender(bodies, FEATURES, undefined, new Set(['ex1']))
+    const items = getBodiesToRender(bodies, FEATURES, undefined, new Set(['body_ex1']))
     expect(items).toHaveLength(0)
   })
 
-  it('renders body visibly when visibleFeatures is undefined', () => {
+  it('renders body visibly when visibleBodies is undefined', () => {
     const items = getBodiesToRender(TEST_BODIES, FEATURES, undefined, undefined)
     expect(items).toHaveLength(1)
     expect(items[0].visible).toBe(true)

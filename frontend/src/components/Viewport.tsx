@@ -29,6 +29,7 @@ interface ViewportProps {
   featureDefs?: any[]
   rollbackPosition?: number
   visibleFeatures?: Set<string>
+  visibleBodies?: Set<string>
   solveResults?: Record<string, SketchData>
   resetTrigger?: number
   activeFeatureId?: string
@@ -57,6 +58,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   featureDefs,
   rollbackPosition,
   visibleFeatures,
+  visibleBodies,
   solveResults,
   resetTrigger = 0,
   activeFeatureId,
@@ -230,8 +232,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const showRight  = isActive('Right',  features, rollbackPosition, visibleFeatures)
 
   const bodyItems = useMemo(
-    () => getBodiesToRender(bodies, features, rollbackPosition, visibleFeatures),
-    [bodies, features, rollbackPosition, visibleFeatures]
+    () => getBodiesToRender(bodies, features, rollbackPosition, visibleBodies),
+    [bodies, features, rollbackPosition, visibleBodies]
   )
 
   const activeSketchFeatures = useMemo(

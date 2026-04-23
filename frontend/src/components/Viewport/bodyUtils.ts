@@ -37,7 +37,7 @@ export function getBodiesToRender(
   bodies: Record<string, BodyResult> | undefined,
   features: Feature[] | undefined,
   rollbackPosition: number | undefined,
-  visibleFeatures: Set<string> | undefined,
+  visibleBodies: Set<string> | undefined,
 ): BodyRenderItem[] {
   const items: BodyRenderItem[] = []
   if (!bodies) return items
@@ -53,7 +53,7 @@ export function getBodiesToRender(
       edgeQueries: body.edge_queries,
       vertices: body.vertices,
       vertexQueries: body.vertex_queries,
-      visible: visibleFeatures ? visibleFeatures.has(createdBy) : true,
+      visible: visibleBodies ? visibleBodies.has(bodyId) : true,
     })
   }
   return items

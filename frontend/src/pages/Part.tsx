@@ -113,6 +113,7 @@ export default function Part() {
   const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
   const [savedRollbackPosition, setSavedRollbackPosition] = useState<number | null>(null)
   const [editForcedVisible, setEditForcedVisible] = useState<Set<string>>(new Set())
+  const [bodiesVisibility, setBodiesVisibility] = useState<Record<string, boolean>>({})
   const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
@@ -532,6 +533,18 @@ useEffect(() => {
     setContextMenu(null)
   }, [handleMutation, visibleFeatures])
 
+  const toggleBodyVisibility = useCallback((bodyId: string) => {
+    setBodiesVisibility(prev => {
+      const isVisible = prev[bodyId] !== false
+      if (isVisible) {
+        const next = { ...prev }
+        delete next[bodyId]
+        return next
+      }
+      return { ...prev, [bodyId]: true }
+    })
+  }, [])
+
   const enterEditFeature = useCallback((featureId: string) => {
     const idx = features.findIndex(f => f.id === featureId)
     if (idx < 0) return
@@ -716,6 +729,10 @@ useEffect(() => {
           onSetRollbackPosition={setRollbackPosition}
           onSetPendingPickField={setPendingPickField}
           onSetPlaneSelectionFeatureId={setPlaneSelectionFeatureId}
+          onToggleBodyVisibility={toggleBodyVisibility}
+          visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0
+            ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false))
+            : undefined}
           solveResults={solveResults}
           bodies={bodies}
         />
@@ -779,7 +796,7 @@ useEffect(() => {
                   </div>
                 </div>
               )}
-              {mode !== 'code' && <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} />}
+              {mode !== 'code' && <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false))} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} />}
             </>
           )}
         </div>

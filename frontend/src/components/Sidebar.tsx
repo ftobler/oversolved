@@ -5,6 +5,7 @@ import { normalizeExtrudeSketch } from '../utils/yamlMutations'
 import { planeLabel } from './Geometry3D/utils'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
+import featurePartIcon from '../assets/icons/feature-part.svg'
 import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
 import featureImportIcon from '../assets/icons/icon-upload.svg'
@@ -41,6 +42,8 @@ interface SidebarProps {
   onSetRollbackPosition: (pos: number | null) => void
   onSetPendingPickField: (state: PendingPickField | null) => void
   onSetPlaneSelectionFeatureId: (id: string | null) => void
+  onToggleBodyVisibility?: (bodyId: string) => void
+  visibleBodies?: Set<string>
   solveResults?: Record<string, unknown>
   bodies?: Record<string, BodyResult>
 }
@@ -68,9 +71,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSetRollbackPosition,
   onSetPendingPickField,
   onSetPlaneSelectionFeatureId,
+  onToggleBodyVisibility,
+  visibleBodies,
   solveResults,
   bodies,
 }) => {
+  const bodiesVisibilitySet = visibleBodies
   const [renamingFeatureId, setRenamingFeatureId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
@@ -540,14 +546,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span className="material-icons-outlined">close</span>
                       </button>
                     )}
+                    {(feature.kind === 'sketch' || feature.kind === 'plane') && feature.id !== editingFeatureId && (
                     <button
-                      className={`feature-visibility-btn ${feature.id === editingFeatureId ? 'disabled' : ''}`}
-                      onClick={(e) => { e.stopPropagation(); if (feature.id !== editingFeatureId) onToggleVisibility(feature.id) }}
-                      title={feature.id === editingFeatureId ? 'Visible while editing' : (visibleFeatures.has(feature.id) ? 'Hide' : 'Show')}
-                      disabled={feature.id === editingFeatureId}
+                        className="feature-visibility-btn"
+                        onClick={(e) => { e.stopPropagation(); onToggleVisibility(feature.id) }}
+                        title={visibleFeatures.has(feature.id) ? 'Hide' : 'Show'}
                     >
-                      <img src={visibleFeatures.has(feature.id) ? iconEyeIcon : iconEyeOffIcon} alt={visibleFeatures.has(feature.id) ? 'Visible' : 'Hidden'} />
-                    </button>
+                        <img src={visibleFeatures.has(feature.id) ? iconEyeIcon : iconEyeOffIcon} alt={visibleFeatures.has(feature.id) ? 'Visible' : 'Hidden'} />
+                      </button>
+                    )}
+                    {feature.kind === 'sketch' && feature.id === editingFeatureId && (
+                      <button
+                        className="feature-visibility-btn disabled"
+                        title="Visible while editing"
+                        disabled
+                      >
+                        <img src={iconEyeIcon} alt="Visible" />
+                      </button>
+                    )}
                   </div>
                 </div>
                 {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (
@@ -600,15 +616,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {Object.keys(bodies || {}).length === 0 ? (
             <li className="empty">No parts</li>
           ) : (
-            Object.entries(bodies || {}).map(([bodyId]) => (
-              <li
-                key={bodyId}
-                className={`part-item ${selection.has(`@${bodyId}`) ? 'selected' : ''}`}
-                onClick={() => onToggleSelect(`@${bodyId}`)}
-              >
-                <span className="part-name">{bodyId}</span>
-              </li>
-            ))
+            Object.entries(bodies || {}).map(([bodyId]) => {
+              const isHidden = onToggleBodyVisibility && bodiesVisibilitySet && !bodiesVisibilitySet.has(bodyId)
+              return (
+                <li
+                  key={bodyId}
+                  className={`part-item ${selection.has(`@${bodyId}`) ? 'selected' : ''}`}
+                  onClick={() => onToggleSelect(`@${bodyId}`)}
+                >
+                  <img className="part-icon" src={featurePartIcon} alt="" />
+                  <span className="part-name">{bodyId}</span>
+                  {onToggleBodyVisibility && (
+                    <button
+                      className="part-visibility-btn"
+                      onClick={(e) => { e.stopPropagation(); onToggleBodyVisibility(bodyId) }}
+                      title={isHidden ? 'Show' : 'Hide'}
+                    >
+                      <img src={isHidden ? iconEyeIcon : iconEyeOffIcon} alt={isHidden ? 'Visible' : 'Hidden'} />
+                    </button>
+                  )}
+                </li>
+              )
+            })
           )}
         </ul>
       </div>
