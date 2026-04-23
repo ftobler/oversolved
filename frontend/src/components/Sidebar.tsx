@@ -10,6 +10,7 @@ import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
 import featureImportIcon from '../assets/icons/icon-upload.svg'
 import contextEditIcon from '../assets/icons/context-edit.svg'
+import iconDotsIcon from '../assets/icons/dots.svg'
 import iconEyeIcon from '../assets/icons/icon-eye.svg'
 import iconEyeOffIcon from '../assets/icons/icon-eye-off.svg'
 import exitSketchIcon from '../assets/icons/exit-sketch.svg'
@@ -444,7 +445,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   }
                 }}
                 onDoubleClick={() => feature.kind === 'sketch' ? onEnterEditSketch(feature.id) : undefined}
-                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onRightClick([e.clientX, e.clientY], feature.id) }}
                 style={{ flexWrap: 'wrap' }}
               >
                 <div className="feature-item-title">
@@ -565,6 +565,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     {(feature.kind === 'extrude' || feature.kind === 'import_step') && (
                       <span className="feature-visibility-placeholder" />
+                    )}
+                    {(feature.kind === 'sketch' || feature.kind === 'plane') && feature.id === editingFeatureId && (
+                      <span className="feature-visibility-placeholder" />
+                    )}
+                    {BUILT_IN_IDS.has(feature.id) && (
+                      <span className="feature-visibility-placeholder" />
+                    )}
+                    {!BUILT_IN_IDS.has(feature.id) && (
+                      <button
+                        className="feature-context-btn"
+                        onClick={(e) => { e.stopPropagation(); onRightClick([e.clientX, e.clientY], feature.id) }}
+                        title="More options"
+                      >
+                        <img src={iconDotsIcon} alt="Options" />
+                      </button>
                     )}
                   </div>
                 </div>

@@ -1,3 +1,4 @@
+from textwrap import fill
 from icon_cairo import icon, draw_all, px, stroke
 import math
 
@@ -1126,6 +1127,17 @@ def exit_sketch(ctx):
     ctx.move_to(0.8, 0.2)
     ctx.line_to(0.2, 0.8)
     stroke(ctx, 2)
+
+
+@icon("frontend/src/assets/icons/dots.svg")
+def icon_dots(ctx):
+    """Icon for Dots: three vertical dots."""
+    ctx.arc(0.5, 0.2, 0.1, 0, 2 * math.pi)
+    ctx.fill()
+    ctx.arc(0.5, 0.5, 0.1, 0, 2 * math.pi)
+    ctx.fill()
+    ctx.arc(0.5, 0.8, 0.1, 0, 2 * math.pi)
+    ctx.fill()
 
 
 if __name__ == "__main__":

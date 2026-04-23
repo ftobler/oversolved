@@ -152,8 +152,8 @@
 .feature-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 8px;
+  gap: 4px;
+  padding: 2px 4px;
   margin: 4px 0;
   /* background: #1a1a1a; */
   /* border: 1px solid #333; */
@@ -187,7 +187,7 @@
 .feature-item-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   margin-left: auto;
   flex-shrink: 0;
 }
@@ -318,6 +318,30 @@
   width: 20px;
   height: 20px;
   flex-shrink: 0;
+}
+
+.feature-context-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #555;
+  padding: 2px 4px;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.feature-context-btn img {
+  width: 16px;
+  height: 16px;
+  filter: invert(0.8);
+}
+
+.feature-context-btn:hover {
+  filter: invert(0.5);
 }
 
 .feature-item:hover {
