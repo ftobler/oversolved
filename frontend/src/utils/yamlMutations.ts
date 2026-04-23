@@ -128,11 +128,11 @@ export function applyAddConstraint(
       // Not enough / wrong selection — skip adding
       return
     }
-  } else if (targets.length === 1) {
-    c.target = pt(targets[0])
-  } else if (targets.length >= 2) {
+  } else if (kind === 'coincident' || targets.length >= 2) {
     c.a = pt(targets[0])
     c.b = pt(targets[1])
+  } else if (targets.length === 1) {
+    c.target = pt(targets[0])
   }
   if (value !== undefined) c.value = value
   feature.constraints.push(c)
