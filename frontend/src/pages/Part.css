@@ -299,6 +299,17 @@
   color: #777;
 }
 
+.feature-visibility-btn:disabled,
+.feature-visibility-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.feature-visibility-btn:disabled:hover,
+.feature-visibility-btn.disabled:hover {
+  color: #555;
+}
+
 .feature-visibility-btn .material-icons-outlined {
   font-size: 11px;
 }

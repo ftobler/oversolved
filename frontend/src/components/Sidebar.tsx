@@ -541,9 +541,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </button>
                     )}
                     <button
-                      className="feature-visibility-btn"
-                      onClick={(e) => { e.stopPropagation(); onToggleVisibility(feature.id) }}
-                      title={visibleFeatures.has(feature.id) ? 'Hide' : 'Show'}
+                      className={`feature-visibility-btn ${feature.id === editingFeatureId ? 'disabled' : ''}`}
+                      onClick={(e) => { e.stopPropagation(); if (feature.id !== editingFeatureId) onToggleVisibility(feature.id) }}
+                      title={feature.id === editingFeatureId ? 'Visible while editing' : (visibleFeatures.has(feature.id) ? 'Hide' : 'Show')}
+                      disabled={feature.id === editingFeatureId}
                     >
                       <img src={visibleFeatures.has(feature.id) ? iconEyeIcon : iconEyeOffIcon} alt={visibleFeatures.has(feature.id) ? 'Visible' : 'Hidden'} />
                     </button>
