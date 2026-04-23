@@ -92,16 +92,27 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
         // Lazy drag initiation: activate when movement exceeds the click threshold
         if (!drag && dragPending && dragStartClient && isPointerDown && dragPending.featureId === featureId) {
           if (shouldActivateDrag(dragStartClient, [e.clientX, e.clientY])) {
-            setDrag({
-              type: dragPending.type,
-              vertexId: dragPending.vertexId,
-              featureId: dragPending.featureId,
-              entityId: dragPending.entityId,
-              vertexKey: dragPending.vertexKey,
-              startWorld: dragPending.startWorld,
-              currentWorld: dragPending.startWorld,
-              startClient: dragStartClient,
-            })
+            if (dragPending.type === 'dim_label') {
+              setDrag({
+                type: 'dim_label',
+                constraintId: dragPending.constraintId,
+                featureId: dragPending.featureId,
+                anchorWorld: dragPending.anchorWorld,
+                startWorld: dragPending.startWorld,
+                currentWorld: dragPending.startWorld,
+              })
+            } else {
+              setDrag({
+                type: dragPending.type,
+                vertexId: dragPending.vertexId,
+                featureId: dragPending.featureId,
+                entityId: dragPending.entityId,
+                vertexKey: dragPending.vertexKey,
+                startWorld: dragPending.startWorld,
+                currentWorld: dragPending.startWorld,
+                startClient: dragStartClient,
+              })
+            }
           }
         }
 

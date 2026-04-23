@@ -46,6 +46,15 @@ def _init_global_repo() -> Repository:
     return repo
 
 
+def _clear_feature_geometry_registrations(
+    global_repo: Repository, feature_id: str
+) -> None:
+    """Remove all geometry registrations previously made for a feature.
+    This prevents ghost references when entities are deleted and the
+    feature is re-solved."""
+    global_repo.clear_by_sketch_id(feature_id)
+
+
 def _post_register(
     global_repo: Repository,
     feature_id: str,
@@ -55,6 +64,7 @@ def _post_register(
     """Register solved state from feature_result into global_repo for downstream use."""
     if feature_result.get("status") == "exception":
         return
+    _clear_feature_geometry_registrations(global_repo, feature_id)
     if "geometry" in feature_result:
         _register_solved_geometry_slash(
             global_repo, feature_id, feature, feature_result["geometry"]

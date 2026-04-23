@@ -195,8 +195,10 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
   const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
-  const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
+  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
+  const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
+  const setDragPending = useSketchEditorStore(s => s.setDragPending)
   const { camera } = useThree()
   useFrame(() => {
     if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
@@ -252,20 +254,21 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
 
   const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
 
-  const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
+  const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return
     e.stopPropagation()
     resetDragMoved()
     setOrbitEnabled(false)
-    setDrag({
+    setIsPointerDown(true)
+    setDragStartClient([e.clientX, e.clientY])
+    setDragPending({
       type: 'dim_label',
       constraintId: cid,
       featureId: interaction.featureId,
       anchorWorld: [anchorX, anchorY],
       startWorld: [labelX, labelY],
-      currentWorld: [labelX, labelY],
     })
-  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setDrag, setOrbitEnabled])
+  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
   return (
     <group key={cid}>
@@ -324,8 +327,10 @@ export function RadiusDimension({ cid, dim, interaction }: {
   const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
-  const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
+  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
+  const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
+  const setDragPending = useSketchEditorStore(s => s.setDragPending)
   const { camera } = useThree()
   useFrame(() => {
     if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
@@ -377,21 +382,22 @@ export function RadiusDimension({ cid, dim, interaction }: {
 
   const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
 
-  const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
+  const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return
     e.stopPropagation()
     resetDragMoved()
     setOrbitEnabled(false)
-    setDrag({
+    setIsPointerDown(true)
+    setDragStartClient([e.clientX, e.clientY])
+    setDragPending({
       type: 'dim_label',
       constraintId: cid,
       featureId: interaction.featureId,
       anchorWorld: [cx, cy],
       startWorld: [labelX, labelY],
-      currentWorld: [labelX, labelY],
     })
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
-  }, [interaction, cid, cx, cy, labelX, labelY, resetDragMoved, setDrag, setOrbitEnabled])
+  }, [interaction, cid, cx, cy, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
   return (
     <group key={cid}>
@@ -433,8 +439,10 @@ export function DiameterDimension({ cid, dim, interaction }: {
   const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
-  const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
+  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
+  const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
+  const setDragPending = useSketchEditorStore(s => s.setDragPending)
   const { camera } = useThree()
   useFrame(() => {
     if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
@@ -479,20 +487,21 @@ export function DiameterDimension({ cid, dim, interaction }: {
 
   const label = `Ø${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
 
-  const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
+  const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return
     e.stopPropagation()
     resetDragMoved()
     setOrbitEnabled(false)
-    setDrag({
+    setIsPointerDown(true)
+    setDragStartClient([e.clientX, e.clientY])
+    setDragPending({
       type: 'dim_label',
       constraintId: cid,
       featureId: interaction.featureId,
       anchorWorld: [anchorX, anchorY],
       startWorld: [labelX, labelY],
-      currentWorld: [labelX, labelY],
     })
-  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setDrag, setOrbitEnabled])
+  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
   return (
     <group key={cid}>
@@ -538,8 +547,10 @@ export function AngleDimension({ cid, dim, interaction }: {
   const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, false)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
-  const setDrag = useSketchEditorStore(s => s.setDrag)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
+  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
+  const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
+  const setDragPending = useSketchEditorStore(s => s.setDragPending)
   const { camera } = useThree()
   useFrame(() => {
     if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
@@ -647,20 +658,21 @@ export function AngleDimension({ cid, dim, interaction }: {
 
   const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
 
-  const onPointerDown = useCallback((e: { stopPropagation: () => void }) => {
+  const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return
     e.stopPropagation()
     resetDragMoved()
     setOrbitEnabled(false)
-    setDrag({
+    setIsPointerDown(true)
+    setDragStartClient([e.clientX, e.clientY])
+    setDragPending({
       type: 'dim_label',
       constraintId: cid,
       featureId: interaction.featureId,
       anchorWorld: [vx, vy],
       startWorld: [labelX, labelY],
-      currentWorld: [labelX, labelY],
     })
-  }, [interaction, cid, vx, vy, labelX, labelY, resetDragMoved, setDrag, setOrbitEnabled])
+  }, [interaction, cid, vx, vy, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
   return (
     <group key={cid}>

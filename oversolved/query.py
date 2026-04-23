@@ -76,6 +76,15 @@ class Repository:
         self.elements[id] = obj
         return id
 
+    def clear_by_sketch_id(self, sketch_id: str) -> None:
+        """Remove all direct elements whose payload contains the given sketch_id."""
+        keys_to_remove = [
+            k for k, v in self.elements.items()
+            if isinstance(v, dict) and v.get("sketch_id") == sketch_id
+        ]
+        for k in keys_to_remove:
+            del self.elements[k]
+
     def query(self, query_str: str, context: str | None = None) -> Any:
         if not query_str:
             return None

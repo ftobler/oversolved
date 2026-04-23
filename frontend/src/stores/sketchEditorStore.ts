@@ -67,6 +67,25 @@ export interface DimLabelDrag {
 
 export type DragState = VertexOrEdgeDrag | DimLabelDrag
 
+export interface EdgeVertexDragPending {
+  type: 'edge' | 'vertex'
+  vertexId: string
+  featureId: string
+  entityId: string
+  vertexKey: string
+  startWorld: [number, number]
+}
+
+export interface DimLabelDragPending {
+  type: 'dim_label'
+  constraintId: string
+  featureId: string
+  anchorWorld: [number, number]
+  startWorld: [number, number]
+}
+
+export type DragPendingState = EdgeVertexDragPending | DimLabelDragPending
+
 interface SketchEditorState {
    // SELECTION SUBSYSTEM
    // Internal hover selection — always reflects what's directly under cursor.
@@ -111,14 +130,14 @@ interface SketchEditorState {
   // DRAG TOOL STATE
   drag: DragState | null
   dragStartClient: [number, number] | null  // screen coordinates at pointer-down, before drag initiated (for lazy initiation)
-  dragPending: { type: 'edge' | 'vertex'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: [number, number] } | null  // pending drag info from onPointerDown, used for lazy initiation
+  dragPending: DragPendingState | null  // pending drag info from onPointerDown, used for lazy initiation
   dragSnap: SnapTarget | null
   alignmentSnapPoint: [number, number] | null
   alignmentSnapKind: 'kinda_horizontal' | 'kinda_vertical' | null
   alignmentSnapVertexId: string | null
   setDrag: (drag: DragState | null) => void
   setDragStartClient: (pos: [number, number] | null) => void
-  setDragPending: (pending: { type: 'edge' | 'vertex'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: [number, number] } | null) => void
+  setDragPending: (pending: DragPendingState | null) => void
   setDragSnap: (snap: SnapTarget | null) => void
   setAlignmentSnap: (point: [number, number] | null, kind: 'kinda_horizontal' | 'kinda_vertical' | null, vertexId: string | null) => void
 

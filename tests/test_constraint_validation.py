@@ -5,7 +5,7 @@ These tests cover fixes for the following bug reports:
 - failed_ghost_constraint_20260403_233849
 - constraint_between_two_sketches_20260403_233102
 """
-from oversolved.solver import _solve_sketch
+from oversolved.solver import _solve_sketch, _post_register
 from oversolved.query import Repository
 from oversolved.solver import _register_solved_geometry
 
@@ -157,3 +157,62 @@ class TestConstraintAutoDeletion:
         # The constraint should be kept and solve successfully
         assert 'c_distance' in sketch2_result['constraints']
         assert sketch2_result['status'] == 'fully_constrained'
+
+    def test_stale_cross_sketch_reference_is_deleted(self):
+        """When upstream entity is deleted, its old global_repo registrations must be
+cleared so downstream cross-sketch constraints are garbage-collected."""
+        # Solve sketch1 with line1 and register via _post_register
+        sketch1 = {
+            'id': 'sketch1',
+            'kind': 'sketch',
+            'plane': '@builtin_plane_front',
+            'entities': [{'id': 'line1', 'kind': 'line'}],
+            'initial': {'line1': [0.0, 0.0, 10.0, 0.0]},
+            'constraints': [
+                {'id': 'c_fix', 'kind': 'fixed', 'target': '$line1', 'x': 0, 'y': 0}
+            ]
+        }
+        sketch1_result = _solve_sketch(sketch1)
+        global_repo = Repository()
+        _post_register(global_repo, 'sketch1', sketch1, sketch1_result)
+
+        # Verify line1 is registered
+        assert global_repo.query('@sketch1line1') is not None
+
+        # Re-solve sketch1 without line1 (entity deleted)
+        sketch1_v2 = {
+            'id': 'sketch1',
+            'kind': 'sketch',
+            'plane': '@builtin_plane_front',
+            'entities': [],
+            'initial': {},
+            'constraints': []
+        }
+        sketch1_result_v2 = _solve_sketch(sketch1_v2)
+        _post_register(global_repo, 'sketch1', sketch1_v2, sketch1_result_v2)
+
+        # Old registration must be gone
+        assert global_repo.query('@sketch1line1') is None
+        assert global_repo.query('@sketch1line1start') is None
+
+        # Downstream sketch2 referencing the deleted line1
+        sketch2_result = _solve_sketch({
+            'id': 'sketch2',
+            'kind': 'sketch',
+            'plane': '@builtin_plane_front',
+            'entities': [{'id': 'pt1', 'kind': 'point'}],
+            'initial': {'pt1': [5.0, 0.0]},
+            'constraints': [
+                {
+                    'id': 'c_dist',
+                    'kind': 'point_distance',
+                    'a': '$pt1',
+                    'b': '@sketch1line1start',
+                    'value': 5.0
+                }
+            ]
+        }, global_repo=global_repo)
+
+        assert 'c_dist' not in sketch2_result['constraints'], \
+            "Cross-sketch constraint to deleted entity should be garbage collected"
+        assert sketch2_result['status'] != 'exception'
