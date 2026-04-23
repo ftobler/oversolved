@@ -538,9 +538,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {(feature.kind === 'extrude' || feature.kind === 'import_step') && (
                       <span className="feature-visibility-placeholder" />
                     )}
-                    {(feature.kind === 'sketch' || feature.kind === 'plane') && feature.id === editingFeatureId && (
-                      <span className="feature-visibility-placeholder" />
-                    )}
                     {BUILT_IN_IDS.has(feature.id) && (
                       <span className="feature-visibility-placeholder" />
                     )}
