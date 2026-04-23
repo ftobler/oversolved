@@ -294,6 +294,7 @@ useEffect(() => {
     const featureIds = [...sel]
       .filter(id => id.startsWith('@') && !id.startsWith('@builtin_'))
       .map(id => id.slice(1))
+      .filter(id => !BUILT_IN_IDS.has(id))
     for (const featureId of featureIds) {
       if (featureId === editingFeatureId) {
         setEditingFeatureId(null)

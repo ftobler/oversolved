@@ -160,6 +160,24 @@ export function applyToggleConstruction(doc: PartDoc, targets: string[]): void {
   }
 }
 
+const _REF_FIELDS: (keyof PartConstraint)[] = ['target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b']
+
+function _refsDeletedEntity(c: PartConstraint, deletedIds: Set<string>): boolean {
+  for (const field of _REF_FIELDS) {
+    const ref = c[field]
+    if (typeof ref !== 'string' || !ref.startsWith('$')) continue
+    const bare = ref.slice(1)
+    for (const eid of deletedIds) {
+      if (bare === eid) return true
+      if (bare.startsWith(eid)) {
+        const suffix = bare.slice(eid.length)
+        if (['start', 'end', 'center', 'xy'].includes(suffix)) return true
+      }
+    }
+  }
+  return false
+}
+
 export function applyDeleteElements(doc: PartDoc, targets: string[]): void {
   const byFeature: Record<string, { entities: Set<string>; constraints: Set<string> }> = {}
   for (const t of targets) {
@@ -176,6 +194,12 @@ export function applyDeleteElements(doc: PartDoc, targets: string[]): void {
     if (entsToDelete.size > 0) {
       if (feature.entities) feature.entities = feature.entities.filter(e => !entsToDelete.has(e.id))
       if (feature.initial) for (const eid of entsToDelete) delete feature.initial[eid]
+      // Garbage-collect constraints that reference deleted entities.
+      if (feature.constraints) {
+        for (const c of feature.constraints) {
+          if (_refsDeletedEntity(c, entsToDelete)) consToDelete.add(c.id)
+        }
+      }
     }
     if (consToDelete.size > 0 && feature.constraints) {
       feature.constraints = feature.constraints.filter(c => !consToDelete.has(c.id))
@@ -443,8 +467,11 @@ export function applyAddSketch(doc: PartDoc, featureId: string, label?: string):
   doc.features.push(feature)
 }
 
+const BUILTIN_FEATURE_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
+
 export function applyDeleteFeature(doc: PartDoc, featureId: string): void {
   if (!doc.features) return
+  if (BUILTIN_FEATURE_IDS.has(featureId)) return
   doc.features = doc.features.filter(f => f.id !== featureId)
 }
 

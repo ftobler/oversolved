@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc, PartConstraint } from '../../types/cad'
-import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddPointWithConstraint, applyAddImportStep } from '../yamlMutations'
+import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddPointWithConstraint, applyAddImportStep, applyDeleteFeature } from '../yamlMutations'
 
 const makeSampleDoc = (): PartDoc => ({
   version: 1,
@@ -198,8 +198,59 @@ describe('applyDeleteElements', () => {
     const doc = makeSampleDoc()
     applyDeleteElements(doc, ['entity:Sketch1:line1', 'constraint:Sketch1:c_len'])
     expect(doc.features![0].entities).toHaveLength(2)
-    expect(doc.features![0].constraints).toHaveLength(1)
+    // Both constraints reference $line1; c_len is explicitly deleted and
+    // c_horiz is garbage-collected because it references the deleted entity.
+    expect(doc.features![0].constraints).toHaveLength(0)
     expect(doc.features![0].initial!.line1).toBeUndefined()
+  })
+
+  it('deletes constraints that reference deleted entities', () => {
+    const doc = makeSampleDoc()
+    applyDeleteElements(doc, ['entity:Sketch1:line1'])
+    expect(doc.features![0].entities).toHaveLength(2)
+    // Both constraints reference $line1 and should be garbage-collected
+    expect(doc.features![0].constraints).toHaveLength(0)
+  })
+
+  it('deletes constraints referencing deleted entity sub-points', () => {
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'Sketch1',
+        kind: 'sketch',
+        initial: { line1: [0, 0, 10, 0] },
+        entities: [{ id: 'line1', kind: 'line' }],
+        constraints: [
+          { id: 'c_coin', kind: 'coincident', a: '$line1start', b: '$line1end' },
+        ],
+      }],
+    }
+    applyDeleteElements(doc, ['entity:Sketch1:line1'])
+    expect(doc.features![0].constraints).toHaveLength(0)
+  })
+
+  it('keeps constraints that do not reference deleted entities', () => {
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'Sketch1',
+        kind: 'sketch',
+        initial: { line1: [0, 0, 10, 0], line2: [0, 0, 0, 10] },
+        entities: [
+          { id: 'line1', kind: 'line' },
+          { id: 'line2', kind: 'line' },
+        ],
+        constraints: [
+          { id: 'c_horiz', kind: 'horizontal', target: '$line1' },
+          { id: 'c_vert', kind: 'vertical', target: '$line2' },
+        ],
+      }],
+    }
+    applyDeleteElements(doc, ['entity:Sketch1:line1'])
+    expect(doc.features![0].constraints).toHaveLength(1)
+    expect(doc.features![0].constraints![0].id).toBe('c_vert')
   })
 })
 
@@ -696,5 +747,49 @@ describe('applyAddImportStep', () => {
     const doc: PartDoc = {}
     applyAddImportStep(doc, 'f1', 'abc123.step')
     expect(doc.features).toHaveLength(1)
+  })
+})
+
+describe('applyDeleteFeature', () => {
+  it('deletes a user feature', () => {
+    const doc = docWithFeatures()
+    applyDeleteFeature(doc, 'sketch1')
+    expect(doc.features!.map(f => f.id)).not.toContain('sketch1')
+  })
+
+  it('does not delete a built-in origin', () => {
+    const doc = docWithFeatures()
+    applyDeleteFeature(doc, 'Origin')
+    expect(doc.features!.map(f => f.id)).toContain('Origin')
+  })
+
+  it('does not delete a built-in plane', () => {
+    const doc = docWithFeatures()
+    applyDeleteFeature(doc, 'Front')
+    expect(doc.features!.map(f => f.id)).toContain('Front')
+  })
+
+  it('does not delete Top built-in', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [
+      { id: 'Origin', kind: 'origin' },
+      { id: 'Top',    kind: 'plane' },
+      { id: 'Front',  kind: 'plane' },
+      { id: 'Right',  kind: 'plane' },
+      { id: 'mySketch', kind: 'sketch' },
+    ] }
+    applyDeleteFeature(doc, 'Top')
+    expect(doc.features!.map(f => f.id)).toContain('Top')
+  })
+
+  it('does not delete Right built-in', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [
+      { id: 'Origin', kind: 'origin' },
+      { id: 'Top',    kind: 'plane' },
+      { id: 'Front',  kind: 'plane' },
+      { id: 'Right',  kind: 'plane' },
+      { id: 'mySketch', kind: 'sketch' },
+    ] }
+    applyDeleteFeature(doc, 'Right')
+    expect(doc.features!.map(f => f.id)).toContain('Right')
   })
 })
