@@ -377,6 +377,7 @@
 }
 
 .part-item .part-visibility-btn {
+  display: flex;
   margin-left: auto;
 }
 

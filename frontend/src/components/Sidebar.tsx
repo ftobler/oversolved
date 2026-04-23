@@ -76,7 +76,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   solveResults,
   bodies,
 }) => {
-  const bodiesVisibilitySet = visibleBodies
   const [renamingFeatureId, setRenamingFeatureId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
@@ -617,7 +616,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <li className="empty">No parts</li>
           ) : (
             Object.entries(bodies || {}).map(([bodyId]) => {
-              const isHidden = onToggleBodyVisibility && bodiesVisibilitySet && !bodiesVisibilitySet.has(bodyId)
+              const isHidden = visibleBodies ? !visibleBodies.has(bodyId) : false
               return (
                 <li
                   key={bodyId}

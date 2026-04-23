@@ -535,13 +535,13 @@ useEffect(() => {
 
   const toggleBodyVisibility = useCallback((bodyId: string) => {
     setBodiesVisibility(prev => {
-      const isVisible = prev[bodyId] !== false
-      if (isVisible) {
+      const isHidden = prev[bodyId] === false
+      if (isHidden) {
         const next = { ...prev }
         delete next[bodyId]
         return next
       }
-      return { ...prev, [bodyId]: true }
+      return { ...prev, [bodyId]: false }
     })
   }, [])
 
@@ -796,7 +796,7 @@ useEffect(() => {
                   </div>
                 </div>
               )}
-              {mode !== 'code' && <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false))} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} />}
+              {mode !== 'code' && <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0 ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false)) : undefined} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} />}
             </>
           )}
         </div>
