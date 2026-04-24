@@ -936,19 +936,16 @@ def dialog_cancel(ctx):
 
 @icon("frontend/src/assets/icons/toolbar-project.svg")
 def toolbar_project(ctx):
-    """Icon for Project tool: source (dashed) -> arrow -> target (solid)."""
-    # Dashed source line (top)
-    draw_dotted_line(ctx, 0.15, 0.25, 0.85, 0.25, 5)
+    """Icon for Project tool"""
+    r = 0.3
 
-    # Arrow pointing down
-    ctx.move_to(0.5, 0.3)
-    ctx.line_to(0.5, 0.65)
-    stroke(ctx, 1.5)
-    _arrowhead(ctx, 0.5, 0.68, -90, px(4))
+    # dashed lines on top and bottom
+    draw_dotted_line(ctx, 0.5 - r, 0.5 - r, 0.5 + r, 0.5 - r, 3)
+    draw_dotted_line(ctx, 0.5 - r, 0.5 + r, 0.5 + r, 0.5 + r, 3)
 
-    # Solid projected line (bottom)
-    ctx.move_to(0.15, 0.75)
-    ctx.line_to(0.85, 0.75)
+    # Solid projected line on right side
+    ctx.move_to(0.5 + r, 0.5 - (r + 0.03))
+    ctx.line_to(0.5 + r, 0.5 + (r + 0.03))
     stroke(ctx, 2)
 
 
@@ -964,7 +961,7 @@ def context_rebuild(ctx):
 
     end_x = 0.5 + arc_radius * math.cos(end_angle)
     end_y = 0.5 + arc_radius * math.sin(end_angle)
-    _arrowhead(ctx, end_x, end_y, math.degrees(end_angle), px(4))
+    _arrowhead(ctx, end_x + 0.05, end_y + 0.15, math.degrees(end_angle) + 80, px(8))
 
 
 @icon("frontend/src/assets/icons/context-exit.svg")
@@ -1143,16 +1140,22 @@ def icon_dots(ctx):
 @icon("frontend/src/assets/icons/rename.svg")
 def icon_rename(ctx):
     """Icon for Rename: a text cursor"""
-    ctx.move_to(0.5, 0.2)
-    ctx.line_to(0.5, 0.8)
+    top = 0.2  # y coordinate of top of cursor
+    serif_len = 0.15
+    serif_short = 0.027
+    serif_offset = 0.02
+
+    bot = 1 - top
+    ctx.move_to(0.5, top + serif_offset)
+    ctx.line_to(0.5, bot - serif_offset)
     stroke(ctx, 1.5)
     # serif at top and bottom
-    serif_len = 0.15
-    ctx.move_to(0.5 + serif_len, 0.2)
-    ctx.line_to(0.5 - serif_len, 0.2)
-    ctx.move_to(0.5 + serif_len, 0.8)
-    ctx.line_to(0.5 - serif_len, 0.8)
-    stroke(ctx, 1.5)
+    for a in [-1, 1]:
+        ctx.move_to(0.5 + a * serif_len,   top)
+        ctx.line_to(0.5 + a * serif_short, top)
+        ctx.move_to(0.5 + a * serif_len,   bot)
+        ctx.line_to(0.5 + a * serif_short, bot)
+        stroke(ctx, 1.5)
 
 
 if __name__ == "__main__":
