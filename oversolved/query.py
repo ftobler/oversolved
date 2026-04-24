@@ -1,9 +1,149 @@
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Optional
 import secrets
 
 
 class AmbiguousQueryError(Exception):
     """Raised when an ancestry query matches more than one element."""
+
+
+@dataclass(frozen=True)
+class LocalQuery:
+    """$<eid> or $<eid><sub> -- element within the current feature."""
+    eid: str
+    sub: str = ""
+
+    @staticmethod
+    def from_string(s: str) -> "LocalQuery":
+        body = s[1:]
+        for pt in ("start", "end", "center", "xy"):
+            if body.endswith(pt) and len(body) > len(pt):
+                return LocalQuery(eid=body[: -len(pt)], sub=pt)
+        return LocalQuery(eid=body)
+
+
+@dataclass(frozen=True)
+class AbsoluteQuery:
+    """@<feat><eid> or @<feat> (feature-plane reference)."""
+    feature_id: str
+    eid: str = ""
+    sub: str = ""
+
+    @staticmethod
+    def feature_plane(feature_id: str) -> "AbsoluteQuery":
+        return AbsoluteQuery(feature_id=feature_id)
+
+    @staticmethod
+    def element(feature_id: str, eid: str, sub: str = "") -> "AbsoluteQuery":
+        return AbsoluteQuery(feature_id=feature_id, eid=eid, sub=sub)
+
+
+@dataclass(frozen=True)
+class AncestryQuery:
+    """?A,B;<id0><id1>...[:<type>][@<classifier>]"""
+    ancestor_ids: tuple[str, ...]
+    type_restriction: Optional[str] = None
+    classifier: Optional[str] = None
+
+    @staticmethod
+    def from_parts(
+        ids: list[str],
+        type_restriction: Optional[str] = None,
+        classifier: Optional[str] = None,
+    ) -> "AncestryQuery":
+        return AncestryQuery(
+            ancestor_ids=tuple(ids),
+            type_restriction=type_restriction,
+            classifier=classifier,
+        )
+
+
+def parse_query(s: str) -> "LocalQuery | AbsoluteQuery | AncestryQuery":
+    """Central parse entry-point -- replaces every inline startswith check."""
+    if s.startswith("$"):
+        return LocalQuery.from_string(s)
+    if s.startswith("@"):
+        return _parse_absolute(s)
+    if s.startswith("?"):
+        return _parse_ancestry_obj(s)
+    raise ValueError(f"Unrecognized query string: {s!r}")
+
+
+def emit_wire(q: "LocalQuery | AbsoluteQuery | AncestryQuery") -> str:
+    """Serialize a typed query to its wire-format string.
+
+    Call this ONLY at true serialization boundaries:
+      - writing into a YAML document
+      - building a repository key string
+      - constructing an ancestry id list for AncestryQuery.from_parts
+
+    Do NOT call to compare queries (use == on frozen dataclasses).
+    Do NOT call to inspect kind (use isinstance or match).
+    If you find yourself calling this just to pass the result somewhere
+    else in Python, keep the Query object instead.
+    """
+    match q:
+        case LocalQuery(eid, sub):
+            return "$" + eid + sub
+        case AbsoluteQuery(feature_id, eid, sub):
+            return "@" + feature_id + eid + sub
+        case AncestryQuery(ancestor_ids, type_restriction, classifier):
+            lengths = ",".join(format(len(i), "x") for i in ancestor_ids)
+            body = "?" + lengths + ";" + "".join(ancestor_ids)
+            if type_restriction:
+                body += ":" + type_restriction
+            if classifier:
+                body += "@" + classifier
+            return body
+    raise TypeError(f"Unknown query type: {type(q)!r}")  # type: ignore[return]
+
+
+def _parse_absolute(s: str) -> AbsoluteQuery:
+    body = s[1:]
+    for pt in ("start", "end", "center", "xy"):
+        if body.endswith(pt) and len(body) > len(pt):
+            rest = body[: -len(pt)]
+            return AbsoluteQuery(feature_id=rest, eid="", sub=pt)
+    return AbsoluteQuery(feature_id=body)
+
+
+def _parse_ancestry_obj(s: str) -> AncestryQuery:
+    ids, type_restriction = _parse_ancestry(s)
+    classifier: Optional[str] = None
+    if type_restriction and "@" in type_restriction:
+        type_restriction, classifier = type_restriction.split("@", 1)
+    return AncestryQuery(
+        ancestor_ids=tuple(ids),
+        type_restriction=type_restriction or None,
+        classifier=classifier,
+    )
+
+
+def local(eid: str, sub: str = "") -> LocalQuery:
+    """Construct a LocalQuery ($<eid><sub>)."""
+    return LocalQuery(eid=eid, sub=sub)
+
+
+def absolute(feature_id: str, eid: str = "", sub: str = "") -> AbsoluteQuery:
+    """Construct an AbsoluteQuery (@<feature_id><eid><sub>)."""
+    return AbsoluteQuery(feature_id=feature_id, eid=eid, sub=sub)
+
+
+def ancestry(
+    ids: "list[LocalQuery | AbsoluteQuery | AncestryQuery | str]",
+    type_restriction: Optional[str] = None,
+    classifier: Optional[str] = None,
+) -> AncestryQuery:
+    """Build an AncestryQuery from typed Query objects or raw wire strings.
+
+    Accepts Query objects so callers never have to call emit_wire themselves
+    just to pass something to this function.
+    """
+    wire_ids = [
+        emit_wire(i) if isinstance(i, (LocalQuery, AbsoluteQuery, AncestryQuery)) else i
+        for i in ids
+    ]
+    return AncestryQuery.from_parts(wire_ids, type_restriction, classifier)
 
 
 def _parse_ancestry(query_str: str) -> tuple[list[str], str | None]:
@@ -85,7 +225,13 @@ class Repository:
         for k in keys_to_remove:
             del self.elements[k]
 
-    def query(self, query_str: str, context: str | None = None) -> Any:
+    def query(
+        self,
+        query_str: "str | LocalQuery | AbsoluteQuery | AncestryQuery",
+        context: str | None = None,
+    ) -> Any:
+        if isinstance(query_str, (LocalQuery, AbsoluteQuery, AncestryQuery)):
+            return self._query_typed(query_str, context)
         if not query_str:
             return None
         start = query_str[0]
@@ -100,36 +246,65 @@ class Repository:
 
         if start == '?':
             ids, type_restriction = _parse_ancestry(query_str)
-            query_set = frozenset(ids)
-
-            # Collect all registered elements whose ancestor set is a subset of the query set.
-            # Exact match is included (it is a subset of itself).
-            # This enables partial resolve: a query with more ids than needed still resolves
-            # if the element was re-registered with a smaller ancestor set.
-            candidate_ids: list[str] = []
-            for registered_key, element_ids in self.anchestral.items():
-                if registered_key <= query_set:
-                    candidate_ids.extend(element_ids)
-
-            if not candidate_ids:
-                return None
-
-            # Filter by type restriction if given.
-            if type_restriction is not None:
-                candidate_ids = [
-                    eid for eid in candidate_ids
-                    if _obj_type(self.elements.get(eid)) == type_restriction
-                ]
-
-            if len(candidate_ids) == 0:
-                return None
-            if len(candidate_ids) > 1:
-                raise AmbiguousQueryError(
-                    f"Query {query_str!r} matched {len(candidate_ids)} elements: {candidate_ids}"
-                )
-            return self.elements.get(candidate_ids[0])
+            return self._resolve_ancestry_ids(ids, type_restriction, None)
 
         return None
+
+    def _query_typed(
+        self,
+        q: "LocalQuery | AbsoluteQuery | AncestryQuery",
+        context: str | None,
+    ) -> Any:
+        match q:
+            case LocalQuery(eid, sub):
+                if context is None:
+                    return None
+                return self.elements.get(context + eid + sub)
+            case AbsoluteQuery(feature_id, eid, sub):
+                return self.elements.get(feature_id + eid + sub)
+            case AncestryQuery(ancestor_ids, type_restriction, classifier):
+                return self._resolve_ancestry_ids(
+                    list(ancestor_ids), type_restriction, classifier
+                )
+        return None  # type: ignore[return-value]
+
+    def _resolve_ancestry_ids(
+        self,
+        ids: list[str],
+        type_restriction: Optional[str],
+        classifier: Optional[str],
+    ) -> Any:
+        query_set = frozenset(ids)
+
+        # Collect all registered elements whose ancestor set is a subset of the query set.
+        # Exact match is included (it is a subset of itself).
+        # This enables partial resolve: a query with more ids than needed still resolves
+        # if the element was re-registered with a smaller ancestor set.
+        candidate_ids: list[str] = []
+        for registered_key, element_ids in self.anchestral.items():
+            if registered_key <= query_set:
+                candidate_ids.extend(element_ids)
+
+        if not candidate_ids:
+            return None
+
+        # Filter by type restriction if given.
+        effective_type = type_restriction
+        if classifier is not None and effective_type is not None:
+            effective_type = effective_type  # classifier handled by future resolver
+        if effective_type is not None:
+            candidate_ids = [
+                eid for eid in candidate_ids
+                if _obj_type(self.elements.get(eid)) == effective_type
+            ]
+
+        if len(candidate_ids) == 0:
+            return None
+        if len(candidate_ids) > 1:
+            raise AmbiguousQueryError(
+                f"Query matched {len(candidate_ids)} elements: {candidate_ids}"
+            )
+        return self.elements.get(candidate_ids[0])
 
     def query_all(self, query_str: str) -> list[Any]:
         """Return all elements whose ancestor set is a superset of the query's IDs.
@@ -151,5 +326,22 @@ class Repository:
             candidate_ids = [
                 eid for eid in candidate_ids
                 if _obj_type(self.elements.get(eid)) == type_restriction
+            ]
+        return [self.elements[eid] for eid in candidate_ids if eid in self.elements]
+
+    def query_all_typed(
+        self,
+        q: "AncestryQuery",
+    ) -> list[Any]:
+        """Typed variant of query_all accepting an AncestryQuery object."""
+        query_set = frozenset(q.ancestor_ids)
+        candidate_ids: list[str] = []
+        for registered_key, element_ids in self.anchestral.items():
+            if query_set <= registered_key:
+                candidate_ids.extend(element_ids)
+        if q.type_restriction is not None:
+            candidate_ids = [
+                eid for eid in candidate_ids
+                if _obj_type(self.elements.get(eid)) == q.type_restriction
             ]
         return [self.elements[eid] for eid in candidate_ids if eid in self.elements]

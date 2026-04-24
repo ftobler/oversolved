@@ -1,0 +1,230 @@
+"""Unit tests for the typed query classes introduced in query.py.
+
+Tests are pure Python -- no OCC, no solver, no Repository.
+"""
+import pytest
+from oversolved.query import (
+    LocalQuery, AbsoluteQuery, AncestryQuery,
+    parse_query, emit_wire,
+    local, absolute, ancestry,
+    make_ancestry_query,
+)
+
+
+# LocalQuery
+
+def test_local_query_no_sub():
+    assert emit_wire(LocalQuery("line1")) == "$line1"
+
+
+def test_local_query_with_sub():
+    assert emit_wire(LocalQuery("line1", "start")) == "$line1start"
+
+
+def test_local_from_string_no_sub():
+    q = parse_query("$line1")
+    assert q == LocalQuery(eid="line1", sub="")
+
+
+def test_local_from_string_start():
+    q = parse_query("$line1start")
+    assert q == LocalQuery(eid="line1", sub="start")
+
+
+def test_local_from_string_end():
+    q = parse_query("$line1end")
+    assert q == LocalQuery(eid="line1", sub="end")
+
+
+def test_local_from_string_center():
+    q = parse_query("$line1center")
+    assert q == LocalQuery(eid="line1", sub="center")
+
+
+def test_local_from_string_xy():
+    q = parse_query("$line1xy")
+    assert q == LocalQuery(eid="line1", sub="xy")
+
+
+def test_local_roundtrip():
+    for sub in ("", "start", "end", "center", "xy"):
+        q = LocalQuery(eid="e1", sub=sub)
+        assert parse_query(emit_wire(q)) == q
+
+
+def test_local_equality():
+    assert LocalQuery("e1", "start") == LocalQuery("e1", "start")
+    assert LocalQuery("e1", "start") != LocalQuery("e1", "end")
+
+
+# AbsoluteQuery
+
+def test_absolute_feature_plane():
+    assert emit_wire(AbsoluteQuery("sketch1")) == "@sketch1"
+
+
+def test_absolute_element():
+    assert emit_wire(AbsoluteQuery("sketch1", "line1")) == "@sketch1line1"
+
+
+def test_absolute_element_with_sub():
+    assert emit_wire(AbsoluteQuery("sketch1", "line1", "start")) == "@sketch1line1start"
+
+
+def test_absolute_from_string():
+    q = parse_query("@sketch1line1")
+    assert isinstance(q, AbsoluteQuery)
+
+
+def test_absolute_roundtrip():
+    for s in ("@sketch1", "@sketch1line1", "@sketch1line1start"):
+        assert emit_wire(parse_query(s)) == s
+
+
+def test_absolute_feature_plane_factory():
+    assert emit_wire(AbsoluteQuery.feature_plane("sk1")) == "@sk1"
+
+
+def test_absolute_element_factory():
+    assert emit_wire(AbsoluteQuery.element("sk1", "l1", "end")) == "@sk1l1end"
+
+
+# AncestryQuery
+
+def test_ancestry_two_ids():
+    ids = ["@sk1a", "@sk1b"]
+    assert emit_wire(ancestry(ids)) == make_ancestry_query(ids)
+
+
+def test_ancestry_with_type():
+    s = emit_wire(ancestry(["@a", "@b"], "flatface"))
+    assert s.endswith(":flatface")
+
+
+def test_ancestry_with_classifier():
+    s = emit_wire(ancestry(["@a"], "flatface", "inner"))
+    assert ":flatface@inner" in s
+
+
+def test_ancestry_from_string_no_type():
+    # "@sk1a" has length 5 -> hex "5"
+    q = parse_query("?5,5;@sk1a@sk1b")
+    assert isinstance(q, AncestryQuery)
+    assert list(q.ancestor_ids) == ["@sk1a", "@sk1b"]
+
+
+def test_ancestry_from_string_typed():
+    q = parse_query("?5,5;@sk1a@sk1b:flatface")
+    assert isinstance(q, AncestryQuery)
+    assert q.type_restriction == "flatface"
+
+
+def test_ancestry_from_string_classified():
+    # "@a" length 2, "@b" length 2
+    q = parse_query("?2,2;@a@b:flatface@inner")
+    assert isinstance(q, AncestryQuery)
+    assert q.type_restriction == "flatface"
+    assert q.classifier == "inner"
+
+
+def test_ancestry_roundtrip():
+    ids = ["@sk1a", "@sk1b"]
+    base = make_ancestry_query(ids, "flatface")
+    q = parse_query(base)
+    assert emit_wire(q) == base
+
+
+def test_ancestry_nested():
+    inner = ancestry(["@a", "@b"], "flatface")
+    outer = ancestry([inner, "@c"])
+    wire = emit_wire(outer)
+    assert emit_wire(inner) in wire
+
+
+def test_ancestry_accepts_query_objects():
+    a = absolute("sk1", "a")
+    b = absolute("sk1", "b")
+    q = ancestry([a, b])
+    assert list(q.ancestor_ids) == ["@sk1a", "@sk1b"]
+
+
+# parse_query dispatch
+
+def test_parse_query_local():
+    assert isinstance(parse_query("$x"), LocalQuery)
+
+
+def test_parse_query_absolute():
+    assert isinstance(parse_query("@x"), AbsoluteQuery)
+
+
+def test_parse_query_ancestry():
+    assert isinstance(parse_query("?1;x"), AncestryQuery)
+
+
+def test_parse_query_invalid_empty():
+    with pytest.raises(ValueError):
+        parse_query("")
+
+
+def test_parse_query_invalid_prefix():
+    with pytest.raises(ValueError):
+        parse_query("xbad")
+
+
+# Constructor helpers
+
+def test_helper_local():
+    assert local("e") == LocalQuery(eid="e", sub="")
+
+
+def test_helper_local_sub():
+    assert local("e", "start") == LocalQuery(eid="e", sub="start")
+
+
+def test_helper_absolute():
+    assert absolute("f", "e") == AbsoluteQuery(feature_id="f", eid="e")
+
+
+def test_helper_ancestry_strings():
+    q = ancestry(["@a", "@b"])
+    assert q.ancestor_ids == ("@a", "@b")
+
+
+def test_helper_ancestry_objects():
+    q1 = ancestry([absolute("f", "a"), absolute("f", "b")])
+    q2 = ancestry(["@fa", "@fb"])
+    assert q1 == q2
+
+
+# emit_wire is the only exit point
+
+def test_emit_wire_local():
+    assert emit_wire(LocalQuery("e1", "start")) == "$e1start"
+
+
+def test_emit_wire_absolute():
+    assert emit_wire(AbsoluteQuery("sk1", "l1", "end")) == "@sk1l1end"
+
+
+def test_emit_wire_ancestry():
+    s = emit_wire(AncestryQuery(("@a", "@b"), "flatface"))
+    assert s.endswith(":flatface")
+
+
+def test_emit_wire_roundtrip():
+    # LocalQuery round-trips structurally (parse_query reconstructs original fields)
+    for q in [LocalQuery("e1"), LocalQuery("e1", "start")]:
+        assert parse_query(emit_wire(q)) == q
+
+    # AbsoluteQuery parsed from wire folds everything into feature_id (no split),
+    # so structural equality doesn't hold -- only the wire string is stable.
+    for q in [AbsoluteQuery("sk1"), AbsoluteQuery("sk1", "l1"), AbsoluteQuery("sk1", "l1", "end")]:
+        assert emit_wire(parse_query(emit_wire(q))) == emit_wire(q)
+
+
+# Backward compatibility shim
+
+def test_make_ancestry_query_shim():
+    ids = ["@sk1a", "@sk1b"]
+    assert make_ancestry_query(ids, "flatface") == emit_wire(ancestry(ids, "flatface"))

@@ -2,7 +2,7 @@ import copy
 import math
 import time
 from typing import Any
-from oversolved.query import Repository
+from oversolved.query import Repository, emit_wire, absolute
 from oversolved.types3d import Body, FeatureCheckpoint, BuildState
 from oversolved.solver import _init_global_repo, _try_solve_feature, _post_register
 
@@ -72,7 +72,7 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
 
     face_data = mesh.get("face_data") or []
     for face_idx, face_info in enumerate(face_data):
-        ancestor_ids = [f"@{body.created_by}face{face_idx}", f"@{body.created_by}"]
+        ancestor_ids = [emit_wire(absolute(body.created_by, f"face{face_idx}")), emit_wire(absolute(body.created_by))]
         centroid = face_info.get("centroid", [0.0, 0.0, 0.0])
         normal = face_info.get("normal", [0.0, 0.0, 1.0])
         x_axis, y_axis = _face_plane_axes(normal)
@@ -102,7 +102,7 @@ def _register_solid_ancestry(global_repo, body: Body) -> None:
     """Register the solid body itself as a queryable solid entity."""
     if global_repo is None or not body.created_by:
         return
-    global_repo.register_ancestor(
+global_repo.register_ancestor(
         [f"@{body.created_by}"],
         {"type": "solid", "body_id": body.id, "created_by": body.created_by},
     )
@@ -112,7 +112,7 @@ def _register_extrusion_feature(global_repo, feature_id: str, sketch_id: str = "
     """Register an extrusion feature as a queryable extrusion-feature entity."""
     if global_repo is None or not feature_id:
         return
-    global_repo.register_ancestor(
+global_repo.register_ancestor(
         [f"@{feature_id}"],
         {"type": "extrusion-feature", "feature_id": feature_id, "sketch_id": sketch_id},
     )
@@ -200,7 +200,7 @@ def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_quer
     if global_repo is None or not body.created_by or not edge_queries:
         return
     for idx, (edge, query) in enumerate(zip(edges, edge_queries)):
-        ancestor_ids = [f"@{body.created_by}edge{idx}", f"@{body.created_by}"]
+        ancestor_ids = [emit_wire(absolute(body.created_by, f"edge{idx}")), emit_wire(absolute(body.created_by))]
         edge_type = "straightedge" if edge.get("kind") == "line" else "edge"
         payload: dict[str, Any] = {
             "type": edge_type,
@@ -222,7 +222,7 @@ def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vert
     if global_repo is None or not body.created_by or not vertex_queries:
         return
     for idx, (pt, query) in enumerate(zip(vertices, vertex_queries)):
-        ancestor_ids = [f"@{body.created_by}vertex{idx}", f"@{body.created_by}"]
+        ancestor_ids = [emit_wire(absolute(body.created_by, f"vertex{idx}")), emit_wire(absolute(body.created_by))]
         payload: dict[str, Any] = {
             "type": "vertex",
             "body_id": body.id,
