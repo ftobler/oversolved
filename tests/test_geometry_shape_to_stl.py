@@ -1,8 +1,6 @@
 """Tests for geometry.shape_to_stl_file function."""
 
-import os
 import tempfile
-import pytest
 
 from oversolved.geometry import shape_to_stl_file, solid_to_mesh
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox

@@ -1,4 +1,3 @@
-from textwrap import fill
 from icon_cairo import icon, draw_all, px, stroke
 import math
 

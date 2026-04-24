@@ -4,7 +4,6 @@ When an extrude uses operation: "add" and fuses with an existing body,
 the returned body_id should reference the existing body (not a non-existent new body).
 This ensures the frontend can find the mesh and not show the feature as red.
 """
-import pytest
 from oversolved.builder import build
 
 
@@ -86,4 +85,4 @@ def test_extrude_add_returns_existing_body_id():
 
 
 if __name__ == "__main__":
-    test_extrude_with_sketch_empty_plane()
+    test_extrude_add_returns_existing_body_id()
