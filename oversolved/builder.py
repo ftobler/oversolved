@@ -89,11 +89,13 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
         }
         key = frozenset(ancestor_ids)
         existing_ids = global_repo.anchestral.get(key, [])
-        for element_id in existing_ids:
-            if global_repo.elements.get(element_id) == payload:
-                break
-        else:
-            global_repo.register_anchestor(ancestor_ids, payload)
+        if any(global_repo.elements.get(eid) == payload for eid in existing_ids):
+            continue  # already registered with identical payload
+        # Remove stale entries (body modified by boolean ops since early registration).
+        for eid in existing_ids:
+            global_repo.elements.pop(eid, None)
+        global_repo.anchestral.pop(key, None)
+        global_repo.register_anchestor(ancestor_ids, payload)
 
 
 def _register_solid_ancestry(global_repo, body: Body) -> None:

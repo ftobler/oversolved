@@ -97,3 +97,113 @@ def test_sketch_on_face_round_trip_second_extrude():
     assert sk2_result.get('status') != 'exception', (
         f"sk2 failed: {sk2_result.get('exception')}"
     )
+
+
+def test_sketch_on_face_after_boolean_cut_partial_rebuild():
+    """Sketch placed on a face of a body that was later modified by a boolean cut.
+
+    Regression test: after ex2 cuts into ex1's body, the face centroids change.
+    A subsequent partial rebuild must not raise AmbiguousQueryError because stale
+    face registrations (S1 geometry) co-exist with updated ones (S3 geometry).
+    """
+    from oversolved.builder import BuildState
+
+    # Build 1: sk1 + ex1 (base block) + sk2_cut (smaller rect) + ex2 (cut)
+    # then sk3 placed on a face of ex1 (after the cut).
+    sk1 = {
+        'id': 'sk1',
+        'kind': 'sketch',
+        'plane': '@builtin_plane_front',
+        'entities': [
+            {'id': 'b', 'kind': 'line'},
+            {'id': 'r', 'kind': 'line'},
+            {'id': 't', 'kind': 'line'},
+            {'id': 'l', 'kind': 'line'},
+        ],
+        'initial': {'b': [0, 0, 10, 0], 'r': [10, 0, 10, 10], 't': [10, 10, 0, 10], 'l': [0, 10, 0, 0]},
+        'constraints': [
+            {'id': 'c1', 'kind': 'coincident', 'a': {'entity': 'b', 'point': 'end'}, 'b': {'entity': 'r', 'point': 'start'}},
+            {'id': 'c2', 'kind': 'coincident', 'a': {'entity': 'r', 'point': 'end'}, 'b': {'entity': 't', 'point': 'start'}},
+            {'id': 'c3', 'kind': 'coincident', 'a': {'entity': 't', 'point': 'end'}, 'b': {'entity': 'l', 'point': 'start'}},
+            {'id': 'c4', 'kind': 'coincident', 'a': {'entity': 'l', 'point': 'end'}, 'b': {'entity': 'b', 'point': 'start'}},
+            {'id': 'c5', 'kind': 'horizontal', 'target': {'entity': 'b'}},
+            {'id': 'c6', 'kind': 'horizontal', 'target': {'entity': 't'}},
+            {'id': 'c7', 'kind': 'vertical', 'target': {'entity': 'r'}},
+            {'id': 'c8', 'kind': 'vertical', 'target': {'entity': 'l'}},
+            {'id': 'c9', 'kind': 'length', 'target': {'entity': 'b'}, 'value': 10},
+            {'id': 'c10', 'kind': 'length', 'target': {'entity': 'l'}, 'value': 10},
+        ],
+    }
+    ex1 = {'id': 'ex1', 'kind': 'extrude', 'sketch': '$sk1', 'distance': 8.0}
+
+    # sk2_cut: a smaller 4x4 rect on the same plane, used to cut into ex1.
+    sk2_cut = {
+        'id': 'sk2cut',
+        'kind': 'sketch',
+        'plane': '@builtin_plane_front',
+        'entities': [
+            {'id': 'b', 'kind': 'line'},
+            {'id': 'r', 'kind': 'line'},
+            {'id': 't', 'kind': 'line'},
+            {'id': 'l', 'kind': 'line'},
+        ],
+        'initial': {'b': [2, 2, 6, 2], 'r': [6, 2, 6, 6], 't': [6, 6, 2, 6], 'l': [2, 6, 2, 2]},
+        'constraints': [
+            {'id': 'c1', 'kind': 'coincident', 'a': {'entity': 'b', 'point': 'end'}, 'b': {'entity': 'r', 'point': 'start'}},
+            {'id': 'c2', 'kind': 'coincident', 'a': {'entity': 'r', 'point': 'end'}, 'b': {'entity': 't', 'point': 'start'}},
+            {'id': 'c3', 'kind': 'coincident', 'a': {'entity': 't', 'point': 'end'}, 'b': {'entity': 'l', 'point': 'start'}},
+            {'id': 'c4', 'kind': 'coincident', 'a': {'entity': 'l', 'point': 'end'}, 'b': {'entity': 'b', 'point': 'start'}},
+            {'id': 'c5', 'kind': 'horizontal', 'target': {'entity': 'b'}},
+            {'id': 'c6', 'kind': 'horizontal', 'target': {'entity': 't'}},
+            {'id': 'c7', 'kind': 'vertical', 'target': {'entity': 'r'}},
+            {'id': 'c8', 'kind': 'vertical', 'target': {'entity': 'l'}},
+            {'id': 'c9', 'kind': 'length', 'target': {'entity': 'b'}, 'value': 4},
+            {'id': 'c10', 'kind': 'length', 'target': {'entity': 'l'}, 'value': 4},
+        ],
+    }
+    ex2_cut = {
+        'id': 'ex2cut',
+        'kind': 'extrude',
+        'sketch': '$sk2cut',
+        'distance': 3.0,
+        'operation': 'cut',
+    }
+
+    # First build: sk1, ex1, sk2_cut, ex2_cut -- no sk3 yet.
+    spec_v1 = {'features': [sk1, ex1, sk2_cut, ex2_cut]}
+    r1 = build(spec_v1)
+    assert r1['result']['ex1'].get('status') != 'exception', r1['result']['ex1'].get('exception')
+
+    # Pick any face query from ex1's body.
+    face_query = None
+    for body_info in r1.get('bodies', {}).values():
+        mesh = body_info.get('mesh') or {}
+        queries = mesh.get('face_queries') or []
+        if queries:
+            face_query = queries[0]
+            break
+    assert face_query is not None, "no face query found after boolean cut build"
+
+    # Second build: same features + sk3 placed on ex1's face.
+    sk3 = {
+        'id': 'sk3',
+        'kind': 'sketch',
+        'plane': face_query,
+        'entities': [],
+        'constraints': [],
+    }
+    spec_v2 = {'features': [sk1, ex1, sk2_cut, ex2_cut, sk3]}
+    r2 = build(spec_v2)
+    sk3_result = r2['result'].get('sk3', {})
+    assert sk3_result.get('status') != 'exception', (
+        f"sk3 failed (first build with sk3): {sk3_result.get('exception')}"
+    )
+
+    # Third build: partial rebuild -- sk3 is unchanged but we pass prev BuildState.
+    # This triggers loading ex1's checkpoint which previously had stale face entries.
+    prev_state: BuildState = r2['_build_state']
+    r3 = build(spec_v2, prev_state=prev_state)
+    sk3_result3 = r3['result'].get('sk3', {})
+    assert sk3_result3.get('status') != 'exception', (
+        f"sk3 failed (partial rebuild): {sk3_result3.get('exception')}"
+    )
