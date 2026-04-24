@@ -95,6 +95,49 @@ def test_partial_rebuild_restores_brep_face_ancestry_queries():
     assert r2["result"]["pl1"]["status"] == "ok"
 
 
+def test_partial_rebuild_sketch_on_face_after_fuse_no_ambiguous_query():
+    """Sketch placed on a B-rep face must not cause AmbiguousQueryError after a fuse.
+
+    Sequence: sk1 -> ex1 -> sk2 (plane=face of ex1) -> ex2 (fused into ex1 body).
+    Modifying sk2 triggers a partial rebuild that restores ex1's checkpoint, which
+    previously carried both the early and enriched face registrations, causing two
+    flatface entries for the same ancestry key.
+    """
+    pytest.importorskip("OCP.gp")
+
+    sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    r1 = build({'features': [sk1, ex1]})
+
+    face_query = r1['bodies']['body_ex1']['mesh']['face_queries'][0]
+
+    sk2 = {
+        'id': 'sk2',
+        'kind': 'sketch',
+        'plane': face_query,
+        'entities': [{'id': 'l1', 'kind': 'line'}, {'id': 'l2', 'kind': 'line'},
+                     {'id': 'l3', 'kind': 'line'}, {'id': 'l4', 'kind': 'line'}],
+        'initial': {'l1': [0, 0, 4, 0], 'l2': [4, 0, 4, 4],
+                    'l3': [4, 4, 0, 4], 'l4': [0, 4, 0, 0]},
+        'constraints': [],
+    }
+    ex2 = extrude_spec('sk2', 'ex2', 2.0)
+    spec_full = {'features': [sk1, ex1, sk2, ex2]}
+    r_full = build(spec_full)
+
+    assert r_full['result']['sk2'].get('status') != 'exception', (
+        f"sk2 failed in full build: {r_full['result']['sk2'].get('exception')}"
+    )
+
+    sk2_v2 = {**sk2, 'label': 'modified'}
+    spec_partial = {'features': [sk1, ex1, sk2_v2, ex2]}
+    r_partial = build(spec_partial, prev_state=r_full['_build_state'])
+
+    assert r_partial['result']['sk2'].get('status') != 'exception', (
+        f"sk2 failed in partial rebuild: {r_partial['result']['sk2'].get('exception')}"
+    )
+
+
 def test_partial_rebuild_reusing_state_does_not_duplicate_brep_face_ancestry():
     """Rebuilding from the same cached state twice must not duplicate face ancestry."""
     pytest.importorskip("OCP.gp")

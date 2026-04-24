@@ -95,14 +95,14 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
         for eid in existing_ids:
             global_repo.elements.pop(eid, None)
         global_repo.anchestral.pop(key, None)
-        global_repo.register_anchestor(ancestor_ids, payload)
+        global_repo.register_ancestor(ancestor_ids, payload)
 
 
 def _register_solid_ancestry(global_repo, body: Body) -> None:
     """Register the solid body itself as a queryable solid entity."""
     if global_repo is None or not body.created_by:
         return
-    global_repo.register_anchestor(
+    global_repo.register_ancestor(
         [f"@{body.created_by}"],
         {"type": "solid", "body_id": body.id, "created_by": body.created_by},
     )
@@ -112,7 +112,7 @@ def _register_extrusion_feature(global_repo, feature_id: str, sketch_id: str = "
     """Register an extrusion feature as a queryable extrusion-feature entity."""
     if global_repo is None or not feature_id:
         return
-    global_repo.register_anchestor(
+    global_repo.register_ancestor(
         [f"@{feature_id}"],
         {"type": "extrusion-feature", "feature_id": feature_id, "sketch_id": sketch_id},
     )
@@ -211,7 +211,10 @@ def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_quer
             "start": edge.get("start"),
             "end": edge.get("end"),
         }
-        global_repo.register_anchestor(ancestor_ids, payload)
+        key = frozenset(ancestor_ids)
+        for old_id in global_repo.anchestral.pop(key, []):
+            global_repo.elements.pop(old_id, None)
+        global_repo.register_ancestor(ancestor_ids, payload)
 
 
 def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vertex_queries: list) -> None:
@@ -227,7 +230,10 @@ def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vert
             "vertex_index": idx,
             "origin": pt,
         }
-        global_repo.register_anchestor(ancestor_ids, payload)
+        key = frozenset(ancestor_ids)
+        for old_id in global_repo.anchestral.pop(key, []):
+            global_repo.elements.pop(old_id, None)
+        global_repo.register_ancestor(ancestor_ids, payload)
 
 
 def _tessellate_bodies(
