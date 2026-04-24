@@ -119,6 +119,27 @@ class TestApiSolve:
         data = json.loads(resp.data)
         assert data["result"]["ex1"]["status"] == "exception"
 
+    def test_two_unsaved_docs_produce_correct_results(self, client):
+        """Two payloads without an id field each produce geometrically correct results."""
+        sk_a = rect_sketch_spec(w=5.0, h=5.0, sketch_id='sk1')
+        sk_b = rect_sketch_spec(w=10.0, h=10.0, sketch_id='sk1')
+
+        r1 = post_solve(client, {'features': [sk_a]})
+        d1 = json.loads(r1.data)
+        geom_a = d1['result']['sk1']['geometry']
+
+        r2 = post_solve(client, {'features': [sk_b]})
+        d2 = json.loads(r2.data)
+        assert d2['result']['sk1']['geometry'] != geom_a
+
+        r3 = post_solve(client, {'features': [sk_a]})
+        d3 = json.loads(r3.data)
+        assert d3['result']['sk1']['geometry'] == geom_a
+
+        r4 = post_solve(client, {'id': 'isolated_doc', 'features': [sk_a]})
+        d4 = json.loads(r4.data)
+        assert d4['result']['sk1']['geometry'] == geom_a
+
     @pytest.mark.skipif(not HAS_OCC, reason="OCC not available")
     def test_partial_rebuild_two_requests(self, client):
         import time

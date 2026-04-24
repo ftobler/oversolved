@@ -138,6 +138,57 @@ def test_partial_rebuild_sketch_on_face_after_fuse_no_ambiguous_query():
     )
 
 
+def test_checkpoint_face_ancestry_uses_pre_fuse_geometry_after_undo():
+    """Checkpoint for ex1 must report its own (pre-fuse) face positions,
+    not the merged body's face positions, when a later fuse is undone.
+
+    Sequence:
+      full build:  sk1 -> ex1 (5mm) -> sk2 (on ex1 top face) -> ex2 (fuse 2mm)
+      undo build:  sk1 -> ex1 (5mm) -> sk3 (on ex1 top face, same query)
+                   using prev_state from full build
+
+    ex1's top face (normal +Z) should have plane_transform.origin.z == 5.0.
+    With the bug, the enriched checkpoint carries the post-fuse face index which
+    resolves to a different face (wrong origin/normal).
+    """
+    pytest.importorskip("OCP.gp")
+
+    sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    r_base = build({'features': [sk1, ex1]})
+
+    face_data = r_base['bodies']['body_ex1']['mesh']['face_data']
+    face_queries = r_base['bodies']['body_ex1']['mesh']['face_queries']
+    top_query = next(
+        fq for fd, fq in zip(face_data, face_queries)
+        if fd['normal'][2] > 0.9
+    )
+
+    # sk2 needs real entities so ex2 actually creates geometry and fuses into ex1.
+    sk2 = rect_sketch_spec(w=8.0, h=8.0, sketch_id='sk2', plane=top_query)
+    ex2 = extrude_spec('sk2', 'ex2', 2.0)
+    r_full = build({'features': [sk1, ex1, sk2, ex2]})
+
+    assert r_full['result']['ex2']['status'] == 'ok', (
+        f"ex2 failed in full build: {r_full['result']['ex2'].get('exception')}"
+    )
+
+    sk3 = {
+        'id': 'sk3', 'kind': 'sketch', 'plane': top_query,
+        'entities': [], 'constraints': [],
+    }
+    r_undo = build({'features': [sk1, ex1, sk3]}, prev_state=r_full['_build_state'])
+
+    assert r_undo['result']['sk3']['status'] != 'exception', (
+        f"sk3 failed after undo: {r_undo['result']['sk3'].get('exception')}"
+    )
+    origin = r_undo['result']['sk3']['plane_transform']['origin']
+    assert abs(origin[2] - 5.0) < 0.1, (
+        f"sk3 plane_transform origin z={origin[2]:.3f}, expected 5.0 (pre-fuse top face). "
+        f"Got wrong value -- checkpoint enrichment bug confirmed."
+    )
+
+
 def test_partial_rebuild_reusing_state_does_not_duplicate_brep_face_ancestry():
     """Rebuilding from the same cached state twice must not duplicate face ancestry."""
     pytest.importorskip("OCP.gp")

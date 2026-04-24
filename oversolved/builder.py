@@ -236,38 +236,45 @@ def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vert
         global_repo.register_ancestor(ancestor_ids, payload)
 
 
+def _tessellate_body_geometry(body: Body) -> dict[str, Any]:
+    """Tessellate a single body without registering ancestry."""
+    entry: dict[str, Any] = {
+        "id": body.id,
+        "created_by": body.created_by,
+        "modified_by": list(body.modified_by),
+    }
+    if body.shape is None:
+        entry["mesh_error"] = "no shape"
+        return entry
+    try:
+        from oversolved.geometry import solid_to_mesh, solid_to_edges, solid_to_vertices  # type: ignore[attr-defined]
+        entry["mesh"] = solid_to_mesh(body.shape, created_by=body.created_by)
+        edges_result = solid_to_edges(body.shape, created_by=body.created_by)
+        entry["edges"] = edges_result["edges"]
+        entry["edge_queries"] = edges_result["edge_queries"]
+        verts_result = solid_to_vertices(body.shape, created_by=body.created_by)
+        entry["vertices"] = verts_result["vertices"]
+        entry["vertex_queries"] = verts_result["vertex_queries"]
+    except ImportError:
+        entry["mesh_error"] = "geometry.solid_to_mesh not available (F2 pending)"
+    except Exception as exc:
+        entry["mesh_error"] = str(exc)
+    return entry
+
+
 def _tessellate_bodies(
     body_store: dict[str, Body], global_repo=None
 ) -> dict[str, dict]:
     """Convert all OCC shapes in body_store to mesh dicts."""
     out: dict[str, dict] = {}
     for body_id, body in body_store.items():
-        entry: dict[str, Any] = {
-            "id": body.id,
-            "created_by": body.created_by,
-            "modified_by": list(body.modified_by),
-        }
-        if body.shape is None:
-            entry["mesh_error"] = "no shape"
-        else:
-            try:
-                from oversolved.geometry import solid_to_mesh, solid_to_edges, solid_to_vertices  # type: ignore[attr-defined]
-                entry["mesh"] = solid_to_mesh(body.shape, created_by=body.created_by)
-                edges_result = solid_to_edges(body.shape, created_by=body.created_by)
-                entry["edges"] = edges_result["edges"]
-                entry["edge_queries"] = edges_result["edge_queries"]
-                verts_result = solid_to_vertices(body.shape, created_by=body.created_by)
-                entry["vertices"] = verts_result["vertices"]
-                entry["vertex_queries"] = verts_result["vertex_queries"]
-                _register_brep_face_ancestry(global_repo, body, entry["mesh"])
-                _register_brep_edge_ancestry(global_repo, body, entry["edges"], entry["edge_queries"])
-                _register_brep_vertex_ancestry(global_repo, body, entry["vertices"], entry["vertex_queries"])
-                _register_solid_ancestry(global_repo, body)
-                _register_extrusion_feature(global_repo, body.created_by or "", body.sketch_id)
-            except ImportError:
-                entry["mesh_error"] = "geometry.solid_to_mesh not available (F2 pending)"
-            except Exception as exc:
-                entry["mesh_error"] = str(exc)
+        entry = _tessellate_body_geometry(body)
+        if global_repo is not None and "mesh" in entry:
+            _register_brep_face_ancestry(global_repo, body, entry["mesh"])
+            _register_brep_edge_ancestry(global_repo, body, entry.get("edges", []), entry.get("edge_queries", []))
+            _register_brep_vertex_ancestry(global_repo, body, entry.get("vertices", []), entry.get("vertex_queries", []))
+            _register_solid_ancestry(global_repo, body)
+            _register_extrusion_feature(global_repo, body.created_by or "", body.sketch_id)
         out[body_id] = entry
     return out
 
@@ -328,15 +335,50 @@ def build(spec: dict, prev_state: BuildState | None = None) -> dict:
             spec=copy.deepcopy(feature),
             result=feature_result,
             repo_snapshot=_snapshot_repo(global_repo),
-            body_store_snapshot=copy.copy(body_store),
+            # Create new Body objects sharing the same (immutable) OCC shapes so that
+            # later in-place mutations of body.shape by fuse operations do not corrupt
+            # the shapes recorded at this checkpoint boundary.
+            body_store_snapshot={
+                bid: Body(
+                    id=body.id,
+                    created_by=body.created_by,
+                    modified_by=list(body.modified_by),
+                    shape=body.shape,
+                    sketch_id=body.sketch_id,
+                )
+                for bid, body in body_store.items()
+            },
         )
 
     bodies_out = _tessellate_bodies(body_store, global_repo)
+
+    # Build a cache of tessellations keyed by shape object identity so that
+    # each unique OCC shape is tessellated at most once across all checkpoints.
+    # Using id(shape) is safe here because all Body objects are kept alive by
+    # body_store and the checkpoint body_store_snapshots for the duration of
+    # this function.
+    _shape_tess_cache: dict[int, dict] = {}
+    for body_id, body in body_store.items():
+        if body.shape is not None and body_id in bodies_out:
+            _shape_tess_cache[id(body.shape)] = bodies_out[body_id]
+
+    for checkpoint in new_checkpoints.values():
+        for body_id, body in checkpoint.body_store_snapshot.items():
+            if body.shape is not None and id(body.shape) not in _shape_tess_cache:
+                # Body was replaced by a later operation; tessellate its original shape.
+                _shape_tess_cache[id(body.shape)] = _tessellate_body_geometry(body)
+
+    def _checkpoint_bodies_out(checkpoint: FeatureCheckpoint) -> dict[str, dict]:
+        return {
+            body_id: _shape_tess_cache.get(id(body.shape), {})
+            for body_id, body in checkpoint.body_store_snapshot.items()
+        }
+
     new_checkpoints = {
         fid: FeatureCheckpoint(
             spec=checkpoint.spec,
             result=checkpoint.result,
-            repo_snapshot=_snapshot_with_brep_geometry(checkpoint, bodies_out),
+            repo_snapshot=_snapshot_with_brep_geometry(checkpoint, _checkpoint_bodies_out(checkpoint)),
             body_store_snapshot=copy.copy(checkpoint.body_store_snapshot),
         )
         for fid, checkpoint in new_checkpoints.items()

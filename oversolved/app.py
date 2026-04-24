@@ -396,8 +396,8 @@ def create_app(config=None):
 
         from oversolved.builder import build
 
-        doc_id = data.get("id", "__default__")
-        prev_state = _build_state_cache.get(doc_id)
+        doc_id = data.get("id")
+        prev_state = _build_state_cache.get(doc_id) if doc_id else None
 
         rollback_position = data.get("rollback_position")
         if rollback_position is not None and isinstance(rollback_position, int):
@@ -405,7 +405,10 @@ def create_app(config=None):
 
         build_result = build(data, prev_state=prev_state)
 
-        _build_state_cache[doc_id] = build_result.pop("_build_state")
+        if doc_id:
+            _build_state_cache[doc_id] = build_result.pop("_build_state")
+        else:
+            build_result.pop("_build_state")
         build_result.pop("_body_shapes", None)
 
         return Response(json.dumps(build_result), mimetype="application/json")
