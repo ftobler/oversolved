@@ -1780,7 +1780,8 @@ def _extract_loops_from_occ_face(
             faces = list(cq_shape.faces())
 
             def _face_sort_key(f):
-                n = f.normalAt(f.uvBounds()[0:2])
+                ub = f.uvBounds()
+                n = f.normalAt(((ub[0] + ub[1]) / 2, (ub[2] + ub[3]) / 2))
                 c = f.Center()
                 return (round(n.x, 6), round(n.y, 6), round(n.z, 6),
                         round(c.x, 6), round(c.y, 6), round(c.z, 6))

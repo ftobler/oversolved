@@ -76,6 +76,33 @@ describe('buildBodyGeometry', () => {
       expect(idx).toBeLessThan(CUBE_MESH.vertices.length)
     }
   })
+
+  it('throws on NaN vertex coordinate', () => {
+    const badMesh: Mesh3D = {
+      vertices: [[0, 0, 0], [1, NaN, 0], [1, 1, 0]],
+      faces: [[0, 1, 2]],
+      normals: [[0, 0, 1]],
+    }
+    expect(() => buildBodyGeometry(badMesh)).toThrow('invalid coordinate')
+  })
+
+  it('throws on out-of-range face index', () => {
+    const badMesh: Mesh3D = {
+      vertices: [[0, 0, 0], [1, 0, 0], [1, 1, 0]],
+      faces: [[0, 1, 99]],
+      normals: [[0, 0, 1]],
+    }
+    expect(() => buildBodyGeometry(badMesh)).toThrow('invalid index')
+  })
+
+  it('throws on vertex with fewer than 3 coordinates', () => {
+    const badMesh: Mesh3D = {
+      vertices: [[0, 0] as unknown as [number, number, number], [1, 0, 0], [1, 1, 0]],
+      faces: [[0, 1, 2]],
+      normals: [[0, 0, 1]],
+    }
+    expect(() => buildBodyGeometry(badMesh)).toThrow('not a 3-element array')
+  })
 })
 
 describe('buildFaceBoundarySegments', () => {

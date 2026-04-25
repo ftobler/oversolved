@@ -176,3 +176,105 @@ def test_get_face_surface_type():
     for face in cylinder.faces():
         gt = _get_face_surface_type(face)
         assert gt in ("flatface", "cylinderface", "face")
+
+
+def test_tessellation_format():
+    """face.tessellate() should return (vertices: list[Vector], indexes: list[triplet])."""
+    from cadquery.occ_impl.shapes import Face, Solid
+    solid = Solid.extrudeLinear(
+        Face.makePlane(1, 1, (0, 0, 0)),
+        CQVector(0, 0, 1),
+    )
+    face = next(iter(solid.faces()))
+    verts, idxs = face.tessellate(0.1)
+    assert isinstance(verts, list)
+    assert isinstance(idxs, list)
+    assert len(verts) > 0
+    assert len(idxs) > 0
+    for v in verts:
+        assert hasattr(v, "toTuple")
+        t = v.toTuple()
+        assert len(t) == 3
+    for tri in idxs:
+        assert len(tri) == 3
+
+
+def test_mesh_face_ordering_stable():
+    """solid_to_mesh should return identical face ordering across multiple calls."""
+    from oversolved.geometry import solid_to_mesh, extrude_profile
+
+    loops = [
+        [{"kind": "line", "start": [0, 0], "end": [1, 0]},
+         {"kind": "line", "start": [1, 0], "end": [1, 1]},
+         {"kind": "line", "start": [1, 1], "end": [0, 1]},
+         {"kind": "line", "start": [0, 1], "end": [0, 0]}],
+    ]
+    solid = extrude_profile(loops, FRONT_PLANE, [0, 0, 1], 1.0)
+    mesh1 = solid_to_mesh(solid)
+    mesh2 = solid_to_mesh(solid)
+    assert mesh1["face_queries"] == mesh2["face_queries"]
+    assert mesh1["triangle_to_face"] == mesh2["triangle_to_face"]
+
+
+def test_query_face_stability_across_boolean():
+    """Face queries should remain stable after boolean operations."""
+    from oversolved.geometry import solid_to_mesh, boolean_cut, extrude_profile
+
+    outer = [
+        [{"kind": "line", "start": [0, 0], "end": [2, 0]},
+         {"kind": "line", "start": [2, 0], "end": [2, 2]},
+         {"kind": "line", "start": [2, 2], "end": [0, 2]},
+         {"kind": "line", "start": [0, 2], "end": [0, 0]}],
+    ]
+    inner = [
+        [{"kind": "line", "start": [0, 0], "end": [1, 0]},
+         {"kind": "line", "start": [1, 0], "end": [1, 1]},
+         {"kind": "line", "start": [1, 1], "end": [0, 1]},
+         {"kind": "line", "start": [0, 1], "end": [0, 0]}],
+    ]
+    target = extrude_profile(outer, FRONT_PLANE, [0, 0, 1], 2.0)
+    tool = extrude_profile(inner, FRONT_PLANE, [0, 0, 1], 1.0)
+    result = boolean_cut(target, tool)
+    mesh = solid_to_mesh(result, created_by="cut_feature")
+    assert len(mesh["face_queries"]) == len(mesh["face_data"])
+    for q in mesh["face_queries"]:
+        assert q.startswith("?")
+
+
+def test_boolean_validity_check_rejects_invalid():
+    """Boolean operations on invalid shapes should raise ValueError."""
+    from cadquery.occ_impl.shapes import Face, Solid
+    valid = Solid.extrudeLinear(
+        Face.makePlane(1, 1, (0, 0, 0)),
+        CQVector(0, 0, 1),
+    )
+    # A non-solid face is not a valid boolean operand.
+    invalid = Face.makePlane(1, 1, (0, 0, 0))
+    with pytest.raises(ValueError):
+        boolean_cut(valid, invalid)
+
+
+def test_validate_mesh_rejects_nan_vertex():
+    """_validate_mesh should raise ValueError if a vertex contains NaN."""
+    from oversolved.geometry import _validate_mesh
+
+    mesh = {
+        "vertices": [[0.0, 0.0, 0.0], [float("nan"), 1.0, 0.0], [1.0, 1.0, 0.0]],
+        "faces": [[0, 1, 2]],
+        "normals": [[0.0, 0.0, 1.0]],
+    }
+    with pytest.raises(ValueError, match="nan"):
+        _validate_mesh(mesh)
+
+
+def test_validate_mesh_rejects_out_of_range_index():
+    """_validate_mesh should raise ValueError if a face index is out of range."""
+    from oversolved.geometry import _validate_mesh
+
+    mesh = {
+        "vertices": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+        "faces": [[0, 1, 99]],
+        "normals": [[0.0, 0.0, 1.0]],
+    }
+    with pytest.raises(ValueError, match="out of range"):
+        _validate_mesh(mesh)

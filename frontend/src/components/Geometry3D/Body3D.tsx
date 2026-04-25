@@ -30,6 +30,33 @@ export function buildBodyGeometry(mesh: Mesh3D): {
   positions: Float32Array
   indices: Uint32Array
 } {
+  // Validate mesh data to catch NaN/undefined early before it reaches WebGL.
+  const vertCount = mesh.vertices.length
+  for (let i = 0; i < vertCount; i++) {
+    const v = mesh.vertices[i]
+    if (!Array.isArray(v) || v.length !== 3) {
+      throw new Error(`Mesh vertex ${i} is not a 3-element array: ${JSON.stringify(v)}`)
+    }
+    for (let j = 0; j < 3; j++) {
+      const coord = v[j]
+      if (typeof coord !== 'number' || Number.isNaN(coord) || !Number.isFinite(coord)) {
+        throw new Error(`Mesh vertex ${i} has invalid coordinate [${j}]: ${coord}`)
+      }
+    }
+  }
+  for (let i = 0; i < mesh.faces.length; i++) {
+    const f = mesh.faces[i]
+    if (!Array.isArray(f) || f.length !== 3) {
+      throw new Error(`Mesh face ${i} is not a 3-element array: ${JSON.stringify(f)}`)
+    }
+    for (let j = 0; j < 3; j++) {
+      const idx = f[j]
+      if (typeof idx !== 'number' || idx < 0 || idx >= vertCount || !Number.isInteger(idx)) {
+        throw new Error(`Mesh face ${i} has invalid index [${j}]: ${idx} (vertCount=${vertCount})`)
+      }
+    }
+  }
+
   const positions = new Float32Array(mesh.vertices.length * 3)
   mesh.vertices.forEach(([x, y, z], i) => {
     positions[i * 3] = x; positions[i * 3 + 1] = y; positions[i * 3 + 2] = z

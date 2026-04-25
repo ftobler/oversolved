@@ -156,6 +156,30 @@ def test_solid_to_edges_line_fields():
     assert e["start"] != e["end"]
 
 
+def test_solid_to_edges_spline():
+    """A solid with spline edges should return spline points without error."""
+    from cadquery.occ_impl import shapes as cq_shapes
+    from cadquery.occ_impl.geom import Vector
+
+    pts = [Vector(0, 0, 0), Vector(1, 1, 0), Vector(2, 0, 0)]
+    e = cq_shapes.Edge.makeSpline(pts)
+    close = cq_shapes.Edge.makeLine(pts[-1], pts[0])
+    w = cq_shapes.Wire.assembleEdges([e, close])
+    f = cq_shapes.Face.makeFromWires(w)
+    solid = cq_shapes.Solid.extrudeLinear(f, Vector(0, 0, 1))
+    edges = solid_to_edges(solid)["edges"]
+    spline_edges = [e for e in edges if e["kind"] == "spline"]
+    assert len(spline_edges) == 2, (
+        f"expected 2 spline edges, got {len(spline_edges)}"
+    )
+    se = spline_edges[0]
+    assert len(se["points"]) == 17  # n_pts + 1
+    for coord in se["points"][0]:
+        assert math.isfinite(coord)
+    for coord in se["points"][-1]:
+        assert math.isfinite(coord)
+
+
 def test_builder_body_has_edges():
     """Builder output for an extrude body must include a non-empty edges list."""
     import sys

@@ -55,6 +55,41 @@ def _ensure_cq_shape(solid: Any) -> cq_shapes.Shape:
     return cq_shapes.Shape.cast(solid)
 
 
+def _validate_mesh(mesh: dict) -> None:
+    """Validate mesh data: no NaN/inf vertices, valid face indices, unit normals.
+
+    Raises ValueError with descriptive message if mesh is invalid.
+    """
+    verts = mesh["vertices"]
+    faces = mesh["faces"]
+    normals = mesh.get("normals", [])
+
+    for i, v in enumerate(verts):
+        if len(v) != 3:
+            raise ValueError(f"vertex {i} has {len(v)} coordinates, expected 3")
+        for j, coord in enumerate(v):
+            if math.isnan(coord) or math.isinf(coord):
+                raise ValueError(f"vertex {i} has invalid coordinate [{j}]: {coord}")
+
+    n = len(verts)
+    for i, tri in enumerate(faces):
+        if len(tri) != 3:
+            raise ValueError(f"face {i} has {len(tri)} indices, expected 3")
+        for j, idx in enumerate(tri):
+            if not isinstance(idx, int):
+                raise ValueError(f"face {i} index {j} is not an int: {idx!r}")
+            if idx < 0 or idx >= n:
+                raise ValueError(f"face {i} index {j}={idx} out of range [0, {n})")
+
+    if len(normals) != len(faces):
+        raise ValueError(f"normals count {len(normals)} != faces count {len(faces)}")
+
+    for i, normal in enumerate(normals):
+        mag = math.sqrt(sum(x * x for x in normal))
+        if abs(mag - 1.0) > 1e-5:
+            raise ValueError(f"normal {i} not unit length: mag={mag}")
+
+
 def signed_distance_to_line(
     point: tuple[float, float],
     line_start: tuple[float, float],
@@ -275,6 +310,13 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
 
     solid = _ensure_cq_shape(solid)
 
+    # Pre-compute triangulation with absolute linear deflection to match the
+    # old OCP behavior; face.tessellate() will reuse it when tolerance matches.
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
+
+    topo_shape = solid.wrapped if hasattr(solid, "wrapped") else solid
+    BRepMesh_IncrementalMesh(topo_shape, 0.1, False, 0.1)
+
     face_data: list[dict] = []
     triangle_to_face: list[int] = []
     face_queries: list[str] = []
@@ -392,7 +434,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
             [0, -1, 0],
         ]
 
-    return {
+    mesh = {
         "vertices": all_vertices,
         "faces": all_faces,
         "normals": all_normals,
@@ -400,6 +442,8 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
         "triangle_to_face": triangle_to_face,
         "face_queries": face_queries,
     }
+    _validate_mesh(mesh)
+    return mesh
 
 
 def solid_to_edges(solid: Any, created_by: str | None = None) -> dict:
@@ -463,15 +507,13 @@ def solid_to_edges(solid: Any, created_by: str | None = None) -> dict:
 
         else:
             n_pts = 16
-            params = edge.params()
-            if len(params) >= 2:
-                u0, u1 = params[0], params[-1]
-            else:
-                u0, u1 = 0.0, 1.0
+            curve = edge._geomAdaptor()
+            u0 = curve.FirstParameter()
+            u1 = curve.LastParameter()
             points = []
             for i in range(n_pts + 1):
                 t = u0 + (u1 - u0) * i / n_pts
-                pt = edge.positionAt(t)
+                pt = edge.positionAt(t, mode="parameter")
                 points.append([pt.x, pt.y, pt.z])
             edges.append({"kind": "spline", "points": points})
 
