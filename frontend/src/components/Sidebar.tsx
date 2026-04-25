@@ -50,6 +50,7 @@ interface SidebarProps {
   onSetPendingPickField: (state: PendingPickField | null) => void
   onSetPlaneSelectionFeatureId: (id: string | null) => void
   onToggleBodyVisibility?: (bodyId: string) => void
+  partLabels?: Record<string, string>
   visibleBodies?: Set<string>
   solveResults?: Record<string, unknown>
   bodies?: Record<string, BodyResult>
@@ -79,6 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSetPendingPickField,
   onSetPlaneSelectionFeatureId,
   onToggleBodyVisibility,
+  partLabels,
   visibleBodies,
   solveResults,
   bodies,
@@ -773,8 +775,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {Object.keys(bodies || {}).length === 0 ? (
             <li className="empty">No parts</li>
           ) : (
-            Object.entries(bodies || {}).map(([bodyId]) => {
+            Object.entries(bodies || {}).map(([bodyId], index) => {
               const isHidden = visibleBodies ? !visibleBodies.has(bodyId) : false
+              const partLabel = partLabels?.[bodyId] ?? `part ${index + 1}`
               return (
                 <li
                   key={bodyId}
@@ -782,16 +785,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onClick={() => onToggleSelect(`@${bodyId}`)}
                 >
                   <img className="part-icon" src={featurePartIcon} alt="" />
-                  <span className="part-name">{bodyId}</span>
+                  <span className="part-name">{partLabel}</span>
                   {onToggleBodyVisibility && (
                     <button
                       className="part-visibility-btn"
                       onClick={(e) => { e.stopPropagation(); onToggleBodyVisibility(bodyId) }}
                       title={isHidden ? 'Show' : 'Hide'}
                     >
-                      <img src={isHidden ? iconEyeIcon : iconEyeOffIcon} alt={isHidden ? 'Visible' : 'Hidden'} />
+                      <img src={isHidden ? iconEyeOffIcon : iconEyeIcon} alt={isHidden ? 'Hidden' : 'Visible'} />
                     </button>
                   )}
+                  <button
+                    className="part-context-btn"
+                    onClick={(e) => { e.stopPropagation(); onRightClick([e.clientX, e.clientY], `body:${bodyId}`) }}
+                    title="More options"
+                  >
+                    <img src={iconDotsIcon} alt="Options" />
+                  </button>
                 </li>
               )
             })

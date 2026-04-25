@@ -78,8 +78,8 @@
 .part-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 8px;
+  gap: 4px;
+  padding: 2px 4px;
   margin: 4px 0;
   border-radius: 4px;
   font-size: 12px;
@@ -90,15 +90,14 @@
 
 .part-item:hover {
   background: #222;
-  /* color: #4fc3f7; */
   color: white;
+  border-color: #4fc3f7;
 }
 
 .part-item.selected {
   background: #1a1a2a;
-  /* color: #4fc3f7; */
   color: white;
-  outline: 1px solid #208fd0;
+  outline: 1px solid #1e3a4a;
 }
 
 .part-name {
@@ -385,16 +384,6 @@
   opacity: 1;
 }
 
-.part-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  cursor: pointer;
-  list-style: none;
-  overflow: hidden;
-}
-
 .part-item .part-icon {
   width: 16px;
   height: 16px;
@@ -403,10 +392,16 @@
 }
 
 .part-item .part-name {
-  flex: 1;
+  flex: 1 1 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  width: 0;
+  min-width: 0;
 }
 
 .part-item .part-visibility-btn {
@@ -414,12 +409,8 @@
   margin-left: auto;
 }
 
-.part-item:hover {
-  background: #222;
-}
-
-.part-item.selected {
-  background: #333;
+.part-item .part-context-btn {
+  display: flex;
 }
 
 .part-visibility-btn {
@@ -443,6 +434,30 @@
 }
 
 .part-visibility-btn:hover {
+  filter: invert(0.5);
+}
+
+.part-context-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #555;
+  padding: 2px 4px;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.part-context-btn img {
+  width: 16px;
+  height: 16px;
+  filter: invert(0.8);
+}
+
+.part-context-btn:hover {
   filter: invert(0.5);
 }
 

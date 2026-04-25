@@ -150,6 +150,7 @@ export default function Part() {
   const [savedRollbackPosition, setSavedRollbackPosition] = useState<number | null>(null)
   const [editForcedVisible, setEditForcedVisible] = useState<Set<string>>(new Set())
   const [bodiesVisibility, setBodiesVisibility] = useState<Record<string, boolean>>({})
+  const [bodyLabels, setBodyLabels] = useState<Record<string, string>>({})
   const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
@@ -215,6 +216,35 @@ export default function Part() {
   useEffect(() => {
     if (docName) setEditName(docName)
   }, [docName])
+
+  useEffect(() => {
+    const bodyIds = Object.keys(bodies || {})
+    setBodyLabels(prev => {
+      let maxPartNumber = 0
+      for (const label of Object.values(prev)) {
+        const match = /^part (\d+)$/i.exec(label)
+        if (match) {
+          maxPartNumber = Math.max(maxPartNumber, Number(match[1]))
+        }
+      }
+
+      const next: Record<string, string> = {}
+      let changed = Object.keys(prev).length !== bodyIds.length
+
+      for (const bodyId of bodyIds) {
+        const existing = prev[bodyId]
+        if (existing) {
+          next[bodyId] = existing
+          continue
+        }
+        maxPartNumber += 1
+        next[bodyId] = `part ${maxPartNumber}`
+        changed = true
+      }
+
+      return changed ? next : prev
+    })
+  }, [bodies])
 
   const features = useMemo(() => extractFeatures(doc), [doc])
 
@@ -615,6 +645,12 @@ useEffect(() => {
     })
   }, [])
 
+  const handleBodyRename = useCallback((bodyId: string, label: string) => {
+    const trimmed = label.trim()
+    if (!trimmed) return
+    setBodyLabels(prev => ({ ...prev, [bodyId]: trimmed }))
+  }, [])
+
   const enterEditFeature = useCallback((featureId: string) => {
     const idx = features.findIndex(f => f.id === featureId)
     if (idx < 0) return
@@ -660,7 +696,29 @@ useEffect(() => {
     }
   }, [planeSelectionFeatureId, features, enterEditFeature, setMode])
 
-  const handleRightClick = useCallback((pos: [number, number], featureId?: string) => {
+  const handleRightClick = useCallback((pos: [number, number], targetId?: string) => {
+    if (targetId?.startsWith('body:')) {
+      const bodyId = targetId.slice('body:'.length)
+      setContextMenu({
+        position: pos,
+        targetId,
+        items: [
+          {
+            label: 'Rename',
+            icon: iconRenameIcon,
+            onClick: () => {
+              const newLabel = window.prompt('Enter new name:', bodyLabels[bodyId] || bodyId)
+              if (newLabel && newLabel.trim()) {
+                handleBodyRename(bodyId, newLabel)
+              }
+            },
+          },
+        ],
+      })
+      return
+    }
+
+    const featureId = targetId
     const items: ContextMenuItem[] = [
       {
         label: 'Rebuild',
@@ -754,10 +812,10 @@ useEffect(() => {
 
     setContextMenu({
       position: pos,
-      targetId: featureId,
+      targetId,
       items,
     })
-  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename])
+  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename, bodyLabels, handleBodyRename])
 
   return (
     <div className="document-viewer">
@@ -812,6 +870,7 @@ useEffect(() => {
           onSetPendingPickField={setPendingPickField}
           onSetPlaneSelectionFeatureId={setPlaneSelectionFeatureId}
           onToggleBodyVisibility={toggleBodyVisibility}
+          partLabels={bodyLabels}
           visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0
             ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false))
             : undefined}
