@@ -307,30 +307,43 @@ def build(spec: dict, prev_state: BuildState | None = None) -> dict:
 
     registered_body_ids: set[str] = set(body_store.keys())
 
-    for feature in features[first_dirty:]:
+    def _register_body_faces(body: Body) -> None:
+        """Register face/vertex ancestry for a body."""
+        if body.shape is None:
+            return
+        try:
+            from oversolved.geometry import solid_to_mesh, solid_to_edges, solid_to_vertices
+            mesh = solid_to_mesh(body.shape, created_by=body.created_by)
+            _register_brep_face_ancestry(global_repo, body, mesh)
+            verts = solid_to_vertices(body.shape, created_by=body.created_by)
+            _register_brep_vertex_ancestry(global_repo, body, verts["vertices"], verts["vertex_queries"])
+            edges = solid_to_edges(body.shape, created_by=body.created_by)
+            _register_brep_edge_ancestry(global_repo, body, edges["edges"], edges["edge_queries"])
+        except Exception:
+            pass
+
+    for i, feature in enumerate(features[first_dirty:]):
         fid = feature.get("id", "")
+
+        # BEFORE solving non-first features, re-register all existing bodies so that plane
+        # queries resolve to the latest geometry (including after fuse operations).
+        if i > 0:
+            for body in body_store.values():
+                if body.shape and body.created_by:
+                    _register_body_faces(body)
+
         feature_result = _try_solve_feature(feature, global_repo, body_store)
         _post_register(global_repo, fid, feature, feature_result)
         result[fid] = feature_result
 
-        # Register faces and vertices for any newly-created bodies so that
-        # downstream plane features can use face/vertex queries as references.
+        # Register new bodies created by this feature.
         for body_id, body in body_store.items():
             if body_id not in registered_body_ids and body.shape is not None:
-                try:
-                    from oversolved.geometry import solid_to_mesh, solid_to_vertices  # type: ignore[attr-defined]
-                    mesh_early = solid_to_mesh(body.shape, created_by=body.created_by)
-                    _register_brep_face_ancestry(global_repo, body, mesh_early)
-                    verts_early = solid_to_vertices(body.shape, created_by=body.created_by)
-                    _register_brep_vertex_ancestry(
-                        global_repo, body,
-                        verts_early["vertices"], verts_early["vertex_queries"]
-                    )
-                    _register_solid_ancestry(global_repo, body)
-                    _register_extrusion_feature(global_repo, body.created_by or "", body.sketch_id)
-                except Exception:
-                    pass
+                _register_body_faces(body)
+                _register_solid_ancestry(global_repo, body)
+                _register_extrusion_feature(global_repo, body.created_by or "", body.sketch_id)
                 registered_body_ids.add(body_id)
+
         new_checkpoints[fid] = FeatureCheckpoint(
             spec=copy.deepcopy(feature),
             result=feature_result,

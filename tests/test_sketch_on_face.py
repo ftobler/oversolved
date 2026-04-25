@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from oversolved.builder import build
 from solver_helpers import full_rect_extrude_spec
 
@@ -96,6 +97,57 @@ def test_sketch_on_face_round_trip_second_extrude():
     sk2_result = r2['result'].get('sk2', {})
     assert sk2_result.get('status') != 'exception', (
         f"sk2 failed: {sk2_result.get('exception')}"
+    )
+
+
+def test_sketch_plane_resolves_from_post_fuse_face():
+    """Sketch plane must resolve correctly when the face was picked from a post-fuse render.
+
+    Sequence: sk1 -> ex1 (5mm) -> sk2 (plane = face) -> ex2 (fuse, 2mm on top)
+    User picks the top face at z=7 from the post-fuse render.
+    sk2 is then added with that face query as plane.
+    Full build: sk1 -> ex1 -> sk2 -> ex2
+
+    sk2 must land at z=7, not at whichever pre-fuse face happens to share the same index.
+    """
+    pytest.importorskip("OCP.gp")
+
+    from solver_helpers import rect_sketch_spec, extrude_spec
+
+    sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+
+    # Build just sk1+ex1+ex2 to get the post-fuse body, then pick the top face.
+    # (sk2 uses default plane for this intermediate build)
+    sk2_dummy = rect_sketch_spec(w=8.0, h=8.0, sketch_id='sk2')
+    ex2 = extrude_spec('sk2', 'ex2', 2.0)
+    r_post = build({'features': [sk1, ex1, sk2_dummy, ex2]})
+
+    face_data = r_post['bodies']['body_ex1']['mesh']['face_data']
+    face_queries = r_post['bodies']['body_ex1']['mesh']['face_queries']
+    top_query = next(
+        fq for fd, fq in zip(face_data, face_queries)
+        if fd['normal'][2] > 0.9
+    )
+    # This face_query came from the post-fuse tessellation.
+    top_centroid_z = next(
+        fd['centroid'][2] for fd in face_data if fd['normal'][2] > 0.9
+    )
+
+    # Now rebuild with sk2 using that post-fuse face as plane.
+    sk2_on_face = {
+        'id': 'sk2', 'kind': 'sketch', 'plane': top_query,
+        'entities': [], 'constraints': [],
+    }
+    r = build({'features': [sk1, ex1, sk2_on_face, ex2]})
+
+    assert r['result']['sk2']['status'] != 'exception', (
+        f"sk2 failed: {r['result']['sk2'].get('exception')}"
+    )
+    origin_z = r['result']['sk2']['plane_transform']['origin'][2]
+    assert abs(origin_z - top_centroid_z) < 0.5, (
+        f"plane origin z={origin_z:.3f}, expected ~{top_centroid_z:.3f} (post-fuse top face). "
+        f"Face index mismatch between pre-fuse and post-fuse tessellation."
     )
 
 
