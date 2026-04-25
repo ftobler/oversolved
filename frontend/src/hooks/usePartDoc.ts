@@ -62,7 +62,7 @@ export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
 
 const BUILTIN_FEATURE_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 
-const PART_COLOR_PALETTE = ['#A8D5FF', '#B8E8C8', '#FFD6A5', '#F7C6C7', '#D4C7FF', '#FEE6A8', '#CDE7F0', '#F6C7A8']
+const PART_COLOR_PALETTE = ['#6AB59B', '#A8D5FF', '#B8E8C8', '#FFD6A5', '#F7C6C7', '#D4C7FF', '#FEE6A8', '#CDE7F0', '#F6C7A8']
 
 function normalizeHexColor(color: string | undefined): string | null {
   if (!color) return null

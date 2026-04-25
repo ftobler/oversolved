@@ -610,6 +610,11 @@ def context_edit(ctx):
     _pencil(ctx)
 
 
+@icon("frontend/src/assets/icons/context-color.svg", angle=120)
+def context_color(ctx):
+    _pencil(ctx)
+
+
 @icon("frontend/src/assets/icons/toolbar-play.svg")
 def toolbar_play(ctx):
     # Play button icon: triangle pointing right

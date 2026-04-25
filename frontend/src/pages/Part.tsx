@@ -39,9 +39,11 @@ import contextExitIcon from '../assets/icons/context-exit.svg'
 import contextHideIcon from '../assets/icons/context-hide.svg'
 import contextDeleteIcon from '../assets/icons/context-delete.svg'
 import contextEditIcon from '../assets/icons/context-edit.svg'
+import contextColorIcon from '../assets/icons/context-color.svg'
 
 // IDs of built-in features that cannot be deleted.
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
+const PART_COLOR_PRESETS = ['#6AB59B', '#A8D5FF', '#B8E8C8', '#FFD6A5', '#F7C6C7', '#D4C7FF', '#FEE6A8', '#CDE7F0', '#F6C7A8']
 
 function normalizeHexColor(color: string | undefined): string | null {
   if (!color) return null
@@ -169,9 +171,10 @@ export default function Part() {
   const [viewportReset, setViewportReset] = useState(0)
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
-  const [colorPickerBodyId, setColorPickerBodyId] = useState<string | null>(null)
+  const [partColorPopover, setPartColorPopover] = useState<{ bodyId: string; position: [number, number] } | null>(null)
+  const [partColorDraft, setPartColorDraft] = useState<string>('#6AB59B')
   const viewportRef = useRef<ViewportHandle>(null)
-  const bodyColorPickerRef = useRef<HTMLInputElement>(null)
+  const partColorPopoverRef = useRef<HTMLDivElement>(null)
 
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo'>('selection')
@@ -660,15 +663,16 @@ useEffect(() => {
     handleMutation({ type: 'set_part_color', bodyId, color: normalized })
   }, [handleMutation])
 
-  const openBodyColorPicker = useCallback((bodyId: string) => {
-    setColorPickerBodyId(bodyId)
-    requestAnimationFrame(() => {
-      const input = bodyColorPickerRef.current
-      if (!input) return
-      input.value = partColors[bodyId] || '#A8D5FF'
-      input.click()
-    })
-  }, [partColors])
+  useEffect(() => {
+    if (!partColorPopover) return
+    const close = (e: MouseEvent) => {
+      if (partColorPopoverRef.current && !partColorPopoverRef.current.contains(e.target as Node)) {
+        setPartColorPopover(null)
+      }
+    }
+    window.addEventListener('mousedown', close, { capture: true })
+    return () => window.removeEventListener('mousedown', close, { capture: true })
+  }, [partColorPopover])
 
   const enterEditFeature = useCallback((featureId: string) => {
     const idx = features.findIndex(f => f.id === featureId)
@@ -734,7 +738,11 @@ useEffect(() => {
           },
           {
             label: 'Color',
-            onClick: () => openBodyColorPicker(bodyId),
+            icon: contextColorIcon,
+            onClick: () => {
+              setPartColorDraft(partColors[bodyId] || '#6AB59B')
+              setPartColorPopover({ bodyId, position: pos })
+            },
           },
         ],
       })
@@ -838,7 +846,7 @@ useEffect(() => {
       targetId,
       items,
     })
-  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename, partLabels, handleBodyRename, openBodyColorPicker])
+  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename, partLabels, handleBodyRename])
 
   return (
     <div className="document-viewer">
@@ -1100,15 +1108,65 @@ useEffect(() => {
           onClose={() => setContextMenu(null)}
         />
       )}
-      <input
-        ref={bodyColorPickerRef}
-        type="color"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          if (!colorPickerBodyId) return
-          handleBodyColor(colorPickerBodyId, e.target.value)
-        }}
-      />
+      {partColorPopover && (
+        <div
+          ref={partColorPopoverRef}
+          className="part-color-popover"
+          style={{ left: partColorPopover.position[0], top: partColorPopover.position[1] + 6 }}
+          onMouseDown={e => e.stopPropagation()}
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="part-color-popover-row">
+            <span className="part-color-popover-label">Color</span>
+            <input
+              type="text"
+              className="part-color-input"
+              value={partColorDraft}
+              onChange={(e) => setPartColorDraft(e.target.value.toUpperCase())}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setPartColorPopover(null)
+                if (e.key === 'Enter') {
+                  const normalized = normalizeHexColor(partColorDraft)
+                  if (normalized) {
+                    handleBodyColor(partColorPopover.bodyId, normalized)
+                    setPartColorPopover(null)
+                  }
+                }
+              }}
+              placeholder="#RRGGBB"
+            />
+          </div>
+          <div className="part-color-swatches">
+            {PART_COLOR_PRESETS.map(c => (
+              <button
+                key={c}
+                className={`part-color-swatch ${normalizeHexColor(partColorDraft) === c ? 'selected' : ''}`}
+                style={{ background: c }}
+                title={c}
+                onClick={() => setPartColorDraft(c)}
+              />
+            ))}
+          </div>
+          <div className="part-color-popover-actions">
+            <button className="part-color-popover-btn" onClick={() => setPartColorPopover(null)}>
+              Cancel
+            </button>
+            <button
+              className="part-color-popover-btn part-color-popover-btn-primary"
+              disabled={!normalizeHexColor(partColorDraft)}
+              onClick={() => {
+                const normalized = normalizeHexColor(partColorDraft)
+                if (!normalized) return
+                handleBodyColor(partColorPopover.bodyId, normalized)
+                setPartColorPopover(null)
+              }}
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
       <ExportDialog
         isOpen={exportDialogOpen}
         defaultName={docName || 'export'}
