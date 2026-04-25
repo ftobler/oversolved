@@ -1771,18 +1771,54 @@ def _extract_loops_from_occ_face(
     from OCP.TopoDS import TopoDS, TopoDS_Face  # noqa: PLC0415
 
     topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
-    explorer = TopExp_Explorer(topo_shape, TopAbs_FACE)
-    for _ in range(face_index):
+
+    # Sort faces by (normal, centroid) to match the canonical ordering used in
+    # solid_to_mesh, so face_index is consistent between tessellation and extraction.
+    try:
+        cq_shape = shape if hasattr(shape, "faces") else None
+        if cq_shape is not None:
+            faces = list(cq_shape.faces())
+
+            def _face_sort_key(f):
+                n = f.normalAt(f.uvBounds()[0:2])
+                c = f.Center()
+                return (round(n.x, 6), round(n.y, 6), round(n.z, 6),
+                        round(c.x, 6), round(c.y, 6), round(c.z, 6))
+            faces.sort(key=_face_sort_key)
+            if face_index >= len(faces):
+                raise ValueError(f"face_index {face_index} out of range")
+            target_face = faces[face_index]
+            occ_face = TopoDS_Face()
+            occ_face.TShape(target_face.wrapped.TShape())
+            occ_face.Location(target_face.wrapped.Location())
+            occ_face.Orientation(target_face.wrapped.Orientation())
+        else:
+            explorer = TopExp_Explorer(topo_shape, TopAbs_FACE)
+            for _ in range(face_index):
+                if not explorer.More():
+                    raise ValueError(f"face_index {face_index} out of range")
+                explorer.Next()
+            if not explorer.More():
+                raise ValueError(f"face_index {face_index} out of range")
+            face_shape = explorer.Current()
+            occ_face = TopoDS_Face()
+            occ_face.TShape(face_shape.TShape())
+            occ_face.Location(face_shape.Location())
+            occ_face.Orientation(face_shape.Orientation())
+    except Exception:
+        # Fallback to raw traversal if cadquery sorting fails.
+        explorer = TopExp_Explorer(topo_shape, TopAbs_FACE)
+        for _ in range(face_index):
+            if not explorer.More():
+                raise ValueError(f"face_index {face_index} out of range")
+            explorer.Next()
         if not explorer.More():
             raise ValueError(f"face_index {face_index} out of range")
-        explorer.Next()
-    if not explorer.More():
-        raise ValueError(f"face_index {face_index} out of range")
-    face_shape = explorer.Current()
-    occ_face = TopoDS_Face()
-    occ_face.TShape(face_shape.TShape())
-    occ_face.Location(face_shape.Location())
-    occ_face.Orientation(face_shape.Orientation())
+        face_shape = explorer.Current()
+        occ_face = TopoDS_Face()
+        occ_face.TShape(face_shape.TShape())
+        occ_face.Location(face_shape.Location())
+        occ_face.Orientation(face_shape.Orientation())
 
     adaptor = BRepAdaptor_Surface(occ_face, True)
     if adaptor.GetType() != GeomAbs_Plane:

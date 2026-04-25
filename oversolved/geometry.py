@@ -283,8 +283,26 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
     all_normals: list[list[float]] = []
 
     try:
-        for face_idx, face in enumerate(solid.faces()):
+        # Gather all faces with their geometric data so we can sort them into a
+        # canonical order.  Stable ordering means face indices are consistent
+        # across boolean operations and tessellations.
+        raw_faces: list[tuple] = []
+        for face in solid.faces():
             verts, idxs = face.tessellate(0.1)
+            centroid = _compute_face_centroid(face)
+            normal = _compute_face_normal(face)
+            surface_type = _get_face_surface_type(face)
+            raw_faces.append((face, verts, idxs, centroid, normal, surface_type))
+
+        # Sort by (normal, centroid) for deterministic face ordering.
+        def _face_sort_key(item) -> tuple:
+            _f, _v, _i, c, n, _s = item
+            return (round(n[0], 6), round(n[1], 6), round(n[2], 6),
+                    round(c[0], 6), round(c[1], 6), round(c[2], 6))
+
+        raw_faces.sort(key=_face_sort_key)
+
+        for face_idx, (face, verts, idxs, centroid, normal, surface_type) in enumerate(raw_faces):
             offset = len(all_vertices)
             face_area = 0.0
 
@@ -313,9 +331,6 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
                 triangle_to_face.append(face_idx)
                 face_area += 0.5 * mag
 
-            centroid = _compute_face_centroid(face)
-            normal = _compute_face_normal(face)
-            surface_type = _get_face_surface_type(face)
             face_data.append(
                 {"centroid": centroid, "normal": normal, "area": face_area, "surface_type": surface_type}
             )
