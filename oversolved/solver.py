@@ -1,5 +1,6 @@
 import math
 import os
+import re
 import time
 from typing import Any, Optional
 import yaml
@@ -1891,6 +1892,29 @@ def _resolve_face_profile(
     - Named query (@featureId/top_face): resolves to the registered flatface entry;
       uses the original sketch topology paired with the shifted plane origin.
     """
+    def _find_body_for_feature(feat_id: str):
+        body = body_store.get("body_" + feat_id)
+        if body is not None and body.shape is not None:
+            return body
+        return next(
+            (
+                b for b in body_store.values()
+                if getattr(b, "created_by", None) == feat_id and getattr(b, "shape", None) is not None
+            ),
+            None,
+        )
+
+    # Accept slash-style B-rep face IDs emitted by the 3D picker fallback:
+    # @<feature_id>/face/<index>
+    slash_match = re.fullmatch(r"@([^/]+)/face/(\d+)", sketch_ref)
+    if slash_match:
+        feat_id = slash_match.group(1)
+        face_index = int(slash_match.group(2))
+        body = _find_body_for_feature(feat_id)
+        if body is None:
+            raise ValueError(f"No body found for feature {feat_id!r}")
+        return _extract_loops_from_occ_face(body.shape, face_index)
+
     face_entry = global_repo.query(sketch_ref)
     if face_entry is None:
         raise ValueError(f"Profile face not found: {sketch_ref!r}")
@@ -1906,7 +1930,7 @@ def _resolve_face_profile(
     # Named registration (e.g. @featureId/top_face): derive sketch topology.
     if sketch_ref.startswith("@"):
         feat_id = sketch_ref[1:].split("/")[0]
-        body = body_store.get("body_" + feat_id)
+        body = _find_body_for_feature(feat_id)
         if body is None:
             raise ValueError(f"No body found for feature {feat_id!r}")
         topo = global_repo.elements.get("_topo_" + body.sketch_id, {})

@@ -734,3 +734,44 @@ def test_extrude_from_brep_face_ancestry_query():
     zs = [v[2] for v in mesh2["vertices"]]
     assert min(zs) == approx(d, abs=0.2), f"ex2 should start at z={d}, got {min(zs)}"
     assert max(zs) == approx(d + 3.0, abs=0.2), f"ex2 should end at z={d + 3.0}, got {max(zs)}"
+
+
+def test_extrude_from_brep_face_slash_query():
+    """Extrude accepts slash-style B-rep face IDs (@feature/face/N)."""
+    from pytest import approx
+    from oversolved.builder import build
+    from solver_helpers import rect_sketch_spec, assert_mesh_valid
+
+    d = 5.0
+    spec = {
+        "features": [
+            rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": "$sk1",
+                "distance": d,
+                "direction": "normal",
+            },
+            {
+                "id": "ex2",
+                "kind": "extrude",
+                "sketch": "@ex1/face/0",
+                "distance": 3.0,
+                "direction": "normal",
+                "operation": "new",
+            },
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["ex2"]["status"] == "ok", r["result"]["ex2"]
+    assert "body_ex2" in r["bodies"]
+    mesh2 = r["bodies"]["body_ex2"]["mesh"]
+    assert_mesh_valid(mesh2)
+    xs = [v[0] for v in mesh2["vertices"]]
+    ys = [v[1] for v in mesh2["vertices"]]
+    zs = [v[2] for v in mesh2["vertices"]]
+    spans = [max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs)]
+    # Selected B-rep face can have any orientation; extrusion depth should be
+    # visible as one principal span close to the requested distance.
+    assert any(abs(s - 3.0) < 0.25 for s in spans), f"expected one span ~= 3.0, got {spans!r}"
