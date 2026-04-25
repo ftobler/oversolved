@@ -43,6 +43,17 @@ import contextEditIcon from '../assets/icons/context-edit.svg'
 // IDs of built-in features that cannot be deleted.
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
 
+function normalizeHexColor(color: string | undefined): string | null {
+  if (!color) return null
+  const trimmed = color.trim()
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toUpperCase()
+  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
+    const s = trimmed.slice(1)
+    return (`#${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}`).toUpperCase()
+  }
+  return null
+}
+
 function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
 }
@@ -137,6 +148,10 @@ function describeMutation(m: Mutation): string {
       return `add chamfer edge ${m.edgeQuery}`
     case 'remove_chamfer_edge':
       return `remove chamfer edge at index ${m.index}`
+    case 'rename_part':
+      return `rename ${m.bodyId} to ${m.name}`
+    case 'set_part_color':
+      return `set ${m.bodyId} color to ${m.color}`
   }
 }
 
@@ -150,12 +165,13 @@ export default function Part() {
   const [savedRollbackPosition, setSavedRollbackPosition] = useState<number | null>(null)
   const [editForcedVisible, setEditForcedVisible] = useState<Set<string>>(new Set())
   const [bodiesVisibility, setBodiesVisibility] = useState<Record<string, boolean>>({})
-  const [bodyLabels, setBodyLabels] = useState<Record<string, string>>({})
   const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
+  const [colorPickerBodyId, setColorPickerBodyId] = useState<string | null>(null)
   const viewportRef = useRef<ViewportHandle>(null)
+  const bodyColorPickerRef = useRef<HTMLInputElement>(null)
 
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo'>('selection')
@@ -217,36 +233,23 @@ export default function Part() {
     if (docName) setEditName(docName)
   }, [docName])
 
-  useEffect(() => {
-    const bodyIds = Object.keys(bodies || {})
-    setBodyLabels(prev => {
-      let maxPartNumber = 0
-      for (const label of Object.values(prev)) {
-        const match = /^part (\d+)$/i.exec(label)
-        if (match) {
-          maxPartNumber = Math.max(maxPartNumber, Number(match[1]))
-        }
-      }
-
-      const next: Record<string, string> = {}
-      let changed = Object.keys(prev).length !== bodyIds.length
-
-      for (const bodyId of bodyIds) {
-        const existing = prev[bodyId]
-        if (existing) {
-          next[bodyId] = existing
-          continue
-        }
-        maxPartNumber += 1
-        next[bodyId] = `part ${maxPartNumber}`
-        changed = true
-      }
-
-      return changed ? next : prev
-    })
-  }, [bodies])
-
   const features = useMemo(() => extractFeatures(doc), [doc])
+  const partStyle = doc?.part_style ?? {}
+  const partLabels = useMemo(() => {
+    const labels: Record<string, string> = {}
+    for (const [bodyId, style] of Object.entries(partStyle)) {
+      if (style.name?.trim()) labels[bodyId] = style.name.trim()
+    }
+    return labels
+  }, [partStyle])
+  const partColors = useMemo(() => {
+    const colors: Record<string, string> = {}
+    for (const [bodyId, style] of Object.entries(partStyle)) {
+      const normalized = normalizeHexColor(style.color)
+      if (normalized) colors[bodyId] = normalized
+    }
+    return colors
+  }, [partStyle])
 
   // Derive visibility from the doc; also include features forced visible while editing.
   const visibleFeatures = useMemo(
@@ -648,8 +651,24 @@ useEffect(() => {
   const handleBodyRename = useCallback((bodyId: string, label: string) => {
     const trimmed = label.trim()
     if (!trimmed) return
-    setBodyLabels(prev => ({ ...prev, [bodyId]: trimmed }))
-  }, [])
+    handleMutation({ type: 'rename_part', bodyId, name: trimmed })
+  }, [handleMutation])
+
+  const handleBodyColor = useCallback((bodyId: string, color: string) => {
+    const normalized = normalizeHexColor(color)
+    if (!normalized) return
+    handleMutation({ type: 'set_part_color', bodyId, color: normalized })
+  }, [handleMutation])
+
+  const openBodyColorPicker = useCallback((bodyId: string) => {
+    setColorPickerBodyId(bodyId)
+    requestAnimationFrame(() => {
+      const input = bodyColorPickerRef.current
+      if (!input) return
+      input.value = partColors[bodyId] || '#A8D5FF'
+      input.click()
+    })
+  }, [partColors])
 
   const enterEditFeature = useCallback((featureId: string) => {
     const idx = features.findIndex(f => f.id === featureId)
@@ -707,11 +726,15 @@ useEffect(() => {
             label: 'Rename',
             icon: iconRenameIcon,
             onClick: () => {
-              const newLabel = window.prompt('Enter new name:', bodyLabels[bodyId] || bodyId)
+              const newLabel = window.prompt('Enter new name:', partLabels[bodyId] || bodyId)
               if (newLabel && newLabel.trim()) {
                 handleBodyRename(bodyId, newLabel)
               }
             },
+          },
+          {
+            label: 'Color',
+            onClick: () => openBodyColorPicker(bodyId),
           },
         ],
       })
@@ -815,7 +838,7 @@ useEffect(() => {
       targetId,
       items,
     })
-  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename, bodyLabels, handleBodyRename])
+  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename, partLabels, handleBodyRename, openBodyColorPicker])
 
   return (
     <div className="document-viewer">
@@ -870,7 +893,7 @@ useEffect(() => {
           onSetPendingPickField={setPendingPickField}
           onSetPlaneSelectionFeatureId={setPlaneSelectionFeatureId}
           onToggleBodyVisibility={toggleBodyVisibility}
-          partLabels={bodyLabels}
+          partLabels={partLabels}
           visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0
             ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false))
             : undefined}
@@ -940,7 +963,7 @@ useEffect(() => {
                   </div>
                 </div>
               )}
-              {mode !== 'code' && <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0 ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false)) : undefined} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} />}
+              {mode !== 'code' && <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0 ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false)) : undefined} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} partColors={partColors} />}
             </>
           )}
         </div>
@@ -1077,6 +1100,15 @@ useEffect(() => {
           onClose={() => setContextMenu(null)}
         />
       )}
+      <input
+        ref={bodyColorPickerRef}
+        type="color"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          if (!colorPickerBodyId) return
+          handleBodyColor(colorPickerBodyId, e.target.value)
+        }}
+      />
       <ExportDialog
         isOpen={exportDialogOpen}
         defaultName={docName || 'export'}

@@ -22,6 +22,7 @@ interface Body3DProps {
   vertexQueries?: string[]
   visible?: boolean
   showDebugHit?: boolean
+  color?: string
 }
 
 // Export for unit testing without a WebGL context.
@@ -166,7 +167,7 @@ export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
   return counts
 }
 
-export default function Body3D({ featureId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false }: Body3DProps) {
+export default function Body3D({ featureId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color }: Body3DProps) {
   const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
@@ -245,7 +246,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     return map
   }, [edgeSegmentCounts])
 
-  const bodyColor = isBodySelected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT
+  const bodyColor = isBodySelected ? COLOR_BODY_SELECTED : (color || COLOR_BODY_DEFAULT)
 
   const edgeColor = isBodySelected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE
 

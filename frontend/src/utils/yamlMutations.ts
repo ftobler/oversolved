@@ -682,6 +682,22 @@ export function applySetRevolveAxis(doc: PartDoc, featureId: string, axis: strin
   feature.revolve.axis = axis
 }
 
+export function applyRenamePart(doc: PartDoc, bodyId: string, name: string): void {
+  const trimmed = name.trim()
+  if (!trimmed) return
+  if (!doc.part_style) doc.part_style = {}
+  const current = doc.part_style[bodyId] ?? {}
+  doc.part_style[bodyId] = { ...current, name: trimmed }
+}
+
+export function applySetPartColor(doc: PartDoc, bodyId: string, color: string): void {
+  const trimmed = color.trim()
+  if (!trimmed) return
+  if (!doc.part_style) doc.part_style = {}
+  const current = doc.part_style[bodyId] ?? {}
+  doc.part_style[bodyId] = { ...current, color: trimmed }
+}
+
 export function applySetRevolveOperation(
   doc: PartDoc,
   featureId: string,

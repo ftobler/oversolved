@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import type { PartDoc, SketchData, Mutation, EntityStatus, BuildResponse } from '../types/cad'
+import type { PartDoc, SketchData, Mutation, EntityStatus, BuildResponse, PartStyleEntry } from '../types/cad'
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
 import { unflattenGeometry } from '../utils/geometryMapping'
@@ -48,6 +48,8 @@ import {
   applyRemoveFilletEdge,
   applyAddChamferEdge,
   applyRemoveChamferEdge,
+  applyRenamePart,
+  applySetPartColor,
 } from '../utils/yamlMutations'
 import type { PartFeature } from '../types/cad'
 
@@ -59,6 +61,64 @@ export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
 ]
 
 const BUILTIN_FEATURE_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
+
+const PART_COLOR_PALETTE = ['#A8D5FF', '#B8E8C8', '#FFD6A5', '#F7C6C7', '#D4C7FF', '#FEE6A8', '#CDE7F0', '#F6C7A8']
+
+function normalizeHexColor(color: string | undefined): string | null {
+  if (!color) return null
+  const trimmed = color.trim()
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toUpperCase()
+  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
+    const s = trimmed.slice(1)
+    return (`#${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}`).toUpperCase()
+  }
+  return null
+}
+
+function pickPartColor(partNumber: number): string {
+  return PART_COLOR_PALETTE[(partNumber - 1) % PART_COLOR_PALETTE.length]
+}
+
+function reconcilePartStyle(doc: PartDoc, bodies: Record<string, import('../types/cad').BodyResult> | undefined): void {
+  const bodyIds = Object.keys(bodies ?? {})
+  if (bodyIds.length === 0) return
+
+  const style = doc.part_style ?? {}
+  const usedPartNumbers = new Set<number>()
+  for (const entry of Object.values(style)) {
+    const match = /^part (\d+)$/i.exec(entry?.name ?? '')
+    if (match) usedPartNumbers.add(Number(match[1]))
+  }
+
+  const nextStyle: Record<string, PartStyleEntry> = { ...style }
+  let nextPartNumber = 1
+  const nextFreePartNumber = () => {
+    while (usedPartNumbers.has(nextPartNumber)) nextPartNumber += 1
+    usedPartNumbers.add(nextPartNumber)
+    return nextPartNumber++
+  }
+
+  for (const bodyId of bodyIds) {
+    const current = nextStyle[bodyId]
+    if (current) {
+      const normalizedColor = normalizeHexColor(current.color)
+      nextStyle[bodyId] = {
+        ...current,
+        ...(normalizedColor ? { color: normalizedColor } : {}),
+      }
+      continue
+    }
+    const partNumber = nextFreePartNumber()
+    const createdBy = bodies?.[bodyId]?.created_by
+    nextStyle[bodyId] = {
+      name: `part ${partNumber}`,
+      color: pickPartColor(partNumber),
+      created_by: createdBy,
+    }
+  }
+
+  doc.part_style = nextStyle
+}
 
 export function healDoc(raw: unknown): PartDoc {
   const doc = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
@@ -216,6 +276,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         }
 setSolveResults(results)
         const response = data as BuildResponse
+        reconcilePartStyle(d, response.bodies)
         setBodies(response.bodies ?? {})
         buildStateRef.current = response._build_state
         setSolveRawResult(stringifyYaml(data.result))
@@ -396,6 +457,12 @@ setSolveResults(results)
         break
       case 'remove_chamfer_edge':
         applyRemoveChamferEdge(next, m.featureId, m.index)
+        break
+      case 'rename_part':
+        applyRenamePart(next, m.bodyId, m.name)
+        break
+      case 'set_part_color':
+        applySetPartColor(next, m.bodyId, m.color)
         break
     }
     docRef.current = next

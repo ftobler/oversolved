@@ -38,6 +38,7 @@ interface ViewportProps {
   showDebugHit?: boolean
   otherSketches?: Record<string, Sketch>  // sketches from other features (for project tool)
   bodies?: Record<string, BodyResult>
+  partColors?: Record<string, string>
 }
 
 function isActive(id: string, features: Feature[] | undefined, rollbackPos: number | undefined, visible: Set<string> | undefined): boolean {
@@ -67,6 +68,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   showDebugHit = false,
   otherSketches,
   bodies,
+  partColors,
 }: ViewportProps, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pvRef = useRef<Pv[]>([])
@@ -319,7 +321,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         })}
 
         {bodyItems.map(b => (
-          <Body3D key={b.key} featureId={b.featureId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} />
+          <Body3D key={b.key} featureId={b.featureId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} />
         ))}
       </Canvas>
 

@@ -185,11 +185,18 @@ export interface PartFeature {
 
 export type Feature = PartFeature
 
+export interface PartStyleEntry {
+  name?: string
+  color?: string
+  created_by?: string
+}
+
 export interface PartDoc {
   oversolved?: number
   version?: number
   kind?: string
   features?: PartFeature[]
+  part_style?: Record<string, PartStyleEntry>
 }
 
 // ── UI / Rendering Types ────
@@ -458,3 +465,5 @@ export type Mutation =
   | { type: 'remove_fillet_edge'; featureId: string; index: number }
   | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_chamfer_edge'; featureId: string; index: number }
+  | { type: 'rename_part'; bodyId: string; name: string }
+  | { type: 'set_part_color'; bodyId: string; color: string }
