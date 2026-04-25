@@ -278,3 +278,110 @@ def test_validate_mesh_rejects_out_of_range_index():
     }
     with pytest.raises(ValueError, match="out of range"):
         _validate_mesh(mesh)
+
+
+def test_make_arc_edge_on_rotated_plane():
+    """Arc endpoints must respect the sketch plane x_axis, not just the normal."""
+    # Plane where y_axis points along -Z (as in the user's failing sketch).
+    plane = {
+        "origin": [0.0, 0.0, 0.0],
+        "x_axis": [1.0, 0.0, 0.0],
+        "y_axis": [0.0, 0.0, -1.0],
+        "normal": [0.0, 1.0, 0.0],
+    }
+    center = [13.7550020016, 0.0, 5.0]  # uv [13.755, -5] mapped through plane
+    radius = 8.0
+    u0 = math.radians(-38.6821874535)
+    u1 = math.radians(38.6821874535)
+
+    arc = make_arc_edge(center, radius, plane["normal"], plane["x_axis"], u0, u1)
+    sp = arc.startPoint()
+    ep = arc.endPoint()
+
+    # Arc should connect to the vertical line at x=20, z=10 and horizontal line at x=20, z=0.
+    assert sp.x == pytest.approx(20.0, abs=1e-9)
+    assert sp.z == pytest.approx(10.0, abs=1e-9)
+    assert ep.x == pytest.approx(20.0, abs=1e-9)
+    assert ep.z == pytest.approx(0.0, abs=1e-9)
+
+
+def test_wire_with_arc_on_rotated_plane():
+    """Wire assembly must succeed when an arc lies on a non-default plane."""
+    plane = {
+        "origin": [0.0, 0.0, 0.0],
+        "x_axis": [1.0, 0.0, 0.0],
+        "y_axis": [0.0, 0.0, -1.0],
+        "normal": [0.0, 1.0, 0.0],
+    }
+    e0 = make_line_edge([20.0, 0.0, 0.0], [0.0, 0.0, 0.0])
+    e1 = make_line_edge([0.0, 0.0, 0.0], [20.0, 0.0, 10.0])
+    center = [13.7550020016, 0.0, 5.0]
+    radius = 8.0
+    u0 = math.radians(-38.6821874535)
+    u1 = math.radians(38.6821874535)
+    e2 = make_arc_edge(center, radius, plane["normal"], plane["x_axis"], u0, u1)
+
+    wire = make_wire([e0, e1, e2])
+    assert wire is not None
+    assert len(list(wire.edges())) == 3
+
+
+def test_sketch_loops_to_face_with_arc_on_rotated_plane():
+    """sketch_loops_to_face must produce a valid face for arcs on rotated planes."""
+    from oversolved.geometry import sketch_loops_to_face
+
+    plane = {
+        "origin": [0.0, 0.0, 0.0],
+        "x_axis": [1.0, 0.0, 0.0],
+        "y_axis": [0.0, 0.0, -1.0],
+        "normal": [0.0, 1.0, 0.0],
+    }
+    loops = [
+        [
+            {"kind": "line", "start": [20.0, 0.0], "end": [0.0, 0.0]},
+            {"kind": "line", "start": [0.0, 0.0], "end": [20.0, -10.0]},
+            {
+                "kind": "arc",
+                "start": [19.999999999997478, -10.000000000001151],
+                "end": [19.999999999997478, 1.1510792319313623e-12],
+                "center": [13.7550020016, -5.0],
+                "radius": 8.0,
+                "angle_start_deg": -38.6821874535,
+                "angle_end_deg": 38.6821874535,
+                "ccw": True,
+            },
+        ]
+    ]
+    face = sketch_loops_to_face(loops, plane)
+    assert face.Area() > 0
+
+
+def test_extrude_profile_with_arc_on_rotated_plane():
+    """extrude_profile must produce a valid solid for arcs on rotated planes."""
+    from oversolved.geometry import extrude_profile
+
+    plane = {
+        "origin": [0.0, 0.0, 0.0],
+        "x_axis": [1.0, 0.0, 0.0],
+        "y_axis": [0.0, 0.0, -1.0],
+        "normal": [0.0, 1.0, 0.0],
+    }
+    loops = [
+        [
+            {"kind": "line", "start": [20.0, 0.0], "end": [0.0, 0.0]},
+            {"kind": "line", "start": [0.0, 0.0], "end": [20.0, -10.0]},
+            {
+                "kind": "arc",
+                "start": [19.999999999997478, -10.000000000001151],
+                "end": [19.999999999997478, 1.1510792319313623e-12],
+                "center": [13.7550020016, -5.0],
+                "radius": 8.0,
+                "angle_start_deg": -38.6821874535,
+                "angle_end_deg": 38.6821874535,
+                "ccw": True,
+            },
+        ]
+    ]
+    solid = extrude_profile(loops, plane, [0.0, 1.0, 0.0], 10.0)
+    assert solid.isValid()
+    assert solid.Volume() > 0
