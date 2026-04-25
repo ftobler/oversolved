@@ -4,7 +4,7 @@
 import type { Sketch, Mutation } from '../../types/cad'
 import type { VertexOrEdgeDrag } from '../../stores/sketchEditorStore'
 import type { SnapTarget } from './snapDetection'
-import { findSnapTarget, collectVertexTargets } from './snapDetection'
+import { findSnapTarget, collectVertexTargets, collectEntityCandidates } from './snapDetection'
 import { detectAlignmentSnap } from '../../registry'
 import { isPureClick, CLICK_THRESHOLD_PX } from './pointerAbstraction'
 import { DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX } from './constants'
@@ -80,22 +80,24 @@ export function computeDragMove(
   }
 
   // Snap detection
+  const vertexCandidates = collectVertexTargets(sketch, featureId, drag.entityId, otherSketches)
+  const entityCandidates = collectEntityCandidates(sketch, featureId, drag.entityId, otherSketches)
   const snapTarget = findSnapTarget(
-    sketch, featureId, drag.entityId,
+    vertexCandidates,
+    entityCandidates,
     'vertex',
     x, y,
     DRAG_SNAP_VERTEX_RADIUS_PX * pixelsPerUnit,
     DRAG_SNAP_ENTITY_RADIUS_PX * pixelsPerUnit,
-    otherSketches,
   )
   let snapPosition: [number, number] | null = snapTarget?.position ?? null
 
   // Proximity scan for dynamic selection accumulation (alignment snap reference points).
   // Use 3x the vertex snap radius so alignment references accumulate well before snap fires.
   const scanRadius = DRAG_SNAP_VERTEX_RADIUS_PX * pixelsPerUnit * 3
-  const nearbyTargets = collectVertexTargets(sketch, featureId, drag.entityId, otherSketches)
+  const nearbyTargets = vertexCandidates
     .filter(t => Math.hypot(t.position[0] - x, t.position[1] - y) <= scanRadius)
-  const allProximityIds = new Set(nearbyTargets.map(t => t.vertexId))
+  const allProximityIds = new Set(nearbyTargets.map(t => t.id))
   const newProximityIds = new Set([...allProximityIds].filter(id => !prevProximityIds.has(id)))
 
   // Simulate dynamic selection update to detect alignment snap in the same frame.
@@ -107,8 +109,8 @@ export function computeDragMove(
   // Build a complete positions map: existing dynamic positions + newly-discovered proximity positions
   const allPositions = new Map(dynamicSelectionPositions)
   for (const t of nearbyTargets) {
-    if (!allPositions.has(t.vertexId)) {
-      allPositions.set(t.vertexId, t.position)
+    if (!allPositions.has(t.id)) {
+      allPositions.set(t.id, t.position)
     }
   }
 

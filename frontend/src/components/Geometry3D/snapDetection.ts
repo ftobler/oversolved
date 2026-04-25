@@ -5,93 +5,113 @@ import type { Sketch, LineSegment, Circle, Arc, PointEntity, Entity } from '../.
 import { suggestConstraint, type DraggedElementType, type SnapKind } from '../../registry'
 import { nearestPointOnEntity } from './nearestPoint'
 
-// Snap kind discriminator:
-//   'vertex' — cursor is close to a specific named vertex
-//   'entity' — cursor is close to an entity body but not to a vertex
-// Vertex snap uses a larger pull radius and takes priority.
 export type DragSnapKind = 'vertex' | 'entity'
 
 export interface SnapTarget {
   kind: DragSnapKind
   position: [number, number]
-  constraintKind: string   // from suggestConstraint — same registry as drawing snap
-  vertexId?: string        // set when kind === 'vertex'; format: "vertex:featureId:entityId:key"
-  entityRef?: string       // set when kind === 'entity';  format: "entity:featureId:entityId"
+  constraintKind: string
+  vertexId?: string
+  entityRef?: string
 }
 
-interface VertexCandidate {
-  vertexId: string
+export interface SnapCandidate {
+  id: string
   position: [number, number]
-  snapKind: SnapKind  // what kind of snap target this vertex is
+  kind: SnapKind
+  domain: 'active_sketch' | 'other_sketch' | 'projected' | 'body_3d'
 }
 
-/** Collect vertex candidates from a single sketch.
- *  skipEntityId: entity to exclude (pass '' to exclude nothing -- used for other sketches). */
-function collectFromSketch(sketch: Sketch, featureId: string, skipEntityId: string): VertexCandidate[] {
-  const targets: VertexCandidate[] = []
-  for (const [entityId, entity] of Object.entries(sketch)) {
-    if (entityId === skipEntityId) continue
+export interface EntityCandidate {
+  id: string
+  entity: Entity
+  domain: 'active_sketch' | 'other_sketch' | 'body_3d'
+}
 
+function collectFromSketch(sketch: Sketch, featureId: string, domain: SnapCandidate['domain']): SnapCandidate[] {
+  const targets: SnapCandidate[] = []
+  for (const [entityId, entity] of Object.entries(sketch)) {
     if ('start' in entity && 'end' in entity) {
       const l = entity as LineSegment | Arc
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:start`, position: l.start, snapKind: 'vertex' })
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:end`,   position: l.end,   snapKind: 'vertex' })
+      targets.push({ id: `vertex:${featureId}:${entityId}:start`, position: l.start, kind: 'vertex', domain })
+      targets.push({ id: `vertex:${featureId}:${entityId}:end`,   position: l.end,   kind: 'vertex', domain })
       if ('radius' in l && 'angle_start' in l) {
-        targets.push({ vertexId: `vertex:${featureId}:${entityId}:center`, position: (l as Arc).center, snapKind: 'vertex' })
+        targets.push({ id: `vertex:${featureId}:${entityId}:center`, position: (l as Arc).center, kind: 'vertex', domain })
       }
     } else if ('center' in entity && 'radius' in entity) {
       const c = entity as Circle
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:center`, position: c.center, snapKind: 'vertex' })
+      targets.push({ id: `vertex:${featureId}:${entityId}:center`, position: c.center, kind: 'vertex', domain })
     } else if ('x' in entity) {
       const p = entity as PointEntity
-      targets.push({ vertexId: `vertex:${featureId}:${entityId}:xy`, position: [p.x, p.y], snapKind: 'vertex' })
+      targets.push({ id: `vertex:${featureId}:${entityId}:xy`, position: [p.x, p.y], kind: 'vertex', domain })
     }
   }
   return targets
 }
 
-/** Collect all discrete vertex positions from the active sketch and any additional visible
- *  sketches. Projected entities in the active sketch are now included -- they represent
- *  real spatial positions (origin, projected edges) and are valid snap targets.
- *  skipEntityId excludes the dragged entity from the active sketch only. */
+function collectEntityCandidatesFromSketch(
+  sketch: Sketch,
+  featureId: string,
+  domain: EntityCandidate['domain'],
+): EntityCandidate[] {
+  return Object.entries(sketch).map(([entityId, entity]) => ({
+    id: `entity:${featureId}:${entityId}`,
+    entity,
+    domain,
+  }))
+}
+
 export function collectVertexTargets(
   sketch: Sketch,
   featureId: string,
   skipEntityId: string,
   otherSketches?: Record<string, Sketch>,
-): VertexCandidate[] {
-  const targets = collectFromSketch(sketch, featureId, skipEntityId)
+): SnapCandidate[] {
+  const targets = collectFromSketch(sketch, featureId, 'active_sketch')
+    .filter(t => !skipEntityId || !t.id.includes(`:${skipEntityId}:`))
   if (otherSketches) {
     for (const [otherFeatId, otherSketch] of Object.entries(otherSketches)) {
-      targets.push(...collectFromSketch(otherSketch, otherFeatId, ''))
+      targets.push(...collectFromSketch(otherSketch, otherFeatId, 'other_sketch'))
     }
   }
   return targets
 }
 
-/** Find the best snap target using the same snap registry as the drawing tools.
- *  Searches the active sketch and any additional visible sketches.
- *  Vertex snap uses a larger pull radius than entity snap, mirroring
- *  POINT_HIT_PIXELS > HIT_PIXELS in click detection.
- *  Returns null if the registry does not allow snapping in the current configuration. */
-export function findSnapTarget(
+function entityIdMatches(id: string, featureId: string, skipEntityId: string): boolean {
+  return id === `entity:${featureId}:${skipEntityId}`
+}
+
+export function collectEntityCandidates(
   sketch: Sketch,
   featureId: string,
   skipEntityId: string,
-  draggedType: DraggedElementType,  // 'vertex' or 'entity' being dragged
+  otherSketches?: Record<string, Sketch>,
+): EntityCandidate[] {
+  const targets = collectEntityCandidatesFromSketch(sketch, featureId, 'active_sketch')
+    .filter(t => !skipEntityId || !entityIdMatches(t.id, featureId, skipEntityId))
+  if (otherSketches) {
+    for (const [otherFeatId, otherSketch] of Object.entries(otherSketches)) {
+      targets.push(...collectEntityCandidatesFromSketch(otherSketch, otherFeatId, 'other_sketch'))
+    }
+  }
+  return targets
+}
+
+export function findSnapTarget(
+  candidates: SnapCandidate[],
+  entityCandidates: EntityCandidate[],
+  draggedType: DraggedElementType,
   x: number,
   y: number,
-  vertexThreshold: number,    // world units, for vertex snap (larger)
-  entityThreshold: number,    // world units, for entity body snap (smaller)
-  otherSketches?: Record<string, Sketch>,
+  vertexThreshold: number,
+  entityThreshold: number,
 ): SnapTarget | null {
-  // First pass: find nearest vertex within its (larger) pull zone across all sketches.
-  let bestVertex: (VertexCandidate & { dist: number }) | null = null
+  let bestVertex: (SnapCandidate & { dist: number }) | null = null
   let bestVertexDist = vertexThreshold
-  for (const t of collectVertexTargets(sketch, featureId, skipEntityId, otherSketches)) {
+  for (const t of candidates) {
     const d = Math.hypot(t.position[0] - x, t.position[1] - y)
     if (d < bestVertexDist) {
-      const cKind = suggestConstraint(draggedType, t.snapKind)
+      const cKind = suggestConstraint(draggedType, t.kind)
       if (cKind !== null) {
         bestVertexDist = d
         bestVertex = { ...t, dist: d }
@@ -99,38 +119,26 @@ export function findSnapTarget(
     }
   }
   if (bestVertex) {
-    const cKind = suggestConstraint(draggedType, bestVertex.snapKind)!
-    return { kind: 'vertex', position: bestVertex.position, constraintKind: cKind, vertexId: bestVertex.vertexId }
+    const cKind = suggestConstraint(draggedType, bestVertex.kind)!
+    return { kind: 'vertex', position: bestVertex.position, constraintKind: cKind, vertexId: bestVertex.id }
   }
 
-  // Second pass: find nearest point on entity body (smaller pull zone,
-  // only fires when no vertex is within its larger zone).
   const pathConstraintKind = suggestConstraint(draggedType, 'path')
-  if (pathConstraintKind === null) return null  // registry disallows path snap for this dragged type
+  if (pathConstraintKind === null) return null
 
   let bestEntity: SnapTarget | null = null
   let bestEntityDist = entityThreshold
 
-  const scanBodies = (bodySketch: Sketch, bodyFeatId: string, bodySkipId: string) => {
-    for (const [entityId, entity] of Object.entries(bodySketch)) {
-      if (entityId === bodySkipId) continue
-      const result = nearestPointOnEntity(x, y, entity as Entity)
-      if (result && result.distance < bestEntityDist) {
-        bestEntityDist = result.distance
-        bestEntity = {
-          kind: 'entity',
-          position: result.position as [number, number],
-          constraintKind: pathConstraintKind,
-          entityRef: `entity:${bodyFeatId}:${entityId}`,
-        }
+  for (const ec of entityCandidates) {
+    const result = nearestPointOnEntity(x, y, ec.entity)
+    if (result && result.distance < bestEntityDist) {
+      bestEntityDist = result.distance
+      bestEntity = {
+        kind: 'entity',
+        position: result.position as [number, number],
+        constraintKind: pathConstraintKind,
+        entityRef: ec.id,
       }
-    }
-  }
-
-  scanBodies(sketch, featureId, skipEntityId)
-  if (otherSketches) {
-    for (const [otherFeatId, otherSketch] of Object.entries(otherSketches)) {
-      scanBodies(otherSketch, otherFeatId, '')
     }
   }
 
