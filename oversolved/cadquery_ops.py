@@ -45,17 +45,31 @@ def make_arc_edge(
     """Create a circular or arc edge.
 
     Angles are in radians.  If the span is ~2*pi a full circle is returned.
+    The x_axis parameter is honoured so the arc orientation matches the sketch plane.
     """
     import math
 
-    n = CQVector(*normal)
+    n = CQVector(*normal).normalized()
+    x = CQVector(*x_axis).normalized()
     c = CQVector(*center)
+
     span = abs(angle_end - angle_start)
-    if abs(span - 2 * math.pi) < 1e-6 or span < 1e-6:
-        return cq_shapes.Edge.makeCircle(radius, c.toTuple(), n.toTuple())
-    return cq_shapes.Edge.makeCircle(
-        radius, c.toTuple(), n.toTuple(), angle1=math.degrees(angle_start), angle2=math.degrees(angle_end)
-    )
+    is_full = abs(span - 2 * math.pi) < 1e-6 or span < 1e-6
+
+    from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt, gp_Circ  # noqa: PLC0415
+    ax2 = gp_Ax2(gp_Pnt(*c.toTuple()), gp_Dir(*n.toTuple()), gp_Dir(*x.toTuple()))
+    circle = gp_Circ(ax2, radius)
+
+    if is_full:
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge  # noqa: PLC0415
+        builder = BRepBuilderAPI_MakeEdge(circle)
+        return cq_shapes.Edge(builder.Edge())
+
+    from OCP.GC import GC_MakeArcOfCircle  # noqa: PLC0415
+    arc = GC_MakeArcOfCircle(circle, angle_start, angle_end, True)
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge  # noqa: PLC0415
+    builder = BRepBuilderAPI_MakeEdge(arc.Value())
+    return cq_shapes.Edge(builder.Edge())
 
 
 def make_wire(edges: list) -> cq_shapes.Wire:
