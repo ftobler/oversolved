@@ -657,12 +657,14 @@ def shape_to_stl_file(shape: Any, filepath: str, deflection: float = 0.5, angula
     writer.Write(topo_shape, filepath)
 
 
-def apply_fillet(shape: Any, radius: float) -> Any:
-    """Apply a fillet (round) to all edges of a shape.
+def apply_fillet(shape: Any, radius: float, edges: list[Any] | None = None) -> Any:
+    """Apply a fillet (round) to edges of a shape.
 
     Args:
         shape: The CAD shape to fillet.
         radius: The fillet radius.
+        edges: Optional list of specific TopoDS_Edge objects to fillet.
+               If None, all edges are filleted.
 
     Returns:
         The filleted shape, or the original shape if filleting fails.
@@ -677,12 +679,17 @@ def apply_fillet(shape: Any, radius: float) -> Any:
     maker = BRepFilletAPI_MakeFillet(topo_shape)
 
     edge_count = 0
-    explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
-    while explorer.More():
-        edge = TopoDS.Edge_s(explorer.Current())
-        maker.Add(radius, edge)
-        edge_count += 1
-        explorer.Next()
+    if edges is not None:
+        for edge in edges:
+            maker.Add(radius, edge)
+            edge_count += 1
+    else:
+        explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
+        while explorer.More():
+            edge = TopoDS.Edge_s(explorer.Current())
+            maker.Add(radius, edge)
+            edge_count += 1
+            explorer.Next()
 
     if edge_count == 0:
         return shape
@@ -694,14 +701,16 @@ def apply_fillet(shape: Any, radius: float) -> Any:
         return shape
 
 
-def apply_chamfer(shape: Any, distance: float, kind: str = "distance", angle: float = 45.0) -> Any:
-    """Apply a chamfer (bevel) to all edges of a shape.
+def apply_chamfer(shape: Any, distance: float, kind: str = "distance", angle: float = 45.0, edges: list[Any] | None = None) -> Any:
+    """Apply a chamfer (bevel) to edges of a shape.
 
     Args:
         shape: The CAD shape to chamfer.
         distance: The chamfer distance.
         kind: "distance" or "angle_distance".
         angle: Angle in degrees (only used when kind is "angle_distance").
+        edges: Optional list of specific TopoDS_Edge objects to chamfer.
+               If None, all edges are chamfered.
 
     Returns:
         The chamfered shape, or the original shape if chamfering fails.
@@ -716,15 +725,23 @@ def apply_chamfer(shape: Any, distance: float, kind: str = "distance", angle: fl
     maker = BRepFilletAPI_MakeChamfer(topo_shape)
 
     edge_count = 0
-    explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
-    while explorer.More():
-        edge = TopoDS.Edge_s(explorer.Current())
-        if kind == "angle_distance":
-            maker.AddDA(distance, angle, edge)
-        else:
-            maker.Add(distance, edge)
-        edge_count += 1
-        explorer.Next()
+    if edges is not None:
+        for edge in edges:
+            if kind == "angle_distance":
+                maker.AddDA(distance, angle, edge)
+            else:
+                maker.Add(distance, edge)
+            edge_count += 1
+    else:
+        explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
+        while explorer.More():
+            edge = TopoDS.Edge_s(explorer.Current())
+            if kind == "angle_distance":
+                maker.AddDA(distance, angle, edge)
+            else:
+                maker.Add(distance, edge)
+            edge_count += 1
+            explorer.Next()
 
     if edge_count == 0:
         return shape

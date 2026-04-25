@@ -563,19 +563,16 @@ def toolbar_revolve(ctx):
     stroke(ctx, 1.5)
 
     # Curved arrow around the right side of the rectangle
-    cx = x1 + 0.05
-    cy = (y0 + y1) / 2
-    r = 0.32
-    start_angle = math.radians(-80)
-    end_angle = math.radians(260)
+    arc_radius = 0.28
+    start_angle = math.radians(-90)
+    end_angle = math.radians(60)
 
-    ctx.arc(cx, cy, r, start_angle, end_angle)
+    ctx.arc(0.5, 0.5, arc_radius, start_angle, end_angle)
     stroke(ctx, 1.5)
 
-    # Arrowhead at the end of the arc
-    end_x = cx + r * math.cos(end_angle)
-    end_y = cy + r * math.sin(end_angle)
-    _arrowhead(ctx, end_x, end_y, math.degrees(end_angle) + 90, px(6))
+    end_x = 0.5 + arc_radius * math.cos(end_angle)
+    end_y = 0.5 + arc_radius * math.sin(end_angle)
+    _arrowhead(ctx, end_x - 0.13, end_y + 0.08, math.degrees(end_angle) + 80, px(8))
 
 
 def _pencil(ctx):
@@ -635,7 +632,7 @@ def feature_origin(ctx):
     ctx.arc(cx, cy, R, 0, 2 * math.pi)
     stroke(ctx, 1.5)
 
-    # Origin point icon: larger filled circle
+    # Origin point icon: smaller filled circle
     r = R / 3
     ctx.arc(cx, cy, r, 0, 2 * math.pi)
     ctx.fill()
@@ -1190,24 +1187,53 @@ def icon_rename(ctx):
 @icon("frontend/src/assets/icons/feature-fillet.svg")
 def feature_fillet(ctx):
     """Icon for Fillet: an L-shape with a rounded corner."""
-    # L-shape with rounded corner
-    ctx.move_to(0.2, 0.2)
-    ctx.line_to(0.2, 0.6)
+    offset = 0.05
+    radius = 0.3
+    border = 0.2
+
     # rounded corner arc
-    ctx.arc(0.4, 0.6, 0.2, math.pi, math.pi / 2)
-    ctx.line_to(0.8, 0.8)
+    ctx.arc(border + radius, border + radius, radius, math.pi, math.pi * 1.5)
+    stroke(ctx, 2.0)
+
+    # arc center point (small filled circle)
+    R = px(4)  # 20% larger than toolbar-point
+    r = R / 3
+    ctx.arc(border + radius, border + radius, r, 0, 2 * math.pi)
+    ctx.fill()
+
+    # straight line left down
+    ctx.move_to(border, border + radius + offset)
+    ctx.line_to(border, 1 - border)
     stroke(ctx, 1.5)
+
+    # straight line top right
+    ctx.move_to(border + radius + offset, border)
+    ctx.line_to(1 - border, border)
+    stroke(ctx, 1.5)
+
+
 
 
 @icon("frontend/src/assets/icons/feature-chamfer.svg")
 def feature_chamfer(ctx):
     """Icon for Chamfer: an L-shape with a beveled corner."""
-    # L-shape with beveled corner
-    ctx.move_to(0.2, 0.2)
-    ctx.line_to(0.2, 0.5)
-    # chamfer line
-    ctx.line_to(0.5, 0.8)
-    ctx.line_to(0.8, 0.8)
+    offset = 0.05
+    radius = 0.3
+    border = 0.2
+
+    # straight corner chamfer line
+    ctx.move_to(border + radius, border)
+    ctx.line_to(border, border + radius)
+    stroke(ctx, 2.0)
+
+    # straight line left down
+    ctx.move_to(border, border + radius + offset)
+    ctx.line_to(border, 1 - border)
+    stroke(ctx, 1.5)
+
+    # straight line top right
+    ctx.move_to(border + radius + offset, border)
+    ctx.line_to(1 - border, border)
     stroke(ctx, 1.5)
 
 

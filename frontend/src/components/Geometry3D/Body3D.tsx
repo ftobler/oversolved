@@ -175,6 +175,8 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
+  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
+  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
 
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
   const [hoveredVertexIndex, setHoveredVertexIndex] = useState<number | null>(null)
@@ -343,8 +345,9 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
       commitPlaneSelection(hoveredSurfaceId)
     } else {
       toggleNormalSelection(hoveredSurfaceId)
+      if (pendingPickField) commitFieldPick()
     }
-  }, [hoveredSurfaceId, planeSelectionFeatureId, commitPlaneSelection, toggleNormalSelection])
+  }, [hoveredSurfaceId, planeSelectionFeatureId, commitPlaneSelection, toggleNormalSelection, pendingPickField, commitFieldPick])
 
   // Handle edge click on line segments
   const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event }) => {
@@ -369,8 +372,9 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
       } else {
         toggleNormalSelection(query)
       }
+      if (pendingPickField) commitFieldPick()
     }
-  }, [featureId, edgeQueries, segmentToEdgeMap, hoveredEdgeIndex, toggleNormalSelection])
+  }, [featureId, edgeQueries, segmentToEdgeMap, hoveredEdgeIndex, toggleNormalSelection, pendingPickField, commitFieldPick])
 
   // Always compute face colors -- avoids toggling vertexColors on the material which
   // causes shader recompilation and a black-frame artifact.

@@ -8,6 +8,27 @@ interface FilletEditorProps {
   setPendingPickField: (field: PendingPickField | null) => void
 }
 
+const ListPickChip: React.FC<{ values: string[]; isPicking: boolean; onActivate: () => void; onRemove: (index: number) => void }> = ({ values, isPicking, onActivate, onRemove }) => {
+  const isEmpty = values.length === 0
+  return (
+    <div
+      className={`feature-pick-chip feature-pick-chip-list ${isEmpty ? 'empty' : ''} ${isPicking ? 'picking' : ''}`}
+      onClick={(e) => { e.stopPropagation(); onActivate() }}
+    >
+      {values.map((v, i) => (
+        <div key={i} className="feature-pick-chip-item">
+          <span className="feature-pick-chip-item-text">{v}</span>
+          <button
+            className="feature-pick-chip-item-remove"
+            onClick={(e) => { e.stopPropagation(); onRemove(i) }}
+            title="Remove"
+          >×</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export const FilletEditor: React.FC<FilletEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField }) => {
   const fillet = feature.fillet ?? { edges: [], radius: 1 }
   const fid = feature.id
@@ -17,34 +38,15 @@ export const FilletEditor: React.FC<FilletEditorProps> = ({ feature, onMutation,
     <div className="plane-editor">
       <div className="feature-field-row">
         <span className="feature-field-label">Edges</span>
-        <div className="pick-list">
-          {fillet.edges.length === 0 && (
-            <button
-              className={`pick-chip ${isPickingEdges ? 'active' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation()
-                if (isPickingEdges) setPendingPickField(null)
-                else setPendingPickField({ featureId: fid, field: 'edges' })
-              }}
-            >
-              {isPickingEdges ? 'Picking...' : 'Pick edges'}
-            </button>
-          )}
-          {fillet.edges.map((edge, index) => (
-            <span key={index} className="pick-chip-value">
-              {edge}
-              <button
-                className="pick-chip-remove"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onMutation({ type: 'remove_fillet_edge', featureId: fid, index })
-                }}
-              >
-                x
-              </button>
-            </span>
-          ))}
-        </div>
+        <ListPickChip
+          values={fillet.edges}
+          isPicking={isPickingEdges}
+          onActivate={() => {
+            if (isPickingEdges) setPendingPickField(null)
+            else setPendingPickField({ featureId: fid, field: 'edges', hostKind: 'fillet' })
+          }}
+          onRemove={(index) => onMutation({ type: 'remove_fillet_edge', featureId: fid, index })}
+        />
       </div>
       <div className="feature-field-row">
         <span className="feature-field-label">Radius</span>

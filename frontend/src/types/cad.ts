@@ -30,6 +30,7 @@ export interface ChamferFeatureDef {
 export interface RevolveFeatureDef {
   sketch: string | string[]
   angle: number
+  axis?: string
   axis_origin?: [number, number, number]
   axis_direction?: [number, number, number]
   operation?: 'add' | 'cut' | 'new'
@@ -109,6 +110,7 @@ export function isBodyFeatureResult(r: unknown): r is BodyFeatureResult {
 export interface PendingPickField {
   featureId: string
   field: string
+  hostKind?: string
 }
 
 // ── Document AST Types ────
@@ -441,8 +443,7 @@ export type Mutation =
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
   | { type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number }
   | { type: 'set_revolve_angle'; featureId: string; angle: number }
-  | { type: 'set_revolve_axis_origin'; featureId: string; axisOrigin: [number, number, number] }
-  | { type: 'set_revolve_axis_direction'; featureId: string; axisDirection: [number, number, number] }
+  | { type: 'set_revolve_axis'; featureId: string; axis: string }
   | { type: 'set_revolve_operation'; featureId: string; operation: 'add' | 'cut' | 'new' }
   | { type: 'add_revolve_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_revolve_profile'; featureId: string; index: number }

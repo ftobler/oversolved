@@ -9,6 +9,8 @@ import featureRevolveIcon from '../assets/icons/feature-revolve.svg'
 import featurePartIcon from '../assets/icons/feature-part.svg'
 import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
+import featureFilletIcon from '../assets/icons/feature-fillet.svg'
+import featureChamferIcon from '../assets/icons/feature-chamfer.svg'
 import featureImportIcon from '../assets/icons/icon-upload.svg'
 import { FilletEditor } from './FilletEditor'
 import { ChamferEditor } from './ChamferEditor'
@@ -120,6 +122,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         return featureRevolveIcon
       case 'origin':
         return featureOriginIcon
+      case 'fillet':
+        return featureFilletIcon
+      case 'chamfer':
+        return featureChamferIcon
       case 'import_step':
         return featureImportIcon
       default:
@@ -318,7 +324,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             isPicking={isPickingSketch}
             onActivate={() => {
               if (isPickingSketch) onSetPendingPickField(null)
-              else onSetPendingPickField({ featureId: fid, field: 'sketch' })
+              else onSetPendingPickField({ featureId: fid, field: 'sketch', hostKind: 'extrude' })
             }}
             onRemove={(index) => onMutation({ type: 'remove_extrude_profile', featureId: fid, index })}
           />
@@ -388,6 +394,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const revolve = feature.revolve ?? { sketch: [], angle: 360, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] }
     const fid = feature.id
     const isPickingSketch = pendingPickField?.featureId === fid && pendingPickField.field === 'sketch'
+    const isPickingAxis = pendingPickField?.featureId === fid && pendingPickField.field === 'axis'
     const profiles = normalizeRevolveSketch(revolve.sketch)
 
     return (
@@ -399,7 +406,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             isPicking={isPickingSketch}
             onActivate={() => {
               if (isPickingSketch) onSetPendingPickField(null)
-              else onSetPendingPickField({ featureId: fid, field: 'sketch' })
+              else onSetPendingPickField({ featureId: fid, field: 'sketch', hostKind: 'revolve' })
             }}
             onRemove={(index) => onMutation({ type: 'remove_revolve_profile', featureId: fid, index })}
           />
@@ -441,52 +448,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </select>
         </div>
         <div className="feature-field-row">
-          <span className="feature-field-label">Axis Origin</span>
-          <span className="feature-field-value">
-            {(revolve.axis_origin ?? [0, 0, 0]).map((v, i) => (
-              <input
-                key={i}
-                type="number"
-                className="feature-field-input"
-                style={{ width: '50px', marginRight: '4px' }}
-                defaultValue={v}
-                onClick={(e) => e.stopPropagation()}
-                onBlur={(e) => {
-                  const val = parseFloat(e.target.value)
-                  if (!isNaN(val)) {
-                    const next = [...(revolve.axis_origin ?? [0, 0, 0])] as [number, number, number]
-                    next[i] = val
-                    onMutation({ type: 'set_revolve_axis_origin', featureId: fid, axisOrigin: next })
-                  }
-                }}
-                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
-              />
-            ))}
-          </span>
-        </div>
-        <div className="feature-field-row">
-          <span className="feature-field-label">Axis Direction</span>
-          <span className="feature-field-value">
-            {(revolve.axis_direction ?? [0, 0, 1]).map((v, i) => (
-              <input
-                key={i}
-                type="number"
-                className="feature-field-input"
-                style={{ width: '50px', marginRight: '4px' }}
-                defaultValue={v}
-                onClick={(e) => e.stopPropagation()}
-                onBlur={(e) => {
-                  const val = parseFloat(e.target.value)
-                  if (!isNaN(val)) {
-                    const next = [...(revolve.axis_direction ?? [0, 0, 1])] as [number, number, number]
-                    next[i] = val
-                    onMutation({ type: 'set_revolve_axis_direction', featureId: fid, axisDirection: next })
-                  }
-                }}
-                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
-              />
-            ))}
-          </span>
+          <span className="feature-field-label">Axis</span>
+          <PickChip
+            value={revolve.axis}
+            isPicking={isPickingAxis}
+            onActivate={() => {
+              if (isPickingAxis) {
+                onSetPendingPickField(null)
+              } else if (selectionQuery) {
+                onMutation({ type: 'set_revolve_axis', featureId: fid, axis: selectionQuery })
+              } else {
+                onSetPendingPickField({ featureId: fid, field: 'axis' })
+              }
+            }}
+            onClear={() => onMutation({ type: 'set_revolve_axis', featureId: fid, axis: '' })}
+          />
         </div>
       </div>
     )
@@ -567,7 +543,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className="feature-icon"
                   />
                   {(() => {
-                    const r = feature.kind === 'extrude' || feature.kind === 'revolve' ? solveResults?.[feature.id] : undefined
+                    const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' ? solveResults?.[feature.id] : undefined
                     const bodyResult = r && isBodyFeatureResult(r) ? r : undefined
                     const hasBody = bodyResult && bodyResult.body_id
                       && bodies?.[bodyResult.body_id]?.mesh != null
@@ -630,6 +606,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span className="material-icons-outlined">close</span>
                       </button>
                     )}
+                    {feature.kind === 'fillet' && feature.id !== editingFeatureId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={(e) => { e.stopPropagation(); onEnterEditFeature(feature.id) }}
+                        title="Edit fillet"
+                      >
+                        <img src={contextEditIcon} alt="Edit" />
+                      </button>
+                    )}
+                    {feature.kind === 'fillet' && feature.id === editingFeatureId && (
+                      <button
+                        className="exit-sketch-btn"
+                        onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
+                        title="Exit fillet editor"
+                      >
+                        <span className="material-icons-outlined">close</span>
+                      </button>
+                    )}
+                    {feature.kind === 'chamfer' && feature.id !== editingFeatureId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={(e) => { e.stopPropagation(); onEnterEditFeature(feature.id) }}
+                        title="Edit chamfer"
+                      >
+                        <img src={contextEditIcon} alt="Edit" />
+                      </button>
+                    )}
+                    {feature.kind === 'chamfer' && feature.id === editingFeatureId && (
+                      <button
+                        className="exit-sketch-btn"
+                        onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
+                        title="Exit chamfer editor"
+                      >
+                        <span className="material-icons-outlined">close</span>
+                      </button>
+                    )}
                     {feature.kind === 'extrude' && feature.id === editingFeatureId && (
                       <button
                         className="exit-sketch-btn"
@@ -675,7 +687,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <img src={iconEyeIcon} alt="Visible" />
                       </button>
                     )}
-                    {(feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'import_step') && (
+                    {(feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'import_step') && (
                       <span className="feature-visibility-placeholder" />
                     )}
                     {BUILT_IN_IDS.has(feature.id) && (

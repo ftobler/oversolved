@@ -2144,6 +2144,19 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
 
         axis_origin = feature.get("axis_origin", [0, 0, 0])
         axis_direction = feature.get("axis_direction", [0, 0, 1])
+        axis_query = feature.get("axis")
+        if axis_query:
+            axis_data = global_repo.query(axis_query)
+            if axis_data and "start" in axis_data and "end" in axis_data:
+                start = axis_data["start"]
+                end = axis_data["end"]
+                axis_origin = list(start)
+                dx = end[0] - start[0]
+                dy = end[1] - start[1]
+                dz = end[2] - start[2]
+                length = math.sqrt(dx * dx + dy * dy + dz * dz)
+                if length > 1e-12:
+                    axis_direction = [dx / length, dy / length, dz / length]
         body_id = "body_" + feature_id
         result: dict = {"status": "ok", "body_id": body_id}
 
@@ -2239,6 +2252,57 @@ def _solve_import_step(
         raise ValueError(str(exc)) from exc
 
 
+def _resolve_fillet_edges(body, edge_queries):
+    """Resolve edge query strings to TopoDS_Edge objects from a body shape."""
+    from oversolved.query import make_ancestry_query, _parse_ancestry
+    import re
+
+    if body.shape is None or not edge_queries:
+        return []
+
+    seen_hashes = set()
+    topo_edges = []
+    edge_types = []
+    for edge in body.shape.edges():
+        h = edge.hashCode()
+        if h in seen_hashes:
+            continue
+        seen_hashes.add(h)
+        topo_edges.append(edge.wrapped)
+        gt = edge.geomType()
+        edge_types.append("straightedge" if gt == "LINE" else "edge")
+
+    query_to_edge = {}
+    for idx, (te, et) in enumerate(zip(topo_edges, edge_types)):
+        if body.created_by:
+            aq = make_ancestry_query(
+                [f"@{body.created_by}edge{idx}", f"@{body.created_by}"],
+                et
+            )
+            query_to_edge[aq] = te
+        query_to_edge[f"?{body.id}:edge:{idx}"] = te
+
+    result = []
+    for q in edge_queries:
+        edge = query_to_edge.get(q)
+        if edge is None and q.startswith("?"):
+            try:
+                ids, _ = _parse_ancestry(q)
+                for id_str in ids:
+                    m = re.match(r"@(\w+)edge(\d+)$", id_str)
+                    if m:
+                        eidx = int(m.group(2))
+                        if 0 <= eidx < len(topo_edges):
+                            edge = topo_edges[eidx]
+                            break
+            except Exception:
+                pass
+        if edge is not None:
+            result.append(edge)
+
+    return result
+
+
 def _solve_fillet(
     feature: dict,
     global_repo: Repository,
@@ -2275,7 +2339,11 @@ def _solve_fillet(
         if body.shape is None:
             raise ValueError(f"body {body_id} has no shape")
 
-        new_shape = apply_fillet(body.shape, radius)
+        topo_edges = _resolve_fillet_edges(body, edges)
+        if not topo_edges:
+            raise ValueError("no edges resolved for fillet")
+
+        new_shape = apply_fillet(body.shape, radius, edges=topo_edges)
         body.shape = new_shape
         body.modified_by.append(feature_id)
 
@@ -2323,7 +2391,11 @@ def _solve_chamfer(
         if body.shape is None:
             raise ValueError(f"body {body_id} has no shape")
 
-        new_shape = apply_chamfer(body.shape, distance, kind=kind, angle=angle)
+        topo_edges = _resolve_fillet_edges(body, edges)
+        if not topo_edges:
+            raise ValueError("no edges resolved for chamfer")
+
+        new_shape = apply_chamfer(body.shape, distance, kind=kind, angle=angle, edges=topo_edges)
         body.shape = new_shape
         body.modified_by.append(feature_id)
 

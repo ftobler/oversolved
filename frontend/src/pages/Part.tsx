@@ -107,10 +107,8 @@ function describeMutation(m: Mutation): string {
       return `add revolve ${m.label ?? m.featureId}`
     case 'set_revolve_angle':
       return `set revolve angle to ${m.angle}`
-    case 'set_revolve_axis_origin':
-      return `set revolve axis origin`
-    case 'set_revolve_axis_direction':
-      return `set revolve axis direction`
+    case 'set_revolve_axis':
+      return `set revolve axis to ${m.axis}`
     case 'set_revolve_operation':
       return `set revolve operation to ${m.operation}`
     case 'add_revolve_profile':

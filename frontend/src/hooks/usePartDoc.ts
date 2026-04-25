@@ -33,8 +33,7 @@ import {
   applyRemoveExtrudeProfile,
   applyAddRevolve,
   applySetRevolveAngle,
-  applySetRevolveAxisOrigin,
-  applySetRevolveAxisDirection,
+  applySetRevolveAxis,
   applySetRevolveOperation,
   applyAddRevolveProfile,
   applyRemoveRevolveProfile,
@@ -353,11 +352,8 @@ setSolveResults(results)
       case 'set_revolve_angle':
         applySetRevolveAngle(next, m.featureId, m.angle)
         break
-      case 'set_revolve_axis_origin':
-        applySetRevolveAxisOrigin(next, m.featureId, m.axisOrigin)
-        break
-      case 'set_revolve_axis_direction':
-        applySetRevolveAxisDirection(next, m.featureId, m.axisDirection)
+      case 'set_revolve_axis':
+        applySetRevolveAxis(next, m.featureId, m.axis)
         break
       case 'set_revolve_operation':
         applySetRevolveOperation(next, m.featureId, m.operation)

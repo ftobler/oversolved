@@ -298,6 +298,35 @@ def test_fillet_then_chamfer():
     assert_mesh_valid(mesh)
 
 
+def test_fillet_respects_edge_list():
+    from oversolved.builder import build
+    from solver_helpers import full_rect_extrude_spec
+
+    spec1 = full_rect_extrude_spec(w=10, h=10, d=5)
+    spec1["features"].append({
+        "id": "fillet1",
+        "kind": "fillet",
+        "label": "Fillet",
+        "edges": ["?body_ex1:edge:0"],
+        "radius": 1.0,
+    })
+    r1 = build(spec1)
+    verts1 = len(r1["bodies"]["body_ex1"]["mesh"]["vertices"])
+
+    spec_all = full_rect_extrude_spec(w=10, h=10, d=5)
+    spec_all["features"].append({
+        "id": "fillet1",
+        "kind": "fillet",
+        "label": "Fillet",
+        "edges": [f"?body_ex1:edge:{i}" for i in range(12)],
+        "radius": 1.0,
+    })
+    r_all = build(spec_all)
+    verts_all = len(r_all["bodies"]["body_ex1"]["mesh"]["vertices"])
+
+    assert verts1 < verts_all, f"single-edge fillet ({verts1}) should have fewer verts than all-edge fillet ({verts_all})"
+
+
 def test_multiple_fillet_features():
     from oversolved.builder import build
     from solver_helpers import full_rect_extrude_spec, assert_mesh_valid

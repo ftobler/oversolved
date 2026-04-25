@@ -836,5 +836,39 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).not.toHaveBeenCalled()
     })
+
+    it('edge pick dispatches add_fillet_edge and keeps pick mode open', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'fillet1', field: 'edges', hostKind: 'fillet' },
+      })
+      const edgeQuery = '?1f,19;@6zOrLFCJhQAWEDTArm3VMmd4edge11@6zOrLFCJhQAWEDTArm3VMmd4:straightedge'
+      useSketchEditorStore.getState().toggleNormalSelection(edgeQuery)
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_fillet_edge',
+        featureId: 'fillet1',
+        edgeQuery,
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toEqual({ featureId: 'fillet1', field: 'edges', hostKind: 'fillet' })
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    })
+
+    it('edge pick dispatches add_chamfer_edge for chamfer hostKind', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'chamfer1', field: 'edges', hostKind: 'chamfer' },
+      })
+      const edgeQuery = '?body_ex1:edge:0'
+      useSketchEditorStore.getState().toggleNormalSelection(edgeQuery)
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_chamfer_edge',
+        featureId: 'chamfer1',
+        edgeQuery,
+      })
+    })
   })
 })

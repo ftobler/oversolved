@@ -673,30 +673,13 @@ export function applySetRevolveAngle(doc: PartDoc, featureId: string, angle: num
   feature.revolve.angle = angle
 }
 
-export function applySetRevolveAxisOrigin(
-  doc: PartDoc,
-  featureId: string,
-  axisOrigin: [number, number, number],
-): void {
+export function applySetRevolveAxis(doc: PartDoc, featureId: string, axis: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.revolve) {
-    console.warn(`applySetRevolveAxisOrigin: feature ${featureId} has no revolve`)
+    console.warn(`applySetRevolveAxis: feature ${featureId} has no revolve`)
     return
   }
-  feature.revolve.axis_origin = axisOrigin
-}
-
-export function applySetRevolveAxisDirection(
-  doc: PartDoc,
-  featureId: string,
-  axisDirection: [number, number, number],
-): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.revolve) {
-    console.warn(`applySetRevolveAxisDirection: feature ${featureId} has no revolve`)
-    return
-  }
-  feature.revolve.axis_direction = axisDirection
+  feature.revolve.axis = axis
 }
 
 export function applySetRevolveOperation(

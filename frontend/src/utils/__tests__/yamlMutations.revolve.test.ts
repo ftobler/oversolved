@@ -3,8 +3,7 @@ import type { PartDoc } from '../../types/cad'
 import {
   applyAddRevolve,
   applySetRevolveAngle,
-  applySetRevolveAxisOrigin,
-  applySetRevolveAxisDirection,
+  applySetRevolveAxis,
   applySetRevolveOperation,
   applyAddRevolveProfile,
   applyRemoveRevolveProfile,
@@ -195,49 +194,26 @@ describe('set_revolve_angle', () => {
   })
 })
 
-describe('set_revolve_axis_origin', () => {
-  it('updates revolve axis origin', () => {
+describe('set_revolve_axis', () => {
+  it('updates revolve axis query', () => {
     const doc: PartDoc = {
       features: [
         {
           id: 'rev1',
           kind: 'revolve',
-          revolve: { sketch: '$sk1', angle: 360, axis_origin: [0, 0, 0] },
+          revolve: { sketch: '$sk1', angle: 360 },
         },
       ],
     }
-    applySetRevolveAxisOrigin(doc, 'rev1', [1, 2, 3])
-    expect(doc.features![0].revolve!.axis_origin).toEqual([1, 2, 3])
+    applySetRevolveAxis(doc, 'rev1', '?sk1/line1:start@sk1:straightedge')
+    expect(doc.features![0].revolve!.axis).toBe('?sk1/line1:start@sk1:straightedge')
   })
 
   it('does nothing if revolve is undefined', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() => applySetRevolveAxisOrigin(doc, 'rev1', [1, 2, 3])).not.toThrow()
-  })
-})
-
-describe('set_revolve_axis_direction', () => {
-  it('updates revolve axis direction', () => {
-    const doc: PartDoc = {
-      features: [
-        {
-          id: 'rev1',
-          kind: 'revolve',
-          revolve: { sketch: '$sk1', angle: 360, axis_direction: [0, 0, 1] },
-        },
-      ],
-    }
-    applySetRevolveAxisDirection(doc, 'rev1', [0, 1, 0])
-    expect(doc.features![0].revolve!.axis_direction).toEqual([0, 1, 0])
-  })
-
-  it('does nothing if revolve is undefined', () => {
-    const doc: PartDoc = {
-      features: [{ id: 'rev1', kind: 'sketch' }],
-    }
-    expect(() => applySetRevolveAxisDirection(doc, 'rev1', [0, 1, 0])).not.toThrow()
+    expect(() => applySetRevolveAxis(doc, 'rev1', '?some:edge')).not.toThrow()
   })
 })
 

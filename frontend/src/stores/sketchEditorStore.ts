@@ -370,8 +370,26 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       const sketchQuery = selectionId.startsWith('face:')
         ? selectionId.split(':').slice(2).join(':')  // face pick: pass ancestry query through unchanged
         : selectionId  // raw selection id
-      onMutation?.({ type: 'add_extrude_profile', featureId: pendingPickField.featureId, sketchQuery })
+      const mutationType = pendingPickField.hostKind === 'revolve' ? 'add_revolve_profile' : 'add_extrude_profile'
+      onMutation?.({ type: mutationType, featureId: pendingPickField.featureId, sketchQuery })
       set({ normalSelection: new Set() })  // clear selection but keep pick mode open
+      return
+    }
+    if (pendingPickField.field === 'edges') {
+      const edgeQuery = selectionId.startsWith('face:')
+        ? selectionId.split(':').slice(2).join(':')
+        : selectionId
+      const mutationType = pendingPickField.hostKind === 'chamfer' ? 'add_chamfer_edge' : 'add_fillet_edge'
+      onMutation?.({ type: mutationType, featureId: pendingPickField.featureId, edgeQuery })
+      set({ normalSelection: new Set() })  // clear selection but keep pick mode open
+      return
+    }
+    if (pendingPickField.field === 'axis') {
+      const axisQuery = selectionId.startsWith('face:')
+        ? selectionId.split(':').slice(2).join(':')
+        : selectionId
+      onMutation?.({ type: 'set_revolve_axis', featureId: pendingPickField.featureId, axis: axisQuery })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
       return
     }
     let value: string
