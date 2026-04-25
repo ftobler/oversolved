@@ -18,6 +18,7 @@ import ContextMenuDialog from './ContextMenuDialog'
 import { CLICK_THRESHOLD_PX } from './Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from './interaction/useSelectionPointerUpCleanup'
 import { getBodiesToRender, getSketchesToRender } from './Viewport/bodyUtils'
+import { buildBodySnapSketch, builtinPlaneTransform, BODY_SNAP_FEAT_PREFIX } from './Geometry3D/bodySnapProjection'
 
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 
@@ -64,6 +65,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   activeFeatureId,
   onRightClick,
   showDebugHit = false,
+  otherSketches,
   bodies,
 }: ViewportProps, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -241,6 +243,32 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     [features, rollbackPosition, visibleFeatures]
   )
 
+  // Build a combined otherSketches that includes cross-sketch entities AND projected body geometry.
+  // Body geometry is projected to 2D using the active sketch's plane transform so snap detection
+  // can treat it as regular sketch candidates (with a BODY_SNAP_FEAT_PREFIX sentinel featureId).
+  const combinedOtherSketches = useMemo(() => {
+    if (!activeFeatureId) return otherSketches
+    const activeResult = solveResults?.[activeFeatureId]
+    const activeFeature = features?.find(f => f.id === activeFeatureId)
+
+    // Resolve plane transform: backend-provided or derived from builtin plane string.
+    const planeTransform = activeResult?.plane_transform
+      ?? (activeFeature?.plane ? builtinPlaneTransform(activeFeature.plane) : null)
+
+    if (!planeTransform || !bodies) return otherSketches
+
+    const bodySketchEntries: Record<string, Sketch> = {}
+    for (const [bodyId, body] of Object.entries(bodies)) {
+      const snapSketch = buildBodySnapSketch(body.vertices, body.edges, planeTransform)
+      if (Object.keys(snapSketch).length > 0) {
+        bodySketchEntries[`${BODY_SNAP_FEAT_PREFIX}${bodyId}`] = snapSketch
+      }
+    }
+
+    if (Object.keys(bodySketchEntries).length === 0) return otherSketches
+    return { ...otherSketches, ...bodySketchEntries }
+  }, [activeFeatureId, solveResults, features, bodies, otherSketches])
+
   return (
     <div
       style={{ position: 'relative', width: '100%', height: '100%' }}
@@ -284,8 +312,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           const fullFeatureDef = featureDefs?.find(fd => fd.id === f.id) || f
           const sketch = solveResult?.solved ? solveResult.solved : unflattenGeometry(fullFeatureDef.initial || {}, fullFeatureDef.entities)
           const constraints = solveResult?.constraints ? solveResult.constraints : deriveConstraints(fullFeatureDef, sketch)
+          const isActive = f.id === activeFeatureId
           return (
-            <Geometry3D key={f.id} featureId={f.id} solved={sketch} entities={fullFeatureDef.entities} constraints={constraints} topology={solveResult?.topology} activeFeatureId={activeFeatureId} plane={fullFeatureDef.plane} planeTransform={solveResult?.plane_transform} solveStatus={solveResult?.status} entityStatus={solveResult?.features} showDebugHit={showDebugHit} />
+            <Geometry3D key={f.id} featureId={f.id} solved={sketch} entities={fullFeatureDef.entities} constraints={constraints} topology={solveResult?.topology} activeFeatureId={activeFeatureId} plane={fullFeatureDef.plane} planeTransform={solveResult?.plane_transform} solveStatus={solveResult?.status} entityStatus={solveResult?.features} showDebugHit={showDebugHit} otherSketches={isActive ? combinedOtherSketches : undefined} />
           )
         })}
 

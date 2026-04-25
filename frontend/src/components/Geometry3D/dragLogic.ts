@@ -8,6 +8,7 @@ import { findSnapTarget, collectVertexTargets } from './snapDetection'
 import { detectAlignmentSnap } from '../../registry'
 import { isPureClick, CLICK_THRESHOLD_PX } from './pointerAbstraction'
 import { DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX } from './constants'
+import { BODY_SNAP_FEAT_PREFIX } from './bodySnapProjection'
 
 export interface DragMoveResult {
   snapTarget: SnapTarget | null
@@ -165,6 +166,18 @@ export function computeDragMutation(
   }
 
   if (snapTarget?.kind === 'vertex') {
+    // Body snap targets encode the body featureId with BODY_SNAP_FEAT_PREFIX; no constraint is
+    // created because the projected 3D position is a positional reference only.
+    const isBodySnap = snapTarget.vertexId?.startsWith(`vertex:${BODY_SNAP_FEAT_PREFIX}`)
+    if (isBodySnap) {
+      return {
+        type: 'move_vertex',
+        featureId: drag.featureId,
+        entityId: drag.entityId,
+        vertexKey: drag.vertexKey,
+        to: snapTarget.position,
+      }
+    }
     return {
       type: 'move_vertex_with_constraint',
       featureId: drag.featureId,
@@ -177,6 +190,17 @@ export function computeDragMutation(
   }
 
   if (snapTarget?.kind === 'entity') {
+    // Body edge snap: position only, no constraint.
+    const isBodyEntitySnap = snapTarget.entityRef?.startsWith(`entity:${BODY_SNAP_FEAT_PREFIX}`)
+    if (isBodyEntitySnap) {
+      return {
+        type: 'move_vertex',
+        featureId: drag.featureId,
+        entityId: drag.entityId,
+        vertexKey: drag.vertexKey,
+        to: snapTarget.position,
+      }
+    }
     return {
       type: 'move_vertex_with_constraint',
       featureId: drag.featureId,
