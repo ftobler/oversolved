@@ -16,7 +16,7 @@ dependencies = [
     "jax[cpu]",
     "scipy",
     "pyyaml",
-    "cadquery-ocp",
+    "cadquery",
     "PyMySQL",
 ]
 
