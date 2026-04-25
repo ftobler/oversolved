@@ -221,11 +221,54 @@ def test_cylinder_side_face_uses_analytical_surface_normal():
     ) == pytest.approx(1.0, abs=1e-6)
 
 
-def test_revolve_face_stub():
-    """10. revolve_face stub - asserts NotImplementedError"""
-    face = make_polygon_face([[0, 0], [1, 0], [1, 1], [0, 1]])
-    with pytest.raises(NotImplementedError):
-        revolve_face(face, [0, 0, 0], [0, 0, 1], 90.0)
+def test_revolve_face_empty_angle_fails():
+    """revolve_face with angle=0 raises ValueError"""
+    face = make_polygon_face([[1, 0], [2, 0], [2, 1], [1, 1]])
+    with pytest.raises(ValueError):
+        revolve_face(face, [0, 0, 0], [0, 1, 0], 0.0)
+
+
+def test_revolve_face_90_deg():
+    """90 degree revolve of rectangle creates valid solid"""
+    face = make_polygon_face([[1, 0], [2, 0], [2, 1], [1, 1]])
+    solid = revolve_face(face, [0, 0, 0], [0, 1, 0], 90.0)
+    mesh = solid_to_mesh(solid)
+    assert_mesh_valid(mesh)
+
+
+def test_revolve_face_360_deg():
+    """full 360 degree revolve creates valid solid"""
+    face = make_polygon_face([[1, 0], [2, 0], [2, 1], [1, 1]])
+    solid = revolve_face(face, [0, 0, 0], [0, 1, 0], 360.0)
+    mesh = solid_to_mesh(solid)
+    assert_mesh_valid(mesh)
+
+
+def test_revolve_face_cylinder():
+    """rectangle revolved 360 degrees around y-axis gives tube-like volume"""
+    face = make_polygon_face([[1, 0], [2, 0], [2, 1], [1, 1]])
+    solid = revolve_face(face, [0, 0, 0], [0, 1, 0], 360.0)
+    # Volume of tube: pi * (r_outer^2 - r_inner^2) * height = pi * (4 - 1) * 1 = 3*pi
+    expected_volume = 3.0 * math.pi
+    assert solid.Volume() == pytest.approx(expected_volume, abs=0.5)
+
+
+def test_revolve_face_cone():
+    """triangle revolved 360 degrees around y-axis gives frustum-like volume"""
+    # Triangle: (1,0) -> (2,0) -> (1,1)
+    face = make_polygon_face([[1, 0], [2, 0], [1, 1]])
+    solid = revolve_face(face, [0, 0, 0], [0, 1, 0], 360.0)
+    # Volume = pi * integral from y=0 to 1 of ((2-y)^2 - 1^2) dy = 4pi/3
+    expected_volume = 4.0 * math.pi / 3.0
+    assert solid.Volume() == pytest.approx(expected_volume, abs=0.5)
+
+
+def test_revolve_face_partial_angle():
+    """partial revolve produces proportionally smaller volume"""
+    face = make_polygon_face([[1, 0], [2, 0], [2, 1], [1, 1]])
+    solid_360 = revolve_face(face, [0, 0, 0], [0, 1, 0], 360.0)
+    solid_90 = revolve_face(face, [0, 0, 0], [0, 1, 0], 90.0)
+    assert solid_90.Volume() == pytest.approx(solid_360.Volume() / 4.0, abs=0.5)
 
 
 def test_step_file_to_shape_round_trip():

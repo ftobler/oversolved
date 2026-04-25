@@ -1,10 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import type { PartFeature, PartDoc, PlaneDef, Mutation, PendingPickField, ExtrudeDirection, ExtrudeOperation, BodyResult } from '../types/cad'
 import { isBodyFeatureResult } from '../types/cad'
-import { normalizeExtrudeSketch } from '../utils/yamlMutations'
+import { normalizeExtrudeSketch, normalizeRevolveSketch } from '../utils/yamlMutations'
 import { planeLabel } from './Geometry3D/utils'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
+import featureRevolveIcon from '../assets/icons/feature-revolve.svg'
 import featurePartIcon from '../assets/icons/feature-part.svg'
 import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
@@ -115,6 +116,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         return featureSketchIcon
       case 'extrude':
         return featureExtrudeIcon
+      case 'revolve':
+        return featureRevolveIcon
       case 'origin':
         return featureOriginIcon
       case 'import_step':
@@ -381,6 +384,114 @@ export const Sidebar: React.FC<SidebarProps> = ({
     )
   }
 
+  const RevolveEditor: React.FC<{ feature: PartFeature }> = ({ feature }) => {
+    const revolve = feature.revolve ?? { sketch: [], angle: 360, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] }
+    const fid = feature.id
+    const isPickingSketch = pendingPickField?.featureId === fid && pendingPickField.field === 'sketch'
+    const profiles = normalizeRevolveSketch(revolve.sketch)
+
+    return (
+      <div className="plane-editor">
+        <div className="feature-field-row">
+          <span className="feature-field-label">Profile</span>
+          <ListPickChip
+            values={profiles}
+            isPicking={isPickingSketch}
+            onActivate={() => {
+              if (isPickingSketch) onSetPendingPickField(null)
+              else onSetPendingPickField({ featureId: fid, field: 'sketch' })
+            }}
+            onRemove={(index) => onMutation({ type: 'remove_revolve_profile', featureId: fid, index })}
+          />
+        </div>
+        <div className="feature-field-row">
+          <span className="feature-field-label">Angle</span>
+          <input
+            type="number"
+            className="feature-field-input"
+            defaultValue={revolve.angle ?? 360}
+            onClick={(e) => e.stopPropagation()}
+            onBlur={(e) => {
+              const v = parseFloat(e.target.value)
+              if (!isNaN(v) && v > 0)
+                onMutation({ type: 'set_revolve_angle', featureId: fid, angle: v })
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
+          />
+        </div>
+        <div className="feature-field-row">
+          <span className="feature-field-label">Operation</span>
+          <select
+            className="feature-field-select"
+            aria-label="Operation"
+            value={revolve.operation ?? 'add'}
+            onChange={(e) => {
+              e.stopPropagation()
+              onMutation({
+                type: 'set_revolve_operation',
+                featureId: fid,
+                operation: e.target.value as 'add' | 'cut' | 'new',
+              })
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <option value="add">Add</option>
+            <option value="cut">Cut</option>
+            <option value="new">New</option>
+          </select>
+        </div>
+        <div className="feature-field-row">
+          <span className="feature-field-label">Axis Origin</span>
+          <span className="feature-field-value">
+            {(revolve.axis_origin ?? [0, 0, 0]).map((v, i) => (
+              <input
+                key={i}
+                type="number"
+                className="feature-field-input"
+                style={{ width: '50px', marginRight: '4px' }}
+                defaultValue={v}
+                onClick={(e) => e.stopPropagation()}
+                onBlur={(e) => {
+                  const val = parseFloat(e.target.value)
+                  if (!isNaN(val)) {
+                    const next = [...(revolve.axis_origin ?? [0, 0, 0])] as [number, number, number]
+                    next[i] = val
+                    onMutation({ type: 'set_revolve_axis_origin', featureId: fid, axisOrigin: next })
+                  }
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
+              />
+            ))}
+          </span>
+        </div>
+        <div className="feature-field-row">
+          <span className="feature-field-label">Axis Direction</span>
+          <span className="feature-field-value">
+            {(revolve.axis_direction ?? [0, 0, 1]).map((v, i) => (
+              <input
+                key={i}
+                type="number"
+                className="feature-field-input"
+                style={{ width: '50px', marginRight: '4px' }}
+                defaultValue={v}
+                onClick={(e) => e.stopPropagation()}
+                onBlur={(e) => {
+                  const val = parseFloat(e.target.value)
+                  if (!isNaN(val)) {
+                    const next = [...(revolve.axis_direction ?? [0, 0, 1])] as [number, number, number]
+                    next[i] = val
+                    onMutation({ type: 'set_revolve_axis_direction', featureId: fid, axisDirection: next })
+                  }
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
+              />
+            ))}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
   const PlaneSelector: React.FC<{ feature: PartFeature; featureDef?: PartFeature }> = ({ feature, featureDef }) => {
     const isPicking = planeSelectionFeatureId === feature.id
     return (
@@ -436,7 +547,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onDrop={(e) => onRollbackDrop(e, index)}
                 onClick={() => {
                   if (pendingPickField?.field === 'sketch' && feature.kind === 'sketch') {
-                    onMutation({ type: 'add_extrude_profile', featureId: pendingPickField.featureId, sketchQuery: '$' + feature.id })
+                    const hostFeature = features.find(f => f.id === pendingPickField.featureId)
+                    if (hostFeature?.kind === 'revolve') {
+                      onMutation({ type: 'add_revolve_profile', featureId: pendingPickField.featureId, sketchQuery: '$' + feature.id })
+                    } else {
+                      onMutation({ type: 'add_extrude_profile', featureId: pendingPickField.featureId, sketchQuery: '$' + feature.id })
+                    }
                   } else {
                     onToggleSelect(`@${feature.id}`)
                   }
@@ -451,7 +567,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className="feature-icon"
                   />
                   {(() => {
-                    const r = feature.kind === 'extrude' ? solveResults?.[feature.id] : undefined
+                    const r = feature.kind === 'extrude' || feature.kind === 'revolve' ? solveResults?.[feature.id] : undefined
                     const bodyResult = r && isBodyFeatureResult(r) ? r : undefined
                     const hasBody = bodyResult && bodyResult.body_id
                       && bodies?.[bodyResult.body_id]?.mesh != null
@@ -494,6 +610,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         title="Edit extrude"
                       >
                         <img src={contextEditIcon} alt="Edit" />
+                      </button>
+                    )}
+                    {feature.kind === 'revolve' && feature.id !== editingFeatureId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={(e) => { e.stopPropagation(); onEnterEditFeature(feature.id) }}
+                        title="Edit revolve"
+                      >
+                        <img src={contextEditIcon} alt="Edit" />
+                      </button>
+                    )}
+                    {feature.kind === 'revolve' && feature.id === editingFeatureId && (
+                      <button
+                        className="exit-sketch-btn"
+                        onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
+                        title="Exit revolve editor"
+                      >
+                        <span className="material-icons-outlined">close</span>
                       </button>
                     )}
                     {feature.kind === 'extrude' && feature.id === editingFeatureId && (
@@ -541,7 +675,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <img src={iconEyeIcon} alt="Visible" />
                       </button>
                     )}
-                    {(feature.kind === 'extrude' || feature.kind === 'import_step') && (
+                    {(feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'import_step') && (
                       <span className="feature-visibility-placeholder" />
                     )}
                     {BUILT_IN_IDS.has(feature.id) && (
@@ -566,6 +700,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
                 {feature.kind === 'extrude' && editingFeatureId === feature.id && (
                   <ExtrudeEditor feature={feature} />
+                )}
+                {feature.kind === 'revolve' && editingFeatureId === feature.id && (
+                  <RevolveEditor feature={feature} />
                 )}
                 {feature.kind === 'import_step' && feature.id === editingFeatureId && (
                   <div className="plane-editor">

@@ -92,6 +92,19 @@ def extrude_face(face: Any, direction_vec: list[float], distance: float) -> cq_s
     return cq_shapes.Solid.extrudeLinear(face, vec)
 
 
+def revolve_face(face: Any, axis_origin: list[float], axis_direction: list[float], angle_deg: float) -> cq_shapes.Solid:
+    """Revolve a face around an axis."""
+    if angle_deg == 0:
+        raise ValueError("revolve angle must be non-zero")
+    import math
+    from OCP.gp import gp_Ax1, gp_Pnt, gp_Dir
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeRevol
+    ax = gp_Ax1(gp_Pnt(*axis_origin), gp_Dir(*axis_direction))
+    topo_face = face.wrapped if hasattr(face, "wrapped") else face
+    revol = BRepPrimAPI_MakeRevol(topo_face, ax, math.radians(angle_deg))
+    return cq_shapes.Solid(revol.Shape())
+
+
 def _ensure_cq(target: Any) -> cq_shapes.Shape:
     """Wrap raw TopoDS shape in cadquery Shape if necessary."""
     if hasattr(target, "cut"):

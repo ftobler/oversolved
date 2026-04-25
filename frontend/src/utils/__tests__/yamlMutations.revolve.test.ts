@@ -1,0 +1,294 @@
+import { describe, it, expect } from 'vitest'
+import type { PartDoc } from '../../types/cad'
+import {
+  applyAddRevolve,
+  applySetRevolveAngle,
+  applySetRevolveAxisOrigin,
+  applySetRevolveAxisDirection,
+  applySetRevolveOperation,
+  applyAddRevolveProfile,
+  applyRemoveRevolveProfile,
+  normalizeRevolveSketch,
+} from '../yamlMutations'
+
+const baseDoc: PartDoc = { features: [] }
+
+describe('add_revolve', () => {
+  it('adds a revolve feature with sketch as an array', () => {
+    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
+    expect(doc.features).toHaveLength(1)
+    expect(doc.features![0].kind).toBe('revolve')
+    expect(doc.features![0].id).toBe('rev1')
+    expect(doc.features![0].revolve).toBeDefined()
+    expect(doc.features![0].revolve!.angle).toBe(360)
+    expect(doc.features![0].revolve!.sketch).toEqual(['$sk1'])
+  })
+
+  it('stores empty array when sketchQuery is empty string', () => {
+    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    applyAddRevolve(doc, 'rev1', undefined, '', 360)
+    expect(doc.features![0].revolve!.sketch).toEqual([])
+  })
+
+  it('uses label when provided', () => {
+    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    applyAddRevolve(doc, 'rev1', 'My Revolve', '$sk1', 360)
+    expect(doc.features![0].label).toBe('My Revolve')
+  })
+
+  it('defaults label to "Revolve" when not provided', () => {
+    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
+    expect(doc.features![0].label).toBe('Revolve')
+  })
+
+  it('defaults axis_origin and axis_direction', () => {
+    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
+    expect(doc.features![0].revolve!.axis_origin).toEqual([0, 0, 0])
+    expect(doc.features![0].revolve!.axis_direction).toEqual([0, 0, 1])
+  })
+})
+
+describe('normalizeRevolveSketch', () => {
+  it('returns array unchanged', () => {
+    expect(normalizeRevolveSketch(['$sk1', '$sk2'])).toEqual(['$sk1', '$sk2'])
+  })
+
+  it('wraps non-empty string in array', () => {
+    expect(normalizeRevolveSketch('$sk1')).toEqual(['$sk1'])
+  })
+
+  it('returns empty array for empty string', () => {
+    expect(normalizeRevolveSketch('')).toEqual([])
+  })
+
+  it('returns empty array for empty array', () => {
+    expect(normalizeRevolveSketch([])).toEqual([])
+  })
+})
+
+describe('add_revolve_profile', () => {
+  it('appends a profile query to an existing list', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: ['$sk1'], angle: 360 },
+        },
+      ],
+    }
+    applyAddRevolveProfile(doc, 'rev1', '$sk2')
+    expect(doc.features![0].revolve!.sketch).toEqual(['$sk1', '$sk2'])
+  })
+
+  it('normalizes a string sketch before appending', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: '$sk1', angle: 360 },
+        },
+      ],
+    }
+    applyAddRevolveProfile(doc, 'rev1', '$sk2')
+    expect(doc.features![0].revolve!.sketch).toEqual(['$sk1', '$sk2'])
+  })
+
+  it('does not add duplicate entries', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: ['$sk1'], angle: 360 },
+        },
+      ],
+    }
+    applyAddRevolveProfile(doc, 'rev1', '$sk1')
+    expect(doc.features![0].revolve!.sketch).toEqual(['$sk1'])
+  })
+
+  it('does nothing if revolve is undefined', () => {
+    const doc: PartDoc = {
+      features: [{ id: 'rev1', kind: 'sketch' }],
+    }
+    expect(() => applyAddRevolveProfile(doc, 'rev1', '$sk2')).not.toThrow()
+  })
+})
+
+describe('remove_revolve_profile', () => {
+  it('removes the profile at the given index', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: ['$sk1', '$sk2', '$sk3'], angle: 360 },
+        },
+      ],
+    }
+    applyRemoveRevolveProfile(doc, 'rev1', 1)
+    expect(doc.features![0].revolve!.sketch).toEqual(['$sk1', '$sk3'])
+  })
+
+  it('removes the only profile leaving empty list', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: ['$sk1'], angle: 360 },
+        },
+      ],
+    }
+    applyRemoveRevolveProfile(doc, 'rev1', 0)
+    expect(doc.features![0].revolve!.sketch).toEqual([])
+  })
+
+  it('normalizes string sketch before removing', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: '$sk1', angle: 360 },
+        },
+      ],
+    }
+    applyRemoveRevolveProfile(doc, 'rev1', 0)
+    expect(doc.features![0].revolve!.sketch).toEqual([])
+  })
+
+  it('does nothing if revolve is undefined', () => {
+    const doc: PartDoc = {
+      features: [{ id: 'rev1', kind: 'sketch' }],
+    }
+    expect(() => applyRemoveRevolveProfile(doc, 'rev1', 0)).not.toThrow()
+  })
+})
+
+describe('set_revolve_angle', () => {
+  it('updates revolve angle', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: '$sk1', angle: 90 },
+        },
+      ],
+    }
+    applySetRevolveAngle(doc, 'rev1', 180)
+    expect(doc.features![0].revolve!.angle).toBe(180)
+  })
+
+  it('does nothing if revolve is undefined', () => {
+    const doc: PartDoc = {
+      features: [{ id: 'rev1', kind: 'sketch' }],
+    }
+    expect(() => applySetRevolveAngle(doc, 'rev1', 180)).not.toThrow()
+    expect(doc.features![0]).not.toHaveProperty('revolve')
+  })
+})
+
+describe('set_revolve_axis_origin', () => {
+  it('updates revolve axis origin', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: '$sk1', angle: 360, axis_origin: [0, 0, 0] },
+        },
+      ],
+    }
+    applySetRevolveAxisOrigin(doc, 'rev1', [1, 2, 3])
+    expect(doc.features![0].revolve!.axis_origin).toEqual([1, 2, 3])
+  })
+
+  it('does nothing if revolve is undefined', () => {
+    const doc: PartDoc = {
+      features: [{ id: 'rev1', kind: 'sketch' }],
+    }
+    expect(() => applySetRevolveAxisOrigin(doc, 'rev1', [1, 2, 3])).not.toThrow()
+  })
+})
+
+describe('set_revolve_axis_direction', () => {
+  it('updates revolve axis direction', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: '$sk1', angle: 360, axis_direction: [0, 0, 1] },
+        },
+      ],
+    }
+    applySetRevolveAxisDirection(doc, 'rev1', [0, 1, 0])
+    expect(doc.features![0].revolve!.axis_direction).toEqual([0, 1, 0])
+  })
+
+  it('does nothing if revolve is undefined', () => {
+    const doc: PartDoc = {
+      features: [{ id: 'rev1', kind: 'sketch' }],
+    }
+    expect(() => applySetRevolveAxisDirection(doc, 'rev1', [0, 1, 0])).not.toThrow()
+  })
+})
+
+describe('set_revolve_operation', () => {
+  it('updates revolve operation to cut', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: '$sk1', angle: 360, operation: 'add' },
+        },
+      ],
+    }
+    applySetRevolveOperation(doc, 'rev1', 'cut')
+    expect(doc.features![0].revolve!.operation).toBe('cut')
+  })
+
+  it('sets operation when field is absent', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: '$sk1', angle: 360 },
+        },
+      ],
+    }
+    applySetRevolveOperation(doc, 'rev1', 'new')
+    expect(doc.features![0].revolve!.operation).toBe('new')
+  })
+
+  it('does nothing if revolve is undefined', () => {
+    const doc: PartDoc = {
+      features: [{ id: 'rev1', kind: 'sketch' }],
+    }
+    expect(() => applySetRevolveOperation(doc, 'rev1', 'cut')).not.toThrow()
+  })
+})
+
+describe('mutation does not mutate original doc', () => {
+  it('add_revolve does not mutate original', () => {
+    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
+    expect(baseDoc.features).toEqual([])
+  })
+
+  it('set_revolve_angle does not mutate original', () => {
+    const original = { features: [{ id: 'rev1', kind: 'revolve', revolve: { sketch: '$sk1', angle: 90 } }] }
+    const doc = JSON.parse(JSON.stringify(original))
+    applySetRevolveAngle(doc, 'rev1', 180)
+    expect(original.features![0].revolve!.angle).toBe(90)
+  })
+})

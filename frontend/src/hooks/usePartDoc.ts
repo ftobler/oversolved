@@ -31,6 +31,13 @@ import {
   applySetExtrudeOperation,
   applyAddExtrudeProfile,
   applyRemoveExtrudeProfile,
+  applyAddRevolve,
+  applySetRevolveAngle,
+  applySetRevolveAxisOrigin,
+  applySetRevolveAxisDirection,
+  applySetRevolveOperation,
+  applyAddRevolveProfile,
+  applyRemoveRevolveProfile,
   applyAddImportStep,
   applyAddFillet,
   applyAddChamfer,
@@ -339,6 +346,27 @@ setSolveResults(results)
         break
       case 'remove_extrude_profile':
         applyRemoveExtrudeProfile(next, m.featureId, m.index)
+        break
+      case 'add_revolve':
+        applyAddRevolve(next, m.featureId, m.label, m.sketchQuery, m.angle)
+        break
+      case 'set_revolve_angle':
+        applySetRevolveAngle(next, m.featureId, m.angle)
+        break
+      case 'set_revolve_axis_origin':
+        applySetRevolveAxisOrigin(next, m.featureId, m.axisOrigin)
+        break
+      case 'set_revolve_axis_direction':
+        applySetRevolveAxisDirection(next, m.featureId, m.axisDirection)
+        break
+      case 'set_revolve_operation':
+        applySetRevolveOperation(next, m.featureId, m.operation)
+        break
+      case 'add_revolve_profile':
+        applyAddRevolveProfile(next, m.featureId, m.sketchQuery)
+        break
+      case 'remove_revolve_profile':
+        applyRemoveRevolveProfile(next, m.featureId, m.index)
         break
       case 'add_import_step':
         applyAddImportStep(next, m.featureId, m.fileId, m.label)

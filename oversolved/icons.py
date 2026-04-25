@@ -548,6 +548,36 @@ def toolbar_extrude(ctx):
     ctx.stroke()
 
 
+@icon("frontend/src/assets/icons/feature-revolve.svg")
+def toolbar_revolve(ctx):
+    # Revolve icon: a profile rectangle with a curved arrow indicating rotation
+    # Base rectangle (profile)
+    x0, x1 = 0.15, 0.40
+    y0, y1 = 0.25, 0.75
+
+    ctx.move_to(x0, y0)
+    ctx.line_to(x1, y0)
+    ctx.line_to(x1, y1)
+    ctx.line_to(x0, y1)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # Curved arrow around the right side of the rectangle
+    cx = x1 + 0.05
+    cy = (y0 + y1) / 2
+    r = 0.32
+    start_angle = math.radians(-80)
+    end_angle = math.radians(260)
+
+    ctx.arc(cx, cy, r, start_angle, end_angle)
+    stroke(ctx, 1.5)
+
+    # Arrowhead at the end of the arc
+    end_x = cx + r * math.cos(end_angle)
+    end_y = cy + r * math.sin(end_angle)
+    _arrowhead(ctx, end_x, end_y, math.degrees(end_angle) + 90, px(6))
+
+
 def _pencil(ctx):
     # Sketch/pencil icon (horizontal)
     # Pencil shaft

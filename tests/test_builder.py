@@ -114,6 +114,29 @@ def test_build_returns_edge_queries_and_vertices():
     assert len(body["vertex_queries"]) == len(body["vertices"])
 
 
+def test_revolve_feature_produces_body():
+    """revolve feature should produce a valid body with mesh."""
+    from solver_helpers import rect_sketch_spec, assert_mesh_valid
+
+    spec = {
+        'features': [
+            rect_sketch_spec(w=2.0, h=1.0, sketch_id='sk1'),
+            {
+                'id': 'rev1',
+                'kind': 'revolve',
+                'sketch': '$sk1',
+                'angle': 360.0,
+                'axis_origin': [0, 0, 0],
+                'axis_direction': [0, 1, 0],
+            },
+        ]
+    }
+    r = build(spec)
+    assert r['result']['rev1']['status'] == 'ok', r['result']['rev1']
+    assert 'body_rev1' in r['bodies']
+    assert_mesh_valid(r['bodies']['body_rev1']['mesh'])
+
+
 def test_tessellate_bodies_registers_brep_face_queries_in_repo():
     """Builder should register B-rep face ancestries into a query repo when available."""
     pytest.importorskip("OCP.gp")

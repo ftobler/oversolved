@@ -19,6 +19,7 @@ import ExportDialog, { type ExportFormat } from '../components/ExportDialog'
 import './Part.css'
 
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
+import featureRevolveIcon from '../assets/icons/feature-revolve.svg'
 import featureFilletIcon from '../assets/icons/feature-fillet.svg'
 import featureChamferIcon from '../assets/icons/feature-chamfer.svg'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
@@ -102,6 +103,20 @@ function describeMutation(m: Mutation): string {
       return `add extrude profile ${m.sketchQuery}`
     case 'remove_extrude_profile':
       return `remove extrude profile at index ${m.index}`
+    case 'add_revolve':
+      return `add revolve ${m.label ?? m.featureId}`
+    case 'set_revolve_angle':
+      return `set revolve angle to ${m.angle}`
+    case 'set_revolve_axis_origin':
+      return `set revolve axis origin`
+    case 'set_revolve_axis_direction':
+      return `set revolve axis direction`
+    case 'set_revolve_operation':
+      return `set revolve operation to ${m.operation}`
+    case 'add_revolve_profile':
+      return `add revolve profile ${m.sketchQuery}`
+    case 'remove_revolve_profile':
+      return `remove revolve profile at index ${m.index}`
     case 'add_import_step':
       return `import STEP ${m.label ?? m.featureId}`
     case 'add_fillet':
@@ -346,6 +361,15 @@ useEffect(() => {
     const label = `extrude ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     handleMutation({ type: 'add_extrude', featureId: fid, label, sketchQuery: '', distance: 10 })
+    setEditingFeatureId(fid)
+  }, [doc, features.length, handleMutation, bodies])
+
+  const handleAddRevolve = useCallback(() => {
+    if (!doc) return
+    const fid = randomId(18)
+    const label = `revolve ${Object.keys(bodies).length + 1}`
+    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    handleMutation({ type: 'add_revolve', featureId: fid, label, sketchQuery: '', angle: 360 })
     setEditingFeatureId(fid)
   }, [doc, features.length, handleMutation, bodies])
 
@@ -830,6 +854,7 @@ useEffect(() => {
             {mode === 'feature' && (
               <>
                 <button className="editor-btn" title="Add Extrude (E)" onClick={handleAddExtrude}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
+                <button className="editor-btn" title="Add Revolve" onClick={handleAddRevolve}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
                 <button className="editor-btn" title="Add Fillet" onClick={handleAddFillet}><img src={featureFilletIcon} alt="Add Fillet" /></button>
                 <button className="editor-btn" title="Add Chamfer" onClick={handleAddChamfer}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
                 <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>

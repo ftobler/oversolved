@@ -27,6 +27,14 @@ export interface ChamferFeatureDef {
   angle?: number
 }
 
+export interface RevolveFeatureDef {
+  sketch: string | string[]
+  angle: number
+  axis_origin?: [number, number, number]
+  axis_direction?: [number, number, number]
+  operation?: 'add' | 'cut' | 'new'
+}
+
 export interface FaceData {
   centroid: [number, number, number]
   normal: [number, number, number]
@@ -167,6 +175,7 @@ export interface PartFeature {
   constraints?: PartConstraint[]
   definition?: PlaneDef
   extrude?: ExtrudeFeatureDef  // present when kind === 'extrude'
+  revolve?: RevolveFeatureDef  // present when kind === 'revolve'
   fillet?: FilletFeatureDef  // present when kind === 'fillet'
   chamfer?: ChamferFeatureDef  // present when kind === 'chamfer'
   file_id?: string  // present when kind === 'import_step'
@@ -430,6 +439,13 @@ export type Mutation =
   | { type: 'set_extrude_operation'; featureId: string; operation: ExtrudeOperation }
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
+  | { type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number }
+  | { type: 'set_revolve_angle'; featureId: string; angle: number }
+  | { type: 'set_revolve_axis_origin'; featureId: string; axisOrigin: [number, number, number] }
+  | { type: 'set_revolve_axis_direction'; featureId: string; axisDirection: [number, number, number] }
+  | { type: 'set_revolve_operation'; featureId: string; operation: 'add' | 'cut' | 'new' }
+  | { type: 'add_revolve_profile'; featureId: string; sketchQuery: string }
+  | { type: 'remove_revolve_profile'; featureId: string; index: number }
   | { type: 'add_import_step'; featureId: string; fileId: string; label?: string }
   | { type: 'add_fillet'; featureId: string; label?: string }
   | { type: 'add_chamfer'; featureId: string; label?: string }

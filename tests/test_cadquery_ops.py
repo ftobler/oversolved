@@ -145,6 +145,51 @@ def test_fuse_shapes_multiple():
     assert result.Volume() == pytest.approx(3.0, abs=1e-4)
 
 
+def test_revolve_face_basic():
+    """Revolve a unit square face 90 degrees around y-axis."""
+    from oversolved.cadquery_ops import revolve_face
+    w = make_wire([
+        make_line_edge([1, 0, 0], [2, 0, 0]),
+        make_line_edge([2, 0, 0], [2, 1, 0]),
+        make_line_edge([2, 1, 0], [1, 1, 0]),
+        make_line_edge([1, 1, 0], [1, 0, 0]),
+    ])
+    f = make_face_from_wires(w)
+    solid = revolve_face(f, [0, 0, 0], [0, 1, 0], 90.0)
+    assert solid.Volume() > 0
+    assert solid.isValid()
+
+
+def test_revolve_face_with_angle():
+    """Revolve with various angles produces different volumes."""
+    from oversolved.cadquery_ops import revolve_face
+    w = make_wire([
+        make_line_edge([1, 0, 0], [2, 0, 0]),
+        make_line_edge([2, 0, 0], [2, 1, 0]),
+        make_line_edge([2, 1, 0], [1, 1, 0]),
+        make_line_edge([1, 1, 0], [1, 0, 0]),
+    ])
+    f = make_face_from_wires(w)
+    s90 = revolve_face(f, [0, 0, 0], [0, 1, 0], 90.0)
+    s180 = revolve_face(f, [0, 0, 0], [0, 1, 0], 180.0)
+    assert s180.Volume() == pytest.approx(s90.Volume() * 2.0, abs=0.1)
+
+
+def test_revolve_face_full_circle():
+    """Full 360 degree revolve produces closed solid."""
+    from oversolved.cadquery_ops import revolve_face
+    w = make_wire([
+        make_line_edge([1, 0, 0], [2, 0, 0]),
+        make_line_edge([2, 0, 0], [2, 1, 0]),
+        make_line_edge([2, 1, 0], [1, 1, 0]),
+        make_line_edge([1, 1, 0], [1, 0, 0]),
+    ])
+    f = make_face_from_wires(w)
+    solid = revolve_face(f, [0, 0, 0], [0, 1, 0], 360.0)
+    assert solid.isValid()
+    assert solid.Volume() > 0
+
+
 def test_compute_face_centroid():
     """Centroid of a unit square face at origin should be near (0.5, 0.5, 0)."""
     from cadquery.occ_impl.shapes import Face

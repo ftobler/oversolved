@@ -659,6 +659,8 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict) -> d
         return _solve_fillet(feature, global_repo, body_store)
     if kind == "chamfer":
         return _solve_chamfer(feature, global_repo, body_store)
+    if kind == "revolve":
+        return _solve_revolve(feature, global_repo, body_store)
     raise Exception(f"unknown feature type: '{kind}'")
 
 
@@ -2091,6 +2093,100 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
                     if fused:
                         # When fusing with existing body, return the existing body's ID
                         # so the frontend can find the mesh
+                        result["body_id"] = fused_body_id
+                        result["operation"] = "add"
+                    else:
+                        body.shape = tool_shape
+                        body_store[body_id] = body
+                        result["operation"] = "add"
+        except Exception as exc:
+            result["mesh_warning"] = str(exc)
+
+        return result
+    except Exception as exc:
+        return {"status": "exception", "exception": str(exc)}
+
+
+def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> dict:
+    """Revolve solver with OCC-backed geometry that writes to body_store."""
+    from oversolved.types3d import Body
+
+    try:
+        feature_id = feature.get("id", "")
+        # Support both flat format and the nested {"revolve": {...}} format written by the UI.
+        sub = feature.get("revolve") or {}
+        feature = {**sub, **feature}
+        sketch_raw = feature.get("sketch", "")
+        # Normalize sketch to a list of refs.
+        if isinstance(sketch_raw, list):
+            sketch_refs: list[str] = [s for s in sketch_raw if s]
+        else:
+            sketch_refs = [sketch_raw] if sketch_raw else []
+        angle = float(feature.get("angle") or 360.0)
+
+        if angle == 0:
+            raise ValueError("revolve angle must be non-zero")
+
+        if not sketch_refs:
+            raise ValueError("revolve requires at least one profile reference")
+
+        all_loops: list = []
+        first_pt: dict = {}
+        first_sketch_id = ""
+        for sketch_ref in sketch_refs:
+            loops, pt, sketch_id = _collect_extrude_loops(
+                sketch_ref, feature_id, feature, 0.0, global_repo, body_store
+            )
+            all_loops.extend(loops)
+            if not first_pt:
+                first_pt = pt
+                first_sketch_id = sketch_id
+
+        axis_origin = feature.get("axis_origin", [0, 0, 0])
+        axis_direction = feature.get("axis_direction", [0, 0, 1])
+        body_id = "body_" + feature_id
+        result: dict = {"status": "ok", "body_id": body_id}
+
+        operation = feature.get("operation", "add")
+        body = Body(id=body_id, created_by=feature_id, shape=None, sketch_id=first_sketch_id)
+
+        try:
+            from oversolved.geometry import sketch_loops_to_face, revolve_face as _rf
+
+            if not all_loops:
+                result["mesh_warning"] = "no closed profile found; body has no shape"
+            else:
+                face = sketch_loops_to_face(all_loops, first_pt)
+                tool_shape = _rf(face, axis_origin, axis_direction, angle)
+
+                if operation == "cut":
+                    from oversolved.geometry import boolean_cut
+                    cut_body_id = None
+                    for existing_body in body_store.values():
+                        if existing_body.shape is not None:
+                            existing_body.shape = boolean_cut(existing_body.shape, tool_shape)
+                            existing_body.modified_by.append(feature_id)
+                            if cut_body_id is None:
+                                cut_body_id = existing_body.id
+                    if cut_body_id is not None:
+                        result["body_id"] = cut_body_id
+                    result["operation"] = "cut"
+                elif operation == "new":
+                    body.shape = tool_shape
+                    body_store[body_id] = body
+                    result["operation"] = "new"
+                else:
+                    from oversolved.geometry import boolean_union
+                    fused = False
+                    fused_body_id = None
+                    for existing_body in body_store.values():
+                        if existing_body.shape is not None:
+                            existing_body.shape = boolean_union(existing_body.shape, tool_shape)
+                            existing_body.modified_by.append(feature_id)
+                            fused = True
+                            fused_body_id = existing_body.id
+                            break
+                    if fused:
                         result["body_id"] = fused_body_id
                         result["operation"] = "add"
                     else:

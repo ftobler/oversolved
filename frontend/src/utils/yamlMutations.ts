@@ -614,6 +614,103 @@ export function applySetExtrudeOperation(
   feature.extrude.operation = operation
 }
 
+export function applyAddRevolve(
+  doc: PartDoc,
+  featureId: string,
+  label: string | undefined,
+  sketchQuery: string,
+  angle: number,
+): void {
+  if (!doc.features) doc.features = []
+  const feature: PartFeature = {
+    id: featureId,
+    kind: 'revolve',
+    label: label ?? 'Revolve',
+    revolve: {
+      sketch: sketchQuery ? [sketchQuery] : [],
+      angle,
+      axis_origin: [0, 0, 0],
+      axis_direction: [0, 0, 1],
+    },
+  }
+  doc.features.push(feature)
+}
+
+export function normalizeRevolveSketch(sketch: string | string[]): string[] {
+  if (Array.isArray(sketch)) return sketch
+  return sketch ? [sketch] : []
+}
+
+export function applyAddRevolveProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.revolve) {
+    console.warn(`applyAddRevolveProfile: feature ${featureId} has no revolve`)
+    return
+  }
+  const current = normalizeRevolveSketch(feature.revolve.sketch)
+  if (!current.includes(sketchQuery)) {
+    feature.revolve.sketch = [...current, sketchQuery]
+  }
+}
+
+export function applyRemoveRevolveProfile(doc: PartDoc, featureId: string, index: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.revolve) {
+    console.warn(`applyRemoveRevolveProfile: feature ${featureId} has no revolve`)
+    return
+  }
+  const current = normalizeRevolveSketch(feature.revolve.sketch)
+  current.splice(index, 1)
+  feature.revolve.sketch = current
+}
+
+export function applySetRevolveAngle(doc: PartDoc, featureId: string, angle: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.revolve) {
+    console.warn(`applySetRevolveAngle: feature ${featureId} has no revolve`)
+    return
+  }
+  feature.revolve.angle = angle
+}
+
+export function applySetRevolveAxisOrigin(
+  doc: PartDoc,
+  featureId: string,
+  axisOrigin: [number, number, number],
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.revolve) {
+    console.warn(`applySetRevolveAxisOrigin: feature ${featureId} has no revolve`)
+    return
+  }
+  feature.revolve.axis_origin = axisOrigin
+}
+
+export function applySetRevolveAxisDirection(
+  doc: PartDoc,
+  featureId: string,
+  axisDirection: [number, number, number],
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.revolve) {
+    console.warn(`applySetRevolveAxisDirection: feature ${featureId} has no revolve`)
+    return
+  }
+  feature.revolve.axis_direction = axisDirection
+}
+
+export function applySetRevolveOperation(
+  doc: PartDoc,
+  featureId: string,
+  operation: 'add' | 'cut' | 'new',
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.revolve) {
+    console.warn(`applySetRevolveOperation: feature ${featureId} has no revolve`)
+    return
+  }
+  feature.revolve.operation = operation
+}
 
 export function applyAddImportStep(
   doc: PartDoc,

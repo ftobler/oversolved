@@ -281,11 +281,9 @@ def revolve_face(
     axis_direction: list[float],
     angle_deg: float,
 ) -> Any:
-    """Revolve a face around an axis.
-
-    Currently not implemented.
-    """
-    raise NotImplementedError("revolve_face is not yet implemented")
+    """Revolve a face around an axis."""
+    from oversolved.cadquery_ops import revolve_face as _revolve_face
+    return _revolve_face(face, axis_origin, axis_direction, angle_deg)
 
 
 def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
