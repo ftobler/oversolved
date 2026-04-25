@@ -657,3 +657,82 @@ def shape_to_stl_file(shape: Any, filepath: str, deflection: float = 0.5, angula
     writer = StlAPI_Writer()
     writer.ASCIIMode = True
     writer.Write(topo_shape, filepath)
+
+
+def apply_fillet(shape: Any, radius: float) -> Any:
+    """Apply a fillet (round) to all edges of a shape.
+
+    Args:
+        shape: The CAD shape to fillet.
+        radius: The fillet radius.
+
+    Returns:
+        The filleted shape, or the original shape if filleting fails.
+    """
+    from OCP.BRepFilletAPI import BRepFilletAPI_MakeFillet  # noqa: PLC0415
+    from OCP.TopAbs import TopAbs_EDGE  # noqa: PLC0415
+    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS  # noqa: PLC0415
+
+    topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+
+    maker = BRepFilletAPI_MakeFillet(topo_shape)
+
+    edge_count = 0
+    explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
+    while explorer.More():
+        edge = TopoDS.Edge_s(explorer.Current())
+        maker.Add(radius, edge)
+        edge_count += 1
+        explorer.Next()
+
+    if edge_count == 0:
+        return shape
+
+    try:
+        maker.Build()
+        return _ensure_cq_shape(maker.Shape())
+    except Exception:
+        return shape
+
+
+def apply_chamfer(shape: Any, distance: float, kind: str = "distance", angle: float = 45.0) -> Any:
+    """Apply a chamfer (bevel) to all edges of a shape.
+
+    Args:
+        shape: The CAD shape to chamfer.
+        distance: The chamfer distance.
+        kind: "distance" or "angle_distance".
+        angle: Angle in degrees (only used when kind is "angle_distance").
+
+    Returns:
+        The chamfered shape, or the original shape if chamfering fails.
+    """
+    from OCP.BRepFilletAPI import BRepFilletAPI_MakeChamfer  # noqa: PLC0415
+    from OCP.TopAbs import TopAbs_EDGE  # noqa: PLC0415
+    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS  # noqa: PLC0415
+
+    topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+
+    maker = BRepFilletAPI_MakeChamfer(topo_shape)
+
+    edge_count = 0
+    explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
+    while explorer.More():
+        edge = TopoDS.Edge_s(explorer.Current())
+        if kind == "angle_distance":
+            maker.AddDA(distance, angle, edge)
+        else:
+            maker.Add(distance, edge)
+        edge_count += 1
+        explorer.Next()
+
+    if edge_count == 0:
+        return shape
+
+    try:
+        maker.Build()
+        return _ensure_cq_shape(maker.Shape())
+    except Exception:
+        return shape

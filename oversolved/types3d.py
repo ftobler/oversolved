@@ -26,3 +26,19 @@ class BuildState:
     """Opaque cache passed from one build() call to the next."""
     feature_order: list[str]
     checkpoints: dict[str, 'FeatureCheckpoint']
+
+
+@dataclass
+class FilletFeatureDef:
+    """Fillet feature definition - rounds edges with a specified radius."""
+    edges: list[str]  # edge queries, e.g. ["?body_0:edge:0"]
+    radius: float
+
+
+@dataclass
+class ChamferFeatureDef:
+    """Chamfer feature definition - bevels edges at a specified distance/angle."""
+    edges: list[str]
+    distance: float
+    kind: str = "distance"  # "distance" | "angle_distance"
+    angle: float = 45.0  # degrees

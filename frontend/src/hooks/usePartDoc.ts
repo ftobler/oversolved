@@ -32,6 +32,16 @@ import {
   applyAddExtrudeProfile,
   applyRemoveExtrudeProfile,
   applyAddImportStep,
+  applyAddFillet,
+  applyAddChamfer,
+  applySetFilletRadius,
+  applySetChamferDistance,
+  applySetChamferAngle,
+  applySetChamferKind,
+  applyAddFilletEdge,
+  applyRemoveFilletEdge,
+  applyAddChamferEdge,
+  applyRemoveChamferEdge,
 } from '../utils/yamlMutations'
 import type { PartFeature } from '../types/cad'
 
@@ -332,6 +342,36 @@ setSolveResults(results)
         break
       case 'add_import_step':
         applyAddImportStep(next, m.featureId, m.fileId, m.label)
+        break
+      case 'add_fillet':
+        applyAddFillet(next, m.featureId, m.label)
+        break
+      case 'add_chamfer':
+        applyAddChamfer(next, m.featureId, m.label)
+        break
+      case 'set_fillet_radius':
+        applySetFilletRadius(next, m.featureId, m.radius)
+        break
+      case 'set_chamfer_distance':
+        applySetChamferDistance(next, m.featureId, m.distance)
+        break
+      case 'set_chamfer_angle':
+        applySetChamferAngle(next, m.featureId, m.angle)
+        break
+      case 'set_chamfer_kind':
+        applySetChamferKind(next, m.featureId, m.kind)
+        break
+      case 'add_fillet_edge':
+        applyAddFilletEdge(next, m.featureId, m.edgeQuery)
+        break
+      case 'remove_fillet_edge':
+        applyRemoveFilletEdge(next, m.featureId, m.index)
+        break
+      case 'add_chamfer_edge':
+        applyAddChamferEdge(next, m.featureId, m.edgeQuery)
+        break
+      case 'remove_chamfer_edge':
+        applyRemoveChamferEdge(next, m.featureId, m.index)
         break
     }
     docRef.current = next

@@ -626,3 +626,113 @@ export function applyAddImportStep(
   if (label) feature.label = label
   doc.features.push(feature)
 }
+
+export function applyAddFillet(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+): void {
+  if (!doc.features) doc.features = []
+  const feature: PartFeature = {
+    id: featureId,
+    kind: 'fillet',
+    label: label ?? 'Fillet',
+    fillet: { edges: [], radius: 1 },
+  }
+  doc.features.push(feature)
+}
+
+export function applyAddChamfer(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+): void {
+  if (!doc.features) doc.features = []
+  const feature: PartFeature = {
+    id: featureId,
+    kind: 'chamfer',
+    label: label ?? 'Chamfer',
+    chamfer: { edges: [], distance: 1, kind: 'distance', angle: 45 },
+  }
+  doc.features.push(feature)
+}
+
+export function applySetFilletRadius(doc: PartDoc, featureId: string, radius: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.fillet) {
+    console.warn(`applySetFilletRadius: feature ${featureId} has no fillet`)
+    return
+  }
+  feature.fillet.radius = radius
+}
+
+export function applySetChamferDistance(doc: PartDoc, featureId: string, distance: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.chamfer) {
+    console.warn(`applySetChamferDistance: feature ${featureId} has no chamfer`)
+    return
+  }
+  feature.chamfer.distance = distance
+}
+
+export function applySetChamferAngle(doc: PartDoc, featureId: string, angle: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.chamfer) {
+    console.warn(`applySetChamferAngle: feature ${featureId} has no chamfer`)
+    return
+  }
+  feature.chamfer.angle = angle
+}
+
+export function applySetChamferKind(
+  doc: PartDoc,
+  featureId: string,
+  kind: 'distance' | 'angle_distance',
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.chamfer) {
+    console.warn(`applySetChamferKind: feature ${featureId} has no chamfer`)
+    return
+  }
+  feature.chamfer.kind = kind
+}
+
+export function applyAddFilletEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.fillet) {
+    console.warn(`applyAddFilletEdge: feature ${featureId} has no fillet`)
+    return
+  }
+  if (!feature.fillet.edges.includes(edgeQuery)) {
+    feature.fillet.edges.push(edgeQuery)
+  }
+}
+
+export function applyRemoveFilletEdge(doc: PartDoc, featureId: string, index: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.fillet) {
+    console.warn(`applyRemoveFilletEdge: feature ${featureId} has no fillet`)
+    return
+  }
+  feature.fillet.edges.splice(index, 1)
+}
+
+export function applyAddChamferEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.chamfer) {
+    console.warn(`applyAddChamferEdge: feature ${featureId} has no chamfer`)
+    return
+  }
+  if (!feature.chamfer.edges.includes(edgeQuery)) {
+    feature.chamfer.edges.push(edgeQuery)
+  }
+}
+
+export function applyRemoveChamferEdge(doc: PartDoc, featureId: string, index: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.chamfer) {
+    console.warn(`applyRemoveChamferEdge: feature ${featureId} has no chamfer`)
+    return
+  }
+  feature.chamfer.edges.splice(index, 1)
+}

@@ -19,6 +19,8 @@ import ExportDialog, { type ExportFormat } from '../components/ExportDialog'
 import './Part.css'
 
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
+import featureFilletIcon from '../assets/icons/feature-fillet.svg'
+import featureChamferIcon from '../assets/icons/feature-chamfer.svg'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featurePartIcon from '../assets/icons/feature-part.svg'
 import featureCodeIcon from '../assets/icons/icon-code.svg'
@@ -102,6 +104,26 @@ function describeMutation(m: Mutation): string {
       return `remove extrude profile at index ${m.index}`
     case 'add_import_step':
       return `import STEP ${m.label ?? m.featureId}`
+    case 'add_fillet':
+      return `add fillet ${m.label ?? m.featureId}`
+    case 'add_chamfer':
+      return `add chamfer ${m.label ?? m.featureId}`
+    case 'set_fillet_radius':
+      return `set fillet radius to ${m.radius}`
+    case 'set_chamfer_distance':
+      return `set chamfer distance to ${m.distance}`
+    case 'set_chamfer_angle':
+      return `set chamfer angle to ${m.angle}`
+    case 'set_chamfer_kind':
+      return `set chamfer kind to ${m.kind}`
+    case 'add_fillet_edge':
+      return `add fillet edge ${m.edgeQuery}`
+    case 'remove_fillet_edge':
+      return `remove fillet edge at index ${m.index}`
+    case 'add_chamfer_edge':
+      return `add chamfer edge ${m.edgeQuery}`
+    case 'remove_chamfer_edge':
+      return `remove chamfer edge at index ${m.index}`
   }
 }
 
@@ -324,6 +346,24 @@ useEffect(() => {
     const label = `extrude ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     handleMutation({ type: 'add_extrude', featureId: fid, label, sketchQuery: '', distance: 10 })
+    setEditingFeatureId(fid)
+  }, [doc, features.length, handleMutation, bodies])
+
+  const handleAddFillet = useCallback(() => {
+    if (!doc) return
+    const fid = randomId(18)
+    const label = `fillet ${Object.keys(bodies).length + 1}`
+    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    handleMutation({ type: 'add_fillet', featureId: fid, label })
+    setEditingFeatureId(fid)
+  }, [doc, features.length, handleMutation, bodies])
+
+  const handleAddChamfer = useCallback(() => {
+    if (!doc) return
+    const fid = randomId(18)
+    const label = `chamfer ${Object.keys(bodies).length + 1}`
+    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    handleMutation({ type: 'add_chamfer', featureId: fid, label })
     setEditingFeatureId(fid)
   }, [doc, features.length, handleMutation, bodies])
 
@@ -790,6 +830,8 @@ useEffect(() => {
             {mode === 'feature' && (
               <>
                 <button className="editor-btn" title="Add Extrude (E)" onClick={handleAddExtrude}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
+                <button className="editor-btn" title="Add Fillet" onClick={handleAddFillet}><img src={featureFilletIcon} alt="Add Fillet" /></button>
+                <button className="editor-btn" title="Add Chamfer" onClick={handleAddChamfer}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
                 <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
                 <button className="editor-btn" title="Import STEP" onClick={handleImportStep}><img src={featureImportIcon} alt="Import STEP" /></button>

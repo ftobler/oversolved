@@ -655,6 +655,10 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict) -> d
         return _solve_extrude(feature, global_repo, body_store)
     if kind == "import_step":
         return _solve_import_step(feature, global_repo, body_store)
+    if kind == "fillet":
+        return _solve_fillet(feature, global_repo, body_store)
+    if kind == "chamfer":
+        return _solve_chamfer(feature, global_repo, body_store)
     raise Exception(f"unknown feature type: '{kind}'")
 
 
@@ -2137,6 +2141,99 @@ def _solve_import_step(
         return {"status": "ok", "body_id": body_id}
     except Exception as exc:
         raise ValueError(str(exc)) from exc
+
+
+def _solve_fillet(
+    feature: dict,
+    global_repo: Repository,
+    body_store: dict,
+) -> dict:
+    """Apply fillet to edges of an existing body."""
+    from oversolved.geometry import apply_fillet
+
+    try:
+        feature_id = feature.get("id", "")
+        sub = feature.get("fillet") or {}
+        feature = {**sub, **feature}
+
+        edges: list[str] = feature.get("edges", [])
+        radius_raw = feature.get("radius")
+        radius = float(radius_raw if radius_raw is not None else 1.0)
+
+        if not edges:
+            raise ValueError("fillet requires at least one edge")
+
+        if radius <= 0:
+            raise ValueError("fillet radius must be positive")
+
+        body_id = "body_" + feature.get("source_body", "")
+        if body_id not in body_store:
+            body = list(body_store.values())[0] if body_store else None
+            if body is None:
+                raise ValueError("no body found for fillet")
+            body_id = body.id
+            body = body_store[body_id]
+        else:
+            body = body_store[body_id]
+
+        if body.shape is None:
+            raise ValueError(f"body {body_id} has no shape")
+
+        new_shape = apply_fillet(body.shape, radius)
+        body.shape = new_shape
+        body.modified_by.append(feature_id)
+
+        return {"status": "ok", "body_id": body_id}
+    except Exception as exc:
+        return {"status": "exception", "exception": str(exc)}
+
+
+def _solve_chamfer(
+    feature: dict,
+    global_repo: Repository,
+    body_store: dict,
+) -> dict:
+    """Apply chamfer to edges of an existing body."""
+    from oversolved.geometry import apply_chamfer
+
+    try:
+        feature_id = feature.get("id", "")
+        sub = feature.get("chamfer") or {}
+        feature = {**sub, **feature}
+
+        edges: list[str] = feature.get("edges", [])
+        distance_raw = feature.get("distance")
+        distance = float(distance_raw if distance_raw is not None else 1.0)
+        kind = feature.get("kind", "distance")
+        angle_raw = feature.get("angle")
+        angle = float(angle_raw if angle_raw is not None else 45.0)
+
+        if not edges:
+            raise ValueError("chamfer requires at least one edge")
+
+        if distance <= 0:
+            raise ValueError("chamfer distance must be positive")
+
+        body_id = "body_" + feature.get("source_body", "")
+        if body_id not in body_store:
+            body = list(body_store.values())[0] if body_store else None
+            if body is None:
+                raise ValueError("no body found for chamfer")
+            body_id = body.id
+            body = body_store[body_id]
+        else:
+            body = body_store[body_id]
+
+        if body.shape is None:
+            raise ValueError(f"body {body_id} has no shape")
+
+        new_shape = apply_chamfer(body.shape, distance, kind=kind, angle=angle)
+        body.shape = new_shape
+        body.modified_by.append(feature_id)
+
+        return {"status": "ok", "body_id": body_id}
+    except Exception as exc:
+        return {"status": "exception", "exception": str(exc)}
 
 
 def _expand_center_rect(feature: dict) -> dict:

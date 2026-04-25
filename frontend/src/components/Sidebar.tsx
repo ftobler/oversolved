@@ -9,6 +9,8 @@ import featurePartIcon from '../assets/icons/feature-part.svg'
 import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
 import featureImportIcon from '../assets/icons/icon-upload.svg'
+import { FilletEditor } from './FilletEditor'
+import { ChamferEditor } from './ChamferEditor'
 import contextEditIcon from '../assets/icons/context-edit.svg'
 import iconDotsIcon from '../assets/icons/dots.svg'
 import iconEyeIcon from '../assets/icons/icon-eye.svg'
@@ -572,6 +574,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <span className="feature-field-value">{feature.file_id ?? '—'}</span>
                     </div>
                   </div>
+                )}
+                {feature.kind === 'fillet' && editingFeatureId === feature.id && (
+                  <FilletEditor
+                    feature={feature}
+                    onMutation={onMutation}
+                    pendingPickField={pendingPickField}
+                    setPendingPickField={onSetPendingPickField}
+                  />
+                )}
+                {feature.kind === 'chamfer' && editingFeatureId === feature.id && (
+                  <ChamferEditor
+                    feature={feature}
+                    onMutation={onMutation}
+                    pendingPickField={pendingPickField}
+                    setPendingPickField={onSetPendingPickField}
+                  />
                 )}
               </li>
             </div>

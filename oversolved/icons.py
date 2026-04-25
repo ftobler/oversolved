@@ -1157,5 +1157,29 @@ def icon_rename(ctx):
         stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-fillet.svg")
+def feature_fillet(ctx):
+    """Icon for Fillet: an L-shape with a rounded corner."""
+    # L-shape with rounded corner
+    ctx.move_to(0.2, 0.2)
+    ctx.line_to(0.2, 0.6)
+    # rounded corner arc
+    ctx.arc(0.4, 0.6, 0.2, math.pi, math.pi / 2)
+    ctx.line_to(0.8, 0.8)
+    stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/feature-chamfer.svg")
+def feature_chamfer(ctx):
+    """Icon for Chamfer: an L-shape with a beveled corner."""
+    # L-shape with beveled corner
+    ctx.move_to(0.2, 0.2)
+    ctx.line_to(0.2, 0.5)
+    # chamfer line
+    ctx.line_to(0.5, 0.8)
+    ctx.line_to(0.8, 0.8)
+    stroke(ctx, 1.5)
+
+
 if __name__ == "__main__":
     draw_all()

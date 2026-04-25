@@ -15,6 +15,18 @@ export interface ExtrudeFeatureDef {
   operation?: ExtrudeOperation
 }
 
+export interface FilletFeatureDef {
+  edges: string[]
+  radius: number
+}
+
+export interface ChamferFeatureDef {
+  edges: string[]
+  distance: number
+  kind?: 'distance' | 'angle_distance'
+  angle?: number
+}
+
 export interface FaceData {
   centroid: [number, number, number]
   normal: [number, number, number]
@@ -155,6 +167,8 @@ export interface PartFeature {
   constraints?: PartConstraint[]
   definition?: PlaneDef
   extrude?: ExtrudeFeatureDef  // present when kind === 'extrude'
+  fillet?: FilletFeatureDef  // present when kind === 'fillet'
+  chamfer?: ChamferFeatureDef  // present when kind === 'chamfer'
   file_id?: string  // present when kind === 'import_step'
 }
 
@@ -417,3 +431,13 @@ export type Mutation =
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
   | { type: 'add_import_step'; featureId: string; fileId: string; label?: string }
+  | { type: 'add_fillet'; featureId: string; label?: string }
+  | { type: 'add_chamfer'; featureId: string; label?: string }
+  | { type: 'set_fillet_radius'; featureId: string; radius: number }
+  | { type: 'set_chamfer_distance'; featureId: string; distance: number }
+  | { type: 'set_chamfer_angle'; featureId: string; angle: number }
+  | { type: 'set_chamfer_kind'; featureId: string; kind: 'distance' | 'angle_distance' }
+  | { type: 'add_fillet_edge'; featureId: string; edgeQuery: string }
+  | { type: 'remove_fillet_edge'; featureId: string; index: number }
+  | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: string }
+  | { type: 'remove_chamfer_edge'; featureId: string; index: number }
