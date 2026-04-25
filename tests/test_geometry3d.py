@@ -355,3 +355,42 @@ def test_solid_to_vertices_generates_queries():
         assert q.startswith("?")
         assert q.endswith(":vertex")
         assert "ext1" in q
+
+
+def _count_faces(shape: object) -> int:
+    from OCP.TopAbs import TopAbs_FACE  # noqa: PLC0415
+    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
+
+    exp = TopExp_Explorer(shape, TopAbs_FACE)  # type: ignore[arg-type]
+    n = 0
+    while exp.More():
+        n += 1
+        exp.Next()
+    return n
+
+
+def test_boolean_union_merges_coplanar_side_faces():
+    """Two same-footprint boxes stacked in Z should union into a clean 6-face solid.
+
+    Without ShapeUpgrade_UnifySameDomain the side faces are split at the shared
+    z-plane, producing 10 faces instead of 6.
+    """
+    from OCP.gp import gp_Pnt  # noqa: PLC0415
+
+    box_a = BRepPrimAPI_MakeBox(gp_Pnt(0, 0, 0), 2.0, 1.0, 1.0).Shape()
+    box_b = BRepPrimAPI_MakeBox(gp_Pnt(0, 0, 1), 2.0, 1.0, 1.0).Shape()
+    result = boolean_union(box_a, box_b)
+    assert _count_faces(result) == 6, (
+        f"expected 6 faces after union of stacked boxes, got {_count_faces(result)}"
+    )
+
+
+def test_boolean_cut_result_is_valid():
+    """boolean_cut result must pass BRepCheck_Analyzer after _cleanup_shape is applied."""
+    from OCP.BRepCheck import BRepCheck_Analyzer  # noqa: PLC0415
+    from OCP.gp import gp_Pnt  # noqa: PLC0415
+
+    box_a = BRepPrimAPI_MakeBox(gp_Pnt(0, 0, 0), 4.0, 2.0, 2.0).Shape()
+    box_b = BRepPrimAPI_MakeBox(gp_Pnt(1, 0, 0), 2.0, 2.0, 1.0).Shape()
+    result = boolean_cut(box_a, box_b)
+    assert BRepCheck_Analyzer(result).IsValid(), "cut result failed validity check"

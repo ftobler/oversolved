@@ -291,7 +291,7 @@ def boolean_cut(target: Any, tool: Any) -> Any:
     cut.Build()
     if not cut.IsDone():
         raise ValueError("boolean cut failed")
-    return cut.Shape()
+    return _cleanup_shape(cut.Shape())
 
 
 def boolean_union(target: Any, tool: Any) -> Any:
@@ -305,24 +305,22 @@ def boolean_union(target: Any, tool: Any) -> Any:
     fuse.Build()
     if not fuse.IsDone():
         raise ValueError("boolean union failed")
-    result = fuse.Shape()
-    return _cleanup_shape(result)
+    return _cleanup_shape(fuse.Shape())
 
 
 def _cleanup_shape(shape: Any) -> Any:
-    """Remove superfluous internal edges that share the same geometric support.
+    """Merge co-planar faces and co-linear edges left over from boolean ops.
 
-    After boolean operations, faces may have internal edges along the same
-    geometric curve. This function fuses adjacent edges with matching
-    geometry and removes the redundant vertices.
+    BRepAlgoAPI leaves seam edges where one solid's face intersects another's
+    surface. ShapeUpgrade_UnifySameDomain removes those by merging adjacent
+    faces that share the same underlying surface and adjacent edges on the
+    same curve.
     """
-    from OCP.BRepLib import BRepLib_FuseEdges  # noqa: PLC0415
+    from OCP.ShapeUpgrade import ShapeUpgrade_UnifySameDomain  # noqa: PLC0415
 
-    fuse = BRepLib_FuseEdges(shape, True)
-    fuse.Perform()
-    if fuse.NbVertices() > 0:
-        return fuse.Shape()
-    return shape
+    usd = ShapeUpgrade_UnifySameDomain(shape, True, True, False)
+    usd.Build()
+    return usd.Shape()
 
 
 def fuse_shapes(shapes: list[Any]) -> Any:
