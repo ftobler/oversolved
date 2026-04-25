@@ -150,3 +150,38 @@ def test_export_multiple_bodies(client):
         assert z_range >= 4.0, f"z_range {z_range} < 4.0 (combined height)"
     finally:
         os.unlink(tmp_path)
+
+
+def test_export_specific_body_by_id(client):
+    """7. export specific body - body_id exports only the selected body."""
+    response = client.post(
+        "/api/export/step",
+        json={
+            "features": [
+                rect_sketch_spec(w=6.0, h=4.0, sketch_id="sk1"),
+                extrude_spec("sk1", "ex1", 2.0),
+                rect_sketch_spec(w=3.0, h=3.0, sketch_id="sk2", plane="@builtin_plane_right"),
+                extrude_spec("sk2", "ex2", 2.0),
+            ],
+            "body_id": "body_ex2",
+        },
+    )
+    assert response.status_code == 200
+    assert "step" in response.content_type
+
+
+def test_export_specific_body_invalid_id(client):
+    """8. invalid body_id - export returns 400."""
+    response = client.post(
+        "/api/export/step",
+        json={
+            "features": [
+                rect_sketch_spec(w=6.0, h=4.0),
+                extrude_spec("sk1", "ex1", 2.0),
+            ],
+            "body_id": "body_missing",
+        },
+    )
+    assert response.status_code == 400
+    data = response.get_json()
+    assert "error" in data

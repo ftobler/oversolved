@@ -184,6 +184,8 @@ export default function Part() {
   const [bugReporting, setBugReporting] = useState(false)
   const [bugReportError, setBugReportError] = useState<string | null>(null)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [exportTargetBodyId, setExportTargetBodyId] = useState<string | null>(null)
+  const [exportDefaultName, setExportDefaultName] = useState<string>('export')
   const [bugReportAttachments, setBugReportAttachments] = useState({
     ast: true,
     selection: true,
@@ -458,13 +460,16 @@ useEffect(() => {
   }, [handleMutation])
 
   const handleExportStep = useCallback(async () => {
+    setExportTargetBodyId(null)
+    setExportDefaultName(docName || 'export')
     setExportDialogOpen(true)
-  }, [])
+  }, [docName])
 
   const handleExportDownload = useCallback(async (format: ExportFormat, tessellation: number) => {
     if (!doc?.features) return
     const endpoint = format === 'step' ? '/api/export/step' : '/api/export/stl'
     const body: Record<string, unknown> = { features: doc.features }
+    if (exportTargetBodyId) body.body_id = exportTargetBodyId
     if (format === 'stl') {
       body.deflection = tessellation * 2
       body.angular_deflection = tessellation * 0.6
@@ -482,7 +487,7 @@ useEffect(() => {
         return
       }
       const blob = await res.blob()
-      const filename = format === 'step' ? `${docName || 'export'}.step` : `${docName || 'export'}.stl`
+      const filename = format === 'step' ? `${exportDefaultName}.step` : `${exportDefaultName}.stl`
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -495,10 +500,12 @@ useEffect(() => {
       console.error('Export error:', e)
       alert(`Export error: ${e}`)
     }
+    setExportTargetBodyId(null)
     setExportDialogOpen(false)
-  }, [doc, docName])
+  }, [doc, exportTargetBodyId, exportDefaultName])
 
   const handleExportCancel = useCallback(() => {
+    setExportTargetBodyId(null)
     setExportDialogOpen(false)
   }, [])
 
@@ -744,6 +751,15 @@ useEffect(() => {
               setPartColorPopover({ bodyId, position: pos })
             },
           },
+          {
+            label: 'Export',
+            icon: featureExportIcon,
+            onClick: () => {
+              setExportTargetBodyId(bodyId)
+              setExportDefaultName(partLabels[bodyId] || bodyId)
+              setExportDialogOpen(true)
+            },
+          },
         ],
       })
       return
@@ -846,7 +862,7 @@ useEffect(() => {
       targetId,
       items,
     })
-  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename, partLabels, handleBodyRename])
+  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename, partLabels, handleBodyRename, partColors])
 
   return (
     <div className="document-viewer">
@@ -1169,7 +1185,7 @@ useEffect(() => {
       )}
       <ExportDialog
         isOpen={exportDialogOpen}
-        defaultName={docName || 'export'}
+        defaultName={exportDefaultName}
         onDownload={handleExportDownload}
         onCancel={handleExportCancel}
       />

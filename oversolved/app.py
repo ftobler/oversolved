@@ -320,7 +320,11 @@ def create_app(config=None):
 
     @app.route("/api/export/step", methods=["POST"])
     def export_step():
-        """Export all bodies to a STEP file and return it as a download."""
+        """Export bodies to a STEP file and return it as a download.
+
+        Optional request field:
+          - body_id: when provided, export only that body
+        """
         data = request.get_json(silent=True)
         if not data or "features" not in data:
             return jsonify({"error": "features required"}), 400
@@ -334,8 +338,14 @@ def create_app(config=None):
             return jsonify({"error": "no bodies to export"}), 400
 
         from oversolved.geometry import shape_to_step_file_buffer, fuse_shapes
+        body_id = (data.get("body_id") or "").strip() if isinstance(data, dict) else ""
 
-        if len(body_shapes) == 1:
+        if body_id:
+            shape = body_shapes.get(body_id)
+            if shape is None:
+                return jsonify({"error": f"body {body_id!r} not found"}), 400
+            buffer = shape_to_step_file_buffer(shape)
+        elif len(body_shapes) == 1:
             shape = list(body_shapes.values())[0]
             buffer = shape_to_step_file_buffer(shape)
         else:
@@ -351,7 +361,11 @@ def create_app(config=None):
 
     @app.route("/api/export/stl", methods=["POST"])
     def export_stl():
-        """Export all bodies to an STL file and return it as a download."""
+        """Export bodies to an STL file and return it as a download.
+
+        Optional request field:
+          - body_id: when provided, export only that body
+        """
         data = request.get_json(silent=True)
         if not data or "features" not in data:
             return jsonify({"error": "features required"}), 400
@@ -368,8 +382,14 @@ def create_app(config=None):
 
         deflection = data.get("deflection", 0.5)
         angular_deflection = data.get("angular_deflection", 0.3)
+        body_id = (data.get("body_id") or "").strip() if isinstance(data, dict) else ""
 
-        if len(body_shapes) == 1:
+        if body_id:
+            shape = body_shapes.get(body_id)
+            if shape is None:
+                return jsonify({"error": f"body {body_id!r} not found"}), 400
+            buffer = shape_to_stl_file_buffer(shape, deflection, angular_deflection)
+        elif len(body_shapes) == 1:
             shape = list(body_shapes.values())[0]
             buffer = shape_to_stl_file_buffer(shape, deflection, angular_deflection)
         else:
