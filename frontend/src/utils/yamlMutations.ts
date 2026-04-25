@@ -293,11 +293,10 @@ export function applyAddEntityWithConstraint(
   } else if (snapVertexId && snapVertexId.startsWith('@builtin_')) {
     target = snapVertexId
   } else if (snapVertexId) {
-    // Vertex snap: parse vertex ID to get existing entity reference
-    // snapVertexId format: "vertex:featId:entityId:vertexKey"
-    const snapParts = snapVertexId.split(':')
-    const snapEntityId = snapParts[2]
-    target = `vertex:${featureId}:${snapEntityId}:${snapParts[3] || 'start'}`
+    // Use snapVertexId directly: it encodes "vertex:sourceFeatId:entityId:key".
+    // Reconstructing with featureId would break cross-sketch snaps by replacing
+    // the source feature ID with the current sketch's ID.
+    target = snapVertexId
   } else {
     return
   }
@@ -336,9 +335,8 @@ export function applyAddPointWithConstraint(
   } else if (snapVertexId && snapVertexId.startsWith('@builtin_')) {
     target = snapVertexId
   } else if (snapVertexId) {
-    const snapParts = snapVertexId.split(':')
-    const snapEntityId = snapParts[2]
-    target = `vertex:${featureId}:${snapEntityId}:${snapParts[3] || 'xy'}`
+    // Use snapVertexId directly -- same reasoning as applyAddEntityWithConstraint.
+    target = snapVertexId
   } else {
     return
   }

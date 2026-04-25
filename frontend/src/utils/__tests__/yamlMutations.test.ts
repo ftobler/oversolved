@@ -631,6 +631,20 @@ describe('applyAddEntityWithConstraint', () => {
     expect(doc.features![0].entities).toHaveLength(1)
     expect(doc.features![0].constraints).toHaveLength(0)
   })
+
+  it('uses source feature ID for cross-sketch snap vertex', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [],
+      initial: {},
+      constraints: [],
+    }] }
+    applyAddEntityWithConstraint(doc, 'Sketch1', 'line', [0, 0, 5, 5], 'start', 'vertex:Sketch2:line1:start', 'coincident')
+    const newEntity = doc.features![0].entities![0]
+    const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'coincident')!
+    expect(newConstraint.a).toBe(`$${newEntity.id}start`)
+    expect(newConstraint.b).toBe('@Sketch2line1start')
+  })
 })
 
 describe('applyAddPointWithConstraint', () => {
@@ -739,6 +753,20 @@ describe('applyAddPointWithConstraint', () => {
     expect(doc.features![0].entities).toHaveLength(3)
     const ids = doc.features![0].entities!.map(e => e.id)
     expect(new Set(ids).size).toBe(3)
+  })
+
+  it('uses source feature ID for cross-sketch snap vertex', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{
+      id: 'Sketch1', kind: 'sketch',
+      entities: [],
+      initial: {},
+      constraints: [],
+    }] }
+    applyAddPointWithConstraint(doc, 'Sketch1', [5, 5], 'vertex:Sketch2:line1:end', undefined, 'coincident')
+    const newEntity = doc.features![0].entities![0]
+    const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'coincident')!
+    expect(newConstraint.a).toBe(`$${newEntity.id}xy`)
+    expect(newConstraint.b).toBe('@Sketch2line1end')
   })
 })
 
