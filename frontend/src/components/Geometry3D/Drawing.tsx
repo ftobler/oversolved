@@ -1,6 +1,7 @@
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, useEffect } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
+import { useThree } from '@react-three/fiber'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { sanitizePointerEvent } from './pointerAbstractionAdapters'
 import { sampleArc, sampleArcCCW } from '../sketch_helpers'
@@ -155,6 +156,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
   const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
   const drawHover = useSketchEditorStore(s => s.drawHover)
+  const { camera, gl } = useThree()
 
   const drawLastPoint = drawPoints.length > 0 ? drawPoints[drawPoints.length - 1] : null
   useAlignmentSnapEffect(sketch, drawHover, drawLastPoint)
@@ -173,6 +175,43 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     return nearestPointOnEntity(hx, hy, entity)
   }, [sketch, drawHover, hoveredEntityId])
 
+  // Resolve the sketch group ref: prefer explicit prop, fall back to mesh parent.
+  const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? {
+    get current() { return meshRef.current?.parent ?? null },
+  }
+
+  // Window-level pointermove: bypasses R3F event bubbling so Body3D/Surfaces meshes
+  // cannot block the draw hover cursor. The handler ref is updated every render so the
+  // closure always captures fresh props/derived values without effect dependency issues.
+  // meshRef is only attached in drawing-tool mode; when null the handler is a no-op.
+  const handleDrawMoveRef = useRef<((e: PointerEvent) => void) | null>(null)
+  handleDrawMoveRef.current = (e: PointerEvent) => {
+    const mesh = meshRef.current
+    if (!mesh) return
+    if (e.buttons & 6) { setDrawHover(null); return }
+
+    // Live canvas bounds: not cached so sidebar resizes are reflected immediately.
+    const rect = gl.domElement.getBoundingClientRect()
+    const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
+    const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1
+
+    const raycaster = new THREE.Raycaster()
+    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera)
+    const hits = raycaster.intersectObject(mesh, false)
+    const worldPt = hits[0]?.point ?? null
+
+    if (!worldPt) { setDrawHover(null); return }
+    const sanitized = sanitizePointerEvent({ point: worldPt, clientX: e.clientX, clientY: e.clientY }, resolvedGroupRef)
+    setDrawHover(sanitized?.localPoint ?? null)
+  }
+
+  // Attach once per mount; handler ref provides fresh values on every call.
+  useEffect(() => {
+    const handler = (e: PointerEvent) => handleDrawMoveRef.current?.(e)
+    window.addEventListener('pointermove', handler)
+    return () => window.removeEventListener('pointermove', handler)
+  }, [])
+
   if (featureId !== activeFeatureId) return null
 
   if (effectiveTool === 'select' || effectiveTool === 'dimension' || effectiveTool === 'drag') {
@@ -188,21 +227,10 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     )
   }
 
-  // Resolve the sketch group ref: prefer explicit prop, fall back to mesh parent.
-  const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? {
-    get current() { return meshRef.current?.parent ?? null },
-  }
-
   return (
     <mesh
       ref={meshRef}
       position={[0, 0, -0.002]}
-      onPointerMove={e => {
-        e.stopPropagation()
-        if (e.buttons & 6) { setDrawHover(null); return }
-        const sanitized = sanitizePointerEvent(e, resolvedGroupRef)
-        setDrawHover(sanitized?.localPoint ?? null)
-      }}
       onPointerDown={e => {
         e.stopPropagation()
         const sanitized = sanitizePointerEvent(e, resolvedGroupRef)

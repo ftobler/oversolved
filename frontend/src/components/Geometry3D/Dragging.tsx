@@ -21,7 +21,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
   const prevNearbyRef = useRef<Set<string>>(new Set())
   const drag = useSketchEditorStore(s => s.drag)
   const dragPending = useSketchEditorStore(s => s.dragPending)
-  const dragStartClient = useSketchEditorStore(s => s.dragStartClient)
   const setDrag = useSketchEditorStore(s => s.setDrag)
   const setDragPending = useSketchEditorStore(s => s.setDragPending)
   const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
@@ -30,17 +29,10 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const onMutation = useSketchEditorStore(s => s.onMutation)
   const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
-  const normalSelection = useSketchEditorStore(s => s.normalSelection)
-  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
-  const { camera } = useThree()
+  const { camera, gl } = useThree()
 
   // Build map of dynamic selection positions for alignment detection
   const dynamicSelectionPositions = useDynamicSelectionPositions(sketch, dynamicSelection)
-
-  // DragPlane is at z=0, perfectly aligned with the sketch plane.
-  // Self-intersection blocking (dragged entity's collision geometry blocking raycasts)
-  // is solved by hiding the collision geometry (HitPolyline, hit spheres, dim hit meshes) during drag.
-  // This is done in EntityLines.tsx and VertexDots.tsx (isDragged) and sketch_dimensions.tsx (isDragged).
 
   // Resolve the sketch group ref: prefer explicit prop, fall back to mesh parent.
   const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? {
@@ -62,6 +54,116 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
     return () => window.removeEventListener('pointerup', cancel)
   }, [drag, dragPending, setDrag, setDragPending, setDragStartClient, setDragSnap, setOrbitEnabled])
 
+  // Window-level pointermove: bypasses R3F event bubbling so scene geometry (Body3D, Surfaces)
+  // can never block drag events. The handler ref is updated every render so the closure always
+  // captures fresh props/derived values without listing them as useEffect dependencies.
+  const handleMoveRef = useRef<((e: PointerEvent) => void) | null>(null)
+  handleMoveRef.current = (e: PointerEvent) => {
+    const mesh = meshRef.current
+    if (!mesh) return
+
+    // Read from store imperatively to see the latest drag state, including any update
+    // that setDrag() makes mid-handler (lazy drag initiation below).
+    const { drag, dragPending, dragStartClient, isPointerDown, dynamicSelection, normalSelection } = useSketchEditorStore.getState()
+    if (!drag && !dragPending) return
+    // Only the DragPlane whose featureId matches the active drag processes this event.
+    if (drag && drag.featureId !== featureId) return
+    if (!drag && dragPending && dragPending.featureId !== featureId) return
+
+    // Live canvas bounds: not cached so sidebar resizes are reflected immediately.
+    const rect = gl.domElement.getBoundingClientRect()
+    const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
+    const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1
+
+    // Raycast against this mesh only -- equivalent to the former onPointerMove path
+    // but immune to other scene geometry intercepting the event.
+    const raycaster = new THREE.Raycaster()
+    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera)
+    const hits = raycaster.intersectObject(mesh, false)
+    if (hits.length === 0) return
+
+    const worldPt = hits[0].point
+    const sanitized = sanitizePointerEvent({ point: worldPt, clientX: e.clientX, clientY: e.clientY }, resolvedGroupRef)
+    if (!sanitized) return
+    const localPoint = sanitized.localPoint
+
+    if (showDebugHit) {
+      console.log('DEBUG RAYCAST:', { clientX: e.clientX, clientY: e.clientY, world: { x: worldPt.x, y: worldPt.y, z: worldPt.z } })
+    }
+
+    // Lazy drag initiation: activate when movement exceeds the click threshold.
+    if (!drag && dragPending && dragStartClient && isPointerDown) {
+      if (shouldActivateDrag(dragStartClient, [e.clientX, e.clientY])) {
+        if (dragPending.type === 'dim_label') {
+          setDrag({
+            type: 'dim_label',
+            constraintId: dragPending.constraintId,
+            featureId: dragPending.featureId,
+            anchorWorld: dragPending.anchorWorld,
+            startWorld: dragPending.startWorld,
+            currentWorld: dragPending.startWorld,
+          })
+        } else {
+          setDrag({
+            type: dragPending.type,
+            vertexId: dragPending.vertexId,
+            featureId: dragPending.featureId,
+            entityId: dragPending.entityId,
+            vertexKey: dragPending.vertexKey,
+            startWorld: dragPending.startWorld,
+            currentWorld: dragPending.startWorld,
+            startClient: dragStartClient,
+          })
+        }
+      }
+    }
+
+    // Re-read after the potential setDrag() call above.
+    const currentDrag = useSketchEditorStore.getState().drag
+    if (!currentDrag) return
+
+    if (currentDrag.type === 'vertex' && sketch) {
+      const pixelsPerUnit = p2w(camera)
+      const result = computeDragMove(
+        localPoint,
+        sketch,
+        featureId,
+        currentDrag,
+        dynamicSelection,
+        normalSelection,
+        dynamicSelectionPositions,
+        prevNearbyRef.current,
+        pixelsPerUnit,
+      )
+
+      setDragSnap(result.snapTarget)
+
+      if (result.alignmentSnap) {
+        setAlignmentSnap(result.alignmentSnap.point, result.alignmentSnap.kind, result.alignmentSnap.vertexId)
+      } else {
+        setAlignmentSnap(null, null, null)
+      }
+
+      // Dispatch newly-entered proximity IDs to dynamic selection.
+      const { updateDynamicSelection } = useSketchEditorStore.getState()
+      for (const id of result.newProximityIds) {
+        updateDynamicSelection(id)
+      }
+      prevNearbyRef.current = result.allProximityIds
+
+      setDrag({ ...currentDrag, currentWorld: result.effectivePosition })
+    } else {
+      setDrag({ ...currentDrag, currentWorld: localPoint })
+    }
+  }
+
+  useEffect(() => {
+    if (!drag && !dragPending) return
+    const handler = (e: PointerEvent) => handleMoveRef.current?.(e)
+    window.addEventListener('pointermove', handler)
+    return () => window.removeEventListener('pointermove', handler)
+  }, [drag, dragPending])
+
   // Render DragPlane when drag is active OR when there's a pending drag (waiting for movement threshold)
   const shouldRender = drag !== null || dragPending !== null
   if (!shouldRender) return null
@@ -70,89 +172,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
     <mesh
       ref={meshRef}
       position={[0, 0, 0]}
-      onPointerMove={(e) => {
-        e.stopPropagation()
-        // Manual raycasting is intentional here: R3F's e.point is resolved against the entire scene,
-        // which can return a hit on a vertex sphere or edge cylinder instead of the drag plane.
-        // We must raycast exclusively against this mesh so the coordinate reflects the drag plane position.
-        const ray = (e as unknown as { ray?: THREE.Ray }).ray
-        if (!ray) return
-        const raycaster = new THREE.Raycaster()
-        raycaster.ray.copy(ray)
-        const planeHit = raycaster.intersectObject(e.eventObject, false)
-        if (planeHit.length === 0) return
-        const worldPt = planeHit[0].point
-        const sanitized = sanitizePointerEvent({ point: worldPt, clientX: e.clientX, clientY: e.clientY }, resolvedGroupRef)
-        if (!sanitized) return
-        const localPoint = sanitized.localPoint
-        if (showDebugHit) {
-          console.log('DEBUG RAYCAST:', { clientX: e.clientX, clientY: e.clientY, rayOrigin: ray?.origin, rayDir: ray?.direction, world: worldPt ? { x: worldPt.x, y: worldPt.y, z: worldPt.z } : 'no hit' })
-        }
-
-        // Lazy drag initiation: activate when movement exceeds the click threshold
-        if (!drag && dragPending && dragStartClient && isPointerDown && dragPending.featureId === featureId) {
-          if (shouldActivateDrag(dragStartClient, [e.clientX, e.clientY])) {
-            if (dragPending.type === 'dim_label') {
-              setDrag({
-                type: 'dim_label',
-                constraintId: dragPending.constraintId,
-                featureId: dragPending.featureId,
-                anchorWorld: dragPending.anchorWorld,
-                startWorld: dragPending.startWorld,
-                currentWorld: dragPending.startWorld,
-              })
-            } else {
-              setDrag({
-                type: dragPending.type,
-                vertexId: dragPending.vertexId,
-                featureId: dragPending.featureId,
-                entityId: dragPending.entityId,
-                vertexKey: dragPending.vertexKey,
-                startWorld: dragPending.startWorld,
-                currentWorld: dragPending.startWorld,
-                startClient: dragStartClient,
-              })
-            }
-          }
-        }
-
-        if (!drag) return
-
-        if (drag.type === 'vertex' && sketch) {
-          const pixelsPerUnit = p2w(camera)
-          const result = computeDragMove(
-            localPoint,
-            sketch,
-            featureId,
-            drag,
-            dynamicSelection,
-            normalSelection,
-            dynamicSelectionPositions,
-            prevNearbyRef.current,
-            pixelsPerUnit,
-          )
-
-          setDragSnap(result.snapTarget)
-
-          if (result.alignmentSnap) {
-            setAlignmentSnap(result.alignmentSnap.point, result.alignmentSnap.kind, result.alignmentSnap.vertexId)
-          } else {
-            setAlignmentSnap(null, null, null)
-          }
-
-          // Dispatch newly-entered proximity IDs to dynamic selection
-          const { updateDynamicSelection } = useSketchEditorStore.getState()
-          for (const id of result.newProximityIds) {
-            updateDynamicSelection(id)
-          }
-          prevNearbyRef.current = result.allProximityIds
-
-          setDrag({ ...drag, currentWorld: result.effectivePosition })
-        } else {
-          // Edge drag: just update position with raw local point
-          setDrag({ ...drag, currentWorld: localPoint })
-        }
-      }}
       onPointerUp={(e) => {
         e.stopPropagation()
         // Clear drag-mode dynamic selection before the window pointerup listener fires.
