@@ -63,6 +63,7 @@ export function computeDragMove(
   dynamicSelectionPositions: ReadonlyMap<string, [number, number]>,
   prevProximityIds: ReadonlySet<string>,
   pixelsPerUnit: number,
+  otherSketches?: Record<string, Sketch>,
 ): DragMoveResult {
   const [x, y] = localPoint
 
@@ -84,13 +85,14 @@ export function computeDragMove(
     x, y,
     DRAG_SNAP_VERTEX_RADIUS_PX * pixelsPerUnit,
     DRAG_SNAP_ENTITY_RADIUS_PX * pixelsPerUnit,
+    otherSketches,
   )
   let snapPosition: [number, number] | null = snapTarget?.position ?? null
 
   // Proximity scan for dynamic selection accumulation (alignment snap reference points).
   // Use 3x the vertex snap radius so alignment references accumulate well before snap fires.
   const scanRadius = DRAG_SNAP_VERTEX_RADIUS_PX * pixelsPerUnit * 3
-  const nearbyTargets = collectVertexTargets(sketch, featureId, drag.entityId)
+  const nearbyTargets = collectVertexTargets(sketch, featureId, drag.entityId, otherSketches)
     .filter(t => Math.hypot(t.position[0] - x, t.position[1] - y) <= scanRadius)
   const allProximityIds = new Set(nearbyTargets.map(t => t.vertexId))
   const newProximityIds = new Set([...allProximityIds].filter(id => !prevProximityIds.has(id)))

@@ -46,14 +46,32 @@ describe('collectVertexTargets', () => {
     expect(pt?.snapKind).toBe('vertex')
   })
 
-  it('skips projected entities', () => {
+  it('includes projected entities (they are valid snap targets)', () => {
     const targets = collectVertexTargets(makeSketch(), FEATURE, '__none__')
-    expect(targets.some(t => t.vertexId?.includes('projL'))).toBe(false)
+    expect(targets.some(t => t.vertexId?.includes('projL'))).toBe(true)
   })
 
   it('skips the dragged entity', () => {
     const targets = collectVertexTargets(makeSketch(), FEATURE, 'L1')
     expect(targets.some(t => t.vertexId?.includes(':L1:'))).toBe(false)
+  })
+
+  it('includes vertices from otherSketches with their own featureId prefix', () => {
+    const other: Record<string, Sketch> = {
+      S2: { OL1: { start: [100, 100], end: [200, 100] } as Sketch[string] },
+    }
+    const targets = collectVertexTargets(makeSketch(), FEATURE, '__none__', other)
+    expect(targets.some(t => t.vertexId === 'vertex:S2:OL1:start')).toBe(true)
+    expect(targets.some(t => t.vertexId === 'vertex:S2:OL1:end')).toBe(true)
+  })
+
+  it('does not apply skipEntityId to other sketches', () => {
+    const other: Record<string, Sketch> = {
+      S2: { L1: { start: [100, 100], end: [200, 100] } as Sketch[string] },
+    }
+    // skipEntityId 'L1' only filters the active sketch; S2:L1 must still appear
+    const targets = collectVertexTargets(makeSketch(), FEATURE, 'L1', other)
+    expect(targets.some(t => t.vertexId === 'vertex:S2:L1:start')).toBe(true)
   })
 })
 
@@ -87,6 +105,44 @@ describe('findSnapTarget — vertex snap', () => {
     const result = findSnapTarget(makeSketch(), FEATURE, '__none__', DRAG_TYPE, 10, 0.1, V_THRESH, E_THRESH)
     expect(result?.kind).toBe('vertex')
     expect(['vertex:S1:L1:end', 'vertex:S1:L2:start']).toContain(result?.vertexId)
+  })
+})
+
+describe('findSnapTarget — projected entities and other sketches', () => {
+  it('snaps to projected entity vertex in the active sketch', () => {
+    // projL has start: [20, 20] — cursor placed right on top of it
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', DRAG_TYPE, 20, 20, V_THRESH, E_THRESH)
+    expect(result?.kind).toBe('vertex')
+    expect(result?.vertexId).toBe('vertex:S1:projL:start')
+  })
+
+  it('snaps to vertex in another sketch with correct cross-sketch vertexId', () => {
+    const other: Record<string, Sketch> = {
+      S2: { OL1: { start: [50, 50], end: [60, 50] } as Sketch[string] },
+    }
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', DRAG_TYPE, 50, 50, V_THRESH, E_THRESH, other)
+    expect(result?.kind).toBe('vertex')
+    expect(result?.vertexId).toBe('vertex:S2:OL1:start')
+  })
+
+  it('prefers nearer candidate across sketch boundary', () => {
+    // Active sketch: L1.start at [0, 0]; other sketch: vertex at [0.3, 0]
+    // Cursor at [0.4, 0] — other sketch vertex is closer
+    const other: Record<string, Sketch> = {
+      S2: { OL1: { start: [0.3, 0], end: [10, 0] } as Sketch[string] },
+    }
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', DRAG_TYPE, 0.4, 0, V_THRESH, E_THRESH, other)
+    expect(result?.vertexId).toBe('vertex:S2:OL1:start')
+  })
+
+  it('entity snap works for entity bodies in other sketches', () => {
+    const other: Record<string, Sketch> = {
+      S2: { OL1: { start: [40, 40], end: [50, 40] } as Sketch[string] },
+    }
+    // Cursor at [45, 40.3]: within E_THRESH of OL1 body, no vertices within V_THRESH
+    const result = findSnapTarget(makeSketch(), FEATURE, '__none__', DRAG_TYPE, 45, 40.3, V_THRESH, E_THRESH, other)
+    expect(result?.kind).toBe('entity')
+    expect(result?.entityRef).toBe('entity:S2:OL1')
   })
 })
 

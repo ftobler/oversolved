@@ -11,11 +11,12 @@ import { COLOR_SNAP, COLOR_PREVIEW, POINT_HIT_PIXELS } from './constants'
 import { sanitizePointerEvent } from './pointerAbstractionAdapters'
 import { computeDragMove, computeDragMutation, shouldActivateDrag } from './dragLogic'
 
-export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
+export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit, otherSketches }: {
   featureId: string
   sketch?: Sketch
   sketchGroupRef?: React.RefObject<THREE.Group | null>
   showDebugHit?: boolean
+  otherSketches?: Record<string, Sketch>
 }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const prevNearbyRef = useRef<Set<string>>(new Set())
@@ -134,6 +135,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit }: {
         dynamicSelectionPositions,
         prevNearbyRef.current,
         pixelsPerUnit,
+        otherSketches,
       )
 
       setDragSnap(result.snapTarget)
