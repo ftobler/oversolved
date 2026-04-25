@@ -1770,7 +1770,8 @@ def _extract_loops_from_occ_face(
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
     from OCP.TopoDS import TopoDS, TopoDS_Face  # noqa: PLC0415
 
-    explorer = TopExp_Explorer(shape, TopAbs_FACE)
+    topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+    explorer = TopExp_Explorer(topo_shape, TopAbs_FACE)
     for _ in range(face_index):
         if not explorer.More():
             raise ValueError(f"face_index {face_index} out of range")

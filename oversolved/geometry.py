@@ -1,6 +1,58 @@
-"""geometry.py — Geometric classification helpers for topology surfaces."""
+"""geometry.py — Geometric classification helpers and CAD shape operations."""
 
+import math
+import os as os_module
+import tempfile
 from io import BytesIO
+from typing import Any
+
+from cadquery.occ_impl import shapes as cq_shapes
+from oversolved.cadquery_ops import (
+    _compute_face_centroid,
+    _compute_face_normal,
+    _get_face_surface_type,
+    boolean_cut,
+    boolean_union,
+    extrude_face,
+    fuse_shapes,
+    make_arc_edge,
+    make_face_from_wires,
+    make_line_edge,
+    make_wire,
+    to_cq_plane,
+)
+
+__all__ = [
+    "signed_distance_to_line",
+    "point_in_circle",
+    "classify_surface_by_line_side",
+    "classify_surface_by_circle_side",
+    "classify_surface_cardinal",
+    "plane_dict_to_gp_pln",
+    "sketch_loops_to_face",
+    "extrude_face",
+    "extrude_profile",
+    "revolve_face",
+    "boolean_cut",
+    "boolean_union",
+    "fuse_shapes",
+    "solid_to_mesh",
+    "solid_to_edges",
+    "solid_to_vertices",
+    "step_file_to_shape",
+    "stl_file_to_shape",
+    "shape_to_step_file",
+    "shape_to_step_file_buffer",
+    "shape_to_stl_file",
+    "shape_to_stl_file_buffer",
+]
+
+
+def _ensure_cq_shape(solid: Any) -> cq_shapes.Shape:
+    """Ensure a shape is a cadquery Shape, wrapping raw TopoDS if necessary."""
+    if hasattr(solid, "edges"):
+        return solid
+    return cq_shapes.Shape.cast(solid)
 
 
 def signed_distance_to_line(
@@ -18,16 +70,12 @@ def signed_distance_to_line(
     x1, y1 = line_start
     x2, y2 = line_end
 
-    # Vector from line start to line end
     dx = x2 - x1
     dy = y2 - y1
 
-    # Vector from line start to point
     dpx = px - x1
     dpy = py - y1
 
-    # Cross product: (line_vec) × (point_vec)
-    # Positive = left side, Negative = right side
     return dx * dpy - dy * dpx
 
 
@@ -79,7 +127,6 @@ def classify_surface_cardinal(
     dx = px - ox
     dy = py - oy
 
-    # Use absolute values to determine dominant axis
     if abs(dy) > abs(dx):
         return "@north" if dy > 0 else "@south"
     else:
@@ -104,66 +151,27 @@ def classify_surface_cardinal(
 #   'faces':    [[i, j, k], ...],
 #   'normals':  [[nx, ny, nz], ...],  per-face unit normals
 # }
-#
-# All OCC shape types are typed as Any to avoid import-time OCC dependency.
-from typing import Any  # noqa: E402  # lazy import after docstring comment
 
 
 def plane_dict_to_gp_pln(plane: dict) -> Any:
-    """Convert a PlaneTransform dict to an OCP gp_Pln object.
-
-    This ensures OCP's coordinate system is derived directly from the plane's
-    axes, eliminating any risk of desynchronisation when constructing geometry.
-    """
-    from OCP.gp import gp_Pnt, gp_Dir, gp_Ax3, gp_Pln  # noqa: PLC0415
-
-    origin = plane["origin"]
-    normal = plane.get("normal", [0.0, 0.0, 1.0])
-    x_axis = plane["x_axis"]
-    ax3 = gp_Ax3(
-        gp_Pnt(*origin),
-        gp_Dir(*normal),
-        gp_Dir(*x_axis),
-    )
-    return gp_Pln(ax3)
+    """Convert a PlaneTransform dict to a cadquery Plane object."""
+    return to_cq_plane(plane)
 
 
-def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> Any:
-    """Convert 2D profile boundary-edge loops to an OCC face with holes.
+def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> cq_shapes.Face:
+    """Convert 2D profile boundary-edge loops to a cadquery Face with holes.
 
     loops[0] = outer boundary, loops[1:] = holes.
     Each loop is a list of edge dicts with keys: kind, start, end,
     and for arcs: center, radius, angle_start_deg, angle_end_deg, ccw.
     plane is a PlaneTransform dict with origin, x_axis, y_axis, normal (all [x,y,z]).
-    Returns an OCC TopoDS_Face.
+    Returns a cadquery Face.
     """
-    import math
-
-    from OCP.BRepBuilderAPI import (
-        BRepBuilderAPI_MakeEdge,
-        BRepBuilderAPI_MakeWire,
-        BRepBuilderAPI_MakeFace,
-    )  # noqa: PLC0415
-    from OCP.gp import gp_Pnt, gp_Ax2, gp_Circ  # noqa: PLC0415
-
-    # Build a gp_Pln from the plane dict so that all OCP geometry is derived
-    # from OCP's own coordinate system, preventing axis/normal mismatches.
-    ocp_pln = plane_dict_to_gp_pln(plane)
-    ax3 = ocp_pln.Position()
-    origin_pt = ax3.Location()
-    x_dir = ax3.XDirection()
-    y_dir = ax3.YDirection()
-    normal_dir = ax3.Direction()
-
-    origin = [origin_pt.X(), origin_pt.Y(), origin_pt.Z()]
-    x_axis = [x_dir.X(), x_dir.Y(), x_dir.Z()]
-    y_axis = [y_dir.X(), y_dir.Y(), y_dir.Z()]
-
-    def uv_to_gp_pnt(uv: list) -> Any:
-        x = origin[0] + uv[0] * x_axis[0] + uv[1] * y_axis[0]
-        y = origin[1] + uv[0] * x_axis[1] + uv[1] * y_axis[1]
-        z = origin[2] + uv[0] * x_axis[2] + uv[1] * y_axis[2]
-        return gp_Pnt(x, y, z)
+    cq_plane = to_cq_plane(plane)
+    origin = list(cq_plane.origin.toTuple())
+    x_axis = list(cq_plane.xDir.toTuple())
+    y_axis = list(cq_plane.yDir.toTuple())
+    normal = list(cq_plane.zDir.toTuple())
 
     def uv_to_3d_list(uv: list) -> list:
         return [
@@ -172,7 +180,7 @@ def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> Any:
             origin[2] + uv[0] * x_axis[2] + uv[1] * y_axis[2],
         ]
 
-    def make_arc_edge(edge: dict) -> Any:
+    def build_arc_edge(edge: dict) -> cq_shapes.Edge:
         center_uv = edge.get("center", [0.0, 0.0])
         radius = float(edge.get("radius", 1.0))
         a0_deg = float(edge.get("angle_start_deg", 0.0))
@@ -180,25 +188,14 @@ def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> Any:
         ccw = edge.get("ccw", True)
 
         center_3d = uv_to_3d_list(center_uv)
-        # Build the OCC circle using axes derived from gp_Pln to stay in sync.
-        ax2 = gp_Ax2(
-            gp_Pnt(*center_3d),
-            normal_dir,
-            x_dir,
-        )
-        circ = gp_Circ(ax2, radius)
-
-        # Full circle when span is ~360 degrees.
         span = (
             ((a1_deg - a0_deg) + 360) % 360
             if ccw
             else -(((a0_deg - a1_deg) + 360) % 360)
         )
         if abs(abs(span) - 360.0) < 1e-6:
-            return BRepBuilderAPI_MakeEdge(circ).Edge()
+            return make_arc_edge(center_3d, radius, normal, x_axis, 0.0, 2 * math.pi)
 
-        # Partial arc: convert angles to OCC parametric angles on the circle.
-        # OCC gp_Circ is parameterised from x_axis CCW in the plane defined by ax2.
         u0 = math.radians(a0_deg)
         u1 = math.radians(a1_deg)
         if ccw:
@@ -207,49 +204,25 @@ def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> Any:
         else:
             if u0 <= u1:
                 u0 += 2 * math.pi
-            u0, u1 = u1, u0  # MakeEdge expects u1 < u2
+            u0, u1 = u1, u0
 
-        return BRepBuilderAPI_MakeEdge(circ, u0, u1).Edge()
+        return make_arc_edge(center_3d, radius, normal, x_axis, u0, u1)
 
-    def make_wire(loop: list[dict]) -> Any:
-        wire_builder = BRepBuilderAPI_MakeWire()
+    def build_wire(loop: list[dict]) -> cq_shapes.Wire:
+        edges: list[cq_shapes.Edge] = []
         for edge in loop:
             kind = edge.get("kind", "line")
             if kind == "arc":
-                occ_edge = make_arc_edge(edge)
+                edges.append(build_arc_edge(edge))
             else:
-                p1 = uv_to_gp_pnt(edge["start"])
-                p2 = uv_to_gp_pnt(edge["end"])
-                occ_edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
-            wire_builder.Add(occ_edge)
-        return wire_builder.Wire()
+                p1 = uv_to_3d_list(edge["start"])
+                p2 = uv_to_3d_list(edge["end"])
+                edges.append(make_line_edge(p1, p2))
+        return make_wire(edges)
 
-    outer_wire = make_wire(loops[0])
-    # Pass gp_Pln explicitly so OCP binds the face to the correct coordinate system.
-    face_builder = BRepBuilderAPI_MakeFace(ocp_pln, outer_wire)
-    for hole_loop in loops[1:]:
-        hole_wire = make_wire(hole_loop)
-        BRepBuilderAPI_MakeFace.Add(face_builder, hole_wire)
-    return face_builder.Face()
-
-
-def extrude_face(face: Any, direction_vec: list[float], distance: float) -> Any:
-    """Extrude an OCC face along a direction vector.
-
-    face: OCC TopoDS_Face
-    direction_vec: list[float] - unit 3-vector
-    distance: float - extrusion distance (must be non-zero)
-    Returns OCC TopoDS_Solid.
-    """
-    from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism  # noqa: PLC0415
-    from OCP.gp import gp_Vec  # noqa: PLC0415
-
-    if distance == 0:
-        raise ValueError("extrude distance must be non-zero")
-    dx, dy, dz = direction_vec
-    vec = gp_Vec(dx * distance, dy * distance, dz * distance)
-    prism = BRepPrimAPI_MakePrism(face, vec)
-    return prism.Shape()
+    outer_wire = build_wire(loops[0])
+    inner_wires = [build_wire(hole) for hole in loops[1:]]
+    return make_face_from_wires(outer_wire, inner_wires if inner_wires else None)
 
 
 def extrude_profile(
@@ -257,11 +230,11 @@ def extrude_profile(
     plane: dict,
     direction_vec: list[float],
     distance: float,
-) -> Any:
+) -> cq_shapes.Solid:
     """Convenience wrapper to extrude boundary-edge loops to a solid.
 
     loops is a list of loops, each a list of edge dicts (see sketch_loops_to_face).
-    Returns OCC solid (not mesh dict). Tessellation happens later in builder._tessellate_bodies.
+    Returns cadquery solid (not mesh dict). Tessellation happens later in builder._tessellate_bodies.
     """
     face = sketch_loops_to_face(loops, plane)
     return extrude_face(face, direction_vec, distance)
@@ -273,137 +246,23 @@ def revolve_face(
     axis_direction: list[float],
     angle_deg: float,
 ) -> Any:
-    """Revolve an OCC face around an axis.
+    """Revolve a face around an axis.
 
     Currently not implemented.
     """
     raise NotImplementedError("revolve_face is not yet implemented")
 
 
-def boolean_cut(target: Any, tool: Any) -> Any:
-    """Boolean cut: target - tool.
-
-    Returns the resulting shape.
-    """
-    from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut  # noqa: PLC0415
-
-    cut = BRepAlgoAPI_Cut(target, tool)
-    cut.Build()
-    if not cut.IsDone():
-        raise ValueError("boolean cut failed")
-    return _cleanup_shape(cut.Shape())
-
-
-def boolean_union(target: Any, tool: Any) -> Any:
-    """Boolean union: target + tool.
-
-    Returns the resulting shape.
-    """
-    from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse  # noqa: PLC0415
-
-    fuse = BRepAlgoAPI_Fuse(target, tool)
-    fuse.Build()
-    if not fuse.IsDone():
-        raise ValueError("boolean union failed")
-    return _cleanup_shape(fuse.Shape())
-
-
-def _cleanup_shape(shape: Any) -> Any:
-    """Merge co-planar faces and co-linear edges left over from boolean ops.
-
-    BRepAlgoAPI leaves seam edges where one solid's face intersects another's
-    surface. ShapeUpgrade_UnifySameDomain removes those by merging adjacent
-    faces that share the same underlying surface and adjacent edges on the
-    same curve.
-    """
-    from OCP.ShapeUpgrade import ShapeUpgrade_UnifySameDomain  # noqa: PLC0415
-
-    usd = ShapeUpgrade_UnifySameDomain(shape, True, True, False)
-    usd.Build()
-    return usd.Shape()
-
-
-def fuse_shapes(shapes: list[Any]) -> Any:
-    """Fuse multiple shapes into one compound.
-
-    Returns a single shape representing all inputs fused together.
-    """
-    if not shapes:
-        raise ValueError("no shapes to fuse")
-    if len(shapes) == 1:
-        return shapes[0]
-    result = shapes[0]
-    for shape in shapes[1:]:
-        result = boolean_union(result, shape)
-    return result
-
-
-def _point_xyz(point) -> list[float]:
-    """Return [x, y, z] for an OCC point-like object or 3-sequence."""
-    if hasattr(point, "X"):
-        return [point.X(), point.Y(), point.Z()]
-    return [float(point[0]), float(point[1]), float(point[2])]
-
-
-def _compute_face_centroid(face_shape) -> list[float]:
-    """Compute the analytical centroid of an OCC face."""
-    from OCP.BRepGProp import BRepGProp  # noqa: PLC0415
-    from OCP.GProp import GProp_GProps  # noqa: PLC0415
-
-    props = GProp_GProps()
-    BRepGProp.SurfaceProperties_s(face_shape, props)
-    return _point_xyz(props.CentreOfMass())
-
-
-def _compute_face_normal(face_shape) -> list[float]:
-    """Compute the analytical face normal from the OCC surface."""
-    from OCP.BRepAdaptor import BRepAdaptor_Surface  # noqa: PLC0415
-    from OCP.BRepTools import BRepTools  # noqa: PLC0415
-    from OCP.GeomLProp import GeomLProp_SLProps  # noqa: PLC0415
-    from OCP.TopAbs import TopAbs_REVERSED  # noqa: PLC0415
-
-    umin, umax, vmin, vmax = BRepTools.UVBounds_s(face_shape)
-    u = (umin + umax) / 2.0
-    v = (vmin + vmax) / 2.0
-
-    surface = BRepAdaptor_Surface(face_shape, True).Surface().Surface()
-    props = GeomLProp_SLProps(surface, u, v, 1, 1e-7)
-    if not props.IsNormalDefined():
-        return [0.0, 0.0, 1.0]
-
-    normal = props.Normal()
-    if face_shape.Orientation() == TopAbs_REVERSED:
-        normal = normal.Reversed()
-    return [normal.X(), normal.Y(), normal.Z()]
-
-
-def _get_face_surface_type(face_shape) -> str:
-    """Classify an OCC face as flatface, cylinderface, or face."""
-    from OCP.BRepAdaptor import BRepAdaptor_Surface  # noqa: PLC0415
-    from OCP.GeomAbs import GeomAbs_Cylinder, GeomAbs_Plane  # noqa: PLC0415
-
-    surface_type = BRepAdaptor_Surface(face_shape, True).GetType()
-    if surface_type == GeomAbs_Plane:
-        return "flatface"
-    if surface_type == GeomAbs_Cylinder:
-        return "cylinderface"
-    return "face"
-
-
 def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
-    """Tessellate an OCC solid to a mesh dict.
+    """Tessellate a cadquery solid to a mesh dict.
 
-    Uses BRepMesh_IncrementalMesh to compute tessellation, then extracts
-    triangulation data from each face of the solid.
+    Iterates faces and tessellates each one individually so that face
+    ordering and per-face metadata are preserved.
 
     Args:
-        solid: Either an OCC shape or a filepath string (STEP or STL file).
+        solid: Either a cadquery shape or a filepath string (STEP or STL file).
         created_by: Optional feature ID for ancestry queries.
     """
-    import os as os_module
-    import math
-
-    # If solid is a string, treat it as a file path
     if isinstance(solid, str):
         filepath = solid
         if not os_module.path.isfile(filepath):
@@ -414,137 +273,66 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
         else:
             solid = step_file_to_shape(filepath)
 
-    from OCP.BRep import BRep_Tool  # noqa: PLC0415
-    from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
-    from OCP.TopAbs import TopAbs_FACE  # noqa: PLC0415
-    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
-    from OCP.TopLoc import TopLoc_Location  # noqa: PLC0415
-    from OCP.TopoDS import TopoDS_Face  # noqa: PLC0415
-
-    def get_mesh_from_solid(s):
-        nonlocal face_data, triangle_to_face
-
-        mesh = BRepMesh_IncrementalMesh(s, 0.1, False, 0.1)
-        mesh.Perform()
-
-        verts = []
-        faces = []
-        normals = []
-        face_data = []
-        triangle_to_face = []
-
-        explorer = TopExp_Explorer(s, TopAbs_FACE)
-
-        face_idx = 0
-
-        while explorer.More():
-            face_shape = explorer.Current()
-            try:
-                face = TopoDS_Face()
-                face.TShape(face_shape.TShape())
-                face.Location(face_shape.Location())
-                face.Orientation(face_shape.Orientation())
-                location = TopLoc_Location()
-                tri = BRep_Tool.Triangulation_s(face, location)
-                face_area = 0.0
-                if tri is not None:
-                    node_count = tri.NbNodes()
-                    tri_count = tri.NbTriangles()
-                    offset = len(verts)
-                    trsf = location.Transformation()
-
-                    for i in range(1, node_count + 1):
-                        pt = tri.Node(i)
-                        # Apply face location transformation
-                        x = (
-                            trsf.Value(1, 1) * pt.X()
-                            + trsf.Value(1, 2) * pt.Y()
-                            + trsf.Value(1, 3) * pt.Z()
-                            + trsf.Value(1, 4)
-                        )
-                        y = (
-                            trsf.Value(2, 1) * pt.X()
-                            + trsf.Value(2, 2) * pt.Y()
-                            + trsf.Value(2, 3) * pt.Z()
-                            + trsf.Value(2, 4)
-                        )
-                        z = (
-                            trsf.Value(3, 1) * pt.X()
-                            + trsf.Value(3, 2) * pt.Y()
-                            + trsf.Value(3, 3) * pt.Z()
-                            + trsf.Value(3, 4)
-                        )
-                        transformed = [x, y, z]
-                        verts.append(transformed)
-
-                    for i in range(1, tri_count + 1):
-                        tri_data = tri.Triangle(i)
-                        faces.append(
-                            [
-                                offset + tri_data.Value(1) - 1,
-                                offset + tri_data.Value(2) - 1,
-                                offset + tri_data.Value(3) - 1,
-                            ]
-                        )
-                        p1 = verts[faces[-1][0]]
-                        p2 = verts[faces[-1][1]]
-                        p3 = verts[faces[-1][2]]
-                        v1 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]]
-                        v2 = [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]]
-                        nx = v1[1] * v2[2] - v1[2] * v2[1]
-                        ny = v1[2] * v2[0] - v1[0] * v2[2]
-                        nz = v1[0] * v2[1] - v1[1] * v2[0]
-                        mag = math.sqrt(nx * nx + ny * ny + nz * nz)
-                        if mag > 0:
-                            normals.append([nx / mag, ny / mag, nz / mag])
-                        else:
-                            normals.append([0.0, 0.0, 1.0])
-                        triangle_to_face.append(face_idx)
-                        face_area += 0.5 * mag
-                centroid = _compute_face_centroid(face)
-                normal = _compute_face_normal(face)
-                surface_type = _get_face_surface_type(face)
-                face_data.append({"centroid": centroid, "normal": normal, "area": face_area, "surface_type": surface_type})
-                if created_by:
-                    from oversolved.query import make_ancestry_query
-
-                    element_id = f"face{face_idx}"
-                    abs_id = "@" + created_by + element_id
-                    query = make_ancestry_query([abs_id, f"@{created_by}"], surface_type)
-                    face_queries.append(query)
-            except TypeError:
-                face_data.append(
-                    {"centroid": [0.0, 0.0, 0.0], "normal": [0.0, 0.0, 1.0], "area": 0.0, "surface_type": "face"}
-                )
-                if created_by:
-                    from oversolved.query import make_ancestry_query
-
-                    element_id = f"face{face_idx}"
-                    abs_id = "@" + created_by + element_id
-                    query = make_ancestry_query([abs_id, f"@{created_by}"], "face")
-                    face_queries.append(query)
-            explorer.Next()
-            face_idx += 1
-
-        return verts, faces, normals
+    solid = _ensure_cq_shape(solid)
 
     face_data: list[dict] = []
     triangle_to_face: list[int] = []
     face_queries: list[str] = []
-    all_vertices = []
-    all_faces = []
-    all_normals = []
+    all_vertices: list[list[float]] = []
+    all_faces: list[list[int]] = []
+    all_normals: list[list[float]] = []
 
     try:
-        v, f, n = get_mesh_from_solid(solid)
-        all_vertices = v
-        all_faces = f
-        all_normals = n
+        for face_idx, face in enumerate(solid.faces()):
+            verts, idxs = face.tessellate(0.1)
+            offset = len(all_vertices)
+            face_area = 0.0
+
+            for v in verts:
+                all_vertices.append(list(v.toTuple()))
+
+            for tri in idxs:
+                i0 = offset + tri[0]
+                i1 = offset + tri[1]
+                i2 = offset + tri[2]
+                all_faces.append([i0, i1, i2])
+
+                p0 = all_vertices[i0]
+                p1 = all_vertices[i1]
+                p2 = all_vertices[i2]
+                v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]]
+                v2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]]
+                nx = v1[1] * v2[2] - v1[2] * v2[1]
+                ny = v1[2] * v2[0] - v1[0] * v2[2]
+                nz = v1[0] * v2[1] - v1[1] * v2[0]
+                mag = math.sqrt(nx * nx + ny * ny + nz * nz)
+                if mag > 0:
+                    all_normals.append([nx / mag, ny / mag, nz / mag])
+                else:
+                    all_normals.append([0.0, 0.0, 1.0])
+                triangle_to_face.append(face_idx)
+                face_area += 0.5 * mag
+
+            centroid = _compute_face_centroid(face)
+            normal = _compute_face_normal(face)
+            surface_type = _get_face_surface_type(face)
+            face_data.append(
+                {"centroid": centroid, "normal": normal, "area": face_area, "surface_type": surface_type}
+            )
+            if created_by:
+                from oversolved.query import make_ancestry_query
+
+                element_id = f"face{face_idx}"
+                abs_id = "@" + created_by + element_id
+                query = make_ancestry_query([abs_id, f"@{created_by}"], surface_type)
+                face_queries.append(query)
     except Exception:
         face_data = []
         triangle_to_face = []
         face_queries = []
-        pass
+        all_vertices = []
+        all_faces = []
+        all_normals = []
 
     if not all_vertices:
         face_data = []
@@ -600,61 +388,49 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
 
 
 def solid_to_edges(solid: Any, created_by: str | None = None) -> dict:
-    """Extract exact edge geometry from an OCC solid.
+    """Extract exact edge geometry from a cadquery solid.
 
     Returns a dict with keys "edges" (list of edge dicts, one per unique edge,
     with kind "line", "circle", "arc", or "spline") and "edge_queries" (list of
     ancestry query strings, populated only when created_by is set).
     """
-    import math
-
-    from OCP.BRepAdaptor import BRepAdaptor_Curve  # noqa: PLC0415
-    from OCP.GeomAbs import (  # noqa: PLC0415
-        GeomAbs_Line,
-        GeomAbs_Circle,
-    )
-    from OCP.TopAbs import TopAbs_EDGE  # noqa: PLC0415
-    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
-    from OCP.TopoDS import TopoDS  # noqa: PLC0415
-
+    solid = _ensure_cq_shape(solid)
     TWO_PI = 2.0 * math.pi
     CIRCLE_TOL = 1e-4
 
     edges: list[dict] = []
     edge_queries: list[str] = []
-    seen: list[Any] = []  # TopoDS_Edge objects for IsSame deduplication
+    seen_hashes: set[int] = set()
     idx = 0
 
-    explorer = TopExp_Explorer(solid, TopAbs_EDGE)
-    while explorer.More():
-        edge_typed = TopoDS.Edge_s(explorer.Current())
-        if any(edge_typed.IsSame(s) for s in seen):
-            explorer.Next()
+    for edge in solid.edges():
+        h = edge.hashCode()
+        if h in seen_hashes:
             continue
-        seen.append(edge_typed)
+        seen_hashes.add(h)
 
-        c = BRepAdaptor_Curve(edge_typed)
-        kind = c.GetType()
+        gt = edge.geomType()
 
-        if kind == GeomAbs_Line:
-            p1 = c.Value(c.FirstParameter())
-            p2 = c.Value(c.LastParameter())
+        if gt == "LINE":
+            sp = edge.startPoint()
+            ep = edge.endPoint()
             edges.append(
                 {
                     "kind": "line",
-                    "start": [p1.X(), p1.Y(), p1.Z()],
-                    "end": [p2.X(), p2.Y(), p2.Z()],
+                    "start": [sp.x, sp.y, sp.z],
+                    "end": [ep.x, ep.y, ep.z],
                 }
             )
 
-        elif kind == GeomAbs_Circle:
-            circ = c.Circle()
+        elif gt == "CIRCLE":
+            curve = edge._geomAdaptor()
+            circ = curve.Circle()
             center = circ.Location()
             ax = circ.Axis().Direction()
             xdir = circ.XAxis().Direction()
             radius = circ.Radius()
-            u0 = c.FirstParameter()
-            u1 = c.LastParameter()
+            u0 = curve.FirstParameter()
+            u1 = curve.LastParameter()
             span = u1 - u0
             is_full = abs(abs(span) - TWO_PI) < CIRCLE_TOL or abs(span) < CIRCLE_TOL
             edge_kind = "circle" if is_full else "arc"
@@ -671,86 +447,71 @@ def solid_to_edges(solid: Any, created_by: str | None = None) -> dict:
             )
 
         else:
-            # Fallback: tessellate the edge
             n_pts = 16
-            u0 = c.FirstParameter()
-            u1 = c.LastParameter()
+            params = edge.params()
+            if len(params) >= 2:
+                u0, u1 = params[0], params[-1]
+            else:
+                u0, u1 = 0.0, 1.0
             points = []
             for i in range(n_pts + 1):
                 t = u0 + (u1 - u0) * i / n_pts
-                pt = c.Value(t)
-                points.append([pt.X(), pt.Y(), pt.Z()])
+                pt = edge.positionAt(t)
+                points.append([pt.x, pt.y, pt.z])
             edges.append({"kind": "spline", "points": points})
 
         if created_by:
-            from oversolved.query import make_ancestry_query  # noqa: PLC0415
+            from oversolved.query import make_ancestry_query
+
             edge_type = "straightedge" if edges[-1]["kind"] == "line" else "edge"
             edge_queries.append(make_ancestry_query([f"@{created_by}edge{idx}", f"@{created_by}"], edge_type))
         idx += 1
-        explorer.Next()
 
     return {"edges": edges, "edge_queries": edge_queries}
 
 
 def solid_to_vertices(solid: Any, created_by: str | None = None) -> dict:
-    """Extract unique B-rep vertices from an OCC solid."""
-    from OCP.BRep import BRep_Tool  # noqa: PLC0415
-    from OCP.TopAbs import TopAbs_VERTEX  # noqa: PLC0415
-    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
-    from OCP.TopoDS import TopoDS  # noqa: PLC0415
-
+    """Extract unique B-rep vertices from a cadquery solid."""
+    solid = _ensure_cq_shape(solid)
     vertices: list[list[float]] = []
     vertex_queries: list[str] = []
-    seen: list[Any] = []
+    seen_hashes: set[int] = set()
 
-    explorer = TopExp_Explorer(solid, TopAbs_VERTEX)
-    while explorer.More():
-        v = TopoDS.Vertex_s(explorer.Current())
-        if any(v.IsSame(s) for s in seen):
-            explorer.Next()
+    for v in solid.Vertices():
+        h = v.hashCode()
+        if h in seen_hashes:
             continue
-        seen.append(v)
-        pt = BRep_Tool.Pnt_s(v)
-        vertices.append([pt.X(), pt.Y(), pt.Z()])
+        seen_hashes.add(h)
+        vertices.append([v.X, v.Y, v.Z])
         if created_by:
-            from oversolved.query import make_ancestry_query  # noqa: PLC0415
+            from oversolved.query import make_ancestry_query
+
             idx = len(vertices) - 1
             vertex_queries.append(make_ancestry_query([f"@{created_by}vertex{idx}", f"@{created_by}"], "vertex"))
-        explorer.Next()
 
     return {"vertices": vertices, "vertex_queries": vertex_queries}
 
 
 def step_file_to_shape(filepath: str, scale: float = 1.0) -> Any:
-    """Read a STEP file and return an OCC shape.
+    """Read a STEP file and return a cadquery shape.
 
     Optionally applies a scaling factor.
     """
-    from OCP.STEPControl import STEPControl_Reader  # noqa: PLC0415
-    from OCP.IFSelect import IFSelect_RetDone  # noqa: PLC0415
+    import cadquery as cq  # noqa: PLC0415
 
-    reader = STEPControl_Reader()
-    status = reader.ReadFile(filepath)
-    if status != IFSelect_RetDone:
-        raise ValueError(f"STEP read failed for {filepath!r}")
-    reader.TransferRoots()
-    shape = reader.OneShape()
-    if shape.IsNull():
+    workplane = cq.importers.importStep(filepath)
+    shape: Any = workplane.val()
+    if shape is None or not hasattr(shape, "isValid"):
         raise ValueError(f"STEP file produced no shape: {filepath!r}")
     if scale != 1.0:
-        from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform  # noqa: PLC0415
-        from OCP.gp import gp_Trsf  # noqa: PLC0415
-
-        t = gp_Trsf()
-        t.SetScaleFactor(scale)
-        shape = BRepBuilderAPI_Transform(shape, t, True).Shape()
+        shape = shape.scale(scale)
     return shape
 
 
 def stl_file_to_shape(filepath: str) -> Any:
     """Read an STL file and return an OCC shape.
 
-    Uses StlAPI_Reader to parse the STL file and create a TopoDS_Shape.
+    Uses OCP StlAPI_Reader directly since cadquery does not provide an STL importer.
     """
     from OCP.StlAPI import StlAPI_Reader  # noqa: PLC0415
     from OCP.TopoDS import TopoDS_Shape  # noqa: PLC0415
@@ -763,61 +524,45 @@ def stl_file_to_shape(filepath: str) -> Any:
 
 
 def shape_to_step_file(shape: Any, filepath: str) -> None:
-    """Write an OCC shape to a STEP file."""
-    from OCP.STEPControl import STEPControl_Writer, STEPControl_StepModelType  # noqa: PLC0415
-    from OCP.IFSelect import IFSelect_RetDone  # noqa: PLC0415
-
-    writer = STEPControl_Writer()
-    status = writer.Transfer(shape, STEPControl_StepModelType.STEPControl_AsIs)
-    if status != IFSelect_RetDone:
-        raise ValueError(f"STEP write failed: transfer returned {status}")
-    write_status = writer.Write(filepath)
-    if write_status != IFSelect_RetDone:
-        raise ValueError(f"STEP write failed: write returned {write_status}")
+    """Write a shape to a STEP file."""
+    shape = _ensure_cq_shape(shape)
+    shape.exportStep(filepath)
+    if not os_module.path.isfile(filepath):
+        raise ValueError(f"STEP write failed: file not created at {filepath!r}")
 
 
 def shape_to_step_file_buffer(shape: Any) -> BytesIO:
-    """Write an OCC shape to a STEP file in memory."""
-    import tempfile
-
-    from OCP.STEPControl import STEPControl_Writer, STEPControl_StepModelType  # noqa: PLC0415
-    from OCP.IFSelect import IFSelect_RetDone  # noqa: PLC0415
-
+    """Write a shape to a STEP file in memory."""
+    shape = _ensure_cq_shape(shape)
     with tempfile.NamedTemporaryFile(suffix=".step", delete=False) as tmp:
         tmp_path = tmp.name
 
     try:
-        writer = STEPControl_Writer()
-        status = writer.Transfer(shape, STEPControl_StepModelType.STEPControl_AsIs)
-        if status != IFSelect_RetDone:
-            raise ValueError(f"STEP write failed: transfer returned {status}")
-        write_status = writer.Write(tmp_path)
-        if write_status != IFSelect_RetDone:
-            raise ValueError(f"STEP write failed: write returned {write_status}")
-
+        shape.exportStep(tmp_path)
+        if not os_module.path.isfile(tmp_path):
+            raise ValueError("STEP write failed: file not created")
         with open(tmp_path, "rb") as f:
             buffer = BytesIO(f.read())
         buffer.seek(0)
         return buffer
     finally:
-        import os
-        os.unlink(tmp_path)
+        if os_module.path.isfile(tmp_path):
+            os_module.unlink(tmp_path)
 
 
 def shape_to_stl_file_buffer(shape: Any, deflection: float = 0.5, angular_deflection: float = 0.3) -> BytesIO:
-    """Write an OCC shape to an STL file in memory.
+    """Write a shape to an STL file in memory.
 
     Args:
-        shape: The OCC shape to export.
+        shape: The shape to export.
         deflection: Linear deflection for mesh tessellation (default 0.5).
         angular_deflection: Angular deflection for mesh tessellation (default 0.3 radians).
     """
-    import tempfile
-
     from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
     from OCP.StlAPI import StlAPI_Writer  # noqa: PLC0415
 
-    mesh = BRepMesh_IncrementalMesh(shape, deflection, False, angular_deflection, True)
+    topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+    mesh = BRepMesh_IncrementalMesh(topo_shape, deflection, False, angular_deflection, True)
     mesh.Perform()
 
     with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
@@ -826,22 +571,21 @@ def shape_to_stl_file_buffer(shape: Any, deflection: float = 0.5, angular_deflec
     try:
         writer = StlAPI_Writer()
         writer.ASCIIMode = True
-        writer.Write(shape, tmp_path)
+        writer.Write(topo_shape, tmp_path)
 
         with open(tmp_path, "rb") as f:
             buffer = BytesIO(f.read())
         buffer.seek(0)
         return buffer
     finally:
-        import os
-        os.unlink(tmp_path)
+        os_module.unlink(tmp_path)
 
 
 def shape_to_stl_file(shape: Any, filepath: str, deflection: float = 0.5, angular_deflection: float = 0.3) -> None:
-    """Write an OCC shape to an STL file.
+    """Write a shape to an STL file.
 
     Args:
-        shape: The OCC shape to export.
+        shape: The shape to export.
         filepath: Path to write the STL file.
         deflection: Linear deflection for mesh tessellation (default 0.5).
         angular_deflection: Angular deflection for mesh tessellation (default 0.3 radians).
@@ -849,9 +593,10 @@ def shape_to_stl_file(shape: Any, filepath: str, deflection: float = 0.5, angula
     from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
     from OCP.StlAPI import StlAPI_Writer  # noqa: PLC0415
 
-    mesh = BRepMesh_IncrementalMesh(shape, deflection, False, angular_deflection, True)
+    topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+    mesh = BRepMesh_IncrementalMesh(topo_shape, deflection, False, angular_deflection, True)
     mesh.Perform()
 
     writer = StlAPI_Writer()
     writer.ASCIIMode = True
-    writer.Write(shape, filepath)
+    writer.Write(topo_shape, filepath)

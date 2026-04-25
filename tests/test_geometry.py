@@ -7,11 +7,6 @@ pytest.importorskip("OCP.BRep", reason="OCP not installed")
 
 from oversolved.geometry import extrude_profile, solid_to_edges  # noqa: E402
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder  # noqa: E402
-from OCP.BRepAdaptor import BRepAdaptor_Curve  # noqa: E402
-from OCP.GeomAbs import GeomAbs_Circle, GeomAbs_Line  # noqa: E402
-from OCP.TopAbs import TopAbs_EDGE  # noqa: E402
-from OCP.TopExp import TopExp_Explorer  # noqa: E402
-from OCP.BRepCheck import BRepCheck_Analyzer  # noqa: E402
 
 
 FRONT_PLANE = {
@@ -23,21 +18,12 @@ FRONT_PLANE = {
 
 
 def edge_curve_types(shape):
-    """Return a list of GeomAbs curve type integers for all edges in a shape."""
-    from OCP.TopoDS import TopoDS  # noqa: PLC0415
-
-    types = []
-    exp = TopExp_Explorer(shape, TopAbs_EDGE)
-    while exp.More():
-        edge = TopoDS.Edge_s(exp.Current())
-        adaptor = BRepAdaptor_Curve(edge)
-        types.append(adaptor.GetType())
-        exp.Next()
-    return types
+    """Return a list of cadquery geomType strings for all edges in a shape."""
+    return [e.geomType() for e in shape.edges()]
 
 
 def test_circle_profile_produces_circle_edges():
-    """Full-circle arc boundary should produce at least one GeomAbs_Circle edge."""
+    """Full-circle arc boundary should produce at least one CIRCLE edge."""
     loop = [
         {
             "kind": "arc",
@@ -52,13 +38,13 @@ def test_circle_profile_produces_circle_edges():
     ]
     solid = extrude_profile([loop], FRONT_PLANE, [0.0, 0.0, 1.0], 2.0)
     types = edge_curve_types(solid)
-    assert any(t == GeomAbs_Circle for t in types), (
+    assert any(t == "CIRCLE" for t in types), (
         f"expected at least one circle edge, got types: {types}"
     )
 
 
 def test_rect_profile_produces_line_edges_only():
-    """Rectangle boundary (all line edges) should produce only GeomAbs_Line edges."""
+    """Rectangle boundary (all line edges) should produce only LINE edges."""
     loop = [
         {"kind": "line", "start": [0.0, 0.0], "end": [2.0, 0.0]},
         {"kind": "line", "start": [2.0, 0.0], "end": [2.0, 1.0]},
@@ -67,13 +53,13 @@ def test_rect_profile_produces_line_edges_only():
     ]
     solid = extrude_profile([loop], FRONT_PLANE, [0.0, 0.0, 1.0], 1.0)
     types = edge_curve_types(solid)
-    assert all(t == GeomAbs_Line for t in types), (
+    assert all(t == "LINE" for t in types), (
         f"expected only line edges, got types: {types}"
     )
 
 
 def test_arc_profile_produces_arc_edges():
-    """Partial arc plus two radial lines should produce at least one GeomAbs_Circle edge."""
+    """Partial arc plus two radial lines should produce at least one CIRCLE edge."""
     r = 1.0
     # 90-degree arc from 0 to 90 degrees, closed by two radial lines and a chord.
     start_uv = [r * math.cos(0.0), r * math.sin(0.0)]
@@ -94,13 +80,13 @@ def test_arc_profile_produces_arc_edges():
     ]
     solid = extrude_profile([loop], FRONT_PLANE, [0.0, 0.0, 1.0], 1.0)
     types = edge_curve_types(solid)
-    assert any(t == GeomAbs_Circle for t in types), (
+    assert any(t == "CIRCLE" for t in types), (
         f"expected at least one circle/arc edge, got types: {types}"
     )
 
 
 def test_profile_solid_is_valid():
-    """BRepCheck_Analyzer should report valid for both circle and rect extrusions."""
+    """cadquery isValid should report valid for both circle and rect extrusions."""
     circle_loop = [
         {
             "kind": "arc",
@@ -121,8 +107,7 @@ def test_profile_solid_is_valid():
     ]
     for loop, name in [(circle_loop, "circle"), (rect_loop, "rect")]:
         solid = extrude_profile([loop], FRONT_PLANE, [0.0, 0.0, 1.0], 1.0)
-        checker = BRepCheck_Analyzer(solid)
-        assert checker.IsValid(), f"{name} solid failed BRepCheck_Analyzer"
+        assert solid.isValid(), f"{name} solid failed isValid"
 
 
 def test_solid_to_edges_box():

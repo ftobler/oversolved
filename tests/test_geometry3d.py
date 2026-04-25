@@ -24,6 +24,11 @@ from OCP.STEPControl import STEPControl_Writer, STEPControl_StepModelType  # noq
 from oversolved.query import make_ancestry_query  # noqa: E402
 
 
+def _unwrap(shape):
+    """Return the underlying TopoDS_Shape from a cadquery or raw OCC shape."""
+    return shape.wrapped if hasattr(shape, "wrapped") else shape
+
+
 FRONT_PLANE = {
     "origin": [0, 0, 0],
     "x_axis": [1, 0, 0],
@@ -230,7 +235,7 @@ def test_step_file_to_shape_round_trip():
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = f"{tmpdir}/test.step"
         writer = STEPControl_Writer()
-        writer.Transfer(solid, STEPControl_StepModelType.STEPControl_AsIs)
+        writer.Transfer(_unwrap(solid), STEPControl_StepModelType.STEPControl_AsIs)
         writer.Write(filepath)
         result = step_file_to_shape(filepath)
         mesh = solid_to_mesh(result)
@@ -253,7 +258,7 @@ def test_step_file_to_shape_scale():
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = f"{tmpdir}/test.step"
         writer = STEPControl_Writer()
-        writer.Transfer(solid_normal, STEPControl_StepModelType.STEPControl_AsIs)
+        writer.Transfer(_unwrap(solid_normal), STEPControl_StepModelType.STEPControl_AsIs)
         writer.Write(filepath)
         solid_scaled = step_file_to_shape(filepath, scale=2.0)
         mesh_scaled = solid_to_mesh(solid_scaled)
@@ -361,7 +366,8 @@ def _count_faces(shape: object) -> int:
     from OCP.TopAbs import TopAbs_FACE  # noqa: PLC0415
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
 
-    exp = TopExp_Explorer(shape, TopAbs_FACE)  # type: ignore[arg-type]
+    topo = _unwrap(shape)
+    exp = TopExp_Explorer(topo, TopAbs_FACE)
     n = 0
     while exp.More():
         n += 1
@@ -393,4 +399,4 @@ def test_boolean_cut_result_is_valid():
     box_a = BRepPrimAPI_MakeBox(gp_Pnt(0, 0, 0), 4.0, 2.0, 2.0).Shape()
     box_b = BRepPrimAPI_MakeBox(gp_Pnt(1, 0, 0), 2.0, 2.0, 1.0).Shape()
     result = boolean_cut(box_a, box_b)
-    assert BRepCheck_Analyzer(result).IsValid(), "cut result failed validity check"
+    assert BRepCheck_Analyzer(_unwrap(result)).IsValid(), "cut result failed validity check"
