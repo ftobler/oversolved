@@ -50,3 +50,13 @@ class BooleanFeatureDef(TypedDict, total=False):
     target: str
     tools: list[str]
     keep_tools: bool
+
+
+class HoleFeatureDef(TypedDict, total=False):
+    """Hole feature definition - drilled cylinders driven by sketch points."""
+    sketch: str
+    diameter: float
+    depth_mode: Literal['blind', 'through_all']
+    depth: float
+    direction: Literal['normal', 'reverse']
+    target: str

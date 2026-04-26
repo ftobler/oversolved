@@ -13,6 +13,7 @@ export function buildCommandEntries(
   handleDeleteSelectedFeatures: () => void,
   handleToggleSketchPlaneVisibility: () => void,
   handleAddExtrude: () => void,
+  handleAddHole: () => void,
 ): CommandEntry[] {
   const getState = useSketchEditorStore.getState
   return [
@@ -42,5 +43,6 @@ export function buildCommandEntries(
     }},
     { name: 'cancel_plane_selection', fn: () => getState().setPlaneSelectionFeatureId(null) },
     { name: 'add_extrude', fn: handleAddExtrude },
+    { name: 'add_hole', fn: handleAddHole },
   ]
 }

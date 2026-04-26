@@ -297,3 +297,22 @@ def assert_mesh_bbox(mesh: dict, x_range, y_range, z_range, tol: float = 0.1) ->
     check(xs, x_range[0], x_range[1], 'x')
     check(ys, y_range[0], y_range[1], 'y')
     check(zs, z_range[0], z_range[1], 'z')
+
+
+def point_sketch_spec(points, sketch_id='pts', plane='@builtin_plane_front'):
+    """Sketch containing only point entities at given [(x,y), ...] coordinates."""
+    entities = [{"id": f"pt{i}", "kind": "point"} for i, _ in enumerate(points)]
+    initial = {f"pt{i}": list(p) for i, p in enumerate(points)}
+    return {
+        "id": sketch_id, "kind": "sketch", "plane": plane,
+        "entities": entities, "initial": initial, "constraints": [],
+    }
+
+
+def hole_spec(sketch_id, hole_id, diameter=10.0, depth=20.0,
+              depth_mode='blind', direction='normal', target=None):
+    h = {"sketch": "@" + sketch_id, "diameter": diameter,
+         "depth": depth, "depth_mode": depth_mode, "direction": direction}
+    if target:
+        h["target"] = target
+    return {"id": hole_id, "kind": "hole", "hole": h}

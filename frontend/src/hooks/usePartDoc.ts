@@ -72,6 +72,13 @@ import {
   applySetArrayDirectionY,
   applyAddDeleteBody,
   applySetDeleteBodyTarget,
+  applyAddHole,
+  applySetHoleSketch,
+  applySetHoleDiameter,
+  applySetHoleDepth,
+  applySetHoleDepthMode,
+  applySetHoleDirection,
+  applySetHoleTarget,
   applyRenamePart,
   applySetPartColor,
 } from '../utils/yamlMutations'
@@ -553,6 +560,28 @@ setSolveResults(results)
         break
       case 'set_delete_body_target':
         applySetDeleteBodyTarget(next, m.featureId, m.body)
+        break
+      case 'add_hole':
+        applyAddHole(next, m.featureId, m.label)
+        break
+      case 'set_hole_sketch':
+        applySetHoleSketch(next, m.featureId, m.sketch)
+        break
+      case 'set_hole_diameter':
+        applySetHoleDiameter(next, m.featureId, m.diameter)
+        break
+      case 'set_hole_depth':
+        applySetHoleDepth(next, m.featureId, m.depth)
+        break
+      case 'set_hole_depth_mode':
+        applySetHoleDepthMode(next, m.featureId, m.depthMode)
+        break
+      case 'set_hole_direction':
+        if (m.direction)
+          applySetHoleDirection(next, m.featureId, m.direction)
+        break
+      case 'set_hole_target':
+        applySetHoleTarget(next, m.featureId, m.target)
         break
       case 'rename_part':
         applyRenamePart(next, m.bodyId, m.name)

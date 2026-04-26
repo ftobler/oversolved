@@ -1297,5 +1297,20 @@ def feature_delete_body(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-hole.svg")
+def feature_hole(ctx):
+    """Icon for Hole: circle with center-mark cross."""
+    r = 0.25
+    d = 0.4
+    ctx.arc(0.5, 0.5, r, 0, 2 * math.pi)
+    stroke(ctx, 1.5)
+    ctx.move_to(0.5, 0.5 - d)
+    ctx.line_to(0.5, 0.5 + d)
+    stroke(ctx, 1.5)
+    ctx.move_to(0.5 - d, 0.5)
+    ctx.line_to(0.5 + d, 0.5)
+    stroke(ctx, 1.5)
+
+
 if __name__ == "__main__":
     draw_all()

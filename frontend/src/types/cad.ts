@@ -67,6 +67,15 @@ export interface DeleteBodyFeatureDef {
   body: string
 }
 
+export interface HoleFeatureDef {
+  sketch: string
+  diameter: number
+  depth_mode: 'blind' | 'through_all'
+  depth: number
+  direction?: 'normal' | 'reverse'
+  target?: string
+}
+
 export interface FaceData {
   centroid: [number, number, number]
   normal: [number, number, number]
@@ -214,6 +223,7 @@ export interface PartFeature {
   boolean?: BooleanFeatureDef  // present when kind === 'boolean'
   array?: ArrayFeatureDef  // present when kind === 'array'
   delete_body?: DeleteBodyFeatureDef  // present when kind === 'delete_body'
+  hole?: HoleFeatureDef  // present when kind === 'hole'
   file_id?: string  // present when kind === 'import_step'
 }
 
@@ -523,5 +533,12 @@ export type Mutation =
   | { type: 'set_array_direction_y'; featureId: string; direction_y: [number, number, number] }
   | { type: 'add_delete_body'; featureId: string; body?: string; label?: string }
   | { type: 'set_delete_body_target'; featureId: string; body: string }
+  | { type: 'add_hole'; featureId: string; label?: string }
+  | { type: 'set_hole_sketch'; featureId: string; sketch: string }
+  | { type: 'set_hole_diameter'; featureId: string; diameter: number }
+  | { type: 'set_hole_depth'; featureId: string; depth: number }
+  | { type: 'set_hole_depth_mode'; featureId: string; depthMode: HoleFeatureDef['depth_mode'] }
+  | { type: 'set_hole_direction'; featureId: string; direction: HoleFeatureDef['direction'] }
+  | { type: 'set_hole_target'; featureId: string; target: string }
   | { type: 'rename_part'; bodyId: string; name: string }
   | { type: 'set_part_color'; bodyId: string; color: string }

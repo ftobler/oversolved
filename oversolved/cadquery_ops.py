@@ -105,6 +105,14 @@ def revolve_face(face: Any, axis_origin: list[float], axis_direction: list[float
     return cq_shapes.Solid(revol.Shape())
 
 
+def make_cylinder(center: list[float], axis: list[float], radius: float, height: float) -> cq_shapes.Solid:
+    """Solid cylinder for hole cutting. center and axis are 3D world-space."""
+    from OCP.gp import gp_Ax2, gp_Pnt, gp_Dir
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeCylinder
+    ax2 = gp_Ax2(gp_Pnt(*center), gp_Dir(*axis))
+    return cq_shapes.Solid(BRepPrimAPI_MakeCylinder(ax2, radius, height).Shape())
+
+
 def _ensure_cq(target: Any) -> cq_shapes.Shape:
     """Wrap raw TopoDS shape in cadquery Shape if necessary."""
     if hasattr(target, "cut"):

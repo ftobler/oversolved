@@ -935,5 +935,21 @@ describe('sketchEditorStore', () => {
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
+
+    it('sketch pick with hostKind hole dispatches set_hole_sketch', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'h1', field: 'sketch', hostKind: 'hole' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('sk1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_hole_sketch',
+        featureId: 'h1',
+        sketch: 'sk1',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
   })
 })

@@ -322,6 +322,8 @@ def build(spec: dict, prev_state: BuildState | None = None) -> dict:
         except Exception:
             pass
 
+    features_by_id = {f["id"]: f for f in features}
+
     for i, feature in enumerate(features[first_dirty:]):
         fid = feature.get("id", "")
 
@@ -332,7 +334,7 @@ def build(spec: dict, prev_state: BuildState | None = None) -> dict:
                 if body.shape and body.created_by:
                     _register_body_faces(body)
 
-        feature_result = _try_solve_feature(feature, global_repo, body_store)
+        feature_result = _try_solve_feature(feature, global_repo, body_store, features_by_id)
         _post_register(global_repo, fid, feature, feature_result)
         result[fid] = feature_result
 

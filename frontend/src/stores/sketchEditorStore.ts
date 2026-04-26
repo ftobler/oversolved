@@ -371,6 +371,11 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       const sketchQuery = selectionId.startsWith('face:')
         ? selectionId.split(':').slice(2).join(':')  // face pick: pass ancestry query through unchanged
         : selectionId  // raw selection id
+      if (pendingPickField.hostKind === 'hole') {
+        onMutation?.({ type: 'set_hole_sketch', featureId: pendingPickField.featureId, sketch: sketchQuery })
+        set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
+        return
+      }
       const mutationType = pendingPickField.hostKind === 'revolve' ? 'add_revolve_profile' : 'add_extrude_profile'
       onMutation?.({ type: mutationType, featureId: pendingPickField.featureId, sketchQuery })
       set({ normalSelection: new Set() })  // clear selection but keep pick mode open

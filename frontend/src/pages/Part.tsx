@@ -25,6 +25,7 @@ import featureChamferIcon from '../assets/icons/feature-chamfer.svg'
 import featureBooleanIcon from '../assets/icons/feature-boolean.svg'
 import featureArrayIcon from '../assets/icons/feature-array.svg'
 import featureDeleteBodyIcon from '../assets/icons/feature-delete-body.svg'
+import featureHoleIcon from '../assets/icons/feature-hole.svg'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featurePartIcon from '../assets/icons/feature-part.svg'
 import featureCodeIcon from '../assets/icons/icon-code.svg'
@@ -189,6 +190,20 @@ function describeMutation(m: Mutation): string {
       return `add delete body ${m.label ?? m.featureId}`
     case 'set_delete_body_target':
       return `set delete body target to ${m.body}`
+    case 'add_hole':
+      return `add hole ${m.label ?? m.featureId}`
+    case 'set_hole_sketch':
+      return `set hole sketch to ${m.sketch}`
+    case 'set_hole_diameter':
+      return `set hole diameter to ${m.diameter}`
+    case 'set_hole_depth':
+      return `set hole depth to ${m.depth}`
+    case 'set_hole_depth_mode':
+      return `set hole depth mode to ${m.depthMode}`
+    case 'set_hole_direction':
+      return `set hole direction to ${m.direction}`
+    case 'set_hole_target':
+      return `set hole target to ${m.target}`
     case 'rename_part':
       return `rename ${m.bodyId} to ${m.name}`
     case 'set_part_color':
@@ -495,6 +510,15 @@ useEffect(() => {
     setEditingFeatureId(fid)
   }, [doc, features.length, handleMutation, bodies])
 
+  const handleAddHole = useCallback(() => {
+    if (!doc) return
+    const fid = randomId(18)
+    const label = `hole ${Object.keys(bodies).length + 1}`
+    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    handleMutation({ type: 'add_hole', featureId: fid, label })
+    setEditingFeatureId(fid)
+  }, [doc, features.length, handleMutation, bodies])
+
   const handleAddSketch = useCallback(() => {
     if (!doc) return
     const featureId = randomId(18)
@@ -601,8 +625,8 @@ useEffect(() => {
   }, [activeSketchFeatureId])
 
   const commands = useMemo(
-    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddExtrude),
-    [handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddExtrude],
+    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddExtrude, handleAddHole),
+    [handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddExtrude, handleAddHole],
   )
 
   useCommandRegistration(commands)
@@ -1032,6 +1056,7 @@ useEffect(() => {
                 <button className="editor-btn" title="Add Boolean" onClick={handleAddBoolean}><img src={featureBooleanIcon} alt="Add Boolean" /></button>
                 <button className="editor-btn" title="Add Array" onClick={handleAddArray}><img src={featureArrayIcon} alt="Add Array" /></button>
                 <button className="editor-btn" title="Delete Body" onClick={handleAddDeleteBody}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
+                <button className="editor-btn" title="Add Hole" onClick={handleAddHole}><img src={featureHoleIcon} alt="Add Hole" /></button>
                 <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
                 <button className="editor-btn" title="Import STEP" onClick={handleImportStep}><img src={featureImportIcon} alt="Import STEP" /></button>

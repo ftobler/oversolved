@@ -11,6 +11,7 @@ from oversolved.cadquery_ops import (
     extrude_face,
     fuse_shapes,
     make_arc_edge,
+    make_cylinder,
     make_face_from_wires,
     make_line_edge,
     make_wire,
@@ -447,3 +448,33 @@ def test_extrude_profile_with_arc_on_rotated_plane():
     solid = extrude_profile(loops, plane, [0.0, 1.0, 0.0], 10.0)
     assert solid.isValid()
     assert solid.Volume() > 0
+
+
+def test_make_cylinder_produces_valid_shape():
+    """make_cylinder should produce a valid solid with at least one face."""
+    cyl = make_cylinder([0, 0, 0], [0, 0, 1], 5, 10)
+    assert cyl is not None
+    assert len(list(cyl.faces())) >= 1
+    assert cyl.isValid()
+
+
+def test_make_cylinder_bbox():
+    """Cylinder along Z should have bbox matching radius and height."""
+    cyl = make_cylinder([0, 0, 0], [0, 0, 1], 5, 10)
+    bb = cyl.BoundingBox()
+    assert bb.xmin == pytest.approx(-5, abs=1e-6)
+    assert bb.xmax == pytest.approx(5, abs=1e-6)
+    assert bb.ymin == pytest.approx(-5, abs=1e-6)
+    assert bb.ymax == pytest.approx(5, abs=1e-6)
+    assert bb.zmin == pytest.approx(0, abs=1e-6)
+    assert bb.zmax == pytest.approx(10, abs=1e-6)
+
+
+def test_make_cylinder_arbitrary_axis():
+    """Cylinder along X should span along X axis."""
+    cyl = make_cylinder([0, 0, 0], [1, 0, 0], 3, 12)
+    bb = cyl.BoundingBox()
+    assert bb.xmin == pytest.approx(0, abs=1e-6)
+    assert bb.xmax == pytest.approx(12, abs=1e-6)
+    assert bb.ymax - bb.ymin == pytest.approx(6, abs=1e-6)
+    assert bb.zmax - bb.zmin == pytest.approx(6, abs=1e-6)

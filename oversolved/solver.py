@@ -631,10 +631,10 @@ def _register_topology_vertices(
         )
 
 
-def _try_solve_feature(feature: Any, global_repo: Repository, body_store: dict) -> dict:
+def _try_solve_feature(feature: Any, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict] | None = None) -> dict:
     t0 = time.perf_counter()
     try:
-        result = _solve_feature(feature, global_repo, body_store)
+        result = _solve_feature(feature, global_repo, body_store, features_by_id)
         result["solve_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         return result
     except Exception as e:
@@ -645,7 +645,7 @@ def _try_solve_feature(feature: Any, global_repo: Repository, body_store: dict) 
         }
 
 
-def _solve_feature(feature: Any, global_repo: Repository, body_store: dict) -> dict:
+def _solve_feature(feature: Any, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict] | None = None) -> dict:
     kind = feature.get("kind")
     if kind == "sketch":
         feature_result = _solve_sketch(feature, global_repo)
@@ -668,6 +668,8 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict) -> d
         return _solve_boolean(feature, global_repo, body_store)
     if kind == "delete_body":
         return _solve_delete_body(feature, body_store)
+    if kind == "hole":
+        return _solve_hole(feature, global_repo, body_store, features_by_id or {})
     raise Exception(f"unknown feature type: '{kind}'")
 
 
@@ -2678,6 +2680,85 @@ def _solve_delete_body(feature: dict, body_store: dict) -> dict:
                 raise ValueError(f"delete_body: body not found: {body_query!r}")
         del body_store[body_key]
         return {"status": "ok", "deleted_body_id": body_key}
+    except Exception as exc:
+        return {"status": "exception", "exception": str(exc)}
+
+
+def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict]) -> dict:
+    try:
+        import numpy as np
+        from oversolved.cadquery_ops import make_cylinder, boolean_cut
+
+        sub = feature.get("hole") or {}
+        sketch_ref = sub.get("sketch", "").lstrip("@")
+        diameter = float(sub.get("diameter", 10.0))
+        depth_mode = sub.get("depth_mode", "blind")
+        depth = float(sub.get("depth", 10.0))
+        direction = sub.get("direction", "normal")
+        target_ref = sub.get("target", "")
+
+        radius = diameter / 2.0
+
+        plane = global_repo.elements.get("_pt_" + sketch_ref)
+        if plane is None:
+            raise ValueError(f"hole: sketch '{sketch_ref}' has no plane transform registered")
+
+        origin = np.array(plane["origin"])
+        x_axis = np.array(plane["x_axis"])
+        y_axis = np.array(plane["y_axis"])
+        normal = np.array(plane["normal"])
+        axis = normal if direction == "normal" else -normal
+
+        if target_ref:
+            key = target_ref.lstrip("@")
+            target_body = body_store.get(key) or body_store.get("body_" + key)
+            if target_body is None:
+                raise ValueError(f"hole: target body '{target_ref}' not found")
+        else:
+            if not body_store:
+                raise ValueError("hole: no bodies in body_store and no target specified")
+            target_body = next(iter(body_store.values()))
+
+        sketch_feature = features_by_id.get(sketch_ref, {})
+        entities = sketch_feature.get("entities", [])
+        point_entities = [e for e in entities if e.get("kind") == "point"]
+
+        if not point_entities:
+            raise ValueError(f"hole: sketch '{sketch_ref}' has no point entities")
+
+        if depth_mode == "through_all":
+            bb = target_body.shape.BoundingBox()
+            span = max(bb.xmax - bb.xmin, bb.ymax - bb.ymin, bb.zmax - bb.zmin)
+            through_depth = span * 3.0
+            through_back_offset = span
+        else:
+            through_depth = None
+            through_back_offset = 0.0
+
+        for entity in point_entities:
+            eid = entity["id"]
+            xy_entry = global_repo.elements.get(sketch_ref + "/" + eid + "/xy")
+            if xy_entry is None:
+                continue
+            x2d, y2d = xy_entry["external_xy"]
+            center_3d = origin + x2d * x_axis + y2d * y_axis
+
+            if depth_mode == "through_all":
+                start_3d = center_3d - axis * through_back_offset
+                h = through_depth
+            else:
+                start_3d = center_3d
+                h = depth
+
+            cyl = make_cylinder(list(start_3d), list(axis), radius, h)
+            target_body.shape = boolean_cut(target_body.shape, cyl)
+
+        target_body.modified_by.append(feature["id"])
+        return {
+            "status": "ok",
+            "body_id": target_body.id,
+            "hole_count": len(point_entities),
+        }
     except Exception as exc:
         return {"status": "exception", "exception": str(exc)}
 

@@ -1095,3 +1095,57 @@ export function applySetDeleteBodyTarget(
   if (!feat?.delete_body) return
   feat.delete_body.body = body
 }
+
+export function applyAddHole(doc: PartDoc, featureId: string, label?: string): void {
+  if (!doc.features) doc.features = []
+  doc.features.push({
+    id: featureId,
+    kind: 'hole',
+    label: label ?? 'Hole',
+    hole: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' },
+  })
+}
+
+export function applySetHoleSketch(doc: PartDoc, featureId: string, sketch: string): void {
+  const f = doc.features?.find(feat => feat.id === featureId)
+  if (!f?.hole) return
+  f.hole.sketch = sketch
+}
+
+export function applySetHoleDiameter(doc: PartDoc, featureId: string, diameter: number): void {
+  const f = doc.features?.find(feat => feat.id === featureId)
+  if (!f?.hole) return
+  f.hole.diameter = diameter
+}
+
+export function applySetHoleDepth(doc: PartDoc, featureId: string, depth: number): void {
+  const f = doc.features?.find(feat => feat.id === featureId)
+  if (!f?.hole) return
+  f.hole.depth = depth
+}
+
+export function applySetHoleDepthMode(
+  doc: PartDoc,
+  featureId: string,
+  depthMode: 'blind' | 'through_all',
+): void {
+  const f = doc.features?.find(feat => feat.id === featureId)
+  if (!f?.hole) return
+  f.hole.depth_mode = depthMode
+}
+
+export function applySetHoleDirection(
+  doc: PartDoc,
+  featureId: string,
+  direction: 'normal' | 'reverse',
+): void {
+  const f = doc.features?.find(feat => feat.id === featureId)
+  if (!f?.hole) return
+  f.hole.direction = direction
+}
+
+export function applySetHoleTarget(doc: PartDoc, featureId: string, target: string): void {
+  const f = doc.features?.find(feat => feat.id === featureId)
+  if (!f?.hole) return
+  f.hole.target = target
+}

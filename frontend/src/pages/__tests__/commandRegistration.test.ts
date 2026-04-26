@@ -13,7 +13,7 @@ beforeEach(() => { clearAllHandlers() })
 // ── Config array structure ────
 
 describe('command config array structure', () => {
-  const config = buildCommandEntries(vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn())
+  const config = buildCommandEntries(vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn())
 
   it('every entry has a non-empty name string', () => {
     for (const entry of config) {
