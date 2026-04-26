@@ -48,6 +48,22 @@ import {
   applyRemoveFilletEdge,
   applyAddChamferEdge,
   applyRemoveChamferEdge,
+  applyAddArray,
+  applySetArrayMode,
+  applySetArraySourceBody,
+  applySetArrayOperation,
+  applySetArrayIncludeSource,
+  applySetArrayCountX,
+  applySetArrayPitchX,
+  applySetArrayDirectionXQuery,
+  applySetArrayCountY,
+  applySetArrayPitchY,
+  applySetArrayDirectionYQuery,
+  applySetArrayCount,
+  applySetArrayStepAngle,
+  applySetArrayAxis,
+  applySetArrayDirectionX,
+  applySetArrayDirectionY,
   applyRenamePart,
   applySetPartColor,
 } from '../utils/yamlMutations'
@@ -457,6 +473,54 @@ setSolveResults(results)
         break
       case 'remove_chamfer_edge':
         applyRemoveChamferEdge(next, m.featureId, m.index)
+        break
+      case 'add_array':
+        applyAddArray(next, m.featureId, m.label)
+        break
+      case 'set_array_mode':
+        applySetArrayMode(next, m.featureId, m.mode)
+        break
+      case 'set_array_source_body':
+        applySetArraySourceBody(next, m.featureId, m.sourceBody)
+        break
+      case 'set_array_operation':
+        applySetArrayOperation(next, m.featureId, m.operation)
+        break
+      case 'set_array_include_source':
+        applySetArrayIncludeSource(next, m.featureId, m.includeSource)
+        break
+      case 'set_array_count_x':
+        applySetArrayCountX(next, m.featureId, m.count)
+        break
+      case 'set_array_pitch_x':
+        applySetArrayPitchX(next, m.featureId, m.pitch)
+        break
+      case 'set_array_direction_x_query':
+        applySetArrayDirectionXQuery(next, m.featureId, m.query)
+        break
+      case 'set_array_count_y':
+        applySetArrayCountY(next, m.featureId, m.count)
+        break
+      case 'set_array_pitch_y':
+        applySetArrayPitchY(next, m.featureId, m.pitch)
+        break
+      case 'set_array_direction_y_query':
+        applySetArrayDirectionYQuery(next, m.featureId, m.query)
+        break
+      case 'set_array_count':
+        applySetArrayCount(next, m.featureId, m.count)
+        break
+      case 'set_array_step_angle':
+        applySetArrayStepAngle(next, m.featureId, m.stepAngle)
+        break
+      case 'set_array_axis':
+        applySetArrayAxis(next, m.featureId, m.axis)
+        break
+      case 'set_array_direction_x':
+        applySetArrayDirectionX(next, m.featureId, m.direction_x)
+        break
+      case 'set_array_direction_y':
+        applySetArrayDirectionY(next, m.featureId, m.direction_y)
         break
       case 'rename_part':
         applyRenamePart(next, m.bodyId, m.name)

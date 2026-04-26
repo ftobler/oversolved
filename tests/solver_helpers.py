@@ -229,6 +229,22 @@ def extrude_spec(
     }
 
 
+def box_extrude_spec(
+    w: float = 5.0,
+    h: float = 5.0,
+    d: float = 5.0,
+    sketch_id: str = 'sk1',
+    extrude_id: str = 'extrude1',
+) -> dict:
+    """Complete spec: one fully-constrained rect sketch + one extrude to a box.
+
+    Returns a dict with 'features' containing the sketch and extrude.
+    """
+    sk = rect_sketch_spec(w, h, sketch_id)
+    ex = extrude_spec(sketch_id, extrude_id, d)
+    return {'features': [sk, ex]}
+
+
 def full_rect_extrude_spec(
     w: float = 10.0,
     h: float = 10.0,

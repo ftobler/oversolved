@@ -22,6 +22,7 @@ import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
 import featureRevolveIcon from '../assets/icons/feature-revolve.svg'
 import featureFilletIcon from '../assets/icons/feature-fillet.svg'
 import featureChamferIcon from '../assets/icons/feature-chamfer.svg'
+import featureArrayIcon from '../assets/icons/feature-array.svg'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featurePartIcon from '../assets/icons/feature-part.svg'
 import featureCodeIcon from '../assets/icons/icon-code.svg'
@@ -150,6 +151,38 @@ function describeMutation(m: Mutation): string {
       return `add chamfer edge ${m.edgeQuery}`
     case 'remove_chamfer_edge':
       return `remove chamfer edge at index ${m.index}`
+    case 'add_array':
+      return `add array ${m.label ?? m.featureId}`
+    case 'set_array_mode':
+      return `set array mode to ${m.mode}`
+    case 'set_array_source_body':
+      return `set array source body to ${m.sourceBody}`
+    case 'set_array_operation':
+      return `set array operation to ${m.operation}`
+    case 'set_array_include_source':
+      return `set array include source to ${m.includeSource}`
+    case 'set_array_count_x':
+      return `set array count_x to ${m.count}`
+    case 'set_array_pitch_x':
+      return `set array pitch_x to ${m.pitch}`
+    case 'set_array_direction_x_query':
+      return `set array direction_x query to ${m.query}`
+    case 'set_array_count_y':
+      return `set array count_y to ${m.count}`
+    case 'set_array_pitch_y':
+      return `set array pitch_y to ${m.pitch}`
+    case 'set_array_direction_y_query':
+      return `set array direction_y query to ${m.query}`
+    case 'set_array_count':
+      return `set array count to ${m.count}`
+    case 'set_array_step_angle':
+      return `set array step angle to ${m.stepAngle}`
+    case 'set_array_axis':
+      return `set array axis to ${m.axis}`
+    case 'set_array_direction_x':
+      return `set array direction_x to ${m.direction_x}`
+    case 'set_array_direction_y':
+      return `set array direction_y to ${m.direction_y}`
     case 'rename_part':
       return `rename ${m.bodyId} to ${m.name}`
     case 'set_part_color':
@@ -424,6 +457,15 @@ useEffect(() => {
     const label = `chamfer ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     handleMutation({ type: 'add_chamfer', featureId: fid, label })
+    setEditingFeatureId(fid)
+  }, [doc, features.length, handleMutation, bodies])
+
+  const handleAddArray = useCallback(() => {
+    if (!doc) return
+    const fid = randomId(18)
+    const label = `array ${Object.keys(bodies).length + 1}`
+    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    handleMutation({ type: 'add_array', featureId: fid, label })
     setEditingFeatureId(fid)
   }, [doc, features.length, handleMutation, bodies])
 
@@ -961,6 +1003,7 @@ useEffect(() => {
                 <button className="editor-btn" title="Add Revolve" onClick={handleAddRevolve}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
                 <button className="editor-btn" title="Add Fillet" onClick={handleAddFillet}><img src={featureFilletIcon} alt="Add Fillet" /></button>
                 <button className="editor-btn" title="Add Chamfer" onClick={handleAddChamfer}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
+                <button className="editor-btn" title="Add Array" onClick={handleAddArray}><img src={featureArrayIcon} alt="Add Array" /></button>
                 <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
                 <button className="editor-btn" title="Import STEP" onClick={handleImportStep}><img src={featureImportIcon} alt="Import STEP" /></button>

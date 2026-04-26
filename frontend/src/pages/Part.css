@@ -1020,8 +1020,16 @@
   font-size: 11px;
   color: #999;
   flex-shrink: 0;
-  width: 52px;
+  width: 80px;
   text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.feature-field-hint {
+  font-size: 10px;
+  color: #777;
 }
 
 .feature-field-select {

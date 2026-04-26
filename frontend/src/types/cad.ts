@@ -27,6 +27,26 @@ export interface ChamferFeatureDef {
   angle?: number
 }
 
+export interface ArrayFeatureDef {
+  source_body?: string
+  mode?: 'linear' | 'rectangular' | 'rotational'
+  operation?: 'add' | 'new'
+  include_source?: boolean
+  count_x?: number
+  pitch_x?: number
+  direction_x?: [number, number, number]
+  direction_x_query?: string
+  count_y?: number
+  pitch_y?: number
+  direction_y?: [number, number, number]
+  direction_y_query?: string
+  count?: number
+  step_angle?: number | null
+  axis?: string
+  axis_origin?: [number, number, number]
+  axis_direction?: [number, number, number]
+}
+
 export interface RevolveFeatureDef {
   sketch: string | string[]
   angle: number
@@ -180,6 +200,7 @@ export interface PartFeature {
   revolve?: RevolveFeatureDef  // present when kind === 'revolve'
   fillet?: FilletFeatureDef  // present when kind === 'fillet'
   chamfer?: ChamferFeatureDef  // present when kind === 'chamfer'
+  array?: ArrayFeatureDef  // present when kind === 'array'
   file_id?: string  // present when kind === 'import_step'
 }
 
@@ -465,5 +486,21 @@ export type Mutation =
   | { type: 'remove_fillet_edge'; featureId: string; index: number }
   | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_chamfer_edge'; featureId: string; index: number }
+  | { type: 'add_array'; featureId: string; label?: string }
+  | { type: 'set_array_mode'; featureId: string; mode: 'linear' | 'rectangular' | 'rotational' }
+  | { type: 'set_array_source_body'; featureId: string; sourceBody: string }
+  | { type: 'set_array_operation'; featureId: string; operation: 'add' | 'new' }
+  | { type: 'set_array_include_source'; featureId: string; includeSource: boolean }
+  | { type: 'set_array_count_x'; featureId: string; count: number }
+  | { type: 'set_array_pitch_x'; featureId: string; pitch: number }
+  | { type: 'set_array_direction_x_query'; featureId: string; query: string }
+  | { type: 'set_array_count_y'; featureId: string; count: number }
+  | { type: 'set_array_pitch_y'; featureId: string; pitch: number }
+  | { type: 'set_array_direction_y_query'; featureId: string; query: string }
+  | { type: 'set_array_count'; featureId: string; count: number }
+  | { type: 'set_array_step_angle'; featureId: string; stepAngle: number | null }
+  | { type: 'set_array_axis'; featureId: string; axis: string }
+  | { type: 'set_array_direction_x'; featureId: string; direction_x: [number, number, number] }
+  | { type: 'set_array_direction_y'; featureId: string; direction_y: [number, number, number] }
   | { type: 'rename_part'; bodyId: string; name: string }
   | { type: 'set_part_color'; bodyId: string; color: string }

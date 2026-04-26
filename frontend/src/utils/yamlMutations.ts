@@ -832,3 +832,179 @@ export function applyRemoveChamferEdge(doc: PartDoc, featureId: string, index: n
   }
   feature.chamfer.edges.splice(index, 1)
 }
+
+export function applyAddArray(doc: PartDoc, featureId: string, label?: string): void {
+  if (!doc.features) doc.features = []
+  const feature: PartFeature = {
+    id: featureId,
+    kind: 'array',
+    label: label ?? 'Array',
+    array: {
+      mode: 'linear',
+      count_x: 2,
+      pitch_x: 20,
+      direction_x: [1, 0, 0],
+      operation: 'add',
+      include_source: true,
+    },
+  }
+  doc.features.push(feature)
+}
+
+export function applySetArrayMode(
+  doc: PartDoc,
+  featureId: string,
+  mode: 'linear' | 'rectangular' | 'rotational',
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayMode: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.mode = mode
+  if (mode === 'linear') {
+    delete feature.array.count_y
+    delete feature.array.pitch_y
+    delete feature.array.count
+    delete feature.array.step_angle
+    delete feature.array.axis
+  } else if (mode === 'rectangular') {
+    if (!feature.array.count_y) feature.array.count_y = 2
+    if (!feature.array.pitch_y) feature.array.pitch_y = 20
+    delete feature.array.count
+    delete feature.array.step_angle
+    delete feature.array.axis
+  } else {
+    if (!feature.array.count) feature.array.count = 4
+    delete feature.array.count_x
+    delete feature.array.pitch_x
+    delete feature.array.count_y
+    delete feature.array.pitch_y
+  }
+}
+
+export function applySetArraySourceBody(doc: PartDoc, featureId: string, sourceBody: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArraySourceBody: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.source_body = sourceBody
+}
+
+export function applySetArrayOperation(doc: PartDoc, featureId: string, operation: 'add' | 'new'): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayOperation: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.operation = operation
+}
+
+export function applySetArrayIncludeSource(doc: PartDoc, featureId: string, includeSource: boolean): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayIncludeSource: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.include_source = includeSource
+}
+
+export function applySetArrayCountX(doc: PartDoc, featureId: string, count: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayCountX: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.count_x = count
+}
+
+export function applySetArrayPitchX(doc: PartDoc, featureId: string, pitch: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayPitchX: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.pitch_x = pitch
+}
+
+export function applySetArrayDirectionXQuery(doc: PartDoc, featureId: string, query: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayDirectionXQuery: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.direction_x_query = query
+}
+
+export function applySetArrayCountY(doc: PartDoc, featureId: string, count: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayCountY: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.count_y = count
+}
+
+export function applySetArrayPitchY(doc: PartDoc, featureId: string, pitch: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayPitchY: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.pitch_y = pitch
+}
+
+export function applySetArrayDirectionYQuery(doc: PartDoc, featureId: string, query: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayDirectionYQuery: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.direction_y_query = query
+}
+
+export function applySetArrayCount(doc: PartDoc, featureId: string, count: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayCount: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.count = count
+}
+
+export function applySetArrayStepAngle(doc: PartDoc, featureId: string, stepAngle: number | null): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayStepAngle: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.step_angle = stepAngle
+}
+
+export function applySetArrayAxis(doc: PartDoc, featureId: string, axis: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayAxis: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.axis = axis
+}
+
+export function applySetArrayDirectionX(doc: PartDoc, featureId: string, direction_x: [number, number, number]): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayDirectionX: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.direction_x = direction_x
+}
+
+export function applySetArrayDirectionY(doc: PartDoc, featureId: string, direction_y: [number, number, number]): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    console.warn(`applySetArrayDirectionY: feature ${featureId} has no array`)
+    return
+  }
+  feature.array.direction_y = direction_y
+}

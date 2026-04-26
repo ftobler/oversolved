@@ -45,6 +45,9 @@ __all__ = [
     "shape_to_step_file_buffer",
     "shape_to_stl_file",
     "shape_to_stl_file_buffer",
+    "transform_copy",
+    "make_translation_trsf",
+    "make_rotation_trsf",
 ]
 
 
@@ -751,3 +754,29 @@ def apply_chamfer(shape: Any, distance: float, kind: str = "distance", angle: fl
         return _ensure_cq_shape(maker.Shape())
     except Exception:
         return shape
+
+
+def transform_copy(shape: Any, trsf: Any) -> Any:
+    """Return a new shape that is `shape` with OCC gp_Trsf applied."""
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform  # noqa: PLC0415
+    topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+    builder = BRepBuilderAPI_Transform(topo_shape, trsf, True)  # True = copy
+    builder.Build()
+    return builder.Shape()
+
+
+def make_translation_trsf(dx: float, dy: float, dz: float) -> Any:
+    from OCP.gp import gp_Trsf, gp_Vec  # noqa: PLC0415
+    t = gp_Trsf()
+    t.SetTranslation(gp_Vec(dx, dy, dz))
+    return t
+
+
+def make_rotation_trsf(
+    origin: list[float], direction: list[float], angle_rad: float
+) -> Any:
+    from OCP.gp import gp_Trsf, gp_Ax1, gp_Pnt, gp_Dir  # noqa: PLC0415
+    ax = gp_Ax1(gp_Pnt(*origin), gp_Dir(*direction))
+    t = gp_Trsf()
+    t.SetRotation(ax, angle_rad)
+    return t

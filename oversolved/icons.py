@@ -1217,6 +1217,27 @@ def feature_fillet(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-array.svg")
+def feature_array(ctx):
+    """Icon for Array: 3x2 grid of small rectangles."""
+    border = 0.1
+    cols, rows = 3, 2
+    gap = 0.04
+    cw = (1 - 2 * border - (cols - 1) * gap) / cols
+    ch = (1 - 2 * border - (rows - 1) * gap) / rows
+
+    for row in range(rows):
+        for col in range(cols):
+            x0 = border + col * (cw + gap)
+            y0 = border + row * (ch + gap)
+            ctx.move_to(x0, y0)
+            ctx.line_to(x0 + cw, y0)
+            ctx.line_to(x0 + cw, y0 + ch)
+            ctx.line_to(x0, y0 + ch)
+            ctx.close_path()
+            stroke(ctx, 1.5)
+
+
 @icon("frontend/src/assets/icons/feature-chamfer.svg")
 def feature_chamfer(ctx):
     """Icon for Chamfer: an L-shape with a beveled corner."""

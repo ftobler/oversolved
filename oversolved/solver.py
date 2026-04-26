@@ -662,6 +662,8 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict) -> d
         return _solve_chamfer(feature, global_repo, body_store)
     if kind == "revolve":
         return _solve_revolve(feature, global_repo, body_store)
+    if kind == "array":
+        return _solve_array(feature, global_repo, body_store)
     raise Exception(f"unknown feature type: '{kind}'")
 
 
@@ -2234,6 +2236,174 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
             result["mesh_warning"] = str(exc)
 
         return result
+    except Exception as exc:
+        return {"status": "exception", "exception": str(exc)}
+
+
+def _resolve_direction_query(query: str, global_repo: Repository, fallback: list[float]) -> list[float]:
+    """Resolve a direction from a query string or return fallback.
+
+    Query should reference a sketch line (@sketch_id/line_id) whose start/end
+    are registered as 3D world coords in global_repo.
+    """
+    if not query:
+        return fallback
+    data = global_repo.query(query)
+    if data and "start" in data and "end" in data:
+        start = data["start"]
+        end = data["end"]
+        d = [end[k] - start[k] for k in range(3)]
+        length = math.sqrt(sum(v * v for v in d))
+        if length > 1e-12:
+            return [v / length for v in d]
+    return fallback
+
+
+def _resolve_axis_query(
+    query: str,
+    global_repo: Repository,
+    fallback_origin: list[float],
+    fallback_direction: list[float],
+) -> tuple[list[float], list[float]]:
+    """Resolve axis origin and direction from a query or return fallbacks."""
+    if not query:
+        return fallback_origin, fallback_direction
+    data = global_repo.query(query)
+    if data and "start" in data and "end" in data:
+        start = data["start"]
+        end = data["end"]
+        axis_origin = list(start)
+        d = [end[k] - start[k] for k in range(3)]
+        length = math.sqrt(sum(v * v for v in d))
+        if length > 1e-12:
+            return axis_origin, [v / length for v in d]
+    return fallback_origin, fallback_direction
+
+
+def _build_array_transforms(
+    feature: dict,
+    global_repo: Repository,
+) -> list[Any]:
+    """Build list of gp_Trsf objects for array instances."""
+    from oversolved.geometry import make_translation_trsf, make_rotation_trsf
+
+    mode = feature.get("mode", "linear")
+    trsfs: list[Any] = []
+
+    if mode == "linear":
+        count_x = int(feature.get("count_x", 2))
+        pitch_x = float(feature.get("pitch_x", 10.0))
+        dir_x = _resolve_direction_query(
+            feature.get("direction_x_query", ""),
+            global_repo,
+            feature.get("direction_x", [1, 0, 0]),
+        )
+        for i in range(count_x):
+            trsf = make_translation_trsf(dir_x[0] * pitch_x * i, dir_x[1] * pitch_x * i, dir_x[2] * pitch_x * i)
+            trsfs.append(trsf)
+
+    elif mode == "rectangular":
+        count_x = int(feature.get("count_x", 2))
+        count_y = int(feature.get("count_y", 2))
+        pitch_x = float(feature.get("pitch_x", 10.0))
+        pitch_y = float(feature.get("pitch_y", 10.0))
+        dir_x = _resolve_direction_query(
+            feature.get("direction_x_query", ""),
+            global_repo,
+            feature.get("direction_x", [1, 0, 0]),
+        )
+        dir_y = _resolve_direction_query(
+            feature.get("direction_y_query", ""),
+            global_repo,
+            feature.get("direction_y", [0, 1, 0]),
+        )
+        for j in range(count_y):
+            for i in range(count_x):
+                trsf = make_translation_trsf(
+                    dir_x[0] * pitch_x * i + dir_y[0] * pitch_y * j,
+                    dir_x[1] * pitch_x * i + dir_y[1] * pitch_y * j,
+                    dir_x[2] * pitch_x * i + dir_y[2] * pitch_y * j,
+                )
+                trsfs.append(trsf)
+
+    elif mode == "rotational":
+        count = int(feature.get("count", 4))
+        step_angle_raw = feature.get("step_angle")
+        if step_angle_raw is None:
+            step = 360.0 / count
+        else:
+            step = float(step_angle_raw)
+        axis_origin = feature.get("axis_origin", [0, 0, 0])
+        axis_direction = feature.get("axis_direction", [0, 0, 1])
+        axis_origin, axis_direction = _resolve_axis_query(
+            feature.get("axis", ""),
+            global_repo,
+            axis_origin,
+            axis_direction,
+        )
+        for i in range(count):
+            trsf = make_rotation_trsf(axis_origin, axis_direction, math.radians(step * i))
+            trsfs.append(trsf)
+
+    return trsfs
+
+
+def _solve_array(
+    feature: dict,
+    global_repo: Repository,
+    body_store: dict,
+) -> dict:
+    """Solve an array feature: replicate a body using linear/rectangular/rotational transforms."""
+    from oversolved.types3d import Body
+    from oversolved.geometry import transform_copy, fuse_shapes
+
+    try:
+        feature_id = feature.get("id", "")
+        sub = feature.get("array") or {}
+        feature = {**sub, **feature}
+
+        source_body_id = "body_" + feature.get("source_body", "")
+        body = body_store.get(source_body_id)
+        if body is None or body.shape is None:
+            body = list(body_store.values())[0] if body_store else None
+            if body is None or body.shape is None:
+                raise ValueError("array: no source body with shape found")
+            source_body_id = body.id
+
+        include_source = bool(feature.get("include_source", True))
+        operation = feature.get("operation", "add")
+
+        trsfs = _build_array_transforms(feature, global_repo)
+
+        instances: list = []
+        for i, trsf in enumerate(trsfs):
+            if i == 0 and include_source:
+                instances.append(body.shape)
+            elif i == 0:
+                pass
+            else:
+                instances.append(transform_copy(body.shape, trsf))
+
+        if not instances:
+            raise ValueError("array produced no instances")
+
+        tool_shape = fuse_shapes(instances)
+
+        result_body_id = "body_" + feature_id
+        if operation == "new":
+            new_body = Body(
+                id=result_body_id,
+                created_by=feature_id,
+                shape=tool_shape,
+                sketch_id="",
+            )
+            body_store[result_body_id] = new_body
+            return {"status": "ok", "body_id": result_body_id, "operation": "new"}
+        else:
+            body.shape = tool_shape
+            body.modified_by.append(feature_id)
+            return {"status": "ok", "body_id": source_body_id, "operation": "add"}
+
     except Exception as exc:
         return {"status": "exception", "exception": str(exc)}
 
