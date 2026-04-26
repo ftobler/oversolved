@@ -40,6 +40,7 @@ npx vitest run
 - Do not use banner comments or ASCII-art dividers (e.g. `====`, `----`). Keep any separators minimal.
 - Comments must describe intent, not restate the code.
 - try to keep files shorter than 1k lines.
+- icons are defined in `icons.py`.
 
 ## important files
 - oversolved/solver.py
