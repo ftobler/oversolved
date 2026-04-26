@@ -170,10 +170,10 @@ def _compute_face_centroid(face: cq_shapes.Face) -> list[float]:
 
 def _compute_face_normal(face: cq_shapes.Face) -> list[float]:
     """Compute face normal at the midpoint of its UV domain."""
-    bounds = face.uvBounds()
+    bounds = face._uvBounds()
     u = (bounds[0] + bounds[1]) / 2.0
     v = (bounds[2] + bounds[3]) / 2.0
-    n = face.normalAt((u, v))
+    n, _ = face.normalAt(u, v)
     return [n.x, n.y, n.z]
 
 

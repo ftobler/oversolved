@@ -367,6 +367,22 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     if (!pendingPickField) return
     const selectionId = [...normalSelection].pop()
     if (!selectionId) return
+
+    const _resolveBodyRef = (id: string): string => {
+      let bodyRef = id
+      if (id.startsWith('body:')) {
+        bodyRef = '@' + id.slice(5)
+      } else if (id.startsWith('?')) {
+        const parsed = parseQuery(id)
+        if (parsed.kind === 'ancestry' && parsed.ids.length > 0) {
+          bodyRef = parsed.ids[parsed.ids.length - 1]
+        }
+      } else if (id.startsWith('@') && id.includes('/')) {
+        bodyRef = '@' + id.slice(1).split('/')[0]
+      }
+      return bodyRef
+    }
+
     if (pendingPickField.field === 'sketch') {
       const sketchQuery = selectionId.startsWith('face:')
         ? selectionId.split(':').slice(2).join(':')  // face pick: pass ancestry query through unchanged
@@ -399,36 +415,24 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       return
     }
     if (pendingPickField.field === 'boolean_target') {
-      let bodyRef = selectionId
-      if (selectionId.startsWith('body:')) {
-        bodyRef = '@' + selectionId.slice(5)
-      }
+      const bodyRef = _resolveBodyRef(selectionId)
       onMutation?.({ type: 'set_boolean_target', featureId: pendingPickField.featureId, target: bodyRef })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
       return
     }
     if (pendingPickField.field === 'boolean_tool') {
-      let bodyRef = selectionId
-      if (selectionId.startsWith('body:')) {
-        bodyRef = '@' + selectionId.slice(5)
-      }
+      const bodyRef = _resolveBodyRef(selectionId)
       onMutation?.({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: bodyRef })
       set({ normalSelection: new Set() })  // keep pick mode open for multiple tools
       return
     }
     if (pendingPickField.field === 'body') {
-      let bodyRef = selectionId
-      if (selectionId.startsWith('body:')) {
-        bodyRef = '@' + selectionId.slice(5)
-      } else if (selectionId.startsWith('?')) {
-        const parsed = parseQuery(selectionId)
-        if (parsed.kind === 'ancestry' && parsed.ids.length > 0) {
-          bodyRef = parsed.ids[parsed.ids.length - 1]
-        }
-      } else if (selectionId.startsWith('@') && selectionId.includes('/')) {
-        bodyRef = '@' + selectionId.slice(1).split('/')[0]
+      const bodyRef = _resolveBodyRef(selectionId)
+      if (pendingPickField.hostKind === 'transform') {
+        onMutation?.({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
+      } else {
+        onMutation?.({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: bodyRef })
       }
-      onMutation?.({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: bodyRef })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
       return
     }

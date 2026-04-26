@@ -514,6 +514,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     } else {
                       onMutation({ type: 'add_extrude_profile', featureId: pendingPickField.featureId, sketchQuery: '$' + feature.id })
                     }
+                  } else if ((pendingPickField?.field === 'boolean_target' || pendingPickField?.field === 'boolean_tool') && solveResults?.[feature.id] && isBodyFeatureResult(solveResults[feature.id])) {
+                    const bodyResult = solveResults[feature.id] as { body_id?: string }
+                    const bodyRef = bodyResult.body_id ? '@' + bodyResult.body_id : '@' + feature.id
+                    if (pendingPickField.field === 'boolean_target') {
+                      onMutation({ type: 'set_boolean_target', featureId: pendingPickField.featureId, target: bodyRef })
+                      onSetPendingPickField(null)
+                    } else {
+                      onMutation({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: bodyRef })
+                    }
+                  } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'transform' && solveResults?.[feature.id] && isBodyFeatureResult(solveResults[feature.id])) {
+                    const bodyResult = solveResults[feature.id] as { body_id?: string }
+                    const bodyRef = bodyResult.body_id ? '@' + bodyResult.body_id : '@' + feature.id
+                    onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
+                    onSetPendingPickField(null)
+                  } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'delete_body' && solveResults?.[feature.id] && isBodyFeatureResult(solveResults[feature.id])) {
+                    const bodyResult = solveResults[feature.id] as { body_id?: string }
+                    const bodyRef = bodyResult.body_id ? '@' + bodyResult.body_id : '@' + feature.id
+                    onMutation({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: bodyRef })
+                    onSetPendingPickField(null)
                   } else {
                     onToggleSelect(`@${feature.id}`)
                   }
@@ -904,7 +923,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <li
                   key={bodyId}
                   className={`part-item ${selection.has(`@${bodyId}`) ? 'selected' : ''}`}
-                  onClick={() => onToggleSelect(`@${bodyId}`)}
+                  onClick={() => {
+                    if (pendingPickField?.field === 'boolean_target') {
+                      onMutation({ type: 'set_boolean_target', featureId: pendingPickField.featureId, target: '@' + bodyId })
+                      onSetPendingPickField(null)
+                    } else if (pendingPickField?.field === 'boolean_tool') {
+                      onMutation({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: '@' + bodyId })
+                    } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'transform') {
+                      onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'body', value: '@' + bodyId })
+                      onSetPendingPickField(null)
+                    } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'delete_body') {
+                      onMutation({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: '@' + bodyId })
+                      onSetPendingPickField(null)
+                    } else {
+                      onToggleSelect(`@${bodyId}`)
+                    }
+                  }}
                 >
                   <img className="part-icon" src={featurePartIcon} alt="" />
                   <span className="part-name">{partLabel}</span>

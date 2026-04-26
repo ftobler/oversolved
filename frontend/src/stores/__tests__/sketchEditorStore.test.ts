@@ -936,6 +936,72 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
 
+    it('boolean target pick from face query extracts feature id', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'b1', field: 'boolean_target' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_boolean_target',
+        featureId: 'b1',
+        target: '@ex1',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
+
+    it('boolean tool pick from ancestry query extracts parent id', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'b1', field: 'boolean_tool' },
+      })
+      const faceQuery = '?9,4;@ex1face0@ex1:flatface'
+      useSketchEditorStore.getState().toggleNormalSelection(faceQuery)
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_boolean_tool',
+        featureId: 'b1',
+        tool: '@ex1',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).not.toBeNull()
+    })
+
+    it('boolean target pick passes through direct @body_id', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'b1', field: 'boolean_target' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_boolean_target',
+        featureId: 'b1',
+        target: '@body_ex1',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
+
+    it('transform body pick dispatches set_transform_field', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 't1', field: 'body', hostKind: 'transform' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_transform_field',
+        featureId: 't1',
+        field: 'body',
+        value: '@ex1',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
+
     it('sketch pick with hostKind hole dispatches set_hole_sketch', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
