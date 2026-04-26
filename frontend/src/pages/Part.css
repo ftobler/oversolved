@@ -1074,20 +1074,35 @@
   color: #e060b0;
 }
 
+.feature-field-row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  height: auto;
+  gap: 2px;
+}
+
+.feature-field-row--stacked .feature-field-label {
+  width: auto;
+  height: auto;
+}
+
 .feature-pick-chip {
   flex: 1;
   display: flex;
   align-items: center;
-  height: 20px;
+  min-height: 20px;
+  max-height: 96px;
   border: 1px solid #3a2a3a;
   border-radius: 3px;
   background: transparent;
   cursor: pointer;
-  padding: 0 4px;
-  gap: 4px;
+  padding: 2px 4px;
+  gap: 3px;
   font-size: 10px;
   color: #bbb;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex-wrap: wrap;
   box-sizing: border-box;
 }
 
@@ -1103,6 +1118,15 @@
 .feature-pick-chip.empty {
   color: #555;
   font-style: italic;
+  max-height: 20px;
+  overflow-y: hidden;
+}
+
+.feature-pick-chip-empty-text {
+  font-size: 10px;
+  color: #555;
+  font-style: italic;
+  padding: 2px 0;
 }
 
 .feature-pick-chip-item {
@@ -1115,6 +1139,7 @@
   padding: 2px 4px;
   color: #fff;
   flex-shrink: 0;
+  height: 16px;
 }
 
 .feature-pick-chip-item-text {

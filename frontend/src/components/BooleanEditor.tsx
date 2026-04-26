@@ -1,58 +1,12 @@
 import React from 'react'
 import type { PartFeature, Mutation, PendingPickField, BooleanFeatureDef } from '../types/cad'
+import { PickChip } from './PickChip'
 
 interface BooleanEditorProps {
   feature: PartFeature
   onMutation: (m: Mutation) => void
   pendingPickField: PendingPickField | null
   setPendingPickField: (field: PendingPickField | null) => void
-}
-
-const Chip: React.FC<{ value: string; isPicking: boolean; onActivate: () => void; onRemove?: () => void; emptyText?: string }> = ({ value, isPicking, onActivate, onRemove, emptyText }) => {
-  return (
-    <div
-      className={`feature-pick-chip ${!value ? 'empty' : ''} ${isPicking ? 'picking' : ''}`}
-      onClick={(e) => { e.stopPropagation(); onActivate() }}
-    >
-      {value ? (
-        <>
-          <div className="feature-pick-chip-item">
-            <span className="feature-pick-chip-item-text">{value}</span>
-            {onRemove && (
-              <button
-                className="feature-pick-chip-item-remove"
-                onClick={(e) => { e.stopPropagation(); onRemove() }}
-                title="Remove"
-              >×</button>
-            )}
-          </div>
-        </>
-      ) : (
-        <span>{emptyText ?? '(none)'}</span>
-      )}
-    </div>
-  )
-}
-
-const ListPickChip: React.FC<{ values: string[]; isPicking: boolean; onActivate: () => void; onRemove: (value: string) => void }> = ({ values, isPicking, onActivate, onRemove }) => {
-  const isEmpty = values.length === 0
-  return (
-    <div
-      className={`feature-pick-chip feature-pick-chip-list ${isEmpty ? 'empty' : ''} ${isPicking ? 'picking' : ''}`}
-      onClick={(e) => { e.stopPropagation(); onActivate() }}
-    >
-      {values.map((v, i) => (
-        <div key={i} className="feature-pick-chip-item">
-          <span className="feature-pick-chip-item-text">{v}</span>
-          <button
-            className="feature-pick-chip-item-remove"
-            onClick={(e) => { e.stopPropagation(); onRemove(v) }}
-            title="Remove"
-          >×</button>
-        </div>
-      ))}
-    </div>
-  )
 }
 
 export const BooleanEditor: React.FC<BooleanEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField }) => {
@@ -80,27 +34,28 @@ export const BooleanEditor: React.FC<BooleanEditorProps> = ({ feature, onMutatio
           <option value="intersect">Intersect</option>
         </select>
       </div>
-      <div className="feature-field-row">
+      <div className="feature-field-row feature-field-row--stacked">
         <span className="feature-field-label">Target</span>
-        <Chip
-          value={bool.target}
+        <PickChip
+          values={bool.target ? [bool.target] : []}
           isPicking={isPickingTarget}
           onActivate={() => {
             if (isPickingTarget) setPendingPickField(null)
             else setPendingPickField({ featureId: fid, field: 'boolean_target' })
           }}
+          onRemove={() => onMutation({ type: 'set_boolean_target', featureId: fid, target: '' })}
           emptyText="(pick target)"
         />
       </div>
-      <div className="feature-field-row">
+      <div className="feature-field-row feature-field-row--stacked">
         <span className="feature-field-label">Tools</span>
-        <ListPickChip
+        <PickChip
           values={bool.tools}
           isPicking={isPickingTool}
           onActivate={() => {
             setPendingPickField({ featureId: fid, field: 'boolean_tool' })
           }}
-          onRemove={(value) => onMutation({ type: 'remove_boolean_tool', featureId: fid, tool: value })}
+          onRemove={(index) => onMutation({ type: 'remove_boolean_tool', featureId: fid, tool: bool.tools[index] })}
         />
       </div>
       <div className="feature-field-row">

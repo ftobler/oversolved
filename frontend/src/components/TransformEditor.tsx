@@ -1,32 +1,12 @@
 import React from 'react'
 import type { PartFeature, Mutation, PendingPickField } from '../types/cad'
+import { PickChip } from './PickChip'
 
 interface TransformEditorProps {
   feature: PartFeature
   onMutation: (m: Mutation) => void
   pendingPickField: PendingPickField | null
   setPendingPickField: (field: PendingPickField | null) => void
-}
-
-const PickChip: React.FC<{ value: string | undefined; isPicking: boolean; onActivate: () => void; onClear: () => void }> = ({ value, isPicking, onActivate, onClear }) => {
-  const isEmpty = !value || value === 'None'
-  return (
-    <div
-      className={`feature-pick-chip ${isEmpty ? 'empty' : ''} ${isPicking ? 'picking' : ''}`}
-      onClick={(e) => { e.stopPropagation(); onActivate() }}
-    >
-      {!isEmpty && (
-        <div className="feature-pick-chip-item">
-          <span className="feature-pick-chip-item-text">{value}</span>
-          <button
-            className="feature-pick-chip-item-remove"
-            onClick={(e) => { e.stopPropagation(); onClear() }}
-            title="Clear selection"
-          >×</button>
-        </div>
-      )}
-    </div>
-  )
 }
 
 export const TransformEditor: React.FC<TransformEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField }) => {
@@ -54,16 +34,16 @@ export const TransformEditor: React.FC<TransformEditorProps> = ({ feature, onMut
 
   return (
     <div className="plane-editor">
-      <div className="feature-field-row">
+      <div className="feature-field-row feature-field-row--stacked">
         <span className="feature-field-label">Body</span>
         <PickChip
-          value={transform.body}
+          values={transform.body ? [transform.body] : []}
           isPicking={isPicking('body')}
           onActivate={() => {
             if (isPicking('body')) setPendingPickField(null)
             else setPendingPickField({ featureId: fid, field: 'body', hostKind: 'transform' })
           }}
-          onClear={() => onMutation({ type: 'set_transform_field', featureId: fid, field: 'body', value: '' })}
+          onRemove={() => onMutation({ type: 'set_transform_field', featureId: fid, field: 'body', value: '' })}
         />
       </div>
       <div className="feature-field-row">
@@ -104,16 +84,16 @@ export const TransformEditor: React.FC<TransformEditorProps> = ({ feature, onMut
       {numField('Angle (deg)', transform.rotation_angle, (v) => {
         onMutation({ type: 'set_transform_field', featureId: fid, field: 'rotation_angle', value: v })
       })}
-      <div className="feature-field-row">
+      <div className="feature-field-row feature-field-row--stacked">
         <span className="feature-field-label">Axis</span>
         <PickChip
-          value={transform.rotation_axis}
+          values={transform.rotation_axis ? [transform.rotation_axis] : []}
           isPicking={isPicking('rotation_axis')}
           onActivate={() => {
             if (isPicking('rotation_axis')) setPendingPickField(null)
             else setPendingPickField({ featureId: fid, field: 'rotation_axis', hostKind: 'transform' })
           }}
-          onClear={() => onMutation({ type: 'set_transform_field', featureId: fid, field: 'rotation_axis', value: '' })}
+          onRemove={() => onMutation({ type: 'set_transform_field', featureId: fid, field: 'rotation_axis', value: '' })}
         />
       </div>
 

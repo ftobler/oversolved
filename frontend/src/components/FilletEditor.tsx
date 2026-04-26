@@ -1,32 +1,12 @@
 import React from 'react'
 import type { PartFeature, Mutation, PendingPickField } from '../types/cad'
+import { PickChip } from './PickChip'
 
 interface FilletEditorProps {
   feature: PartFeature
   onMutation: (m: Mutation) => void
   pendingPickField: PendingPickField | null
   setPendingPickField: (field: PendingPickField | null) => void
-}
-
-const ListPickChip: React.FC<{ values: string[]; isPicking: boolean; onActivate: () => void; onRemove: (index: number) => void }> = ({ values, isPicking, onActivate, onRemove }) => {
-  const isEmpty = values.length === 0
-  return (
-    <div
-      className={`feature-pick-chip feature-pick-chip-list ${isEmpty ? 'empty' : ''} ${isPicking ? 'picking' : ''}`}
-      onClick={(e) => { e.stopPropagation(); onActivate() }}
-    >
-      {values.map((v, i) => (
-        <div key={i} className="feature-pick-chip-item">
-          <span className="feature-pick-chip-item-text">{v}</span>
-          <button
-            className="feature-pick-chip-item-remove"
-            onClick={(e) => { e.stopPropagation(); onRemove(i) }}
-            title="Remove"
-          >×</button>
-        </div>
-      ))}
-    </div>
-  )
 }
 
 export const FilletEditor: React.FC<FilletEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField }) => {
@@ -36,9 +16,9 @@ export const FilletEditor: React.FC<FilletEditorProps> = ({ feature, onMutation,
 
   return (
     <div className="plane-editor">
-      <div className="feature-field-row">
+      <div className="feature-field-row feature-field-row--stacked">
         <span className="feature-field-label">Edges</span>
-        <ListPickChip
+        <PickChip
           values={fillet.edges}
           isPicking={isPickingEdges}
           onActivate={() => {

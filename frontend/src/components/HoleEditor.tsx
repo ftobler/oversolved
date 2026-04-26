@@ -1,32 +1,12 @@
 import React from 'react'
 import type { PartFeature, Mutation, PendingPickField } from '../types/cad'
+import { PickChip } from './PickChip'
 
 interface HoleEditorProps {
   feature: PartFeature
   onMutation: (m: Mutation) => void
   pendingPickField: PendingPickField | null
   setPendingPickField: (field: PendingPickField | null) => void
-}
-
-const PickChip: React.FC<{ value: string | undefined; isPicking: boolean; onActivate: () => void; onClear: () => void }> = ({ value, isPicking, onActivate, onClear }) => {
-  const isEmpty = !value || value === 'None'
-  return (
-    <div
-      className={`feature-pick-chip ${isEmpty ? 'empty' : ''} ${isPicking ? 'picking' : ''}`}
-      onClick={(e) => { e.stopPropagation(); onActivate() }}
-    >
-      {!isEmpty && (
-        <div className="feature-pick-chip-item">
-          <span className="feature-pick-chip-item-text">{value}</span>
-          <button
-            className="feature-pick-chip-item-remove"
-            onClick={(e) => { e.stopPropagation(); onClear() }}
-            title="Clear selection"
-          >×</button>
-        </div>
-      )}
-    </div>
-  )
 }
 
 export const HoleEditor: React.FC<HoleEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField }) => {
@@ -36,16 +16,16 @@ export const HoleEditor: React.FC<HoleEditorProps> = ({ feature, onMutation, pen
 
   return (
     <div className="plane-editor">
-      <div className="feature-field-row">
+      <div className="feature-field-row feature-field-row--stacked">
         <span className="feature-field-label">Sketch</span>
         <PickChip
-          value={hole.sketch || undefined}
+          values={hole.sketch ? [hole.sketch] : []}
           isPicking={isPickingSketch}
           onActivate={() => {
             if (isPickingSketch) setPendingPickField(null)
             else setPendingPickField({ featureId: fid, field: 'sketch', hostKind: 'hole' })
           }}
-          onClear={() => onMutation({ type: 'set_hole_sketch', featureId: fid, sketch: '' })}
+          onRemove={() => onMutation({ type: 'set_hole_sketch', featureId: fid, sketch: '' })}
         />
       </div>
       <div className="feature-field-row">

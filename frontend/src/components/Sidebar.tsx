@@ -23,6 +23,7 @@ import { BooleanEditor } from './BooleanEditor'
 import { HoleEditor } from './HoleEditor'
 import { TransformEditor } from './TransformEditor'
 import ArrayEditor from './ArrayEditor'
+import { PickChip } from './PickChip'
 import contextEditIcon from '../assets/icons/context-edit.svg'
 import iconDotsIcon from '../assets/icons/dots.svg'
 import iconEyeIcon from '../assets/icons/icon-eye.svg'
@@ -171,48 +172,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return null
   })()
 
-  const PickChip: React.FC<{ value: string | undefined; isPicking: boolean; onActivate: () => void; onClear: () => void }> = ({ value, isPicking, onActivate, onClear }) => {
-    const isEmpty = !value || value === 'None'
-    return (
-      <div
-        className={`feature-pick-chip ${isEmpty ? 'empty' : ''} ${isPicking ? 'picking' : ''}`}
-        onClick={(e) => { e.stopPropagation(); onActivate() }}
-      >
-        {!isEmpty && (
-          <div className="feature-pick-chip-item">
-            <span className="feature-pick-chip-item-text">{value}</span>
-            <button
-              className="feature-pick-chip-item-remove"
-              onClick={(e) => { e.stopPropagation(); onClear() }}
-              title="Clear selection"
-            >×</button>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const ListPickChip: React.FC<{ values: string[]; isPicking: boolean; onActivate: () => void; onRemove: (index: number) => void }> = ({ values, isPicking, onActivate, onRemove }) => {
-    const isEmpty = values.length === 0
-    return (
-      <div
-        className={`feature-pick-chip feature-pick-chip-list ${isEmpty ? 'empty' : ''} ${isPicking ? 'picking' : ''}`}
-        onClick={(e) => { e.stopPropagation(); onActivate() }}
-      >
-        {values.map((v, i) => (
-          <div key={i} className="feature-pick-chip-item">
-            <span className="feature-pick-chip-item-text">{v}</span>
-            <button
-              className="feature-pick-chip-item-remove"
-              onClick={(e) => { e.stopPropagation(); onRemove(i) }}
-              title="Remove"
-            >×</button>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
   const PlaneEditor: React.FC<{ feature: PartFeature; featureDef?: PartFeature }> = ({ feature, featureDef }) => {
     const def = (featureDef?.definition as PlaneDef | undefined) ?? { mode: 'offset' }
     const mode = def.mode ?? 'offset'
@@ -221,20 +180,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
       pendingPickField?.featureId === fid && pendingPickField.field === field
     const pickChip = (field: string, _kind: 'plane' | 'point' | 'line', value: string | undefined) => {
       const isPicking = isPickingField(field)
-      return <PickChip
-        value={value}
-        isPicking={isPicking}
-        onActivate={() => {
-          if (isPicking) {
-            onSetPendingPickField(null)
-          } else if (selectionQuery) {
-            onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: selectionQuery })
-          } else {
-            onSetPendingPickField({ featureId: fid, field })
-          }
-        }}
-        onClear={() => onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: '' })}
-      />
+      return (
+        <PickChip
+          values={value && value !== 'None' ? [value] : []}
+          isPicking={isPicking}
+          onActivate={() => {
+            if (isPicking) {
+              onSetPendingPickField(null)
+            } else if (selectionQuery) {
+              onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: selectionQuery })
+            } else {
+              onSetPendingPickField({ featureId: fid, field })
+            }
+          }}
+          onRemove={() => onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: '' })}
+        />
+      )
     }
     const numField = (field: 'offset' | 'angle' | 'rotation', label: string, defaultVal: number) => (
       <div className="feature-field-row">
@@ -273,7 +234,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
         {mode === 'offset' && (
           <>
-            <div className="feature-field-row">
+            <div className="feature-field-row feature-field-row--stacked">
               <span className="feature-field-label">Plane</span>
               {pickChip('plane', 'plane', planeLabel(def.plane))}
             </div>
@@ -282,25 +243,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
         {mode === 'plane_point' && (
           <>
-            <div className="feature-field-row">
+            <div className="feature-field-row feature-field-row--stacked">
               <span className="feature-field-label">Plane</span>
               {pickChip('plane', 'plane', planeLabel(def.plane))}
             </div>
-            <div className="feature-field-row">
+            <div className="feature-field-row feature-field-row--stacked">
               <span className="feature-field-label">Point</span>
               {pickChip('point', 'point', def.point)}
             </div>
           </>
         )}
         {mode === 'three_point' && (['p1', 'p2', 'p3'] as const).map((field, i) => (
-          <div key={field} className="feature-field-row">
+          <div key={field} className="feature-field-row feature-field-row--stacked">
             <span className="feature-field-label">P{i + 1}</span>
             {pickChip(field, 'point', def[field])}
           </div>
         ))}
         {mode === 'line_angle' && (
           <>
-            <div className="feature-field-row">
+            <div className="feature-field-row feature-field-row--stacked">
               <span className="feature-field-label">Line</span>
               {pickChip('line', 'line', def.line)}
             </div>
@@ -309,18 +270,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
         {mode === 'edge_point' && (
           <>
-            <div className="feature-field-row">
+            <div className="feature-field-row feature-field-row--stacked">
               <span className="feature-field-label">Line</span>
               {pickChip('edge', 'line', def.edge)}
             </div>
-            <div className="feature-field-row">
+            <div className="feature-field-row feature-field-row--stacked">
               <span className="feature-field-label">Point</span>
               {pickChip('point', 'point', def.point)}
             </div>
           </>
         )}
         {mode === 'on_face' && (
-          <div className="feature-field-row">
+          <div className="feature-field-row feature-field-row--stacked">
             <span className="feature-field-label">Face</span>
             {pickChip('face', 'plane', def.face)}
           </div>
@@ -338,9 +299,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     return (
       <div className="plane-editor">
-        <div className="feature-field-row">
+        <div className="feature-field-row feature-field-row--stacked">
           <span className="feature-field-label">Profile</span>
-          <ListPickChip
+          <PickChip
             values={profiles}
             isPicking={isPickingSketch}
             onActivate={() => {
@@ -420,9 +381,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     return (
       <div className="plane-editor">
-        <div className="feature-field-row">
+        <div className="feature-field-row feature-field-row--stacked">
           <span className="feature-field-label">Profile</span>
-          <ListPickChip
+          <PickChip
             values={profiles}
             isPicking={isPickingSketch}
             onActivate={() => {
@@ -468,10 +429,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <option value="new">New</option>
           </select>
         </div>
-        <div className="feature-field-row">
+        <div className="feature-field-row feature-field-row--stacked">
           <span className="feature-field-label">Axis</span>
           <PickChip
-            value={revolve.axis}
+            values={revolve.axis && revolve.axis !== 'None' ? [revolve.axis] : []}
             isPicking={isPickingAxis}
             onActivate={() => {
               if (isPickingAxis) {
@@ -482,7 +443,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onSetPendingPickField({ featureId: fid, field: 'axis' })
               }
             }}
-            onClear={() => onMutation({ type: 'set_revolve_axis', featureId: fid, axis: '' })}
+            onRemove={() => onMutation({ type: 'set_revolve_axis', featureId: fid, axis: '' })}
           />
         </div>
       </div>
@@ -493,10 +454,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const isPicking = planeSelectionFeatureId === feature.id
     return (
       <div className="plane-editor">
-        <div className="feature-field-row">
+        <div className="feature-field-row feature-field-row--stacked">
           <span className="feature-field-label">Plane</span>
           <PickChip
-            value={planeLabel(featureDef?.plane)}
+            values={(() => {
+              const label = planeLabel(featureDef?.plane)
+              return label && label !== 'None' ? [label] : []
+            })()}
             isPicking={isPicking}
             onActivate={() => {
               if (isPicking) {
@@ -507,7 +471,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onSetPlaneSelectionFeatureId(feature.id)
               }
             }}
-            onClear={() => {
+            onRemove={() => {
               onMutation({ type: 'set_feature_plane', featureId: feature.id, plane: '' })
               onSetPlaneSelectionFeatureId(null)
             }}
@@ -867,10 +831,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
                 {feature.kind === 'delete_body' && editingFeatureId === feature.id && (
                   <div className="feature-editor">
-                    <div className="feature-field-row">
+                    <div className="feature-field-row feature-field-row--stacked">
                       <span className="feature-field-label">Body</span>
                       <PickChip
-                        value={feature.delete_body?.body}
+                        values={feature.delete_body?.body && feature.delete_body?.body !== 'None' ? [feature.delete_body.body] : []}
                         isPicking={pendingPickField?.featureId === feature.id && pendingPickField?.field === 'body'}
                         onActivate={() => {
                           if (pendingPickField?.featureId === feature.id && pendingPickField?.field === 'body') {
@@ -879,7 +843,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             onSetPendingPickField({ featureId: feature.id, field: 'body', hostKind: 'delete_body' })
                           }
                         }}
-                        onClear={() => onMutation({ type: 'set_delete_body_target', featureId: feature.id, body: '' })}
+                        onRemove={() => onMutation({ type: 'set_delete_body_target', featureId: feature.id, body: '' })}
                       />
                     </div>
                   </div>
