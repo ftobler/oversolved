@@ -179,18 +179,67 @@ def make_ancestry_query(ids: list[str], type_restriction: str | None = None) -> 
     return s
 
 
+_TYPE_HIERARCHY: dict[str, dict[str, list[str]]] = {
+    'solid': {'parents': []},
+    'face': {'parents': []},
+    'flatface': {'parents': ['face']},
+    'cylinderface': {'parents': ['face']},
+    'edge': {'parents': []},
+    'straightedge': {'parents': ['edge']},
+    'vertex': {'parents': []},
+}
+
+
+def _is_subtype(actual_type: str | None, target_type: str) -> bool:
+    if actual_type is None:
+        return False
+    if actual_type == target_type:
+        return True
+    return target_type in _TYPE_HIERARCHY.get(actual_type, {}).get('parents', [])
+
+
 def _obj_type(obj: Any) -> str | None:
     if isinstance(obj, dict):
         return obj.get('type')
     return getattr(obj, 'type', None)
 
 
+def _coerce_type(
+    element: Any, target_type: str, body_store: dict[str, Any] | None, repo_elements: dict[str, Any]
+) -> Any:
+    """Attempt to coerce element to target_type using body_store and repo_elements."""
+    if element is None:
+        return None
+    obj_type = _obj_type(element)
+    if obj_type is None:
+        return None
+    if obj_type == target_type or _is_subtype(obj_type, target_type):
+        return element
+    if not isinstance(element, dict):
+        return None
+    body_id = element.get('body_id')
+    if body_id is None:
+        return None
+    # Upward: child -> solid
+    if target_type == 'solid' and body_store is not None:
+        return body_store.get(body_id)
+    # Downward / sibling: scan repo for matching child elements by body_id
+    for el in repo_elements.values():
+        el_type = _obj_type(el)
+        if isinstance(el, dict) and el.get('body_id') == body_id:
+            if el_type == target_type or _is_subtype(el_type, target_type):
+                return el
+    return None
+
+
 class Query:
     def __init__(self, query_str: str):
         self._query_str = query_str
 
-    def resolve(self, repo: 'Repository', context: str | None = None) -> Any:
-        return repo.query(self._query_str, context=context)
+    def resolve(
+        self, repo: 'Repository', context: str | None = None, body_store: dict[str, Any] | None = None
+    ) -> Any:
+        return repo.query(self._query_str, context=context, body_store=body_store)
 
     def __str__(self) -> str:
         return self._query_str
@@ -229,9 +278,10 @@ class Repository:
         self,
         query_str: "str | LocalQuery | AbsoluteQuery | AncestryQuery",
         context: str | None = None,
+        body_store: dict[str, Any] | None = None,
     ) -> Any:
         if isinstance(query_str, (LocalQuery, AbsoluteQuery, AncestryQuery)):
-            return self._query_typed(query_str, context)
+            return self._query_typed(query_str, context, body_store)
         if not query_str:
             return None
         start = query_str[0]
@@ -246,7 +296,7 @@ class Repository:
 
         if start == '?':
             ids, type_restriction = _parse_ancestry(query_str)
-            return self._resolve_ancestry_ids(ids, type_restriction, None)
+            return self._resolve_ancestry_ids(ids, type_restriction, None, body_store)
 
         return None
 
@@ -254,6 +304,7 @@ class Repository:
         self,
         q: "LocalQuery | AbsoluteQuery | AncestryQuery",
         context: str | None,
+        body_store: dict[str, Any] | None = None,
     ) -> Any:
         match q:
             case LocalQuery(eid, sub):
@@ -264,7 +315,7 @@ class Repository:
                 return self.elements.get(feature_id + eid + sub)
             case AncestryQuery(ancestor_ids, type_restriction, classifier):
                 return self._resolve_ancestry_ids(
-                    list(ancestor_ids), type_restriction, classifier
+                    list(ancestor_ids), type_restriction, classifier, body_store
                 )
         return None  # type: ignore[return-value]
 
@@ -273,6 +324,7 @@ class Repository:
         ids: list[str],
         type_restriction: Optional[str],
         classifier: Optional[str],
+        body_store: dict[str, Any] | None = None,
     ) -> Any:
         query_set = frozenset(ids)
 
@@ -293,10 +345,20 @@ class Repository:
         if classifier is not None and effective_type is not None:
             effective_type = effective_type  # classifier handled by future resolver
         if effective_type is not None:
-            candidate_ids = [
+            exact_matches = [
                 eid for eid in candidate_ids
                 if _obj_type(self.elements.get(eid)) == effective_type
             ]
+            if exact_matches:
+                candidate_ids = exact_matches
+            else:
+                # Coercion: no exact match, try to resolve from candidates.
+                for eid in candidate_ids:
+                    element = self.elements.get(eid)
+                    coerced = _coerce_type(element, effective_type, body_store, self.elements)
+                    if coerced is not None:
+                        return coerced
+                return None
 
         if len(candidate_ids) == 0:
             return None

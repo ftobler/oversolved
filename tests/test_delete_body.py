@@ -52,3 +52,15 @@ def test_delete_body_two_bodies_only_removes_target():
     })
     r = build(doc)
     assert "body_ex1" not in r["bodies"]
+
+
+def test_delete_body_uses_ancestry_coercion():
+    doc = _extrude_doc()
+    doc["features"].append({
+        "id": "db1", "kind": "delete_body",
+        "delete_body": {"body": "?4;@ex1:solid"},
+    })
+    r = build(doc)
+    assert r["result"]["db1"]["status"] == "ok"
+    assert r["result"]["db1"]["deleted_body_id"] == "body_ex1"
+    assert "body_ex1" not in r["bodies"]

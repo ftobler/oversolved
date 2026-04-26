@@ -651,7 +651,7 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict, feat
         feature_result = _solve_sketch(feature, global_repo)
         return feature_result
     if kind == "plane":
-        return _solve_plane(feature, global_repo)
+        return _solve_plane(feature, global_repo, body_store)
     if kind == "extrude":
         return _solve_extrude(feature, global_repo, body_store)
     if kind == "import_step":
@@ -667,7 +667,7 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict, feat
     if kind == "boolean":
         return _solve_boolean(feature, global_repo, body_store)
     if kind == "delete_body":
-        return _solve_delete_body(feature, body_store)
+        return _solve_delete_body(feature, global_repo, body_store)
     if kind == "hole":
         return _solve_hole(feature, global_repo, body_store, features_by_id or {})
     if kind == "transform":
@@ -1375,10 +1375,10 @@ def _plane_three_point(definition: dict, global_repo: Repository) -> tuple:
     return origin, x_axis, y_axis, normal
 
 
-def _plane_on_face(definition: dict, global_repo: Repository) -> tuple:
+def _plane_on_face(definition: dict, global_repo: Repository, body_store: dict | None = None) -> tuple:
     """Plane aligned with a topology face."""
     face_str = definition["face"]
-    face = global_repo.query(face_str)
+    face = global_repo.query(face_str, body_store=body_store)
     if face is None:
         raise ValueError(f"face not found: {face_str!r}")
 
@@ -1395,16 +1395,16 @@ def _plane_on_face(definition: dict, global_repo: Repository) -> tuple:
     return origin, x_axis, y_axis, normal
 
 
-def _plane_on_face_edge_angle(definition: dict, global_repo: Repository) -> tuple:
+def _plane_on_face_edge_angle(definition: dict, global_repo: Repository, body_store: dict | None = None) -> tuple:
     """Plane on face with X axis along an edge, rotated by angle."""
     face_str = definition["face"]
     edge_str = definition["edge"]
     angle = definition.get("angle", 0.0)
 
-    face = global_repo.query(face_str)
+    face = global_repo.query(face_str, body_store=body_store)
     if face is None:
         raise ValueError(f"face not found: {face_str!r}")
-    edge = global_repo.query(edge_str)
+    edge = global_repo.query(edge_str, body_store=body_store)
     if edge is None:
         raise ValueError(f"edge not found: {edge_str!r}")
 
@@ -1422,7 +1422,7 @@ def _plane_on_face_edge_angle(definition: dict, global_repo: Repository) -> tupl
     return origin, x_axis, y_axis, normal
 
 
-def _plane_edge_point(definition: dict, global_repo: Repository) -> tuple:
+def _plane_edge_point(definition: dict, global_repo: Repository, body_store: dict | None = None) -> tuple:
     """Plane with X axis along an edge and origin at a point.
 
     The plane's origin is at the given point, x_axis is along the line direction,
@@ -1432,10 +1432,10 @@ def _plane_edge_point(definition: dict, global_repo: Repository) -> tuple:
     edge_str = definition["edge"]
     point_str = definition["point"]
 
-    edge = global_repo.query(edge_str)
+    edge = global_repo.query(edge_str, body_store=body_store)
     if edge is None:
         raise ValueError(f"edge not found: {edge_str!r}")
-    point_ref = global_repo.query(point_str)
+    point_ref = global_repo.query(point_str, body_store=body_store)
     if point_ref is None:
         raise ValueError(f"point not found: {point_str!r}")
 
@@ -1541,7 +1541,7 @@ def _plane_offset(definition: dict, global_repo: Repository) -> tuple:
     return origin, x_axis, y_axis, normal
 
 
-def _solve_plane(feature: dict, global_repo: Repository) -> dict:
+def _solve_plane(feature: dict, global_repo: Repository, body_store: dict | None = None) -> dict:
     """Solve a plane feature, computing a 3D coordinate frame."""
     try:
         definition = feature.get("definition", {})
@@ -1556,13 +1556,13 @@ def _solve_plane(feature: dict, global_repo: Repository) -> dict:
         elif mode == "line_angle":
             origin, x_axis, y_axis, normal = _plane_line_angle(definition, global_repo)
         elif mode == "on_face":
-            origin, x_axis, y_axis, normal = _plane_on_face(definition, global_repo)
+            origin, x_axis, y_axis, normal = _plane_on_face(definition, global_repo, body_store)
         elif mode == "on_face_edge_angle":
             origin, x_axis, y_axis, normal = _plane_on_face_edge_angle(
-                definition, global_repo
+                definition, global_repo, body_store
             )
         elif mode == "edge_point":
-            origin, x_axis, y_axis, normal = _plane_edge_point(definition, global_repo)
+            origin, x_axis, y_axis, normal = _plane_edge_point(definition, global_repo, body_store)
         elif mode == "offset":
             origin, x_axis, y_axis, normal = _plane_offset(definition, global_repo)
         else:
@@ -1925,7 +1925,7 @@ def _resolve_face_profile(
             raise ValueError(f"No body found for feature {feat_id!r}")
         return _extract_loops_from_occ_face(body.shape, face_index)
 
-    face_entry = global_repo.query(sketch_ref)
+    face_entry = global_repo.query(sketch_ref, body_store=body_store)
     if face_entry is None:
         raise ValueError(f"Profile face not found: {sketch_ref!r}")
 
@@ -2180,7 +2180,7 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
         axis_direction = feature.get("axis_direction", [0, 0, 1])
         axis_query = feature.get("axis")
         if axis_query:
-            axis_data = global_repo.query(axis_query)
+            axis_data = global_repo.query(axis_query, body_store=body_store)
             if axis_data and "start" in axis_data and "end" in axis_data:
                 start = axis_data["start"]
                 end = axis_data["end"]
@@ -2248,7 +2248,7 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
         return {"status": "exception", "exception": str(exc)}
 
 
-def _resolve_direction_query(query: str, global_repo: Repository, fallback: list[float]) -> list[float]:
+def _resolve_direction_query(query: str, global_repo: Repository, fallback: list[float], body_store: dict | None = None) -> list[float]:
     """Resolve a direction from a query string or return fallback.
 
     Query should reference a sketch line (@sketch_id/line_id) whose start/end
@@ -2256,7 +2256,7 @@ def _resolve_direction_query(query: str, global_repo: Repository, fallback: list
     """
     if not query:
         return fallback
-    data = global_repo.query(query)
+    data = global_repo.query(query, body_store=body_store)
     if data and "start" in data and "end" in data:
         start = data["start"]
         end = data["end"]
@@ -2272,11 +2272,12 @@ def _resolve_axis_query(
     global_repo: Repository,
     fallback_origin: list[float],
     fallback_direction: list[float],
+    body_store: dict | None = None,
 ) -> tuple[list[float], list[float]]:
     """Resolve axis origin and direction from a query or return fallbacks."""
     if not query:
         return fallback_origin, fallback_direction
-    data = global_repo.query(query)
+    data = global_repo.query(query, body_store=body_store)
     if data and "start" in data and "end" in data:
         start = data["start"]
         end = data["end"]
@@ -2528,8 +2529,8 @@ def _solve_transform(
         tr_from = cfg.get("translation_from")
         tr_to = cfg.get("translation_to")
         if tr_from and tr_to:
-            p0_ref = global_repo.query(tr_from)
-            p1_ref = global_repo.query(tr_to)
+            p0_ref = global_repo.query(tr_from, body_store=body_store)
+            p1_ref = global_repo.query(tr_to, body_store=body_store)
             if p0_ref is None:
                 raise ValueError(f"transform: translation_from not found: {tr_from!r}")
             if p1_ref is None:
@@ -2543,7 +2544,7 @@ def _solve_transform(
         rotation_axis_direction = cfg.get("rotation_axis_direction")
         axis_query = cfg.get("rotation_axis")
         if axis_query:
-            edge_ref = global_repo.query(axis_query)
+            edge_ref = global_repo.query(axis_query, body_store=body_store)
             if edge_ref is None:
                 raise ValueError(f"transform: rotation_axis not found: {axis_query!r}")
             edge = _get_edge_3d(edge_ref, global_repo)
@@ -2559,7 +2560,7 @@ def _solve_transform(
         scale_center = cfg.get("scale_center")
         scale_center_query = cfg.get("scale_center_from")
         if scale_center_query:
-            pt_ref = global_repo.query(scale_center_query)
+            pt_ref = global_repo.query(scale_center_query, body_store=body_store)
             if pt_ref is None:
                 raise ValueError(f"transform: scale_center_from not found: {scale_center_query!r}")
             scale_center = list(_get_point_3d(pt_ref, global_repo))
@@ -2757,17 +2758,28 @@ def _solve_boolean(
         return {"status": "exception", "exception": str(exc)}
 
 
-def _solve_delete_body(feature: dict, body_store: dict) -> dict:
+def _solve_delete_body(feature: dict, global_repo: Repository, body_store: dict) -> dict:
     try:
         sub = feature.get("delete_body") or {}
         body_query = sub.get("body", "")
-        body_key = body_query.lstrip("@")
-        if body_key not in body_store:
-            prefixed = "body_" + body_key
-            if prefixed in body_store:
-                body_key = prefixed
-            else:
+        if body_query.startswith("?"):
+            resolved = global_repo.query(body_query, body_store=body_store)
+            if resolved is None:
                 raise ValueError(f"delete_body: body not found: {body_query!r}")
+            if hasattr(resolved, 'id'):
+                body_key = resolved.id
+            elif isinstance(resolved, dict) and resolved.get("body_id"):
+                body_key = resolved["body_id"]
+            else:
+                raise ValueError(f"delete_body: query did not resolve to a body: {body_query!r}")
+        else:
+            body_key = body_query.lstrip("@")
+            if body_key not in body_store:
+                prefixed = "body_" + body_key
+                if prefixed in body_store:
+                    body_key = prefixed
+                else:
+                    raise ValueError(f"delete_body: body not found: {body_query!r}")
         del body_store[body_key]
         return {"status": "ok", "deleted_body_id": body_key}
     except Exception as exc:
