@@ -145,6 +145,7 @@ export interface BuildResponse {
   solve_ms: number
   result: Record<string, unknown>
   bodies: Record<string, BodyResult>
+  pick_bodies?: Record<string, BodyResult>
   _build_state?: unknown
 }
 

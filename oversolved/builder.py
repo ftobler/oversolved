@@ -279,12 +279,16 @@ def _tessellate_bodies(
     return out
 
 
-def build(spec: dict, prev_state: BuildState | None = None) -> dict:
+def build(spec: dict, prev_state: BuildState | None = None, pick_boundary: int | None = None) -> dict:
     """Process a full feature-stack document with optional partial rebuild.
 
     spec: parsed document dict with a top-level 'features' list.
     prev_state: BuildState from the previous call for the same document.
                 Pass None to force a full rebuild.
+    pick_boundary: If provided, return an additional 'pick_bodies' key containing
+                   the tessellated bodies from the checkpoint immediately BEFORE
+                   the feature at this index. This is the "BEFORE" state used for
+                   picking while a feature is being edited.
     """
     features: list[dict] = spec.get("features", [])
     first_dirty = _find_first_dirty(features, prev_state)
@@ -408,10 +412,20 @@ def build(spec: dict, prev_state: BuildState | None = None) -> dict:
 
     body_shapes: dict[str, Any] = {bid: body.shape for bid, body in body_store.items() if body.shape is not None}
 
+    pick_bodies_out: dict[str, dict] | None = None
+    if pick_boundary is not None and pick_boundary > 0 and pick_boundary <= len(features):
+        target_fid = features[pick_boundary - 1].get("id", "")
+        pick_checkpoint: FeatureCheckpoint | None = new_checkpoints.get(target_fid)
+        if pick_checkpoint is None and prev_state is not None:
+            pick_checkpoint = prev_state.checkpoints.get(target_fid)
+        if pick_checkpoint is not None:
+            pick_bodies_out = _tessellate_bodies(pick_checkpoint.body_store_snapshot, None)
+
     return {
         "solve_ms": build_ms,
         "result": result,
         "bodies": bodies_out,
         "_build_state": new_state,
         "_body_shapes": body_shapes,
+        **({"pick_bodies": pick_bodies_out} if pick_bodies_out is not None else {}),
     }

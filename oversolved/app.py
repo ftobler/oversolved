@@ -420,10 +420,13 @@ def create_app(config=None):
         prev_state = _build_state_cache.get(doc_id) if doc_id else None
 
         rollback_position = data.get("rollback_position")
+        pick_boundary = data.get("pick_boundary")
         if rollback_position is not None and isinstance(rollback_position, int):
             data = {**data, "features": data["features"][:rollback_position]}
+            if pick_boundary is not None and pick_boundary > rollback_position:
+                pick_boundary = None
 
-        build_result = build(data, prev_state=prev_state)
+        build_result = build(data, prev_state=prev_state, pick_boundary=pick_boundary)
 
         if doc_id:
             _build_state_cache[doc_id] = build_result.pop("_build_state")

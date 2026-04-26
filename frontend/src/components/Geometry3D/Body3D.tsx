@@ -23,6 +23,7 @@ interface Body3DProps {
   visible?: boolean
   showDebugHit?: boolean
   color?: string
+  interactive?: boolean
 }
 
 // Export for unit testing without a WebGL context.
@@ -167,7 +168,7 @@ export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
   return counts
 }
 
-export default function Body3D({ featureId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color }: Body3DProps) {
+export default function Body3D({ featureId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, interactive = true }: Body3DProps) {
   const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
@@ -181,6 +182,8 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
 
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
   const [hoveredVertexIndex, setHoveredVertexIndex] = useState<number | null>(null)
+
+  const noRaycast = useCallback(() => {}, [])
 
   const isBodySelected = normalSelection.has('@' + featureId)
 
@@ -387,11 +390,13 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
 
     for (let i = 0; i < mesh.faces.length; i++) {
       let color = defaultColor
-      const query = resolveFaceQuery(i)
-      if (normalSelection.has(query)) {
-        color = selectedColor
-      } else if (query === hoveredSurfaceId) {
-        color = hoverColor
+      if (interactive) {
+        const query = resolveFaceQuery(i)
+        if (normalSelection.has(query)) {
+          color = selectedColor
+        } else if (query === hoveredSurfaceId) {
+          color = hoverColor
+        }
       }
 
       const baseIdx = i * 9
@@ -402,7 +407,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
       }
     }
     return colors
-  }, [mesh.faces, normalSelection, hoveredSurfaceId, bodyColor, resolveFaceQuery])
+  }, [mesh.faces, normalSelection, hoveredSurfaceId, bodyColor, resolveFaceQuery, interactive])
 
   // Build edge colors array for selected/hovered edges
   const edgeColors = useMemo(() => {
@@ -417,10 +422,12 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     for (let segIdx = 0; segIdx < totalSegments; segIdx++) {
       const edgeIdx = segmentToEdgeMap[segIdx]
       let color = defaultColor
-      if (getIsEdgeSelected(edgeIdx)) {
-        color = selectedColor
-      } else if (edgeIdx === hoveredEdgeIndex) {
-        color = hoverColor
+      if (interactive) {
+        if (getIsEdgeSelected(edgeIdx)) {
+          color = selectedColor
+        } else if (edgeIdx === hoveredEdgeIndex) {
+          color = hoverColor
+        }
       }
 
       // Set color for both vertices of this segment
@@ -433,7 +440,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
       colors[baseIdx + 5] = color.b
     }
     return colors
-  }, [segmentToEdgeMap, getIsEdgeSelected, hoveredEdgeIndex, edgeColor])
+  }, [segmentToEdgeMap, getIsEdgeSelected, hoveredEdgeIndex, edgeColor, interactive])
 
   // debugFaceColors takes precedence when showDebugHit is on.
   const activeColors = debugFaceColors ?? faceColors
@@ -533,7 +540,8 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
     <group visible={visible} userData={{ featureId }}>
       <mesh
         geometry={geometry}
-        onPointerOver={(e) => {
+        raycast={interactive ? undefined : noRaycast}
+        onPointerOver={interactive ? (e) => {
           e.stopPropagation()
           if (isRotating) return
           setHoveredBodyId(featureId)
@@ -541,20 +549,20 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           if (faceIndex !== undefined) {
             setHoveredSurface(resolveFaceQuery(faceIndex))
           }
-        }}
-        onPointerMove={(e) => {
+        } : undefined}
+        onPointerMove={interactive ? (e) => {
           e.stopPropagation()
           const faceIndex = (e as unknown as { faceIndex?: number }).faceIndex
           if (faceIndex !== undefined) {
             setHoveredSurface(resolveFaceQuery(faceIndex))
           }
-        }}
-        onPointerOut={(e) => {
+        } : undefined}
+        onPointerOut={interactive ? (e) => {
           e.stopPropagation()
           setHoveredBodyId(current => current === featureId ? null : current)
           setHoveredSurface(null)
-        }}
-        onClick={handleMeshClick}
+        } : undefined}
+        onClick={interactive ? handleMeshClick : undefined}
       >
         <meshStandardMaterial
           color="white"
@@ -563,27 +571,18 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           side={THREE.DoubleSide}
           vertexColors={true}
           polygonOffset={true}
-          polygonOffsetFactor={1}
-          polygonOffsetUnits={1}
+          polygonOffsetFactor={interactive ? 1 : -1}
+          polygonOffsetUnits={interactive ? 1 : -1}
+          transparent={!interactive}
+          opacity={interactive ? 1 : 0.35}
+          depthWrite={interactive}
         />
       </mesh>
       {edges.length > 0 && (
         <lineSegments
           geometry={edgeGeometry}
-          onPointerOver={(e) => {
-            e.stopPropagation()
-            // R3F ThreeEvent spreads THREE.Intersection directly onto e.
-            // For LineSegments, e.index is the vertex index of the segment's
-            // first vertex (0, 2, 4...). Divide by 2 to get segment index.
-            const index = (e as unknown as { index?: number }).index
-            if (index !== undefined && index >= 0) {
-              const edgeIndex = segmentToEdgeMap[Math.floor(index / 2)]
-              if (edgeIndex !== undefined) {
-                setHoveredEdgeIndex(edgeIndex)
-              }
-            }
-          }}
-          onPointerMove={(e) => {
+          raycast={interactive ? undefined : noRaycast}
+          onPointerOver={interactive ? (e) => {
             e.stopPropagation()
             const index = (e as unknown as { index?: number }).index
             if (index !== undefined && index >= 0) {
@@ -592,16 +591,29 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
                 setHoveredEdgeIndex(edgeIndex)
               }
             }
-          }}
-          onPointerOut={(e) => {
+          } : undefined}
+          onPointerMove={interactive ? (e) => {
+            e.stopPropagation()
+            const index = (e as unknown as { index?: number }).index
+            if (index !== undefined && index >= 0) {
+              const edgeIndex = segmentToEdgeMap[Math.floor(index / 2)]
+              if (edgeIndex !== undefined) {
+                setHoveredEdgeIndex(edgeIndex)
+              }
+            }
+          } : undefined}
+          onPointerOut={interactive ? (e) => {
             e.stopPropagation()
             setHoveredEdgeIndex(null)
-          }}
-          onClick={handleEdgeClick}
+          } : undefined}
+          onClick={interactive ? handleEdgeClick : undefined}
         >
           <lineBasicMaterial
             color="white"
             vertexColors={true}
+            transparent={!interactive}
+            opacity={interactive ? 1 : 0.4}
+            depthWrite={interactive}
           />
         </lineSegments>
       )}
@@ -610,23 +622,24 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           <instancedMesh
             ref={vertexMeshRef}
             args={[undefined, undefined, vertices.length]}
-            onPointerOver={(e) => {
+            raycast={interactive ? undefined : noRaycast}
+            onPointerOver={interactive ? (e) => {
               e.stopPropagation()
               const idx = e.instanceId
               if (idx !== undefined) setHoveredVertexIndex(idx)
-            }}
-            onPointerOut={(e) => {
+            } : undefined}
+            onPointerOut={interactive ? (e) => {
               e.stopPropagation()
               setHoveredVertexIndex(null)
-            }}
-            onClick={(e) => {
+            } : undefined}
+            onClick={interactive ? (e) => {
               e.stopPropagation()
               const idx = e.instanceId
               if (idx !== undefined) {
                 const query = vertexQueries?.[idx] ?? `@${featureId}/vertex/${idx}`
                 toggleNormalSelection(query)
               }
-            }}
+            } : undefined}
           >
             {/* Radius 1 — scaled to POINT_HIT_PIXELS screen px by useFrame */}
             <sphereGeometry args={[1, 8, 8]} />
@@ -649,7 +662,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           </instancedMesh>
         </>
       )}
-      {edgeBoundaryGeos && hoveredEdgeIndex !== null && (() => {
+      {interactive && edgeBoundaryGeos && hoveredEdgeIndex !== null && (() => {
         const query = edgeQueries?.[hoveredEdgeIndex] ?? `@${featureId}/edge/${hoveredEdgeIndex}`
         const geo = edgeBoundaryGeos.get(query)
         return geo ? (
@@ -658,7 +671,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           </lineSegments>
         ) : null
       })()}
-      {edgeBoundaryGeos && [...normalSelection].map(query => {
+      {interactive && edgeBoundaryGeos && [...normalSelection].map(query => {
         const geo = edgeBoundaryGeos.get(query)
         if (!geo) return null
         return (
@@ -667,12 +680,12 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           </lineSegments>
         )
       })}
-      {faceBoundaryGeos && hoveredSurfaceId && faceBoundaryGeos.has(hoveredSurfaceId) && (
+      {interactive && faceBoundaryGeos && hoveredSurfaceId && faceBoundaryGeos.has(hoveredSurfaceId) && (
         <lineSegments geometry={faceBoundaryGeos.get(hoveredSurfaceId)}>
           <lineBasicMaterial color={COLOR_HOVER} linewidth={2} depthTest={false} />
         </lineSegments>
       )}
-      {faceBoundaryGeos && [...normalSelection].map(query => {
+      {interactive && faceBoundaryGeos && [...normalSelection].map(query => {
         const geo = faceBoundaryGeos.get(query)
         if (!geo) return null
         return (

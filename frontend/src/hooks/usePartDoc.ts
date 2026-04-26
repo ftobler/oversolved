@@ -179,6 +179,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [error, setError] = useState<string | null>(null)
   const [solveResults, setSolveResults] = useState<Record<string, SketchData>>({})
   const [bodies, setBodies] = useState<Record<string, import('../types/cad').BodyResult>>({})
+  const [pickBodies, setPickBodies] = useState<Record<string, import('../types/cad').BodyResult>>({})
   const [solving, setSolving] = useState(false)
   const [solveTime, setSolveTime] = useState<number | null>(null)
   const [solveError, setSolveError] = useState<string | null>(null)
@@ -188,6 +189,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const firstSolveDone = useRef(false)
   const buildStateRef = useRef<unknown>(null)
   const rollbackPosRef = useRef<number | null>(null)
+  const pickBoundaryRef = useRef<number | null>(null)
 
   const reSolve = useCallback(async (d: PartDoc, rollbackPosition?: number | null) => {
     setSolving(true)
@@ -212,6 +214,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
       if (buildStateRef.current) {
         solvePayload.prev_state = buildStateRef.current
+      }
+
+      if (pickBoundaryRef.current !== null) {
+        solvePayload.pick_boundary = pickBoundaryRef.current
       }
 
       const response = await fetch('/api/solve', {
@@ -311,6 +317,7 @@ setSolveResults(results)
         const response = data as BuildResponse
         reconcilePartStyle(d, response.bodies)
         setBodies(response.bodies ?? {})
+        setPickBodies(response.pick_bodies ?? {})
         buildStateRef.current = response._build_state
         setSolveRawResult(stringifyYaml(data.result))
         setDoc(d)
@@ -701,6 +708,7 @@ setSolveResults(results)
     solveResults,
     setSolveResults,
     bodies,
+    pickBodies,
     solving,
     solveTime,
     solveError,
@@ -716,5 +724,6 @@ setSolveResults(results)
     saveDoc,
     renameDoc,
     setRollbackPos: (pos: number | null) => { rollbackPosRef.current = pos },
+    setPickBoundary: (pos: number | null) => { pickBoundaryRef.current = pos },
   }
 }

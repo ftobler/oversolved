@@ -38,6 +38,7 @@ interface ViewportProps {
   showDebugHit?: boolean
   otherSketches?: Record<string, Sketch>  // sketches from other features (for project tool)
   bodies?: Record<string, BodyResult>
+  pickBodies?: Record<string, BodyResult>
   partColors?: Record<string, string>
 }
 
@@ -68,6 +69,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   showDebugHit = false,
   otherSketches,
   bodies,
+  pickBodies,
   partColors,
 }: ViewportProps, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -240,6 +242,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     [bodies, features, rollbackPosition, visibleBodies]
   )
 
+  const pickBodyItems = useMemo(
+    () => getBodiesToRender(pickBodies, features, undefined, visibleBodies),
+    [pickBodies, features, visibleBodies]
+  )
+
   const activeSketchFeatures = useMemo(
     () => getSketchesToRender(features, rollbackPosition, visibleFeatures),
     [features, rollbackPosition, visibleFeatures]
@@ -320,8 +327,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           )
         })}
 
+        {pickBodyItems.map(b => (
+          <Body3D key={`pick-${b.key}`} featureId={b.featureId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} />
+        ))}
         {bodyItems.map(b => (
-          <Body3D key={b.key} featureId={b.featureId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} />
+          <Body3D key={b.key} featureId={b.featureId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} interactive={pickBodyItems.length === 0} />
         ))}
       </Canvas>
 

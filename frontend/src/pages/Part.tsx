@@ -293,6 +293,8 @@ export default function Part() {
     renameDoc,
     docName,
     bodies,
+    pickBodies,
+    setPickBoundary,
   } = usePartDoc(uuid, mode, setCodeText)
 
   useEffect(() => {
@@ -407,6 +409,30 @@ useEffect(() => {
     setContextMenu(null)
   }, [docRef, reSolve, rollbackPosition, features.length])
 
+  const handleRebuildRef = useRef(handleRebuild)
+  handleRebuildRef.current = handleRebuild
+
+  const prevEditingIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!docRef.current) return
+    const prev = prevEditingIdRef.current
+    prevEditingIdRef.current = editingFeatureId
+    if (prev === editingFeatureId) return
+
+    const feature = features.find(f => f.id === editingFeatureId)
+    let nextBoundary: number | null = null
+    if (feature && feature.kind !== 'sketch' && feature.kind !== 'plane') {
+      // Backend solve features exclude built-in display features, so the
+      // pick boundary must be indexed within the non-built-in subset only.
+      const nonBuiltInFeatures = features.filter(f => !BUILT_IN_IDS.has(f.id))
+      const index = nonBuiltInFeatures.findIndex(f => f.id === editingFeatureId)
+      if (index >= 0) nextBoundary = index
+    }
+    setPickBoundary(nextBoundary)
+    handleRebuildRef.current()
+  }, [editingFeatureId, features, setPickBoundary])
+
   const handleExitSketch = useCallback(() => {
     setEditingFeatureId(null)
     setContextMenu(null)
@@ -457,81 +483,90 @@ useEffect(() => {
     const fid = randomId(18)
     const label = `extrude ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_extrude', featureId: fid, label, sketchQuery: '', distance: 10 })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies])
+  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
 
   const handleAddRevolve = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `revolve ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_revolve', featureId: fid, label, sketchQuery: '', angle: 360 })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies])
+  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
 
   const handleAddFillet = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `fillet ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_fillet', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies])
+  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
 
   const handleAddChamfer = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `chamfer ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_chamfer', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies])
+  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
 
   const handleAddArray = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `array ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_array', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies])
+  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
 
   const handleAddBoolean = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `boolean ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_boolean', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies])
+  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
 
   const handleAddDeleteBody = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `delete body ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_delete_body', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies])
+  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
 
   const handleAddHole = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `hole ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_hole', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies])
+  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
 
   const handleAddTransform = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `transform ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_transform', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies])
+  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
@@ -1098,7 +1133,7 @@ useEffect(() => {
                   </div>
                 </div>
               )}
-              {mode !== 'code' && <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0 ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false)) : undefined} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} partColors={partColors} />}
+              {mode !== 'code' && <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0 ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false)) : undefined} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} />}
             </>
           )}
         </div>

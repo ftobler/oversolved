@@ -158,3 +158,65 @@ def test_tessellate_bodies_registers_brep_face_queries_in_repo():
     assert face is not None
     assert face["type"] == "flatface"
     assert face["centroid"] == mesh["face_data"][0]["centroid"]
+
+
+def test_pick_boundary_returns_checkpoint_bodies():
+    """pick_boundary returns bodies from the checkpoint BEFORE the specified feature."""
+    spec = full_rect_extrude_spec(w=5.0, h=5.0, d=3.0)
+    # Features: [sk1, ex1]
+    # pick_boundary=1 means checkpoint before ex1, which is sk1 (a sketch, no bodies)
+    r = build(spec, pick_boundary=1)
+    assert "pick_bodies" in r
+    assert len(r["pick_bodies"]) == 0
+
+
+def test_pick_boundary_after_extrude_returns_body():
+    """pick_boundary=2 after [sketch, extrude] returns the body from checkpoint at index 1."""
+    spec = full_rect_extrude_spec(w=5.0, h=5.0, d=3.0)
+    # Features: [sk1, ex1]
+    r = build(spec, pick_boundary=2)
+    assert "pick_bodies" in r
+    assert "body_ex1" in r["pick_bodies"]
+    assert "mesh" in r["pick_bodies"]["body_ex1"]
+
+
+def test_pick_boundary_zero_returns_no_pick_bodies():
+    """pick_boundary=0 should not return pick_bodies."""
+    spec = full_rect_extrude_spec(w=5.0, h=5.0, d=3.0)
+    r = build(spec, pick_boundary=0)
+    assert "pick_bodies" not in r
+
+
+def test_pick_boundary_out_of_range_returns_no_pick_bodies():
+    """pick_boundary beyond feature count should not return pick_bodies."""
+    spec = full_rect_extrude_spec(w=5.0, h=5.0, d=3.0)
+    r = build(spec, pick_boundary=10)
+    assert "pick_bodies" not in r
+
+
+def test_pick_boundary_with_fillet_returns_before_state():
+    """pick_boundary at fillet index returns body state before fillet was applied."""
+    pytest.importorskip("OCP.gp")
+    spec = {
+        'features': [
+            rect_sketch_spec(w=2.0, h=2.0, sketch_id='sk1'),
+            {
+                'id': 'ex1',
+                'kind': 'extrude',
+                'sketch': '$sk1',
+                'distance': 5.0,
+            },
+            {
+                'id': 'fil1',
+                'kind': 'fillet',
+                'edges': [],
+                'radius': 1.0,
+            },
+        ]
+    }
+    # pick_boundary=2 means checkpoint before fil1 (at index 1 = ex1)
+    r = build(spec, pick_boundary=2)
+    assert "pick_bodies" in r
+    assert "body_ex1" in r["pick_bodies"]
+    # The regular bodies may or may not have body_ex1 depending on fillet
+    assert "body_ex1" in r["bodies"]
