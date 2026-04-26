@@ -1217,8 +1217,6 @@ def feature_fillet(ctx):
     stroke(ctx, 1.5)
 
 
-
-
 @icon("frontend/src/assets/icons/feature-chamfer.svg")
 def feature_chamfer(ctx):
     """Icon for Chamfer: an L-shape with a beveled corner."""

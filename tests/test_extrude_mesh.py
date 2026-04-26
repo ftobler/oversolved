@@ -738,7 +738,6 @@ def test_extrude_from_brep_face_ancestry_query():
 
 def test_extrude_from_brep_face_slash_query():
     """Extrude accepts slash-style B-rep face IDs (@feature/face/N)."""
-    from pytest import approx
     from oversolved.builder import build
     from solver_helpers import rect_sketch_spec, assert_mesh_valid
 
