@@ -13,6 +13,7 @@ import featureFilletIcon from '../assets/icons/feature-fillet.svg'
 import featureChamferIcon from '../assets/icons/feature-chamfer.svg'
 import featureBooleanIcon from '../assets/icons/feature-boolean.svg'
 import featureArrayIcon from '../assets/icons/feature-array.svg'
+import featureDeleteBodyIcon from '../assets/icons/feature-delete-body.svg'
 import featureImportIcon from '../assets/icons/icon-upload.svg'
 import { FilletEditor } from './FilletEditor'
 import { ChamferEditor } from './ChamferEditor'
@@ -136,6 +137,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         return featureBooleanIcon
       case 'array':
         return featureArrayIcon
+      case 'delete_body':
+        return featureDeleteBodyIcon
       case 'import_step':
         return featureImportIcon
       default:
@@ -555,9 +558,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {(() => {
                     const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' ? solveResults?.[feature.id] : undefined
                     const bodyResult = r && isBodyFeatureResult(r) ? r : undefined
-                    const hasBody = bodyResult && bodyResult.body_id
-                      && bodies?.[bodyResult.body_id]?.mesh != null
-                    const isError = !!r && ((r as { status?: string }).status !== 'ok' || !hasBody)
+                    const hasMeshError = bodyResult?.body_id
+                      ? bodies?.[bodyResult.body_id]?.mesh_error : undefined
+                    const isError = !!r && ((r as { status?: string }).status !== 'ok' || !!hasMeshError)
                     const errMsg: string = bodyResult?.exception
                       ?? (bodyResult?.body_id ? bodies?.[bodyResult.body_id]?.mesh_error : undefined)
                       ?? ''
@@ -688,6 +691,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span className="material-icons-outlined">close</span>
                       </button>
                     )}
+                    {feature.kind === 'delete_body' && feature.id !== editingFeatureId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={(e) => { e.stopPropagation(); onEnterEditFeature(feature.id) }}
+                        title="Edit delete body"
+                      >
+                        <img src={contextEditIcon} alt="Edit" />
+                      </button>
+                    )}
+                    {feature.kind === 'delete_body' && feature.id === editingFeatureId && (
+                      <button
+                        className="exit-sketch-btn"
+                        onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
+                        title="Exit delete body editor"
+                      >
+                        <span className="material-icons-outlined">close</span>
+                      </button>
+                    )}
                     {feature.kind === 'extrude' && feature.id === editingFeatureId && (
                       <button
                         className="exit-sketch-btn"
@@ -733,7 +754,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <img src={iconEyeIcon} alt="Visible" />
                       </button>
                     )}
-                    {(feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'import_step') && (
+                    {(feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'delete_body' || feature.kind === 'import_step') && (
                       <span className="feature-visibility-placeholder" />
                     )}
                     {BUILT_IN_IDS.has(feature.id) && (
@@ -799,6 +820,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     feature={feature}
                     onMutation={onMutation}
                   />
+                )}
+                {feature.kind === 'delete_body' && editingFeatureId === feature.id && (
+                  <div className="feature-editor">
+                    <div className="feature-field-row">
+                      <span className="feature-field-label">Body</span>
+                      <PickChip
+                        value={feature.delete_body?.body}
+                        isPicking={pendingPickField?.featureId === feature.id && pendingPickField?.field === 'body'}
+                        onActivate={() => {
+                          if (pendingPickField?.featureId === feature.id && pendingPickField?.field === 'body') {
+                            onSetPendingPickField(null)
+                          } else {
+                            onSetPendingPickField({ featureId: feature.id, field: 'body', hostKind: 'delete_body' })
+                          }
+                        }}
+                        onClear={() => onMutation({ type: 'set_delete_body_target', featureId: feature.id, body: '' })}
+                      />
+                    </div>
+                  </div>
                 )}
               </li>
             </div>

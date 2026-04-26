@@ -24,6 +24,7 @@ import featureFilletIcon from '../assets/icons/feature-fillet.svg'
 import featureChamferIcon from '../assets/icons/feature-chamfer.svg'
 import featureBooleanIcon from '../assets/icons/feature-boolean.svg'
 import featureArrayIcon from '../assets/icons/feature-array.svg'
+import featureDeleteBodyIcon from '../assets/icons/feature-delete-body.svg'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featurePartIcon from '../assets/icons/feature-part.svg'
 import featureCodeIcon from '../assets/icons/icon-code.svg'
@@ -184,10 +185,16 @@ function describeMutation(m: Mutation): string {
       return `set array direction_x to ${m.direction_x}`
     case 'set_array_direction_y':
       return `set array direction_y to ${m.direction_y}`
+    case 'add_delete_body':
+      return `add delete body ${m.label ?? m.featureId}`
+    case 'set_delete_body_target':
+      return `set delete body target to ${m.body}`
     case 'rename_part':
       return `rename ${m.bodyId} to ${m.name}`
     case 'set_part_color':
       return `set ${m.bodyId} color to ${m.color}`
+    default:
+      return 'unknown mutation'
   }
 }
 
@@ -476,6 +483,15 @@ useEffect(() => {
     const label = `boolean ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     handleMutation({ type: 'add_boolean', featureId: fid, label })
+    setEditingFeatureId(fid)
+  }, [doc, features.length, handleMutation, bodies])
+
+  const handleAddDeleteBody = useCallback(() => {
+    if (!doc) return
+    const fid = randomId(18)
+    const label = `delete body ${Object.keys(bodies).length + 1}`
+    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    handleMutation({ type: 'add_delete_body', featureId: fid, label })
     setEditingFeatureId(fid)
   }, [doc, features.length, handleMutation, bodies])
 
@@ -1015,6 +1031,7 @@ useEffect(() => {
                 <button className="editor-btn" title="Add Chamfer" onClick={handleAddChamfer}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
                 <button className="editor-btn" title="Add Boolean" onClick={handleAddBoolean}><img src={featureBooleanIcon} alt="Add Boolean" /></button>
                 <button className="editor-btn" title="Add Array" onClick={handleAddArray}><img src={featureArrayIcon} alt="Add Array" /></button>
+                <button className="editor-btn" title="Delete Body" onClick={handleAddDeleteBody}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
                 <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
                 <button className="editor-btn" title="Import STEP" onClick={handleImportStep}><img src={featureImportIcon} alt="Import STEP" /></button>

@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, PartConstraint, PartTarget } from '../types/cad'
+import type { PartDoc, PartFeature, PartConstraint, PartTarget, BooleanFeatureDef } from '../types/cad'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '../registry'
 
 // ----
@@ -1069,4 +1069,29 @@ export function applySetArrayDirectionY(doc: PartDoc, featureId: string, directi
     return
   }
   feature.array.direction_y = direction_y
+}
+
+export function applyAddDeleteBody(
+  doc: PartDoc,
+  featureId: string,
+  body = '',
+  label?: string,
+): void {
+  if (!doc.features) doc.features = []
+  doc.features.push({
+    id: featureId,
+    kind: 'delete_body',
+    label: label ?? 'Delete Body',
+    delete_body: { body },
+  })
+}
+
+export function applySetDeleteBodyTarget(
+  doc: PartDoc,
+  featureId: string,
+  body: string,
+): void {
+  const feat = doc.features?.find(f => f.id === featureId)
+  if (!feat?.delete_body) return
+  feat.delete_body.body = body
 }

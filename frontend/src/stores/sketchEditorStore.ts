@@ -6,6 +6,7 @@ import type { Mutation, PendingPickField, SelectionDomain } from '../types/cad'
 import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '../registry'
 import type { SnapKind } from '../registry'
 import type { SnapTarget } from '../components/Geometry3D/snapDetection'
+import { parseQuery } from '../utils/query'
 
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type { Mutation }
@@ -408,6 +409,22 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       }
       onMutation?.({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: bodyRef })
       set({ normalSelection: new Set() })  // keep pick mode open for multiple tools
+      return
+    }
+    if (pendingPickField.field === 'body') {
+      let bodyRef = selectionId
+      if (selectionId.startsWith('body:')) {
+        bodyRef = '@' + selectionId.slice(5)
+      } else if (selectionId.startsWith('?')) {
+        const parsed = parseQuery(selectionId)
+        if (parsed.kind === 'ancestry' && parsed.ids.length > 0) {
+          bodyRef = parsed.ids[parsed.ids.length - 1]
+        }
+      } else if (selectionId.startsWith('@') && selectionId.includes('/')) {
+        bodyRef = '@' + selectionId.slice(1).split('/')[0]
+      }
+      onMutation?.({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: bodyRef })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
       return
     }
     let value: string

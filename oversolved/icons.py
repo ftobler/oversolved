@@ -1284,5 +1284,18 @@ def feature_boolean(ctx):
     # Draw remaining outer arc segments
 
 
+@icon("frontend/src/assets/icons/feature-delete-body.svg")
+def feature_delete_body(ctx):
+    """Icon for Delete Body: rectangle with X through it."""
+    ctx.rectangle(0.15, 0.15, 0.7, 0.7)
+    stroke(ctx, 1.5)
+    ctx.move_to(0.25, 0.25)
+    ctx.line_to(0.75, 0.75)
+    stroke(ctx, 1.5)
+    ctx.move_to(0.75, 0.25)
+    ctx.line_to(0.25, 0.75)
+    stroke(ctx, 1.5)
+
+
 if __name__ == "__main__":
     draw_all()

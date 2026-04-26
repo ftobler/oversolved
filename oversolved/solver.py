@@ -666,6 +666,8 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict) -> d
         return _solve_array(feature, global_repo, body_store)
     if kind == "boolean":
         return _solve_boolean(feature, global_repo, body_store)
+    if kind == "delete_body":
+        return _solve_delete_body(feature, body_store)
     raise Exception(f"unknown feature type: '{kind}'")
 
 
@@ -2659,6 +2661,23 @@ def _solve_boolean(
             body_store.pop(key, None)
 
         return {"status": "ok", "body_id": target_body.id, "operation": operation}
+    except Exception as exc:
+        return {"status": "exception", "exception": str(exc)}
+
+
+def _solve_delete_body(feature: dict, body_store: dict) -> dict:
+    try:
+        sub = feature.get("delete_body") or {}
+        body_query = sub.get("body", "")
+        body_key = body_query.lstrip("@")
+        if body_key not in body_store:
+            prefixed = "body_" + body_key
+            if prefixed in body_store:
+                body_key = prefixed
+            else:
+                raise ValueError(f"delete_body: body not found: {body_query!r}")
+        del body_store[body_key]
+        return {"status": "ok", "deleted_body_id": body_key}
     except Exception as exc:
         return {"status": "exception", "exception": str(exc)}
 

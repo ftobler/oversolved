@@ -70,6 +70,8 @@ import {
   applySetArrayAxis,
   applySetArrayDirectionX,
   applySetArrayDirectionY,
+  applyAddDeleteBody,
+  applySetDeleteBodyTarget,
   applyRenamePart,
   applySetPartColor,
 } from '../utils/yamlMutations'
@@ -545,6 +547,12 @@ setSolveResults(results)
         break
       case 'set_array_direction_y':
         applySetArrayDirectionY(next, m.featureId, m.direction_y)
+        break
+      case 'add_delete_body':
+        applyAddDeleteBody(next, m.featureId, m.body, m.label)
+        break
+      case 'set_delete_body_target':
+        applySetDeleteBodyTarget(next, m.featureId, m.body)
         break
       case 'rename_part':
         applyRenamePart(next, m.bodyId, m.name)

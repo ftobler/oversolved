@@ -870,5 +870,70 @@ describe('sketchEditorStore', () => {
         edgeQuery,
       })
     })
+
+    it('body pick from body: prefix dispatches set_delete_body_target', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'db1', field: 'body', hostKind: 'delete_body' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('body:body_ex1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_delete_body_target',
+        featureId: 'db1',
+        body: '@body_ex1',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
+
+    it('body pick from ancestry query extracts parent feature id', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'db1', field: 'body', hostKind: 'delete_body' },
+      })
+      const faceQuery = '?9,4;@ex1face0@ex1:flatface'
+      useSketchEditorStore.getState().toggleNormalSelection(faceQuery)
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_delete_body_target',
+        featureId: 'db1',
+        body: '@ex1',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
+
+    it('body pick from @featureId/face/N extracts feature id', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'db1', field: 'body', hostKind: 'delete_body' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_delete_body_target',
+        featureId: 'db1',
+        body: '@ex1',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
+
+    it('body pick passes through direct @body_id', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'db1', field: 'body', hostKind: 'delete_body' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_delete_body_target',
+        featureId: 'db1',
+        body: '@body_ex1',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
   })
 })

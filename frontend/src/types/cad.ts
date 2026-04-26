@@ -63,6 +63,10 @@ export interface RevolveFeatureDef {
   operation?: 'add' | 'cut' | 'new'
 }
 
+export interface DeleteBodyFeatureDef {
+  body: string
+}
+
 export interface FaceData {
   centroid: [number, number, number]
   normal: [number, number, number]
@@ -209,6 +213,7 @@ export interface PartFeature {
   chamfer?: ChamferFeatureDef  // present when kind === 'chamfer'
   boolean?: BooleanFeatureDef  // present when kind === 'boolean'
   array?: ArrayFeatureDef  // present when kind === 'array'
+  delete_body?: DeleteBodyFeatureDef  // present when kind === 'delete_body'
   file_id?: string  // present when kind === 'import_step'
 }
 
@@ -516,5 +521,7 @@ export type Mutation =
   | { type: 'set_array_axis'; featureId: string; axis: string }
   | { type: 'set_array_direction_x'; featureId: string; direction_x: [number, number, number] }
   | { type: 'set_array_direction_y'; featureId: string; direction_y: [number, number, number] }
+  | { type: 'add_delete_body'; featureId: string; body?: string; label?: string }
+  | { type: 'set_delete_body_target'; featureId: string; body: string }
   | { type: 'rename_part'; bodyId: string; name: string }
   | { type: 'set_part_color'; bodyId: string; color: string }
