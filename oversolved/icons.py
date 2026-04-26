@@ -338,22 +338,6 @@ def constraint_parallel(ctx):
     ctx.line_to(x1, y2)
     stroke(ctx, 2)
 
-    # # Arrow indicators (small arrows showing direction)
-    # arrow_len = 0.06
-    # arrow_h = 0.04
-
-    # # Top arrow (pointing right)
-    # ctx.move_to(x1 - arrow_len, y1 - arrow_h)
-    # ctx.line_to(x1, y1)
-    # ctx.line_to(x1 - arrow_len, y1 + arrow_h)
-    # stroke(ctx, 1.5)
-
-    # # Bottom arrow (pointing right)
-    # ctx.move_to(x1 - arrow_len, y2 - arrow_h)
-    # ctx.line_to(x1, y2)
-    # ctx.line_to(x1 - arrow_len, y2 + arrow_h)
-    # stroke(ctx, 1.5)
-
 
 # Toolbar icons
 @icon(
@@ -1030,8 +1014,7 @@ def context_hide(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/context-delete.svg")
-def context_delete(ctx):
+def _trashcan(ctx):
     """Icon for Delete context menu entry: trash can."""
     # Body of trash can
     ctx.move_to(0.3, 0.35)
@@ -1052,6 +1035,18 @@ def context_delete(ctx):
     ctx.line_to(0.6, 0.25)
     ctx.line_to(0.6, 0.35)
     stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/context-delete.svg")
+def context_delete(ctx):
+    """Icon for Delete context menu entry: trash can."""
+    _trashcan(ctx)
+
+
+@icon("frontend/src/assets/icons/feature-delete-body.svg")
+def feature_delete_body(ctx):
+    """Icon for Delete Body: trashcan."""
+    _trashcan(ctx)
 
 
 @icon("frontend/src/assets/icons/icon-eye.svg")
@@ -1221,13 +1216,15 @@ def feature_fillet(ctx):
 def feature_array(ctx):
     """Icon for Array: 3x2 grid of small rectangles."""
     border = 0.1
-    cols, rows = 3, 2
-    gap = 0.04
+    cols, rows = 2, 2
+    gap = 0.0
     cw = (1 - 2 * border - (cols - 1) * gap) / cols
     ch = (1 - 2 * border - (rows - 1) * gap) / rows
 
     for row in range(rows):
         for col in range(cols):
+            if row == 0 and col == 1:
+                continue  # skip one rectangle to avoid looking like a filled block
             x0 = border + col * (cw + gap)
             y0 = border + row * (ch + gap)
             ctx.move_to(x0, y0)
@@ -1264,37 +1261,13 @@ def feature_chamfer(ctx):
 @icon("frontend/src/assets/icons/feature-boolean.svg")
 def feature_boolean(ctx):
     """Icon for Boolean: two overlapping circles (Venn diagram style)."""
-    # Left circle
-    cx1, cy = 0.35, 0.5
     r = 0.25
-    ctx.arc(cx1, cy, r, 0, 2 * math.pi)
-    stroke(ctx, 1.5)
+    d = 0.15  # distance between circle centers
 
-    # Right circle
-    cx2 = 0.65
-    ctx.arc(cx2, cy, r, 0, 2 * math.pi)
-    stroke(ctx, 1.5)
-
-    # Intersection highlight (filled area in overlap)
-    # Simple filled inner circle to show intersection
-    ctx.arc(0.5, cy, r * 0.35, 0, 2 * math.pi)
-    ctx.fill()
-
-    # Outer ring hints remain visible (using arc segments)
-    # Draw remaining outer arc segments
-
-
-@icon("frontend/src/assets/icons/feature-delete-body.svg")
-def feature_delete_body(ctx):
-    """Icon for Delete Body: rectangle with X through it."""
-    ctx.rectangle(0.15, 0.15, 0.7, 0.7)
-    stroke(ctx, 1.5)
-    ctx.move_to(0.25, 0.25)
-    ctx.line_to(0.75, 0.75)
-    stroke(ctx, 1.5)
-    ctx.move_to(0.75, 0.25)
-    ctx.line_to(0.25, 0.75)
-    stroke(ctx, 1.5)
+    # left and right circle
+    for i in [-1, 1]:
+        ctx.arc(0.5 + d * i, 0.5, r, 0, 2 * math.pi)
+        stroke(ctx, 1.5)
 
 
 @icon("frontend/src/assets/icons/feature-hole.svg")
@@ -1304,12 +1277,29 @@ def feature_hole(ctx):
     d = 0.4
     ctx.arc(0.5, 0.5, r, 0, 2 * math.pi)
     stroke(ctx, 1.5)
-    ctx.move_to(0.5, 0.5 - d)
-    ctx.line_to(0.5, 0.5 + d)
-    stroke(ctx, 1.5)
-    ctx.move_to(0.5 - d, 0.5)
-    ctx.line_to(0.5 + d, 0.5)
-    stroke(ctx, 1.5)
+
+    for i in range(4):
+        ctx.save()
+        ctx.translate(0.5, 0.5)
+        ctx.rotate(math.radians(90 * i))
+        ctx.translate(-0.5, -0.5)
+
+        gap = 0.08
+        ctx.move_to(0.5, 0.5)
+        ctx.line_to(0.5, 0.5 + r - gap)
+        stroke(ctx, 1.5)
+        ctx.move_to(0.5, 0.5 + r + gap)
+        ctx.line_to(0.5, 0.5 + d)
+        stroke(ctx, 1.5)
+
+        ctx.restore()
+
+    # ctx.move_to(0.5, 0.5 - d)
+    # ctx.line_to(0.5, 0.5 + d)
+    # stroke(ctx, 1.5)
+    # ctx.move_to(0.5 - d, 0.5)
+    # ctx.line_to(0.5 + d, 0.5)
+    # stroke(ctx, 1.5)
 
 
 @icon("frontend/src/assets/icons/feature-transform.svg")
