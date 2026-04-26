@@ -664,6 +664,8 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict) -> d
         return _solve_revolve(feature, global_repo, body_store)
     if kind == "array":
         return _solve_array(feature, global_repo, body_store)
+    if kind == "boolean":
+        return _solve_boolean(feature, global_repo, body_store)
     raise Exception(f"unknown feature type: '{kind}'")
 
 
@@ -2594,6 +2596,69 @@ def _solve_chamfer(
         body.modified_by.append(feature_id)
 
         return {"status": "ok", "body_id": body_id}
+    except Exception as exc:
+        return {"status": "exception", "exception": str(exc)}
+
+
+def _resolve_body(ref: str, body_store: dict):
+    """Resolve @body_<id> or @<featureId> to a Body from body_store."""
+    from oversolved.types3d import Body  # noqa: PLC0415, F401
+
+    key = ref.lstrip("@")
+    if key in body_store:
+        return body_store[key]
+    prefixed = "body_" + key
+    if prefixed in body_store:
+        return body_store[prefixed]
+    raise ValueError(f"boolean: body not found for ref '{ref}'")
+
+
+def _solve_boolean(
+    feature: dict,
+    global_repo: Repository,
+    body_store: dict,
+) -> dict:
+    """Apply boolean operation between bodies."""
+    from oversolved.cadquery_ops import boolean_cut, boolean_union, boolean_intersection
+
+    try:
+        feature_id = feature.get("id", "")
+        sub = feature.get("boolean") or {}
+        operation = sub.get("operation", "union")
+        target_ref = sub.get("target", "")
+        tool_refs = sub.get("tools") or []
+        keep_tools = sub.get("keep_tools", False)
+
+        if not target_ref:
+            raise ValueError("boolean: 'target' is required")
+        if not tool_refs:
+            raise ValueError("boolean: 'tools' must have at least one entry")
+
+        target_body = _resolve_body(target_ref, body_store)
+
+        result_shape = target_body.shape
+        consumed_keys: list[str] = []
+
+        for tool_ref in tool_refs:
+            tool_body = _resolve_body(tool_ref, body_store)
+            if operation == "union":
+                result_shape = boolean_union(result_shape, tool_body.shape)
+            elif operation == "subtract":
+                result_shape = boolean_cut(result_shape, tool_body.shape)
+            elif operation == "intersect":
+                result_shape = boolean_intersection(result_shape, tool_body.shape)
+            else:
+                raise ValueError(f"boolean: unknown operation '{operation}'")
+            if not keep_tools:
+                consumed_keys.append(tool_body.id)
+
+        target_body.shape = result_shape
+        target_body.modified_by.append(feature_id)
+
+        for key in consumed_keys:
+            body_store.pop(key, None)
+
+        return {"status": "ok", "body_id": target_body.id, "operation": operation}
     except Exception as exc:
         return {"status": "exception", "exception": str(exc)}
 

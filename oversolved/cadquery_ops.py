@@ -132,6 +132,16 @@ def boolean_union(target: Any, tool: Any) -> cq_shapes.Solid:
     return result
 
 
+def boolean_intersection(target: Any, tool: Any) -> cq_shapes.Solid:
+    """Boolean intersection: target ∩ tool."""
+    target = _ensure_cq(target)
+    tool = _ensure_cq(tool)
+    result = target.intersect(tool).clean()
+    if not result.isValid():
+        raise ValueError("boolean intersection produced invalid shape")
+    return result
+
+
 def fuse_shapes(shapes: list[Any]) -> Any:
     """Fuse multiple shapes into one."""
     if not shapes:

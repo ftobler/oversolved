@@ -48,6 +48,12 @@ import {
   applyRemoveFilletEdge,
   applyAddChamferEdge,
   applyRemoveChamferEdge,
+  applyAddBoolean,
+  applySetBooleanOperation,
+  applySetBooleanTarget,
+  applyAddBooleanTool,
+  applyRemoveBooleanTool,
+  applySetBooleanKeepTools,
   applyAddArray,
   applySetArrayMode,
   applySetArraySourceBody,
@@ -473,6 +479,24 @@ setSolveResults(results)
         break
       case 'remove_chamfer_edge':
         applyRemoveChamferEdge(next, m.featureId, m.index)
+        break
+      case 'add_boolean':
+        applyAddBoolean(next, m.featureId, m.label)
+        break
+      case 'set_boolean_operation':
+        applySetBooleanOperation(next, m.featureId, m.operation)
+        break
+      case 'set_boolean_target':
+        applySetBooleanTarget(next, m.featureId, m.target)
+        break
+      case 'add_boolean_tool':
+        applyAddBooleanTool(next, m.featureId, m.tool)
+        break
+      case 'remove_boolean_tool':
+        applyRemoveBooleanTool(next, m.featureId, m.tool)
+        break
+      case 'set_boolean_keep_tools':
+        applySetBooleanKeepTools(next, m.featureId, m.keepTools)
         break
       case 'add_array':
         applyAddArray(next, m.featureId, m.label)

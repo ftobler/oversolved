@@ -11,10 +11,12 @@ import featureOriginIcon from '../assets/icons/feature-origin.svg'
 import featurePlaneIcon from '../assets/icons/feature-plane.svg'
 import featureFilletIcon from '../assets/icons/feature-fillet.svg'
 import featureChamferIcon from '../assets/icons/feature-chamfer.svg'
+import featureBooleanIcon from '../assets/icons/feature-boolean.svg'
 import featureArrayIcon from '../assets/icons/feature-array.svg'
 import featureImportIcon from '../assets/icons/icon-upload.svg'
 import { FilletEditor } from './FilletEditor'
 import { ChamferEditor } from './ChamferEditor'
+import { BooleanEditor } from './BooleanEditor'
 import ArrayEditor from './ArrayEditor'
 import contextEditIcon from '../assets/icons/context-edit.svg'
 import iconDotsIcon from '../assets/icons/dots.svg'
@@ -130,6 +132,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         return featureFilletIcon
       case 'chamfer':
         return featureChamferIcon
+      case 'boolean':
+        return featureBooleanIcon
       case 'array':
         return featureArrayIcon
       case 'import_step':
@@ -549,7 +553,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className="feature-icon"
                   />
                   {(() => {
-                    const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' ? solveResults?.[feature.id] : undefined
+                    const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' ? solveResults?.[feature.id] : undefined
                     const bodyResult = r && isBodyFeatureResult(r) ? r : undefined
                     const hasBody = bodyResult && bodyResult.body_id
                       && bodies?.[bodyResult.body_id]?.mesh != null
@@ -648,6 +652,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span className="material-icons-outlined">close</span>
                       </button>
                     )}
+                    {feature.kind === 'boolean' && feature.id !== editingFeatureId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={(e) => { e.stopPropagation(); onEnterEditFeature(feature.id) }}
+                        title="Edit boolean"
+                      >
+                        <img src={contextEditIcon} alt="Edit" />
+                      </button>
+                    )}
+                    {feature.kind === 'boolean' && feature.id === editingFeatureId && (
+                      <button
+                        className="exit-sketch-btn"
+                        onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
+                        title="Exit boolean editor"
+                      >
+                        <span className="material-icons-outlined">close</span>
+                      </button>
+                    )}
+                    {feature.kind === 'array' && feature.id !== editingFeatureId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={(e) => { e.stopPropagation(); onEnterEditFeature(feature.id) }}
+                        title="Edit array"
+                      >
+                        <img src={contextEditIcon} alt="Edit" />
+                      </button>
+                    )}
+                    {feature.kind === 'array' && feature.id === editingFeatureId && (
+                      <button
+                        className="exit-sketch-btn"
+                        onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
+                        title="Exit array editor"
+                      >
+                        <span className="material-icons-outlined">close</span>
+                      </button>
+                    )}
                     {feature.kind === 'extrude' && feature.id === editingFeatureId && (
                       <button
                         className="exit-sketch-btn"
@@ -693,7 +733,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <img src={iconEyeIcon} alt="Visible" />
                       </button>
                     )}
-                    {(feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'import_step') && (
+                    {(feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'import_step') && (
                       <span className="feature-visibility-placeholder" />
                     )}
                     {BUILT_IN_IDS.has(feature.id) && (
@@ -740,6 +780,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
                 {feature.kind === 'chamfer' && editingFeatureId === feature.id && (
                   <ChamferEditor
+                    feature={feature}
+                    onMutation={onMutation}
+                    pendingPickField={pendingPickField}
+                    setPendingPickField={onSetPendingPickField}
+                  />
+                )}
+                {feature.kind === 'boolean' && editingFeatureId === feature.id && (
+                  <BooleanEditor
                     feature={feature}
                     onMutation={onMutation}
                     pendingPickField={pendingPickField}

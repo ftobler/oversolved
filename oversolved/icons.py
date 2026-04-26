@@ -1261,5 +1261,28 @@ def feature_chamfer(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-boolean.svg")
+def feature_boolean(ctx):
+    """Icon for Boolean: two overlapping circles (Venn diagram style)."""
+    # Left circle
+    cx1, cy = 0.35, 0.5
+    r = 0.25
+    ctx.arc(cx1, cy, r, 0, 2 * math.pi)
+    stroke(ctx, 1.5)
+
+    # Right circle
+    cx2 = 0.65
+    ctx.arc(cx2, cy, r, 0, 2 * math.pi)
+    stroke(ctx, 1.5)
+
+    # Intersection highlight (filled area in overlap)
+    # Simple filled inner circle to show intersection
+    ctx.arc(0.5, cy, r * 0.35, 0, 2 * math.pi)
+    ctx.fill()
+
+    # Outer ring hints remain visible (using arc segments)
+    # Draw remaining outer arc segments
+
+
 if __name__ == "__main__":
     draw_all()

@@ -392,6 +392,24 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
       return
     }
+    if (pendingPickField.field === 'boolean_target') {
+      let bodyRef = selectionId
+      if (selectionId.startsWith('body:')) {
+        bodyRef = '@' + selectionId.slice(5)
+      }
+      onMutation?.({ type: 'set_boolean_target', featureId: pendingPickField.featureId, target: bodyRef })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
+      return
+    }
+    if (pendingPickField.field === 'boolean_tool') {
+      let bodyRef = selectionId
+      if (selectionId.startsWith('body:')) {
+        bodyRef = '@' + selectionId.slice(5)
+      }
+      onMutation?.({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: bodyRef })
+      set({ normalSelection: new Set() })  // keep pick mode open for multiple tools
+      return
+    }
     let value: string
     if (selectionId.startsWith('face:')) {
       value = selectionId.split(':').slice(2).join(':')

@@ -27,6 +27,13 @@ export interface ChamferFeatureDef {
   angle?: number
 }
 
+export interface BooleanFeatureDef {
+  operation: 'union' | 'subtract' | 'intersect'
+  target: string
+  tools: string[]
+  keep_tools?: boolean
+}
+
 export interface ArrayFeatureDef {
   source_body?: string
   mode?: 'linear' | 'rectangular' | 'rotational'
@@ -200,6 +207,7 @@ export interface PartFeature {
   revolve?: RevolveFeatureDef  // present when kind === 'revolve'
   fillet?: FilletFeatureDef  // present when kind === 'fillet'
   chamfer?: ChamferFeatureDef  // present when kind === 'chamfer'
+  boolean?: BooleanFeatureDef  // present when kind === 'boolean'
   array?: ArrayFeatureDef  // present when kind === 'array'
   file_id?: string  // present when kind === 'import_step'
 }
@@ -486,6 +494,12 @@ export type Mutation =
   | { type: 'remove_fillet_edge'; featureId: string; index: number }
   | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_chamfer_edge'; featureId: string; index: number }
+  | { type: 'add_boolean'; featureId: string; label?: string }
+  | { type: 'set_boolean_operation'; featureId: string; operation: BooleanFeatureDef['operation'] }
+  | { type: 'set_boolean_target'; featureId: string; target: string }
+  | { type: 'add_boolean_tool'; featureId: string; tool: string }
+  | { type: 'remove_boolean_tool'; featureId: string; tool: string }
+  | { type: 'set_boolean_keep_tools'; featureId: string; keepTools: boolean }
   | { type: 'add_array'; featureId: string; label?: string }
   | { type: 'set_array_mode'; featureId: string; mode: 'linear' | 'rectangular' | 'rotational' }
   | { type: 'set_array_source_body'; featureId: string; sourceBody: string }

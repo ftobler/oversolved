@@ -22,6 +22,7 @@ import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
 import featureRevolveIcon from '../assets/icons/feature-revolve.svg'
 import featureFilletIcon from '../assets/icons/feature-fillet.svg'
 import featureChamferIcon from '../assets/icons/feature-chamfer.svg'
+import featureBooleanIcon from '../assets/icons/feature-boolean.svg'
 import featureArrayIcon from '../assets/icons/feature-array.svg'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featurePartIcon from '../assets/icons/feature-part.svg'
@@ -466,6 +467,15 @@ useEffect(() => {
     const label = `array ${Object.keys(bodies).length + 1}`
     setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     handleMutation({ type: 'add_array', featureId: fid, label })
+    setEditingFeatureId(fid)
+  }, [doc, features.length, handleMutation, bodies])
+
+  const handleAddBoolean = useCallback(() => {
+    if (!doc) return
+    const fid = randomId(18)
+    const label = `boolean ${Object.keys(bodies).length + 1}`
+    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
+    handleMutation({ type: 'add_boolean', featureId: fid, label })
     setEditingFeatureId(fid)
   }, [doc, features.length, handleMutation, bodies])
 
@@ -1003,6 +1013,7 @@ useEffect(() => {
                 <button className="editor-btn" title="Add Revolve" onClick={handleAddRevolve}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
                 <button className="editor-btn" title="Add Fillet" onClick={handleAddFillet}><img src={featureFilletIcon} alt="Add Fillet" /></button>
                 <button className="editor-btn" title="Add Chamfer" onClick={handleAddChamfer}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
+                <button className="editor-btn" title="Add Boolean" onClick={handleAddBoolean}><img src={featureBooleanIcon} alt="Add Boolean" /></button>
                 <button className="editor-btn" title="Add Array" onClick={handleAddArray}><img src={featureArrayIcon} alt="Add Array" /></button>
                 <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>

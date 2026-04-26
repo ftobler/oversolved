@@ -6,6 +6,7 @@ import pytest
 
 from oversolved.cadquery_ops import (
     boolean_cut,
+    boolean_intersection,
     boolean_union,
     extrude_face,
     fuse_shapes,
@@ -131,6 +132,22 @@ def test_boolean_union_merges_shapes():
     )
     result = boolean_union(left, right)
     assert result.Volume() == pytest.approx(2.0, abs=1e-4)
+    assert result.isValid()
+
+
+def test_boolean_intersection_produces_overlap_volume():
+    """Intersection of two overlapping unit cubes should have volume 0.5."""
+    from cadquery.occ_impl.shapes import Face, Solid
+    left = Solid.extrudeLinear(
+        Face.makePlane(1, 1, (0, 0, 0)),
+        CQVector(0, 0, 1),
+    )
+    right = Solid.extrudeLinear(
+        Face.makePlane(1, 1, (0.5, 0, 0)),
+        CQVector(0, 0, 1),
+    )
+    result = boolean_intersection(left, right)
+    assert result.Volume() == pytest.approx(0.5, abs=1e-4)
     assert result.isValid()
 
 

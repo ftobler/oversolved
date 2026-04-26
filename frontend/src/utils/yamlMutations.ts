@@ -833,6 +833,68 @@ export function applyRemoveChamferEdge(doc: PartDoc, featureId: string, index: n
   feature.chamfer.edges.splice(index, 1)
 }
 
+export function applyAddBoolean(doc: PartDoc, featureId: string, label?: string): void {
+  if (!doc.features) doc.features = []
+  const feature: PartFeature = {
+    id: featureId,
+    kind: 'boolean',
+    label: label ?? 'Boolean',
+    boolean: { operation: 'union', target: '', tools: [] },
+  }
+  doc.features.push(feature)
+}
+
+export function applySetBooleanOperation(
+  doc: PartDoc,
+  featureId: string,
+  operation: BooleanFeatureDef['operation'],
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.boolean) {
+    console.warn(`applySetBooleanOperation: feature ${featureId} has no boolean`)
+    return
+  }
+  feature.boolean.operation = operation
+}
+
+export function applySetBooleanTarget(doc: PartDoc, featureId: string, target: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.boolean) {
+    console.warn(`applySetBooleanTarget: feature ${featureId} has no boolean`)
+    return
+  }
+  feature.boolean.target = target
+}
+
+export function applyAddBooleanTool(doc: PartDoc, featureId: string, tool: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.boolean) {
+    console.warn(`applyAddBooleanTool: feature ${featureId} has no boolean`)
+    return
+  }
+  if (!feature.boolean.tools.includes(tool)) {
+    feature.boolean.tools.push(tool)
+  }
+}
+
+export function applyRemoveBooleanTool(doc: PartDoc, featureId: string, tool: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.boolean) {
+    console.warn(`applyRemoveBooleanTool: feature ${featureId} has no boolean`)
+    return
+  }
+  feature.boolean.tools = feature.boolean.tools.filter(t => t !== tool)
+}
+
+export function applySetBooleanKeepTools(doc: PartDoc, featureId: string, keepTools: boolean): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.boolean) {
+    console.warn(`applySetBooleanKeepTools: feature ${featureId} has no boolean`)
+    return
+  }
+  feature.boolean.keep_tools = keepTools
+}
+
 export function applyAddArray(doc: PartDoc, featureId: string, label?: string): void {
   if (!doc.features) doc.features = []
   const feature: PartFeature = {

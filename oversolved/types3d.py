@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 
 @dataclass
@@ -42,3 +42,11 @@ class ChamferFeatureDef:
     distance: float
     kind: str = "distance"  # "distance" | "angle_distance"
     angle: float = 45.0  # degrees
+
+
+class BooleanFeatureDef(TypedDict, total=False):
+    """Boolean feature definition - boolean operations between bodies."""
+    operation: Literal['union', 'subtract', 'intersect']
+    target: str
+    tools: list[str]
+    keep_tools: bool
