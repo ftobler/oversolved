@@ -1312,5 +1312,40 @@ def feature_hole(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-transform.svg")
+def feature_transform(ctx):
+    """Icon for Transform: ghost box shifted with translation arrows."""
+    # Ghost box (thin, left+down)
+    box_left, box_top, box_w, box_h = 0.15, 0.45, 0.4, 0.4
+    ctx.rectangle(box_left, box_top, box_w, box_h)
+    stroke(ctx, 1.5)
+
+    # Solid destination box offset right+up
+    ctx.rectangle(box_left + 0.3, box_top - 0.25, box_w, box_h)
+    stroke(ctx, 2.0)
+
+    def partial_line(x0, y0, x1, y1, t_start=0, t_end=1, stroke_width=1.5):
+        """Draw a line from (x0,y0) to (x1,y1) but only the portion from t_start to t_end (0 ≤ t_start < t_end ≤ 1)."""
+        sx = x0 + (x1 - x0) * t_start
+        sy = y0 + (y1 - y0) * t_start
+        ex = x0 + (x1 - x0) * t_end
+        ey = y0 + (y1 - y0) * t_end
+        ctx.move_to(sx, sy)
+        ctx.line_to(ex, ey)
+        stroke(ctx, stroke_width)
+
+    # thin lines conecting corners of the two boxes
+    # but only top-left and bottom-right corners to avoid clutter
+    partial_line(box_left, box_top, box_left + 0.3, box_top - 0.25, 0.3, 0.7)
+    partial_line(box_left + box_w, box_top + box_h, box_left + 0.3 + box_w, box_top - 0.25 + box_h, 0.3, 0.65)
+
+    # # Arrow connecting centers
+    # cx0, cy0 = box_left + box_w / 2, box_top + box_h / 2
+    # cx1, cy1 = cx0 + 0.35, cy0 - 0.25
+    # ctx.move_to(cx0, cy0)
+    # ctx.line_to(cx1, cy1)
+    # stroke(ctx, 1.0)
+
+
 if __name__ == "__main__":
     draw_all()

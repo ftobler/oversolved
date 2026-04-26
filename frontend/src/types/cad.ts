@@ -76,6 +76,21 @@ export interface HoleFeatureDef {
   target?: string
 }
 
+export interface TransformFeatureDef {
+  body: string
+  operation?: 'new' | 'replace'
+  translation?: [number, number, number]
+  translation_from?: string
+  translation_to?: string
+  rotation_angle?: number
+  rotation_axis_origin?: [number, number, number]
+  rotation_axis_direction?: [number, number, number]
+  rotation_axis?: string
+  scale?: number
+  scale_center?: [number, number, number]
+  scale_center_from?: string
+}
+
 export interface FaceData {
   centroid: [number, number, number]
   normal: [number, number, number]
@@ -224,6 +239,7 @@ export interface PartFeature {
   array?: ArrayFeatureDef  // present when kind === 'array'
   delete_body?: DeleteBodyFeatureDef  // present when kind === 'delete_body'
   hole?: HoleFeatureDef  // present when kind === 'hole'
+  transform?: TransformFeatureDef  // present when kind === 'transform'
   file_id?: string  // present when kind === 'import_step'
 }
 
@@ -540,5 +556,7 @@ export type Mutation =
   | { type: 'set_hole_depth_mode'; featureId: string; depthMode: HoleFeatureDef['depth_mode'] }
   | { type: 'set_hole_direction'; featureId: string; direction: HoleFeatureDef['direction'] }
   | { type: 'set_hole_target'; featureId: string; target: string }
+  | { type: 'add_transform'; featureId: string; label?: string }
+  | { type: 'set_transform_field'; featureId: string; field: keyof TransformFeatureDef; value: unknown }
   | { type: 'rename_part'; bodyId: string; name: string }
   | { type: 'set_part_color'; bodyId: string; color: string }

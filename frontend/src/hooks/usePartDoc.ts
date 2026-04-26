@@ -79,6 +79,8 @@ import {
   applySetHoleDepthMode,
   applySetHoleDirection,
   applySetHoleTarget,
+  applyAddTransform,
+  applySetTransformField,
   applyRenamePart,
   applySetPartColor,
 } from '../utils/yamlMutations'
@@ -582,6 +584,12 @@ setSolveResults(results)
         break
       case 'set_hole_target':
         applySetHoleTarget(next, m.featureId, m.target)
+        break
+      case 'add_transform':
+        applyAddTransform(next, m.featureId, m.label)
+        break
+      case 'set_transform_field':
+        applySetTransformField(next, m.featureId, m.field, m.value)
         break
       case 'rename_part':
         applyRenamePart(next, m.bodyId, m.name)

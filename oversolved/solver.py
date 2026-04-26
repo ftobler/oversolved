@@ -670,6 +670,8 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict, feat
         return _solve_delete_body(feature, body_store)
     if kind == "hole":
         return _solve_hole(feature, global_repo, body_store, features_by_id or {})
+    if kind == "transform":
+        return _solve_transform(feature, global_repo, body_store)
     raise Exception(f"unknown feature type: '{kind}'")
 
 
@@ -2501,6 +2503,94 @@ def _resolve_fillet_edges(body, edge_queries):
             result.append(edge)
 
     return result
+
+
+def _solve_transform(
+    feature: dict,
+    global_repo: Repository,
+    body_store: dict,
+) -> dict:
+    """Apply translation, rotation, and/or uniform scaling to an existing body."""
+    from oversolved.cadquery_ops import apply_transform_shape
+    from oversolved.types3d import Body
+
+    try:
+        feature_id = feature.get("id", "")
+        sub = feature.get("transform") or {}
+        cfg = {**sub, **{k: v for k, v in feature.items() if k not in ("transform",)}}
+
+        body_query = cfg.get("body", "")
+        source_body = _resolve_body(body_query, body_store) if body_query else None
+        if source_body is None or source_body.shape is None:
+            raise ValueError(f"transform: body not found: {body_query!r}")
+
+        translation = cfg.get("translation")
+        tr_from = cfg.get("translation_from")
+        tr_to = cfg.get("translation_to")
+        if tr_from and tr_to:
+            p0_ref = global_repo.query(tr_from)
+            p1_ref = global_repo.query(tr_to)
+            if p0_ref is None:
+                raise ValueError(f"transform: translation_from not found: {tr_from!r}")
+            if p1_ref is None:
+                raise ValueError(f"transform: translation_to not found: {tr_to!r}")
+            p0 = _get_point_3d(p0_ref, global_repo)
+            p1 = _get_point_3d(p1_ref, global_repo)
+            translation = [float(p1[i] - p0[i]) for i in range(3)]
+
+        rotation_angle = float(cfg.get("rotation_angle", 0.0))
+        rotation_axis_origin = cfg.get("rotation_axis_origin")
+        rotation_axis_direction = cfg.get("rotation_axis_direction")
+        axis_query = cfg.get("rotation_axis")
+        if axis_query:
+            edge_ref = global_repo.query(axis_query)
+            if edge_ref is None:
+                raise ValueError(f"transform: rotation_axis not found: {axis_query!r}")
+            edge = _get_edge_3d(edge_ref, global_repo)
+            if edge:
+                p0, p1 = edge
+                d = [float(p1[i] - p0[i]) for i in range(3)]
+                length = sum(x * x for x in d) ** 0.5
+                if length > 1e-10:
+                    rotation_axis_origin = list(p0)
+                    rotation_axis_direction = [x / length for x in d]
+
+        scale = float(cfg.get("scale", 1.0))
+        scale_center = cfg.get("scale_center")
+        scale_center_query = cfg.get("scale_center_from")
+        if scale_center_query:
+            pt_ref = global_repo.query(scale_center_query)
+            if pt_ref is None:
+                raise ValueError(f"transform: scale_center_from not found: {scale_center_query!r}")
+            scale_center = list(_get_point_3d(pt_ref, global_repo))
+
+        new_shape = apply_transform_shape(
+            source_body.shape,
+            translation=translation,
+            rotation_axis_origin=rotation_axis_origin,
+            rotation_axis_direction=rotation_axis_direction,
+            rotation_angle_deg=rotation_angle,
+            scale=scale,
+            scale_center=scale_center,
+        )
+
+        operation = cfg.get("operation", "new")
+        if operation == "replace":
+            source_body.shape = new_shape
+            source_body.modified_by = list(source_body.modified_by or []) + [feature_id]
+            return {"status": "ok", "body_id": source_body.id, "operation": "replace"}
+        else:
+            new_body_id = "body_" + feature_id
+            body_store[new_body_id] = Body(
+                id=new_body_id,
+                created_by=feature_id,
+                modified_by=[],
+                shape=new_shape,
+                sketch_id=source_body.sketch_id,
+            )
+            return {"status": "ok", "body_id": new_body_id, "operation": "new"}
+    except Exception as exc:
+        return {"status": "exception", "exception": str(exc)}
 
 
 def _solve_fillet(

@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, PartConstraint, PartTarget, BooleanFeatureDef } from '../types/cad'
+import type { PartDoc, PartFeature, PartConstraint, PartTarget, BooleanFeatureDef, TransformFeatureDef } from '../types/cad'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '../registry'
 
 // ----
@@ -1148,4 +1148,31 @@ export function applySetHoleTarget(doc: PartDoc, featureId: string, target: stri
   const f = doc.features?.find(feat => feat.id === featureId)
   if (!f?.hole) return
   f.hole.target = target
+}
+
+export function applyAddTransform(doc: PartDoc, featureId: string, label?: string): void {
+  if (!doc.features) doc.features = []
+  doc.features.push({
+    id: featureId,
+    kind: 'transform',
+    label: label ?? 'Transform',
+    transform: {
+      body: '',
+      operation: 'new',
+      translation: [0, 0, 0],
+      rotation_angle: 0,
+      scale: 1,
+    },
+  })
+}
+
+export function applySetTransformField(
+  doc: PartDoc,
+  featureId: string,
+  field: keyof TransformFeatureDef,
+  value: unknown,
+): void {
+  const feat = doc.features?.find(f => f.id === featureId)
+  if (!feat?.transform) return
+  ;(feat.transform as unknown as Record<string, unknown>)[field] = value
 }

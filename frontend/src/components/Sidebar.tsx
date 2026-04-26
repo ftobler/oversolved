@@ -15,11 +15,13 @@ import featureBooleanIcon from '../assets/icons/feature-boolean.svg'
 import featureArrayIcon from '../assets/icons/feature-array.svg'
 import featureDeleteBodyIcon from '../assets/icons/feature-delete-body.svg'
 import featureHoleIcon from '../assets/icons/feature-hole.svg'
+import featureTransformIcon from '../assets/icons/feature-transform.svg'
 import featureImportIcon from '../assets/icons/icon-upload.svg'
 import { FilletEditor } from './FilletEditor'
 import { ChamferEditor } from './ChamferEditor'
 import { BooleanEditor } from './BooleanEditor'
 import { HoleEditor } from './HoleEditor'
+import { TransformEditor } from './TransformEditor'
 import ArrayEditor from './ArrayEditor'
 import contextEditIcon from '../assets/icons/context-edit.svg'
 import iconDotsIcon from '../assets/icons/dots.svg'
@@ -143,6 +145,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         return featureDeleteBodyIcon
       case 'hole':
         return featureHoleIcon
+      case 'transform':
+        return featureTransformIcon
       case 'import_step':
         return featureImportIcon
       default:
@@ -560,7 +564,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className="feature-icon"
                   />
                   {(() => {
-                    const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'hole' ? solveResults?.[feature.id] : undefined
+                    const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'hole' || feature.kind === 'transform' ? solveResults?.[feature.id] : undefined
                     const bodyResult = r && isBodyFeatureResult(r) ? r : undefined
                     const hasMeshError = bodyResult?.body_id
                       ? bodies?.[bodyResult.body_id]?.mesh_error : undefined
@@ -731,6 +735,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span className="material-icons-outlined">close</span>
                       </button>
                     )}
+                    {feature.kind === 'transform' && feature.id !== editingFeatureId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={(e) => { e.stopPropagation(); onEnterEditFeature(feature.id) }}
+                        title="Edit transform"
+                      >
+                        <img src={contextEditIcon} alt="Edit" />
+                      </button>
+                    )}
+                    {feature.kind === 'transform' && feature.id === editingFeatureId && (
+                      <button
+                        className="exit-sketch-btn"
+                        onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
+                        title="Exit transform editor"
+                      >
+                        <span className="material-icons-outlined">close</span>
+                      </button>
+                    )}
                     {feature.kind === 'extrude' && feature.id === editingFeatureId && (
                       <button
                         className="exit-sketch-btn"
@@ -864,6 +886,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
                 {feature.kind === 'hole' && editingFeatureId === feature.id && (
                   <HoleEditor
+                    feature={feature}
+                    onMutation={onMutation}
+                    pendingPickField={pendingPickField}
+                    setPendingPickField={onSetPendingPickField}
+                  />
+                )}
+                {feature.kind === 'transform' && editingFeatureId === feature.id && (
+                  <TransformEditor
                     feature={feature}
                     onMutation={onMutation}
                     pendingPickField={pendingPickField}

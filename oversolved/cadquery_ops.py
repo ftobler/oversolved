@@ -185,3 +185,51 @@ def _get_face_surface_type(face: cq_shapes.Face) -> str:
     if gt == "CYLINDER":
         return "cylinderface"
     return "face"
+
+
+def apply_transform_shape(
+    shape,
+    translation=None,
+    rotation_axis_origin=None,
+    rotation_axis_direction=None,
+    rotation_angle_deg=0.0,
+    scale=1.0,
+    scale_center=None,
+):
+    """Compose scale -> rotation -> translation into a single gp_Trsf and apply.
+
+    Each component is skipped when it would be identity (scale==1, angle==0,
+    translation==None) to avoid unnecessary B-rep invalidation.
+    Returns a new cq Shape (or TopoDS_Shape matching input type).
+    """
+    import math
+    from OCP.gp import gp_Trsf, gp_Vec, gp_Pnt, gp_Dir, gp_Ax1
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
+
+    combined = gp_Trsf()  # identity
+
+    if scale != 1.0:
+        sc = gp_Trsf()
+        center = gp_Pnt(*(scale_center or (0, 0, 0)))
+        sc.SetScale(center, scale)
+        combined.Multiply(sc)
+
+    if rotation_angle_deg and rotation_axis_direction:
+        rot = gp_Trsf()
+        origin = gp_Pnt(*(rotation_axis_origin or (0, 0, 0)))
+        direction = gp_Dir(*rotation_axis_direction)
+        ax1 = gp_Ax1(origin, direction)
+        rot.SetRotation(ax1, math.radians(rotation_angle_deg))
+        combined.Multiply(rot)
+
+    if translation:
+        tr = gp_Trsf()
+        tr.SetTranslation(gp_Vec(*translation))
+        combined.Multiply(tr)
+
+    raw = shape.wrapped if hasattr(shape, "wrapped") else shape
+    builder = BRepBuilderAPI_Transform(raw, combined, True)  # copy=True
+    result_shape = builder.Shape()
+    if hasattr(shape, "wrapped"):
+        return cq_shapes.Shape.cast(result_shape)
+    return result_shape
