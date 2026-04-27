@@ -572,8 +572,8 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           side={THREE.DoubleSide}
           vertexColors={true}
           polygonOffset={true}
-          polygonOffsetFactor={ghost ? -1 : 1}
-          polygonOffsetUnits={ghost ? -1 : 1}
+          polygonOffsetFactor={interactive ? 1 : -1}
+          polygonOffsetUnits={interactive ? 1 : -1}
           transparent={ghost}
           depthWrite={!ghost}
           opacity={ghost ? 0.5 : 1}
@@ -624,7 +624,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
             blending={ghost ? THREE.CustomBlending : undefined}
             blendEquation={ghost ? THREE.AddEquation : undefined}
             blendSrc={ghost ? THREE.SrcAlphaFactor : undefined}
-            blendDst={ghost ? THREE.SrcAlphaFactor : undefined}
+            blendDst={ghost ? THREE.OneMinusSrcAlphaFactor : undefined}
           />
         </lineSegments>
       )}
