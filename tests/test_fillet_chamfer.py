@@ -1,7 +1,7 @@
 import pytest
 
 pytestmark = pytest.mark.skipif(
-    not __import__("importlib").util.find_spec("OCP"), reason="OCP not installed"
+    not __import__("importlib").util.find_spec("cadquery"), reason="cadquery not installed"
 )
 
 

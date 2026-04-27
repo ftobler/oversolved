@@ -66,6 +66,16 @@ def test_outer_and_hole_and_disjoint():
     assert sep_group[1] == []
 
 
+def test_identical_loops_become_two_groups():
+    loop = _rect_loop(0, 0, 2, 2)
+    import copy
+    loop2 = copy.deepcopy(loop)
+    groups = classify_loops([loop, loop2])
+    assert len(groups) == 2
+    for _, holes in groups:
+        assert holes == []
+
+
 def test_order_independent():
     outer = _rect_loop(0, 0, 4, 4)
     hole = _rect_loop(1, 1, 3, 3)

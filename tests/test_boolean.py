@@ -5,7 +5,7 @@ from oversolved.types3d import Body
 from oversolved.solver import _resolve_body, _solve_boolean
 
 pytestmark = pytest.mark.skipif(
-    not __import__("importlib").util.find_spec("OCP"), reason="OCP not installed"
+    not __import__("importlib").util.find_spec("cadquery"), reason="cadquery not installed"
 )
 
 

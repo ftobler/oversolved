@@ -68,6 +68,15 @@ def classify_loops(
                 best_area = areas[j]
         contained_by[i] = best
 
+    # Break mutual-containment cycles (e.g. identical or exactly overlapping loops).
+    # If A is contained by B and B is contained by A, neither is truly nested;
+    # treat both as independent outers.
+    for i in range(n):
+        j = contained_by[i]
+        if j != -1 and contained_by[j] == i:
+            contained_by[i] = -1
+            contained_by[j] = -1
+
     outer_indices = [i for i in range(n) if contained_by[i] == -1]
     result = []
     for oi in outer_indices:
