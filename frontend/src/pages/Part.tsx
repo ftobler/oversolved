@@ -388,6 +388,15 @@ useEffect(() => {
     return result
   }, [features, visibleFeatures, activeSketchFeatureId, solveResults])
 
+  const ghostMode: 'additive' | 'subtractive' | undefined = useMemo(() => {
+    const editingFeature = editingFeatureId ? features.find(f => f.id === editingFeatureId) : null
+    if (!editingFeature || editingFeature.kind === 'sketch') return undefined
+    if (editingFeature.kind !== 'boolean') return 'additive'
+    const op = editingFeature.boolean?.operation
+    if (op === 'subtract') return 'subtractive'
+    return 'additive'
+  }, [features, editingFeatureId])
+
   const setMode = useCallback((newMode: 'sketch' | 'feature' | 'code') => {
     setModeRaw(prev => {
       if (prev === 'code' && newMode !== 'code') {
@@ -1133,7 +1142,7 @@ useEffect(() => {
                   </div>
                 </div>
               )}
-              {mode !== 'code' && <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0 ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false)) : undefined} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} />}
+              {mode !== 'code' && <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0 ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false)) : undefined} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} ghostMode={ghostMode} />}
             </>
           )}
         </div>

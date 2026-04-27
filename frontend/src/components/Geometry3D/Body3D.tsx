@@ -24,6 +24,7 @@ interface Body3DProps {
   showDebugHit?: boolean
   color?: string
   interactive?: boolean
+  ghost?: boolean
 }
 
 // Export for unit testing without a WebGL context.
@@ -168,7 +169,7 @@ export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
   return counts
 }
 
-export default function Body3D({ featureId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, interactive = true }: Body3DProps) {
+export default function Body3D({ featureId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, interactive = true, ghost = false }: Body3DProps) {
   const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
@@ -571,11 +572,17 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           side={THREE.DoubleSide}
           vertexColors={true}
           polygonOffset={true}
-          polygonOffsetFactor={interactive ? 1 : -1}
-          polygonOffsetUnits={interactive ? 1 : -1}
-          transparent={!interactive}
-          opacity={interactive ? 1 : 0.35}
-          depthWrite={interactive}
+          polygonOffsetFactor={ghost ? -1 : 1}
+          polygonOffsetUnits={ghost ? -1 : 1}
+          transparent={ghost}
+          depthWrite={!ghost}
+          opacity={ghost ? 0.5 : 1}
+          // blendAlpha={ghost ? 0.5 : 1}
+          blending={ghost ? THREE.CustomBlending : THREE.NormalBlending}
+          blendEquation={ghost ? THREE.AddEquation : THREE.AddEquation}
+          // blendEquationAlpha={ghost ? THREE.AddEquation : null}
+          blendSrc={ghost ? THREE.SrcAlphaFactor : THREE.SrcAlphaFactor}
+          blendDst={ghost ? THREE.OneMinusSrcAlphaFactor : THREE.OneMinusSrcAlphaFactor}
         />
       </mesh>
       {edges.length > 0 && (
@@ -611,9 +618,13 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           <lineBasicMaterial
             color="white"
             vertexColors={true}
-            transparent={!interactive}
-            opacity={interactive ? 1 : 0.4}
-            depthWrite={interactive}
+            transparent={ghost}
+            opacity={ghost ? 1.0 : 1}
+            depthWrite={!ghost}
+            blending={ghost ? THREE.CustomBlending : undefined}
+            blendEquation={ghost ? THREE.AddEquation : undefined}
+            blendSrc={ghost ? THREE.SrcAlphaFactor : undefined}
+            blendDst={ghost ? THREE.SrcAlphaFactor : undefined}
           />
         </lineSegments>
       )}

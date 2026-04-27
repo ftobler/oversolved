@@ -40,6 +40,7 @@ interface ViewportProps {
   bodies?: Record<string, BodyResult>
   pickBodies?: Record<string, BodyResult>
   partColors?: Record<string, string>
+  ghostMode?: 'additive' | 'subtractive'
 }
 
 function isActive(id: string, features: Feature[] | undefined, rollbackPos: number | undefined, visible: Set<string> | undefined): boolean {
@@ -63,14 +64,15 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   visibleFeatures,
   visibleBodies,
   solveResults,
-  resetTrigger = 0,
+  resetTrigger,
   activeFeatureId,
   onRightClick,
-  showDebugHit = false,
+  showDebugHit,
   otherSketches,
   bodies,
   pickBodies,
   partColors,
+  ghostMode,
 }: ViewportProps, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pvRef = useRef<Pv[]>([])
@@ -238,13 +240,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const showRight  = isActive('Right',  features, rollbackPosition, visibleFeatures)
 
   const bodyItems = useMemo(
-    () => getBodiesToRender(bodies, features, rollbackPosition, visibleBodies),
-    [bodies, features, rollbackPosition, visibleBodies]
+    () => getBodiesToRender(bodies, features, rollbackPosition, visibleBodies, ghostMode),
+    [bodies, features, rollbackPosition, visibleBodies, ghostMode]
   )
 
   const pickBodyItems = useMemo(
-    () => getBodiesToRender(pickBodies, features, undefined, visibleBodies),
-    [pickBodies, features, visibleBodies]
+    () => getBodiesToRender(pickBodies, features, undefined, visibleBodies, ghostMode),
+    [pickBodies, features, visibleBodies, ghostMode]
   )
 
   const activeSketchFeatures = useMemo(
@@ -328,10 +330,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         })}
 
         {pickBodyItems.map(b => (
-          <Body3D key={`pick-${b.key}`} featureId={b.featureId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} />
+          <Body3D key={`pick-${b.key}`} featureId={b.featureId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} ghost={b.ghost} interactive={true} />
         ))}
         {bodyItems.map(b => (
-          <Body3D key={b.key} featureId={b.featureId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} interactive={pickBodyItems.length === 0} />
+          <Body3D key={b.key} featureId={b.featureId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} ghost={b.ghost} interactive={ghostMode === undefined && pickBodyItems.length === 0} />
         ))}
       </Canvas>
 

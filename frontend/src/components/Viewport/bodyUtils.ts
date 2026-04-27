@@ -24,6 +24,7 @@ export interface BodyRenderItem {
   vertices?: [number, number, number][]
   vertexQueries?: string[]
   visible: boolean
+  ghost: boolean
 }
 
 function isInActiveRange(id: string, features: Feature[] | undefined, rollbackPos: number | undefined): boolean {
@@ -38,13 +39,21 @@ export function getBodiesToRender(
   features: Feature[] | undefined,
   rollbackPosition: number | undefined,
   visibleBodies: Set<string> | undefined,
+  ghostMode?: 'additive' | 'subtractive',
 ): BodyRenderItem[] {
   const items: BodyRenderItem[] = []
   if (!bodies) return items
+
   for (const [bodyId, body] of Object.entries(bodies)) {
     const createdBy = body.created_by
     if (!isInActiveRange(createdBy, features, rollbackPosition)) continue
     if (!body.mesh) continue
+
+    let ghost = false
+    if (ghostMode !== undefined) {
+      ghost = true
+    }
+
     items.push({
       key: bodyId,
       featureId: createdBy,
@@ -54,6 +63,7 @@ export function getBodiesToRender(
       vertices: body.vertices,
       vertexQueries: body.vertex_queries,
       visible: visibleBodies ? visibleBodies.has(bodyId) : true,
+      ghost,
     })
   }
   return items
