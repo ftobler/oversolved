@@ -196,14 +196,11 @@ def create_app(config=None):
     @app.route("/api/documents", methods=["GET"])
     @require_auth
     def list_documents():
-        import base64
-
-        docs = DocumentStore(get_db()).list_by_owner(g.current_user["id"])
+        sort = request.args.get("sort", "name")
+        docs = DocumentStore(get_db()).list_by_owner(g.current_user["id"], sort)
         for doc in docs:
-            if doc["preview_image"]:
-                doc["preview_image"] = base64.b64encode(doc["preview_image"]).decode(
-                    "utf-8"
-                )
+            if doc.get("preview_image"):
+                del doc["preview_image"]
         return jsonify({"documents": docs})
 
     @app.route("/api/documents", methods=["POST"])
@@ -324,6 +321,19 @@ def create_app(config=None):
         if doc["owner_id"] != g.current_user["id"]:
             return jsonify({"error": "Forbidden"}), 403
         return jsonify({"name": doc["name"], "content": doc["content"]})
+
+    @app.route("/api/documents/<uuid>/thumbnail", methods=["GET"])
+    @require_auth
+    def get_thumbnail(uuid):
+        doc = DocumentStore(get_db()).retrieve(uuid)
+        if doc is None:
+            return jsonify({"error": "Document not found"}), 404
+        if doc["owner_id"] != g.current_user["id"]:
+            return jsonify({"error": "Forbidden"}), 403
+        if not doc["preview_image"]:
+            return "", 404
+        from flask import Response
+        return Response(doc["preview_image"], mimetype="image/png")
 
     @app.route("/api/documents/import", methods=["POST"])
     @require_auth

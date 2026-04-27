@@ -332,10 +332,14 @@ class DocumentStore:
             )
         return new_uuid
 
-    def list_by_owner(self, owner_id: int) -> list[dict]:
-        """List all documents for an owner, ordered by name."""
+    def list_by_owner(self, owner_id: int, sort: str = "name") -> list[dict]:
+        """List all documents for an owner."""
+        if sort == "modified":
+            order = "updated_at DESC"
+        else:
+            order = "name"
         cursor = self.db.execute(
-            "SELECT uuid, name, preview_image, created_at, updated_at FROM documents WHERE owner_id = ? ORDER BY name",
+            f"SELECT uuid, name, preview_image, created_at, updated_at FROM documents WHERE owner_id = ? ORDER BY {order}",
             (owner_id,),
         )
         return [

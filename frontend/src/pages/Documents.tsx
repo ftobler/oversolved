@@ -6,7 +6,6 @@ import './Documents.css'
 interface DocumentMeta {
   uuid: string
   name: string
-  preview_image?: string
   created_at: string
   updated_at: string
 }
@@ -19,9 +18,10 @@ export default function Documents() {
   const [newDocName, setNewDocName] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [sortBy, setSortBy] = useState<'name' | 'modified'>('name')
 
-  const fetchDocuments = () => {
-    fetch('/api/documents')
+  const fetchDocuments = (sort: string = 'name') => {
+    fetch(`/api/documents?sort=${sort}`)
       .then(r => {
         if (!r.ok) throw new Error('Failed to fetch documents')
         return r.json()
@@ -37,7 +37,7 @@ export default function Documents() {
 
   useEffect(() => {
     setLoading(true)
-    fetchDocuments()
+    fetchDocuments(sortBy)
     setLoading(false)
   }, [])
 
@@ -62,7 +62,7 @@ export default function Documents() {
       setNewDocName('')
       setShowAddForm(false)
       setAddError(null)
-      fetchDocuments()
+      fetchDocuments(sortBy)
     } catch (e) {
       setAddError(String(e))
     }
@@ -82,7 +82,7 @@ export default function Documents() {
         throw new Error('Failed to delete document')
       }
 
-      fetchDocuments()
+      fetchDocuments(sortBy)
     } catch (e) {
       setError(String(e))
     }
@@ -99,7 +99,7 @@ export default function Documents() {
         throw new Error(data.error || 'Failed to duplicate document')
       }
 
-      fetchDocuments()
+      fetchDocuments(sortBy)
     } catch (e) {
       setError(String(e))
     }
@@ -149,7 +149,7 @@ export default function Documents() {
         throw new Error(data.error || 'Failed to import document')
       }
 
-      fetchDocuments()
+      fetchDocuments(sortBy)
     } catch (err) {
       setError(String(err))
     }
@@ -188,6 +188,17 @@ export default function Documents() {
               </button>
             )}
           </div>
+          <button
+            className="toolbar-btn"
+            onClick={() => {
+              const newSort = sortBy === 'name' ? 'modified' : 'name'
+              setSortBy(newSort)
+              fetchDocuments(newSort)
+            }}
+            title={`Sort by ${sortBy === 'name' ? 'modified' : 'name'}`}
+          >
+            <span className="material-icons">{sortBy === 'name' ? 'sort_by_alpha' : 'update'}</span>
+          </button>
           <button className="toolbar-btn" onClick={() => setShowAddForm(!showAddForm)} title="Add document">
             <span className="material-icons">add</span>
           </button>
@@ -240,9 +251,17 @@ export default function Documents() {
               <div key={doc.uuid} className="doc-tile">
                 <Link to={`/documents/${doc.uuid}`} className="doc-tile-link">
                   <div className="doc-tile-preview">
-                    {doc.preview_image
-                      ? <img src={`data:image/png;base64,${doc.preview_image}`} alt={doc.name} />
-                      : <div className="doc-tile-placeholder" />}
+                    <img
+                      src={`/api/documents/${doc.uuid}/thumbnail`}
+                      alt={doc.name}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.style.display = 'none'
+                        const next = target.nextElementSibling as HTMLElement
+                        if (next) next.style.display = 'block'
+                      }}
+                    />
+                    <div className="doc-tile-placeholder" style={{display: 'none'}} />
                   </div>
                   <div className="doc-tile-info">
                     <span className="doc-tile-name" title={doc.name}>{doc.name}</span>
