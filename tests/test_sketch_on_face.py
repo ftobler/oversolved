@@ -4,7 +4,7 @@ from oversolved.builder import build
 from solver_helpers import full_rect_extrude_spec
 
 
-def _extrude_doc():
+def _extrude_doc() -> dict:
     """Doc with a single rect extrude: sketch sk1, extrude ex1."""
     return full_rect_extrude_spec(w=10.0, h=10.0, d=5.0)
 

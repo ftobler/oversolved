@@ -22,6 +22,7 @@ from oversolved.cadquery_ops import (
     make_wire,
     to_cq_plane,
 )
+from oversolved.profile_loops import classify_loops
 
 __all__ = [
     "signed_distance_to_line",
@@ -197,9 +198,6 @@ def classify_surface_cardinal(
 def plane_dict_to_gp_pln(plane: dict) -> Any:
     """Convert a PlaneTransform dict to a cadquery Plane object."""
     return to_cq_plane(plane)
-
-
-from oversolved.profile_loops import classify_loops
 
 
 def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> cq_shapes.Face:

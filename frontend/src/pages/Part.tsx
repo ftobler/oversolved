@@ -302,7 +302,7 @@ export default function Part() {
   }, [docName])
 
   const features = useMemo(() => extractFeatures(doc), [doc])
-  const partStyle = doc?.part_style ?? {}
+  const partStyle = useMemo(() => doc?.part_style ?? {}, [doc])
   const partLabels = useMemo(() => {
     const labels: Record<string, string> = {}
     for (const [bodyId, style] of Object.entries(partStyle)) {
@@ -346,7 +346,7 @@ useEffect(() => {
       return
     }
     if (docRef.current) reSolve(docRef.current, rollbackPosition ?? currentFeaturesLength.current)
-  }, [rollbackPosition])
+  }, [rollbackPosition, docRef, reSolve])
 
   const activeSketchFeatureId = useMemo(() => {
     if (!editingFeatureId) return undefined
@@ -407,7 +407,7 @@ useEffect(() => {
   const handleRebuild = useCallback(() => {
     if (docRef.current) reSolve(docRef.current, rollbackPosition ?? features.length)
     setContextMenu(null)
-  }, [docRef, reSolve, rollbackPosition, features.length])
+  }, [docRef, reSolve, rollbackPosition, features])
 
   const handleRebuildRef = useRef(handleRebuild)
   handleRebuildRef.current = handleRebuild
@@ -431,7 +431,7 @@ useEffect(() => {
     }
     setPickBoundary(nextBoundary)
     handleRebuildRef.current()
-  }, [editingFeatureId, features, setPickBoundary])
+  }, [editingFeatureId, features, setPickBoundary, docRef])
 
   const handleExitSketch = useCallback(() => {
     setEditingFeatureId(null)
@@ -486,7 +486,7 @@ useEffect(() => {
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_extrude', featureId: fid, label, sketchQuery: '', distance: 10 })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary])
 
   const handleAddRevolve = useCallback(() => {
     if (!doc) return
@@ -496,7 +496,7 @@ useEffect(() => {
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_revolve', featureId: fid, label, sketchQuery: '', angle: 360 })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary])
 
   const handleAddFillet = useCallback(() => {
     if (!doc) return
@@ -506,7 +506,7 @@ useEffect(() => {
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_fillet', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary])
 
   const handleAddChamfer = useCallback(() => {
     if (!doc) return
@@ -516,7 +516,7 @@ useEffect(() => {
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_chamfer', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary])
 
   const handleAddArray = useCallback(() => {
     if (!doc) return
@@ -526,7 +526,7 @@ useEffect(() => {
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_array', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary])
 
   const handleAddBoolean = useCallback(() => {
     if (!doc) return
@@ -536,7 +536,7 @@ useEffect(() => {
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_boolean', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary])
 
   const handleAddDeleteBody = useCallback(() => {
     if (!doc) return
@@ -546,7 +546,7 @@ useEffect(() => {
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_delete_body', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary])
 
   const handleAddHole = useCallback(() => {
     if (!doc) return
@@ -556,7 +556,7 @@ useEffect(() => {
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_hole', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary])
 
   const handleAddTransform = useCallback(() => {
     if (!doc) return
@@ -566,7 +566,7 @@ useEffect(() => {
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_transform', featureId: fid, label })
     setEditingFeatureId(fid)
-  }, [doc, features.length, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return

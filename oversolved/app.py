@@ -409,7 +409,7 @@ def create_app(config=None):
     _build_state_cache: dict = {}
 
     @app.route("/api/solve", methods=["POST"])
-    def solve_document():
+    def solve_document() -> Response | tuple:
         data = request.get_json(silent=True)
         if not data or "features" not in data:
             return jsonify({"error": "features required"}), 400

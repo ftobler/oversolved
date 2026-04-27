@@ -27,8 +27,20 @@ icons:
 [working-directory: "frontend"]
 frontend:
     just icons
+    just frontend-lint
+    just frontend-test
+    just frontend-build
+
+[working-directory: "frontend"]
+frontend-lint:
     npm run lint
+
+[working-directory: "frontend"]
+frontend-test:
     npx vitest run
+
+[working-directory: "frontend"]
+frontend-build:
     npm run build
 
 
