@@ -30,6 +30,7 @@ __all__ = [
     "classify_surface_by_circle_side",
     "classify_surface_cardinal",
     "plane_dict_to_gp_pln",
+    "classify_loops",
     "sketch_loops_to_face",
     "extrude_face",
     "extrude_profile",
@@ -198,6 +199,9 @@ def plane_dict_to_gp_pln(plane: dict) -> Any:
     return to_cq_plane(plane)
 
 
+from oversolved.profile_loops import classify_loops
+
+
 def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> cq_shapes.Face:
     """Convert 2D profile boundary-edge loops to a cadquery Face with holes.
 
@@ -271,13 +275,25 @@ def extrude_profile(
     direction_vec: list[float],
     distance: float,
 ) -> cq_shapes.Solid:
-    """Convenience wrapper to extrude boundary-edge loops to a solid.
+    """Extrude boundary-edge loops to a solid, unioning disjoint loop groups.
 
-    loops is a list of loops, each a list of edge dicts (see sketch_loops_to_face).
-    Returns cadquery solid (not mesh dict). Tessellation happens later in builder._tessellate_bodies.
+    Multiple loops that are not nested (disjoint closed areas) are each extruded
+    separately and boolean-unioned into one solid. Loops that are contained inside
+    another loop are treated as holes of that outer boundary.
     """
-    face = sketch_loops_to_face(loops, plane)
-    return extrude_face(face, direction_vec, distance)
+    groups = classify_loops(loops)
+    if not groups:
+        raise ValueError("no loops to extrude")
+
+    solid = None
+    for outer, holes in groups:
+        face = sketch_loops_to_face([outer] + holes, plane)
+        part = extrude_face(face, direction_vec, distance)
+        if solid is None:
+            solid = part
+        else:
+            solid = boolean_union(solid, part)
+    return solid  # type: ignore[return-value]
 
 
 def revolve_face(
