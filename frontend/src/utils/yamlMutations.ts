@@ -563,9 +563,13 @@ export function applyAddExtrudeProfile(doc: PartDoc, featureId: string, sketchQu
     return
   }
   const current = normalizeExtrudeSketch(feature.extrude.sketch)
-  if (!current.includes(sketchQuery)) {
-    feature.extrude.sketch = [...current, sketchQuery]
+  const idx = current.indexOf(sketchQuery)
+  if (idx >= 0) {
+    current.splice(idx, 1)
+  } else {
+    current.push(sketchQuery)
   }
+  feature.extrude.sketch = current
 }
 
 export function applyRemoveExtrudeProfile(doc: PartDoc, featureId: string, index: number): void {
@@ -648,9 +652,13 @@ export function applyAddRevolveProfile(doc: PartDoc, featureId: string, sketchQu
     return
   }
   const current = normalizeRevolveSketch(feature.revolve.sketch)
-  if (!current.includes(sketchQuery)) {
-    feature.revolve.sketch = [...current, sketchQuery]
+  const idx = current.indexOf(sketchQuery)
+  if (idx >= 0) {
+    current.splice(idx, 1)
+  } else {
+    current.push(sketchQuery)
   }
+  feature.revolve.sketch = current
 }
 
 export function applyRemoveRevolveProfile(doc: PartDoc, featureId: string, index: number): void {
@@ -799,7 +807,10 @@ export function applyAddFilletEdge(doc: PartDoc, featureId: string, edgeQuery: s
     console.warn(`applyAddFilletEdge: feature ${featureId} has no fillet`)
     return
   }
-  if (!feature.fillet.edges.includes(edgeQuery)) {
+  const idx = feature.fillet.edges.indexOf(edgeQuery)
+  if (idx >= 0) {
+    feature.fillet.edges.splice(idx, 1)
+  } else {
     feature.fillet.edges.push(edgeQuery)
   }
 }
@@ -819,7 +830,10 @@ export function applyAddChamferEdge(doc: PartDoc, featureId: string, edgeQuery: 
     console.warn(`applyAddChamferEdge: feature ${featureId} has no chamfer`)
     return
   }
-  if (!feature.chamfer.edges.includes(edgeQuery)) {
+  const idx = feature.chamfer.edges.indexOf(edgeQuery)
+  if (idx >= 0) {
+    feature.chamfer.edges.splice(idx, 1)
+  } else {
     feature.chamfer.edges.push(edgeQuery)
   }
 }
@@ -872,7 +886,10 @@ export function applyAddBooleanTool(doc: PartDoc, featureId: string, tool: strin
     console.warn(`applyAddBooleanTool: feature ${featureId} has no boolean`)
     return
   }
-  if (!feature.boolean.tools.includes(tool)) {
+  const idx = feature.boolean.tools.indexOf(tool)
+  if (idx >= 0) {
+    feature.boolean.tools.splice(idx, 1)
+  } else {
     feature.boolean.tools.push(tool)
   }
 }

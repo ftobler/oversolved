@@ -97,18 +97,18 @@ describe('add_revolve_profile', () => {
     expect(doc.features![0].revolve!.sketch).toEqual(['$sk1', '$sk2'])
   })
 
-  it('does not add duplicate entries', () => {
+  it('toggles off an existing profile query', () => {
     const doc: PartDoc = {
       features: [
         {
           id: 'rev1',
           kind: 'revolve',
-          revolve: { sketch: ['$sk1'], angle: 360 },
+          revolve: { sketch: ['$sk1', '$sk2'], angle: 360 },
         },
       ],
     }
     applyAddRevolveProfile(doc, 'rev1', '$sk1')
-    expect(doc.features![0].revolve!.sketch).toEqual(['$sk1'])
+    expect(doc.features![0].revolve!.sketch).toEqual(['$sk2'])
   })
 
   it('does nothing if revolve is undefined', () => {

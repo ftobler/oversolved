@@ -97,18 +97,18 @@ describe('add_extrude_profile', () => {
     expect(doc.features![0].extrude!.sketch).toEqual(['$sk1', '$sk2'])
   })
 
-  it('does not add duplicate entries', () => {
+  it('toggles off an existing profile query', () => {
     const doc: PartDoc = {
       features: [
         {
           id: 'ex1',
           kind: 'extrude',
-          extrude: { sketch: ['$sk1'], distance: 10 },
+          extrude: { sketch: ['$sk1', '$sk2'], distance: 10 },
         },
       ],
     }
     applyAddExtrudeProfile(doc, 'ex1', '$sk1')
-    expect(doc.features![0].extrude!.sketch).toEqual(['$sk1'])
+    expect(doc.features![0].extrude!.sketch).toEqual(['$sk2'])
   })
 
   it('does nothing if extrude is undefined', () => {
