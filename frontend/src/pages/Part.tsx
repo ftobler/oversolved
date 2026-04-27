@@ -16,6 +16,8 @@ import { BugReporter } from '../components/BugReporter'
 import { Sidebar } from '../components/Sidebar'
 import FooterMeasurementDisplay from '../components/FooterMeasurementDisplay'
 import ExportDialog, { type ExportFormat } from '../components/ExportDialog'
+import LoadingOverlay from '../components/LoadingOverlay'
+import { useSolverStore } from '../stores/solverStore'
 import './Part.css'
 
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
@@ -682,6 +684,10 @@ useEffect(() => {
     useSketchEditorStore.getState().setActiveFeatureId(activeSketchFeatureId ?? null)
   }, [activeSketchFeatureId])
 
+  useEffect(() => {
+    useSolverStore.getState().setIsSolving(solving)
+  }, [solving])
+
   const commands = useMemo(
     () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddExtrude, handleAddHole, handleAddTransform),
     [handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddExtrude, handleAddHole, handleAddTransform],
@@ -1142,7 +1148,12 @@ useEffect(() => {
                   </div>
                 </div>
               )}
-              {mode !== 'code' && <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0 ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false)) : undefined} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} ghostMode={ghostMode} />}
+              {mode !== 'code' && (
+                <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                  <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0 ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false)) : undefined} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} ghostMode={ghostMode} />
+                  <LoadingOverlay />
+                </div>
+              )}
             </>
           )}
         </div>
