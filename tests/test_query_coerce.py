@@ -92,3 +92,37 @@ def test_query_no_coercion_when_body_store_missing():
     q = make_ancestry_query(["@ex1"], type_restriction="solid")
     result = repo.query(q)
     assert result is None
+
+
+def test_query_coerce_face_to_edge():
+    repo = Repository()
+    body_store = {"body_ex1": FakeBody("body_ex1")}
+    repo.register_anchestor(
+        ["@ex1face0", "@ex1"],
+        {"type": "flatface", "body_id": "body_ex1", "face_index": 0},
+    )
+    repo.register_anchestor(
+        ["@ex1edge0", "@ex1"],
+        {"type": "straightedge", "body_id": "body_ex1", "edge_index": 0},
+    )
+    q = make_ancestry_query(["@ex1face0", "@ex1"], type_restriction="edge")
+    result = repo.query(q, body_store=body_store)
+    assert isinstance(result, dict)
+    assert result["type"] == "straightedge"
+
+
+def test_query_coerce_solid_to_edge():
+    repo = Repository()
+    body_store = {"body_ex1": FakeBody("body_ex1")}
+    repo.register_anchestor(
+        ["@ex1"],
+        {"type": "solid", "body_id": "body_ex1"},
+    )
+    repo.register_anchestor(
+        ["@ex1edge0", "@ex1"],
+        {"type": "straightedge", "body_id": "body_ex1", "edge_index": 0},
+    )
+    q = make_ancestry_query(["@ex1"], type_restriction="edge")
+    result = repo.query(q, body_store=body_store)
+    assert isinstance(result, dict)
+    assert result["type"] == "straightedge"
