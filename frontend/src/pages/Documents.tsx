@@ -7,6 +7,8 @@ interface DocumentMeta {
   uuid: string
   name: string
   preview_image?: string
+  created_at: string
+  updated_at: string
 }
 
 export default function Documents() {
@@ -16,6 +18,11 @@ export default function Documents() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [newDocName, setNewDocName] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showImportForm, setShowImportForm] = useState(false)
+  const [importName, setImportName] = useState('')
+  const [importData, setImportData] = useState('')
+  const [importError, setImportError] = useState<string | null>(null)
 
   const fetchDocuments = () => {
     fetch('/api/documents')
@@ -85,15 +92,118 @@ export default function Documents() {
     }
   }
 
+  const handleDuplicate = async (uuid: string) => {
+    try {
+      const response = await fetch(`/api/documents/${uuid}/duplicate`, {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to duplicate document')
+      }
+
+      fetchDocuments()
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const handleExport = async (uuid: string, name: string) => {
+    try {
+      const response = await fetch(`/api/documents/${uuid}/export`)
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to export document')
+      }
+
+      const data = await response.json()
+      const blob = new Blob([data.content], { type: 'text/yaml' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${name}.yaml`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const handleImport = async () => {
+    if (!importName.trim()) {
+      setImportError('Document name required')
+      return
+    }
+    if (!importData.trim()) {
+      setImportError('Import data required')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/documents/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: importName.trim(), content: importData }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to import document')
+      }
+
+      setImportName('')
+      setImportData('')
+      setShowImportForm(false)
+      setImportError(null)
+      fetchDocuments()
+    } catch (e) {
+      setImportError(String(e))
+    }
+  }
+
+  const filteredDocuments = documents.filter(doc =>
+    doc.name.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  const formatDate = (isoString: string) => {
+    if (!isoString) return ''
+    const date = new Date(isoString)
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+
   return (
     <div className="documents">
       <AppHeader title="Documents" />
 
       <div className="doc-grid-container">
         <div className="doc-controls">
+          <div className="search-input-container">
+            <span className="material-icons search-icon">search</span>
+            <input
+              type="text"
+              placeholder="Search documents..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="search-input"
+            />
+            {searchQuery && (
+              <button
+                className="btn btn-clear-search"
+                onClick={() => setSearchQuery('')}
+                title="Clear search"
+              >
+                <span className="material-icons">close</span>
+              </button>
+            )}
+          </div>
           <button className="btn btn-add" onClick={() => setShowAddForm(!showAddForm)}>
             <span className="material-icons">add</span>
             Add
+          </button>
+          <button className="btn btn-secondary" onClick={() => setShowImportForm(!showImportForm)}>
+            <span className="material-icons">upload</span>
+            Import
           </button>
         </div>
 
@@ -119,13 +229,41 @@ export default function Documents() {
           </div>
         )}
 
+        {showImportForm && (
+          <div className="add-form">
+            <input
+              type="text"
+              placeholder="Document name"
+              value={importName}
+              onChange={e => setImportName(e.target.value)}
+              autoFocus
+            />
+            <textarea
+              placeholder="Paste YAML content here..."
+              value={importData}
+              onChange={e => setImportData(e.target.value)}
+              className="import-textarea"
+            />
+            <button className="btn btn-primary" onClick={handleImport}>
+              Import
+            </button>
+            <button className="btn btn-secondary" onClick={() => setShowImportForm(false)}>
+              Cancel
+            </button>
+            {importError && <p className="error-text">{importError}</p>}
+          </div>
+        )}
+
         {loading && <p className="status">Loading documents...</p>}
         {error && <p className="status error">Error: {error}</p>}
+        {!loading && filteredDocuments.length === 0 && documents.length > 0 && searchQuery && (
+          <p className="status">No documents match "{searchQuery}"</p>
+        )}
         {!loading && documents.length === 0 && <p className="status">No documents yet.</p>}
 
-        {!loading && documents.length > 0 && (
+        {!loading && filteredDocuments.length > 0 && (
           <div className="doc-tiles">
-            {documents.map(doc => (
+            {filteredDocuments.map(doc => (
               <div key={doc.uuid} className="doc-tile">
                 <Link to={`/documents/${doc.uuid}`} className="doc-tile-link">
                   <div className="doc-tile-preview">
@@ -135,17 +273,44 @@ export default function Documents() {
                   </div>
                   <div className="doc-tile-info">
                     <span className="doc-tile-name" title={doc.name}>{doc.name}</span>
-                    <button
-                      className="btn btn-delete-tile"
-                      onClick={e => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        handleDeleteDocument(doc.uuid, doc.name)
-                      }}
-                      title="Delete document"
-                    >
-                      <span className="material-icons">delete</span>
-                    </button>
+                    <div className="doc-tile-actions">
+                      <button
+                        className="btn btn-tile-action"
+                        onClick={e => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleDuplicate(doc.uuid)
+                        }}
+                        title="Duplicate"
+                      >
+                        <span className="material-icons">content_copy</span>
+                      </button>
+                      <button
+                        className="btn btn-tile-action"
+                        onClick={e => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleExport(doc.uuid, doc.name)
+                        }}
+                        title="Export YAML"
+                      >
+                        <span className="material-icons">download</span>
+                      </button>
+                      <button
+                        className="btn btn-delete-tile"
+                        onClick={e => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleDeleteDocument(doc.uuid, doc.name)
+                        }}
+                        title="Delete document"
+                      >
+                        <span className="material-icons">delete</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="doc-tile-date">
+                    Modified: {formatDate(doc.updated_at)}
                   </div>
                 </Link>
               </div>

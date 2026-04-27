@@ -297,7 +297,7 @@ class DocumentStore:
     def retrieve(self, uuid: str) -> Optional[dict]:
         """Retrieve a document by UUID."""
         cursor = self.db.execute(
-            "SELECT uuid, name, content, owner_id, preview_image FROM documents WHERE uuid = ?",
+            "SELECT uuid, name, content, owner_id, preview_image, created_at, updated_at FROM documents WHERE uuid = ?",
             (uuid,),
         )
         row = cursor.fetchone()
@@ -309,6 +309,8 @@ class DocumentStore:
             "content": row[2],
             "owner_id": row[3],
             "preview_image": row[4],
+            "created_at": row[5],
+            "updated_at": row[6],
         }
 
     def delete(self, uuid: str) -> bool:
@@ -317,13 +319,26 @@ class DocumentStore:
             cursor = self.db.execute("DELETE FROM documents WHERE uuid = ?", (uuid,))
             return cursor.rowcount > 0
 
+    def duplicate(self, uuid: str, new_name: str) -> Optional[str]:
+        """Duplicate a document with a new name. Returns new UUID or None if source not found."""
+        doc = self.retrieve(uuid)
+        if doc is None:
+            return None
+        new_uuid = secrets.token_urlsafe(16)
+        with self.db.transaction():
+            self.db.execute(
+                "INSERT INTO documents (uuid, name, content, owner_id, preview_image) VALUES (?, ?, ?, ?, ?)",
+                (new_uuid, new_name, doc["content"], doc["owner_id"], doc["preview_image"]),
+            )
+        return new_uuid
+
     def list_by_owner(self, owner_id: int) -> list[dict]:
         """List all documents for an owner, ordered by name."""
         cursor = self.db.execute(
-            "SELECT uuid, name, preview_image FROM documents WHERE owner_id = ? ORDER BY name",
+            "SELECT uuid, name, preview_image, created_at, updated_at FROM documents WHERE owner_id = ? ORDER BY name",
             (owner_id,),
         )
         return [
-            {"uuid": row[0], "name": row[1], "preview_image": row[2]}
+            {"uuid": row[0], "name": row[1], "preview_image": row[2], "created_at": row[3], "updated_at": row[4]}
             for row in cursor.fetchall()
         ]

@@ -301,6 +301,44 @@ def create_app(config=None):
         DocumentStore(db).delete(uuid)
         return jsonify({"uuid": uuid, "status": "deleted"}), 200
 
+    @app.route("/api/documents/<uuid>/duplicate", methods=["POST"])
+    @require_auth
+    def duplicate_document(uuid):
+        db = get_db()
+        doc_store = DocumentStore(db)
+        doc = doc_store.retrieve(uuid)
+        if doc is None:
+            return jsonify({"error": "Document not found"}), 404
+        if doc["owner_id"] != g.current_user["id"]:
+            return jsonify({"error": "Forbidden"}), 403
+        new_name = f"{doc['name']} (Copy)"
+        new_uuid = doc_store.duplicate(uuid, new_name)
+        return jsonify({"uuid": new_uuid, "name": new_name}), 201
+
+    @app.route("/api/documents/<uuid>/export", methods=["GET"])
+    @require_auth
+    def export_document(uuid):
+        doc = DocumentStore(get_db()).retrieve(uuid)
+        if doc is None:
+            return jsonify({"error": "Document not found"}), 404
+        if doc["owner_id"] != g.current_user["id"]:
+            return jsonify({"error": "Forbidden"}), 403
+        return jsonify({"name": doc["name"], "content": doc["content"]})
+
+    @app.route("/api/documents/import", methods=["POST"])
+    @require_auth
+    def import_document():
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        data = request.get_json()
+        name = (data.get("name") or "").strip()
+        content = data.get("content") or ""
+        if not name:
+            return jsonify({"error": "Document name required"}), 400
+        uuid = DocumentStore(get_db()).create(name, g.current_user["id"])
+        DocumentStore(get_db()).store_content(uuid, content)
+        return jsonify({"uuid": uuid, "name": name}), 201
+
     # ── Upload ───────────────────────────────────────────────────────────────────────
 
     @app.route("/api/upload", methods=["POST"])
