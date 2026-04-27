@@ -190,6 +190,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const buildStateRef = useRef<unknown>(null)
   const rollbackPosRef = useRef<number | null>(null)
   const pickBoundaryRef = useRef<number | null>(null)
+  const requestIdRef = useRef(0)
 
   const reSolve = useCallback(async (d: PartDoc, rollbackPosition?: number | null) => {
     setSolving(true)
@@ -197,6 +198,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     const startTime = performance.now()
     const isFirstSolve = !firstSolveDone.current
     if (isFirstSolve) firstSolveDone.current = true
+
+    const currentRequestId = ++requestIdRef.current
     try {
       const allFeatures = d.features ?? []
       const effectiveRollback = rollbackPosition ?? rollbackPosRef.current ?? allFeatures.length
@@ -206,10 +209,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       const slicedFeatures = allFeatures.slice(0, effectiveRollback)
       const solveFeatures = slicedFeatures.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
 
+      const isPreview = rollbackPosition !== undefined || pickBoundaryRef.current !== null
       const solvePayload: Record<string, unknown> = {
         ...d,
         features: solveFeatures,
         rollback_position: effectiveRollback,
+        request_id: currentRequestId,
+        is_preview: isPreview,
       }
 
       if (buildStateRef.current) {
@@ -225,6 +231,12 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(solvePayload),
       })
+
+      // Discard stale response - if another solve started, ignore this one
+      if (currentRequestId !== requestIdRef.current) {
+        return
+      }
+
       const data = await response.json()
       const endTime = performance.now()
       setSolveTime(Math.round((endTime - startTime) * 100) / 100)

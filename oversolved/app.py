@@ -453,6 +453,8 @@ def create_app(config=None):
 
     # ── Solver ─────────────────────────────────────────────────────────────────
 
+    from oversolved.solver_queue import get_document_solver
+
     # Keyed by document id. Not persisted; clears on server restart (full rebuild on restart).
     _build_state_cache: dict = {}
 
@@ -465,24 +467,44 @@ def create_app(config=None):
         from oversolved.builder import build
 
         doc_id = data.get("id")
-        prev_state = _build_state_cache.get(doc_id) if doc_id else None
-
         rollback_position = data.get("rollback_position")
         pick_boundary = data.get("pick_boundary")
-        if rollback_position is not None and isinstance(rollback_position, int):
-            data = {**data, "features": data["features"][:rollback_position]}
-            if pick_boundary is not None and pick_boundary > rollback_position:
-                pick_boundary = None
 
-        build_result = build(data, prev_state=prev_state, pick_boundary=pick_boundary)
+        prev_state = _build_state_cache.get(doc_id) if doc_id else None
 
-        if doc_id:
-            _build_state_cache[doc_id] = build_result.pop("_build_state")
+        solver = get_document_solver()
+
+        is_full_rebuild = not data.get("is_preview", False) and doc_id
+
+        if is_full_rebuild and doc_id:
+            counter = solver.acquire(doc_id)
+            try:
+                build_result = build(data, prev_state=prev_state, pick_boundary=None)
+                if doc_id:
+                    _build_state_cache[doc_id] = build_result.pop("_build_state")
+                    solver.release(doc_id, counter, build_result)
+                else:
+                    build_result.pop("_build_state")
+                build_result.pop("_body_shapes", None)
+                return Response(json.dumps(build_result), mimetype="application/json")
+            except Exception:
+                solver.release(doc_id, counter, {})
+                raise
         else:
-            build_result.pop("_build_state")
-        build_result.pop("_body_shapes", None)
+            if rollback_position is not None and isinstance(rollback_position, int):
+                data = {**data, "features": data["features"][:rollback_position]}
+                if pick_boundary is not None and pick_boundary > rollback_position:
+                    pick_boundary = None
 
-        return Response(json.dumps(build_result), mimetype="application/json")
+            build_result = build(data, prev_state=prev_state, pick_boundary=pick_boundary)
+
+            if doc_id:
+                _build_state_cache[doc_id] = build_result.pop("_build_state")
+            else:
+                build_result.pop("_build_state")
+            build_result.pop("_body_shapes", None)
+
+            return Response(json.dumps(build_result), mimetype="application/json")
 
     def _format_history(history):
         """Format edit history for bug report."""
