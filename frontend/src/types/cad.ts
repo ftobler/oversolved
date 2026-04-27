@@ -152,13 +152,14 @@ export interface BuildResponse {
 export interface BodyFeatureResult {
   status: 'ok' | 'exception'
   body_id?: string
+  body_ids?: string[]
   exception?: string
   mesh_warning?: string
   solve_ms?: number
 }
 
 export function isBodyFeatureResult(r: unknown): r is BodyFeatureResult {
-  return typeof r === 'object' && r !== null && 'body_id' in r
+  return typeof r === 'object' && r !== null && ('body_id' in r || 'body_ids' in r)
 }
 
 // Lightweight marker that a sidebar pick chip is waiting for a viewport selection.

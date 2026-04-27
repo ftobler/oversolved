@@ -2040,6 +2040,21 @@ def _collect_extrude_loops(
     return _extract_profile_loops(surfaces, pt), pt, sketch_id
 
 
+def _split_compound(shape) -> list:
+    """Return individual solids from a compound, or a single-element list."""
+    from OCP.TopAbs import TopAbs_SOLID
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopoDS import TopoDS
+    from cadquery.occ_impl.shapes import Shape as CQShape
+
+    explorer = TopExp_Explorer(shape.wrapped, TopAbs_SOLID)
+    solids = []
+    while explorer.More():
+        solids.append(CQShape.cast(TopoDS.Solid_s(explorer.Current())))
+        explorer.Next()
+    return solids if len(solids) > 1 else [shape]
+
+
 def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:
     """Extrude solver with OCC-backed geometry that writes to body_store."""
     from oversolved.types3d import Body
@@ -2110,8 +2125,16 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
                         result["body_id"] = cut_body_id
                     result["operation"] = "cut"
                 elif operation == "new":
-                    body.shape = tool_shape
-                    body_store[body_id] = body
+                    solids = _split_compound(tool_shape)
+                    body_ids = []
+                    for i, solid in enumerate(solids):
+                        bid = body_id if i == 0 else f"{body_id}_{i}"
+                        b = Body(id=bid, created_by=feature_id, shape=solid,
+                                 sketch_id=first_sketch_id)
+                        body_store[bid] = b
+                        body_ids.append(bid)
+                    result["body_id"] = body_ids[0]
+                    result["body_ids"] = body_ids
                     result["operation"] = "new"
                 else:
                     from oversolved.geometry import boolean_union
@@ -2128,10 +2151,19 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
                         # When fusing with existing body, return the existing body's ID
                         # so the frontend can find the mesh
                         result["body_id"] = fused_body_id
+                        result["body_ids"] = [fused_body_id]
                         result["operation"] = "add"
                     else:
-                        body.shape = tool_shape
-                        body_store[body_id] = body
+                        solids = _split_compound(tool_shape)
+                        body_ids = []
+                        for i, solid in enumerate(solids):
+                            bid = body_id if i == 0 else f"{body_id}_{i}"
+                            b = Body(id=bid, created_by=feature_id, shape=solid,
+                                     sketch_id=first_sketch_id)
+                            body_store[bid] = b
+                            body_ids.append(bid)
+                        result["body_id"] = body_ids[0]
+                        result["body_ids"] = body_ids
                         result["operation"] = "add"
         except Exception as exc:
             result["mesh_warning"] = str(exc)
@@ -2705,6 +2737,9 @@ def _resolve_body(ref: str, body_store: dict):
     prefixed = "body_" + key
     if prefixed in body_store:
         return body_store[prefixed]
+    for body in body_store.values():
+        if body.created_by == key:
+            return body
     raise ValueError(f"boolean: body not found for ref '{ref}'")
 
 
