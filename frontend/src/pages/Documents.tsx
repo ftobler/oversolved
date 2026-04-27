@@ -19,10 +19,6 @@ export default function Documents() {
   const [newDocName, setNewDocName] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [showImportForm, setShowImportForm] = useState(false)
-  const [importName, setImportName] = useState('')
-  const [importData, setImportData] = useState('')
-  const [importError, setImportError] = useState<string | null>(null)
 
   const fetchDocuments = () => {
     fetch('/api/documents')
@@ -130,21 +126,22 @@ export default function Documents() {
     }
   }
 
-  const handleImport = async () => {
-    if (!importName.trim()) {
-      setImportError('Document name required')
-      return
-    }
-    if (!importData.trim()) {
-      setImportError('Import data required')
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const name = file.name.replace(/\.yaml$/, '').replace(/\.yml$/, '')
+    if (!name) {
+      setError('Invalid filename')
       return
     }
 
     try {
+      const text = await file.text()
       const response = await fetch('/api/documents/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: importName.trim(), content: importData }),
+        body: JSON.stringify({ name, content: text }),
       })
 
       if (!response.ok) {
@@ -152,13 +149,9 @@ export default function Documents() {
         throw new Error(data.error || 'Failed to import document')
       }
 
-      setImportName('')
-      setImportData('')
-      setShowImportForm(false)
-      setImportError(null)
       fetchDocuments()
-    } catch (e) {
-      setImportError(String(e))
+    } catch (err) {
+      setError(String(err))
     }
   }
 
@@ -174,9 +167,7 @@ export default function Documents() {
 
   return (
     <div className="documents">
-      <AppHeader title="Documents" />
-
-      <div className="doc-grid-container">
+      <AppHeader title="Documents">
         <div className="doc-controls">
           <div className="search-input-container">
             <span className="material-icons search-icon">search</span>
@@ -197,15 +188,22 @@ export default function Documents() {
               </button>
             )}
           </div>
-          <button className="btn btn-add" onClick={() => setShowAddForm(!showAddForm)}>
+          <button className="toolbar-btn" onClick={() => setShowAddForm(!showAddForm)} title="Add document">
             <span className="material-icons">add</span>
-            Add
           </button>
-          <button className="btn btn-secondary" onClick={() => setShowImportForm(!showImportForm)}>
+          <label className="toolbar-btn btn-import" title="Import YAML">
+            <input
+              type="file"
+              accept=".yaml,.yml"
+              onChange={handleImportFile}
+              className="file-upload-input"
+            />
             <span className="material-icons">upload</span>
-            Import
-          </button>
+          </label>
         </div>
+      </AppHeader>
+
+      <div className="doc-grid-container">
 
         {showAddForm && (
           <div className="add-form">
@@ -226,31 +224,6 @@ export default function Documents() {
               Cancel
             </button>
             {addError && <p className="error-text">{addError}</p>}
-          </div>
-        )}
-
-        {showImportForm && (
-          <div className="add-form">
-            <input
-              type="text"
-              placeholder="Document name"
-              value={importName}
-              onChange={e => setImportName(e.target.value)}
-              autoFocus
-            />
-            <textarea
-              placeholder="Paste YAML content here..."
-              value={importData}
-              onChange={e => setImportData(e.target.value)}
-              className="import-textarea"
-            />
-            <button className="btn btn-primary" onClick={handleImport}>
-              Import
-            </button>
-            <button className="btn btn-secondary" onClick={() => setShowImportForm(false)}>
-              Cancel
-            </button>
-            {importError && <p className="error-text">{importError}</p>}
           </div>
         )}
 

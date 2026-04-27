@@ -11,18 +11,16 @@
 }
 
 .doc-controls {
-  margin-bottom: 16px;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 
 .search-input-container {
-  flex: 1;
-  min-width: 200px;
   position: relative;
   display: flex;
   align-items: center;
+  width: 220px;
 }
 
 .search-icon {
@@ -68,23 +66,12 @@
   font-size: 16px;
 }
 
-.import-textarea {
-  width: 100%;
-  min-height: 120px;
-  padding: 8px 10px;
-  background: #111;
-  border: 1px solid #333;
-  border-radius: 4px;
-  color: #ccc;
-  font-size: 13px;
-  font-family: monospace;
-  resize: vertical;
+.btn-import {
+  cursor: pointer;
 }
 
-.import-textarea:focus {
-  outline: none;
-  border-color: #4fc3f7;
-  box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
+.btn-import .file-upload-input {
+  display: none;
 }
 
 .status {
@@ -237,7 +224,6 @@
 
 .doc-tile-actions {
   display: flex;
-  gap: 4px;
   align-items: center;
 }
 
@@ -284,7 +270,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
+  text-align: left;
 }
 
 .btn-delete-tile {
