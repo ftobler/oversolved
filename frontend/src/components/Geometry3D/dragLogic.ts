@@ -1,10 +1,10 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-import type { Sketch, Mutation } from '../../types/cad'
+import type { Mutation } from '../../types/cad'
 import type { VertexOrEdgeDrag } from '../../stores/sketchEditorStore'
-import type { SnapTarget } from './snapDetection'
-import { findSnapTarget, collectVertexTargets, collectEntityCandidates } from './snapDetection'
+import type { SnapTarget, SnapCandidate, EntityCandidate } from './snapDetection'
+import { findSnapTarget, collectVertexTargetsFlat, collectEntityCandidatesFlat } from './snapDetection'
 import { detectAlignmentSnap } from '../../registry'
 import { isPureClick, CLICK_THRESHOLD_PX } from './pointerAbstraction'
 import { DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX } from './constants'
@@ -52,19 +52,22 @@ function simulateDynamicToggle(
  *  pixelsPerUnit = p2w(camera) -- the caller extracts this from Three.js and passes it in as
  *  a plain number so this function has zero Three.js dependencies.
  *
+ *  vertexCandidates and entityCandidates are the pre-built flat arrays from the adapter layer.
+ *  skipIds identifies entities to exclude from snapping (e.g., the dragged entity).
+ *
  *  currentDynamicSelection and normalSelection are needed to simulate the store toggle so
- *  alignment snap can be detected on the post-update dynamic selection in the same frame. */
+ *  alignment snap can be detected in the same frame. */
 export function computeDragMove(
   localPoint: readonly [number, number],
-  sketch: Sketch,
-  featureId: string,
+  vertexCandidates: SnapCandidate[],
+  entityCandidates: EntityCandidate[],
+  skipIds: ReadonlySet<string>,
   drag: VertexOrEdgeDrag,
   currentDynamicSelection: ReadonlySet<string>,
   normalSelection: ReadonlySet<string>,
   dynamicSelectionPositions: ReadonlyMap<string, [number, number]>,
   prevProximityIds: ReadonlySet<string>,
   pixelsPerUnit: number,
-  otherSketches?: Record<string, Sketch>,
 ): DragMoveResult {
   const [x, y] = localPoint
 
@@ -80,11 +83,11 @@ export function computeDragMove(
   }
 
   // Snap detection
-  const vertexCandidates = collectVertexTargets(sketch, featureId, drag.entityId, otherSketches)
-  const entityCandidates = collectEntityCandidates(sketch, featureId, drag.entityId, otherSketches)
+  const filteredVertices = collectVertexTargetsFlat(vertexCandidates, skipIds)
+  const filteredEntities = collectEntityCandidatesFlat(entityCandidates, skipIds)
   const snapTarget = findSnapTarget(
-    vertexCandidates,
-    entityCandidates,
+    filteredVertices,
+    filteredEntities,
     'vertex',
     x, y,
     DRAG_SNAP_VERTEX_RADIUS_PX * pixelsPerUnit,
@@ -95,7 +98,7 @@ export function computeDragMove(
   // Proximity scan for dynamic selection accumulation (alignment snap reference points).
   // Use 3x the vertex snap radius so alignment references accumulate well before snap fires.
   const scanRadius = DRAG_SNAP_VERTEX_RADIUS_PX * pixelsPerUnit * 3
-  const nearbyTargets = vertexCandidates
+  const nearbyTargets = filteredVertices
     .filter(t => Math.hypot(t.position[0] - x, t.position[1] - y) <= scanRadius)
   const allProximityIds = new Set(nearbyTargets.map(t => t.id))
   const newProximityIds = new Set([...allProximityIds].filter(id => !prevProximityIds.has(id)))
@@ -124,7 +127,7 @@ export function computeDragMove(
     }
   }
 
-  return {
+   return {
     snapTarget,
     alignmentSnap,
     newProximityIds,

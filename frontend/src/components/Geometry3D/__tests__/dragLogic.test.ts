@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { Sketch } from '../../../types/cad'
 import { shouldActivateDrag, computeDragMove, computeDragMutation } from '../dragLogic'
+import { sketchToVertexCandidates, sketchToEntityCandidates } from '../snapDetection'
 import { CLICK_THRESHOLD_PX } from '../pointerAbstraction'
 
 const FEATURE = 'S1'
@@ -47,9 +48,18 @@ describe('computeDragMove', () => {
   const emptyProximity = new Set<string>()
   const pixPerUnit = 0.01  // 100 pixels per unit
 
+  const buildCandidates = (sketch: Sketch, featureId: string, skipEntityId?: string) => {
+    const vertexCandidates = sketchToVertexCandidates(sketch, featureId, 'active_sketch')
+    const entityCandidates = sketchToEntityCandidates(sketch, featureId, 'active_sketch')
+    const skipIds = new Set<string>()
+    if (skipEntityId) skipIds.add(skipEntityId)
+    return { vertexCandidates, entityCandidates, skipIds }
+  }
+
   it('returns null snap when cursor is far from all entities', () => {
+    const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
-      [50, 50], makeSketch(), FEATURE, makeDrag(),
+      [50, 50], vertexCandidates, entityCandidates, skipIds, makeDrag(),
       emptyDynamic, emptyNormal, emptyPositions, emptyProximity, pixPerUnit,
     )
     expect(result.snapTarget).toBeNull()
@@ -60,8 +70,9 @@ describe('computeDragMove', () => {
   it('returns vertex snap when cursor is near another vertex', () => {
     // L2 start is at [10, 0]; cursor near [10, 0] with large threshold
     const drag = makeDrag({ entityId: 'L1' })  // dragging L1, so L2 vertices are candidates
+    const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
-      [10.01, 0], makeSketch(), FEATURE, drag,
+      [10.01, 0], vertexCandidates, entityCandidates, skipIds, drag,
       emptyDynamic, emptyNormal, emptyPositions, emptyProximity,
       1,  // 1 unit per pixel = large radius
     )
@@ -74,8 +85,9 @@ describe('computeDragMove', () => {
     // pixPerUnit=0.01 -> vertex radius 0.2 wu, entity radius 0.08 wu.
     // Cursor at [5, 0.05] is 0.05 wu from L1 (< entity threshold) but ~5 wu from
     // every vertex (> vertex threshold), so entity snap fires.
+    const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, '__none__')
     const result = computeDragMove(
-      [5, 0.05], makeSketch(), FEATURE, drag,
+      [5, 0.05], vertexCandidates, entityCandidates, skipIds, drag,
       emptyDynamic, emptyNormal, emptyPositions, emptyProximity,
       0.01,
     )
@@ -85,8 +97,9 @@ describe('computeDragMove', () => {
 
   it('effectivePosition equals snap position when snap is active', () => {
     const drag = makeDrag({ entityId: 'L1' })
+    const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
-      [10.01, 0.01], makeSketch(), FEATURE, drag,
+      [10.01, 0.01], vertexCandidates, entityCandidates, skipIds, drag,
       emptyDynamic, emptyNormal, emptyPositions, emptyProximity,
       1,
     )
@@ -97,8 +110,9 @@ describe('computeDragMove', () => {
 
   it('edge drag returns no snap and uses raw position', () => {
     const drag = makeDrag({ type: 'edge', entityId: 'L1' })
+    const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
-      [5, 5], makeSketch(), FEATURE, drag,
+      [5, 5], vertexCandidates, entityCandidates, skipIds, drag,
       emptyDynamic, emptyNormal, emptyPositions, emptyProximity, pixPerUnit,
     )
     expect(result.snapTarget).toBeNull()
@@ -108,8 +122,9 @@ describe('computeDragMove', () => {
 
   it('tracks new proximity IDs vs previous frame', () => {
     const drag = makeDrag({ entityId: 'L1' })
+    const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
-      [10, 0], makeSketch(), FEATURE, drag,
+      [10, 0], vertexCandidates, entityCandidates, skipIds, drag,
       emptyDynamic, emptyNormal, emptyPositions, emptyProximity,
       1,  // 1 unit per pixel = 60px radius, very large
     )

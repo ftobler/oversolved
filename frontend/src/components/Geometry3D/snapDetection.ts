@@ -61,24 +61,64 @@ function collectEntityCandidatesFromSketch(
   }))
 }
 
+export function sketchToVertexCandidates(
+  sketch: Sketch,
+  featureId: string,
+  domain: SnapCandidate['domain'],
+): SnapCandidate[] {
+  return collectFromSketch(sketch, featureId, domain)
+}
+
+export function sketchToEntityCandidates(
+  sketch: Sketch,
+  featureId: string,
+  domain: EntityCandidate['domain'],
+): EntityCandidate[] {
+  return collectEntityCandidatesFromSketch(sketch, featureId, domain)
+}
+
+export function collectVertexTargetsFlat(
+  candidates: SnapCandidate[],
+  skipIds: ReadonlySet<string>,
+): SnapCandidate[] {
+  if (skipIds.size === 0) return candidates
+  return candidates.filter(t => {
+    for (const skipId of skipIds) {
+      if (t.id.includes(`:${skipId}:`)) return false
+    }
+    return true
+  })
+}
+
+export function collectEntityCandidatesFlat(
+  candidates: EntityCandidate[],
+  skipIds: ReadonlySet<string>,
+): EntityCandidate[] {
+  if (skipIds.size === 0) return candidates
+  return candidates.filter(t => {
+    for (const skipId of skipIds) {
+      if (t.id === `entity:${skipId}`) return false
+    }
+    return true
+  })
+}
+
 export function collectVertexTargets(
   sketch: Sketch,
   featureId: string,
   skipEntityId: string,
   otherSketches?: Record<string, Sketch>,
 ): SnapCandidate[] {
-  const targets = collectFromSketch(sketch, featureId, 'active_sketch')
-    .filter(t => !skipEntityId || !t.id.includes(`:${skipEntityId}:`))
+  const skipIds = new Set<string>()
+  if (skipEntityId) skipIds.add(skipEntityId)
+  const targets = sketchToVertexCandidates(sketch, featureId, 'active_sketch')
+  const filtered = collectVertexTargetsFlat(targets, skipIds)
   if (otherSketches) {
     for (const [otherFeatId, otherSketch] of Object.entries(otherSketches)) {
-      targets.push(...collectFromSketch(otherSketch, otherFeatId, 'other_sketch'))
+      filtered.push(...sketchToVertexCandidates(otherSketch, otherFeatId, 'other_sketch'))
     }
   }
-  return targets
-}
-
-function entityIdMatches(id: string, featureId: string, skipEntityId: string): boolean {
-  return id === `entity:${featureId}:${skipEntityId}`
+  return filtered
 }
 
 export function collectEntityCandidates(
@@ -87,14 +127,16 @@ export function collectEntityCandidates(
   skipEntityId: string,
   otherSketches?: Record<string, Sketch>,
 ): EntityCandidate[] {
-  const targets = collectEntityCandidatesFromSketch(sketch, featureId, 'active_sketch')
-    .filter(t => !skipEntityId || !entityIdMatches(t.id, featureId, skipEntityId))
+  const skipIds = new Set<string>()
+  if (skipEntityId) skipIds.add(`${featureId}:${skipEntityId}`)
+  const targets = sketchToEntityCandidates(sketch, featureId, 'active_sketch')
+  const filtered = collectEntityCandidatesFlat(targets, skipIds)
   if (otherSketches) {
     for (const [otherFeatId, otherSketch] of Object.entries(otherSketches)) {
-      targets.push(...collectEntityCandidatesFromSketch(otherSketch, otherFeatId, 'other_sketch'))
+      filtered.push(...sketchToEntityCandidates(otherSketch, otherFeatId, 'other_sketch'))
     }
   }
-  return targets
+  return filtered
 }
 
 export function findSnapTarget(

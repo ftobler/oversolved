@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Sketch } from '../../../types/cad'
-import { findSnapTarget, collectVertexTargets, collectEntityCandidates } from '../snapDetection'
+import { findSnapTarget, collectVertexTargets, collectEntityCandidates, sketchToVertexCandidates, sketchToEntityCandidates, collectVertexTargetsFlat, collectEntityCandidatesFlat } from '../snapDetection'
 
 const V_THRESH = 2.0
 const E_THRESH = 0.8
@@ -69,6 +69,45 @@ describe('collectVertexTargets', () => {
     }
     const targets = collectVertexTargets(makeSketch(), FEATURE, 'L1', other)
     expect(targets.some(t => t.id === 'vertex:S2:L1:start')).toBe(true)
+  })
+})
+
+describe('sketchToVertexCandidates and collectVertexTargetsFlat', () => {
+  it('sketchToVertexCandidates collects vertices from sketch', () => {
+    const candidates = sketchToVertexCandidates(makeSketch(), FEATURE, 'active_sketch')
+    expect(candidates.some(t => t.id === 'vertex:S1:L1:start')).toBe(true)
+    expect(candidates.some(t => t.id === 'vertex:S1:C1:center')).toBe(true)
+  })
+
+  it('collectVertexTargetsFlat skips entities in skipIds', () => {
+    const candidates = sketchToVertexCandidates(makeSketch(), FEATURE, 'active_sketch')
+    const skipIds = new Set(['L1'])
+    const filtered = collectVertexTargetsFlat(candidates, skipIds)
+    expect(filtered.some(t => t.id.includes(':L1:'))).toBe(false)
+    expect(filtered.some(t => t.id.includes(':L2:'))).toBe(true)
+  })
+
+  it('collectVertexTargetsFlat returns all when skipIds is empty', () => {
+    const candidates = sketchToVertexCandidates(makeSketch(), FEATURE, 'active_sketch')
+    const skipIds = new Set<string>()
+    const filtered = collectVertexTargetsFlat(candidates, skipIds)
+    expect(filtered.length).toBe(candidates.length)
+  })
+})
+
+describe('sketchToEntityCandidates and collectEntityCandidatesFlat', () => {
+  it('sketchToEntityCandidates collects entities from sketch', () => {
+    const candidates = sketchToEntityCandidates(makeSketch(), FEATURE, 'active_sketch')
+    expect(candidates.some(t => t.id === 'entity:S1:L1')).toBe(true)
+    expect(candidates.some(t => t.id === 'entity:S1:C1')).toBe(true)
+  })
+
+  it('collectEntityCandidatesFlat skips entities in skipIds', () => {
+    const candidates = sketchToEntityCandidates(makeSketch(), FEATURE, 'active_sketch')
+    const skipIds = new Set([`${FEATURE}:L1`])
+    const filtered = collectEntityCandidatesFlat(candidates, skipIds)
+    expect(filtered.some(t => t.id === 'entity:S1:L1')).toBe(false)
+    expect(filtered.some(t => t.id === 'entity:S1:L2')).toBe(true)
   })
 })
 

@@ -10,6 +10,7 @@ import { useDynamicSelectionPositions } from '../interaction/snapHooks'
 import { COLOR_SNAP, COLOR_PREVIEW, POINT_HIT_PIXELS } from './constants'
 import { sanitizePointerEvent } from './pointerAbstractionAdapters'
 import { computeDragMove, computeDragMutation, shouldActivateDrag } from './dragLogic'
+import { sketchToVertexCandidates, sketchToEntityCandidates } from './snapDetection'
 
 export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit, otherSketches }: {
   featureId: string
@@ -125,17 +126,29 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit, oth
 
     if (currentDrag.type === 'vertex' && sketch) {
       const pixelsPerUnit = p2w(camera)
+      // Build flat candidate arrays from sketch (adapter layer responsibility)
+      const vertexCandidates = sketchToVertexCandidates(sketch, featureId, 'active_sketch')
+      const entityCandidates = sketchToEntityCandidates(sketch, featureId, 'active_sketch')
+      const skipIds = new Set<string>()
+      skipIds.add(currentDrag.entityId)
+      // Add other sketch candidates if provided
+      if (otherSketches) {
+        for (const [otherFeatId, otherSketch] of Object.entries(otherSketches)) {
+          vertexCandidates.push(...sketchToVertexCandidates(otherSketch, otherFeatId, 'other_sketch'))
+          entityCandidates.push(...sketchToEntityCandidates(otherSketch, otherFeatId, 'other_sketch'))
+        }
+      }
       const result = computeDragMove(
         localPoint,
-        sketch,
-        featureId,
+        vertexCandidates,
+        entityCandidates,
+        skipIds,
         currentDrag,
         dynamicSelection,
         normalSelection,
         dynamicSelectionPositions,
         prevNearbyRef.current,
         pixelsPerUnit,
-        otherSketches,
       )
 
       setDragSnap(result.snapTarget)
