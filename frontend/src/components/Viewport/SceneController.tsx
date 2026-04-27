@@ -15,7 +15,7 @@ const MOUSE_BUTTONS = {
 }
 
 interface SceneControllerProps {
-  resetTrigger: number
+  resetTrigger?: number
   canvasRef: React.RefObject<HTMLCanvasElement | null>
   pvRef: React.MutableRefObject<Pv[]>
   hoverRef: React.MutableRefObject<Hit | null>

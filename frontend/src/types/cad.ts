@@ -561,3 +561,4 @@ export type Mutation =
   | { type: 'set_transform_field'; featureId: string; field: keyof TransformFeatureDef; value: unknown }
   | { type: 'rename_part'; bodyId: string; name: string }
   | { type: 'set_part_color'; bodyId: string; color: string }
+  | { type: 'reorder_features'; featureId: string; toIndex: number }

@@ -98,6 +98,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
   const isDraggingRef = useRef(false)
   const sidebarRef = useRef<HTMLElement>(null)
+  const [draggedFeatureId, setDraggedFeatureId] = useState<string | null>(null)
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
 
   const handleMouseDown = useCallback(() => {
     isDraggingRef.current = true
@@ -503,9 +505,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
               <li
                 key={feature.id}
-                className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(`@${feature.id}`) ? 'selected' : ''}`}
-                onDragOver={(e) => onRollbackDragOver(e, index)}
-                onDrop={(e) => onRollbackDrop(e, index)}
+                className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(`@${feature.id}`) ? 'selected' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${dropTargetIndex === index ? 'drop-target-top' : ''} ${dropTargetIndex === index + 1 ? 'drop-target-bottom' : ''}`}
+                draggable={!BUILT_IN_IDS.has(feature.id)}
+                onDragStart={(e) => {
+                  if (BUILT_IN_IDS.has(feature.id)) return
+                  setDraggedFeatureId(feature.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                  e.dataTransfer.setData('text/plain', feature.id)
+                }}
+                onDragOver={(e) => {
+                  if (draggedFeatureId) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (BUILT_IN_IDS.has(feature.id)) return
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const midY = rect.top + rect.height / 2
+                    const targetIndex = e.clientY < midY ? index : index + 1
+                    setDropTargetIndex(Math.max(targetIndex, BUILT_IN_IDS.size))
+                  } else {
+                    onRollbackDragOver(e, index)
+                  }
+                }}
+                onDragEnd={() => {
+                  setDraggedFeatureId(null)
+                  setDropTargetIndex(null)
+                }}
+                onDrop={(e) => {
+                  if (draggedFeatureId) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    const fid = e.dataTransfer.getData('text/plain')
+                    if (fid && dropTargetIndex !== null && !BUILT_IN_IDS.has(fid)) {
+                      onMutation({ type: 'reorder_features', featureId: fid, toIndex: dropTargetIndex })
+                    }
+                    setDraggedFeatureId(null)
+                    setDropTargetIndex(null)
+                  } else {
+                    onRollbackDrop(e, index)
+                  }
+                }}
                 onClick={() => {
                   if (pendingPickField?.field === 'sketch' && feature.kind === 'sketch') {
                     const hostFeature = features.find(f => f.id === pendingPickField.featureId)

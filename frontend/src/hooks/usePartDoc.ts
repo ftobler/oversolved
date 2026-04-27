@@ -83,6 +83,7 @@ import {
   applySetTransformField,
   applyRenamePart,
   applySetPartColor,
+  applyReorderFeatures,
 } from '../utils/yamlMutations'
 import type { PartFeature } from '../types/cad'
 
@@ -615,6 +616,9 @@ setSolveResults(results)
         break
       case 'set_part_color':
         applySetPartColor(next, m.bodyId, m.color)
+        break
+      case 'reorder_features':
+        applyReorderFeatures(next, m.featureId, m.toIndex)
         break
     }
     docRef.current = next

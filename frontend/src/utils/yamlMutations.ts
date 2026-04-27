@@ -477,6 +477,23 @@ export function applyDeleteFeature(doc: PartDoc, featureId: string): void {
   doc.features = doc.features.filter(f => f.id !== featureId)
 }
 
+export function applyReorderFeatures(doc: PartDoc, featureId: string, toIndex: number): void {
+  if (!doc.features) return
+  if (BUILTIN_FEATURE_IDS.has(featureId)) return
+  const fromIndex = doc.features.findIndex(f => f.id === featureId)
+  if (fromIndex === -1) return
+  // Ensure user features cannot be placed before built-ins.
+  const clampedTo = Math.max(toIndex, BUILTIN_FEATURE_IDS.size)
+  // Dropping on the feature itself or its immediate successor is a no-op.
+  if (fromIndex === clampedTo || fromIndex + 1 === clampedTo) return
+  const [feature] = doc.features.splice(fromIndex, 1)
+  // After removal, if the original fromIndex was before the target,
+  // everything shifted left by 1, so we insert at clampedTo - 1 to land
+  // at the same effective position the user hovered over.
+  const insertIndex = fromIndex < clampedTo ? clampedTo - 1 : clampedTo
+  doc.features.splice(insertIndex, 0, feature)
+}
+
 export function applySetFeatureVisibility(doc: PartDoc, featureId: string, visible: boolean): void {
   const feature = findFeature(doc, featureId)
   if (!feature) return

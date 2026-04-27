@@ -269,7 +269,7 @@ describe('applyDeleteElements', () => {
 
 // ── Step 6: face: selection ID handling ────
 
-import { parseTarget, applySetFeatureVisibility } from '../yamlMutations'
+import { parseTarget, applySetFeatureVisibility, applyReorderFeatures } from '../yamlMutations'
 import { healDoc, BUILTIN_FEATURE_DEFAULTS } from '../../hooks/usePartDoc'
 
 const docWithSketch = (id: string): PartDoc => ({
@@ -866,5 +866,71 @@ describe('applyAddPointWithConstraint with @builtin_origin', () => {
     const c = doc.features![0].constraints![0]
     expect(c.kind).toBe('coincident')
     expect(c.b).toBe('@builtin_origin')
+  })
+})
+
+// ── Feature reordering ────
+
+const docWithBuiltInsAndUser = (): PartDoc => ({
+  version: 1,
+  kind: 'part',
+  features: [
+    { id: 'Origin', kind: 'origin' },
+    { id: 'Top', kind: 'plane' },
+    { id: 'Front', kind: 'plane' },
+    { id: 'Right', kind: 'plane' },
+    { id: 'sketch1', kind: 'sketch' },
+    { id: 'sketch2', kind: 'sketch' },
+    { id: 'sketch3', kind: 'sketch' },
+  ],
+})
+
+describe('applyReorderFeatures', () => {
+  it('moves a feature to a later index', () => {
+    const doc = docWithBuiltInsAndUser()
+    applyReorderFeatures(doc, 'sketch1', 6)
+    const ids = doc.features!.map(f => f.id)
+    expect(ids).toEqual(['Origin', 'Top', 'Front', 'Right', 'sketch2', 'sketch1', 'sketch3'])
+  })
+
+  it('moves a feature to an earlier index', () => {
+    const doc = docWithBuiltInsAndUser()
+    applyReorderFeatures(doc, 'sketch3', 4)
+    const ids = doc.features!.map(f => f.id)
+    expect(ids).toEqual(['Origin', 'Top', 'Front', 'Right', 'sketch3', 'sketch1', 'sketch2'])
+  })
+
+  it('no-ops when dropping a feature on itself', () => {
+    const doc = docWithBuiltInsAndUser()
+    applyReorderFeatures(doc, 'sketch2', 5)
+    const ids = doc.features!.map(f => f.id)
+    expect(ids).toEqual(['Origin', 'Top', 'Front', 'Right', 'sketch1', 'sketch2', 'sketch3'])
+  })
+
+  it('protects built-in features from being moved', () => {
+    const doc = docWithBuiltInsAndUser()
+    applyReorderFeatures(doc, 'Origin', 6)
+    const ids = doc.features!.map(f => f.id)
+    expect(ids).toEqual(['Origin', 'Top', 'Front', 'Right', 'sketch1', 'sketch2', 'sketch3'])
+  })
+
+  it('clamps drop target before built-ins to after built-ins', () => {
+    const doc = docWithBuiltInsAndUser()
+    applyReorderFeatures(doc, 'sketch2', 2)
+    const ids = doc.features!.map(f => f.id)
+    expect(ids).toEqual(['Origin', 'Top', 'Front', 'Right', 'sketch2', 'sketch1', 'sketch3'])
+  })
+
+  it('no-ops for unknown feature id', () => {
+    const doc = docWithBuiltInsAndUser()
+    applyReorderFeatures(doc, 'nonexistent', 5)
+    const ids = doc.features!.map(f => f.id)
+    expect(ids).toEqual(['Origin', 'Top', 'Front', 'Right', 'sketch1', 'sketch2', 'sketch3'])
+  })
+
+  it('works with empty features array', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [] }
+    applyReorderFeatures(doc, 'sketch1', 0)
+    expect(doc.features).toHaveLength(0)
   })
 })
