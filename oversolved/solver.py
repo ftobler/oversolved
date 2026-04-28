@@ -2095,7 +2095,6 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
         result: dict = {"status": "ok", "body_id": body_id}
 
         operation = feature.get("operation", "add")
-        body = Body(id=body_id, created_by=feature_id, shape=None, sketch_id=first_sketch_id)
 
         try:
             from oversolved.geometry import extrude_profile as _ep

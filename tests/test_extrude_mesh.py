@@ -916,7 +916,6 @@ def test_disjoint_extrude_has_body_ids_field():
 def test_disjoint_pick_body_by_feature_id():
     """_resolve_body('@ex1') returns the first split body after a disjoint extrude."""
     from oversolved.builder import build
-    from oversolved.solver import _resolve_body
 
     r = build(_disjoint_two_rect_spec(operation="new"))
     # Reconstruct body_store from result (build doesn't expose it directly,
