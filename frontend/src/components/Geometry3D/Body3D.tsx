@@ -588,6 +588,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
       {edges.length > 0 && (
         <lineSegments
           geometry={edgeGeometry}
+          renderOrder={ghost ? 1 : 0}
           raycast={interactive ? undefined : noRaycast}
           onPointerOver={interactive ? (e) => {
             e.stopPropagation()
