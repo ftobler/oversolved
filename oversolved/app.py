@@ -53,10 +53,14 @@ def _get_database(config):
 def _ensure_admin_user(db: Database) -> None:
     """Create the default admin user if it doesn't exist."""
     user_store = UserStore(db)
-    if user_store.find_by_username("admin") is None:
-        user_store.create(
+    admin = user_store.find_by_username("admin")
+    if admin:
+        user_store.update(admin["id"], is_admin=1)
+    else:
+        uid = user_store.create(
             "admin", generate_password_hash("admin"), must_change_password=True
         )
+        user_store.update(uid, is_admin=1, must_change_password=1)
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -137,6 +141,8 @@ def create_app(config: dict | None = None) -> Flask:
         user = UserStore(db).find_by_username(username)
         if user is None or not check_password_hash(user["password_hash"], password):
             return jsonify({"error": "Invalid credentials"}), 401
+        if not user["is_active"]:
+            return jsonify({"error": "Account is deactivated"}), 403
         token = SessionStore(db).create(user["id"])
         response = make_response(
             jsonify(
@@ -145,6 +151,8 @@ def create_app(config: dict | None = None) -> Flask:
                         "id": user["id"],
                         "username": user["username"],
                         "must_change_password": user["must_change_password"],
+                        "is_admin": user["is_admin"],
+                        "is_active": user["is_active"],
                     }
                 }
             )
@@ -185,9 +193,171 @@ def create_app(config: dict | None = None) -> Flask:
                     "id": user["id"],
                     "username": user["username"],
                     "must_change_password": user["must_change_password"],
+                    "is_admin": user["is_admin"],
+                    "is_active": user["is_active"],
                 }
             }
         )
+
+    def require_admin(f):
+        """Decorator that requires the current user to be an admin."""
+
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not g.current_user.get("is_admin"):
+                return jsonify({"error": "Admin access required"}), 403
+            return f(*args, **kwargs)
+
+        return decorated_function
+
+    @app.route("/api/users/me", methods=["GET"])
+    @require_auth
+    def get_profile():
+        return jsonify(
+            {
+                "user": {
+                    "id": g.current_user["id"],
+                    "username": g.current_user["username"],
+                    "must_change_password": g.current_user["must_change_password"],
+                    "is_admin": g.current_user["is_admin"],
+                    "is_active": g.current_user["is_active"],
+                    "created_at": g.current_user.get("created_at"),
+                }
+            }
+        )
+
+    @app.route("/api/users/me", methods=["PUT"])
+    @require_auth
+    def update_profile():
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        data = request.get_json()
+        username = data.get("username")
+        current_password = data.get("current_password", "")
+        new_password = data.get("new_password", "")
+
+        db = get_db()
+        user_store = UserStore(db)
+        user_id = g.current_user["id"]
+
+        updates = {}
+        if username and username.strip():
+            updates["username"] = username.strip()
+
+        if new_password:
+            if not current_password:
+                return jsonify({"error": "Current password required to change password"}), 400
+            user = user_store.find_by_id(user_id)
+            if user is None:
+                return jsonify({"error": "User not found"}), 404
+            full_user = user_store.find_by_username(user["username"])
+            if full_user is None or not check_password_hash(full_user["password_hash"], current_password):
+                return jsonify({"error": "Current password is incorrect"}), 400
+            updates["password_hash"] = generate_password_hash(new_password)
+            updates["must_change_password"] = 0
+
+        if updates:
+            success = user_store.update(user_id, **updates)
+            if not success:
+                return jsonify({"error": "User not found"}), 404
+
+        return jsonify({"status": "updated"})
+
+    @app.route("/api/admin/users", methods=["GET"])
+    @require_auth
+    @require_admin
+    def list_users():
+        users = UserStore(get_db()).list_all()
+        return jsonify({"users": users})
+
+    @app.route("/api/admin/users", methods=["POST"])
+    @require_auth
+    @require_admin
+    def create_user_admin():
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        data = request.get_json()
+        username = (data.get("username") or "").strip()
+        password = data.get("password") or ""
+        is_admin = bool(data.get("is_admin", False))
+
+        if not username or not password:
+            return jsonify({"error": "Username and password required"}), 400
+
+        db = get_db()
+        user_store = UserStore(db)
+        if user_store.find_by_username(username):
+            return jsonify({"error": "Username already exists"}), 409
+
+        uid = user_store.create(username, generate_password_hash(password))
+        if is_admin:
+            user_store.set_admin(uid, True)
+        return jsonify({"id": uid, "username": username}), 201
+
+    @app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
+    @require_auth
+    @require_admin
+    def admin_update_user(user_id):
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        data = request.get_json()
+
+        if user_id == g.current_user["id"] and data.get("is_active") is False:
+            return jsonify({"error": "Cannot deactivate yourself"}), 403
+        if user_id == g.current_user["id"] and data.get("is_admin") is False:
+            return jsonify({"error": "Cannot remove your own admin privileges"}), 403
+
+        db = get_db()
+        user_store = UserStore(db)
+
+        updates = {}
+        if "username" in data:
+            updates["username"] = data["username"].strip()
+        if "is_active" in data:
+            updates["is_active"] = 1 if data["is_active"] else 0
+        if "is_admin" in data:
+            updates["is_admin"] = 1 if data["is_admin"] else 0
+
+        if not updates:
+            return jsonify({"error": "No fields to update"}), 400
+
+        success = user_store.update(user_id, **updates)
+        if not success:
+            return jsonify({"error": "User not found"}), 404
+
+        return jsonify({"status": "updated"})
+
+    @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
+    @require_auth
+    @require_admin
+    def admin_delete_user(user_id):
+        if user_id == g.current_user["id"]:
+            return jsonify({"error": "Cannot delete yourself"}), 403
+
+        db = get_db()
+        user_store = UserStore(db)
+        success = user_store.delete(user_id)
+        if not success:
+            return jsonify({"error": "User not found"}), 404
+        return jsonify({"status": "deleted"})
+
+    @app.route("/api/admin/users/<int:user_id>/reset", methods=["POST"])
+    @require_auth
+    @require_admin
+    def admin_reset_password(user_id):
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        data = request.get_json()
+        new_password = data.get("password") or ""
+        if not new_password:
+            return jsonify({"error": "Password required"}), 400
+
+        db = get_db()
+        user_store = UserStore(db)
+        success = user_store.change_password(user_id, generate_password_hash(new_password))
+        if not success:
+            return jsonify({"error": "User not found"}), 404
+        return jsonify({"status": "reset"})
 
     # ── Document routes ────────────────────────────────────────────────────────
 
@@ -809,6 +979,13 @@ def _register_migrations(db: Database) -> None:
         database.execute("ALTER TABLE documents ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0")
 
     db.register_migration(3, "add_shares", migration_003_add_shares)
+
+    def migration_004_add_user_management_fields(database: Database):
+        """Add is_admin and is_active columns to users table."""
+        database.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+        database.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+
+    db.register_migration(4, "add_user_management_fields", migration_004_add_user_management_fields)
 
 
 if __name__ == "__main__":

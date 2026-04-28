@@ -43,6 +43,14 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
         </Link>
         {user && (
           <>
+            <Link to="/profile" className="toolbar-btn" title="Profile">
+              <span className="material-icons-outlined">account_circle</span>
+            </Link>
+            {user.is_admin && (
+              <Link to="/admin/users" className="toolbar-btn" title="Admin">
+                <span className="material-icons-outlined">admin_panel_settings</span>
+              </Link>
+            )}
             <span className="header-username">{user.username}</span>
             <button className="toolbar-btn" title="Sign out" onClick={handleLogout}>
               <span className="material-icons-outlined">logout</span>

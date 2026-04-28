@@ -50,6 +50,12 @@ def _make_db():
         db.execute("ALTER TABLE documents ADD COLUMN preview_image BLOB")
 
     database.register_migration(2, "add_preview_image", migration_002)
+
+    def migration_003(db: Database):
+        db.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+        db.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+
+    database.register_migration(3, "add_user_management_fields", migration_003)
     database.init()
     return database
 
@@ -187,6 +193,71 @@ class TestUserStore:
     def test_find_nonexistent(self, user_store):
         assert user_store.find_by_username("nobody") is None
         assert user_store.find_by_id(9999) is None
+
+    def test_update_user(self, user_store):
+        uid = user_store.create("updatable", "hash")
+        success = user_store.update(uid, username="updated")
+        assert success is True
+        user = user_store.find_by_id(uid)
+        assert user["username"] == "updated"
+
+    def test_update_user_password(self, user_store):
+        uid = user_store.create("pwuser", "hash")
+        success = user_store.update(uid, password_hash="newhash")
+        assert success is True
+        user = user_store.find_by_username("pwuser")
+        assert user["password_hash"] == "newhash"
+
+    def test_update_nonexistent_user(self, user_store):
+        success = user_store.update(9999, username="ghost")
+        assert success is False
+
+    def test_delete_user(self, user_store):
+        uid = user_store.create("deletable", "hash")
+        success = user_store.delete(uid)
+        assert success is True
+        assert user_store.find_by_id(uid) is None
+
+    def test_delete_nonexistent_user(self, user_store):
+        success = user_store.delete(9999)
+        assert success is False
+
+    def test_list_all_users(self, user_store):
+        user_store.create("alpha", "hash")
+        user_store.create("beta", "hash")
+        users = user_store.list_all()
+        assert len(users) >= 2
+        usernames = [u["username"] for u in users]
+        assert "alpha" in usernames
+        assert "beta" in usernames
+        for user in users:
+            assert "password_hash" not in user
+            assert "is_admin" in user
+            assert "is_active" in user
+
+    def test_set_active(self, user_store):
+        uid = user_store.create("activeuser", "hash")
+        user_store.set_active(uid, False)
+        user = user_store.find_by_id(uid)
+        assert user["is_active"] is False
+        user_store.set_active(uid, True)
+        user = user_store.find_by_id(uid)
+        assert user["is_active"] is True
+
+    def test_set_admin(self, user_store):
+        uid = user_store.create("admincandidate", "hash")
+        user_store.set_admin(uid, True)
+        user = user_store.find_by_id(uid)
+        assert user["is_admin"] is True
+        user_store.set_admin(uid, False)
+        user = user_store.find_by_id(uid)
+        assert user["is_admin"] is False
+
+    def test_change_password(self, user_store):
+        uid = user_store.create("pwchanger", "hash")
+        user_store.change_password(uid, "newhash")
+        user = user_store.find_by_username("pwchanger")
+        assert user["password_hash"] == "newhash"
 
 
 class TestSessionStore:

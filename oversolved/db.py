@@ -169,7 +169,7 @@ class UserStore:
     def find_by_username(self, username: str) -> Optional[dict]:
         """Find a user by username."""
         cursor = self.db.execute(
-            "SELECT id, username, password_hash, must_change_password FROM users WHERE username = ?",
+            "SELECT id, username, password_hash, must_change_password, is_admin, is_active FROM users WHERE username = ?",
             (username,),
         )
         row = cursor.fetchone()
@@ -180,12 +180,14 @@ class UserStore:
             "username": row[1],
             "password_hash": row[2],
             "must_change_password": bool(row[3]),
+            "is_admin": bool(row[4]),
+            "is_active": bool(row[5]),
         }
 
     def find_by_id(self, user_id: int) -> Optional[dict]:
         """Find a user by id."""
         cursor = self.db.execute(
-            "SELECT id, username, must_change_password FROM users WHERE id = ?",
+            "SELECT id, username, must_change_password, is_admin, is_active, created_at FROM users WHERE id = ?",
             (user_id,),
         )
         row = cursor.fetchone()
@@ -195,7 +197,63 @@ class UserStore:
             "id": row[0],
             "username": row[1],
             "must_change_password": bool(row[2]),
+            "is_admin": bool(row[3]),
+            "is_active": bool(row[4]),
+            "created_at": row[5],
         }
+
+    def update(self, user_id: int, **fields) -> bool:
+        """Update user fields. Returns True if user was found and updated."""
+        if not fields:
+            return False
+        allowed = {"username", "password_hash", "must_change_password", "is_admin", "is_active"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return False
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values())
+        values.append(user_id)
+        with self.db.transaction():
+            cursor = self.db.execute(
+                f"UPDATE users SET {set_clause} WHERE id = ?",
+                tuple(values),
+            )
+            return cursor.rowcount > 0
+
+    def delete(self, user_id: int) -> bool:
+        """Delete user. Returns True if user was found and deleted."""
+        with self.db.transaction():
+            cursor = self.db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            return cursor.rowcount > 0
+
+    def list_all(self) -> list[dict]:
+        """List all users (for admin). Returns list of user dicts without password_hash."""
+        cursor = self.db.execute(
+            "SELECT id, username, must_change_password, is_admin, is_active, created_at FROM users ORDER BY username"
+        )
+        return [
+            {
+                "id": row[0],
+                "username": row[1],
+                "must_change_password": bool(row[2]),
+                "is_admin": bool(row[3]),
+                "is_active": bool(row[4]),
+                "created_at": row[5],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def set_active(self, user_id: int, active: bool) -> bool:
+        """Set is_active flag. Returns True if user was found."""
+        return self.update(user_id, is_active=1 if active else 0)
+
+    def set_admin(self, user_id: int, admin: bool) -> bool:
+        """Set is_admin flag. Returns True if user was found."""
+        return self.update(user_id, is_admin=1 if admin else 0)
+
+    def change_password(self, user_id: int, new_hash: str) -> bool:
+        """Change user password. Returns True if user was found."""
+        return self.update(user_id, password_hash=new_hash)
 
 
 class SessionStore:
