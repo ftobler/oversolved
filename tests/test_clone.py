@@ -51,6 +51,23 @@ def _make_db():
         db.execute("ALTER TABLE documents ADD COLUMN preview_image BLOB")
 
     database.register_migration(2, "add_preview_image", migration_002)
+
+    def migration_003(db: Database):
+        db.execute("""
+            CREATE TABLE document_shares (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_uuid TEXT NOT NULL,
+                shared_with_user_id INTEGER NULL,
+                permission TEXT NOT NULL DEFAULT 'view',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (document_uuid) REFERENCES documents(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (shared_with_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE(document_uuid, shared_with_user_id)
+            )
+        """)
+        db.execute("ALTER TABLE documents ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0")
+
+    database.register_migration(3, "add_shares", migration_003)
     database.init()
     return database
 
@@ -259,12 +276,16 @@ class TestCloneAPI:
         )
         uuid = json.loads(create_resp.data)["uuid"]
 
-        # Create second user directly in database and log in
-        with app.app_context():
-            db = app.get_db()
-            from werkzeug.security import generate_password_hash
-            from oversolved.db import UserStore
-            UserStore(db).create("user2", generate_password_hash("pass2"))
+        # Create second user directly in app's database
+        import sqlite3
+        from werkzeug.security import generate_password_hash
+        db_path = app.config["DB_PATH"]
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                "INSERT INTO users (username, password_hash, must_change_password) VALUES (?, ?, ?)",
+                ("user2", generate_password_hash("pass2"), 0),
+            )
+            conn.commit()
 
         client2 = app.test_client()
         login_resp = client2.post(

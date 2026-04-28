@@ -187,6 +187,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [solveResult, setSolveRawResult] = useState<string>('')
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [redoStack, setRedoStack] = useState<UndoEntry[]>([])
+  const [permission, setPermission] = useState<string>('owner')
   const firstSolveDone = useRef(false)
   const buildStateRef = useRef<unknown>(null)
   const rollbackPosRef = useRef<number | null>(null)
@@ -665,6 +666,7 @@ setSolveResults(results)
         docRef.current = parsed
         setDoc(parsed)
         setDocName(data.name)
+        setPermission(data.permission || 'owner')
         setLoading(false)
         if (solveOnLoad) reSolve(parsed)
       })
@@ -739,6 +741,7 @@ setSolveResults(results)
     handleRedo,
     saveDoc,
     renameDoc,
+    permission,
     setRollbackPos: (pos: number | null) => { rollbackPosRef.current = pos },
     setPickBoundary: (pos: number | null) => { pickBoundaryRef.current = pos },
   }

@@ -298,7 +298,10 @@ export default function Part() {
     bodies,
     pickBodies,
     setPickBoundary,
+    permission,
   } = usePartDoc(uuid, mode, setCodeText)
+
+  const readOnly = permission === 'view'
 
   useEffect(() => {
     if (docName) setEditName(docName)
@@ -1044,12 +1047,18 @@ useEffect(() => {
         <button className="toolbar-btn" title="Undo" onClick={handleUndo} disabled={undoStack.length === 0}>
           <span className="material-icons-outlined">undo</span>
         </button>
-        <button className="toolbar-btn" title="Save" onClick={handleSave}>
+        <button className="toolbar-btn" title="Save" onClick={handleSave} disabled={readOnly}>
           <span className="material-icons-outlined">save</span>
         </button>
         <button className="toolbar-btn" title="Clone document" onClick={handleClone}>
           <span className="material-icons-outlined">file_copy</span>
         </button>
+        {readOnly && (
+          <span className="doc-name" style={{ color: '#ef5350', fontSize: '12px', marginLeft: '8px' }}>
+            <span className="material-icons-outlined" style={{ fontSize: '14px', verticalAlign: 'middle' }}>lock</span>
+            {' '}View Only
+          </span>
+        )}
         {isEditing ? (
           <input
             className="doc-name-input"
@@ -1134,18 +1143,18 @@ useEffect(() => {
             {mode === 'sketch' && <SketchToolbar onResetViewport={() => setViewportReset(v => v + 1)} />}
             {mode === 'feature' && (
               <>
-                <button className="editor-btn" title="Add Extrude (E)" onClick={handleAddExtrude}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
-                <button className="editor-btn" title="Add Revolve" onClick={handleAddRevolve}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
-                <button className="editor-btn" title="Add Fillet" onClick={handleAddFillet}><img src={featureFilletIcon} alt="Add Fillet" /></button>
-                <button className="editor-btn" title="Add Chamfer" onClick={handleAddChamfer}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
-                <button className="editor-btn" title="Add Boolean" onClick={handleAddBoolean}><img src={featureBooleanIcon} alt="Add Boolean" /></button>
-                <button className="editor-btn" title="Add Array" onClick={handleAddArray}><img src={featureArrayIcon} alt="Add Array" /></button>
-                <button className="editor-btn" title="Delete Body" onClick={handleAddDeleteBody}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
-                <button className="editor-btn" title="Add Hole" onClick={handleAddHole}><img src={featureHoleIcon} alt="Add Hole" /></button>
-                <button className="editor-btn" title="Add Transform" onClick={handleAddTransform}><img src={featureTransformIcon} alt="Add Transform" /></button>
-                <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>
-                <button className="editor-btn" title="Add plane" onClick={handleAddPlane}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
-                <button className="editor-btn" title="Import STEP" onClick={handleImportStep}><img src={featureImportIcon} alt="Import STEP" /></button>
+                <button className="editor-btn" title="Add Extrude (E)" onClick={handleAddExtrude} disabled={readOnly}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
+                <button className="editor-btn" title="Add Revolve" onClick={handleAddRevolve} disabled={readOnly}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
+                <button className="editor-btn" title="Add Fillet" onClick={handleAddFillet} disabled={readOnly}><img src={featureFilletIcon} alt="Add Fillet" /></button>
+                <button className="editor-btn" title="Add Chamfer" onClick={handleAddChamfer} disabled={readOnly}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
+                <button className="editor-btn" title="Add Boolean" onClick={handleAddBoolean} disabled={readOnly}><img src={featureBooleanIcon} alt="Add Boolean" /></button>
+                <button className="editor-btn" title="Add Array" onClick={handleAddArray} disabled={readOnly}><img src={featureArrayIcon} alt="Add Array" /></button>
+                <button className="editor-btn" title="Delete Body" onClick={handleAddDeleteBody} disabled={readOnly}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
+                <button className="editor-btn" title="Add Hole" onClick={handleAddHole} disabled={readOnly}><img src={featureHoleIcon} alt="Add Hole" /></button>
+                <button className="editor-btn" title="Add Transform" onClick={handleAddTransform} disabled={readOnly}><img src={featureTransformIcon} alt="Add Transform" /></button>
+                <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch} disabled={readOnly}><img src={featureSketchIcon} alt="Sketch" /></button>
+                <button className="editor-btn" title="Add plane" onClick={handleAddPlane} disabled={readOnly}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
+                <button className="editor-btn" title="Import STEP" onClick={handleImportStep} disabled={readOnly}><img src={featureImportIcon} alt="Import STEP" /></button>
                 <button className="editor-btn" title="Export" onClick={handleExportStep}><img src={featureExportIcon} alt="Export" /></button>
               </>
             )}

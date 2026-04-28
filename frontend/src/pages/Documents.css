@@ -290,11 +290,35 @@
   height: 16px;
 }
 
-.doc-tile-date {
+.doc-tile-meta {
   padding: 4px 10px;
   font-size: 11px;
   color: #666;
   border-top: 1px solid #222;
+  display: flex;
+  gap: 8px;
+}
+
+.doc-tile-date {
+  color: #666;
+}
+
+.doc-tile-owner {
+  color: #888;
+}
+
+.doc-tile-shared-indicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 4px;
+  padding: 4px;
+  color: #4fc3f7;
+}
+
+.doc-tile.shared {
+  border-left: 3px solid #4fc3f7;
 }
 
 .doc-tile-name {

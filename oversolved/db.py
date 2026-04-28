@@ -345,18 +345,155 @@ class DocumentStore:
             )
         return new_uuid
 
-    def has_permission(self, uuid: str, user_id: int, min_permission: str = "view") -> bool:
-        """Check if user has permission to access a document.
+    def share_document(self, uuid: str, shared_with_user_id: int, permission: str = "view") -> None:
+        """Create or update a share for a document."""
+        with self.db.transaction():
+            self.db.execute(
+                """INSERT INTO document_shares (document_uuid, shared_with_user_id, permission)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(document_uuid, shared_with_user_id) DO UPDATE SET permission = excluded.permission""",
+                (uuid, shared_with_user_id, permission),
+            )
 
-        Currently only checks ownership. Will be extended when sharing is implemented.
-        """
+    def unshare_document(self, uuid: str, shared_with_user_id: int) -> None:
+        """Remove a share for a document."""
+        with self.db.transaction():
+            self.db.execute(
+                "DELETE FROM document_shares WHERE document_uuid = ? AND shared_with_user_id = ?",
+                (uuid, shared_with_user_id),
+            )
+
+    def unshare_public(self, uuid: str) -> None:
+        """Remove public link share for a document."""
+        with self.db.transaction():
+            self.db.execute(
+                "DELETE FROM document_shares WHERE document_uuid = ? AND shared_with_user_id IS NULL",
+                (uuid,),
+            )
+
+    def get_shares(self, uuid: str) -> list[dict]:
+        """List all shares for a document, including usernames."""
+        cursor = self.db.execute(
+            """SELECT ds.id, ds.document_uuid, ds.shared_with_user_id, ds.permission, ds.created_at, u.username
+               FROM document_shares ds
+               LEFT JOIN users u ON ds.shared_with_user_id = u.id
+               WHERE ds.document_uuid = ?""",
+            (uuid,),
+        )
+        return [
+            {
+                "id": row[0],
+                "document_uuid": row[1],
+                "shared_with_user_id": row[2],
+                "permission": row[3],
+                "created_at": row[4],
+                "username": row[5],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def set_public(self, uuid: str, is_public: bool) -> None:
+        """Toggle public link sharing for a document."""
+        with self.db.transaction():
+            self.db.execute(
+                "UPDATE documents SET is_public = ? WHERE uuid = ?",
+                (1 if is_public else 0, uuid),
+            )
+            if is_public:
+                self.db.execute(
+                    """INSERT INTO document_shares (document_uuid, shared_with_user_id, permission)
+                        VALUES (?, NULL, 'view')
+                        ON CONFLICT(document_uuid, shared_with_user_id) DO NOTHING""",
+                    (uuid,),
+                )
+            else:
+                self.db.execute(
+                    "DELETE FROM document_shares WHERE document_uuid = ? AND shared_with_user_id IS NULL",
+                    (uuid,),
+                )
+
+    def has_permission(self, uuid: str, user_id: int, min_permission: str = "view") -> bool:
+        """Check if user has permission to access a document."""
         doc = self.retrieve(uuid)
         if doc is None:
             return False
         if doc["owner_id"] == user_id:
             return True
-        # TODO: check document_shares when sharing feature is implemented
+        cursor = self.db.execute(
+            "SELECT permission FROM document_shares WHERE document_uuid = ? AND (shared_with_user_id = ? OR shared_with_user_id IS NULL)",
+            (uuid, user_id),
+        )
+        for row in cursor.fetchall():
+            perm = row[0]
+            if min_permission == "view" and perm in ("view", "edit"):
+                return True
+            if min_permission == "edit" and perm == "edit":
+                return True
         return False
+
+    def get_permission(self, uuid: str, user_id: int) -> Optional[str]:
+        """Get the permission level for a user on a document. Returns 'owner', 'edit', 'view', or None."""
+        doc = self.retrieve(uuid)
+        if doc is None:
+            return None
+        if doc["owner_id"] == user_id:
+            return "owner"
+        cursor = self.db.execute(
+            "SELECT permission FROM document_shares WHERE document_uuid = ? AND (shared_with_user_id = ? OR shared_with_user_id IS NULL)",
+            (uuid, user_id),
+        )
+        for row in cursor.fetchall():
+            return row[0]
+        return None
+
+    def get_owner_username(self, uuid: str) -> Optional[str]:
+        """Get the username of the document owner."""
+        cursor = self.db.execute(
+            "SELECT u.username FROM documents d JOIN users u ON d.owner_id = u.id WHERE d.uuid = ?",
+            (uuid,),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+    def list_owned_and_shared(self, user_id: int, sort: str = "name", include_shared: bool = True) -> list[dict]:
+        """List documents owned by or shared with a user."""
+        if sort == "modified":
+            order = "updated_at DESC"
+        else:
+            order = "name"
+
+        if include_shared:
+            cursor = self.db.execute(
+                f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                    FROM documents d
+                    JOIN users u ON d.owner_id = u.id
+                    LEFT JOIN document_shares ds ON d.uuid = ds.document_uuid
+                    WHERE d.owner_id = ? OR (ds.shared_with_user_id = ? OR ds.shared_with_user_id IS NULL)
+                    ORDER BY {order}""",
+                (user_id, user_id),
+            )
+        else:
+            cursor = self.db.execute(
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                    FROM documents d
+                    JOIN users u ON d.owner_id = u.id
+                    WHERE d.owner_id = ?
+                    ORDER BY {order}""",
+                (user_id,),
+            )
+
+        return [
+            {
+                "uuid": row[0],
+                "name": row[1],
+                "preview_image": row[2],
+                "created_at": row[3],
+                "updated_at": row[4],
+                "is_owner": row[5] == user_id,
+                "owner_username": row[6],
+            }
+            for row in cursor.fetchall()
+        ]
 
     def list_by_owner(self, owner_id: int, sort: str = "name") -> list[dict]:
         """List all documents for an owner."""

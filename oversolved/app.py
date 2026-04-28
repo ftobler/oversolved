@@ -195,7 +195,8 @@ def create_app(config: dict | None = None) -> Flask:
     @require_auth
     def list_documents():
         sort = request.args.get("sort", "name")
-        docs = DocumentStore(get_db()).list_by_owner(g.current_user["id"], sort)
+        include_shared = request.args.get("include_shared", "true").lower() == "true"
+        docs = DocumentStore(get_db()).list_owned_and_shared(g.current_user["id"], sort, include_shared)
         for doc in docs:
             if doc.get("preview_image"):
                 del doc["preview_image"]
@@ -216,12 +217,19 @@ def create_app(config: dict | None = None) -> Flask:
     @app.route("/api/documents/<uuid>", methods=["GET"])
     @require_auth
     def get_document(uuid):
-        doc = DocumentStore(get_db()).retrieve(uuid)
+        doc_store = DocumentStore(get_db())
+        doc = doc_store.retrieve(uuid)
         if doc is None:
             return jsonify({"error": "Document not found"}), 404
-        if doc["owner_id"] != g.current_user["id"]:
+        permission = doc_store.get_permission(uuid, g.current_user["id"])
+        if permission is None:
             return jsonify({"error": "Forbidden"}), 403
-        response = {"uuid": doc["uuid"], "name": doc["name"], "content": doc["content"]}
+        response = {
+            "uuid": doc["uuid"],
+            "name": doc["name"],
+            "content": doc["content"],
+            "permission": permission,
+        }
         if doc["preview_image"]:
             import base64
 
@@ -248,7 +256,8 @@ def create_app(config: dict | None = None) -> Flask:
             # Create document if it doesn't exist (upsert)
             doc_store.create_with_uuid(uuid, uuid, g.current_user["id"])
         else:
-            if doc["owner_id"] != g.current_user["id"]:
+            permission = doc_store.get_permission(uuid, g.current_user["id"])
+            if permission not in ("owner", "edit"):
                 return jsonify({"error": "Forbidden"}), 403
         doc_store.store_content(uuid, content)
         if data.get("preview_image"):
@@ -276,24 +285,28 @@ def create_app(config: dict | None = None) -> Flask:
         if not name:
             return jsonify({"error": "Document name required"}), 400
         db = get_db()
-        doc = DocumentStore(db).retrieve(uuid)
+        doc_store = DocumentStore(db)
+        doc = doc_store.retrieve(uuid)
         if doc is None:
             return jsonify({"error": "Document not found"}), 404
-        if doc["owner_id"] != g.current_user["id"]:
+        permission = doc_store.get_permission(uuid, g.current_user["id"])
+        if permission != "owner":
             return jsonify({"error": "Forbidden"}), 403
-        DocumentStore(db).rename(uuid, name)
+        doc_store.rename(uuid, name)
         return jsonify({"uuid": uuid, "name": name})
 
     @app.route("/api/documents/<uuid>", methods=["DELETE"])
     @require_auth
     def delete_document(uuid):
         db = get_db()
-        doc = DocumentStore(db).retrieve(uuid)
+        doc_store = DocumentStore(db)
+        doc = doc_store.retrieve(uuid)
         if doc is None:
             return jsonify({"error": "Document not found"}), 404
-        if doc["owner_id"] != g.current_user["id"]:
+        permission = doc_store.get_permission(uuid, g.current_user["id"])
+        if permission != "owner":
             return jsonify({"error": "Forbidden"}), 403
-        DocumentStore(db).delete(uuid)
+        doc_store.delete(uuid)
         return jsonify({"uuid": uuid, "status": "deleted"}), 200
 
     @app.route("/api/documents/<uuid>/duplicate", methods=["POST"])
@@ -304,7 +317,8 @@ def create_app(config: dict | None = None) -> Flask:
         doc = doc_store.retrieve(uuid)
         if doc is None:
             return jsonify({"error": "Document not found"}), 404
-        if doc["owner_id"] != g.current_user["id"]:
+        permission = doc_store.get_permission(uuid, g.current_user["id"])
+        if permission != "owner":
             return jsonify({"error": "Forbidden"}), 403
         new_name = f"{doc['name']} (Copy)"
         new_uuid = doc_store.duplicate(uuid, new_name)
@@ -319,18 +333,10 @@ def create_app(config: dict | None = None) -> Flask:
         if doc is None:
             return jsonify({"error": "Document not found"}), 404
 
-        # Check access: owner or shared with user
-        if doc["owner_id"] != g.current_user["id"]:
-            has_access = doc_store.has_permission(
-                uuid, g.current_user["id"], "view"
-            )
-            if not has_access:
-                return jsonify({"error": "Forbidden"}), 403
+        if not doc_store.has_permission(uuid, g.current_user["id"], "view"):
+            return jsonify({"error": "Forbidden"}), 403
 
-        # Generate new name
         new_name = f"{doc['name']} (Clone)"
-
-        # Check for existing clones and make unique name
         existing = doc_store.list_by_owner(g.current_user["id"])
         existing_names = {d["name"] for d in existing}
         counter = 1
@@ -341,23 +347,92 @@ def create_app(config: dict | None = None) -> Flask:
         new_uuid = doc_store.clone_document(uuid, g.current_user["id"], new_name)
         return jsonify({"uuid": new_uuid, "name": new_name}), 201
 
-    @app.route("/api/documents/<uuid>/export", methods=["GET"])
+    @app.route("/api/documents/<uuid>/share", methods=["POST"])
     @require_auth
-    def export_document(uuid):
-        doc = DocumentStore(get_db()).retrieve(uuid)
+    def create_share(uuid):
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        data = request.get_json()
+        db = get_db()
+        doc_store = DocumentStore(db)
+        doc = doc_store.retrieve(uuid)
         if doc is None:
             return jsonify({"error": "Document not found"}), 404
         if doc["owner_id"] != g.current_user["id"]:
+            return jsonify({"error": "Forbidden"}), 403
+
+        username = data.get("username")
+        permission = data.get("permission", "view")
+        if permission not in ("view", "edit"):
+            return jsonify({"error": "Invalid permission"}), 400
+
+        if username:
+            user = UserStore(db).find_by_username(username)
+            if user is None:
+                return jsonify({"error": "User not found"}), 404
+            doc_store.share_document(uuid, user["id"], permission)
+        else:
+            doc_store.set_public(uuid, True)
+
+        return jsonify({"status": "shared"}), 201
+
+    @app.route("/api/documents/<uuid>/share", methods=["DELETE"])
+    @require_auth
+    def remove_share(uuid):
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        data = request.get_json()
+        db = get_db()
+        doc_store = DocumentStore(db)
+        doc = doc_store.retrieve(uuid)
+        if doc is None:
+            return jsonify({"error": "Document not found"}), 404
+        if doc["owner_id"] != g.current_user["id"]:
+            return jsonify({"error": "Forbidden"}), 403
+
+        username = data.get("username")
+        if username:
+            user = UserStore(db).find_by_username(username)
+            if user is None:
+                return jsonify({"error": "User not found"}), 404
+            doc_store.unshare_document(uuid, user["id"])
+        else:
+            doc_store.set_public(uuid, False)
+
+        return jsonify({"status": "unshared"}), 200
+
+    @app.route("/api/documents/<uuid>/shares", methods=["GET"])
+    @require_auth
+    def list_shares(uuid):
+        db = get_db()
+        doc_store = DocumentStore(db)
+        doc = doc_store.retrieve(uuid)
+        if doc is None:
+            return jsonify({"error": "Document not found"}), 404
+        if doc["owner_id"] != g.current_user["id"]:
+            return jsonify({"error": "Forbidden"}), 403
+        shares = doc_store.get_shares(uuid)
+        return jsonify({"shares": shares})
+
+    @app.route("/api/documents/<uuid>/export", methods=["GET"])
+    @require_auth
+    def export_document(uuid):
+        doc_store = DocumentStore(get_db())
+        doc = doc_store.retrieve(uuid)
+        if doc is None:
+            return jsonify({"error": "Document not found"}), 404
+        if not doc_store.has_permission(uuid, g.current_user["id"], "view"):
             return jsonify({"error": "Forbidden"}), 403
         return jsonify({"name": doc["name"], "content": doc["content"]})
 
     @app.route("/api/documents/<uuid>/thumbnail", methods=["GET"])
     @require_auth
     def get_thumbnail(uuid):
-        doc = DocumentStore(get_db()).retrieve(uuid)
+        doc_store = DocumentStore(get_db())
+        doc = doc_store.retrieve(uuid)
         if doc is None:
             return jsonify({"error": "Document not found"}), 404
-        if doc["owner_id"] != g.current_user["id"]:
+        if not doc_store.has_permission(uuid, g.current_user["id"], "view"):
             return jsonify({"error": "Forbidden"}), 403
         if not doc["preview_image"]:
             return "", 404
@@ -716,6 +791,24 @@ def _register_migrations(db: Database) -> None:
         database.execute("ALTER TABLE documents ADD COLUMN preview_image BLOB")
 
     db.register_migration(2, "add_preview_image", migration_002_add_preview_image)
+
+    def migration_003_add_shares(database: Database):
+        """Add document_shares table and is_public column."""
+        database.execute("""
+            CREATE TABLE document_shares (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_uuid TEXT NOT NULL,
+                shared_with_user_id INTEGER NULL,
+                permission TEXT NOT NULL DEFAULT 'view',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (document_uuid) REFERENCES documents(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (shared_with_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE(document_uuid, shared_with_user_id)
+            )
+        """)
+        database.execute("ALTER TABLE documents ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0")
+
+    db.register_migration(3, "add_shares", migration_003_add_shares)
 
 
 if __name__ == "__main__":

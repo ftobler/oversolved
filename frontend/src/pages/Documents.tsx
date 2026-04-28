@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
+import Dialog from '../components/Dialog'
+import ShareDialog from '../components/ShareDialog'
 import './Documents.css'
 
 interface DocumentMeta {
@@ -8,6 +10,8 @@ interface DocumentMeta {
   name: string
   created_at: string
   updated_at: string
+  is_owner: boolean
+  owner_username: string
 }
 
 export default function Documents() {
@@ -19,9 +23,12 @@ export default function Documents() {
   const [addError, setAddError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<'name' | 'modified'>('modified')
+  const [shareDoc, setShareDoc] = useState<DocumentMeta | null>(null)
+  const [filterShared, setFilterShared] = useState(false)
 
-  const fetchDocuments = (sort: string = 'modified') => {
-    fetch(`/api/documents?sort=${sort}`)
+  const fetchDocuments = (sort: string = 'modified', includeShared: boolean = true) => {
+    const url = `/api/documents?sort=${sort}&include_shared=${includeShared ? 'true' : 'false'}`
+    fetch(url)
       .then(r => {
         if (!r.ok) throw new Error('Failed to fetch documents')
         return r.json()
@@ -37,9 +44,9 @@ export default function Documents() {
 
   useEffect(() => {
     setLoading(true)
-    fetchDocuments(sortBy)
+    fetchDocuments(sortBy, !filterShared)
     setLoading(false)
-  }, [])
+  }, [sortBy, filterShared])
 
   const handleAddDocument = async () => {
     if (!newDocName.trim()) {
@@ -217,6 +224,13 @@ export default function Documents() {
           >
             <span className="material-icons">{sortBy === 'name' ? 'sort_by_alpha' : 'update'}</span>
           </button>
+          <button
+            className="toolbar-btn"
+            onClick={() => setFilterShared(!filterShared)}
+            title={filterShared ? 'Show all documents' : 'Show shared with me'}
+          >
+            <span className="material-icons">{filterShared ? 'folder_shared' : 'people'}</span>
+          </button>
           <button className="toolbar-btn" onClick={() => setShowAddForm(!showAddForm)} title="Add document">
             <span className="material-icons">add</span>
           </button>
@@ -234,32 +248,35 @@ export default function Documents() {
 
       <div className="doc-grid-container">
 
-        {showAddForm && (
-          <div className="add-dialog-overlay" onClick={() => setShowAddForm(false)}>
-            <div className="add-dialog" onClick={e => e.stopPropagation()}>
-              <div className="add-dialog-title">Create New Document</div>
-              <input
-                type="text"
-                placeholder="Document name"
-                value={newDocName}
-                onChange={e => setNewDocName(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleAddDocument()
-                  if (e.key === 'Escape') setShowAddForm(false)
-                }}
-                autoFocus
-              />
-              <div className="add-form-row">
-                <button className="btn btn-primary" onClick={handleAddDocument}>
-                  Create
-                </button>
-                <button className="btn btn-secondary" onClick={() => setShowAddForm(false)}>
-                  Cancel
-                </button>
-              </div>
-              {addError && <p className="error-text">{addError}</p>}
-            </div>
-          </div>
+        <Dialog
+          isOpen={showAddForm}
+          title="Create New Document"
+          onClose={() => setShowAddForm(false)}
+          onConfirm={handleAddDocument}
+          confirmLabel="Create"
+        >
+          <input
+            type="text"
+            placeholder="Document name"
+            value={newDocName}
+            onChange={e => setNewDocName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleAddDocument()
+              if (e.key === 'Escape') setShowAddForm(false)
+            }}
+            autoFocus
+          />
+          {addError && <p className="error-text">{addError}</p>}
+        </Dialog>
+
+        {shareDoc && (
+          <ShareDialog
+            isOpen={!!shareDoc}
+            documentUuid={shareDoc.uuid}
+            documentName={shareDoc.name}
+            isOwner={shareDoc.is_owner}
+            onClose={() => setShareDoc(null)}
+          />
         )}
 
         {loading && <p className="status">Loading documents...</p>}
@@ -272,7 +289,7 @@ export default function Documents() {
         {!loading && filteredDocuments.length > 0 && (
           <div className="doc-tiles">
             {filteredDocuments.map(doc => (
-              <div key={doc.uuid} className="doc-tile">
+              <div key={doc.uuid} className={`doc-tile${doc.is_owner ? '' : ' shared'}`}>
                 <Link to={`/documents/${doc.uuid}`} className="doc-tile-link">
                   <div className="doc-tile-preview">
                     <img
@@ -290,6 +307,17 @@ export default function Documents() {
                   <div className="doc-tile-info">
                     <span className="doc-tile-name" title={doc.name}>{doc.name}</span>
                     <div className="doc-tile-actions">
+                      <button
+                        className="btn btn-tile-action"
+                        onClick={e => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setShareDoc(doc)
+                        }}
+                        title="Share document"
+                      >
+                        <span className="material-icons">share</span>
+                      </button>
                       <button
                         className="btn btn-tile-action"
                         onClick={e => {
@@ -323,22 +351,32 @@ export default function Documents() {
                       >
                         <span className="material-icons">download</span>
                       </button>
-                      <button
-                        className="btn btn-delete-tile"
-                        onClick={e => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          handleDeleteDocument(doc.uuid, doc.name)
-                        }}
-                        title="Delete document"
-                      >
-                        <span className="material-icons">delete</span>
-                      </button>
+                      {doc.is_owner && (
+                        <button
+                          className="btn btn-delete-tile"
+                          onClick={e => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            handleDeleteDocument(doc.uuid, doc.name)
+                          }}
+                          title="Delete document"
+                        >
+                          <span className="material-icons">delete</span>
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="doc-tile-date">
-                    Modified: {formatDate(doc.updated_at)}
+                  <div className="doc-tile-meta">
+                    <span className="doc-tile-date">Modified: {formatDate(doc.updated_at)}</span>
+                    <span className="doc-tile-owner">
+                      owned by {doc.is_owner ? 'me' : doc.owner_username}
+                    </span>
                   </div>
+                  {!doc.is_owner && (
+                    <div className="doc-tile-shared-indicator">
+                      <span className="material-icons">people</span>
+                    </div>
+                  )}
                 </Link>
               </div>
             ))}

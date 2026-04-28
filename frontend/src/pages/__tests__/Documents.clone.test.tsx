@@ -17,12 +17,12 @@ describe('Documents clone', () => {
           json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
         } as Response)
       }
-      if (url === '/api/documents?sort=modified') {
+      if (url === '/api/documents?sort=modified&include_shared=true') {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
             documents: [
-              { uuid: 'doc-1', name: 'TestDoc', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-02T00:00:00Z' },
+              { uuid: 'doc-1', name: 'TestDoc', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-02T00:00:00Z', is_owner: true, owner_username: 'admin' },
             ],
           }),
         } as Response)
@@ -54,12 +54,12 @@ describe('Documents clone', () => {
           json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
         } as Response)
       }
-      if (url === '/api/documents?sort=modified') {
+      if (url === '/api/documents?sort=modified&include_shared=true') {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
             documents: [
-              { uuid: 'doc-1', name: 'TestDoc', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-02T00:00:00Z' },
+              { uuid: 'doc-1', name: 'TestDoc', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-02T00:00:00Z', is_owner: true, owner_username: 'admin' },
             ],
           }),
         } as Response)
