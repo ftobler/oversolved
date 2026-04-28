@@ -94,6 +94,14 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: fit-content;
+}
+
+.add-form-row {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
 }
 
 .add-form input {

@@ -18,9 +18,9 @@ export default function Documents() {
   const [newDocName, setNewDocName] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortBy, setSortBy] = useState<'name' | 'modified'>('name')
+  const [sortBy, setSortBy] = useState<'name' | 'modified'>('modified')
 
-  const fetchDocuments = (sort: string = 'name') => {
+  const fetchDocuments = (sort: string = 'modified') => {
     fetch(`/api/documents?sort=${sort}`)
       .then(r => {
         if (!r.ok) throw new Error('Failed to fetch documents')
@@ -218,22 +218,24 @@ export default function Documents() {
 
         {showAddForm && (
           <div className="add-form">
-            <input
-              type="text"
-              placeholder="Document name"
-              value={newDocName}
-              onChange={e => setNewDocName(e.target.value)}
-              onKeyPress={e => {
-                if (e.key === 'Enter') handleAddDocument()
-              }}
-              autoFocus
-            />
-            <button className="btn btn-primary" onClick={handleAddDocument}>
-              Create
-            </button>
-            <button className="btn btn-secondary" onClick={() => setShowAddForm(false)}>
-              Cancel
-            </button>
+            <div className="add-form-row">
+              <input
+                type="text"
+                placeholder="Document name"
+                value={newDocName}
+                onChange={e => setNewDocName(e.target.value)}
+                onKeyPress={e => {
+                  if (e.key === 'Enter') handleAddDocument()
+                }}
+                autoFocus
+              />
+              <button className="btn btn-primary" onClick={handleAddDocument}>
+                Create
+              </button>
+              <button className="btn btn-secondary" onClick={() => setShowAddForm(false)}>
+                Cancel
+              </button>
+            </div>
             {addError && <p className="error-text">{addError}</p>}
           </div>
         )}
