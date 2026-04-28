@@ -310,6 +310,37 @@ def create_app(config: dict | None = None) -> Flask:
         new_uuid = doc_store.duplicate(uuid, new_name)
         return jsonify({"uuid": new_uuid, "name": new_name}), 201
 
+    @app.route("/api/documents/<uuid>/clone", methods=["POST"])
+    @require_auth
+    def clone_document(uuid):
+        db = get_db()
+        doc_store = DocumentStore(db)
+        doc = doc_store.retrieve(uuid)
+        if doc is None:
+            return jsonify({"error": "Document not found"}), 404
+
+        # Check access: owner or shared with user
+        if doc["owner_id"] != g.current_user["id"]:
+            has_access = doc_store.has_permission(
+                uuid, g.current_user["id"], "view"
+            )
+            if not has_access:
+                return jsonify({"error": "Forbidden"}), 403
+
+        # Generate new name
+        new_name = f"{doc['name']} (Clone)"
+
+        # Check for existing clones and make unique name
+        existing = doc_store.list_by_owner(g.current_user["id"])
+        existing_names = {d["name"] for d in existing}
+        counter = 1
+        while new_name in existing_names:
+            new_name = f"{doc['name']} (Clone {counter})"
+            counter += 1
+
+        new_uuid = doc_store.clone_document(uuid, g.current_user["id"], new_name)
+        return jsonify({"uuid": new_uuid, "name": new_name}), 201
+
     @app.route("/api/documents/<uuid>/export", methods=["GET"])
     @require_auth
     def export_document(uuid):

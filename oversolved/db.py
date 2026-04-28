@@ -332,6 +332,32 @@ class DocumentStore:
             )
         return new_uuid
 
+    def clone_document(self, uuid: str, new_owner_id: int, new_name: str) -> Optional[str]:
+        """Clone a document with new owner. Returns new UUID or None if source not found."""
+        doc = self.retrieve(uuid)
+        if doc is None:
+            return None
+        new_uuid = secrets.token_urlsafe(16)
+        with self.db.transaction():
+            self.db.execute(
+                "INSERT INTO documents (uuid, name, content, owner_id, preview_image) VALUES (?, ?, ?, ?, ?)",
+                (new_uuid, new_name, doc["content"], new_owner_id, doc["preview_image"]),
+            )
+        return new_uuid
+
+    def has_permission(self, uuid: str, user_id: int, min_permission: str = "view") -> bool:
+        """Check if user has permission to access a document.
+
+        Currently only checks ownership. Will be extended when sharing is implemented.
+        """
+        doc = self.retrieve(uuid)
+        if doc is None:
+            return False
+        if doc["owner_id"] == user_id:
+            return True
+        # TODO: check document_shares when sharing feature is implemented
+        return False
+
     def list_by_owner(self, owner_id: int, sort: str = "name") -> list[dict]:
         """List all documents for an owner."""
         if sort == "modified":

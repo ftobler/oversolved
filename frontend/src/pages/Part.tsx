@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport, { type ViewportHandle } from '../components/Viewport'
 import type { Feature, PartDoc, PartFeature, Mutation, Sketch } from '../types/cad'
@@ -222,6 +222,7 @@ function describeMutation(m: Mutation): string {
 
 export default function Part() {
   const { uuid } = useParams<{ uuid: string }>()
+  const navigate = useNavigate()
   const [codeText, setCodeText] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
@@ -714,6 +715,23 @@ useEffect(() => {
     if (success) setError(null)
   }
 
+  const handleClone = async () => {
+    if (!uuid) return
+    try {
+      const response = await fetch(`/api/documents/${uuid}/clone`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to clone document')
+      }
+      const data = await response.json()
+      navigate(`/documents/${data.uuid}`)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
   const handleRun = async () => {
     try {
       const parsed = parseYaml(codeText) as PartDoc
@@ -1028,6 +1046,9 @@ useEffect(() => {
         </button>
         <button className="toolbar-btn" title="Save" onClick={handleSave}>
           <span className="material-icons-outlined">save</span>
+        </button>
+        <button className="toolbar-btn" title="Clone document" onClick={handleClone}>
+          <span className="material-icons-outlined">file_copy</span>
         </button>
         {isEditing ? (
           <input
