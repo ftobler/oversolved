@@ -85,16 +85,38 @@
   color: #ef5350;
 }
 
-.add-form {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 4px;
-  padding: 12px;
-  margin-bottom: 16px;
+.add-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 20vh;
+  z-index: 9999;
+}
+
+.add-dialog {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 16px 20px;
+  min-width: 280px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  color: #ddd;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: fit-content;
+  gap: 12px;
+}
+
+.add-dialog-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #aaa;
+  text-align: center;
 }
 
 .add-form-row {
@@ -102,24 +124,27 @@
   flex-direction: row;
   gap: 8px;
   align-items: center;
+  justify-content: center;
 }
 
-.add-form input {
+.add-dialog input {
   padding: 8px 10px;
   background: #111;
   border: 1px solid #333;
   border-radius: 4px;
   color: #ccc;
   font-size: 13px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.add-form input:focus {
+.add-dialog input:focus {
   outline: none;
   border-color: #4fc3f7;
   box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
 }
 
-.add-form .error-text {
+.add-dialog .error-text {
   color: #ef5350;
   font-size: 12px;
   margin: 0;
@@ -129,11 +154,12 @@
   padding: 8px 12px;
   border: none;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
 }
 

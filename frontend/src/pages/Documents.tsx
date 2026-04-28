@@ -217,26 +217,30 @@ export default function Documents() {
       <div className="doc-grid-container">
 
         {showAddForm && (
-          <div className="add-form">
-            <div className="add-form-row">
+          <div className="add-dialog-overlay" onClick={() => setShowAddForm(false)}>
+            <div className="add-dialog" onClick={e => e.stopPropagation()}>
+              <div className="add-dialog-title">Create New Document</div>
               <input
                 type="text"
                 placeholder="Document name"
                 value={newDocName}
                 onChange={e => setNewDocName(e.target.value)}
-                onKeyPress={e => {
+                onKeyDown={e => {
                   if (e.key === 'Enter') handleAddDocument()
+                  if (e.key === 'Escape') setShowAddForm(false)
                 }}
                 autoFocus
               />
-              <button className="btn btn-primary" onClick={handleAddDocument}>
-                Create
-              </button>
-              <button className="btn btn-secondary" onClick={() => setShowAddForm(false)}>
-                Cancel
-              </button>
+              <div className="add-form-row">
+                <button className="btn btn-primary" onClick={handleAddDocument}>
+                  Create
+                </button>
+                <button className="btn btn-secondary" onClick={() => setShowAddForm(false)}>
+                  Cancel
+                </button>
+              </div>
+              {addError && <p className="error-text">{addError}</p>}
             </div>
-            {addError && <p className="error-text">{addError}</p>}
           </div>
         )}
 
