@@ -35,6 +35,7 @@ docs/feature/*
 
 *.db
 bugreports/
+feature/
 
 # Uploads
 oversolved/uploads/*
