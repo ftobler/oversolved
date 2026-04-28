@@ -1,64 +1,70 @@
-.user-profile {
-  min-height: 100vh;
-  background: #f5f5f5;
-}
-
-.profile-container {
-  max-width: 480px;
-  margin: 40px auto;
-  padding: 0 16px;
-}
-
 .profile-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.profile-heading {
-  margin: 0 0 20px;
-  font-size: 1.5rem;
-  font-weight: 500;
 }
 
 .profile-field {
-  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
 }
 
 .profile-field label {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 0.875rem;
-  color: #555;
+  min-width: 120px;
+  font-size: 14px;
+  color: #aaa;
+  flex-shrink: 0;
+  text-align: left;
 }
 
 .profile-field input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ccc;
+  width: 50%;
+  padding: 6px 10px;
+  border: 1px solid #333;
   border-radius: 4px;
-  font-size: 1rem;
+  font-size: 14px;
   box-sizing: border-box;
+  background: #111;
+  color: #ccc;
+}
+
+.profile-field input:focus {
+  outline: none;
+  border-color: #4fc3f7;
+}
+
+.profile-divider {
+  border: none;
+  height: 1px;
+  background: #333;
+  margin: 32px 0;
 }
 
 .profile-actions {
   display: flex;
   gap: 8px;
   margin-top: 20px;
+  justify-content: flex-end;
+}
+
+.profile-actions .btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  flex: none;
 }
 
 .profile-error {
-  color: #d32f2f;
-  background: #ffebee;
+  color: #ef5350;
+  background: #2a1a1a;
+  border: 1px solid #5a2020;
   padding: 8px 12px;
   border-radius: 4px;
   margin-bottom: 16px;
 }
 
 .profile-success {
-  color: #2e7d32;
-  background: #e8f5e9;
+  color: #66bb6a;
+  background: #1a2a1a;
+  border: 1px solid #205a20;
   padding: 8px 12px;
   border-radius: 4px;
   margin-bottom: 16px;

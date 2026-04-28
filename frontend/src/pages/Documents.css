@@ -22,12 +22,14 @@
 .sidebar-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 20px;
+  gap: 6px;
+  padding: 4px 8px;
+  margin: 2px 4px;
+  border-radius: 4px;
   cursor: pointer;
   color: #ccc;
-  transition: background 0.2s;
   user-select: none;
+  font-size: 12px;
 }
 
 .sidebar-item:hover {
@@ -37,16 +39,20 @@
 .sidebar-item.active {
   background: #333;
   color: #4fc3f7;
-  border-left: 3px solid #4fc3f7;
-  padding-left: 17px;
 }
 
 .sidebar-item-icon {
-  font-size: 18px;
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
 }
 
 .sidebar-item-label {
-  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 0;
+  text-align: left;
 }
 
 .documents-main {

@@ -8,6 +8,7 @@ import Registry from './pages/Registry'
 import Login from './pages/Login'
 import UserProfile from './pages/UserProfile'
 import AdminUsers from './pages/AdminUsers'
+import Settings from './pages/Settings'
 import './App.css'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -47,8 +48,12 @@ function App() {
         <Route path="/docs/:doc" element={<ProtectedRoute><Documentation /></ProtectedRoute>} />
         <Route path="/registry" element={<ProtectedRoute><Registry /></ProtectedRoute>} />
         <Route path="/visualizer" element={<ProtectedRoute><Visualizer /></ProtectedRoute>} />
-        <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
-        <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
+        <Route path="/profile" element={<Navigate to="/settings/profile" replace />} />
+        <Route path="/admin/users" element={<Navigate to="/settings/admin" replace />} />
+        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>}>
+          <Route path="profile" element={<UserProfile />} />
+          <Route path="admin" element={<AdminUsers />} />
+        </Route>
       </Routes>
     </AuthProvider>
   )

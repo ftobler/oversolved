@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import AppHeader from '../components/AppHeader'
 import Dialog from '../components/Dialog'
 import './AdminUsers.css'
 
@@ -161,11 +160,12 @@ export default function AdminUsers() {
 
   return (
     <div className="admin-users">
-      <AppHeader title="Admin - Users">
+      <div className="admin-users-header">
+        <h2 className="admin-users-title">Users</h2>
         <button className="toolbar-btn" onClick={() => setShowCreateForm(true)} title="Create user">
           <span className="material-icons">person_add</span>
         </button>
-      </AppHeader>
+      </div>
 
       <div className="admin-users-container">
         {error && <p className="admin-users-error">{error}</p>}

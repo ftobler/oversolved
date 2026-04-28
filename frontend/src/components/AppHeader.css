@@ -75,10 +75,18 @@
 }
 
 .header-username {
-  color: #666;
+  color: #888;
   font-size: 13px;
-  padding: 0 4px;
+  padding: 8px 12px;
   white-space: nowrap;
+  text-decoration: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.header-username:hover {
+  background: #222;
+  color: #fff;
 }
 
 .doc-name {

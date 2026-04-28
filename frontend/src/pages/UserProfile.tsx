@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import AppHeader from '../components/AppHeader'
 import './UserProfile.css'
 
 export default function UserProfile() {
@@ -14,7 +13,6 @@ export default function UserProfile() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [showPasswordForm, setShowPasswordForm] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -67,7 +65,6 @@ export default function UserProfile() {
         setCurrentPassword('')
         setNewPassword('')
         setConfirmPassword('')
-        setShowPasswordForm(false)
         if (user) {
           setUser({ ...user, must_change_password: false })
         }
@@ -87,7 +84,6 @@ export default function UserProfile() {
     setCurrentPassword('')
     setNewPassword('')
     setConfirmPassword('')
-    setShowPasswordForm(false)
     setError(null)
     setSuccess(null)
     navigate('/documents')
@@ -98,79 +94,62 @@ export default function UserProfile() {
   }
 
   return (
-    <div className="user-profile">
-      <AppHeader title="Profile" />
-      <div className="profile-container">
-        <div className="profile-card">
-          <h2 className="profile-heading">Edit Profile</h2>
+    <div className="profile-card">
 
-          {error && <p className="profile-error">{error}</p>}
-          {success && <p className="profile-success">{success}</p>}
+      {error && <p className="profile-error">{error}</p>}
+      {success && <p className="profile-success">{success}</p>}
 
-          <div className="profile-field">
-            <label htmlFor="profile-username">Username</label>
-            <input
-              id="profile-username"
-              type="text"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              autoComplete="username"
-            />
-          </div>
+      <div className="profile-field">
+        <label htmlFor="profile-username">Username</label>
+        <input
+          id="profile-username"
+          type="text"
+          value={username}
+          onChange={e => setUsername(e.target.value)}
+          autoComplete="username"
+        />
+      </div>
 
-          <div className="profile-field">
-            <button
-              className="btn btn-secondary"
-              onClick={() => setShowPasswordForm(!showPasswordForm)}
-            >
-              {showPasswordForm ? 'Cancel password change' : 'Change password'}
-            </button>
-          </div>
+      <div className="profile-divider" />
 
-          {showPasswordForm && (
-            <>
-              <div className="profile-field">
-                <label htmlFor="profile-current-password">Current password</label>
-                <input
-                  id="profile-current-password"
-                  type="password"
-                  value={currentPassword}
-                  onChange={e => setCurrentPassword(e.target.value)}
-                  autoComplete="current-password"
-                />
-              </div>
-              <div className="profile-field">
-                <label htmlFor="profile-new-password">New password</label>
-                <input
-                  id="profile-new-password"
-                  type="password"
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </div>
-              <div className="profile-field">
-                <label htmlFor="profile-confirm-password">Confirm new password</label>
-                <input
-                  id="profile-confirm-password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={e => setConfirmPassword(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </div>
-            </>
-          )}
+      <div className="profile-field">
+        <label htmlFor="profile-current-password">Current Password</label>
+        <input
+          id="profile-current-password"
+          type="password"
+          value={currentPassword}
+          onChange={e => setCurrentPassword(e.target.value)}
+          autoComplete="current-password"
+        />
+      </div>
+      <div className="profile-field">
+        <label htmlFor="profile-new-password">New Password</label>
+        <input
+          id="profile-new-password"
+          type="password"
+          value={newPassword}
+          onChange={e => setNewPassword(e.target.value)}
+          autoComplete="new-password"
+        />
+      </div>
+      <div className="profile-field">
+        <label htmlFor="profile-confirm-password">Confirm Password</label>
+        <input
+          id="profile-confirm-password"
+          type="password"
+          value={confirmPassword}
+          onChange={e => setConfirmPassword(e.target.value)}
+          autoComplete="new-password"
+        />
+      </div>
 
-          <div className="profile-actions">
-            <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
-              {loading ? 'Saving…' : 'Save'}
-            </button>
-            <button className="btn btn-secondary" onClick={handleCancel}>
-              Cancel
-            </button>
-          </div>
-        </div>
+      <div className="profile-actions">
+        <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
+          {loading ? 'Saving…' : 'Save'}
+        </button>
+        <button className="btn btn-secondary" onClick={handleCancel}>
+          Cancel
+        </button>
       </div>
     </div>
   )

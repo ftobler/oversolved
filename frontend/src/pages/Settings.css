@@ -1,0 +1,68 @@
+.settings {
+  min-height: 100vh;
+  background: #16171d;
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+}
+
+.settings-body {
+  display: flex;
+  max-width: 800px;
+  min-width: 950px;
+  width: 100%;
+  margin: 40px auto;
+  padding: 0 16px;
+  gap: 20px;
+  flex: 1;
+  align-self: center;
+}
+
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 200px;
+}
+
+.settings-nav-item {
+  display: block;
+  padding: 2px 12px;
+  margin-right: 12px;
+  color: #ccc;
+  text-decoration: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-nav-item:hover {
+  /* background-color: #16171d; */
+  background-color: #141519;
+}
+
+.settings-nav-item.active {
+  background-color: #111111;
+}
+
+.settings-content {
+  flex: 1;
+  min-height: 200px;
+}
+
+.settings-content .profile-field input {
+  border: none;
+  margin-left: auto;
+}
+
+.settings-content .admin-users-table td {
+  white-space: nowrap;
+}
+
+.settings-content .profile-actions {
+  margin-top: 40px;
+}
+
+.settings-content .profile-actions .btn {
+  min-width: 75px;
+}

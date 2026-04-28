@@ -31,8 +31,6 @@ describe('UserProfile', () => {
     await waitFor(() => {
       expect(screen.getByDisplayValue('testuser')).toBeInTheDocument()
     })
-
-    expect(screen.getByText('Edit Profile')).toBeInTheDocument()
   })
 
   it('updates username on save', async () => {
@@ -75,7 +73,7 @@ describe('UserProfile', () => {
     })
   })
 
-  it('shows password change fields when button clicked', async () => {
+  it('shows password change fields', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url === '/api/auth/me') {
         return Promise.resolve({
@@ -98,11 +96,8 @@ describe('UserProfile', () => {
       expect(screen.getByDisplayValue('testuser')).toBeInTheDocument()
     })
 
-    const changePwBtn = screen.getByText('Change password')
-    fireEvent.click(changePwBtn)
-
-    expect(screen.getByLabelText('Current password')).toBeInTheDocument()
-    expect(screen.getByLabelText('New password')).toBeInTheDocument()
-    expect(screen.getByLabelText('Confirm new password')).toBeInTheDocument()
+    expect(screen.getByLabelText('Current Password')).toBeInTheDocument()
+    expect(screen.getByLabelText('New Password')).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirm Password')).toBeInTheDocument()
   })
 })

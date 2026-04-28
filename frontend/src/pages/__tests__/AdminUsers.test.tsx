@@ -29,7 +29,7 @@ describe('AdminUsers', () => {
     )
 
     await waitFor(() => {
-      expect(screen.queryByText('Admin - Users')).not.toBeInTheDocument()
+      expect(screen.queryByText('Users')).not.toBeInTheDocument()
     })
   })
 
