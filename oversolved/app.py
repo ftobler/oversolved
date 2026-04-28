@@ -138,11 +138,13 @@ def create_app(config: dict | None = None) -> Flask:
         if not username or not password:
             return jsonify({"error": "Username and password required"}), 400
         db = get_db()
-        user = UserStore(db).find_by_username(username)
+        user_store = UserStore(db)
+        user = user_store.find_by_username(username)
         if user is None or not check_password_hash(user["password_hash"], password):
             return jsonify({"error": "Invalid credentials"}), 401
         if not user["is_active"]:
             return jsonify({"error": "Account is deactivated"}), 403
+        user_store.update(user["id"], last_login_at=datetime.now().isoformat())
         token = SessionStore(db).create(user["id"])
         response = make_response(
             jsonify(
@@ -153,6 +155,7 @@ def create_app(config: dict | None = None) -> Flask:
                         "must_change_password": user["must_change_password"],
                         "is_admin": user["is_admin"],
                         "is_active": user["is_active"],
+                        "last_login_at": user.get("last_login_at"),
                     }
                 }
             )
@@ -195,6 +198,7 @@ def create_app(config: dict | None = None) -> Flask:
                     "must_change_password": user["must_change_password"],
                     "is_admin": user["is_admin"],
                     "is_active": user["is_active"],
+                    "last_login_at": user["last_login_at"],
                 }
             }
         )
@@ -222,6 +226,7 @@ def create_app(config: dict | None = None) -> Flask:
                     "is_admin": g.current_user["is_admin"],
                     "is_active": g.current_user["is_active"],
                     "created_at": g.current_user.get("created_at"),
+                    "last_login_at": g.current_user.get("last_login_at"),
                 }
             }
         )
@@ -999,6 +1004,12 @@ def _register_migrations(db: Database) -> None:
         database.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
 
     db.register_migration(4, "add_user_management_fields", migration_004_add_user_management_fields)
+
+    def migration_005_add_last_login(database: Database):
+        """Add last_login_at column to users table."""
+        database.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT")
+
+    db.register_migration(5, "add_last_login", migration_005_add_last_login)
 
 
 if __name__ == "__main__":

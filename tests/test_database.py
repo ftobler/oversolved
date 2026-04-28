@@ -52,10 +52,32 @@ def _make_db():
     database.register_migration(2, "add_preview_image", migration_002)
 
     def migration_003(db: Database):
+        db.execute("""
+            CREATE TABLE document_shares (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_uuid TEXT NOT NULL,
+                shared_with_user_id INTEGER NULL,
+                permission TEXT NOT NULL DEFAULT 'view',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (document_uuid) REFERENCES documents(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (shared_with_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE(document_uuid, shared_with_user_id)
+            )
+        """)
+        db.execute("ALTER TABLE documents ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0")
+
+    database.register_migration(3, "add_shares", migration_003)
+
+    def migration_004(db: Database):
         db.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
         db.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
 
-    database.register_migration(3, "add_user_management_fields", migration_003)
+    database.register_migration(4, "add_user_management_fields", migration_004)
+
+    def migration_005(db: Database):
+        db.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT")
+
+    database.register_migration(5, "add_last_login", migration_005)
     database.init()
     return database
 

@@ -86,6 +86,7 @@ class TestAdminAPI:
             assert "id" in user
             assert "is_admin" in user
             assert "is_active" in user
+            assert "last_login_at" in user
 
     def test_create_user(self, admin_client):
         response = admin_client.post(
@@ -286,3 +287,53 @@ class TestUserProfileAPI:
             content_type="application/json",
         )
         assert response.status_code == 403
+
+    def test_login_records_last_login(self, app, admin_client):
+        # Admin was created by login in the fixture; last_login_at should be set
+        response = admin_client.get("/api/admin/users")
+        users = json.loads(response.data)["users"]
+        admin_user = next(u for u in users if u["username"] == "admin")
+        assert admin_user["last_login_at"] is not None
+
+    def test_last_login_updates_on_subsequent_login(self, app):
+        c = app.test_client()
+        # First login
+        c.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        resp = c.get("/api/auth/me")
+        first_login = json.loads(resp.data)["user"]["last_login_at"]
+
+        # Logout and login again
+        c.post("/api/auth/logout")
+        import time
+        time.sleep(0.01)
+        c.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        resp = c.get("/api/auth/me")
+        second_login = json.loads(resp.data)["user"]["last_login_at"]
+        assert second_login >= first_login
+
+    def test_last_login_null_for_never_logged_in(self, admin_client):
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({"username": "neverlogin", "password": "password123"}),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        list_resp = admin_client.get("/api/admin/users")
+        users = json.loads(list_resp.data)["users"]
+        user = next(u for u in users if u["id"] == user_id)
+        assert user["last_login_at"] is None
+
+    def test_last_login_included_in_profile(self, regular_client):
+        response = regular_client.get("/api/users/me")
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert "last_login_at" in data["user"]

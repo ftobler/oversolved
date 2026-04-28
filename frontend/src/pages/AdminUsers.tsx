@@ -11,6 +11,7 @@ interface UserRecord {
   is_admin: boolean
   is_active: boolean
   created_at: string
+  last_login_at: string | null
 }
 
 export default function AdminUsers() {
@@ -278,6 +279,7 @@ export default function AdminUsers() {
                 <th>Admin</th>
                 <th>Active</th>
                 <th>Created</th>
+                <th>Last Login</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -288,6 +290,7 @@ export default function AdminUsers() {
                   <td>{u.is_admin ? 'Yes' : 'No'}</td>
                   <td>{u.is_active ? 'Yes' : 'No'}</td>
                   <td>{formatDate(u.created_at)}</td>
+                  <td>{u.last_login_at ? formatDate(u.last_login_at) : 'Never'}</td>
                   <td>
                     <button
                       className="btn btn-tile-action"

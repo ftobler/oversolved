@@ -169,7 +169,7 @@ class UserStore:
     def find_by_username(self, username: str) -> Optional[dict]:
         """Find a user by username."""
         cursor = self.db.execute(
-            "SELECT id, username, password_hash, must_change_password, is_admin, is_active FROM users WHERE username = ?",
+            "SELECT id, username, password_hash, must_change_password, is_admin, is_active, last_login_at FROM users WHERE username = ?",
             (username,),
         )
         row = cursor.fetchone()
@@ -182,12 +182,13 @@ class UserStore:
             "must_change_password": bool(row[3]),
             "is_admin": bool(row[4]),
             "is_active": bool(row[5]),
+            "last_login_at": row[6],
         }
 
     def find_by_id(self, user_id: int) -> Optional[dict]:
         """Find a user by id."""
         cursor = self.db.execute(
-            "SELECT id, username, must_change_password, is_admin, is_active, created_at FROM users WHERE id = ?",
+            "SELECT id, username, must_change_password, is_admin, is_active, created_at, last_login_at FROM users WHERE id = ?",
             (user_id,),
         )
         row = cursor.fetchone()
@@ -200,13 +201,14 @@ class UserStore:
             "is_admin": bool(row[3]),
             "is_active": bool(row[4]),
             "created_at": row[5],
+            "last_login_at": row[6],
         }
 
     def update(self, user_id: int, **fields) -> bool:
         """Update user fields. Returns True if user was found and updated."""
         if not fields:
             return False
-        allowed = {"username", "password_hash", "must_change_password", "is_admin", "is_active"}
+        allowed = {"username", "password_hash", "must_change_password", "is_admin", "is_active", "last_login_at"}
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
             return False
@@ -229,7 +231,7 @@ class UserStore:
     def list_all(self) -> list[dict]:
         """List all users (for admin). Returns list of user dicts without password_hash."""
         cursor = self.db.execute(
-            "SELECT id, username, must_change_password, is_admin, is_active, created_at FROM users ORDER BY username"
+            "SELECT id, username, must_change_password, is_admin, is_active, created_at, last_login_at FROM users ORDER BY username"
         )
         return [
             {
@@ -239,6 +241,7 @@ class UserStore:
                 "is_admin": bool(row[3]),
                 "is_active": bool(row[4]),
                 "created_at": row[5],
+                "last_login_at": row[6],
             }
             for row in cursor.fetchall()
         ]
