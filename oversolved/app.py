@@ -365,8 +365,17 @@ def create_app(config: dict | None = None) -> Flask:
     @require_auth
     def list_documents():
         sort = request.args.get("sort", "name")
-        include_shared = request.args.get("include_shared", "true").lower() == "true"
-        docs = DocumentStore(get_db()).list_owned_and_shared(g.current_user["id"], sort, include_shared)
+        search_query = request.args.get("search", "").strip()
+
+        # Backward-compat for old include_shared param
+        include_shared = request.args.get("include_shared", "").lower()
+        filter_type = request.args.get("filter", "")
+        if not filter_type:
+            filter_type = "all" if include_shared in ("", "true") else "owned"
+
+        docs = DocumentStore(get_db()).list_by_filter(
+            g.current_user["id"], filter_type, sort, search_query
+        )
         for doc in docs:
             if doc.get("preview_image"):
                 del doc["preview_image"]

@@ -17,7 +17,7 @@ describe('Documents share', () => {
           json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
         } as Response)
       }
-      if (url === '/api/documents?sort=modified&include_shared=true') {
+      if (url === '/api/documents?sort=modified&filter=owned') {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
@@ -54,7 +54,7 @@ describe('Documents share', () => {
           json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
         } as Response)
       }
-      if (url === '/api/documents?sort=modified&include_shared=true') {
+      if (url === '/api/documents?sort=modified&filter=owned') {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
@@ -88,7 +88,7 @@ describe('Documents share', () => {
           json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
         } as Response)
       }
-      if (url === '/api/documents?sort=modified&include_shared=true') {
+      if (url === '/api/documents?sort=modified&filter=owned') {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
@@ -122,7 +122,7 @@ describe('Documents share', () => {
           json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
         } as Response)
       }
-      if (url === '/api/documents?sort=modified&include_shared=true') {
+      if (url === '/api/documents?sort=modified&filter=owned') {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
