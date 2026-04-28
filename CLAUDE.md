@@ -42,5 +42,17 @@ npx vitest run
 - try to keep files shorter than 1k lines.
 - icons are defined in `icons.py`.
 
+## Feature planning / implementing
+
+When asked to plan a feature:
+- Place the plan in `feature/<topic>.md` (this folder has its own git repo and is gitignored from the main project)
+- Read the codebase and do deep architectural research before writing
+- Write a detailed plan including test specs
+- Do NOT execute the plan or touch any other files
+- Read existing `feature/*.md` files first to know what is already in development
+
+When asked to implement a feature:
+- you read the `feature/<topic>.md` and execute according to content.
+
 ## important files
 - oversolved/solver.py
