@@ -161,15 +161,17 @@
   margin: 16px 0;
 }
 
+.doc-content table tr {
+  border-bottom: 1px solid #333;
+}
+
 .doc-content th,
 .doc-content td {
-  border: 1px solid #333;
-  padding: 8px 12px;
+  padding: 8px 12px 8px 0;
   text-align: left;
 }
 
 .doc-content th {
-  background: #222;
   color: #fff;
 }
 
