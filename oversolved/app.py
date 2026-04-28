@@ -59,7 +59,7 @@ def _ensure_admin_user(db: Database) -> None:
         )
 
 
-def create_app(config=None):
+def create_app(config: dict | None = None) -> Flask:
     """Create and configure the Flask app."""
     app = Flask(__name__)
 
@@ -74,7 +74,7 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
-    app.db_config = {
+    db_config = {
         "type": app.config["DB_TYPE"],
         "path": app.config.get("DB_PATH", ":memory:"),
         "host": app.config.get("DB_HOST"),
@@ -84,7 +84,7 @@ def create_app(config=None):
     }
 
     # Initialize database, run migrations, seed admin user
-    db = _get_database(app.db_config)
+    db = _get_database(db_config)
     _register_migrations(db)
     db.init()
     _ensure_admin_user(db)
@@ -93,12 +93,10 @@ def create_app(config=None):
     def get_db():
         """Get or create database connection for this request."""
         if "db" not in g:
-            g.db = _get_database(app.db_config)
+            g.db = _get_database(db_config)
             _register_migrations(g.db)
             g.db.init()
         return g.db
-
-    app.get_db = get_db
 
     @app.before_request
     def before_request():

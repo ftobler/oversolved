@@ -151,7 +151,7 @@ def test_sketch_plane_resolves_from_post_fuse_face():
     )
 
 
-def test_sketch_on_face_after_boolean_cut_partial_rebuild():
+def test_sketch_on_face_after_boolean_cut_partial_rebuild() -> None:
     """Sketch placed on a face of a body that was later modified by a boolean cut.
 
     Regression test: after ex2 cuts into ex1's body, the face centroids change.

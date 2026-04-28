@@ -9,7 +9,7 @@ class DocumentSolver:
     is returned. Stale tasks are cancelled when new ones arrive.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._locks: dict[str, threading.Lock] = {}
         self._counters: dict[str, int] = {}
         self._results: dict[str, Any] = {}
