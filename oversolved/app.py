@@ -737,9 +737,11 @@ def create_app(config: dict | None = None) -> Flask:
     # ── Solver ─────────────────────────────────────────────────────────────────
 
     from oversolved.solver_queue import get_document_solver
+    from oversolved.cache import TtlCache
+    from oversolved.types3d import BuildState
 
     # Keyed by document id. Not persisted; clears on server restart (full rebuild on restart).
-    _build_state_cache: dict = {}
+    _build_state_cache: TtlCache[BuildState] = TtlCache(ttl_seconds=300.0, max_size=1000)
 
     @app.route("/api/solve", methods=["POST"])
     def solve_document() -> Response | tuple:
@@ -753,21 +755,28 @@ def create_app(config: dict | None = None) -> Flask:
         rollback_position = data.get("rollback_position")
         pick_boundary = data.get("pick_boundary")
 
-        prev_state = _build_state_cache.get(doc_id) if doc_id else None
+        # Use the document-specific cache for prev_state.  The frontend no longer
+        # sends prev_state (shapes cannot be serialised over JSON), so the cache
+        # is the only viable source of geometric state.
+        prev_state: BuildState | None = None
+        if doc_id:
+            prev_state = _build_state_cache.get(doc_id)
 
         solver = get_document_solver()
 
-        is_full_rebuild = not data.get("is_preview", False) and doc_id
-
-        if is_full_rebuild and doc_id:
+        # Serialize ALL solves per document so that concurrent requests (previews,
+        # full rebuilds, rollback changes) never race on the cache.
+        if doc_id:
             counter = solver.acquire(doc_id)
             try:
-                build_result = build(data, prev_state=prev_state, pick_boundary=None)
-                if doc_id:
-                    _build_state_cache[doc_id] = build_result.pop("_build_state")
-                    solver.release(doc_id, counter, build_result)
-                else:
-                    build_result.pop("_build_state")
+                if rollback_position is not None and isinstance(rollback_position, int):
+                    data = {**data, "features": data["features"][:rollback_position]}
+                    if pick_boundary is not None and pick_boundary > rollback_position:
+                        pick_boundary = None
+
+                build_result = build(data, prev_state=prev_state, pick_boundary=pick_boundary)
+                _build_state_cache.set(doc_id, build_result.pop("_build_state"))
+                solver.release(doc_id, counter, build_result)
                 build_result.pop("_body_shapes", None)
                 return Response(json.dumps(build_result), mimetype="application/json")
             except Exception:
@@ -780,13 +789,8 @@ def create_app(config: dict | None = None) -> Flask:
                     pick_boundary = None
 
             build_result = build(data, prev_state=prev_state, pick_boundary=pick_boundary)
-
-            if doc_id:
-                _build_state_cache[doc_id] = build_result.pop("_build_state")
-            else:
-                build_result.pop("_build_state")
+            build_result.pop("_build_state", None)
             build_result.pop("_body_shapes", None)
-
             return Response(json.dumps(build_result), mimetype="application/json")
 
     def _format_history(history):

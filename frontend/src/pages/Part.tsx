@@ -334,6 +334,23 @@ export default function Part() {
     [features, editForcedVisible]
   )
 
+  // Bodies are visible when their creator feature is visible, unless the user
+  // has explicitly overridden the body visibility in the parts list.
+  const effectiveVisibleBodies = useMemo(() => {
+    const visible = new Set<string>()
+    for (const [bodyId, body] of Object.entries(bodies || {})) {
+      if (bodiesVisibility[bodyId] === false) continue
+      if (bodiesVisibility[bodyId] === true) {
+        visible.add(bodyId)
+        continue
+      }
+      if (body.created_by && visibleFeatures.has(body.created_by)) {
+        visible.add(bodyId)
+      }
+    }
+    return visible.size > 0 ? visible : undefined
+  }, [bodies, visibleFeatures, bodiesVisibility])
+
   // Initialize rollback position once on first doc load.
   useEffect(() => {
     if (doc && !rollbackInitialized.current) {
@@ -1104,9 +1121,7 @@ useEffect(() => {
           onSetPlaneSelectionFeatureId={setPlaneSelectionFeatureId}
           onToggleBodyVisibility={toggleBodyVisibility}
           partLabels={partLabels}
-          visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0
-            ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false))
-            : undefined}
+          visibleBodies={effectiveVisibleBodies}
           solveResults={solveResults}
           bodies={bodies}
         />
@@ -1180,7 +1195,7 @@ useEffect(() => {
               )}
               {mode !== 'code' && (
                 <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-                  <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={Object.keys(bodies || {}).length > 0 && Object.keys(bodiesVisibility).length > 0 ? new Set(Object.keys(bodies || {}).filter(b => bodiesVisibility[b] !== false)) : undefined} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} ghostMode={ghostMode} />
+                  <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={effectiveVisibleBodies} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} ghostMode={ghostMode} />
                   <LoadingOverlay />
                 </div>
               )}

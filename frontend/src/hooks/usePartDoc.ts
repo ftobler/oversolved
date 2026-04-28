@@ -189,7 +189,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [redoStack, setRedoStack] = useState<UndoEntry[]>([])
   const [permission, setPermission] = useState<string>('owner')
   const firstSolveDone = useRef(false)
-  const buildStateRef = useRef<unknown>(null)
   const rollbackPosRef = useRef<number | null>(null)
   const pickBoundaryRef = useRef<number | null>(null)
   const requestIdRef = useRef(0)
@@ -218,10 +217,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         rollback_position: effectiveRollback,
         request_id: currentRequestId,
         is_preview: isPreview,
-      }
-
-      if (buildStateRef.current) {
-        solvePayload.prev_state = buildStateRef.current
       }
 
       if (pickBoundaryRef.current !== null) {
@@ -332,10 +327,10 @@ setSolveResults(results)
         reconcilePartStyle(d, response.bodies)
         setBodies(response.bodies ?? {})
         setPickBodies(response.pick_bodies ?? {})
-        buildStateRef.current = response._build_state
         setSolveRawResult(stringifyYaml(data.result))
-        setDoc(d)
-        docRef.current = d
+        const updatedDoc = { ...d }
+        setDoc(updatedDoc)
+        docRef.current = updatedDoc
         if (modeRef.current === 'code') {
           setCodeText(stringifyYaml(d))
         }
