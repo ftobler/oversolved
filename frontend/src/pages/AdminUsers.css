@@ -18,28 +18,34 @@
 .admin-users-table {
   width: 100%;
   border-collapse: collapse;
-  background: #1a1a1a;
-  border-radius: 8px;
-  border: 1px solid #333;
-  overflow: hidden;
 }
 
 .admin-users-table th,
 .admin-users-table td {
-  padding: 12px 16px;
+  padding: 2px 6px 2px 0;
   text-align: left;
   border-bottom: 1px solid #333;
   color: #ccc;
 }
 
 .admin-users-table th {
-  background: #222;
   font-weight: 500;
   color: #aaa;
 }
 
-.admin-users-table tr.current-user {
-  background: #1a2a3a;
+
+
+.me-badge {
+  display: inline-block;
+  background: #3d683f;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .admin-users-error {

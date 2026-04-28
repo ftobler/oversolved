@@ -286,7 +286,7 @@ export default function AdminUsers() {
             <tbody>
               {users.map(u => (
                 <tr key={u.id} className={u.id === user?.id ? 'current-user' : ''}>
-                  <td>{u.username}</td>
+                  <td>{u.username}{u.id === user?.id ? <div className="me-badge">me</div> : ''}</td>
                   <td>{u.is_admin ? 'Yes' : 'No'}</td>
                   <td>{u.is_active ? 'Yes' : 'No'}</td>
                   <td>{formatDate(u.created_at)}</td>
