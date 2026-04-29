@@ -237,11 +237,13 @@ export default function Part() {
   const [bodiesVisibility, setBodiesVisibility] = useState<Record<string, boolean>>({})
   const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
+  const viewportRef = useRef<ViewportHandle>(null)
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
   const [partColorPopover, setPartColorPopover] = useState<{ bodyId: string; position: [number, number] } | null>(null)
   const [partColorDraft, setPartColorDraft] = useState<string>('#6AB59B')
-  const viewportRef = useRef<ViewportHandle>(null)
+  const [partTransparencyDraft, setPartTransparencyDraft] = useState(0)
+  const [partMetalnessDraft, setPartMetalnessDraft] = useState(0.3)
   const partColorPopoverRef = useRef<HTMLDivElement>(null)
   const { user } = useAuth()
 
@@ -891,6 +893,16 @@ useEffect(() => {
     handleMutation({ type: 'set_part_color', bodyId, color: normalized })
   }, [handleMutation])
 
+  const handleBodyTransparency = useCallback((bodyId: string, transparency: number) => {
+    const clamped = Math.max(0, Math.min(1, transparency))
+    handleMutation({ type: 'set_part_transparency', bodyId, transparency: clamped })
+  }, [handleMutation])
+
+  const handleBodyMetalness = useCallback((bodyId: string, metalness: number) => {
+    const clamped = Math.max(0, Math.min(1, metalness))
+    handleMutation({ type: 'set_part_metalness', bodyId, metalness: clamped })
+  }, [handleMutation])
+
   useEffect(() => {
     if (!partColorPopover) return
     const close = (e: MouseEvent) => {
@@ -901,6 +913,14 @@ useEffect(() => {
     window.addEventListener('mousedown', close, { capture: true })
     return () => window.removeEventListener('mousedown', close, { capture: true })
   }, [partColorPopover])
+
+  useEffect(() => {
+    if (partColorPopover) {
+      const style = partStyle[partColorPopover.bodyId]
+      setPartTransparencyDraft(style?.transparency ?? 0)
+      setPartMetalnessDraft(style?.metalness ?? 0.3)
+    }
+  }, [partColorPopover, partStyle])
 
   const enterEditFeature = useCallback((featureId: string) => {
     const idx = features.findIndex(f => f.id === featureId)
@@ -1239,7 +1259,7 @@ useEffect(() => {
               )}
               {mode !== 'code' && (
                 <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-                  <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={effectiveVisibleBodies} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} ghostMode={ghostMode} />
+                  <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={effectiveVisibleBodies} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} partStyle={partStyle} ghostMode={ghostMode} />
                   <CacheIndicator visible={fromCache} timestamp={cacheTimestamp ?? undefined} />
                   <LoadingOverlay />
                 </div>
@@ -1411,12 +1431,40 @@ useEffect(() => {
                   const normalized = normalizeHexColor(partColorDraft)
                   if (normalized) {
                     handleBodyColor(partColorPopover.bodyId, normalized)
+                    handleBodyTransparency(partColorPopover.bodyId, partTransparencyDraft)
+                    handleBodyMetalness(partColorPopover.bodyId, partMetalnessDraft)
                     setPartColorPopover(null)
                   }
                 }
               }}
               placeholder="#RRGGBB"
             />
+          </div>
+          <div className="part-color-popover-row">
+            <span className="part-color-popover-label">Transparency</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={partTransparencyDraft}
+              onChange={(e) => setPartTransparencyDraft(parseFloat(e.target.value))}
+              className="part-slider"
+            />
+            <span className="part-slider-value">{(partTransparencyDraft * 100).toFixed(0)}%</span>
+          </div>
+          <div className="part-color-popover-row">
+            <span className="part-color-popover-label">Metalness</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={partMetalnessDraft}
+              onChange={(e) => setPartMetalnessDraft(parseFloat(e.target.value))}
+              className="part-slider"
+            />
+            <span className="part-slider-value">{(partMetalnessDraft * 100).toFixed(0)}%</span>
           </div>
           <div className="part-color-swatches">
             {PART_COLOR_PRESETS.map(c => (
@@ -1440,6 +1488,8 @@ useEffect(() => {
                 const normalized = normalizeHexColor(partColorDraft)
                 if (!normalized) return
                 handleBodyColor(partColorPopover.bodyId, normalized)
+                handleBodyTransparency(partColorPopover.bodyId, partTransparencyDraft)
+                handleBodyMetalness(partColorPopover.bodyId, partMetalnessDraft)
                 setPartColorPopover(null)
               }}
             >

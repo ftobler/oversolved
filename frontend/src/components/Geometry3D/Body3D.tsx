@@ -23,6 +23,8 @@ interface Body3DProps {
   visible?: boolean
   showDebugHit?: boolean
   color?: string
+  transparency?: number  // 0-1 (0 = opaque, 1 = fully transparent)
+  metalness?: number     // 0-1 (0 = non-metallic, 1 = fully metallic)
   interactive?: boolean
   ghost?: boolean
 }
@@ -169,7 +171,7 @@ export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
   return counts
 }
 
-export default function Body3D({ featureId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, interactive = true, ghost = false }: Body3DProps) {
+export default function Body3D({ featureId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, transparency = 0, metalness = 0.3, interactive = true, ghost = false }: Body3DProps) {
   const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
@@ -568,21 +570,18 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
         <meshStandardMaterial
           color="white"
           roughness={0.35}
-          metalness={0.3}
+          metalness={metalness}
           side={THREE.DoubleSide}
           vertexColors={true}
           polygonOffset={true}
           polygonOffsetFactor={interactive ? 1 : -1}
           polygonOffsetUnits={interactive ? 1 : -1}
-          transparent={ghost}
-          depthWrite={!ghost}
-          opacity={ghost ? 0.5 : 1}
-          // blendAlpha={ghost ? 0.5 : 1}
-          blending={ghost ? THREE.CustomBlending : THREE.NormalBlending}
-          blendEquation={ghost ? THREE.AddEquation : THREE.AddEquation}
-          // blendEquationAlpha={ghost ? THREE.AddEquation : null}
-          blendSrc={ghost ? THREE.SrcAlphaFactor : THREE.SrcAlphaFactor}
-          blendDst={ghost ? THREE.OneMinusSrcAlphaFactor : THREE.OneMinusSrcAlphaFactor}
+          transparent={ghost || transparency > 0}
+          depthWrite={!(ghost || transparency > 0)}
+          opacity={ghost ? 0.5 : (1 - transparency)}
+          blending={ghost || transparency > 0 ? THREE.CustomBlending : THREE.NormalBlending}
+          blendSrc={THREE.SrcAlphaFactor}
+          blendDst={THREE.OneMinusSrcAlphaFactor}
         />
       </mesh>
       {edges.length > 0 && (

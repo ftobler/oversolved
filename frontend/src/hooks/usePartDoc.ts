@@ -84,6 +84,8 @@ import {
   applySetTransformField,
   applyRenamePart,
   applySetPartColor,
+  applySetPartTransparency,
+  applySetPartMetalness,
   applyReorderFeatures,
 } from '../utils/yamlMutations'
 import type { PartFeature } from '../types/cad'
@@ -642,6 +644,12 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'set_part_color':
         applySetPartColor(next, m.bodyId, m.color)
+        break
+      case 'set_part_transparency':
+        applySetPartTransparency(next, m.bodyId, m.transparency)
+        break
+      case 'set_part_metalness':
+        applySetPartMetalness(next, m.bodyId, m.metalness)
         break
       case 'reorder_features':
         applyReorderFeatures(next, m.featureId, m.toIndex)

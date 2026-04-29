@@ -723,6 +723,20 @@ export function applySetPartColor(doc: PartDoc, bodyId: string, color: string): 
   doc.part_style[bodyId] = { ...current, color: trimmed }
 }
 
+export function applySetPartTransparency(doc: PartDoc, bodyId: string, transparency: number): void {
+  const clamped = Math.max(0, Math.min(1, transparency))
+  if (!doc.part_style) doc.part_style = {}
+  const current = doc.part_style[bodyId] ?? {}
+  doc.part_style[bodyId] = { ...current, transparency: clamped }
+}
+
+export function applySetPartMetalness(doc: PartDoc, bodyId: string, metalness: number): void {
+  const clamped = Math.max(0, Math.min(1, metalness))
+  if (!doc.part_style) doc.part_style = {}
+  const current = doc.part_style[bodyId] ?? {}
+  doc.part_style[bodyId] = { ...current, metalness: clamped }
+}
+
 export function applySetRevolveOperation(
   doc: PartDoc,
   featureId: string,

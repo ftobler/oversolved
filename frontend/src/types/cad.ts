@@ -250,6 +250,8 @@ export type Feature = PartFeature
 export interface PartStyleEntry {
   name?: string
   color?: string
+  transparency?: number  // 0-1 (0 = opaque, 1 = fully transparent)
+  metalness?: number     // 0-1 (0 = non-metallic, 1 = fully metallic)
   created_by?: string
 }
 
@@ -562,4 +564,6 @@ export type Mutation =
   | { type: 'set_transform_field'; featureId: string; field: keyof TransformFeatureDef; value: unknown }
   | { type: 'rename_part'; bodyId: string; name: string }
   | { type: 'set_part_color'; bodyId: string; color: string }
+  | { type: 'set_part_transparency'; bodyId: string; transparency: number }
+  | { type: 'set_part_metalness'; bodyId: string; metalness: number }
   | { type: 'reorder_features'; featureId: string; toIndex: number }
