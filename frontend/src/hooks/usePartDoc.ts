@@ -194,30 +194,30 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const requestIdRef = useRef(0)
 
   const reSolve = useCallback(async (d: PartDoc, rollbackPosition?: number | null) => {
-    setSolving(true)
-    setSolveTime(null)
-    const startTime = performance.now()
-    const isFirstSolve = !firstSolveDone.current
-    if (isFirstSolve) firstSolveDone.current = true
+  setSolving(true)
+  setSolveTime(null)
+  const startTime = performance.now()
+  const isFirstSolve = !firstSolveDone.current
+  if (isFirstSolve) firstSolveDone.current = true
 
-    const currentRequestId = ++requestIdRef.current
-    try {
-      const allFeatures = d.features ?? []
-      const effectiveRollback = rollbackPosition ?? rollbackPosRef.current ?? allFeatures.length
-      rollbackPosRef.current = effectiveRollback
+  const currentRequestId = ++requestIdRef.current
+  try {
+  const allFeatures = d.features ?? []
+  const effectiveRollback = rollbackPosition ?? rollbackPosRef.current ?? allFeatures.length
+  rollbackPosRef.current = effectiveRollback
 
-      // Slice at rollback position, then filter out built-in display features
-      const slicedFeatures = allFeatures.slice(0, effectiveRollback)
-      const solveFeatures = slicedFeatures.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
+  // Send ALL features to backend; backend handles rollback slicing internally.
+  // Filter out built-in features for the solve payload.
+  const solveFeatures = allFeatures.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
 
-      const isPreview = rollbackPosition !== undefined || pickBoundaryRef.current !== null
-      const solvePayload: Record<string, unknown> = {
-        ...d,
-        features: solveFeatures,
-        rollback_position: effectiveRollback,
-        request_id: currentRequestId,
-        is_preview: isPreview,
-      }
+  const isPreview = rollbackPosition !== undefined || pickBoundaryRef.current !== null
+  const solvePayload: Record<string, unknown> = {
+  ...d,
+  features: solveFeatures,
+  rollback_position: effectiveRollback,
+  request_id: currentRequestId,
+  is_preview: isPreview,
+  }
 
       if (pickBoundaryRef.current !== null) {
         solvePayload.pick_boundary = pickBoundaryRef.current

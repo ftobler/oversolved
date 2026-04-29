@@ -279,7 +279,12 @@ def _tessellate_bodies(
     return out
 
 
-def build(spec: dict, prev_state: BuildState | None = None, pick_boundary: int | None = None) -> dict:
+def build(
+    spec: dict,
+    prev_state: BuildState | None = None,
+    pick_boundary: int | None = None,
+    rollback_position: int | None = None,
+) -> dict:
     """Process a full feature-stack document with optional partial rebuild.
 
     spec: parsed document dict with a top-level 'features' list.
@@ -289,8 +294,16 @@ def build(spec: dict, prev_state: BuildState | None = None, pick_boundary: int |
                    the tessellated bodies from the checkpoint immediately BEFORE
                    the feature at this index. This is the "BEFORE" state used for
                    picking while a feature is being edited.
+    rollback_position: If provided, only solve features before this index.
+                      The returned BuildState.feature_order will contain ALL
+                      feature IDs (full list) so that subsequent calls with
+                      different rollback positions can do proper dirty checking.
     """
-    features: list[dict] = spec.get("features", [])
+    all_features: list[dict] = spec.get("features", [])
+    if rollback_position is not None:
+        features = all_features[:rollback_position]
+    else:
+        features = all_features
     first_dirty = _find_first_dirty(features, prev_state)
 
     global_repo = _init_global_repo()
@@ -406,7 +419,7 @@ def build(spec: dict, prev_state: BuildState | None = None, pick_boundary: int |
     result.update(_BUILTIN_PLANE_RESULTS)
 
     new_state = BuildState(
-        feature_order=[f.get("id", "") for f in features],
+        feature_order=[f.get("id", "") for f in all_features],
         checkpoints=new_checkpoints,
     )
 

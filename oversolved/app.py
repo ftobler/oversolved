@@ -774,12 +774,12 @@ def create_app(config: dict | None = None) -> Flask:
         if doc_id:
             counter = solver.acquire(doc_id)
             try:
-                if rollback_position is not None and isinstance(rollback_position, int):
-                    data = {**data, "features": data["features"][:rollback_position]}
-                    if pick_boundary is not None and pick_boundary > rollback_position:
-                        pick_boundary = None
-
-                build_result = build(data, prev_state=prev_state, pick_boundary=pick_boundary)
+                build_result = build(
+                    data,
+                    prev_state=prev_state,
+                    pick_boundary=pick_boundary,
+                    rollback_position=rollback_position,
+                )
                 _build_state_cache.set(doc_id, build_result.pop("_build_state"))
                 solver.release(doc_id, counter, build_result)
                 build_result.pop("_body_shapes", None)
@@ -788,12 +788,12 @@ def create_app(config: dict | None = None) -> Flask:
                 solver.release(doc_id, counter, {})
                 raise
         else:
-            if rollback_position is not None and isinstance(rollback_position, int):
-                data = {**data, "features": data["features"][:rollback_position]}
-                if pick_boundary is not None and pick_boundary > rollback_position:
-                    pick_boundary = None
-
-            build_result = build(data, prev_state=prev_state, pick_boundary=pick_boundary)
+            build_result = build(
+                data,
+                prev_state=prev_state,
+                pick_boundary=pick_boundary,
+                rollback_position=rollback_position,
+            )
             build_result.pop("_build_state", None)
             build_result.pop("_body_shapes", None)
             return Response(json.dumps(build_result), mimetype="application/json")
