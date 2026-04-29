@@ -17,6 +17,7 @@ from flask import (
     g,
     jsonify,
     request,
+    send_file,
     send_from_directory,
     make_response,
 )
@@ -1323,6 +1324,89 @@ def create_app(config: dict | None = None) -> Flask:
             _l2_cache.delete(doc_id)
 
         return jsonify({"status": "flushed", "doc_id": doc_id, "level": level})
+
+    def _estimate_shape_size(shape) -> int:
+        """Estimate serialized size of an OCC shape in bytes."""
+        try:
+            from oversolved.geometry import shape_to_step_file_buffer
+            buf = shape_to_step_file_buffer(shape)
+            return len(buf.getvalue())
+        except Exception:
+            return 0
+
+    @app.route("/api/cache/inspect", methods=["GET"])
+    def inspect_cache() -> Response | tuple:
+        """Return cache inventory for debug inspector."""
+        l1_entries = []
+        for doc_id, (state, accessed_time) in _build_state_cache._data.items():
+            shape_size_estimate = 0
+            for checkpoint in state.checkpoints.values():
+                for body in checkpoint.body_store_snapshot.values():
+                    if body.shape is not None:
+                        shape_size_estimate += _estimate_shape_size(body.shape)
+            l1_entries.append({
+                "doc_id": doc_id,
+                "feature_order": state.feature_order,
+                "checkpoint_count": len(state.checkpoints),
+                "accessed_at": datetime.fromtimestamp(accessed_time).isoformat(),
+                "shape_size_estimate": shape_size_estimate,
+            })
+
+        l2_entries = []
+        if app.config.get("L2_CACHE_ENABLED"):
+            cache_dir = Path(_l2_cache._cache_dir)
+            if cache_dir.exists():
+                for file_path in cache_dir.glob("*.json"):
+                    doc_id = file_path.stem
+                    stat = file_path.stat()
+                    try:
+                        with open(file_path, encoding="utf-8") as f:
+                            data = json.load(f)
+                        checkpoint_count = len(data.get("checkpoints", {}))
+                    except Exception:
+                        checkpoint_count = 0
+                    l2_entries.append({
+                        "doc_id": doc_id,
+                        "file_path": str(file_path),
+                        "file_size": stat.st_size,
+                        "created_at": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                        "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        "checkpoint_count": checkpoint_count,
+                    })
+
+        return jsonify({"l1": l1_entries, "l2": l2_entries})
+
+    @app.route("/api/cache/inspect/l2/<doc_id>", methods=["GET"])
+    def inspect_l2_entry(doc_id: str) -> Response | tuple:
+        """Return prettified L2 cache JSON for preview."""
+        if not app.config.get("L2_CACHE_ENABLED"):
+            return jsonify({"error": "L2 cache not enabled"}), 400
+
+        file_path = Path(_l2_cache._cache_dir) / f"{doc_id}.json"
+        if not file_path.exists():
+            return jsonify({"error": f"Entry not found: {doc_id}"}), 404
+
+        with open(file_path, encoding="utf-8") as f:
+            data = json.load(f)
+
+        json_str = json.dumps(data, indent=2)
+        return Response(json_str[:50000], mimetype="application/json")
+
+    @app.route("/api/cache/download/<doc_id>", methods=["GET"])
+    def download_l2_entry(doc_id: str) -> Response | tuple:
+        """Download full L2 cache entry as JSON file."""
+        if not app.config.get("L2_CACHE_ENABLED"):
+            return jsonify({"error": "L2 cache not enabled"}), 400
+
+        file_path = Path(_l2_cache._cache_dir) / f"{doc_id}.json"
+        if not file_path.exists():
+            return jsonify({"error": f"Entry not found: {doc_id}"}), 404
+
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=f"{doc_id}_cache.json",
+        )
 
     def _format_history(history):
         """Format edit history for bug report."""

@@ -64,6 +64,17 @@ export async function clearAll(): Promise<void> {
   })
 }
 
+export async function getAllRecords(): Promise<unknown[]> {
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly')
+    const store = tx.objectStore(STORE_NAME)
+    const request = store.getAll()
+    request.onsuccess = () => resolve(request.result ?? [])
+    request.onerror = () => reject(request.error)
+  })
+}
+
 export async function deleteByDocId(docId: string): Promise<void> {
   const db = await openDb()
   return new Promise((resolve, reject) => {

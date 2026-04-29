@@ -18,6 +18,7 @@ import FooterMeasurementDisplay from '../components/FooterMeasurementDisplay'
 import ExportDialog, { type ExportFormat } from '../components/ExportDialog'
 import LoadingOverlay from '../components/LoadingOverlay'
 import CacheIndicator from '../components/CacheIndicator'
+import CacheInspector from '../components/CacheInspector'
 import { useSolverStore } from '../stores/solverStore'
 import { invalidateDocCache } from '../utils/buildCache'
 import './Part.css'
@@ -243,7 +244,7 @@ export default function Part() {
   const partColorPopoverRef = useRef<HTMLDivElement>(null)
 
   const [debugOpen, setDebugOpen] = useState(false)
-  const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo'>('selection')
+  const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo' | 'cache-inspector'>('selection')
   const showDebugHit = useSketchEditorStore(s => s.showDebugHit)
   const setShowDebugHit = useSketchEditorStore(s => s.setShowDebugHit)
   const [bugReportForm, setBugReportForm] = useState({ title: '', description: '' })
@@ -1252,6 +1253,12 @@ useEffect(() => {
               >
                 Undo
               </button>
+              <button
+                className={`debug-tab ${debugTab === 'cache-inspector' ? 'active' : ''}`}
+                onClick={() => setDebugTab('cache-inspector')}
+              >
+                Cache
+              </button>
             </div>
             {debugTab === 'selection' && (
               <div className="debug-content">
@@ -1329,6 +1336,7 @@ useEffect(() => {
                 </div>
               </div>
             )}
+            {debugTab === 'cache-inspector' && <CacheInspector />}
           </aside>
         )}
       </div>

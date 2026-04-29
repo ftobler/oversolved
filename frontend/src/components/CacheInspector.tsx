@@ -1,0 +1,328 @@
+import { useState, useEffect, useCallback } from 'react'
+import { getAllRecords, deleteRecord } from '../utils/indexedDb'
+import type { BuildResponse } from '../types/cad'
+
+interface CacheEntry {
+  cache_key: string
+  doc_id: string
+  feature_spec_hash: string
+  timestamp: number
+  rollback_position: number
+  pick_boundary: number | null
+  buildResponse: BuildResponse
+}
+
+interface L1Entry {
+  doc_id: string
+  feature_order: string[]
+  checkpoint_count: number
+  accessed_at: string
+  shape_size_estimate: number
+}
+
+interface L2Entry {
+  doc_id: string
+  file_path: string
+  file_size: number
+  created_at: string
+  modified_at: string
+  checkpoint_count: number
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${parseFloat((bytes / k ** i).toFixed(1))} ${sizes[i]}`
+}
+
+function formatTime(ts: number): string {
+  const seconds = Math.floor((Date.now() - ts) / 1000)
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
+
+function FrontendTab({ searchQuery }: { searchQuery: string }) {
+  const [entries, setEntries] = useState<CacheEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const all = await getAllRecords()
+      setEntries(all as CacheEntry[])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const filtered = entries.filter(
+    e =>
+      e.doc_id.includes(searchQuery) ||
+      e.cache_key.includes(searchQuery)
+  )
+
+  const totalSize = entries.reduce((sum, e) => {
+    try {
+      return sum + JSON.stringify(e.buildResponse).length
+    } catch {
+      return sum
+    }
+  }, 0)
+
+  const handleDelete = async (key: string) => {
+    await deleteRecord(key)
+    setEntries(prev => prev.filter(e => e.cache_key !== key))
+  }
+
+  const handleDownload = (entry: CacheEntry) => {
+    const json = JSON.stringify(entry.buildResponse, null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${entry.doc_id}_buildresponse.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div className="cache-tab">
+      <div className="cache-stats">
+        IndexedDB: {entries.length} entries, {formatBytes(totalSize)}
+      </div>
+      <div className="cache-actions-bar">
+        <button onClick={load}>Refresh</button>
+      </div>
+      {loading && <div className="cache-loading">Loading...</div>}
+      <div className="cache-entries">
+        {filtered.map(entry => {
+          const isExpanded = expandedKey === entry.cache_key
+          const size = JSON.stringify(entry.buildResponse).length
+          return (
+            <div key={entry.cache_key} className="cache-entry">
+              <div className="cache-entry-header">
+                <span className="cache-entry-id">{entry.doc_id}</span>
+                <span className="cache-entry-meta">
+                  {formatBytes(size)}
+                </span>
+              </div>
+              <div className="cache-entry-sub">
+                Created: {formatTime(entry.timestamp)}
+                {entry.rollback_position !== undefined &&
+                  ` | Rollback: ${entry.rollback_position}`}
+              </div>
+              <div className="cache-entry-actions">
+                <button onClick={() => setExpandedKey(isExpanded ? null : entry.cache_key)}>
+                  {isExpanded ? 'Hide' : 'Details'}
+                </button>
+                <button onClick={() => handleDownload(entry)}>Download</button>
+                <button className="cache-delete-btn" onClick={() => handleDelete(entry.cache_key)}>
+                  Delete
+                </button>
+              </div>
+              {isExpanded && (
+                <pre className="cache-entry-preview">
+                  {JSON.stringify(entry.buildResponse, null, 2).slice(0, 2000)}
+                  {JSON.stringify(entry.buildResponse).length > 2000 && '...'}
+                </pre>
+              )}
+            </div>
+          )
+        })}
+        {!loading && filtered.length === 0 && (
+          <div className="cache-empty">No entries</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function BackendTab({ searchQuery }: { searchQuery: string }) {
+  const [l1, setL1] = useState<L1Entry[]>([])
+  const [l2, setL2] = useState<L2Entry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [l2Preview, setL2Preview] = useState<Record<string, string>>({})
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/cache/inspect')
+      const data = await res.json()
+      setL1(data.l1 || [])
+      setL2(data.l2 || [])
+    } catch {
+      setL1([])
+      setL2([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const handleLoadL2Json = async (docId: string) => {
+    if (l2Preview[docId]) {
+      setL2Preview(prev => ({ ...prev, [docId]: '' }))
+      return
+    }
+    try {
+      const res = await fetch(`/api/cache/inspect/l2/${docId}`)
+      const text = await res.text()
+      setL2Preview(prev => ({ ...prev, [docId]: text }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setL2Preview(prev => ({ ...prev, [docId]: `Error: ${message}` }))
+    }
+  }
+
+  const handleDeleteL1 = async (docId: string) => {
+    await fetch('/api/cache/flush', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_id: docId, level: 'l1' }),
+    })
+    setL1(prev => prev.filter(e => e.doc_id !== docId))
+  }
+
+  const handleDeleteL2 = async (docId: string) => {
+    await fetch('/api/cache/flush', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_id: docId, level: 'l2' }),
+    })
+    setL2(prev => prev.filter(e => e.doc_id !== docId))
+  }
+
+  const filteredL1 = l1.filter(e => e.doc_id.includes(searchQuery))
+  const filteredL2 = l2.filter(e => e.doc_id.includes(searchQuery))
+
+  const l1Total = l1.reduce((sum, e) => sum + e.shape_size_estimate, 0)
+  const l2Total = l2.reduce((sum, e) => sum + e.file_size, 0)
+
+  return (
+    <div className="cache-tab">
+      <div className="cache-actions-bar">
+        <button onClick={load}>Refresh</button>
+      </div>
+      {loading && <div className="cache-loading">Loading...</div>}
+
+      <div className="cache-section">
+        <div className="cache-stats">
+          L1 Memory: {l1.length} entries, ~{formatBytes(l1Total)}
+        </div>
+        <div className="cache-entries">
+          {filteredL1.map(entry => (
+            <div key={entry.doc_id} className="cache-entry">
+              <div className="cache-entry-header">
+                <span className="cache-entry-id">{entry.doc_id}</span>
+                <span className="cache-entry-meta">
+                  {entry.checkpoint_count} checkpoints
+                </span>
+              </div>
+              <div className="cache-entry-sub">
+                Accessed: {formatTime(new Date(entry.accessed_at).getTime())}
+              </div>
+              <div className="cache-entry-actions">
+                <button className="cache-delete-btn" onClick={() => handleDeleteL1(entry.doc_id)}>
+                  Delete L1
+                </button>
+              </div>
+            </div>
+          ))}
+          {filteredL1.length === 0 && !loading && (
+            <div className="cache-empty">No L1 entries</div>
+          )}
+        </div>
+      </div>
+
+      <div className="cache-section">
+        <div className="cache-stats">
+          L2 Disk: {l2.length} entries, {formatBytes(l2Total)}
+        </div>
+        <div className="cache-entries">
+          {filteredL2.map(entry => {
+            const preview = l2Preview[entry.doc_id]
+            return (
+              <div key={entry.doc_id} className="cache-entry">
+                <div className="cache-entry-header">
+                  <span className="cache-entry-id">{entry.doc_id}.json</span>
+                  <span className="cache-entry-meta">{formatBytes(entry.file_size)}</span>
+                </div>
+                <div className="cache-entry-sub">
+                  Created: {formatTime(new Date(entry.created_at).getTime())} |
+                  Modified: {formatTime(new Date(entry.modified_at).getTime())} |
+                  Checkpoints: {entry.checkpoint_count}
+                </div>
+                <div className="cache-entry-actions">
+                  <button onClick={() => handleLoadL2Json(entry.doc_id)}>
+                    {preview ? 'Hide JSON' : 'View JSON'}
+                  </button>
+                  <button className="cache-delete-btn" onClick={() => handleDeleteL2(entry.doc_id)}>
+                    Delete L2
+                  </button>
+                </div>
+                {preview && (
+                  <pre className="cache-entry-preview">
+                    {preview.slice(0, 5000)}
+                    {preview.length > 5000 && '...'}
+                  </pre>
+                )}
+              </div>
+            )
+          })}
+          {filteredL2.length === 0 && !loading && (
+            <div className="cache-empty">No L2 entries</div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function CacheInspector() {
+  const [activeTab, setActiveTab] = useState<'frontend' | 'backend'>('frontend')
+  const [searchQuery, setSearchQuery] = useState('')
+
+  return (
+    <div className="cache-inspector">
+      <div className="cache-inspector-tabs">
+        <button
+          className={`cache-inspector-tab ${activeTab === 'frontend' ? 'active' : ''}`}
+          onClick={() => setActiveTab('frontend')}
+        >
+          Frontend
+        </button>
+        <button
+          className={`cache-inspector-tab ${activeTab === 'backend' ? 'active' : ''}`}
+          onClick={() => setActiveTab('backend')}
+        >
+          Backend
+        </button>
+      </div>
+      <div className="cache-search-bar">
+        <input
+          type="text"
+          placeholder="Search by doc_id..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+        />
+        <button onClick={() => setSearchQuery('')}>Reset</button>
+      </div>
+      {activeTab === 'frontend' && <FrontendTab searchQuery={searchQuery} />}
+      {activeTab === 'backend' && <BackendTab searchQuery={searchQuery} />}
+    </div>
+  )
+}
