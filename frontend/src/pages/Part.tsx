@@ -10,6 +10,7 @@ import { buildCommandEntries } from './commandEntries'
 import SketchToolbar from '../components/Toolbar/SketchToolbar'
 import AppHeader from '../components/AppHeader'
 import { usePartDoc } from '../hooks/usePartDoc'
+import { useAuth } from '../contexts/AuthContext'
 import RightClickMenu from '../components/RightClickMenu'
 import type { ContextMenuItem } from '../components/RightClickMenu'
 import { BugReporter } from '../components/BugReporter'
@@ -242,6 +243,7 @@ export default function Part() {
   const [partColorDraft, setPartColorDraft] = useState<string>('#6AB59B')
   const viewportRef = useRef<ViewportHandle>(null)
   const partColorPopoverRef = useRef<HTMLDivElement>(null)
+  const { user } = useAuth()
 
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo' | 'cache-inspector'>('selection')
@@ -1083,6 +1085,20 @@ useEffect(() => {
     })
   }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename, partLabels, handleBodyRename, partColors])
 
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'F2' || e.code === 'F2') {
+        if (!user?.is_admin) {
+          e.preventDefault()
+          return
+        }
+        setDebugOpen(prev => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [user?.is_admin])
+
   return (
     <div className="document-viewer">
       <AppHeader>
@@ -1232,7 +1248,7 @@ useEffect(() => {
           )}
         </div>
 
-        {debugOpen && (
+        {debugOpen && user?.is_admin && (
           <aside className="debug-drawer">
             <div className="debug-tabs">
               <button
@@ -1344,13 +1360,15 @@ useEffect(() => {
         <p>Copyright 2026 - Oversolved</p>
         <FooterMeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
         <div className="debug-buttons">
-          <button
-            className={`footer-debug-btn ${debugOpen ? 'active' : ''}`}
-            title="Toggle debug panel"
-            onClick={() => setDebugOpen(v => !v)}
-          >
-            <span className="material-icons-outlined">bug_report</span>
-          </button>
+          {user?.is_admin && (
+            <button
+              className={`footer-debug-btn ${debugOpen ? 'active' : ''}`}
+              title="Toggle debug panel (F2)"
+              onClick={() => setDebugOpen(v => !v)}
+            >
+              <span className="material-icons-outlined">bug_report</span>
+            </button>
+          )}
           <button
             className="footer-debug-btn"
             title={showDebugHit ? "Hide debug collision rendering" : "Show debug collision rendering"}

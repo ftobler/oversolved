@@ -1309,6 +1309,8 @@ def create_app(config: dict | None = None) -> Flask:
             return Response(json.dumps(build_result), mimetype="application/json")
 
     @app.route("/api/cache/flush", methods=["POST"])
+    @require_auth
+    @require_admin
     def flush_cache() -> Response | tuple:
         data = request.get_json(silent=True) or {}
         doc_id = data.get("doc_id", "").strip()
@@ -1335,6 +1337,8 @@ def create_app(config: dict | None = None) -> Flask:
             return 0
 
     @app.route("/api/cache/inspect", methods=["GET"])
+    @require_auth
+    @require_admin
     def inspect_cache() -> Response | tuple:
         """Return cache inventory for debug inspector."""
         l1_entries = []
@@ -1377,6 +1381,8 @@ def create_app(config: dict | None = None) -> Flask:
         return jsonify({"l1": l1_entries, "l2": l2_entries})
 
     @app.route("/api/cache/inspect/l2/<doc_id>", methods=["GET"])
+    @require_auth
+    @require_admin
     def inspect_l2_entry(doc_id: str) -> Response | tuple:
         """Return prettified L2 cache JSON for preview."""
         if not app.config.get("L2_CACHE_ENABLED"):
@@ -1393,6 +1399,8 @@ def create_app(config: dict | None = None) -> Flask:
         return Response(json_str[:50000], mimetype="application/json")
 
     @app.route("/api/cache/download/<doc_id>", methods=["GET"])
+    @require_auth
+    @require_admin
     def download_l2_entry(doc_id: str) -> Response | tuple:
         """Download full L2 cache entry as JSON file."""
         if not app.config.get("L2_CACHE_ENABLED"):
@@ -1419,6 +1427,8 @@ def create_app(config: dict | None = None) -> Flask:
         return "\n".join(lines)
 
     @app.route("/api/bug-report", methods=["POST"])
+    @require_auth
+    @require_admin
     def submit_bug_report():
         content_type = request.content_type or ""
         if "application/json" not in content_type:

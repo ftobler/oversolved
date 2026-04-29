@@ -36,6 +36,45 @@ def client(app):
     return app.test_client()
 
 
+@pytest.fixture
+def authed_client(app):
+    """Create a test client logged in as admin."""
+    client = app.test_client()
+    response = client.post(
+        "/api/auth/login",
+        data=json.dumps({"username": "admin", "password": "admin"}),
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    return client
+
+
+@pytest.fixture
+def nonadmin_client(app):
+    """Create a test client logged in as non-admin user."""
+    client = app.test_client()
+    # Create user via admin
+    admin = app.test_client()
+    admin.post(
+        "/api/auth/login",
+        data=json.dumps({"username": "admin", "password": "admin"}),
+        content_type="application/json",
+    )
+    admin.post(
+        "/api/admin/users",
+        data=json.dumps({"username": "user1", "password": "user1", "email": "user1@example.com"}),
+        content_type="application/json",
+    )
+    # Login as that user
+    response = client.post(
+        "/api/auth/login",
+        data=json.dumps({"username": "user1", "password": "user1"}),
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    return client
+
+
 class TestTtlCache:
     def test_get_returns_none_for_missing_key(self):
         cache = TtlCache[str](ttl_seconds=10.0, max_size=10)
@@ -165,17 +204,33 @@ class TestSolveEndpointSerialization:
 
 
 class TestCacheFlushEndpoint:
-    def test_flush_endpoint_removes_l1(self, client):
+    def test_flush_requires_auth(self, client):
+        resp = client.post(
+            "/api/cache/flush",
+            data=json.dumps({"doc_id": "doc_flush_l1", "level": "l1"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 401
+
+    def test_flush_requires_admin(self, nonadmin_client):
+        resp = nonadmin_client.post(
+            "/api/cache/flush",
+            data=json.dumps({"doc_id": "doc_flush_l1", "level": "l1"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 403
+
+    def test_flush_endpoint_removes_l1(self, authed_client):
         pytest.importorskip("OCP.gp")
         sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
         ex1 = extrude_spec("sk1", "ex1", distance=5.0)
 
         # Build to populate L1 cache
-        r1 = post_solve(client, {"id": "doc_flush_l1", "features": [sk1, ex1]})
+        r1 = post_solve(authed_client, {"id": "doc_flush_l1", "features": [sk1, ex1]})
         assert r1.status_code == 200
 
         # Flush L1
-        resp = client.post(
+        resp = authed_client.post(
             "/api/cache/flush",
             data=json.dumps({"doc_id": "doc_flush_l1", "level": "l1"}),
             content_type="application/json",
@@ -185,18 +240,18 @@ class TestCacheFlushEndpoint:
         assert data["status"] == "flushed"
         assert data["level"] == "l1"
 
-    def test_flush_endpoint_removes_l2(self, client, app):
+    def test_flush_endpoint_removes_l2(self, authed_client, app):
         pytest.importorskip("OCP.gp")
         app.config["L2_CACHE_ENABLED"] = True
         sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
         ex1 = extrude_spec("sk1", "ex1", distance=5.0)
 
         # Build to populate L2 cache
-        r1 = post_solve(client, {"id": "doc_flush_l2", "features": [sk1, ex1]})
+        r1 = post_solve(authed_client, {"id": "doc_flush_l2", "features": [sk1, ex1]})
         assert r1.status_code == 200
 
         # Flush all (includes L2)
-        resp = client.post(
+        resp = authed_client.post(
             "/api/cache/flush",
             data=json.dumps({"doc_id": "doc_flush_l2", "level": "all"}),
             content_type="application/json",
@@ -206,14 +261,14 @@ class TestCacheFlushEndpoint:
         assert data["status"] == "flushed"
         assert data["level"] == "all"
 
-    def test_flush_endpoint_level_parameter(self, client):
+    def test_flush_endpoint_level_parameter(self, authed_client):
         pytest.importorskip("OCP.gp")
         sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
 
-        post_solve(client, {"id": "doc_flush_level", "features": [sk1]})
+        post_solve(authed_client, {"id": "doc_flush_level", "features": [sk1]})
 
         # l1 should succeed
-        resp = client.post(
+        resp = authed_client.post(
             "/api/cache/flush",
             data=json.dumps({"doc_id": "doc_flush_level", "level": "l1"}),
             content_type="application/json",
@@ -221,15 +276,15 @@ class TestCacheFlushEndpoint:
         assert resp.status_code == 200
 
         # l2 should succeed even if not enabled (no-op)
-        resp = client.post(
+        resp = authed_client.post(
             "/api/cache/flush",
             data=json.dumps({"doc_id": "doc_flush_level", "level": "l2"}),
             content_type="application/json",
         )
         assert resp.status_code == 200
 
-    def test_flush_endpoint_invalid_doc_id(self, client):
-        resp = client.post(
+    def test_flush_endpoint_invalid_doc_id(self, authed_client):
+        resp = authed_client.post(
             "/api/cache/flush",
             data=json.dumps({"level": "all"}),
             content_type="application/json",
@@ -238,8 +293,8 @@ class TestCacheFlushEndpoint:
         data = json.loads(resp.data)
         assert "error" in data
 
-    def test_flush_endpoint_nonexistent_doc(self, client):
-        resp = client.post(
+    def test_flush_endpoint_nonexistent_doc(self, authed_client):
+        resp = authed_client.post(
             "/api/cache/flush",
             data=json.dumps({"doc_id": "doc_does_not_exist", "level": "all"}),
             content_type="application/json",
