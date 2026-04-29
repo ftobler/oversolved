@@ -50,9 +50,11 @@ When asked to plan a feature:
 - Write a detailed plan including test specs
 - Do NOT execute the plan or touch any other files
 - Read existing `feature/*.md` files first to know what is already in development
+- Keep an overview and order of exection of features to apply documented in `feature/overview.md`. Keep it very short. One line per feature.
 
 When asked to implement a feature:
 - you read the `feature/<topic>.md` and execute according to content.
+
 
 ## important files
 - oversolved/solver.py
