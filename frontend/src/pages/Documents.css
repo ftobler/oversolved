@@ -388,6 +388,11 @@
   text-align: left;
 }
 
+.doc-tile-org {
+  color: #6a9bbf;
+  font-weight: 400;
+}
+
 .btn-delete-tile {
   flex-shrink: 0;
   background: transparent;

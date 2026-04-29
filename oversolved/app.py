@@ -28,6 +28,7 @@ from oversolved.db import (
     DocumentStore,
     UserStore,
     SessionStore,
+    OrgStore,
 )
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
@@ -50,18 +51,27 @@ def _get_database(config):
     return Database(db_conn)
 
 
+def _ensure_personal_org(db: Database, user_id: int, username: str) -> None:
+    """Create a personal org for the user if one doesn't exist."""
+    org_store = OrgStore(db)
+    if not org_store.find_by_slug(username):
+        org_store.create(username, username, user_id, is_personal=True)
+
+
 def _ensure_admin_user(db: Database) -> None:
     """Create the default admin user if it doesn't exist."""
     user_store = UserStore(db)
     admin = user_store.find_by_username("admin")
     if admin:
         user_store.update(admin["id"], is_admin=1)
+        _ensure_personal_org(db, admin["id"], "admin")
     else:
         uid = user_store.create(
             "admin", generate_password_hash("admin"),
             must_change_password=True, email="admin@local.oversolved",
         )
         user_store.update(uid, is_admin=1, must_change_password=1)
+        _ensure_personal_org(db, uid, "admin")
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -354,6 +364,7 @@ def create_app(config: dict | None = None) -> Flask:
             nickname=nickname.strip() if nickname else None,
             is_admin=is_admin,
         )
+        _ensure_personal_org(db, uid, username)
         return jsonify({"id": uid, "username": username, "email": email}), 201
 
     @app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
@@ -425,6 +436,176 @@ def create_app(config: dict | None = None) -> Flask:
             return jsonify({"error": "User not found"}), 404
         return jsonify({"status": "reset"})
 
+    # ── Org routes ─────────────────────────────────────────────────────────────
+
+    _VALID_ORG_ROLES = {"read", "write", "admin", "owner"}
+
+    @app.route("/api/users/me/orgs", methods=["GET"])
+    @require_auth
+    def list_my_orgs():
+        orgs = OrgStore(get_db()).list_for_user(g.current_user["id"])
+        return jsonify({"orgs": orgs})
+
+    @app.route("/api/orgs", methods=["POST"])
+    @require_auth
+    def create_org():
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        data = request.get_json()
+        slug = (data.get("slug") or "").strip().lower()
+        display_name = (data.get("name") or "").strip()
+        description = (data.get("description") or "").strip() or None
+
+        if not slug:
+            return jsonify({"error": "Slug required"}), 400
+        if not re.match(r'^[a-z0-9_-]+$', slug):
+            return jsonify({"error": "Slug may only contain lowercase letters, digits, hyphens, underscores"}), 400
+        if not display_name:
+            return jsonify({"error": "Name required"}), 400
+
+        db = get_db()
+        org_store = OrgStore(db)
+        if org_store.find_by_slug(slug):
+            return jsonify({"error": "Slug already taken"}), 409
+
+        org = org_store.create(slug, display_name, g.current_user["id"],
+                               is_personal=False, description=description)
+        org["members"] = org_store.get_members(org["id"])
+        return jsonify(org), 201
+
+    @app.route("/api/orgs/<slug>", methods=["GET"])
+    @require_auth
+    def get_org(slug):
+        db = get_db()
+        org_store = OrgStore(db)
+        org = org_store.find_by_slug(slug)
+        if org is None:
+            return jsonify({"error": "Organization not found"}), 404
+        role = org_store.get_member_role(org["id"], g.current_user["id"])
+        if role is None and not g.current_user.get("is_admin"):
+            return jsonify({"error": "Forbidden"}), 403
+        org["members"] = org_store.get_members(org["id"])
+        org["role"] = role
+        return jsonify(org)
+
+    @app.route("/api/orgs/<slug>", methods=["PATCH"])
+    @require_auth
+    def update_org(slug):
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        db = get_db()
+        org_store = OrgStore(db)
+        org = org_store.find_by_slug(slug)
+        if org is None:
+            return jsonify({"error": "Organization not found"}), 404
+        role = org_store.get_member_role(org["id"], g.current_user["id"])
+        if role not in ("admin", "owner"):
+            return jsonify({"error": "Forbidden"}), 403
+
+        data = request.get_json()
+        display_name = (data.get("name") or "").strip() or None
+        description = data.get("description")
+        org_store.update(org["id"], display_name=display_name, description=description)
+        updated = org_store.find_by_slug(slug)
+        return jsonify(updated)
+
+    @app.route("/api/orgs/<slug>", methods=["DELETE"])
+    @require_auth
+    def delete_org(slug):
+        db = get_db()
+        org_store = OrgStore(db)
+        org = org_store.find_by_slug(slug)
+        if org is None:
+            return jsonify({"error": "Organization not found"}), 404
+        if org["is_personal"]:
+            return jsonify({"error": "Cannot delete personal organization"}), 403
+        role = org_store.get_member_role(org["id"], g.current_user["id"])
+        if role != "owner":
+            return jsonify({"error": "Only owners can delete organizations"}), 403
+        org_store.delete(org["id"])
+        return jsonify({"status": "deleted", "slug": slug})
+
+    @app.route("/api/orgs/<slug>/members", methods=["POST"])
+    @require_auth
+    def add_org_member(slug):
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        db = get_db()
+        org_store = OrgStore(db)
+        org = org_store.find_by_slug(slug)
+        if org is None:
+            return jsonify({"error": "Organization not found"}), 404
+        caller_role = org_store.get_member_role(org["id"], g.current_user["id"])
+        if caller_role not in ("admin", "owner"):
+            return jsonify({"error": "Forbidden"}), 403
+
+        data = request.get_json()
+        target_username = (data.get("username") or "").strip()
+        role = (data.get("role") or "").strip()
+        if not target_username:
+            return jsonify({"error": "Username required"}), 400
+        if role not in _VALID_ORG_ROLES:
+            return jsonify({"error": "Invalid role"}), 400
+
+        target_user = UserStore(db).find_by_username(target_username)
+        if target_user is None:
+            return jsonify({"error": "User not found"}), 404
+
+        org_store.add_member(org["id"], target_user["id"], role)
+        return jsonify({"user_id": target_user["id"], "username": target_username, "role": role}), 201
+
+    @app.route("/api/orgs/<slug>/members/<int:user_id>", methods=["PATCH"])
+    @require_auth
+    def update_org_member(slug, user_id):
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        db = get_db()
+        org_store = OrgStore(db)
+        org = org_store.find_by_slug(slug)
+        if org is None:
+            return jsonify({"error": "Organization not found"}), 404
+        caller_role = org_store.get_member_role(org["id"], g.current_user["id"])
+        if caller_role not in ("admin", "owner"):
+            return jsonify({"error": "Forbidden"}), 403
+
+        data = request.get_json()
+        new_role = (data.get("role") or "").strip()
+        if new_role not in _VALID_ORG_ROLES:
+            return jsonify({"error": "Invalid role"}), 400
+
+        current_role = org_store.get_member_role(org["id"], user_id)
+        if current_role is None:
+            return jsonify({"error": "Member not found"}), 404
+        if current_role == "owner" and new_role != "owner":
+            if org_store.count_owners(org["id"]) <= 1:
+                return jsonify({"error": "Cannot demote the only owner"}), 403
+
+        org_store.update_member_role(org["id"], user_id, new_role)
+        target_user = UserStore(db).find_by_id(user_id)
+        username = target_user["username"] if target_user else ""
+        return jsonify({"user_id": user_id, "username": username, "role": new_role})
+
+    @app.route("/api/orgs/<slug>/members/<int:user_id>", methods=["DELETE"])
+    @require_auth
+    def remove_org_member(slug, user_id):
+        db = get_db()
+        org_store = OrgStore(db)
+        org = org_store.find_by_slug(slug)
+        if org is None:
+            return jsonify({"error": "Organization not found"}), 404
+        caller_role = org_store.get_member_role(org["id"], g.current_user["id"])
+        if caller_role not in ("admin", "owner"):
+            return jsonify({"error": "Forbidden"}), 403
+
+        target_role = org_store.get_member_role(org["id"], user_id)
+        if target_role is None:
+            return jsonify({"error": "Member not found"}), 404
+        if target_role == "owner" and org_store.count_owners(org["id"]) <= 1:
+            return jsonify({"error": "Cannot remove the only owner"}), 403
+
+        org_store.remove_member(org["id"], user_id)
+        return jsonify({"status": "removed", "user_id": user_id})
+
     # ── Document routes ────────────────────────────────────────────────────────
 
     @app.route("/api/documents", methods=["GET"])
@@ -456,8 +637,19 @@ def create_app(config: dict | None = None) -> Flask:
         name = (data.get("name") or "").strip()
         if not name:
             return jsonify({"error": "Document name required"}), 400
-        uuid = DocumentStore(get_db()).create(name, g.current_user["id"])
-        return jsonify({"uuid": uuid, "name": name}), 201
+        db = get_db()
+        org_slug = (data.get("org_slug") or "").strip()
+        org_id = None
+        if org_slug:
+            org = OrgStore(db).find_by_slug(org_slug)
+            if org is None:
+                return jsonify({"error": "Organization not found"}), 404
+            role = OrgStore(db).get_member_role(org["id"], g.current_user["id"])
+            if role not in ("write", "admin", "owner"):
+                return jsonify({"error": "Forbidden"}), 403
+            org_id = org["id"]
+        doc_uuid = DocumentStore(db).create(name, g.current_user["id"], org_id=org_id)
+        return jsonify({"uuid": doc_uuid, "name": name}), 201
 
     @app.route("/api/documents/<uuid>", methods=["GET"])
     @require_auth
@@ -1105,6 +1297,66 @@ def _register_migrations(db: Database) -> None:
         )
 
     db.register_migration(7, "user_sort_preference", migration_007_user_sort_preference)
+
+    def migration_008_organizations(database: Database):
+        """Create organizations and organization_members tables."""
+        database.execute("""
+            CREATE TABLE organizations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug TEXT UNIQUE NOT NULL,
+                display_name TEXT NOT NULL,
+                description TEXT,
+                is_personal INTEGER NOT NULL DEFAULT 0,
+                owner_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT
+            )
+        """)
+        database.execute("""
+            CREATE TABLE organization_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                org_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE(org_id, user_id)
+            )
+        """)
+
+    db.register_migration(8, "organizations", migration_008_organizations)
+
+    def migration_009_documents_org_id(database: Database):
+        """Add org_id to documents; create personal orgs for existing users."""
+        database.execute("ALTER TABLE documents ADD COLUMN org_id INTEGER REFERENCES organizations(id)")
+        # Create a personal org for every existing user and assign their docs
+        cursor = database.execute("SELECT id, username FROM users")
+        users = cursor.fetchall()
+        for row in users:
+            uid, uname = row[0], row[1]
+            database.execute(
+                """INSERT OR IGNORE INTO organizations (slug, display_name, is_personal, owner_id)
+                   VALUES (?, ?, 1, ?)""",
+                (uname, uname, uid),
+            )
+            org_cursor = database.execute(
+                "SELECT id FROM organizations WHERE slug = ?", (uname,)
+            )
+            org_row = org_cursor.fetchone()
+            if org_row:
+                org_id = org_row[0]
+                database.execute(
+                    "INSERT OR IGNORE INTO organization_members (org_id, user_id, role) VALUES (?, ?, 'owner')",
+                    (org_id, uid),
+                )
+                database.execute(
+                    "UPDATE documents SET org_id = ? WHERE owner_id = ? AND org_id IS NULL",
+                    (org_id, uid),
+                )
+
+    db.register_migration(9, "documents_org_id", migration_009_documents_org_id)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,123 @@
+.org-list {
+  color: #ccc;
+  padding: 8px 0;
+}
+
+.org-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.org-list-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.org-create-form {
+  background: #1a1b22;
+  border: 1px solid #2a2b35;
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.org-create-form h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #aaa;
+}
+
+.org-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.org-field span {
+  width: 90px;
+  color: #999;
+  flex-shrink: 0;
+}
+
+.org-field input {
+  flex: 1;
+  background: #1e1f27;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ddd;
+  padding: 5px 8px;
+  font-size: 14px;
+}
+
+.org-error {
+  color: #e06c75;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.org-create-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.org-group {
+  margin-bottom: 24px;
+}
+
+.org-group h3 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.org-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  text-decoration: none;
+  color: #ccc;
+  margin-bottom: 2px;
+}
+
+.org-row:hover {
+  background: #1e1f27;
+}
+
+.org-row-name {
+  flex: 1;
+  font-size: 14px;
+}
+
+.org-row-slug {
+  font-size: 13px;
+  color: #666;
+}
+
+.org-row-role {
+  font-size: 12px;
+  color: #888;
+  width: 50px;
+  text-align: right;
+}
+
+.org-empty {
+  color: #666;
+  font-size: 14px;
+}
+
+.btn-secondary {
+  background: #2a2b35;
+  border-color: #3a3b45;
+  color: #ccc;
+}

@@ -9,6 +9,8 @@ import Login from './pages/Login'
 import UserProfile from './pages/UserProfile'
 import AdminUsers from './pages/AdminUsers'
 import Settings from './pages/Settings'
+import OrgList from './pages/OrgList'
+import OrgSettings from './pages/OrgSettings'
 import './App.css'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -53,6 +55,8 @@ function App() {
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>}>
           <Route path="profile" element={<UserProfile />} />
           <Route path="admin" element={<AdminUsers />} />
+          <Route path="orgs" element={<OrgList />} />
+          <Route path="orgs/:slug" element={<OrgSettings />} />
         </Route>
       </Routes>
     </AuthProvider>

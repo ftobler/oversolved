@@ -37,9 +37,7 @@ testpaths = ["tests"]
 markers = [
     "repeat: mark a test to be repeated multiple times",
 ]
-filterwarnings = [
-    "ignore::pyparsing.PyparsingDeprecationWarning",
-]
+filterwarnings = []
 
 [tool.mypy]
 ignore_missing_imports = true

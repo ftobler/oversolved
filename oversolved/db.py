@@ -441,22 +441,23 @@ class DocumentStore:
     def __init__(self, db: Database):
         self.db = db
 
-    def create(self, name: str, owner_id: int) -> str:
+    def create(self, name: str, owner_id: int, org_id: Optional[int] = None) -> str:
         """Create a new document and return its UUID."""
         uuid = secrets.token_urlsafe(16)
         with self.db.transaction():
             self.db.execute(
-                "INSERT INTO documents (uuid, name, content, owner_id) VALUES (?, ?, ?, ?)",
-                (uuid, name, "", owner_id),
+                "INSERT INTO documents (uuid, name, content, owner_id, org_id) VALUES (?, ?, ?, ?, ?)",
+                (uuid, name, "", owner_id, org_id),
             )
         return uuid
 
-    def create_with_uuid(self, uuid: str, name: str, owner_id: int) -> None:
+    def create_with_uuid(self, uuid: str, name: str, owner_id: int,
+                         org_id: Optional[int] = None) -> None:
         """Create a new document with a specific UUID."""
         with self.db.transaction():
             self.db.execute(
-                "INSERT INTO documents (uuid, name, content, owner_id) VALUES (?, ?, ?, ?)",
-                (uuid, name, "", owner_id),
+                "INSERT INTO documents (uuid, name, content, owner_id, org_id) VALUES (?, ?, ?, ?, ?)",
+                (uuid, name, "", owner_id, org_id),
             )
 
     def store_content(self, uuid: str, content: str) -> None:
@@ -490,7 +491,11 @@ class DocumentStore:
     def retrieve(self, uuid: str) -> Optional[dict]:
         """Retrieve a document by UUID."""
         cursor = self.db.execute(
-            "SELECT uuid, name, content, owner_id, preview_image, created_at, updated_at FROM documents WHERE uuid = ?",
+            """SELECT d.uuid, d.name, d.content, d.owner_id, d.preview_image,
+                      d.created_at, d.updated_at, d.org_id, o.slug, o.is_personal
+               FROM documents d
+               LEFT JOIN organizations o ON d.org_id = o.id
+               WHERE d.uuid = ?""",
             (uuid,),
         )
         row = cursor.fetchone()
@@ -504,6 +509,9 @@ class DocumentStore:
             "preview_image": row[4],
             "created_at": row[5],
             "updated_at": row[6],
+            "org_id": row[7],
+            "org_slug": row[8],
+            "org_is_personal": bool(row[9]) if row[9] is not None else None,
         }
 
     def delete(self, uuid: str) -> bool:
@@ -596,19 +604,32 @@ class DocumentStore:
     def has_permission(self, uuid: str, user_id: int, min_permission: str = "view") -> bool:
         """Check if user has permission to access a document."""
         cursor = self.db.execute(
-            """SELECT d.owner_id, d.is_public, ds.permission
+            """SELECT d.owner_id, d.is_public, ds.permission, d.org_id, o.is_personal, om.role
                FROM documents d
                LEFT JOIN document_shares ds ON d.uuid = ds.document_uuid
                    AND ds.shared_with_user_id = ?
+               LEFT JOIN organizations o ON d.org_id = o.id
+               LEFT JOIN organization_members om ON d.org_id = om.org_id AND om.user_id = ?
                WHERE d.uuid = ?""",
-            (user_id, uuid),
+            (user_id, user_id, uuid),
         )
         row = cursor.fetchone()
         if row is None:
             return False
-        owner_id, is_public, perm = row[0], row[1], row[2]
+        owner_id, is_public, perm, org_id, org_is_personal, org_role = (
+            row[0], row[1], row[2], row[3], row[4], row[5]
+        )
         if owner_id == user_id:
             return True
+        # Org-based access (supersedes old sharing when org_id is set)
+        if org_id is not None:
+            if org_is_personal:
+                return False  # personal orgs are owner-only
+            if org_role in ("write", "admin", "owner"):
+                return True
+            if org_role == "read" and min_permission == "view":
+                return True
+        # Legacy share-based access
         if perm is not None:
             if min_permission == "view" and perm in ("view", "edit"):
                 return True
@@ -621,19 +642,34 @@ class DocumentStore:
     def get_permission(self, uuid: str, user_id: int) -> Optional[str]:
         """Get the permission level for a user on a document. Returns 'owner', 'edit', 'view', or None."""
         cursor = self.db.execute(
-            """SELECT d.owner_id, d.is_public, ds.permission
+            """SELECT d.owner_id, d.is_public, ds.permission, d.org_id, o.is_personal, om.role
                FROM documents d
                LEFT JOIN document_shares ds ON d.uuid = ds.document_uuid
                    AND ds.shared_with_user_id = ?
+               LEFT JOIN organizations o ON d.org_id = o.id
+               LEFT JOIN organization_members om ON d.org_id = om.org_id AND om.user_id = ?
                WHERE d.uuid = ?""",
-            (user_id, uuid),
+            (user_id, user_id, uuid),
         )
         row = cursor.fetchone()
         if row is None:
             return None
-        owner_id, is_public, perm = row[0], row[1], row[2]
+        owner_id, is_public, perm, org_id, org_is_personal, org_role = (
+            row[0], row[1], row[2], row[3], row[4], row[5]
+        )
         if owner_id == user_id:
             return "owner"
+        # Org-based access
+        if org_id is not None:
+            if org_is_personal:
+                return None  # personal orgs are owner-only
+            if org_role in ("admin", "owner"):
+                return "edit"
+            if org_role == "write":
+                return "edit"
+            if org_role == "read":
+                return "view"
+        # Legacy share-based access
         if perm is not None:
             return perm
         if is_public:
@@ -660,20 +696,28 @@ class DocumentStore:
 
         if include_shared:
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
+                           d.org_id, o.slug
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
+                    LEFT JOIN organizations o ON d.org_id = o.id
                     WHERE d.owner_id = ?
                        OR EXISTS (SELECT 1 FROM document_shares WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
                        OR d.is_public = 1
+                       OR EXISTS (
+                           SELECT 1 FROM organization_members om
+                           WHERE om.org_id = d.org_id AND om.user_id = ? AND om.org_id IS NOT NULL
+                       )
                     ORDER BY {order}""",
-                (user_id, user_id),
+                (user_id, user_id, user_id),
             )
         else:
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
+                           d.org_id, o.slug
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
+                    LEFT JOIN organizations o ON d.org_id = o.id
                     WHERE d.owner_id = ?
                     ORDER BY {order}""",
                 (user_id,),
@@ -688,6 +732,8 @@ class DocumentStore:
                 "updated_at": row[4],
                 "is_owner": row[5] == user_id,
                 "owner_username": row[6],
+                "org_id": row[7],
+                "org_slug": row[8],
             }
             for row in cursor.fetchall()
         ]
@@ -701,9 +747,11 @@ class DocumentStore:
         else:
             order = "name"
         cursor = self.db.execute(
-            f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+            f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
+                       d.org_id, o.slug
                 FROM documents d
                 JOIN users u ON d.owner_id = u.id
+                LEFT JOIN organizations o ON d.org_id = o.id
                 WHERE d.is_public = 1
                 ORDER BY {order}""",
         )
@@ -716,6 +764,8 @@ class DocumentStore:
                 "updated_at": row[4],
                 "is_owner": False,
                 "owner_username": row[6],
+                "org_id": row[7],
+                "org_slug": row[8],
             }
             for row in cursor.fetchall()
         ]
@@ -729,9 +779,11 @@ class DocumentStore:
         else:
             order = "name"
         cursor = self.db.execute(
-            f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+            f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
+                       d.org_id, o.slug
                 FROM documents d
                 JOIN users u ON d.owner_id = u.id
+                LEFT JOIN organizations o ON d.org_id = o.id
                 JOIN document_shares ds ON d.uuid = ds.document_uuid
                 WHERE ds.shared_with_user_id = ? AND d.owner_id != ?
                 ORDER BY {order}""",
@@ -746,6 +798,8 @@ class DocumentStore:
                 "updated_at": row[4],
                 "is_owner": False,
                 "owner_username": row[6],
+                "org_id": row[7],
+                "org_slug": row[8],
             }
             for row in cursor.fetchall()
         ]
@@ -764,18 +818,22 @@ class DocumentStore:
 
         if filter_type == "owned":
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
+                           d.org_id, o.slug
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
+                    LEFT JOIN organizations o ON d.org_id = o.id
                     WHERE d.owner_id = ? AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
                 (user_id, like),
             )
         elif filter_type == "shared":
             cursor = self.db.execute(
-                f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
+                           d.org_id, o.slug
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
+                    LEFT JOIN organizations o ON d.org_id = o.id
                     JOIN document_shares ds ON d.uuid = ds.document_uuid
                     WHERE ds.shared_with_user_id = ? AND d.owner_id != ? AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
@@ -783,24 +841,32 @@ class DocumentStore:
             )
         elif filter_type == "public":
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
+                           d.org_id, o.slug
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
+                    LEFT JOIN organizations o ON d.org_id = o.id
                     WHERE d.is_public = 1 AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
                 (like,),
             )
         else:  # all
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
+                           d.org_id, o.slug
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
+                    LEFT JOIN organizations o ON d.org_id = o.id
                     WHERE (d.owner_id = ?
                        OR EXISTS (SELECT 1 FROM document_shares WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
-                       OR d.is_public = 1)
+                       OR d.is_public = 1
+                       OR EXISTS (
+                           SELECT 1 FROM organization_members om
+                           WHERE om.org_id = d.org_id AND om.user_id = ? AND om.org_id IS NOT NULL
+                       ))
                     AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
-                (user_id, user_id, like),
+                (user_id, user_id, user_id, like),
             )
 
         return [
@@ -812,6 +878,8 @@ class DocumentStore:
                 "updated_at": row[4],
                 "is_owner": row[5] == user_id,
                 "owner_username": row[6],
+                "org_id": row[7],
+                "org_slug": row[8],
             }
             for row in cursor.fetchall()
         ]
@@ -844,3 +912,216 @@ class DocumentStore:
             {"uuid": row[0], "name": row[1], "preview_image": row[2], "created_at": row[3], "updated_at": row[4]}
             for row in cursor.fetchall()
         ]
+
+    def create_in_org(self, name: str, owner_id: int, org_id: int) -> str:
+        """Create a new document in an org and return its UUID."""
+        uuid = secrets.token_urlsafe(16)
+        with self.db.transaction():
+            self.db.execute(
+                "INSERT INTO documents (uuid, name, content, owner_id, org_id) VALUES (?, ?, ?, ?, ?)",
+                (uuid, name, "", owner_id, org_id),
+            )
+        return uuid
+
+    def list_in_org(self, org_id: int, sort: str = "name") -> list[dict]:
+        """List documents in an organization."""
+        if sort == "modified":
+            order = "updated_at DESC"
+        elif sort == "modified_asc":
+            order = "updated_at ASC"
+        else:
+            order = "name"
+        cursor = self.db.execute(
+            f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at,
+                       d.owner_id, u.username, d.org_id, o.slug
+                FROM documents d
+                JOIN users u ON d.owner_id = u.id
+                LEFT JOIN organizations o ON d.org_id = o.id
+                WHERE d.org_id = ?
+                ORDER BY {order}""",
+            (org_id,),
+        )
+        return [
+            {
+                "uuid": row[0],
+                "name": row[1],
+                "preview_image": row[2],
+                "created_at": row[3],
+                "updated_at": row[4],
+                "owner_id": row[5],
+                "owner_username": row[6],
+                "org_id": row[7],
+                "org_slug": row[8],
+            }
+            for row in cursor.fetchall()
+        ]
+
+
+_ORG_ROLE_RANK = {"read": 1, "write": 2, "admin": 3, "owner": 4}
+
+
+class OrgStore:
+    """Organization and membership management."""
+
+    def __init__(self, db: Database):
+        self.db = db
+
+    def create(self, slug: str, display_name: str, owner_id: int,
+               is_personal: bool = False, description: Optional[str] = None) -> dict:
+        """Create an organization and add owner as member. Returns org dict."""
+        with self.db.transaction():
+            cursor = self.db.execute(
+                """INSERT INTO organizations (slug, display_name, description, is_personal, owner_id)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (slug, display_name, description, 1 if is_personal else 0, owner_id),
+            )
+            org_id = cursor.lastrowid
+            self.db.execute(
+                "INSERT INTO organization_members (org_id, user_id, role) VALUES (?, ?, 'owner')",
+                (org_id, owner_id),
+            )
+        return self.find_by_id(org_id)  # type: ignore[return-value]
+
+    def find_by_slug(self, slug: str) -> Optional[dict]:
+        """Find an organization by its slug."""
+        cursor = self.db.execute(
+            """SELECT id, slug, display_name, description, is_personal, owner_id, created_at, updated_at
+               FROM organizations WHERE slug = ?""",
+            (slug,),
+        )
+        return self._row_to_dict(cursor.fetchone())
+
+    def find_by_id(self, org_id: int) -> Optional[dict]:
+        """Find an organization by id."""
+        cursor = self.db.execute(
+            """SELECT id, slug, display_name, description, is_personal, owner_id, created_at, updated_at
+               FROM organizations WHERE id = ?""",
+            (org_id,),
+        )
+        return self._row_to_dict(cursor.fetchone())
+
+    def _row_to_dict(self, row: Any) -> Optional[dict]:
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "slug": row[1],
+            "display_name": row[2],
+            "description": row[3],
+            "is_personal": bool(row[4]),
+            "owner_id": row[5],
+            "created_at": row[6],
+            "updated_at": row[7],
+        }
+
+    def list_for_user(self, user_id: int) -> list[dict]:
+        """List all orgs where user is a member, with user's role."""
+        cursor = self.db.execute(
+            """SELECT o.id, o.slug, o.display_name, o.description, o.is_personal,
+                      o.owner_id, o.created_at, o.updated_at, m.role
+               FROM organizations o
+               JOIN organization_members m ON o.id = m.org_id
+               WHERE m.user_id = ?
+               ORDER BY o.is_personal DESC, o.slug""",
+            (user_id,),
+        )
+        return [
+            {
+                "id": row[0],
+                "slug": row[1],
+                "display_name": row[2],
+                "description": row[3],
+                "is_personal": bool(row[4]),
+                "owner_id": row[5],
+                "created_at": row[6],
+                "updated_at": row[7],
+                "role": row[8],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def update(self, org_id: int, display_name: Optional[str] = None,
+               description: Optional[str] = None) -> bool:
+        """Update org metadata. Returns True if found."""
+        updates: dict = {}
+        if display_name is not None:
+            updates["display_name"] = display_name
+        if description is not None:
+            updates["description"] = description
+        if not updates:
+            return False
+        updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [org_id]
+        with self.db.transaction():
+            cursor = self.db.execute(
+                f"UPDATE organizations SET {set_clause} WHERE id = ?",
+                tuple(values),
+            )
+            return cursor.rowcount > 0
+
+    def delete(self, org_id: int) -> bool:
+        """Delete an organization (and cascade to docs + members). Returns True if found."""
+        with self.db.transaction():
+            cursor = self.db.execute("DELETE FROM organizations WHERE id = ?", (org_id,))
+            return cursor.rowcount > 0
+
+    def get_member_role(self, org_id: int, user_id: int) -> Optional[str]:
+        """Get user's role in org, or None if not a member."""
+        cursor = self.db.execute(
+            "SELECT role FROM organization_members WHERE org_id = ? AND user_id = ?",
+            (org_id, user_id),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+    def add_member(self, org_id: int, user_id: int, role: str) -> None:
+        """Add or update a member's role in an org."""
+        with self.db.transaction():
+            self.db.execute(
+                """INSERT INTO organization_members (org_id, user_id, role) VALUES (?, ?, ?)
+                   ON CONFLICT(org_id, user_id) DO UPDATE SET role = excluded.role""",
+                (org_id, user_id, role),
+            )
+
+    def remove_member(self, org_id: int, user_id: int) -> bool:
+        """Remove a member from an org. Returns True if member existed."""
+        with self.db.transaction():
+            cursor = self.db.execute(
+                "DELETE FROM organization_members WHERE org_id = ? AND user_id = ?",
+                (org_id, user_id),
+            )
+            return cursor.rowcount > 0
+
+    def update_member_role(self, org_id: int, user_id: int, role: str) -> bool:
+        """Update a member's role. Returns True if member found."""
+        with self.db.transaction():
+            cursor = self.db.execute(
+                "UPDATE organization_members SET role = ? WHERE org_id = ? AND user_id = ?",
+                (role, org_id, user_id),
+            )
+            return cursor.rowcount > 0
+
+    def get_members(self, org_id: int) -> list[dict]:
+        """Get all members of an org with their roles and usernames."""
+        cursor = self.db.execute(
+            """SELECT m.user_id, u.username, m.role, m.created_at
+               FROM organization_members m
+               JOIN users u ON m.user_id = u.id
+               WHERE m.org_id = ?
+               ORDER BY m.role DESC, u.username""",
+            (org_id,),
+        )
+        return [
+            {"user_id": row[0], "username": row[1], "role": row[2], "joined_at": row[3]}
+            for row in cursor.fetchall()
+        ]
+
+    def count_owners(self, org_id: int) -> int:
+        """Count the number of owners in an org."""
+        cursor = self.db.execute(
+            "SELECT COUNT(*) FROM organization_members WHERE org_id = ? AND role = 'owner'",
+            (org_id,),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else 0

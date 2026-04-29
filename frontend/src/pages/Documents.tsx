@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
 import Dialog from '../components/Dialog'
 import ShareDialog from '../components/ShareDialog'
-import { useUserPreferences, DocumentSort } from '../hooks/useUserPreferences'
+import { useUserPreferences } from '../hooks/useUserPreferences'
+import type { DocumentSort } from '../hooks/useUserPreferences'
 import './Documents.css'
 
 interface DocumentMeta {
@@ -13,6 +14,8 @@ interface DocumentMeta {
   updated_at: string
   is_owner: boolean
   owner_username: string
+  org_id: number | null
+  org_slug: string | null
 }
 
 type SidebarFilter = 'owned' | 'shared' | 'public'
@@ -342,7 +345,9 @@ export default function Documents() {
                       <div className="doc-tile-placeholder" style={{display: 'none'}} />
                     </div>
                     <div className="doc-tile-info">
-                      <span className="doc-tile-name" title={doc.name}>{doc.name}</span>
+                      <span className="doc-tile-name" title={doc.org_slug ? `${doc.org_slug}/${doc.name}` : doc.name}>
+                        {doc.org_slug && <span className="doc-tile-org">{doc.org_slug}/</span>}{doc.name}
+                      </span>
                       <div className="doc-tile-actions">
                         <button
                           className="btn btn-tile-action"

@@ -100,6 +100,40 @@ def _make_db():
         )
 
     database.register_migration(7, "user_sort_preference", migration_007)
+
+    def migration_008(db: Database):
+        db.execute("""
+            CREATE TABLE organizations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug TEXT UNIQUE NOT NULL,
+                display_name TEXT NOT NULL,
+                description TEXT,
+                is_personal INTEGER NOT NULL DEFAULT 0,
+                owner_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT
+            )
+        """)
+        db.execute("""
+            CREATE TABLE organization_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                org_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE(org_id, user_id)
+            )
+        """)
+
+    database.register_migration(8, "organizations", migration_008)
+
+    def migration_009(db: Database):
+        db.execute("ALTER TABLE documents ADD COLUMN org_id INTEGER REFERENCES organizations(id)")
+
+    database.register_migration(9, "documents_org_id", migration_009)
     database.init()
     return database
 
