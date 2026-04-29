@@ -1024,6 +1024,73 @@ def create_app(config: dict | None = None) -> Flask:
         from flask import Response
         return Response(doc["preview_image"], mimetype="image/png")
 
+    @app.route("/api/documents/<uuid>/rebuild-stats", methods=["GET"])
+    @require_auth
+    def get_rebuild_stats(uuid):
+        """Get rebuild time statistics for a document."""
+        db = get_db()
+        doc_store = DocumentStore(db)
+        doc = doc_store.retrieve(uuid)
+        if doc is None:
+            return jsonify({"error": "Document not found"}), 404
+        if not doc_store.has_permission(uuid, g.current_user["id"], "view"):
+            return jsonify({"error": "Forbidden"}), 403
+
+        stats = db.execute(
+            """SELECT duration_ms, feature_count, timestamp
+               FROM rebuild_times
+               WHERE document_uuid = ?
+               ORDER BY timestamp DESC
+               LIMIT 20""",
+            (uuid,),
+        ).fetchall()
+
+        if not stats:
+            return jsonify({
+                "uuid": uuid,
+                "rebuild_count": 0,
+                "last_duration_ms": None,
+                "average_ms": None,
+                "median_ms": None,
+                "min_ms": None,
+                "max_ms": None,
+                "trend": None,
+                "history": [],
+            })
+
+        durations = [s[0] for s in stats]
+        last_duration = durations[0]
+        avg_duration = sum(durations) / len(durations)
+        median_duration = sorted(durations)[len(durations) // 2]
+
+        trend = None
+        if len(durations) >= 10:
+            first_5_avg = sum(durations[:5]) / 5
+            last_5_avg = sum(durations[-5:]) / 5
+            if last_5_avg < first_5_avg * 0.95:
+                trend = "faster"
+            elif last_5_avg > first_5_avg * 1.05:
+                trend = "slower"
+            else:
+                trend = "stable"
+
+        history = [
+            {"duration_ms": s[0], "feature_count": s[1], "timestamp": s[2]}
+            for s in reversed(stats)
+        ]
+
+        return jsonify({
+            "uuid": uuid,
+            "rebuild_count": len(stats),
+            "last_duration_ms": last_duration,
+            "average_ms": round(avg_duration),
+            "median_ms": median_duration,
+            "min_ms": min(durations),
+            "max_ms": max(durations),
+            "trend": trend,
+            "history": history,
+        })
+
     @app.route("/api/documents/import", methods=["POST"])
     @require_auth
     def import_document():
@@ -1154,6 +1221,23 @@ def create_app(config: dict | None = None) -> Flask:
         cache_dir=app.config["L2_CACHE_DIR"],
     )
 
+    def _track_rebuild_time(db, doc_id: str, duration_ms: int, feature_count: int) -> None:
+        """Store a rebuild time record for a document."""
+        try:
+            cursor = db.execute(
+                "SELECT org_id FROM documents WHERE uuid = ?", (doc_id,)
+            )
+            row = cursor.fetchone()
+            org_id = row[0] if row else None
+            db.execute(
+                """INSERT INTO rebuild_times (document_uuid, org_id, duration_ms, feature_count)
+                   VALUES (?, ?, ?, ?)""",
+                (doc_id, org_id, duration_ms, feature_count),
+            )
+            db.commit()
+        except Exception:
+            pass  # Non-critical; don't break rebuild if tracking fails
+
     @app.route("/api/solve", methods=["POST"])
     def solve_document() -> Response | tuple:
         data = request.get_json(silent=True)
@@ -1196,6 +1280,10 @@ def create_app(config: dict | None = None) -> Flask:
                     _l2_cache.set(doc_id, new_state)
                 solver.release(doc_id, counter, build_result)
                 build_result.pop("_body_shapes", None)
+                # Track rebuild time
+                duration_ms = round(build_result.get("solve_ms", 0))
+                feature_count = len(data.get("features", []))
+                _track_rebuild_time(get_db(), doc_id, duration_ms, feature_count)
                 return Response(json.dumps(build_result), mimetype="application/json")
             except Exception:
                 solver.release(doc_id, counter, {})
@@ -1566,6 +1654,27 @@ def _register_migrations(db: Database) -> None:
         """)
 
     db.register_migration(11, "periodic_tasks", migration_011_periodic_tasks)
+
+    def migration_012_rebuild_times(database: Database):
+        """Create rebuild_times table for tracking solve duration history."""
+        database.execute("""
+            CREATE TABLE rebuild_times (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_uuid TEXT NOT NULL,
+                org_id INTEGER,
+                duration_ms INTEGER NOT NULL,
+                feature_count INTEGER NOT NULL,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (document_uuid) REFERENCES documents(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+            )
+        """)
+        database.execute("""
+            CREATE INDEX idx_rebuild_times_doc_recent
+            ON rebuild_times(document_uuid, timestamp DESC)
+        """)
+
+    db.register_migration(12, "rebuild_times", migration_012_rebuild_times)
 
 
 if __name__ == "__main__":

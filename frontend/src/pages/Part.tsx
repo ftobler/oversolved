@@ -1150,6 +1150,7 @@ useEffect(() => {
           bodies={bodies}
           onRebuild={handleClearCacheAndRebuild}
           isRebuilding={isRebuilding}
+          docId={uuid}
         />
 
         <div className="doc-editor">

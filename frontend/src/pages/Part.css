@@ -161,6 +161,89 @@
   100% { transform: rotate(360deg); }
 }
 
+.rebuild-button-container {
+  position: relative;
+  display: inline-block;
+}
+
+.rebuild-timing-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 220px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.popover-header {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #111;
+}
+
+.popover-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stat-row .label {
+  color: #6b7280;
+  flex: 1;
+}
+
+.stat-row .value {
+  color: #111;
+  font-weight: 500;
+  font-family: 'Monaco', 'Courier', monospace;
+}
+
+.stat-row .value.trend-faster {
+  color: #10b981;
+}
+
+.stat-row .value.trend-slower {
+  color: #ef4444;
+}
+
+.stat-row .value.trend-stable {
+  color: #8b5cf6;
+}
+
+.popover-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 8px 0;
+}
+
+.popover-sparkline {
+  margin: 8px 0;
+}
+
+.sparkline-label {
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: center;
+  margin-top: 4px;
+}
+
+.rebuild-sparkline {
+  width: 100%;
+  height: 40px;
+}
+
 .exit-sketch-btn {
   display: flex;
   align-items: center;

@@ -67,6 +67,7 @@ interface SidebarProps {
   bodies?: Record<string, BodyResult>
   onRebuild?: () => void
   isRebuilding?: boolean
+  docId?: string
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -99,6 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   bodies,
   onRebuild,
   isRebuilding,
+  docId,
 }) => {
   const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
   const isDraggingRef = useRef(false)
@@ -494,7 +496,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="sidebar-header">
           <span>Features</span>
           {onRebuild && (
-            <RebuildButton onClick={onRebuild} isLoading={isRebuilding} />
+            <RebuildButton docId={docId} onClick={onRebuild} isLoading={isRebuilding} />
           )}
         </div>
         <ul className="features-list">
