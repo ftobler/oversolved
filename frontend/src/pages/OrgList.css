@@ -30,30 +30,6 @@
   color: #aaa;
 }
 
-.org-field {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-  font-size: 14px;
-}
-
-.org-field span {
-  width: 90px;
-  color: #999;
-  flex-shrink: 0;
-}
-
-.org-field input {
-  flex: 1;
-  background: #1e1f27;
-  border: 1px solid #333;
-  border-radius: 4px;
-  color: #ddd;
-  padding: 5px 8px;
-  font-size: 14px;
-}
-
 .org-error {
   color: #e06c75;
   font-size: 13px;

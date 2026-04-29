@@ -39,7 +39,7 @@ describe('Documents sidebar', () => {
     })
   }
 
-  it('renders sidebar with three filter items', async () => {
+  it('renders sidebar with three filters and trash', async () => {
     vi.stubGlobal('fetch', mockFetch())
 
     render(
@@ -56,6 +56,7 @@ describe('Documents sidebar', () => {
 
     expect(screen.getByText('Shared with me')).toBeInTheDocument()
     expect(screen.getByText('Public Documents')).toBeInTheDocument()
+    expect(screen.getByText('Trash')).toBeInTheDocument()
   })
 
   it('My Documents is active by default', async () => {

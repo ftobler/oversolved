@@ -208,7 +208,7 @@ export default function UserProfile() {
         </div>
       </div>
 
-      <div className="profile-actions">
+      <div className="settings-button-right">
         <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
           {loading ? 'Saving…' : 'Save'}
         </button>

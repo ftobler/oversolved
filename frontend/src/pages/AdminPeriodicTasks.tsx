@@ -112,10 +112,6 @@ export default function AdminPeriodicTasks() {
 
   return (
     <div className="admin-periodic-tasks">
-      <div className="admin-periodic-tasks-header">
-        <h2 className="admin-periodic-tasks-title">Periodic Tasks</h2>
-      </div>
-
       <div className="admin-periodic-tasks-container">
         {error && <p className="admin-periodic-tasks-error">{error}</p>}
 

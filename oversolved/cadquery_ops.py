@@ -173,7 +173,7 @@ def _compute_face_normal(face: cq_shapes.Face) -> list[float]:
     bounds = face._uvBounds()
     u = (bounds[0] + bounds[1]) / 2.0
     v = (bounds[2] + bounds[3]) / 2.0
-    n, _ = face.normalAt(u, v)
+    n = face.normalAt(CQVector(u, v))
     return [n.x, n.y, n.z]
 
 

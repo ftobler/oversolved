@@ -1,20 +1,3 @@
-.admin-users {
-}
-
-.admin-users-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.admin-users-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 500;
-  color: #ccc;
-}
-
 .admin-users-table {
   width: 100%;
   border-collapse: collapse;

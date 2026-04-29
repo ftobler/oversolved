@@ -145,21 +145,21 @@ export default function OrgSettings() {
       {canAdmin && (
         <section className="org-section">
           <h3>Settings</h3>
-          <label className="org-field">
-            <span>Name</span>
+          <div className="profile-field">
+            <label>Name</label>
             <input
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
             />
-          </label>
-          <label className="org-field">
-            <span>Description</span>
+          </div>
+          <div className="profile-field">
+            <label>Description</label>
             <input
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Optional description"
             />
-          </label>
+          </div>
           <p className="org-field-readonly">Slug: {org.slug} (read-only)</p>
           {saveError && <p className="org-error">{saveError}</p>}
           {saveSuccess && <p className="org-success">Saved.</p>}

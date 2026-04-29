@@ -197,6 +197,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const rollbackPosRef = useRef<number | null>(null)
   const pickBoundaryRef = useRef<number | null>(null)
   const requestIdRef = useRef(0)
+  const cancelledRef = useRef(false)
 
   const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
     const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; plane_transform?: import('../types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }>; plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }; body_id?: string; exception?: string }>
@@ -322,7 +323,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
           applyBuildResponse(d, cached.entry.buildResponse)
           setFromCache(true)
           setCacheTimestamp(cached.entry.timestamp)
-          setSolving(false)
+          if (!cancelledRef.current) setSolving(false)
           if (isFirstSolve && onFirstSolve) {
             setTimeout(onFirstSolve, 0)
           }
@@ -375,7 +376,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       setSolveError(String(e))
       setSolveRawResult(String(e))
     } finally {
-      setSolving(false)
+      if (!cancelledRef.current) setSolving(false)
     }
   }, [onFirstSolve, applyBuildResponse, uuid])
 
@@ -685,6 +686,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       return next
     })
   }, [reSolve])
+
+  useEffect(() => {
+    return () => { cancelledRef.current = true }
+  }, [])
 
   useEffect(() => {
     if (!uuid) return

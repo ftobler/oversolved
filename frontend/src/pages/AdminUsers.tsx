@@ -161,9 +161,8 @@ export default function AdminUsers() {
 
   return (
     <div className="admin-users">
-      <div className="admin-users-header">
-        <h2 className="admin-users-title">Users</h2>
-        <button className="toolbar-btn" onClick={() => setShowCreateForm(true)} title="Create user">
+      <div className="settings-button-right">
+        <button className="btn btn-secondary" onClick={() => setShowCreateForm(true)} title="Create user">
           <span className="material-icons">person_add</span>
         </button>
       </div>

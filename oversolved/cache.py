@@ -157,7 +157,7 @@ class L2Cache:
 
         # LRU eviction by size (oldest first)
         if total_size > self._max_size:
-            survivors.sort(key=lambda x: x[1])
+            survivors.sort(key=lambda x: (x[1], x[0]))
             for fpath, _mtime, size in survivors:
                 if total_size <= self._max_size:
                     break

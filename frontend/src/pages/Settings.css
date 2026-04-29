@@ -26,7 +26,8 @@
 }
 
 .settings-nav-item {
-  display: block;
+  display: flex;
+  align-items: center;
   padding: 2px 12px;
   margin-right: 12px;
   color: #ccc;
@@ -55,14 +56,56 @@
   margin-left: auto;
 }
 
+.profile-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.profile-field label {
+  min-width: 120px;
+  font-size: 14px;
+  color: #aaa;
+  flex-shrink: 0;
+  text-align: left;
+}
+
+.profile-field input {
+  width: 50%;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+  background: #111;
+  color: #ccc;
+}
+
+.profile-field input[type="radio"] {
+  width: auto;
+}
+
 .settings-content .admin-users-table td {
   white-space: nowrap;
 }
 
-.settings-content .profile-actions {
+.settings-content .settings-button-right {
   margin-top: 40px;
 }
 
-.settings-content .profile-actions .btn {
+.settings-content .settings-button-right .btn {
   min-width: 75px;
+}
+
+.admin-badge {
+  display: inline-block;
+  background: #5a2d2d;
+  color: #ef9a9a;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
 }

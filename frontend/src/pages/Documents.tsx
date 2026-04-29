@@ -330,14 +330,6 @@ export default function Documents() {
             />
             <span className="material-icons">upload</span>
           </label>
-          <button
-            className="toolbar-btn"
-            onClick={() => { setShowTrash(true); fetchTrash() }}
-            title="Trash"
-          >
-            <span className="material-icons">delete_outline</span>
-            {trashDocs.length > 0 && <span className="trash-count">{trashDocs.length}</span>}
-          </button>
         </div>
       </AppHeader>
 
@@ -353,6 +345,15 @@ export default function Documents() {
               <span className="sidebar-item-label">{item.label}</span>
             </div>
           ))}
+          <div
+            className="sidebar-item"
+            onClick={() => { setShowTrash(true); fetchTrash() }}
+            title="Trash"
+          >
+            <span className="material-icons sidebar-item-icon">delete_outline</span>
+            <span className="sidebar-item-label">Trash</span>
+            {trashDocs.length > 0 && <span className="trash-count">{trashDocs.length}</span>}
+          </div>
         </aside>
 
         <div className="documents-main">

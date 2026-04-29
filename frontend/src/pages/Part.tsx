@@ -18,7 +18,7 @@ import { Sidebar } from '../components/Sidebar'
 import FooterMeasurementDisplay from '../components/FooterMeasurementDisplay'
 import ExportDialog, { type ExportFormat } from '../components/ExportDialog'
 import LoadingOverlay from '../components/LoadingOverlay'
-import CacheIndicator from '../components/CacheIndicator'
+
 import CacheInspector from '../components/CacheInspector'
 import { useSolverStore } from '../stores/solverStore'
 import { invalidateDocCache } from '../utils/buildCache'
@@ -306,8 +306,6 @@ export default function Part() {
     pickBodies,
     setPickBoundary,
     permission,
-    fromCache,
-    cacheTimestamp,
   } = usePartDoc(uuid, mode, setCodeText)
 
   const readOnly = permission === 'view'
@@ -1260,7 +1258,7 @@ useEffect(() => {
               {mode !== 'code' && (
                 <div style={{ position: 'relative', width: '100%', height: '100%' }}>
                   <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={effectiveVisibleBodies} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} partStyle={partStyle} ghostMode={ghostMode} />
-                  <CacheIndicator visible={fromCache} timestamp={cacheTimestamp ?? undefined} />
+
                   <LoadingOverlay />
                 </div>
               )}

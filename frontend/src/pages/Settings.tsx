@@ -20,10 +20,12 @@ export default function Settings() {
           {user?.is_admin && (
             <>
               <NavLink to="/settings/admin" className="settings-nav-item">
-                Admin
+                Users
+                <span className="admin-badge">admin</span>
               </NavLink>
               <NavLink to="/settings/admin-tasks" className="settings-nav-item">
                 Periodic Tasks
+                <span className="admin-badge">admin</span>
               </NavLink>
             </>
           )}

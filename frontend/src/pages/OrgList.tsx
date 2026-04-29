@@ -37,40 +37,37 @@ export default function OrgList() {
 
   return (
     <div className="org-list">
-      <div className="org-list-header">
-        <h2>Organizations</h2>
-        <button className="btn" onClick={() => setShowCreate(v => !v)}>
-          + New Organization
-        </button>
-      </div>
+      <button className="btn btn-secondary" onClick={() => setShowCreate(v => !v)}>
+        + New Organization
+      </button>
 
       {showCreate && (
         <div className="org-create-form">
           <h3>Create Organization</h3>
-          <label className="org-field">
-            <span>Slug</span>
+          <div className="profile-field">
+            <label>Slug</label>
             <input
               placeholder="team-acme"
               value={slug}
               onChange={e => setSlug(e.target.value)}
             />
-          </label>
-          <label className="org-field">
-            <span>Name</span>
+          </div>
+          <div className="profile-field">
+            <label>Name</label>
             <input
               placeholder="Team ACME"
               value={name}
               onChange={e => setName(e.target.value)}
             />
-          </label>
-          <label className="org-field">
-            <span>Description</span>
+          </div>
+          <div className="profile-field">
+            <label>Description</label>
             <input
               placeholder="Optional"
               value={description}
               onChange={e => setDescription(e.target.value)}
             />
-          </label>
+          </div>
           {createError && <p className="org-error">{createError}</p>}
           <div className="org-create-actions">
             <button className="btn" onClick={handleCreate}>Create</button>

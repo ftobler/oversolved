@@ -2,20 +2,6 @@
   padding: 16px;
 }
 
-.admin-periodic-tasks-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.admin-periodic-tasks-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #ccc;
-  margin: 0;
-}
-
 .admin-periodic-tasks-container {
   max-width: 800px;
 }

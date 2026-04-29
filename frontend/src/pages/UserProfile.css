@@ -1,36 +1,7 @@
 .profile-card {
 }
 
-.profile-field {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
 
-.profile-field label {
-  min-width: 120px;
-  font-size: 14px;
-  color: #aaa;
-  flex-shrink: 0;
-  text-align: left;
-}
-
-.profile-field input {
-  width: 50%;
-  padding: 6px 10px;
-  border: 1px solid #333;
-  border-radius: 4px;
-  font-size: 14px;
-  box-sizing: border-box;
-  background: #111;
-  color: #ccc;
-}
-
-.profile-field input:focus {
-  outline: none;
-  border-color: #4fc3f7;
-}
 
 .profile-divider {
   border: none;
@@ -39,14 +10,14 @@
   margin: 32px 0;
 }
 
-.profile-actions {
+.settings-button-right {
   display: flex;
   gap: 8px;
   margin-top: 20px;
   justify-content: flex-end;
 }
 
-.profile-actions .btn {
+.settings-button-right .btn {
   padding: 4px 12px;
   font-size: 12px;
   flex: none;
@@ -74,6 +45,8 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-left: auto;
+  align-items: flex-start;
 }
 
 .profile-radio-label {
@@ -83,8 +56,7 @@
   font-size: 14px;
   color: #ccc;
   cursor: pointer;
+  white-space: nowrap;
 }
 
-.profile-field:has(.profile-radio-group) {
-  align-items: flex-start;
-}
+
