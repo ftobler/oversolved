@@ -46,6 +46,10 @@ class TtlCache(Generic[T]):
                 oldest = next(iter(self._data))
                 del self._data[oldest]
 
+    def delete(self, key: str) -> None:
+        with self._lock:
+            self._data.pop(key, None)
+
     def clear(self) -> None:
         with self._lock:
             self._data.clear()
@@ -107,6 +111,14 @@ class L2Cache:
         with self._lock:
             os.replace(tmp_path, path)
             self._evict_expired_and_oversized()
+
+    def delete(self, key: str) -> None:
+        path = self._path(key)
+        with self._lock:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
     def clear(self) -> None:
         with self._lock:

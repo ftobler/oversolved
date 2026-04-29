@@ -19,6 +19,7 @@ import ExportDialog, { type ExportFormat } from '../components/ExportDialog'
 import LoadingOverlay from '../components/LoadingOverlay'
 import CacheIndicator from '../components/CacheIndicator'
 import { useSolverStore } from '../stores/solverStore'
+import { invalidateDocCache } from '../utils/buildCache'
 import './Part.css'
 
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
@@ -443,6 +444,26 @@ useEffect(() => {
     if (docRef.current) reSolve(docRef.current, rollbackPosition ?? features.length)
     setContextMenu(null)
   }, [docRef, reSolve, rollbackPosition, features])
+
+  const [isRebuilding, setIsRebuilding] = useState(false)
+
+  const handleClearCacheAndRebuild = useCallback(async () => {
+    if (!uuid || !docRef.current) return
+    setIsRebuilding(true)
+    try {
+      await invalidateDocCache(uuid)
+      await fetch('/api/cache/flush', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doc_id: uuid, level: 'all' }),
+      })
+      await reSolve(docRef.current, rollbackPosition ?? features.length)
+    } catch (e) {
+      console.error('Rebuild failed:', e)
+    } finally {
+      setIsRebuilding(false)
+    }
+  }, [uuid, reSolve, rollbackPosition, features, docRef])
 
   const handleRebuildRef = useRef(handleRebuild)
   handleRebuildRef.current = handleRebuild
@@ -1127,6 +1148,8 @@ useEffect(() => {
           visibleBodies={effectiveVisibleBodies}
           solveResults={solveResults}
           bodies={bodies}
+          onRebuild={handleClearCacheAndRebuild}
+          isRebuilding={isRebuilding}
         />
 
         <div className="doc-editor">

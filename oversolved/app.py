@@ -1211,6 +1211,23 @@ def create_app(config: dict | None = None) -> Flask:
             build_result.pop("_body_shapes", None)
             return Response(json.dumps(build_result), mimetype="application/json")
 
+    @app.route("/api/cache/flush", methods=["POST"])
+    def flush_cache() -> Response | tuple:
+        data = request.get_json(silent=True) or {}
+        doc_id = data.get("doc_id", "").strip()
+        level = data.get("level", "all")
+
+        if not doc_id:
+            return jsonify({"error": "doc_id required"}), 400
+
+        if level in ("l1", "all"):
+            _build_state_cache.delete(doc_id)
+
+        if level in ("l2", "all") and app.config.get("L2_CACHE_ENABLED"):
+            _l2_cache.delete(doc_id)
+
+        return jsonify({"status": "flushed", "doc_id": doc_id, "level": level})
+
     def _format_history(history):
         """Format edit history for bug report."""
         if not history:

@@ -162,3 +162,120 @@ class TestSolveEndpointSerialization:
         resp = post_solve(client, {"id": "doc_no_state", "features": [sk1]})
         data = json.loads(resp.data)
         assert "_build_state" not in data
+
+
+class TestCacheFlushEndpoint:
+    def test_flush_endpoint_removes_l1(self, client):
+        pytest.importorskip("OCP.gp")
+        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+
+        # Build to populate L1 cache
+        r1 = post_solve(client, {"id": "doc_flush_l1", "features": [sk1, ex1]})
+        assert r1.status_code == 200
+
+        # Flush L1
+        resp = client.post(
+            "/api/cache/flush",
+            data=json.dumps({"doc_id": "doc_flush_l1", "level": "l1"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data["status"] == "flushed"
+        assert data["level"] == "l1"
+
+    def test_flush_endpoint_removes_l2(self, client, app):
+        pytest.importorskip("OCP.gp")
+        app.config["L2_CACHE_ENABLED"] = True
+        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+
+        # Build to populate L2 cache
+        r1 = post_solve(client, {"id": "doc_flush_l2", "features": [sk1, ex1]})
+        assert r1.status_code == 200
+
+        # Flush all (includes L2)
+        resp = client.post(
+            "/api/cache/flush",
+            data=json.dumps({"doc_id": "doc_flush_l2", "level": "all"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data["status"] == "flushed"
+        assert data["level"] == "all"
+
+    def test_flush_endpoint_level_parameter(self, client):
+        pytest.importorskip("OCP.gp")
+        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+
+        post_solve(client, {"id": "doc_flush_level", "features": [sk1]})
+
+        # l1 should succeed
+        resp = client.post(
+            "/api/cache/flush",
+            data=json.dumps({"doc_id": "doc_flush_level", "level": "l1"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+
+        # l2 should succeed even if not enabled (no-op)
+        resp = client.post(
+            "/api/cache/flush",
+            data=json.dumps({"doc_id": "doc_flush_level", "level": "l2"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+
+    def test_flush_endpoint_invalid_doc_id(self, client):
+        resp = client.post(
+            "/api/cache/flush",
+            data=json.dumps({"level": "all"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert "error" in data
+
+    def test_flush_endpoint_nonexistent_doc(self, client):
+        resp = client.post(
+            "/api/cache/flush",
+            data=json.dumps({"doc_id": "doc_does_not_exist", "level": "all"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data["status"] == "flushed"
+
+
+class TestTtlCacheDelete:
+    def test_delete_removes_key(self):
+        cache = TtlCache[str](ttl_seconds=10.0, max_size=10)
+        cache.set("a", "value")
+        assert cache.get("a") == "value"
+        cache.delete("a")
+        assert cache.get("a") is None
+
+    def test_delete_missing_key_is_noop(self):
+        cache = TtlCache[str](ttl_seconds=10.0, max_size=10)
+        cache.delete("missing")  # should not raise
+        assert cache.get("missing") is None
+
+
+class TestL2CacheDelete:
+    def test_delete_removes_file(self, tmp_path):
+        from oversolved.cache import L2Cache
+        from oversolved.types3d import BuildState
+        cache = L2Cache(cache_dir=str(tmp_path))
+        state = BuildState(feature_order=["sk1"], checkpoints={})
+        cache.set("doc1", state)
+        assert cache.get("doc1") is not None
+        cache.delete("doc1")
+        assert cache.get("doc1") is None
+
+    def test_delete_missing_key_is_noop(self, tmp_path):
+        from oversolved.cache import L2Cache
+        cache = L2Cache(cache_dir=str(tmp_path))
+        cache.delete("missing")  # should not raise
+        assert cache.get("missing") is None

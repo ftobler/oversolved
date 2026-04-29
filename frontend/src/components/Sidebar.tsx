@@ -24,6 +24,7 @@ import { HoleEditor } from './HoleEditor'
 import { TransformEditor } from './TransformEditor'
 import ArrayEditor from './ArrayEditor'
 import { PickChip } from './PickChip'
+import { RebuildButton } from './RebuildButton'
 import contextEditIcon from '../assets/icons/context-edit.svg'
 import iconDotsIcon from '../assets/icons/dots.svg'
 import iconEyeIcon from '../assets/icons/icon-eye.svg'
@@ -64,6 +65,8 @@ interface SidebarProps {
   visibleBodies?: Set<string>
   solveResults?: Record<string, unknown>
   bodies?: Record<string, BodyResult>
+  onRebuild?: () => void
+  isRebuilding?: boolean
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -94,6 +97,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   visibleBodies,
   solveResults,
   bodies,
+  onRebuild,
+  isRebuilding,
 }) => {
   const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
   const isDraggingRef = useRef(false)
@@ -486,7 +491,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="doc-sidebar" ref={sidebarRef}>
       <div className="sidebar-top" style={{ height: `${splitPercent}%` }}>
-        <div className="sidebar-header">Features</div>
+        <div className="sidebar-header">
+          <span>Features</span>
+          {onRebuild && (
+            <RebuildButton onClick={onRebuild} isLoading={isRebuilding} />
+          )}
+        </div>
         <ul className="features-list">
         {features.length === 0 ? (
           <li className="empty">No features</li>
