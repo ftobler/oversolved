@@ -554,10 +554,10 @@ class DocumentStore:
             )
 
     def unshare_public(self, uuid: str) -> None:
-        """Remove public link share for a document."""
+        """Remove public access for a document."""
         with self.db.transaction():
             self.db.execute(
-                "DELETE FROM document_shares WHERE document_uuid = ? AND shared_with_user_id IS NULL",
+                "UPDATE documents SET is_public = 0 WHERE uuid = ?",
                 (uuid,),
             )
 
@@ -589,51 +589,52 @@ class DocumentStore:
                 "UPDATE documents SET is_public = ? WHERE uuid = ?",
                 (1 if is_public else 0, uuid),
             )
-            if is_public:
-                self.db.execute(
-                    """INSERT INTO document_shares (document_uuid, shared_with_user_id, permission)
-                        VALUES (?, NULL, 'view')
-                        ON CONFLICT(document_uuid, shared_with_user_id) DO NOTHING""",
-                    (uuid,),
-                )
-            else:
-                self.db.execute(
-                    "DELETE FROM document_shares WHERE document_uuid = ? AND shared_with_user_id IS NULL",
-                    (uuid,),
-                )
 
     def has_permission(self, uuid: str, user_id: int, min_permission: str = "view") -> bool:
         """Check if user has permission to access a document."""
-        doc = self.retrieve(uuid)
-        if doc is None:
-            return False
-        if doc["owner_id"] == user_id:
-            return True
         cursor = self.db.execute(
-            "SELECT permission FROM document_shares WHERE document_uuid = ? AND (shared_with_user_id = ? OR shared_with_user_id IS NULL)",
-            (uuid, user_id),
+            """SELECT d.owner_id, d.is_public, ds.permission
+               FROM documents d
+               LEFT JOIN document_shares ds ON d.uuid = ds.document_uuid
+                   AND ds.shared_with_user_id = ?
+               WHERE d.uuid = ?""",
+            (user_id, uuid),
         )
-        for row in cursor.fetchall():
-            perm = row[0]
+        row = cursor.fetchone()
+        if row is None:
+            return False
+        owner_id, is_public, perm = row[0], row[1], row[2]
+        if owner_id == user_id:
+            return True
+        if perm is not None:
             if min_permission == "view" and perm in ("view", "edit"):
                 return True
             if min_permission == "edit" and perm == "edit":
                 return True
+        if is_public and min_permission == "view":
+            return True
         return False
 
     def get_permission(self, uuid: str, user_id: int) -> Optional[str]:
         """Get the permission level for a user on a document. Returns 'owner', 'edit', 'view', or None."""
-        doc = self.retrieve(uuid)
-        if doc is None:
-            return None
-        if doc["owner_id"] == user_id:
-            return "owner"
         cursor = self.db.execute(
-            "SELECT permission FROM document_shares WHERE document_uuid = ? AND (shared_with_user_id = ? OR shared_with_user_id IS NULL)",
-            (uuid, user_id),
+            """SELECT d.owner_id, d.is_public, ds.permission
+               FROM documents d
+               LEFT JOIN document_shares ds ON d.uuid = ds.document_uuid
+                   AND ds.shared_with_user_id = ?
+               WHERE d.uuid = ?""",
+            (user_id, uuid),
         )
-        for row in cursor.fetchall():
-            return row[0]
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        owner_id, is_public, perm = row[0], row[1], row[2]
+        if owner_id == user_id:
+            return "owner"
+        if perm is not None:
+            return perm
+        if is_public:
+            return "view"
         return None
 
     def get_owner_username(self, uuid: str) -> Optional[str]:
@@ -654,11 +655,12 @@ class DocumentStore:
 
         if include_shared:
             cursor = self.db.execute(
-                f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
-                    LEFT JOIN document_shares ds ON d.uuid = ds.document_uuid
-                    WHERE d.owner_id = ? OR ds.shared_with_user_id = ? OR d.is_public = 1
+                    WHERE d.owner_id = ?
+                       OR EXISTS (SELECT 1 FROM document_shares WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
+                       OR d.is_public = 1
                     ORDER BY {order}""",
                 (user_id, user_id),
             )
@@ -779,11 +781,12 @@ class DocumentStore:
             )
         else:  # all
             cursor = self.db.execute(
-                f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
-                    LEFT JOIN document_shares ds ON d.uuid = ds.document_uuid
-                    WHERE (d.owner_id = ? OR ds.shared_with_user_id = ? OR d.is_public = 1)
+                    WHERE (d.owner_id = ?
+                       OR EXISTS (SELECT 1 FROM document_shares WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
+                       OR d.is_public = 1)
                     AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
                 (user_id, user_id, like),

@@ -550,3 +550,88 @@ class TestUserStoreOAuth:
         user = store.find_by_id(uid)
         assert user["email"] == "testuser@local.oversolved"
         database.close()
+
+
+class TestDocumentStorePublicAccess:
+    """Tests for is_public as single source of truth."""
+
+    def test_public_document_has_permission(self, doc_store, user_store):
+        owner_id = user_store.create("owner", "hash")
+        other_id = user_store.create("other", "hash")
+        uuid = doc_store.create("Doc", owner_id)
+
+        doc_store.set_public(uuid, True)
+        assert doc_store.has_permission(uuid, other_id, "view") is True
+
+    def test_public_document_has_no_edit_permission(self, doc_store, user_store):
+        owner_id = user_store.create("owner2", "hash")
+        other_id = user_store.create("other2", "hash")
+        uuid = doc_store.create("Doc", owner_id)
+
+        doc_store.set_public(uuid, True)
+        assert doc_store.has_permission(uuid, other_id, "edit") is False
+
+    def test_public_document_get_permission(self, doc_store, user_store):
+        owner_id = user_store.create("owner3", "hash")
+        other_id = user_store.create("other3", "hash")
+        uuid = doc_store.create("Doc", owner_id)
+
+        doc_store.set_public(uuid, True)
+        assert doc_store.get_permission(uuid, other_id) == "view"
+
+    def test_list_owned_and_shared_includes_public(self, doc_store, user_store):
+        owner_id = user_store.create("owner4", "hash")
+        other_id = user_store.create("other4", "hash")
+        uuid = doc_store.create("PublicDoc", owner_id)
+
+        doc_store.set_public(uuid, True)
+        docs = doc_store.list_owned_and_shared(other_id, include_shared=True)
+        uuids = [d["uuid"] for d in docs]
+        assert uuid in uuids
+
+    def test_list_shared_with_excludes_public(self, doc_store, user_store):
+        owner_id = user_store.create("owner5", "hash")
+        other_id = user_store.create("other5", "hash")
+        uuid = doc_store.create("PublicOnlyDoc", owner_id)
+
+        doc_store.set_public(uuid, True)
+        docs = doc_store.list_shared_with(other_id)
+        uuids = [d["uuid"] for d in docs]
+        assert uuid not in uuids
+
+    def test_search_by_name_all_includes_public(self, doc_store, user_store):
+        owner_id = user_store.create("owner6", "hash")
+        other_id = user_store.create("other6", "hash")
+        uuid = doc_store.create("SearchablePublic", owner_id)
+
+        doc_store.set_public(uuid, True)
+        docs = doc_store.search_by_name(other_id, "SearchablePublic", filter_type="all")
+        uuids = [d["uuid"] for d in docs]
+        assert uuid in uuids
+
+    def test_set_public_idempotent(self, doc_store, user_store):
+        owner_id = user_store.create("owner7", "hash")
+        other_id = user_store.create("other7", "hash")
+        uuid = doc_store.create("Doc", owner_id)
+
+        doc_store.set_public(uuid, True)
+        doc_store.set_public(uuid, True)
+        doc_store.set_public(uuid, False)
+        assert doc_store.has_permission(uuid, other_id, "view") is False
+
+        null_rows = doc_store.db.execute(
+            "SELECT COUNT(*) FROM document_shares WHERE document_uuid = ? AND shared_with_user_id IS NULL",
+            (uuid,),
+        ).fetchone()[0]
+        assert null_rows == 0
+
+    def test_public_not_inherited_on_unshare(self, doc_store, user_store):
+        owner_id = user_store.create("owner8", "hash")
+        other_id = user_store.create("other8", "hash")
+        uuid = doc_store.create("Doc", owner_id)
+
+        doc_store.set_public(uuid, True)
+        assert doc_store.has_permission(uuid, other_id, "view") is True
+
+        doc_store.set_public(uuid, False)
+        assert doc_store.has_permission(uuid, other_id, "view") is False
