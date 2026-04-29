@@ -84,18 +84,26 @@ def init_scheduler(app):
     global _task_scheduler
     from oversolved.periodic_tasks import TaskScheduler, EmptyTrashTask
 
-    db = _get_database({
+    db_config = {
         "type": app.config["DB_TYPE"],
         "path": app.config.get("DB_PATH", ":memory:"),
         "host": app.config.get("DB_HOST"),
         "user": app.config.get("DB_USER"),
         "password": app.config.get("DB_PASSWORD"),
         "name": app.config.get("DB_NAME"),
-    })
+    }
+
+    db = _get_database(db_config)
     _register_migrations(db)
     db.init()
 
-    _task_scheduler = TaskScheduler(db)
+    def db_factory():
+        d = _get_database(db_config)
+        _register_migrations(d)
+        d.init()
+        return d
+
+    _task_scheduler = TaskScheduler(db_factory)
     _task_scheduler.register_task(EmptyTrashTask())
 
     # Ensure built-in tasks exist in DB
@@ -1529,15 +1537,29 @@ def _register_migrations(db: Database) -> None:
 
     db.register_migration(5, "add_last_login", migration_005_add_last_login)
 
+    def _column_exists(database: Database, table: str, column: str) -> bool:
+        """Check if a column already exists in a table."""
+        cursor = database.execute(f"PRAGMA table_info({table})")
+        return any(row[1] == column for row in cursor.fetchall())
+
     def migration_006_user_oauth_prep(database: Database):
         """Add email, nickname, OAuth fields to users table."""
-        database.execute("ALTER TABLE users ADD COLUMN email TEXT")
-        database.execute("ALTER TABLE users ADD COLUMN nickname TEXT")
-        database.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
-        database.execute("ALTER TABLE users ADD COLUMN provider TEXT")
-        database.execute("ALTER TABLE users ADD COLUMN provider_data TEXT")
-        database.execute("ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))")
-        # Backfill email from username for existing users
+        if not _column_exists(database, "users", "email"):
+            database.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        if not _column_exists(database, "users", "nickname"):
+            database.execute("ALTER TABLE users ADD COLUMN nickname TEXT")
+        if not _column_exists(database, "users", "external_id"):
+            database.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
+        if not _column_exists(database, "users", "provider"):
+            database.execute("ALTER TABLE users ADD COLUMN provider TEXT")
+        if not _column_exists(database, "users", "provider_data"):
+            database.execute("ALTER TABLE users ADD COLUMN provider_data TEXT")
+        if not _column_exists(database, "users", "updated_at"):
+            database.execute("ALTER TABLE users ADD COLUMN updated_at TEXT")
+        # Backfill missing fields for existing users
+        database.execute(
+            "UPDATE users SET updated_at = datetime('now') WHERE updated_at IS NULL"
+        )
         database.execute(
             "UPDATE users SET email = username || '@local.oversolved' WHERE email IS NULL"
         )
@@ -1557,16 +1579,17 @@ def _register_migrations(db: Database) -> None:
 
     def migration_007_user_sort_preference(database: Database):
         """Add document_sort_preference column to users table."""
-        database.execute(
-            "ALTER TABLE users ADD COLUMN document_sort_preference TEXT DEFAULT 'alphabetical'"
-        )
+        if not _column_exists(database, "users", "document_sort_preference"):
+            database.execute(
+                "ALTER TABLE users ADD COLUMN document_sort_preference TEXT DEFAULT 'alphabetical'"
+            )
 
     db.register_migration(7, "user_sort_preference", migration_007_user_sort_preference)
 
     def migration_008_organizations(database: Database):
         """Create organizations and organization_members tables."""
         database.execute("""
-            CREATE TABLE organizations (
+            CREATE TABLE IF NOT EXISTS organizations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 slug TEXT UNIQUE NOT NULL,
                 display_name TEXT NOT NULL,
@@ -1579,7 +1602,7 @@ def _register_migrations(db: Database) -> None:
             )
         """)
         database.execute("""
-            CREATE TABLE organization_members (
+            CREATE TABLE IF NOT EXISTS organization_members (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 org_id INTEGER NOT NULL,
                 user_id INTEGER NOT NULL,
@@ -1595,7 +1618,8 @@ def _register_migrations(db: Database) -> None:
 
     def migration_009_documents_org_id(database: Database):
         """Add org_id to documents; create personal orgs for existing users."""
-        database.execute("ALTER TABLE documents ADD COLUMN org_id INTEGER REFERENCES organizations(id)")
+        if not _column_exists(database, "documents", "org_id"):
+            database.execute("ALTER TABLE documents ADD COLUMN org_id INTEGER REFERENCES organizations(id)")
         # Create a personal org for every existing user and assign their docs
         cursor = database.execute("SELECT id, username FROM users")
         users = cursor.fetchall()
@@ -1625,7 +1649,8 @@ def _register_migrations(db: Database) -> None:
 
     def migration_010_document_trash(database: Database):
         """Add deleted_at column to documents for soft delete."""
-        database.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT")
+        if not _column_exists(database, "documents", "deleted_at"):
+            database.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT")
         database.execute("CREATE INDEX IF NOT EXISTS idx_documents_deleted_at ON documents(deleted_at)")
 
     db.register_migration(10, "document_trash", migration_010_document_trash)
@@ -1633,7 +1658,7 @@ def _register_migrations(db: Database) -> None:
     def migration_011_periodic_tasks(database: Database):
         """Create periodic_tasks table for scheduled background jobs."""
         database.execute("""
-            CREATE TABLE periodic_tasks (
+            CREATE TABLE IF NOT EXISTS periodic_tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL,
                 description TEXT,
@@ -1650,7 +1675,7 @@ def _register_migrations(db: Database) -> None:
             )
         """)
         database.execute("""
-            CREATE INDEX idx_periodic_tasks_next_run ON periodic_tasks(next_run_at, enabled)
+            CREATE INDEX IF NOT EXISTS idx_periodic_tasks_next_run ON periodic_tasks(next_run_at, enabled)
         """)
 
     db.register_migration(11, "periodic_tasks", migration_011_periodic_tasks)
@@ -1658,7 +1683,7 @@ def _register_migrations(db: Database) -> None:
     def migration_012_rebuild_times(database: Database):
         """Create rebuild_times table for tracking solve duration history."""
         database.execute("""
-            CREATE TABLE rebuild_times (
+            CREATE TABLE IF NOT EXISTS rebuild_times (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 document_uuid TEXT NOT NULL,
                 org_id INTEGER,
@@ -1670,7 +1695,7 @@ def _register_migrations(db: Database) -> None:
             )
         """)
         database.execute("""
-            CREATE INDEX idx_rebuild_times_doc_recent
+            CREATE INDEX IF NOT EXISTS idx_rebuild_times_doc_recent
             ON rebuild_times(document_uuid, timestamp DESC)
         """)
 

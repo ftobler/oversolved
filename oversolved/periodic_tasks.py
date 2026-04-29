@@ -69,8 +69,13 @@ def _parse_cron(cron_expr: str) -> datetime:
 class TaskScheduler:
     """Manages periodic task execution."""
 
-    def __init__(self, db_connection):
-        self.db = db_connection
+    def __init__(self, db_or_factory):
+        if callable(db_or_factory):
+            self._db_factory = db_or_factory
+            self.db = db_or_factory()
+        else:
+            self._db_factory = lambda: db_or_factory
+            self.db = db_or_factory
         self.tasks: dict[str, PeriodicTask] = {}
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -95,43 +100,47 @@ class TaskScheduler:
         """Main scheduler loop (runs in background thread)."""
         from oversolved.db import PeriodicTaskStore
 
-        while not self._stop_event.is_set():
-            now = datetime.now()
+        db = self._db_factory()
+        try:
+            while not self._stop_event.is_set():
+                now = datetime.now()
 
-            # Find tasks that should run
-            task_store = PeriodicTaskStore(self.db)
-            due_tasks = task_store.find_due_tasks(now)
+                # Find tasks that should run
+                task_store = PeriodicTaskStore(db)
+                due_tasks = task_store.find_due_tasks(now)
 
-            for task_config in due_tasks:
-                task_key = task_config["task_key"]
-                if task_key not in self.tasks:
-                    continue
+                for task_config in due_tasks:
+                    task_key = task_config["task_key"]
+                    if task_key not in self.tasks:
+                        continue
 
-                task = self.tasks[task_key]
-                start_time = time.time()
+                    task = self.tasks[task_key]
+                    start_time = time.time()
 
-                try:
-                    result = task.run(self.db)
-                    duration_ms = int((time.time() - start_time) * 1000)
-                    task_store.update_task(task_key, {
-                        "last_run_at": datetime.now().isoformat(),
-                        "last_run_duration_ms": duration_ms,
-                        "last_run_status": result.get("status", "success"),
-                        "last_run_error": result.get("error"),
-                        "next_run_at": _parse_cron(task_config["schedule"]).isoformat(),
-                    })
-                except Exception as e:
-                    duration_ms = int((time.time() - start_time) * 1000)
-                    task_store.update_task(task_key, {
-                        "last_run_at": datetime.now().isoformat(),
-                        "last_run_duration_ms": duration_ms,
-                        "last_run_status": "error",
-                        "last_run_error": str(e),
-                        "next_run_at": _parse_cron(task_config["schedule"]).isoformat(),
-                    })
+                    try:
+                        result = task.run(db)
+                        duration_ms = int((time.time() - start_time) * 1000)
+                        task_store.update_task(task_key, {
+                            "last_run_at": datetime.now().isoformat(),
+                            "last_run_duration_ms": duration_ms,
+                            "last_run_status": result.get("status", "success"),
+                            "last_run_error": result.get("error"),
+                            "next_run_at": _parse_cron(task_config["schedule"]).isoformat(),
+                        })
+                    except Exception as e:
+                        duration_ms = int((time.time() - start_time) * 1000)
+                        task_store.update_task(task_key, {
+                            "last_run_at": datetime.now().isoformat(),
+                            "last_run_duration_ms": duration_ms,
+                            "last_run_status": "error",
+                            "last_run_error": str(e),
+                            "next_run_at": _parse_cron(task_config["schedule"]).isoformat(),
+                        })
 
-            # Sleep briefly before checking again (every 30 seconds)
-            self._stop_event.wait(30)
+                # Sleep briefly before checking again (every 30 seconds)
+                self._stop_event.wait(30)
+        finally:
+            db.close()
 
     def force_run_task(self, task_key: str) -> dict:
         """Force execution of a task immediately."""
