@@ -1,0 +1,40 @@
+.cache-indicator {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  pointer-events: none;
+  z-index: 10;
+  background: rgba(30, 30, 30, 0.85);
+  color: #e0e0e0;
+  backdrop-filter: blur(4px);
+}
+
+.cache-fresh {
+  border: 1px solid rgba(0, 170, 255, 0.3);
+}
+
+.cache-stale {
+  border: 1px solid rgba(255, 170, 0, 0.3);
+  color: #aaa;
+}
+
+.cache-icon {
+  font-size: 14px;
+}
+
+.cache-label {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cache-age {
+  opacity: 0.7;
+  font-size: 11px;
+}

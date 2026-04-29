@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom'
+import 'fake-indexeddb/auto'
 
 if (typeof ResizeObserver === 'undefined') {
   class ResizeObserverMock {

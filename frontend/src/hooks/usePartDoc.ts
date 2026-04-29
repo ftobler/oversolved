@@ -4,6 +4,7 @@ import type { PartDoc, SketchData, Mutation, EntityStatus, BuildResponse, PartSt
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
 import { unflattenGeometry } from '../utils/geometryMapping'
+import { getCachedBuildResponse, cacheBuildResponse } from '../utils/buildCache'
 import {
   applyMoveVertex,
   applyMoveEntity,
@@ -188,39 +189,155 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [redoStack, setRedoStack] = useState<UndoEntry[]>([])
   const [permission, setPermission] = useState<string>('owner')
+  const [fromCache, setFromCache] = useState(false)
+  const [cacheTimestamp, setCacheTimestamp] = useState<number | null>(null)
   const firstSolveDone = useRef(false)
   const rollbackPosRef = useRef<number | null>(null)
   const pickBoundaryRef = useRef<number | null>(null)
   const requestIdRef = useRef(0)
 
+  const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
+    const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; plane_transform?: import('../types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }>; plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }; body_id?: string; exception?: string }>
+
+    const results: Record<string, SketchData> = {}
+    for (const [id, feature] of Object.entries(result)) {
+      const featureDef = (d.features ?? []).find(f => f.id === id)
+      if (feature.geometry) {
+        if (featureDef) {
+          featureDef.initial = feature.geometry
+          if (feature.constraints && featureDef.constraints) {
+            const superfluousIds = new Set(
+              Object.entries(feature.constraints)
+                .filter(([, c]) => c.superfluous)
+                .map(([cid]) => cid)
+            )
+            if (superfluousIds.size > 0) {
+              featureDef.constraints = featureDef.constraints.filter(c => !superfluousIds.has(c.id))
+            }
+          }
+        }
+        const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
+        const astPosById = new Map(
+          (featureDef?.constraints ?? [])
+            .filter(c => c.pos)
+            .map(c => [c.id, c.pos!])
+        )
+        const constraints: import('../types/cad').Constraints | undefined = feature.constraints
+          ? Object.fromEntries(
+              Object.entries(feature.constraints)
+                .filter(([, c]) => !c.superfluous)
+                .map(([cid, c]) => {
+                  const pos = astPosById.get(cid)
+                  const render = pos ? { ...c.render, pos } : c.render
+                  return [cid, { render, residual: c.residual }]
+                })
+            )
+          : undefined
+        const entityStatus = feature.features
+          ? (Object.fromEntries(
+              Object.entries(feature.features).map(([eid, e]) => [eid, (e as { status?: string }).status || 'underconstrained'])
+            ) as EntityStatus)
+          : undefined
+        results[id] = {
+          solved,
+          topology: feature.topology,
+          status: feature.status,
+          ...(constraints && { constraints }),
+          ...(entityStatus && { features: entityStatus }),
+          ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
+        }
+      } else if (feature.plane) {
+        const planeRaw = feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }
+        const plane = {
+          origin: planeRaw.origin as [number, number, number],
+          x_axis: planeRaw.x_axis as [number, number, number],
+          y_axis: planeRaw.y_axis as [number, number, number],
+          normal: planeRaw.normal as [number, number, number],
+        }
+        results[id] = {
+          solved: {},
+          status: feature.status,
+          plane,
+          plane_transform: {
+            rotation: [
+              ...plane.x_axis,
+              ...plane.y_axis,
+              ...plane.normal,
+            ],
+            origin: plane.origin,
+          },
+        }
+      } else {
+        results[id] = {
+          solved: unflattenGeometry(featureDef?.initial, featureDef?.entities),
+          status: feature.status ?? 'exception',
+          ...(feature.body_id !== undefined && { body_id: feature.body_id }),
+          ...(feature.exception !== undefined && { exception: feature.exception }),
+        }
+      }
+    }
+    setSolveResults(results)
+    reconcilePartStyle(d, data.bodies)
+    setBodies(data.bodies ?? {})
+    setPickBodies(data.pick_bodies ?? {})
+    setSolveRawResult(stringifyYaml(data.result))
+    const updatedDoc = { ...d }
+    setDoc(updatedDoc)
+    docRef.current = updatedDoc
+    if (modeRef.current === 'code') {
+      setCodeText(stringifyYaml(d))
+    }
+    setSolveError(null)
+    if (solveTimeMs !== undefined) {
+      setSolveTime(solveTimeMs)
+    }
+  }, [setCodeText])
+
   const reSolve = useCallback(async (d: PartDoc, rollbackPosition?: number | null) => {
-  setSolving(true)
-  setSolveTime(null)
-  const startTime = performance.now()
-  const isFirstSolve = !firstSolveDone.current
-  if (isFirstSolve) firstSolveDone.current = true
+    setSolving(true)
+    setSolveTime(null)
+    const startTime = performance.now()
+    const isFirstSolve = !firstSolveDone.current
+    if (isFirstSolve) firstSolveDone.current = true
 
-  const currentRequestId = ++requestIdRef.current
-  try {
-  const allFeatures = d.features ?? []
-  const effectiveRollback = rollbackPosition ?? rollbackPosRef.current ?? allFeatures.length
-  rollbackPosRef.current = effectiveRollback
+    const currentRequestId = ++requestIdRef.current
+    try {
+      const allFeatures = d.features ?? []
+      const effectiveRollback = rollbackPosition ?? rollbackPosRef.current ?? allFeatures.length
+      rollbackPosRef.current = effectiveRollback
 
-  // Send ALL features to backend; backend handles rollback slicing internally.
-  // Filter out built-in features for the solve payload.
-  const solveFeatures = allFeatures.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
+      // Send ALL features to backend; backend handles rollback slicing internally.
+      // Filter out built-in features for the solve payload.
+      const solveFeatures = allFeatures.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
 
-  const isPreview = rollbackPosition !== undefined || pickBoundaryRef.current !== null
-  const solvePayload: Record<string, unknown> = {
-  ...d,
-  features: solveFeatures,
-  rollback_position: effectiveRollback,
-  request_id: currentRequestId,
-  is_preview: isPreview,
-  }
+      const isPreview = rollbackPosition !== undefined || pickBoundaryRef.current !== null
+      const pickBoundary = pickBoundaryRef.current
 
-      if (pickBoundaryRef.current !== null) {
-        solvePayload.pick_boundary = pickBoundaryRef.current
+      // Check cache before fetching.
+      if (uuid) {
+        const cached = await getCachedBuildResponse(uuid, d, effectiveRollback, pickBoundary)
+        if (cached && cached.isFresh) {
+          applyBuildResponse(d, cached.entry.buildResponse)
+          setFromCache(true)
+          setCacheTimestamp(cached.entry.timestamp)
+          setSolving(false)
+          if (isFirstSolve && onFirstSolve) {
+            setTimeout(onFirstSolve, 0)
+          }
+          return
+        }
+      }
+
+      const solvePayload: Record<string, unknown> = {
+        ...d,
+        features: solveFeatures,
+        rollback_position: effectiveRollback,
+        request_id: currentRequestId,
+        is_preview: isPreview,
+      }
+
+      if (pickBoundary !== null) {
+        solvePayload.pick_boundary = pickBoundary
       }
 
       const response = await fetch('/api/solve', {
@@ -236,105 +353,18 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
       const data = await response.json()
       const endTime = performance.now()
-      setSolveTime(Math.round((endTime - startTime) * 100) / 100)
+      const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
       if (!response.ok) {
         setSolveError(data.error || `Solve failed (${response.status})`)
         setSolveRawResult(data.error || `Solve failed (${response.status})`)
       } else {
-        const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; plane_transform?: import('../types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }>; plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }; body_id?: string; exception?: string }>
-
-        const results: Record<string, SketchData> = {}
-        for (const [id, feature] of Object.entries(result)) {
-          const featureDef = (d.features ?? []).find(f => f.id === id)
-          if (feature.geometry) {
-            if (featureDef) {
-              featureDef.initial = feature.geometry
-              if (feature.constraints && featureDef.constraints) {
-                const superfluousIds = new Set(
-                  Object.entries(feature.constraints)
-                    .filter(([, c]) => c.superfluous)
-                    .map(([cid]) => cid)
-                )
-                if (superfluousIds.size > 0) {
-                  featureDef.constraints = featureDef.constraints.filter(c => !superfluousIds.has(c.id))
-                }
-              }
-            }
-            const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
-            const astPosById = new Map(
-              (featureDef?.constraints ?? [])
-                .filter(c => c.pos)
-                .map(c => [c.id, c.pos!])
-            )
-            const constraints: import('../types/cad').Constraints | undefined = feature.constraints
-              ? Object.fromEntries(
-                  Object.entries(feature.constraints)
-                    .filter(([, c]) => !c.superfluous)
-                    .map(([cid, c]) => {
-                      const pos = astPosById.get(cid)
-                      const render = pos ? { ...c.render, pos } : c.render
-                      return [cid, { render, residual: c.residual }]
-                    })
-                )
-              : undefined
-            const entityStatus = feature.features
-              ? (Object.fromEntries(
-                  Object.entries(feature.features).map(([eid, e]) => [eid, (e as { status?: string }).status || 'underconstrained'])
-                ) as EntityStatus)
-              : undefined
-            results[id] = {
-              solved,
-              topology: feature.topology,
-              status: feature.status,
-              ...(constraints && { constraints }),
-              ...(entityStatus && { features: entityStatus }),
-              ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
-            }
-          } else if (feature.plane) {
-            const planeRaw = feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }
-            const plane = {
-              origin: planeRaw.origin as [number, number, number],
-              x_axis: planeRaw.x_axis as [number, number, number],
-              y_axis: planeRaw.y_axis as [number, number, number],
-              normal: planeRaw.normal as [number, number, number],
-            }
-            results[id] = {
-              solved: {},
-              status: feature.status,
-              plane,
-              plane_transform: {
-                rotation: [
-                  ...plane.x_axis,
-                  ...plane.y_axis,
-                  ...plane.normal,
-                ],
-                origin: plane.origin,
-              },
-            }
-          } else {
-            // No geometry (e.g. extrude) or exception — fall back to initial positions.
-            // Propagate body_id and exception so Sidebar can show correct error state.
-            results[id] = {
-              solved: unflattenGeometry(featureDef?.initial, featureDef?.entities),
-              status: feature.status ?? 'exception',
-              ...(feature.body_id !== undefined && { body_id: feature.body_id }),
-              ...(feature.exception !== undefined && { exception: feature.exception }),
-            }
-          }
+        const buildResponse = data as BuildResponse
+        applyBuildResponse(d, buildResponse, solveTimeMs)
+        setFromCache(false)
+        setCacheTimestamp(null)
+        if (uuid) {
+          await cacheBuildResponse(uuid, d, effectiveRollback, pickBoundary, buildResponse)
         }
-setSolveResults(results)
-        const response = data as BuildResponse
-        reconcilePartStyle(d, response.bodies)
-        setBodies(response.bodies ?? {})
-        setPickBodies(response.pick_bodies ?? {})
-        setSolveRawResult(stringifyYaml(data.result))
-        const updatedDoc = { ...d }
-        setDoc(updatedDoc)
-        docRef.current = updatedDoc
-        if (modeRef.current === 'code') {
-          setCodeText(stringifyYaml(d))
-        }
-        setSolveError(null)
         if (isFirstSolve && onFirstSolve) {
           setTimeout(onFirstSolve, 0)
         }
@@ -345,7 +375,7 @@ setSolveResults(results)
     } finally {
       setSolving(false)
     }
-  }, [setCodeText, onFirstSolve])
+  }, [onFirstSolve, applyBuildResponse, uuid])
 
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)
@@ -737,6 +767,8 @@ setSolveResults(results)
     saveDoc,
     renameDoc,
     permission,
+    fromCache,
+    cacheTimestamp,
     setRollbackPos: (pos: number | null) => { rollbackPosRef.current = pos },
     setPickBoundary: (pos: number | null) => { pickBoundaryRef.current = pos },
   }
