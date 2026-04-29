@@ -93,6 +93,13 @@ def _make_db():
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_external_id_provider ON users(external_id, provider)")
 
     database.register_migration(6, "user_oauth_prep", migration_006)
+
+    def migration_007(db: Database):
+        db.execute(
+            "ALTER TABLE users ADD COLUMN document_sort_preference TEXT DEFAULT 'alphabetical'"
+        )
+
+    database.register_migration(7, "user_sort_preference", migration_007)
     database.init()
     return database
 
@@ -544,6 +551,11 @@ class TestUserStoreOAuth:
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
         database.register_migration(6, "oauth_prep", migration_006)
 
+        def migration_007(db):
+            db.execute(
+                "ALTER TABLE users ADD COLUMN document_sort_preference TEXT DEFAULT 'alphabetical'"
+            )
+        database.register_migration(7, "user_sort_preference", migration_007)
         database.init()
         store = UserStore(database)
         uid = store.create("testuser", "hash", email="testuser@local.oversolved")

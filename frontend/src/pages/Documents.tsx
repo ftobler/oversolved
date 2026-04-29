@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
 import Dialog from '../components/Dialog'
 import ShareDialog from '../components/ShareDialog'
+import { useUserPreferences, DocumentSort } from '../hooks/useUserPreferences'
 import './Documents.css'
 
 interface DocumentMeta {
@@ -25,18 +26,25 @@ export default function Documents() {
   const [addError, setAddError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [sortBy, setSortBy] = useState<'name' | 'modified'>('modified')
   const [shareDoc, setShareDoc] = useState<DocumentMeta | null>(null)
   const [activeFilter, setActiveFilter] = useState<SidebarFilter>('owned')
+  const { preferences, loading: prefsLoading, updatePreference } = useUserPreferences()
+  const sortBy = preferences.document_sort
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
     return () => clearTimeout(timer)
   }, [searchQuery])
 
+  const sortToApiParam = (sort: DocumentSort): string => {
+    if (sort === 'date_newest_first') return 'modified'
+    if (sort === 'date_oldest_first') return 'modified_asc'
+    return 'name'
+  }
+
   const fetchDocuments = useCallback((filter: string = 'owned', search: string = '') => {
     const params = new URLSearchParams()
-    params.set('sort', sortBy)
+    params.set('sort', sortToApiParam(sortBy))
     params.set('filter', filter)
     if (search) params.set('search', search)
 
@@ -55,10 +63,11 @@ export default function Documents() {
   }, [sortBy])
 
   useEffect(() => {
+    if (prefsLoading) return
     setLoading(true)
     fetchDocuments(activeFilter, debouncedSearch)
     setLoading(false)
-  }, [activeFilter, debouncedSearch, fetchDocuments])
+  }, [activeFilter, debouncedSearch, fetchDocuments, prefsLoading])
 
   const handleAddDocument = async () => {
     if (!newDocName.trim()) {
@@ -230,12 +239,19 @@ export default function Documents() {
           <button
             className="toolbar-btn"
             onClick={() => {
-              const newSort = sortBy === 'name' ? 'modified' : 'name'
-              setSortBy(newSort)
+              const cycle: DocumentSort[] = ['alphabetical', 'date_newest_first', 'date_oldest_first']
+              const next = cycle[(cycle.indexOf(sortBy) + 1) % cycle.length]
+              updatePreference('document_sort', next)
             }}
-            title={`Sort by ${sortBy === 'name' ? 'modified' : 'name'}`}
+            title={
+              sortBy === 'alphabetical' ? 'Sort: A-Z (click for newest first)' :
+              sortBy === 'date_newest_first' ? 'Sort: Newest first (click for oldest first)' :
+              'Sort: Oldest first (click for A-Z)'
+            }
           >
-            <span className="material-icons">{sortBy === 'name' ? 'sort_by_alpha' : 'update'}</span>
+            <span className="material-icons">
+              {sortBy === 'alphabetical' ? 'sort_by_alpha' : sortBy === 'date_newest_first' ? 'update' : 'history'}
+            </span>
           </button>
           <button className="toolbar-btn" onClick={() => setShowAddForm(!showAddForm)} title="Add document">
             <span className="material-icons">add</span>

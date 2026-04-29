@@ -5,6 +5,16 @@ import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from '../../contexts/AuthContext'
 import Documents from '../Documents'
 
+const authOk = {
+  ok: true,
+  json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
+} as Response
+
+const prefsOk = {
+  ok: true,
+  json: () => Promise.resolve({ document_sort: 'alphabetical' }),
+} as Response
+
 describe('Documents sidebar', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -17,12 +27,8 @@ describe('Documents sidebar', () => {
 
   const mockFetch = (docs: Record<string, unknown>[] = []) => {
     return vi.fn((url: string): Promise<Response> => {
-      if (url === '/api/auth/me') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
-        } as Response)
-      }
+      if (url === '/api/auth/me') return Promise.resolve(authOk)
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsOk)
       if (url.startsWith('/api/documents')) {
         return Promise.resolve({
           ok: true,
@@ -159,12 +165,8 @@ describe('Documents search', () => {
 
   const mockFetch = (docs: Record<string, unknown>[] = []) => {
     return vi.fn((url: string): Promise<Response> => {
-      if (url === '/api/auth/me') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
-        } as Response)
-      }
+      if (url === '/api/auth/me') return Promise.resolve(authOk)
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsOk)
       if (url.startsWith('/api/documents')) {
         return Promise.resolve({
           ok: true,
@@ -274,12 +276,8 @@ describe('Documents search', () => {
 
   it('no client-side filtering occurs', async () => {
     const fetchMock = vi.fn((url: string): Promise<Response> => {
-      if (url === '/api/auth/me') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
-        } as Response)
-      }
+      if (url === '/api/auth/me') return Promise.resolve(authOk)
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsOk)
       if (url.startsWith('/api/documents')) {
         return Promise.resolve({
           ok: true,

@@ -4,6 +4,27 @@ import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from '../../contexts/AuthContext'
 import UserProfile from '../UserProfile'
 
+const makeUserResponse = (overrides = {}) => ({
+  ok: true,
+  json: () => Promise.resolve({
+    user: {
+      id: 1,
+      username: 'testuser',
+      email: 'test@example.com',
+      nickname: 'test_nick',
+      must_change_password: false,
+      is_admin: false,
+      is_active: true,
+      ...overrides,
+    }
+  }),
+} as Response)
+
+const prefsResponse = {
+  ok: true,
+  json: () => Promise.resolve({ document_sort: 'alphabetical' }),
+} as Response
+
 describe('UserProfile', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -11,22 +32,8 @@ describe('UserProfile', () => {
 
   it('renders profile form with email and nickname', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url === '/api/auth/me') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            user: {
-              id: 1,
-              username: 'testuser',
-              email: 'test@example.com',
-              nickname: 'test_nick',
-              must_change_password: false,
-              is_admin: false,
-              is_active: true,
-            }
-          }),
-        } as Response)
-      }
+      if (url === '/api/auth/me') return Promise.resolve(makeUserResponse())
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsResponse)
       return Promise.resolve({ ok: false, status: 404 } as Response)
     }))
 
@@ -47,22 +54,8 @@ describe('UserProfile', () => {
 
   it('updates username on save', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
-      if (url === '/api/auth/me') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            user: {
-              id: 1,
-              username: 'testuser',
-              email: 'test@example.com',
-              nickname: 'test_nick',
-              must_change_password: false,
-              is_admin: false,
-              is_active: true,
-            }
-          }),
-        } as Response)
-      }
+      if (url === '/api/auth/me') return Promise.resolve(makeUserResponse())
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsResponse)
       if (url === '/api/users/me' && init?.method === 'PUT') {
         return Promise.resolve({
           ok: true,
@@ -97,22 +90,8 @@ describe('UserProfile', () => {
 
   it('updates email on save', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
-      if (url === '/api/auth/me') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            user: {
-              id: 1,
-              username: 'testuser',
-              email: 'test@example.com',
-              nickname: 'test_nick',
-              must_change_password: false,
-              is_admin: false,
-              is_active: true,
-            }
-          }),
-        } as Response)
-      }
+      if (url === '/api/auth/me') return Promise.resolve(makeUserResponse())
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsResponse)
       if (url === '/api/users/me' && init?.method === 'PUT') {
         return Promise.resolve({
           ok: true,
@@ -147,22 +126,8 @@ describe('UserProfile', () => {
 
   it('updates nickname on save', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
-      if (url === '/api/auth/me') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            user: {
-              id: 1,
-              username: 'testuser',
-              email: 'test@example.com',
-              nickname: 'test_nick',
-              must_change_password: false,
-              is_admin: false,
-              is_active: true,
-            }
-          }),
-        } as Response)
-      }
+      if (url === '/api/auth/me') return Promise.resolve(makeUserResponse())
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsResponse)
       if (url === '/api/users/me' && init?.method === 'PUT') {
         return Promise.resolve({
           ok: true,
@@ -197,22 +162,8 @@ describe('UserProfile', () => {
 
   it('shows password change fields', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url === '/api/auth/me') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            user: {
-              id: 1,
-              username: 'testuser',
-              email: 'test@example.com',
-              nickname: 'test_nick',
-              must_change_password: false,
-              is_admin: false,
-              is_active: true,
-            }
-          }),
-        } as Response)
-      }
+      if (url === '/api/auth/me') return Promise.resolve(makeUserResponse())
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsResponse)
       return Promise.resolve({ ok: false, status: 404 } as Response)
     }))
 
@@ -231,5 +182,34 @@ describe('UserProfile', () => {
     expect(screen.getByLabelText('Current Password')).toBeInTheDocument()
     expect(screen.getByLabelText('New Password')).toBeInTheDocument()
     expect(screen.getByLabelText('Confirm Password')).toBeInTheDocument()
+  })
+
+  it('shows sort preference radio buttons', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url === '/api/auth/me') return Promise.resolve(makeUserResponse())
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsResponse)
+      return Promise.resolve({ ok: false, status: 404 } as Response)
+    }))
+
+    render(
+      <BrowserRouter>
+        <AuthProvider>
+          <UserProfile />
+        </AuthProvider>
+      </BrowserRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('testuser')).toBeInTheDocument()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Alphabetical (A-Z)')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Date (Newest first)')).toBeInTheDocument()
+    expect(screen.getByText('Date (Oldest first)')).toBeInTheDocument()
+
+    const alphabeticalRadio = screen.getByDisplayValue('alphabetical') as HTMLInputElement
+    expect(alphabeticalRadio.checked).toBe(true)
   })
 })

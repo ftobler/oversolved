@@ -286,6 +286,36 @@ def create_app(config: dict | None = None) -> Flask:
 
         return jsonify({"status": "updated"})
 
+    _VALID_SORT_PREFS = {"alphabetical", "date_newest_first", "date_oldest_first"}
+
+    @app.route("/api/users/me/preferences", methods=["GET"])
+    @require_auth
+    def get_preferences():
+        user_id = g.current_user["id"]
+        user = UserStore(get_db()).find_by_id(user_id)
+        if user is None:
+            return jsonify({"error": "User not found"}), 404
+        return jsonify({
+            "document_sort": user.get("document_sort_preference", "alphabetical")
+        })
+
+    @app.route("/api/users/me/preferences", methods=["PUT"])
+    @require_auth
+    def update_preferences():
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        data = request.get_json()
+        document_sort = data.get("document_sort", "").strip()
+        if not document_sort:
+            return jsonify({"error": "document_sort is required"}), 400
+        if document_sort not in _VALID_SORT_PREFS:
+            return jsonify({"error": "Invalid document_sort value"}), 400
+        user_id = g.current_user["id"]
+        success = UserStore(get_db()).update(user_id, document_sort_preference=document_sort)
+        if not success:
+            return jsonify({"error": "User not found"}), 404
+        return jsonify({"status": "updated", "document_sort": document_sort})
+
     @app.route("/api/admin/users", methods=["GET"])
     @require_auth
     @require_admin
@@ -1067,6 +1097,14 @@ def _register_migrations(db: Database) -> None:
         )
 
     db.register_migration(6, "user_oauth_prep", migration_006_user_oauth_prep)
+
+    def migration_007_user_sort_preference(database: Database):
+        """Add document_sort_preference column to users table."""
+        database.execute(
+            "ALTER TABLE users ADD COLUMN document_sort_preference TEXT DEFAULT 'alphabetical'"
+        )
+
+    db.register_migration(7, "user_sort_preference", migration_007_user_sort_preference)
 
 
 if __name__ == "__main__":

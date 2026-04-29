@@ -303,7 +303,8 @@ class UserStore:
         cursor = self.db.execute(
             """SELECT id, username, email, nickname, external_id, provider,
                       provider_data, must_change_password, is_admin,
-                      is_active, created_at, last_login_at, updated_at
+                      is_active, created_at, last_login_at, updated_at,
+                      document_sort_preference
                FROM users WHERE id = ?""",
             (user_id,),
         )
@@ -324,6 +325,7 @@ class UserStore:
             "created_at": row[10],
             "last_login_at": row[11],
             "updated_at": row[12],
+            "document_sort_preference": row[13] or "alphabetical",
         }
 
     def update(self, user_id: int, **fields) -> bool:
@@ -332,7 +334,8 @@ class UserStore:
             return False
         allowed = {"username", "password_hash", "must_change_password", "is_admin",
                    "is_active", "last_login_at", "email", "nickname",
-                   "external_id", "provider", "provider_data", "updated_at"}
+                   "external_id", "provider", "provider_data", "updated_at",
+                   "document_sort_preference"}
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
             return False
@@ -650,6 +653,8 @@ class DocumentStore:
         """List documents owned by or shared with a user."""
         if sort == "modified":
             order = "updated_at DESC"
+        elif sort == "modified_asc":
+            order = "updated_at ASC"
         else:
             order = "name"
 
@@ -691,6 +696,8 @@ class DocumentStore:
         """List all public documents with owner username."""
         if sort == "modified":
             order = "updated_at DESC"
+        elif sort == "modified_asc":
+            order = "updated_at ASC"
         else:
             order = "name"
         cursor = self.db.execute(
@@ -717,6 +724,8 @@ class DocumentStore:
         """List documents explicitly shared with this user (excluding owned and public-only)."""
         if sort == "modified":
             order = "updated_at DESC"
+        elif sort == "modified_asc":
+            order = "updated_at ASC"
         else:
             order = "name"
         cursor = self.db.execute(
@@ -746,6 +755,8 @@ class DocumentStore:
         """Server-side case-insensitive search across documents visible to the user."""
         if sort == "modified":
             order = "updated_at DESC"
+        elif sort == "modified_asc":
+            order = "updated_at ASC"
         else:
             order = "name"
 

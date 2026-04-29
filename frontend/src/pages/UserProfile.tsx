@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useUserPreferences } from '../hooks/useUserPreferences'
 import './UserProfile.css'
 
 export default function UserProfile() {
   const { user, setUser } = useAuth()
   const navigate = useNavigate()
+  const { preferences, updatePreference } = useUserPreferences()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [nickname, setNickname] = useState('')
@@ -180,6 +182,30 @@ export default function UserProfile() {
           onChange={e => setConfirmPassword(e.target.value)}
           autoComplete="new-password"
         />
+      </div>
+
+      <div className="profile-divider" />
+
+      <div className="profile-field">
+        <label>Document sort order</label>
+        <div className="profile-radio-group">
+          {([
+            ['alphabetical', 'Alphabetical (A-Z)'],
+            ['date_newest_first', 'Date (Newest first)'],
+            ['date_oldest_first', 'Date (Oldest first)'],
+          ] as const).map(([value, label]) => (
+            <label key={value} className="profile-radio-label">
+              <input
+                type="radio"
+                name="document_sort"
+                value={value}
+                checked={preferences.document_sort === value}
+                onChange={() => updatePreference('document_sort', value)}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
       </div>
 
       <div className="profile-actions">

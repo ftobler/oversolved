@@ -463,3 +463,55 @@ class TestAdminCreateUserWithEmail:
             content_type="application/json",
         )
         assert response.status_code == 200
+
+
+class TestUserPreferences:
+    """Tests for user preferences API endpoints."""
+
+    def test_get_preferences_default(self, admin_client):
+        response = admin_client.get("/api/users/me/preferences")
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["document_sort"] == "alphabetical"
+
+    def test_update_preferences_valid(self, admin_client):
+        response = admin_client.put(
+            "/api/users/me/preferences",
+            data=json.dumps({"document_sort": "date_newest_first"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "updated"
+        assert data["document_sort"] == "date_newest_first"
+
+    def test_update_preferences_persists(self, admin_client):
+        admin_client.put(
+            "/api/users/me/preferences",
+            data=json.dumps({"document_sort": "date_oldest_first"}),
+            content_type="application/json",
+        )
+        response = admin_client.get("/api/users/me/preferences")
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["document_sort"] == "date_oldest_first"
+
+    def test_update_preferences_invalid(self, admin_client):
+        response = admin_client.put(
+            "/api/users/me/preferences",
+            data=json.dumps({"document_sort": "invalid_value"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_update_preferences_requires_auth(self, client):
+        response = client.put(
+            "/api/users/me/preferences",
+            data=json.dumps({"document_sort": "alphabetical"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 401
+
+    def test_get_preferences_requires_auth(self, client):
+        response = client.get("/api/users/me/preferences")
+        assert response.status_code == 401
