@@ -68,7 +68,10 @@ describe('AdminPeriodicTasks', () => {
       expect(screen.getByText('Periodic Tasks')).toBeInTheDocument()
     })
 
-    expect(screen.getByText('Empty Trash')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('Empty Trash')).toBeInTheDocument()
+    })
+
     expect(screen.getByText('Daily at 2:00 AM')).toBeInTheDocument()
   })
 
