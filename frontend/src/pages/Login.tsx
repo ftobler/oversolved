@@ -6,7 +6,7 @@ import './Login.css'
 export default function Login() {
   const { user, loading, setUser } = useAuth()
   const navigate = useNavigate()
-  const [username, setUsername] = useState('')
+  const [credential, setCredential] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -23,7 +23,7 @@ export default function Login() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ credential, password }),
       })
       const data = await response.json()
       if (!response.ok) {
@@ -47,9 +47,9 @@ export default function Login() {
           <input
             className="login-input"
             type="text"
-            placeholder="Username"
-            value={username}
-            onChange={e => setUsername(e.target.value)}
+            placeholder="Username, email, or nickname"
+            value={credential}
+            onChange={e => setCredential(e.target.value)}
             autoComplete="username"
             autoFocus
           />

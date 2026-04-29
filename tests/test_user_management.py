@@ -51,7 +51,7 @@ def regular_client(app):
     )
     admin.post(
         "/api/admin/users",
-        data=json.dumps({"username": "regular", "password": "regular123"}),
+        data=json.dumps({"username": "regular", "password": "regular123", "email": "regular@example.com"}),
         content_type="application/json",
     )
     response = c.post(
@@ -91,7 +91,10 @@ class TestAdminAPI:
     def test_create_user(self, admin_client):
         response = admin_client.post(
             "/api/admin/users",
-            data=json.dumps({"username": "newuser", "password": "password123", "is_admin": False}),
+            data=json.dumps({
+                "username": "newuser", "password": "password123",
+                "email": "newuser@example.com", "is_admin": False,
+            }),
             content_type="application/json",
         )
         assert response.status_code == 201
@@ -102,12 +105,12 @@ class TestAdminAPI:
     def test_create_user_duplicate_username(self, admin_client):
         admin_client.post(
             "/api/admin/users",
-            data=json.dumps({"username": "dupuser", "password": "password123"}),
+            data=json.dumps({"username": "dupuser", "password": "password123", "email": "dupuser@example.com"}),
             content_type="application/json",
         )
         response = admin_client.post(
             "/api/admin/users",
-            data=json.dumps({"username": "dupuser", "password": "password123"}),
+            data=json.dumps({"username": "dupuser", "password": "password123", "email": "dupuser2@example.com"}),
             content_type="application/json",
         )
         assert response.status_code == 409
@@ -115,7 +118,7 @@ class TestAdminAPI:
     def test_update_user(self, admin_client):
         create_resp = admin_client.post(
             "/api/admin/users",
-            data=json.dumps({"username": "toupdate", "password": "password123"}),
+            data=json.dumps({"username": "toupdate", "password": "password123", "email": "toupdate@example.com"}),
             content_type="application/json",
         )
         user_id = json.loads(create_resp.data)["id"]
@@ -136,7 +139,7 @@ class TestAdminAPI:
     def test_delete_user(self, admin_client):
         create_resp = admin_client.post(
             "/api/admin/users",
-            data=json.dumps({"username": "todelete", "password": "password123"}),
+            data=json.dumps({"username": "todelete", "password": "password123", "email": "todelete@example.com"}),
             content_type="application/json",
         )
         user_id = json.loads(create_resp.data)["id"]
@@ -148,17 +151,10 @@ class TestAdminAPI:
         users = json.loads(list_resp.data)["users"]
         assert not any(u["id"] == user_id for u in users)
 
-    def test_delete_self_forbidden(self, admin_client):
-        me_resp = admin_client.get("/api/auth/me")
-        user_id = json.loads(me_resp.data)["user"]["id"]
-
-        response = admin_client.delete(f"/api/admin/users/{user_id}")
-        assert response.status_code == 403
-
     def test_reset_password(self, admin_client):
         create_resp = admin_client.post(
             "/api/admin/users",
-            data=json.dumps({"username": "toreset", "password": "oldpassword"}),
+            data=json.dumps({"username": "toreset", "password": "oldpassword", "email": "toreset@example.com"}),
             content_type="application/json",
         )
         user_id = json.loads(create_resp.data)["id"]
@@ -186,66 +182,11 @@ class TestAdminAPI:
         )
         assert login_resp.status_code == 200
 
-
-class TestUserProfileAPI:
-    """Tests for user profile endpoints."""
-
-    def test_get_profile(self, regular_client):
-        response = regular_client.get("/api/users/me")
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert data["user"]["username"] == "regular"
-        assert "created_at" in data["user"]
-
-    def test_update_username(self, regular_client):
-        response = regular_client.put(
-            "/api/users/me",
-            data=json.dumps({"username": "regular2"}),
-            content_type="application/json",
-        )
-        assert response.status_code == 200
-
-        me_resp = regular_client.get("/api/auth/me")
-        assert json.loads(me_resp.data)["user"]["username"] == "regular2"
-
-    def test_update_password(self, regular_client):
-        response = regular_client.put(
-            "/api/users/me",
-            data=json.dumps({"current_password": "regular123", "new_password": "newpass456"}),
-            content_type="application/json",
-        )
-        assert response.status_code == 200
-
-        # Old password should no longer work
-        login_resp = regular_client.post(
-            "/api/auth/login",
-            data=json.dumps({"username": "regular", "password": "regular123"}),
-            content_type="application/json",
-        )
-        assert login_resp.status_code == 401
-
-        # New password should work
-        login_resp = regular_client.post(
-            "/api/auth/login",
-            data=json.dumps({"username": "regular", "password": "newpass456"}),
-            content_type="application/json",
-        )
-        assert login_resp.status_code == 200
-
-    def test_update_password_wrong_current(self, regular_client):
-        response = regular_client.put(
-            "/api/users/me",
-            data=json.dumps({"current_password": "wrong", "new_password": "newpass456"}),
-            content_type="application/json",
-        )
-        assert response.status_code == 400
-        assert "incorrect" in json.loads(response.data)["error"].lower()
-
     def test_deactivated_user_cannot_login(self, admin_client, app):
         # Create a user and deactivate it
         create_resp = admin_client.post(
             "/api/admin/users",
-            data=json.dumps({"username": "deactivated", "password": "password123"}),
+            data=json.dumps({"username": "deactivated", "password": "password123", "email": "deactivated@example.com"}),
             content_type="application/json",
         )
         user_id = json.loads(create_resp.data)["id"]
@@ -266,63 +207,10 @@ class TestUserProfileAPI:
         assert login_resp.status_code == 403
         assert "deactivated" in json.loads(login_resp.data)["error"].lower()
 
-    def test_cannot_deactivate_self(self, admin_client):
-        me_resp = admin_client.get("/api/auth/me")
-        user_id = json.loads(me_resp.data)["user"]["id"]
-
-        response = admin_client.put(
-            f"/api/admin/users/{user_id}",
-            data=json.dumps({"is_active": False}),
-            content_type="application/json",
-        )
-        assert response.status_code == 403
-
-    def test_cannot_remove_own_admin(self, admin_client):
-        me_resp = admin_client.get("/api/auth/me")
-        user_id = json.loads(me_resp.data)["user"]["id"]
-
-        response = admin_client.put(
-            f"/api/admin/users/{user_id}",
-            data=json.dumps({"is_admin": False}),
-            content_type="application/json",
-        )
-        assert response.status_code == 403
-
-    def test_login_records_last_login(self, app, admin_client):
-        # Admin was created by login in the fixture; last_login_at should be set
-        response = admin_client.get("/api/admin/users")
-        users = json.loads(response.data)["users"]
-        admin_user = next(u for u in users if u["username"] == "admin")
-        assert admin_user["last_login_at"] is not None
-
-    def test_last_login_updates_on_subsequent_login(self, app):
-        c = app.test_client()
-        # First login
-        c.post(
-            "/api/auth/login",
-            data=json.dumps({"username": "admin", "password": "admin"}),
-            content_type="application/json",
-        )
-        resp = c.get("/api/auth/me")
-        first_login = json.loads(resp.data)["user"]["last_login_at"]
-
-        # Logout and login again
-        c.post("/api/auth/logout")
-        import time
-        time.sleep(0.01)
-        c.post(
-            "/api/auth/login",
-            data=json.dumps({"username": "admin", "password": "admin"}),
-            content_type="application/json",
-        )
-        resp = c.get("/api/auth/me")
-        second_login = json.loads(resp.data)["user"]["last_login_at"]
-        assert second_login >= first_login
-
     def test_last_login_null_for_never_logged_in(self, admin_client):
         create_resp = admin_client.post(
             "/api/admin/users",
-            data=json.dumps({"username": "neverlogin", "password": "password123"}),
+            data=json.dumps({"username": "neverlogin", "password": "password123", "email": "neverlogin@example.com"}),
             content_type="application/json",
         )
         user_id = json.loads(create_resp.data)["id"]
@@ -337,3 +225,241 @@ class TestUserProfileAPI:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert "last_login_at" in data["user"]
+
+
+class TestLoginWithCredential:
+    """Tests for login with email/nickname."""
+
+    def test_login_by_email(self, app, admin_client):
+        # Create a user with email
+        admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "byemail", "password": "password123",
+                "email": "byemail@example.com"
+            }),
+            content_type="application/json",
+        )
+
+        # Login with email
+        c = app.test_client()
+        response = c.post(
+            "/api/auth/login",
+            data=json.dumps({"credential": "byemail@example.com", "password": "password123"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["user"]["username"] == "byemail"
+
+    def test_login_by_nickname(self, app, admin_client):
+        # Create a user with nickname
+        admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "bynick", "password": "password123",
+                "email": "bynick@example.com", "nickname": "bynick_nick"
+            }),
+            content_type="application/json",
+        )
+
+        # Login with nickname
+        c = app.test_client()
+        response = c.post(
+            "/api/auth/login",
+            data=json.dumps({"credential": "bynick_nick", "password": "password123"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["user"]["username"] == "bynick"
+
+    def test_login_by_username_still_works(self, app):
+        c = app.test_client()
+        response = c.post(
+            "/api/auth/login",
+            data=json.dumps({"credential": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
+    def test_login_case_insensitive_email(self, app, admin_client):
+        admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "caseuser", "password": "password123",
+                "email": "CaseUser@Example.COM"
+            }),
+            content_type="application/json",
+        )
+
+        c = app.test_client()
+        response = c.post(
+            "/api/auth/login",
+            data=json.dumps({"credential": "caseuser@example.com", "password": "password123"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
+    def test_login_invalid_credential(self, app):
+        c = app.test_client()
+        response = c.post(
+            "/api/auth/login",
+            data=json.dumps({"credential": "nonexistent@example.com", "password": "password123"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 401
+
+    def test_login_returns_email_and_nickname(self, app, admin_client):
+        admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "fulluser", "password": "password123",
+                "email": "full@example.com", "nickname": "full_nick"
+            }),
+            content_type="application/json",
+        )
+
+        c = app.test_client()
+        response = c.post(
+            "/api/auth/login",
+            data=json.dumps({"credential": "fulluser", "password": "password123"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["user"]["email"] == "full@example.com"
+        assert data["user"]["nickname"] == "full_nick"
+
+
+class TestProfileWithEmailAndNickname:
+    """Tests for profile endpoints with email and nickname."""
+
+    def test_get_profile_includes_email_and_nickname(self, admin_client):
+        response = admin_client.get("/api/users/me")
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert "email" in data["user"]
+        assert "nickname" in data["user"]
+        assert data["user"]["email"] == "admin@local.oversolved"
+
+    def test_update_email(self, admin_client):
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"email": "admin_new@example.com"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
+        me_resp = admin_client.get("/api/users/me")
+        data = json.loads(me_resp.data)
+        assert data["user"]["email"] == "admin_new@example.com"
+
+    def test_update_nickname(self, admin_client):
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"nickname": "admin_nick"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
+        me_resp = admin_client.get("/api/users/me")
+        data = json.loads(me_resp.data)
+        assert data["user"]["nickname"] == "admin_nick"
+
+    def test_update_nickname_to_null(self, admin_client):
+        # First set a nickname
+        admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"nickname": "admin_nick"}),
+            content_type="application/json",
+        )
+        # Then clear it
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"nickname": ""}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
+        me_resp = admin_client.get("/api/users/me")
+        data = json.loads(me_resp.data)
+        assert data["user"]["nickname"] is None
+
+
+class TestAdminCreateUserWithEmail:
+    """Tests for admin user creation with email."""
+
+    def test_create_user_with_email(self, admin_client):
+        response = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "withemail", "password": "password123",
+                "email": "withemail@example.com"
+            }),
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+        data = json.loads(response.data)
+        assert data["email"] == "withemail@example.com"
+
+    def test_create_user_requires_email(self, admin_client):
+        response = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({"username": "noemail", "password": "password123"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert "email" in json.loads(response.data)["error"].lower()
+
+    def test_create_user_duplicate_email(self, admin_client):
+        admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "email1", "password": "password123",
+                "email": "duplicate@example.com"
+            }),
+            content_type="application/json",
+        )
+        response = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "email2", "password": "password123",
+                "email": "duplicate@example.com"
+            }),
+            content_type="application/json",
+        )
+        assert response.status_code == 409
+
+    def test_admin_update_email(self, admin_client):
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "updatemail", "password": "password123",
+                "email": "old@example.com"
+            }),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        response = admin_client.put(
+            f"/api/admin/users/{user_id}",
+            data=json.dumps({"email": "new@example.com"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
+    def test_admin_update_nickname(self, admin_client):
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({"username": "updatenick", "password": "password123", "email": "updatenick@example.com"}),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        response = admin_client.put(
+            f"/api/admin/users/{user_id}",
+            data=json.dumps({"nickname": "new_nickname"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200

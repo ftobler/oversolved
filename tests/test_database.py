@@ -78,6 +78,21 @@ def _make_db():
         db.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT")
 
     database.register_migration(5, "add_last_login", migration_005)
+
+    def migration_006(db: Database):
+        """Add email, nickname, OAuth fields to users table."""
+        db.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        db.execute("ALTER TABLE users ADD COLUMN nickname TEXT")
+        db.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
+        db.execute("ALTER TABLE users ADD COLUMN provider TEXT")
+        db.execute("ALTER TABLE users ADD COLUMN provider_data TEXT")
+        db.execute("ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))")
+        db.execute("UPDATE users SET email = username || '@local.oversolved' WHERE email IS NULL")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nickname ON users(nickname)")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_external_id_provider ON users(external_id, provider)")
+
+    database.register_migration(6, "user_oauth_prep", migration_006)
     database.init()
     return database
 
@@ -399,3 +414,139 @@ class TestDocumentStore:
         doc = doc_store.retrieve(uuid)
         assert doc is not None
         assert doc["preview_image"] == b"second_image"
+
+
+class TestUserStoreOAuth:
+    """Tests for UserStore OAuth preparation features."""
+
+    def test_create_with_email(self, user_store):
+        uid = user_store.create("user1", "hash", email="user1@example.com")
+        user = user_store.find_by_id(uid)
+        assert user is not None
+        assert user["email"] == "user1@example.com"
+
+    def test_create_with_nickname(self, user_store):
+        uid = user_store.create("user2", "hash", nickname="user_twO")
+        user = user_store.find_by_id(uid)
+        assert user is not None
+        assert user["nickname"] == "user_twO"
+
+    def test_create_with_all_fields(self, user_store):
+        uid = user_store.create(
+            "user3", "hash", email="user3@example.com", nickname="user3_nick",
+            external_id="ext_123", provider="google", provider_data='{"name": "User"}'
+        )
+        user = user_store.find_by_id(uid)
+        assert user is not None
+        assert user["email"] == "user3@example.com"
+        assert user["nickname"] == "user3_nick"
+        assert user["external_id"] == "ext_123"
+        assert user["provider"] == "google"
+        assert user["provider_data"] == '{"name": "User"}'
+
+    def test_find_by_email(self, user_store):
+        user_store.create("user4", "hash", email="user4@example.com")
+        user = user_store.find_by_email("user4@example.com")
+        assert user is not None
+        assert user["username"] == "user4"
+
+    def test_find_by_email_case_insensitive(self, user_store):
+        user_store.create("user5", "hash", email="User5@Example.COM")
+        user = user_store.find_by_email("user5@example.com")
+        assert user is not None
+        assert user["username"] == "user5"
+
+    def test_find_by_email_not_found(self, user_store):
+        user = user_store.find_by_email("nonexistent@example.com")
+        assert user is None
+
+    def test_find_by_nickname(self, user_store):
+        user_store.create("user6", "hash", nickname="nick6")
+        user = user_store.find_by_nickname("nick6")
+        assert user is not None
+        assert user["username"] == "user6"
+
+    def test_find_by_nickname_not_found(self, user_store):
+        user = user_store.find_by_nickname("nonexistent")
+        assert user is None
+
+    def test_find_by_external_id(self, user_store):
+        user_store.create("user7", "hash", external_id="ext_456", provider="github")
+        user = user_store.find_by_external_id("ext_456", "github")
+        assert user is not None
+        assert user["username"] == "user7"
+
+    def test_find_by_external_id_wrong_provider(self, user_store):
+        user_store.create("user8", "hash", external_id="ext_789", provider="google")
+        user = user_store.find_by_external_id("ext_789", "github")
+        assert user is None
+
+    def test_update_email(self, user_store, user_id):
+        result = user_store.update(user_id, email="updated@example.com")
+        assert result is True
+        user = user_store.find_by_id(user_id)
+        assert user["email"] == "updated@example.com"
+
+    def test_update_nickname(self, user_store, user_id):
+        result = user_store.update(user_id, nickname="new_nick")
+        assert result is True
+        user = user_store.find_by_id(user_id)
+        assert user["nickname"] == "new_nick"
+
+    def test_update_nickname_to_null(self, user_store, user_id):
+        user_store.update(user_id, nickname="old_nick")
+        result = user_store.update(user_id, nickname=None)
+        assert result is True
+        user = user_store.find_by_id(user_id)
+        assert user["nickname"] is None
+
+    def test_list_all_includes_new_fields(self, user_store):
+        user_store.create("user9", "hash", email="user9@example.com", nickname="nick9")
+        users = user_store.list_all()
+        user = next(u for u in users if u["username"] == "user9")
+        assert user["email"] == "user9@example.com"
+        assert user["nickname"] == "nick9"
+
+    def test_backfill_email_on_migration(self):
+        """Test that existing users get backfilled email during migration."""
+        conn = SQLiteConnection(":memory:")
+        database = Database(conn)
+
+        def migration_001(db):
+            db.execute("""
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    must_change_password INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+        database.register_migration(1, "initial", migration_001)
+
+        def migration_004(db):
+            db.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+            db.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+        database.register_migration(4, "add_user_management", migration_004)
+
+        def migration_005(db):
+            db.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT")
+        database.register_migration(5, "add_last_login", migration_005)
+
+        def migration_006(db):
+            db.execute("ALTER TABLE users ADD COLUMN email TEXT")
+            db.execute("ALTER TABLE users ADD COLUMN nickname TEXT")
+            db.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
+            db.execute("ALTER TABLE users ADD COLUMN provider TEXT")
+            db.execute("ALTER TABLE users ADD COLUMN provider_data TEXT")
+            db.execute("ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))")
+            db.execute("UPDATE users SET email = username || '@local.oversolved' WHERE email IS NULL")
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+        database.register_migration(6, "oauth_prep", migration_006)
+
+        database.init()
+        store = UserStore(database)
+        uid = store.create("testuser", "hash", email="testuser@local.oversolved")
+        user = store.find_by_id(uid)
+        assert user["email"] == "testuser@local.oversolved"
+        database.close()

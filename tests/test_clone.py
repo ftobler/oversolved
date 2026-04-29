@@ -68,6 +68,32 @@ def _make_db():
         db.execute("ALTER TABLE documents ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0")
 
     database.register_migration(3, "add_shares", migration_003)
+
+    def migration_004(db: Database):
+        db.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+        db.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+
+    database.register_migration(4, "add_user_management_fields", migration_004)
+
+    def migration_005(db: Database):
+        db.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT")
+
+    database.register_migration(5, "add_last_login", migration_005)
+
+    def migration_006(db: Database):
+        db.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        db.execute("ALTER TABLE users ADD COLUMN nickname TEXT")
+        db.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
+        db.execute("ALTER TABLE users ADD COLUMN provider TEXT")
+        db.execute("ALTER TABLE users ADD COLUMN provider_data TEXT")
+        db.execute("ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))")
+        db.execute("UPDATE users SET email = username || '@local.oversolved' WHERE email IS NULL")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nickname ON users(nickname)")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_external_id_provider ON users(external_id, provider)")
+
+    database.register_migration(6, "user_oauth_prep", migration_006)
+
     database.init()
     return database
 

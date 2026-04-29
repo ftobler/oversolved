@@ -156,20 +156,50 @@ class UserStore:
         self.db = db
 
     def create(
-        self, username: str, password_hash: str, must_change_password: bool = False
+        self, username: str, password_hash: str, must_change_password: bool = False,
+        email: str | None = None, nickname: str | None = None,
+        external_id: str | None = None, provider: str | None = None,
+        provider_data: str | None = None, is_admin: bool = False,
+        is_active: bool = True
     ) -> int:
         """Create a user and return its id."""
         with self.db.transaction():
+            columns = ["username", "password_hash", "must_change_password"]
+            values = [username, password_hash, 1 if must_change_password else 0]
+
+            if email is not None:
+                columns.append("email")
+                values.append(email)
+            if nickname is not None:
+                columns.append("nickname")
+                values.append(nickname)
+            if external_id is not None:
+                columns.append("external_id")
+                values.append(external_id)
+            if provider is not None:
+                columns.append("provider")
+                values.append(provider)
+            if provider_data is not None:
+                columns.append("provider_data")
+                values.append(provider_data)
+
+            columns.extend(["is_admin", "is_active"])
+            values.extend([1 if is_admin else 0, 1 if is_active else 0])
+
+            placeholders = ", ".join(["?"] * len(values))
             cursor = self.db.execute(
-                "INSERT INTO users (username, password_hash, must_change_password) VALUES (?, ?, ?)",
-                (username, password_hash, 1 if must_change_password else 0),
+                f"""INSERT INTO users ({', '.join(columns)})
+                   VALUES ({placeholders})""",
+                tuple(values),
             )
             return cursor.lastrowid
 
     def find_by_username(self, username: str) -> Optional[dict]:
         """Find a user by username."""
         cursor = self.db.execute(
-            "SELECT id, username, password_hash, must_change_password, is_admin, is_active, last_login_at FROM users WHERE username = ?",
+            """SELECT id, username, password_hash, email, nickname, external_id, provider,
+                      must_change_password, is_admin, is_active, last_login_at, updated_at
+               FROM users WHERE username = ?""",
             (username,),
         )
         row = cursor.fetchone()
@@ -179,16 +209,102 @@ class UserStore:
             "id": row[0],
             "username": row[1],
             "password_hash": row[2],
-            "must_change_password": bool(row[3]),
-            "is_admin": bool(row[4]),
-            "is_active": bool(row[5]),
-            "last_login_at": row[6],
+            "email": row[3],
+            "nickname": row[4],
+            "external_id": row[5],
+            "provider": row[6],
+            "must_change_password": bool(row[7]),
+            "is_admin": bool(row[8]),
+            "is_active": bool(row[9]),
+            "last_login_at": row[10],
+            "updated_at": row[11],
+        }
+
+    def find_by_email(self, email: str) -> Optional[dict]:
+        """Find a user by email (case-insensitive)."""
+        cursor = self.db.execute(
+            """SELECT id, username, password_hash, email, nickname, external_id, provider,
+                      must_change_password, is_admin, is_active, last_login_at, updated_at
+               FROM users WHERE LOWER(email) = LOWER(?)""",
+            (email,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "username": row[1],
+            "password_hash": row[2],
+            "email": row[3],
+            "nickname": row[4],
+            "external_id": row[5],
+            "provider": row[6],
+            "must_change_password": bool(row[7]),
+            "is_admin": bool(row[8]),
+            "is_active": bool(row[9]),
+            "last_login_at": row[10],
+            "updated_at": row[11],
+        }
+
+    def find_by_nickname(self, nickname: str) -> Optional[dict]:
+        """Find a user by nickname."""
+        cursor = self.db.execute(
+            """SELECT id, username, password_hash, email, nickname, external_id, provider,
+                      must_change_password, is_admin, is_active, last_login_at, updated_at
+               FROM users WHERE nickname = ?""",
+            (nickname,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "username": row[1],
+            "password_hash": row[2],
+            "email": row[3],
+            "nickname": row[4],
+            "external_id": row[5],
+            "provider": row[6],
+            "must_change_password": bool(row[7]),
+            "is_admin": bool(row[8]),
+            "is_active": bool(row[9]),
+            "last_login_at": row[10],
+            "updated_at": row[11],
+        }
+
+    def find_by_external_id(self, external_id: str, provider: str) -> Optional[dict]:
+        """Find a user by OAuth external_id and provider."""
+        cursor = self.db.execute(
+            """SELECT id, username, password_hash, email, nickname, external_id, provider,
+                      must_change_password, is_admin, is_active, last_login_at, updated_at
+               FROM users WHERE external_id = ? AND provider = ?""",
+            (external_id, provider),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "username": row[1],
+            "password_hash": row[2],
+            "email": row[3],
+            "nickname": row[4],
+            "external_id": row[5],
+            "provider": row[6],
+            "must_change_password": bool(row[7]),
+            "is_admin": bool(row[8]),
+            "is_active": bool(row[9]),
+            "last_login_at": row[10],
+            "updated_at": row[11],
         }
 
     def find_by_id(self, user_id: int) -> Optional[dict]:
         """Find a user by id."""
         cursor = self.db.execute(
-            "SELECT id, username, must_change_password, is_admin, is_active, created_at, last_login_at FROM users WHERE id = ?",
+            """SELECT id, username, email, nickname, external_id, provider,
+                      provider_data, must_change_password, is_admin,
+                      is_active, created_at, last_login_at, updated_at
+               FROM users WHERE id = ?""",
             (user_id,),
         )
         row = cursor.fetchone()
@@ -197,18 +313,26 @@ class UserStore:
         return {
             "id": row[0],
             "username": row[1],
-            "must_change_password": bool(row[2]),
-            "is_admin": bool(row[3]),
-            "is_active": bool(row[4]),
-            "created_at": row[5],
-            "last_login_at": row[6],
+            "email": row[2],
+            "nickname": row[3],
+            "external_id": row[4],
+            "provider": row[5],
+            "provider_data": row[6],
+            "must_change_password": bool(row[7]),
+            "is_admin": bool(row[8]),
+            "is_active": bool(row[9]),
+            "created_at": row[10],
+            "last_login_at": row[11],
+            "updated_at": row[12],
         }
 
     def update(self, user_id: int, **fields) -> bool:
         """Update user fields. Returns True if user was found and updated."""
         if not fields:
             return False
-        allowed = {"username", "password_hash", "must_change_password", "is_admin", "is_active", "last_login_at"}
+        allowed = {"username", "password_hash", "must_change_password", "is_admin",
+                   "is_active", "last_login_at", "email", "nickname",
+                   "external_id", "provider", "provider_data", "updated_at"}
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
             return False
@@ -231,17 +355,22 @@ class UserStore:
     def list_all(self) -> list[dict]:
         """List all users (for admin). Returns list of user dicts without password_hash."""
         cursor = self.db.execute(
-            "SELECT id, username, must_change_password, is_admin, is_active, created_at, last_login_at FROM users ORDER BY username"
+            """SELECT id, username, email, nickname, must_change_password, is_admin,
+                      is_active, created_at, last_login_at, updated_at
+               FROM users ORDER BY username"""
         )
         return [
             {
                 "id": row[0],
                 "username": row[1],
-                "must_change_password": bool(row[2]),
-                "is_admin": bool(row[3]),
-                "is_active": bool(row[4]),
-                "created_at": row[5],
-                "last_login_at": row[6],
+                "email": row[2],
+                "nickname": row[3],
+                "must_change_password": bool(row[4]),
+                "is_admin": bool(row[5]),
+                "is_active": bool(row[6]),
+                "created_at": row[7],
+                "last_login_at": row[8],
+                "updated_at": row[9],
             }
             for row in cursor.fetchall()
         ]

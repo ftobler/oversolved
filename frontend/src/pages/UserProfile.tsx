@@ -7,6 +7,8 @@ export default function UserProfile() {
   const { user, setUser } = useAuth()
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
+  const [nickname, setNickname] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -17,6 +19,8 @@ export default function UserProfile() {
   useEffect(() => {
     if (user) {
       setUsername(user.username)
+      setEmail(user.email || '')
+      setNickname(user.nickname || '')
     }
   }, [user])
 
@@ -29,6 +33,12 @@ export default function UserProfile() {
       const body: Record<string, string> = {}
       if (username !== user?.username) {
         body.username = username
+      }
+      if (email !== (user?.email || '')) {
+        body.email = email
+      }
+      if (nickname !== (user?.nickname || '')) {
+        body.nickname = nickname
       }
       if (newPassword) {
         if (newPassword !== confirmPassword) {
@@ -58,8 +68,13 @@ export default function UserProfile() {
         return
       }
 
-      if (body.username && user) {
-        setUser({ ...user, username: body.username })
+      if ((body.username || body.email || body.nickname) && user) {
+        setUser({
+          ...user,
+          username: body.username || user.username,
+          email: body.email !== undefined ? body.email : user.email,
+          nickname: body.nickname !== undefined ? body.nickname : user.nickname,
+        })
       }
       if (newPassword) {
         setCurrentPassword('')
@@ -80,6 +95,8 @@ export default function UserProfile() {
   const handleCancel = () => {
     if (user) {
       setUsername(user.username)
+      setEmail(user.email || '')
+      setNickname(user.nickname || '')
     }
     setCurrentPassword('')
     setNewPassword('')
@@ -107,6 +124,28 @@ export default function UserProfile() {
           value={username}
           onChange={e => setUsername(e.target.value)}
           autoComplete="username"
+        />
+      </div>
+
+      <div className="profile-field">
+        <label htmlFor="profile-email">Email</label>
+        <input
+          id="profile-email"
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          autoComplete="email"
+        />
+      </div>
+
+      <div className="profile-field">
+        <label htmlFor="profile-nickname">Nickname</label>
+        <input
+          id="profile-nickname"
+          type="text"
+          value={nickname}
+          onChange={e => setNickname(e.target.value)}
+          autoComplete="nickname"
         />
       </div>
 

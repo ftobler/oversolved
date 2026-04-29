@@ -58,7 +58,8 @@ def _ensure_admin_user(db: Database) -> None:
         user_store.update(admin["id"], is_admin=1)
     else:
         uid = user_store.create(
-            "admin", generate_password_hash("admin"), must_change_password=True
+            "admin", generate_password_hash("admin"),
+            must_change_password=True, email="admin@local.oversolved",
         )
         user_store.update(uid, is_admin=1, must_change_password=1)
 
@@ -133,13 +134,17 @@ def create_app(config: dict | None = None) -> Flask:
         if not request.is_json:
             return jsonify({"error": "Content-Type must be application/json"}), 400
         data = request.get_json()
-        username = (data.get("username") or "").strip()
+        credential = (data.get("credential") or data.get("username") or "").strip()
         password = data.get("password") or ""
-        if not username or not password:
-            return jsonify({"error": "Username and password required"}), 400
+        if not credential or not password:
+            return jsonify({"error": "Credential and password required"}), 400
         db = get_db()
         user_store = UserStore(db)
-        user = user_store.find_by_username(username)
+        user = (
+            user_store.find_by_username(credential)
+            or user_store.find_by_email(credential)
+            or user_store.find_by_nickname(credential)
+        )
         if user is None or not check_password_hash(user["password_hash"], password):
             return jsonify({"error": "Invalid credentials"}), 401
         if not user["is_active"]:
@@ -152,6 +157,8 @@ def create_app(config: dict | None = None) -> Flask:
                     "user": {
                         "id": user["id"],
                         "username": user["username"],
+                        "email": user.get("email"),
+                        "nickname": user.get("nickname"),
                         "must_change_password": user["must_change_password"],
                         "is_admin": user["is_admin"],
                         "is_active": user["is_active"],
@@ -222,11 +229,14 @@ def create_app(config: dict | None = None) -> Flask:
                 "user": {
                     "id": g.current_user["id"],
                     "username": g.current_user["username"],
+                    "email": g.current_user.get("email"),
+                    "nickname": g.current_user.get("nickname"),
                     "must_change_password": g.current_user["must_change_password"],
                     "is_admin": g.current_user["is_admin"],
                     "is_active": g.current_user["is_active"],
                     "created_at": g.current_user.get("created_at"),
                     "last_login_at": g.current_user.get("last_login_at"),
+                    "updated_at": g.current_user.get("updated_at"),
                 }
             }
         )
@@ -238,6 +248,8 @@ def create_app(config: dict | None = None) -> Flask:
             return jsonify({"error": "Content-Type must be application/json"}), 400
         data = request.get_json()
         username = data.get("username")
+        email = data.get("email")
+        nickname = data.get("nickname")
         current_password = data.get("current_password", "")
         new_password = data.get("new_password", "")
 
@@ -248,6 +260,12 @@ def create_app(config: dict | None = None) -> Flask:
         updates = {}
         if username and username.strip():
             updates["username"] = username.strip()
+
+        if email and email.strip():
+            updates["email"] = email.strip()
+
+        if nickname is not None:
+            updates["nickname"] = nickname.strip() if nickname else None
 
         if new_password:
             if not current_password:
@@ -283,21 +301,30 @@ def create_app(config: dict | None = None) -> Flask:
             return jsonify({"error": "Content-Type must be application/json"}), 400
         data = request.get_json()
         username = (data.get("username") or "").strip()
+        email = (data.get("email") or "").strip()
+        nickname = data.get("nickname")
         password = data.get("password") or ""
         is_admin = bool(data.get("is_admin", False))
 
         if not username or not password:
             return jsonify({"error": "Username and password required"}), 400
+        if not email:
+            return jsonify({"error": "Email required"}), 400
 
         db = get_db()
         user_store = UserStore(db)
         if user_store.find_by_username(username):
             return jsonify({"error": "Username already exists"}), 409
+        if user_store.find_by_email(email):
+            return jsonify({"error": "Email already exists"}), 409
 
-        uid = user_store.create(username, generate_password_hash(password))
-        if is_admin:
-            user_store.set_admin(uid, True)
-        return jsonify({"id": uid, "username": username}), 201
+        uid = user_store.create(
+            username, generate_password_hash(password),
+            email=email,
+            nickname=nickname.strip() if nickname else None,
+            is_admin=is_admin,
+        )
+        return jsonify({"id": uid, "username": username, "email": email}), 201
 
     @app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
     @require_auth
@@ -318,6 +345,10 @@ def create_app(config: dict | None = None) -> Flask:
         updates = {}
         if "username" in data:
             updates["username"] = data["username"].strip()
+        if "email" in data:
+            updates["email"] = data["email"].strip() if data["email"] else None
+        if "nickname" in data:
+            updates["nickname"] = data["nickname"].strip() if data["nickname"] else None
         if "is_active" in data:
             updates["is_active"] = 1 if data["is_active"] else 0
         if "is_admin" in data:
@@ -1010,6 +1041,32 @@ def _register_migrations(db: Database) -> None:
         database.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT")
 
     db.register_migration(5, "add_last_login", migration_005_add_last_login)
+
+    def migration_006_user_oauth_prep(database: Database):
+        """Add email, nickname, OAuth fields to users table."""
+        database.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        database.execute("ALTER TABLE users ADD COLUMN nickname TEXT")
+        database.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
+        database.execute("ALTER TABLE users ADD COLUMN provider TEXT")
+        database.execute("ALTER TABLE users ADD COLUMN provider_data TEXT")
+        database.execute("ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))")
+        # Backfill email from username for existing users
+        database.execute(
+            "UPDATE users SET email = username || '@local.oversolved' WHERE email IS NULL"
+        )
+        # Create unique indices
+        database.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)"
+        )
+        database.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nickname ON users(nickname)"
+        )
+        database.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "idx_users_external_id_provider ON users(external_id, provider)"
+        )
+
+    db.register_migration(6, "user_oauth_prep", migration_006_user_oauth_prep)
 
 
 if __name__ == "__main__":
