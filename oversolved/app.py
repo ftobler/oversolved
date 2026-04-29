@@ -129,6 +129,10 @@ def create_app(config: dict | None = None) -> Flask:
             "DB_TYPE": "sqlite",
             "DB_PATH": ":memory:",
             "JSON_SORT_KEYS": False,
+            "L2_CACHE_ENABLED": True,
+            "L2_CACHE_DIR": "/tmp/oversolved_l2_cache",
+            "L2_CACHE_MAX_SIZE": 5 * 1024 * 1024 * 1024,  # 5 GB
+            "L2_CACHE_TTL": 86400 * 30,  # 30 days
         }
     )
 
@@ -1139,11 +1143,16 @@ def create_app(config: dict | None = None) -> Flask:
     # ── Solver ─────────────────────────────────────────────────────────────────
 
     from oversolved.solver_queue import get_document_solver
-    from oversolved.cache import TtlCache
+    from oversolved.cache import TtlCache, L2Cache
     from oversolved.types3d import BuildState
 
     # Keyed by document id. Not persisted; clears on server restart (full rebuild on restart).
     _build_state_cache: TtlCache[BuildState] = TtlCache(ttl_seconds=300.0, max_size=1000)
+    _l2_cache: L2Cache = L2Cache(
+        ttl_seconds=app.config["L2_CACHE_TTL"],
+        max_size=app.config["L2_CACHE_MAX_SIZE"],
+        cache_dir=app.config["L2_CACHE_DIR"],
+    )
 
     @app.route("/api/solve", methods=["POST"])
     def solve_document() -> Response | tuple:
@@ -1163,6 +1172,10 @@ def create_app(config: dict | None = None) -> Flask:
         prev_state: BuildState | None = None
         if doc_id:
             prev_state = _build_state_cache.get(doc_id)
+            if prev_state is None and app.config.get("L2_CACHE_ENABLED"):
+                prev_state = _l2_cache.get(doc_id)
+                if prev_state is not None:
+                    _build_state_cache.set(doc_id, prev_state)
 
         solver = get_document_solver()
 
@@ -1177,7 +1190,10 @@ def create_app(config: dict | None = None) -> Flask:
                     pick_boundary=pick_boundary,
                     rollback_position=rollback_position,
                 )
-                _build_state_cache.set(doc_id, build_result.pop("_build_state"))
+                new_state = build_result.pop("_build_state")
+                _build_state_cache.set(doc_id, new_state)
+                if app.config.get("L2_CACHE_ENABLED"):
+                    _l2_cache.set(doc_id, new_state)
                 solver.release(doc_id, counter, build_result)
                 build_result.pop("_body_shapes", None)
                 return Response(json.dumps(build_result), mimetype="application/json")
