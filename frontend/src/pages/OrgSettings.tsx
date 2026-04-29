@@ -145,14 +145,14 @@ export default function OrgSettings() {
       {canAdmin && (
         <section className="org-section">
           <h3>Settings</h3>
-          <div className="profile-field">
+          <div className="setting-field">
             <label>Name</label>
             <input
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
             />
           </div>
-          <div className="profile-field">
+          <div className="setting-field">
             <label>Description</label>
             <input
               value={description}

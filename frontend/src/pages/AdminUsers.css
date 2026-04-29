@@ -1,17 +1,17 @@
-.admin-users-table {
+.setting-table {
   width: 100%;
   border-collapse: collapse;
 }
 
-.admin-users-table th,
-.admin-users-table td {
+.setting-table th,
+.setting-table td {
   padding: 2px 6px 2px 0;
   text-align: left;
   border-bottom: 1px solid #333;
   color: #ccc;
 }
 
-.admin-users-table th {
+.setting-table th {
   font-weight: 500;
   color: #aaa;
 }

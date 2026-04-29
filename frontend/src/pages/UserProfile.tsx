@@ -113,12 +113,12 @@ export default function UserProfile() {
   }
 
   return (
-    <div className="profile-card">
+    <div className="setting-card">
 
       {error && <p className="profile-error">{error}</p>}
       {success && <p className="profile-success">{success}</p>}
 
-      <div className="profile-field">
+      <div className="setting-field">
         <label htmlFor="profile-username">Username</label>
         <input
           id="profile-username"
@@ -129,7 +129,7 @@ export default function UserProfile() {
         />
       </div>
 
-      <div className="profile-field">
+      <div className="setting-field">
         <label htmlFor="profile-email">Email</label>
         <input
           id="profile-email"
@@ -140,7 +140,7 @@ export default function UserProfile() {
         />
       </div>
 
-      <div className="profile-field">
+      <div className="setting-field">
         <label htmlFor="profile-nickname">Nickname</label>
         <input
           id="profile-nickname"
@@ -151,9 +151,9 @@ export default function UserProfile() {
         />
       </div>
 
-      <div className="profile-divider" />
+      <div className="setting-divider" />
 
-      <div className="profile-field">
+      <div className="setting-field">
         <label htmlFor="profile-current-password">Current Password</label>
         <input
           id="profile-current-password"
@@ -163,7 +163,7 @@ export default function UserProfile() {
           autoComplete="current-password"
         />
       </div>
-      <div className="profile-field">
+      <div className="setting-field">
         <label htmlFor="profile-new-password">New Password</label>
         <input
           id="profile-new-password"
@@ -173,7 +173,7 @@ export default function UserProfile() {
           autoComplete="new-password"
         />
       </div>
-      <div className="profile-field">
+      <div className="setting-field">
         <label htmlFor="profile-confirm-password">Confirm Password</label>
         <input
           id="profile-confirm-password"
@@ -184,9 +184,9 @@ export default function UserProfile() {
         />
       </div>
 
-      <div className="profile-divider" />
+      <div className="setting-divider" />
 
-      <div className="profile-field">
+      <div className="setting-field">
         <label>Document sort order</label>
         <div className="profile-radio-group">
           {([

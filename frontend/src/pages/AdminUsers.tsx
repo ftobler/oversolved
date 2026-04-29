@@ -162,8 +162,8 @@ export default function AdminUsers() {
   return (
     <div className="admin-users">
       <div className="settings-button-right">
-        <button className="btn btn-secondary" onClick={() => setShowCreateForm(true)} title="Create user">
-          <span className="material-icons">person_add</span>
+        <button className="btn btn-secondary" onClick={() => setShowCreateForm(true)}>
+          Create user
         </button>
       </div>
 
@@ -271,7 +271,7 @@ export default function AdminUsers() {
         {loading ? (
           <p className="admin-users-status">Loading users...</p>
         ) : (
-          <table className="admin-users-table">
+          <table className="setting-table">
             <thead>
               <tr>
                 <th>Username</th>

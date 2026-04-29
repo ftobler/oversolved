@@ -51,19 +51,19 @@
   min-height: 200px;
 }
 
-.settings-content .profile-field input {
+.settings-content .setting-field input {
   border: none;
   margin-left: auto;
 }
 
-.profile-field {
+.setting-field {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 8px;
 }
 
-.profile-field label {
+.setting-field label {
   min-width: 120px;
   font-size: 14px;
   color: #aaa;
@@ -71,7 +71,7 @@
   text-align: left;
 }
 
-.profile-field input {
+.setting-field input {
   width: 50%;
   padding: 6px 10px;
   border-radius: 4px;
@@ -81,11 +81,11 @@
   color: #ccc;
 }
 
-.profile-field input[type="radio"] {
+.setting-field input[type="radio"] {
   width: auto;
 }
 
-.settings-content .admin-users-table td {
+.settings-content .setting-table td {
   white-space: nowrap;
 }
 

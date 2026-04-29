@@ -37,14 +37,14 @@ export default function OrgList() {
 
   return (
     <div className="org-list">
-      <button className="btn btn-secondary" onClick={() => setShowCreate(v => !v)}>
-        + New Organization
+      <button className="settings-button-right btn btn-secondary" onClick={() => setShowCreate(v => !v)}>
+        New Organization
       </button>
 
       {showCreate && (
         <div className="org-create-form">
           <h3>Create Organization</h3>
-          <div className="profile-field">
+          <div className="setting-field">
             <label>Slug</label>
             <input
               placeholder="team-acme"
@@ -52,7 +52,7 @@ export default function OrgList() {
               onChange={e => setSlug(e.target.value)}
             />
           </div>
-          <div className="profile-field">
+          <div className="setting-field">
             <label>Name</label>
             <input
               placeholder="Team ACME"
@@ -60,7 +60,7 @@ export default function OrgList() {
               onChange={e => setName(e.target.value)}
             />
           </div>
-          <div className="profile-field">
+          <div className="setting-field">
             <label>Description</label>
             <input
               placeholder="Optional"
