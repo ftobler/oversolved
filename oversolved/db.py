@@ -1220,7 +1220,6 @@ class PeriodicTaskStore:
                 "last_run_duration_ms": row[7],
                 "last_run_status": row[8],
                 "last_run_error": row[9],
-                "next_run_at": row[10],
                 "created_at": row[11],
                 "updated_at": row[12],
             }
@@ -1301,7 +1300,6 @@ class PeriodicTaskStore:
             "last_run_duration_ms": row[7],
             "last_run_status": row[8],
             "last_run_error": row[9],
-            "next_run_at": row[10],
             "created_at": row[11],
             "updated_at": row[12],
         }

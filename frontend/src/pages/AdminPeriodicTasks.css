@@ -16,69 +16,12 @@
   padding: 16px 0;
 }
 
-.task-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.task-card {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 8px;
-  padding: 12px 16px;
-}
-
-.task-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.task-card-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #ccc;
-}
-
-.task-card-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.task-status-icon .material-icons {
-  font-size: 18px;
-}
-
 .task-enabled {
   color: #66bb6a;
 }
 
 .task-disabled {
   color: #ef5350;
-}
-
-.task-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.task-detail {
-  display: flex;
-  gap: 8px;
-  font-size: 12px;
-  color: #888;
-}
-
-.task-detail-label {
-  color: #666;
-  min-width: 80px;
-  flex-shrink: 0;
 }
 
 .task-enabled-text {

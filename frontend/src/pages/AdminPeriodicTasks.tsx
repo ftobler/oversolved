@@ -14,7 +14,7 @@ interface PeriodicTask {
   last_run_duration_ms: number | null
   last_run_status: string | null
   last_run_error: string | null
-  next_run_at: string | null
+
 }
 
 export default function AdminPeriodicTasks() {
@@ -118,21 +118,43 @@ export default function AdminPeriodicTasks() {
         {loading ? (
           <p className="admin-periodic-tasks-status">Loading tasks...</p>
         ) : (
-          <div className="task-list">
-            {tasks.map(task => (
-              <div key={task.task_key} className="task-card">
-                <div className="task-card-header">
-                  <div className="task-card-title">
-                    <span className="task-status-icon">
-                      {task.enabled ? (
-                        <span className="material-icons task-enabled">check_circle</span>
-                      ) : (
-                        <span className="material-icons task-disabled">cancel</span>
-                      )}
+          <table className="setting-table">
+            <thead>
+              <tr>
+                <th>Task</th>
+                <th>Schedule</th>
+                <th>Status</th>
+                <th>Last Run</th>
+                <th>Duration</th>
+                <th>Result</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map(task => (
+                <tr key={task.task_key}>
+                  <td>
+                    <span className={task.enabled ? 'task-enabled' : 'task-disabled'}>
+                      {task.name}
                     </span>
-                    <span>{task.name}</span>
-                  </div>
-                  <div className="task-card-actions">
+                  </td>
+                  <td>{formatSchedule(task.schedule)}</td>
+                  <td>
+                    <span className={task.enabled ? 'task-enabled-text' : 'task-disabled-text'}>
+                      {task.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </td>
+                  <td>{formatDate(task.last_run_at)}</td>
+                  <td>{task.last_run_duration_ms !== null ? formatDuration(task.last_run_duration_ms) : '-'}</td>
+                  <td>
+                    {task.last_run_status ? (
+                      <span className={`task-result-${task.last_run_status}`}>
+                        {task.last_run_status}
+                      </span>
+                    ) : '-'}
+                    {task.last_run_error && <div className="task-error-text">{task.last_run_error}</div>}
+                  </td>
+                  <td>
                     <button
                       className="btn btn-tile-action"
                       onClick={() => handleToggle(task.task_key, !task.enabled)}
@@ -152,52 +174,11 @@ export default function AdminPeriodicTasks() {
                         {runningTask === task.task_key ? 'hourglass_empty' : 'play_arrow'}
                       </span>
                     </button>
-                  </div>
-                </div>
-
-                <div className="task-card-body">
-                  <div className="task-detail">
-                    <span className="task-detail-label">Schedule:</span>
-                    <span>{formatSchedule(task.schedule)}</span>
-                  </div>
-                  <div className="task-detail">
-                    <span className="task-detail-label">Status:</span>
-                    <span className={task.enabled ? 'task-enabled-text' : 'task-disabled-text'}>
-                      {task.enabled ? 'Enabled' : 'Disabled'}
-                    </span>
-                  </div>
-                  <div className="task-detail">
-                    <span className="task-detail-label">Last Run:</span>
-                    <span>{formatDate(task.last_run_at)}</span>
-                  </div>
-                  {task.last_run_duration_ms !== null && (
-                    <div className="task-detail">
-                      <span className="task-detail-label">Duration:</span>
-                      <span>{formatDuration(task.last_run_duration_ms)}</span>
-                    </div>
-                  )}
-                  {task.last_run_status && (
-                    <div className="task-detail">
-                      <span className="task-detail-label">Result:</span>
-                      <span className={`task-result-${task.last_run_status}`}>
-                        {task.last_run_status}
-                      </span>
-                    </div>
-                  )}
-                  {task.last_run_error && (
-                    <div className="task-detail">
-                      <span className="task-detail-label">Error:</span>
-                      <span className="task-error-text">{task.last_run_error}</span>
-                    </div>
-                  )}
-                  <div className="task-detail">
-                    <span className="task-detail-label">Next Run:</span>
-                    <span>{formatDate(task.next_run_at)}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>

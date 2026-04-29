@@ -52,7 +52,6 @@ describe('AdminPeriodicTasks', () => {
         last_run_duration_ms: null,
         last_run_status: null,
         last_run_error: null,
-        next_run_at: '2024-05-01T02:00:00Z',
       },
     ]))
 
@@ -84,7 +83,6 @@ describe('AdminPeriodicTasks', () => {
         last_run_duration_ms: 1500,
         last_run_status: 'success',
         last_run_error: null,
-        next_run_at: '2024-04-29T02:00:00Z',
       },
     ]))
 
@@ -116,7 +114,6 @@ describe('AdminPeriodicTasks', () => {
         last_run_duration_ms: null,
         last_run_status: null,
         last_run_error: null,
-        next_run_at: '2024-05-01T02:00:00Z',
       },
     ])
     vi.stubGlobal('fetch', fetchMock)
@@ -160,7 +157,6 @@ describe('AdminPeriodicTasks', () => {
         last_run_duration_ms: null,
         last_run_status: null,
         last_run_error: null,
-        next_run_at: '2024-05-01T02:00:00Z',
       },
     ])
     vi.stubGlobal('fetch', fetchMock)
