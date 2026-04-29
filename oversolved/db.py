@@ -488,11 +488,31 @@ class DocumentStore:
             )
             return cursor.rowcount > 0
 
+    def update(self, uuid: str, **fields) -> bool:
+        """Update document fields. Returns True if found and updated."""
+        if not fields:
+            return False
+        allowed = {"name", "content", "preview_image", "updated_at", "is_public", "deleted_at"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return False
+        if "updated_at" not in updates:
+            updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [uuid]
+        with self.db.transaction():
+            cursor = self.db.execute(
+                f"UPDATE documents SET {set_clause} WHERE uuid = ?",
+                tuple(values),
+            )
+            return cursor.rowcount > 0
+
     def retrieve(self, uuid: str) -> Optional[dict]:
         """Retrieve a document by UUID."""
         cursor = self.db.execute(
             """SELECT d.uuid, d.name, d.content, d.owner_id, d.preview_image,
-                      d.created_at, d.updated_at, d.org_id, o.slug, o.is_personal
+                      d.created_at, d.updated_at, d.org_id, o.slug, o.is_personal,
+                      d.deleted_at
                FROM documents d
                LEFT JOIN organizations o ON d.org_id = o.id
                WHERE d.uuid = ?""",
@@ -512,7 +532,52 @@ class DocumentStore:
             "org_id": row[7],
             "org_slug": row[8],
             "org_is_personal": bool(row[9]) if row[9] is not None else None,
+            "deleted_at": row[10],
         }
+
+    def list_trash(self, user_id: int) -> list[dict]:
+        """List soft-deleted documents owned by a user."""
+        cursor = self.db.execute(
+            """SELECT d.uuid, d.name, d.deleted_at, d.created_at, d.owner_id
+               FROM documents d
+               WHERE d.owner_id = ? AND d.deleted_at IS NOT NULL
+               ORDER BY d.deleted_at DESC""",
+            (user_id,),
+        )
+        return [
+            {
+                "uuid": row[0],
+                "name": row[1],
+                "deleted_at": row[2],
+                "created_at": row[3],
+                "owner_id": row[4],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def permanently_delete(self, uuid: str) -> bool:
+        """Permanently delete a document by UUID. Returns True if deleted."""
+        with self.db.transaction():
+            cursor = self.db.execute("DELETE FROM documents WHERE uuid = ?", (uuid,))
+            return cursor.rowcount > 0
+
+    def find_deleted_before(self, cutoff: datetime) -> list[dict]:
+        """Find documents deleted before the given cutoff time."""
+        cursor = self.db.execute(
+            """SELECT uuid, name, owner_id, deleted_at
+               FROM documents
+               WHERE deleted_at IS NOT NULL AND deleted_at < ?""",
+            (cutoff.isoformat(),),
+        )
+        return [
+            {
+                "uuid": row[0],
+                "name": row[1],
+                "owner_id": row[2],
+                "deleted_at": row[3],
+            }
+            for row in cursor.fetchall()
+        ]
 
     def delete(self, uuid: str) -> bool:
         """Delete a document by UUID. Returns True if deleted."""
@@ -701,13 +766,14 @@ class DocumentStore:
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     LEFT JOIN organizations o ON d.org_id = o.id
-                    WHERE d.owner_id = ?
+                    WHERE d.deleted_at IS NULL
+                      AND (d.owner_id = ?
                        OR EXISTS (SELECT 1 FROM document_shares WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
                        OR d.is_public = 1
                        OR EXISTS (
                            SELECT 1 FROM organization_members om
                            WHERE om.org_id = d.org_id AND om.user_id = ? AND om.org_id IS NOT NULL
-                       )
+                       ))
                     ORDER BY {order}""",
                 (user_id, user_id, user_id),
             )
@@ -718,7 +784,7 @@ class DocumentStore:
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     LEFT JOIN organizations o ON d.org_id = o.id
-                    WHERE d.owner_id = ?
+                    WHERE d.deleted_at IS NULL AND d.owner_id = ?
                     ORDER BY {order}""",
                 (user_id,),
             )
@@ -752,7 +818,7 @@ class DocumentStore:
                 FROM documents d
                 JOIN users u ON d.owner_id = u.id
                 LEFT JOIN organizations o ON d.org_id = o.id
-                WHERE d.is_public = 1
+                WHERE d.deleted_at IS NULL AND d.is_public = 1
                 ORDER BY {order}""",
         )
         return [
@@ -785,7 +851,7 @@ class DocumentStore:
                 JOIN users u ON d.owner_id = u.id
                 LEFT JOIN organizations o ON d.org_id = o.id
                 JOIN document_shares ds ON d.uuid = ds.document_uuid
-                WHERE ds.shared_with_user_id = ? AND d.owner_id != ?
+                WHERE d.deleted_at IS NULL AND ds.shared_with_user_id = ? AND d.owner_id != ?
                 ORDER BY {order}""",
             (user_id, user_id),
         )
@@ -823,7 +889,7 @@ class DocumentStore:
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     LEFT JOIN organizations o ON d.org_id = o.id
-                    WHERE d.owner_id = ? AND LOWER(d.name) LIKE LOWER(?)
+                    WHERE d.deleted_at IS NULL AND d.owner_id = ? AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
                 (user_id, like),
             )
@@ -835,7 +901,7 @@ class DocumentStore:
                     JOIN users u ON d.owner_id = u.id
                     LEFT JOIN organizations o ON d.org_id = o.id
                     JOIN document_shares ds ON d.uuid = ds.document_uuid
-                    WHERE ds.shared_with_user_id = ? AND d.owner_id != ? AND LOWER(d.name) LIKE LOWER(?)
+                    WHERE d.deleted_at IS NULL AND ds.shared_with_user_id = ? AND d.owner_id != ? AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
                 (user_id, user_id, like),
             )
@@ -846,7 +912,7 @@ class DocumentStore:
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     LEFT JOIN organizations o ON d.org_id = o.id
-                    WHERE d.is_public = 1 AND LOWER(d.name) LIKE LOWER(?)
+                    WHERE d.deleted_at IS NULL AND d.is_public = 1 AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
                 (like,),
             )
@@ -857,7 +923,7 @@ class DocumentStore:
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     LEFT JOIN organizations o ON d.org_id = o.id
-                    WHERE (d.owner_id = ?
+                    WHERE d.deleted_at IS NULL AND (d.owner_id = ?
                        OR EXISTS (SELECT 1 FROM document_shares WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
                        OR d.is_public = 1
                        OR EXISTS (
@@ -905,7 +971,7 @@ class DocumentStore:
         else:
             order = "name"
         cursor = self.db.execute(
-            f"SELECT uuid, name, preview_image, created_at, updated_at FROM documents WHERE owner_id = ? ORDER BY {order}",
+            f"SELECT uuid, name, preview_image, created_at, updated_at FROM documents WHERE deleted_at IS NULL AND owner_id = ? ORDER BY {order}",
             (owner_id,),
         )
         return [
@@ -937,7 +1003,7 @@ class DocumentStore:
                 FROM documents d
                 JOIN users u ON d.owner_id = u.id
                 LEFT JOIN organizations o ON d.org_id = o.id
-                WHERE d.org_id = ?
+                WHERE d.deleted_at IS NULL AND d.org_id = ?
                 ORDER BY {order}""",
             (org_id,),
         )
@@ -1125,3 +1191,117 @@ class OrgStore:
         )
         row = cursor.fetchone()
         return row[0] if row else 0
+
+
+class PeriodicTaskStore:
+    """Database accessor for periodic tasks."""
+
+    def __init__(self, db: Database):
+        self.db = db
+
+    def find_all(self) -> list[dict]:
+        """Get all periodic tasks with execution history."""
+        cursor = self.db.execute(
+            """SELECT id, name, task_key, description, schedule, enabled,
+                      last_run_at, last_run_duration_ms, last_run_status, last_run_error,
+                      next_run_at, created_at, updated_at
+               FROM periodic_tasks
+               ORDER BY name"""
+        )
+        return [
+            {
+                "id": row[0],
+                "name": row[1],
+                "task_key": row[2],
+                "description": row[3],
+                "schedule": row[4],
+                "enabled": bool(row[5]),
+                "last_run_at": row[6],
+                "last_run_duration_ms": row[7],
+                "last_run_status": row[8],
+                "last_run_error": row[9],
+                "next_run_at": row[10],
+                "created_at": row[11],
+                "updated_at": row[12],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def find_due_tasks(self, now: datetime) -> list[dict]:
+        """Find tasks where next_run_at <= now and enabled=true."""
+        cursor = self.db.execute(
+            """SELECT id, name, task_key, description, schedule, enabled,
+                      last_run_at, last_run_duration_ms, last_run_status, last_run_error,
+                      next_run_at
+               FROM periodic_tasks
+               WHERE enabled = 1 AND next_run_at <= ?
+               ORDER BY next_run_at""",
+            (now.isoformat(),),
+        )
+        return [
+            {
+                "id": row[0],
+                "name": row[1],
+                "task_key": row[2],
+                "description": row[3],
+                "schedule": row[4],
+                "enabled": bool(row[5]),
+                "last_run_at": row[6],
+                "last_run_duration_ms": row[7],
+                "last_run_status": row[8],
+                "last_run_error": row[9],
+                "next_run_at": row[10],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def update_task(self, task_key: str, updates: dict) -> None:
+        """Update task execution history and schedule."""
+        allowed = {"last_run_at", "last_run_duration_ms", "last_run_status",
+                   "last_run_error", "next_run_at"}
+        filtered = {k: v for k, v in updates.items() if k in allowed}
+        if not filtered:
+            return
+        set_clause = ", ".join(f"{k} = ?" for k in filtered)
+        values = list(filtered.values()) + [task_key]
+        with self.db.transaction():
+            self.db.execute(
+                f"UPDATE periodic_tasks SET {set_clause} WHERE task_key = ?",
+                tuple(values),
+            )
+
+    def enable_task(self, task_key: str, enabled: bool) -> None:
+        """Enable or disable a task."""
+        with self.db.transaction():
+            self.db.execute(
+                "UPDATE periodic_tasks SET enabled = ? WHERE task_key = ?",
+                (1 if enabled else 0, task_key),
+            )
+
+    def find_by_task_key(self, task_key: str) -> Optional[dict]:
+        """Find a periodic task by its task_key."""
+        cursor = self.db.execute(
+            """SELECT id, name, task_key, description, schedule, enabled,
+                      last_run_at, last_run_duration_ms, last_run_status, last_run_error,
+                      next_run_at, created_at, updated_at
+               FROM periodic_tasks WHERE task_key = ?""",
+            (task_key,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "name": row[1],
+            "task_key": row[2],
+            "description": row[3],
+            "schedule": row[4],
+            "enabled": bool(row[5]),
+            "last_run_at": row[6],
+            "last_run_duration_ms": row[7],
+            "last_run_status": row[8],
+            "last_run_error": row[9],
+            "next_run_at": row[10],
+            "created_at": row[11],
+            "updated_at": row[12],
+        }

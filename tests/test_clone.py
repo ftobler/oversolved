@@ -94,6 +94,74 @@ def _make_db():
 
     database.register_migration(6, "user_oauth_prep", migration_006)
 
+    def migration_007(db: Database):
+        db.execute(
+            "ALTER TABLE users ADD COLUMN document_sort_preference TEXT DEFAULT 'alphabetical'"
+        )
+
+    database.register_migration(7, "user_sort_preference", migration_007)
+
+    def migration_008(db: Database):
+        db.execute("""
+            CREATE TABLE organizations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug TEXT UNIQUE NOT NULL,
+                display_name TEXT NOT NULL,
+                description TEXT,
+                is_personal INTEGER NOT NULL DEFAULT 0,
+                owner_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT
+            )
+        """)
+        db.execute("""
+            CREATE TABLE organization_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                org_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE(org_id, user_id)
+            )
+        """)
+
+    database.register_migration(8, "organizations", migration_008)
+
+    def migration_009(db: Database):
+        db.execute("ALTER TABLE documents ADD COLUMN org_id INTEGER REFERENCES organizations(id)")
+
+    database.register_migration(9, "documents_org_id", migration_009)
+
+    def migration_010(db: Database):
+        db.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_documents_deleted_at ON documents(deleted_at)")
+
+    database.register_migration(10, "document_trash", migration_010)
+
+    def migration_011(db: Database):
+        db.execute("""
+            CREATE TABLE periodic_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT,
+                task_key TEXT UNIQUE NOT NULL,
+                schedule TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_run_at TEXT,
+                last_run_duration_ms INTEGER,
+                last_run_status TEXT,
+                last_run_error TEXT,
+                next_run_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        db.execute("CREATE INDEX idx_periodic_tasks_next_run ON periodic_tasks(next_run_at, enabled)")
+
+    database.register_migration(11, "periodic_tasks", migration_011)
     database.init()
     return database
 
@@ -122,10 +190,10 @@ def app(tmp_path):
     test_app = create_app(
         {
             "DB_TYPE": "sqlite",
+            "TESTING": True,
             "DB_PATH": db_path,
         }
     )
-    test_app.config["TESTING"] = True
     return test_app
 
 

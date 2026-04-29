@@ -23,8 +23,11 @@ def post_solve(client, payload):
 def app(tmp_path):
     from oversolved.app import create_app
 
-    test_app = create_app({"DB_TYPE": "sqlite", "DB_PATH": str(tmp_path / "test.db")})
-    test_app.config["TESTING"] = True
+    test_app = create_app({
+        "DB_TYPE": "sqlite",
+        "TESTING": True,
+        "DB_PATH": str(tmp_path / "test.db"),
+    })
     return test_app
 
 

@@ -17,10 +17,10 @@ def app(tmp_path):
     test_app = create_app(
         {
             "DB_TYPE": "sqlite",
+            "TESTING": True,
             "DB_PATH": db_path,
         }
     )
-    test_app.config["TESTING"] = True
     return test_app
 
 

@@ -5,8 +5,9 @@ import os
 import uuid
 from functools import wraps
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
+import atexit
 import yaml
 from io import BytesIO
 from PIL import Image
@@ -29,6 +30,7 @@ from oversolved.db import (
     UserStore,
     SessionStore,
     OrgStore,
+    PeriodicTaskStore,
 )
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
@@ -74,6 +76,50 @@ def _ensure_admin_user(db: Database) -> None:
         _ensure_personal_org(db, uid, "admin")
 
 
+_task_scheduler = None
+
+
+def init_scheduler(app):
+    """Initialize and start the periodic task scheduler."""
+    global _task_scheduler
+    from oversolved.periodic_tasks import TaskScheduler, EmptyTrashTask
+
+    db = _get_database({
+        "type": app.config["DB_TYPE"],
+        "path": app.config.get("DB_PATH", ":memory:"),
+        "host": app.config.get("DB_HOST"),
+        "user": app.config.get("DB_USER"),
+        "password": app.config.get("DB_PASSWORD"),
+        "name": app.config.get("DB_NAME"),
+    })
+    _register_migrations(db)
+    db.init()
+
+    _task_scheduler = TaskScheduler(db)
+    _task_scheduler.register_task(EmptyTrashTask())
+
+    # Ensure built-in tasks exist in DB
+    task_store = PeriodicTaskStore(db)
+    for task in _task_scheduler.tasks.values():
+        existing = task_store.find_by_task_key(task.task_key)
+        if existing is None:
+            from oversolved.periodic_tasks import _parse_cron
+            db.execute(
+                """INSERT INTO periodic_tasks (name, task_key, description, schedule, enabled, next_run_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (task.name, task.task_key, task.description, task.schedule, 1, _parse_cron(task.schedule).isoformat()),
+            )
+            db.commit()
+
+    _task_scheduler.start()
+
+    def shutdown_scheduler():
+        if _task_scheduler:
+            _task_scheduler.stop()
+
+    atexit.register(shutdown_scheduler)
+
+
 def create_app(config: dict | None = None) -> Flask:
     """Create and configure the Flask app."""
     app = Flask(__name__)
@@ -104,6 +150,10 @@ def create_app(config: dict | None = None) -> Flask:
     db.init()
     _ensure_admin_user(db)
     db.close()
+
+    # Start periodic task scheduler (skip in testing to avoid threading issues)
+    if not app.config.get("TESTING"):
+        init_scheduler(app)
 
     def get_db():
         """Get or create database connection for this request."""
@@ -436,6 +486,43 @@ def create_app(config: dict | None = None) -> Flask:
             return jsonify({"error": "User not found"}), 404
         return jsonify({"status": "reset"})
 
+    # ── Admin Periodic Task routes ─────────────────────────────────────────────
+
+    @app.route("/api/admin/periodic-tasks", methods=["GET"])
+    @require_auth
+    @require_admin
+    def list_periodic_tasks():
+        """List all periodic tasks."""
+        task_store = PeriodicTaskStore(get_db())
+        tasks = task_store.find_all()
+        return jsonify({"tasks": tasks})
+
+    @app.route("/api/admin/periodic-tasks/<task_key>/run", methods=["POST"])
+    @require_auth
+    @require_admin
+    def force_run_periodic_task(task_key):
+        """Force execution of a periodic task."""
+        if _task_scheduler is None:
+            return jsonify({"error": "Scheduler not running"}), 503
+        result = _task_scheduler.force_run_task(task_key)
+        return jsonify(result)
+
+    @app.route("/api/admin/periodic-tasks/<task_key>", methods=["PATCH"])
+    @require_auth
+    @require_admin
+    def patch_periodic_task(task_key):
+        """Enable or disable a periodic task."""
+        data = request.get_json(silent=True) or {}
+        enabled = data.get("enabled")
+
+        if enabled is None:
+            return jsonify({"error": "enabled field required"}), 400
+
+        task_store = PeriodicTaskStore(get_db())
+        task_store.enable_task(task_key, enabled)
+
+        return jsonify({"task_key": task_key, "enabled": enabled})
+
     # ── Org routes ─────────────────────────────────────────────────────────────
 
     _VALID_ORG_ROLES = {"read", "write", "admin", "owner"}
@@ -743,8 +830,65 @@ def create_app(config: dict | None = None) -> Flask:
         permission = doc_store.get_permission(uuid, g.current_user["id"])
         if permission != "owner":
             return jsonify({"error": "Forbidden"}), 403
-        doc_store.delete(uuid)
-        return jsonify({"uuid": uuid, "status": "deleted"}), 200
+        deleted_at = datetime.now().isoformat()
+        doc_store.update(uuid, deleted_at=deleted_at)
+        return jsonify({
+            "uuid": uuid,
+            "status": "moved_to_trash",
+            "deleted_at": deleted_at,
+            "expires_at": (datetime.now() + timedelta(days=30)).isoformat()
+        }), 200
+
+    @app.route("/api/documents/trash", methods=["GET"])
+    @require_auth
+    def list_trash():
+        """List soft-deleted documents owned by user."""
+        docs = DocumentStore(get_db()).list_trash(g.current_user["id"])
+        return jsonify({"documents": docs})
+
+    @app.route("/api/documents/<uuid>/recover", methods=["POST"])
+    @require_auth
+    def recover_document(uuid):
+        """Recover document from trash."""
+        doc_store = DocumentStore(get_db())
+        doc = doc_store.retrieve(uuid)
+
+        if doc is None:
+            return jsonify({"error": "Document not found"}), 404
+
+        if doc["owner_id"] != g.current_user["id"]:
+            return jsonify({"error": "Forbidden"}), 403
+
+        if doc["deleted_at"] is None:
+            return jsonify({"error": "Document is not in trash"}), 400
+
+        # Check if 30 days have passed
+        deleted_time = datetime.fromisoformat(doc["deleted_at"])
+        if datetime.now() - deleted_time > timedelta(days=30):
+            return jsonify({"error": "Document has expired and cannot be recovered"}), 410
+
+        doc_store.update(uuid, deleted_at=None)
+        return jsonify({"uuid": uuid, "status": "recovered", "deleted_at": None})
+
+    @app.route("/api/documents/<uuid>/trash", methods=["DELETE"])
+    @require_auth
+    def permanently_delete_from_trash(uuid):
+        """Permanently delete document from trash."""
+        doc_store = DocumentStore(get_db())
+        doc = doc_store.retrieve(uuid)
+
+        if doc is None:
+            return jsonify({"error": "Document not found"}), 404
+
+        if doc["owner_id"] != g.current_user["id"]:
+            return jsonify({"error": "Forbidden"}), 403
+
+        if doc["deleted_at"] is None:
+            return jsonify({"error": "Document is not in trash"}), 400
+
+        # Permanent delete
+        doc_store.permanently_delete(uuid)
+        return jsonify({"uuid": uuid, "status": "permanently_deleted"})
 
     @app.route("/api/documents/<uuid>/duplicate", methods=["POST"])
     @require_auth
@@ -1357,6 +1501,38 @@ def _register_migrations(db: Database) -> None:
                 )
 
     db.register_migration(9, "documents_org_id", migration_009_documents_org_id)
+
+    def migration_010_document_trash(database: Database):
+        """Add deleted_at column to documents for soft delete."""
+        database.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT")
+        database.execute("CREATE INDEX IF NOT EXISTS idx_documents_deleted_at ON documents(deleted_at)")
+
+    db.register_migration(10, "document_trash", migration_010_document_trash)
+
+    def migration_011_periodic_tasks(database: Database):
+        """Create periodic_tasks table for scheduled background jobs."""
+        database.execute("""
+            CREATE TABLE periodic_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT,
+                task_key TEXT UNIQUE NOT NULL,
+                schedule TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_run_at TEXT,
+                last_run_duration_ms INTEGER,
+                last_run_status TEXT,
+                last_run_error TEXT,
+                next_run_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        database.execute("""
+            CREATE INDEX idx_periodic_tasks_next_run ON periodic_tasks(next_run_at, enabled)
+        """)
+
+    db.register_migration(11, "periodic_tasks", migration_011_periodic_tasks)
 
 
 if __name__ == "__main__":

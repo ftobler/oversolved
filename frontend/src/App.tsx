@@ -8,6 +8,7 @@ import Registry from './pages/Registry'
 import Login from './pages/Login'
 import UserProfile from './pages/UserProfile'
 import AdminUsers from './pages/AdminUsers'
+import AdminPeriodicTasks from './pages/AdminPeriodicTasks'
 import Settings from './pages/Settings'
 import OrgList from './pages/OrgList'
 import OrgSettings from './pages/OrgSettings'
@@ -55,6 +56,7 @@ function App() {
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>}>
           <Route path="profile" element={<UserProfile />} />
           <Route path="admin" element={<AdminUsers />} />
+          <Route path="admin-tasks" element={<AdminPeriodicTasks />} />
           <Route path="orgs" element={<OrgList />} />
           <Route path="orgs/:slug" element={<OrgSettings />} />
         </Route>

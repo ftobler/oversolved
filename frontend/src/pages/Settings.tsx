@@ -18,9 +18,14 @@ export default function Settings() {
             Organizations
           </NavLink>
           {user?.is_admin && (
-            <NavLink to="/settings/admin" className="settings-nav-item">
-              Admin
-            </NavLink>
+            <>
+              <NavLink to="/settings/admin" className="settings-nav-item">
+                Admin
+              </NavLink>
+              <NavLink to="/settings/admin-tasks" className="settings-nav-item">
+                Periodic Tasks
+              </NavLink>
+            </>
           )}
         </aside>
         <div className="settings-content">

@@ -18,6 +18,13 @@ interface DocumentMeta {
   org_slug: string | null
 }
 
+interface TrashDoc {
+  uuid: string
+  name: string
+  deleted_at: string
+  created_at: string
+}
+
 type SidebarFilter = 'owned' | 'shared' | 'public'
 
 export default function Documents() {
@@ -31,6 +38,9 @@ export default function Documents() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [shareDoc, setShareDoc] = useState<DocumentMeta | null>(null)
   const [activeFilter, setActiveFilter] = useState<SidebarFilter>('owned')
+  const [showTrash, setShowTrash] = useState(false)
+  const [trashDocs, setTrashDocs] = useState<TrashDoc[]>([])
+  const [trashLoading, setTrashLoading] = useState(false)
   const { preferences, loading: prefsLoading, updatePreference } = useUserPreferences()
   const sortBy = preferences.document_sort
 
@@ -204,10 +214,62 @@ export default function Documents() {
     }
   }
 
+  const fetchTrash = useCallback(async () => {
+    setTrashLoading(true)
+    try {
+      const response = await fetch('/api/documents/trash')
+      if (!response.ok) throw new Error('Failed to fetch trash')
+      const data = await response.json()
+      setTrashDocs(data.documents || [])
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setTrashLoading(false)
+    }
+  }, [])
+
+  const handleRecover = async (uuid: string) => {
+    try {
+      const response = await fetch(`/api/documents/${uuid}/recover`, { method: 'POST' })
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to recover document')
+      }
+      fetchTrash()
+      fetchDocuments(activeFilter, debouncedSearch)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const handlePermanentDelete = async (uuid: string, name: string) => {
+    if (!confirm(`Permanently delete "${name}"? This cannot be undone.`)) {
+      return
+    }
+    try {
+      const response = await fetch(`/api/documents/${uuid}/trash`, { method: 'DELETE' })
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to delete document')
+      }
+      fetchTrash()
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
   const formatDate = (isoString: string) => {
     if (!isoString) return ''
     const date = new Date(isoString)
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+
+  const daysRemaining = (deletedAt: string) => {
+    const deleted = new Date(deletedAt)
+    const expires = new Date(deleted.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const now = new Date()
+    const diff = Math.ceil((expires.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    return diff
   }
 
   const sidebarItems: { label: string; filter: SidebarFilter; icon: string }[] = [
@@ -268,6 +330,14 @@ export default function Documents() {
             />
             <span className="material-icons">upload</span>
           </label>
+          <button
+            className="toolbar-btn"
+            onClick={() => { setShowTrash(true); fetchTrash() }}
+            title="Trash"
+          >
+            <span className="material-icons">delete_outline</span>
+            {trashDocs.length > 0 && <span className="trash-count">{trashDocs.length}</span>}
+          </button>
         </div>
       </AppHeader>
 
@@ -316,6 +386,52 @@ export default function Documents() {
               onClose={() => setShareDoc(null)}
             />
           )}
+
+          <Dialog
+            isOpen={showTrash}
+            title={`Trash (${trashDocs.length} items)`}
+            onClose={() => setShowTrash(false)}
+          >
+            {trashLoading && <p className="status">Loading trash...</p>}
+            {!trashLoading && trashDocs.length === 0 && (
+              <p className="status">Trash is empty.</p>
+            )}
+            {!trashLoading && trashDocs.length > 0 && (
+              <div className="trash-list">
+                {trashDocs.map(doc => {
+                  const days = daysRemaining(doc.deleted_at)
+                  return (
+                    <div key={doc.uuid} className="trash-item">
+                      <div className="trash-item-info">
+                        <span className="trash-item-name">{doc.name}</span>
+                        <span className="trash-item-meta">
+                          Deleted: {formatDate(doc.deleted_at)}
+                          {days <= 5 && <span className="trash-warning"> ({days} days left)</span>}
+                          {days > 5 && <span> ({days} days left)</span>}
+                        </span>
+                      </div>
+                      <div className="trash-item-actions">
+                        <button
+                          className="btn btn-tile-action"
+                          onClick={() => handleRecover(doc.uuid)}
+                          title="Recover document"
+                        >
+                          <span className="material-icons">restore</span>
+                        </button>
+                        <button
+                          className="btn btn-delete-tile"
+                          onClick={() => handlePermanentDelete(doc.uuid, doc.name)}
+                          title="Permanently delete"
+                        >
+                          <span className="material-icons">delete_forever</span>
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </Dialog>
 
           {loading && <p className="status">Loading documents...</p>}
           {error && <p className="status error">Error: {error}</p>}

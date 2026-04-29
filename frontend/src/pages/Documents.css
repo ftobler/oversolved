@@ -422,6 +422,69 @@
   height: 16px;
 }
 
+.trash-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ef5350;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 10px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.toolbar-btn {
+  position: relative;
+}
+
+.trash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.trash-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+}
+
+.trash-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trash-item-name {
+  color: #ccc;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.trash-item-meta {
+  color: #888;
+  font-size: 11px;
+}
+
+.trash-warning {
+  color: #ef5350;
+  font-weight: 600;
+}
+
+.trash-item-actions {
+  display: flex;
+  gap: 4px;
+}
+
 @media (max-width: 768px) {
   .doc-grid-container {
     padding: 12px;

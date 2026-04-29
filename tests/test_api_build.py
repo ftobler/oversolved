@@ -29,8 +29,11 @@ PLANE_FEATURE = {
 
 @pytest.fixture
 def app(tmp_path):
-    test_app = create_app({"DB_TYPE": "sqlite", "DB_PATH": str(tmp_path / "test.db")})
-    test_app.config["TESTING"] = True
+    test_app = create_app({
+        "DB_TYPE": "sqlite",
+        "TESTING": True,
+        "DB_PATH": str(tmp_path / "test.db"),
+    })
     return test_app
 
 

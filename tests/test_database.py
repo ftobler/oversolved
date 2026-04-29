@@ -134,6 +134,34 @@ def _make_db():
         db.execute("ALTER TABLE documents ADD COLUMN org_id INTEGER REFERENCES organizations(id)")
 
     database.register_migration(9, "documents_org_id", migration_009)
+
+    def migration_010(db: Database):
+        db.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_documents_deleted_at ON documents(deleted_at)")
+
+    database.register_migration(10, "document_trash", migration_010)
+
+    def migration_011(db: Database):
+        db.execute("""
+            CREATE TABLE periodic_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT,
+                task_key TEXT UNIQUE NOT NULL,
+                schedule TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_run_at TEXT,
+                last_run_duration_ms INTEGER,
+                last_run_status TEXT,
+                last_run_error TEXT,
+                next_run_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        db.execute("CREATE INDEX idx_periodic_tasks_next_run ON periodic_tasks(next_run_at, enabled)")
+
+    database.register_migration(11, "periodic_tasks", migration_011)
     database.init()
     return database
 
@@ -212,7 +240,7 @@ class TestDatabase:
             call_count += 1
             database.execute("CREATE TABLE test_once (id INTEGER)")
 
-        db.register_migration(10, "test_migration", test_migration)
+        db.register_migration(100, "test_migration", test_migration)
         db.init()
         assert call_count == 1
 

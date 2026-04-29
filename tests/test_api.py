@@ -13,10 +13,10 @@ def app(tmp_path):
     test_app = create_app(
         {
             "DB_TYPE": "sqlite",
+            "TESTING": True,
             "DB_PATH": db_path,
         }
     )
-    test_app.config["TESTING"] = True
     return test_app
 
 
@@ -209,9 +209,20 @@ class TestDocumentAPI:
 
         response = authed_client.delete(f"/api/documents/{uuid}")
         assert response.status_code == 200
-        assert json.loads(response.data)["status"] == "deleted"
+        data = json.loads(response.data)
+        assert data["status"] == "moved_to_trash"
+        assert "deleted_at" in data
+        assert "expires_at" in data
 
-        assert authed_client.get(f"/api/documents/{uuid}").status_code == 404
+        # Soft-deleted document should not appear in normal list
+        list_resp = authed_client.get("/api/documents")
+        uuids = [d["uuid"] for d in json.loads(list_resp.data)["documents"]]
+        assert uuid not in uuids
+
+        # But should appear in trash
+        trash_resp = authed_client.get("/api/documents/trash")
+        trash_uuids = [d["uuid"] for d in json.loads(trash_resp.data)["documents"]]
+        assert uuid in trash_uuids
 
     def test_delete_nonexistent(self, authed_client):
         response = authed_client.delete("/api/documents/no-uuid")
