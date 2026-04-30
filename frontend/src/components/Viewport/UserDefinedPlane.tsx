@@ -9,11 +9,12 @@ import { planeRotationFromTransform } from '../Geometry3D/utils'
 import { COLOR_SELECTED, COLOR_HOVER } from '../Geometry3D/constants'
 import { useHoverAndDynamicSelection } from '../Geometry3D/useHoverAndDynamicSelection'
 
-const UDPLANE_SIZE = 100
-const UDPH = UDPLANE_SIZE / 2
-const UDPLANE_BORDER: [number, number, number][] = [
-  [-UDPH, -UDPH, 0], [UDPH, -UDPH, 0], [UDPH, UDPH, 0], [-UDPH, UDPH, 0], [-UDPH, -UDPH, 0],
-]
+function createPlaneBorder(size: number): [number, number, number][] {
+  const ph = size / 2
+  return [
+    [-ph, -ph, 0], [ph, -ph, 0], [ph, ph, 0], [-ph, ph, 0], [-ph, -ph, 0],
+  ]
+}
 
 function PlaneLabel({ x, y, children }: { x: number; y: number; children: string }) {
   const groupRef = useRef<THREE.Group>(null)
@@ -58,10 +59,12 @@ export default function UserDefinedPlane({
   featureId,
   label,
   planeTransform,
+  size = 100,
 }: {
   featureId: string
   label: string
   planeTransform: PlaneTransform
+  size?: number
 }) {
   const drag = useSketchEditorStore(s => s.drag)
   const setHoveredPlane = useSketchEditorStore(s => s.setHoveredPlane)
@@ -79,6 +82,8 @@ export default function UserDefinedPlane({
 
   const rot = planeRotationFromTransform(planeTransform)
   const [ox, oy, oz] = planeTransform.origin
+  const ph = size / 2
+  const planeBorder = createPlaneBorder(size)
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : '#444444'
   const opacity = hovered ? 0.15 : selected ? 0.12 : 0.05
@@ -87,12 +92,12 @@ export default function UserDefinedPlane({
     <group position={[ox, oy, oz]} rotation={rot}>
       {!isDragging && (
         <mesh onPointerOver={onOver} onPointerOut={onOut} onClick={onClick}>
-          <planeGeometry args={[UDPLANE_SIZE, UDPLANE_SIZE]} />
+          <planeGeometry args={[size, size]} />
           <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
         </mesh>
       )}
-      <Line points={UDPLANE_BORDER} color={hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : '#666666'} lineWidth={1} />
-      <PlaneLabel x={-UDPH} y={UDPH}>{label}</PlaneLabel>
+      <Line points={planeBorder} color={hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : '#666666'} lineWidth={1} />
+      <PlaneLabel x={-ph} y={ph}>{label}</PlaneLabel>
     </group>
   )
 }

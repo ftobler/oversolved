@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'r
 import { Canvas } from '@react-three/fiber'
 import { OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
-import type { SketchData, Feature, Sketch, BodyResult } from '../types/cad'
+import type { SketchData, Feature, Sketch, BodyResult, PlaneDef } from '../types/cad'
 import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
 import Geometry3D from './Geometry3D'
 import { CubeGizmoCanvas } from './CubeGizmo'
@@ -52,6 +52,72 @@ function isActive(id: string, features: Feature[] | undefined, rollbackPos: numb
   return (rollbackPos === undefined || idx < rollbackPos) && (!visible || visible.has(id))
 }
 
+function calculateMeshExtent(vertices: [number, number, number][]): number {
+  if (vertices.length === 0) return 0
+
+  let minX = vertices[0][0], maxX = vertices[0][0]
+  let minY = vertices[0][1], maxY = vertices[0][1]
+  let minZ = vertices[0][2], maxZ = vertices[0][2]
+
+  for (const [x, y, z] of vertices) {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x)
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y)
+    minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z)
+  }
+
+  const width = maxX - minX
+  const height = maxY - minY
+  const depth = maxZ - minZ
+
+  return Math.max(width, height, depth)
+}
+
+function getModelBoundingBoxExtent(bodies: Record<string, BodyResult> | undefined): number {
+  if (!bodies) return 0
+
+  const allVertices: [number, number, number][] = []
+  for (const body of Object.values(bodies)) {
+    if (body.mesh?.vertices) {
+      allVertices.push(...body.mesh.vertices)
+    }
+  }
+
+  return calculateMeshExtent(allVertices)
+}
+
+function getFaceExtent(faceQuery: string, bodies: Record<string, BodyResult>): number {
+  const match = faceQuery.match(/@([^/]+)/)
+  if (!match) return 0
+
+  const bodyId = match[1]
+  const body = bodies[bodyId]
+  if (!body?.mesh?.vertices) return 0
+
+  return calculateMeshExtent(body.mesh.vertices)
+}
+
+function calculatePlaneSize(
+  planeDefinition: PlaneDef | undefined,
+  bodies: Record<string, BodyResult> | undefined,
+): number {
+  const FALLBACK_SIZE = 100
+  const EXPANSION_FACTOR = 1.1
+
+  if (!planeDefinition || !bodies) return FALLBACK_SIZE
+
+  // Case 1: Plane defined on a face (on_face mode)
+  if (planeDefinition.mode === 'on_face' && planeDefinition.face) {
+    const faceExtent = getFaceExtent(planeDefinition.face, bodies)
+    if (faceExtent > 0) return faceExtent * EXPANSION_FACTOR
+  }
+
+  // Case 4: Fallback - use model bounding box
+  const modelExtent = getModelBoundingBoxExtent(bodies)
+  if (modelExtent > 0) return modelExtent * EXPANSION_FACTOR
+
+  // Final fallback
+  return FALLBACK_SIZE
+}
 
 export interface ViewportHandle {
   captureScreenshot: () => Promise<string | null>
@@ -284,6 +350,17 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     return { ...otherSketches, ...bodySketchEntries }
   }, [activeFeatureId, solveResults, features, bodies, otherSketches])
 
+  const planeSizes = useMemo(() => {
+    const sizes: Record<string, number> = {}
+    features?.forEach(f => {
+      if (f.kind === 'plane') {
+        const planeDef = featureDefs?.find(fd => fd.id === f.id)?.definition as PlaneDef | undefined
+        sizes[f.id] = calculatePlaneSize(planeDef, bodies)
+      }
+    })
+    return sizes
+  }, [features, featureDefs, bodies])
+
   return (
     <div
       style={{ position: 'relative', width: '100%', height: '100%' }}
@@ -319,7 +396,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           .map(f => {
             const solveResult = solveResults?.[f.id]
             if (!solveResult?.plane_transform) return null
-            return <UserDefinedPlane key={f.id} featureId={f.id} label={f.label || f.id} planeTransform={solveResult.plane_transform} />
+            return <UserDefinedPlane key={f.id} featureId={f.id} label={f.label || f.id} planeTransform={solveResult.plane_transform} size={planeSizes[f.id]} />
           })}
 
         {activeSketchFeatures.map(f => {
