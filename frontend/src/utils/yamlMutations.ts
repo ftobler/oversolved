@@ -973,19 +973,23 @@ export function applySetArrayMode(
   }
   feature.array.mode = mode
   if (mode === 'linear') {
+    if (typeof feature.array.count_x !== 'number') feature.array.count_x = 2
+    if (typeof feature.array.pitch_x !== 'number') feature.array.pitch_x = 20
     delete feature.array.count_y
     delete feature.array.pitch_y
     delete feature.array.count
     delete feature.array.step_angle
     delete feature.array.axis
   } else if (mode === 'rectangular') {
-    if (!feature.array.count_y) feature.array.count_y = 2
-    if (!feature.array.pitch_y) feature.array.pitch_y = 20
+    if (typeof feature.array.count_x !== 'number') feature.array.count_x = 2
+    if (typeof feature.array.pitch_x !== 'number') feature.array.pitch_x = 20
+    if (typeof feature.array.count_y !== 'number') feature.array.count_y = 2
+    if (typeof feature.array.pitch_y !== 'number') feature.array.pitch_y = 20
     delete feature.array.count
     delete feature.array.step_angle
     delete feature.array.axis
   } else {
-    if (!feature.array.count) feature.array.count = 4
+    if (typeof feature.array.count !== 'number') feature.array.count = 4
     delete feature.array.count_x
     delete feature.array.pitch_x
     delete feature.array.count_y

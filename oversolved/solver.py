@@ -2419,8 +2419,6 @@ def _solve_array(
         for i, trsf in enumerate(trsfs):
             if i == 0 and include_source:
                 instances.append(body.shape)
-            elif i == 0:
-                pass
             else:
                 instances.append(transform_copy(body.shape, trsf))
 

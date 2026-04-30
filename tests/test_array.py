@@ -6,82 +6,109 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def _linear_array_spec(count_x: int, pitch_x: float = 20, include_source: bool = True, box_w: float = 5):
+    """Build a spec with a box and a linear array at count_x copies."""
+    from solver_helpers import box_extrude_spec
+    spec = box_extrude_spec(w=box_w, h=5, d=5, extrude_id="extrude1")
+    spec["features"].append({
+        "id": "arr1",
+        "kind": "array",
+        "array": {
+            "source_body": "extrude1",
+            "mode": "linear",
+            "count_x": count_x,
+            "pitch_x": pitch_x,
+            "direction_x": [1, 0, 0],
+            "operation": "add",
+            "include_source": include_source,
+        },
+    })
+    return spec
+
+
+def _expected_x_max(count_x: int, pitch_x: float, box_w: float = 5) -> float:
+    """Expected max X of fused mesh: last copy starts at (count_x-1)*pitch, width=box_w."""
+    return (count_x - 1) * pitch_x + box_w
+
+
 class TestArrayLinear:
     def test_linear_basic(self):
         """3 copies along X, pitch 20 -- resulting body bbox should span 40+epsilon in X."""
         from oversolved.builder import build
-        from solver_helpers import box_extrude_spec, assert_mesh_valid, assert_mesh_bbox
+        from solver_helpers import assert_mesh_valid, assert_mesh_bbox
 
-        spec = box_extrude_spec(w=5, h=5, d=5, extrude_id="extrude1")
-        spec["features"].append(
-            {
-                "id": "arr1",
-                "kind": "array",
-                "array": {
-                    "source_body": "extrude1",
-                    "mode": "linear",
-                    "count_x": 3,
-                    "pitch_x": 20,
-                    "direction_x": [1, 0, 0],
-                    "operation": "add",
-                    "include_source": True,
-                },
-            }
-        )
-        r = build(spec)
+        r = build(_linear_array_spec(3, 20))
         assert r["result"]["arr1"]["status"] == "ok", r["result"]["arr1"]
         mesh = r["bodies"]["body_extrude1"]["mesh"]
         assert_mesh_valid(mesh)
         assert_mesh_bbox(mesh, x_range=(0, 45), y_range=(0, 5), z_range=(0, 5))
 
-    def test_linear_include_source_false(self):
-        """include_source=False should produce N-1 copies only."""
-        from oversolved.builder import build
-        from solver_helpers import box_extrude_spec, assert_mesh_bbox
+    # ── Count verification: each count=N produces N copies ──────────────
 
-        spec = box_extrude_spec(w=5, h=5, d=5, extrude_id="extrude1")
-        spec["features"].append(
-            {
-                "id": "arr1",
-                "kind": "array",
-                "array": {
-                    "source_body": "extrude1",
-                    "mode": "linear",
-                    "count_x": 3,
-                    "pitch_x": 20,
-                    "direction_x": [1, 0, 0],
-                    "operation": "add",
-                    "include_source": False,
-                },
-            }
-        )
-        r = build(spec)
+    @pytest.mark.parametrize("count,expected_max", [
+        (2, 25),   # (2-1)*20 + 5 = 25
+        (3, 45),   # (3-1)*20 + 5 = 45
+        (4, 65),   # (4-1)*20 + 5 = 65
+        (5, 85),   # (5-1)*20 + 5 = 85
+    ])
+    def test_linear_count_include_source(self, count, expected_max):
+        """count=N with include_source=True produces N copies."""
+        from oversolved.builder import build
+        from solver_helpers import assert_mesh_bbox
+
+        r = build(_linear_array_spec(count, 20, include_source=True))
         assert r["result"]["arr1"]["status"] == "ok", r["result"]["arr1"]
         mesh = r["bodies"]["body_extrude1"]["mesh"]
-        assert_mesh_bbox(mesh, x_range=(20, 45), y_range=(0, 5), z_range=(0, 5))
+        assert_mesh_bbox(mesh, x_range=(0, expected_max), y_range=(0, 5), z_range=(0, 5))
+
+    @pytest.mark.parametrize("count,expected_max", [
+        (2, 25),   # transformed copy at 0, copy at 20
+        (3, 45),   # copies at 0, 20, 40
+        (4, 65),   # copies at 0, 20, 40, 60
+        (5, 85),   # copies at 0, 20, 40, 60, 80
+    ])
+    def test_linear_count_no_source(self, count, expected_max):
+        """count=N with include_source=False produces N transformed copies."""
+        from oversolved.builder import build
+        from solver_helpers import assert_mesh_bbox
+
+        r = build(_linear_array_spec(count, 20, include_source=False))
+        assert r["result"]["arr1"]["status"] == "ok", r["result"]["arr1"]
+        mesh = r["bodies"]["body_extrude1"]["mesh"]
+        assert_mesh_bbox(mesh, x_range=(0, expected_max), y_range=(0, 5), z_range=(0, 5))
+
+    @pytest.mark.parametrize("count,pitch,expected_max", [
+        (4, 2, 11),   # (4-1)*2 + 5 = 11
+        (4, 5, 20),   # (4-1)*5 + 5 = 20
+    ])
+    def test_linear_small_pitch(self, count, pitch, expected_max):
+        """Small pitch (2,5) with count=4 produces correct extent."""
+        from oversolved.builder import build
+        from solver_helpers import assert_mesh_bbox
+
+        r = build(_linear_array_spec(count, pitch))
+        assert r["result"]["arr1"]["status"] == "ok", r["result"]["arr1"]
+        mesh = r["bodies"]["body_extrude1"]["mesh"]
+        assert_mesh_bbox(mesh, x_range=(0, expected_max), y_range=(0, 5), z_range=(0, 5))
+
+    # ── Edge cases ──────────────────────────────────────────────────────
 
     def test_linear_count_1(self):
         """count=1 with include_source=True should equal source shape -- no crash."""
         from oversolved.builder import build
-        from solver_helpers import box_extrude_spec, assert_mesh_bbox
+        from solver_helpers import assert_mesh_bbox
 
-        spec = box_extrude_spec(w=5, h=5, d=5, extrude_id="extrude1")
-        spec["features"].append(
-            {
-                "id": "arr1",
-                "kind": "array",
-                "array": {
-                    "source_body": "extrude1",
-                    "mode": "linear",
-                    "count_x": 1,
-                    "pitch_x": 20,
-                    "direction_x": [1, 0, 0],
-                    "operation": "add",
-                    "include_source": True,
-                },
-            }
-        )
-        r = build(spec)
+        r = build(_linear_array_spec(1, 20))
+        assert r["result"]["arr1"]["status"] == "ok", r["result"]["arr1"]
+        mesh = r["bodies"]["body_extrude1"]["mesh"]
+        assert_mesh_bbox(mesh, x_range=(0, 5), y_range=(0, 5), z_range=(0, 5))
+
+    def test_linear_count_1_no_source(self):
+        """count=1 with include_source=False produces 1 transformed copy."""
+        from oversolved.builder import build
+        from solver_helpers import assert_mesh_bbox
+
+        r = build(_linear_array_spec(1, 20, include_source=False))
         assert r["result"]["arr1"]["status"] == "ok", r["result"]["arr1"]
         mesh = r["bodies"]["body_extrude1"]["mesh"]
         assert_mesh_bbox(mesh, x_range=(0, 5), y_range=(0, 5), z_range=(0, 5))
