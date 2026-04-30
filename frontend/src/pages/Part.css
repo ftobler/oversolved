@@ -1058,10 +1058,6 @@
   color: #888;
 }
 
-.doc-editor .status.error {
-  color: #ef5350;
-}
-
 @media (max-width: 768px) {
   .doc-name {
     max-width: 150px;
