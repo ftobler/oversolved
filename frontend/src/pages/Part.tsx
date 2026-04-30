@@ -993,6 +993,26 @@ useEffect(() => {
   }, [planeSelectionFeatureId, features, enterEditFeature, setMode])
 
   const handleRightClick = useCallback((pos: [number, number], targetId?: string) => {
+    const store = useSketchEditorStore.getState()
+    const hoveredSurfaceId = store.hoveredSurfaceId
+    const hoveredFaceNormal = store.hoveredFaceNormal
+    const hoveredFaceCenter = store.hoveredFaceCenter
+
+    if (hoveredSurfaceId && hoveredFaceNormal && hoveredFaceCenter) {
+      setContextMenu({
+        position: pos,
+        items: [
+          {
+            label: 'Align to Face',
+            onClick: () => {
+              viewportRef.current?.alignCameraToFace(hoveredFaceNormal, hoveredFaceCenter)
+            },
+          },
+        ],
+      })
+      return
+    }
+
     if (targetId?.startsWith('body:')) {
       const bodyId = targetId.slice('body:'.length)
       setContextMenu({

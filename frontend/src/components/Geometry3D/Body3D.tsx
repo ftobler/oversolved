@@ -104,6 +104,53 @@ export function buildFaceBoundarySegments(mesh: Mesh3D, brepFaceIndex: number): 
   return new Float32Array(pts)
 }
 
+// Extract unique vertices for a single B-rep face from the tessellated mesh.
+// eslint-disable-next-line react-refresh/only-export-components
+export function extractFaceGeometry(mesh: Mesh3D, brepFaceIndex: number): { vertices: [number, number, number][] } | null {
+  const { faces, vertices, triangle_to_face } = mesh
+  if (!triangle_to_face) return null
+
+  const seen = new Set<number>()
+  const faceVerts: [number, number, number][] = []
+
+  for (let i = 0; i < faces.length; i++) {
+    if (triangle_to_face[i] !== brepFaceIndex) continue
+    for (const vi of faces[i]) {
+      if (!seen.has(vi)) {
+        seen.add(vi)
+        faceVerts.push(vertices[vi])
+      }
+    }
+  }
+
+  if (faceVerts.length < 3) return null
+  return { vertices: faceVerts }
+}
+
+// Calculate centroid and normal from face vertices.
+// eslint-disable-next-line react-refresh/only-export-components
+export function calculateFaceProperties(faceMesh: { vertices: [number, number, number][] }): { normal: [number, number, number]; center: [number, number, number] } | null {
+  let cx = 0, cy = 0, cz = 0
+  for (const [x, y, z] of faceMesh.vertices) {
+    cx += x; cy += y; cz += z
+  }
+  const count = faceMesh.vertices.length
+  const center: [number, number, number] = [cx / count, cy / count, cz / count]
+
+  if (count < 3) return null
+
+  const [v0, v1, v2] = [faceMesh.vertices[0], faceMesh.vertices[1], faceMesh.vertices[2]]
+  const edge1: [number, number, number] = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]]
+  const edge2: [number, number, number] = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]]
+  const normal: [number, number, number] = [
+    edge1[1] * edge2[2] - edge1[2] * edge2[1],
+    edge1[2] * edge2[0] - edge1[0] * edge2[2],
+    edge1[0] * edge2[1] - edge1[1] * edge2[0],
+  ]
+
+  return { normal, center }
+}
+
 // Build a flat Float32Array of line segment endpoints from edge descriptors.
 // Each segment contributes 6 floats: [x0,y0,z0, x1,y1,z1].
 // eslint-disable-next-line react-refresh/only-export-components
@@ -177,6 +224,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
   const isRotating = useSketchEditorStore(s => s.isRotating)
   const setHoveredBodyId = useSketchEditorStore(s => s.setHoveredBodyId)
   const setHoveredSurface = useSketchEditorStore(s => s.setHoveredSurface)
+  const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
@@ -185,6 +233,20 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
 
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
   const [hoveredVertexIndex, setHoveredVertexIndex] = useState<number | null>(null)
+
+  const lastHoveredFaceRef = useRef<string | null>(null)
+
+  const updateFaceGeometry = useCallback((faceIndex: number) => {
+    const { triangle_to_face, face_queries } = mesh
+    const brepFaceIndex = triangle_to_face?.[faceIndex]
+    if (brepFaceIndex === undefined || !face_queries) return
+
+    const faceGeo = extractFaceGeometry(mesh, brepFaceIndex)
+    if (!faceGeo) return
+    const props = calculateFaceProperties(faceGeo)
+    if (!props) return
+    setHoveredFaceGeometry(props.normal, props.center)
+  }, [mesh, setHoveredFaceGeometry])
 
   const noRaycast = useCallback(() => {}, [])
 
@@ -550,20 +612,32 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
           setHoveredBodyId(featureId)
           const faceIndex = (e as unknown as { faceIndex?: number }).faceIndex
           if (faceIndex !== undefined) {
-            setHoveredSurface(resolveFaceQuery(faceIndex))
+            const query = resolveFaceQuery(faceIndex)
+            setHoveredSurface(query)
+            if (query !== lastHoveredFaceRef.current) {
+              lastHoveredFaceRef.current = query
+              updateFaceGeometry(faceIndex)
+            }
           }
         } : undefined}
         onPointerMove={interactive ? (e) => {
           e.stopPropagation()
           const faceIndex = (e as unknown as { faceIndex?: number }).faceIndex
           if (faceIndex !== undefined) {
-            setHoveredSurface(resolveFaceQuery(faceIndex))
+            const query = resolveFaceQuery(faceIndex)
+            setHoveredSurface(query)
+            if (query !== lastHoveredFaceRef.current) {
+              lastHoveredFaceRef.current = query
+              updateFaceGeometry(faceIndex)
+            }
           }
         } : undefined}
         onPointerOut={interactive ? (e) => {
           e.stopPropagation()
           setHoveredBodyId(current => current === featureId ? null : current)
           setHoveredSurface(null)
+          lastHoveredFaceRef.current = null
+          setHoveredFaceGeometry(null, null)
         } : undefined}
         onClick={interactive ? handleMeshClick : undefined}
       >

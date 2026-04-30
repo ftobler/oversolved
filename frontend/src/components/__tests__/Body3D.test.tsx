@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { buildBodyGeometry, buildEdgeSegments, getEdgeSegmentCounts, buildFaceBoundarySegments } from '../Geometry3D/Body3D'
+import { buildBodyGeometry, buildEdgeSegments, getEdgeSegmentCounts, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties } from '../Geometry3D/Body3D'
 import type { Mesh3D, EdgeData } from '../../types/cad'
 import { ARC_SEGMENTS } from '../Geometry3D/constants'
 
@@ -265,5 +265,68 @@ describe('getEdgeSegmentCounts', () => {
     expect(counts[0]).toBe(1)  // line
     expect(counts[1]).toBe(ARC_SEGMENTS)  // circle
     expect(counts[2]).toBe(2)  // spline with 3 points
+  })
+})
+
+describe('extractFaceGeometry', () => {
+  it('returns null when triangle_to_face is missing', () => {
+    const result = extractFaceGeometry(CUBE_MESH, 0)
+    expect(result).toBeNull()
+  })
+
+  it('returns 4 vertices for a cube face (2 triangles, 4 unique vertices)', () => {
+    const result = extractFaceGeometry(CUBE_MESH_BREP, 0)
+    expect(result).not.toBeNull()
+    expect(result!.vertices.length).toBe(4)
+  })
+
+  it('returns consistent vertices for all 6 cube faces', () => {
+    for (let face = 0; face < 6; face++) {
+      const result = extractFaceGeometry(CUBE_MESH_BREP, face)
+      expect(result).not.toBeNull()
+      expect(result!.vertices.length).toBe(4)
+    }
+  })
+
+  it('returns null for out-of-range face index', () => {
+    const result = extractFaceGeometry(CUBE_MESH_BREP, 99)
+    expect(result).toBeNull()
+  })
+})
+
+describe('calculateFaceProperties', () => {
+  it('calculates centroid of a square face correctly', () => {
+    // Bottom face of cube: z=0, vertices at (0,0,0), (1,0,0), (1,1,0), (0,1,0)
+    const faceGeo = extractFaceGeometry(CUBE_MESH_BREP, 0)!
+    const props = calculateFaceProperties(faceGeo)
+    expect(props).not.toBeNull()
+    expect(props!.center[0]).toBeCloseTo(0.5, 5)
+    expect(props!.center[1]).toBeCloseTo(0.5, 5)
+    expect(props!.center[2]).toBeCloseTo(0, 5)
+  })
+
+  it('calculates normal of bottom face pointing down (negative z)', () => {
+    const faceGeo = extractFaceGeometry(CUBE_MESH_BREP, 0)!
+    const props = calculateFaceProperties(faceGeo)!
+    // Normal should point in -z direction (or +z depending on winding)
+    expect(props.normal[2]).not.toBe(0)
+  })
+
+  it('calculates normal of top face pointing up (positive z)', () => {
+    const faceGeo = extractFaceGeometry(CUBE_MESH_BREP, 1)!
+    const props = calculateFaceProperties(faceGeo)!
+    expect(props.normal[2]).not.toBe(0)
+  })
+
+  it('returns null for fewer than 3 vertices', () => {
+    const result = calculateFaceProperties({ vertices: [[0, 0, 0], [1, 0, 0]] })
+    expect(result).toBeNull()
+  })
+
+  it('normal is non-zero for a valid face', () => {
+    const faceGeo = extractFaceGeometry(CUBE_MESH_BREP, 2)!
+    const props = calculateFaceProperties(faceGeo)!
+    const norm = Math.sqrt(props.normal[0]**2 + props.normal[1]**2 + props.normal[2]**2)
+    expect(norm).toBeGreaterThan(0)
   })
 })

@@ -180,6 +180,7 @@ export interface ViewportHandle {
   captureScreenshotForSaving: () => Promise<string | null>
   autoZoomToFit: () => void
   alignCameraToPlane: (planeId: string) => void
+  alignCameraToFace: (faceNormal: [number, number, number], faceCenter: [number, number, number]) => void
 }
 
 export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
@@ -352,7 +353,29 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     camera.updateProjectionMatrix()
   }, [cameraRef])
 
-  useImperativeHandle(ref, () => ({ captureScreenshot, captureScreenshotForSaving, autoZoomToFit, alignCameraToPlane }), [captureScreenshot, captureScreenshotForSaving, autoZoomToFit, alignCameraToPlane])
+  const alignCameraToFace = useCallback((faceNormal: [number, number, number], faceCenter: [number, number, number]) => {
+    const camera = cameraRef.current as THREE.OrthographicCamera | null
+    if (!camera) return
+
+    const [nx, ny, nz] = faceNormal
+    const norm = Math.sqrt(nx*nx + ny*ny + nz*nz)
+    if (norm === 0) return
+
+    const distance = 100
+    const ndx = nx / norm
+    const ndy = ny / norm
+    const ndz = nz / norm
+
+    camera.position.set(
+      faceCenter[0] + ndx * distance,
+      faceCenter[1] + ndy * distance,
+      faceCenter[2] + ndz * distance
+    )
+    camera.lookAt(faceCenter[0], faceCenter[1], faceCenter[2])
+    camera.updateProjectionMatrix()
+  }, [cameraRef])
+
+  useImperativeHandle(ref, () => ({ captureScreenshot, captureScreenshotForSaving, autoZoomToFit, alignCameraToPlane, alignCameraToFace }), [captureScreenshot, captureScreenshotForSaving, autoZoomToFit, alignCameraToPlane, alignCameraToFace])
 
   const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
 

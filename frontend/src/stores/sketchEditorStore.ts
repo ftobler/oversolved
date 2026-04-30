@@ -119,6 +119,8 @@ interface SketchEditorState {
   hoveredSurfaceId: string | null
   hoveredEdgeId: string | null
   hoveredBodyId: string | null
+  hoveredFaceNormal: [number, number, number] | null
+  hoveredFaceCenter: [number, number, number] | null
   setHoveredEntity: (id: string | null) => void
   setHoveredVertex: (id: string | null, position: [number, number] | null, snapKind?: SnapKind | null) => void
   setHoveredPathSnap: (snap: { entityId: string; position: [number, number] } | null) => void
@@ -127,6 +129,7 @@ interface SketchEditorState {
   setHoveredSurface: (id: string | null) => void
   setHoveredEdge: (id: string | null) => void
   setHoveredBodyId: (id: string | null | ((current: string | null) => string | null)) => void
+  setHoveredFaceGeometry: (normal: [number, number, number] | null, center: [number, number, number] | null) => void
 
   // DRAG TOOL STATE
   drag: DragState | null
@@ -219,6 +222,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   hoveredSurfaceId: null,
   hoveredEdgeId: null,
   hoveredBodyId: null,
+  hoveredFaceNormal: null,
+  hoveredFaceCenter: null,
   hoveredVertexPosition: null,
   hoveredSnapKind: null,
   hoveredPathSnap: null,
@@ -307,6 +312,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setHoveredBodyId: (id) => set(s => ({
     hoveredBodyId: typeof id === 'function' ? id(s.hoveredBodyId) : id,
   })),
+
+  setHoveredFaceGeometry: (normal, center) => set({ hoveredFaceNormal: normal, hoveredFaceCenter: center }),
 
   setHoveredPathSnap: (snap) => set({ hoveredPathSnap: snap }),
 
