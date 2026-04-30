@@ -421,7 +421,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
   // Handle edge click on line segments
   const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event }) => {
     e.stopPropagation()
-    const nativeEvent = e.nativeEvent as MouseEvent | undefined
+    const nativeEvent = e.nativeEvent as PointerEvent | undefined
     const isMultiSelect = nativeEvent?.ctrlKey || nativeEvent?.metaKey
 
     // R3F ThreeEvent spreads THREE.Intersection directly: e.index is the vertex index

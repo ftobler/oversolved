@@ -8,6 +8,15 @@ Extract common patterns for click/drag event handlers used in the sketch editor.
 - **UI rendering** (Three.js meshes, React components)
 - **Interaction logic** (event handlers that call store actions)
 
+## Input Abstraction
+
+All handlers use `PointerEvent`, the modern unified API for mouse, touch, and stylus input. The browser automatically converts touch and stylus input to `PointerEvent`, so no separate `TouchEvent` or `MouseEvent` handling is required.
+
+Key conventions:
+- Check `e.isPrimary` to ignore secondary pointers (multi-touch).
+- Distinguish taps from drags via movement threshold (`CLICK_THRESHOLD_PX`).
+- Prevent default browser touch behaviors with `touch-action: none` on interactive containers.
+
 ## Files
 
 ### interaction-actions.ts

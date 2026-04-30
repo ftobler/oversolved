@@ -386,7 +386,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // Layer 3B: clear isPointerDown and dynamicSelection on any pointer-up (including off-canvas releases).
   useSelectionPointerUpCleanup()
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)
     pointerDownButton.current = e.button
     if (e.button === 0 || e.button === 1 || e.button === 2) {
       pointerDownPos.current = [e.clientX, e.clientY]
@@ -394,7 +395,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     if (e.button !== 2) closeContextMenu()
   }, [closeContextMenu])
 
-  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)
     if (!pointerDownPos.current) {
       wasPointerDrag.current = false
       pointerDownButton.current = null
@@ -472,9 +474,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   return (
     <div
-      style={{ position: 'relative', width: '100%', height: '100%' }}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
+      style={{ position: 'relative', width: '100%', height: '100%', touchAction: 'none' }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
       onContextMenu={e => { e.preventDefault(); }}
     >
       <Canvas
