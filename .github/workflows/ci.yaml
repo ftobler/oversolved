@@ -3,7 +3,8 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  lint:
+  backend:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-latest-arm64]

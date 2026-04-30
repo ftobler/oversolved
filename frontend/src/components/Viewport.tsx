@@ -322,7 +322,41 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     }
   }, [])
 
-  useImperativeHandle(ref, () => ({ captureScreenshot, captureScreenshotForSaving, autoZoomToFit }), [captureScreenshot, captureScreenshotForSaving, autoZoomToFit])
+  const alignCameraToPlane = useCallback((planeId: string) => {
+    const camera = cameraRef.current as THREE.OrthographicCamera | null
+    if (!camera) return
+
+    const planeRotations: Record<string, [number, number, number]> = {
+      'builtin_plane_front': [0, 0, 100],
+      'builtin_plane_top': [0, 100, 0],
+      'builtin_plane_right': [100, 0, 0],
+      'builtin_plane_bottom': [0, -100, 0],
+      'builtin_plane_back': [0, 0, -100],
+      'builtin_plane_left': [-100, 0, 0],
+    }
+
+    const direction = planeRotations[planeId]
+    if (!direction) return
+
+    const distance = 100
+    const [dx, dy, dz] = direction
+    const norm = Math.sqrt(dx*dx + dy*dy + dz*dz)
+    camera.position.set(
+      (dx / norm) * distance,
+      (dy / norm) * distance,
+      (dz / norm) * distance
+    )
+
+    camera.lookAt(0, 0, 0)
+    camera.updateProjectionMatrix()
+
+    if (ctrlRef.current) {
+      ctrlRef.current.target.set(0, 0, 0)
+      ctrlRef.current.update()
+    }
+  }, [cameraRef, ctrlRef])
+
+  useImperativeHandle(ref, () => ({ captureScreenshot, captureScreenshotForSaving, autoZoomToFit, alignCameraToPlane }), [captureScreenshot, captureScreenshotForSaving, autoZoomToFit, alignCameraToPlane])
 
   const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
 
