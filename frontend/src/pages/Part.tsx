@@ -17,6 +17,7 @@ import { BugReporter } from '../components/BugReporter'
 import { Sidebar } from '../components/Sidebar'
 import FooterMeasurementDisplay from '../components/FooterMeasurementDisplay'
 import ExportDialog, { type ExportFormat } from '../components/ExportDialog'
+import ShareDialog from '../components/ShareDialog'
 import LoadingOverlay from '../components/LoadingOverlay'
 
 import CacheInspector from '../components/CacheInspector'
@@ -256,6 +257,7 @@ export default function Part() {
   const [bugReportError, setBugReportError] = useState<string | null>(null)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [exportTargetBodyId, setExportTargetBodyId] = useState<string | null>(null)
+  const [shareDocOpen, setShareDocOpen] = useState(false)
   const [exportDefaultName, setExportDefaultName] = useState<string>('export')
   const [bugReportAttachments, setBugReportAttachments] = useState({
     ast: true,
@@ -1129,6 +1131,14 @@ useEffect(() => {
         <button className="toolbar-btn" title="Clone document" onClick={handleClone}>
           <span className="material-icons-outlined">file_copy</span>
         </button>
+        <button
+          className="toolbar-btn"
+          title="Share document"
+          onClick={() => setShareDocOpen(true)}
+          disabled={readOnly}
+        >
+          <span className="material-icons-outlined">share</span>
+        </button>
         {readOnly && (
           <span className="doc-name" style={{ color: '#ef5350', fontSize: '12px', marginLeft: '8px' }}>
             <span className="material-icons-outlined" style={{ fontSize: '14px', verticalAlign: 'middle' }}>lock</span>
@@ -1505,6 +1515,13 @@ useEffect(() => {
         defaultName={exportDefaultName}
         onDownload={handleExportDownload}
         onCancel={handleExportCancel}
+      />
+      <ShareDialog
+        isOpen={shareDocOpen}
+        documentUuid={uuid!}
+        documentName={docName || 'Untitled'}
+        isOwner={permission === 'owner'}
+        onClose={() => setShareDocOpen(false)}
       />
     </div>
   )

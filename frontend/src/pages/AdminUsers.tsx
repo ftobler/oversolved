@@ -162,7 +162,7 @@ export default function AdminUsers() {
   return (
     <div className="admin-users">
       <div className="settings-button-right">
-        <button className="btn btn-secondary" onClick={() => setShowCreateForm(true)}>
+        <button className="btn btn-secondary" title="Create user" onClick={() => setShowCreateForm(true)}>
           Create user
         </button>
       </div>

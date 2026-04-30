@@ -48,8 +48,8 @@ describe('LoadingOverlay', () => {
   it('spinner is a child of the overlay container', () => {
     const { container } = render(<LoadingOverlay />)
     const spinner = container.querySelector('.md3-spinner-container')!
-    const overlay = container.querySelector('.loading-overlay')!
-    expect(spinner.parentElement).toBe(overlay)
+    const content = container.querySelector('.loading-overlay-content')!
+    expect(spinner.parentElement).toBe(content)
   })
 })
 
