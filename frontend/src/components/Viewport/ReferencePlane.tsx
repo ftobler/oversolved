@@ -6,7 +6,7 @@ import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { builtinSelectionId } from '../Geometry3D/utils'
 import { COLOR_HOVER, COLOR_INACTIVE, COLOR_SELECTED } from '../Geometry3D/constants'
 
-const PLANE_SIZE = 1
+const PLANE_SIZE = 100
 const PH = PLANE_SIZE / 2
 const PLANE_BORDER: [number,number,number][] = [[-PH,-PH,0],[PH,-PH,0],[PH,PH,0],[-PH,PH,0],[-PH,-PH,0]]
 

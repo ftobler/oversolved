@@ -9,7 +9,7 @@ import { planeRotationFromTransform } from '../Geometry3D/utils'
 import { COLOR_SELECTED, COLOR_HOVER } from '../Geometry3D/constants'
 import { useHoverAndDynamicSelection } from '../Geometry3D/useHoverAndDynamicSelection'
 
-const UDPLANE_SIZE = 1
+const UDPLANE_SIZE = 100
 const UDPH = UDPLANE_SIZE / 2
 const UDPLANE_BORDER: [number, number, number][] = [
   [-UDPH, -UDPH, 0], [UDPH, -UDPH, 0], [UDPH, UDPH, 0], [-UDPH, UDPH, 0], [-UDPH, -UDPH, 0],
