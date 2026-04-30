@@ -897,6 +897,49 @@
   color: #fff;
 }
 
+.error-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #b71c1c;
+  color: white;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  z-index: 50;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.error-banner-text {
+  margin: 0;
+  font-size: 14px;
+  flex: 1;
+}
+
+.error-banner-dismiss {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.error-banner-dismiss:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .editor-btn .material-icons {
   font-size: 18px;
 }

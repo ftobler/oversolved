@@ -4,17 +4,28 @@
   pointer-events: none;
   z-index: 100;
   opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+  background: rgba(17, 17, 17, 0.4);
 }
 
 .loading-overlay.visible {
   opacity: 1;
+  pointer-events: auto;
+}
+
+.loading-overlay-content {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
 }
 
 .md3-spinner-container {
-  position: absolute;
-  left: 50%;
-  top: 85%;
-  transform: translate(-50%, -50%);
+  position: relative;
   width: 48px;
   height: 48px;
 }
@@ -34,6 +45,15 @@
 .md3-spinner-path {
   stroke: #0061a4;
   animation: md3-dash 1.5s cubic-bezier(0.2, 0, 0, 1) infinite;
+}
+
+.loading-message {
+  font-size: 14px;
+  color: #ccc;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-align: center;
+  margin: 0;
 }
 
 @keyframes md3-rotate {

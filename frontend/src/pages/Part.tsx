@@ -1243,8 +1243,12 @@ useEffect(() => {
               <button className="solve-error-dismiss" onClick={() => setSolveError(null)}>×</button>
             </div>
           )}
-          {loading && <p className="status">Loading document...</p>}
-          {error && <p className="status error">Error: {error}</p>}
+          {error && (
+            <div className="error-banner">
+              <p className="error-banner-text">Error loading document: {error}</p>
+              <button className="error-banner-dismiss" onClick={() => setError(null)}>×</button>
+            </div>
+          )}
           {!loading && !error && (
             <>
               {mode === 'code' && (
@@ -1259,7 +1263,7 @@ useEffect(() => {
                 <div style={{ position: 'relative', width: '100%', height: '100%' }}>
                   <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={effectiveVisibleBodies} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} partStyle={partStyle} ghostMode={ghostMode} />
 
-                  <LoadingOverlay />
+                  <LoadingOverlay isDocumentLoading={loading} />
                 </div>
               )}
             </>
