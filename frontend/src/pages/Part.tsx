@@ -1170,6 +1170,9 @@ useEffect(() => {
         <button className="toolbar-btn" title="Undo" onClick={handleUndo} disabled={undoStack.length === 0}>
           <span className="material-icons-outlined">undo</span>
         </button>
+        <button className="toolbar-btn" title="Redo" onClick={handleRedo} disabled={redoStack.length === 0}>
+          <span className="material-icons-outlined">redo</span>
+        </button>
         <button className="toolbar-btn" title="Save" onClick={handleSave} disabled={readOnly}>
           <span className="material-icons-outlined">save</span>
         </button>
