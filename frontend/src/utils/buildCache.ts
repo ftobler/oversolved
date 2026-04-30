@@ -1,9 +1,8 @@
 import type { PartDoc, BuildResponse, PartFeature } from '../types/cad'
-import { getRecord, saveRecord, deleteByDocId, clearAll } from './indexedDb'
 
-const CACHE_TTL_MS = 5 * 60 * 1000  // 5 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000
 
-interface CacheEntry {
+export interface CacheEntry {
   cache_key: string
   doc_id: string
   feature_spec_hash: string
@@ -12,6 +11,8 @@ interface CacheEntry {
   pick_boundary: number | null
   buildResponse: BuildResponse
 }
+
+const cache = new Map<string, CacheEntry>()
 
 export async function computeCacheKey(
   docId: string,
@@ -36,10 +37,8 @@ export async function getCachedBuildResponse(
 ): Promise<{ entry: CacheEntry; isFresh: boolean } | null> {
   const features = doc.features ?? []
   const key = await computeCacheKey(docId, features, rollbackPosition, pickBoundary)
-  const record = await getRecord(key)
-  if (!record) return null
-
-  const entry = record as CacheEntry
+  const entry = cache.get(key)
+  if (!entry) return null
   const age = Date.now() - entry.timestamp
   const isFresh = age < CACHE_TTL_MS
   return { entry, isFresh }
@@ -63,15 +62,31 @@ export async function cacheBuildResponse(
     pick_boundary: pickBoundary,
     buildResponse: response,
   }
-  await saveRecord(entry)
+  cache.set(key, entry)
 }
 
 export async function invalidateDocCache(docId: string): Promise<void> {
-  await deleteByDocId(docId)
+  for (const [key, entry] of cache) {
+    if (entry.doc_id === docId) {
+      cache.delete(key)
+    }
+  }
 }
 
 export async function invalidateAllCache(): Promise<void> {
-  await clearAll()
+  cache.clear()
+}
+
+export async function getAllCachedEntries(): Promise<CacheEntry[]> {
+  return Array.from(cache.values())
+}
+
+export async function deleteCacheEntry(key: string): Promise<void> {
+  cache.delete(key)
+}
+
+export function _getCache(): Map<string, CacheEntry> {
+  return cache
 }
 
 export function formatCacheAge(timestamp: number): string {

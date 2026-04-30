@@ -1,23 +1,40 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import CacheInspector from '../CacheInspector'
-import * as indexedDb from '../../utils/indexedDb'
+import { cacheBuildResponse, invalidateAllCache } from '../../utils/buildCache'
+import type { PartDoc, BuildResponse } from '../../types/cad'
+
+function makeDoc(features?: object[]): PartDoc {
+  return { features: features ?? [{ id: 'sketch0', kind: 'sketch' }] } as PartDoc
+}
+
+function makeResponse(overrides?: object): BuildResponse {
+  return { solve_ms: 42, result: {}, bodies: {}, ...overrides }
+}
+
+async function saveEntry(docId: string, extra?: object) {
+  await cacheBuildResponse(
+    docId, makeDoc(), 0, null,
+    makeResponse(extra),
+  )
+}
 
 describe('CacheInspector', () => {
   beforeEach(async () => {
-    await indexedDb.clearAll()
+    await invalidateAllCache()
   })
 
-  it('renders frontend and backend tabs', () => {
+  it('renders frontend, l1, and l2 tabs', () => {
     render(<CacheInspector />)
     expect(screen.getByRole('button', { name: /Frontend/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Backend/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /L1 Memory/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /L2 Disk/i })).toBeInTheDocument()
   })
 
-  it('switches to backend tab on click', () => {
+  it('switches to l1 tab on click', () => {
     render(<CacheInspector />)
-    fireEvent.click(screen.getByRole('button', { name: /Backend/i }))
-    expect(screen.getByRole('button', { name: /Backend/i })).toHaveClass('active')
+    fireEvent.click(screen.getByRole('button', { name: /L1 Memory/i }))
+    expect(screen.getByRole('button', { name: /L1 Memory/i })).toHaveClass('active')
   })
 
   it('shows empty frontend cache message', async () => {
@@ -27,17 +44,8 @@ describe('CacheInspector', () => {
     })
   })
 
-  it('displays indexeddb entries after loading', async () => {
-    const entry = {
-      cache_key: 'doc1:abc',
-      doc_id: 'doc1',
-      feature_spec_hash: 'abc',
-      timestamp: Date.now(),
-      rollback_position: 0,
-      pick_boundary: null,
-      buildResponse: { solve_ms: 42, result: {}, bodies: {} },
-    }
-    await indexedDb.saveRecord(entry)
+  it('displays frontend cached entries after loading', async () => {
+    await saveEntry('doc1')
 
     render(<CacheInspector />)
     await waitFor(() => {
@@ -45,25 +53,9 @@ describe('CacheInspector', () => {
     })
   })
 
-  it('filters entries by search query', async () => {
-    await indexedDb.saveRecord({
-      cache_key: 'doc1:abc',
-      doc_id: 'doc1',
-      feature_spec_hash: 'abc',
-      timestamp: Date.now(),
-      rollback_position: 0,
-      pick_boundary: null,
-      buildResponse: { solve_ms: 42, result: {}, bodies: {} },
-    })
-    await indexedDb.saveRecord({
-      cache_key: 'doc2:def',
-      doc_id: 'doc2',
-      feature_spec_hash: 'def',
-      timestamp: Date.now(),
-      rollback_position: 0,
-      pick_boundary: null,
-      buildResponse: { solve_ms: 42, result: {}, bodies: {} },
-    })
+  it('filters frontend entries by search query', async () => {
+    await saveEntry('doc1')
+    await saveEntry('doc2')
 
     render(<CacheInspector />)
     await waitFor(() => {
@@ -80,15 +72,7 @@ describe('CacheInspector', () => {
   })
 
   it('expands entry details on click', async () => {
-    await indexedDb.saveRecord({
-      cache_key: 'doc1:abc',
-      doc_id: 'doc1',
-      feature_spec_hash: 'abc',
-      timestamp: Date.now(),
-      rollback_position: 0,
-      pick_boundary: null,
-      buildResponse: { solve_ms: 42, result: {}, bodies: {} },
-    })
+    await saveEntry('doc1')
 
     render(<CacheInspector />)
     await waitFor(() => {
@@ -101,16 +85,8 @@ describe('CacheInspector', () => {
     })
   })
 
-  it('deletes entry from indexeddb', async () => {
-    await indexedDb.saveRecord({
-      cache_key: 'doc1:abc',
-      doc_id: 'doc1',
-      feature_spec_hash: 'abc',
-      timestamp: Date.now(),
-      rollback_position: 0,
-      pick_boundary: null,
-      buildResponse: { solve_ms: 42, result: {}, bodies: {} },
-    })
+  it('deletes entry from frontend cache', async () => {
+    await saveEntry('doc1')
 
     render(<CacheInspector />)
     await waitFor(() => {
@@ -123,34 +99,40 @@ describe('CacheInspector', () => {
     })
   })
 
-  it('shows backend l1 and l2 sections', async () => {
+  it('shows l1 entries when on l1 tab', async () => {
     global.fetch = vi.fn().mockResolvedValue({
-      json: async () => ({ l1: [], l2: [] }),
-    } as unknown as Response)
-
-    render(<CacheInspector />)
-    fireEvent.click(screen.getByRole('button', { name: /Backend/i }))
-
-    await waitFor(() => {
-      expect(screen.getByText(/L1 Memory/i)).toBeInTheDocument()
-      expect(screen.getByText(/L2 Disk/i)).toBeInTheDocument()
-    })
-  })
-
-  it('filters backend entries by search query', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: async () => ({
         l1: [{ doc_id: 'doc_a', feature_order: [], checkpoint_count: 1, accessed_at: new Date().toISOString(), shape_size_estimate: 0 }],
-        l2: [{ doc_id: 'doc_b', file_path: '/tmp/doc_b.json', file_size: 100, created_at: new Date().toISOString(), modified_at: new Date().toISOString(), checkpoint_count: 1 }],
+        l2: [],
       }),
     } as unknown as Response)
 
     render(<CacheInspector />)
-    fireEvent.click(screen.getByRole('button', { name: /Backend/i }))
+    fireEvent.click(screen.getByRole('button', { name: /L1 Memory/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/doc_a/)).toBeInTheDocument()
-      expect(screen.getByText(/doc_b/)).toBeInTheDocument()
+    })
+  })
+
+  it('filters l1 entries by search query', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        l1: [
+          { doc_id: 'doc_a', feature_order: [], checkpoint_count: 1, accessed_at: new Date().toISOString(), shape_size_estimate: 0 },
+          { doc_id: 'doc_b', feature_order: [], checkpoint_count: 1, accessed_at: new Date().toISOString(), shape_size_estimate: 0 },
+        ],
+        l2: [],
+      }),
+    } as unknown as Response)
+
+    render(<CacheInspector />)
+    fireEvent.click(screen.getByRole('button', { name: /L1 Memory/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/doc_a/)).toBeInTheDocument()
     })
 
     const searchInput = screen.getByPlaceholderText(/Search by doc_id/i)
@@ -162,10 +144,28 @@ describe('CacheInspector', () => {
     })
   })
 
+  it('shows l2 entries when on l2 tab', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        l1: [],
+        l2: [{ doc_id: 'doc_x', file_path: '/tmp/doc_x.json', file_size: 100, created_at: new Date().toISOString(), modified_at: new Date().toISOString(), checkpoint_count: 1 }],
+      }),
+    } as unknown as Response)
+
+    render(<CacheInspector />)
+    fireEvent.click(screen.getByRole('button', { name: /L2 Disk/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/doc_x/)).toBeInTheDocument()
+    })
+  })
+
   it('loads l2 json preview on view json click', async () => {
     global.fetch = vi.fn().mockImplementation((url: string) => {
       if (url === '/api/cache/inspect') {
         return Promise.resolve({
+          ok: true,
           json: async () => ({
             l1: [],
             l2: [{ doc_id: 'doc_x', file_path: '/tmp/doc_x.json', file_size: 100, created_at: new Date().toISOString(), modified_at: new Date().toISOString(), checkpoint_count: 1 }],
@@ -174,14 +174,15 @@ describe('CacheInspector', () => {
       }
       if (url === '/api/cache/inspect/l2/doc_x') {
         return Promise.resolve({
+          ok: true,
           text: async () => '{"checkpoints": {}}',
         } as unknown as Response)
       }
-      return Promise.resolve({} as Response)
+      return Promise.resolve({ ok: true } as unknown as Response)
     })
 
     render(<CacheInspector />)
-    fireEvent.click(screen.getByRole('button', { name: /Backend/i }))
+    fireEvent.click(screen.getByRole('button', { name: /L2 Disk/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/doc_x/)).toBeInTheDocument()

@@ -342,6 +342,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
       const solvePayload: Record<string, unknown> = {
         ...d,
+        ...(uuid ? { id: uuid } : {}),
         features: solveFeatures,
         rollback_position: effectiveRollback,
         request_id: currentRequestId,

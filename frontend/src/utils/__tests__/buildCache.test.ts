@@ -7,6 +7,7 @@ import {
   invalidateAllCache,
   formatCacheAge,
 } from '../buildCache'
+import type { CacheEntry } from '../buildCache'
 import type { PartDoc, BuildResponse, PartFeature } from '../../types/cad'
 
 describe('computeCacheKey', () => {
@@ -81,10 +82,9 @@ describe('cacheBuildResponse / getCachedBuildResponse', () => {
 
     // Manually age the entry beyond 5 minutes
     const key = await computeCacheKey('doc1', doc.features ?? [], 1, null)
-    const { getRecord, saveRecord } = await import('../indexedDb')
-    const entry = await getRecord(key) as { timestamp: number }
+    const { _getCache } = await import('../buildCache')
+    const entry = _getCache().get(key) as CacheEntry
     entry.timestamp = Date.now() - 6 * 60 * 1000
-    await saveRecord(entry)
 
     const cached = await getCachedBuildResponse('doc1', doc, 1, null)
     expect(cached).not.toBeNull()

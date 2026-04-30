@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getAllRecords, deleteRecord } from '../utils/indexedDb'
+import { getAllCachedEntries, deleteCacheEntry, invalidateAllCache } from '../utils/buildCache'
 import type { BuildResponse } from '../types/cad'
 
 interface CacheEntry {
@@ -55,7 +55,7 @@ function FrontendTab({ searchQuery }: { searchQuery: string }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const all = await getAllRecords()
+      const all = await getAllCachedEntries()
       setEntries(all as CacheEntry[])
     } finally {
       setLoading(false)
@@ -81,8 +81,13 @@ function FrontendTab({ searchQuery }: { searchQuery: string }) {
   }, 0)
 
   const handleDelete = async (key: string) => {
-    await deleteRecord(key)
+    await deleteCacheEntry(key)
     setEntries(prev => prev.filter(e => e.cache_key !== key))
+  }
+
+  const handleClear = async () => {
+    await invalidateAllCache()
+    await load()
   }
 
   const handleDownload = (entry: CacheEntry) => {
@@ -99,10 +104,11 @@ function FrontendTab({ searchQuery }: { searchQuery: string }) {
   return (
     <div className="cache-tab">
       <div className="cache-stats">
-        IndexedDB: {entries.length} entries, {formatBytes(totalSize)}
+        Memory: {entries.length} entries, {formatBytes(totalSize)}
       </div>
       <div className="cache-actions-bar">
         <button onClick={load}>Refresh</button>
+        <button onClick={handleClear}>Clear</button>
       </div>
       {loading && <div className="cache-loading">Loading...</div>}
       <div className="cache-entries">
@@ -148,22 +154,26 @@ function FrontendTab({ searchQuery }: { searchQuery: string }) {
   )
 }
 
-function BackendTab({ searchQuery }: { searchQuery: string }) {
+function L1Tab({ searchQuery }: { searchQuery: string }) {
   const [l1, setL1] = useState<L1Entry[]>([])
-  const [l2, setL2] = useState<L2Entry[]>([])
   const [loading, setLoading] = useState(true)
-  const [l2Preview, setL2Preview] = useState<Record<string, string>>({})
+  const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await fetch('/api/cache/inspect')
+      if (!res.ok) {
+        setError(`${res.status} ${res.statusText}`)
+        setL1([])
+        return
+      }
       const data = await res.json()
       setL1(data.l1 || [])
-      setL2(data.l2 || [])
-    } catch {
+    } catch (e) {
       setL1([])
-      setL2([])
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
@@ -173,22 +183,18 @@ function BackendTab({ searchQuery }: { searchQuery: string }) {
     load()
   }, [load])
 
-  const handleLoadL2Json = async (docId: string) => {
-    if (l2Preview[docId]) {
-      setL2Preview(prev => ({ ...prev, [docId]: '' }))
-      return
-    }
-    try {
-      const res = await fetch(`/api/cache/inspect/l2/${docId}`)
-      const text = await res.text()
-      setL2Preview(prev => ({ ...prev, [docId]: text }))
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setL2Preview(prev => ({ ...prev, [docId]: `Error: ${message}` }))
-    }
+  const handleClear = async () => {
+    await Promise.all(l1.map(entry =>
+      fetch('/api/cache/flush', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doc_id: entry.doc_id, level: 'l1' }),
+      })
+    ))
+    await load()
   }
 
-  const handleDeleteL1 = async (docId: string) => {
+  const handleDelete = async (docId: string) => {
     await fetch('/api/cache/flush', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -197,7 +203,89 @@ function BackendTab({ searchQuery }: { searchQuery: string }) {
     setL1(prev => prev.filter(e => e.doc_id !== docId))
   }
 
-  const handleDeleteL2 = async (docId: string) => {
+  const filtered = l1.filter(e => e.doc_id.includes(searchQuery))
+  const total = l1.reduce((sum, e) => sum + e.shape_size_estimate, 0)
+
+  return (
+    <div className="cache-tab">
+      <div className="cache-stats">
+        {l1.length} entries, ~{formatBytes(total)}
+      </div>
+      <div className="cache-actions-bar">
+        <button onClick={load}>Refresh</button>
+        <button onClick={handleClear}>Clear</button>
+      </div>
+      {loading && <div className="cache-loading">Loading...</div>}
+      {error && <div className="cache-empty">Error: {error}</div>}
+      <div className="cache-entries">
+        {filtered.map(entry => (
+          <div key={entry.doc_id} className="cache-entry">
+            <div className="cache-entry-header">
+              <span className="cache-entry-id">{entry.doc_id}</span>
+              <span className="cache-entry-meta">
+                {entry.checkpoint_count} checkpoints
+              </span>
+            </div>
+            <div className="cache-entry-sub">
+              Accessed: {formatTime(new Date(entry.accessed_at).getTime())}
+            </div>
+            <div className="cache-entry-actions">
+              <button className="cache-delete-btn" onClick={() => handleDelete(entry.doc_id)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && !loading && (
+          <div className="cache-empty">No entries</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function L2Tab({ searchQuery }: { searchQuery: string }) {
+  const [l2, setL2] = useState<L2Entry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<Record<string, string>>({})
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/cache/inspect')
+      if (!res.ok) {
+        setError(`${res.status} ${res.statusText}`)
+        setL2([])
+        return
+      }
+      const data = await res.json()
+      setL2(data.l2 || [])
+    } catch (e) {
+      setL2([])
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const handleClear = async () => {
+    await Promise.all(l2.map(entry =>
+      fetch('/api/cache/flush', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doc_id: entry.doc_id, level: 'l2' }),
+      })
+    ))
+    await load()
+  }
+
+  const handleDelete = async (docId: string) => {
     await fetch('/api/cache/flush', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -206,94 +294,76 @@ function BackendTab({ searchQuery }: { searchQuery: string }) {
     setL2(prev => prev.filter(e => e.doc_id !== docId))
   }
 
-  const filteredL1 = l1.filter(e => e.doc_id.includes(searchQuery))
-  const filteredL2 = l2.filter(e => e.doc_id.includes(searchQuery))
+  const handleLoadJson = async (docId: string) => {
+    if (preview[docId]) {
+      setPreview(prev => ({ ...prev, [docId]: '' }))
+      return
+    }
+    try {
+      const res = await fetch(`/api/cache/inspect/l2/${docId}`)
+      const text = await res.text()
+      setPreview(prev => ({ ...prev, [docId]: text }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setPreview(prev => ({ ...prev, [docId]: `Error: ${message}` }))
+    }
+  }
 
-  const l1Total = l1.reduce((sum, e) => sum + e.shape_size_estimate, 0)
-  const l2Total = l2.reduce((sum, e) => sum + e.file_size, 0)
+  const filtered = l2.filter(e => e.doc_id.includes(searchQuery))
+  const total = l2.reduce((sum, e) => sum + e.file_size, 0)
 
   return (
     <div className="cache-tab">
+      <div className="cache-stats">
+        {l2.length} entries, {formatBytes(total)}
+      </div>
       <div className="cache-actions-bar">
         <button onClick={load}>Refresh</button>
+        <button onClick={handleClear}>Clear</button>
       </div>
       {loading && <div className="cache-loading">Loading...</div>}
-
-      <div className="cache-section">
-        <div className="cache-stats">
-          L1 Memory: {l1.length} entries, ~{formatBytes(l1Total)}
-        </div>
-        <div className="cache-entries">
-          {filteredL1.map(entry => (
+      {error && <div className="cache-empty">Error: {error}</div>}
+      <div className="cache-entries">
+        {filtered.map(entry => {
+          const entryPreview = preview[entry.doc_id]
+          return (
             <div key={entry.doc_id} className="cache-entry">
               <div className="cache-entry-header">
-                <span className="cache-entry-id">{entry.doc_id}</span>
-                <span className="cache-entry-meta">
-                  {entry.checkpoint_count} checkpoints
-                </span>
+                <span className="cache-entry-id">{entry.doc_id}.json</span>
+                <span className="cache-entry-meta">{formatBytes(entry.file_size)}</span>
               </div>
               <div className="cache-entry-sub">
-                Accessed: {formatTime(new Date(entry.accessed_at).getTime())}
+                Created: {formatTime(new Date(entry.created_at).getTime())} |
+                Modified: {formatTime(new Date(entry.modified_at).getTime())} |
+                Checkpoints: {entry.checkpoint_count}
               </div>
               <div className="cache-entry-actions">
-                <button className="cache-delete-btn" onClick={() => handleDeleteL1(entry.doc_id)}>
-                  Delete L1
+                <button onClick={() => handleLoadJson(entry.doc_id)}>
+                  {entryPreview ? 'Hide JSON' : 'View JSON'}
+                </button>
+                <button className="cache-delete-btn" onClick={() => handleDelete(entry.doc_id)}>
+                  Delete
                 </button>
               </div>
+              {entryPreview && (
+                <pre className="cache-entry-preview">
+                  {entryPreview.slice(0, 5000)}
+                  {entryPreview.length > 5000 && '...'}
+                </pre>
+              )}
             </div>
-          ))}
-          {filteredL1.length === 0 && !loading && (
-            <div className="cache-empty">No L1 entries</div>
-          )}
-        </div>
-      </div>
-
-      <div className="cache-section">
-        <div className="cache-stats">
-          L2 Disk: {l2.length} entries, {formatBytes(l2Total)}
-        </div>
-        <div className="cache-entries">
-          {filteredL2.map(entry => {
-            const preview = l2Preview[entry.doc_id]
-            return (
-              <div key={entry.doc_id} className="cache-entry">
-                <div className="cache-entry-header">
-                  <span className="cache-entry-id">{entry.doc_id}.json</span>
-                  <span className="cache-entry-meta">{formatBytes(entry.file_size)}</span>
-                </div>
-                <div className="cache-entry-sub">
-                  Created: {formatTime(new Date(entry.created_at).getTime())} |
-                  Modified: {formatTime(new Date(entry.modified_at).getTime())} |
-                  Checkpoints: {entry.checkpoint_count}
-                </div>
-                <div className="cache-entry-actions">
-                  <button onClick={() => handleLoadL2Json(entry.doc_id)}>
-                    {preview ? 'Hide JSON' : 'View JSON'}
-                  </button>
-                  <button className="cache-delete-btn" onClick={() => handleDeleteL2(entry.doc_id)}>
-                    Delete L2
-                  </button>
-                </div>
-                {preview && (
-                  <pre className="cache-entry-preview">
-                    {preview.slice(0, 5000)}
-                    {preview.length > 5000 && '...'}
-                  </pre>
-                )}
-              </div>
-            )
-          })}
-          {filteredL2.length === 0 && !loading && (
-            <div className="cache-empty">No L2 entries</div>
-          )}
-        </div>
+          )
+        })}
+        {filtered.length === 0 && !loading && (
+          <div className="cache-empty">No entries</div>
+        )}
       </div>
     </div>
   )
 }
 
 export default function CacheInspector() {
-  const [activeTab, setActiveTab] = useState<'frontend' | 'backend'>('frontend')
+  const [activeTab, setActiveTab] = useState<'frontend' | 'l1' | 'l2'>('frontend')
   const [searchQuery, setSearchQuery] = useState('')
 
   return (
@@ -306,10 +376,16 @@ export default function CacheInspector() {
           Frontend
         </button>
         <button
-          className={`cache-inspector-tab ${activeTab === 'backend' ? 'active' : ''}`}
-          onClick={() => setActiveTab('backend')}
+          className={`cache-inspector-tab ${activeTab === 'l1' ? 'active' : ''}`}
+          onClick={() => setActiveTab('l1')}
         >
-          Backend
+          L1 Memory
+        </button>
+        <button
+          className={`cache-inspector-tab ${activeTab === 'l2' ? 'active' : ''}`}
+          onClick={() => setActiveTab('l2')}
+        >
+          L2 Disk
         </button>
       </div>
       <div className="cache-search-bar">
@@ -319,10 +395,10 @@ export default function CacheInspector() {
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
         />
-        <button onClick={() => setSearchQuery('')}>Reset</button>
       </div>
       {activeTab === 'frontend' && <FrontendTab searchQuery={searchQuery} />}
-      {activeTab === 'backend' && <BackendTab searchQuery={searchQuery} />}
+      {activeTab === 'l1' && <L1Tab searchQuery={searchQuery} />}
+      {activeTab === 'l2' && <L2Tab searchQuery={searchQuery} />}
     </div>
   )
 }
