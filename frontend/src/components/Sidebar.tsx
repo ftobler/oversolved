@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react'
+import React, { useState, useRef } from 'react'
 import type { PartFeature, PartDoc, PlaneDef, Mutation, PendingPickField, ExtrudeDirection, ExtrudeOperation, BodyResult } from '../types/cad'
 import { isBodyFeatureResult } from '../types/cad'
 import { normalizeExtrudeSketch, normalizeRevolveSketch } from '../utils/yamlMutations'
@@ -32,9 +32,6 @@ import iconEyeOffIcon from '../assets/icons/icon-eye-off.svg'
 import exitSketchIcon from '../assets/icons/exit-sketch.svg'
 
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
-const MIN_SPLIT_PERCENT = 20
-const MAX_SPLIT_PERCENT = 80
-const DEFAULT_SPLIT_PERCENT = 70
 
 interface SidebarProps {
   features: PartFeature[]
@@ -100,36 +97,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isRebuilding,
   featureTimings,
 }) => {
-  const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
-  const isDraggingRef = useRef(false)
   const sidebarRef = useRef<HTMLElement>(null)
   const [draggedFeatureId, setDraggedFeatureId] = useState<string | null>(null)
   const [draggedRollback, setDraggedRollback] = useState(false)
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
-
-  const handleMouseDown = useCallback(() => {
-    isDraggingRef.current = true
-  }, [])
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDraggingRef.current || !sidebarRef.current) return
-    const rect = sidebarRef.current.getBoundingClientRect()
-    const newPercent = ((e.clientY - rect.top) / rect.height) * 100
-    setSplitPercent(Math.max(MIN_SPLIT_PERCENT, Math.min(MAX_SPLIT_PERCENT, newPercent)))
-  }, [])
-
-  const handleMouseUp = useCallback(() => {
-    isDraggingRef.current = false
-  }, [])
-
-  useEffect(() => {
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [handleMouseMove, handleMouseUp])
 
   const getFeatureIcon = (kind: string | undefined) => {
     const lowerKind = kind?.toLowerCase()
@@ -490,10 +461,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }
 
   return (
-    <aside className="doc-sidebar" ref={sidebarRef}>
+    <div className="sidebar-panels" ref={sidebarRef}>
       <div
         className="sidebar-top"
-        style={{ height: `${splitPercent}%` }}
         onDragOver={(e) => {
           if (!draggedRollback) return
           e.preventDefault()
@@ -1076,12 +1046,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </ul>
       </div>
-      <div
-        className="resize-handle"
-        onMouseDown={handleMouseDown}
-        title="Drag to resize"
-      />
-      <div className="sidebar-bottom" style={{ height: `${100 - splitPercent}%` }}>
+      <div className="sidebar-bottom">
         <div className="sidebar-header">Parts</div>
         <ul className="parts-list">
           {Object.keys(bodies || {}).length === 0 ? (
@@ -1135,6 +1100,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </ul>
       </div>
-    </aside>
+    </div>
   )
 }
