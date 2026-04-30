@@ -27,14 +27,14 @@ export default function Settings() {
                 Periodic Tasks
                 <span className="admin-badge">admin</span>
               </NavLink>
-              <span className="settings-nav-item">
+              <NavLink to="/visualizer" className="settings-nav-item">
                 Sketch Visualizer
                 <span className="admin-badge">admin</span>
-              </span>
-              <span className="settings-nav-item">
+              </NavLink>
+              <NavLink to="/registry" className="settings-nav-item">
                 Registry
                 <span className="admin-badge">admin</span>
-              </span>
+              </NavLink>
             </>
           )}
         </aside>
