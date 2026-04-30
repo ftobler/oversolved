@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrthographicCamera } from '@react-three/drei'
+import { OrthographicCamera, Line } from '@react-three/drei'
 import * as THREE from 'three'
 import type { SketchData, Feature, Sketch, BodyResult, PlaneDef } from '../types/cad'
 import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
@@ -117,6 +117,62 @@ function calculatePlaneSize(
 
   // Final fallback
   return FALLBACK_SIZE
+}
+
+function getActiveSketchPlane(activeFeatureId: string | undefined, features: Feature[] | undefined): string | null {
+  if (!activeFeatureId || !features) return null
+  const activeFeature = features.find(f => f.id === activeFeatureId)
+  if (!activeFeature || activeFeature.kind !== 'sketch') return null
+  return activeFeature.plane || null
+}
+
+interface SketchPlaneDisplayProps {
+  planeQuery: string
+  size: number
+}
+
+function SketchPlaneDisplay({ planeQuery, size }: SketchPlaneDisplayProps) {
+  const match = planeQuery.match(/@([^/]+)/)
+  if (!match) return null
+
+  const planeId = match[1]
+
+  let rotation: [number, number, number] = [0, 0, 0]
+  if (planeId === 'builtin_plane_front') rotation = [0, 0, 0]
+  else if (planeId === 'builtin_plane_top') rotation = [-Math.PI/2, 0, 0]
+  else if (planeId === 'builtin_plane_right') rotation = [0, Math.PI/2, 0]
+  else {
+    return null
+  }
+
+  const ph = size / 2
+  const planeBorder: [number, number, number][] = [
+    [-ph, -ph, 0], [ph, -ph, 0], [ph, ph, 0], [-ph, ph, 0], [-ph, -ph, 0],
+  ]
+
+  return (
+    <group rotation={rotation}>
+      <mesh raycast={() => null}>
+        <planeGeometry args={[size, size]} />
+        <meshBasicMaterial
+          color="#0077ff"
+          transparent
+          opacity={0.08}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+          wireframe={false}
+        />
+      </mesh>
+
+      <Line
+        points={planeBorder}
+        color="#0077ff"
+        lineWidth={2}
+        transparent
+        opacity={0.3}
+      />
+    </group>
+  )
 }
 
 export interface ViewportHandle {
@@ -398,6 +454,18 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
             if (!solveResult?.plane_transform) return null
             return <UserDefinedPlane key={f.id} featureId={f.id} label={f.label || f.id} planeTransform={solveResult.plane_transform} size={planeSizes[f.id]} />
           })}
+
+        {(() => {
+          const sketchPlaneQuery = getActiveSketchPlane(activeFeatureId, features)
+          if (!sketchPlaneQuery) return null
+
+          const planeSize = calculatePlaneSize(
+            undefined,
+            bodies,
+          ) || 100
+
+          return <SketchPlaneDisplay key="sketch-plane" planeQuery={sketchPlaneQuery} size={planeSize} />
+        })()}
 
         {activeSketchFeatures.map(f => {
           const solveResult = solveResults?.[f.id]
