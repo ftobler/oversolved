@@ -520,7 +520,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <li
                 key={feature.id}
                 className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(`@${feature.id}`) ? 'selected' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${dropTargetIndex === index ? 'drop-target-top' : ''} ${dropTargetIndex === index + 1 ? 'drop-target-bottom' : ''}`}
-                draggable={!BUILT_IN_IDS.has(feature.id)}
+                draggable={!BUILT_IN_IDS.has(feature.id) && feature.id !== editingFeatureId}
                 onDragStart={(e) => {
                   if (BUILT_IN_IDS.has(feature.id)) return
                   setDraggedFeatureId(feature.id)
