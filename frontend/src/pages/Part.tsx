@@ -52,6 +52,7 @@ import contextHideIcon from '../assets/icons/context-hide.svg'
 import contextDeleteIcon from '../assets/icons/context-delete.svg'
 import contextEditIcon from '../assets/icons/context-edit.svg'
 import contextColorIcon from '../assets/icons/context-color.svg'
+import contextCameraIcon from '../assets/icons/context-camera.svg'
 
 // IDs of built-in features that cannot be deleted.
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
@@ -1079,8 +1080,14 @@ useEffect(() => {
         label: 'Exit Sketch',
         icon: contextExitIcon,
         onClick: handleExitSketch,
-        className: 'right-click-menu-item--exit',
       })
+      if (featureId === activeSketchFeatureId) {
+        items.push({
+          label: 'Align camera',
+          icon: contextCameraIcon,
+          onClick: handleAlignCameraToSketchPlane,
+        })
+      }
     }
 
     if (featureId && featureId !== activeSketchFeatureId) {

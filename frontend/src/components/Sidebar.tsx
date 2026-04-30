@@ -866,16 +866,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {feature.kind === 'sketch' && feature.id === editingFeatureId && (
                       <>
                         <button
-                          className="sketch-edit-btn"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onAlignCameraToSketchPlane?.()
-                          }}
-                          title="Align camera to sketch plane"
-                        >
-                          <span className="material-icons-outlined">photo_camera</span>
-                        </button>
-                        <button
                           className="exit-sketch-btn"
                           onClick={(e) => { e.stopPropagation(); onExitEditSketch() }}
                           title="Exit sketch"
