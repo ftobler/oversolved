@@ -963,6 +963,18 @@ useEffect(() => {
     exitEditFeature()
   }, [exitEditFeature])
 
+  const handleAlignCameraToSketchPlane = useCallback(() => {
+    if (!activeSketchFeatureId || !features) return
+
+    const activeSketch = features.find(f => f.id === activeSketchFeatureId)
+    if (!activeSketch || activeSketch.kind !== 'sketch') return
+
+    const planeId = activeSketch.plane || 'builtin_plane_front'
+    const cleanPlaneId = planeId.replace(/^@/, '')
+
+    viewportRef.current?.alignCameraToPlane(cleanPlaneId)
+  }, [activeSketchFeatureId, features])
+
   // When the sketch-on-face plane selection completes (planeSelectionFeatureId clears),
   // open the pending sketch for editing if one was created via handleAddSketchOnFace.
   const pendingSketchOnFaceId = useRef<string | null>(null)
@@ -1189,6 +1201,7 @@ useEffect(() => {
           onToggleSelect={toggleNormalSelection}
           onEnterEditSketch={enterEditSketch}
           onExitEditSketch={exitEditSketch}
+          onAlignCameraToSketchPlane={handleAlignCameraToSketchPlane}
           onEnterEditFeature={enterEditFeature}
           onExitEditFeature={exitEditFeature}
           onToggleVisibility={toggleVisibility}

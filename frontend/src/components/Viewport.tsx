@@ -179,6 +179,7 @@ export interface ViewportHandle {
   captureScreenshot: () => Promise<string | null>
   captureScreenshotForSaving: () => Promise<string | null>
   autoZoomToFit: () => void
+  alignCameraToPlane: (planeId: string) => void
 }
 
 export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
@@ -349,12 +350,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
     camera.lookAt(0, 0, 0)
     camera.updateProjectionMatrix()
-
-    if (ctrlRef.current) {
-      ctrlRef.current.target.set(0, 0, 0)
-      ctrlRef.current.update()
-    }
-  }, [cameraRef, ctrlRef])
+  }, [cameraRef])
 
   useImperativeHandle(ref, () => ({ captureScreenshot, captureScreenshotForSaving, autoZoomToFit, alignCameraToPlane }), [captureScreenshot, captureScreenshotForSaving, autoZoomToFit, alignCameraToPlane])
 

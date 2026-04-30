@@ -274,6 +274,33 @@
   color: #e060b0;
 }
 
+.sketch-edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #0af;
+  padding: 2px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.sketch-edit-btn .material-icons-outlined {
+  font-size: 16px;
+}
+
+.sketch-edit-btn:hover {
+  background: rgba(0, 170, 255, 0.1);
+}
+
+.sketch-edit-btn:active {
+  background: rgba(0, 170, 255, 0.2);
+}
+
 .features-list {
   list-style: none;
   margin: 0;

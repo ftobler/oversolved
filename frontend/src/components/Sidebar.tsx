@@ -48,6 +48,7 @@ interface SidebarProps {
   onToggleSelect: (id: string) => void
   onEnterEditSketch: (featureId: string) => void
   onExitEditSketch: () => void
+  onAlignCameraToSketchPlane?: () => void
   onEnterEditFeature: (featureId: string) => void
   onExitEditFeature: () => void
   onToggleVisibility: (featureId: string) => void
@@ -82,6 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleSelect,
   onEnterEditSketch,
   onExitEditSketch,
+  onAlignCameraToSketchPlane,
   onEnterEditFeature,
   onExitEditFeature,
   onToggleVisibility,
@@ -796,13 +798,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </button>
                     )}
                     {feature.kind === 'sketch' && feature.id === editingFeatureId && (
-                      <button
-                        className="exit-sketch-btn"
-                        onClick={(e) => { e.stopPropagation(); onExitEditSketch() }}
-                        title="Exit sketch"
-                      >
-                        <img src={exitSketchIcon} alt="Exit" />
-                      </button>
+                      <>
+                        <button
+                          className="sketch-edit-btn"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onAlignCameraToSketchPlane?.()
+                          }}
+                          title="Align camera to sketch plane"
+                        >
+                          <span className="material-icons-outlined">photo_camera</span>
+                        </button>
+                        <button
+                          className="exit-sketch-btn"
+                          onClick={(e) => { e.stopPropagation(); onExitEditSketch() }}
+                          title="Exit sketch"
+                        >
+                          <img src={exitSketchIcon} alt="Exit" />
+                        </button>
+                      </>
                     )}
                     {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (
                       <button
