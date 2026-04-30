@@ -322,6 +322,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       // Filter out built-in features for the solve payload.
       const solveFeatures = allFeatures.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
 
+      // Rollback position is an index into the FULL feature list (including builtins).
+      // Backend receives solveFeatures without builtins, so adjust the index.
+      const builtinCount = allFeatures.length - solveFeatures.length
+      const adjustedRollback = Math.max(0, effectiveRollback - builtinCount)
+
       const isPreview = rollbackPosition !== undefined || pickBoundaryRef.current !== null
       const pickBoundary = pickBoundaryRef.current
 
@@ -344,7 +349,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         ...d,
         ...(uuid ? { id: uuid } : {}),
         features: solveFeatures,
-        rollback_position: effectiveRollback,
+        rollback_position: adjustedRollback,
         request_id: currentRequestId,
         is_preview: isPreview,
       }
