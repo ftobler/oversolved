@@ -35,13 +35,13 @@
 
 .sidebar-panels {
   position: absolute;
-  left: 30px;
-  top: calc(30px + 42px);
-  bottom: 30px;
+  left: 20px;
+  top: calc(20px + 42px);
+  bottom: 20px;
   z-index: 10;
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: 20px;
 }
 
 .sidebar-top {
@@ -1183,8 +1183,8 @@
 
 .debug-drawer {
   position: absolute;
-  right: 30px;
-  top: calc(30px + 42px);
+  right: 20px;
+  top: calc(20px + 42px);
   bottom: 150px;
   width: 260px;
   z-index: 10;
