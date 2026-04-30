@@ -381,6 +381,14 @@ export default function Part() {
     }
   }, [doc])
 
+  // Validate rollback position when features change.
+  useEffect(() => {
+    if (rollbackPosition !== null && rollbackPosition > features.length) {
+      setRollbackPosition(features.length)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [features.length])
+
   // Re-solve when rollback position changes (but not on initial mount).
   const rollbackInitializedForSolve = useRef(false)
   const currentFeaturesLength = useRef(features.length)
