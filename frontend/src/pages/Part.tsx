@@ -555,11 +555,11 @@ useEffect(() => {
     const featureId = randomId(18)
     const planeCount = (doc.features ?? []).filter(f => f.kind === 'plane' && !BUILT_IN_IDS.has(f.id)).length
     const label = `plane ${planeCount + 1}`
-    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     // If exactly one face is selected, create an on_face plane directly
     const faceQuery = [...selection].find(id => id.startsWith('?') && id.includes(':face'))
     const definition: import('../types/cad').PlaneDef | undefined = faceQuery ? { mode: 'on_face', face: faceQuery } : undefined
     handleMutation({ type: 'add_plane', featureId, label, definition })
+    setRollbackPosition(features.length + 1)
     setEditingFeatureId(featureId)
   }, [doc, features.length, handleMutation, selection])
 
@@ -567,9 +567,9 @@ useEffect(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `extrude ${Object.keys(bodies).length + 1}`
-    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_extrude', featureId: fid, label, sketchQuery: '', distance: 10 })
+    setRollbackPosition(features.length + 1)
     setEditingFeatureId(fid)
   }, [doc, features, handleMutation, bodies, setPickBoundary])
 
@@ -577,9 +577,9 @@ useEffect(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `revolve ${Object.keys(bodies).length + 1}`
-    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_revolve', featureId: fid, label, sketchQuery: '', angle: 360 })
+    setRollbackPosition(features.length + 1)
     setEditingFeatureId(fid)
   }, [doc, features, handleMutation, bodies, setPickBoundary])
 
@@ -587,9 +587,9 @@ useEffect(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `fillet ${Object.keys(bodies).length + 1}`
-    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_fillet', featureId: fid, label })
+    setRollbackPosition(features.length + 1)
     setEditingFeatureId(fid)
   }, [doc, features, handleMutation, bodies, setPickBoundary])
 
@@ -597,9 +597,9 @@ useEffect(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `chamfer ${Object.keys(bodies).length + 1}`
-    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_chamfer', featureId: fid, label })
+    setRollbackPosition(features.length + 1)
     setEditingFeatureId(fid)
   }, [doc, features, handleMutation, bodies, setPickBoundary])
 
@@ -607,9 +607,9 @@ useEffect(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `array ${Object.keys(bodies).length + 1}`
-    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_array', featureId: fid, label })
+    setRollbackPosition(features.length + 1)
     setEditingFeatureId(fid)
   }, [doc, features, handleMutation, bodies, setPickBoundary])
 
@@ -617,9 +617,9 @@ useEffect(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `boolean ${Object.keys(bodies).length + 1}`
-    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_boolean', featureId: fid, label })
+    setRollbackPosition(features.length + 1)
     setEditingFeatureId(fid)
   }, [doc, features, handleMutation, bodies, setPickBoundary])
 
@@ -627,9 +627,9 @@ useEffect(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `delete body ${Object.keys(bodies).length + 1}`
-    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_delete_body', featureId: fid, label })
+    setRollbackPosition(features.length + 1)
     setEditingFeatureId(fid)
   }, [doc, features, handleMutation, bodies, setPickBoundary])
 
@@ -637,9 +637,9 @@ useEffect(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `hole ${Object.keys(bodies).length + 1}`
-    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_hole', featureId: fid, label })
+    setRollbackPosition(features.length + 1)
     setEditingFeatureId(fid)
   }, [doc, features, handleMutation, bodies, setPickBoundary])
 
@@ -647,9 +647,9 @@ useEffect(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `transform ${Object.keys(bodies).length + 1}`
-    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: 'add_transform', featureId: fid, label })
+    setRollbackPosition(features.length + 1)
     setEditingFeatureId(fid)
   }, [doc, features, handleMutation, bodies, setPickBoundary])
 
@@ -658,9 +658,9 @@ useEffect(() => {
     const featureId = randomId(18)
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const label = `sketch ${sketchCount + 1}`
-    setRollbackPosition(prev => prev === features.length ? features.length + 1 : prev)
     setPendingPickField(null)
     handleMutation({ type: 'add_sketch', featureId, label })
+    setRollbackPosition(features.length + 1)
     setPlaneSelectionFeatureId(featureId)
     setEditingFeatureId(featureId)
   }, [doc, features.length, handleMutation, setPendingPickField, setPlaneSelectionFeatureId])
