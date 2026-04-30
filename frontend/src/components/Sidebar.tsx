@@ -78,7 +78,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleSelect,
   onEnterEditSketch,
   onExitEditSketch,
-  onAlignCameraToSketchPlane,
   onEnterEditFeature,
   onExitEditFeature,
   onToggleVisibility,
@@ -97,7 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isRebuilding,
   featureTimings,
 }) => {
-  const sidebarRef = useRef<HTMLElement>(null)
+  const sidebarRef = useRef<HTMLDivElement>(null)
   const [draggedFeatureId, setDraggedFeatureId] = useState<string | null>(null)
   const [draggedRollback, setDraggedRollback] = useState(false)
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)

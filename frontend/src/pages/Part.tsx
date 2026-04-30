@@ -1155,7 +1155,7 @@ useEffect(() => {
       targetId,
       items,
     })
-  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename, partLabels, handleBodyRename, partColors])
+  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename, partLabels, handleBodyRename, partColors, handleAlignCameraToSketchPlane])
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {

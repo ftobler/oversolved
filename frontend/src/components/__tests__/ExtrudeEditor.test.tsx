@@ -21,12 +21,11 @@ function makeSidebarProps(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}
     onToggleVisibility: vi.fn(),
     onRightClick: vi.fn(),
     onRollbackDragStart: vi.fn(),
-    onRollbackDragOver: vi.fn(),
-    onRollbackDrop: vi.fn(),
     onMutation: vi.fn(),
     onSetRollbackPosition: vi.fn(),
     onSetPendingPickField: vi.fn(),
     onSetPlaneSelectionFeatureId: vi.fn(),
+    featureTimings: {},
     ...overrides,
   }
 }

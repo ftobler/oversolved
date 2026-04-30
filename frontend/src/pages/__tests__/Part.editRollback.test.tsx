@@ -25,6 +25,7 @@ function makeSidebarProps(overrides: Record<string, unknown> = {}) {
     onSetRollbackPosition: vi.fn(),
     onSetPendingPickField: vi.fn(),
     onSetPlaneSelectionFeatureId: vi.fn(),
+    featureTimings: {},
     ...overrides,
   }
 }
