@@ -18,6 +18,7 @@ export function getSketchesToRender(
 export interface BodyRenderItem {
   key: string
   featureId: string
+  bodyId: string
   mesh: NonNullable<BodyResult['mesh']>
   edges: EdgeData[]
   edgeQueries?: string[]
@@ -57,6 +58,7 @@ export function getBodiesToRender(
     items.push({
       key: bodyId,
       featureId: createdBy,
+      bodyId,
       mesh: body.mesh,
       edges: body.edges ?? [],
       edgeQueries: body.edge_queries,

@@ -15,6 +15,7 @@ import {
 
 interface Body3DProps {
   featureId: string
+  bodyId: string
   mesh: Mesh3D
   edges?: EdgeData[]
   edgeQueries?: string[]
@@ -218,7 +219,7 @@ export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
   return counts
 }
 
-export default function Body3D({ featureId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, transparency = 0, metalness = 0.3, interactive = true, ghost = false }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, transparency = 0, metalness = 0.3, interactive = true, ghost = false }: Body3DProps) {
   const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
@@ -226,6 +227,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
   const setHoveredSurface = useSketchEditorStore(s => s.setHoveredSurface)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
+  const addToNormalSelection = useSketchEditorStore(s => s.addToNormalSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
@@ -250,7 +252,7 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
 
   const noRaycast = useCallback(() => {}, [])
 
-  const isBodySelected = normalSelection.has('@' + featureId)
+  const isBodySelected = normalSelection.has('@' + bodyId)
 
   // Check if a specific edge is selected, using stable query when available
   const getIsEdgeSelected = useCallback((edgeIndex: number): boolean => {
@@ -414,15 +416,16 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
       commitPlaneSelection(hoveredSurfaceId)
     } else {
       toggleNormalSelection(hoveredSurfaceId)
+      if (!pendingPickField) {
+        addToNormalSelection('@' + bodyId)
+      }
       if (pendingPickField) commitFieldPick()
     }
-  }, [hoveredSurfaceId, planeSelectionFeatureId, commitPlaneSelection, toggleNormalSelection, pendingPickField, commitFieldPick])
+  }, [hoveredSurfaceId, planeSelectionFeatureId, commitPlaneSelection, toggleNormalSelection, pendingPickField, commitFieldPick, addToNormalSelection, bodyId])
 
   // Handle edge click on line segments
   const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event }) => {
     e.stopPropagation()
-    const nativeEvent = e.nativeEvent as PointerEvent | undefined
-    const isMultiSelect = nativeEvent?.ctrlKey || nativeEvent?.metaKey
 
     // R3F ThreeEvent spreads THREE.Intersection directly: e.index is the vertex index
     // in the LineSegments buffer. Divide by 2 to get segment index.
@@ -436,14 +439,13 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
 
     if (edgeIndex !== undefined) {
       const query = edgeQueries?.[edgeIndex] ?? `@${featureId}/edge/${edgeIndex}`
-      if (isMultiSelect) {
-        toggleNormalSelection(query)
-      } else {
-        toggleNormalSelection(query)
+      toggleNormalSelection(query)
+      if (!pendingPickField) {
+        addToNormalSelection('@' + bodyId)
       }
       if (pendingPickField) commitFieldPick()
     }
-  }, [featureId, edgeQueries, segmentToEdgeMap, hoveredEdgeIndex, toggleNormalSelection, pendingPickField, commitFieldPick])
+  }, [featureId, bodyId, edgeQueries, segmentToEdgeMap, hoveredEdgeIndex, toggleNormalSelection, addToNormalSelection, pendingPickField, commitFieldPick])
 
   // Always compute face colors -- avoids toggling vertexColors on the material which
   // causes shader recompilation and a black-frame artifact.
@@ -723,6 +725,9 @@ export default function Body3D({ featureId, mesh, edges = [], edgeQueries, verti
               if (idx !== undefined) {
                 const query = vertexQueries?.[idx] ?? `@${featureId}/vertex/${idx}`
                 toggleNormalSelection(query)
+                if (!pendingPickField) {
+                  addToNormalSelection('@' + bodyId)
+                }
               }
             } : undefined}
           >

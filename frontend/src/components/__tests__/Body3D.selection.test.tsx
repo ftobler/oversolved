@@ -16,20 +16,20 @@ describe('Body3D selection - store behavior', () => {
   })
 
   it('toggleNormalSelection adds body query', () => {
-    useSketchEditorStore.getState().toggleNormalSelection('@ex1')
-    expect(useSketchEditorStore.getState().normalSelection.has('@ex1')).toBe(true)
+    useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
+    expect(useSketchEditorStore.getState().normalSelection.has('@body_ex1')).toBe(true)
   })
 
   it('toggleNormalSelection removes on second call', () => {
-    useSketchEditorStore.getState().toggleNormalSelection('@ex1')
-    useSketchEditorStore.getState().toggleNormalSelection('@ex1')
-    expect(useSketchEditorStore.getState().normalSelection.has('@ex1')).toBe(false)
+    useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
+    useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
+    expect(useSketchEditorStore.getState().normalSelection.has('@body_ex1')).toBe(false)
   })
 
-  it('isSelected derived correctly from normalSelection', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@ex1']) })
-    const featureId = 'ex1'
-    const isSelected = useSketchEditorStore.getState().normalSelection.has('@' + featureId)
+  it('isSelected derived correctly from normalSelection using bodyId', () => {
+    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1']) })
+    const bodyId = 'body_ex1'
+    const isSelected = useSketchEditorStore.getState().normalSelection.has('@' + bodyId)
     expect(isSelected).toBe(true)
   })
 
@@ -38,6 +38,24 @@ describe('Body3D selection - store behavior', () => {
     const featureId = 'ex1'
     const isHovered = useSketchEditorStore.getState().hoveredBodyId === featureId
     expect(isHovered).toBe(true)
+  })
+})
+
+describe('Body3D selection - bodyId format', () => {
+  it('selects body using @body_<featureId> format', () => {
+    useSketchEditorStore.getState().toggleNormalSelection('@body_extrude1')
+    expect(useSketchEditorStore.getState().normalSelection.has('@body_extrude1')).toBe(true)
+  })
+
+  it('deselects body using @body_<featureId> format on second toggle', () => {
+    useSketchEditorStore.getState().toggleNormalSelection('@body_extrude1')
+    useSketchEditorStore.getState().toggleNormalSelection('@body_extrude1')
+    expect(useSketchEditorStore.getState().normalSelection.has('@body_extrude1')).toBe(false)
+  })
+
+  it('supports suffixed body ids for multiple bodies per feature', () => {
+    useSketchEditorStore.getState().toggleNormalSelection('@body_extrude1_1')
+    expect(useSketchEditorStore.getState().normalSelection.has('@body_extrude1_1')).toBe(true)
   })
 })
 
@@ -334,13 +352,13 @@ describe('Body3D selection - vertex queries', () => {
 
 describe('Body3D selection - mixed selection types', () => {
   it('supports body, face, and edge selection simultaneously', () => {
-    useSketchEditorStore.getState().toggleNormalSelection('@ex1')  // body
+    useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')  // body
     useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')  // face 0
     useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/1')  // face 1
     useSketchEditorStore.getState().toggleNormalSelection('@ex1/edge/0')  // edge 0
 
     const { normalSelection } = useSketchEditorStore.getState()
-    expect(normalSelection.has('@ex1')).toBe(true)
+    expect(normalSelection.has('@body_ex1')).toBe(true)
     expect(normalSelection.has('@ex1/face/0')).toBe(true)
     expect(normalSelection.has('@ex1/face/1')).toBe(true)
     expect(normalSelection.has('@ex1/edge/0')).toBe(true)
@@ -348,13 +366,13 @@ describe('Body3D selection - mixed selection types', () => {
   })
 
   it('toggles each selection type independently', () => {
-    useSketchEditorStore.getState().toggleNormalSelection('@ex1')
+    useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
     useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
 
     // Toggle off body, face should remain selected
-    useSketchEditorStore.getState().toggleNormalSelection('@ex1')
+    useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
     const state1 = useSketchEditorStore.getState()
-    expect(state1.normalSelection.has('@ex1')).toBe(false)
+    expect(state1.normalSelection.has('@body_ex1')).toBe(false)
     expect(state1.normalSelection.has('@ex1/face/0')).toBe(true)
 
     // Toggle off face

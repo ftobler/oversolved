@@ -104,6 +104,7 @@ interface SketchEditorState {
   clearNormalSelection: () => void
   clearDynamicSelection: () => void
   toggleNormalSelection: (id: string) => void
+  addToNormalSelection: (id: string) => void
   updateDynamicSelection: (hoverId: string | null) => void
 
   // HOVER STATE
@@ -260,6 +261,14 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       return { normalSelection: next, selectionDomain: deriveSelectionDomain(next) }
     }),
 
+  addToNormalSelection: (id) =>
+    set(s => {
+      if (s.normalSelection.has(id)) return s
+      const next = new Set(s.normalSelection)
+      next.add(id)
+      return { normalSelection: next, selectionDomain: deriveSelectionDomain(next) }
+    }),
+
   updateDynamicSelection: (hoverId) => set(s => {
     if (!hoverId) return { dynamicSelection: new Set() }
 
@@ -386,6 +395,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         }
       } else if (id.startsWith('@') && id.includes('/')) {
         bodyRef = '@' + id.slice(1).split('/')[0]
+      }
+      // Ensure @body_ prefix so frontend body refs match backend body_store keys.
+      if (bodyRef.startsWith('@') && !bodyRef.startsWith('@body_')) {
+        bodyRef = '@body_' + bodyRef.slice(1)
       }
       return bodyRef
     }

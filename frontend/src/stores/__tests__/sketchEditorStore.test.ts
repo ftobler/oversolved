@@ -60,6 +60,30 @@ describe('sketchEditorStore', () => {
     })
   })
 
+  describe('addToNormalSelection', () => {
+    it('adds an id when absent', () => {
+      useSketchEditorStore.getState().addToNormalSelection('@body_ex1')
+      expect(useSketchEditorStore.getState().normalSelection.has('@body_ex1')).toBe(true)
+    })
+
+    it('does not remove an id when already present', () => {
+      useSketchEditorStore.getState().addToNormalSelection('@body_ex1')
+      useSketchEditorStore.getState().addToNormalSelection('@body_ex1')
+      expect(useSketchEditorStore.getState().normalSelection.has('@body_ex1')).toBe(true)
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(1)
+    })
+
+    it('accumulates multiple selections without toggling', () => {
+      const { addToNormalSelection } = useSketchEditorStore.getState()
+      addToNormalSelection('@body_ex1')
+      addToNormalSelection('entity:S1:L1')
+      const sel = useSketchEditorStore.getState().normalSelection
+      expect(sel.size).toBe(2)
+      expect(sel.has('@body_ex1')).toBe(true)
+      expect(sel.has('entity:S1:L1')).toBe(true)
+    })
+  })
+
   describe('clearNormalSelection', () => {
     it('empties the selection', () => {
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
@@ -899,7 +923,7 @@ describe('sketchEditorStore', () => {
       expect(handler).toHaveBeenCalledWith({
         type: 'set_delete_body_target',
         featureId: 'db1',
-        body: '@ex1',
+        body: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -915,7 +939,7 @@ describe('sketchEditorStore', () => {
       expect(handler).toHaveBeenCalledWith({
         type: 'set_delete_body_target',
         featureId: 'db1',
-        body: '@ex1',
+        body: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -947,7 +971,7 @@ describe('sketchEditorStore', () => {
       expect(handler).toHaveBeenCalledWith({
         type: 'set_boolean_target',
         featureId: 'b1',
-        target: '@ex1',
+        target: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -964,7 +988,7 @@ describe('sketchEditorStore', () => {
       expect(handler).toHaveBeenCalledWith({
         type: 'add_boolean_tool',
         featureId: 'b1',
-        tool: '@ex1',
+        tool: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).not.toBeNull()
     })
@@ -997,7 +1021,7 @@ describe('sketchEditorStore', () => {
         type: 'set_transform_field',
         featureId: 't1',
         field: 'body',
-        value: '@ex1',
+        value: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })

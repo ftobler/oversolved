@@ -534,10 +534,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         })}
 
         {pickBodyItems.map(b => (
-          <Body3D key={`pick-${b.key}`} featureId={b.featureId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={b.ghost} interactive={true} />
+          <Body3D key={`pick-${b.key}`} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={b.ghost} interactive={true} />
         ))}
         {bodyItems.map(b => (
-          <Body3D key={b.key} featureId={b.featureId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={b.ghost} interactive={ghostMode === undefined && pickBodyItems.length === 0} />
+          <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={b.ghost} interactive={ghostMode === undefined && pickBodyItems.length === 0} />
         ))}
       </Canvas>
 
