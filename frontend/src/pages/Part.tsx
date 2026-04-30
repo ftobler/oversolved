@@ -950,7 +950,8 @@ useEffect(() => {
     setEditForcedVisible(new Set())
     setEditingFeatureId(null)
     setPendingPickField(null)
-  }, [savedRollbackPosition, setPendingPickField])
+    setPickBoundary(null)
+  }, [savedRollbackPosition, setPendingPickField, setPickBoundary])
 
   const enterEditSketch = useCallback((featureId: string) => {
     enterEditFeature(featureId)

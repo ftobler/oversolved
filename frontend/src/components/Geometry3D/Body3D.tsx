@@ -228,9 +228,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const addToNormalSelection = useSketchEditorStore(s => s.addToNormalSelection)
-  const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
-  const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
-  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
 
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
@@ -411,17 +408,21 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   // When plane selection mode is active, commit the face as a plane reference instead.
   const handleMeshClick = useCallback((e: { stopPropagation: () => void }) => {
     e.stopPropagation()
-    if (!hovered3DSurfaceId) return
-    if (planeSelectionFeatureId) {
-      commitPlaneSelection(hovered3DSurfaceId)
+    // Read hover state from the store at click time to avoid stale closures.
+    // React may not have re-rendered Body3D between onPointerOver and onClick.
+    const state = useSketchEditorStore.getState()
+    const currentHover = state.hovered3DSurfaceId
+    if (!currentHover) return
+    if (state.planeSelectionFeatureId) {
+      state.commitPlaneSelection(currentHover)
     } else {
-      toggleNormalSelection(hovered3DSurfaceId)
-      if (!pendingPickField) {
-        addToNormalSelection('@' + bodyId)
+      state.toggleNormalSelection(currentHover)
+      if (!state.pendingPickField) {
+        state.addToNormalSelection('@' + bodyId)
       }
-      if (pendingPickField) commitFieldPick()
+      if (state.pendingPickField) state.commitFieldPick()
     }
-  }, [hovered3DSurfaceId, planeSelectionFeatureId, commitPlaneSelection, toggleNormalSelection, pendingPickField, commitFieldPick, addToNormalSelection, bodyId])
+  }, [bodyId])
 
   // Handle edge click on line segments
   const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event }) => {
@@ -439,13 +440,14 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
 
     if (edgeIndex !== undefined) {
       const query = edgeQueries?.[edgeIndex] ?? `@${featureId}/edge/${edgeIndex}`
-      toggleNormalSelection(query)
-      if (!pendingPickField) {
-        addToNormalSelection('@' + bodyId)
+      const state = useSketchEditorStore.getState()
+      state.toggleNormalSelection(query)
+      if (!state.pendingPickField) {
+        state.addToNormalSelection('@' + bodyId)
       }
-      if (pendingPickField) commitFieldPick()
+      if (state.pendingPickField) state.commitFieldPick()
     }
-  }, [featureId, bodyId, edgeQueries, segmentToEdgeMap, hoveredEdgeIndex, toggleNormalSelection, addToNormalSelection, pendingPickField, commitFieldPick])
+  }, [featureId, bodyId, edgeQueries, segmentToEdgeMap, hoveredEdgeIndex])
 
   // Always compute face colors -- avoids toggling vertexColors on the material which
   // causes shader recompilation and a black-frame artifact.
