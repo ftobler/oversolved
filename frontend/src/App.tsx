@@ -27,9 +27,7 @@ function Home() {
       <div className="landing-logo">Oversolved</div>
       <p className="landing-tagline">Browser-based mechanical CAD</p>
       <nav className="landing-nav">
-        <Link to="/visualizer">Sketch Visualizer</Link>
         <Link to="/documents">Documents</Link>
-        <Link to="/registry">Registry</Link>
         <Link to="/docs">Documentation</Link>
       </nav>
       <footer className="landing-footer">

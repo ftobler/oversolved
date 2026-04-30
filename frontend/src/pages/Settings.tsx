@@ -27,6 +27,14 @@ export default function Settings() {
                 Periodic Tasks
                 <span className="admin-badge">admin</span>
               </NavLink>
+              <a href="/visualizer" target="_blank" rel="noopener noreferrer" className="settings-nav-item">
+                Sketch Visualizer
+                <span className="admin-badge">admin</span>
+              </a>
+              <a href="/registry" target="_blank" rel="noopener noreferrer" className="settings-nav-item">
+                Registry
+                <span className="admin-badge">admin</span>
+              </a>
             </>
           )}
         </aside>

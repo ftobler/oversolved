@@ -32,14 +32,8 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
       </div>
       <div className="app-header-right">
         {rightContent}
-        <a href="/registry" target="_blank" rel="noopener noreferrer" className="toolbar-btn" title="Registry">
-          <span className="material-icons-outlined">app_registration</span>
-        </a>
         <Link to="/docs" className="toolbar-btn" title="Documentation">
           <span className="material-icons-outlined">help</span>
-        </Link>
-        <Link to="/visualizer" className="toolbar-btn" title="Visualizer">
-          <span className="material-icons-outlined">bug_report</span>
         </Link>
         {user && (
           <>
