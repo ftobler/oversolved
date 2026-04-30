@@ -60,7 +60,7 @@ describe('Documents trash', () => {
     })
   })
 
-  it('clicking trash button opens trash modal', async () => {
+  it('clicking trash button shows trash view', async () => {
     vi.stubGlobal('fetch', mockFetch())
 
     render(
@@ -78,11 +78,11 @@ describe('Documents trash', () => {
     fireEvent.click(screen.getByTitle('Trash'))
 
     await waitFor(() => {
-      expect(screen.getByText('Trash (0 items)')).toBeInTheDocument()
+      expect(screen.getByText('Trash is empty.')).toBeInTheDocument()
     })
   })
 
-  it('trash modal shows deleted documents', async () => {
+  it('trash view shows deleted documents', async () => {
     vi.stubGlobal('fetch', mockFetch([], [
       { uuid: 'trash-1', name: 'Deleted Doc', deleted_at: '2024-04-01T00:00:00Z', created_at: '2024-01-01T00:00:00Z' },
     ]))

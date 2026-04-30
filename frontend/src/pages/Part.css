@@ -795,6 +795,11 @@
   cursor: grabbing;
 }
 
+.rollback-bar.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
 .doc-editor {
   flex: 1;
   display: flex;

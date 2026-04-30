@@ -55,8 +55,6 @@ interface SidebarProps {
   onRightClick: (pos: [number, number], targetId?: string) => void
   onRename?: (featureId: string, label: string) => void
   onRollbackDragStart: (e: React.DragEvent) => void
-  onRollbackDragOver: (e: React.DragEvent, featureIndex: number) => void
-  onRollbackDrop: (e: React.DragEvent, featureIndex: number) => void
   onMutation: (mutation: Mutation) => void
   onSetRollbackPosition: (pos: number | null) => void
   onSetPendingPickField: (state: PendingPickField | null) => void
@@ -89,8 +87,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleVisibility,
   onRightClick,
   onRollbackDragStart,
-  onRollbackDragOver,
-  onRollbackDrop,
   onMutation,
   onSetRollbackPosition,
   onSetPendingPickField,
@@ -108,6 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isDraggingRef = useRef(false)
   const sidebarRef = useRef<HTMLElement>(null)
   const [draggedFeatureId, setDraggedFeatureId] = useState<string | null>(null)
+  const [draggedRollback, setDraggedRollback] = useState(false)
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
 
   const handleMouseDown = useCallback(() => {
@@ -509,12 +506,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div key={`feature-${feature.id}`}>
               {rollbackPosition === index && (
                 <li
-                  className="rollback-bar"
+                  className={`rollback-bar ${draggedRollback ? 'dragging' : ''}`}
                   title="Rollback"
                   draggable
-                  onDragStart={onRollbackDragStart}
-                  onDragOver={(e) => onRollbackDragOver(e, index)}
-                  onDrop={(e) => onRollbackDrop(e, index)}
+                  onDragStart={(e) => {
+                    setDraggedRollback(true)
+                    onRollbackDragStart(e)
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (BUILT_IN_IDS.has(feature.id)) return
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const midY = rect.top + rect.height / 2
+                    const targetIndex = e.clientY < midY ? index : index + 1
+                    setDropTargetIndex(Math.max(targetIndex, BUILT_IN_IDS.size))
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (dropTargetIndex !== null) {
+                      onSetRollbackPosition(dropTargetIndex)
+                    }
+                    setDraggedRollback(false)
+                    setDropTargetIndex(null)
+                  }}
+                  onDragEnd={() => {
+                    setDraggedRollback(false)
+                    setDropTargetIndex(null)
+                  }}
                 ></li>
               )}
               <li
@@ -536,8 +556,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     const midY = rect.top + rect.height / 2
                     const targetIndex = e.clientY < midY ? index : index + 1
                     setDropTargetIndex(Math.max(targetIndex, BUILT_IN_IDS.size))
-                  } else {
-                    onRollbackDragOver(e, index)
+                  } else if (draggedRollback) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (BUILT_IN_IDS.has(feature.id)) return
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const midY = rect.top + rect.height / 2
+                    const targetIndex = e.clientY < midY ? index : index + 1
+                    setDropTargetIndex(Math.max(targetIndex, BUILT_IN_IDS.size))
                   }
                 }}
                 onDragEnd={() => {
@@ -554,8 +580,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }
                     setDraggedFeatureId(null)
                     setDropTargetIndex(null)
-                  } else {
-                    onRollbackDrop(e, index)
+                  } else if (draggedRollback) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (dropTargetIndex !== null) {
+                      onSetRollbackPosition(dropTargetIndex)
+                    }
+                    setDraggedRollback(false)
+                    setDropTargetIndex(null)
                   }
                 }}
                 onClick={() => {
@@ -953,17 +985,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
         {rollbackPosition === features.length && (
           <li
-            className="rollback-bar"
+            className={`rollback-bar ${draggedRollback ? 'dragging' : ''}`}
             title="Rollback"
             draggable
-            onDragStart={onRollbackDragStart}
+            onDragStart={(e) => {
+              setDraggedRollback(true)
+              onRollbackDragStart(e)
+            }}
             onDragOver={(e) => {
               e.preventDefault()
-              e.dataTransfer.dropEffect = 'move'
+              e.stopPropagation()
+              setDropTargetIndex(features.length)
             }}
             onDrop={(e) => {
               e.preventDefault()
+              e.stopPropagation()
               onSetRollbackPosition(features.length)
+              setDraggedRollback(false)
+              setDropTargetIndex(null)
+            }}
+            onDragEnd={() => {
+              setDraggedRollback(false)
+              setDropTargetIndex(null)
             }}
           ></li>
         )}

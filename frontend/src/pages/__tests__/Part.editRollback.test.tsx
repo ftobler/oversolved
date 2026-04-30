@@ -21,8 +21,6 @@ function makeSidebarProps(overrides: Record<string, unknown> = {}) {
     onToggleVisibility: vi.fn(),
     onRightClick: vi.fn(),
     onRollbackDragStart: vi.fn(),
-    onRollbackDragOver: vi.fn(),
-    onRollbackDrop: vi.fn(),
     onMutation: vi.fn(),
     onSetRollbackPosition: vi.fn(),
     onSetPendingPickField: vi.fn(),

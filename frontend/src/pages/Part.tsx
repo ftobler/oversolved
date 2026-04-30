@@ -856,19 +856,8 @@ useEffect(() => {
     }
   }
 
-  const handleRollbackDragOver = (e: React.DragEvent, featureIndex: number) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    if (featureIndex >= BUILT_IN_IDS.size - 1) setRollbackPosition(featureIndex + 1)
-  }
-
   const handleRollbackDragStart = (e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'move'
-  }
-
-  const handleRollbackDrop = (e: React.DragEvent, featureIndex: number) => {
-    e.preventDefault()
-    if (featureIndex >= BUILT_IN_IDS.size - 1) setRollbackPosition(featureIndex + 1)
   }
 
   const toggleVisibility = useCallback((featureId: string) => {
@@ -1228,8 +1217,6 @@ useEffect(() => {
           onRightClick={handleRightClick}
           onRename={handleFeatureRename}
           onRollbackDragStart={handleRollbackDragStart}
-          onRollbackDragOver={handleRollbackDragOver}
-          onRollbackDrop={handleRollbackDrop}
           onMutation={handleMutation}
           onSetRollbackPosition={setRollbackPosition}
           onSetPendingPickField={setPendingPickField}

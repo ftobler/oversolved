@@ -38,7 +38,7 @@ export default function Documents() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [shareDoc, setShareDoc] = useState<DocumentMeta | null>(null)
   const [activeFilter, setActiveFilter] = useState<SidebarFilter>('owned')
-  const [showTrash, setShowTrash] = useState(false)
+  const [isTrashView, setIsTrashView] = useState(false)
   const [trashDocs, setTrashDocs] = useState<TrashDoc[]>([])
   const [trashLoading, setTrashLoading] = useState(false)
   const { preferences, loading: prefsLoading, updatePreference } = useUserPreferences()
@@ -338,21 +338,20 @@ export default function Documents() {
           {sidebarItems.map(item => (
             <div
               key={item.filter}
-              className={`sidebar-item ${activeFilter === item.filter ? 'active' : ''}`}
-              onClick={() => setActiveFilter(item.filter)}
+              className={`sidebar-item ${!isTrashView && activeFilter === item.filter ? 'active' : ''}`}
+              onClick={() => { setIsTrashView(false); setActiveFilter(item.filter) }}
             >
               <span className="material-icons sidebar-item-icon">{item.icon}</span>
               <span className="sidebar-item-label">{item.label}</span>
             </div>
           ))}
           <div
-            className="sidebar-item"
-            onClick={() => { setShowTrash(true); fetchTrash() }}
+            className={`sidebar-item ${isTrashView ? 'active' : ''}`}
+            onClick={() => { if (!isTrashView) { setIsTrashView(true); fetchTrash() } }}
             title="Trash"
           >
             <span className="material-icons sidebar-item-icon">delete_outline</span>
             <span className="sidebar-item-label">Trash</span>
-            {trashDocs.length > 0 && <span className="trash-count">{trashDocs.length}</span>}
           </div>
         </aside>
 
@@ -388,158 +387,175 @@ export default function Documents() {
             />
           )}
 
-          <Dialog
-            isOpen={showTrash}
-            title={`Trash (${trashDocs.length} items)`}
-            onClose={() => setShowTrash(false)}
-          >
-            {trashLoading && <p className="status">Loading trash...</p>}
-            {!trashLoading && trashDocs.length === 0 && (
-              <p className="status">Trash is empty.</p>
-            )}
-            {!trashLoading && trashDocs.length > 0 && (
-              <div className="trash-list">
-                {trashDocs.map(doc => {
-                  const days = daysRemaining(doc.deleted_at)
-                  return (
-                    <div key={doc.uuid} className="trash-item">
-                      <div className="trash-item-info">
-                        <span className="trash-item-name">{doc.name}</span>
-                        <span className="trash-item-meta">
-                          Deleted: {formatDate(doc.deleted_at)}
-                          {days <= 5 && <span className="trash-warning"> ({days} days left)</span>}
-                          {days > 5 && <span> ({days} days left)</span>}
-                        </span>
+          {isTrashView ? (
+            <>
+              {trashLoading && <p className="status">Loading trash...</p>}
+              {!trashLoading && trashDocs.length === 0 && (
+                <p className="status">Trash is empty.</p>
+              )}
+              {!trashLoading && trashDocs.length > 0 && (
+                <div className="doc-tiles">
+                  {trashDocs.map(doc => {
+                    const days = daysRemaining(doc.deleted_at)
+                    return (
+                      <div key={doc.uuid} className="doc-tile">
+                        <div className="doc-tile-link">
+                          <div className="doc-tile-preview">
+                            <img
+                              src={`/api/documents/${doc.uuid}/thumbnail`}
+                              alt={doc.name}
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement
+                                target.style.display = 'none'
+                                const next = target.nextElementSibling as HTMLElement
+                                if (next) next.style.display = 'block'
+                              }}
+                            />
+                            <div className="doc-tile-placeholder" style={{display: 'none'}} />
+                          </div>
+                          <div className="doc-tile-info">
+                            <span className="doc-tile-name">{doc.name}</span>
+                            <div className="doc-tile-actions">
+                              <button
+                                className="btn btn-tile-action"
+                                onClick={() => handleRecover(doc.uuid)}
+                                title="Recover document"
+                              >
+                                <span className="material-icons">restore</span>
+                              </button>
+                              <button
+                                className="btn btn-delete-tile"
+                                onClick={() => handlePermanentDelete(doc.uuid, doc.name)}
+                                title="Permanently delete"
+                              >
+                                <span className="material-icons">delete_forever</span>
+                              </button>
+                            </div>
+                          </div>
+                          <div className="doc-tile-meta">
+                            <span className="doc-tile-date">
+                              Deleted: {formatDate(doc.deleted_at)}
+                              {days <= 5 && <span className="trash-warning"> ({days} days left)</span>}
+                              {days > 5 && <span> ({days} days left)</span>}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="trash-item-actions">
-                        <button
-                          className="btn btn-tile-action"
-                          onClick={() => handleRecover(doc.uuid)}
-                          title="Recover document"
-                        >
-                          <span className="material-icons">restore</span>
-                        </button>
-                        <button
-                          className="btn btn-delete-tile"
-                          onClick={() => handlePermanentDelete(doc.uuid, doc.name)}
-                          title="Permanently delete"
-                        >
-                          <span className="material-icons">delete_forever</span>
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </Dialog>
-
-          {loading && <p className="status">Loading documents...</p>}
-          {error && <p className="status error">Error: {error}</p>}
-          {!loading && documents.length === 0 && debouncedSearch && (
-            <p className="status">No documents match "{debouncedSearch}"</p>
-          )}
-          {!loading && documents.length === 0 && !debouncedSearch && (
-            <p className="status">No documents yet.</p>
-          )}
-
-          {!loading && documents.length > 0 && (
-            <div className="doc-tiles">
-              {documents.map(doc => (
-                <div key={doc.uuid} className={`doc-tile${doc.is_owner ? '' : ' shared'}`}>
-                  <Link to={`/documents/${doc.uuid}`} className="doc-tile-link">
-                    <div className="doc-tile-preview">
-                      <img
-                        src={`/api/documents/${doc.uuid}/thumbnail`}
-                        alt={doc.name}
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.style.display = 'none'
-                          const next = target.nextElementSibling as HTMLElement
-                          if (next) next.style.display = 'block'
-                        }}
-                      />
-                      <div className="doc-tile-placeholder" style={{display: 'none'}} />
-                    </div>
-                    <div className="doc-tile-info">
-                      <span className="doc-tile-name" title={doc.org_slug ? `${doc.org_slug}/${doc.name}` : doc.name}>
-                        {doc.org_slug && <span className="doc-tile-org">{doc.org_slug}/</span>}{doc.name}
-                      </span>
-                      <div className="doc-tile-actions">
-                        <button
-                          className="btn btn-tile-action"
-                          onClick={e => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setShareDoc(doc)
-                          }}
-                          title="Share document"
-                        >
-                          <span className="material-icons">share</span>
-                        </button>
-                        <button
-                          className="btn btn-tile-action"
-                          onClick={e => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            handleDuplicate(doc.uuid)
-                          }}
-                          title="Duplicate"
-                        >
-                          <span className="material-icons">content_copy</span>
-                        </button>
-                        <button
-                          className="btn btn-tile-action"
-                          onClick={e => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            handleClone(doc.uuid)
-                          }}
-                          title="Clone document"
-                        >
-                          <span className="material-icons">file_copy</span>
-                        </button>
-                        <button
-                          className="btn btn-tile-action"
-                          onClick={e => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            handleExport(doc.uuid, doc.name)
-                          }}
-                          title="Export YAML"
-                        >
-                          <span className="material-icons">download</span>
-                        </button>
-                        {doc.is_owner && (
-                          <button
-                            className="btn btn-delete-tile"
-                            onClick={e => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              handleDeleteDocument(doc.uuid, doc.name)
-                            }}
-                            title="Delete document"
-                          >
-                            <span className="material-icons">delete</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="doc-tile-meta">
-                      <span className="doc-tile-date">Modified: {formatDate(doc.updated_at)}</span>
-                      <span className="doc-tile-owner">
-                        owned by {doc.is_owner ? 'me' : doc.owner_username}
-                      </span>
-                    </div>
-                    {!doc.is_owner && (
-                      <div className="doc-tile-shared-indicator">
-                        <span className="material-icons">people</span>
-                      </div>
-                    )}
-                  </Link>
+                    )
+                  })}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
+          ) : (
+            <>
+              {loading && <p className="status">Loading documents...</p>}
+              {error && <p className="status error">Error: {error}</p>}
+              {!loading && documents.length === 0 && debouncedSearch && (
+                <p className="status">No documents match "{debouncedSearch}"</p>
+              )}
+              {!loading && documents.length === 0 && !debouncedSearch && (
+                <p className="status">No documents yet.</p>
+              )}
+
+              {!loading && documents.length > 0 && (
+                <div className="doc-tiles">
+                  {documents.map(doc => (
+                    <div key={doc.uuid} className={`doc-tile${doc.is_owner ? '' : ' shared'}`}>
+                      <Link to={`/documents/${doc.uuid}`} className="doc-tile-link">
+                        <div className="doc-tile-preview">
+                          <img
+                            src={`/api/documents/${doc.uuid}/thumbnail`}
+                            alt={doc.name}
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement
+                              target.style.display = 'none'
+                              const next = target.nextElementSibling as HTMLElement
+                              if (next) next.style.display = 'block'
+                            }}
+                          />
+                          <div className="doc-tile-placeholder" style={{display: 'none'}} />
+                        </div>
+                        <div className="doc-tile-info">
+                          <span className="doc-tile-name" title={doc.org_slug ? `${doc.org_slug}/${doc.name}` : doc.name}>
+                            {doc.org_slug && <span className="doc-tile-org">{doc.org_slug}/</span>}{doc.name}
+                          </span>
+                          <div className="doc-tile-actions">
+                            <button
+                              className="btn btn-tile-action"
+                              onClick={e => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                setShareDoc(doc)
+                              }}
+                              title="Share document"
+                            >
+                              <span className="material-icons">share</span>
+                            </button>
+                            <button
+                              className="btn btn-tile-action"
+                              onClick={e => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleDuplicate(doc.uuid)
+                              }}
+                              title="Duplicate"
+                            >
+                              <span className="material-icons">content_copy</span>
+                            </button>
+                            <button
+                              className="btn btn-tile-action"
+                              onClick={e => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleClone(doc.uuid)
+                              }}
+                              title="Clone document"
+                            >
+                              <span className="material-icons">file_copy</span>
+                            </button>
+                            <button
+                              className="btn btn-tile-action"
+                              onClick={e => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleExport(doc.uuid, doc.name)
+                              }}
+                              title="Export YAML"
+                            >
+                              <span className="material-icons">download</span>
+                            </button>
+                            {doc.is_owner && (
+                              <button
+                                className="btn btn-delete-tile"
+                                onClick={e => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleDeleteDocument(doc.uuid, doc.name)
+                                }}
+                                title="Delete document"
+                              >
+                                <span className="material-icons">delete</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="doc-tile-meta">
+                          <span className="doc-tile-date">Modified: {formatDate(doc.updated_at)}</span>
+                          <span className="doc-tile-owner">
+                            owned by {doc.is_owner ? 'me' : doc.owner_username}
+                          </span>
+                        </div>
+                        {!doc.is_owner && (
+                          <div className="doc-tile-shared-indicator">
+                            <span className="material-icons">people</span>
+                          </div>
+                        )}
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
