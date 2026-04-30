@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { RebuildButton } from '../RebuildButton'
 import { RebuildSparkline } from '../RebuildSparkline'
@@ -24,176 +24,130 @@ describe('RebuildSparkline', () => {
 })
 
 describe('RebuildTimingPopover', () => {
+  const sampleFeatures = [
+    { id: 'sketch1', kind: 'sketch', label: 'Sketch 1' },
+    { id: 'extrude1', kind: 'extrude', label: 'Extrude 1' },
+  ]
+
   it('returns null when not visible', () => {
     const { container } = render(
       <RebuildTimingPopover
-        stats={{
-          uuid: 'test',
-          rebuild_count: 1,
-          last_duration_ms: 100,
-          average_ms: 100,
-          median_ms: 100,
-          min_ms: 100,
-          max_ms: 100,
-          trend: 'stable',
-          history: [{ duration_ms: 100, feature_count: 2, timestamp: '2024-01-01' }],
-        }}
+        featureTimings={{ sketch1: 2.3, extrude1: 1.1 }}
+        features={sampleFeatures}
         isVisible={false}
       />
     )
     expect(container.firstChild).toBeNull()
   })
 
-  it('returns null when stats is null', () => {
-    const { container } = render(<RebuildTimingPopover stats={null} isVisible />)
+  it('returns null when no features have timings', () => {
+    const { container } = render(
+      <RebuildTimingPopover
+        featureTimings={{}}
+        features={sampleFeatures}
+        isVisible
+      />
+    )
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders stats when visible', () => {
+  it('renders per-feature timings when visible', () => {
     render(
       <RebuildTimingPopover
-        stats={{
-          uuid: 'test',
-          rebuild_count: 2,
-          last_duration_ms: 150,
-          average_ms: 125,
-          median_ms: 125,
-          min_ms: 100,
-          max_ms: 150,
-          trend: 'faster',
-          history: [
-            { duration_ms: 150, feature_count: 2, timestamp: '2024-01-01' },
-            { duration_ms: 100, feature_count: 2, timestamp: '2024-01-02' },
-          ],
-        }}
+        featureTimings={{ sketch1: 2.3, extrude1: 1.1 }}
+        features={sampleFeatures}
         isVisible
       />
     )
     expect(screen.getByText('Rebuild Times')).toBeInTheDocument()
-    expect(screen.getByText('150ms')).toBeInTheDocument()
-    expect(screen.getByText('↓ Faster')).toBeInTheDocument()
+    expect(screen.getByText('Sketch 1:')).toBeInTheDocument()
+    expect(screen.getByText('Extrude 1:')).toBeInTheDocument()
+    expect(screen.getByText('2ms')).toBeInTheDocument()
+    expect(screen.getByText('1ms')).toBeInTheDocument()
+  })
+
+  it('shows total at the bottom', () => {
+    render(
+      <RebuildTimingPopover
+        featureTimings={{ sketch1: 2.3, extrude1: 1.1 }}
+        features={sampleFeatures}
+        isVisible
+      />
+    )
+    expect(screen.getByText('Total:')).toBeInTheDocument()
+    expect(screen.getByText('3ms')).toBeInTheDocument()
   })
 
   it('formats seconds correctly', () => {
     render(
       <RebuildTimingPopover
-        stats={{
-          uuid: 'test',
-          rebuild_count: 1,
-          last_duration_ms: 1500,
-          average_ms: 1500,
-          median_ms: 1500,
-          min_ms: 1500,
-          max_ms: 1500,
-          trend: null,
-          history: [],
-        }}
+        featureTimings={{ slow: 1500 }}
+        features={[{ id: 'slow', kind: 'extrude', label: 'Slow' }]}
         isVisible
       />
     )
     expect(screen.getAllByText('1.50s').length).toBeGreaterThan(0)
   })
 
-  it('shows dash for null values', () => {
+  it('uses kind as label when no label is set', () => {
     render(
       <RebuildTimingPopover
-        stats={{
-          uuid: 'test',
-          rebuild_count: 0,
-          last_duration_ms: null,
-          average_ms: null,
-          median_ms: null,
-          min_ms: null,
-          max_ms: null,
-          trend: null,
-          history: [],
-        }}
+        featureTimings={{ f1: 5 }}
+        features={[{ id: 'f1', kind: 'sketch' }]}
         isVisible
       />
     )
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    expect(screen.getByText('sketch:')).toBeInTheDocument()
   })
 })
 
 describe('RebuildButton with timing', () => {
-  beforeEach(() => {
-    global.fetch = vi.fn()
-  })
+  const baseProps = {
+    featureTimings: { sketch1: 2.3, extrude1: 1.1 },
+    features: [
+      { id: 'sketch1', kind: 'sketch', label: 'Sketch 1' },
+      { id: 'extrude1', kind: 'extrude', label: 'Extrude 1' },
+    ],
+    onClick: vi.fn(),
+  }
 
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
+  it('shows popover on hover', async () => {
+    const { container } = render(<RebuildButton {...baseProps} />)
+    const button = container.querySelector('.rebuild-button')
+    expect(button).toBeInTheDocument()
 
-  it('fetches stats on hover', async () => {
-    const mockStats = {
-      uuid: 'doc1',
-      rebuild_count: 1,
-      last_duration_ms: 100,
-      average_ms: 100,
-      median_ms: 100,
-      min_ms: 100,
-      max_ms: 100,
-      trend: 'stable',
-      history: [{ duration_ms: 100, feature_count: 2, timestamp: '2024-01-01' }],
-    }
-    ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockStats,
-    } as Response)
-
-    const { container } = render(<RebuildButton docId="doc1" onClick={vi.fn()} />)
-    const buttonContainer = container.querySelector('.rebuild-button-container')
-    expect(buttonContainer).toBeInTheDocument()
-
-    fireEvent.mouseEnter(buttonContainer!)
-
-    await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith('/api/documents/doc1/rebuild-stats')
-    })
+    fireEvent.mouseEnter(button!)
 
     await waitFor(() => {
       expect(screen.getByText('Rebuild Times')).toBeInTheDocument()
     })
   })
 
-  it('hides popover on unhover', async () => {
-    const mockStats = {
-      uuid: 'doc1',
-      rebuild_count: 1,
-      last_duration_ms: 100,
-      average_ms: 100,
-      median_ms: 100,
-      min_ms: 100,
-      max_ms: 100,
-      trend: null,
-      history: [],
-    }
-    ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockStats,
-    } as Response)
+  it('hides popover after 500ms delay on unhover', async () => {
+    render(<RebuildButton {...baseProps} />)
+    const button = screen.getByRole('button', { name: /Rebuild geometry/i })
 
-    const { container } = render(<RebuildButton docId="doc1" onClick={vi.fn()} />)
-    const buttonContainer = container.querySelector('.rebuild-button-container')
-
-    fireEvent.mouseEnter(buttonContainer!)
+    fireEvent.mouseEnter(button)
     await waitFor(() => {
       expect(screen.getByText('Rebuild Times')).toBeInTheDocument()
     })
 
-    fireEvent.mouseLeave(buttonContainer!)
+    fireEvent.mouseLeave(button)
+
+    expect(screen.getByText('Rebuild Times')).toBeInTheDocument()
+
     await waitFor(() => {
       expect(screen.queryByText('Rebuild Times')).not.toBeInTheDocument()
-    })
+    }, { timeout: 1000 })
   })
 
-  it('does not fetch stats when docId is missing', async () => {
-    const { container } = render(<RebuildButton onClick={vi.fn()} />)
-    const buttonContainer = container.querySelector('.rebuild-button-container')
+  it('shows nothing on hover when no timings exist', async () => {
+    render(<RebuildButton {...baseProps} featureTimings={{}} />)
+    const button = screen.getByRole('button', { name: /Rebuild geometry/i })
 
-    fireEvent.mouseEnter(buttonContainer!)
+    fireEvent.mouseEnter(button)
 
-    await new Promise(r => setTimeout(r, 50))
-    expect(global.fetch).not.toHaveBeenCalled()
+    await new Promise(r => setTimeout(r, 100))
+    expect(screen.queryByText('Rebuild Times')).not.toBeInTheDocument()
   })
 })

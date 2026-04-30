@@ -753,9 +753,9 @@ class DocumentStore:
     def list_owned_and_shared(self, user_id: int, sort: str = "name", include_shared: bool = True) -> list[dict]:
         """List documents owned by or shared with a user."""
         if sort == "modified":
-            order = "updated_at DESC"
+            order = "d.updated_at DESC"
         elif sort == "modified_asc":
-            order = "updated_at ASC"
+            order = "d.updated_at ASC"
         else:
             order = "name"
 
@@ -807,9 +807,9 @@ class DocumentStore:
     def list_public(self, sort: str = "name") -> list[dict]:
         """List all public documents with owner username."""
         if sort == "modified":
-            order = "updated_at DESC"
+            order = "d.updated_at DESC"
         elif sort == "modified_asc":
-            order = "updated_at ASC"
+            order = "d.updated_at ASC"
         else:
             order = "name"
         cursor = self.db.execute(
@@ -839,9 +839,9 @@ class DocumentStore:
     def list_shared_with(self, user_id: int, sort: str = "name") -> list[dict]:
         """List documents explicitly shared with this user (excluding owned and public-only)."""
         if sort == "modified":
-            order = "updated_at DESC"
+            order = "d.updated_at DESC"
         elif sort == "modified_asc":
-            order = "updated_at ASC"
+            order = "d.updated_at ASC"
         else:
             order = "name"
         cursor = self.db.execute(
@@ -874,9 +874,9 @@ class DocumentStore:
                        filter_type: str = "all", sort: str = "name") -> list[dict]:
         """Server-side case-insensitive search across documents visible to the user."""
         if sort == "modified":
-            order = "updated_at DESC"
+            order = "d.updated_at DESC"
         elif sort == "modified_asc":
-            order = "updated_at ASC"
+            order = "d.updated_at ASC"
         else:
             order = "name"
 
@@ -992,9 +992,9 @@ class DocumentStore:
     def list_in_org(self, org_id: int, sort: str = "name") -> list[dict]:
         """List documents in an organization."""
         if sort == "modified":
-            order = "updated_at DESC"
+            order = "d.updated_at DESC"
         elif sort == "modified_asc":
-            order = "updated_at ASC"
+            order = "d.updated_at ASC"
         else:
             order = "name"
         cursor = self.db.execute(

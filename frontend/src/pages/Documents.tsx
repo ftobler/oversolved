@@ -146,24 +146,6 @@ export default function Documents() {
     }
   }
 
-  const handleClone = async (uuid: string) => {
-    try {
-      const response = await fetch(`/api/documents/${uuid}/clone`, {
-        method: 'POST',
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to clone document')
-      }
-
-      const data = await response.json()
-      window.location.href = `/documents/${data.uuid}`
-    } catch (e) {
-      setError(String(e))
-    }
-  }
-
   const handleExport = async (uuid: string, name: string) => {
     try {
       const response = await fetch(`/api/documents/${uuid}/export`)
@@ -477,8 +459,11 @@ export default function Documents() {
                         </div>
                         <div className="doc-tile-info">
                           <span className="doc-tile-name" title={doc.org_slug ? `${doc.org_slug}/${doc.name}` : doc.name}>
-                            {doc.org_slug && <span className="doc-tile-org">{doc.org_slug}/</span>}{doc.name}
+                            {doc.org_slug && <span>{doc.org_slug}/</span>}{doc.name}
                           </span>
+                        </div>
+                        <div className="doc-tile-meta">
+                          <span className="doc-tile-date">{formatDate(doc.updated_at)}</span>
                           <div className="doc-tile-actions">
                             <button
                               className="btn btn-tile-action"
@@ -507,17 +492,6 @@ export default function Documents() {
                               onClick={e => {
                                 e.preventDefault()
                                 e.stopPropagation()
-                                handleClone(doc.uuid)
-                              }}
-                              title="Clone document"
-                            >
-                              <span className="material-icons">file_copy</span>
-                            </button>
-                            <button
-                              className="btn btn-tile-action"
-                              onClick={e => {
-                                e.preventDefault()
-                                e.stopPropagation()
                                 handleExport(doc.uuid, doc.name)
                               }}
                               title="Export YAML"
@@ -538,12 +512,6 @@ export default function Documents() {
                               </button>
                             )}
                           </div>
-                        </div>
-                        <div className="doc-tile-meta">
-                          <span className="doc-tile-date">Modified: {formatDate(doc.updated_at)}</span>
-                          <span className="doc-tile-owner">
-                            owned by {doc.is_owner ? 'me' : doc.owner_username}
-                          </span>
                         </div>
                         {!doc.is_owner && (
                           <div className="doc-tile-shared-indicator">

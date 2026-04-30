@@ -11,35 +11,38 @@
 }
 
 .documents-sidebar {
-  width: 220px;
-  min-width: 220px;
-  background: #1a1a1a;
-  border-right: 1px solid #333;
-  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 200px;
+  min-width: 200px;
   overflow-y: auto;
+  margin-top: 25px;
+  margin-left: 20px;
+  margin-bottom: 25px;
 }
 
 .sidebar-item {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  margin: 2px 4px;
+  gap: 10px;
+  padding: 2px 12px;
+  margin-right: 12px;
   border-radius: 4px;
   cursor: pointer;
   color: #ccc;
   user-select: none;
-  font-size: 12px;
+  font-size: 14px;
+  text-align: left;
 }
 
 .sidebar-item:hover {
-  background: #2a2a2a;
+  background-color: #141519;
 }
 
 .sidebar-item.active {
-  background: #333;
-  color: #4fc3f7;
+  background: #111111;
+  color: #fff;
 }
 
 .sidebar-item-icon {
@@ -264,19 +267,21 @@
 .doc-tiles {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+  gap: 8px;
 }
 
 .doc-tile {
   position: relative;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 8px;
-  overflow: hidden;
+  padding: 8px;
+  border-radius: 16px;
 }
 
 .doc-tile:hover {
-  border-color: #4fc3f7;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.doc-tile:active {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .doc-tile-link {
@@ -289,6 +294,7 @@
   width: 100%;
   aspect-ratio: 16 / 10;
   background: #111;
+  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -307,17 +313,18 @@
 }
 
 .doc-tile-info {
-  padding: 8px 10px;
+  padding: 2px 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 40px;
+  min-height: 28px;
   gap: 8px;
 }
 
 .doc-tile-actions {
   display: flex;
   align-items: center;
+  margin-left: auto;
 }
 
 .btn-tile-action {
@@ -350,11 +357,11 @@
 }
 
 .doc-tile-meta {
-  padding: 4px 10px;
+  padding: 0 10px 4px;
   font-size: 11px;
   color: #666;
-  border-top: 1px solid #222;
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -381,18 +388,13 @@
 }
 
 .doc-tile-name {
-  color: #4fc3f7;
+  color: #f3f4f6;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: left;
-}
-
-.doc-tile-org {
-  color: #6a9bbf;
-  font-weight: 400;
 }
 
 .btn-delete-tile {
@@ -440,6 +442,8 @@
 
   .doc-tiles {
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 12px;
+    gap: 8px;
   }
 }
+
+

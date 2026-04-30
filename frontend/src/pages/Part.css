@@ -107,12 +107,16 @@
 .sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   padding: 4px 12px;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   color: #666;
+}
+
+.sidebar-header .rebuild-button-container {
+  margin-left: auto;
 }
 
 .rebuild-button {
@@ -169,43 +173,46 @@
 .rebuild-timing-popover {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
-  background: white;
-  border: 1px solid #e5e7eb;
+  right: -8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 12px;
-  min-width: 220px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 8px 10px;
+  min-width: 150px;
+  box-shadow: var(--shadow);
   z-index: 1000;
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text);
 }
 
 .popover-header {
   font-weight: 600;
-  margin-bottom: 8px;
-  color: #111;
+  margin-bottom: 6px;
+  color: var(--text-h);
+  text-align: left;
 }
 
 .popover-stats {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .stat-row {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
 }
 
 .stat-row .label {
-  color: #6b7280;
-  flex: 1;
+  color: var(--text);
+  opacity: 0.7;
+  text-transform: none;
 }
 
 .stat-row .value {
-  color: #111;
+  color: var(--text-h);
   font-weight: 500;
   font-family: 'Monaco', 'Courier', monospace;
 }
@@ -224,17 +231,18 @@
 
 .popover-divider {
   height: 1px;
-  background: #e5e7eb;
-  margin: 8px 0;
+  background: var(--border);
+  margin: 6px 0;
 }
 
 .popover-sparkline {
-  margin: 8px 0;
+  margin: 6px 0;
 }
 
 .sparkline-label {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: 10px;
+  color: var(--text);
+  opacity: 0.7;
   text-align: center;
   margin-top: 4px;
 }
@@ -533,6 +541,12 @@
   color: #555;
 }
 
+.feature-item.rolled-back.drop-target-top,
+.feature-item.rolled-back.drop-target-bottom {
+  opacity: 1;
+  border-color: #4fc3f7;
+}
+
 .feature-item.rolled-back:hover {
   color: #777;
   border-color: #333;
@@ -780,7 +794,6 @@
   color: gray;
   background: var(--tiling-sine) repeat-x;
   margin: 5px 0;
-  cursor: grab;
   list-style: none;
   user-select: none;
 }
@@ -791,13 +804,8 @@
   opacity: 0.8;
 }
 
-.rollback-bar:active {
-  cursor: grabbing;
-}
-
 .rollback-bar.dragging {
   opacity: 0.5;
-  cursor: grabbing;
 }
 
 .doc-editor {

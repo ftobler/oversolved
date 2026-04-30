@@ -1,33 +1,32 @@
 .loading-overlay {
   position: absolute;
-  inset: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30%;
   pointer-events: none;
   z-index: 100;
   opacity: 0;
   transition: opacity 0.3s ease-in-out;
-  background: rgba(17, 17, 17, 0.4);
 }
 
 .loading-overlay.visible {
   opacity: 1;
-  pointer-events: auto;
 }
 
 .loading-overlay-content {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
 }
 
 .md3-spinner-container {
-  position: relative;
-  width: 48px;
-  height: 48px;
+  width: 24px;
+  height: 24px;
 }
 
 .md3-spinner-rotator {

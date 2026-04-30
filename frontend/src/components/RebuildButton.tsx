@@ -1,37 +1,51 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useRef, useCallback } from 'react'
 import rebuildIcon from '../assets/icons/context-rebuild.svg'
-import { useRebuildStats } from '../hooks/useRebuildStats'
 import { RebuildTimingPopover } from './RebuildTimingPopover'
+import type { PartFeature } from '../types/cad'
 
 interface RebuildButtonProps {
-  docId?: string
+  featureTimings: Record<string, number>
+  features: PartFeature[]
   onClick: () => void
   isLoading?: boolean
   disabled?: boolean
 }
 
-export const RebuildButton: React.FC<RebuildButtonProps> = ({ docId, onClick, isLoading, disabled }) => {
-  const [isHovering, setIsHovering] = useState(false)
-  const { stats, fetchStats } = useRebuildStats(docId)
+export const RebuildButton: React.FC<RebuildButtonProps> = ({ featureTimings, features, onClick, isLoading, disabled }) => {
+  const [isButtonHovered, setIsButtonHovered] = useState(false)
+  const [isPopoverHovered, setIsPopoverHovered] = useState(false)
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useEffect(() => {
-    if (isHovering) {
-      fetchStats()
+  const isVisible = isButtonHovered || isPopoverHovered
+
+  const cancelHide = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current)
+      hideTimerRef.current = null
     }
-  }, [isHovering, fetchStats])
+  }, [])
+
+  const scheduleHide = useCallback(() => {
+    cancelHide()
+    hideTimerRef.current = setTimeout(() => {
+      setIsButtonHovered(false)
+      setIsPopoverHovered(false)
+    }, 500)
+  }, [cancelHide])
 
   return (
-    <div
-      className="rebuild-button-container"
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
-    >
+    <div className="rebuild-button-container">
       <button
         className="rebuild-button"
         onClick={onClick}
         disabled={disabled || isLoading}
         title="Rebuild geometry (clears cache)"
         aria-label="Rebuild geometry"
+        onMouseEnter={() => {
+          cancelHide()
+          setIsButtonHovered(true)
+        }}
+        onMouseLeave={scheduleHide}
       >
         {isLoading ? (
           <svg className="rebuild-spinner" viewBox="0 0 48 48">
@@ -49,7 +63,16 @@ export const RebuildButton: React.FC<RebuildButtonProps> = ({ docId, onClick, is
         )}
       </button>
 
-      <RebuildTimingPopover stats={stats} isVisible={isHovering} />
+      <RebuildTimingPopover
+        featureTimings={featureTimings}
+        features={features}
+        isVisible={isVisible}
+        onMouseEnter={() => {
+          cancelHide()
+          setIsPopoverHovered(true)
+        }}
+        onMouseLeave={scheduleHide}
+      />
     </div>
   )
 }

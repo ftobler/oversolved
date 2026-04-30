@@ -8,7 +8,6 @@ interface LoadingOverlayProps {
 export default function LoadingOverlay({ isDocumentLoading = false }: LoadingOverlayProps) {
   const isSolving = useSolverStore(s => s.isSolving)
   const isVisible = isDocumentLoading || isSolving
-  const message = isDocumentLoading ? 'Loading document...' : isSolving ? 'Solving...' : ''
 
   return (
     <div className={`loading-overlay${isVisible ? ' visible' : ''}`}>
@@ -28,7 +27,6 @@ export default function LoadingOverlay({ isDocumentLoading = false }: LoadingOve
             </svg>
           </div>
         </div>
-        {message && <p className="loading-message">{message}</p>}
       </div>
     </div>
   )

@@ -53,42 +53,6 @@ describe('Documents share', () => {
     expect(shareBtn).toBeInTheDocument()
   })
 
-  it('shows owned by me for own documents', async () => {
-    vi.stubGlobal('fetch', mockFetch([
-      { uuid: 'doc-1', name: 'TestDoc', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-02T00:00:00Z', is_owner: true, owner_username: 'admin' },
-    ]))
-
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
-
-    await waitFor(() => {
-      expect(screen.getByText('owned by me')).toBeInTheDocument()
-    })
-  })
-
-  it('shows owned by username for shared documents', async () => {
-    vi.stubGlobal('fetch', mockFetch([
-      { uuid: 'doc-1', name: 'SharedDoc', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-02T00:00:00Z', is_owner: false, owner_username: 'otheruser' },
-    ]))
-
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
-
-    await waitFor(() => {
-      expect(screen.getByText('owned by otheruser')).toBeInTheDocument()
-    })
-  })
-
   it('hides delete button for non-owned documents', async () => {
     vi.stubGlobal('fetch', mockFetch([
       { uuid: 'doc-1', name: 'SharedDoc', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-02T00:00:00Z', is_owner: false, owner_username: 'otheruser' },

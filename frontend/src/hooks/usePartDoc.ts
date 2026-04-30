@@ -186,6 +186,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [bodies, setBodies] = useState<Record<string, import('../types/cad').BodyResult>>({})
   const [pickBodies, setPickBodies] = useState<Record<string, import('../types/cad').BodyResult>>({})
   const [solving, setSolving] = useState(false)
+  const [featureTimings, setFeatureTimings] = useState<Record<string, number>>({})
   const [solveTime, setSolveTime] = useState<number | null>(null)
   const [solveError, setSolveError] = useState<string | null>(null)
   const [solveResult, setSolveRawResult] = useState<string>('')
@@ -201,7 +202,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const cancelledRef = useRef(false)
 
   const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
-    const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; plane_transform?: import('../types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }>; plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }; body_id?: string; exception?: string }>
+    const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; plane_transform?: import('../types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }>; plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }; body_id?: string; exception?: string; solve_ms?: number }>
 
     const results: Record<string, SketchData> = {}
     for (const [id, feature] of Object.entries(result)) {
@@ -281,6 +282,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       }
     }
     setSolveResults(results)
+    const timings: Record<string, number> = {}
+    for (const [id, feature] of Object.entries(result)) {
+      if (typeof feature.solve_ms === 'number') {
+        timings[id] = feature.solve_ms
+      }
+    }
+    setFeatureTimings(timings)
     reconcilePartStyle(d, data.bodies)
     setBodies(data.bodies ?? {})
     setPickBodies(data.pick_bodies ?? {})
@@ -692,6 +700,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   }, [reSolve])
 
   useEffect(() => {
+    cancelledRef.current = false
     return () => { cancelledRef.current = true }
   }, [])
 
@@ -767,6 +776,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     setError,
     solveResults,
     setSolveResults,
+    featureTimings,
     bodies,
     pickBodies,
     solving,

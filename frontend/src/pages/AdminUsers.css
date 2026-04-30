@@ -137,8 +137,7 @@
 }
 
 .btn-delete-tile:hover {
-  background: #ef5350;
-  color: #fff;
+  background: rgba(0, 0, 0, 0.8);
 }
 
 .btn-delete-tile .material-icons {

@@ -292,6 +292,7 @@ export default function Part() {
     error,
     setError,
     solveResults,
+    featureTimings,
     solving,
     solveTime,
     solveError,
@@ -1238,7 +1239,7 @@ useEffect(() => {
           bodies={bodies}
           onRebuild={handleClearCacheAndRebuild}
           isRebuilding={isRebuilding}
-          docId={uuid}
+          featureTimings={featureTimings}
         />
 
         <div className="doc-editor">
@@ -1302,24 +1303,19 @@ useEffect(() => {
               <button className="error-banner-dismiss" onClick={() => setError(null)}>×</button>
             </div>
           )}
-          {!loading && !error && (
-            <>
-              {mode === 'code' && (
-                <div className="code-split">
-                  <textarea className="code-input" value={codeText} onChange={e => setCodeText(e.target.value)} placeholder="Document content..." spellCheck="false" />
-                  <div className="code-result">
-                    {solving ? <span className="code-result-status">Solving...</span> : solveResult ? <pre>{solveResult}</pre> : <span className="code-result-status">Press Run to solve</span>}
-                  </div>
-                </div>
-              )}
-              {mode !== 'code' && (
-                <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-                  <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={effectiveVisibleBodies} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} partStyle={partStyle} ghostMode={ghostMode} planesVisible={planesVisible} />
-
-                  <LoadingOverlay isDocumentLoading={loading} />
-                </div>
-              )}
-            </>
+          {!loading && !error && mode === 'code' && (
+            <div className="code-split">
+              <textarea className="code-input" value={codeText} onChange={e => setCodeText(e.target.value)} placeholder="Document content..." spellCheck="false" />
+              <div className="code-result">
+                {solving ? <span className="code-result-status">Solving...</span> : solveResult ? <pre>{solveResult}</pre> : <span className="code-result-status">Press Run to solve</span>}
+              </div>
+            </div>
+          )}
+          {mode !== 'code' && (
+            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+              <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={effectiveVisibleBodies} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} partStyle={partStyle} ghostMode={ghostMode} planesVisible={planesVisible} />
+              <LoadingOverlay isDocumentLoading={loading} />
+            </div>
           )}
         </div>
 
