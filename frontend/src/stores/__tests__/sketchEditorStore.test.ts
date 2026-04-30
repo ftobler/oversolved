@@ -617,6 +617,17 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().hoveredSurfaceId).toBeNull()
     })
 
+    it('setHovered3DSurface updates hovered 3D surface', () => {
+      useSketchEditorStore.getState().setHovered3DSurface('?d,d;@extrude1face0:face')
+      expect(useSketchEditorStore.getState().hovered3DSurfaceId).toBe('?d,d;@extrude1face0:face')
+    })
+
+    it('setHovered3DSurface clears on null', () => {
+      useSketchEditorStore.getState().setHovered3DSurface('?d,d;@extrude1face0:face')
+      useSketchEditorStore.getState().setHovered3DSurface(null)
+      expect(useSketchEditorStore.getState().hovered3DSurfaceId).toBeNull()
+    })
+
     it('hoveredSnapKind can be path', () => {
       useSketchEditorStore.getState().setHoveredVertex('vertex:S1:L1:start', [5, 5], 'path')
       expect(useSketchEditorStore.getState().hoveredSnapKind).toBe('path')

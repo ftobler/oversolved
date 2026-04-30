@@ -18,6 +18,7 @@ from oversolved.geometry import (  # noqa: E402
     solid_to_edges,
     solid_to_vertices,
     step_file_to_shape,
+    _validate_mesh,
 )
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
 from OCP.STEPControl import STEPControl_Writer, STEPControl_StepModelType  # noqa: E402
@@ -142,6 +143,57 @@ def test_boolean_cut_produces_smaller_shape():
     result = boolean_cut(target, tool)
     mesh = solid_to_mesh(result)
     assert_mesh_valid(mesh)
+
+
+def test_face_triangle_coverage_complete_on_box():
+    """Every triangle must map to a valid B-rep face and every face must have triangles."""
+    box = BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()
+    mesh = solid_to_mesh(box)
+
+    assert len(mesh["triangle_to_face"]) == len(mesh["faces"])
+    face_indices = set(mesh["triangle_to_face"])
+    for face_idx in face_indices:
+        assert 0 <= face_idx < len(mesh["face_data"]), f"face_idx {face_idx} out of range"
+    for face_idx in range(len(mesh["face_data"])):
+        assert face_idx in face_indices, f"face {face_idx} has no triangles"
+
+
+def test_face_triangle_coverage_on_boolean_union_with_inside_corner():
+    """Boolean union of perpendicular boxes creates inside corners; all faces covered."""
+    left = [pts_to_edge_loop([[0, 0], [1, 0], [1, 1], [0, 1]])]
+    right = [pts_to_edge_loop([[1, 0], [2, 0], [2, 1], [1, 1]])]
+    solid1 = extrude_profile(left, FRONT_PLANE, [0, 0, 1], 1.0)
+    solid2 = extrude_profile(right, FRONT_PLANE, [0, 0, 1], 1.0)
+    result = boolean_union(solid1, solid2)
+    mesh = solid_to_mesh(result)
+    assert_mesh_valid(mesh)
+
+    assert len(mesh["triangle_to_face"]) == len(mesh["faces"])
+    face_indices = set(mesh["triangle_to_face"])
+    for face_idx in face_indices:
+        assert 0 <= face_idx < len(mesh["face_data"])
+    for face_idx in range(len(mesh["face_data"])):
+        assert face_idx in face_indices, f"face {face_idx} has no triangles"
+
+
+def test_face_queries_complete_on_l_shape_cut():
+    """Boolean cut creating concave geometry must have complete face_queries."""
+    loops_outer = [pts_to_edge_loop([[0, 0], [2, 0], [2, 2], [0, 2]])]
+    loops_inner = [pts_to_edge_loop([[0, 0], [1, 0], [1, 1], [0, 1]])]
+    target = extrude_profile(loops_outer, FRONT_PLANE, [0, 0, 1], 2.0)
+    tool = extrude_profile(loops_inner, FRONT_PLANE, [0, 0, 1], 1.0)
+    result = boolean_cut(target, tool)
+    mesh = solid_to_mesh(result, created_by="cut1")
+    assert_mesh_valid(mesh)
+
+    assert "face_queries" in mesh
+    assert len(mesh["face_queries"]) == len(mesh["face_data"])
+    assert len(mesh["triangle_to_face"]) == len(mesh["faces"])
+    for face_idx in mesh["triangle_to_face"]:
+        assert 0 <= face_idx < len(mesh["face_queries"])
+    used_faces = set(mesh["triangle_to_face"])
+    for face_idx in range(len(mesh["face_queries"])):
+        assert face_idx in used_faces, f"face {face_idx} has no triangles"
 
 
 def test_boolean_union_produces_larger_shape():
@@ -443,3 +495,55 @@ def test_boolean_cut_result_is_valid():
     box_b = BRepPrimAPI_MakeBox(gp_Pnt(1, 0, 0), 2.0, 2.0, 1.0).Shape()
     result = boolean_cut(box_a, box_b)
     assert BRepCheck_Analyzer(_unwrap(result)).IsValid(), "cut result failed validity check"
+
+
+def test_validate_mesh_accepts_valid_box():
+    """_validate_mesh should pass for a valid box mesh."""
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    mesh = solid_to_mesh(box)
+    _validate_mesh(mesh)
+
+
+def test_validate_mesh_rejects_mismatched_triangle_to_face():
+    """_validate_mesh should raise when triangle_to_face length differs from faces."""
+    mesh = {
+        "vertices": [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+        "faces": [[0, 1, 2]],
+        "normals": [[0, 0, 1]],
+        "face_data": [{"centroid": [0.3, 0.3, 0], "normal": [0, 0, 1], "area": 0.5, "surface_type": "flatface"}],
+        "triangle_to_face": [0, 0],
+        "face_queries": ["?0;@testface0:test"],
+    }
+    with pytest.raises(ValueError, match="triangle_to_face length"):
+        _validate_mesh(mesh)
+
+
+def test_validate_mesh_rejects_orphaned_face():
+    """_validate_mesh should raise when a face has no triangles."""
+    mesh = {
+        "vertices": [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+        "faces": [[0, 1, 2]],
+        "normals": [[0, 0, 1]],
+        "face_data": [
+            {"centroid": [0.3, 0.3, 0], "normal": [0, 0, 1], "area": 0.5, "surface_type": "flatface"},
+            {"centroid": [0.7, 0.7, 0], "normal": [0, 0, 1], "area": 0.5, "surface_type": "flatface"},
+        ],
+        "triangle_to_face": [0],
+        "face_queries": ["?0;@testface0:test", "?0;@testface1:test"],
+    }
+    with pytest.raises(ValueError, match="face 1 has no triangles"):
+        _validate_mesh(mesh)
+
+
+def test_validate_mesh_rejects_out_of_bounds_triangle_to_face():
+    """_validate_mesh should raise when triangle_to_face index exceeds face_queries."""
+    mesh = {
+        "vertices": [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+        "faces": [[0, 1, 2]],
+        "normals": [[0, 0, 1]],
+        "face_data": [{"centroid": [0.3, 0.3, 0], "normal": [0, 0, 1], "area": 0.5, "surface_type": "flatface"}],
+        "triangle_to_face": [2],
+        "face_queries": ["?0;@testface0:test"],
+    }
+    with pytest.raises(ValueError, match=r"triangle_to_face\[0\]=2 out of range"):
+        _validate_mesh(mesh)

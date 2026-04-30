@@ -220,11 +220,11 @@ export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
 }
 
 export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, transparency = 0, metalness = 0.3, interactive = true, ghost = false }: Body3DProps) {
-  const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
+  const hovered3DSurfaceId = useSketchEditorStore(s => s.hovered3DSurfaceId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
   const setHoveredBodyId = useSketchEditorStore(s => s.setHoveredBodyId)
-  const setHoveredSurface = useSketchEditorStore(s => s.setHoveredSurface)
+  const setHovered3DSurface = useSketchEditorStore(s => s.setHovered3DSurface)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const addToNormalSelection = useSketchEditorStore(s => s.addToNormalSelection)
@@ -411,17 +411,17 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   // When plane selection mode is active, commit the face as a plane reference instead.
   const handleMeshClick = useCallback((e: { stopPropagation: () => void }) => {
     e.stopPropagation()
-    if (!hoveredSurfaceId) return
+    if (!hovered3DSurfaceId) return
     if (planeSelectionFeatureId) {
-      commitPlaneSelection(hoveredSurfaceId)
+      commitPlaneSelection(hovered3DSurfaceId)
     } else {
-      toggleNormalSelection(hoveredSurfaceId)
+      toggleNormalSelection(hovered3DSurfaceId)
       if (!pendingPickField) {
         addToNormalSelection('@' + bodyId)
       }
       if (pendingPickField) commitFieldPick()
     }
-  }, [hoveredSurfaceId, planeSelectionFeatureId, commitPlaneSelection, toggleNormalSelection, pendingPickField, commitFieldPick, addToNormalSelection, bodyId])
+  }, [hovered3DSurfaceId, planeSelectionFeatureId, commitPlaneSelection, toggleNormalSelection, pendingPickField, commitFieldPick, addToNormalSelection, bodyId])
 
   // Handle edge click on line segments
   const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event }) => {
@@ -461,7 +461,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         const query = resolveFaceQuery(i)
         if (normalSelection.has(query)) {
           color = selectedColor
-        } else if (query === hoveredSurfaceId) {
+        } else if (query === hovered3DSurfaceId) {
           color = hoverColor
         }
       }
@@ -474,7 +474,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       }
     }
     return colors
-  }, [mesh.faces, normalSelection, hoveredSurfaceId, bodyColor, resolveFaceQuery, interactive])
+  }, [mesh.faces, normalSelection, hovered3DSurfaceId, bodyColor, resolveFaceQuery, interactive])
 
   // Build edge colors array for selected/hovered edges
   const edgeColors = useMemo(() => {
@@ -612,10 +612,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           e.stopPropagation()
           if (isRotating) return
           setHoveredBodyId(featureId)
-          const faceIndex = (e as unknown as { faceIndex?: number }).faceIndex
+          const rawFaceIndex = (e as unknown as { faceIndex?: number }).faceIndex
+          const rawIndex = (e as unknown as { index?: number }).index
+          const faceIndex = rawFaceIndex !== undefined ? rawFaceIndex : (rawIndex !== undefined ? Math.floor(rawIndex / 3) : undefined)
           if (faceIndex !== undefined) {
             const query = resolveFaceQuery(faceIndex)
-            setHoveredSurface(query)
+            setHovered3DSurface(query)
             if (query !== lastHoveredFaceRef.current) {
               lastHoveredFaceRef.current = query
               updateFaceGeometry(faceIndex)
@@ -624,10 +626,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         } : undefined}
         onPointerMove={interactive ? (e) => {
           e.stopPropagation()
-          const faceIndex = (e as unknown as { faceIndex?: number }).faceIndex
+          const rawFaceIndex = (e as unknown as { faceIndex?: number }).faceIndex
+          const rawIndex = (e as unknown as { index?: number }).index
+          const faceIndex = rawFaceIndex !== undefined ? rawFaceIndex : (rawIndex !== undefined ? Math.floor(rawIndex / 3) : undefined)
           if (faceIndex !== undefined) {
             const query = resolveFaceQuery(faceIndex)
-            setHoveredSurface(query)
+            setHovered3DSurface(query)
             if (query !== lastHoveredFaceRef.current) {
               lastHoveredFaceRef.current = query
               updateFaceGeometry(faceIndex)
@@ -637,7 +641,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         onPointerOut={interactive ? (e) => {
           e.stopPropagation()
           setHoveredBodyId(current => current === featureId ? null : current)
-          setHoveredSurface(null)
+          setHovered3DSurface(null)
           lastHoveredFaceRef.current = null
           setHoveredFaceGeometry(null, null)
         } : undefined}
@@ -770,8 +774,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           </lineSegments>
         )
       })}
-      {interactive && faceBoundaryGeos && hoveredSurfaceId && faceBoundaryGeos.has(hoveredSurfaceId) && (
-        <lineSegments geometry={faceBoundaryGeos.get(hoveredSurfaceId)}>
+      {interactive && faceBoundaryGeos && hovered3DSurfaceId && faceBoundaryGeos.has(hovered3DSurfaceId) && (
+        <lineSegments geometry={faceBoundaryGeos.get(hovered3DSurfaceId)}>
           <lineBasicMaterial color={COLOR_HOVER} linewidth={2} depthTest={false} />
         </lineSegments>
       )}

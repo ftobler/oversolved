@@ -281,6 +281,7 @@ export default function Part() {
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)
   const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
+  const hovered3DSurfaceId = useSketchEditorStore(s => s.hovered3DSurfaceId)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
 
   const {
@@ -991,7 +992,7 @@ useEffect(() => {
 
   const handleRightClick = useCallback((pos: [number, number], targetId?: string) => {
     const store = useSketchEditorStore.getState()
-    const hoveredSurfaceId = store.hoveredSurfaceId
+    const hoveredSurfaceId = store.hoveredSurfaceId ?? store.hovered3DSurfaceId
     const hoveredFaceNormal = store.hoveredFaceNormal
     const hoveredFaceCenter = store.hoveredFaceCenter
 
@@ -1361,7 +1362,9 @@ useEffect(() => {
                         ? <div className="debug-value">{hoveredPlaneId}</div>
                         : hoveredSurfaceId
                           ? <div className="debug-value">{hoveredSurfaceId}</div>
-                          : <div className="debug-empty">none</div>}
+                          : hovered3DSurfaceId
+                            ? <div className="debug-value">{hovered3DSurfaceId}</div>
+                            : <div className="debug-empty">none</div>}
                 </div>
                 <div className="debug-section">
                   <div className="debug-section-title">Dynamic ({dynamicSelection.size})</div>

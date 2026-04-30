@@ -5,6 +5,7 @@ beforeEach(() => {
   useSketchEditorStore.setState({
     hoveredBodyId: null,
     hoveredSurfaceId: null,
+    hovered3DSurfaceId: null,
     normalSelection: new Set(),
   })
 })
@@ -139,6 +140,36 @@ describe('Body3D hover surface - store behavior', () => {
     useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
     expect(useSketchEditorStore.getState().hoveredSurfaceId).toBe('?d,d;@extrude1face0:face')
     expect(useSketchEditorStore.getState().normalSelection.has('@ex1/face/0')).toBe(true)
+  })
+})
+
+describe('Body3D hover 3D surface - store behavior', () => {
+  it('setHovered3DSurface sets hovered3DSurfaceId', () => {
+    useSketchEditorStore.getState().setHovered3DSurface('?d,d;@extrude1face0:face')
+    expect(useSketchEditorStore.getState().hovered3DSurfaceId).toBe('?d,d;@extrude1face0:face')
+  })
+
+  it('setHovered3DSurface(null) clears hovered3DSurfaceId', () => {
+    useSketchEditorStore.getState().setHovered3DSurface('?d,d;@extrude1face0:face')
+    useSketchEditorStore.getState().setHovered3DSurface(null)
+    expect(useSketchEditorStore.getState().hovered3DSurfaceId).toBeNull()
+  })
+
+  it('hovered3DSurfaceId is independent from hoveredSurfaceId', () => {
+    useSketchEditorStore.getState().setHoveredSurface('face:sketch1:?3;@sketch1abc')
+    useSketchEditorStore.getState().setHovered3DSurface('?d,d;@extrude1face0:face')
+    expect(useSketchEditorStore.getState().hoveredSurfaceId).toBe('face:sketch1:?3;@sketch1abc')
+    expect(useSketchEditorStore.getState().hovered3DSurfaceId).toBe('?d,d;@extrude1face0:face')
+  })
+
+  it('click-promotes-hover uses hovered3DSurfaceId for 3D faces', () => {
+    const query = '?d,d;@extrude1face0:face'
+    useSketchEditorStore.getState().setHovered3DSurface(query)
+    const { hovered3DSurfaceId } = useSketchEditorStore.getState()
+    if (hovered3DSurfaceId) {
+      useSketchEditorStore.getState().toggleNormalSelection(hovered3DSurfaceId)
+    }
+    expect(useSketchEditorStore.getState().normalSelection.has(query)).toBe(true)
   })
 })
 

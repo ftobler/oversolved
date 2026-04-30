@@ -118,6 +118,7 @@ interface SketchEditorState {
   hoveredConstraintEntityIds: Set<string>
   hoveredPlaneId: string | null
   hoveredSurfaceId: string | null
+  hovered3DSurfaceId: string | null
   hoveredEdgeId: string | null
   hoveredBodyId: string | null
   hoveredFaceNormal: [number, number, number] | null
@@ -128,6 +129,7 @@ interface SketchEditorState {
   setHoveredConstraintEntities: (ids: Set<string>) => void
   setHoveredPlane: (id: string | null) => void
   setHoveredSurface: (id: string | null) => void
+  setHovered3DSurface: (id: string | null) => void
   setHoveredEdge: (id: string | null) => void
   setHoveredBodyId: (id: string | null | ((current: string | null) => string | null)) => void
   setHoveredFaceGeometry: (normal: [number, number, number] | null, center: [number, number, number] | null) => void
@@ -221,6 +223,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   hoveredVertexId: null,
   hoveredPlaneId: null,
   hoveredSurfaceId: null,
+  hovered3DSurfaceId: null,
   hoveredEdgeId: null,
   hoveredBodyId: null,
   hoveredFaceNormal: null,
@@ -315,6 +318,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setHoveredPlane: (id) => set({ hoveredPlaneId: id }),
 
   setHoveredSurface: (id) => set({ hoveredSurfaceId: id }),
+
+  setHovered3DSurface: (id) => set({ hovered3DSurfaceId: id }),
 
   setHoveredEdge: (id) => set({ hoveredEdgeId: id }),
 

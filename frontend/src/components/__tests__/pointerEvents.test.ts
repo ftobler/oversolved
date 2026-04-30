@@ -8,6 +8,7 @@ beforeEach(() => {
     dynamicSelection: new Set(),
     isPointerDown: false,
     hoveredSurfaceId: null,
+    hovered3DSurfaceId: null,
     hoveredBodyId: null,
   })
 })

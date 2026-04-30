@@ -70,6 +70,9 @@ def _validate_mesh(mesh: dict) -> None:
     verts = mesh["vertices"]
     faces = mesh["faces"]
     normals = mesh.get("normals", [])
+    triangle_to_face = mesh.get("triangle_to_face", [])
+    face_queries = mesh.get("face_queries", [])
+    face_data = mesh.get("face_data", [])
 
     for i, v in enumerate(verts):
         if len(v) != 3:
@@ -95,6 +98,30 @@ def _validate_mesh(mesh: dict) -> None:
         mag = math.sqrt(sum(x * x for x in normal))
         if abs(mag - 1.0) > 1e-5:
             raise ValueError(f"normal {i} not unit length: mag={mag}")
+
+    if triangle_to_face:
+        if len(triangle_to_face) != len(faces):
+            raise ValueError(
+                f"triangle_to_face length {len(triangle_to_face)} != faces count {len(faces)}"
+            )
+        face_count = len(face_queries) if face_queries else len(face_data)
+        for i, face_idx in enumerate(triangle_to_face):
+            if not isinstance(face_idx, int):
+                raise ValueError(f"triangle_to_face[{i}] is not an int: {face_idx!r}")
+            if face_idx < 0 or face_idx >= face_count:
+                raise ValueError(
+                    f"triangle_to_face[{i}]={face_idx} out of range [0, {face_count})"
+                )
+        if face_queries:
+            used_faces = set(triangle_to_face)
+            for face_idx in range(len(face_queries)):
+                if face_idx not in used_faces:
+                    raise ValueError(f"face {face_idx} has no triangles in triangle_to_face")
+
+    if face_queries and len(face_data) != len(face_queries):
+        raise ValueError(
+            f"face_data count {len(face_data)} != face_queries count {len(face_queries)}"
+        )
 
 
 def signed_distance_to_line(
