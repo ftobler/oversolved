@@ -816,6 +816,7 @@
   background: #111;
   overflow-x: auto;
   overflow-y: hidden;
+  flex-wrap: nowrap;
 }
 
 .mode-selector {
@@ -875,6 +876,7 @@
   background: var(--tiling-sine-fine) repeat-x;
   transform: rotate(90deg);
   margin: 0 0px;
+  flex-shrink: 0;
 }
 
 .editor-btn {
