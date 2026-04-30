@@ -42,6 +42,7 @@ interface ViewportProps {
   partColors?: Record<string, string>
   partStyle?: Record<string, import('../types/cad').PartStyleEntry>
   ghostMode?: 'additive' | 'subtractive'
+  planesVisible?: boolean
 }
 
 function isActive(id: string, features: Feature[] | undefined, rollbackPos: number | undefined, visible: Set<string> | undefined): boolean {
@@ -75,6 +76,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   partColors,
   partStyle,
   ghostMode,
+  planesVisible = true,
 }: ViewportProps, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pvRef = useRef<Pv[]>([])
@@ -307,11 +309,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         <CameraLight />
 
         {showOrigin && <OriginMarker />}
-        {showFront  && <ReferencePlane rotation={[0,0,0]} label="Front" />}
-        {showTop    && <ReferencePlane rotation={[-Math.PI/2,0,0]} label="Top" />}
-        {showRight  && <ReferencePlane rotation={[0,Math.PI/2,0]} label="Right" />}
+        {planesVisible && showFront  && <ReferencePlane rotation={[0,0,0]} label="Front" />}
+        {planesVisible && showTop    && <ReferencePlane rotation={[-Math.PI/2,0,0]} label="Top" />}
+        {planesVisible && showRight  && <ReferencePlane rotation={[0,Math.PI/2,0]} label="Right" />}
 
-        {(features ?? [])
+        {planesVisible && (features ?? [])
           .filter(f => f.kind === 'plane' && !['Origin','Top','Front','Right'].includes(f.id))
           .filter(f => isActive(f.id, features, rollbackPosition, visibleFeatures))
           .map(f => {
