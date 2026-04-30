@@ -26,6 +26,7 @@ export const FilletEditor: React.FC<FilletEditorProps> = ({ feature, onMutation,
             else setPendingPickField({ featureId: fid, field: 'edges', hostKind: 'fillet' })
           }}
           onRemove={(index) => onMutation({ type: 'remove_fillet_edge', featureId: fid, index })}
+          onReorder={(from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: 'edges', fromIndex: from, toIndex: to })}
         />
       </div>
       <div className="feature-field-row">

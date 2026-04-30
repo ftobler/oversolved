@@ -26,6 +26,7 @@ export const ChamferEditor: React.FC<ChamferEditorProps> = ({ feature, onMutatio
             else setPendingPickField({ featureId: fid, field: 'edges', hostKind: 'chamfer' })
           }}
           onRemove={(index) => onMutation({ type: 'remove_chamfer_edge', featureId: fid, index })}
+          onReorder={(from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: 'edges', fromIndex: from, toIndex: to })}
         />
       </div>
       <div className="feature-field-row">

@@ -87,6 +87,7 @@ import {
   applySetPartTransparency,
   applySetPartMetalness,
   applyReorderFeatures,
+  applyReorderPickField,
 } from '../utils/yamlMutations'
 import type { PartFeature } from '../types/cad'
 
@@ -654,6 +655,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'reorder_features':
         applyReorderFeatures(next, m.featureId, m.toIndex)
+        break
+      case 'reorder_pick_field':
+        applyReorderPickField(next, m.featureId, m.field, m.fromIndex, m.toIndex)
         break
     }
     docRef.current = next

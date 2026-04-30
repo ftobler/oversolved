@@ -56,6 +56,7 @@ export const BooleanEditor: React.FC<BooleanEditorProps> = ({ feature, onMutatio
             setPendingPickField({ featureId: fid, field: 'boolean_tool' })
           }}
           onRemove={(index) => onMutation({ type: 'remove_boolean_tool', featureId: fid, tool: bool.tools[index] })}
+          onReorder={(from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: 'tools', fromIndex: from, toIndex: to })}
         />
       </div>
       <div className="feature-field-row">

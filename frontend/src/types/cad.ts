@@ -567,3 +567,4 @@ export type Mutation =
   | { type: 'set_part_transparency'; bodyId: string; transparency: number }
   | { type: 'set_part_metalness'; bodyId: string; metalness: number }
   | { type: 'reorder_features'; featureId: string; toIndex: number }
+  | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }

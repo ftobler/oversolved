@@ -1224,3 +1224,32 @@ export function applySetTransformField(
   if (!feat?.transform) return
   ;(feat.transform as unknown as Record<string, unknown>)[field] = value
 }
+
+export function applyReorderPickField(doc: PartDoc, featureId: string, field: string, fromIndex: number, toIndex: number): void {
+  const feature = doc.features?.find(f => f.id === featureId)
+  if (!feature) return
+
+  let arr: unknown[] | undefined
+  switch (field) {
+    case 'edges':
+      arr = feature.fillet?.edges ?? feature.chamfer?.edges
+      break
+    case 'tools':
+      arr = feature.boolean?.tools
+      break
+    case 'sketch':
+      if (feature.extrude?.sketch !== undefined) {
+        arr = Array.isArray(feature.extrude.sketch) ? feature.extrude.sketch : feature.extrude.sketch ? [feature.extrude.sketch] : []
+      } else if (feature.revolve?.sketch !== undefined) {
+        arr = Array.isArray(feature.revolve.sketch) ? feature.revolve.sketch : feature.revolve.sketch ? [feature.revolve.sketch] : []
+      }
+      break
+    default:
+      return
+  }
+
+  if (!arr) return
+  if (fromIndex < 0 || fromIndex >= arr.length || toIndex < 0 || toIndex >= arr.length) return
+  const [moved] = arr.splice(fromIndex, 1)
+  arr.splice(toIndex, 0, moved)
+}

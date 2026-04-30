@@ -135,4 +135,113 @@ describe('PickChip', () => {
     const items = document.querySelectorAll('.feature-pick-chip-item')
     expect(items.length).toBe(5)
   })
+
+  it('renders drag handle for each item when onReorder is provided', () => {
+    render(
+      <PickChip
+        values={['@sk1', '@sk2', '@sk3']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />
+    )
+    const dragHandles = document.querySelectorAll('.feature-pick-chip-item-drag')
+    expect(dragHandles.length).toBe(3)
+  })
+
+  it('does not render drag handles when onReorder is not provided', () => {
+    render(
+      <PickChip
+        values={['@sk1', '@sk2', '@sk3']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+      />
+    )
+    const dragHandles = document.querySelectorAll('.feature-pick-chip-item-drag')
+    expect(dragHandles.length).toBe(0)
+  })
+
+  it('items have draggable attribute when onReorder is provided', () => {
+    render(
+      <PickChip
+        values={['@sk1', '@sk2']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />
+    )
+    const items = document.querySelectorAll('.feature-pick-chip-item')
+    expect(items[0].getAttribute('draggable')).toBe('true')
+    expect(items[1].getAttribute('draggable')).toBe('true')
+  })
+
+  it('items are not draggable when onReorder is not provided', () => {
+    render(
+      <PickChip
+        values={['@sk1', '@sk2']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+      />
+    )
+    const items = document.querySelectorAll('.feature-pick-chip-item')
+    expect(items[0].getAttribute('draggable')).toBe('false')
+    expect(items[1].getAttribute('draggable')).toBe('false')
+  })
+
+  it('drag handle has correct class for styling', () => {
+    render(
+      <PickChip
+        values={['@sk1']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />
+    )
+    const dragHandle = document.querySelector('.feature-pick-chip-item-drag')
+    expect(dragHandle).toBeTruthy()
+  })
+
+  it('calls onReorder with correct indices after drag simulation', () => {
+    const onReorder = vi.fn()
+    render(
+      <PickChip
+        values={['@sk1', '@sk2', '@sk3']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={onReorder}
+      />
+    )
+    const items = document.querySelectorAll('.feature-pick-chip-item')
+    const dataTransfer = { setData: vi.fn(), effectAllowed: '', getData: vi.fn(() => '2'), dropEffect: '' }
+    fireEvent.dragStart(items[2], { dataTransfer })
+    fireEvent.dragOver(items[0], { dataTransfer })
+    fireEvent.drop(items[0], { dataTransfer })
+    expect(onReorder).toHaveBeenCalledTimes(1)
+    expect(onReorder).toHaveBeenCalledWith(2, expect.any(Number))
+  })
+
+  it('does not call onReorder when dragged onto itself', () => {
+    const onReorder = vi.fn()
+    render(
+      <PickChip
+        values={['@sk1', '@sk2', '@sk3']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={onReorder}
+      />
+    )
+    const items = document.querySelectorAll('.feature-pick-chip-item')
+    const dataTransfer = { setData: vi.fn(), effectAllowed: '', getData: vi.fn(() => '1'), dropEffect: '' }
+    fireEvent.dragStart(items[1], { dataTransfer })
+    fireEvent.dragOver(items[1], { dataTransfer, clientX: 0 })
+    fireEvent.drop(items[1], { dataTransfer })
+    expect(onReorder).not.toHaveBeenCalled()
+  })
 })
