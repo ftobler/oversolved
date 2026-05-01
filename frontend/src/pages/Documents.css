@@ -147,7 +147,7 @@
   color: #ef5350;
 }
 
-.add-dialog-overlay {
+.dialog-component-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -161,7 +161,7 @@
   z-index: 9999;
 }
 
-.add-dialog {
+.dialog-component {
   background: #1e1e1e;
   border: 1px solid #444;
   border-radius: 6px;
@@ -174,14 +174,14 @@
   gap: 12px;
 }
 
-.add-dialog-title {
+.dialog-component-title {
   font-size: 14px;
   font-weight: 600;
   color: #aaa;
   text-align: center;
 }
 
-.add-form-row {
+.dialog-component-buttons {
   display: flex;
   flex-direction: row;
   gap: 8px;
@@ -189,7 +189,7 @@
   justify-content: center;
 }
 
-.add-dialog input {
+.dialog-component input {
   padding: 8px 10px;
   background: #111;
   border: 1px solid #333;
@@ -200,13 +200,13 @@
   box-sizing: border-box;
 }
 
-.add-dialog input:focus {
+.dialog-component input:focus {
   outline: none;
   border-color: #4fc3f7;
   box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
 }
 
-.add-dialog .error-text {
+.dialog-component .error-text {
   color: #ef5350;
   font-size: 12px;
   margin: 0;

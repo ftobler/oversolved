@@ -24,12 +24,12 @@ export default function Dialog({
   if (!isOpen) return null
 
   return (
-    <div className="add-dialog-overlay" onClick={onClose}>
-      <div className="add-dialog" onClick={e => e.stopPropagation()}>
-        <div className="add-dialog-title">{title}</div>
+    <div className="dialog-component-overlay" onClick={onClose}>
+      <div className="dialog-component" onClick={e => e.stopPropagation()}>
+        <div className="dialog-component-title">{title}</div>
         {children}
         {onConfirm && (
-          <div className="add-form-row">
+          <div className="dialog-component-buttons">
             <button className="btn btn-primary" onClick={onConfirm} disabled={confirmDisabled}>
               {confirmLabel}
             </button>
