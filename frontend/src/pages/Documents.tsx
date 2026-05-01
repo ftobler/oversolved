@@ -360,6 +360,7 @@ export default function Documents() {
               isOpen={!!shareDoc}
               documentUuid={shareDoc.uuid}
               documentName={shareDoc.name}
+              ownerUsername={shareDoc.owner_username}
               isOwner={shareDoc.is_owner}
               onClose={() => setShareDoc(null)}
             />

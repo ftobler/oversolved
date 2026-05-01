@@ -29,7 +29,7 @@ describe('Dialog', () => {
         <p>Dialog content</p>
       </Dialog>
     )
-    const overlay = container.querySelector('.add-dialog-overlay')
+    const overlay = container.querySelector('.dialog-component-overlay')
     fireEvent.click(overlay!)
     expect(onClose).toHaveBeenCalledTimes(1)
   })

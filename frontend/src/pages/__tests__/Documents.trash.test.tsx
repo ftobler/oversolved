@@ -84,7 +84,7 @@ describe('Documents trash', () => {
 
   it('trash view shows deleted documents', async () => {
     vi.stubGlobal('fetch', mockFetch([], [
-      { uuid: 'trash-1', name: 'Deleted Doc', deleted_at: '2024-04-01T00:00:00Z', created_at: '2024-01-01T00:00:00Z' },
+      { uuid: 'trash-1', name: 'Deleted Doc', owner_username: 'admin', deleted_at: '2024-04-01T00:00:00Z', created_at: '2024-01-01T00:00:00Z' },
     ]))
 
     render(
@@ -102,7 +102,7 @@ describe('Documents trash', () => {
     fireEvent.click(screen.getByTitle('Trash'))
 
     await waitFor(() => {
-      expect(screen.getByText('Deleted Doc')).toBeInTheDocument()
+      expect(screen.getByText('admin/Deleted Doc')).toBeInTheDocument()
     })
   })
 
@@ -115,7 +115,7 @@ describe('Documents trash', () => {
           ok: true,
           json: () => Promise.resolve({
             documents: [
-              { uuid: 'trash-1', name: 'Deleted Doc', deleted_at: '2024-04-01T00:00:00Z', created_at: '2024-01-01T00:00:00Z' },
+              { uuid: 'trash-1', name: 'Deleted Doc', owner_username: 'admin', deleted_at: '2024-04-01T00:00:00Z', created_at: '2024-01-01T00:00:00Z' },
             ],
           }),
         } as Response)
@@ -151,7 +151,7 @@ describe('Documents trash', () => {
     fireEvent.click(screen.getByTitle('Trash'))
 
     await waitFor(() => {
-      expect(screen.getByText('Deleted Doc')).toBeInTheDocument()
+      expect(screen.getByText('admin/Deleted Doc')).toBeInTheDocument()
     })
 
     const recoverBtn = screen.getByTitle('Recover document')

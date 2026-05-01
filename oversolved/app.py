@@ -474,7 +474,8 @@ def create_app(config: dict | None = None) -> Flask:
         """Create and download a backup of all documents on the server."""
         db = get_db()
         cursor = db.execute(
-            "SELECT uuid, name, content, preview_image, owner_id FROM documents WHERE deleted_at IS NULL ORDER BY owner_id, name"
+            "SELECT uuid, name, content, preview_image, owner_id FROM documents "
+            "WHERE deleted_at IS NULL ORDER BY owner_id, name"
         )
         all_docs = cursor.fetchall()
 
@@ -482,7 +483,7 @@ def create_app(config: dict | None = None) -> Flask:
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             user_store = UserStore(db)
             file_counts = {}
-            for uuid, name, content, preview_image, owner_id in all_docs:
+            for doc_uuid, name, content, preview_image, owner_id in all_docs:
                 user = user_store.find_by_id(owner_id)
                 username = user["username"] if user else "unknown"
                 doc_name = secure_filename(name)
@@ -640,11 +641,15 @@ def create_app(config: dict | None = None) -> Flask:
         permission = doc_store.get_permission(uuid, g.current_user["id"])
         if permission is None:
             return jsonify({"error": "Forbidden"}), 403
+        user_store = UserStore(get_db())
+        owner = user_store.find_by_id(doc["owner_id"])
+        owner_username = owner["username"] if owner else "Unknown"
         response = {
             "uuid": doc["uuid"],
             "name": doc["name"],
             "content": doc["content"],
             "permission": permission,
+            "owner_username": owner_username,
         }
         if doc["preview_image"]:
             import base64

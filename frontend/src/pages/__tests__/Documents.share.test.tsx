@@ -46,7 +46,7 @@ describe('Documents share', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('TestDoc')).toBeInTheDocument()
+      expect(screen.getByText('admin/TestDoc')).toBeInTheDocument()
     })
 
     const shareBtn = screen.getByTitle('Share document')
@@ -67,7 +67,7 @@ describe('Documents share', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('SharedDoc')).toBeInTheDocument()
+      expect(screen.getByText('otheruser/SharedDoc')).toBeInTheDocument()
     })
 
     expect(screen.queryByTitle('Delete document')).not.toBeInTheDocument()

@@ -12,11 +12,12 @@ interface ShareDialogProps {
   isOpen: boolean
   documentUuid: string
   documentName: string
+  ownerUsername: string
   isOwner: boolean
   onClose: () => void
 }
 
-export default function ShareDialog({ isOpen, documentUuid, documentName, isOwner, onClose }: ShareDialogProps) {
+export default function ShareDialog({ isOpen, documentUuid, documentName, ownerUsername, isOwner, onClose }: ShareDialogProps) {
   const [shareUsername, setShareUsername] = useState('')
   const [sharePermission, setSharePermission] = useState<'view' | 'edit'>('view')
   const [shares, setShares] = useState<ShareInfo[]>([])
@@ -117,7 +118,7 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, isOwne
   return (
     <Dialog
       isOpen={isOpen}
-      title={`Share "${documentName}"`}
+      title={`Share "${ownerUsername}/${documentName}"`}
       onClose={onClose}
     >
       {!isOwner && (
@@ -144,18 +145,19 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, isOwne
                 borderRadius: '4px',
                 color: '#ccc',
                 fontSize: '13px',
+                minWidth: '80px',
               }}
             >
               <option value="view">View</option>
               <option value="edit">Edit</option>
             </select>
-            <button className="btn btn-primary" onClick={handleShare} disabled={loading || !shareUsername.trim()}>
+            <button className="btn btn-primary" onClick={handleShare} disabled={loading || !shareUsername.trim()} style={{ minWidth: '80px' }}>
               Share
             </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', color: '#ccc' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', background: '#111', borderRadius: '4px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', color: '#ccc', margin: 0 }}>
               <input
                 type="checkbox"
                 checked={isPublic}
@@ -167,25 +169,28 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, isOwne
           </div>
 
           {shares.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ fontSize: '12px', color: '#888', fontWeight: 600 }}>Shared with</div>
-              {shares.map(share => (
-                <div key={share.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
-                  <span style={{ color: '#ccc' }}>
-                    {share.shared_with_user_id === null ? 'Public link' : share.username}
-                    {' '}
-                    <span style={{ color: '#888' }}>({share.permission})</span>
-                  </span>
-                  <button
-                    className="btn btn-tile-action"
-                    onClick={() => handleRemoveShare(share.username)}
-                    title="Remove share"
-                    disabled={loading}
-                  >
-                    <span className="material-icons" style={{ fontSize: '16px' }}>close</span>
-                  </button>
-                </div>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', border: '1px solid #333', borderRadius: '4px', overflow: 'hidden' }}>
+              <div style={{ padding: '8px 12px', fontSize: '12px', color: '#888', fontWeight: 600, background: '#0a0a0a', borderBottom: '1px solid #333' }}>Shared with</div>
+              <div style={{ maxHeight: '200px', overflowY: 'auto', padding: '8px' }}>
+                {shares.map(share => (
+                  <div key={share.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', padding: '6px 0', borderBottom: '1px solid #222' }}>
+                    <span style={{ color: '#ccc' }}>
+                      {share.shared_with_user_id === null ? 'Public link' : share.username}
+                      {' '}
+                      <span style={{ color: '#888' }}>({share.permission})</span>
+                    </span>
+                    <button
+                      className="btn btn-tile-action"
+                      onClick={() => handleRemoveShare(share.username)}
+                      title="Remove share"
+                      disabled={loading}
+                      style={{ minWidth: '32px', height: '32px' }}
+                    >
+                      <span className="material-icons">delete_outline</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </>

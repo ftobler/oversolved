@@ -54,6 +54,7 @@ When asked to plan a feature:
 
 When asked to implement a feature:
 - you read the `feature/<topic>.md` and execute according to content.
+- Always make tests. Especially on bugs.
 
 
 ## important files

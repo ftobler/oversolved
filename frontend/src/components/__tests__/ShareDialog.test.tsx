@@ -13,11 +13,12 @@ describe('ShareDialog', () => {
         isOpen
         documentUuid="doc-1"
         documentName="TestDoc"
+        ownerUsername="TestUser"
         isOwner
         onClose={vi.fn()}
       />
     )
-    expect(screen.getByText('Share "TestDoc"')).toBeInTheDocument()
+    expect(screen.getByText('Share "TestUser/TestDoc"')).toBeInTheDocument()
   })
 
   it('shows non-owner message when isOwner is false', () => {
@@ -26,6 +27,7 @@ describe('ShareDialog', () => {
         isOpen
         documentUuid="doc-1"
         documentName="TestDoc"
+        ownerUsername="TestUser"
         isOwner={false}
         onClose={vi.fn()}
       />
@@ -56,6 +58,7 @@ describe('ShareDialog', () => {
         isOpen
         documentUuid="doc-1"
         documentName="TestDoc"
+        ownerUsername="TestUser"
         isOwner
         onClose={vi.fn()}
       />
@@ -105,6 +108,7 @@ describe('ShareDialog', () => {
         isOpen
         documentUuid="doc-1"
         documentName="TestDoc"
+        ownerUsername="TestUser"
         isOwner
         onClose={vi.fn()}
       />
@@ -149,6 +153,7 @@ describe('ShareDialog', () => {
         isOpen
         documentUuid="doc-1"
         documentName="TestDoc"
+        ownerUsername="TestUser"
         isOwner
         onClose={vi.fn()}
       />
@@ -188,6 +193,7 @@ describe('ShareDialog', () => {
         isOpen
         documentUuid="doc-1"
         documentName="TestDoc"
+        ownerUsername="TestUser"
         isOwner
         onClose={vi.fn()}
       />

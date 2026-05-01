@@ -302,7 +302,7 @@ describe('Documents search', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('AlphaDoc')).toBeInTheDocument()
+      expect(screen.getByText('admin/AlphaDoc')).toBeInTheDocument()
     })
 
     const input = screen.getByPlaceholderText('Search documents...')
@@ -320,6 +320,6 @@ describe('Documents search', () => {
 
     // The component shows whatever the server returns; since our mock returns AlphaDoc for any call,
     // it should still be present (proving filtering is not done client-side).
-    expect(screen.queryByText('AlphaDoc')).toBeInTheDocument()
+    expect(screen.queryByText('admin/AlphaDoc')).toBeInTheDocument()
   })
 })

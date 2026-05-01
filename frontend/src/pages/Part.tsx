@@ -308,6 +308,7 @@ export default function Part() {
     saveDoc,
     renameDoc,
     docName,
+    ownerUsername,
     bodies,
     pickBodies,
     setPickBoundary,
@@ -1571,6 +1572,7 @@ useEffect(() => {
         isOpen={shareDocOpen}
         documentUuid={uuid!}
         documentName={docName || 'Untitled'}
+        ownerUsername={ownerUsername || ''}
         isOwner={permission === 'owner'}
         onClose={() => setShareDocOpen(false)}
       />

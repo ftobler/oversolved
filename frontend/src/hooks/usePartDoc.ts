@@ -174,6 +174,7 @@ export function healDoc(raw: unknown): PartDoc {
 export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
   const [doc, setDoc] = useState<PartDoc | null>(null)
   const [docName, setDocName] = useState<string>('')
+  const [ownerUsername, setOwnerUsername] = useState<string>('')
   const docRef = useRef<PartDoc | null>(null)
   // Use a ref for mode so reSolve does not change identity on every mode switch.
   // Without this, reSolve changing would re-trigger the document-load useEffect,
@@ -723,6 +724,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         docRef.current = parsed
         setDoc(parsed)
         setDocName(data.name)
+        setOwnerUsername(data.owner_username || '')
         setPermission(data.permission || 'owner')
         setLoading(false)
         if (solveOnLoad) reSolve(parsed)
@@ -777,6 +779,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     docRef,
     docName,
     setDocName,
+    ownerUsername,
     loading,
     error,
     setError,
