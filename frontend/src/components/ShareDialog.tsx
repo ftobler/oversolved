@@ -20,6 +20,7 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
   const [shareUsername, setShareUsername] = useState('')
   const [sharePermission, setSharePermission] = useState<'view' | 'edit'>('view')
   const [shares, setShares] = useState<ShareInfo[]>([])
+  const [linkSharing, setLinkSharing] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -29,7 +30,9 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
       const response = await fetch(`/api/documents/${documentUuid}/shares`)
       if (!response.ok) throw new Error('Failed to fetch shares')
       const data = await response.json()
-      setShares(data.shares || [])
+      const sharesList = data.shares || []
+      setShares(sharesList)
+      setLinkSharing(sharesList.some((s: ShareInfo) => s.shared_with_user_id === null))
     } catch (e) {
       setError(String(e))
     }
@@ -112,6 +115,66 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
           )}
           {isOwner && (
             <>
+              <div className="share-dialog-row" style={{ justifyContent: 'space-between' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={linkSharing}
+                    style={{ marginLeft: '12px' }}
+                    onChange={async e => {
+                      const checked = e.target.checked
+                      setLinkSharing(checked)
+                      setLoading(true)
+                      setError(null)
+                      try {
+                        const method = checked ? 'POST' : 'DELETE'
+                        const response = await fetch(`/api/documents/${documentUuid}/share`, {
+                          method,
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(checked ? { permission: 'view' } : {}),
+                        })
+                        if (!response.ok) {
+                          const data = await response.json()
+                          throw new Error(data.error || 'Failed to update link sharing')
+                        }
+                        const updated = await response.json()
+                        if (updated.shares) {
+                          setShares(updated.shares)
+                        }
+                      } catch (err) {
+                        setError(String(err))
+                        setLinkSharing(!checked)
+                      } finally {
+                        setLoading(false)
+                      }
+                    }}
+                  />
+                  <span>Link sharing</span>
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  value={linkSharing ? `${window.location.origin}/documents/${documentUuid}` : ''}
+                  className="share-dialog-input"
+                  style={{ flex: 1, marginLeft: '12px' }}
+                  onClick={e => linkSharing && (e.target as HTMLInputElement).select()}
+                />
+                <button
+                  className="btn btn-tile-action"
+                  onClick={() => linkSharing && navigator.clipboard.writeText(`${window.location.origin}/documents/${documentUuid}`)}
+                  title="Copy URL"
+                  disabled={!linkSharing}
+                  style={{
+                    minWidth: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    visibility: linkSharing ? 'visible' : 'hidden'
+                  }}
+                >
+                  <span className="material-icons">content_copy</span>
+                </button>
+              </div>
+
               <div className="share-dialog-row">
                 <input
                   type="text"
