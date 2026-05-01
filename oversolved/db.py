@@ -537,8 +537,9 @@ class DocumentStore:
     def list_trash(self, user_id: int) -> list[dict]:
         """List soft-deleted documents owned by a user."""
         cursor = self.db.execute(
-            """SELECT d.uuid, d.name, d.deleted_at, d.created_at, d.owner_id
+            """SELECT d.uuid, d.name, d.deleted_at, d.created_at, d.owner_id, u.username
                FROM documents d
+               JOIN users u ON d.owner_id = u.id
                WHERE d.owner_id = ? AND d.deleted_at IS NOT NULL
                ORDER BY d.deleted_at DESC""",
             (user_id,),
@@ -550,6 +551,7 @@ class DocumentStore:
                 "deleted_at": row[2],
                 "created_at": row[3],
                 "owner_id": row[4],
+                "owner_username": row[5],
             }
             for row in cursor.fetchall()
         ]

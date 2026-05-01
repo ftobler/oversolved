@@ -21,6 +21,8 @@ interface TrashDoc {
   name: string
   deleted_at: string
   created_at: string
+  owner_id: number
+  owner_username: string
 }
 
 type SidebarFilter = 'owned' | 'shared' | 'public'
@@ -390,7 +392,9 @@ export default function Documents() {
                             <div className="doc-tile-placeholder" style={{display: 'none'}} />
                           </div>
                           <div className="doc-tile-info">
-                            <span className="doc-tile-name">{doc.name}</span>
+                            <span className="doc-tile-name" title={`${doc.owner_username}/${doc.name}`}>
+                              {doc.owner_username}/{doc.name}
+                            </span>
                             <div className="doc-tile-actions">
                               <button
                                 className="btn btn-tile-action"
@@ -436,7 +440,7 @@ export default function Documents() {
               {!loading && documents.length > 0 && (
                 <div className="doc-tiles">
                   {documents.map(doc => (
-                    <div key={doc.uuid} className={`doc-tile${doc.is_owner ? '' : ' shared'}`}>
+                    <div key={doc.uuid} className="doc-tile">
                       <Link to={`/documents/${doc.uuid}`} className="doc-tile-link">
                         <div className="doc-tile-preview">
                           <img
@@ -452,8 +456,8 @@ export default function Documents() {
                           <div className="doc-tile-placeholder" style={{display: 'none'}} />
                         </div>
                         <div className="doc-tile-info">
-                          <span className="doc-tile-name" title={doc.name}>
-                            {doc.name}
+                          <span className="doc-tile-name" title={`${doc.owner_username}/${doc.name}`}>
+                            {doc.owner_username}/{doc.name}
                           </span>
                         </div>
                         <div className="doc-tile-meta">
@@ -507,11 +511,6 @@ export default function Documents() {
                             )}
                           </div>
                         </div>
-                        {!doc.is_owner && (
-                          <div className="doc-tile-shared-indicator">
-                            <span className="material-icons">people</span>
-                          </div>
-                        )}
                       </Link>
                     </div>
                   ))}
