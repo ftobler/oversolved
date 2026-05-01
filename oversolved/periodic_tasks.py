@@ -77,12 +77,14 @@ class TaskScheduler:
             self._db_factory = lambda: db_or_factory
             self.db = db_or_factory
         self.tasks: dict[str, PeriodicTask] = {}
+        self._next_run_at: dict[str, datetime] = {}  # Track next run times in memory
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
     def register_task(self, task: PeriodicTask) -> None:
         """Register a periodic task."""
         self.tasks[task.task_key] = task
+        self._next_run_at[task.task_key] = _parse_cron(task.schedule)
 
     def start(self) -> None:
         """Start the scheduler in background thread."""
@@ -102,40 +104,32 @@ class TaskScheduler:
 
         db = self._db_factory()
         try:
+            task_store = PeriodicTaskStore(db)
             while not self._stop_event.is_set():
                 now = datetime.now()
 
-                # Find tasks that should run
-                task_store = PeriodicTaskStore(db)
-                due_tasks = task_store.find_due_tasks(now)
-
-                for task_config in due_tasks:
-                    task_key = task_config["task_key"]
-                    if task_key not in self.tasks:
+                # Check each task to see if it should run
+                for task_key, task in self.tasks.items():
+                    next_run = self._next_run_at.get(task_key)
+                    if next_run is None or next_run > now:
                         continue
 
-                    task = self.tasks[task_key]
                     start_time = time.time()
-
                     try:
+                        task_store.ensure_task_exists(task_key)
                         result = task.run(db)
-                        duration_ms = int((time.time() - start_time) * 1000)
                         task_store.update_task(task_key, {
                             "last_run_at": datetime.now().isoformat(),
-                            "last_run_duration_ms": duration_ms,
                             "last_run_status": result.get("status", "success"),
-                            "last_run_error": result.get("error"),
-                            "next_run_at": _parse_cron(task_config["schedule"]).isoformat(),
                         })
                     except Exception as e:
-                        duration_ms = int((time.time() - start_time) * 1000)
                         task_store.update_task(task_key, {
                             "last_run_at": datetime.now().isoformat(),
-                            "last_run_duration_ms": duration_ms,
                             "last_run_status": "error",
-                            "last_run_error": str(e),
-                            "next_run_at": _parse_cron(task_config["schedule"]).isoformat(),
                         })
+
+                    # Schedule next run
+                    self._next_run_at[task_key] = _parse_cron(task.schedule)
 
                 # Sleep briefly before checking again (every 30 seconds)
                 self._stop_event.wait(30)
@@ -153,31 +147,25 @@ class TaskScheduler:
         start_time = time.time()
 
         try:
-            result = task.run(self.db)
-            duration_ms = int((time.time() - start_time) * 1000)
-
             task_store = PeriodicTaskStore(self.db)
-            task_config = task_store.find_by_task_key(task_key)
-            schedule = task_config["schedule"] if task_config else task.schedule
+            task_store.ensure_task_exists(task_key)
+            result = task.run(self.db)
 
             task_store.update_task(task_key, {
                 "last_run_at": datetime.now().isoformat(),
-                "last_run_duration_ms": duration_ms,
                 "last_run_status": result.get("status", "success"),
-                "last_run_error": result.get("error"),
-                "next_run_at": _parse_cron(schedule).isoformat(),
             })
 
-            return {
-                "status": "success",
-                "duration_ms": duration_ms,
-                **result
-            }
+            return {"status": "success", **result}
         except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
+            task_store = PeriodicTaskStore(self.db)
+            task_store.ensure_task_exists(task_key)
+            task_store.update_task(task_key, {
+                "last_run_at": datetime.now().isoformat(),
+                "last_run_status": "error",
+            })
             return {
                 "status": "error",
-                "duration_ms": duration_ms,
                 "error": str(e)
             }
 

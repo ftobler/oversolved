@@ -11,7 +11,6 @@ const makeUserResponse = (overrides = {}) => ({
       id: 1,
       username: 'testuser',
       email: 'test@example.com',
-      nickname: 'test_nick',
       must_change_password: false,
       is_admin: false,
       is_active: true,
@@ -30,7 +29,7 @@ describe('UserProfile', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders profile form with email and nickname', async () => {
+  it('renders profile form with email', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url === '/api/auth/me') return Promise.resolve(makeUserResponse())
       if (url === '/api/users/me/preferences') return Promise.resolve(prefsResponse)
@@ -49,7 +48,6 @@ describe('UserProfile', () => {
       expect(screen.getByDisplayValue('testuser')).toBeInTheDocument()
     })
     expect(screen.getByDisplayValue('test@example.com')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('test_nick')).toBeInTheDocument()
   })
 
   it('updates username on save', async () => {
@@ -115,42 +113,6 @@ describe('UserProfile', () => {
 
     const emailInput = screen.getByLabelText('Email')
     fireEvent.change(emailInput, { target: { value: 'new@example.com' } })
-
-    const saveBtn = screen.getByText('Save')
-    fireEvent.click(saveBtn)
-
-    await waitFor(() => {
-      expect(screen.getByText('Profile updated successfully')).toBeInTheDocument()
-    })
-  })
-
-  it('updates nickname on save', async () => {
-    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
-      if (url === '/api/auth/me') return Promise.resolve(makeUserResponse())
-      if (url === '/api/users/me/preferences') return Promise.resolve(prefsResponse)
-      if (url === '/api/users/me' && init?.method === 'PUT') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ status: 'updated' }),
-        } as Response)
-      }
-      return Promise.resolve({ ok: false, status: 404 } as Response)
-    }))
-
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <UserProfile />
-        </AuthProvider>
-      </BrowserRouter>
-    )
-
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('test_nick')).toBeInTheDocument()
-    })
-
-    const nicknameInput = screen.getByLabelText('Nickname')
-    fireEvent.change(nicknameInput, { target: { value: 'new_nick' } })
 
     const saveBtn = screen.getByText('Save')
     fireEvent.click(saveBtn)

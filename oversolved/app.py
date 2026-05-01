@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import re
 import atexit
 import yaml
+import zipfile
 from io import BytesIO
 from PIL import Image
 from flask import (
@@ -30,7 +31,6 @@ from oversolved.db import (
     DocumentStore,
     UserStore,
     SessionStore,
-    OrgStore,
     PeriodicTaskStore,
 )
 
@@ -54,27 +54,18 @@ def _get_database(config):
     return Database(db_conn)
 
 
-def _ensure_personal_org(db: Database, user_id: int, username: str) -> None:
-    """Create a personal org for the user if one doesn't exist."""
-    org_store = OrgStore(db)
-    if not org_store.find_by_slug(username):
-        org_store.create(username, username, user_id, is_personal=True)
-
-
 def _ensure_admin_user(db: Database) -> None:
     """Create the default admin user if it doesn't exist."""
     user_store = UserStore(db)
     admin = user_store.find_by_username("admin")
     if admin:
         user_store.update(admin["id"], is_admin=1)
-        _ensure_personal_org(db, admin["id"], "admin")
     else:
         uid = user_store.create(
             "admin", generate_password_hash("admin"),
             must_change_password=True, email="admin@local.oversolved",
         )
         user_store.update(uid, is_admin=1, must_change_password=1)
-        _ensure_personal_org(db, uid, "admin")
 
 
 _task_scheduler = None
@@ -106,20 +97,6 @@ def init_scheduler(app):
 
     _task_scheduler = TaskScheduler(db_factory)
     _task_scheduler.register_task(EmptyTrashTask())
-
-    # Ensure built-in tasks exist in DB
-    task_store = PeriodicTaskStore(db)
-    for task in _task_scheduler.tasks.values():
-        existing = task_store.find_by_task_key(task.task_key)
-        if existing is None:
-            from oversolved.periodic_tasks import _parse_cron
-            db.execute(
-                """INSERT INTO periodic_tasks (name, task_key, description, schedule, enabled, next_run_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (task.name, task.task_key, task.description, task.schedule, 1, _parse_cron(task.schedule).isoformat()),
-            )
-            db.commit()
-
     _task_scheduler.start()
 
     def shutdown_scheduler():
@@ -216,7 +193,6 @@ def create_app(config: dict | None = None) -> Flask:
         user = (
             user_store.find_by_username(credential)
             or user_store.find_by_email(credential)
-            or user_store.find_by_nickname(credential)
         )
         if user is None or not check_password_hash(user["password_hash"], password):
             return jsonify({"error": "Invalid credentials"}), 401
@@ -231,7 +207,6 @@ def create_app(config: dict | None = None) -> Flask:
                         "id": user["id"],
                         "username": user["username"],
                         "email": user.get("email"),
-                        "nickname": user.get("nickname"),
                         "must_change_password": user["must_change_password"],
                         "is_admin": user["is_admin"],
                         "is_active": user["is_active"],
@@ -275,10 +250,11 @@ def create_app(config: dict | None = None) -> Flask:
                 "user": {
                     "id": user["id"],
                     "username": user["username"],
+                    "email": user.get("email") or "",
                     "must_change_password": user["must_change_password"],
                     "is_admin": user["is_admin"],
                     "is_active": user["is_active"],
-                    "last_login_at": user["last_login_at"],
+                    "last_login_at": user.get("last_login_at"),
                 }
             }
         )
@@ -294,26 +270,6 @@ def create_app(config: dict | None = None) -> Flask:
 
         return decorated_function
 
-    @app.route("/api/users/me", methods=["GET"])
-    @require_auth
-    def get_profile():
-        return jsonify(
-            {
-                "user": {
-                    "id": g.current_user["id"],
-                    "username": g.current_user["username"],
-                    "email": g.current_user.get("email"),
-                    "nickname": g.current_user.get("nickname"),
-                    "must_change_password": g.current_user["must_change_password"],
-                    "is_admin": g.current_user["is_admin"],
-                    "is_active": g.current_user["is_active"],
-                    "created_at": g.current_user.get("created_at"),
-                    "last_login_at": g.current_user.get("last_login_at"),
-                    "updated_at": g.current_user.get("updated_at"),
-                }
-            }
-        )
-
     @app.route("/api/users/me", methods=["PUT"])
     @require_auth
     def update_profile():
@@ -322,7 +278,6 @@ def create_app(config: dict | None = None) -> Flask:
         data = request.get_json()
         username = data.get("username")
         email = data.get("email")
-        nickname = data.get("nickname")
         current_password = data.get("current_password", "")
         new_password = data.get("new_password", "")
 
@@ -336,9 +291,6 @@ def create_app(config: dict | None = None) -> Flask:
 
         if email and email.strip():
             updates["email"] = email.strip()
-
-        if nickname is not None:
-            updates["nickname"] = nickname.strip() if nickname else None
 
         if new_password:
             if not current_password:
@@ -405,7 +357,6 @@ def create_app(config: dict | None = None) -> Flask:
         data = request.get_json()
         username = (data.get("username") or "").strip()
         email = (data.get("email") or "").strip()
-        nickname = data.get("nickname")
         password = data.get("password") or ""
         is_admin = bool(data.get("is_admin", False))
 
@@ -424,10 +375,8 @@ def create_app(config: dict | None = None) -> Flask:
         uid = user_store.create(
             username, generate_password_hash(password),
             email=email,
-            nickname=nickname.strip() if nickname else None,
             is_admin=is_admin,
         )
-        _ensure_personal_org(db, uid, username)
         return jsonify({"id": uid, "username": username, "email": email}), 201
 
     @app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
@@ -451,8 +400,6 @@ def create_app(config: dict | None = None) -> Flask:
             updates["username"] = data["username"].strip()
         if "email" in data:
             updates["email"] = data["email"].strip() if data["email"] else None
-        if "nickname" in data:
-            updates["nickname"] = data["nickname"].strip() if data["nickname"] else None
         if "is_active" in data:
             updates["is_active"] = 1 if data["is_active"] else 0
         if "is_admin" in data:
@@ -520,191 +467,133 @@ def create_app(config: dict | None = None) -> Flask:
         result = _task_scheduler.force_run_task(task_key)
         return jsonify(result)
 
-    @app.route("/api/admin/periodic-tasks/<task_key>", methods=["PATCH"])
+    @app.route("/api/admin/backup", methods=["GET"])
     @require_auth
     @require_admin
-    def patch_periodic_task(task_key):
-        """Enable or disable a periodic task."""
-        data = request.get_json(silent=True) or {}
-        enabled = data.get("enabled")
+    def backup_all_documents():
+        """Create and download a backup of all documents on the server."""
+        db = get_db()
+        cursor = db.execute(
+            "SELECT uuid, name, content, preview_image, owner_id FROM documents WHERE deleted_at IS NULL ORDER BY owner_id, name"
+        )
+        all_docs = cursor.fetchall()
 
-        if enabled is None:
-            return jsonify({"error": "enabled field required"}), 400
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            user_store = UserStore(db)
+            file_counts = {}
+            for uuid, name, content, preview_image, owner_id in all_docs:
+                user = user_store.find_by_id(owner_id)
+                username = user["username"] if user else "unknown"
+                doc_name = secure_filename(name)
+                user_dir = f"{username}/"
 
-        task_store = PeriodicTaskStore(get_db())
-        task_store.enable_task(task_key, enabled)
+                key = (username, doc_name)
+                if key not in file_counts:
+                    file_counts[key] = 0
+                else:
+                    file_counts[key] += 1
 
-        return jsonify({"task_key": task_key, "enabled": enabled})
+                if file_counts[key] > 0:
+                    base, ext = doc_name.rsplit(".", 1) if "." in doc_name else (doc_name, "")
+                    if ext:
+                        doc_name = f"{base}_{file_counts[key]}.{ext}"
+                    else:
+                        doc_name = f"{doc_name}_{file_counts[key]}"
+
+                zip_file.writestr(f'{user_dir}{doc_name}.yaml', content)
+                if preview_image:
+                    zip_file.writestr(f'{user_dir}{doc_name}.png', preview_image)
+
+        zip_buffer.seek(0)
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=f'oversolved-backup-{datetime.now().strftime("%Y-%m-%d")}.zip'
+        )
+
+    @app.route("/api/admin/import-backup", methods=["POST"])
+    @require_auth
+    @require_admin
+    def import_backup():
+        """Import documents from a backup zip file."""
+        if "file" not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+
+        file = request.files["file"]
+        if not file.filename or not file.filename.endswith('.zip'):
+            return jsonify({"error": "File must be a zip file"}), 400
+
+        try:
+            zip_buffer = BytesIO(file.read())
+            db = get_db()
+            user_store = UserStore(db)
+            doc_store = DocumentStore(db)
+
+            imported_count = 0
+            skipped_count = 0
+            errors = []
+
+            with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
+                files_by_user = {}
+                for file_info in zip_file.filelist:
+                    path = file_info.filename
+                    if path.endswith('/'):
+                        continue
+
+                    parts = path.split('/')
+                    if len(parts) < 2:
+                        errors.append(f"Invalid path structure: {path}")
+                        continue
+
+                    username = parts[0]
+                    filename = parts[1]
+
+                    if username not in files_by_user:
+                        files_by_user[username] = {}
+                    files_by_user[username][filename] = path
+
+                for username, files in files_by_user.items():
+                    user = user_store.find_by_username(username)
+                    if user is None:
+                        skipped_count += len(files)
+                        errors.append(f"User not found: {username}")
+                        continue
+
+                    yaml_files = {k: v for k, v in files.items() if k.endswith('.yaml')}
+                    for yaml_name, yaml_path in yaml_files.items():
+                        doc_name = yaml_name[:-5]
+                        try:
+                            content = zip_file.read(yaml_path).decode('utf-8')
+
+                            uuid = doc_store.create(doc_name, user["id"])
+                            doc_store.store_content(uuid, content)
+
+                            png_name = f"{doc_name}.png"
+                            if png_name in files:
+                                png_path = files[png_name]
+                                preview_data = zip_file.read(png_path)
+                                doc_store.store_preview_image(uuid, preview_data)
+
+                            imported_count += 1
+                        except Exception as e:
+                            skipped_count += 1
+                            errors.append(f"Failed to import {yaml_name}: {str(e)}")
+
+            return jsonify({
+                "status": "imported",
+                "imported_count": imported_count,
+                "skipped_count": skipped_count,
+                "errors": errors if errors else None
+            }), 200
+
+        except zipfile.BadZipFile:
+            return jsonify({"error": "Invalid zip file"}), 400
+        except Exception as e:
+            return jsonify({"error": f"Import failed: {str(e)}"}), 500
 
     # ── Org routes ─────────────────────────────────────────────────────────────
-
-    _VALID_ORG_ROLES = {"read", "write", "admin", "owner"}
-
-    @app.route("/api/users/me/orgs", methods=["GET"])
-    @require_auth
-    def list_my_orgs():
-        orgs = OrgStore(get_db()).list_for_user(g.current_user["id"])
-        return jsonify({"orgs": orgs})
-
-    @app.route("/api/orgs", methods=["POST"])
-    @require_auth
-    def create_org():
-        if not request.is_json:
-            return jsonify({"error": "Content-Type must be application/json"}), 400
-        data = request.get_json()
-        slug = (data.get("slug") or "").strip().lower()
-        display_name = (data.get("name") or "").strip()
-        description = (data.get("description") or "").strip() or None
-
-        if not slug:
-            return jsonify({"error": "Slug required"}), 400
-        if not re.match(r'^[a-z0-9_-]+$', slug):
-            return jsonify({"error": "Slug may only contain lowercase letters, digits, hyphens, underscores"}), 400
-        if not display_name:
-            return jsonify({"error": "Name required"}), 400
-
-        db = get_db()
-        org_store = OrgStore(db)
-        if org_store.find_by_slug(slug):
-            return jsonify({"error": "Slug already taken"}), 409
-
-        org = org_store.create(slug, display_name, g.current_user["id"],
-                               is_personal=False, description=description)
-        org["members"] = org_store.get_members(org["id"])
-        return jsonify(org), 201
-
-    @app.route("/api/orgs/<slug>", methods=["GET"])
-    @require_auth
-    def get_org(slug):
-        db = get_db()
-        org_store = OrgStore(db)
-        org = org_store.find_by_slug(slug)
-        if org is None:
-            return jsonify({"error": "Organization not found"}), 404
-        role = org_store.get_member_role(org["id"], g.current_user["id"])
-        if role is None and not g.current_user.get("is_admin"):
-            return jsonify({"error": "Forbidden"}), 403
-        org["members"] = org_store.get_members(org["id"])
-        org["role"] = role
-        return jsonify(org)
-
-    @app.route("/api/orgs/<slug>", methods=["PATCH"])
-    @require_auth
-    def update_org(slug):
-        if not request.is_json:
-            return jsonify({"error": "Content-Type must be application/json"}), 400
-        db = get_db()
-        org_store = OrgStore(db)
-        org = org_store.find_by_slug(slug)
-        if org is None:
-            return jsonify({"error": "Organization not found"}), 404
-        role = org_store.get_member_role(org["id"], g.current_user["id"])
-        if role not in ("admin", "owner"):
-            return jsonify({"error": "Forbidden"}), 403
-
-        data = request.get_json()
-        display_name = (data.get("name") or "").strip() or None
-        description = data.get("description")
-        org_store.update(org["id"], display_name=display_name, description=description)
-        updated = org_store.find_by_slug(slug)
-        return jsonify(updated)
-
-    @app.route("/api/orgs/<slug>", methods=["DELETE"])
-    @require_auth
-    def delete_org(slug):
-        db = get_db()
-        org_store = OrgStore(db)
-        org = org_store.find_by_slug(slug)
-        if org is None:
-            return jsonify({"error": "Organization not found"}), 404
-        if org["is_personal"]:
-            return jsonify({"error": "Cannot delete personal organization"}), 403
-        role = org_store.get_member_role(org["id"], g.current_user["id"])
-        if role != "owner":
-            return jsonify({"error": "Only owners can delete organizations"}), 403
-        org_store.delete(org["id"])
-        return jsonify({"status": "deleted", "slug": slug})
-
-    @app.route("/api/orgs/<slug>/members", methods=["POST"])
-    @require_auth
-    def add_org_member(slug):
-        if not request.is_json:
-            return jsonify({"error": "Content-Type must be application/json"}), 400
-        db = get_db()
-        org_store = OrgStore(db)
-        org = org_store.find_by_slug(slug)
-        if org is None:
-            return jsonify({"error": "Organization not found"}), 404
-        caller_role = org_store.get_member_role(org["id"], g.current_user["id"])
-        if caller_role not in ("admin", "owner"):
-            return jsonify({"error": "Forbidden"}), 403
-
-        data = request.get_json()
-        target_username = (data.get("username") or "").strip()
-        role = (data.get("role") or "").strip()
-        if not target_username:
-            return jsonify({"error": "Username required"}), 400
-        if role not in _VALID_ORG_ROLES:
-            return jsonify({"error": "Invalid role"}), 400
-
-        target_user = UserStore(db).find_by_username(target_username)
-        if target_user is None:
-            return jsonify({"error": "User not found"}), 404
-
-        org_store.add_member(org["id"], target_user["id"], role)
-        return jsonify({"user_id": target_user["id"], "username": target_username, "role": role}), 201
-
-    @app.route("/api/orgs/<slug>/members/<int:user_id>", methods=["PATCH"])
-    @require_auth
-    def update_org_member(slug, user_id):
-        if not request.is_json:
-            return jsonify({"error": "Content-Type must be application/json"}), 400
-        db = get_db()
-        org_store = OrgStore(db)
-        org = org_store.find_by_slug(slug)
-        if org is None:
-            return jsonify({"error": "Organization not found"}), 404
-        caller_role = org_store.get_member_role(org["id"], g.current_user["id"])
-        if caller_role not in ("admin", "owner"):
-            return jsonify({"error": "Forbidden"}), 403
-
-        data = request.get_json()
-        new_role = (data.get("role") or "").strip()
-        if new_role not in _VALID_ORG_ROLES:
-            return jsonify({"error": "Invalid role"}), 400
-
-        current_role = org_store.get_member_role(org["id"], user_id)
-        if current_role is None:
-            return jsonify({"error": "Member not found"}), 404
-        if current_role == "owner" and new_role != "owner":
-            if org_store.count_owners(org["id"]) <= 1:
-                return jsonify({"error": "Cannot demote the only owner"}), 403
-
-        org_store.update_member_role(org["id"], user_id, new_role)
-        target_user = UserStore(db).find_by_id(user_id)
-        username = target_user["username"] if target_user else ""
-        return jsonify({"user_id": user_id, "username": username, "role": new_role})
-
-    @app.route("/api/orgs/<slug>/members/<int:user_id>", methods=["DELETE"])
-    @require_auth
-    def remove_org_member(slug, user_id):
-        db = get_db()
-        org_store = OrgStore(db)
-        org = org_store.find_by_slug(slug)
-        if org is None:
-            return jsonify({"error": "Organization not found"}), 404
-        caller_role = org_store.get_member_role(org["id"], g.current_user["id"])
-        if caller_role not in ("admin", "owner"):
-            return jsonify({"error": "Forbidden"}), 403
-
-        target_role = org_store.get_member_role(org["id"], user_id)
-        if target_role is None:
-            return jsonify({"error": "Member not found"}), 404
-        if target_role == "owner" and org_store.count_owners(org["id"]) <= 1:
-            return jsonify({"error": "Cannot remove the only owner"}), 403
-
-        org_store.remove_member(org["id"], user_id)
-        return jsonify({"status": "removed", "user_id": user_id})
 
     # ── Document routes ────────────────────────────────────────────────────────
 
@@ -738,17 +627,7 @@ def create_app(config: dict | None = None) -> Flask:
         if not name:
             return jsonify({"error": "Document name required"}), 400
         db = get_db()
-        org_slug = (data.get("org_slug") or "").strip()
-        org_id = None
-        if org_slug:
-            org = OrgStore(db).find_by_slug(org_slug)
-            if org is None:
-                return jsonify({"error": "Organization not found"}), 404
-            role = OrgStore(db).get_member_role(org["id"], g.current_user["id"])
-            if role not in ("write", "admin", "owner"):
-                return jsonify({"error": "Forbidden"}), 403
-            org_id = org["id"]
-        doc_uuid = DocumentStore(db).create(name, g.current_user["id"], org_id=org_id)
+        doc_uuid = DocumentStore(db).create(name, g.current_user["id"])
         return jsonify({"uuid": doc_uuid, "name": name}), 201
 
     @app.route("/api/documents/<uuid>", methods=["GET"])
@@ -1033,73 +912,6 @@ def create_app(config: dict | None = None) -> Flask:
         from flask import Response
         return Response(doc["preview_image"], mimetype="image/png")
 
-    @app.route("/api/documents/<uuid>/rebuild-stats", methods=["GET"])
-    @require_auth
-    def get_rebuild_stats(uuid):
-        """Get rebuild time statistics for a document."""
-        db = get_db()
-        doc_store = DocumentStore(db)
-        doc = doc_store.retrieve(uuid)
-        if doc is None:
-            return jsonify({"error": "Document not found"}), 404
-        if not doc_store.has_permission(uuid, g.current_user["id"], "view"):
-            return jsonify({"error": "Forbidden"}), 403
-
-        stats = db.execute(
-            """SELECT duration_ms, feature_count, timestamp
-               FROM rebuild_times
-               WHERE document_uuid = ?
-               ORDER BY timestamp DESC
-               LIMIT 20""",
-            (uuid,),
-        ).fetchall()
-
-        if not stats:
-            return jsonify({
-                "uuid": uuid,
-                "rebuild_count": 0,
-                "last_duration_ms": None,
-                "average_ms": None,
-                "median_ms": None,
-                "min_ms": None,
-                "max_ms": None,
-                "trend": None,
-                "history": [],
-            })
-
-        durations = [s[0] for s in stats]
-        last_duration = durations[0]
-        avg_duration = sum(durations) / len(durations)
-        median_duration = sorted(durations)[len(durations) // 2]
-
-        trend = None
-        if len(durations) >= 10:
-            first_5_avg = sum(durations[:5]) / 5
-            last_5_avg = sum(durations[-5:]) / 5
-            if last_5_avg < first_5_avg * 0.95:
-                trend = "faster"
-            elif last_5_avg > first_5_avg * 1.05:
-                trend = "slower"
-            else:
-                trend = "stable"
-
-        history = [
-            {"duration_ms": s[0], "feature_count": s[1], "timestamp": s[2]}
-            for s in reversed(stats)
-        ]
-
-        return jsonify({
-            "uuid": uuid,
-            "rebuild_count": len(stats),
-            "last_duration_ms": last_duration,
-            "average_ms": round(avg_duration),
-            "median_ms": median_duration,
-            "min_ms": min(durations),
-            "max_ms": max(durations),
-            "trend": trend,
-            "history": history,
-        })
-
     @app.route("/api/documents/import", methods=["POST"])
     @require_auth
     def import_document():
@@ -1230,23 +1042,6 @@ def create_app(config: dict | None = None) -> Flask:
         cache_dir=app.config["L2_CACHE_DIR"],
     )
 
-    def _track_rebuild_time(db, doc_id: str, duration_ms: int, feature_count: int) -> None:
-        """Store a rebuild time record for a document."""
-        try:
-            cursor = db.execute(
-                "SELECT org_id FROM documents WHERE uuid = ?", (doc_id,)
-            )
-            row = cursor.fetchone()
-            org_id = row[0] if row else None
-            db.execute(
-                """INSERT INTO rebuild_times (document_uuid, org_id, duration_ms, feature_count)
-                   VALUES (?, ?, ?, ?)""",
-                (doc_id, org_id, duration_ms, feature_count),
-            )
-            db.commit()
-        except Exception:
-            pass  # Non-critical; don't break rebuild if tracking fails
-
     @app.route("/api/solve", methods=["POST"])
     def solve_document() -> Response | tuple:
         data = request.get_json(silent=True)
@@ -1289,10 +1084,6 @@ def create_app(config: dict | None = None) -> Flask:
                     _l2_cache.set(doc_id, new_state)
                 solver.release(doc_id, counter, build_result)
                 build_result.pop("_body_shapes", None)
-                # Track rebuild time
-                duration_ms = round(build_result.get("solve_ms", 0))
-                feature_count = len(data.get("features", []))
-                _track_rebuild_time(get_db(), doc_id, duration_ms, feature_count)
                 return Response(json.dumps(build_result), mimetype="application/json")
             except Exception:
                 solver.release(doc_id, counter, {})
@@ -1681,63 +1472,14 @@ def _register_migrations(db: Database) -> None:
     db.register_migration(7, "user_sort_preference", migration_007_user_sort_preference)
 
     def migration_008_organizations(database: Database):
-        """Create organizations and organization_members tables."""
-        database.execute("""
-            CREATE TABLE IF NOT EXISTS organizations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                slug TEXT UNIQUE NOT NULL,
-                display_name TEXT NOT NULL,
-                description TEXT,
-                is_personal INTEGER NOT NULL DEFAULT 0,
-                owner_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT
-            )
-        """)
-        database.execute("""
-            CREATE TABLE IF NOT EXISTS organization_members (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                org_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
-                role TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                UNIQUE(org_id, user_id)
-            )
-        """)
+        """Organizations feature removed - this migration is no-op for existing dbs."""
+        pass
 
     db.register_migration(8, "organizations", migration_008_organizations)
 
     def migration_009_documents_org_id(database: Database):
-        """Add org_id to documents; create personal orgs for existing users."""
-        if not _column_exists(database, "documents", "org_id"):
-            database.execute("ALTER TABLE documents ADD COLUMN org_id INTEGER REFERENCES organizations(id)")
-        # Create a personal org for every existing user and assign their docs
-        cursor = database.execute("SELECT id, username FROM users")
-        users = cursor.fetchall()
-        for row in users:
-            uid, uname = row[0], row[1]
-            database.execute(
-                """INSERT OR IGNORE INTO organizations (slug, display_name, is_personal, owner_id)
-                   VALUES (?, ?, 1, ?)""",
-                (uname, uname, uid),
-            )
-            org_cursor = database.execute(
-                "SELECT id FROM organizations WHERE slug = ?", (uname,)
-            )
-            org_row = org_cursor.fetchone()
-            if org_row:
-                org_id = org_row[0]
-                database.execute(
-                    "INSERT OR IGNORE INTO organization_members (org_id, user_id, role) VALUES (?, ?, 'owner')",
-                    (org_id, uid),
-                )
-                database.execute(
-                    "UPDATE documents SET org_id = ? WHERE owner_id = ? AND org_id IS NULL",
-                    (org_id, uid),
-                )
+        """Organization documents feature removed - this migration is no-op for existing dbs."""
+        pass
 
     db.register_migration(9, "documents_org_id", migration_009_documents_org_id)
 
@@ -1750,50 +1492,63 @@ def _register_migrations(db: Database) -> None:
     db.register_migration(10, "document_trash", migration_010_document_trash)
 
     def migration_011_periodic_tasks(database: Database):
-        """Create periodic_tasks table for scheduled background jobs."""
+        """Create periodic_tasks table for tracking system task execution."""
         database.execute("""
             CREATE TABLE IF NOT EXISTS periodic_tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE NOT NULL,
-                description TEXT,
                 task_key TEXT UNIQUE NOT NULL,
-                schedule TEXT NOT NULL,
-                enabled INTEGER NOT NULL DEFAULT 1,
                 last_run_at TEXT,
-                last_run_duration_ms INTEGER,
-                last_run_status TEXT,
-                last_run_error TEXT,
-                next_run_at TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                last_run_status TEXT
             )
-        """)
-        database.execute("""
-            CREATE INDEX IF NOT EXISTS idx_periodic_tasks_next_run ON periodic_tasks(next_run_at, enabled)
         """)
 
     db.register_migration(11, "periodic_tasks", migration_011_periodic_tasks)
 
-    def migration_012_rebuild_times(database: Database):
-        """Create rebuild_times table for tracking solve duration history."""
+    def migration_012_accounts_table(database: Database):
+        """Create unified accounts table for user namespace tracking."""
         database.execute("""
-            CREATE TABLE IF NOT EXISTS rebuild_times (
+            CREATE TABLE IF NOT EXISTS accounts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                document_uuid TEXT NOT NULL,
-                org_id INTEGER,
-                duration_ms INTEGER NOT NULL,
-                feature_count INTEGER NOT NULL,
-                timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (document_uuid) REFERENCES documents(uuid) ON DELETE CASCADE,
-                FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+                handle TEXT UNIQUE NOT NULL,
+                owner_type TEXT NOT NULL,
+                owner_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
         """)
         database.execute("""
-            CREATE INDEX IF NOT EXISTS idx_rebuild_times_doc_recent
-            ON rebuild_times(document_uuid, timestamp DESC)
+            CREATE INDEX IF NOT EXISTS idx_accounts_handle ON accounts(handle)
+        """)
+        database.execute("""
+            CREATE INDEX IF NOT EXISTS idx_accounts_owner ON accounts(owner_type, owner_id)
         """)
 
-    db.register_migration(12, "rebuild_times", migration_012_rebuild_times)
+        cursor = database.execute("SELECT id, username FROM users WHERE username IS NOT NULL")
+        for row in cursor.fetchall():
+            uid, username = row[0], row[1]
+            database.execute(
+                """INSERT OR IGNORE INTO accounts (handle, owner_type, owner_id)
+                   VALUES (?, ?, ?)""",
+                (username, "user", uid),
+            )
+
+    db.register_migration(12, "accounts_table", migration_012_accounts_table)
+
+    def migration_013_remove_nickname(database: Database):
+        """Remove nickname column and index from users table."""
+        if _column_exists(database, "users", "nickname"):
+            database.execute("DROP INDEX IF EXISTS idx_users_nickname")
+            database.execute("ALTER TABLE users DROP COLUMN nickname")
+
+    db.register_migration(13, "remove_nickname", migration_013_remove_nickname)
+
+    def migration_014_remove_organizations(database: Database):
+        """Remove organization support - drop org tables and org_id column."""
+        database.execute("DROP TABLE IF EXISTS organization_members")
+        database.execute("DROP TABLE IF EXISTS organizations")
+        if _column_exists(database, "documents", "org_id"):
+            database.execute("ALTER TABLE documents DROP COLUMN org_id")
+
+    db.register_migration(14, "remove_organizations", migration_014_remove_organizations)
 
 
 if __name__ == "__main__":

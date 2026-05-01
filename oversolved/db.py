@@ -149,6 +149,38 @@ class Database:
             raise
 
 
+class AccountStore:
+    """Unified accounts table for user namespace tracking."""
+
+    def __init__(self, db: Database):
+        self.db = db
+
+    def find_by_handle(self, handle: str) -> Optional[dict]:
+        """Find an account by handle. Returns {id, handle, owner_type, owner_id}."""
+        cursor = self.db.execute(
+            "SELECT id, handle, owner_type, owner_id FROM accounts WHERE handle = ?",
+            (handle,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "handle": row[1],
+            "owner_type": row[2],
+            "owner_id": row[3],
+        }
+
+    def register(self, handle: str, owner_type: str, owner_id: int) -> None:
+        """Register a new handle for a user or org."""
+        with self.db.transaction():
+            self.db.execute(
+                """INSERT INTO accounts (handle, owner_type, owner_id)
+                   VALUES (?, ?, ?)""",
+                (handle, owner_type, owner_id),
+            )
+
+
 class UserStore:
     """User management."""
 
@@ -157,7 +189,7 @@ class UserStore:
 
     def create(
         self, username: str, password_hash: str, must_change_password: bool = False,
-        email: str | None = None, nickname: str | None = None,
+        email: str | None = None,
         external_id: str | None = None, provider: str | None = None,
         provider_data: str | None = None, is_admin: bool = False,
         is_active: bool = True
@@ -170,9 +202,6 @@ class UserStore:
             if email is not None:
                 columns.append("email")
                 values.append(email)
-            if nickname is not None:
-                columns.append("nickname")
-                values.append(nickname)
             if external_id is not None:
                 columns.append("external_id")
                 values.append(external_id)
@@ -192,12 +221,19 @@ class UserStore:
                    VALUES ({placeholders})""",
                 tuple(values),
             )
-            return cursor.lastrowid
+            user_id = cursor.lastrowid
+            # Register handle in accounts table
+            self.db.execute(
+                """INSERT OR IGNORE INTO accounts (handle, owner_type, owner_id)
+                   VALUES (?, ?, ?)""",
+                (username, "user", user_id),
+            )
+            return user_id
 
     def find_by_username(self, username: str) -> Optional[dict]:
         """Find a user by username."""
         cursor = self.db.execute(
-            """SELECT id, username, password_hash, email, nickname, external_id, provider,
+            """SELECT id, username, password_hash, email, external_id, provider,
                       must_change_password, is_admin, is_active, last_login_at, updated_at
                FROM users WHERE username = ?""",
             (username,),
@@ -210,20 +246,19 @@ class UserStore:
             "username": row[1],
             "password_hash": row[2],
             "email": row[3],
-            "nickname": row[4],
-            "external_id": row[5],
-            "provider": row[6],
-            "must_change_password": bool(row[7]),
-            "is_admin": bool(row[8]),
-            "is_active": bool(row[9]),
-            "last_login_at": row[10],
-            "updated_at": row[11],
+            "external_id": row[4],
+            "provider": row[5],
+            "must_change_password": bool(row[6]),
+            "is_admin": bool(row[7]),
+            "is_active": bool(row[8]),
+            "last_login_at": row[9],
+            "updated_at": row[10],
         }
 
     def find_by_email(self, email: str) -> Optional[dict]:
         """Find a user by email (case-insensitive)."""
         cursor = self.db.execute(
-            """SELECT id, username, password_hash, email, nickname, external_id, provider,
+            """SELECT id, username, password_hash, email, external_id, provider,
                       must_change_password, is_admin, is_active, last_login_at, updated_at
                FROM users WHERE LOWER(email) = LOWER(?)""",
             (email,),
@@ -236,46 +271,19 @@ class UserStore:
             "username": row[1],
             "password_hash": row[2],
             "email": row[3],
-            "nickname": row[4],
-            "external_id": row[5],
-            "provider": row[6],
-            "must_change_password": bool(row[7]),
-            "is_admin": bool(row[8]),
-            "is_active": bool(row[9]),
-            "last_login_at": row[10],
-            "updated_at": row[11],
-        }
-
-    def find_by_nickname(self, nickname: str) -> Optional[dict]:
-        """Find a user by nickname."""
-        cursor = self.db.execute(
-            """SELECT id, username, password_hash, email, nickname, external_id, provider,
-                      must_change_password, is_admin, is_active, last_login_at, updated_at
-               FROM users WHERE nickname = ?""",
-            (nickname,),
-        )
-        row = cursor.fetchone()
-        if row is None:
-            return None
-        return {
-            "id": row[0],
-            "username": row[1],
-            "password_hash": row[2],
-            "email": row[3],
-            "nickname": row[4],
-            "external_id": row[5],
-            "provider": row[6],
-            "must_change_password": bool(row[7]),
-            "is_admin": bool(row[8]),
-            "is_active": bool(row[9]),
-            "last_login_at": row[10],
-            "updated_at": row[11],
+            "external_id": row[4],
+            "provider": row[5],
+            "must_change_password": bool(row[6]),
+            "is_admin": bool(row[7]),
+            "is_active": bool(row[8]),
+            "last_login_at": row[9],
+            "updated_at": row[10],
         }
 
     def find_by_external_id(self, external_id: str, provider: str) -> Optional[dict]:
         """Find a user by OAuth external_id and provider."""
         cursor = self.db.execute(
-            """SELECT id, username, password_hash, email, nickname, external_id, provider,
+            """SELECT id, username, password_hash, email, external_id, provider,
                       must_change_password, is_admin, is_active, last_login_at, updated_at
                FROM users WHERE external_id = ? AND provider = ?""",
             (external_id, provider),
@@ -288,20 +296,19 @@ class UserStore:
             "username": row[1],
             "password_hash": row[2],
             "email": row[3],
-            "nickname": row[4],
-            "external_id": row[5],
-            "provider": row[6],
-            "must_change_password": bool(row[7]),
-            "is_admin": bool(row[8]),
-            "is_active": bool(row[9]),
-            "last_login_at": row[10],
-            "updated_at": row[11],
+            "external_id": row[4],
+            "provider": row[5],
+            "must_change_password": bool(row[6]),
+            "is_admin": bool(row[7]),
+            "is_active": bool(row[8]),
+            "last_login_at": row[9],
+            "updated_at": row[10],
         }
 
     def find_by_id(self, user_id: int) -> Optional[dict]:
         """Find a user by id."""
         cursor = self.db.execute(
-            """SELECT id, username, email, nickname, external_id, provider,
+            """SELECT id, username, email, external_id, provider,
                       provider_data, must_change_password, is_admin,
                       is_active, created_at, last_login_at, updated_at,
                       document_sort_preference
@@ -315,17 +322,16 @@ class UserStore:
             "id": row[0],
             "username": row[1],
             "email": row[2],
-            "nickname": row[3],
-            "external_id": row[4],
-            "provider": row[5],
-            "provider_data": row[6],
-            "must_change_password": bool(row[7]),
-            "is_admin": bool(row[8]),
-            "is_active": bool(row[9]),
-            "created_at": row[10],
-            "last_login_at": row[11],
-            "updated_at": row[12],
-            "document_sort_preference": row[13] or "alphabetical",
+            "external_id": row[3],
+            "provider": row[4],
+            "provider_data": row[5],
+            "must_change_password": bool(row[6]),
+            "is_admin": bool(row[7]),
+            "is_active": bool(row[8]),
+            "created_at": row[9],
+            "last_login_at": row[10],
+            "updated_at": row[11],
+            "document_sort_preference": row[12] or "alphabetical",
         }
 
     def update(self, user_id: int, **fields) -> bool:
@@ -333,7 +339,7 @@ class UserStore:
         if not fields:
             return False
         allowed = {"username", "password_hash", "must_change_password", "is_admin",
-                   "is_active", "last_login_at", "email", "nickname",
+                   "is_active", "last_login_at", "email",
                    "external_id", "provider", "provider_data", "updated_at",
                    "document_sort_preference"}
         updates = {k: v for k, v in fields.items() if k in allowed}
@@ -358,7 +364,7 @@ class UserStore:
     def list_all(self) -> list[dict]:
         """List all users (for admin). Returns list of user dicts without password_hash."""
         cursor = self.db.execute(
-            """SELECT id, username, email, nickname, must_change_password, is_admin,
+            """SELECT id, username, email, must_change_password, is_admin,
                       is_active, created_at, last_login_at, updated_at
                FROM users ORDER BY username"""
         )
@@ -367,13 +373,12 @@ class UserStore:
                 "id": row[0],
                 "username": row[1],
                 "email": row[2],
-                "nickname": row[3],
-                "must_change_password": bool(row[4]),
-                "is_admin": bool(row[5]),
-                "is_active": bool(row[6]),
-                "created_at": row[7],
-                "last_login_at": row[8],
-                "updated_at": row[9],
+                "must_change_password": bool(row[3]),
+                "is_admin": bool(row[4]),
+                "is_active": bool(row[5]),
+                "created_at": row[6],
+                "last_login_at": row[7],
+                "updated_at": row[8],
             }
             for row in cursor.fetchall()
         ]
@@ -441,23 +446,22 @@ class DocumentStore:
     def __init__(self, db: Database):
         self.db = db
 
-    def create(self, name: str, owner_id: int, org_id: Optional[int] = None) -> str:
+    def create(self, name: str, owner_id: int) -> str:
         """Create a new document and return its UUID."""
         uuid = secrets.token_urlsafe(16)
         with self.db.transaction():
             self.db.execute(
-                "INSERT INTO documents (uuid, name, content, owner_id, org_id) VALUES (?, ?, ?, ?, ?)",
-                (uuid, name, "", owner_id, org_id),
+                "INSERT INTO documents (uuid, name, content, owner_id) VALUES (?, ?, ?, ?)",
+                (uuid, name, "", owner_id),
             )
         return uuid
 
-    def create_with_uuid(self, uuid: str, name: str, owner_id: int,
-                         org_id: Optional[int] = None) -> None:
+    def create_with_uuid(self, uuid: str, name: str, owner_id: int) -> None:
         """Create a new document with a specific UUID."""
         with self.db.transaction():
             self.db.execute(
-                "INSERT INTO documents (uuid, name, content, owner_id, org_id) VALUES (?, ?, ?, ?, ?)",
-                (uuid, name, "", owner_id, org_id),
+                "INSERT INTO documents (uuid, name, content, owner_id) VALUES (?, ?, ?, ?)",
+                (uuid, name, "", owner_id),
             )
 
     def store_content(self, uuid: str, content: str) -> None:
@@ -511,10 +515,8 @@ class DocumentStore:
         """Retrieve a document by UUID."""
         cursor = self.db.execute(
             """SELECT d.uuid, d.name, d.content, d.owner_id, d.preview_image,
-                      d.created_at, d.updated_at, d.org_id, o.slug, o.is_personal,
-                      d.deleted_at
+                      d.created_at, d.updated_at, d.deleted_at
                FROM documents d
-               LEFT JOIN organizations o ON d.org_id = o.id
                WHERE d.uuid = ?""",
             (uuid,),
         )
@@ -529,10 +531,7 @@ class DocumentStore:
             "preview_image": row[4],
             "created_at": row[5],
             "updated_at": row[6],
-            "org_id": row[7],
-            "org_slug": row[8],
-            "org_is_personal": bool(row[9]) if row[9] is not None else None,
-            "deleted_at": row[10],
+            "deleted_at": row[7],
         }
 
     def list_trash(self, user_id: int) -> list[dict]:
@@ -669,32 +668,19 @@ class DocumentStore:
     def has_permission(self, uuid: str, user_id: int, min_permission: str = "view") -> bool:
         """Check if user has permission to access a document."""
         cursor = self.db.execute(
-            """SELECT d.owner_id, d.is_public, ds.permission, d.org_id, o.is_personal, om.role
+            """SELECT d.owner_id, d.is_public, ds.permission
                FROM documents d
                LEFT JOIN document_shares ds ON d.uuid = ds.document_uuid
                    AND ds.shared_with_user_id = ?
-               LEFT JOIN organizations o ON d.org_id = o.id
-               LEFT JOIN organization_members om ON d.org_id = om.org_id AND om.user_id = ?
                WHERE d.uuid = ?""",
-            (user_id, user_id, uuid),
+            (user_id, uuid),
         )
         row = cursor.fetchone()
         if row is None:
             return False
-        owner_id, is_public, perm, org_id, org_is_personal, org_role = (
-            row[0], row[1], row[2], row[3], row[4], row[5]
-        )
+        owner_id, is_public, perm = row[0], row[1], row[2]
         if owner_id == user_id:
             return True
-        # Org-based access (supersedes old sharing when org_id is set)
-        if org_id is not None:
-            if org_is_personal:
-                return False  # personal orgs are owner-only
-            if org_role in ("write", "admin", "owner"):
-                return True
-            if org_role == "read" and min_permission == "view":
-                return True
-        # Legacy share-based access
         if perm is not None:
             if min_permission == "view" and perm in ("view", "edit"):
                 return True
@@ -707,34 +693,19 @@ class DocumentStore:
     def get_permission(self, uuid: str, user_id: int) -> Optional[str]:
         """Get the permission level for a user on a document. Returns 'owner', 'edit', 'view', or None."""
         cursor = self.db.execute(
-            """SELECT d.owner_id, d.is_public, ds.permission, d.org_id, o.is_personal, om.role
+            """SELECT d.owner_id, d.is_public, ds.permission
                FROM documents d
                LEFT JOIN document_shares ds ON d.uuid = ds.document_uuid
                    AND ds.shared_with_user_id = ?
-               LEFT JOIN organizations o ON d.org_id = o.id
-               LEFT JOIN organization_members om ON d.org_id = om.org_id AND om.user_id = ?
                WHERE d.uuid = ?""",
-            (user_id, user_id, uuid),
+            (user_id, uuid),
         )
         row = cursor.fetchone()
         if row is None:
             return None
-        owner_id, is_public, perm, org_id, org_is_personal, org_role = (
-            row[0], row[1], row[2], row[3], row[4], row[5]
-        )
+        owner_id, is_public, perm = row[0], row[1], row[2]
         if owner_id == user_id:
             return "owner"
-        # Org-based access
-        if org_id is not None:
-            if org_is_personal:
-                return None  # personal orgs are owner-only
-            if org_role in ("admin", "owner"):
-                return "edit"
-            if org_role == "write":
-                return "edit"
-            if org_role == "read":
-                return "view"
-        # Legacy share-based access
         if perm is not None:
             return perm
         if is_public:
@@ -761,29 +732,21 @@ class DocumentStore:
 
         if include_shared:
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
-                           d.org_id, o.slug
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
-                    LEFT JOIN organizations o ON d.org_id = o.id
                     WHERE d.deleted_at IS NULL
                       AND (d.owner_id = ?
                        OR EXISTS (SELECT 1 FROM document_shares WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
-                       OR d.is_public = 1
-                       OR EXISTS (
-                           SELECT 1 FROM organization_members om
-                           WHERE om.org_id = d.org_id AND om.user_id = ? AND om.org_id IS NOT NULL
-                       ))
+                       OR d.is_public = 1)
                     ORDER BY {order}""",
-                (user_id, user_id, user_id),
+                (user_id, user_id),
             )
         else:
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
-                           d.org_id, o.slug
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
-                    LEFT JOIN organizations o ON d.org_id = o.id
                     WHERE d.deleted_at IS NULL AND d.owner_id = ?
                     ORDER BY {order}""",
                 (user_id,),
@@ -798,8 +761,6 @@ class DocumentStore:
                 "updated_at": row[4],
                 "is_owner": row[5] == user_id,
                 "owner_username": row[6],
-                "org_id": row[7],
-                "org_slug": row[8],
             }
             for row in cursor.fetchall()
         ]
@@ -813,11 +774,9 @@ class DocumentStore:
         else:
             order = "name"
         cursor = self.db.execute(
-            f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
-                       d.org_id, o.slug
+            f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
                 FROM documents d
                 JOIN users u ON d.owner_id = u.id
-                LEFT JOIN organizations o ON d.org_id = o.id
                 WHERE d.deleted_at IS NULL AND d.is_public = 1
                 ORDER BY {order}""",
         )
@@ -830,8 +789,6 @@ class DocumentStore:
                 "updated_at": row[4],
                 "is_owner": False,
                 "owner_username": row[6],
-                "org_id": row[7],
-                "org_slug": row[8],
             }
             for row in cursor.fetchall()
         ]
@@ -845,11 +802,9 @@ class DocumentStore:
         else:
             order = "name"
         cursor = self.db.execute(
-            f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
-                       d.org_id, o.slug
+            f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
                 FROM documents d
                 JOIN users u ON d.owner_id = u.id
-                LEFT JOIN organizations o ON d.org_id = o.id
                 JOIN document_shares ds ON d.uuid = ds.document_uuid
                 WHERE d.deleted_at IS NULL AND ds.shared_with_user_id = ? AND d.owner_id != ?
                 ORDER BY {order}""",
@@ -864,8 +819,6 @@ class DocumentStore:
                 "updated_at": row[4],
                 "is_owner": False,
                 "owner_username": row[6],
-                "org_id": row[7],
-                "org_slug": row[8],
             }
             for row in cursor.fetchall()
         ]
@@ -884,22 +837,18 @@ class DocumentStore:
 
         if filter_type == "owned":
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
-                           d.org_id, o.slug
-                    FROM documents d
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                FROM documents d
                     JOIN users u ON d.owner_id = u.id
-                    LEFT JOIN organizations o ON d.org_id = o.id
                     WHERE d.deleted_at IS NULL AND d.owner_id = ? AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
                 (user_id, like),
             )
         elif filter_type == "shared":
             cursor = self.db.execute(
-                f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
-                           d.org_id, o.slug
-                    FROM documents d
+                f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                FROM documents d
                     JOIN users u ON d.owner_id = u.id
-                    LEFT JOIN organizations o ON d.org_id = o.id
                     JOIN document_shares ds ON d.uuid = ds.document_uuid
                     WHERE d.deleted_at IS NULL AND ds.shared_with_user_id = ? AND d.owner_id != ? AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
@@ -907,32 +856,24 @@ class DocumentStore:
             )
         elif filter_type == "public":
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
-                           d.org_id, o.slug
-                    FROM documents d
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                FROM documents d
                     JOIN users u ON d.owner_id = u.id
-                    LEFT JOIN organizations o ON d.org_id = o.id
                     WHERE d.deleted_at IS NULL AND d.is_public = 1 AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
                 (like,),
             )
         else:  # all
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username,
-                           d.org_id, o.slug
-                    FROM documents d
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                FROM documents d
                     JOIN users u ON d.owner_id = u.id
-                    LEFT JOIN organizations o ON d.org_id = o.id
                     WHERE d.deleted_at IS NULL AND (d.owner_id = ?
                        OR EXISTS (SELECT 1 FROM document_shares WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
-                       OR d.is_public = 1
-                       OR EXISTS (
-                           SELECT 1 FROM organization_members om
-                           WHERE om.org_id = d.org_id AND om.user_id = ? AND om.org_id IS NOT NULL
-                       ))
+                       OR d.is_public = 1)
                     AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
-                (user_id, user_id, user_id, like),
+                (user_id, user_id, like),
             )
 
         return [
@@ -944,8 +885,6 @@ class DocumentStore:
                 "updated_at": row[4],
                 "is_owner": row[5] == user_id,
                 "owner_username": row[6],
-                "org_id": row[7],
-                "org_slug": row[8],
             }
             for row in cursor.fetchall()
         ]
@@ -979,285 +918,34 @@ class DocumentStore:
             for row in cursor.fetchall()
         ]
 
-    def create_in_org(self, name: str, owner_id: int, org_id: int) -> str:
-        """Create a new document in an org and return its UUID."""
-        uuid = secrets.token_urlsafe(16)
-        with self.db.transaction():
-            self.db.execute(
-                "INSERT INTO documents (uuid, name, content, owner_id, org_id) VALUES (?, ?, ?, ?, ?)",
-                (uuid, name, "", owner_id, org_id),
-            )
-        return uuid
-
-    def list_in_org(self, org_id: int, sort: str = "name") -> list[dict]:
-        """List documents in an organization."""
-        if sort == "modified":
-            order = "d.updated_at DESC"
-        elif sort == "modified_asc":
-            order = "d.updated_at ASC"
-        else:
-            order = "name"
-        cursor = self.db.execute(
-            f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at,
-                       d.owner_id, u.username, d.org_id, o.slug
-                FROM documents d
-                JOIN users u ON d.owner_id = u.id
-                LEFT JOIN organizations o ON d.org_id = o.id
-                WHERE d.deleted_at IS NULL AND d.org_id = ?
-                ORDER BY {order}""",
-            (org_id,),
-        )
-        return [
-            {
-                "uuid": row[0],
-                "name": row[1],
-                "preview_image": row[2],
-                "created_at": row[3],
-                "updated_at": row[4],
-                "owner_id": row[5],
-                "owner_username": row[6],
-                "org_id": row[7],
-                "org_slug": row[8],
-            }
-            for row in cursor.fetchall()
-        ]
-
-
-_ORG_ROLE_RANK = {"read": 1, "write": 2, "admin": 3, "owner": 4}
-
-
-class OrgStore:
-    """Organization and membership management."""
-
-    def __init__(self, db: Database):
-        self.db = db
-
-    def create(self, slug: str, display_name: str, owner_id: int,
-               is_personal: bool = False, description: Optional[str] = None) -> dict:
-        """Create an organization and add owner as member. Returns org dict."""
-        with self.db.transaction():
-            cursor = self.db.execute(
-                """INSERT INTO organizations (slug, display_name, description, is_personal, owner_id)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (slug, display_name, description, 1 if is_personal else 0, owner_id),
-            )
-            org_id = cursor.lastrowid
-            self.db.execute(
-                "INSERT INTO organization_members (org_id, user_id, role) VALUES (?, ?, 'owner')",
-                (org_id, owner_id),
-            )
-        return self.find_by_id(org_id)  # type: ignore[return-value]
-
-    def find_by_slug(self, slug: str) -> Optional[dict]:
-        """Find an organization by its slug."""
-        cursor = self.db.execute(
-            """SELECT id, slug, display_name, description, is_personal, owner_id, created_at, updated_at
-               FROM organizations WHERE slug = ?""",
-            (slug,),
-        )
-        return self._row_to_dict(cursor.fetchone())
-
-    def find_by_id(self, org_id: int) -> Optional[dict]:
-        """Find an organization by id."""
-        cursor = self.db.execute(
-            """SELECT id, slug, display_name, description, is_personal, owner_id, created_at, updated_at
-               FROM organizations WHERE id = ?""",
-            (org_id,),
-        )
-        return self._row_to_dict(cursor.fetchone())
-
-    def _row_to_dict(self, row: Any) -> Optional[dict]:
-        if row is None:
-            return None
-        return {
-            "id": row[0],
-            "slug": row[1],
-            "display_name": row[2],
-            "description": row[3],
-            "is_personal": bool(row[4]),
-            "owner_id": row[5],
-            "created_at": row[6],
-            "updated_at": row[7],
-        }
-
-    def list_for_user(self, user_id: int) -> list[dict]:
-        """List all orgs where user is a member, with user's role."""
-        cursor = self.db.execute(
-            """SELECT o.id, o.slug, o.display_name, o.description, o.is_personal,
-                      o.owner_id, o.created_at, o.updated_at, m.role
-               FROM organizations o
-               JOIN organization_members m ON o.id = m.org_id
-               WHERE m.user_id = ?
-               ORDER BY o.is_personal DESC, o.slug""",
-            (user_id,),
-        )
-        return [
-            {
-                "id": row[0],
-                "slug": row[1],
-                "display_name": row[2],
-                "description": row[3],
-                "is_personal": bool(row[4]),
-                "owner_id": row[5],
-                "created_at": row[6],
-                "updated_at": row[7],
-                "role": row[8],
-            }
-            for row in cursor.fetchall()
-        ]
-
-    def update(self, org_id: int, display_name: Optional[str] = None,
-               description: Optional[str] = None) -> bool:
-        """Update org metadata. Returns True if found."""
-        updates: dict = {}
-        if display_name is not None:
-            updates["display_name"] = display_name
-        if description is not None:
-            updates["description"] = description
-        if not updates:
-            return False
-        updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
-        values = list(updates.values()) + [org_id]
-        with self.db.transaction():
-            cursor = self.db.execute(
-                f"UPDATE organizations SET {set_clause} WHERE id = ?",
-                tuple(values),
-            )
-            return cursor.rowcount > 0
-
-    def delete(self, org_id: int) -> bool:
-        """Delete an organization (and cascade to docs + members). Returns True if found."""
-        with self.db.transaction():
-            cursor = self.db.execute("DELETE FROM organizations WHERE id = ?", (org_id,))
-            return cursor.rowcount > 0
-
-    def get_member_role(self, org_id: int, user_id: int) -> Optional[str]:
-        """Get user's role in org, or None if not a member."""
-        cursor = self.db.execute(
-            "SELECT role FROM organization_members WHERE org_id = ? AND user_id = ?",
-            (org_id, user_id),
-        )
-        row = cursor.fetchone()
-        return row[0] if row else None
-
-    def add_member(self, org_id: int, user_id: int, role: str) -> None:
-        """Add or update a member's role in an org."""
-        with self.db.transaction():
-            self.db.execute(
-                """INSERT INTO organization_members (org_id, user_id, role) VALUES (?, ?, ?)
-                   ON CONFLICT(org_id, user_id) DO UPDATE SET role = excluded.role""",
-                (org_id, user_id, role),
-            )
-
-    def remove_member(self, org_id: int, user_id: int) -> bool:
-        """Remove a member from an org. Returns True if member existed."""
-        with self.db.transaction():
-            cursor = self.db.execute(
-                "DELETE FROM organization_members WHERE org_id = ? AND user_id = ?",
-                (org_id, user_id),
-            )
-            return cursor.rowcount > 0
-
-    def update_member_role(self, org_id: int, user_id: int, role: str) -> bool:
-        """Update a member's role. Returns True if member found."""
-        with self.db.transaction():
-            cursor = self.db.execute(
-                "UPDATE organization_members SET role = ? WHERE org_id = ? AND user_id = ?",
-                (role, org_id, user_id),
-            )
-            return cursor.rowcount > 0
-
-    def get_members(self, org_id: int) -> list[dict]:
-        """Get all members of an org with their roles and usernames."""
-        cursor = self.db.execute(
-            """SELECT m.user_id, u.username, m.role, m.created_at
-               FROM organization_members m
-               JOIN users u ON m.user_id = u.id
-               WHERE m.org_id = ?
-               ORDER BY m.role DESC, u.username""",
-            (org_id,),
-        )
-        return [
-            {"user_id": row[0], "username": row[1], "role": row[2], "joined_at": row[3]}
-            for row in cursor.fetchall()
-        ]
-
-    def count_owners(self, org_id: int) -> int:
-        """Count the number of owners in an org."""
-        cursor = self.db.execute(
-            "SELECT COUNT(*) FROM organization_members WHERE org_id = ? AND role = 'owner'",
-            (org_id,),
-        )
-        row = cursor.fetchone()
-        return row[0] if row else 0
 
 
 class PeriodicTaskStore:
-    """Database accessor for periodic tasks."""
+    """Database accessor for tracking system task execution."""
 
     def __init__(self, db: Database):
         self.db = db
 
     def find_all(self) -> list[dict]:
-        """Get all periodic tasks with execution history."""
+        """Get all periodic tasks."""
         cursor = self.db.execute(
-            """SELECT id, name, task_key, description, schedule, enabled,
-                      last_run_at, last_run_duration_ms, last_run_status, last_run_error,
-                      next_run_at, created_at, updated_at
+            """SELECT id, task_key, last_run_at, last_run_status
                FROM periodic_tasks
-               ORDER BY name"""
+               ORDER BY task_key"""
         )
         return [
             {
                 "id": row[0],
-                "name": row[1],
-                "task_key": row[2],
-                "description": row[3],
-                "schedule": row[4],
-                "enabled": bool(row[5]),
-                "last_run_at": row[6],
-                "last_run_duration_ms": row[7],
-                "last_run_status": row[8],
-                "last_run_error": row[9],
-                "created_at": row[11],
-                "updated_at": row[12],
-            }
-            for row in cursor.fetchall()
-        ]
-
-    def find_due_tasks(self, now: datetime) -> list[dict]:
-        """Find tasks where next_run_at <= now and enabled=true."""
-        cursor = self.db.execute(
-            """SELECT id, name, task_key, description, schedule, enabled,
-                      last_run_at, last_run_duration_ms, last_run_status, last_run_error,
-                      next_run_at
-               FROM periodic_tasks
-               WHERE enabled = 1 AND next_run_at <= ?
-               ORDER BY next_run_at""",
-            (now.isoformat(),),
-        )
-        return [
-            {
-                "id": row[0],
-                "name": row[1],
-                "task_key": row[2],
-                "description": row[3],
-                "schedule": row[4],
-                "enabled": bool(row[5]),
-                "last_run_at": row[6],
-                "last_run_duration_ms": row[7],
-                "last_run_status": row[8],
-                "last_run_error": row[9],
-                "next_run_at": row[10],
+                "task_key": row[1],
+                "last_run_at": row[2],
+                "last_run_status": row[3],
             }
             for row in cursor.fetchall()
         ]
 
     def update_task(self, task_key: str, updates: dict) -> None:
-        """Update task execution history and schedule."""
-        allowed = {"last_run_at", "last_run_duration_ms", "last_run_status",
-                   "last_run_error", "next_run_at"}
+        """Update task execution tracking."""
+        allowed = {"last_run_at", "last_run_status"}
         filtered = {k: v for k, v in updates.items() if k in allowed}
         if not filtered:
             return
@@ -1269,37 +957,15 @@ class PeriodicTaskStore:
                 tuple(values),
             )
 
-    def enable_task(self, task_key: str, enabled: bool) -> None:
-        """Enable or disable a task."""
-        with self.db.transaction():
-            self.db.execute(
-                "UPDATE periodic_tasks SET enabled = ? WHERE task_key = ?",
-                (1 if enabled else 0, task_key),
-            )
-
-    def find_by_task_key(self, task_key: str) -> Optional[dict]:
-        """Find a periodic task by its task_key."""
+    def ensure_task_exists(self, task_key: str) -> None:
+        """Ensure a task record exists, creating if needed."""
         cursor = self.db.execute(
-            """SELECT id, name, task_key, description, schedule, enabled,
-                      last_run_at, last_run_duration_ms, last_run_status, last_run_error,
-                      next_run_at, created_at, updated_at
-               FROM periodic_tasks WHERE task_key = ?""",
+            "SELECT id FROM periodic_tasks WHERE task_key = ?",
             (task_key,),
         )
-        row = cursor.fetchone()
-        if row is None:
-            return None
-        return {
-            "id": row[0],
-            "name": row[1],
-            "task_key": row[2],
-            "description": row[3],
-            "schedule": row[4],
-            "enabled": bool(row[5]),
-            "last_run_at": row[6],
-            "last_run_duration_ms": row[7],
-            "last_run_status": row[8],
-            "last_run_error": row[9],
-            "created_at": row[11],
-            "updated_at": row[12],
-        }
+        if cursor.fetchone() is None:
+            with self.db.transaction():
+                self.db.execute(
+                    "INSERT INTO periodic_tasks (task_key) VALUES (?)",
+                    (task_key,),
+                )

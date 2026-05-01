@@ -14,11 +14,12 @@ export default function Settings() {
           <NavLink to="/settings/profile" className="settings-nav-item">
             Profile
           </NavLink>
-          <NavLink to="/settings/orgs" className="settings-nav-item">
-            Organizations
-          </NavLink>
           {user?.is_admin && (
             <>
+              <NavLink to="/settings/backup" className="settings-nav-item">
+                Backup
+                <span className="admin-badge">admin</span>
+              </NavLink>
               <NavLink to="/settings/admin" className="settings-nav-item">
                 Users
                 <span className="admin-badge">admin</span>

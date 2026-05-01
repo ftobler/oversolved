@@ -85,14 +85,12 @@ def _make_db():
 
     def migration_006(db: Database):
         db.execute("ALTER TABLE users ADD COLUMN email TEXT")
-        db.execute("ALTER TABLE users ADD COLUMN nickname TEXT")
         db.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
         db.execute("ALTER TABLE users ADD COLUMN provider TEXT")
         db.execute("ALTER TABLE users ADD COLUMN provider_data TEXT")
         db.execute("ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))")
         db.execute("UPDATE users SET email = username || '@local.oversolved' WHERE email IS NULL")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
-        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nickname ON users(nickname)")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_external_id_provider ON users(external_id, provider)")
 
     database.register_migration(6, "user_oauth_prep", migration_006)
@@ -105,36 +103,12 @@ def _make_db():
     database.register_migration(7, "user_sort_preference", migration_007)
 
     def migration_008(db: Database):
-        db.execute("""
-            CREATE TABLE organizations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                slug TEXT UNIQUE NOT NULL,
-                display_name TEXT NOT NULL,
-                description TEXT,
-                is_personal INTEGER NOT NULL DEFAULT 0,
-                owner_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT
-            )
-        """)
-        db.execute("""
-            CREATE TABLE organization_members (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                org_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
-                role TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                UNIQUE(org_id, user_id)
-            )
-        """)
+        pass
 
     database.register_migration(8, "organizations", migration_008)
 
     def migration_009(db: Database):
-        db.execute("ALTER TABLE documents ADD COLUMN org_id INTEGER REFERENCES organizations(id)")
+        pass
 
     database.register_migration(9, "documents_org_id", migration_009)
 
@@ -148,23 +122,32 @@ def _make_db():
         db.execute("""
             CREATE TABLE periodic_tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE NOT NULL,
-                description TEXT,
                 task_key TEXT UNIQUE NOT NULL,
-                schedule TEXT NOT NULL,
-                enabled INTEGER NOT NULL DEFAULT 1,
                 last_run_at TEXT,
-                last_run_duration_ms INTEGER,
-                last_run_status TEXT,
-                last_run_error TEXT,
-                next_run_at TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                last_run_status TEXT
             )
         """)
-        db.execute("CREATE INDEX idx_periodic_tasks_next_run ON periodic_tasks(next_run_at, enabled)")
 
     database.register_migration(11, "periodic_tasks", migration_011)
+
+    def migration_012(db: Database):
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                handle TEXT UNIQUE NOT NULL,
+                owner_type TEXT NOT NULL,
+                owner_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_accounts_handle ON accounts(handle)
+        """)
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_accounts_owner ON accounts(owner_type, owner_id)
+        """)
+
+    database.register_migration(12, "accounts_table", migration_012)
     database.init()
     return database
 
@@ -397,21 +380,15 @@ class TestPeriodicTasks:
         scheduler = TaskScheduler(db)
         scheduler.register_task(EmptyTrashTask())
 
-        # Seed the task into DB
-        db.execute(
-            """INSERT INTO periodic_tasks (name, task_key, description, schedule, enabled, next_run_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            ("Empty Trash", "document.empty_trash", "Desc", "0 2 * * *", 1, datetime.now().isoformat()),
-        )
-        db.commit()
-
         result = scheduler.force_run_task("document.empty_trash")
         assert result["status"] == "success"
 
-        task = task_store.find_by_task_key("document.empty_trash")
-        assert task is not None
-        assert task["last_run_status"] == "success"
-        assert task["last_run_at"] is not None
+        # Check that task record was created
+        tasks = task_store.find_all()
+        trash_task = next((t for t in tasks if t["task_key"] == "document.empty_trash"), None)
+        assert trash_task is not None
+        assert trash_task["last_run_status"] == "success"
+        assert trash_task["last_run_at"] is not None
 
     def test_task_scheduler_force_run_unknown_task(self, db):
         scheduler = TaskScheduler(db)
@@ -420,51 +397,16 @@ class TestPeriodicTasks:
 
     def test_periodic_task_store_find_all(self, db, task_store):
         db.execute(
-            """INSERT INTO periodic_tasks (name, task_key, description, schedule, enabled, next_run_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            ("Task A", "task.a", "Desc A", "0 2 * * *", 1, datetime.now().isoformat()),
+            """INSERT INTO periodic_tasks (task_key, last_run_at, last_run_status)
+               VALUES (?, ?, ?)""",
+            ("task.a", datetime.now().isoformat(), "success"),
         )
         db.commit()
 
         tasks = task_store.find_all()
         assert len(tasks) == 1
         assert tasks[0]["task_key"] == "task.a"
-        assert tasks[0]["enabled"] is True
-
-    def test_periodic_task_store_enable_disable(self, db, task_store):
-        db.execute(
-            """INSERT INTO periodic_tasks (name, task_key, description, schedule, enabled, next_run_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            ("Task B", "task.b", "Desc B", "0 2 * * *", 1, datetime.now().isoformat()),
-        )
-        db.commit()
-
-        task_store.enable_task("task.b", False)
-        task = task_store.find_by_task_key("task.b")
-        assert task["enabled"] is False
-
-        task_store.enable_task("task.b", True)
-        task = task_store.find_by_task_key("task.b")
-        assert task["enabled"] is True
-
-    def test_periodic_task_store_find_due(self, db, task_store):
-        past = (datetime.now() - timedelta(hours=1)).isoformat()
-        future = (datetime.now() + timedelta(hours=1)).isoformat()
-        db.execute(
-            """INSERT INTO periodic_tasks (name, task_key, description, schedule, enabled, next_run_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            ("Due Task", "task.due", "Desc", "0 2 * * *", 1, past),
-        )
-        db.execute(
-            """INSERT INTO periodic_tasks (name, task_key, description, schedule, enabled, next_run_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            ("Future Task", "task.future", "Desc", "0 2 * * *", 1, future),
-        )
-        db.commit()
-
-        due = task_store.find_due_tasks(datetime.now())
-        assert len(due) == 1
-        assert due[0]["task_key"] == "task.due"
+        assert tasks[0]["last_run_status"] == "success"
 
 
 class TestAdminPeriodicTaskAPI:
@@ -483,33 +425,6 @@ class TestAdminPeriodicTaskAPI:
     def test_force_run_task_requires_admin(self, client):
         response = client.post("/api/admin/periodic-tasks/document.empty_trash/run")
         assert response.status_code == 401
-
-    def test_patch_task_requires_admin(self, client):
-        response = client.patch(
-            "/api/admin/periodic-tasks/document.empty_trash",
-            data=json.dumps({"enabled": False}),
-            content_type="application/json",
-        )
-        assert response.status_code == 401
-
-    def test_patch_task(self, authed_client):
-        response = authed_client.patch(
-            "/api/admin/periodic-tasks/document.empty_trash",
-            data=json.dumps({"enabled": False}),
-            content_type="application/json",
-        )
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert data["enabled"] is False
-        assert data["task_key"] == "document.empty_trash"
-
-    def test_patch_task_missing_enabled(self, authed_client):
-        response = authed_client.patch(
-            "/api/admin/periodic-tasks/document.empty_trash",
-            data=json.dumps({}),
-            content_type="application/json",
-        )
-        assert response.status_code == 400
 
 
 def _get_db_for_app(app):

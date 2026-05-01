@@ -7,11 +7,10 @@ import Part from './pages/Part'
 import Registry from './pages/Registry'
 import Login from './pages/Login'
 import UserProfile from './pages/UserProfile'
+import Backup from './pages/Backup'
 import AdminUsers from './pages/AdminUsers'
 import AdminPeriodicTasks from './pages/AdminPeriodicTasks'
 import Settings from './pages/Settings'
-import OrgList from './pages/OrgList'
-import OrgSettings from './pages/OrgSettings'
 import './App.css'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -53,10 +52,9 @@ function App() {
         <Route path="/admin/users" element={<Navigate to="/settings/admin" replace />} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>}>
           <Route path="profile" element={<UserProfile />} />
+          <Route path="backup" element={<Backup />} />
           <Route path="admin" element={<AdminUsers />} />
           <Route path="admin-tasks" element={<AdminPeriodicTasks />} />
-          <Route path="orgs" element={<OrgList />} />
-          <Route path="orgs/:slug" element={<OrgSettings />} />
         </Route>
       </Routes>
     </AuthProvider>

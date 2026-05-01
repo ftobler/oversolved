@@ -7,6 +7,7 @@ import './AdminUsers.css'
 interface UserRecord {
   id: number
   username: string
+  email: string | null
   must_change_password: boolean
   is_admin: boolean
   is_active: boolean
@@ -24,6 +25,7 @@ export default function AdminUsers() {
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null)
   const [resetUser, setResetUser] = useState<UserRecord | null>(null)
   const [newUsername, setNewUsername] = useState('')
+  const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newIsAdmin, setNewIsAdmin] = useState(false)
   const [resetPassword, setResetPassword] = useState('')
@@ -65,7 +67,7 @@ export default function AdminUsers() {
       const response = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: newUsername.trim(), password: newPassword, is_admin: newIsAdmin }),
+        body: JSON.stringify({ username: newUsername.trim(), email: newEmail.trim() || undefined, password: newPassword, is_admin: newIsAdmin }),
       })
       const data = await response.json()
       if (!response.ok) {
@@ -73,6 +75,7 @@ export default function AdminUsers() {
         return
       }
       setNewUsername('')
+      setNewEmail('')
       setNewPassword('')
       setNewIsAdmin(false)
       setShowCreateForm(false)
@@ -88,6 +91,7 @@ export default function AdminUsers() {
     try {
       const body: Record<string, unknown> = {}
       body.username = editingUser.username
+      body.email = editingUser.email
       body.is_active = editingUser.is_active
       body.is_admin = editingUser.is_admin
 
@@ -173,7 +177,7 @@ export default function AdminUsers() {
         <Dialog
           isOpen={showCreateForm}
           title="Create User"
-          onClose={() => { setShowCreateForm(false); setFormError(null); setNewUsername(''); setNewPassword(''); setNewIsAdmin(false) }}
+          onClose={() => { setShowCreateForm(false); setFormError(null); setNewUsername(''); setNewEmail(''); setNewPassword(''); setNewIsAdmin(false) }}
           onConfirm={handleCreate}
           confirmLabel="Create"
         >
@@ -185,6 +189,14 @@ export default function AdminUsers() {
               value={newUsername}
               onChange={e => setNewUsername(e.target.value)}
               autoFocus
+            />
+          </div>
+          <div className="form-field">
+            <label>Email</label>
+            <input
+              type="email"
+              value={newEmail}
+              onChange={e => setNewEmail(e.target.value)}
             />
           </div>
           <div className="form-field">
@@ -222,6 +234,14 @@ export default function AdminUsers() {
                 type="text"
                 value={editingUser.username}
                 onChange={e => setEditingUser({ ...editingUser, username: e.target.value })}
+              />
+            </div>
+            <div className="form-field">
+              <label>Email</label>
+              <input
+                type="email"
+                value={editingUser.email || ''}
+                onChange={e => setEditingUser({ ...editingUser, email: e.target.value || null })}
               />
             </div>
             <div className="form-field checkbox-field">

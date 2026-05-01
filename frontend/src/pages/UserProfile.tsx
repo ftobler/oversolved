@@ -10,7 +10,6 @@ export default function UserProfile() {
   const { preferences, updatePreference } = useUserPreferences()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
-  const [nickname, setNickname] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -22,7 +21,6 @@ export default function UserProfile() {
     if (user) {
       setUsername(user.username)
       setEmail(user.email || '')
-      setNickname(user.nickname || '')
     }
   }, [user])
 
@@ -38,9 +36,6 @@ export default function UserProfile() {
       }
       if (email !== (user?.email || '')) {
         body.email = email
-      }
-      if (nickname !== (user?.nickname || '')) {
-        body.nickname = nickname
       }
       if (newPassword) {
         if (newPassword !== confirmPassword) {
@@ -70,12 +65,11 @@ export default function UserProfile() {
         return
       }
 
-      if ((body.username || body.email || body.nickname) && user) {
+      if ((body.username || body.email) && user) {
         setUser({
           ...user,
           username: body.username || user.username,
           email: body.email !== undefined ? body.email : user.email,
-          nickname: body.nickname !== undefined ? body.nickname : user.nickname,
         })
       }
       if (newPassword) {
@@ -98,7 +92,6 @@ export default function UserProfile() {
     if (user) {
       setUsername(user.username)
       setEmail(user.email || '')
-      setNickname(user.nickname || '')
     }
     setCurrentPassword('')
     setNewPassword('')
@@ -137,17 +130,6 @@ export default function UserProfile() {
           value={email}
           onChange={e => setEmail(e.target.value)}
           autoComplete="email"
-        />
-      </div>
-
-      <div className="setting-field">
-        <label htmlFor="profile-nickname">Nickname</label>
-        <input
-          id="profile-nickname"
-          type="text"
-          value={nickname}
-          onChange={e => setNickname(e.target.value)}
-          autoComplete="nickname"
         />
       </div>
 

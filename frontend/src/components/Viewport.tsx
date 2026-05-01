@@ -234,13 +234,6 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     const smallWidth = Math.floor(originalSize.width / 4)
     const smallHeight = Math.floor(originalSize.height / 4)
 
-    const originalZoom = camera.zoom
-    const originalPosition = camera.position.clone()
-
-    camera.zoom = INITIAL_ZOOM
-    camera.position.set(...INITIAL_POSITION)
-    camera.updateProjectionMatrix()
-
     await new Promise<void>(resolve => setTimeout(resolve, 0))
 
     gl.setSize(smallWidth, smallHeight)
@@ -248,9 +241,6 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     const dataUrl = gl.domElement.toDataURL('image/png')
 
     gl.setSize(originalSize.width, originalSize.height)
-    camera.position.set(originalPosition.x, originalPosition.y, originalPosition.z)
-    camera.zoom = originalZoom
-    camera.updateProjectionMatrix()
 
     const img = new Image()
     await new Promise<void>((resolve, reject) => {

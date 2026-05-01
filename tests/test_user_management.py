@@ -220,13 +220,6 @@ class TestAdminAPI:
         user = next(u for u in users if u["id"] == user_id)
         assert user["last_login_at"] is None
 
-    def test_last_login_included_in_profile(self, regular_client):
-        response = regular_client.get("/api/users/me")
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert "last_login_at" in data["user"]
-
-
 class TestLoginWithCredential:
     """Tests for login with email/nickname."""
 
@@ -251,28 +244,6 @@ class TestLoginWithCredential:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["user"]["username"] == "byemail"
-
-    def test_login_by_nickname(self, app, admin_client):
-        # Create a user with nickname
-        admin_client.post(
-            "/api/admin/users",
-            data=json.dumps({
-                "username": "bynick", "password": "password123",
-                "email": "bynick@example.com", "nickname": "bynick_nick"
-            }),
-            content_type="application/json",
-        )
-
-        # Login with nickname
-        c = app.test_client()
-        response = c.post(
-            "/api/auth/login",
-            data=json.dumps({"credential": "bynick_nick", "password": "password123"}),
-            content_type="application/json",
-        )
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert data["user"]["username"] == "bynick"
 
     def test_login_by_username_still_works(self, app):
         c = app.test_client()
@@ -310,12 +281,12 @@ class TestLoginWithCredential:
         )
         assert response.status_code == 401
 
-    def test_login_returns_email_and_nickname(self, app, admin_client):
+    def test_login_returns_email(self, app, admin_client):
         admin_client.post(
             "/api/admin/users",
             data=json.dumps({
                 "username": "fulluser", "password": "password123",
-                "email": "full@example.com", "nickname": "full_nick"
+                "email": "full@example.com"
             }),
             content_type="application/json",
         )
@@ -329,19 +300,10 @@ class TestLoginWithCredential:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["user"]["email"] == "full@example.com"
-        assert data["user"]["nickname"] == "full_nick"
 
 
-class TestProfileWithEmailAndNickname:
-    """Tests for profile endpoints with email and nickname."""
-
-    def test_get_profile_includes_email_and_nickname(self, admin_client):
-        response = admin_client.get("/api/users/me")
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert "email" in data["user"]
-        assert "nickname" in data["user"]
-        assert data["user"]["email"] == "admin@local.oversolved"
+class TestProfile:
+    """Tests for profile endpoints."""
 
     def test_update_email(self, admin_client):
         response = admin_client.put(
@@ -351,40 +313,9 @@ class TestProfileWithEmailAndNickname:
         )
         assert response.status_code == 200
 
-        me_resp = admin_client.get("/api/users/me")
+        me_resp = admin_client.get("/api/auth/me")
         data = json.loads(me_resp.data)
         assert data["user"]["email"] == "admin_new@example.com"
-
-    def test_update_nickname(self, admin_client):
-        response = admin_client.put(
-            "/api/users/me",
-            data=json.dumps({"nickname": "admin_nick"}),
-            content_type="application/json",
-        )
-        assert response.status_code == 200
-
-        me_resp = admin_client.get("/api/users/me")
-        data = json.loads(me_resp.data)
-        assert data["user"]["nickname"] == "admin_nick"
-
-    def test_update_nickname_to_null(self, admin_client):
-        # First set a nickname
-        admin_client.put(
-            "/api/users/me",
-            data=json.dumps({"nickname": "admin_nick"}),
-            content_type="application/json",
-        )
-        # Then clear it
-        response = admin_client.put(
-            "/api/users/me",
-            data=json.dumps({"nickname": ""}),
-            content_type="application/json",
-        )
-        assert response.status_code == 200
-
-        me_resp = admin_client.get("/api/users/me")
-        data = json.loads(me_resp.data)
-        assert data["user"]["nickname"] is None
 
 
 class TestAdminCreateUserWithEmail:
@@ -449,21 +380,6 @@ class TestAdminCreateUserWithEmail:
         )
         assert response.status_code == 200
 
-    def test_admin_update_nickname(self, admin_client):
-        create_resp = admin_client.post(
-            "/api/admin/users",
-            data=json.dumps({"username": "updatenick", "password": "password123", "email": "updatenick@example.com"}),
-            content_type="application/json",
-        )
-        user_id = json.loads(create_resp.data)["id"]
-
-        response = admin_client.put(
-            f"/api/admin/users/{user_id}",
-            data=json.dumps({"nickname": "new_nickname"}),
-            content_type="application/json",
-        )
-        assert response.status_code == 200
-
 
 class TestUserPreferences:
     """Tests for user preferences API endpoints."""
@@ -515,3 +431,24 @@ class TestUserPreferences:
     def test_get_preferences_requires_auth(self, client):
         response = client.get("/api/users/me/preferences")
         assert response.status_code == 401
+
+
+class TestBackupEndpoint:
+    """Tests for the backup endpoint."""
+
+    def test_backup_requires_auth(self, client):
+        """Unauthenticated users cannot access backup."""
+        response = client.get("/api/admin/backup")
+        assert response.status_code == 401
+
+    def test_backup_requires_admin(self, app, regular_client):
+        """Non-admin authenticated users cannot access backup."""
+        response = regular_client.get("/api/admin/backup")
+        assert response.status_code == 403
+
+    def test_backup_admin_can_download(self, admin_client):
+        """Admin users can download backup as zip file."""
+        response = admin_client.get("/api/admin/backup")
+        assert response.status_code == 200
+        assert response.content_type == 'application/zip'
+        assert response.headers.get('Content-Disposition', '').startswith('attachment')

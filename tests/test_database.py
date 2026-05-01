@@ -82,14 +82,12 @@ def _make_db():
     def migration_006(db: Database):
         """Add email, nickname, OAuth fields to users table."""
         db.execute("ALTER TABLE users ADD COLUMN email TEXT")
-        db.execute("ALTER TABLE users ADD COLUMN nickname TEXT")
         db.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
         db.execute("ALTER TABLE users ADD COLUMN provider TEXT")
         db.execute("ALTER TABLE users ADD COLUMN provider_data TEXT")
         db.execute("ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))")
         db.execute("UPDATE users SET email = username || '@local.oversolved' WHERE email IS NULL")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
-        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nickname ON users(nickname)")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_external_id_provider ON users(external_id, provider)")
 
     database.register_migration(6, "user_oauth_prep", migration_006)
@@ -102,36 +100,12 @@ def _make_db():
     database.register_migration(7, "user_sort_preference", migration_007)
 
     def migration_008(db: Database):
-        db.execute("""
-            CREATE TABLE organizations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                slug TEXT UNIQUE NOT NULL,
-                display_name TEXT NOT NULL,
-                description TEXT,
-                is_personal INTEGER NOT NULL DEFAULT 0,
-                owner_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT
-            )
-        """)
-        db.execute("""
-            CREATE TABLE organization_members (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                org_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
-                role TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                UNIQUE(org_id, user_id)
-            )
-        """)
+        pass
 
     database.register_migration(8, "organizations", migration_008)
 
     def migration_009(db: Database):
-        db.execute("ALTER TABLE documents ADD COLUMN org_id INTEGER REFERENCES organizations(id)")
+        pass
 
     database.register_migration(9, "documents_org_id", migration_009)
 
@@ -145,23 +119,32 @@ def _make_db():
         db.execute("""
             CREATE TABLE periodic_tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE NOT NULL,
-                description TEXT,
                 task_key TEXT UNIQUE NOT NULL,
-                schedule TEXT NOT NULL,
-                enabled INTEGER NOT NULL DEFAULT 1,
                 last_run_at TEXT,
-                last_run_duration_ms INTEGER,
-                last_run_status TEXT,
-                last_run_error TEXT,
-                next_run_at TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                last_run_status TEXT
             )
         """)
-        db.execute("CREATE INDEX idx_periodic_tasks_next_run ON periodic_tasks(next_run_at, enabled)")
 
     database.register_migration(11, "periodic_tasks", migration_011)
+
+    def migration_012(db: Database):
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                handle TEXT UNIQUE NOT NULL,
+                owner_type TEXT NOT NULL,
+                owner_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_accounts_handle ON accounts(handle)
+        """)
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_accounts_owner ON accounts(owner_type, owner_id)
+        """)
+
+    database.register_migration(12, "accounts_table", migration_012)
     database.init()
     return database
 
@@ -494,21 +477,14 @@ class TestUserStoreOAuth:
         assert user is not None
         assert user["email"] == "user1@example.com"
 
-    def test_create_with_nickname(self, user_store):
-        uid = user_store.create("user2", "hash", nickname="user_twO")
-        user = user_store.find_by_id(uid)
-        assert user is not None
-        assert user["nickname"] == "user_twO"
-
     def test_create_with_all_fields(self, user_store):
         uid = user_store.create(
-            "user3", "hash", email="user3@example.com", nickname="user3_nick",
+            "user3", "hash", email="user3@example.com",
             external_id="ext_123", provider="google", provider_data='{"name": "User"}'
         )
         user = user_store.find_by_id(uid)
         assert user is not None
         assert user["email"] == "user3@example.com"
-        assert user["nickname"] == "user3_nick"
         assert user["external_id"] == "ext_123"
         assert user["provider"] == "google"
         assert user["provider_data"] == '{"name": "User"}'
@@ -529,16 +505,6 @@ class TestUserStoreOAuth:
         user = user_store.find_by_email("nonexistent@example.com")
         assert user is None
 
-    def test_find_by_nickname(self, user_store):
-        user_store.create("user6", "hash", nickname="nick6")
-        user = user_store.find_by_nickname("nick6")
-        assert user is not None
-        assert user["username"] == "user6"
-
-    def test_find_by_nickname_not_found(self, user_store):
-        user = user_store.find_by_nickname("nonexistent")
-        assert user is None
-
     def test_find_by_external_id(self, user_store):
         user_store.create("user7", "hash", external_id="ext_456", provider="github")
         user = user_store.find_by_external_id("ext_456", "github")
@@ -556,25 +522,11 @@ class TestUserStoreOAuth:
         user = user_store.find_by_id(user_id)
         assert user["email"] == "updated@example.com"
 
-    def test_update_nickname(self, user_store, user_id):
-        result = user_store.update(user_id, nickname="new_nick")
-        assert result is True
-        user = user_store.find_by_id(user_id)
-        assert user["nickname"] == "new_nick"
-
-    def test_update_nickname_to_null(self, user_store, user_id):
-        user_store.update(user_id, nickname="old_nick")
-        result = user_store.update(user_id, nickname=None)
-        assert result is True
-        user = user_store.find_by_id(user_id)
-        assert user["nickname"] is None
-
     def test_list_all_includes_new_fields(self, user_store):
-        user_store.create("user9", "hash", email="user9@example.com", nickname="nick9")
+        user_store.create("user9", "hash", email="user9@example.com")
         users = user_store.list_all()
         user = next(u for u in users if u["username"] == "user9")
         assert user["email"] == "user9@example.com"
-        assert user["nickname"] == "nick9"
 
     def test_backfill_email_on_migration(self):
         """Test that existing users get backfilled email during migration."""
@@ -604,7 +556,6 @@ class TestUserStoreOAuth:
 
         def migration_006(db):
             db.execute("ALTER TABLE users ADD COLUMN email TEXT")
-            db.execute("ALTER TABLE users ADD COLUMN nickname TEXT")
             db.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
             db.execute("ALTER TABLE users ADD COLUMN provider TEXT")
             db.execute("ALTER TABLE users ADD COLUMN provider_data TEXT")
@@ -618,6 +569,25 @@ class TestUserStoreOAuth:
                 "ALTER TABLE users ADD COLUMN document_sort_preference TEXT DEFAULT 'alphabetical'"
             )
         database.register_migration(7, "user_sort_preference", migration_007)
+
+        def migration_012(db):
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    handle TEXT UNIQUE NOT NULL,
+                    owner_type TEXT NOT NULL,
+                    owner_id INTEGER NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+            db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_accounts_handle ON accounts(handle)
+            """)
+            db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_accounts_owner ON accounts(owner_type, owner_id)
+            """)
+        database.register_migration(12, "accounts_table", migration_012)
+
         database.init()
         store = UserStore(database)
         uid = store.create("testuser", "hash", email="testuser@local.oversolved")

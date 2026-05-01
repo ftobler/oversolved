@@ -47,7 +47,7 @@ export default function Login() {
           <input
             className="login-input"
             type="text"
-            placeholder="Username, email, or nickname"
+            placeholder="Username or email"
             value={credential}
             onChange={e => setCredential(e.target.value)}
             autoComplete="username"

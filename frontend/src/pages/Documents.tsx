@@ -14,8 +14,6 @@ interface DocumentMeta {
   updated_at: string
   is_owner: boolean
   owner_username: string
-  org_id: number | null
-  org_slug: string | null
 }
 
 interface TrashDoc {
@@ -109,11 +107,7 @@ export default function Documents() {
     }
   }
 
-  const handleDeleteDocument = async (uuid: string, name: string) => {
-    if (!confirm(`Delete document "${name}"?`)) {
-      return
-    }
-
+  const handleDeleteDocument = async (uuid: string) => {
     try {
       const response = await fetch(`/api/documents/${uuid}`, {
         method: 'DELETE',
@@ -458,8 +452,8 @@ export default function Documents() {
                           <div className="doc-tile-placeholder" style={{display: 'none'}} />
                         </div>
                         <div className="doc-tile-info">
-                          <span className="doc-tile-name" title={doc.org_slug ? `${doc.org_slug}/${doc.name}` : doc.name}>
-                            {doc.org_slug && <span>{doc.org_slug}/</span>}{doc.name}
+                          <span className="doc-tile-name" title={doc.name}>
+                            {doc.name}
                           </span>
                         </div>
                         <div className="doc-tile-meta">
@@ -504,7 +498,7 @@ export default function Documents() {
                                 onClick={e => {
                                   e.preventDefault()
                                   e.stopPropagation()
-                                  handleDeleteDocument(doc.uuid, doc.name)
+                                  handleDeleteDocument(doc.uuid)
                                 }}
                                 title="Delete document"
                               >

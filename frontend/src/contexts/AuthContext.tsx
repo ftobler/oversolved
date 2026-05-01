@@ -5,7 +5,6 @@ export interface User {
   id: number
   username: string
   email: string | null
-  nickname: string | null
   must_change_password: boolean
   is_admin: boolean
   is_active: boolean

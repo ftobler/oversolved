@@ -29,12 +29,6 @@ describe('AdminPeriodicTasks', () => {
           json: () => Promise.resolve({ status: 'success', duration_ms: 100 }),
         } as Response)
       }
-      if (url.startsWith('/api/admin/periodic-tasks/')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ status: 'updated' }),
-        } as Response)
-      }
       return Promise.resolve({ ok: false, status: 404 } as Response)
     })
   }
@@ -43,15 +37,9 @@ describe('AdminPeriodicTasks', () => {
     vi.stubGlobal('fetch', mockFetch([
       {
         id: 1,
-        name: 'Empty Trash',
         task_key: 'document.empty_trash',
-        description: 'Clean up old docs',
-        schedule: '0 2 * * *',
-        enabled: true,
         last_run_at: null,
-        last_run_duration_ms: null,
         last_run_status: null,
-        last_run_error: null,
       },
     ]))
 
@@ -64,25 +52,17 @@ describe('AdminPeriodicTasks', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Empty Trash')).toBeInTheDocument()
+      expect(screen.getByText('document.empty_trash')).toBeInTheDocument()
     })
-
-    expect(screen.getByText('Daily at 2:00 AM')).toBeInTheDocument()
   })
 
   it('shows task status indicators', async () => {
     vi.stubGlobal('fetch', mockFetch([
       {
         id: 1,
-        name: 'Empty Trash',
         task_key: 'document.empty_trash',
-        description: 'Clean up old docs',
-        schedule: '0 2 * * *',
-        enabled: true,
         last_run_at: '2024-04-28T02:00:00Z',
-        last_run_duration_ms: 1500,
         last_run_status: 'success',
-        last_run_error: null,
       },
     ]))
 
@@ -95,68 +75,19 @@ describe('AdminPeriodicTasks', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Empty Trash')).toBeInTheDocument()
+      expect(screen.getByText('document.empty_trash')).toBeInTheDocument()
     })
 
     expect(screen.getByText('success')).toBeInTheDocument()
-  })
-
-  it('toggle button disables task', async () => {
-    const fetchMock = mockFetch([
-      {
-        id: 1,
-        name: 'Empty Trash',
-        task_key: 'document.empty_trash',
-        description: 'Clean up old docs',
-        schedule: '0 2 * * *',
-        enabled: true,
-        last_run_at: null,
-        last_run_duration_ms: null,
-        last_run_status: null,
-        last_run_error: null,
-      },
-    ])
-    vi.stubGlobal('fetch', fetchMock)
-
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <AdminPeriodicTasks />
-        </AuthProvider>
-      </BrowserRouter>
-    )
-
-    await waitFor(() => {
-      expect(screen.getByText('Empty Trash')).toBeInTheDocument()
-    })
-
-    const toggleBtn = screen.getByTitle('Disable task')
-    fireEvent.click(toggleBtn)
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/admin/periodic-tasks/document.empty_trash',
-        expect.objectContaining({
-          method: 'PATCH',
-          body: JSON.stringify({ enabled: false }),
-        })
-      )
-    })
   })
 
   it('run now button triggers task execution', async () => {
     const fetchMock = mockFetch([
       {
         id: 1,
-        name: 'Empty Trash',
         task_key: 'document.empty_trash',
-        description: 'Clean up old docs',
-        schedule: '0 2 * * *',
-        enabled: true,
         last_run_at: null,
-        last_run_duration_ms: null,
         last_run_status: null,
-        last_run_error: null,
       },
     ])
     vi.stubGlobal('fetch', fetchMock)
@@ -170,7 +101,7 @@ describe('AdminPeriodicTasks', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Empty Trash')).toBeInTheDocument()
+      expect(screen.getByText('document.empty_trash')).toBeInTheDocument()
     })
 
     const runBtn = screen.getByTitle('Run now')
