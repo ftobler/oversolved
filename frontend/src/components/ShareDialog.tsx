@@ -184,36 +184,59 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
                   onKeyDown={e => { if (e.key === 'Enter') handleShare() }}
                   className="share-dialog-input"
                 />
-                <select
-                  value={sharePermission}
-                  onChange={e => setSharePermission(e.target.value as 'view' | 'edit')}
-                  className="share-dialog-select"
-                >
-                  <option value="view">View</option>
-                  <option value="edit">Edit</option>
-                </select>
                 <button
                   className="btn btn-primary"
                   onClick={handleShare}
                   disabled={loading || !shareUsername.trim()}
-                  style={{ minWidth: '80px' }}
+                  style={{ flex: 0.5, borderRadius: '9999px' }}
                 >
                   Share
                 </button>
               </div>
 
-              {shares.length > 0 && (
+              {shares.filter(s => s.shared_with_user_id !== null).length > 0 && (
                 <div className="share-dialog-list-container">
-                  <div className="share-dialog-list-title">Shared with</div>
                   <table className="share-dialog-table">
+                  <thead>
+                    <tr>
+                      <th>Username</th>
+                      <th>Role</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
                     <tbody>
-                      {shares.map(share => (
+                      {shares.filter(s => s.shared_with_user_id !== null).map(share => (
                         <tr key={share.id}>
+                          <td>{share.username}</td>
                           <td>
-                            {share.shared_with_user_id === null ? 'Public link' : share.username}
-                          </td>
-                          <td className="share-dialog-table-permission">
-                            {share.permission}
+                            <select
+                              value={share.permission}
+                              onChange={async e => {
+                                setLoading(true)
+                                setError(null)
+                                try {
+                                  const response = await fetch(`/api/documents/${documentUuid}/share`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ username: share.username, permission: e.target.value }),
+                                  })
+                                  if (!response.ok) {
+                                    const data = await response.json()
+                                    throw new Error(data.error || 'Failed to update permission')
+                                  }
+                                  fetchShares()
+                                } catch (err) {
+                                  setError(String(err))
+                                } finally {
+                                  setLoading(false)
+                                }
+                              }}
+                              className="share-dialog-select"
+                              style={{ fontSize: '12px', padding: '4px 8px', borderRadius: '9999px', background: '#2a2a2a', color: '#ccc' }}
+                            >
+                              <option value="view">View</option>
+                              <option value="edit">Edit</option>
+                            </select>
                           </td>
                           <td className="share-dialog-table-action">
                             <button

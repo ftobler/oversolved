@@ -464,7 +464,6 @@
   font-size: 14px;
   font-weight: 600;
   color: #aaa;
-  flex: 1;
 }
 
 .share-dialog-body {
@@ -482,7 +481,7 @@
   align-items: center;
   background: #2a2a2a;
   border-radius: 9999px;
-  padding: 4px 8px;
+  padding: 4px;
 }
 
 .share-dialog-input {
@@ -512,6 +511,31 @@
   min-width: 80px;
 }
 
+.share-dialog-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.share-dialog-table th:first-child,
+.share-dialog-table td:first-child {
+  width: 50%;
+}
+.share-dialog-table th,
+.share-dialog-table td {
+  padding: 6px 8px;
+  text-align: left;
+}
+.share-dialog-table th {
+  border-bottom: 1px solid #333;
+}
+.share-dialog-table td {
+  border-bottom: 1px solid #333;
+}
+.share-dialog-table th:last-child,
+.share-dialog-table td:last-child {
+  width: 1%;
+  text-align: right;
+}
 .share-dialog-list-container {
   display: flex;
   flex-direction: column;
@@ -525,10 +549,10 @@
   margin: 0;
 }
 
-.share-dialog-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
+.share-dialog-error {
+  color: #ef5350;
+  font-size: 12px;
+  margin: 0;
 }
 
 .share-dialog-table td {
