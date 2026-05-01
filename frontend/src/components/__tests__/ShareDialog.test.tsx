@@ -85,53 +85,6 @@ describe('ShareDialog', () => {
     })
   })
 
-  it('toggles public link via API', async () => {
-    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
-      if (url === '/api/documents/doc-1/shares') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ shares: [] }),
-        } as Response)
-      }
-      if (url === '/api/documents/doc-1/share' && options?.method === 'POST') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ status: 'shared' }),
-        } as Response)
-      }
-      return Promise.resolve({ ok: false, status: 404 } as Response)
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    render(
-      <ShareDialog
-        isOpen
-        documentUuid="doc-1"
-        documentName="TestDoc"
-        ownerUsername="TestUser"
-        isOwner
-        onClose={vi.fn()}
-      />
-    )
-
-    await waitFor(() => {
-      expect(screen.getByText('Create public link')).toBeInTheDocument()
-    })
-
-    const createBtn = screen.getByText('Create public link')
-    fireEvent.click(createBtn)
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/documents/doc-1/share',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({}),
-        })
-      )
-    })
-  })
-
   it('displays existing shares with remove buttons', async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url === '/api/documents/doc-1/shares') {

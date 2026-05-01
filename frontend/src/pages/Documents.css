@@ -506,59 +506,6 @@
   min-width: 80px;
 }
 
-.share-dialog-public-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.share-dialog-public-link {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.share-dialog-public-input {
-  flex: 1;
-  padding: 8px 10px;
-  background: #111;
-  border: 1px solid #333;
-  border-radius: 4px;
-  color: #ccc;
-  font-size: 12px;
-  font-family: monospace;
-  box-sizing: border-box;
-}
-
-.share-dialog-copy-btn,
-.share-dialog-delete-link-btn {
-  flex-shrink: 0;
-  background: transparent;
-  border: 1px solid #333;
-  color: #666;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  transition: all 0.2s ease;
-}
-
-.share-dialog-copy-btn:hover,
-.share-dialog-delete-link-btn:hover {
-  background: #333;
-  color: #ccc;
-  border-color: #555;
-}
-
-.share-dialog-copy-btn .material-icons,
-.share-dialog-delete-link-btn .material-icons {
-  font-size: 18px;
-}
-
 .share-dialog-list-container {
   display: flex;
   flex-direction: column;

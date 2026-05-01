@@ -16,18 +16,12 @@ interface ShareDialogProps {
   onClose: () => void
 }
 
-const getAppHostname = (): string => {
-  return import.meta.env.VITE_APP_HOSTNAME || window.location.hostname + (window.location.port ? ':' + window.location.port : '')
-}
-
 export default function ShareDialog({ isOpen, documentUuid, documentName, ownerUsername, isOwner, onClose }: ShareDialogProps) {
   const [shareUsername, setShareUsername] = useState('')
   const [sharePermission, setSharePermission] = useState<'view' | 'edit'>('view')
   const [shares, setShares] = useState<ShareInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [isPublic, setIsPublic] = useState(false)
-  const [copyFeedback, setCopyFeedback] = useState(false)
 
   const fetchShares = useCallback(async () => {
     if (!isOwner) return
@@ -96,51 +90,6 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
     }
   }
 
-  const handleTogglePublic = async () => {
-    setLoading(true)
-    setError(null)
-    const newPublicState = !isPublic
-    try {
-      const response = await fetch(`/api/documents/${documentUuid}/share`, {
-        method: newPublicState ? 'POST' : 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to update public link')
-      }
-      setIsPublic(newPublicState)
-      await fetchShares()
-    } catch (e) {
-      setError(String(e))
-      setIsPublic(isPublic)  // revert on error
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleCopyLink = async () => {
-    const hostname = getAppHostname()
-    const publicUrl = `${hostname}/share/${documentUuid}`
-    try {
-      await navigator.clipboard.writeText(publicUrl)
-      setCopyFeedback(true)
-      setTimeout(() => setCopyFeedback(false), 2000)
-    } catch (e) {
-      setError('Failed to copy link')
-    }
-  }
-
-  const handleDeletePublicLink = async () => {
-    await handleTogglePublic()
-  }
-
-  const getPublicLinkUrl = (): string => {
-    const hostname = getAppHostname()
-    return `${hostname}/share/${documentUuid}`
-  }
-
   if (!isOpen) return null
 
   return (
@@ -188,43 +137,6 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
                 >
                   Share
                 </button>
-              </div>
-
-              <div className="share-dialog-public-section">
-                {isPublic ? (
-                  <div className="share-dialog-public-link">
-                    <input
-                      type="text"
-                      readOnly
-                      value={getPublicLinkUrl()}
-                      className="share-dialog-public-input"
-                    />
-                    <button
-                      className="share-dialog-copy-btn"
-                      onClick={handleCopyLink}
-                      title={copyFeedback ? 'Copied!' : 'Copy link'}
-                    >
-                      <span className="material-icons">{copyFeedback ? 'check' : 'content_copy'}</span>
-                    </button>
-                    <button
-                      className="share-dialog-delete-link-btn"
-                      onClick={handleDeletePublicLink}
-                      title="Delete public link"
-                      disabled={loading}
-                    >
-                      <span className="material-icons">delete_outline</span>
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleTogglePublic}
-                    disabled={loading}
-                    style={{ width: '100%' }}
-                  >
-                    Create public link
-                  </button>
-                )}
               </div>
 
               {shares.length > 0 && (
