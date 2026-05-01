@@ -313,6 +313,7 @@ export default function Part() {
     pickBodies,
     setPickBoundary,
     permission,
+    isPublic,
   } = usePartDoc(uuid, mode, setCodeText)
 
   const readOnly = permission === 'view'
@@ -1187,14 +1188,16 @@ useEffect(() => {
         <button className="toolbar-btn" title="Clone document" onClick={handleClone}>
           <span className="material-icons-outlined">file_copy</span>
         </button>
-        <button
-          className="toolbar-btn"
-          title="Share document"
-          onClick={() => setShareDocOpen(true)}
-          disabled={readOnly}
-        >
-          <span className="material-icons-outlined">share</span>
-        </button>
+        {permission === 'owner' && (
+          <button
+            className="toolbar-btn"
+            title="Share document"
+            onClick={() => setShareDocOpen(true)}
+            disabled={readOnly}
+          >
+            <span className="material-icons-outlined">share</span>
+          </button>
+        )}
         {readOnly && (
           <span className="doc-name" style={{ color: '#ef5350', fontSize: '12px', marginLeft: '8px' }}>
             <span className="material-icons-outlined" style={{ fontSize: '14px', verticalAlign: 'middle' }}>lock</span>

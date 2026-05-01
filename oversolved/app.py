@@ -650,6 +650,7 @@ def create_app(config: dict | None = None) -> Flask:
             "content": doc["content"],
             "permission": permission,
             "owner_username": owner_username,
+            "is_public": doc["is_public"],
         }
         if doc["preview_image"]:
             import base64

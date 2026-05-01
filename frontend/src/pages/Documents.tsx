@@ -14,6 +14,7 @@ interface DocumentMeta {
   updated_at: string
   is_owner: boolean
   owner_username: string
+  is_public: boolean
 }
 
 interface TrashDoc {
@@ -464,17 +465,19 @@ export default function Documents() {
                         <div className="doc-tile-meta">
                           <span className="doc-tile-date">{formatDate(doc.updated_at)}</span>
                           <div className="doc-tile-actions">
-                            <button
-                              className="btn btn-tile-action"
-                              onClick={e => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setShareDoc(doc)
-                              }}
-                              title="Share document"
-                            >
-                              <span className="material-icons">share</span>
-                            </button>
+                           {doc.is_owner && (
+                             <button
+                               className="btn btn-tile-action"
+                               onClick={e => {
+                                 e.preventDefault()
+                                 e.stopPropagation()
+                                 setShareDoc(doc)
+                               }}
+                               title="Share document"
+                             >
+                               <span className="material-icons">share</span>
+                             </button>
+                           )}
                             <button
                               className="btn btn-tile-action"
                               onClick={e => {

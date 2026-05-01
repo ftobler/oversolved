@@ -194,6 +194,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [redoStack, setRedoStack] = useState<UndoEntry[]>([])
   const [permission, setPermission] = useState<string>('owner')
+  const [isPublic, setIsPublic] = useState(false)
   const [fromCache, setFromCache] = useState(false)
   const [cacheTimestamp, setCacheTimestamp] = useState<number | null>(null)
   const firstSolveDone = useRef(false)
@@ -726,6 +727,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         setDocName(data.name)
         setOwnerUsername(data.owner_username || '')
         setPermission(data.permission || 'owner')
+        setIsPublic(data.is_public || false)
         setLoading(false)
         if (solveOnLoad) reSolve(parsed)
       })
@@ -803,6 +805,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     saveDoc,
     renameDoc,
     permission,
+    isPublic,
     fromCache,
     cacheTimestamp,
     setRollbackPos: (pos: number | null) => { rollbackPosRef.current = pos },

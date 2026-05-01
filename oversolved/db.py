@@ -515,7 +515,7 @@ class DocumentStore:
         """Retrieve a document by UUID."""
         cursor = self.db.execute(
             """SELECT d.uuid, d.name, d.content, d.owner_id, d.preview_image,
-                      d.created_at, d.updated_at, d.deleted_at
+                      d.created_at, d.updated_at, d.deleted_at, d.is_public
                FROM documents d
                WHERE d.uuid = ?""",
             (uuid,),
@@ -532,6 +532,7 @@ class DocumentStore:
             "created_at": row[5],
             "updated_at": row[6],
             "deleted_at": row[7],
+            "is_public": bool(row[8]),
         }
 
     def list_trash(self, user_id: int) -> list[dict]:
@@ -639,7 +640,7 @@ class DocumentStore:
             )
 
     def get_shares(self, uuid: str) -> list[dict]:
-        """List all shares for a document, including usernames."""
+        """List all shares for a document, including public link status."""
         cursor = self.db.execute(
             """SELECT ds.id, ds.document_uuid, ds.shared_with_user_id, ds.permission, ds.created_at, u.username
                FROM document_shares ds
@@ -647,7 +648,7 @@ class DocumentStore:
                WHERE ds.document_uuid = ?""",
             (uuid,),
         )
-        return [
+        shares = [
             {
                 "id": row[0],
                 "document_uuid": row[1],
@@ -658,6 +659,18 @@ class DocumentStore:
             }
             for row in cursor.fetchall()
         ]
+        cursor = self.db.execute("SELECT is_public FROM documents WHERE uuid = ?", (uuid,))
+        row = cursor.fetchone()
+        if row and row[0]:
+            shares.append({
+                "id": 0,
+                "document_uuid": uuid,
+                "shared_with_user_id": None,
+                "permission": "view",
+                "created_at": "",
+                "username": None,
+            })
+        return shares
 
     def set_public(self, uuid: str, is_public: bool) -> None:
         """Toggle public link sharing for a document."""
@@ -734,19 +747,19 @@ class DocumentStore:
 
         if include_shared:
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     WHERE d.deleted_at IS NULL
                       AND (d.owner_id = ?
-                       OR EXISTS (SELECT 1 FROM document_shares WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
-                       OR d.is_public = 1)
+                         OR EXISTS (SELECT 1 FROM document_shares WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
+                         OR d.is_public = 1)
                     ORDER BY {order}""",
                 (user_id, user_id),
             )
         else:
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     WHERE d.deleted_at IS NULL AND d.owner_id = ?
@@ -763,6 +776,7 @@ class DocumentStore:
                 "updated_at": row[4],
                 "is_owner": row[5] == user_id,
                 "owner_username": row[6],
+                "is_public": bool(row[7]),
             }
             for row in cursor.fetchall()
         ]
@@ -776,7 +790,7 @@ class DocumentStore:
         else:
             order = "name"
         cursor = self.db.execute(
-            f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+            f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
                 JOIN users u ON d.owner_id = u.id
                 WHERE d.deleted_at IS NULL AND d.is_public = 1
@@ -791,6 +805,7 @@ class DocumentStore:
                 "updated_at": row[4],
                 "is_owner": False,
                 "owner_username": row[6],
+                "is_public": bool(row[7]),
             }
             for row in cursor.fetchall()
         ]
@@ -804,7 +819,7 @@ class DocumentStore:
         else:
             order = "name"
         cursor = self.db.execute(
-            f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+            f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
                 JOIN users u ON d.owner_id = u.id
                 JOIN document_shares ds ON d.uuid = ds.document_uuid
@@ -821,6 +836,7 @@ class DocumentStore:
                 "updated_at": row[4],
                 "is_owner": False,
                 "owner_username": row[6],
+                "is_public": bool(row[7]),
             }
             for row in cursor.fetchall()
         ]
@@ -912,11 +928,11 @@ class DocumentStore:
         else:
             order = "name"
         cursor = self.db.execute(
-            f"SELECT uuid, name, preview_image, created_at, updated_at FROM documents WHERE deleted_at IS NULL AND owner_id = ? ORDER BY {order}",
+            f"SELECT uuid, name, preview_image, created_at, updated_at, is_public FROM documents WHERE deleted_at IS NULL AND owner_id = ? ORDER BY {order}",
             (owner_id,),
         )
         return [
-            {"uuid": row[0], "name": row[1], "preview_image": row[2], "created_at": row[3], "updated_at": row[4]}
+            {"uuid": row[0], "name": row[1], "preview_image": row[2], "created_at": row[3], "updated_at": row[4], "is_public": bool(row[5])}
             for row in cursor.fetchall()
         ]
 
