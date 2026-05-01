@@ -464,20 +464,39 @@ export default function Documents() {
                         </div>
                         <div className="doc-tile-meta">
                           <span className="doc-tile-date">{formatDate(doc.updated_at)}</span>
-                          <div className="doc-tile-actions">
-                           {doc.is_owner && (
-                             <button
-                               className="btn btn-tile-action"
-                               onClick={e => {
-                                 e.preventDefault()
-                                 e.stopPropagation()
-                                 setShareDoc(doc)
-                               }}
-                               title="Share document"
-                             >
-                               <span className="material-icons">share</span>
-                             </button>
-                           )}
+                           <div className="doc-tile-actions">
+                            {doc.is_owner && (
+                              <button
+                                className="btn btn-tile-action"
+                                onClick={e => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  setShareDoc(doc)
+                                }}
+                                title="Share document"
+                              >
+                                <span className="material-icons">share</span>
+                              </button>
+                            )}
+                            {!doc.is_owner && (
+                              <button
+                                className="btn btn-tile-action"
+                                onClick={e => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  if (window.confirm('Remove this shared document?')) {
+                                    fetch(`/api/documents/${doc.uuid}/share`, {
+                                      method: 'DELETE',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({}),
+                                    }).then(() => fetchDocuments(activeFilter, debouncedSearch))
+                                  }
+                                }}
+                                title="Remove shared document"
+                              >
+                                <span className="material-icons">link_off</span>
+                              </button>
+                            )}
                             <button
                               className="btn btn-tile-action"
                               onClick={e => {

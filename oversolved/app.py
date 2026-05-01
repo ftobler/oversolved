@@ -866,17 +866,20 @@ def create_app(config: dict | None = None) -> Flask:
         doc = doc_store.retrieve(uuid)
         if doc is None:
             return jsonify({"error": "Document not found"}), 404
-        if doc["owner_id"] != g.current_user["id"]:
-            return jsonify({"error": "Forbidden"}), 403
 
         username = data.get("username")
         if username:
             user = UserStore(db).find_by_username(username)
             if user is None:
                 return jsonify({"error": "User not found"}), 404
+            if doc["owner_id"] != g.current_user["id"] and g.current_user["username"] != username:
+                return jsonify({"error": "Forbidden"}), 403
             doc_store.unshare_document(uuid, user["id"])
         else:
-            doc_store.set_public(uuid, False)
+            if doc["owner_id"] == g.current_user["id"]:
+                doc_store.set_public(uuid, False)
+            else:
+                doc_store.unshare_document(uuid, g.current_user["id"])
 
         return jsonify({"status": "unshared"}), 200
 

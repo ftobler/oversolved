@@ -116,7 +116,7 @@ describe('ShareDialog', () => {
       expect(screen.getByText('otheruser')).toBeInTheDocument()
     })
 
-    expect(screen.getByText('view')).toBeInTheDocument()
+    expect(screen.getByRole('combobox')).toHaveValue('view')
   })
 
   it('calls delete API when remove share button is clicked', async () => {
