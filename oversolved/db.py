@@ -937,7 +937,6 @@ class DocumentStore:
         ]
 
 
-
 class PeriodicTaskStore:
     """Database accessor for tracking system task execution."""
 

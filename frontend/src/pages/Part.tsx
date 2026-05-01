@@ -307,14 +307,13 @@ export default function Part() {
     handleRedo,
     saveDoc,
     renameDoc,
-    docName,
-    ownerUsername,
-    bodies,
-    pickBodies,
-    setPickBoundary,
-    permission,
-    isPublic,
-  } = usePartDoc(uuid, mode, setCodeText)
+     docName,
+     ownerUsername,
+     bodies,
+     pickBodies,
+     setPickBoundary,
+     permission,
+   } = usePartDoc(uuid, mode, setCodeText)
 
   const readOnly = permission === 'view'
 

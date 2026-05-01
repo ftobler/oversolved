@@ -1092,6 +1092,19 @@ def create_app(config: dict | None = None) -> Flask:
                 if app.config.get("L2_CACHE_ENABLED"):
                     _l2_cache.set(doc_id, new_state)
                 solver.release(doc_id, counter, build_result)
+
+                # Record rebuild timing
+                duration_ms = build_result.get("solve_ms")
+                feature_count = len(data.get("features", []))
+                if duration_ms is not None:
+                    db = get_db()
+                    db.execute(
+                        """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
+                           VALUES (?, ?, ?)""",
+                        (doc_id, round(duration_ms), feature_count),
+                    )
+                    db.commit()
+
                 build_result.pop("_body_shapes", None)
                 return Response(json.dumps(build_result), mimetype="application/json")
             except Exception:
@@ -1107,6 +1120,70 @@ def create_app(config: dict | None = None) -> Flask:
             build_result.pop("_build_state", None)
             build_result.pop("_body_shapes", None)
             return Response(json.dumps(build_result), mimetype="application/json")
+
+    @app.route("/api/documents/<doc_id>/rebuild-stats", methods=["GET"])
+    @require_auth
+    def rebuild_stats(doc_id: str) -> Response | tuple:
+        db = get_db()
+
+        # Check if document exists
+        cursor = db.execute("SELECT uuid FROM documents WHERE uuid = ?", (doc_id,))
+        if cursor.fetchone() is None:
+            return jsonify({"error": "Document not found"}), 404
+
+        cursor = db.execute(
+            """SELECT duration_ms FROM rebuild_times
+               WHERE document_uuid = ?
+               ORDER BY id DESC LIMIT 20""",
+            (doc_id,),
+        )
+        rows = cursor.fetchall()
+        count = len(rows)
+        if count == 0:
+            return jsonify({
+                "rebuild_count": 0,
+                "last_duration_ms": None,
+                "average_ms": None,
+                "median_ms": None,
+                "min_ms": None,
+                "max_ms": None,
+                "trend": None,
+                "history": [],
+            })
+
+        durations = [r[0] for r in rows]
+        last_ms = durations[0]
+        avg_ms = sum(durations) // count
+        sorted_d = sorted(durations)
+        median_ms = sorted_d[count // 2] if count % 2 == 1 else (sorted_d[count // 2 - 1] + sorted_d[count // 2]) // 2
+        min_ms = sorted_d[0]
+        max_ms = sorted_d[-1]
+
+        # Determine trend
+        if count >= 2:
+            recent = durations[:5]
+            older = durations[-5:] if count >= 5 else durations[1:]
+            recent_avg = sum(recent) / len(recent)
+            older_avg = sum(older) / len(older)
+            if recent_avg < older_avg * 0.9:
+                trend = "faster"
+            elif recent_avg > older_avg * 1.1:
+                trend = "slower"
+            else:
+                trend = "stable"
+        else:
+            trend = None
+
+        return jsonify({
+            "rebuild_count": count,
+            "last_duration_ms": last_ms,
+            "average_ms": avg_ms,
+            "median_ms": median_ms,
+            "min_ms": min_ms,
+            "max_ms": max_ms,
+            "trend": trend,
+            "history": durations,
+        })
 
     @app.route("/api/cache/flush", methods=["POST"])
     @require_auth
@@ -1558,6 +1635,25 @@ def _register_migrations(db: Database) -> None:
             database.execute("ALTER TABLE documents DROP COLUMN org_id")
 
     db.register_migration(14, "remove_organizations", migration_014_remove_organizations)
+
+    def migration_015_rebuild_times(database: Database):
+        """Create rebuild_times table for tracking solve performance."""
+        database.execute("""
+            CREATE TABLE IF NOT EXISTS rebuild_times (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_uuid TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                feature_count INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (document_uuid) REFERENCES documents(uuid) ON DELETE CASCADE
+            )
+        """)
+        database.execute("""
+            CREATE INDEX IF NOT EXISTS idx_rebuild_times_doc
+            ON rebuild_times(document_uuid)
+        """)
+
+    db.register_migration(15, "rebuild_times", migration_015_rebuild_times)
 
 
 if __name__ == "__main__":

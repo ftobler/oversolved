@@ -220,6 +220,7 @@ class TestAdminAPI:
         user = next(u for u in users if u["id"] == user_id)
         assert user["last_login_at"] is None
 
+
 class TestLoginWithCredential:
     """Tests for login with email/nickname."""
 

@@ -1,7 +1,6 @@
 """Periodic task framework for background maintenance jobs."""
 
 import threading
-import time
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -114,7 +113,6 @@ class TaskScheduler:
                     if next_run is None or next_run > now:
                         continue
 
-                    start_time = time.time()
                     try:
                         task_store.ensure_task_exists(task_key)
                         result = task.run(db)
@@ -122,7 +120,7 @@ class TaskScheduler:
                             "last_run_at": datetime.now().isoformat(),
                             "last_run_status": result.get("status", "success"),
                         })
-                    except Exception as e:
+                    except Exception:
                         task_store.update_task(task_key, {
                             "last_run_at": datetime.now().isoformat(),
                             "last_run_status": "error",
@@ -144,7 +142,6 @@ class TaskScheduler:
             return {"status": "error", "error": f"Task not found: {task_key}"}
 
         task = self.tasks[task_key]
-        start_time = time.time()
 
         try:
             task_store = PeriodicTaskStore(self.db)

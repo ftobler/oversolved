@@ -11,17 +11,17 @@ backend:
     just pytest
 
 mypy:
-    mypy tests/ oversolved/
+    .venv/bin/python -m mypy tests/ oversolved/
 
 flake8:
-    flake8 tests/ oversolved/
+    .venv/bin/python -m flake8 tests/ oversolved/
 
 pytest:
-    pytest tests/
+    .venv/bin/python -m pytest tests/
 
 
 icons:
-    python oversolved/icons.py
+    .venv/bin/python oversolved/icons.py
 
 
 [working-directory: "frontend"]
