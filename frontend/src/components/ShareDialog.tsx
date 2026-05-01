@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import Dialog from './Dialog'
 
 interface ShareInfo {
   id: number
@@ -17,6 +16,10 @@ interface ShareDialogProps {
   onClose: () => void
 }
 
+const getAppHostname = (): string => {
+  return import.meta.env.VITE_APP_HOSTNAME || window.location.hostname + (window.location.port ? ':' + window.location.port : '')
+}
+
 export default function ShareDialog({ isOpen, documentUuid, documentName, ownerUsername, isOwner, onClose }: ShareDialogProps) {
   const [shareUsername, setShareUsername] = useState('')
   const [sharePermission, setSharePermission] = useState<'view' | 'edit'>('view')
@@ -24,6 +27,7 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPublic, setIsPublic] = useState(false)
+  const [copyFeedback, setCopyFeedback] = useState(false)
 
   const fetchShares = useCallback(async () => {
     if (!isOwner) return
@@ -32,7 +36,6 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
       if (!response.ok) throw new Error('Failed to fetch shares')
       const data = await response.json()
       setShares(data.shares || [])
-      setIsPublic(data.shares?.some((s: ShareInfo) => s.shared_with_user_id === null) ?? false)
     } catch (e) {
       setError(String(e))
     }
@@ -96,9 +99,10 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
   const handleTogglePublic = async () => {
     setLoading(true)
     setError(null)
+    const newPublicState = !isPublic
     try {
       const response = await fetch(`/api/documents/${documentUuid}/share`, {
-        method: isPublic ? 'DELETE' : 'POST',
+        method: newPublicState ? 'POST' : 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       })
@@ -106,96 +110,158 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
         const data = await response.json()
         throw new Error(data.error || 'Failed to update public link')
       }
-      setIsPublic(!isPublic)
-      fetchShares()
+      setIsPublic(newPublicState)
+      await fetchShares()
     } catch (e) {
       setError(String(e))
+      setIsPublic(isPublic)  // revert on error
     } finally {
       setLoading(false)
     }
   }
 
+  const handleCopyLink = async () => {
+    const hostname = getAppHostname()
+    const publicUrl = `${hostname}/share/${documentUuid}`
+    try {
+      await navigator.clipboard.writeText(publicUrl)
+      setCopyFeedback(true)
+      setTimeout(() => setCopyFeedback(false), 2000)
+    } catch (e) {
+      setError('Failed to copy link')
+    }
+  }
+
+  const handleDeletePublicLink = async () => {
+    await handleTogglePublic()
+  }
+
+  const getPublicLinkUrl = (): string => {
+    const hostname = getAppHostname()
+    return `${hostname}/share/${documentUuid}`
+  }
+
+  if (!isOpen) return null
+
   return (
-    <Dialog
-      isOpen={isOpen}
-      title={`Share "${ownerUsername}/${documentName}"`}
-      onClose={onClose}
-    >
-      {!isOwner && (
-        <p className="error-text">Only the owner can manage shares.</p>
-      )}
-      {isOwner && (
-        <>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <input
-              type="text"
-              placeholder="Username"
-              value={shareUsername}
-              onChange={e => setShareUsername(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleShare() }}
-              style={{ flex: 1 }}
-            />
-            <select
-              value={sharePermission}
-              onChange={e => setSharePermission(e.target.value as 'view' | 'edit')}
-              style={{
-                padding: '8px',
-                background: '#111',
-                border: '1px solid #333',
-                borderRadius: '4px',
-                color: '#ccc',
-                fontSize: '13px',
-                minWidth: '80px',
-              }}
-            >
-              <option value="view">View</option>
-              <option value="edit">Edit</option>
-            </select>
-            <button className="btn btn-primary" onClick={handleShare} disabled={loading || !shareUsername.trim()} style={{ minWidth: '80px' }}>
-              Share
-            </button>
-          </div>
+    <div className="share-dialog-overlay" onClick={onClose}>
+      <div className="share-dialog-content" onClick={e => e.stopPropagation()}>
+        <div className="share-dialog-header">
+          <h2 className="share-dialog-title">Share "{ownerUsername}/{documentName}"</h2>
+          <button
+            className="share-dialog-close-btn"
+            onClick={onClose}
+            title="Close"
+          >
+            <span className="material-icons">close</span>
+          </button>
+        </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', background: '#111', borderRadius: '4px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', color: '#ccc', margin: 0 }}>
-              <input
-                type="checkbox"
-                checked={isPublic}
-                onChange={handleTogglePublic}
-                disabled={loading}
-              />
-              Public link (view only)
-            </label>
-          </div>
+        <div className="share-dialog-body">
+          {!isOwner && (
+            <p className="share-dialog-error">Only the owner can manage shares.</p>
+          )}
+          {isOwner && (
+            <>
+              <div className="share-dialog-row">
+                <input
+                  type="text"
+                  placeholder="Username"
+                  value={shareUsername}
+                  onChange={e => setShareUsername(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleShare() }}
+                  className="share-dialog-input"
+                />
+                <select
+                  value={sharePermission}
+                  onChange={e => setSharePermission(e.target.value as 'view' | 'edit')}
+                  className="share-dialog-select"
+                >
+                  <option value="view">View</option>
+                  <option value="edit">Edit</option>
+                </select>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleShare}
+                  disabled={loading || !shareUsername.trim()}
+                  style={{ minWidth: '80px' }}
+                >
+                  Share
+                </button>
+              </div>
 
-          {shares.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', border: '1px solid #333', borderRadius: '4px', overflow: 'hidden' }}>
-              <div style={{ padding: '8px 12px', fontSize: '12px', color: '#888', fontWeight: 600, background: '#0a0a0a', borderBottom: '1px solid #333' }}>Shared with</div>
-              <div style={{ maxHeight: '200px', overflowY: 'auto', padding: '8px' }}>
-                {shares.map(share => (
-                  <div key={share.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', padding: '6px 0', borderBottom: '1px solid #222' }}>
-                    <span style={{ color: '#ccc' }}>
-                      {share.shared_with_user_id === null ? 'Public link' : share.username}
-                      {' '}
-                      <span style={{ color: '#888' }}>({share.permission})</span>
-                    </span>
+              <div className="share-dialog-public-section">
+                {isPublic ? (
+                  <div className="share-dialog-public-link">
+                    <input
+                      type="text"
+                      readOnly
+                      value={getPublicLinkUrl()}
+                      className="share-dialog-public-input"
+                    />
                     <button
-                      className="btn btn-tile-action"
-                      onClick={() => handleRemoveShare(share.username)}
-                      title="Remove share"
+                      className="share-dialog-copy-btn"
+                      onClick={handleCopyLink}
+                      title={copyFeedback ? 'Copied!' : 'Copy link'}
+                    >
+                      <span className="material-icons">{copyFeedback ? 'check' : 'content_copy'}</span>
+                    </button>
+                    <button
+                      className="share-dialog-delete-link-btn"
+                      onClick={handleDeletePublicLink}
+                      title="Delete public link"
                       disabled={loading}
-                      style={{ minWidth: '32px', height: '32px' }}
                     >
                       <span className="material-icons">delete_outline</span>
                     </button>
                   </div>
-                ))}
+                ) : (
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleTogglePublic}
+                    disabled={loading}
+                    style={{ width: '100%' }}
+                  >
+                    Create public link
+                  </button>
+                )}
               </div>
-            </div>
+
+              {shares.length > 0 && (
+                <div className="share-dialog-list-container">
+                  <div className="share-dialog-list-title">Shared with</div>
+                  <table className="share-dialog-table">
+                    <tbody>
+                      {shares.map(share => (
+                        <tr key={share.id}>
+                          <td>
+                            {share.shared_with_user_id === null ? 'Public link' : share.username}
+                          </td>
+                          <td className="share-dialog-table-permission">
+                            {share.permission}
+                          </td>
+                          <td className="share-dialog-table-action">
+                            <button
+                              className="btn btn-tile-action"
+                              onClick={() => handleRemoveShare(share.username)}
+                              title="Remove share"
+                              disabled={loading}
+                              style={{ minWidth: '32px', height: '32px' }}
+                            >
+                              <span className="material-icons">delete_outline</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
-        </>
-      )}
-      {error && <p className="error-text">{error}</p>}
-    </Dialog>
+          {error && <p className="share-dialog-error">{error}</p>}
+        </div>
+      </div>
+    </div>
   )
 }

@@ -115,11 +115,11 @@ describe('ShareDialog', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Public link (view only)')).toBeInTheDocument()
+      expect(screen.getByText('Create public link')).toBeInTheDocument()
     })
 
-    const checkbox = screen.getByLabelText('Public link (view only)')
-    fireEvent.click(checkbox)
+    const createBtn = screen.getByText('Create public link')
+    fireEvent.click(createBtn)
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -163,7 +163,7 @@ describe('ShareDialog', () => {
       expect(screen.getByText('otheruser')).toBeInTheDocument()
     })
 
-    expect(screen.getByText('(view)')).toBeInTheDocument()
+    expect(screen.getByText('view')).toBeInTheDocument()
   })
 
   it('calls delete API when remove share button is clicked', async () => {

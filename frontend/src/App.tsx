@@ -11,6 +11,7 @@ import Backup from './pages/Backup'
 import AdminUsers from './pages/AdminUsers'
 import AdminPeriodicTasks from './pages/AdminPeriodicTasks'
 import Settings from './pages/Settings'
+import PublicShare from './pages/PublicShare'
 import './App.css'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -41,6 +42,7 @@ function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/share/:uuid" element={<PublicShare />} />
         <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
         <Route path="/documents" element={<ProtectedRoute><Documents /></ProtectedRoute>} />
         <Route path="/documents/:uuid" element={<ProtectedRoute><Part /></ProtectedRoute>} />
