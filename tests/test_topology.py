@@ -437,6 +437,33 @@ def test_boundary_edges_vertex_coords_match_edge_coords():
 
 # ── Mixed construction + non-construction ─────────────────────────────────────
 
+def test_two_touching_rectangles_two_surfaces(topology_log):
+    """Two rectangles touching along a collinear overlapping edge → 2 surfaces.
+
+    Mirrors the exact geometry from bugreport
+    sketch_area_building_problem_20260502_002427.md:
+    bottom rect (-25,-10)-(25,-10)-(25,10)-(-25,10),
+    top  rect sits on bottom rect's top edge at y~10
+    with overlapping collinear segments on the shared boundary.
+    """
+    geom = {
+        "bot": line(-25, -10.0000000001, 25, -10.0000000001),
+        "rig": line(25, -10, 25, 9.9999999999),
+        "top": line(25, 9.9999999999, -25, 9.9999999998),
+        "lef": line(-25, 9.9999999998, -25, -10.0000000001),
+        "t_bot": line(-22.3419399725, 9.9999999998, -12.6978362039, 9.9999999998),
+        "t_rig": line(-12.6978362039, 9.9999999998, -12.6978362039, 32.1068859586),
+        "t_top": line(-12.6978362039, 32.1068859586, -22.3419399725, 32.1068859586),
+        "t_lef": line(-22.3419399725, 32.1068859586, -22.3419399725, 9.9999999998),
+    }
+    result = detect_topology(geom)
+    topology_log["test_two_touching_rectangles_two_surfaces"] = result
+    # Must produce exactly 2 surfaces, not 1 malformed surface with duplicates
+    assert len(result["surfaces"]) == 2
+    # The top rectangle should have exactly 4 boundary edges
+    assert any(len(sfc["boundary"]) == 4 for sfc in result["surfaces"])
+
+
 def test_only_construction_lines_no_surfaces():
     """All construction lines cannot enclose a surface — result is empty."""
     geom = {

@@ -134,6 +134,70 @@ def _cc(cx1, cy1, r1, cx2, cy2, r2):
     ]
 
 
+def _collinear_overlap(ea, eb):
+    """Return [(ta, tb, pt), ...] for overlap endpoints of two collinear segments.
+
+    When two line segments are collinear (same infinite line) and overlap,
+    returns the endpoints of the overlap region projected onto each segment's
+    parameter space.
+    Returns [] if not collinear, not overlapping, or just touching at a point.
+    """
+    p1, p2 = ea["start"], ea["end"]
+    q1, q2 = eb["start"], eb["end"]
+
+    dx1, dy1 = p2[0] - p1[0], p2[1] - p1[1]
+    dx2, dy2 = q2[0] - q1[0], q2[1] - q1[1]
+
+    # Parallel check
+    if abs(dx1 * dy2 - dy1 * dx2) > _EPS:
+        return []
+
+    # Check that q1 lies on the line through p1→p2 (same infinite line)
+    pos_cross = dx1 * (q1[1] - p1[1]) - dy1 * (q1[0] - p1[0])
+    if abs(pos_cross) > _EPS:
+        return []
+
+    len1_sq = dx1 * dx1 + dy1 * dy1
+    if len1_sq < _EPS:
+        return []
+
+    def proj_a(pt):
+        return ((pt[0] - p1[0]) * dx1 + (pt[1] - p1[1]) * dy1) / len1_sq
+
+    len2_sq = dx2 * dx2 + dy2 * dy2
+    if len2_sq < _EPS:
+        return []
+
+    def proj_b(pt):
+        return ((pt[0] - q1[0]) * dx2 + (pt[1] - q1[1]) * dy2) / len2_sq
+
+    # Project endpoints of B onto A's parameter space
+    tb0, tb1 = proj_a(q1), proj_a(q2)
+    if tb0 > tb1:
+        tb0, tb1 = tb1, tb0
+
+    # Overlap interval on A
+    lo = max(0.0, tb0)
+    hi = min(1.0, tb1)
+    if hi - lo < _SPLIT_EPS:
+        return []  # just touching or no overlap
+
+    result = []
+    # Endpoints of B that fall strictly inside A
+    for t_b, pt in [(0.0, q1), (1.0, q2)]:
+        t_a = proj_a(pt)
+        if t_a > _SPLIT_EPS and t_a < 1 - _SPLIT_EPS:
+            result.append((t_a, proj_b(pt), pt))
+
+    # Endpoints of A that fall strictly inside B
+    for t_a, pt in [(0.0, p1), (1.0, p2)]:
+        tb = proj_b(pt)
+        if tb > _SPLIT_EPS and tb < 1 - _SPLIT_EPS:
+            result.append((t_a, tb, pt))
+
+    return result
+
+
 def _intersect(eid_a, ea, eid_b, eb, lines, circles, arcs):
     """All (param_a, param_b, pt) intersections between two entities."""
     ta = "l" if eid_a in lines else ("c" if eid_a in circles else "a")
@@ -478,7 +542,11 @@ def detect_topology(geometry: dict, feature_id: str = "") -> dict:
         eid_a, ea = elist[i]
         for j in range(i + 1, len(elist)):
             eid_b, eb = elist[j]
-            for pa, pb, pt in _intersect(eid_a, ea, eid_b, eb, lines, circles, arcs):
+            results = _intersect(eid_a, ea, eid_b, eb, lines, circles, arcs)
+            # For collinear line pairs with no intersection, check overlap
+            if not results and eid_a in lines and eid_b in lines:
+                results = _collinear_overlap(ea, eb)
+            for pa, pb, pt in results:
                 v = _vid(verts, pt)
                 # Normalise arc parameters so they sort within [a0, a0+2π)
                 if eid_a in arc_a0:
@@ -495,6 +563,7 @@ def detect_topology(geometry: dict, feature_id: str = "") -> dict:
     # Build half-edge list: (vfrom, vto, egeom)
     hes = []
     he_eid = []  # source entity ID for each half-edge (parallel to hes)
+    seen_lines: set[tuple] = set()  # dedup only collinear overlapping line edges
 
     for eid, e in lines.items():
         spl = _dedup(splits[eid])
@@ -503,6 +572,12 @@ def detect_topology(geometry: dict, feature_id: str = "") -> dict:
             t1, v1 = spl[k + 1]
             if v0 == v1:
                 continue
+            key = (v0, v1)
+            rkey = (v1, v0)
+            if key in seen_lines or rkey in seen_lines:
+                continue
+            seen_lines.add(key)
+            seen_lines.add(rkey)
             eg = _line_eg(e, t0, t1)
             hes += [(v0, v1, eg), (v1, v0, _rev(eg))]
             he_eid += [eid, eid]
