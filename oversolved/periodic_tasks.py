@@ -1,6 +1,5 @@
 """Periodic task framework for background maintenance jobs."""
 
-import threading
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -27,8 +26,8 @@ class PeriodicTask:
         raise NotImplementedError
 
 
-def _parse_cron(cron_expr: str) -> datetime:
-    """Parse a cron expression and return the next run time.
+def _cron_next(cron_expr: str, from_time: datetime) -> datetime:
+    """Compute the next scheduled run time after from_time for a cron expression.
 
     Supports simple expressions like:
     - "0 2 * * *" (daily at 2:00 AM)
@@ -40,101 +39,116 @@ def _parse_cron(cron_expr: str) -> datetime:
         raise ValueError(f"Invalid cron expression: {cron_expr}")
 
     minute_str, hour_str, day_str, month_str, dow_str = parts
-    now = datetime.now()
+    minute = int(minute_str)
 
-    # Handle "0 2 * * *" (daily at specific time)
-    if day_str == "*" and month_str == "*" and dow_str == "*":
-        minute = int(minute_str)
-        if hour_str.startswith("*/"):
-            interval = int(hour_str[2:])
-            next_hour = ((now.hour // interval) + 1) * interval
-            if next_hour >= 24:
-                next_hour = 0
-                target = now + timedelta(days=1)
-            else:
-                target = now
-            return target.replace(hour=next_hour, minute=minute, second=0, microsecond=0)
-        else:
+    # Handle daily/weekly with fixed minute/hour
+    if day_str == "*" and month_str == "*":
+        # Weekly on specific day of week
+        if dow_str != "*":
+            cron_dow = int(dow_str) % 7
+            target_dow = (cron_dow + 6) % 7  # Convert cron DOW (Sun=0) to Python (Mon=0)
+            days_ahead = (target_dow - from_time.weekday()) % 7
+            if days_ahead == 0 and not hour_str.startswith("*/"):
+                hour = int(hour_str)
+                target = from_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if target > from_time:
+                    return target
+                days_ahead = 7
+            target = from_time + timedelta(days=days_ahead)
             hour = int(hour_str)
-            target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            if target <= now:
+            return target.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+        # Daily at specific time
+        if not hour_str.startswith("*/"):
+            hour = int(hour_str)
+            target = from_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if target <= from_time:
                 target += timedelta(days=1)
             return target
 
+        # Every N hours starting from next interval
+        interval = int(hour_str[2:])
+        next_hour = ((from_time.hour // interval) + 1) * interval
+        if next_hour >= 24:
+            next_hour = 0
+            target = from_time + timedelta(days=1)
+        else:
+            target = from_time
+        return target.replace(hour=next_hour, minute=minute, second=0, microsecond=0)
+
     # Fallback: next day at midnight
-    return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return (from_time + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _parse_cron(cron_expr: str) -> datetime:
+    """Parse a cron expression and return the next run time from now.
+
+    Supports simple expressions like:
+    - "0 2 * * *" (daily at 2:00 AM)
+    - "0 */6 * * *" (every 6 hours)
+    - "0 0 * * 0" (weekly on Sunday)
+    """
+    return _cron_next(cron_expr, datetime.now())
+
+
+def is_task_due(last_run_at: Optional[str], cron_expr: str, now: Optional[datetime] = None) -> bool:
+    """Check if a task is due to run based on last_run_at and cron schedule."""
+    if now is None:
+        now = datetime.now()
+    if last_run_at is None:
+        return True  # Never run
+    last_run = datetime.fromisoformat(last_run_at)
+    next_run = _cron_next(cron_expr, last_run)
+    return next_run <= now
 
 
 class TaskScheduler:
-    """Manages periodic task execution."""
+    """Manages periodic task registration and execution."""
 
-    def __init__(self, db_or_factory):
-        if callable(db_or_factory):
-            self._db_factory = db_or_factory
-            self.db = db_or_factory()
-        else:
-            self._db_factory = lambda: db_or_factory
-            self.db = db_or_factory
+    def __init__(self):
         self.tasks: dict[str, PeriodicTask] = {}
-        self._next_run_at: dict[str, datetime] = {}  # Track next run times in memory
-        self._stop_event = threading.Event()
-        self._thread: Optional[threading.Thread] = None
 
     def register_task(self, task: PeriodicTask) -> None:
         """Register a periodic task."""
         self.tasks[task.task_key] = task
-        self._next_run_at[task.task_key] = _parse_cron(task.schedule)
 
-    def start(self) -> None:
-        """Start the scheduler in background thread."""
-        self._stop_event.clear()
-        self._thread = threading.Thread(target=self._scheduler_loop, daemon=True)
-        self._thread.start()
-
-    def stop(self) -> None:
-        """Stop the scheduler."""
-        self._stop_event.set()
-        if self._thread:
-            self._thread.join(timeout=5)
-
-    def _scheduler_loop(self) -> None:
-        """Main scheduler loop (runs in background thread)."""
+    def run_due_tasks(self, db) -> list[dict]:
+        """Run all tasks that are due. Returns list of result dicts."""
         from oversolved.db import PeriodicTaskStore
 
-        db = self._db_factory()
-        try:
-            task_store = PeriodicTaskStore(db)
-            while not self._stop_event.is_set():
-                now = datetime.now()
+        task_store = PeriodicTaskStore(db)
+        results = []
+        now = datetime.now()
 
-                # Check each task to see if it should run
-                for task_key, task in self.tasks.items():
-                    next_run = self._next_run_at.get(task_key)
-                    if next_run is None or next_run > now:
-                        continue
+        # Snapshot all task records from DB once
+        all_records = {t["task_key"]: t for t in task_store.find_all()}
 
-                    try:
-                        task_store.ensure_task_exists(task_key)
-                        result = task.run(db)
-                        task_store.update_task(task_key, {
-                            "last_run_at": datetime.now().isoformat(),
-                            "last_run_status": result.get("status", "success"),
-                        })
-                    except Exception:
-                        task_store.update_task(task_key, {
-                            "last_run_at": datetime.now().isoformat(),
-                            "last_run_status": "error",
-                        })
+        for task_key, task in self.tasks.items():
+            task_store.ensure_task_exists(task_key)
 
-                    # Schedule next run
-                    self._next_run_at[task_key] = _parse_cron(task.schedule)
+            task_record = all_records.get(task_key)
+            last_run_at = task_record["last_run_at"] if task_record else None
 
-                # Sleep briefly before checking again (every 30 seconds)
-                self._stop_event.wait(30)
-        finally:
-            db.close()
+            if not is_task_due(last_run_at, task.schedule, now):
+                continue
 
-    def force_run_task(self, task_key: str) -> dict:
+            try:
+                result = task.run(db)
+                task_store.update_task(task_key, {
+                    "last_run_at": datetime.now().isoformat(),
+                    "last_run_status": result.get("status", "success"),
+                })
+                results.append({"task_key": task_key, "status": "success", **result})
+            except Exception as e:
+                task_store.update_task(task_key, {
+                    "last_run_at": datetime.now().isoformat(),
+                    "last_run_status": "error",
+                })
+                results.append({"task_key": task_key, "status": "error", "error": str(e)})
+
+        return results
+
+    def force_run_task(self, task_key: str, db) -> dict:
         """Force execution of a task immediately."""
         from oversolved.db import PeriodicTaskStore
 
@@ -143,10 +157,11 @@ class TaskScheduler:
 
         task = self.tasks[task_key]
 
+        task_store = PeriodicTaskStore(db)
+        task_store.ensure_task_exists(task_key)
+
         try:
-            task_store = PeriodicTaskStore(self.db)
-            task_store.ensure_task_exists(task_key)
-            result = task.run(self.db)
+            result = task.run(db)
 
             task_store.update_task(task_key, {
                 "last_run_at": datetime.now().isoformat(),
@@ -155,16 +170,11 @@ class TaskScheduler:
 
             return {"status": "success", **result}
         except Exception as e:
-            task_store = PeriodicTaskStore(self.db)
-            task_store.ensure_task_exists(task_key)
             task_store.update_task(task_key, {
                 "last_run_at": datetime.now().isoformat(),
                 "last_run_status": "error",
             })
-            return {
-                "status": "error",
-                "error": str(e)
-            }
+            return {"status": "error", "error": str(e)}
 
 
 class EmptyTrashTask(PeriodicTask):

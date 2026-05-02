@@ -1,5 +1,7 @@
-from oversolved.run_server import main as run_server_main
+"""Backward-compat entry point. Prefer `oversolved.cli:main` directly."""
+
+from oversolved.cli import main as cli_main
 
 
 def main():
-    run_server_main()
+    cli_main()

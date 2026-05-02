@@ -206,7 +206,7 @@ describe('sketch pick resolution', () => {
     })} />)
     // Click the feature row li, not the inner name span (which stops propagation for renaming).
     const sketchRow = screen.getByText((content, el) =>
-      content === 'sk1' && el.classList.contains('feature-name')
+      !!(content === 'sk1' && el?.classList.contains('feature-name'))
     ).closest('li')!
     fireEvent.click(sketchRow)
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({

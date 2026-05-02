@@ -7,7 +7,6 @@ from functools import wraps
 from pathlib import Path
 from datetime import datetime, timedelta
 import re
-import atexit
 import yaml
 import zipfile
 from io import BytesIO
@@ -68,44 +67,6 @@ def _ensure_admin_user(db: Database) -> None:
         user_store.update(uid, is_admin=1, must_change_password=1)
 
 
-_task_scheduler = None
-
-
-def init_scheduler(app):
-    """Initialize and start the periodic task scheduler."""
-    global _task_scheduler
-    from oversolved.periodic_tasks import TaskScheduler, EmptyTrashTask
-
-    db_config = {
-        "type": app.config["DB_TYPE"],
-        "path": app.config.get("DB_PATH", ":memory:"),
-        "host": app.config.get("DB_HOST"),
-        "user": app.config.get("DB_USER"),
-        "password": app.config.get("DB_PASSWORD"),
-        "name": app.config.get("DB_NAME"),
-    }
-
-    db = _get_database(db_config)
-    _register_migrations(db)
-    db.init()
-
-    def db_factory():
-        d = _get_database(db_config)
-        _register_migrations(d)
-        d.init()
-        return d
-
-    _task_scheduler = TaskScheduler(db_factory)
-    _task_scheduler.register_task(EmptyTrashTask())
-    _task_scheduler.start()
-
-    def shutdown_scheduler():
-        if _task_scheduler:
-            _task_scheduler.stop()
-
-    atexit.register(shutdown_scheduler)
-
-
 def create_app(config: dict | None = None) -> Flask:
     """Create and configure the Flask app."""
     app = Flask(__name__)
@@ -140,10 +101,6 @@ def create_app(config: dict | None = None) -> Flask:
     db.init()
     _ensure_admin_user(db)
     db.close()
-
-    # Start periodic task scheduler (skip in testing to avoid threading issues)
-    if not app.config.get("TESTING"):
-        init_scheduler(app)
 
     def get_db():
         """Get or create database connection for this request."""
@@ -461,10 +418,16 @@ def create_app(config: dict | None = None) -> Flask:
     @require_auth
     @require_admin
     def force_run_periodic_task(task_key):
-        """Force execution of a periodic task."""
-        if _task_scheduler is None:
-            return jsonify({"error": "Scheduler not running"}), 503
-        result = _task_scheduler.force_run_task(task_key)
+        """Force execution of a periodic task.
+
+        Note: New periodic task classes must be registered here too.
+        """
+        from oversolved.periodic_tasks import TaskScheduler, EmptyTrashTask
+
+        db = get_db()
+        scheduler = TaskScheduler()
+        scheduler.register_task(EmptyTrashTask())
+        result = scheduler.force_run_task(task_key, db)
         return jsonify(result)
 
     @app.route("/api/admin/backup", methods=["GET"])

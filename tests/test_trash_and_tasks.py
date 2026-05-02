@@ -377,10 +377,10 @@ class TestPeriodicTasks:
         assert doc_store.retrieve(uuid) is not None
 
     def test_task_scheduler_register_and_force_run(self, db, task_store):
-        scheduler = TaskScheduler(db)
+        scheduler = TaskScheduler()
         scheduler.register_task(EmptyTrashTask())
 
-        result = scheduler.force_run_task("document.empty_trash")
+        result = scheduler.force_run_task("document.empty_trash", db)
         assert result["status"] == "success"
 
         # Check that task record was created
@@ -391,8 +391,8 @@ class TestPeriodicTasks:
         assert trash_task["last_run_at"] is not None
 
     def test_task_scheduler_force_run_unknown_task(self, db):
-        scheduler = TaskScheduler(db)
-        result = scheduler.force_run_task("unknown.task")
+        scheduler = TaskScheduler()
+        result = scheduler.force_run_task("unknown.task", db)
         assert result["status"] == "error"
 
     def test_periodic_task_store_find_all(self, db, task_store):
@@ -425,6 +425,22 @@ class TestAdminPeriodicTaskAPI:
     def test_force_run_task_requires_admin(self, client):
         response = client.post("/api/admin/periodic-tasks/document.empty_trash/run")
         assert response.status_code == 401
+
+    def test_force_run_task_success(self, authed_client):
+        response = authed_client.post(
+            "/api/admin/periodic-tasks/document.empty_trash/run"
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "success"
+
+    def test_force_run_unknown_task(self, authed_client):
+        response = authed_client.post(
+            "/api/admin/periodic-tasks/nonexistent.task/run"
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "error"
 
 
 def _get_db_for_app(app):
