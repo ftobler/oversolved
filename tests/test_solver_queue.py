@@ -79,3 +79,56 @@ def test_get_latest_result_returns_most_recent():
 def test_get_latest_result_returns_none_for_unknown_doc():
     solver = DocumentSolver()
     assert solver.get_latest_result("unknown") is None
+
+
+def test_get_lock_thread_safe():
+    """Concurrent get_lock() calls for same new doc_id both return a Lock."""
+    solver = DocumentSolver()
+    results: list = []
+    errors: list = []
+
+    def get_lock_for_new_doc():
+        try:
+            lock = solver.get_lock("new_doc")
+            results.append(lock)
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=get_lock_for_new_doc) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    assert len(results) == 10
+    assert all(r is not None for r in results)
+    # All should get the same lock object (not created twice)
+    first = results[0]
+    assert all(r is first for r in results)
+
+
+def test_concurrent_acquire_release():
+    """Tight-loop concurrent acquire/release on same doc does not deadlock."""
+    solver = DocumentSolver()
+    errors: list = []
+
+    def worker():
+        for _ in range(50):
+            try:
+                c = solver.acquire("shared_doc")
+                solver.release("shared_doc", c, {"result": c})
+            except Exception as e:
+                errors.append(e)
+
+    threads = [threading.Thread(target=worker) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    # After all work, the counter should have reached 500 (50 * 10)
+    latest = solver.get_latest_result("shared_doc")
+    assert latest is not None
+    assert latest["result"] == 500, f"Expected counter 500, got {latest['result']}"

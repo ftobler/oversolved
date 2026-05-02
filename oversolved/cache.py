@@ -82,22 +82,22 @@ class L2Cache:
 
     def get(self, key: str) -> BuildState | None:
         path = self._path(key)
-        with self._lock:
-            if not os.path.exists(path):
-                return None
-            mtime = os.path.getmtime(path)
-            if time.time() - mtime > self._ttl:
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
-                return None
-            # Refresh access time for LRU
-            os.utime(path, None)
-
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            with self._lock:
+                if not os.path.exists(path):
+                    return None
+                mtime = os.path.getmtime(path)
+                if time.time() - mtime > self._ttl:
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        pass
+                    return None
+                # Refresh access time for LRU
+                os.utime(path, None)
+
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
             return deserialize_build_state(data)
         except Exception:
             return None

@@ -255,6 +255,49 @@ class TestL2Cache:
         files = list(cache_dir.glob("*.json"))
         assert all("new_doc" in f.name for f in files)
 
+    def test_l2_cache_concurrent_read_write(self, tmp_path):
+        """Concurrent read/write on same key does not crash."""
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=1000000, cache_dir=str(tmp_path / "conc_rw")
+        )
+        state = BuildState(feature_order=["sk1"], checkpoints={})
+        cache.set("race_doc", state)
+
+        errors = []
+
+        def writer():
+            for _ in range(20):
+                try:
+                    cache.set("race_doc", state)
+                except Exception as e:
+                    errors.append(e)
+
+        def deleter():
+            for _ in range(20):
+                try:
+                    cache.delete("race_doc")
+                except Exception as e:
+                    errors.append(e)
+
+        def reader():
+            for _ in range(50):
+                try:
+                    cache.get("race_doc")
+                except Exception as e:
+                    errors.append(e)
+
+        threads = [
+            threading.Thread(target=writer),
+            threading.Thread(target=deleter),
+        ]
+        threads += [threading.Thread(target=reader) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+
 
 class TestSolveWithL2Cache:
     def test_solve_with_l2_cache_hit(self, tmp_path):
