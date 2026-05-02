@@ -25,6 +25,7 @@ import {
   applyRenameFeature,
   applyAddPlane,
   applySetPlaneDefinitionField,
+  applyTogglePlaneVisibility,
   applyToggleSketchPlaneVisibility,
   applyAddExtrude,
   applySetExtrudeDistance,
@@ -487,6 +488,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'toggle_sketch_plane_visibility':
         applyToggleSketchPlaneVisibility(next)
+        break
+      case 'toggle_plane_visibility':
+        applyTogglePlaneVisibility(next)
         break
       case 'add_extrude':
         applyAddExtrude(next, m.featureId, m.label, m.sketchQuery, m.distance)

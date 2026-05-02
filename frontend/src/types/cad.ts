@@ -506,6 +506,7 @@ export type Mutation =
   | { type: 'set_plane_definition_field'; featureId: string; field: string; value: string | number }
   | { type: 'rename_feature'; featureId: string; label: string }
   | { type: 'toggle_sketch_plane_visibility' }
+  | { type: 'toggle_plane_visibility' }
   | { type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number }
   | { type: 'set_extrude_distance'; featureId: string; distance: number }
   | { type: 'set_extrude_direction'; featureId: string; direction: ExtrudeDirection }

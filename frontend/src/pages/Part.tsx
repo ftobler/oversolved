@@ -117,6 +117,8 @@ function describeMutation(m: Mutation): string {
       return `rename ${m.featureId} to ${m.label}`
     case 'toggle_sketch_plane_visibility':
       return 'toggle sketch/plane visibility'
+    case 'toggle_plane_visibility':
+      return 'toggle plane visibility'
     case 'add_extrude':
       return `add extrude ${m.label ?? m.featureId}`
     case 'set_extrude_distance':
@@ -239,7 +241,6 @@ export default function Part() {
   const [bodiesVisibility, setBodiesVisibility] = useState<Record<string, boolean>>({})
   const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
-  const [planesVisible, setPlanesVisible] = useState(true)
   const viewportRef = useRef<ViewportHandle>(null)
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
@@ -326,12 +327,12 @@ export default function Part() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       if (e.key === 'p' || e.key === 'P') {
         e.preventDefault()
-        setPlanesVisible(prev => !prev)
+        handleMutation({ type: 'toggle_plane_visibility' })
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [handleMutation])
 
   const features = useMemo(() => extractFeatures(doc), [doc])
   const partStyle = useMemo(() => doc?.part_style ?? {}, [doc])
@@ -1326,7 +1327,7 @@ useEffect(() => {
           )}
           {mode !== 'code' && (
             <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-              <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={effectiveVisibleBodies} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} partStyle={partStyle} ghostMode={ghostMode} planesVisible={planesVisible} />
+              <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={effectiveVisibleBodies} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} partStyle={partStyle} ghostMode={ghostMode} />
               <LoadingOverlay isDocumentLoading={loading} />
             </div>
           )}

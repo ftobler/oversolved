@@ -55,4 +55,4 @@ runb:
     just run_back
 
 run_back:
-    oversolved --debug
+    oversolved run_server --debug

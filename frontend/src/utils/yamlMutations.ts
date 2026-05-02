@@ -528,6 +528,23 @@ export function applyToggleSketchPlaneVisibility(doc: PartDoc): void {
   }
 }
 
+export function applyTogglePlaneVisibility(doc: PartDoc): void {
+  const targets = (doc.features ?? []).filter(f => {
+    if (f.id === 'Origin') return false
+    if (f.kind === 'plane') return true
+    if (f.id === 'Top' || f.id === 'Front' || f.id === 'Right') return true
+    return false
+  })
+  const anyVisible = targets.some(f => f.visible !== false)
+  for (const f of targets) {
+    if (anyVisible) {
+      f.visible = false
+    } else {
+      delete f.visible
+    }
+  }
+}
+
 export function applyAddPlane(doc: PartDoc, featureId: string, label?: string, definition?: Record<string, unknown>): void {
   if (!doc.features) doc.features = []
   const feature: PartFeature = { id: featureId, kind: 'plane', definition: definition ?? { mode: 'offset' } }

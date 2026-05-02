@@ -922,7 +922,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span className="material-icons-outlined">close</span>
                       </button>
                     )}
-                    {(feature.kind === 'sketch' || feature.kind === 'plane') && feature.id !== editingFeatureId && (
+                    {(feature.kind === 'sketch' || feature.kind === 'plane' || (BUILT_IN_IDS.has(feature.id) && feature.id !== 'Origin')) && feature.id !== editingFeatureId && (
                       <button
                         className="feature-visibility-btn"
                         onClick={(e) => { e.stopPropagation(); onToggleVisibility(feature.id) }}
@@ -943,9 +943,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {(feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'delete_body' || feature.kind === 'import_step') && (
                       <span className="feature-visibility-placeholder" />
                     )}
-                    {BUILT_IN_IDS.has(feature.id) && (
-                      <span className="feature-visibility-placeholder" />
-                    )}
+
                     {!BUILT_IN_IDS.has(feature.id) && (
                       <button
                         className="feature-context-btn"
