@@ -1,6 +1,6 @@
 .context-menu-dialog {
   position: fixed;
-  z-index: 9999;
+  z-index: 20000000;
   display: flex;
   align-items: center;
   gap: 8px;
