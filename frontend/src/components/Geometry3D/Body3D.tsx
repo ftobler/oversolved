@@ -160,9 +160,16 @@ export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
 
   for (const edge of edges) {
     if (edge.kind === 'line') {
-      parts.push(...edge.start, ...edge.end)
+      if (_isValidSegment(edge.start) && _isValidSegment(edge.end)) {
+        parts.push(...edge.start, ...edge.end)
+      }
     } else if (edge.kind === 'circle' || edge.kind === 'arc') {
       const { center, radius, x_axis, axis, angle_start, angle_end } = edge
+      if (!_isValidSegment(center) || !_isValidSegment(x_axis) || !_isValidSegment(axis)
+          || Number.isNaN(radius) || !Number.isFinite(radius)
+          || Number.isNaN(angle_start) || Number.isNaN(angle_end)) {
+        continue
+      }
       const sweep = angle_end - angle_start
       // Proportional segment count, at least 2, max ARC_SEGMENTS for full circle.
       const segs = Math.max(2, Math.round(ARC_SEGMENTS * Math.abs(sweep) / (2 * Math.PI)))
@@ -192,12 +199,18 @@ export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
     } else if (edge.kind === 'spline') {
       const pts = edge.points
       for (let i = 0; i < pts.length - 1; i++) {
-        parts.push(...pts[i], ...pts[i + 1])
+        if (_isValidSegment(pts[i]) && _isValidSegment(pts[i + 1])) {
+          parts.push(...pts[i], ...pts[i + 1])
+        }
       }
     }
   }
 
   return new Float32Array(parts)
+}
+
+function _isValidSegment(p: [number, number, number]): boolean {
+  return Number.isFinite(p[0]) && Number.isFinite(p[1]) && Number.isFinite(p[2])
 }
 
 // Get the number of line segments each edge produces.

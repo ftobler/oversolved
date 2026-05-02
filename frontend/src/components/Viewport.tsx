@@ -55,15 +55,18 @@ function isActive(id: string, features: Feature[] | undefined, rollbackPos: numb
 function calculateMeshExtent(vertices: [number, number, number][]): number {
   if (vertices.length === 0) return 0
 
-  let minX = vertices[0][0], maxX = vertices[0][0]
-  let minY = vertices[0][1], maxY = vertices[0][1]
-  let minZ = vertices[0][2], maxZ = vertices[0][2]
+  let minX = Infinity, maxX = -Infinity
+  let minY = Infinity, maxY = -Infinity
+  let minZ = Infinity, maxZ = -Infinity
 
   for (const [x, y, z] of vertices) {
-    minX = Math.min(minX, x); maxX = Math.max(maxX, x)
-    minY = Math.min(minY, y); maxY = Math.max(maxY, y)
-    minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z)
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue
+    if (x < minX) minX = x; if (x > maxX) maxX = x
+    if (y < minY) minY = y; if (y > maxY) maxY = y
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
   }
+
+  if (!Number.isFinite(minX)) return 0
 
   const width = maxX - minX
   const height = maxY - minY
@@ -287,6 +290,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     if (!hasContent) return
 
     const size = box.getSize(new THREE.Vector3())
+    if (!Number.isFinite(size.x) || !Number.isFinite(size.y)) return
     const center = box.getCenter(new THREE.Vector3())
 
     const gl = glRef.current

@@ -92,6 +92,10 @@ interface EdgeMeshProps {
   featureId: string
 }
 
+function _isValidPoint(p: [number, number, number]): boolean {
+  return Number.isFinite(p[0]) && Number.isFinite(p[1]) && Number.isFinite(p[2])
+}
+
 function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
   const [hovered, setHovered] = useState(false)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
@@ -110,7 +114,9 @@ function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
   // Hoisted before conditional return to satisfy rules-of-hooks.
   const lineGeometry = useMemo(() => {
     const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([...start, ...end]), 3))
+    if (_isValidPoint(start) && _isValidPoint(end)) {
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([...start, ...end]), 3))
+    }
     return geo
   }, [start, end])
 
@@ -121,20 +127,22 @@ function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
     const a0 = edge.angle_start_deg ?? 0
     const a1 = edge.angle_end_deg ?? 0
 
-    const curve = new THREE.EllipseCurve(cx, cy, r, r, (a0 * Math.PI) / 180, (a1 * Math.PI) / 180, false, 0)
-    const points = curve.getPoints(32)
-    const arcGeometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, 0)))
+    if (Number.isFinite(cx) && Number.isFinite(cy) && Number.isFinite(r) && Number.isFinite(a0) && Number.isFinite(a1)) {
+      const curve = new THREE.EllipseCurve(cx, cy, r, r, (a0 * Math.PI) / 180, (a1 * Math.PI) / 180, false, 0)
+      const points = curve.getPoints(32)
+      const arcGeometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, 0)))
 
-    return (
-      <line
-        onPointerOver={(e) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredEdge(id) }}
-        onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }}
-        onClick={(e) => { e.stopPropagation(); toggleNormalSelection(id) }}
-      >
-        <primitive object={arcGeometry} attach="geometry" />
-        <lineBasicMaterial color={color} linewidth={2} />
-      </line>
-    )
+      return (
+        <line
+          onPointerOver={(e) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredEdge(id) }}
+          onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }}
+          onClick={(e) => { e.stopPropagation(); toggleNormalSelection(id) }}
+        >
+          <primitive object={arcGeometry} attach="geometry" />
+          <lineBasicMaterial color={color} linewidth={2} />
+        </line>
+      )
+    }
   }
 
   return (

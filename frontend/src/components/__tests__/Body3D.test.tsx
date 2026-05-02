@@ -149,6 +149,49 @@ describe('buildEdgeSegments line', () => {
   })
 })
 
+describe('buildEdgeSegments NaN guard', () => {
+  it('skips line edge with NaN coordinate', () => {
+    const result = buildEdgeSegments([
+      { kind: 'line', start: [0, 0, 0], end: [NaN, 0, 0] },
+    ])
+    expect(result.length).toBe(0)
+  })
+
+  it('skips circle edge with NaN center', () => {
+    const result = buildEdgeSegments([{
+      kind: 'circle',
+      center: [NaN, 0, 0],
+      radius: 1,
+      axis: [0, 0, 1],
+      x_axis: [1, 0, 0],
+      angle_start: 0,
+      angle_end: 2 * Math.PI,
+    }])
+    expect(result.length).toBe(0)
+  })
+
+  it('skips circle edge with NaN radius', () => {
+    const result = buildEdgeSegments([{
+      kind: 'circle',
+      center: [0, 0, 0],
+      radius: NaN,
+      axis: [0, 0, 1],
+      x_axis: [1, 0, 0],
+      angle_start: 0,
+      angle_end: 2 * Math.PI,
+    }])
+    expect(result.length).toBe(0)
+  })
+
+  it('skips spline segment with NaN point', () => {
+    const result = buildEdgeSegments([{
+      kind: 'spline',
+      points: [[0, 0, 0], [1, NaN, 0], [2, 0, 0]],
+    }])
+    expect(result.length).toBe(0)
+  })
+})
+
 describe('buildEdgeSegments circle', () => {
   it('full circle produces ARC_SEGMENTS * 2 * 3 floats and start/end points are close', () => {
     const result = buildEdgeSegments([{
