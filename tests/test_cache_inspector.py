@@ -175,6 +175,56 @@ class TestInspectEndpoint:
         resp = authed_client.get("/api/cache/inspect/l2/nonexistent")
         assert resp.status_code == 404
 
+    def test_inspect_l2_entry_truncation_returns_valid_json(self, tmp_path, monkeypatch):
+        """Large L2 entries should return a valid truncated preview, not broken JSON."""
+        pytest.importorskip("OCP.gp")
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
+        cache_dir = tmp_path / "l2_trunc"
+
+        from oversolved.app import create_app
+        app = create_app(
+            {
+                "DB_TYPE": "sqlite",
+                "TESTING": True,
+                "DB_PATH": str(tmp_path / "test_trunc.db"),
+                "L2_CACHE_ENABLED": True,
+                "L2_CACHE_DIR": str(cache_dir),
+            }
+        )
+        # Store a large entry directly in the app's L2 cache via app config
+        from oversolved.cache import L2Cache
+        from oversolved.types3d import BuildState, FeatureCheckpoint
+
+        cache = L2Cache(
+            ttl_seconds=86400 * 30,
+            max_size=1024 * 1024,
+            cache_dir=str(cache_dir),
+        )
+        checkpoints = {}
+        for i in range(500):
+            checkpoints[f"cp_{i}"] = FeatureCheckpoint(
+                spec={"type": "sketch", "id": f"sk{i}"},
+                result={},
+                repo_snapshot={},
+                body_store_snapshot={},
+            )
+        state = BuildState(feature_order=["sk1"], checkpoints=checkpoints)
+        cache.set("doc_trunc", state)
+
+        client = app.test_client()
+        client.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+
+        resp = client.get("/api/cache/inspect/l2/doc_trunc")
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data.get("truncated") is True
+        assert "preview" in data
+        assert isinstance(data["preview"], dict)
+
     def test_inspect_l2_entry_disabled_l2(self, authed_client, app):
         app.config["L2_CACHE_ENABLED"] = False
         resp = authed_client.get("/api/cache/inspect/l2/some_doc")

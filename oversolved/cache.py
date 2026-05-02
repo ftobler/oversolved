@@ -44,8 +44,7 @@ class TtlCache(Generic[T]):
             if key in self._data:
                 del self._data[key]
             self._data[key] = (value, time.time())
-            if len(self._data) > self._max_size:
-                # Remove oldest (first inserted, which is LRU due to move-to-end on access)
+            while len(self._data) > self._max_size:
                 oldest = next(iter(self._data))
                 del self._data[oldest]
 

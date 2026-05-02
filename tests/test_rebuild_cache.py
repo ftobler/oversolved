@@ -112,6 +112,15 @@ class TestTtlCache:
         assert cache.get("b") == "2"
         assert cache.get("c") == "3"
 
+    def test_max_size_eviction_multiple(self):
+        """Evicts enough entries when inserting many beyond max_size."""
+        cache = TtlCache[str](ttl_seconds=60.0, max_size=5)
+        for i in range(20):
+            cache.set(f"key_{i}", str(i))
+        # Should have evicted down to max_size=5
+        cache._evict_expired()
+        assert len(cache._data) <= 5
+
     def test_thread_safety(self):
         cache = TtlCache[int](ttl_seconds=60.0, max_size=1000)
         errors = []

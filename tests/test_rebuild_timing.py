@@ -231,6 +231,64 @@ class TestRebuildTimeTracking:
         assert stats["rebuild_count"] == 5
         assert len(stats["history"]) == 5
 
+    def test_stat_average_is_float(self, authed_client):
+        """Average should be a float (not integer division)."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "FloatAvg"}),
+            content_type="application/json",
+        )
+        doc_id = json.loads(create_resp.data)["uuid"]
+
+        from oversolved.db import SQLiteConnection, Database
+        db_path = authed_client.application.config["DB_PATH"]
+        db = Database(SQLiteConnection(db_path))
+
+        durations = [101, 202, 303]
+        for d in durations:
+            db.execute(
+                """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
+                   VALUES (?, ?, ?)""",
+                (doc_id, d, 2),
+            )
+        db.commit()
+
+        stats_resp = authed_client.get(f"/api/documents/{doc_id}/rebuild-stats")
+        assert stats_resp.status_code == 200
+        stats = json.loads(stats_resp.data)
+        expected_avg = sum(durations) / len(durations)
+        assert stats["average_ms"] == expected_avg
+        assert isinstance(stats["average_ms"], float)
+
+    def test_median_is_float_for_even_count(self, authed_client):
+        """Median should be float for even number of values."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "MedFloat"}),
+            content_type="application/json",
+        )
+        doc_id = json.loads(create_resp.data)["uuid"]
+
+        from oversolved.db import SQLiteConnection, Database
+        db_path = authed_client.application.config["DB_PATH"]
+        db = Database(SQLiteConnection(db_path))
+
+        durations = [100, 200, 300, 400]
+        for d in durations:
+            db.execute(
+                """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
+                   VALUES (?, ?, ?)""",
+                (doc_id, d, 2),
+            )
+        db.commit()
+
+        stats_resp = authed_client.get(f"/api/documents/{doc_id}/rebuild-stats")
+        assert stats_resp.status_code == 200
+        stats = json.loads(stats_resp.data)
+        # median of [100, 200, 300, 400] = (200+300)/2 = 250.0
+        assert stats["median_ms"] == 250.0
+        assert isinstance(stats["median_ms"], float)
+
     def test_stat_calculations_correct(self, authed_client):
         pytest.importorskip("OCP.gp")
         create_resp = authed_client.post(

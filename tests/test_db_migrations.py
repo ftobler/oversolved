@@ -1,5 +1,6 @@
 """Tests for DB migration CLI and refactored Database methods."""
 
+import json
 import pytest
 from oversolved.db import Database, SQLiteConnection
 
@@ -112,6 +113,40 @@ class TestUpgradeCLI:
         database2 = Database(conn2)
         assert database2.get_current_version() > 0
         database2.close()
+
+    def test_migrations_not_registered_on_every_request(self, tmp_path, monkeypatch):
+        """_register_migrations should only be called at startup, not per-request."""
+        import oversolved.app as app_mod
+        registry_calls = []
+
+        orig_register = app_mod._register_migrations
+
+        def tracking_register(db):
+            registry_calls.append(1)
+            return orig_register(db)
+
+        monkeypatch.setattr(app_mod, "_register_migrations", tracking_register)
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
+
+        app = app_mod.create_app({
+            "DB_TYPE": "sqlite",
+            "TESTING": True,
+            "DB_PATH": str(tmp_path / "mig_once.db"),
+        })
+        client = app.test_client()
+        client.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+
+        # Make multiple requests
+        for _ in range(3):
+            resp = client.get("/api/documents")
+            assert resp.status_code == 200
+
+        # _register_migrations should only have been called once (during create_app startup)
+        assert len(registry_calls) == 1
 
     def test_upgrade_twice_is_noop(self, tmp_path):
         db_path = str(tmp_path / "test2.db")

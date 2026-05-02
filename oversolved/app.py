@@ -120,7 +120,6 @@ def create_app(config: dict | None = None) -> Flask:
         """Get or create database connection for this request."""
         if "db" not in g:
             g.db = _get_database(db_config)
-            _register_migrations(g.db)
             g.db.init()
         return g.db
 
@@ -1112,20 +1111,14 @@ def create_app(config: dict | None = None) -> Flask:
         if cursor.fetchone() is None:
             return jsonify({"error": "Document not found"}), 404
 
-        # Get total count separately (the LIMIT 20 query below is only for recent data)
-        count_cursor = db.execute(
-            "SELECT COUNT(*) FROM rebuild_times WHERE document_uuid = ?", (doc_id,)
-        )
-        count = count_cursor.fetchone()[0]
-
         cursor = db.execute(
             """SELECT duration_ms FROM rebuild_times
                WHERE document_uuid = ?
-               ORDER BY id DESC LIMIT 20""",
+               ORDER BY id DESC""",
             (doc_id,),
         )
         rows = cursor.fetchall()
-        if count == 0:
+        if not rows:
             return jsonify({
                 "rebuild_count": 0,
                 "last_duration_ms": None,
@@ -1137,18 +1130,23 @@ def create_app(config: dict | None = None) -> Flask:
                 "history": [],
             })
 
-        durations = [r[0] for r in rows]
-        last_ms = durations[0]
-        avg_ms = sum(durations) // count
-        sorted_d = sorted(durations)
-        median_ms = sorted_d[count // 2] if count % 2 == 1 else (sorted_d[count // 2 - 1] + sorted_d[count // 2]) // 2
+        all_durations = [r[0] for r in rows]
+        count = len(all_durations)
+        last_ms = all_durations[0]
+        avg_ms = sum(all_durations) / count
+        sorted_d = sorted(all_durations)
+        n = count
+        if n % 2 == 1:
+            median_ms = float(sorted_d[n // 2])
+        else:
+            median_ms = (sorted_d[n // 2 - 1] + sorted_d[n // 2]) / 2.0
         min_ms = sorted_d[0]
         max_ms = sorted_d[-1]
 
         # Determine trend
         if count >= 2:
-            recent = durations[:5]
-            older = durations[-5:] if count >= 5 else durations[1:]
+            recent = all_durations[:5]
+            older = all_durations[-5:] if count >= 5 else all_durations[1:]
             recent_avg = sum(recent) / len(recent)
             older_avg = sum(older) / len(older)
             if recent_avg < older_avg * 0.9:
@@ -1160,6 +1158,9 @@ def create_app(config: dict | None = None) -> Flask:
         else:
             trend = None
 
+        # Return last 20 for history display
+        history = all_durations[:20]
+
         return jsonify({
             "rebuild_count": count,
             "last_duration_ms": last_ms,
@@ -1168,7 +1169,7 @@ def create_app(config: dict | None = None) -> Flask:
             "min_ms": min_ms,
             "max_ms": max_ms,
             "trend": trend,
-            "history": durations,
+            "history": history,
         })
 
     @app.route("/api/cache/flush", methods=["POST"])
@@ -1243,6 +1244,21 @@ def create_app(config: dict | None = None) -> Flask:
 
         return jsonify({"l1": l1_entries, "l2": l2_entries})
 
+    def _truncate_json_to_keys(data: dict, max_keys: int = 10) -> dict:
+        """Return a truncated version of a dict showing only top-level key names and value types."""
+        truncated = {}
+        for i, (k, v) in enumerate(data.items()):
+            if i >= max_keys:
+                truncated[f"... and {len(data) - max_keys} more keys"] = "..."
+                break
+            if isinstance(v, dict):
+                truncated[k] = f"<dict with {len(v)} keys>"
+            elif isinstance(v, list):
+                truncated[k] = f"<list with {len(v)} items>"
+            else:
+                truncated[k] = v
+        return truncated
+
     @app.route("/api/cache/inspect/l2/<doc_id>", methods=["GET"])
     @require_auth
     @require_admin
@@ -1260,7 +1276,8 @@ def create_app(config: dict | None = None) -> Flask:
 
         json_str = json.dumps(data, indent=2)
         if len(json_str) > 50000:
-            return jsonify({"truncated": True, "preview": json_str[:50000]})
+            preview = _truncate_json_to_keys(data)
+            return jsonify({"truncated": True, "preview": preview})
         return Response(json_str, mimetype="application/json")
 
     @app.route("/api/cache/download/<doc_id>", methods=["GET"])
