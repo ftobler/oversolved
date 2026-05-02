@@ -28,7 +28,8 @@ PLANE_FEATURE = {
 
 
 @pytest.fixture
-def app(tmp_path):
+def app(tmp_path, monkeypatch):
+    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     test_app = create_app({
         "DB_TYPE": "sqlite",
         "TESTING": True,

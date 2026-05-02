@@ -38,9 +38,10 @@ def logged_in_client(app):
 
 
 @pytest.fixture
-def app(tmp_path):
+def app(tmp_path, monkeypatch):
     from oversolved.app import create_app
 
+    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     test_app = create_app(
         {
             "DB_TYPE": "sqlite",
@@ -300,7 +301,8 @@ class TestL2Cache:
 
 
 class TestSolveWithL2Cache:
-    def test_solve_with_l2_cache_hit(self, tmp_path):
+    def test_solve_with_l2_cache_hit(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
         pytest.importorskip("OCP.gp")
         from oversolved.app import create_app
 
@@ -346,7 +348,8 @@ class TestSolveWithL2Cache:
         # L2 hit should be fast (no full re-solve)
         assert d2["solve_ms"] < solve_ms_1 * 0.5
 
-    def test_solve_with_l2_cache_miss(self, tmp_path):
+    def test_solve_with_l2_cache_miss(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
         pytest.importorskip("OCP.gp")
         from oversolved.app import create_app
 
@@ -389,7 +392,8 @@ class TestSolveWithL2Cache:
         d2 = json.loads(r2.data)
         assert "body_ex1" in d2["bodies"]
 
-    def test_l2_cache_preserves_queries(self, tmp_path):
+    def test_l2_cache_preserves_queries(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
         pytest.importorskip("OCP.gp")
         from oversolved.app import create_app
 

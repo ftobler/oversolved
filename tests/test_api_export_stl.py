@@ -8,7 +8,8 @@ from solver_helpers import rect_sketch_spec, extrude_spec
 
 
 @pytest.fixture
-def app(tmp_path):
+def app(tmp_path, monkeypatch):
+    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     db_path = str(tmp_path / "test.db")
     test_app = create_app(
         {

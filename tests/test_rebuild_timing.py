@@ -15,9 +15,10 @@ def post_solve(client, payload):
 
 
 @pytest.fixture
-def app(tmp_path):
+def app(tmp_path, monkeypatch):
     from oversolved.app import create_app
 
+    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     test_app = create_app({
         "DB_TYPE": "sqlite",
         "TESTING": True,

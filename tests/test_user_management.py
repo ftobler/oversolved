@@ -6,14 +6,16 @@ from oversolved.app import create_app
 
 
 @pytest.fixture
-def app(tmp_path):
+def app(tmp_path, monkeypatch):
     """Create a test Flask app with a file-based SQLite database."""
+    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     db_path = str(tmp_path / "test.db")
     test_app = create_app(
         {
             "DB_TYPE": "sqlite",
             "TESTING": True,
             "DB_PATH": db_path,
+            "DEBUG": False,
         }
     )
     return test_app
@@ -494,8 +496,9 @@ class TestAuthSecurity:
         )
         assert resp.status_code == 401
 
-    def test_session_cookie_secure_default(self, tmp_path):
+    def test_session_cookie_secure_default(self, monkeypatch, tmp_path):
         """session_token cookie does NOT have secure flag by default."""
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
         db_path = str(tmp_path / "test_secure_default.db")
         app = create_app({
             "DB_TYPE": "sqlite",
@@ -515,6 +518,7 @@ class TestAuthSecurity:
     def test_session_cookie_secure_enabled(self, monkeypatch, tmp_path):
         """session_token cookie has secure flag when OVERSOLVED_SESSION_COOKIE_SECURE is True."""
         monkeypatch.setenv("OVERSOLVED_SESSION_COOKIE_SECURE", "true")
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
         db_path = str(tmp_path / "test_secure_on.db")
         app = create_app({
             "DB_TYPE": "sqlite",

@@ -19,9 +19,10 @@ def post_solve(client, payload):
 
 
 @pytest.fixture
-def app(tmp_path):
+def app(tmp_path, monkeypatch):
     from oversolved.app import create_app
 
+    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     test_app = create_app(
         {
             "DB_TYPE": "sqlite",
@@ -201,7 +202,8 @@ class TestInspectEndpoint:
 
 
 class TestInspectWithDirectL2:
-    def test_inspect_l2_includes_metadata(self, tmp_path):
+    def test_inspect_l2_includes_metadata(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
         cache_dir = tmp_path / "l2_inspect"
         cache = L2Cache(
             ttl_seconds=86400 * 30,

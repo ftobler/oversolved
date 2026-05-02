@@ -54,9 +54,20 @@ def _get_database(config):
     return Database(db_conn)
 
 
-def _ensure_admin_user(db: Database) -> None:
+def _ensure_admin_user(db: Database, debug: bool = False) -> None:
     """Create the default admin user if it doesn't exist."""
-    admin_password = os.environ.get("OVERSOLVED_ADMIN_PASSWORD", "admin")
+    admin_password = os.environ.get("OVERSOLVED_ADMIN_PASSWORD")
+    if not admin_password:
+        if not debug:
+            raise RuntimeError(
+                "OVERSOLVED_ADMIN_PASSWORD must be set in production"
+            )
+        import secrets
+        admin_password = secrets.token_urlsafe(16)
+        print(
+            f"WARNING: OVERSOLVED_ADMIN_PASSWORD not set. "
+            f"Using generated password: {admin_password}"
+        )
     user_store = UserStore(db)
     admin = user_store.find_by_username("admin")
     if admin:
@@ -102,7 +113,7 @@ def create_app(config: dict | None = None) -> Flask:
     db = _get_database(db_config)
     _register_migrations(db)
     db.init()
-    _ensure_admin_user(db)
+    _ensure_admin_user(db, debug=app.config.get("DEBUG", False))
     db.close()
 
     def get_db():
