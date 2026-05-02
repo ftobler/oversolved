@@ -1,10 +1,13 @@
 import copy
+import logging
 import math
 import time
 from typing import Any
 from oversolved.query import Repository, emit_wire, absolute
 from oversolved.types3d import Body, FeatureCheckpoint, BuildState
 from oversolved.solver import _init_global_repo, _try_solve_feature, _post_register
+
+logger = logging.getLogger(__name__)
 
 
 _BUILTIN_PLANE_RESULTS: dict[str, dict] = {
@@ -337,7 +340,7 @@ def build(
             edges = solid_to_edges(body.shape, created_by=body.created_by)
             _register_brep_edge_ancestry(global_repo, body, edges["edges"], edges["edge_queries"])
         except Exception:
-            pass
+            logger.warning("Failed to register B-rep ancestry for body %s", body.id)
 
     features_by_id = {f["id"]: f for f in features}
 

@@ -1,13 +1,17 @@
+import logging
 import math
 import os
 import re
 import time
+import traceback
 from typing import Any, Optional
 import yaml
 import numpy as np
 from scipy.optimize import least_squares
 from oversolved.topology import detect_topology
 from oversolved.query import Repository, _parse_ancestry, make_ancestry_query
+
+logger = logging.getLogger(__name__)
 
 
 def _init_global_repo() -> Repository:
@@ -167,12 +171,13 @@ def solve(yaml_str: str) -> dict:
     features = doc.get("features", [])
 
     global_repo = _init_global_repo()
+    features_by_id = {f["id"]: f for f in features}
 
     t0 = time.perf_counter()
     result = {}
     body_store: dict = {}
     for feature in features:
-        feature_result = _try_solve_feature(feature, global_repo, body_store)
+        feature_result = _try_solve_feature(feature, global_repo, body_store, features_by_id)
         result[feature["id"]] = feature_result
         _post_register(global_repo, feature["id"], feature, feature_result)
 
@@ -217,11 +222,12 @@ def solve_features(spec: dict) -> dict:
     features = spec.get("features", [])
 
     global_repo = _init_global_repo()
+    features_by_id = {f["id"]: f for f in features}
     body_store: dict = {}
 
     results = []
     for feature in features:
-        feature_result = _try_solve_feature(feature, global_repo, body_store)
+        feature_result = _try_solve_feature(feature, global_repo, body_store, features_by_id)
         fid = feature.get("id", "")
 
         # Convert flat-params geometry to rich dict format for solve_features callers.
@@ -638,10 +644,14 @@ def _try_solve_feature(feature: Any, global_repo: Repository, body_store: dict, 
         result["solve_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         return result
     except Exception as e:
+        tb = traceback.format_exc()
+        feature_id = feature.get("id", "?") if isinstance(feature, dict) else "?"
+        logger.warning("Exception solving feature %s: %s\n%s", feature_id, e, tb)
         return {
             "solve_ms": round((time.perf_counter() - t0) * 1000, 1),
             "status": "exception",
             "exception": str(e),
+            "traceback": tb,
         }
 
 
@@ -1175,7 +1185,7 @@ def _resolve_plane_early(
                 "normal": normal.tolist(),
             }
         except (ValueError, KeyError, TypeError):
-            pass
+            logger.debug("Failed to resolve plane from ancestry query: %s", plane_query)
     if plane_query.startswith("$") and global_repo is not None:
         p = global_repo.elements.get(plane_query[1:])
         if p and is_plane_type(p):
@@ -1883,7 +1893,7 @@ def _extract_loops_from_occ_face(
                     "end": [p_e.X(), p_e.Y()],
                 })
             except Exception:
-                pass
+                logger.debug("Failed to extract 2D curve from edge in face extraction")
             we.Next()
         if loop:
             loops.append(loop)

@@ -1,4 +1,5 @@
 from oversolved.builder import build
+from oversolved.solver import solve_features
 from solver_helpers import (
     rect_sketch_spec, extrude_spec, point_sketch_spec,
     hole_spec, assert_mesh_valid, assert_mesh_bbox,
@@ -123,3 +124,28 @@ def test_partial_rebuild_after_hole():
     r2 = build(doc, prev_state=r1["_build_state"])
     assert r2["result"]["h1"]["status"] == "ok"
     assert_mesh_valid(r2["bodies"]["body_ex1"]["mesh"])
+
+
+def test_feature_exception_includes_traceback():
+    """Unhandled feature exception includes traceback in result."""
+    doc = {
+        "features": [
+            {"id": "bad", "kind": "nonexistent"},
+        ]
+    }
+    r = build(doc)
+    assert r["result"]["bad"]["status"] == "exception"
+    assert "traceback" in r["result"]["bad"], (
+        f"Exception result should include traceback, got keys: {list(r['result']['bad'].keys())}"
+    )
+
+
+def test_hole_via_solve_features():
+    """Hole through solve_features() resolves sketch ref correctly."""
+    doc = _box_with_holes([(25, 25)], diameter=10.0, depth=20.0)
+    r = solve_features(doc)
+    # Hole is the 4th feature (index 3)
+    hole_result = r["features"][3]
+    assert hole_result.get("status") != "exception", (
+        f"Hole failed: {hole_result.get('exception')}"
+    )
