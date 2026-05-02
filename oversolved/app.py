@@ -651,7 +651,7 @@ def create_app(config: dict | None = None) -> Flask:
         doc = doc_store.retrieve(uuid)
         if doc is None:
             # Create document if it doesn't exist (upsert)
-            doc_store.create_with_uuid(uuid, uuid, g.current_user["id"])
+            doc_store.create_with_uuid(uuid, "Imported Document", g.current_user["id"])
         else:
             permission = doc_store.get_permission(uuid, g.current_user["id"])
             if permission not in ("owner", "edit"):
@@ -1441,7 +1441,7 @@ def create_app(config: dict | None = None) -> Flask:
 
 
 def _register_migrations(db: Database) -> None:
-    """Register all database migrations. Idempotent — only registers once per Database instance."""
+    """Register all database migrations. Idempotent - only registers once per Database instance."""
     if db._migrations_registered:
         return
     db._migrations_registered = True

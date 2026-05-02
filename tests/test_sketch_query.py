@@ -8,17 +8,13 @@ from oversolved.solver import solve
 TOL = 1e-5
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+#  ──Helpers ──
 
 def length(a, b):
     return math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
 
 
-# ---------------------------------------------------------------------------
-# Baseline: two independent sketches solve correctly
-# ---------------------------------------------------------------------------
+#  ── Baseline: two independent sketches solve correctly ──
 
 def test_two_independent_sketches_both_solve(sketch_log):
     """Two sketches with no cross-references both reach a solved status."""
@@ -138,9 +134,7 @@ def pytest_approx_list(expected, tol):
     return _Approx()
 
 
-# ---------------------------------------------------------------------------
-# Cross-sketch @absolute queries from sketch_2 into sketch_1
-# ---------------------------------------------------------------------------
+#  ── Cross-sketch @absolute queries from sketch_2 into sketch_1 ──
 
 def test_cross_sketch_point_coincident_with_line_end(sketch_log):
     """sketch_2 constrains a point to coincide with the end of a line from sketch_1
@@ -263,9 +257,7 @@ features:
     assert abs(geom2["pt"][1] - 3.0) < TOL
 
 
-# ---------------------------------------------------------------------------
-# sketch_1 isolation: sketch_2 failure must not affect sketch_1
-# ---------------------------------------------------------------------------
+#  ── sketch_1 isolation: sketch_2 failure must not affect sketch_1 ──
 
 def test_sketch_1_unaffected_by_sketch_2_bad_query(sketch_log):
     """sketch_1 must solve correctly even when sketch_2 has an unresolvable
@@ -318,7 +310,7 @@ features:
     assert s1["status"] in ("fully_constrained", "underconstrained")
     geom1 = s1["geometry"]
     assert abs(length(geom1["line1"][0:2], geom1["line1"][2:4]) - 10.0) < TOL
-    # sketch_2 has a bad query — constraint is dropped, sketch is underconstrained
+    # sketch_2 has a bad query - constraint is dropped, sketch is underconstrained
     assert "sketch_2" in result
 
 
@@ -364,9 +356,7 @@ features:
     assert keys.index("sketch_1") < keys.index("sketch_2")
 
 
-# ---------------------------------------------------------------------------
-# sketch_2 uses local $-queries (must not bleed across sketches)
-# ---------------------------------------------------------------------------
+# ── sketch_2 uses local $-queries (must not bleed across sketches) ──
 
 def test_local_query_does_not_bleed_across_sketches(sketch_log):
     """Both sketches have an entity called 'line1'. sketch_2's $line1 must
@@ -434,9 +424,7 @@ features:
     assert abs(len2 - 9.0) < TOL, f"sketch_2 line1 length should be 9, got {len2}"
 
 
-# ---------------------------------------------------------------------------
-# Multiple sketches — various entity types
-# ---------------------------------------------------------------------------
+#  ── Multiple sketches — various entity types ──
 
 def test_two_sketches_circle_and_line(sketch_log):
     """sketch_1 has a circle, sketch_2 has a line; both solve independently."""
@@ -562,9 +550,7 @@ features:
         assert abs(geom["pt"][1] - expected[1]) < TOL
 
 
-# ---------------------------------------------------------------------------
-# sketch_2 constraint referencing sketch_1 via unresolvable absolute query
-# ---------------------------------------------------------------------------
+#  ── sketch_2 constraint referencing sketch_1 via unresolvable absolute query ──
 
 def test_cross_sketch_length_constraint_with_unresolvable_query(sketch_log):
     """sketch_2 has a constraint whose target references a non-existent entity ID
@@ -625,9 +611,7 @@ features:
     assert "sketch_2" in result
 
 
-# ---------------------------------------------------------------------------
-# Real-world example: line end pinned to a point from a previous sketch
-# ---------------------------------------------------------------------------
+#  ── Real-world example: line end pinned to a point from a previous sketch ──
 
 def test_line_end_pinned_to_prior_sketch_point(sketch_log):
     """Real-world example: sketch_1 has a fixed point; sketch_12 has a line

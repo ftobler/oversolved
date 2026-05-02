@@ -5,9 +5,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-# ---------------------------------------------------------------------------
-# Fillet tests
-# ---------------------------------------------------------------------------
+#  ── Fillet tests ──
 
 
 def test_fillet_single_edge():
@@ -136,9 +134,7 @@ def test_fillet_updates_body():
     assert len(verts_after) > len(verts_before)
 
 
-# ---------------------------------------------------------------------------
-# Chamfer tests
-# ---------------------------------------------------------------------------
+#  ── Chamfer tests  ──
 
 
 def test_chamfer_single_edge():
@@ -267,9 +263,7 @@ def test_chamfer_updates_body():
     assert len(verts_after) > len(verts_before)
 
 
-# ---------------------------------------------------------------------------
-# Chain tests
-# ---------------------------------------------------------------------------
+#  ── Chain tests ──
 
 
 def test_fillet_then_chamfer():

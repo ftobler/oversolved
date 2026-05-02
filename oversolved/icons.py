@@ -762,7 +762,7 @@ def feature_part(ctx):
 
 @icon("frontend/src/assets/icons/icon-code.svg")
 def feature_code(ctx):
-    # Two curly braces { } — classic code symbol
+    # Two curly braces { } - classic code symbol
     # Each brace: top hook, straight segment, middle point, straight segment, bottom hook
 
     def draw_brace(tip_x, outer_x, cy, half_h, r):
@@ -816,9 +816,9 @@ def feature_code(ctx):
     cy = 0.5
     r = 0.12
 
-    # Left brace {  — tip points left, hooks on right
+    # Left brace {  - tip points left, hooks on right
     draw_brace(tip_x=0.15, outer_x=0.38, cy=cy, half_h=half_h, r=r)
-    # Right brace }  — tip points right, hooks on left
+    # Right brace }  - tip points right, hooks on left
     draw_brace(tip_x=0.85, outer_x=0.62, cy=cy, half_h=half_h, r=r)
 
 

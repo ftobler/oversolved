@@ -3,9 +3,7 @@ import yaml as yaml_module
 from oversolved.solver import solve
 from solver_helpers import TOL, ATOL, length, to_geom
 
-# ---------------------------------------------------------------------------
-# New constraint tests: midpoint, normal, concentric, fixed
-# ---------------------------------------------------------------------------
+# ── New constraint tests: midpoint, normal, concentric, fixed ──
 
 
 def test_midpoint_constraint(sketch_log):
@@ -535,9 +533,7 @@ features:
     assert abs(length(line["start"], line["end"]) - 5.0) < TOL
 
 
-# ---------------------------------------------------------------------------
-# Point primitive tests
-# ---------------------------------------------------------------------------
+# ── Point primitive tests ──
 
 def test_point_on_midpoint(sketch_log):
     """A point entity constrained to the midpoint of a line."""
@@ -640,7 +636,7 @@ features:
 
 def test_midpoint_of_two_points_axis_x(sketch_log):
     """Point x-coordinate centered between two points at different y values (axis: x only).
-    pt_a=(0,0), pt_b=(6,4) — midpoint x=3, midpoint y=2.
+    pt_a=(0,0), pt_b=(6,4) - midpoint x=3, midpoint y=2.
     pt_mid.y is constrained by horizontal to pt_a (y=0), not y=2, proving axis:x
     leaves y untouched."""
     yaml_str = """
@@ -891,12 +887,12 @@ features:
     geom = to_geom(result["geometry"], doc["features"][0]["entities"])
     sk = geom
 
-    # circle_a: fully pinned — center and radius must match exactly
+    # circle_a: fully pinned - center and radius must match exactly
     assert abs(sk["circle_a"][0:2][0] - 3.0) < TOL
     assert abs(sk["circle_a"][0:2][1] - 4.0) < TOL
     assert abs(sk["circle_a"][2] - 5.0) < TOL
 
-    # circle_b: only radius constrained — center can be anywhere
+    # circle_b: only radius constrained - center can be anywhere
     assert abs(sk["circle_b"][2] - 2.0) < TOL
 
     # overall sketch is underconstrained (circle_b center is free)

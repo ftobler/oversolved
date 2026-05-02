@@ -16,7 +16,7 @@ import pytest
 from oversolved.query import Repository, make_ancestry_query
 
 
-# ── query_all unit tests ───────────────────────────────────────────────────────
+# ── query_all unit tests  ──
 
 def test_query_all_returns_empty_for_non_ancestry_query():
     repo = Repository()
@@ -89,7 +89,7 @@ def test_query_solid_finds_registered_solid():
     assert face is not None
 
 
-# ── Extrusion ancestry integration tests ─────────────────────────────────────
+# ── Extrusion ancestry integration tests  ──
 
 def test_extrusion_registers_solid_entity():
     pytest.importorskip("OCP.gp")
@@ -172,7 +172,7 @@ def test_feature_root_does_not_bleed_between_extrusions():
     assert repo.query_all(make_ancestry_query(["@other_feature"], "flatface")) == []
 
 
-# ── Sketch-feature ancestry integration tests ─────────────────────────────────
+# ── Sketch-feature ancestry integration tests  ──
 
 def test_sketch_feature_entity_registered():
     """sketch-feature entity must be registered after a sketch is solved."""

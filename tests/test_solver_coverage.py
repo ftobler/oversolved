@@ -4,9 +4,7 @@ from oversolved.solver import solve
 from solver_helpers import TOL, ATOL, length, is_tangent, to_geom
 
 
-# ---------------------------------------------------------------------------
-# Tests for previously untested / under-tested areas
-# ---------------------------------------------------------------------------
+# ── Tests for previously untested / under-tested areas ──
 
 
 def test_vertical_ab_keys(sketch_log):
@@ -712,7 +710,7 @@ features:
 
 def test_fixed_constraint_unresolvable_query_string(sketch_log):
     """Constraints referencing a non-existent entity via query string are silently
-    dropped — they must NOT cause a 'string indices must be integers' exception.
+    dropped - they must NOT cause a 'string indices must be integers' exception.
 
     Regression: $circle1 and $circle1center don't resolve (no circle1 entity),
     so both fixed constraints were left as raw strings after _pre_resolve.

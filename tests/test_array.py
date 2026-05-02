@@ -43,7 +43,7 @@ class TestArrayLinear:
         assert_mesh_valid(mesh)
         assert_mesh_bbox(mesh, x_range=(0, 45), y_range=(0, 5), z_range=(0, 5))
 
-    # ── Count verification: each count=N produces N copies ──────────────
+    # ── Count verification: each count=N produces N copies  ──
 
     @pytest.mark.parametrize("count,expected_max", [
         (2, 25),   # (2-1)*20 + 5 = 25
@@ -91,7 +91,7 @@ class TestArrayLinear:
         mesh = r["bodies"]["body_extrude1"]["mesh"]
         assert_mesh_bbox(mesh, x_range=(0, expected_max), y_range=(0, 5), z_range=(0, 5))
 
-    # ── Edge cases ──────────────────────────────────────────────────────
+    # ── Edge cases  ──
 
     def test_linear_count_1(self):
         """count=1 with include_source=True should equal source shape -- no crash."""

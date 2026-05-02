@@ -176,6 +176,20 @@ class TestDocumentAPI:
         )
         assert response.status_code == 400
 
+    def test_upsert_creates_with_human_readable_name(self, authed_client):
+        """PUT to a non-existent UUID creates a doc with a human-readable name."""
+        import uuid as uuid_mod
+        new_uuid = "test-upsert-" + uuid_mod.uuid4().hex
+        response = authed_client.put(
+            f"/api/documents/{new_uuid}",
+            data=json.dumps({"content": "version: 1\n"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
+        data = json.loads(authed_client.get(f"/api/documents/{new_uuid}").data)
+        assert data["name"] == "Imported Document"
+
     def test_rename_document(self, authed_client):
         uuid = json.loads(
             authed_client.post(

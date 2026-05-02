@@ -4,9 +4,7 @@ from oversolved.solver import solve
 from solver_helpers import TOL, ATOL, length, is_tangent, to_geom
 
 
-# ---------------------------------------------------------------------------
-# Dimension constraint tests
-# ---------------------------------------------------------------------------
+# ── imension constraint tests ──
 
 
 def test_dimension_circle_diameter(sketch_log):
@@ -164,9 +162,7 @@ features:
     assert abs(dist - 5.0) < TOL
 
 
-# ---------------------------------------------------------------------------
-# Coincident constraint tests
-# ---------------------------------------------------------------------------
+# ── Coincident constraint tests ──
 
 
 def test_coincident_point_to_point(sketch_log):

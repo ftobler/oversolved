@@ -1,9 +1,7 @@
 import numpy as np
 from oversolved.solver import solve_features
 
-# ---------------------------------------------------------------------------
-# Projected entity tests
-# ---------------------------------------------------------------------------
+# ── Projected entity tests ──
 
 
 def test_project_line_front_to_front():

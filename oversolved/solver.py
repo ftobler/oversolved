@@ -216,9 +216,7 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict, feat
     raise Exception(f"unknown feature type: '{kind}'")
 
 
-# ---------------------------------------------------------------------------
-# Geometry helpers
-# ---------------------------------------------------------------------------
+#  ── Geometry helpers ──
 
 
 def _geometry_from_array(x, entities: dict, entity_offsets: dict) -> dict[str, Any]:
@@ -307,11 +305,6 @@ def _params_from_array(x, entities: dict, entity_offsets: dict) -> dict:
     return out
 
 
-# ---------------------------------------------------------------------------
-# Per-entity constraint status
-# ---------------------------------------------------------------------------
-
-
 def _entity_status(J, rank, entities, entity_offsets, n_params, overall_status):
     """Return per-entity 'fully_constrained' | 'underconstrained' | 'overconstrained'.
 
@@ -337,10 +330,7 @@ def _entity_status(J, rank, entities, entity_offsets, n_params, overall_status):
     return result
 
 
-# ---------------------------------------------------------------------------
-# Sketch solver
-# ---------------------------------------------------------------------------
-
+#  ── Sketch solver  ──
 
 def _expand_center_rect(feature: dict) -> dict:
     """Return a copy of feature with center_rect entities expanded to 4 line entities."""

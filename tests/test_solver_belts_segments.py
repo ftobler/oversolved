@@ -2,9 +2,7 @@ import yaml as yaml_module
 from oversolved.solver import solve
 from solver_helpers import TOL, ATOL, length, is_tangent, to_geom
 
-# ---------------------------------------------------------------------------
-# Belt tests
-# ---------------------------------------------------------------------------
+# ── Belt tests ──
 
 
 def test_equal_belt(sketch_log):
@@ -301,9 +299,7 @@ features:
         a3["start"]) < ATOL
 
 
-# ---------------------------------------------------------------------------
-# Collinear equal-segment tests
-# ---------------------------------------------------------------------------
+# ── Collinear equal-segment tests ──
 
 def test_collinear_equal_segments_single_dim(sketch_log):
     """Four collinear equal-length segments; one segment's length locks all."""
@@ -550,9 +546,7 @@ features:
         assert abs(length(seg["start"], seg["end"]) - 3.0) < TOL
 
 
-# ---------------------------------------------------------------------------
-# Constraint-status tests
-# ---------------------------------------------------------------------------
+# ── Constraint-status tests ──
 
 def test_status_fully_constrained(sketch_log):
     """A horizontal line with fixed length and a fixed point is fully constrained."""

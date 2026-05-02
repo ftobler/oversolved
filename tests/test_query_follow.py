@@ -680,7 +680,7 @@ def test_query_with_ambiguous_ancestry() -> None:
     _surface1 = repo.register_ancestor(ancestor_ids, {"type": "face", "id": "surface1"})  # noqa: F841
     _surface2 = repo.register_ancestor(ancestor_ids, {"type": "face", "id": "surface2"})  # noqa: F841
 
-    # Now try to query — should raise AmbiguousQueryError
+    # Now try to query - should raise AmbiguousQueryError
     try:
         _result = repo.query(query)  # noqa: F841
         assert False, "Should have raised AmbiguousQueryError, but didn't"

@@ -3,9 +3,7 @@ import numpy as np
 from pytest import approx
 from oversolved.solver import solve, solve_features
 
-# ---------------------------------------------------------------------------
-# Plane feature tests
-# ---------------------------------------------------------------------------
+# ── Plane feature tests ──
 
 
 def test_plane_three_point_basic():
@@ -363,7 +361,7 @@ def test_plane_rotation_affects_sketch_coords():
     assert 'line1' in result['features'][2]['geometry']
 
 
-# ── Derived face plane tracking ────────────────────────────────────────────────
+# ── Derived face plane tracking ──
 
 def _rect_sketch_with_face_plane_doc(sketch1_plane: str) -> str:
     """Build a two-sketch YAML.
@@ -483,7 +481,7 @@ def test_derived_face_plane_changes_with_sketch_plane():
     rot_front = solve(doc_front)["result"]["sketch2"]["plane_transform"]["rotation"]
     rot_top = solve(doc_top)["result"]["sketch2"]["plane_transform"]["rotation"]
 
-    # The two rotations must be meaningfully different — normal vectors differ.
+    # The two rotations must be meaningfully different - normal vectors differ.
     assert rot_front != approx(rot_top, abs=1e-3), (
         "sketch2 plane_transform did not change when sketch1's plane changed from Front to Top"
     )

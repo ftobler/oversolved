@@ -104,7 +104,7 @@ class TestConstraintAutoDeletion:
                 {
                     'id': 'c_vertical_external',
                     'kind': 'vertical',
-                    'target': '@sketch1pt1xy'  # only external target — invalid
+                    'target': '@sketch1pt1xy'  # only external target - invalid
                 }
             ]
         }, global_repo=global_repo)

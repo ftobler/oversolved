@@ -6,9 +6,7 @@ from oversolved.solver import solve
 from solver_helpers import TOL, to_geom, minimal_sketch_yaml
 
 
-# ---------------------------------------------------------------------------
-# Angle constraint direction tests
-# ---------------------------------------------------------------------------
+# ── Angle constraint direction tests ──
 # The solver constrains cos(angle(da, db)) = cos(value) where
 #   da = ea.end - ea.start  (forward direction of line A)
 #   db = eb.end - eb.start  (forward direction of line B)
@@ -396,7 +394,7 @@ features:
     assert len(surfaces) > 0, "Expected at least one boundary surface from intersecting line and arc"
 
 
-# ── 2f: solver surface query present ──────────────────────────────────────────
+# ── 2f: solver surface query present ──
 
 def test_solver_surface_query_present():
     yaml_str = """
@@ -442,7 +440,7 @@ features:
     assert ":flatface" in surfaces[0]["query"]
 
 
-# ── Step 5: plane_transform roundtrip ─────────────────────────────────────────
+# ── Step 5: plane_transform roundtrip ──
 
 
 def test_solver_plane_transform_front():
@@ -563,7 +561,7 @@ def test_solver_plane_from_topology_face():
     assert "origin" in t
 
 
-# ── Step 6: cross-feature constraint queries ───────────────────────────────────
+# ── Step 6: cross-feature constraint queries ──
 
 def doc_with_cross_feature_constraint() -> str:
     """Two-sketch YAML where sketch1 has a coincident constraint to sketch0's

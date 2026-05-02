@@ -10,9 +10,7 @@ from oversolved.solver_constants import _ARC_SEGMENTS
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Topology helpers
-# ---------------------------------------------------------------------------
+#  ── Topology helpers ──
 
 
 def _tessellate_edge(edge: dict) -> list[list[float]]:
@@ -361,9 +359,7 @@ def _resolve_face_profile(
     raise ValueError(f"Cannot resolve profile from: {sketch_ref!r}")
 
 
-# ---------------------------------------------------------------------------
-# Extrude/revolve helpers
-# ---------------------------------------------------------------------------
+# ── Extrude/revolve helpers ──
 
 
 def _resolve_direction(
@@ -428,9 +424,7 @@ def _split_compound(shape) -> list:
     return solids if len(solids) > 1 else [shape]
 
 
-# ---------------------------------------------------------------------------
-# Feature solvers
-# ---------------------------------------------------------------------------
+# ── Feature solvers ──
 
 
 def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:

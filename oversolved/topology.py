@@ -1,4 +1,4 @@
-"""topology.py — post-solve surface detection for sketch geometry.
+"""topology.py - post-solve surface detection for sketch geometry.
 
 Algorithm
 ---------
@@ -41,7 +41,7 @@ _MERGE = 1e-7  # distance tolerance for vertex deduplication
 _SPLIT_EPS = 1e-7  # parametric tolerance for split deduplication
 
 
-# ── Geometry helpers ──────────────────────────────────────────────────────────
+# ── Geometry helpers  ──
 
 
 def _angle_in_arc(a_rad: float, start_deg: float, end_deg: float) -> bool:
@@ -64,11 +64,11 @@ def _arc_tangent(a_rad: float, ccw: bool = True) -> tuple:
     return (-s * math.sin(a_rad), s * math.cos(a_rad))
 
 
-# ── Intersection primitives ───────────────────────────────────────────────────
+# ── Intersection primitives  ──
 
 
 def _ll(p1, p2, p3, p4):
-    """Segment–segment → (t, u, pt) or None."""
+    """Segment-segment → (t, u, pt) or None."""
     dx1, dy1 = p2[0] - p1[0], p2[1] - p1[1]
     dx2, dy2 = p4[0] - p3[0], p4[1] - p3[1]
     det = dx1 * dy2 - dy1 * dx2
@@ -84,7 +84,7 @@ def _ll(p1, p2, p3, p4):
 
 
 def _lc(p1, p2, cx, cy, r):
-    """Segment–circle → list of (t, angle_rad, pt), t ∈ [0,1]."""
+    """Segment-circle → list of (t, angle_rad, pt), t ∈ [0,1]."""
     dx, dy = p2[0] - p1[0], p2[1] - p1[1]
     fx, fy = p1[0] - cx, p1[1] - cy
     a = dx * dx + dy * dy
@@ -112,7 +112,7 @@ def _lc(p1, p2, cx, cy, r):
 
 
 def _cc(cx1, cy1, r1, cx2, cy2, r2):
-    """Circle–circle → list of (angle1, angle2, pt)."""
+    """Circle-circle → list of (angle1, angle2, pt)."""
     d = math.hypot(cx2 - cx1, cy2 - cy1)
     if d < _EPS or d > r1 + r2 + _EPS or d < abs(r1 - r2) - _EPS:
         return []
@@ -317,7 +317,7 @@ def _intersect(eid_a, ea, eid_b, eb, lines, circles, arcs):
     return []
 
 
-# ── Vertex registry ───────────────────────────────────────────────────────────
+# ── Vertex registry  ──
 
 
 def _vid(verts: dict, pt) -> str:
@@ -403,7 +403,7 @@ def _build_edge_queries(hes, he_eid, feature_id, verts) -> list[dict]:
     return edges
 
 
-# ── Half-edge geometry constructors ──────────────────────────────────────────
+# ── Half-edge geometry constructors  ──
 
 
 def _line_eg(e, t0: float, t1: float) -> dict:
@@ -451,7 +451,7 @@ def _depart(egeom: dict, verts: dict, vf_id: str) -> float:
     return math.atan2(ty, tx)
 
 
-# ── Signed area of a face cycle ───────────────────────────────────────────────
+# ── Signed area of a face cycle  ──
 
 
 def _face_area(cycle, hes, verts) -> float:
@@ -480,7 +480,7 @@ def _face_area(cycle, hes, verts) -> float:
     )
 
 
-# ── Main entry point ──────────────────────────────────────────────────────────
+# ── Main entry point  ──
 
 
 def detect_topology(geometry: dict, feature_id: str = "") -> dict:
@@ -596,7 +596,7 @@ def detect_topology(geometry: dict, feature_id: str = "") -> dict:
     for eid, e in circles.items():
         spl = _dedup(splits[eid])
         if len(spl) < 2:
-            continue  # standalone — handled below
+            continue  # standalone - handled below
         for k in range(len(spl)):
             a0, v0 = spl[k]
             a1, v1 = spl[(k + 1) % len(spl)]

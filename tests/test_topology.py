@@ -1,4 +1,4 @@
-"""Tests for topology.py — intersection detection and surface extraction."""
+"""Tests for topology.py - intersection detection and surface extraction."""
 
 import math
 from oversolved.topology import detect_topology
@@ -12,7 +12,7 @@ def num_intersections(result):
     return len(result["intersection_points"])
 
 
-# ── Helpers to build geometry dicts ───────────────────────────────────────────
+# ── Helpers to build geometry dicts ──
 
 def line(x1, y1, x2, y2):
     return {"start": [x1, y1], "end": [x2, y2]}
@@ -44,7 +44,7 @@ def rect(x0, y0, x1, y1):
     }
 
 
-# ── Single enclosed region ────────────────────────────────────────────────────
+# ── Single enclosed region ──
 
 def test_triangle_one_surface(topology_log):
     """Three lines forming a closed triangle → 1 surface."""
@@ -59,7 +59,7 @@ def test_triangle_one_surface(topology_log):
     assert num_intersections(result) == 0  # no new intersections, just shared endpoints
 
 
-# ── 2b: detect_topology emits query on surfaces ───────────────────────────────
+# ── 2b: detect_topology emits query on surfaces ──
 
 def test_triangle_surface_has_query():
     geom = {"a": line(0, 0, 2, 0), "b": line(2, 0, 1, 2), "c": line(1, 2, 0, 0)}
@@ -72,7 +72,7 @@ def test_triangle_surface_has_query():
         assert eid in surface["query"]
 
 
-# ── 2c: query is deterministic ────────────────────────────────────────────────
+# ── 2c: query is deterministic ──
 
 def test_triangle_surface_query_deterministic():
     geom = {"a": line(0, 0, 2, 0), "b": line(2, 0, 1, 2), "c": line(1, 2, 0, 0)}
@@ -81,7 +81,7 @@ def test_triangle_surface_query_deterministic():
     assert r1["surfaces"][0]["query"] == r2["surfaces"][0]["query"]
 
 
-# ── 2d: different geometries produce different query strings ──────────────────
+# ── 2d: different geometries produce different query strings ──
 
 def test_different_geometries_different_queries():
     # Rectangle: 1 surface
@@ -123,7 +123,7 @@ def test_standalone_circle_one_surface(topology_log):
     assert num_intersections(result) == 0
 
 
-# ── Rectangle split into two regions ─────────────────────────────────────────
+# ── Rectangle split into two regions ──
 
 def test_rectangle_with_diagonal_two_surfaces(topology_log):
     """Rectangle + diagonal → 2 triangular surfaces."""
@@ -158,13 +158,13 @@ def test_rectangle_with_vertical_midline_two_surfaces(topology_log):
     assert num_intersections(result) == 2
 
 
-# ── Rectangle with diagonal (not touching corners) ───────────────────────────
+# ── Rectangle with diagonal (not touching corners) ──
 
 def test_rectangle_with_noncorner_diagonal_two_surfaces(topology_log):
     """Rectangle + line whose endpoints sit on two edges (not corners) → 2 surfaces.
 
     The line endpoints already exist as endpoint vertices, so no new
-    intersection_points are recorded — but the edges are still split correctly.
+    intersection_points are recorded - but the edges are still split correctly.
     """
     geom = {
         **rect(0, 0, 4, 4),
@@ -175,7 +175,7 @@ def test_rectangle_with_noncorner_diagonal_two_surfaces(topology_log):
     assert num_surfaces(result) == 2
 
 
-# ── Circle cut in two ─────────────────────────────────────────────────────────
+# ── Circle cut in two ──
 
 def test_circle_cut_by_chord_two_surfaces(topology_log):
     """Circle bisected by a chord through the center → 2 surfaces.
@@ -204,7 +204,7 @@ def test_circle_cut_by_off_center_chord_two_surfaces(topology_log):
     assert num_intersections(result) == 2
 
 
-# ── Two overlapping circles ───────────────────────────────────────────────────
+# ── Two overlapping circles ──
 
 def test_two_overlapping_circles_three_surfaces(topology_log):
     """Two overlapping circles → 3 surfaces: left lune, overlap, right lune."""
@@ -218,7 +218,7 @@ def test_two_overlapping_circles_three_surfaces(topology_log):
     assert num_intersections(result) == 2
 
 
-# ── Arc scenarios ─────────────────────────────────────────────────────────────
+# ── Arc scenarios ──
 
 def test_semicircle_arc_and_diameter_one_surface(topology_log):
     """Upper semicircle arc + diameter line → 1 surface (half-disk)."""
@@ -243,7 +243,7 @@ def test_arc_chord_divides_one_surface(topology_log):
     assert num_surfaces(result) == 1
 
 
-# ── No surfaces (open geometry) ───────────────────────────────────────────────
+# ── No surfaces (open geometry) ──
 
 def test_single_line_no_surfaces(topology_log):
     """A single open line cannot enclose any area."""
@@ -261,10 +261,10 @@ def test_two_non_intersecting_lines_no_surfaces(topology_log):
     assert num_surfaces(result) == 0
 
 
-# ── Construction lines are ignored ───────────────────────────────────────────
+# ── Construction lines are ignored ──
 
 def test_construction_lines_ignored(topology_log):
-    """Construction lines are excluded from topology — rectangle stays 1 surface."""
+    """Construction lines are excluded from topology - rectangle stays 1 surface."""
     geom = {
         **rect(0, 0, 2, 2),
         "diag": {**line(0, 0, 2, 2), "construction": True},
@@ -274,7 +274,7 @@ def test_construction_lines_ignored(topology_log):
     assert num_surfaces(result) == 1  # diagonal not counted
 
 
-# ── More complex shapes ───────────────────────────────────────────────────────
+# ── More complex shapes ──
 
 def test_two_separate_rectangles_two_surfaces(topology_log):
     """Two separate closed rectangles → 2 surfaces each."""
@@ -322,7 +322,7 @@ def test_rectangle_with_cross_four_surfaces(topology_log):
     assert num_intersections(result) == 5  # 4 edge hits + 1 center crossing
 
 
-# ── Wrapping arcs (angle_end < angle_start, crossing 0°) ─────────────────────
+# ── Wrapping arcs (angle_end < angle_start, crossing 0°) ──
 #
 # A CCW arc from 270° to 90° passes through 0°.  Its end-angle (1.57 rad) is
 # numerically LESS than its start-angle (4.71 rad), so a naïve sort of the
@@ -395,7 +395,7 @@ def test_unequal_belt_one_surface(topology_log):
     assert num_surfaces(result) == 1
 
 
-# ── Boundary edge vertex fields ───────────────────────────────────────────────
+# ── Boundary edge vertex fields ──
 
 def test_boundary_edges_have_vertex_references():
     """Every line edge in a surface boundary must reference vertices that exist
@@ -435,7 +435,7 @@ def test_boundary_edges_vertex_coords_match_edge_coords():
         assert abs(ev["y"] - edge["end"][1]) < 1e-6
 
 
-# ── Mixed construction + non-construction ─────────────────────────────────────
+# ── Mixed construction + non-construction ──
 
 def test_two_touching_rectangles_two_surfaces(topology_log):
     """Two rectangles touching along a collinear overlapping edge → 2 surfaces.
@@ -465,7 +465,7 @@ def test_two_touching_rectangles_two_surfaces(topology_log):
 
 
 def test_only_construction_lines_no_surfaces():
-    """All construction lines cannot enclose a surface — result is empty."""
+    """All construction lines cannot enclose a surface - result is empty."""
     geom = {
         "a": {**line(0, 0, 2, 0), "construction": True},
         "b": {**line(2, 0, 1, 2), "construction": True},

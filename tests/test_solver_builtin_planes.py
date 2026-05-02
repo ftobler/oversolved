@@ -6,7 +6,7 @@ from oversolved.solver import solve
 from solver_helpers import TOL, ATOL, length, is_tangent, to_geom, minimal_sketch_yaml
 
 
-# ── Step 7: non-front plane sketch solving ────────────────────────────────────
+# ── Step 7: non-front plane sketch solving ──
 # These tests ensure constraints solve correctly when the sketch plane is Top or
 # Right (non-identity rotation matrix), and that @builtin_origin works across
 # all planes.

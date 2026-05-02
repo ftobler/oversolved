@@ -12,7 +12,7 @@ ELE3 = "D" * 12
 ELE4 = "E" * 12
 
 
-# ── _parse_ancestry ────────────────────────────────────────────────────────────
+# ── parse_ancestry  ──
 
 def test_parse_ancestry_two_ids():
     ids, typ = _parse_ancestry("?c,c;" + ELE1 + ELE2)
@@ -38,7 +38,7 @@ def test_parse_ancestry_three_ids():
     assert typ is None
 
 
-# ── make_ancestry_query ────────────────────────────────────────────────────────
+# ── make_ancestry_query  ──
 
 def test_make_ancestry_query_roundtrip():
     q = make_ancestry_query([ELE1, ELE2])
@@ -47,7 +47,7 @@ def test_make_ancestry_query_roundtrip():
     assert typ is None
 
 
-# ── 2a: make_ancestry_query face round-trips ───────────────────────────────────
+# ── 2a: make_ancestry_query face round-trips  ──
 
 def test_make_ancestry_query_face_format():
     """Result starts with '?' and ends with ':face'."""
@@ -67,7 +67,7 @@ def test_make_ancestry_query_face_roundtrip():
 
 
 def test_make_ancestry_query_caller_controls_sort_order():
-    """Caller is responsible for sort order — different order → different string."""
+    """Caller is responsible for sort order - different order → different string."""
     q_ab = make_ancestry_query(['@a', '@b'], 'face')
     q_ba = make_ancestry_query(['@b', '@a'], 'face')
     # Different insertion order produces different strings (no implicit sort)
@@ -94,7 +94,7 @@ def test_make_ancestry_query_nested():
     assert ids[1] == ELE1
 
 
-# ── Repository: @absolute ──────────────────────────────────────────────────────
+# ── Repository: @absolute  ──
 
 def test_absolute_query():
     repo = Repository()
@@ -115,7 +115,7 @@ def test_absolute_query_subelement():
     assert repo.query("@" + FEAT + ELE1 + "start") is pt
 
 
-# ── Repository: $local ─────────────────────────────────────────────────────────
+# ── Repository: $local  ──
 
 def test_local_query_with_context():
     repo = Repository()
@@ -137,7 +137,7 @@ def test_local_query_subelement_with_context():
     assert repo.query("$" + ELE1 + "end", context=FEAT) is pt
 
 
-# ── Repository: ?ancestry — exact resolve ─────────────────────────────────────
+# ── Repository: ?ancestry — exact resolve  ──
 
 def test_ancestry_query_exact():
     repo = Repository()
@@ -190,7 +190,7 @@ def test_ancestry_query_no_type_restriction_ignores_obj_type():
     assert repo.query(q) is pt
 
 
-# ── Partial resolve ────────────────────────────────────────────────────────────
+# ── Partial resolve  ──
 #
 # Geometry simplification scenario: a query was built with ancestors {A, B, C}
 # (e.g. three concurrent lines), but after a geometry change the element is
@@ -198,7 +198,7 @@ def test_ancestry_query_no_type_restriction_ignores_obj_type():
 # {A, B} ⊆ {A, B, C}.
 
 def test_partial_resolve_extra_ancestor_in_query():
-    """Query carries ancestor C that the element no longer needs — still resolves."""
+    """Query carries ancestor C that the element no longer needs - still resolves."""
     repo = Repository()
     pt = {"type": "pt"}
     # Element registered with only A and B (geometry simplified)
@@ -235,7 +235,7 @@ def test_partial_resolve_type_mismatch_returns_none():
 
 
 def test_partial_resolve_not_triggered_when_ancestor_missing():
-    """Query has {A, C} but element needs {A, B} — C is not B, no match."""
+    """Query has {A, C} but element needs {A, B} - C is not B, no match."""
     repo = Repository()
     pt = {"type": "pt"}
     repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
@@ -245,7 +245,7 @@ def test_partial_resolve_not_triggered_when_ancestor_missing():
     assert repo.query(q) is None
 
 
-# ── Ambiguous resolve (over-resolve) ──────────────────────────────────────────
+# ── Ambiguous resolve (over-resolve)  ──
 #
 # If a query matches more than one element, it is ambiguous and must raise.
 # This can happen when geometry changes cause multiple elements to be
@@ -253,7 +253,7 @@ def test_partial_resolve_not_triggered_when_ancestor_missing():
 
 def test_ambiguous_same_ancestor_set_raises():
     """Two elements registered with identical ancestors (e.g. two circle-circle
-    intersection points) — without type restriction the query is ambiguous."""
+    intersection points) - without type restriction the query is ambiguous."""
     repo = Repository()
     pt1 = {"type": "pt", "x": 1.0, "y": 0.0}
     pt2 = {"type": "pt", "x": -1.0, "y": 0.0}
@@ -275,7 +275,7 @@ def test_ambiguous_partial_resolve_raises():
     repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt1)
     repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE3], pt2)
 
-    # Query carries {A, B, C} — both subsets match
+    # Query carries {A, B, C} - both subsets match
     q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3])
     with pytest.raises(AmbiguousQueryError):
         repo.query(q)
@@ -311,7 +311,7 @@ def test_ambiguous_partial_resolved_by_type():
     assert repo.query(q) is pt1
 
 
-# ── Query class ────────────────────────────────────────────────────────────────
+# ── Query class  ──
 
 def test_query_class_absolute():
     repo = Repository()

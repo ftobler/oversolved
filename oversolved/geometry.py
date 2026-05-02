@@ -1,7 +1,7 @@
-"""geometry.py — Geometric classification helpers and CAD shape operations."""
+"""geometry.py - Geometric classification helpers and CAD shape operations."""
 
 import math
-import os as os_module
+import os
 import tempfile
 from io import BytesIO
 from typing import Any
@@ -344,9 +344,9 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
     """
     if isinstance(solid, str):
         filepath = solid
-        if not os_module.path.isfile(filepath):
+        if not os.path.isfile(filepath):
             raise ValueError(f"File not found: {filepath!r}")
-        ext = os_module.path.splitext(filepath)[1].lower()
+        ext = os.path.splitext(filepath)[1].lower()
         if ext in (".stl",):
             solid = stl_file_to_shape(filepath)
         else:
@@ -628,7 +628,7 @@ def shape_to_step_file(shape: Any, filepath: str) -> None:
     """Write a shape to a STEP file."""
     shape = _ensure_cq_shape(shape)
     shape.exportStep(filepath)
-    if not os_module.path.isfile(filepath):
+    if not os.path.isfile(filepath):
         raise ValueError(f"STEP write failed: file not created at {filepath!r}")
 
 
@@ -640,15 +640,15 @@ def shape_to_step_file_buffer(shape: Any) -> BytesIO:
 
     try:
         shape.exportStep(tmp_path)
-        if not os_module.path.isfile(tmp_path):
+        if not os.path.isfile(tmp_path):
             raise ValueError("STEP write failed: file not created")
         with open(tmp_path, "rb") as f:
             buffer = BytesIO(f.read())
         buffer.seek(0)
         return buffer
     finally:
-        if os_module.path.isfile(tmp_path):
-            os_module.unlink(tmp_path)
+        if os.path.isfile(tmp_path):
+            os.unlink(tmp_path)
 
 
 def shape_to_stl_file_buffer(shape: Any, deflection: float = 0.5, angular_deflection: float = 0.3) -> BytesIO:
@@ -679,7 +679,7 @@ def shape_to_stl_file_buffer(shape: Any, deflection: float = 0.5, angular_deflec
         buffer.seek(0)
         return buffer
     finally:
-        os_module.unlink(tmp_path)
+        os.unlink(tmp_path)
 
 
 def shape_to_stl_file(shape: Any, filepath: str, deflection: float = 0.5, angular_deflection: float = 0.3) -> None:
