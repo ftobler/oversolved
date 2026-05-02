@@ -7,9 +7,11 @@ interface ChamferEditorProps {
   onMutation: (m: Mutation) => void
   pendingPickField: PendingPickField | null
   setPendingPickField: (field: PendingPickField | null) => void
+  features?: PartFeature[]
+  partLabels?: Record<string, string>
 }
 
-export const ChamferEditor: React.FC<ChamferEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField }) => {
+export const ChamferEditor: React.FC<ChamferEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }) => {
   const chamfer = feature.chamfer ?? { edges: [], distance: 1, kind: 'distance', angle: 45 }
   const fid = feature.id
   const isPickingEdges = pendingPickField?.featureId === fid && pendingPickField?.field === 'edges'
@@ -27,6 +29,8 @@ export const ChamferEditor: React.FC<ChamferEditorProps> = ({ feature, onMutatio
           }}
           onRemove={(index) => onMutation({ type: 'remove_chamfer_edge', featureId: fid, index })}
           onReorder={(from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: 'edges', fromIndex: from, toIndex: to })}
+          features={features}
+          partLabels={partLabels}
         />
       </div>
       <div className="feature-field-row">

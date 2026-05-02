@@ -7,9 +7,11 @@ interface FilletEditorProps {
   onMutation: (m: Mutation) => void
   pendingPickField: PendingPickField | null
   setPendingPickField: (field: PendingPickField | null) => void
+  features?: PartFeature[]
+  partLabels?: Record<string, string>
 }
 
-export const FilletEditor: React.FC<FilletEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField }) => {
+export const FilletEditor: React.FC<FilletEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }) => {
   const fillet = feature.fillet ?? { edges: [], radius: 1 }
   const fid = feature.id
   const isPickingEdges = pendingPickField?.featureId === fid && pendingPickField?.field === 'edges'
@@ -27,6 +29,8 @@ export const FilletEditor: React.FC<FilletEditorProps> = ({ feature, onMutation,
           }}
           onRemove={(index) => onMutation({ type: 'remove_fillet_edge', featureId: fid, index })}
           onReorder={(from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: 'edges', fromIndex: from, toIndex: to })}
+          features={features}
+          partLabels={partLabels}
         />
       </div>
       <div className="feature-field-row">

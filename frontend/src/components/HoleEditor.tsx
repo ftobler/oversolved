@@ -7,9 +7,11 @@ interface HoleEditorProps {
   onMutation: (m: Mutation) => void
   pendingPickField: PendingPickField | null
   setPendingPickField: (field: PendingPickField | null) => void
+  features?: PartFeature[]
+  partLabels?: Record<string, string>
 }
 
-export const HoleEditor: React.FC<HoleEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField }) => {
+export const HoleEditor: React.FC<HoleEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }) => {
   const hole = feature.hole ?? { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' }
   const fid = feature.id
   const isPickingSketch = pendingPickField?.featureId === fid && pendingPickField?.field === 'sketch'
@@ -26,6 +28,8 @@ export const HoleEditor: React.FC<HoleEditorProps> = ({ feature, onMutation, pen
             else setPendingPickField({ featureId: fid, field: 'sketch', hostKind: 'hole' })
           }}
           onRemove={() => onMutation({ type: 'set_hole_sketch', featureId: fid, sketch: '' })}
+          features={features}
+          partLabels={partLabels}
         />
       </div>
       <div className="feature-field-row">

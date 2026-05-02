@@ -7,9 +7,11 @@ interface BooleanEditorProps {
   onMutation: (m: Mutation) => void
   pendingPickField: PendingPickField | null
   setPendingPickField: (field: PendingPickField | null) => void
+  features?: PartFeature[]
+  partLabels?: Record<string, string>
 }
 
-export const BooleanEditor: React.FC<BooleanEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField }) => {
+export const BooleanEditor: React.FC<BooleanEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }) => {
   const bool = feature.boolean ?? { operation: 'union', target: '', tools: [] }
   const fid = feature.id
   const isPickingTarget = pendingPickField?.featureId === fid && pendingPickField?.field === 'boolean_target'
@@ -45,6 +47,8 @@ export const BooleanEditor: React.FC<BooleanEditorProps> = ({ feature, onMutatio
           }}
           onRemove={() => onMutation({ type: 'set_boolean_target', featureId: fid, target: '' })}
           emptyText="(pick target)"
+          features={features}
+          partLabels={partLabels}
         />
       </div>
       <div className="feature-field-row feature-field-row--stacked">
@@ -57,6 +61,8 @@ export const BooleanEditor: React.FC<BooleanEditorProps> = ({ feature, onMutatio
           }}
           onRemove={(index) => onMutation({ type: 'remove_boolean_tool', featureId: fid, tool: bool.tools[index] })}
           onReorder={(from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: 'tools', fromIndex: from, toIndex: to })}
+          features={features}
+          partLabels={partLabels}
         />
       </div>
       <div className="feature-field-row">

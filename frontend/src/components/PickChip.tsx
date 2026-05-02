@@ -1,4 +1,6 @@
 import React, { useState } from 'react'
+import type { PartFeature } from '../types/cad'
+import { queryLabel } from '../utils/queryLabel'
 
 export interface PickChipProps {
   values: string[]
@@ -7,6 +9,8 @@ export interface PickChipProps {
   onRemove: (index: number) => void
   onReorder?: (fromIndex: number, toIndex: number) => void
   emptyText?: string
+  features?: PartFeature[]
+  partLabels?: Record<string, string>
 }
 
 export const PickChip: React.FC<PickChipProps> = ({
@@ -16,6 +20,8 @@ export const PickChip: React.FC<PickChipProps> = ({
   onRemove,
   onReorder,
   emptyText,
+  features,
+  partLabels,
 }) => {
   const isEmpty = values.length === 0
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
@@ -95,7 +101,7 @@ export const PickChip: React.FC<PickChipProps> = ({
                   <img src="/src/assets/icons/toolbar-menu.svg" alt="" draggable={false} />
                 </span>
               )}
-              <span className="feature-pick-chip-item-text">{v}</span>
+              <span className="feature-pick-chip-item-text">{features ? queryLabel(v, features, partLabels) : v}</span>
               <button
                 className="feature-pick-chip-item-remove"
                 onClick={(e) => { e.stopPropagation(); onRemove(i) }}

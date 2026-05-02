@@ -201,6 +201,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }
           }}
           onRemove={() => onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: '' })}
+          features={features}
+          partLabels={partLabels}
         />
       )
     }
@@ -316,6 +318,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               else onSetPendingPickField({ featureId: fid, field: 'sketch', hostKind: 'extrude' })
             }}
             onRemove={(index) => onMutation({ type: 'remove_extrude_profile', featureId: fid, index })}
+            features={features}
+            partLabels={partLabels}
           />
         </div>
         <div className="feature-field-row">
@@ -398,6 +402,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               else onSetPendingPickField({ featureId: fid, field: 'sketch', hostKind: 'revolve' })
             }}
             onRemove={(index) => onMutation({ type: 'remove_revolve_profile', featureId: fid, index })}
+            features={features}
+            partLabels={partLabels}
           />
         </div>
         <div className="feature-field-row">
@@ -451,6 +457,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }
             }}
             onRemove={() => onMutation({ type: 'set_revolve_axis', featureId: fid, axis: '' })}
+            features={features}
+            partLabels={partLabels}
           />
         </div>
       </div>
@@ -482,6 +490,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onMutation({ type: 'set_feature_plane', featureId: feature.id, plane: '' })
               onSetPlaneSelectionFeatureId(null)
             }}
+            features={features}
+            partLabels={partLabels}
           />
         </div>
       </div>
@@ -973,6 +983,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onMutation={onMutation}
                     pendingPickField={pendingPickField}
                     setPendingPickField={onSetPendingPickField}
+                    features={features}
+                    partLabels={partLabels}
                   />
                 )}
                 {feature.kind === 'chamfer' && editingFeatureId === feature.id && (
@@ -981,6 +993,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onMutation={onMutation}
                     pendingPickField={pendingPickField}
                     setPendingPickField={onSetPendingPickField}
+                    features={features}
+                    partLabels={partLabels}
                   />
                 )}
                 {feature.kind === 'boolean' && editingFeatureId === feature.id && (
@@ -989,6 +1003,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onMutation={onMutation}
                     pendingPickField={pendingPickField}
                     setPendingPickField={onSetPendingPickField}
+                    features={features}
+                    partLabels={partLabels}
                   />
                 )}
                 {feature.kind === 'array' && editingFeatureId === feature.id && (
@@ -1012,6 +1028,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           }
                         }}
                         onRemove={() => onMutation({ type: 'set_delete_body_target', featureId: feature.id, body: '' })}
+                        features={features}
+                        partLabels={partLabels}
                       />
                     </div>
                   </div>
@@ -1022,6 +1040,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onMutation={onMutation}
                     pendingPickField={pendingPickField}
                     setPendingPickField={onSetPendingPickField}
+                    features={features}
+                    partLabels={partLabels}
                   />
                 )}
                 {feature.kind === 'transform' && editingFeatureId === feature.id && (
@@ -1030,6 +1050,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onMutation={onMutation}
                     pendingPickField={pendingPickField}
                     setPendingPickField={onSetPendingPickField}
+                    features={features}
+                    partLabels={partLabels}
                   />
                 )}
               </li>

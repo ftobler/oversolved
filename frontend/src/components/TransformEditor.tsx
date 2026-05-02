@@ -7,9 +7,11 @@ interface TransformEditorProps {
   onMutation: (m: Mutation) => void
   pendingPickField: PendingPickField | null
   setPendingPickField: (field: PendingPickField | null) => void
+  features?: PartFeature[]
+  partLabels?: Record<string, string>
 }
 
-export const TransformEditor: React.FC<TransformEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField }) => {
+export const TransformEditor: React.FC<TransformEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }) => {
   const transform = feature.transform ?? { body: '', operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 }
   const fid = feature.id
 
@@ -44,6 +46,8 @@ export const TransformEditor: React.FC<TransformEditorProps> = ({ feature, onMut
             else setPendingPickField({ featureId: fid, field: 'body', hostKind: 'transform' })
           }}
           onRemove={() => onMutation({ type: 'set_transform_field', featureId: fid, field: 'body', value: '' })}
+          features={features}
+          partLabels={partLabels}
         />
       </div>
       <div className="feature-field-row">
@@ -86,15 +90,17 @@ export const TransformEditor: React.FC<TransformEditorProps> = ({ feature, onMut
       })}
       <div className="feature-field-row feature-field-row--stacked">
         <span className="feature-field-label">Axis</span>
-        <PickChip
-          values={transform.rotation_axis ? [transform.rotation_axis] : []}
-          isPicking={isPicking('rotation_axis')}
-          onActivate={() => {
-            if (isPicking('rotation_axis')) setPendingPickField(null)
-            else setPendingPickField({ featureId: fid, field: 'rotation_axis', hostKind: 'transform' })
-          }}
-          onRemove={() => onMutation({ type: 'set_transform_field', featureId: fid, field: 'rotation_axis', value: '' })}
-        />
+          <PickChip
+            values={transform.rotation_axis ? [transform.rotation_axis] : []}
+            isPicking={isPicking('rotation_axis')}
+            onActivate={() => {
+              if (isPicking('rotation_axis')) setPendingPickField(null)
+              else setPendingPickField({ featureId: fid, field: 'rotation_axis', hostKind: 'transform' })
+            }}
+            onRemove={() => onMutation({ type: 'set_transform_field', featureId: fid, field: 'rotation_axis', value: '' })}
+            features={features}
+            partLabels={partLabels}
+          />
       </div>
 
       <div className="feature-field-row">
