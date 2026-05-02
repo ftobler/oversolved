@@ -53,9 +53,11 @@ When asked to plan a feature:
 - Keep an overview and order of exection of features to apply documented in `feature/overview.md`. Keep it very short. One line per feature.
 
 When asked to implement a feature:
+- consult `feature/overview.md` to find the next feature to implement in sequence.
 - you read the `feature/<topic>.md` and execute according to content.
 - Always make tests. Especially on bugs.
 - Code review using a subagent.
+- when done update `feature/overview.md` to mark as complete and remove the `*.md` file you implemented the feature from.
 
 
 ## important files
