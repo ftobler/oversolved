@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
 import { isProjectedEntity } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { sampleArc, sampleArcCCW, getEntityBounds } from '../sketch_helpers'
+import { sampleArc, sampleArcCCW, getEntityBounds, pointTo3D, allFinite } from '../sketch_helpers'
 import { DashedLine } from '../sketch_dimensions'
 import { VertexDot, HitPolyline, ProjectedOriginPoint } from './VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED } from './constants'
@@ -75,6 +75,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
 
   if ('start' in e && 'end' in e && 'radius' in e) {
     const arc = e as Arc
+    if (!allFinite(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)) return null
     const pts = sampleArcCCW(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
     return (
       <>
@@ -96,7 +97,10 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     )
   } else if ('start' in e) {
     const line = e as LineSegment
-    const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
+    const start3 = pointTo3D(line.start)
+    const end3 = pointTo3D(line.end)
+    if (!start3 || !end3) return null
+    const pts: [number, number, number][] = [start3, end3]
     return (
       <>
         <group>
@@ -114,9 +118,11 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
     )
   } else if ('x' in e) {
     const pt = e as PointEntity
+    if (!allFinite(pt.x, pt.y)) return null
     return <VertexDot x={pt.x} y={pt.y} px={5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="xy"  isEditing={isEditing} showDebugHit={showDebugHit} />
   } else {
     const circ = e as Circle
+    if (!allFinite(circ.center[0], circ.center[1], circ.radius)) return null
     const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
     return (
       <>

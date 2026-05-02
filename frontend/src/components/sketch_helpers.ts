@@ -1,6 +1,17 @@
 import * as THREE from 'three'
-import type { Entity, LineSegment, Circle, Arc, PointEntity } from '../types/cad'
+import type { Entity, LineSegment, Circle, Arc, PointEntity, Point } from '../types/cad'
 import { RENDER_KIND_TO_ICON } from '../registry'
+
+/** Check if all values in a tuple are finite numbers. */
+export function allFinite(...vals: number[]): boolean {
+  return vals.every(v => Number.isFinite(v))
+}
+
+/** Convert a 2D Point to a 3D tuple, or return null if any value is NaN/non-finite. */
+export function pointTo3D(p: Point): [number, number, number] | null {
+  if (!allFinite(p[0], p[1])) return null
+  return [p[0], p[1], 0]
+}
 
 export const COLOR_CONSTRAINT = '#ffd54f'
 
@@ -38,6 +49,9 @@ export const ARROW_SHAPE = (() => {
 })()
 
 export function sampleArc(cx: number, cy: number, r: number, a0deg: number, a1deg: number): [number, number, number][] {
+  if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(r) || !Number.isFinite(a0deg) || !Number.isFinite(a1deg)) {
+    return []
+  }
   let span = ((a1deg - a0deg) + 360) % 360
   const isFullCircle = span === 0
   if (isFullCircle) span = 360
@@ -54,6 +68,9 @@ export function sampleArc(cx: number, cy: number, r: number, a0deg: number, a1de
 /** Like sampleArc but always goes CCW from a0 to a1 without clamping to ≤ 180°.
  *  Used for arc preview where the full arc through the cursor must be drawn. */
 export function sampleArcCCW(cx: number, cy: number, r: number, a0deg: number, a1deg: number): [number, number, number][] {
+  if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(r) || !Number.isFinite(a0deg) || !Number.isFinite(a1deg)) {
+    return []
+  }
   let span = ((a1deg - a0deg) + 360) % 360
   if (span === 0) span = 360
   const steps = Math.max(2, Math.ceil((span / 360) * 64))

@@ -114,8 +114,16 @@ function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
   // Hoisted before conditional return to satisfy rules-of-hooks.
   const lineGeometry = useMemo(() => {
     const geo = new THREE.BufferGeometry()
-    if (_isValidPoint(start) && _isValidPoint(end)) {
-      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([...start, ...end]), 3))
+    const validS = _isValidPoint(start)
+    const validE = _isValidPoint(end)
+    if (validS && validE) {
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([start[0], start[1], 0, end[0], end[1], 0]), 3))
+    } else if (validS) {
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([start[0], start[1], 0]), 3))
+    } else if (validE) {
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([end[0], end[1], 0]), 3))
+    } else {
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0]), 3))
     }
     return geo
   }, [start, end])
