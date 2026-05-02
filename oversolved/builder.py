@@ -6,7 +6,8 @@ import time
 from typing import Any
 from oversolved.query import Repository, emit_wire, absolute
 from oversolved.types3d import Body, FeatureCheckpoint, BuildState
-from oversolved.solver import _init_global_repo, _try_solve_feature, _post_register
+from oversolved.solver import _init_global_repo, _try_solve_feature
+from oversolved.solver_registry import _post_register
 
 logger = logging.getLogger(__name__)
 
