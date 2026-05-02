@@ -429,9 +429,19 @@ features:
 class TestSolveAPI:
     """Tests for the /api/solve endpoint."""
 
-    def test_solve_accepts_json(self, client):
+    def test_solve_requires_auth(self, app):
+        """Unauthenticated POST /api/solve returns 401."""
+        c = app.test_client()
+        response = c.post(
+            "/api/solve",
+            data=json.dumps({"version": 1, "kind": "part", "features": []}),
+            content_type="application/json",
+        )
+        assert response.status_code == 401
+
+    def test_solve_accepts_json(self, authed_client):
         parsed = yaml.safe_load(SIMPLE_YAML)
-        response = client.post(
+        response = authed_client.post(
             "/api/solve",
             data=json.dumps(parsed),
             content_type="application/json",
@@ -441,16 +451,16 @@ class TestSolveAPI:
         assert "result" in data
         assert "sketch_1" in data["result"]
 
-    def test_solve_does_not_accept_plain_text(self, client):
-        response = client.post(
+    def test_solve_does_not_accept_plain_text(self, authed_client):
+        response = authed_client.post(
             "/api/solve",
             data=SIMPLE_YAML,
             content_type="text/plain",
         )
         assert response.status_code != 200
 
-    def test_solve_empty_features(self, client):
-        response = client.post(
+    def test_solve_empty_features(self, authed_client):
+        response = authed_client.post(
             "/api/solve",
             data=json.dumps({"version": 1, "kind": "part", "features": []}),
             content_type="application/json",
@@ -470,8 +480,8 @@ class TestSolveAPI:
             assert "plane" in result[plane_id]
             assert "status" in result[plane_id]
 
-    def test_solve_missing_features_key(self, client):
-        response = client.post(
+    def test_solve_missing_features_key(self, authed_client):
+        response = authed_client.post(
             "/api/solve",
             data=json.dumps({"version": 1, "kind": "part"}),
             content_type="application/json",
@@ -479,8 +489,8 @@ class TestSolveAPI:
         assert response.status_code == 400
         assert "features required" in json.loads(response.data)["error"]
 
-    def test_solve_empty_body(self, client):
-        response = client.post(
+    def test_solve_empty_body(self, authed_client):
+        response = authed_client.post(
             "/api/solve",
             data=json.dumps(None),
             content_type="application/json",

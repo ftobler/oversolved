@@ -453,3 +453,80 @@ class TestBackupEndpoint:
         assert response.status_code == 200
         assert response.content_type == 'application/zip'
         assert response.headers.get('Content-Disposition', '').startswith('attachment')
+
+
+class TestAuthSecurity:
+    """Tests for auth security hardening."""
+
+    def test_admin_password_from_env_var(self, monkeypatch, tmp_path):
+        """OVERSOLVED_ADMIN_PASSWORD env var sets admin password."""
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "custom-admin-pass")
+        db_path = str(tmp_path / "test_custom_admin.db")
+        app = create_app({
+            "DB_TYPE": "sqlite",
+            "TESTING": True,
+            "DB_PATH": db_path,
+        })
+        c = app.test_client()
+        resp = c.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "custom-admin-pass"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data["user"]["username"] == "admin"
+
+    def test_admin_password_env_var_wrong_password(self, monkeypatch, tmp_path):
+        """Wrong password against env-var-admin returns 401."""
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "custom-admin-pass")
+        db_path = str(tmp_path / "test_custom_admin2.db")
+        app = create_app({
+            "DB_TYPE": "sqlite",
+            "TESTING": True,
+            "DB_PATH": db_path,
+        })
+        c = app.test_client()
+        resp = c.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 401
+
+    def test_session_cookie_secure_default(self, tmp_path):
+        """session_token cookie does NOT have secure flag by default."""
+        db_path = str(tmp_path / "test_secure_default.db")
+        app = create_app({
+            "DB_TYPE": "sqlite",
+            "TESTING": True,
+            "DB_PATH": db_path,
+        })
+        c = app.test_client()
+        resp = c.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        set_cookie = resp.headers.get("Set-Cookie", "")
+        assert "Secure" not in set_cookie
+
+    def test_session_cookie_secure_enabled(self, monkeypatch, tmp_path):
+        """session_token cookie has secure flag when OVERSOLVED_SESSION_COOKIE_SECURE is True."""
+        monkeypatch.setenv("OVERSOLVED_SESSION_COOKIE_SECURE", "true")
+        db_path = str(tmp_path / "test_secure_on.db")
+        app = create_app({
+            "DB_TYPE": "sqlite",
+            "TESTING": True,
+            "DB_PATH": db_path,
+        })
+        c = app.test_client()
+        resp = c.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        set_cookie = resp.headers.get("Set-Cookie", "")
+        assert "Secure" in set_cookie

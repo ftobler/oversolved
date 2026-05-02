@@ -25,6 +25,18 @@ def post_solve(client, payload):
     )
 
 
+def logged_in_client(app):
+    """Create a test client and log in as admin."""
+    c = app.test_client()
+    resp = c.post(
+        "/api/auth/login",
+        data=json.dumps({"username": "admin", "password": "admin"}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 200
+    return c
+
+
 @pytest.fixture
 def app(tmp_path):
     from oversolved.app import create_app
@@ -44,8 +56,15 @@ def app(tmp_path):
 
 
 @pytest.fixture
-def client(app):
-    return app.test_client()
+def authed_client(app):
+    c = app.test_client()
+    resp = c.post(
+        "/api/auth/login",
+        data=json.dumps({"username": "admin", "password": "admin"}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 200
+    return c
 
 
 class TestSerialization:
@@ -255,7 +274,7 @@ class TestSolveWithL2Cache:
                 "L2_CACHE_DIR": cache_dir,
             }
         )
-        client1 = app1.test_client()
+        client1 = logged_in_client(app1)
 
         # First solve stores to L1 and L2
         r1 = post_solve(client1, {"id": "doc_l2", "features": [sk1, ex1]})
@@ -274,7 +293,7 @@ class TestSolveWithL2Cache:
                 "L2_CACHE_DIR": cache_dir,
             }
         )
-        client2 = app2.test_client()
+        client2 = logged_in_client(app2)
 
         # Second solve should hit L2, restoring L1
         r2 = post_solve(client2, {"id": "doc_l2", "features": [sk1, ex1]})
@@ -299,14 +318,14 @@ class TestSolveWithL2Cache:
                 "L2_CACHE_ENABLED": False,
             }
         )
-        client = app.test_client()
+        client = logged_in_client(app)
 
         r1 = post_solve(client, {"id": "doc_l2_miss", "features": [sk1, ex1]})
         assert r1.status_code == 200
         d1 = json.loads(r1.data)
         assert "body_ex1" in d1["bodies"]
 
-    def test_solve_rebuild_after_feature_edit(self, client, app):
+    def test_solve_rebuild_after_feature_edit(self, authed_client, app):
         pytest.importorskip("OCP.gp")
         sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
         sk2 = rect_sketch_spec(w=5.0, h=5.0, sketch_id="sk2")
@@ -314,14 +333,14 @@ class TestSolveWithL2Cache:
 
         # Full build
         r1 = post_solve(
-            client, {"id": "doc_edit", "features": [sk1, sk2, ex1]}
+            authed_client, {"id": "doc_edit", "features": [sk1, sk2, ex1]}
         )
         assert r1.status_code == 200
 
         # Edit sk2 label (keeps L1 alive)
         sk2_v2 = {**sk2, "label": "changed"}
         r2 = post_solve(
-            client, {"id": "doc_edit", "features": [sk1, sk2_v2, ex1]}
+            authed_client, {"id": "doc_edit", "features": [sk1, sk2_v2, ex1]}
         )
         assert r2.status_code == 200
         d2 = json.loads(r2.data)
@@ -344,7 +363,7 @@ class TestSolveWithL2Cache:
                 "L2_CACHE_DIR": cache_dir,
             }
         )
-        client1 = app1.test_client()
+        client1 = logged_in_client(app1)
 
         r1 = post_solve(client1, {"id": "doc_query", "features": [sk1, ex1]})
         assert r1.status_code == 200
@@ -361,7 +380,7 @@ class TestSolveWithL2Cache:
                 "L2_CACHE_DIR": cache_dir,
             }
         )
-        client2 = app2.test_client()
+        client2 = logged_in_client(app2)
 
         # Add a plane feature that depends on the face query
         plane = {

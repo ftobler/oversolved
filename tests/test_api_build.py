@@ -38,8 +38,15 @@ def app(tmp_path):
 
 
 @pytest.fixture
-def client(app):
-    return app.test_client()
+def authed_client(app):
+    c = app.test_client()
+    resp = c.post(
+        "/api/auth/login",
+        data=json.dumps({"username": "admin", "password": "admin"}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 200
+    return c
 
 
 def post_solve(client, payload):
@@ -52,106 +59,112 @@ def post_solve(client, payload):
 
 class TestApiSolve:
 
-    def test_empty_body_returns_400(self, client):
-        resp = client.post("/api/solve", data="", content_type="application/json")
+    def test_solve_requires_auth(self, app):
+        """0. unauthenticated POST /api/solve returns 401."""
+        c = app.test_client()
+        resp = c.post("/api/solve", data="", content_type="application/json")
+        assert resp.status_code == 401
+
+    def test_empty_body_returns_400(self, authed_client):
+        resp = authed_client.post("/api/solve", data="", content_type="application/json")
         assert resp.status_code == 400
 
-    def test_missing_features_key(self, client):
-        resp = post_solve(client, {"id": "x"})
+    def test_missing_features_key(self, authed_client):
+        resp = post_solve(authed_client, {"id": "x"})
         assert resp.status_code == 400
         assert "features required" in json.loads(resp.data)["error"]
 
-    def test_sketch_only_doc(self, client):
-        resp = post_solve(client, {"features": [SKETCH_FEATURE]})
+    def test_sketch_only_doc(self, authed_client):
+        resp = post_solve(authed_client, {"features": [SKETCH_FEATURE]})
         assert resp.status_code == 200
         data = json.loads(resp.data)
         assert "result" in data
         assert "bodies" in data
 
-    def test_plane_feature_result(self, client):
-        resp = post_solve(client, {"features": [PLANE_FEATURE]})
+    def test_plane_feature_result(self, authed_client):
+        resp = post_solve(authed_client, {"features": [PLANE_FEATURE]})
         assert resp.status_code == 200
         data = json.loads(resp.data)
         assert "plane" in data["result"]["pl1"]
 
-    def test_extrude_status_ok(self, client):
-        resp = post_solve(client, {"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
+    def test_extrude_status_ok(self, authed_client):
+        resp = post_solve(authed_client, {"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
         assert resp.status_code == 200
         data = json.loads(resp.data)
         assert data["result"]["ex1"]["status"] == "ok"
 
-    def test_extrude_has_body_id(self, client):
-        resp = post_solve(client, {"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
+    def test_extrude_has_body_id(self, authed_client):
+        resp = post_solve(authed_client, {"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
         data = json.loads(resp.data)
         assert data["result"]["ex1"]["body_id"] == "body_ex1"
 
-    def test_bodies_key_present(self, client):
-        resp = post_solve(client, {"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
+    def test_bodies_key_present(self, authed_client):
+        resp = post_solve(authed_client, {"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
         data = json.loads(resp.data)
         assert isinstance(data["bodies"], dict)
 
     @pytest.mark.skipif(not HAS_OCC, reason="OCC not available")
-    def test_extrude_mesh_in_bodies(self, client):
-        resp = post_solve(client, {"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
+    def test_extrude_mesh_in_bodies(self, authed_client):
+        resp = post_solve(authed_client, {"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
         data = json.loads(resp.data)
         assert "body_ex1" in data["bodies"]
         assert "mesh" in data["bodies"]["body_ex1"]
 
-    def test_builtin_planes_in_result(self, client):
-        resp = post_solve(client, {"features": []})
+    def test_builtin_planes_in_result(self, authed_client):
+        resp = post_solve(authed_client, {"features": []})
         assert resp.status_code == 200
         data = json.loads(resp.data)
         assert "builtin_plane_front" in data["result"]
         assert "builtin_plane_top" in data["result"]
         assert "builtin_plane_right" in data["result"]
 
-    def test_solve_ms_present(self, client):
-        resp = post_solve(client, {"features": []})
+    def test_solve_ms_present(self, authed_client):
+        resp = post_solve(authed_client, {"features": []})
         data = json.loads(resp.data)
         assert isinstance(data["solve_ms"], (int, float))
 
-    def test_build_state_not_in_response(self, client):
-        resp = post_solve(client, {"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
+    def test_build_state_not_in_response(self, authed_client):
+        resp = post_solve(authed_client, {"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
         data = json.loads(resp.data)
         assert "_build_state" not in data
 
-    def test_missing_sketch_extrude(self, client):
+    def test_missing_sketch_extrude(self, authed_client):
         bad_extrude = {"id": "ex1", "kind": "extrude", "sketch": "$nonexistent", "distance": 5}
-        resp = post_solve(client, {"features": [bad_extrude]})
+        resp = post_solve(authed_client, {"features": [bad_extrude]})
         assert resp.status_code == 200
         data = json.loads(resp.data)
         assert data["result"]["ex1"]["status"] == "exception"
 
-    def test_two_unsaved_docs_produce_correct_results(self, client):
+    def test_two_unsaved_docs_produce_correct_results(self, authed_client):
         """Two payloads without an id field each produce geometrically correct results."""
         sk_a = rect_sketch_spec(w=5.0, h=5.0, sketch_id='sk1')
         sk_b = rect_sketch_spec(w=10.0, h=10.0, sketch_id='sk1')
 
-        r1 = post_solve(client, {'features': [sk_a]})
+        r1 = post_solve(authed_client, {'features': [sk_a]})
         d1 = json.loads(r1.data)
         geom_a = d1['result']['sk1']['geometry']
 
-        r2 = post_solve(client, {'features': [sk_b]})
+        r2 = post_solve(authed_client, {'features': [sk_b]})
         d2 = json.loads(r2.data)
         assert d2['result']['sk1']['geometry'] != geom_a
 
-        r3 = post_solve(client, {'features': [sk_a]})
+        r3 = post_solve(authed_client, {'features': [sk_a]})
         d3 = json.loads(r3.data)
         assert d3['result']['sk1']['geometry'] == geom_a
 
-        r4 = post_solve(client, {'id': 'isolated_doc', 'features': [sk_a]})
+        r4 = post_solve(authed_client, {'id': 'isolated_doc', 'features': [sk_a]})
         d4 = json.loads(r4.data)
         assert d4['result']['sk1']['geometry'] == geom_a
 
     @pytest.mark.skipif(not HAS_OCC, reason="OCC not available")
-    def test_partial_rebuild_two_requests(self, client):
+    def test_partial_rebuild_two_requests(self, authed_client):
         import time
         payload = {"id": "doc_partial", "features": [SKETCH_FEATURE, EXTRUDE_FEATURE]}
 
         t0 = time.perf_counter()
-        resp1 = post_solve(client, payload)
+        resp1 = post_solve(authed_client, payload)
         t1 = time.perf_counter()
-        resp2 = post_solve(client, payload)
+        resp2 = post_solve(authed_client, payload)
         t2 = time.perf_counter()
 
         d1 = json.loads(resp1.data)

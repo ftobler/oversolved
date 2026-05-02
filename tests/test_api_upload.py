@@ -1,5 +1,6 @@
 """Tests for POST /api/upload route."""
 
+import json
 import os
 import re
 import pytest
@@ -30,6 +31,18 @@ def client(app):
 
 
 @pytest.fixture
+def authed_client(app):
+    c = app.test_client()
+    resp = c.post(
+        "/api/auth/login",
+        data=json.dumps({"username": "admin", "password": "admin"}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 200
+    return c
+
+
+@pytest.fixture
 def step_file(tmp_path):
     """Create a minimal STEP file for upload testing."""
     box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
@@ -40,15 +53,23 @@ def step_file(tmp_path):
     return path
 
 
-def test_missing_file_field(client):
-    """1. missing file field - POST /api/upload with no file returns 400."""
+def test_upload_requires_auth(client):
+    """0. unauthenticated POST /api/upload returns 401."""
     response = client.post("/api/upload")
+    assert response.status_code == 401
+    data = response.get_json()
+    assert "error" in data
+
+
+def test_missing_file_field(authed_client):
+    """1. missing file field - POST /api/upload with no file returns 400."""
+    response = authed_client.post("/api/upload")
     assert response.status_code == 400
     data = response.get_json()
     assert "error" in data
 
 
-def test_wrong_extension(client):
+def test_wrong_extension(authed_client):
     """2. wrong extension - POST .txt file returns 400."""
     import tempfile
 
@@ -57,7 +78,7 @@ def test_wrong_extension(client):
         tmp_path = f.name
     try:
         with open(tmp_path, "rb") as f:
-            response = client.post("/api/upload", data={"file": (f, "test.txt")})
+            response = authed_client.post("/api/upload", data={"file": (f, "test.txt")})
         assert response.status_code == 400
         data = response.get_json()
         assert "error" in data
@@ -65,20 +86,20 @@ def test_wrong_extension(client):
         os.unlink(tmp_path)
 
 
-def test_upload_step_file(client, step_file):
+def test_upload_step_file(authed_client, step_file):
     """3. upload step file - POST real STEP file; returns 200 with file_id ending in .step."""
     with open(step_file, "rb") as f:
-        response = client.post("/api/upload", data={"file": (f, "cube.step")})
+        response = authed_client.post("/api/upload", data={"file": (f, "cube.step")})
     assert response.status_code == 200
     data = response.get_json()
     assert "file_id" in data
     assert data["file_id"].endswith(".step")
 
 
-def test_file_id_is_uuid_like(client, step_file):
+def test_file_id_is_uuid_like(authed_client, step_file):
     """4. file_id is UUID-like - matches [0-9a-f-]{36}\\.step."""
     with open(step_file, "rb") as f:
-        response = client.post("/api/upload", data={"file": (f, "cube.step")})
+        response = authed_client.post("/api/upload", data={"file": (f, "cube.step")})
     data = response.get_json()
     file_id = data["file_id"]
     pattern = r"[0-9a-f\-]{36}\.step"
@@ -87,10 +108,10 @@ def test_file_id_is_uuid_like(client, step_file):
     )
 
 
-def test_file_persisted(client, step_file):
+def test_file_persisted(authed_client, step_file):
     """5. file persisted - after upload, file exists at oversolved/uploads/<file_id>."""
     with open(step_file, "rb") as f:
-        response = client.post("/api/upload", data={"file": (f, "cube.step")})
+        response = authed_client.post("/api/upload", data={"file": (f, "cube.step")})
     data = response.get_json()
     file_id = data["file_id"]
     filepath = os.path.join(UPLOAD_DIR, file_id)

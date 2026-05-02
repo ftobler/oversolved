@@ -137,38 +137,38 @@ class TestTtlCache:
 
 
 class TestSolveEndpointSerialization:
-    def test_rollback_returns_pre_rollback_bodies(self, client):
+    def test_rollback_returns_pre_rollback_bodies(self, authed_client):
         pytest.importorskip("OCP.gp")
         sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
         ex1 = extrude_spec("sk1", "ex1", distance=5.0)
 
         # Full build
-        r1 = post_solve(client, {"id": "doc_rb", "features": [sk1, ex1]})
+        r1 = post_solve(authed_client, {"id": "doc_rb", "features": [sk1, ex1]})
         assert r1.status_code == 200
         d1 = json.loads(r1.data)
         assert "body_ex1" in d1["bodies"]
 
         # Rollback to before extrude (only sketch remains)
-        r2 = post_solve(client, {"id": "doc_rb", "features": [sk1], "rollback_position": 1})
+        r2 = post_solve(authed_client, {"id": "doc_rb", "features": [sk1], "rollback_position": 1})
         assert r2.status_code == 200
         d2 = json.loads(r2.data)
         assert "body_ex1" not in d2["bodies"]
 
-    def test_rollback_then_full_rebuild_coherent(self, client):
+    def test_rollback_then_full_rebuild_coherent(self, authed_client):
         pytest.importorskip("OCP.gp")
         sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
         ex1 = extrude_spec("sk1", "ex1", distance=5.0)
 
-        post_solve(client, {"id": "doc_rb2", "features": [sk1, ex1]})
-        post_solve(client, {"id": "doc_rb2", "features": [sk1], "rollback_position": 1})
+        post_solve(authed_client, {"id": "doc_rb2", "features": [sk1, ex1]})
+        post_solve(authed_client, {"id": "doc_rb2", "features": [sk1], "rollback_position": 1})
 
         # Full rebuild (no rollback) should restore the body
-        r3 = post_solve(client, {"id": "doc_rb2", "features": [sk1, ex1]})
+        r3 = post_solve(authed_client, {"id": "doc_rb2", "features": [sk1, ex1]})
         assert r3.status_code == 200
         d3 = json.loads(r3.data)
         assert "body_ex1" in d3["bodies"]
 
-    def test_concurrent_solves_serialized(self, client):
+    def test_concurrent_solves_serialized(self, authed_client):
         pytest.importorskip("OCP.gp")
         sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
         ex1 = extrude_spec("sk1", "ex1", distance=5.0)
@@ -176,12 +176,12 @@ class TestSolveEndpointSerialization:
         results = {}
 
         def solve_a():
-            resp = post_solve(client, {"id": "doc_conc", "features": [sk1, ex1]})
+            resp = post_solve(authed_client, {"id": "doc_conc", "features": [sk1, ex1]})
             results["a"] = json.loads(resp.data)
 
         def solve_b():
             resp = post_solve(
-                client, {"id": "doc_conc", "features": [sk1], "rollback_position": 1}
+                authed_client, {"id": "doc_conc", "features": [sk1], "rollback_position": 1}
             )
             results["b"] = json.loads(resp.data)
 
@@ -196,9 +196,9 @@ class TestSolveEndpointSerialization:
         assert "result" in results["a"]
         assert "result" in results["b"]
 
-    def test_build_state_not_in_response(self, client):
+    def test_build_state_not_in_response(self, authed_client):
         sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
-        resp = post_solve(client, {"id": "doc_no_state", "features": [sk1]})
+        resp = post_solve(authed_client, {"id": "doc_no_state", "features": [sk1]})
         data = json.loads(resp.data)
         assert "_build_state" not in data
 

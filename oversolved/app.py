@@ -55,13 +55,14 @@ def _get_database(config):
 
 def _ensure_admin_user(db: Database) -> None:
     """Create the default admin user if it doesn't exist."""
+    admin_password = os.environ.get("OVERSOLVED_ADMIN_PASSWORD", "admin")
     user_store = UserStore(db)
     admin = user_store.find_by_username("admin")
     if admin:
         user_store.update(admin["id"], is_admin=1)
     else:
         uid = user_store.create(
-            "admin", generate_password_hash("admin"),
+            "admin", generate_password_hash(admin_password),
             must_change_password=True, email="admin@local.oversolved",
         )
         user_store.update(uid, is_admin=1, must_change_password=1)
@@ -80,6 +81,7 @@ def create_app(config: dict | None = None) -> Flask:
             "L2_CACHE_DIR": "/tmp/oversolved_l2_cache",
             "L2_CACHE_MAX_SIZE": 5 * 1024 * 1024 * 1024,  # 5 GB
             "L2_CACHE_TTL": 86400 * 30,  # 30 days
+            "SESSION_COOKIE_SECURE": os.environ.get("OVERSOLVED_SESSION_COOKIE_SECURE", "false").lower() == "true",
         }
     )
 
@@ -177,6 +179,7 @@ def create_app(config: dict | None = None) -> Flask:
             token,
             httponly=True,
             samesite="Lax",
+            secure=app.config.get("SESSION_COOKIE_SECURE", False),
             max_age=60 * 60 * 24 * 30,
         )
         return response
@@ -901,6 +904,7 @@ def create_app(config: dict | None = None) -> Flask:
     # ── Upload ───────────────────────────────────────────────────────────────────────
 
     @app.route("/api/upload", methods=["POST"])
+    @require_auth
     def upload_file():
         """Accept a STEP/IGES file, store it, return a file_id."""
         os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -916,6 +920,7 @@ def create_app(config: dict | None = None) -> Flask:
         return jsonify({"file_id": file_id})
 
     @app.route("/api/export/step", methods=["POST"])
+    @require_auth
     def export_step():
         """Export bodies to a STEP file and return it as a download.
 
@@ -957,6 +962,7 @@ def create_app(config: dict | None = None) -> Flask:
         )
 
     @app.route("/api/export/stl", methods=["POST"])
+    @require_auth
     def export_stl():
         """Export bodies to an STL file and return it as a download.
 
@@ -1015,6 +1021,7 @@ def create_app(config: dict | None = None) -> Flask:
     )
 
     @app.route("/api/solve", methods=["POST"])
+    @require_auth
     def solve_document() -> Response | tuple:
         data = request.get_json(silent=True)
         if not data or "features" not in data:

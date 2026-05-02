@@ -1,5 +1,6 @@
 """Tests for POST /api/export/stl route."""
 
+import json
 import pytest
 
 from oversolved.app import create_app
@@ -20,29 +21,45 @@ def app(tmp_path):
 
 
 @pytest.fixture
-def client(app):
-    return app.test_client()
+def authed_client(app):
+    c = app.test_client()
+    resp = c.post(
+        "/api/auth/login",
+        data=json.dumps({"username": "admin", "password": "admin"}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 200
+    return c
 
 
-def test_missing_features(client):
-    """1. missing features - POST /api/export/stl without features returns 400."""
+def test_export_stl_requires_auth(app):
+    """0. unauthenticated POST /api/export/stl returns 401."""
+    client = app.test_client()
     response = client.post("/api/export/stl", json={})
+    assert response.status_code == 401
+    data = response.get_json()
+    assert "error" in data
+
+
+def test_missing_features(authed_client):
+    """1. missing features - POST /api/export/stl without features returns 400."""
+    response = authed_client.post("/api/export/stl", json={})
     assert response.status_code == 400
     data = response.get_json()
     assert "error" in data
 
 
-def test_empty_features(client):
+def test_empty_features(authed_client):
     """2. empty features - POST with empty features list returns 400."""
-    response = client.post("/api/export/stl", json={"features": []})
+    response = authed_client.post("/api/export/stl", json={"features": []})
     assert response.status_code == 400
     data = response.get_json()
     assert "error" in data
 
 
-def test_no_bodies_to_export(client):
+def test_no_bodies_to_export(authed_client):
     """3. no bodies to export - features with no bodies returns 400."""
-    response = client.post(
+    response = authed_client.post(
         "/api/export/stl",
         json={"features": [{"id": "sk1", "kind": "sketch"}]},
     )
@@ -51,9 +68,9 @@ def test_no_bodies_to_export(client):
     assert "error" in data
 
 
-def test_export_single_extrude(client):
+def test_export_single_extrude(authed_client):
     """4. export single extrude - POST extrude feature; returns STL file."""
-    response = client.post(
+    response = authed_client.post(
         "/api/export/stl",
         json={
             "features": [
@@ -69,9 +86,9 @@ def test_export_single_extrude(client):
     assert "attachment" in response.headers["Content-Disposition"]
 
 
-def test_export_stl_valid_format(client):
+def test_export_stl_valid_format(authed_client):
     """5. export STL valid format - content starts with 'solid' for ASCII STL."""
-    response = client.post(
+    response = authed_client.post(
         "/api/export/stl",
         json={
             "features": [
@@ -85,9 +102,9 @@ def test_export_stl_valid_format(client):
     assert "solid" in data or data.startswith("STL")
 
 
-def test_export_with_tessellation_params(client):
+def test_export_with_tessellation_params(authed_client):
     """6. export with tessellation params - deflection values are applied."""
-    response = client.post(
+    response = authed_client.post(
         "/api/export/stl",
         json={
             "features": [
@@ -105,9 +122,9 @@ def test_export_with_tessellation_params(client):
     assert "solid" in data or data.startswith("STL")
 
 
-def test_export_multiple_bodies(client):
+def test_export_multiple_bodies(authed_client):
     """7. export multiple bodies - fused into single STL."""
-    response = client.post(
+    response = authed_client.post(
         "/api/export/stl",
         json={
             "features": [
@@ -123,9 +140,9 @@ def test_export_multiple_bodies(client):
     assert "solid" in data or data.startswith("STL")
 
 
-def test_export_specific_body_by_id(client):
+def test_export_specific_body_by_id(authed_client):
     """8. export specific body - body_id exports only the selected body."""
-    response = client.post(
+    response = authed_client.post(
         "/api/export/stl",
         json={
             "features": [
@@ -142,9 +159,9 @@ def test_export_specific_body_by_id(client):
     assert "solid" in data or data.startswith("STL")
 
 
-def test_export_specific_body_invalid_id(client):
+def test_export_specific_body_invalid_id(authed_client):
     """9. invalid body_id - export returns 400."""
-    response = client.post(
+    response = authed_client.post(
         "/api/export/stl",
         json={
             "features": [
