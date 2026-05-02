@@ -18,7 +18,8 @@ dependencies = [
     "pyyaml",
     "cadquery",
     "multimethod",
-    "PyMySQL"
+    "PyMySQL",
+    "pillow"
 ]
 
 [project.scripts]
@@ -29,8 +30,7 @@ dev = [
     "pytest",
     "mypy",
     "flake8",
-    "pycairo",
-    "just"
+    "pycairo"
 ]
 
 [tool.pytest.ini_options]
