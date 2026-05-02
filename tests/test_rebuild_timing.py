@@ -106,7 +106,7 @@ class TestRebuildTimeTracking:
         stats_resp = authed_client.get(f"/api/documents/{doc_id}/rebuild-stats")
         assert stats_resp.status_code == 200
         stats = json.loads(stats_resp.data)
-        assert stats["rebuild_count"] == 20
+        assert stats["rebuild_count"] == 25
         assert len(stats["history"]) == 20
 
     def test_rebuild_stats_trend_faster(self, authed_client):

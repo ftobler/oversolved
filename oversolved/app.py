@@ -1101,6 +1101,12 @@ def create_app(config: dict | None = None) -> Flask:
         if cursor.fetchone() is None:
             return jsonify({"error": "Document not found"}), 404
 
+        # Get total count separately (the LIMIT 20 query below is only for recent data)
+        count_cursor = db.execute(
+            "SELECT COUNT(*) FROM rebuild_times WHERE document_uuid = ?", (doc_id,)
+        )
+        count = count_cursor.fetchone()[0]
+
         cursor = db.execute(
             """SELECT duration_ms FROM rebuild_times
                WHERE document_uuid = ?
@@ -1108,7 +1114,6 @@ def create_app(config: dict | None = None) -> Flask:
             (doc_id,),
         )
         rows = cursor.fetchall()
-        count = len(rows)
         if count == 0:
             return jsonify({
                 "rebuild_count": 0,
@@ -1243,7 +1248,9 @@ def create_app(config: dict | None = None) -> Flask:
             data = json.load(f)
 
         json_str = json.dumps(data, indent=2)
-        return Response(json_str[:50000], mimetype="application/json")
+        if len(json_str) > 50000:
+            return jsonify({"truncated": True, "preview": json_str[:50000]})
+        return Response(json_str, mimetype="application/json")
 
     @app.route("/api/cache/download/<doc_id>", methods=["GET"])
     @require_auth

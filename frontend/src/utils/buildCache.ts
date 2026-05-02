@@ -1,6 +1,7 @@
 import type { PartDoc, BuildResponse, PartFeature } from '../types/cad'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
+const MAX_CACHE_SIZE = 100
 
 export interface CacheEntry {
   cache_key: string
@@ -13,6 +14,26 @@ export interface CacheEntry {
 }
 
 const cache = new Map<string, CacheEntry>()
+
+function evictStale(): void {
+  const now = Date.now()
+  for (const [key, entry] of cache) {
+    if (now - entry.timestamp > CACHE_TTL_MS) {
+      cache.delete(key)
+    }
+  }
+}
+
+function evictIfOverMax(): void {
+  if (cache.size <= MAX_CACHE_SIZE) return
+  // Remove oldest entries (Map preserves insertion order)
+  const toDelete = cache.size - MAX_CACHE_SIZE
+  const iter = cache.keys()
+  for (let i = 0; i < toDelete; i++) {
+    const key = iter.next().value
+    if (key !== undefined) cache.delete(key)
+  }
+}
 
 export async function computeCacheKey(
   docId: string,
@@ -39,6 +60,9 @@ export async function getCachedBuildResponse(
   const key = await computeCacheKey(docId, features, rollbackPosition, pickBoundary)
   const entry = cache.get(key)
   if (!entry) return null
+  // Move to end on access (LRU)
+  cache.delete(key)
+  cache.set(key, entry)
   const age = Date.now() - entry.timestamp
   const isFresh = age < CACHE_TTL_MS
   return { entry, isFresh }
@@ -51,6 +75,7 @@ export async function cacheBuildResponse(
   pickBoundary: number | null,
   response: BuildResponse,
 ): Promise<void> {
+  evictStale()
   const features = doc.features ?? []
   const key = await computeCacheKey(docId, features, rollbackPosition, pickBoundary)
   const entry: CacheEntry = {
@@ -62,7 +87,9 @@ export async function cacheBuildResponse(
     pick_boundary: pickBoundary,
     buildResponse: response,
   }
+  if (cache.has(key)) cache.delete(key)
   cache.set(key, entry)
+  evictIfOverMax()
 }
 
 export async function invalidateDocCache(docId: string): Promise<void> {

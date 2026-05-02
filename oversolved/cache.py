@@ -33,16 +33,19 @@ class TtlCache(Generic[T]):
             if entry is None:
                 return None
             value, _ = entry
-            # Reset TTL on access (LRU + TTL)
+            # Reset TTL on access and move to end for LRU ordering
+            del self._data[key]
             self._data[key] = (value, time.time())
             return value
 
     def set(self, key: str, value: T) -> None:
         with self._lock:
             self._evict_expired()
+            if key in self._data:
+                del self._data[key]
             self._data[key] = (value, time.time())
             if len(self._data) > self._max_size:
-                # Remove oldest by insertion/access time
+                # Remove oldest (first inserted, which is LRU due to move-to-end on access)
                 oldest = next(iter(self._data))
                 del self._data[oldest]
 

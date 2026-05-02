@@ -1,4 +1,5 @@
 import copy
+import json
 import logging
 import math
 import time
@@ -125,16 +126,17 @@ def _dedupe_repo(repo: Repository) -> None:
     """Drop duplicate identical ancestry registrations from a repo snapshot."""
     for key, element_ids in list(repo.anchestral.items()):
         unique_ids: list[str] = []
-        unique_payloads: list[dict[str, Any]] = []
+        seen: set[str] = set()
         for element_id in element_ids:
             payload = repo.elements.get(element_id)
             if payload is None:
                 continue
-            if any(existing_payload == payload for existing_payload in unique_payloads):
+            payload_hash = json.dumps(payload, sort_keys=True)
+            if payload_hash in seen:
                 repo.elements.pop(element_id, None)
                 continue
+            seen.add(payload_hash)
             unique_ids.append(element_id)
-            unique_payloads.append(payload)
         if unique_ids:
             repo.anchestral[key] = unique_ids
         else:
@@ -343,16 +345,19 @@ def build(
             logger.warning("Failed to register B-rep ancestry for body %s", body.id)
 
     features_by_id = {f["id"]: f for f in features}
+    registered_this_cycle: set[str] = set()
 
     for i, feature in enumerate(features[first_dirty:]):
         fid = feature.get("id", "")
 
-        # BEFORE solving non-first features, re-register all existing bodies so that plane
-        # queries resolve to the latest geometry (including after fuse operations).
+        # BEFORE solving non-first features, re-register bodies that may have changed.
+        # Skip bodies already registered this cycle to avoid O(N*M) re-registration
+        # when many dirty features follow a single body-modifying feature.
         if i > 0:
             for body in body_store.values():
-                if body.shape and body.created_by:
+                if body.shape and body.created_by and body.id not in registered_this_cycle:
                     _register_body_faces(body)
+                    registered_this_cycle.add(body.id)
 
         feature_result = _try_solve_feature(feature, global_repo, body_store, features_by_id)
         _post_register(global_repo, fid, feature, feature_result)
