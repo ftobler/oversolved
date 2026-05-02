@@ -54,8 +54,13 @@ def run_server(args: argparse.Namespace) -> None:
         serve(app, host=args.host, port=args.port)
 
 
-def _get_db_from_config(args: argparse.Namespace):
-    """Build a Database instance from CLI args."""
+def _get_db_from_config(args: argparse.Namespace, init_db: bool = True):
+    """Build a Database instance from CLI args.
+
+    Args:
+        args: Parsed CLI arguments.
+        init_db: If True (default), runs pending migrations on connect.
+    """
     from oversolved.db import Database, DatabaseConnection, SQLiteConnection, MariaDBConnection
 
     config = _validate_db_args(args)
@@ -73,7 +78,8 @@ def _get_db_from_config(args: argparse.Namespace):
     db = Database(conn)
     from oversolved.app import _register_migrations
     _register_migrations(db)
-    db.init()
+    if init_db:
+        db.init()
     return db
 
 
@@ -133,6 +139,19 @@ def build_parser() -> argparse.ArgumentParser:
     server_parser.add_argument("--db-name", help="MariaDB database name")
     server_parser.add_argument("--debug", action="store_true", help="Run in debug mode (use Flask development server)")
 
+    # db subcommand group
+    db_parser = subparsers.add_parser("db", help="Manage database schema")
+    db_parser.add_argument("--db-type", choices=["sqlite", "mariadb"], default="sqlite", help="Database type (default: sqlite)")
+    db_parser.add_argument("--db-path", default="oversolved.db", help="SQLite database path (default: oversolved.db)")
+    db_parser.add_argument("--db-host", help="MariaDB host")
+    db_parser.add_argument("--db-user", help="MariaDB username")
+    db_parser.add_argument("--db-password", help="MariaDB password")
+    db_parser.add_argument("--db-name", help="MariaDB database name")
+    db_subparsers = db_parser.add_subparsers(dest="db_command", help="DB subcommand")
+    db_subparsers.add_parser("status", help="Show current schema version and pending migrations")
+    db_subparsers.add_parser("upgrade", help="Apply all pending migrations")
+    db_subparsers.add_parser("check", help="Exit 1 if pending migrations exist (for CI gates)")
+
     # run_tasks subcommand
     tasks_parser = subparsers.add_parser("run_tasks", help="Run periodic task checks")
     tasks_parser.add_argument("--db-type", choices=["sqlite", "mariadb"], default="sqlite", help="Database type (default: sqlite)")
@@ -148,6 +167,60 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def cmd_db(args: argparse.Namespace) -> None:
+    """Manage database schema (status, upgrade, check)."""
+    db = _get_db_from_config(args, init_db=False)
+
+    if args.db_command == "status":
+        current = db.get_current_version()
+        pending = db.get_pending_migrations()
+        latest = max((v for v, _, _ in db._migrations), default=0)
+
+        print(f"Schema version: {current}")
+        print(f"Latest:         {latest}")
+        print()
+        if not db._migrations:
+            print("No migrations registered.")
+        else:
+            print(f"{'Version':<8} {'Name':<35} {'Status'}")
+            print("-" * 60)
+            for version, name, _ in db._migrations:
+                status = "applied" if version <= current else "pending"
+                print(f"{version:<8} {name:<35} {status}")
+        db.close()
+        return
+
+    if args.db_command == "upgrade":
+        pending = db.get_pending_migrations()
+        if not pending:
+            print("Database is up to date.")
+        else:
+            for version, name, _ in pending:
+                print(f"Applying migration {version}: {name}...")
+                db.get_current_version()  # refresh before each in case of partial state
+                still_pending = db.get_pending_migrations()
+                match = [(v, n, f) for v, n, f in still_pending if v == version]
+                if match:
+                    v, n, func = match[0]
+                    db.apply_migration(v, n, func)
+                    print("  done.")
+                else:
+                    print("  already applied, skipping.")
+        db.close()
+        return
+
+    if args.db_command == "check":
+        pending = db.get_pending_migrations()
+        db.close()
+        if pending:
+            names = ", ".join(n for _, n, _ in pending)
+            print(f"Pending migrations: {names}")
+            sys.exit(1)
+        else:
+            print("Database is up to date.")
+        return
+
+
 def main() -> None:
     """Main entry point."""
     parser = build_parser()
@@ -157,6 +230,8 @@ def main() -> None:
         run_server(args)
     elif args.command == "run_tasks":
         run_tasks(args)
+    elif args.command == "db":
+        cmd_db(args)
     else:
         # Default to run_server for backward compatibility
         sys.argv = [sys.argv[0], "run_server"] + sys.argv[1:]

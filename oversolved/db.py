@@ -94,8 +94,8 @@ class Database:
         self._migrations.append((version, name, func))
         self._migrations.sort(key=lambda x: x[0])
 
-    def init(self) -> None:
-        """Initialize database and run pending migrations."""
+    def _ensure_schema_table(self) -> None:
+        """Create schema_version table if it does not exist."""
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
@@ -104,23 +104,38 @@ class Database:
         """)
         self.conn.commit()
 
+    def get_current_version(self) -> int:
+        """Return the current schema version (0 if no migrations have been applied)."""
+        self._ensure_schema_table()
         cursor = self.conn.execute("SELECT MAX(version) FROM schema_version")
         row = cursor.fetchone()
         self._version = row[0] if row[0] is not None else 0
+        return self._version
 
-        for version, name, func in self._migrations:
-            if version > self._version:
-                try:
-                    func(self)
-                    self.conn.execute(
-                        "INSERT INTO schema_version (version, name) VALUES (?, ?)",
-                        (version, name),
-                    )
-                    self.conn.commit()
-                    self._version = version
-                except Exception:
-                    self.conn.rollback()
-                    raise
+    def get_pending_migrations(self) -> list[tuple[int, str, Callable]]:
+        """Return migrations with version > current version."""
+        current = self.get_current_version()
+        return [(v, n, f) for v, n, f in self._migrations if v > current]
+
+    def apply_migration(self, version: int, name: str, func: Callable) -> None:
+        """Run a single migration and record it in schema_version."""
+        self._ensure_schema_table()
+        try:
+            func(self)
+            self.conn.execute(
+                "INSERT INTO schema_version (version, name) VALUES (?, ?)",
+                (version, name),
+            )
+            self.conn.commit()
+            self._version = version
+        except Exception:
+            self.conn.rollback()
+            raise
+
+    def init(self) -> None:
+        """Initialize database and run pending migrations."""
+        for version, name, func in self.get_pending_migrations():
+            self.apply_migration(version, name, func)
 
     def execute(self, query: str, params: tuple = ()) -> Any:
         """Execute a query."""
