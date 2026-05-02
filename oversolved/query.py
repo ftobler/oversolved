@@ -150,7 +150,8 @@ def _parse_ancestry(query_str: str) -> tuple[list[str], str | None]:
     """Parse `?A,B;<idA><idB>` or `?A,B;<idA><idB>:<TYPE>`.
     Returns (list_of_id_strings, type_restriction_or_None).
     """
-    assert query_str[0] == '?'
+    if not query_str.startswith('?'):
+        raise ValueError(f"Invalid ancestry query: {query_str!r}")
     semi = query_str.index(';')
     lengths_hex = query_str[1:semi]
     rest = query_str[semi + 1:]

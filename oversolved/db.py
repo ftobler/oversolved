@@ -2,6 +2,7 @@
 
 import sqlite3
 import secrets
+import uuid as uuid_mod
 import contextlib
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Callable
@@ -87,6 +88,7 @@ class Database:
     def __init__(self, connection: DatabaseConnection):
         self.conn = connection
         self._migrations: list[tuple[int, str, Callable]] = []
+        self._migrations_registered = False
         self._version = 0
 
     def register_migration(self, version: int, name: str, func: Callable) -> None:
@@ -458,12 +460,17 @@ class SessionStore:
 class DocumentStore:
     """Store and retrieve YAML documents."""
 
+    _SORT_ORDERS = {
+        "modified": "d.updated_at DESC",
+        "modified_asc": "d.updated_at ASC",
+    }
+
     def __init__(self, db: Database):
         self.db = db
 
     def create(self, name: str, owner_id: int) -> str:
         """Create a new document and return its UUID."""
-        uuid = secrets.token_urlsafe(16)
+        uuid = uuid_mod.uuid4().hex
         with self.db.transaction():
             self.db.execute(
                 "INSERT INTO documents (uuid, name, content, owner_id) VALUES (?, ?, ?, ?)",
@@ -607,7 +614,7 @@ class DocumentStore:
         doc = self.retrieve(uuid)
         if doc is None:
             return None
-        new_uuid = secrets.token_urlsafe(16)
+        new_uuid = uuid_mod.uuid4().hex
         with self.db.transaction():
             self.db.execute(
                 "INSERT INTO documents (uuid, name, content, owner_id, preview_image) VALUES (?, ?, ?, ?, ?)",
@@ -620,7 +627,7 @@ class DocumentStore:
         doc = self.retrieve(uuid)
         if doc is None:
             return None
-        new_uuid = secrets.token_urlsafe(16)
+        new_uuid = uuid_mod.uuid4().hex
         with self.db.transaction():
             self.db.execute(
                 "INSERT INTO documents (uuid, name, content, owner_id, preview_image) VALUES (?, ?, ?, ?, ?)",
@@ -753,12 +760,7 @@ class DocumentStore:
 
     def list_owned_and_shared(self, user_id: int, sort: str = "name", include_shared: bool = True) -> list[dict]:
         """List documents owned by or shared with a user."""
-        if sort == "modified":
-            order = "d.updated_at DESC"
-        elif sort == "modified_asc":
-            order = "d.updated_at ASC"
-        else:
-            order = "name"
+        order = self._SORT_ORDERS.get(sort, "name")
 
         if include_shared:
             cursor = self.db.execute(
@@ -798,12 +800,7 @@ class DocumentStore:
 
     def list_public(self, sort: str = "name") -> list[dict]:
         """List all public documents with owner username."""
-        if sort == "modified":
-            order = "d.updated_at DESC"
-        elif sort == "modified_asc":
-            order = "d.updated_at ASC"
-        else:
-            order = "name"
+        order = self._SORT_ORDERS.get(sort, "name")
         cursor = self.db.execute(
             f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
@@ -827,12 +824,7 @@ class DocumentStore:
 
     def list_shared_with(self, user_id: int, sort: str = "name") -> list[dict]:
         """List documents explicitly shared with this user (excluding owned and public-only)."""
-        if sort == "modified":
-            order = "d.updated_at DESC"
-        elif sort == "modified_asc":
-            order = "d.updated_at ASC"
-        else:
-            order = "name"
+        order = self._SORT_ORDERS.get(sort, "name")
         cursor = self.db.execute(
             f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
@@ -859,18 +851,13 @@ class DocumentStore:
     def search_by_name(self, user_id: int, search_query: str,
                        filter_type: str = "all", sort: str = "name") -> list[dict]:
         """Server-side case-insensitive search across documents visible to the user."""
-        if sort == "modified":
-            order = "d.updated_at DESC"
-        elif sort == "modified_asc":
-            order = "d.updated_at ASC"
-        else:
-            order = "name"
+        order = self._SORT_ORDERS.get(sort, "name")
 
         like = f"%{search_query}%"
 
         if filter_type == "owned":
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     WHERE d.deleted_at IS NULL AND d.owner_id = ? AND LOWER(d.name) LIKE LOWER(?)
@@ -879,7 +866,7 @@ class DocumentStore:
             )
         elif filter_type == "shared":
             cursor = self.db.execute(
-                f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     JOIN document_shares ds ON d.uuid = ds.document_uuid
@@ -889,7 +876,7 @@ class DocumentStore:
             )
         elif filter_type == "public":
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     WHERE d.deleted_at IS NULL AND d.is_public = 1 AND LOWER(d.name) LIKE LOWER(?)
@@ -898,7 +885,7 @@ class DocumentStore:
             )
         else:  # all
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username
+                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     WHERE d.deleted_at IS NULL AND (d.owner_id = ?
@@ -918,6 +905,7 @@ class DocumentStore:
                 "updated_at": row[4],
                 "is_owner": row[5] == user_id,
                 "owner_username": row[6],
+                "is_public": bool(row[7]),
             }
             for row in cursor.fetchall()
         ]
@@ -938,12 +926,9 @@ class DocumentStore:
 
     def list_by_owner(self, owner_id: int, sort: str = "name") -> list[dict]:
         """List all documents for an owner."""
-        if sort == "modified":
-            order = "updated_at DESC"
-        else:
-            order = "name"
+        order = self._SORT_ORDERS.get(sort, "name")
         cursor = self.db.execute(
-            f"SELECT uuid, name, preview_image, created_at, updated_at, is_public FROM documents WHERE deleted_at IS NULL AND owner_id = ? ORDER BY {order}",
+            f"SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.is_public FROM documents d WHERE d.deleted_at IS NULL AND d.owner_id = ? ORDER BY {order}",
             (owner_id,),
         )
         return [

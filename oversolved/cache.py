@@ -54,6 +54,11 @@ class TtlCache(Generic[T]):
         with self._lock:
             self._data.clear()
 
+    def get_entries(self) -> dict[str, tuple[T, float]]:
+        """Return a copy of all cache entries for inspection."""
+        with self._lock:
+            return dict(self._data)
+
     def _evict_expired(self) -> None:
         now = time.time()
         expired = [k for k, (_, ts) in self._data.items() if now - ts > self._ttl]
@@ -75,6 +80,10 @@ class L2Cache:
         self._cache_dir = cache_dir
         self._lock = threading.Lock()
         os.makedirs(cache_dir, exist_ok=True)
+
+    def get_cache_dir(self) -> str:
+        """Return the cache directory path (public accessor for admin inspection)."""
+        return self._cache_dir
 
     def _path(self, key: str) -> str:
         safe_key = key.replace("/", "_").replace("\\", "_")

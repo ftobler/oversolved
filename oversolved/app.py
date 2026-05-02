@@ -1,5 +1,6 @@
 """Flask application for the Oversolved solver API."""
 
+import base64
 import json
 import os
 import uuid
@@ -619,8 +620,6 @@ def create_app(config: dict | None = None) -> Flask:
             "is_public": doc["is_public"],
         }
         if doc["preview_image"]:
-            import base64
-
             response["preview_image"] = base64.b64encode(doc["preview_image"]).decode(
                 "utf-8"
             )
@@ -649,8 +648,6 @@ def create_app(config: dict | None = None) -> Flask:
                 return jsonify({"error": "Forbidden"}), 403
         doc_store.store_content(uuid, content)
         if data.get("preview_image"):
-            import base64
-
             image_data = base64.b64decode(data["preview_image"])
             try:
                 img = Image.open(BytesIO(image_data))
@@ -884,7 +881,6 @@ def create_app(config: dict | None = None) -> Flask:
             return jsonify({"error": "Forbidden"}), 403
         if not doc["preview_image"]:
             return "", 404
-        from flask import Response
         return Response(doc["preview_image"], mimetype="image/png")
 
     @app.route("/api/documents/import", methods=["POST"])
@@ -897,8 +893,11 @@ def create_app(config: dict | None = None) -> Flask:
         content = data.get("content") or ""
         if not name:
             return jsonify({"error": "Document name required"}), 400
-        uuid = DocumentStore(get_db()).create(name, g.current_user["id"])
-        DocumentStore(get_db()).store_content(uuid, content)
+        db = get_db()
+        doc_store = DocumentStore(db)
+        with db.transaction():
+            uuid = doc_store.create(name, g.current_user["id"])
+            doc_store.store_content(uuid, content)
         return jsonify({"uuid": uuid, "name": name}), 201
 
     # ── Upload ───────────────────────────────────────────────────────────────────────
@@ -915,7 +914,8 @@ def create_app(config: dict | None = None) -> Flask:
         if ext not in ALLOWED_EXTENSIONS:
             return jsonify({"error": f"unsupported extension {ext!r}"}), 400
         file_id = str(uuid.uuid4()) + ext
-        assert "/" not in file_id and "\\" not in file_id
+        if "/" in file_id or "\\" in file_id:
+            return jsonify({"error": "Invalid file extension"}), 400
         f.save(os.path.join(UPLOAD_DIR, file_id))
         return jsonify({"file_id": file_id})
 
@@ -1189,7 +1189,7 @@ def create_app(config: dict | None = None) -> Flask:
     def inspect_cache() -> Response | tuple:
         """Return cache inventory for debug inspector."""
         l1_entries = []
-        for doc_id, (state, accessed_time) in _build_state_cache._data.items():
+        for doc_id, (state, accessed_time) in _build_state_cache.get_entries().items():
             shape_size_estimate = 0
             for checkpoint in state.checkpoints.values():
                 for body in checkpoint.body_store_snapshot.values():
@@ -1205,7 +1205,7 @@ def create_app(config: dict | None = None) -> Flask:
 
         l2_entries = []
         if app.config.get("L2_CACHE_ENABLED"):
-            cache_dir = Path(_l2_cache._cache_dir)
+            cache_dir = Path(_l2_cache.get_cache_dir())
             if cache_dir.exists():
                 for file_path in cache_dir.glob("*.json"):
                     doc_id = file_path.stem
@@ -1235,7 +1235,7 @@ def create_app(config: dict | None = None) -> Flask:
         if not app.config.get("L2_CACHE_ENABLED"):
             return jsonify({"error": "L2 cache not enabled"}), 400
 
-        file_path = Path(_l2_cache._cache_dir) / f"{doc_id}.json"
+        file_path = Path(_l2_cache.get_cache_dir()) / f"{doc_id}.json"
         if not file_path.exists():
             return jsonify({"error": f"Entry not found: {doc_id}"}), 404
 
@@ -1253,7 +1253,7 @@ def create_app(config: dict | None = None) -> Flask:
         if not app.config.get("L2_CACHE_ENABLED"):
             return jsonify({"error": "L2 cache not enabled"}), 400
 
-        file_path = Path(_l2_cache._cache_dir) / f"{doc_id}.json"
+        file_path = Path(_l2_cache.get_cache_dir()) / f"{doc_id}.json"
         if not file_path.exists():
             return jsonify({"error": f"Entry not found: {doc_id}"}), 404
 
@@ -1406,7 +1406,10 @@ def create_app(config: dict | None = None) -> Flask:
 
 
 def _register_migrations(db: Database) -> None:
-    """Register all database migrations."""
+    """Register all database migrations. Idempotent — only registers once per Database instance."""
+    if db._migrations_registered:
+        return
+    db._migrations_registered = True
 
     def migration_001_initial_schema(database: Database):
         """Create users, sessions, and documents tables."""
