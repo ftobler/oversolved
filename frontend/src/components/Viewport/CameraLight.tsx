@@ -3,20 +3,39 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
 export default function CameraLight() {
-  const lightRef = useRef<THREE.PointLight>(null)
+  const lightRef = useRef<THREE.DirectionalLight>(null)
   const { camera } = useThree()
 
   useFrame(() => {
     if (!lightRef.current) return
-    // Place light in the same direction as the camera but much closer
-    // to the scene so surfaces show a visible distance falloff.
-    lightRef.current.position.copy(camera.position).multiplyScalar(0.1)
+    lightRef.current.position.copy(camera.position)
+    lightRef.current.target.position.set(-50, -50, 0)
+    lightRef.current.target.updateMatrixWorld()
   })
 
   return (
     <>
       <ambientLight intensity={0.45} />
-      <pointLight ref={lightRef} intensity={600} distance={0} decay={3} />
+      <directionalLight ref={lightRef} intensity={0.9} />
     </>
   )
 }
+
+// export default function CameraLight() {
+//   const lightRef = useRef<THREE.DirectionalLight>(null)
+//   const { camera } = useThree()
+
+//   useFrame(() => {
+//     if (!lightRef.current) return
+//     lightRef.current.position.copy(camera.position)
+//     lightRef.current.target.position.set(-50, -50, 0)
+//     lightRef.current.target.updateMatrixWorld()
+//   })
+
+//   return (
+//     <>
+//       <ambientLight intensity={0.45} />
+//       <directionalLight ref={lightRef} intensity={0.9} />
+//     </>
+//   )
+// }
