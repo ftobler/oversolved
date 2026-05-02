@@ -254,15 +254,15 @@ class Repository:
         self.elements: dict[str, Any] = {}
         # frozenset of ancestor ids -> list of element ids
         # (multiple elements can share the same ancestor set, e.g. two circle intersections)
-        self.anchestral: dict[frozenset, list[str]] = {}
+        self.ancestral: dict[frozenset, list[str]] = {}
 
     def register(self, id: str, obj: Any):
         self.elements[id] = obj
 
-    def register_anchestor(self, anchestors: list[str], obj: Any) -> str:
+    def register_ancestor(self, ancestors: list[str], obj: Any) -> str:
         id = secrets.token_urlsafe(9)
-        key = frozenset(anchestors)
-        self.anchestral.setdefault(key, []).append(id)
+        key = frozenset(ancestors)
+        self.ancestral.setdefault(key, []).append(id)
         self.elements[id] = obj
         return id
 
@@ -334,7 +334,7 @@ class Repository:
         # This enables partial resolve: a query with more ids than needed still resolves
         # if the element was re-registered with a smaller ancestor set.
         candidate_ids: list[str] = []
-        for registered_key, element_ids in self.anchestral.items():
+        for registered_key, element_ids in self.ancestral.items():
             if registered_key <= query_set:
                 candidate_ids.extend(element_ids)
 
@@ -382,7 +382,7 @@ class Repository:
         ids, type_restriction = _parse_ancestry(query_str)
         query_set = frozenset(ids)
         candidate_ids: list[str] = []
-        for registered_key, element_ids in self.anchestral.items():
+        for registered_key, element_ids in self.ancestral.items():
             if query_set <= registered_key:  # query IDs are contained in registered ancestry
                 candidate_ids.extend(element_ids)
         if type_restriction is not None:
@@ -399,7 +399,7 @@ class Repository:
         """Typed variant of query_all accepting an AncestryQuery object."""
         query_set = frozenset(q.ancestor_ids)
         candidate_ids: list[str] = []
-        for registered_key, element_ids in self.anchestral.items():
+        for registered_key, element_ids in self.ancestral.items():
             if query_set <= registered_key:
                 candidate_ids.extend(element_ids)
         if q.type_restriction is not None:

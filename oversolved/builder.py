@@ -92,21 +92,21 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
             "y_axis": y_axis,
         }
         key = frozenset(ancestor_ids)
-        existing_ids = global_repo.anchestral.get(key, [])
+        existing_ids = global_repo.ancestral.get(key, [])
         if any(global_repo.elements.get(eid) == payload for eid in existing_ids):
             continue  # already registered with identical payload
         # Remove stale entries (body modified by boolean ops since early registration).
         for eid in existing_ids:
             global_repo.elements.pop(eid, None)
-        global_repo.anchestral.pop(key, None)
-        global_repo.register_anchestor(ancestor_ids, payload)
+        global_repo.ancestral.pop(key, None)
+        global_repo.register_ancestor(ancestor_ids, payload)
 
 
 def _register_solid_ancestry(global_repo, body: Body) -> None:
     """Register the solid body itself as a queryable solid entity."""
     if global_repo is None or not body.created_by:
         return
-    global_repo.register_anchestor(
+    global_repo.register_ancestor(
         [f"@{body.created_by}"],
         {"type": "solid", "body_id": body.id, "created_by": body.created_by},
     )
@@ -116,7 +116,7 @@ def _register_extrusion_feature(global_repo, feature_id: str, sketch_id: str = "
     """Register an extrusion feature as a queryable extrusion-feature entity."""
     if global_repo is None or not feature_id:
         return
-    global_repo.register_anchestor(
+    global_repo.register_ancestor(
         [f"@{feature_id}"],
         {"type": "extrusion-feature", "feature_id": feature_id, "sketch_id": sketch_id},
     )
@@ -124,7 +124,7 @@ def _register_extrusion_feature(global_repo, feature_id: str, sketch_id: str = "
 
 def _dedupe_repo(repo: Repository) -> None:
     """Drop duplicate identical ancestry registrations from a repo snapshot."""
-    for key, element_ids in list(repo.anchestral.items()):
+    for key, element_ids in list(repo.ancestral.items()):
         unique_ids: list[str] = []
         seen: set[str] = set()
         for element_id in element_ids:
@@ -138,21 +138,21 @@ def _dedupe_repo(repo: Repository) -> None:
             seen.add(payload_hash)
             unique_ids.append(element_id)
         if unique_ids:
-            repo.anchestral[key] = unique_ids
+            repo.ancestral[key] = unique_ids
         else:
-            repo.anchestral.pop(key, None)
+            repo.ancestral.pop(key, None)
 
 
 def _repo_from_snapshot(repo_snapshot: dict) -> Repository:
     """Rehydrate a repository snapshot, including ancestry index state."""
     repo = Repository()
-    if "elements" in repo_snapshot or "anchestral" in repo_snapshot:
+    if "elements" in repo_snapshot or "ancestral" in repo_snapshot or "anchestral" in repo_snapshot:
         repo.elements = copy.deepcopy(repo_snapshot.get("elements", {}))
-        repo.anchestral = copy.deepcopy(repo_snapshot.get("anchestral", {}))
+        repo.ancestral = copy.deepcopy(repo_snapshot.get("ancestral") or repo_snapshot.get("anchestral", {}))
     else:
         # Backward compatibility for older snapshots that only stored elements.
         repo.elements = copy.deepcopy(repo_snapshot)
-        repo.anchestral = {}
+        repo.ancestral = {}
     _dedupe_repo(repo)
     return repo
 
@@ -161,7 +161,7 @@ def _snapshot_repo(repo: Repository) -> dict[str, Any]:
     """Serialize the repository state needed for partial rebuild restoration."""
     return {
         "elements": copy.deepcopy(repo.elements),
-        "anchestral": copy.deepcopy(repo.anchestral),
+        "ancestral": copy.deepcopy(repo.ancestral),
     }
 
 
@@ -217,9 +217,9 @@ def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_quer
             "end": edge.get("end"),
         }
         key = frozenset(ancestor_ids)
-        for old_id in global_repo.anchestral.pop(key, []):
+        for old_id in global_repo.ancestral.pop(key, []):
             global_repo.elements.pop(old_id, None)
-        global_repo.register_anchestor(ancestor_ids, payload)
+        global_repo.register_ancestor(ancestor_ids, payload)
 
 
 def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vertex_queries: list) -> None:
@@ -236,9 +236,9 @@ def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vert
             "origin": pt,
         }
         key = frozenset(ancestor_ids)
-        for old_id in global_repo.anchestral.pop(key, []):
+        for old_id in global_repo.ancestral.pop(key, []):
             global_repo.elements.pop(old_id, None)
-        global_repo.register_anchestor(ancestor_ids, payload)
+        global_repo.register_ancestor(ancestor_ids, payload)
 
 
 def _tessellate_body_geometry(body: Body) -> dict[str, Any]:

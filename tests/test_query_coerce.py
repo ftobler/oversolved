@@ -10,7 +10,7 @@ class FakeBody:
 def test_query_coerce_face_to_solid():
     repo = Repository()
     body_store = {"body_ex1": FakeBody("body_ex1")}
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1"],
         {"type": "flatface", "body_id": "body_ex1", "face_index": 0},
     )
@@ -22,11 +22,11 @@ def test_query_coerce_face_to_solid():
 def test_query_coerce_solid_to_face():
     repo = Repository()
     body_store = {"body_ex1": FakeBody("body_ex1")}
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1"],
         {"type": "solid", "body_id": "body_ex1"},
     )
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1face0", "@ex1"],
         {"type": "flatface", "body_id": "body_ex1", "face_index": 0},
     )
@@ -39,11 +39,11 @@ def test_query_coerce_solid_to_face():
 def test_query_coerce_edge_to_vertex():
     repo = Repository()
     body_store = {"body_ex1": FakeBody("body_ex1")}
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1edge0", "@ex1"],
         {"type": "straightedge", "body_id": "body_ex1", "edge_index": 0},
     )
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1vertex0", "@ex1"],
         {"type": "vertex", "body_id": "body_ex1", "vertex_index": 0},
     )
@@ -56,11 +56,11 @@ def test_query_coerce_edge_to_vertex():
 def test_query_exact_match_takes_precedence():
     repo = Repository()
     body_store = {"body_ex1": FakeBody("body_ex1")}
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1"],
         {"type": "face", "body_id": "body_ex1"},
     )
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1"],
         {"type": "solid", "body_id": "body_ex1"},
     )
@@ -73,7 +73,7 @@ def test_query_exact_match_takes_precedence():
 def test_query_coerce_flatface_subtype_matches_face():
     repo = Repository()
     body_store = {"body_ex1": FakeBody("body_ex1")}
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1"],
         {"type": "flatface", "body_id": "body_ex1", "face_index": 0},
     )
@@ -85,7 +85,7 @@ def test_query_coerce_flatface_subtype_matches_face():
 
 def test_query_no_coercion_when_body_store_missing():
     repo = Repository()
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1"],
         {"type": "flatface", "body_id": "body_ex1", "face_index": 0},
     )
@@ -97,11 +97,11 @@ def test_query_no_coercion_when_body_store_missing():
 def test_query_coerce_face_to_edge():
     repo = Repository()
     body_store = {"body_ex1": FakeBody("body_ex1")}
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1face0", "@ex1"],
         {"type": "flatface", "body_id": "body_ex1", "face_index": 0},
     )
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1edge0", "@ex1"],
         {"type": "straightedge", "body_id": "body_ex1", "edge_index": 0},
     )
@@ -114,11 +114,11 @@ def test_query_coerce_face_to_edge():
 def test_query_coerce_solid_to_edge():
     repo = Repository()
     body_store = {"body_ex1": FakeBody("body_ex1")}
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1"],
         {"type": "solid", "body_id": "body_ex1"},
     )
-    repo.register_anchestor(
+    repo.register_ancestor(
         ["@ex1edge0", "@ex1"],
         {"type": "straightedge", "body_id": "body_ex1", "edge_index": 0},
     )

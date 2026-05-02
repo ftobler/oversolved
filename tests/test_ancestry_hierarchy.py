@@ -20,16 +20,16 @@ from oversolved.query import Repository, make_ancestry_query
 
 def test_query_all_returns_empty_for_non_ancestry_query():
     repo = Repository()
-    repo.register_anchestor(["@feat1face0", "@feat1"], {"type": "flatface"})
+    repo.register_ancestor(["@feat1face0", "@feat1"], {"type": "flatface"})
     assert repo.query_all("@feat1") == []
     assert repo.query_all("") == []
 
 
 def test_query_all_finds_by_feature_root():
     repo = Repository()
-    repo.register_anchestor(["@feat1face0", "@feat1"], {"type": "flatface", "idx": 0})
-    repo.register_anchestor(["@feat1face1", "@feat1"], {"type": "flatface", "idx": 1})
-    repo.register_anchestor(["@feat2face0", "@feat2"], {"type": "flatface", "idx": 99})
+    repo.register_ancestor(["@feat1face0", "@feat1"], {"type": "flatface", "idx": 0})
+    repo.register_ancestor(["@feat1face1", "@feat1"], {"type": "flatface", "idx": 1})
+    repo.register_ancestor(["@feat2face0", "@feat2"], {"type": "flatface", "idx": 99})
 
     results = repo.query_all(make_ancestry_query(["@feat1"], "flatface"))
     assert len(results) == 2
@@ -39,8 +39,8 @@ def test_query_all_finds_by_feature_root():
 
 def test_query_all_type_filters_correctly():
     repo = Repository()
-    repo.register_anchestor(["@feat1face0", "@feat1"], {"type": "flatface"})
-    repo.register_anchestor(["@feat1edge0", "@feat1"], {"type": "straightedge"})
+    repo.register_ancestor(["@feat1face0", "@feat1"], {"type": "flatface"})
+    repo.register_ancestor(["@feat1edge0", "@feat1"], {"type": "straightedge"})
 
     assert len(repo.query_all(make_ancestry_query(["@feat1"], "flatface"))) == 1
     assert len(repo.query_all(make_ancestry_query(["@feat1"], "straightedge"))) == 1
@@ -48,16 +48,16 @@ def test_query_all_type_filters_correctly():
 
 def test_query_all_without_type_restriction_returns_all():
     repo = Repository()
-    repo.register_anchestor(["@feat1face0", "@feat1"], {"type": "flatface"})
-    repo.register_anchestor(["@feat1edge0", "@feat1"], {"type": "straightedge"})
+    repo.register_ancestor(["@feat1face0", "@feat1"], {"type": "flatface"})
+    repo.register_ancestor(["@feat1edge0", "@feat1"], {"type": "straightedge"})
 
     assert len(repo.query_all(make_ancestry_query(["@feat1"]))) == 2
 
 
 def test_query_all_does_not_bleed_across_features():
     repo = Repository()
-    repo.register_anchestor(["@feat1face0", "@feat1"], {"type": "flatface"})
-    repo.register_anchestor(["@feat2face0", "@feat2"], {"type": "flatface"})
+    repo.register_ancestor(["@feat1face0", "@feat1"], {"type": "flatface"})
+    repo.register_ancestor(["@feat2face0", "@feat2"], {"type": "flatface"})
 
     feat1_results = repo.query_all(make_ancestry_query(["@feat1"], "flatface"))
     assert len(feat1_results) == 1
@@ -69,7 +69,7 @@ def test_query_all_does_not_bleed_across_features():
 def test_query_still_resolves_with_extended_ancestor_set():
     """Existing exact queries must still resolve after the feature root is added."""
     repo = Repository()
-    repo.register_anchestor(["@feat1face0", "@feat1"], {"type": "flatface", "x": 1})
+    repo.register_ancestor(["@feat1face0", "@feat1"], {"type": "flatface", "x": 1})
 
     result = repo.query(make_ancestry_query(["@feat1face0", "@feat1"], "flatface"))
     assert result is not None
@@ -78,8 +78,8 @@ def test_query_still_resolves_with_extended_ancestor_set():
 
 def test_query_solid_finds_registered_solid():
     repo = Repository()
-    repo.register_anchestor(["@ex1"], {"type": "solid", "created_by": "ex1"})
-    repo.register_anchestor(["@ex1face0", "@ex1"], {"type": "flatface"})
+    repo.register_ancestor(["@ex1"], {"type": "solid", "created_by": "ex1"})
+    repo.register_ancestor(["@ex1face0", "@ex1"], {"type": "flatface"})
 
     solid = repo.query(make_ancestry_query(["@ex1"], "solid"))
     assert solid is not None

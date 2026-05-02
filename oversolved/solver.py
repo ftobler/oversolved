@@ -528,7 +528,7 @@ def _register_topology_surfaces(
             world_origin = list(origin)
 
         ids, _ = _parse_ancestry(query)
-        global_repo.register_anchestor(
+        global_repo.register_ancestor(
             ids,
             {
                 "type": "flatface",
@@ -585,7 +585,7 @@ def _register_topology_edges(
             edge_data["radius"] = edge["radius"]
 
         ids, _ = _parse_ancestry(query)
-        global_repo.register_anchestor(ids, edge_data)
+        global_repo.register_ancestor(ids, edge_data)
 
 
 def _register_sketch_feature(
@@ -594,7 +594,7 @@ def _register_sketch_feature(
     """Register the sketch feature itself as a sketch-feature entity."""
     if not feature_id or "topology" not in feature_result:
         return
-    global_repo.register_anchestor(
+    global_repo.register_ancestor(
         [f"@{feature_id}"],
         {"type": "sketch-feature", "feature_id": feature_id},
     )
@@ -626,7 +626,7 @@ def _register_topology_vertices(
         query = make_ancestry_query(ancestor_ids, "vertex")
 
         ids, _ = _parse_ancestry(query)
-        global_repo.register_anchestor(
+        global_repo.register_ancestor(
             ids,
             {
                 "type": "vertex",

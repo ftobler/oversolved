@@ -80,6 +80,43 @@ class TestCronNext:
         assert result.hour == 6
         assert result.minute == 0
 
+    def test_cron_next_weekly(self):
+        now = datetime(2025, 6, 1, 10, 0, 0)  # Sunday
+        result = _cron_next("0 2 * * 1", now)  # Monday at 2 AM
+        assert result.weekday() == 0  # Monday
+        assert result.hour == 2
+        assert result.minute == 0
+
+    def test_cron_next_weekly_same_day_after(self):
+        now = datetime(2025, 6, 2, 10, 0, 0)  # Monday 10 AM
+        result = _cron_next("0 2 * * 1", now)  # Monday 2 AM (next week)
+        assert result.weekday() == 0  # Monday
+        assert result > now
+
+    def test_cron_next_daily_at_midnight_boundary(self):
+        now = datetime(2025, 6, 1, 0, 0, 0)  # Exactly midnight
+        result = _cron_next("0 2 * * *", now)
+        assert result.hour == 2
+        assert result.minute == 0
+        assert result.day == 1  # Same day, 2 AM is still ahead
+
+    def test_cron_next_month_boundary(self):
+        now = datetime(2025, 12, 31, 10, 0, 0)
+        result = _cron_next("0 2 * * *", now)
+        assert result.month == 1  # Jan next year
+        assert result.day == 1
+        assert result.hour == 2
+
+    def test_cron_next_invalid_expression(self):
+        with pytest.raises(ValueError, match="Invalid cron expression"):
+            _cron_next("not a cron", datetime.now())
+
+    def test_cron_next_whitespace_handling(self):
+        now = datetime(2025, 6, 1, 10, 0, 0)
+        result = _cron_next("  0 2 * * *  ", now)  # Extra whitespace
+        assert result.hour == 2
+        assert result.minute == 0
+
 
 class TestIsTaskDue:
     def test_never_run_is_due(self):
@@ -92,6 +129,34 @@ class TestIsTaskDue:
     def test_overdue_is_due(self):
         last_run = (datetime.now() - timedelta(days=2)).isoformat()
         assert is_task_due(last_run, "0 2 * * *") is True
+
+
+class TestTaskSchedulerEdgeCases:
+    def test_empty_scheduler_returns_empty(self, db):
+        scheduler = TaskScheduler()
+        results = scheduler.run_due_tasks(db)
+        assert results == []
+
+    def test_scheduler_with_no_registered_tasks(self, db):
+        """run_due_tasks with empty self.tasks produces no results."""
+        scheduler = TaskScheduler()
+        results = scheduler.run_due_tasks(db)
+        assert len(results) == 0
+
+    def test_is_task_due_with_future_last_run(self, db):
+        """A task with last_run_at in the future should not be due."""
+        future = (datetime.now() + timedelta(days=1)).isoformat()
+        assert is_task_due(future, "0 2 * * *") is False
+
+    def test_is_task_due_at_exact_time(self, db):
+        """A task last_run_at exactly at the cron time (within 1min) is not due."""
+        now = datetime.now()
+        # If now matches cron (2:00), last_run at 2:00 means not due yet
+        near_now = now.replace(hour=2, minute=0, second=0, microsecond=0)
+        if near_now > now:
+            near_now = near_now - timedelta(days=1)
+        last_run = near_now.isoformat()
+        assert is_task_due(last_run, "0 2 * * *") is False
 
 
 class TestRunDueTasks:

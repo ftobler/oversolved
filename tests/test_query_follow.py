@@ -677,8 +677,8 @@ def test_query_with_ambiguous_ancestry() -> None:
     print(f"\nQuery string: {query}")
 
     # Register two surfaces with the same ancestor set
-    _surface1 = repo.register_anchestor(ancestor_ids, {"type": "face", "id": "surface1"})  # noqa: F841
-    _surface2 = repo.register_anchestor(ancestor_ids, {"type": "face", "id": "surface2"})  # noqa: F841
+    _surface1 = repo.register_ancestor(ancestor_ids, {"type": "face", "id": "surface1"})  # noqa: F841
+    _surface2 = repo.register_ancestor(ancestor_ids, {"type": "face", "id": "surface2"})  # noqa: F841
 
     # Now try to query — should raise AmbiguousQueryError
     try:
@@ -738,8 +738,8 @@ def test_indexed_queries_dont_match_both() -> None:
     query0 = make_ancestry_query(ancestor_ids_0, "face")
     query1 = make_ancestry_query(ancestor_ids_1, "face")
 
-    surface0_id = repo.register_anchestor(ancestor_ids_0, {"type": "face", "id": "surface0"})
-    surface1_id = repo.register_anchestor(ancestor_ids_1, {"type": "face", "id": "surface1"})
+    surface0_id = repo.register_ancestor(ancestor_ids_0, {"type": "face", "id": "surface0"})
+    surface1_id = repo.register_ancestor(ancestor_ids_1, {"type": "face", "id": "surface1"})
 
     # Each query should resolve to exactly one surface (no ambiguity!)
     result0 = repo.query(query0)

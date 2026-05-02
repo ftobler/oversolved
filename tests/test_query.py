@@ -142,7 +142,7 @@ def test_local_query_subelement_with_context():
 def test_ancestry_query_exact():
     repo = Repository()
     pt = {"type": "pt", "x": 1.0, "y": 2.0}
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
 
     q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2])
     assert repo.query(q) is pt
@@ -151,7 +151,7 @@ def test_ancestry_query_exact():
 def test_ancestry_query_order_independent():
     repo = Repository()
     pt = {"type": "pt", "x": 1.0, "y": 2.0}
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
 
     q_reversed = make_ancestry_query(["@" + FEAT + ELE2, "@" + FEAT + ELE1])
     assert repo.query(q_reversed) is pt
@@ -166,7 +166,7 @@ def test_ancestry_query_missing():
 def test_ancestry_query_type_match():
     repo = Repository()
     pt = {"type": "pt", "x": 0.0, "y": 0.0}
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
 
     q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2], type_restriction="pt")
     assert repo.query(q) is pt
@@ -175,7 +175,7 @@ def test_ancestry_query_type_match():
 def test_ancestry_query_type_mismatch_returns_none():
     repo = Repository()
     pt = {"type": "pt", "x": 0.0, "y": 0.0}
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
 
     q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2], type_restriction="line")
     assert repo.query(q) is None
@@ -184,7 +184,7 @@ def test_ancestry_query_type_mismatch_returns_none():
 def test_ancestry_query_no_type_restriction_ignores_obj_type():
     repo = Repository()
     pt = {"type": "pt"}
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
 
     q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2])
     assert repo.query(q) is pt
@@ -202,7 +202,7 @@ def test_partial_resolve_extra_ancestor_in_query():
     repo = Repository()
     pt = {"type": "pt"}
     # Element registered with only A and B (geometry simplified)
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
 
     # Old query was stored with A, B, C (e.g. originally three lines met here)
     q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3])
@@ -213,7 +213,7 @@ def test_partial_resolve_with_type_restriction():
     """Partial resolve still honours type restriction."""
     repo = Repository()
     pt = {"type": "pt"}
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
 
     q = make_ancestry_query(
         ["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3],
@@ -225,7 +225,7 @@ def test_partial_resolve_with_type_restriction():
 def test_partial_resolve_type_mismatch_returns_none():
     repo = Repository()
     pt = {"type": "pt"}
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
 
     q = make_ancestry_query(
         ["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3],
@@ -238,7 +238,7 @@ def test_partial_resolve_not_triggered_when_ancestor_missing():
     """Query has {A, C} but element needs {A, B} — C is not B, no match."""
     repo = Repository()
     pt = {"type": "pt"}
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
 
     # Query doesn't include ELE2, so {ELE1, ELE2} ⊄ {ELE1, ELE3} → no match
     q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE3])
@@ -257,8 +257,8 @@ def test_ambiguous_same_ancestor_set_raises():
     repo = Repository()
     pt1 = {"type": "pt", "x": 1.0, "y": 0.0}
     pt2 = {"type": "pt", "x": -1.0, "y": 0.0}
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt1)
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt2)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt1)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt2)
 
     q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2])
     with pytest.raises(AmbiguousQueryError):
@@ -272,8 +272,8 @@ def test_ambiguous_partial_resolve_raises():
     pt1 = {"type": "pt"}
     pt2 = {"type": "pt"}
     # pt1 needs only {A, B}, pt2 needs only {A, C}
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt1)
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE3], pt2)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt1)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE3], pt2)
 
     # Query carries {A, B, C} — both subsets match
     q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3])
@@ -287,8 +287,8 @@ def test_ambiguous_resolved_by_type():
     repo = Repository()
     pt1 = {"type": "pt_upper"}
     pt2 = {"type": "pt_lower"}
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt1)
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt2)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt1)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt2)
 
     q = make_ancestry_query(
         ["@" + FEAT + ELE1, "@" + FEAT + ELE2], type_restriction="pt_upper"
@@ -301,8 +301,8 @@ def test_ambiguous_partial_resolved_by_type():
     repo = Repository()
     pt1 = {"type": "pt"}
     line1 = {"type": "line"}
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt1)
-    repo.register_anchestor(["@" + FEAT + ELE1, "@" + FEAT + ELE3], line1)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt1)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE3], line1)
 
     q = make_ancestry_query(
         ["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3],

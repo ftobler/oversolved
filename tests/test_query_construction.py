@@ -70,7 +70,7 @@ def test_repo_query_accepts_ancestry_query_object():
     repo = Repository()
     obj = {"type": "pt"}
     ids = ["@a", "@b"]
-    repo.register_anchestor(ids, obj)
+    repo.register_ancestor(ids, obj)
     aq = AncestryQuery(ancestor_ids=tuple(ids), type_restriction="pt")
     assert repo.query(aq) is obj
 

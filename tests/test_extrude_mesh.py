@@ -671,7 +671,7 @@ def test_extrude_from_brep_face_ancestry_query():
     This is the scenario where the user clicks the top face of ex1 in the 3D
     viewport and the frontend stores the ancestry query (e.g. ?...;@ex1face0@ex1:flatface)
     as the extrude sketch field.  Before the fix, _resolve_face_profile failed
-    because the face was not registered with register_anchestor.
+    because the face was not registered with register_ancestor.
     """
     from pytest import approx
     from oversolved.builder import build
