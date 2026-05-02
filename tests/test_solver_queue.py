@@ -1,7 +1,32 @@
 """Tests for DocumentSolver queue behavior."""
+import concurrent.futures
+import json
 import threading
 import time
+import yaml
+import pytest
+from oversolved.app import create_app
 from oversolved.solver_queue import DocumentSolver
+
+
+SIMPLE_YAML = """\
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    label: "Square"
+    initial:
+      line1: [0.0, 0.0, 1.0, 0.0]
+    entities:
+      - id: line1
+        kind: line
+    constraints:
+      - id: c_horiz
+        kind: horizontal
+        target: {entity: line1}
+"""
 
 
 def test_acquire_returns_incrementing_counters():
@@ -132,3 +157,86 @@ def test_concurrent_acquire_release():
     latest = solver.get_latest_result("shared_doc")
     assert latest is not None
     assert latest["result"] == 500, f"Expected counter 500, got {latest['result']}"
+
+
+@pytest.fixture
+def app(tmp_path, monkeypatch):
+    """Create a test Flask app with a file-based SQLite database."""
+    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
+    db_path = str(tmp_path / "test.db")
+    test_app = create_app(
+        {
+            "DB_TYPE": "sqlite",
+            "TESTING": True,
+            "DB_PATH": db_path,
+        }
+    )
+    return test_app
+
+
+def test_concurrent_solve_same_document(app):
+    """Concurrent solve requests for same document are serialized by DocumentSolver.
+
+    Sends two simultaneous solve requests for the same document and verifies
+    both complete successfully (the second waits for the first via the lock).
+    """
+    admin = app.test_client()
+    admin.post(
+        "/api/auth/login",
+        data=json.dumps({"username": "admin", "password": "admin"}),
+        content_type="application/json",
+    )
+
+    create_resp = admin.post(
+        "/api/documents",
+        data=json.dumps({"name": "ConcurrentTest"}),
+        content_type="application/json",
+    )
+    assert create_resp.status_code == 201
+    doc_id = json.loads(create_resp.data)["uuid"]
+
+    admin.put(
+        f"/api/documents/{doc_id}",
+        data=json.dumps({"content": SIMPLE_YAML}),
+        content_type="application/json",
+    )
+
+    parsed = yaml.safe_load(SIMPLE_YAML)
+    results = []
+    errors = []
+
+    def solve_request():
+        c = app.test_client()
+        login_resp = c.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        if login_resp.status_code != 200:
+            return None
+        resp = c.post(
+            "/api/solve",
+            data=json.dumps({
+                "id": doc_id,
+                "version": 1,
+                "kind": "part",
+                "features": parsed["features"],
+            }),
+            content_type="application/json",
+        )
+        return resp.status_code, json.loads(resp.data)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(solve_request) for _ in range(2)]
+        for f in concurrent.futures.as_completed(futures):
+            try:
+                results.append(f.result())
+            except Exception as e:
+                errors.append(e)
+
+    assert not errors, f"Errors occurred: {errors}"
+    assert len(results) == 2
+    for status_code, data in results:
+        assert status_code == 200, f"Got status {status_code}: {data}"
+        assert "result" in data
+        assert "sketch_1" in data["result"]
