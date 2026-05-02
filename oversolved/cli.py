@@ -16,7 +16,7 @@ def _positive_int(value: str) -> int:
 
 def _validate_db_args(args: argparse.Namespace) -> dict:
     """Build DB config dict and validate MariaDB args."""
-    config = {"DB_TYPE": args.db_type}
+    config = {"DB_TYPE": args.db_type, "DEBUG": getattr(args, "debug", False)}
 
     if args.db_type == "sqlite":
         config["DB_PATH"] = args.db_path
