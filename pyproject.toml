@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.scripts]
-oversolved = "oversolved.main:main"
+oversolved = "oversolved.cli:main"
 
 [project.optional-dependencies]
 dev = [
