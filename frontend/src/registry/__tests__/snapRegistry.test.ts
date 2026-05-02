@@ -13,7 +13,6 @@ describe('snapRegistry', () => {
   describe('SNAP_KINDS', () => {
     it('contains expected snap kinds', () => {
       expect(SNAP_KINDS).toContain('vertex')
-      expect(SNAP_KINDS).toContain('midpoint')
       expect(SNAP_KINDS).toContain('path')
       expect(SNAP_KINDS).toContain('kinda_horizontal')
       expect(SNAP_KINDS).toContain('kinda_vertical')
@@ -40,10 +39,9 @@ describe('snapRegistry', () => {
       }
     })
 
-    it('vertex dragged type can snap to vertex, midpoint, path, and alignment', () => {
+    it('vertex dragged type can snap to vertex, path, and alignment', () => {
       const vertexRule = SNAP_RULES.vertex
       expect(vertexRule).toContain('vertex')
-      expect(vertexRule).toContain('midpoint')
       expect(vertexRule).toContain('path')
       expect(vertexRule).toContain('kinda_horizontal')
       expect(vertexRule).toContain('kinda_vertical')
@@ -55,7 +53,6 @@ describe('snapRegistry', () => {
       expect(entityRule).toContain('kinda_horizontal')
       expect(entityRule).toContain('kinda_vertical')
       expect(entityRule).not.toContain('vertex')
-      expect(entityRule).not.toContain('midpoint')
     })
   })
 
@@ -78,17 +75,12 @@ describe('snapRegistry', () => {
 
     it('returns false when entity drag tries to snap to vertex', () => {
       expect(canSnapTo('entity', 'vertex')).toBe(false)
-      expect(canSnapTo('entity', 'midpoint')).toBe(false)
     })
   })
 
   describe('suggestConstraint', () => {
     it('returns coincident for vertex snap', () => {
       expect(suggestConstraint('vertex', 'vertex')).toBe('coincident')
-    })
-
-    it('returns coincident for midpoint snap', () => {
-      expect(suggestConstraint('vertex', 'midpoint')).toBe('coincident')
     })
 
     it('returns coincident for path snap', () => {
@@ -108,13 +100,11 @@ describe('snapRegistry', () => {
 
     it('returns null for invalid snap combination (entity dragging to vertex)', () => {
       expect(suggestConstraint('entity', 'vertex')).toBeNull()
-      expect(suggestConstraint('entity', 'midpoint')).toBeNull()
     })
 
     it('all suggested constraints are known constraint kinds', () => {
       const combinations: [string, string][] = [
         ['vertex', 'vertex'],
-        ['vertex', 'midpoint'],
         ['vertex', 'path'],
         ['vertex', 'kinda_horizontal'],
         ['vertex', 'kinda_vertical'],
@@ -123,7 +113,7 @@ describe('snapRegistry', () => {
         ['entity', 'kinda_vertical'],
       ]
       for (const [dt, sk] of combinations) {
-        const constraint = suggestConstraint(dt as 'vertex' | 'entity', sk as 'vertex' | 'midpoint' | 'path' | 'kinda_horizontal' | 'kinda_vertical')
+        const constraint = suggestConstraint(dt as 'vertex' | 'entity', sk as 'vertex' | 'path' | 'kinda_horizontal' | 'kinda_vertical')
         if (constraint) {
           expect(
             CONSTRAINT_BY_KIND.has(constraint),

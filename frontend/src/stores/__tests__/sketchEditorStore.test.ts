@@ -302,21 +302,19 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().drawHover).toBeNull()
     })
 
-    it('setDrawSnap stores vertexId and entityRef', () => {
-      useSketchEditorStore.getState().setDrawSnap('vertex:S1:L1:start', 'entity:S1:L1')
+    it('setDrawSnap stores vertexId', () => {
+      useSketchEditorStore.getState().setDrawSnap('vertex:S1:L1:start')
       expect(useSketchEditorStore.getState().drawSnapVertexId).toBe('vertex:S1:L1:start')
-      expect(useSketchEditorStore.getState().drawSnapEntityRef).toBe('entity:S1:L1')
     })
 
     it('clearDraw resets all draw state', () => {
       useSketchEditorStore.getState().addDrawPoint([1, 2])
       useSketchEditorStore.getState().setDrawHover([3, 4])
-      useSketchEditorStore.getState().setDrawSnap('vertex:S1:L1:start', 'entity:S1:L1')
+      useSketchEditorStore.getState().setDrawSnap('vertex:S1:L1:start')
       useSketchEditorStore.getState().clearDraw()
       expect(useSketchEditorStore.getState().drawPoints).toEqual([])
       expect(useSketchEditorStore.getState().drawHover).toBeNull()
       expect(useSketchEditorStore.getState().drawSnapVertexId).toBeNull()
-      expect(useSketchEditorStore.getState().drawSnapEntityRef).toBeNull()
     })
   })
 
@@ -582,17 +580,6 @@ describe('sketchEditorStore', () => {
       const ids = new Set(['entity:S1:L1', 'entity:S1:L2'])
       useSketchEditorStore.getState().setHoveredConstraintEntities(ids)
       expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(ids)
-    })
-
-    it('setHoveredPathSnap updates path snap state', () => {
-      useSketchEditorStore.getState().setHoveredPathSnap({ entityId: 'L1', position: [5, 5] })
-      expect(useSketchEditorStore.getState().hoveredPathSnap).toEqual({ entityId: 'L1', position: [5, 5] })
-    })
-
-    it('setHoveredPathSnap clears on null', () => {
-      useSketchEditorStore.getState().setHoveredPathSnap({ entityId: 'L1', position: [5, 5] })
-      useSketchEditorStore.getState().setHoveredPathSnap(null)
-      expect(useSketchEditorStore.getState().hoveredPathSnap).toBeNull()
     })
 
     it('setHoveredPlane updates hovered plane', () => {

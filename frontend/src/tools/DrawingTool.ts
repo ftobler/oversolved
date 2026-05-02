@@ -7,7 +7,6 @@ export interface DrawingToolContext extends ToolContext {
   setDrawHover: (pt: Point | null) => void
   drawPoints: Point[]
   drawSnapVertexId: string | null
-  drawSnapEntityRef: string | null
 }
 
 export interface DrawingTool extends Tool {

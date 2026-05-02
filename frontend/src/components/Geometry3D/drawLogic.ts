@@ -11,10 +11,7 @@ export interface DrawSnapState {
   hoveredSnapKind: SnapKind | null
   /** Composite ID: "entity:featureId:entityId" or null */
   hoveredEntityId: string | null
-  pathSnapPosition: [number, number] | null
-  pathSnapEntityRef: string | null
   drawSnapVertexId: string | null
-  drawSnapEntityRef: string | null
   alignmentSnapPoint: [number, number] | null
   alignmentSnapKind: string | null
   alignmentSnapVertexId: string | null
@@ -27,14 +24,14 @@ export interface DrawClickResult {
    * array -- replace draw points with this array (intermediate clicks, arc 2nd click)
    */
   nextDrawPoints: [number, number][] | null
-  /** null means leave draw snap unchanged; an object replaces both fields. */
-  nextDrawSnap: { vertexId: string | null; entityRef: string | null } | null
+  /** null means leave draw snap unchanged; a string replaces the vertexId. */
+  nextDrawSnap: { vertexId: string | null } | null
   /** When true the adapter must call clearDraw() + setActiveTool(null). */
   clearTool: boolean
 }
 
 /** Resolve the effective click position from snap state.
- *  Priority: alignment snap (projected onto axis) > vertex hover > path snap > raw cursor. */
+ *  Priority: alignment snap (projected onto axis) > vertex hover > raw cursor. */
 export function resolveSnapPoint(
   rawPoint: readonly [number, number],
   snap: DrawSnapState,
@@ -46,7 +43,6 @@ export function resolveSnapPoint(
     return [snap.alignmentSnapPoint[0], rawPoint[1]]
   }
   if (snap.hoveredVertexPosition) return snap.hoveredVertexPosition
-  if (snap.pathSnapPosition) return snap.pathSnapPosition
   return [rawPoint[0], rawPoint[1]]
 }
 
@@ -80,33 +76,24 @@ export function computeDrawClick(
   if (tool === 'line') {
     if (pts.length === 0) {
       const drawSnap = snap.hoveredVertexId
-        ? { vertexId: snap.hoveredVertexId, entityRef: null }
-        : snap.pathSnapPosition && snap.pathSnapEntityRef
-          ? { vertexId: null, entityRef: snap.pathSnapEntityRef }
-          : null
+        ? { vertexId: snap.hoveredVertexId }
+        : null
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
     }
 
     const lineId = newEntityIdFn()
     const mutations: Mutation[] = []
-    const startSnapVertexId = snap.drawSnapVertexId
-    const startSnapEntityRef = snap.drawSnapEntityRef
-    const hasStartSnap = !!(startSnapVertexId || startSnapEntityRef)
+    const hasStartSnap = !!snap.drawSnapVertexId
     const hasEndSnap = !!(
       (snap.alignmentSnapPoint && snap.alignmentSnapKind && snap.alignmentSnapVertexId) ||
-      (snap.hoveredVertexId && snap.hoveredSnapKind) ||
-      (snap.pathSnapPosition && snap.pathSnapEntityRef)
+      (snap.hoveredVertexId && snap.hoveredSnapKind)
     )
 
     if (hasStartSnap || hasEndSnap) {
-      if (startSnapVertexId) {
+      if (snap.drawSnapVertexId) {
         mutations.push({ type: 'add_entity_with_constraint', featureId, kind: 'line',
           params: [pts[0][0], pts[0][1], px, py], vertexKey: 'start',
-          snapVertexId: startSnapVertexId, constraintKind: 'coincident', entityId: lineId })
-      } else if (startSnapEntityRef) {
-        mutations.push({ type: 'add_entity_with_constraint', featureId, kind: 'line',
-          params: [pts[0][0], pts[0][1], px, py], vertexKey: 'start',
-          constraintKind: 'coincident', snapEntityRef: startSnapEntityRef, entityId: lineId })
+          snapVertexId: snap.drawSnapVertexId, constraintKind: 'coincident', entityId: lineId })
       } else {
         mutations.push({ type: 'add_entity', featureId, kind: 'line',
           params: [pts[0][0], pts[0][1], px, py], entityId: lineId })
@@ -125,9 +112,6 @@ export function computeDrawClick(
         const constraintKind = suggestConstraint('vertex', snap.hoveredSnapKind) ?? 'coincident'
         mutations.push({ type: 'add_constraint', featureId, kind: constraintKind,
           targets: [`vertex:${featureId}:${lineId}:end`, snap.hoveredVertexId] })
-      } else if (snap.pathSnapPosition && snap.pathSnapEntityRef) {
-        mutations.push({ type: 'add_constraint', featureId, kind: 'coincident',
-          targets: [`vertex:${featureId}:${lineId}:end`, `entity:${featureId}:*`] })
       }
     } else {
       mutations.push({ type: 'add_entity', featureId, kind: 'line',
@@ -140,26 +124,18 @@ export function computeDrawClick(
   if (tool === 'circle') {
     if (pts.length === 0) {
       const drawSnap = snap.hoveredVertexId
-        ? { vertexId: snap.hoveredVertexId, entityRef: null }
-        : snap.pathSnapPosition && snap.pathSnapEntityRef
-          ? { vertexId: null, entityRef: snap.pathSnapEntityRef }
-          : null
+        ? { vertexId: snap.hoveredVertexId }
+        : null
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
     }
 
     const r = Math.hypot(px - pts[0][0], py - pts[0][1])
     if (r <= 0) return nothing
-    const centerSnapVertexId = snap.drawSnapVertexId
-    const centerSnapEntityRef = snap.drawSnapEntityRef
     let mutation: Mutation
-    if (centerSnapVertexId) {
+    if (snap.drawSnapVertexId) {
       mutation = { type: 'add_entity_with_constraint', featureId, kind: 'circle',
         params: [pts[0][0], pts[0][1], r], vertexKey: 'center',
-        snapVertexId: centerSnapVertexId, constraintKind: 'coincident' }
-    } else if (centerSnapEntityRef) {
-      mutation = { type: 'add_entity_with_constraint', featureId, kind: 'circle',
-        params: [pts[0][0], pts[0][1], r], vertexKey: 'center',
-        constraintKind: 'coincident', snapEntityRef: centerSnapEntityRef }
+        snapVertexId: snap.drawSnapVertexId, constraintKind: 'coincident' }
     } else {
       mutation = { type: 'add_entity', featureId, kind: 'circle',
         params: [pts[0][0], pts[0][1], r] }
@@ -170,10 +146,8 @@ export function computeDrawClick(
   if (tool === 'arc') {
     if (pts.length === 0) {
       const drawSnap = snap.hoveredVertexId
-        ? { vertexId: snap.hoveredVertexId, entityRef: null }
-        : snap.pathSnapPosition && snap.pathSnapEntityRef
-          ? { vertexId: null, entityRef: snap.pathSnapEntityRef }
-          : null
+        ? { vertexId: snap.hoveredVertexId }
+        : null
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
     }
     if (pts.length === 1) {
@@ -197,10 +171,8 @@ export function computeDrawClick(
   if (tool === 'rect') {
     if (pts.length === 0) {
       const drawSnap = snap.hoveredVertexId
-        ? { vertexId: snap.hoveredVertexId, entityRef: null }
-        : snap.pathSnapPosition && snap.pathSnapEntityRef
-          ? { vertexId: null, entityRef: snap.pathSnapEntityRef }
-          : null
+        ? { vertexId: snap.hoveredVertexId }
+        : null
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
     }
     return {
@@ -214,10 +186,8 @@ export function computeDrawClick(
   if (tool === 'center_rect') {
     if (pts.length === 0) {
       const drawSnap = snap.hoveredVertexId
-        ? { vertexId: snap.hoveredVertexId, entityRef: null }
-        : snap.pathSnapPosition && snap.pathSnapEntityRef
-          ? { vertexId: null, entityRef: snap.pathSnapEntityRef }
-          : null
+        ? { vertexId: snap.hoveredVertexId }
+        : null
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
     }
     return {

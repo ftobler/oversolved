@@ -114,7 +114,6 @@ interface SketchEditorState {
   hoveredVertexId: string | null
   hoveredVertexPosition: [number, number] | null
   hoveredSnapKind: SnapKind | null
-  hoveredPathSnap: { entityId: string; position: [number, number] } | null
   hoveredConstraintEntityIds: Set<string>
   hoveredPlaneId: string | null
   hoveredSurfaceId: string | null
@@ -125,7 +124,6 @@ interface SketchEditorState {
   hoveredFaceCenter: [number, number, number] | null
   setHoveredEntity: (id: string | null) => void
   setHoveredVertex: (id: string | null, position: [number, number] | null, snapKind?: SnapKind | null) => void
-  setHoveredPathSnap: (snap: { entityId: string; position: [number, number] } | null) => void
   setHoveredConstraintEntities: (ids: Set<string>) => void
   setHoveredPlane: (id: string | null) => void
   setHoveredSurface: (id: string | null) => void
@@ -152,10 +150,9 @@ interface SketchEditorState {
   drawPoints: [number, number][]
   drawHover: [number, number] | null
   drawSnapVertexId: string | null
-  drawSnapEntityRef: string | null
   addDrawPoint: (pt: [number, number]) => void
   setDrawHover: (pt: [number, number] | null) => void
-  setDrawSnap: (vertexId: string | null, entityRef: string | null) => void
+  setDrawSnap: (vertexId: string | null) => void
   clearDraw: () => void
 
   // NAVIGATION SUBSYSTEM
@@ -230,13 +227,11 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   hoveredFaceCenter: null,
   hoveredVertexPosition: null,
   hoveredSnapKind: null,
-  hoveredPathSnap: null,
   activeTool: null,
   activeFeatureId: null,
   drawPoints: [],
   drawHover: null,
   drawSnapVertexId: null,
-  drawSnapEntityRef: null,
   pendingDimTarget: null,
   pendingDimEntityKind: null,
   pendingDialog: null,
@@ -329,8 +324,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setHoveredFaceGeometry: (normal, center) => set({ hoveredFaceNormal: normal, hoveredFaceCenter: center }),
 
-  setHoveredPathSnap: (snap) => set({ hoveredPathSnap: snap }),
-
   setActiveTool: (tool) => {
     set({ activeTool: tool, drawPoints: [], drawHover: null })
   },
@@ -370,8 +363,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),
   setDrawHover: (pt) => set({ drawHover: pt }),
-  setDrawSnap: (vertexId, entityRef) => set({ drawSnapVertexId: vertexId, drawSnapEntityRef: entityRef }),
-  clearDraw: () => set({ drawPoints: [], drawHover: null, drawSnapVertexId: null, drawSnapEntityRef: null }),
+  setDrawSnap: (vertexId) => set({ drawSnapVertexId: vertexId }),
+  clearDraw: () => set({ drawPoints: [], drawHover: null, drawSnapVertexId: null }),
 
   openDialog: (opts) => set({ pendingDialog: opts }),
   closeDialog: () => set({ pendingDialog: null }),

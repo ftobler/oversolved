@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect } from 'react'
+import { useRef, useEffect } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
@@ -10,7 +10,6 @@ import { DashedLine } from '../sketch_dimensions'
 import { COLOR_PREVIEW } from './constants'
 import { useAlignmentSnapEffect } from '../interaction/useAlignmentSnapEffect'
 import type { Sketch } from '../../types/cad'
-import { nearestPointOnEntity } from './nearestPoint'
 import { randomId } from '../../utils/yamlMutations'
 import { computeDrawClick } from './drawLogic'
 import type { DrawSnapState } from './drawLogic'
@@ -161,20 +160,6 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const drawLastPoint = drawPoints.length > 0 ? drawPoints[drawPoints.length - 1] : null
   useAlignmentSnapEffect(sketch, drawHover, drawLastPoint)
 
-  const pathSnap = useMemo(() => {
-    if (!sketch || !drawHover || !hoveredEntityId) return null
-    if (hoveredEntityId.startsWith('vertex:')) return null
-
-    const parts = hoveredEntityId.split(':')
-    if (parts.length < 3 || parts[0] !== 'entity') return null
-    const entityId = parts[2]
-    const entity = sketch[entityId]
-    if (!entity) return null
-
-    const [hx, hy] = drawHover
-    return nearestPointOnEntity(hx, hy, entity)
-  }, [sketch, drawHover, hoveredEntityId])
-
   // Resolve the sketch group ref: prefer explicit prop, fall back to mesh parent.
   const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? {
     get current() { return meshRef.current?.parent ?? null },
@@ -244,10 +229,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           hoveredVertexPosition,
           hoveredSnapKind,
           hoveredEntityId,
-          pathSnapPosition: pathSnap?.position ?? null,
-          pathSnapEntityRef: pathSnap ? hoveredEntityId : null,
           drawSnapVertexId: state.drawSnapVertexId,
-          drawSnapEntityRef: state.drawSnapEntityRef,
           alignmentSnapPoint: state.alignmentSnapPoint,
           alignmentSnapKind: state.alignmentSnapKind,
           alignmentSnapVertexId: state.alignmentSnapVertexId,
@@ -278,7 +260,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
         }
 
         if (result.nextDrawSnap !== null) {
-          setDrawSnap(result.nextDrawSnap.vertexId, result.nextDrawSnap.entityRef)
+          setDrawSnap(result.nextDrawSnap.vertexId)
         }
       }}
       onPointerOut={() => setDrawHover(null)}

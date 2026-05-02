@@ -17,7 +17,6 @@ function createMockContext(overrides: Partial<DrawingToolContext> = {}): Drawing
     setDrawHover: vi.fn(),
     drawPoints: [],
     drawSnapVertexId: null,
-    drawSnapEntityRef: null,
     ...overrides,
   }
 }

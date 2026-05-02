@@ -23,9 +23,8 @@ describe('alignment snap for draw tool', () => {
       expect(suggestConstraint('entity', 'kinda_vertical')).toBe('vertical')
     })
 
-    it('returns null for non-alignment snap kinds', () => {
+    it('returns coincident for vertex and path snap kinds', () => {
       expect(suggestConstraint('vertex', 'vertex')).toBe('coincident')
-      expect(suggestConstraint('vertex', 'midpoint')).toBe('coincident')
       expect(suggestConstraint('vertex', 'path')).toBe('coincident')
     })
   })

@@ -11,10 +11,7 @@ const emptySnap = (): DrawSnapState => ({
   hoveredVertexPosition: null,
   hoveredSnapKind: null,
   hoveredEntityId: null,
-  pathSnapPosition: null,
-  pathSnapEntityRef: null,
   drawSnapVertexId: null,
-  drawSnapEntityRef: null,
   alignmentSnapPoint: null,
   alignmentSnapKind: null,
   alignmentSnapVertexId: null,
@@ -23,21 +20,6 @@ const emptySnap = (): DrawSnapState => ({
 describe('resolveSnapPoint', () => {
   it('returns raw point when no snap active', () => {
     expect(resolveSnapPoint([3, 4], emptySnap())).toEqual([3, 4])
-  })
-
-  it('vertex snap wins over path snap', () => {
-    const snap = emptySnap()
-    snap.hoveredVertexPosition = [10, 20]
-    snap.pathSnapPosition = [5, 5]
-    snap.pathSnapEntityRef = 'entity:S1:L1'
-    expect(resolveSnapPoint([0, 0], snap)).toEqual([10, 20])
-  })
-
-  it('path snap wins over raw cursor', () => {
-    const snap = emptySnap()
-    snap.pathSnapPosition = [7, 8]
-    snap.pathSnapEntityRef = 'entity:S1:L1'
-    expect(resolveSnapPoint([0, 0], snap)).toEqual([7, 8])
   })
 
   it('kinda_horizontal alignment snap pins y from anchor', () => {
@@ -95,7 +77,6 @@ describe('computeDrawClick - line tool', () => {
     snap.hoveredVertexPosition = [5, 0]
     const result = computeDrawClick('line', [], [5, 0], snap, FEATURE, newId)
     expect(result.nextDrawSnap?.vertexId).toBe('vertex:S1:L1:end')
-    expect(result.nextDrawSnap?.entityRef).toBeNull()
   })
 
   it('second click with no snap emits add_entity and clearTool', () => {
@@ -117,16 +98,6 @@ describe('computeDrawClick - line tool', () => {
     if (result.mutations[0].type === 'add_entity_with_constraint') {
       expect(result.mutations[0].vertexKey).toBe('start')
       expect(result.mutations[0].snapVertexId).toBe('vertex:S1:L1:end')
-    }
-  })
-
-  it('second click with start entity snap emits add_entity_with_constraint with entityRef', () => {
-    const snap = emptySnap()
-    snap.drawSnapEntityRef = 'entity:S1:L1'
-    const result = computeDrawClick('line', [[0, 0]], [5, 5], snap, FEATURE, newId)
-    expect(result.mutations[0].type).toBe('add_entity_with_constraint')
-    if (result.mutations[0].type === 'add_entity_with_constraint') {
-      expect(result.mutations[0].snapEntityRef).toBe('entity:S1:L1')
     }
   })
 
