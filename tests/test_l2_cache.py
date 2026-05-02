@@ -92,7 +92,7 @@ class TestSerialization:
         checkpoint = FeatureCheckpoint(
             spec={"id": "ex1", "kind": "extrude"},
             result={"status": "ok"},
-            repo_snapshot={"elements": {}, "anchestral": {}},
+            repo_snapshot={"elements": {}, "ancestral": {}},
             body_store_snapshot={"body_0": body},
         )
         state = BuildState(feature_order=["sk1", "ex1"], checkpoints={"ex1": checkpoint})
@@ -133,7 +133,7 @@ class TestSerialization:
         checkpoint = FeatureCheckpoint(
             spec={"id": "ex1", "kind": "extrude"},
             result={"status": "ok"},
-            repo_snapshot={"elements": {}, "anchestral": {}},
+            repo_snapshot={"elements": {}, "ancestral": {}},
             body_store_snapshot={"body_0": body},
         )
         state = BuildState(feature_order=["ex1"], checkpoints={"ex1": checkpoint})
@@ -169,7 +169,7 @@ class TestL2Cache:
         checkpoint = FeatureCheckpoint(
             spec={"id": "ex1", "kind": "extrude"},
             result={"status": "ok"},
-            repo_snapshot={"elements": {}, "anchestral": {}},
+            repo_snapshot={"elements": {}, "ancestral": {}},
             body_store_snapshot={"body_0": body},
         )
         state = BuildState(feature_order=["ex1"], checkpoints={"ex1": checkpoint})
@@ -223,7 +223,7 @@ class TestL2Cache:
         checkpoint = FeatureCheckpoint(
             spec={"id": "ex1", "kind": "extrude"},
             result={"status": "ok"},
-            repo_snapshot={"elements": {}, "anchestral": {}},
+            repo_snapshot={"elements": {}, "ancestral": {}},
             body_store_snapshot={"body_0": body},
         )
         state = BuildState(feature_order=["ex1"], checkpoints={"ex1": checkpoint})

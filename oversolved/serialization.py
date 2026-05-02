@@ -14,7 +14,7 @@ def _serialize_repo_snapshot(repo_snapshot: dict) -> dict:
     result: dict[str, Any] = {
         "elements": copy.deepcopy(repo_snapshot.get("elements", {}))
     }
-    ancestral = repo_snapshot.get("ancestral") or repo_snapshot.get("anchestral", {})
+    ancestral = repo_snapshot.get("ancestral", {})
     result["ancestral"] = [
         {"keys": sorted(list(k)), "values": v}
         for k, v in ancestral.items()
@@ -29,7 +29,7 @@ def _deserialize_repo_snapshot(data: dict) -> dict:
     result: dict[str, Any] = {
         "elements": copy.deepcopy(data.get("elements", {}))
     }
-    ancestral_data = data.get("ancestral") or data.get("anchestral", {})
+    ancestral_data = data.get("ancestral", {})
     if isinstance(ancestral_data, list):
         result["ancestral"] = {
             frozenset(item["keys"]): item["values"]

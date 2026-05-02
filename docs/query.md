@@ -103,7 +103,7 @@ The ancestry query pattern extends to 3D B-rep faces from solid bodies. This ena
 Query: "?d,d;@extrude1face0:flatface"
    ↓ parse (query.py:_parse_ancestry)
 IDs: ["@extrude1face0"]
-   ↓ lookup (Repository.anchestral)
+   ↓ lookup (Repository.ancestral)
 Registered under: frozenset({"@extrude1face0"})
    ↓ match + type filter → return registered object
 Result: {"type": "flatface", "centroid": [...], "normal": [...]}
@@ -111,6 +111,6 @@ Result: {"type": "flatface", "centroid": [...], "normal": [...]}
 
 ---
 
-When a element is created it's id must be registered. This is done with a dictionary. Elements which do not have a id but only anchestral information are given a new random ID. In a separate anchestral dictionary its anchesters resolve to that random id.
+When a element is created it's id must be registered. This is done with a dictionary. Elements which do not have a id but only ancestral information are given a new random ID. In a separate ancestral dictionary its ancestors resolve to that random id.
 
 

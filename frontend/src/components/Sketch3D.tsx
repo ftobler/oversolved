@@ -3,12 +3,11 @@ import { Line } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Sketch, Constraints, Topology, Point, TopologySurface, TopologyEdge, TopologyArcEdge, Entity, LineSegment, Circle, Arc, PointEntity } from '../types/cad'
+import { COLOR_SOLVED, COLOR_HOVER } from '../utils/partColors'
 import { p2w, sampleArc, getEntityBounds } from './sketch_helpers'
 import { DashedLine, ConstraintOverlays } from './sketch_dimensions'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 
-const COLOR_SOLVED = '#4fc3f7'
-const COLOR_HOVER = '#ffffff'
 const ARC_SEGMENTS = 64
 
 /** 10-gon dot with constant pixel radius regardless of zoom.

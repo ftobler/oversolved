@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Sketch, Constraints, Point, ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity } from '../types/cad'
 import { getDefaultParams } from '../registry'
+import { getEntityKind } from '../types/cad'
 
 /** Convert flat array format (from AST initial or server solve) to UI Sketch format.
  *  Ensures all entities are present in result, defaulting to zero-params if missing. */
@@ -103,23 +104,23 @@ function resolveQueryRef(q: string | undefined, sketch: Sketch): { entity: strin
 }
 
 export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string }): [number, number] | null {
-  const e = sketch[ref.entity]
-  if (!e) return null
+  const entity = sketch[ref.entity]
+  if (!entity) return null
   const pt = ref.point || 'start'
 
-  if ('start' in e && 'end' in e && 'radius' in e) {
-    const arc = e as any
+  const kind = getEntityKind(entity)
+  if (kind === 'arc') {
+    const arc = entity as any
     return pt !== 'end' ? arc.start : arc.end
-  } else if ('start' in e && 'end' in e) {
-    const line = e as any
+  } else if (kind === 'line') {
+    const line = entity as any
     return pt === 'end' ? line.end : line.start
-  } else if ('center' in e) {
-    return (e as any).center
-  } else if ('x' in e) {
-    const p = e as any
+  } else if (kind === 'circle') {
+    return (entity as any).center
+  } else {
+    const p = entity as any
     return [p.x, p.y]
   }
-  return null
 }
 
 export function computeConstraintRender(constraint: any, sketch: Sketch): any {

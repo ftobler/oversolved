@@ -5,7 +5,7 @@ import type { PartDoc, SketchData, Mutation, EntityStatus, BuildResponse, PartSt
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
 import { unflattenGeometry } from '../utils/geometryMapping'
 import { getCachedBuildResponse, cacheBuildResponse } from '../utils/buildCache'
-import { PART_COLOR_PALETTE } from '../components/Geometry3D/constants'
+import { PART_COLOR_PALETTE, normalizeHexColor } from '../utils/partColors'
 import {
   applyMoveVertex,
   applyMoveEntity,
@@ -101,17 +101,6 @@ export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
 ]
 
 const BUILTIN_FEATURE_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
-
-function normalizeHexColor(color: string | undefined): string | null {
-  if (!color) return null
-  const trimmed = color.trim()
-  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toUpperCase()
-  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
-    const s = trimmed.slice(1)
-    return (`#${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}`).toUpperCase()
-  }
-  return null
-}
 
 function pickPartColor(partNumber: number): string {
   return PART_COLOR_PALETTE[(partNumber - 1) % PART_COLOR_PALETTE.length]

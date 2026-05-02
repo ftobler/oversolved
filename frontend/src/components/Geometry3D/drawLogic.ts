@@ -4,6 +4,7 @@
 import type { Mutation, Entity } from '../../types/cad'
 import type { SnapKind } from '../../registry'
 import { suggestConstraint } from '../../registry'
+import { getEntityKind } from '../../types/cad'
 
 export interface DrawSnapState {
   hoveredVertexId: string | null
@@ -212,9 +213,10 @@ export function computeDrawClick(
     const entity = otherSketches?.[sourceFeatureId]?.[sourceEntityId]
       ?? sketch?.[sourceEntityId]
     if (entity) {
-      if ('radius' in entity && 'angle_start' in entity) kind = 'projected_arc'
-      else if ('radius' in entity) kind = 'projected_circle'
-      else if ('x' in entity) kind = 'projected_point'
+      const ek = getEntityKind(entity)
+      if (ek === 'arc') kind = 'projected_arc'
+      else if (ek === 'circle') kind = 'projected_circle'
+      else if (ek === 'point') kind = 'projected_point'
     }
     return {
       mutations: [{ type: 'add_projected_entity', featureId, kind, source }],

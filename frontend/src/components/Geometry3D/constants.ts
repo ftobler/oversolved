@@ -1,22 +1,21 @@
-// 3D body colors
-export const COLOR_BODY_DEFAULT  = '#6ab59b'
-export const PART_COLOR_PALETTE = ['#6AB59B', '#A8D5FF', '#B8E8C8', '#FFD6A5', '#F7C6C7', '#D4C7FF', '#FEE6A8', '#CDE7F0', '#F6C7A8']
-export const COLOR_BODY_EDGE     = '#d3ede4'
-export const COLOR_BODY_HOVER    = '#91ccb7'
-export const COLOR_BODY_SELECTED = '#b5a16a'
-export const COLOR_BODY_EDGE_SEL = '#ffffff'
-
-// Geometry3D color palette
-export const COLOR_SOLVED = '#0288d1'  // darker blue for underconstrained
-export const COLOR_FULLY_CONSTRAINED = '#ffffff'  // white for fully constrained
-export const COLOR_ERROR = '#ef5350'
-export const COLOR_INACTIVE = '#3a4048'
-export const COLOR_HOVER = '#ffffff'
-export const COLOR_SELECTED = '#ff9800'
-export const COLOR_CONSTRAINT_HOVER = '#fff176'  // entity highlighted because a constraint on it is hovered
-export const COLOR_PREVIEW = '#aaaaaa'
-export const COLOR_PROJECTED = '#ffca28'  // amber — projected/reference geometry
-export const COLOR_SNAP = '#aaaaaa'  // snap indicator during drag (same hue as preview by default)
+export {
+  COLOR_BODY_DEFAULT,
+  PART_COLOR_PALETTE,
+  COLOR_BODY_EDGE,
+  COLOR_BODY_HOVER,
+  COLOR_BODY_SELECTED,
+  COLOR_BODY_EDGE_SEL,
+  COLOR_SOLVED,
+  COLOR_FULLY_CONSTRAINED,
+  COLOR_ERROR,
+  COLOR_INACTIVE,
+  COLOR_HOVER,
+  COLOR_SELECTED,
+  COLOR_CONSTRAINT_HOVER,
+  COLOR_PREVIEW,
+  COLOR_PROJECTED,
+  COLOR_SNAP,
+} from '../../utils/partColors'
 
 // Drag snap — vertex pull zone must be larger than entity body pull zone so that
 // dragging near an endpoint always snaps to the vertex, not the entity body.

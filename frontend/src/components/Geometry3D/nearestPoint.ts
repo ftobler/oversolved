@@ -2,6 +2,7 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import type { LineSegment, Circle, Arc, PointEntity, Entity } from '../../types/cad'
+import { getEntityKind } from '../../types/cad'
 
 export interface NearestPointResult {
   position: [number, number]
@@ -77,13 +78,14 @@ export function nearestPointOnEntity(
   px: number, py: number,
   entity: Entity
 ): NearestPointResult | null {
-  if ('start' in entity && 'end' in entity && 'radius' in entity) {
+  const kind = getEntityKind(entity)
+  if (kind === 'arc') {
     const arc = entity as Arc
     return nearestPointOnArc(px, py, arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
-  } else if ('start' in entity && 'end' in entity) {
+  } else if (kind === 'line') {
     const line = entity as LineSegment
     return nearestPointOnLine(px, py, line.start[0], line.start[1], line.end[0], line.end[1])
-  } else if ('center' in entity) {
+  } else if (kind === 'circle') {
     const circ = entity as Circle
     return nearestPointOnCircle(px, py, circ.center[0], circ.center[1], circ.radius)
   } else if ('x' in entity) {

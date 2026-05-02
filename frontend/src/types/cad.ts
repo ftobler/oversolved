@@ -343,6 +343,15 @@ export function isProjectedPoint(e: Entity): e is ProjectedPointEntity {
   return isProjectedEntity(e) && 'x' in e
 }
 
+export type EntityKind = 'line' | 'arc' | 'circle' | 'point'
+
+export function getEntityKind(entity: Entity): EntityKind {
+  if ('start' in entity && 'end' in entity && 'radius' in entity) return 'arc'
+  if ('start' in entity && 'end' in entity) return 'line'
+  if ('center' in entity && 'radius' in entity) return 'circle'
+  return 'point'
+}
+
 export interface Sketch {
   [entityId: string]: Entity
 }

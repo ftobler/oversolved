@@ -1,5 +1,6 @@
 import type { Sketch, LineSegment, Arc, Circle, PointEntity, BodyResult } from '../types/cad'
 import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, measure3dSelection, type Plane3D } from '../registry/measurementRegistry'
+import { getEntityKind } from '../types/cad'
 
 /**
  * Compute the best measurement for a set of selected entities.
@@ -81,22 +82,14 @@ export function computeMeasurements(
       }
     }
 
-    // Determine entity type by checking which properties exist
-    if ('start' in entity && 'end' in entity) {
-      const e = entity as unknown as Record<string, unknown>
-      const angleProps = e.angle_start
-      if (angleProps !== undefined) {
-        arcs.push(entity as Arc)
-      } else {
-        lines.push(entity as LineSegment)
-      }
-    } else if ('center' in entity && 'radius' in entity) {
-      const e = entity as unknown as Record<string, unknown>
-      const angleProps = e.angle_start
-      if (angleProps === undefined) {
-        circles.push(entity as Circle)
-      }
-    } else if ('x' in entity) {
+    const kind = getEntityKind(entity)
+    if (kind === 'arc') {
+      arcs.push(entity as Arc)
+    } else if (kind === 'line') {
+      lines.push(entity as LineSegment)
+    } else if (kind === 'circle') {
+      circles.push(entity as Circle)
+    } else if (kind === 'point') {
       points.push(entity as PointEntity)
     }
   }

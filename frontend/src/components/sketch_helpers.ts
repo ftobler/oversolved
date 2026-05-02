@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { Entity, LineSegment, Circle, Arc, PointEntity, Point } from '../types/cad'
+import { getEntityKind } from '../types/cad'
 import { RENDER_KIND_TO_ICON } from '../registry'
 
 /** Check if all values in a tuple are finite numbers. */
@@ -83,17 +84,18 @@ export function sampleArcCCW(cx: number, cy: number, r: number, a0deg: number, a
 }
 
 export function getEntityBounds(entity: Entity): { minX: number; maxX: number; minY: number; maxY: number } {
-  if ('start' in entity && 'end' in entity && 'radius' in entity) {
+  const kind = getEntityKind(entity)
+  if (kind === 'arc') {
     const arc = entity as Arc
     const pts: [number, number][] = [arc.start, arc.end,
       [arc.center[0] - arc.radius, arc.center[1]], [arc.center[0] + arc.radius, arc.center[1]],
       [arc.center[0], arc.center[1] - arc.radius], [arc.center[0], arc.center[1] + arc.radius],
     ]
     return { minX: Math.min(...pts.map(p => p[0])), maxX: Math.max(...pts.map(p => p[0])), minY: Math.min(...pts.map(p => p[1])), maxY: Math.max(...pts.map(p => p[1])) }
-  } else if ('start' in entity) {
+  } else if (kind === 'line') {
     const l = entity as LineSegment
     return { minX: Math.min(l.start[0], l.end[0]), maxX: Math.max(l.start[0], l.end[0]), minY: Math.min(l.start[1], l.end[1]), maxY: Math.max(l.start[1], l.end[1]) }
-  } else if ('center' in entity) {
+  } else if (kind === 'circle') {
     const c = entity as Circle
     return { minX: c.center[0] - c.radius, maxX: c.center[0] + c.radius, minY: c.center[1] - c.radius, maxY: c.center[1] + c.radius }
   } else {

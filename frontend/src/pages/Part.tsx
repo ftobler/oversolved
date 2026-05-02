@@ -55,19 +55,9 @@ import contextColorIcon from '../assets/icons/context-color.svg'
 import contextCameraIcon from '../assets/icons/context-camera.svg'
 
 // IDs of built-in features that cannot be deleted.
-const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
-const PART_COLOR_PRESETS = ['#6AB59B', '#A8D5FF', '#B8E8C8', '#FFD6A5', '#F7C6C7', '#D4C7FF', '#FEE6A8', '#CDE7F0', '#F6C7A8']
+import { PART_COLOR_PALETTE, normalizeHexColor } from '../utils/partColors'
 
-function normalizeHexColor(color: string | undefined): string | null {
-  if (!color) return null
-  const trimmed = color.trim()
-  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toUpperCase()
-  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
-    const s = trimmed.slice(1)
-    return (`#${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}`).toUpperCase()
-  }
-  return null
-}
+const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
 
 function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
@@ -1534,7 +1524,7 @@ useEffect(() => {
             <span className="part-slider-value">{(partMetalnessDraft * 100).toFixed(0)}%</span>
           </div>
           <div className="part-color-swatches">
-            {PART_COLOR_PRESETS.map(c => (
+            {PART_COLOR_PALETTE.map(c => (
               <button
                 key={c}
                 className={`part-color-swatch ${normalizeHexColor(partColorDraft) === c ? 'selected' : ''}`}
