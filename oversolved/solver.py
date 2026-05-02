@@ -392,8 +392,11 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
                         }
                     )
                     _projected_ids.add(eid)
-                except Exception:
-                    pass  # leave initial as-is if projection fails
+                except Exception as e:
+                    logger.warning(
+                        "Projection failed for entity %s in sketch %s: %s",
+                        eid, feature.get("id", "?"), e,
+                    )
 
     # Inject the projected origin point -- always present at (0, 0), not user-editable.
     entities[ORIGIN_ID] = {"id": ORIGIN_ID, "kind": "point", "projected": True}

@@ -327,3 +327,26 @@ def test_projected_entity_as_constraint_target():
     np.testing.assert_array_almost_equal(geometry['pp1']['xy'], [2, 3], decimal=5)
     # line1 start should have moved to [2, 3]
     np.testing.assert_array_almost_equal(geometry['line1']['start'], [2, 3], decimal=4)
+
+
+def test_projection_failure_logged(caplog):
+    """An unresolvable source query causes projection failure but should not crash."""
+    import logging
+    caplog.set_level(logging.WARNING)
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [
+                    {'id': 'pl1', 'kind': 'projected_line', 'source': '@nonexistent/line1'},
+                ],
+                'initial': {},
+                'constraints': [],
+            },
+        ]
+    }
+    result = solve_features(spec)
+    assert result['features'][0]['status'] in ('ok', 'fully_constrained', 'underconstrained')
+    assert "Projection failed" in caplog.text
