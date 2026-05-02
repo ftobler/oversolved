@@ -92,8 +92,8 @@ interface EdgeMeshProps {
   featureId: string
 }
 
-function _isValidPoint(p: [number, number, number]): boolean {
-  return Number.isFinite(p[0]) && Number.isFinite(p[1]) && Number.isFinite(p[2])
+function _isValidPoint(p: Point): boolean {
+  return Number.isFinite(p[0]) && Number.isFinite(p[1])
 }
 
 function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
