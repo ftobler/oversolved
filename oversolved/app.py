@@ -120,6 +120,7 @@ def create_app(config: dict | None = None) -> Flask:
             is_ok, current, latest = db.check_version_sync()
         except TimeoutError:
             print("ERROR: Could not acquire database lock for version check", file=sys.stderr)
+            db.close()
             sys.exit(1)
         if not is_ok:
             print(

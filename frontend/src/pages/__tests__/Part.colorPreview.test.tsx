@@ -1,80 +1,126 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import Part from '../Part'
-import { usePartDoc } from '../../hooks/usePartDoc'
-import { useAuth } from '../../contexts/AuthContext'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import Part from '../Part'
 
-// Mock the modules
-vi.mock('../../hooks/usePartDoc')
-vi.mock('../../contexts/AuthContext')
-vi.mock('../../stores/sketchEditorStore')
+const mockStartPreviewMode = vi.fn()
+const mockCommitPreview = vi.fn()
+const mockCancelPreview = vi.fn()
+const mockHandleMutation = vi.fn()
+const mockReSolve = vi.fn()
+const mockSetDoc = vi.fn()
+
+vi.mock('../../hooks/usePartDoc', () => ({
+  usePartDoc: () => ({
+    doc: {
+      version: 1,
+      kind: 'part',
+      features: [],
+      part_style: {
+        'body-1': { name: 'Test Body', color: '#FF0000', transparency: 0, metalness: 0.3 },
+      },
+    },
+    setDoc: mockSetDoc,
+    docRef: { current: { version: 1, kind: 'part', features: [], part_style: {} } },
+    loading: false,
+    error: null,
+    setError: vi.fn(),
+    solveResults: {},
+    bodies: { 'body-1': { id: 'body-1', created_by: 'feature-1', modified_by: [] } },
+    pickBodies: {},
+    solving: false,
+    solveTime: null,
+    solveError: null,
+    setSolveError: vi.fn(),
+    solveResult: '',
+    undoStack: [],
+    redoStack: [],
+    reSolve: mockReSolve,
+    handleMutation: mockHandleMutation,
+    handleUndo: vi.fn(),
+    handleRedo: vi.fn(),
+    saveDoc: vi.fn(),
+    renameDoc: vi.fn(),
+    docName: 'Test Doc',
+    ownerUsername: 'user',
+    permission: 'owner',
+    startPreviewMode: mockStartPreviewMode,
+    commitPreview: mockCommitPreview,
+    cancelPreview: mockCancelPreview,
+  }),
+}))
+
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { is_admin: false },
+    isAuthenticated: true,
+    login: vi.fn(),
+    logout: vi.fn(),
+  }),
+}))
+
 vi.mock('../../components/Viewport', () => ({
-  default: vi.fn(() => null),
-  type ViewportHandle: {},
+  default: forwardRef(function MockViewport(_props: Record<string, unknown>, ref) {
+    useImperativeHandle(ref, () => ({
+      autoZoomToFit: vi.fn(),
+      captureScreenshot: vi.fn(),
+      captureScreenshotForSaving: vi.fn(),
+      alignCameraToPlane: vi.fn(),
+      alignCameraToFace: vi.fn(),
+    }))
+    return null
+  }),
+  __esModule: true,
 }))
-vi.mock('../../components/Toolbar/SketchToolbar', () => ({
-  default: vi.fn(() => null),
-}))
-vi.mock('../../components/AppHeader', () => ({
-  default: vi.fn(({ children }: { children: React.ReactNode }) => (
-    <div data-testid="app-header">{children}</div>
+
+vi.mock('../../components/Toolbar/SketchToolbar', () => ({ default: () => null }))
+vi.mock('../../components/AppHeader', () => ({ default: ({ children }: { children: ReactNode }) => <div>{children}</div> }))
+vi.mock('../../components/FooterMeasurementDisplay', () => ({ default: () => null }))
+vi.mock('../../components/BugReporter', () => ({ BugReporter: () => null }))
+vi.mock('../../components/ExportDialog', () => ({ default: () => null }))
+vi.mock('../../components/ShareDialog', () => ({ default: () => null }))
+vi.mock('../../components/LoadingOverlay', () => ({ default: () => null }))
+vi.mock('../../components/CacheInspector', () => ({ default: () => null }))
+
+interface MenuItem {
+  label: string
+  onClick: () => void
+}
+
+vi.mock('../../components/RightClickMenu', () => ({
+  default: vi.fn(({ items }: { items: MenuItem[] }) => (
+    <div data-testid="context-menu">
+      {items.map((item: MenuItem, i: number) => (
+        <button key={i} data-testid={`menu-item-${i}`} onClick={() => item.onClick()}>
+          {item.label}
+        </button>
+      ))}
+    </div>
   )),
 }))
+
 vi.mock('../../components/Sidebar', () => ({
-  Sidebar: vi.fn(() => <div data-testid="sidebar" />),
-}))
-vi.mock('../../components/FooterMeasurementDisplay', () => ({
-  default: vi.fn(() => null),
-}))
-vi.mock('../../components/RightClickMenu', () => ({
-  default: vi.fn(() => null),
-}))
-vi.mock('../../components/BugReporter', () => ({
-  BugReporter: vi.fn(() => null),
-}))
-vi.mock('../../components/ExportDialog', () => ({
-  default: vi.fn(() => null),
-}))
-vi.mock('../../components/ShareDialog', () => ({
-  default: vi.fn(() => null),
-}))
-vi.mock('../../components/LoadingOverlay', () => ({
-  default: vi.fn(() => null),
-}))
-vi.mock('../../components/CacheInspector', () => ({
-  default: vi.fn(() => null),
+  Sidebar: vi.fn(({ onRightClick, bodies }: { onRightClick: (pos: [number, number], id: string) => void; bodies?: Record<string, unknown> }) => (
+    <div data-testid="sidebar">
+      {Object.keys(bodies || {}).map((bodyId: string) => (
+        <div key={bodyId} data-testid={`body-${bodyId}`}>
+          <button
+            data-testid={`context-btn-${bodyId}`}
+            onClick={(e) => onRightClick([e.clientX, e.clientY], `body:${bodyId}`)}
+          >
+            Context
+          </button>
+        </div>
+      ))}
+    </div>
+  )),
 }))
 
 describe('Part Color Preview', () => {
-  const mockHandleMutation = vi.fn()
-  const mockStartPreviewMode = vi.fn()
-  const mockCommitPreview = vi.fn()
-  const mockCancelPreview = vi.fn()
-  const mockReSolve = vi.fn()
-  const mockSetDoc = vi.fn()
-  const mockUndoStack: { doc: unknown; mutation: unknown }[] = []
-
-  const createMockDoc = (color?: string, transparency?: number, metalness?: number) => ({
-    version: 1,
-    kind: 'part',
-    features: [],
-    part_style: {
-      'body-1': {
-        name: 'Test Body',
-        color,
-        transparency,
-        metalness,
-      },
-    },
-  })
-
   beforeEach(() => {
     vi.clearAllMocks()
-    mockUndoStack.length = 0
-
-    // Reset store
     useSketchEditorStore.setState({
       normalSelection: new Set(),
       dynamicSelection: new Set(),
@@ -88,94 +134,56 @@ describe('Part Color Preview', () => {
       pendingPickField: null,
       showDebugHit: false,
     })
-
-    // Mock useAuth
-    vi.mocked(useAuth).mockReturnValue({
-      user: { is_admin: false },
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
-    } as unknown as ReturnType<typeof useAuth>)
-
-    // Mock usePartDoc
-    vi.mocked(usePartDoc).mockReturnValue({
-      doc: createMockDoc('#FF0000', 0, 0.3),
-      setDoc: mockSetDoc,
-      docRef: { current: createMockDoc('#FF0000', 0, 0.3) },
-      loading: false,
-      error: null,
-      setError: vi.fn(),
-      solveResults: {},
-      setSolveResults: vi.fn(),
-      featureTimings: {},
-      bodies: {
-        'body-1': {
-          id: 'body-1',
-          created_by: 'feature-1',
-          modified_by: [],
-        },
-      },
-      pickBodies: {},
-      solving: false,
-      solveTime: null,
-      solveError: null,
-      setSolveError: vi.fn(),
-      solveResult: '',
-      setSolveRawResult: vi.fn(),
-      undoStack: mockUndoStack,
-      redoStack: [],
-      reSolve: mockReSolve,
-      handleMutation: mockHandleMutation,
-      handleUndo: vi.fn(),
-      handleRedo: vi.fn(),
-      saveDoc: vi.fn(),
-      renameDoc: vi.fn(),
-      docName: 'Test Document',
-      setDocName: vi.fn(),
-      ownerUsername: 'testuser',
-      permission: 'owner',
-      isPublic: false,
-      fromCache: false,
-      cacheTimestamp: null,
-      setRollbackPos: vi.fn(),
-      setPickBoundary: vi.fn(),
-      startPreviewMode: mockStartPreviewMode,
-      commitPreview: mockCommitPreview,
-      cancelPreview: mockCancelPreview,
-    } as unknown as ReturnType<typeof usePartDoc>)
   })
 
-  it('should start preview mode when color popover opens', async () => {
-    render(<Part />)
-    
-    // Open color popover via right-click context menu would be complex to simulate
-    // Instead, verify the mock is set up correctly
-    expect(usePartDoc).toHaveBeenCalled()
+  function renderPart() {
+    return render(
+      <MemoryRouter initialEntries={['/documents/doc-1']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<Part />} />
+        </Routes>
+      </MemoryRouter>
+    )
+  }
+
+  it('opens color popover from context menu', async () => {
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('context-btn-body-1'))
+
+    expect(screen.getByTestId('context-menu')).toBeInTheDocument()
   })
 
-  it('should batch color changes into single undo entry', async () => {
-    const user = userEvent.setup()
-    
-    // Verify that commitPreview is available from the hook
-    const result = vi.mocked(usePartDoc).mock.results[0]
-    expect(result).toBeDefined()
+  it('starts preview mode when color popover opens', async () => {
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('context-btn-body-1'))
+    fireEvent.click(screen.getByText('Color'))
+
+    expect(mockStartPreviewMode).toHaveBeenCalled()
   })
 
-  it('should restore original state on cancel', async () => {
-    const originalDoc = createMockDoc('#FF0000', 0, 0.3)
-    mockCancelPreview.mockReturnValue(originalDoc)
+  it('calls cancelPreview when cancel button is clicked', async () => {
+    renderPart()
 
-    render(<Part />)
+    fireEvent.click(screen.getByTestId('context-btn-body-1'))
+    fireEvent.click(screen.getByText('Color'))
 
-    // Verify cancelPreview mock is available
-    expect(mockCancelPreview).toBeDefined()
+    const cancelBtn = screen.getByText('Cancel')
+    fireEvent.click(cancelBtn)
+
+    expect(mockCancelPreview).toHaveBeenCalled()
   })
 
-  it('should not spam undo stack during preview', async () => {
-    render(<Part />)
+  it('calls commitPreview when apply button is clicked', async () => {
+    renderPart()
 
-    // During preview, handleMutation should be called but not add to undo stack
-    // This is handled by suppressUndoRef in usePartDoc
-    expect(mockHandleMutation).toBeDefined()
+    fireEvent.click(screen.getByTestId('context-btn-body-1'))
+    fireEvent.click(screen.getByText('Color'))
+
+    const applyBtn = screen.getByText('Apply')
+    fireEvent.click(applyBtn)
+
+    expect(mockCommitPreview).toHaveBeenCalled()
   })
 })

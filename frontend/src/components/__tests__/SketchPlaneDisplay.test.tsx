@@ -8,7 +8,7 @@ const MockText = vi.fn(({ children }: { children: string }) => (
 
 vi.mock('@react-three/drei', () => ({
   Line: () => null,
-  Text: (props: Record<string, unknown>) => {
+  Text: (props: { children: string }) => {
     MockText(props)
     return null
   },

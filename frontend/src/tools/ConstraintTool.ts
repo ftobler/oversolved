@@ -28,6 +28,14 @@ export function createConstraintTool(config: ConstraintToolConfig): ConstraintTo
         return
       }
 
+      if (config.constraintKind === 'midpoint') {
+        const entityTargets = selectionArray.filter(t => t.startsWith('entity:'))
+        const vertexTargets = selectionArray.filter(t => t.startsWith('vertex:'))
+        const validLinePoint = entityTargets.length === 1 && vertexTargets.length === 1
+        const validThreeVertex = vertexTargets.length === 3 && entityTargets.length === 0
+        if (!validLinePoint && !validThreeVertex) return
+      }
+
       context.onMutation?.({
         type: 'add_constraint',
         featureId: context.activeFeatureId ?? 'S1',
