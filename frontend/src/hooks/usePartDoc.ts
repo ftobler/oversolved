@@ -309,7 +309,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     try {
       const allFeatures = d.features ?? []
       const effectiveRollback = rollbackPosition ?? rollbackPosRef.current ?? allFeatures.length
-      rollbackPosRef.current = effectiveRollback
 
       // Send ALL features to backend; backend handles rollback slicing internally.
       // Filter out built-in features for the solve payload.
@@ -327,6 +326,12 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       if (uuid) {
         const cached = await getCachedBuildResponse(uuid, d, effectiveRollback, pickBoundary)
         if (cached && cached.isFresh) {
+          // Discard stale response — a newer solve may have started while we
+          // were awaiting the cache lookup.
+          if (currentRequestId !== requestIdRef.current) {
+            return
+          }
+          rollbackPosRef.current = effectiveRollback
           applyBuildResponse(d, cached.entry.buildResponse)
           setFromCache(true)
           setCacheTimestamp(cached.entry.timestamp)
@@ -361,10 +366,16 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       if (currentRequestId !== requestIdRef.current) {
         return
       }
+      rollbackPosRef.current = effectiveRollback
 
       const data = await response.json()
       const endTime = performance.now()
       const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
+
+      // Re-check staleness — another solve may have started while reading body.
+      if (currentRequestId !== requestIdRef.current) {
+        return
+      }
       if (!response.ok) {
         setSolveError(data.error || `Solve failed (${response.status})`)
         setSolveRawResult(data.error || `Solve failed (${response.status})`)

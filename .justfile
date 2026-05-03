@@ -1,5 +1,7 @@
 # .justfile
 
+# `just` command runner. Targets can be run with `just <target>`.
+
 default:
     just backend
     just frontend

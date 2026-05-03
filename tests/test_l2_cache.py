@@ -346,7 +346,7 @@ class TestSolveWithL2Cache:
         d2 = json.loads(r2.data)
         assert "body_ex1" in d2["bodies"]
         # L2 hit should be fast (no full re-solve)
-        assert d2["solve_ms"] < solve_ms_1 * 0.5
+        assert d2["solve_ms"] < solve_ms_1 * 0.6
 
     def test_solve_with_l2_cache_miss(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")

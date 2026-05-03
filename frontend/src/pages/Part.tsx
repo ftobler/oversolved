@@ -515,7 +515,12 @@ useEffect(() => {
       if (index >= 0) nextBoundary = index
     }
     setPickBoundary(nextBoundary)
-    handleRebuildRef.current()
+    // Only trigger reSolve when a non-null pick boundary is set (feature editing).
+    // For sketch/plane editing, the rollback-position effect already triggers the
+    // solve, and the pick boundary is already null from enterEditFeature.
+    if (nextBoundary !== null) {
+      handleRebuildRef.current()
+    }
   }, [editingFeatureId, features, setPickBoundary, docRef])
 
   const handleExitSketch = useCallback(() => {
