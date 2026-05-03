@@ -302,15 +302,16 @@ export default function Part() {
     handleRedo,
     saveDoc,
     renameDoc,
-     docName,
-     ownerUsername,
-     bodies,
-     pickBodies,
-     setPickBoundary,
-     permission,
-     startPreviewMode,
-     commitPreview,
-     cancelPreview,
+      docName,
+      ownerUsername,
+      bodies,
+      pickBodies,
+      setPickBodies,
+      setPickBoundary,
+      permission,
+      startPreviewMode,
+      commitPreview,
+      cancelPreview,
     } = usePartDoc(uuid, mode, setCodeText, { onFirstSolve: handleFirstSolve })
 
   const readOnly = permission === 'view'
@@ -981,7 +982,12 @@ useEffect(() => {
     setRollbackPosition(idx + 1)
     setEditForcedVisible(new Set([featureId]))
     setEditingFeatureId(featureId)
-  }, [features, rollbackPosition])
+    setPickBoundary(null)
+    // Clear pickBodies so bodyItems remain interactive during sketch edit.
+    // Without this, stale pick_bodies from a previous operation (e.g. creating
+    // an extrude) would make bodyItems non-interactive.
+    setPickBodies({})
+  }, [features, rollbackPosition, setPickBoundary, setPickBodies])
 
   const exitEditFeature = useCallback(() => {
     if (savedRollbackPosition !== null) {

@@ -73,12 +73,12 @@ beforeEach(() => {
   })
 })
 
-describe('Viewport isSketchActive logic', () => {
+describe('Viewport body interactive flag', () => {
   const sketch: Feature = makeFeature('sk1', 'sketch')
   const extrude: Feature = makeFeature('ex1', 'extrude')
 
-  it('bodyItems are interactive when no active sketch and no ghost/pick mode', () => {
-    const bodies: Record<string, BodyResult> = {
+  function makeBody(): Record<string, BodyResult> {
+    return {
       body_ex1: {
         id: 'body_ex1',
         created_by: 'ex1',
@@ -86,57 +86,22 @@ describe('Viewport isSketchActive logic', () => {
         mesh: { vertices: [], normals: [], faces: [], face_data: [], face_queries: [] },
       } as unknown as BodyResult,
     }
+  }
 
+  it('bodyItems are interactive with no active feature', () => {
     const { container } = render(
-      <Viewport features={[sketch, extrude]} bodies={bodies} />
+      <Viewport features={[sketch, extrude]} bodies={makeBody()} />
     )
-
-    const bodyEls = container.querySelectorAll('[data-testid="body-3d"]')
-    bodyEls.forEach(el => {
+    container.querySelectorAll('[data-testid="body-3d"]').forEach(el => {
       expect(el.getAttribute('data-interactive')).toBe('true')
     })
   })
 
-  it('bodyItems are non-interactive when sketch is active', () => {
-    const bodies: Record<string, BodyResult> = {
-      body_ex1: {
-        id: 'body_ex1',
-        created_by: 'ex1',
-        modified_by: [],
-        mesh: { vertices: [], normals: [], faces: [], face_data: [], face_queries: [] },
-      } as unknown as BodyResult,
-    }
-
+  it('bodyItems remain interactive while a sketch is active', () => {
     const { container } = render(
-      <Viewport features={[sketch, extrude]} bodies={bodies} activeFeatureId="sk1" />
+      <Viewport features={[sketch, extrude]} bodies={makeBody()} activeFeatureId="sk1" />
     )
-
-    const bodyEls = container.querySelectorAll('[data-testid="body-3d"]')
-    bodyEls.forEach(el => {
-      expect(el.getAttribute('data-interactive')).toBe('false')
-    })
-  })
-
-  it('bodyItems are interactive during pick-chip mode even with active sketch', () => {
-    useSketchEditorStore.setState({
-      pendingPickField: { field: 'sketch', hostKind: 'extrude', featureId: 'ex1' } as never,
-    })
-
-    const bodies: Record<string, BodyResult> = {
-      body_ex1: {
-        id: 'body_ex1',
-        created_by: 'ex1',
-        modified_by: [],
-        mesh: { vertices: [], normals: [], faces: [], face_data: [], face_queries: [] },
-      } as unknown as BodyResult,
-    }
-
-    const { container } = render(
-      <Viewport features={[sketch, extrude]} bodies={bodies} activeFeatureId="sk1" />
-    )
-
-    const bodyEls = container.querySelectorAll('[data-testid="body-3d"]')
-    bodyEls.forEach(el => {
+    container.querySelectorAll('[data-testid="body-3d"]').forEach(el => {
       expect(el.getAttribute('data-interactive')).toBe('true')
     })
   })

@@ -806,6 +806,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     featureTimings,
     bodies,
     pickBodies,
+    setPickBodies,
     solving,
     solveTime,
     solveError,

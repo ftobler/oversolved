@@ -67,19 +67,23 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
   if (isSelected) { color = COLOR_SELECTED; opacity = 0.30 }
   if (hovered) { color = COLOR_HOVER; opacity = 0.20 }
 
+  const handlePointerOver = isInactive ? undefined : (e: any) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredSurface(id) }
+  const handlePointerOut = isInactive ? undefined : () => { if (isRotating) return; setHovered(false); setHoveredSurface(null) }
+  const handleClick = isInactive ? undefined : (e: any) => {
+    e.stopPropagation()
+    if (planeSelectionFeatureId) commitPlaneSelection(id)
+    else {
+      toggleNormalSelection(id)
+      if (pendingPickField) commitFieldPick()
+    }
+  }
+
   return (
     <mesh
       position={[0, 0, -0.003]}
-      onPointerOver={(e) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredSurface(id) }}
-      onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredSurface(null) }}
-      onClick={(e) => {
-        e.stopPropagation()
-        if (planeSelectionFeatureId) commitPlaneSelection(id)
-        else {
-          toggleNormalSelection(id)
-          if (pendingPickField) commitFieldPick()
-        }
-      }}
+      onPointerOver={handlePointerOver}
+      onPointerOut={handlePointerOut}
+      onClick={handleClick}
     >
       <shapeGeometry args={[shape]} />
       <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
@@ -96,7 +100,13 @@ function _isValidPoint(p: Point): boolean {
   return Number.isFinite(p[0]) && Number.isFinite(p[1])
 }
 
-function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
+interface EdgeMeshProps {
+  edge: TopologyEdgeQuery
+  featureId: string
+  isInactive?: boolean
+}
+
+function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
   const [hovered, setHovered] = useState(false)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
@@ -128,6 +138,10 @@ function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
     return geo
   }, [start, end])
 
+  const handlePointerOver = isInactive ? undefined : (e: any) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredEdge(id) }
+  const handlePointerOut = isInactive ? undefined : () => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }
+  const handleClick = isInactive ? undefined : (e: any) => { e.stopPropagation(); toggleNormalSelection(id) }
+
   if (edge.kind === 'arc' && edge.center && edge.radius !== undefined) {
     const cx = edge.center[0]
     const cy = edge.center[1]
@@ -142,9 +156,9 @@ function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
 
       return (
         <line
-          onPointerOver={(e) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredEdge(id) }}
-          onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }}
-          onClick={(e) => { e.stopPropagation(); toggleNormalSelection(id) }}
+          onPointerOver={handlePointerOver}
+          onPointerOut={handlePointerOut}
+          onClick={handleClick}
         >
           <primitive object={arcGeometry} attach="geometry" />
           <lineBasicMaterial color={color} linewidth={2} />
@@ -155,9 +169,9 @@ function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
 
   return (
     <line
-      onPointerOver={(e) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredEdge(id) }}
-      onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }}
-      onClick={(e) => { e.stopPropagation(); toggleNormalSelection(id) }}
+      onPointerOver={handlePointerOver}
+      onPointerOut={handlePointerOut}
+      onClick={handleClick}
     >
       <primitive object={lineGeometry} attach="geometry" />
       <lineBasicMaterial color={color} linewidth={2} />
@@ -168,14 +182,17 @@ function EdgeMesh({ edge, featureId }: EdgeMeshProps) {
 interface TopologyEdgesProps {
   topology: Topology
   featureId: string
+  isEditing: boolean
+  activeFeatureId?: string
 }
 
-export function TopologyEdges({ topology, featureId }: TopologyEdgesProps) {
+export function TopologyEdges({ topology, featureId, isEditing, activeFeatureId }: TopologyEdgesProps) {
   const edges = topology.edges ?? []
+  const isInactive = activeFeatureId !== undefined && !isEditing
   return (
     <>
       {edges.map((edge, ei) => (
-        <EdgeMesh key={ei} edge={edge} featureId={featureId} />
+        <EdgeMesh key={ei} edge={edge} featureId={featureId} isInactive={isInactive} />
       ))}
     </>
   )
