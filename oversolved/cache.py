@@ -12,7 +12,37 @@ from oversolved.types3d import BuildState
 T = TypeVar("T")
 
 
-class TtlCache(Generic[T]):
+class _BaseCache(Generic[T]):
+    """Shared TTL + lock management for thread-safe caches.
+
+    Provides delete()/clear() with lock acquisition and _is_expired() for
+    common TTL comparison. Subclasses override storage hooks.
+    """
+
+    def __init__(self, ttl_seconds: float, max_size: int) -> None:
+        self._ttl = ttl_seconds
+        self._max_size = max_size
+        self._lock = threading.Lock()
+
+    def delete(self, key: str) -> None:
+        with self._lock:
+            self._store_delete(key)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._store_clear()
+
+    def _is_expired(self, ts: float) -> bool:
+        return time.time() - ts > self._ttl
+
+    def _store_delete(self, key: str) -> None:
+        raise NotImplementedError
+
+    def _store_clear(self) -> None:
+        raise NotImplementedError
+
+
+class TtlCache(_BaseCache[T]):
     """Simple dict-like cache with TTL eviction and optional max size.
 
     Accessing an entry resets its TTL timer.  Eviction happens lazily on
@@ -21,10 +51,8 @@ class TtlCache(Generic[T]):
     """
 
     def __init__(self, ttl_seconds: float = 300.0, max_size: int = 1000) -> None:
-        self._ttl = ttl_seconds
-        self._max_size = max_size
+        super().__init__(ttl_seconds, max_size)
         self._data: dict[str, tuple[T, float]] = {}
-        self._lock = threading.Lock()
 
     def get(self, key: str) -> T | None:
         with self._lock:
@@ -48,27 +76,24 @@ class TtlCache(Generic[T]):
                 oldest = next(iter(self._data))
                 del self._data[oldest]
 
-    def delete(self, key: str) -> None:
-        with self._lock:
-            self._data.pop(key, None)
-
-    def clear(self) -> None:
-        with self._lock:
-            self._data.clear()
-
     def get_entries(self) -> dict[str, tuple[T, float]]:
         """Return a copy of all cache entries for inspection."""
         with self._lock:
             return dict(self._data)
 
     def _evict_expired(self) -> None:
-        now = time.time()
-        expired = [k for k, (_, ts) in self._data.items() if now - ts > self._ttl]
+        expired = [k for k, (_, ts) in self._data.items() if self._is_expired(ts)]
         for k in expired:
             del self._data[k]
 
+    def _store_delete(self, key: str) -> None:
+        self._data.pop(key, None)
 
-class L2Cache:
+    def _store_clear(self) -> None:
+        self._data.clear()
+
+
+class L2Cache(_BaseCache[BuildState]):
     """Persistent L2 cache that stores BuildState on disk as JSON + STEP."""
 
     def __init__(
@@ -77,10 +102,8 @@ class L2Cache:
         max_size: int = 5000,
         cache_dir: str = "/tmp/oversolved_l2_cache",
     ) -> None:
-        self._ttl = ttl_seconds
-        self._max_size = max_size
+        super().__init__(ttl_seconds, max_size)
         self._cache_dir = cache_dir
-        self._lock = threading.Lock()
         os.makedirs(cache_dir, exist_ok=True)
 
     def get_cache_dir(self) -> str:
@@ -98,7 +121,7 @@ class L2Cache:
                 if not os.path.exists(path):
                     return None
                 mtime = os.path.getmtime(path)
-                if time.time() - mtime > self._ttl:
+                if self._is_expired(mtime):
                     try:
                         os.unlink(path)
                     except OSError:
@@ -123,25 +146,22 @@ class L2Cache:
             os.replace(tmp_path, path)
             self._evict_expired_and_oversized()
 
-    def delete(self, key: str) -> None:
+    def _store_delete(self, key: str) -> None:
         path = self._path(key)
-        with self._lock:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
-    def clear(self) -> None:
-        with self._lock:
-            for fname in os.listdir(self._cache_dir):
-                if fname.endswith(".json"):
-                    try:
-                        os.unlink(os.path.join(self._cache_dir, fname))
-                    except OSError:
-                        pass
+    def _store_clear(self) -> None:
+        for fname in os.listdir(self._cache_dir):
+            if fname.endswith(".json"):
+                try:
+                    os.unlink(os.path.join(self._cache_dir, fname))
+                except OSError:
+                    pass
 
     def _evict_expired_and_oversized(self) -> None:
-        now = time.time()
         entries = []
         for fname in os.listdir(self._cache_dir):
             if not fname.endswith(".json"):
@@ -157,7 +177,7 @@ class L2Cache:
         total_size = 0
         survivors = []
         for fpath, mtime, size in entries:
-            if now - mtime > self._ttl:
+            if self._is_expired(mtime):
                 try:
                     os.unlink(fpath)
                 except OSError:
