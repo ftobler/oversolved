@@ -398,9 +398,13 @@ export default function Part() {
   const rollbackInitializedForSolve = useRef(false)
   const currentFeaturesLength = useRef(features.length)
   currentFeaturesLength.current = features.length
+  const rollbackChangeSource = useRef<'handler' | 'user' | null>(null)
 useEffect(() => {
     if (!rollbackInitializedForSolve.current) {
       rollbackInitializedForSolve.current = true
+      return
+    }
+    if (rollbackChangeSource.current === 'handler') {
       return
     }
     setPickBoundary(null)  // clear stale pick boundary when rollback changes
@@ -508,6 +512,11 @@ useEffect(() => {
     prevEditingIdRef.current = editingFeatureId
     if (prev === editingFeatureId) return
 
+    if (rollbackChangeSource.current === 'handler') {
+      rollbackChangeSource.current = null
+      return
+    }
+
     const feature = features.find(f => f.id === editingFeatureId)
     let nextBoundary: number | null = null
     if (feature && feature.kind !== 'sketch' && feature.kind !== 'plane') {
@@ -566,10 +575,13 @@ useEffect(() => {
     // If exactly one face is selected, create an on_face plane directly
     const faceQuery = [...selection].find(id => id.startsWith('?') && id.includes(':face'))
     const definition: import('../types/cad').PlaneDef | undefined = faceQuery ? { mode: 'on_face', face: faceQuery } : undefined
+    setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_plane', featureId, label, definition })
+    rollbackChangeSource.current = 'handler'
     setRollbackPosition(features.length + 1)
+    rollbackChangeSource.current = 'handler'
     setEditingFeatureId(featureId)
-  }, [doc, features.length, handleMutation, selection])
+  }, [doc, features.length, handleMutation, selection, setRollbackPos])
 
   const handleAddExtrude = useCallback(() => {
     if (!doc) return
@@ -578,7 +590,9 @@ useEffect(() => {
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     setRollbackPos(features.length + 1)  // Update ref BEFORE mutation so reSolve uses correct rollback
     handleMutation({ type: 'add_extrude', featureId: fid, label, sketchQuery: '', distance: 10 })
+    rollbackChangeSource.current = 'handler'
     setRollbackPosition(features.length + 1)
+    rollbackChangeSource.current = 'handler'
     setEditingFeatureId(fid)
   }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
 
@@ -587,80 +601,104 @@ useEffect(() => {
     const fid = randomId(18)
     const label = `revolve ${Object.keys(bodies).length + 1}`
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
+    setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_revolve', featureId: fid, label, sketchQuery: '', angle: 360 })
+    rollbackChangeSource.current = 'handler'
     setRollbackPosition(features.length + 1)
+    rollbackChangeSource.current = 'handler'
     setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
 
   const handleAddFillet = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `fillet ${Object.keys(bodies).length + 1}`
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
+    setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_fillet', featureId: fid, label })
+    rollbackChangeSource.current = 'handler'
     setRollbackPosition(features.length + 1)
+    rollbackChangeSource.current = 'handler'
     setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
 
   const handleAddChamfer = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `chamfer ${Object.keys(bodies).length + 1}`
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
+    setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_chamfer', featureId: fid, label })
+    rollbackChangeSource.current = 'handler'
     setRollbackPosition(features.length + 1)
+    rollbackChangeSource.current = 'handler'
     setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
 
   const handleAddArray = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `array ${Object.keys(bodies).length + 1}`
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
+    setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_array', featureId: fid, label })
+    rollbackChangeSource.current = 'handler'
     setRollbackPosition(features.length + 1)
+    rollbackChangeSource.current = 'handler'
     setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
 
   const handleAddBoolean = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `boolean ${Object.keys(bodies).length + 1}`
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
+    setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_boolean', featureId: fid, label })
+    rollbackChangeSource.current = 'handler'
     setRollbackPosition(features.length + 1)
+    rollbackChangeSource.current = 'handler'
     setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
 
   const handleAddDeleteBody = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `delete body ${Object.keys(bodies).length + 1}`
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
+    setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_delete_body', featureId: fid, label })
+    rollbackChangeSource.current = 'handler'
     setRollbackPosition(features.length + 1)
+    rollbackChangeSource.current = 'handler'
     setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
 
   const handleAddHole = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `hole ${Object.keys(bodies).length + 1}`
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
+    setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_hole', featureId: fid, label })
+    rollbackChangeSource.current = 'handler'
     setRollbackPosition(features.length + 1)
+    rollbackChangeSource.current = 'handler'
     setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
 
   const handleAddTransform = useCallback(() => {
     if (!doc) return
     const fid = randomId(18)
     const label = `transform ${Object.keys(bodies).length + 1}`
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
+    setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_transform', featureId: fid, label })
+    rollbackChangeSource.current = 'handler'
     setRollbackPosition(features.length + 1)
+    rollbackChangeSource.current = 'handler'
     setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
@@ -668,11 +706,14 @@ useEffect(() => {
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const label = `sketch ${sketchCount + 1}`
     setPendingPickField(null)
+    setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_sketch', featureId, label })
+    rollbackChangeSource.current = 'handler'
     setRollbackPosition(features.length + 1)
     setPlaneSelectionFeatureId(featureId)
+    rollbackChangeSource.current = 'handler'
     setEditingFeatureId(featureId)
-  }, [doc, features.length, handleMutation, setPendingPickField, setPlaneSelectionFeatureId])
+  }, [doc, features.length, handleMutation, setPendingPickField, setPlaneSelectionFeatureId, setRollbackPos])
 
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')
@@ -689,10 +730,11 @@ useEffect(() => {
       if (!data.file_id) return
       const featureId = randomId(18)
       const label = file.name.replace(/\.(step|stp)$/i, '')
+      setRollbackPos(features.length + 1)
       handleMutation({ type: 'add_import_step', featureId, fileId: data.file_id, label })
     }
     input.click()
-  }, [handleMutation])
+  }, [handleMutation, features.length, setRollbackPos])
 
   const handleExportStep = useCallback(async () => {
     setExportTargetBodyId(null)
@@ -879,6 +921,11 @@ useEffect(() => {
   const handleRollbackDragStart = (e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'move'
   }
+
+  const handleUserRollbackChange = useCallback((pos: number | null) => {
+    rollbackChangeSource.current = 'user'
+    setRollbackPosition(pos)
+  }, [])
 
   const toggleVisibility = useCallback((featureId: string) => {
     handleMutation({ type: 'set_feature_visibility', featureId, visible: !visibleFeatures.has(featureId) })
@@ -1300,7 +1347,7 @@ useEffect(() => {
           onRename={handleFeatureRename}
           onRollbackDragStart={handleRollbackDragStart}
           onMutation={handleMutation}
-          onSetRollbackPosition={setRollbackPosition}
+          onSetRollbackPosition={handleUserRollbackChange}
           onSetPendingPickField={setPendingPickField}
           onSetPlaneSelectionFeatureId={setPlaneSelectionFeatureId}
           onToggleBodyVisibility={toggleBodyVisibility}
