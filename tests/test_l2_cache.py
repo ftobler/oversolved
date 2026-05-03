@@ -1,6 +1,7 @@
 """Tests for backend L2 (persistent BREP) cache."""
 
 import json
+import os
 import threading
 import time
 
@@ -299,6 +300,316 @@ class TestL2Cache:
 
         assert not errors
 
+    def test_l2_cache_concurrent_set_get_overlapping_keys(self, tmp_path):
+        """2 writers + 4 readers on overlapping keys. No raises, no partial JSON."""
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=1000000, cache_dir=str(tmp_path / "conc_keys")
+        )
+        state = BuildState(feature_order=["sk1"], checkpoints={})
+        errors = []
+
+        def writer(wid):
+            for i in range(30):
+                key = f"doc_{wid}_{i}"
+                try:
+                    cache.set(key, state)
+                except Exception as e:
+                    errors.append(e)
+
+        def reader():
+            for wid in range(2):
+                for i in range(30):
+                    key = f"doc_{wid}_{i}"
+                    try:
+                        cache.get(key)
+                    except Exception as e:
+                        errors.append(e)
+
+        threads = [threading.Thread(target=writer, args=(i,)) for i in range(2)]
+        threads += [threading.Thread(target=reader) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+
+    def test_l2_cache_eviction_races_with_concurrent_writes(self, tmp_path):
+        """Large entry triggers eviction while others write. No OSError races."""
+        cache_dir = tmp_path / "evict_race"
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=500, cache_dir=str(cache_dir)
+        )
+        state = BuildState(feature_order=["sk1"], checkpoints={})
+        errors = []
+
+        def writer(wid):
+            for i in range(50):
+                key = f"doc_{wid}_{i}"
+                try:
+                    cache.set(key, state)
+                except Exception as e:
+                    errors.append(e)
+
+        threads = [threading.Thread(target=writer, args=(i,)) for i in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        entries = list(cache_dir.glob("*.json"))
+        assert len(entries) > 0
+
+    # ─── A. TTL Edge Cases ───
+
+    def test_ttl_access_at_boundary(self, tmp_path):
+        cache = L2Cache(
+            ttl_seconds=0.1, max_size=1000000, cache_dir=str(tmp_path / "ttl_boundary")
+        )
+        state = BuildState(feature_order=["x"], checkpoints={})
+        cache.set("doc1", state)
+        time.sleep(0.1)
+        cache.get("doc1")  # Should not crash
+
+    def test_ttl_future_mtime(self, tmp_path):
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=1000000, cache_dir=str(tmp_path / "future_mtime")
+        )
+        state = BuildState(feature_order=["x"], checkpoints={})
+        cache.set("doc1", state)
+        path = str(tmp_path / "future_mtime" / "doc1.json")
+        future = time.time() + 3600
+        os.utime(path, (future, future))
+        assert cache.get("doc1") is not None
+
+    def test_ttl_clock_jump_forward(self, tmp_path):
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=1000000, cache_dir=str(tmp_path / "clock_jump")
+        )
+        state = BuildState(feature_order=["x"], checkpoints={})
+        cache.set("doc1", state)
+        path = str(tmp_path / "clock_jump" / "doc1.json")
+        past = time.time() - 61.0
+        os.utime(path, (past, past))
+        assert cache.get("doc1") is None
+
+    def test_ttl_zero(self, tmp_path):
+        cache = L2Cache(
+            ttl_seconds=0.0, max_size=1000000, cache_dir=str(tmp_path / "zero_ttl")
+        )
+        state = BuildState(feature_order=["x"], checkpoints={})
+        cache.set("doc1", state)
+        result = cache.get("doc1")
+        # TTL=0: now - mtime > 0 on any real system, so entry expires immediately.
+        assert result is None
+
+    # ─── B. Error Handling ───
+
+    def test_permission_denied_on_read(self, tmp_path):
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=1000000, cache_dir=str(tmp_path / "permread")
+        )
+        state = BuildState(feature_order=["x"], checkpoints={})
+        cache.set("doc1", state)
+        path = str(tmp_path / "permread" / "doc1.json")
+        os.chmod(path, 0o000)
+        result = cache.get("doc1")
+        assert result is None
+        assert os.path.exists(path)
+        os.chmod(path, 0o644)
+
+    def test_permission_denied_on_write(self, tmp_path):
+        cache_dir = tmp_path / "permwrite"
+        cache_dir.mkdir()
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=1000000, cache_dir=str(cache_dir)
+        )
+        state = BuildState(feature_order=["x"], checkpoints={})
+        os.chmod(cache_dir, 0o444)
+        with pytest.raises(OSError):
+            cache.set("doc1", state)
+        tmp_files = list(cache_dir.glob("*.tmp"))
+        assert len(tmp_files) == 0
+        os.chmod(cache_dir, 0o755)
+
+    def test_permission_denied_on_unlink_during_eviction(self, tmp_path, monkeypatch):
+        cache = L2Cache(
+            ttl_seconds=0.05, max_size=1000000, cache_dir=str(tmp_path / "permunlink")
+        )
+        state = BuildState(feature_order=["x"], checkpoints={})
+        cache.set("doc1", state)
+        cache.set("doc2", state)
+
+        original_unlink = os.unlink
+
+        def failing_unlink(path, *args, **kwargs):
+            if "doc1" in path:
+                raise OSError(13, "Permission denied")
+            return original_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(os, "unlink", failing_unlink)
+
+        time.sleep(0.06)
+        cache.set("doc3", state)  # Should not crash
+
+        path = str(tmp_path / "permunlink" / "doc1.json")
+        assert os.path.exists(path)
+
+    def test_disk_full_during_serialization(self, tmp_path, monkeypatch):
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=1000000, cache_dir=str(tmp_path / "dfull")
+        )
+        state = BuildState(feature_order=["x"], checkpoints={})
+        cache.set("doc1", state)
+        assert cache.get("doc1") is not None
+
+        def failing_dump(*args, **kwargs):
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(json, "dump", failing_dump)
+        with pytest.raises(OSError):
+            cache.set("doc1", state)
+        assert cache.get("doc1") is not None
+
+    # ─── C. File Corruption ───
+
+    def test_corrupt_json(self, tmp_path):
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=1000000, cache_dir=str(tmp_path / "corrupt")
+        )
+        path = str(tmp_path / "corrupt" / "doc1.json")
+        with open(path, "w") as f:
+            f.write("not json")
+        assert cache.get("doc1") is None
+
+    def test_empty_file(self, tmp_path):
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=1000000, cache_dir=str(tmp_path / "emptyf")
+        )
+        path = str(tmp_path / "emptyf" / "doc1.json")
+        with open(path, "w") as f:
+            f.write("")
+        assert cache.get("doc1") is None
+
+    def test_orphan_tmp_file(self, tmp_path):
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=1000000, cache_dir=str(tmp_path / "orphan")
+        )
+        path = str(tmp_path / "orphan" / "doc1.json.tmp")
+        with open(path, "w") as f:
+            f.write("some data")
+        assert cache.get("doc1") is None
+
+    # ─── D. LRU by Size ───
+
+    def test_size_eviction_single_entry_exceeds_max(self, tmp_path):
+        cache = L2Cache(ttl_seconds=60.0, max_size=50, cache_dir=str(tmp_path / "big"))
+        state = BuildState(feature_order=["x" * 50], checkpoints={})
+        small = BuildState(feature_order=["y"], checkpoints={})
+        cache.set("doc1", state)
+        cache.set("doc2", small)
+        assert cache.get("doc1") is None
+
+    def test_size_eviction_many_tiny_entries(self, tmp_path):
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=500, cache_dir=str(tmp_path / "tiny")
+        )
+        state = BuildState(feature_order=["x"], checkpoints={})
+        for i in range(100):
+            cache.set(f"doc{i}", state)
+        assert cache.get("doc0") is None  # Oldest evicted
+        survivors = [i for i in range(100) if cache.get(f"doc{i}") is not None]
+        assert len(survivors) > 0
+        assert len(survivors) < 100
+
+    def test_size_eviction_zero_max_size(self, tmp_path):
+        cache = L2Cache(ttl_seconds=60.0, max_size=0, cache_dir=str(tmp_path / "zero"))
+        state = BuildState(feature_order=["x"], checkpoints={})
+        cache.set("doc1", state)
+        assert cache.get("doc1") is None
+
+    def test_size_eviction_exact_boundary(self, tmp_path):
+        cache = L2Cache(
+            ttl_seconds=60.0, max_size=100, cache_dir=str(tmp_path / "boundary")
+        )
+        state = BuildState(feature_order=["x"], checkpoints={})
+        cache.set("doc1", state)
+        cache.set("doc2", state)
+        cache.set("doc3", state)
+        assert cache.get("doc1") is None
+        remaining = [cache.get(f"doc{i}") for i in [2, 3]]
+        assert all(r is not None for r in remaining)
+
+    def test_size_eviction_same_mtime_tiebreaker(self, tmp_path):
+        cache_dir = tmp_path / "tie"
+        cache = L2Cache(ttl_seconds=60.0, max_size=100, cache_dir=str(cache_dir))
+        state = BuildState(feature_order=["x"], checkpoints={})
+        # Manually write two files to avoid eviction during set
+        data = {"feature_order": ["x"], "checkpoints": {}}
+        for name in ("a_doc", "b_doc"):
+            with open(str(cache_dir / f"{name}.json"), "w") as f:
+                json.dump(data, f)
+        now = time.time()
+        os.utime(str(cache_dir / "b_doc.json"), (now, now))
+        os.utime(str(cache_dir / "a_doc.json"), (now, now))
+        cache.set("c_doc", state)
+        assert cache.get("a_doc") is None
+        assert cache.get("b_doc") is not None
+        assert cache.get("c_doc") is not None
+
+    # ─── E. Base-Class Refactor ───
+
+    def test_polymorphic_interface(self, tmp_path):
+
+        def do_something(cache):
+            cache.delete("nonexistent")
+            cache.clear()
+
+        cache = L2Cache(cache_dir=str(tmp_path / "poly"))
+        do_something(cache)
+
+    def test_subclass_override_set(self, tmp_path):
+        class PrefixedCache(L2Cache):
+            def __init__(self, prefix, **kwargs):
+                super().__init__(**kwargs)
+                self._prefix = prefix
+
+            def set(self, key, state):
+                super().set(f"{self._prefix}_{key}", state)
+
+        cache = PrefixedCache(
+            prefix="ns",
+            ttl_seconds=0.05,
+            max_size=1000000,
+            cache_dir=str(tmp_path / "pref"),
+        )
+        state = BuildState(feature_order=["x"], checkpoints={})
+        cache.set("doc1", state)
+        assert cache.get("ns_doc1") is not None
+        time.sleep(0.06)
+        assert cache.get("ns_doc1") is None
+
+    def test_subclass_override_get(self, tmp_path):
+        class CountingCache(L2Cache):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.get_count = 0
+
+            def get(self, key):
+                self.get_count += 1
+                return super().get(key)
+
+        cache = CountingCache(
+            ttl_seconds=60.0, max_size=1000000, cache_dir=str(tmp_path / "count")
+        )
+        state = BuildState(feature_order=["x"], checkpoints={})
+        cache.set("doc1", state)
+        assert cache.get("doc1") is not None
+        assert cache.get_count == 1
+        assert cache.get("doc1") is not None
+        assert cache.get_count == 2
+
 
 class TestSolveWithL2Cache:
     def test_solve_with_l2_cache_hit(self, tmp_path, monkeypatch):
@@ -391,6 +702,88 @@ class TestSolveWithL2Cache:
         assert r2.status_code == 200
         d2 = json.loads(r2.data)
         assert "body_ex1" in d2["bodies"]
+
+    def test_l2_cache_miss_full_rebuild(self, tmp_path, monkeypatch):
+        """L2 miss (first solve) should be slower than L2 hit (fresh L1, same L2 dir)."""
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
+        pytest.importorskip("OCP.gp")
+        from oversolved.app import create_app
+
+        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+        cache_dir = str(tmp_path / "l2_miss")
+
+        app1 = create_app({
+            "DB_TYPE": "sqlite", "TESTING": True, "DB_PATH": str(tmp_path / "test1.db"),
+            "L2_CACHE_ENABLED": True, "L2_CACHE_DIR": cache_dir,
+        })
+        client1 = logged_in_client(app1)
+
+        # First solve - L2 miss, full rebuild
+        r1 = post_solve(client1, {"id": "doc_timing", "features": [sk1, ex1]})
+        assert r1.status_code == 200
+        d1 = json.loads(r1.data)
+        assert "body_ex1" in d1["bodies"]
+        miss_ms = d1["solve_ms"]
+
+        # New app with fresh L1, same L2 dir
+        app2 = create_app({
+            "DB_TYPE": "sqlite", "TESTING": True, "DB_PATH": str(tmp_path / "test2.db"),
+            "L2_CACHE_ENABLED": True, "L2_CACHE_DIR": cache_dir,
+        })
+        client2 = logged_in_client(app2)
+
+        # Second solve - L2 hit (restored from L2 to L1)
+        r2 = post_solve(client2, {"id": "doc_timing", "features": [sk1, ex1]})
+        assert r2.status_code == 200
+        d2 = json.loads(r2.data)
+        assert "body_ex1" in d2["bodies"]
+        hit_ms = d2["solve_ms"]
+
+        # L2 hit must be faster than L2 miss (same threshold as test_solve_with_l2_cache_hit)
+        assert hit_ms < miss_ms * 0.6
+
+
+class TestL2FailureRecovery:
+    def test_exception_does_not_corrupt_l2(self, tmp_path, monkeypatch):
+        """Failed solve does not overwrite L2 cache. Subsequent valid solve works."""
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
+        pytest.importorskip("OCP.gp")
+        from oversolved.app import create_app
+
+        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+        cache_dir = str(tmp_path / "l2_fail")
+
+        app1 = create_app({
+            "DB_TYPE": "sqlite", "TESTING": True, "DB_PATH": str(tmp_path / "test1.db"),
+            "L2_CACHE_ENABLED": True, "L2_CACHE_DIR": cache_dir,
+        })
+        client1 = logged_in_client(app1)
+
+        # Valid solve populates L2
+        r1 = post_solve(client1, {"id": "doc_l2_fail", "features": [sk1, ex1]})
+        assert r1.status_code == 200
+
+        # Bad solve with invalid feature kind
+        bad_feature = {"id": "bad", "kind": "nonexistent"}
+        r2 = post_solve(client1, {"id": "doc_l2_fail", "features": [sk1, bad_feature, ex1]})
+        assert r2.status_code == 200
+        d2 = json.loads(r2.data)
+        assert d2["result"]["bad"]["status"] == "exception"
+
+        # Create new app (fresh L1) to test L2 was not corrupted by failed solve
+        app2 = create_app({
+            "DB_TYPE": "sqlite", "TESTING": True, "DB_PATH": str(tmp_path / "test2.db"),
+            "L2_CACHE_ENABLED": True, "L2_CACHE_DIR": cache_dir,
+        })
+        client2 = logged_in_client(app2)
+
+        # Valid solve should work from L2 (not corrupted)
+        r3 = post_solve(client2, {"id": "doc_l2_fail", "features": [sk1, ex1]})
+        assert r3.status_code == 200
+        d3 = json.loads(r3.data)
+        assert "body_ex1" in d3["bodies"]
 
     def test_l2_cache_preserves_queries(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")

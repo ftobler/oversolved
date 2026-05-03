@@ -337,3 +337,56 @@ def test_query_class_str():
 def test_empty_query_returns_none():
     repo = Repository()
     assert repo.query("") is None
+
+
+# ── Repository: Global fallback & edge cases  ──
+
+def test_global_fallback():
+    """$ query with context falls back to the same global key."""
+    repo = Repository()
+    obj = {"val": 42}
+    repo.register(FEAT + ELE1, obj)
+    assert repo.query("$" + ELE1, context=FEAT) is obj
+
+
+def test_local_and_absolute_both_miss():
+    """Neither local nor global has the key."""
+    repo = Repository()
+    assert repo.query("$" + ELE1, context=FEAT) is None
+    assert repo.query("@" + FEAT + ELE1) is None
+
+
+def test_empty_repo_all_formats():
+    """New Repository returns None for all query formats."""
+    repo = Repository()
+    assert repo.query("$" + ELE1, context=FEAT) is None
+    assert repo.query("@" + FEAT + ELE1) is None
+    q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2])
+    assert repo.query(q) is None
+
+
+def test_malformed_ancestry_hex():
+    """Non-hex characters in ancestry length raise ValueError."""
+    with pytest.raises(ValueError):
+        _parse_ancestry("?ZZ;abc")
+
+
+def test_mismatched_ancestry_length():
+    """Extra characters beyond the parsed length are ignored."""
+    ids, typ = _parse_ancestry("?3;abcdef")
+    assert ids == ["abc"]
+    assert typ is None
+
+
+def test_query_all_superset_match():
+    """Two elements sharing an ancestor both appear in query_all."""
+    repo = Repository()
+    obj1 = {"type": "pt", "x": 1.0}
+    obj2 = {"type": "pt", "x": 2.0}
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], obj1)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE3], obj2)
+    q = make_ancestry_query(["@" + FEAT + ELE1])
+    matches = repo.query_all(q)
+    assert len(matches) == 2
+    assert obj1 in matches
+    assert obj2 in matches

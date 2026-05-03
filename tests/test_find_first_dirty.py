@@ -80,6 +80,27 @@ def test_all_features_changed():
     assert _find_first_dirty(new, state) == 0
 
 
+def test_feature_inserted_in_middle_returns_index_one():
+    old = [{'id': 'sk1'}, {'id': 'sk2'}, {'id': 'sk3'}]
+    new = [{'id': 'sk1'}, {'id': 'new'}, {'id': 'sk2'}, {'id': 'sk3'}]
+    state = make_state(old)
+    assert _find_first_dirty(new, state) == 1
+
+
+def test_feature_deleted_from_middle():
+    old = [{'id': 'sk1'}, {'id': 'sk2'}, {'id': 'sk3'}]
+    new = [{'id': 'sk1'}, {'id': 'sk3'}]
+    state = make_state(old)
+    assert _find_first_dirty(new, state) == 1
+
+
+def test_spec_change_via_key_addition():
+    old = [{'id': 'a'}]
+    new = [{'id': 'a', 'extra': 'val'}]
+    state = make_state(old)
+    assert _find_first_dirty(new, state) == 0
+
+
 def test_nested_field_change_detected():
     old = [{'id': 'a', 'kind': 'sketch', 'entities': [{'id': 'line1', 'kind': 'line'}]}]
     new = [{'id': 'a', 'kind': 'sketch', 'entities': [{'id': 'line1', 'kind': 'circle'}]}]

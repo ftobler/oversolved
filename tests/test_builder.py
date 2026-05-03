@@ -1,6 +1,8 @@
 import pytest
 
-from oversolved.builder import build
+import json
+
+from oversolved.builder import build, _repo_from_snapshot
 from oversolved.query import Repository, make_ancestry_query
 from oversolved.types3d import Body
 from solver_helpers import rect_sketch_spec, full_rect_extrude_spec
@@ -220,3 +222,68 @@ def test_pick_boundary_with_fillet_returns_before_state():
     assert "body_ex1" in r["pick_bodies"]
     # The regular bodies may or may not have body_ex1 depending on fillet
     assert "body_ex1" in r["bodies"]
+
+
+def test_repo_from_snapshot_old_format():
+    """Old-format snapshot without elements/ancestral keys should not raise."""
+    repo = _repo_from_snapshot({"some_elem_id": {"payload": "data"}})
+    assert repo.elements == {"some_elem_id": {"payload": "data"}}
+    assert repo.ancestral == {}
+
+
+def test_repo_from_snapshot_empty():
+    """Empty snapshot round-trip produces empty repo."""
+    repo = _repo_from_snapshot({"elements": {}, "ancestral": {}})
+    assert repo.elements == {}
+    assert repo.ancestral == {}
+
+
+def test_repo_from_snapshot_malformed():
+    """Garbage keys without elements/ancestral treated as old-format data, no exception."""
+    repo = _repo_from_snapshot({"foo": "bar"})
+    assert repo.elements == {"foo": "bar"}
+    assert repo.ancestral == {}
+
+
+def test_dedupe_repo_collapses_duplicate_payloads():
+    """Two elements with identical payloads under same ancestral key get collapsed."""
+    from oversolved.builder import _dedupe_repo
+    repo = Repository()
+    key = frozenset(["@ex1face0", "@ex1"])
+    repo.ancestral[key] = ["id1", "id2"]
+    repo.elements["id1"] = {"type": "flatface", "body_id": "b1"}
+    repo.elements["id2"] = {"type": "flatface", "body_id": "b1"}
+    _dedupe_repo(repo)
+    assert len(repo.ancestral[key]) == 1
+    assert "id2" not in repo.elements
+
+
+def test_enriched_snapshot_isolation():
+    """Mutating deserialized snapshot does not affect original checkpoint."""
+    spec = full_rect_extrude_spec(w=5.0, h=5.0, d=3.0)
+    r = build(spec)
+    cp = r['_build_state'].checkpoints['sk1']
+    original_elements = dict(cp.repo_snapshot.get('elements', {}))
+    original_ancestral = dict(cp.repo_snapshot.get('ancestral', {}))
+    deserialized = _repo_from_snapshot(cp.repo_snapshot)
+    deserialized.elements['_mutated'] = 'value'
+    deserialized.ancestral[frozenset(['_mutated'])] = ['_mutated']
+    assert cp.repo_snapshot['elements'] == original_elements
+    assert cp.repo_snapshot['ancestral'] == original_ancestral
+
+
+def test_double_copy_produces_same_payload():
+    """Building same spec twice yields equivalent enriched snapshots."""
+    spec = full_rect_extrude_spec(w=5.0, h=5.0, d=3.0)
+    r1 = build(spec)
+    r2 = build(spec)
+    s1 = r1['_build_state'].checkpoints['sk1'].repo_snapshot
+    s2 = r2['_build_state'].checkpoints['sk1'].repo_snapshot
+    # Compare element payloads ignoring random key names
+    els1 = sorted(json.dumps(v, sort_keys=True) for v in s1['elements'].values())
+    els2 = sorted(json.dumps(v, sort_keys=True) for v in s2['elements'].values())
+    assert els1 == els2
+    # Same ancestral key structure
+    assert s1['ancestral'].keys() == s2['ancestral'].keys()
+    for k in s1['ancestral']:
+        assert len(s1['ancestral'][k]) == len(s2['ancestral'][k])

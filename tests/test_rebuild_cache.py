@@ -145,6 +145,131 @@ class TestTtlCache:
 
         assert not errors
 
+    def test_max_size_exact_fit(self):
+        cache = TtlCache[str](ttl_seconds=60.0, max_size=3)
+        cache.set("a", "1")
+        cache.set("b", "2")
+        cache.set("c", "3")
+        assert cache.get("a") == "1"
+        assert cache.get("b") == "2"
+        assert cache.get("c") == "3"
+
+    def test_under_max_size(self):
+        cache = TtlCache[str](ttl_seconds=60.0, max_size=10)
+        for i in range(9):
+            cache.set(f"key_{i}", str(i))
+        for i in range(9):
+            assert cache.get(f"key_{i}") == str(i)
+
+    def test_concurrent_delete_get(self):
+        cache = TtlCache[str](ttl_seconds=60.0, max_size=100)
+        cache.set("race_key", "value")
+        errors = []
+
+        def deleter():
+            for _ in range(100):
+                try:
+                    cache.delete("race_key")
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+
+        def getter():
+            for _ in range(100):
+                try:
+                    cache.get("race_key")
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+
+        threads = [
+            threading.Thread(target=deleter),
+            threading.Thread(target=getter),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+
+    def test_concurrent_set_same_key(self):
+        cache = TtlCache[str](ttl_seconds=60.0, max_size=100)
+        errors = []
+
+        def set_a():
+            for _ in range(100):
+                try:
+                    cache.set("shared", "a")
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+
+        def set_b():
+            for _ in range(100):
+                try:
+                    cache.set("shared", "b")
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+
+        threads = [
+            threading.Thread(target=set_a),
+            threading.Thread(target=set_b),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        entries = cache.get_entries()
+        assert len(entries) == 1
+
+    def test_concurrent_clear_and_read(self):
+        cache = TtlCache[str](ttl_seconds=60.0, max_size=100)
+        for i in range(50):
+            cache.set(f"key_{i}", str(i))
+        errors = []
+
+        def clearer():
+            for _ in range(20):
+                try:
+                    cache.clear()
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+
+        def reader():
+            for _ in range(20):
+                try:
+                    cache.get_entries()
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+
+        threads = [
+            threading.Thread(target=clearer),
+            threading.Thread(target=reader),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+
+    def test_set_refreshes_ttl(self):
+        cache = TtlCache[str](ttl_seconds=0.1, max_size=10)
+        cache.set("a", "value")
+        time.sleep(0.06)
+        cache.set("a", "value2")
+        time.sleep(0.06)
+        assert cache.get("a") == "value2"
+
+    def test_no_stale_ttl_inheritance(self):
+        cache = TtlCache[str](ttl_seconds=0.05, max_size=10)
+        cache.set("a", "value")
+        time.sleep(0.06)
+        assert cache.get("a") is None
+        cache.set("a", "new_value")
+        time.sleep(0.03)
+        assert cache.get("a") == "new_value"
+
 
 class TestSolveEndpointSerialization:
     def test_rollback_returns_pre_rollback_bodies(self, authed_client):
@@ -326,6 +451,109 @@ class TestTtlCacheDelete:
         cache = TtlCache[str](ttl_seconds=10.0, max_size=10)
         cache.delete("missing")  # should not raise
         assert cache.get("missing") is None
+
+
+class TestConcurrentSolves:
+    def test_concurrent_solves_different_docs(self, authed_client):
+        """Two threads, different doc IDs, no cross-talk."""
+        pytest.importorskip("OCP.gp")
+        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+
+        results = {}
+
+        def solve_doc_a():
+            resp = post_solve(authed_client, {"id": "doc_conc_a", "features": [sk1, ex1]})
+            results["a"] = json.loads(resp.data)
+
+        def solve_doc_b():
+            resp = post_solve(authed_client, {"id": "doc_conc_b", "features": [sk1, ex1]})
+            results["b"] = json.loads(resp.data)
+
+        t1 = threading.Thread(target=solve_doc_a)
+        t2 = threading.Thread(target=solve_doc_b)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert "body_ex1" in results["a"]["bodies"]
+        assert "body_ex1" in results["b"]["bodies"]
+        assert results["a"]["bodies"]["body_ex1"]["mesh"] == results["b"]["bodies"]["body_ex1"]["mesh"]
+
+
+class TestFailureRecovery:
+    def test_exception_does_not_corrupt_l1(self, authed_client):
+        """Failed solve does not overwrite L1 cache. Valid solve after failure works."""
+        pytest.importorskip("OCP.gp")
+        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+
+        # First valid solve populates L1
+        r1 = post_solve(authed_client, {"id": "doc_fail_l1", "features": [sk1, ex1]})
+        assert r1.status_code == 200
+
+        # Bad solve with invalid feature kind
+        bad_feature = {"id": "bad", "kind": "nonexistent"}
+        r2 = post_solve(authed_client, {"id": "doc_fail_l1", "features": [sk1, bad_feature, ex1]})
+        assert r2.status_code == 200
+        d2 = json.loads(r2.data)
+        assert d2["result"]["bad"]["status"] == "exception"
+
+        # Subsequent valid solve should work (cache not corrupted)
+        r3 = post_solve(authed_client, {"id": "doc_fail_l1", "features": [sk1, ex1]})
+        assert r3.status_code == 200
+        d3 = json.loads(r3.data)
+        assert "body_ex1" in d3["bodies"]
+
+    def test_error_then_retry_populates_cache(self, authed_client):
+        """Fail, succeed, then third solve reuses checkpoints (faster)."""
+        pytest.importorskip("OCP.gp")
+        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+
+        # Bad solve that fails
+        bad_feature = {"id": "bad", "kind": "nonexistent"}
+        r1 = post_solve(authed_client, {"id": "doc_retry", "features": [bad_feature]})
+        assert r1.status_code == 200
+
+        # Valid solve populates cache
+        r2 = post_solve(authed_client, {"id": "doc_retry", "features": [sk1, ex1]})
+        assert r2.status_code == 200
+        d2 = json.loads(r2.data)
+        first_valid_ms = d2["solve_ms"]
+
+        # Third solve should be faster (reuses checkpoints)
+        r3 = post_solve(authed_client, {"id": "doc_retry", "features": [sk1, ex1]})
+        assert r3.status_code == 200
+        d3 = json.loads(r3.data)
+        assert d3["solve_ms"] <= first_valid_ms * 1.5 or d3["solve_ms"] < 50
+
+
+class TestAnonymousSolve:
+    def test_anonymous_solve_no_cache(self, authed_client):
+        """Solve with no doc ID does not populate L1. Next solve with doc ID = full rebuild."""
+        pytest.importorskip("OCP.gp")
+        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+
+        # Anonymous solve (no doc ID) - should not be cached
+        r1 = post_solve(authed_client, {"features": [sk1, ex1]})
+        assert r1.status_code == 200
+        d1 = json.loads(r1.data)
+        assert "body_ex1" in d1["bodies"]
+
+        # Solve with doc ID (should be a fresh rebuild, not influenced by anonymous solve)
+        r2 = post_solve(authed_client, {"id": "doc_anon_test", "features": [sk1, ex1]})
+        assert r2.status_code == 200
+        d2 = json.loads(r2.data)
+        assert "body_ex1" in d2["bodies"]
+
+        # Second solve with doc ID should be cached (L1 hit)
+        r3 = post_solve(authed_client, {"id": "doc_anon_test", "features": [sk1, ex1]})
+        assert r3.status_code == 200
+        d3 = json.loads(r3.data)
+        assert d3["solve_ms"] <= d2["solve_ms"] * 1.5 or d3["solve_ms"] < 50
 
 
 class TestL2CacheDelete:

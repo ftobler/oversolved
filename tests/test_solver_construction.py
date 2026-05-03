@@ -1378,3 +1378,153 @@ features:
     assert abs(line.end[0] - fixed_end[0]) < TOL, f"end x should be fixed at {fixed_end[0]}, got {line.end[0]}"
     assert abs(line.end[1] - fixed_end[1]) < TOL, f"end y should be fixed at {fixed_end[1]}, got {line.end[1]}"
     assert result["status"] == "fully_constrained"
+
+
+# ── center_rect expansion  ──
+
+def test_center_rect_expansion(sketch_log):
+    """A center_rect entity expands to 4 line entities with correct positions."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: r1
+        kind: center_rect
+        xy: [0.0, 0.0]
+        size: [10.0, 6.0]
+    constraints: []
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_center_rect_expansion", yaml_str, result)
+
+    geom = result["geometry"]
+    assert "r1_top" in geom
+    assert "r1_right" in geom
+    assert "r1_bottom" in geom
+    assert "r1_left" in geom
+
+    cx, cy, w, h = 0.0, 0.0, 10.0, 6.0
+    hw, hh = w / 2.0, h / 2.0
+    T = TOL
+
+    top = geom["r1_top"]
+    assert abs(top[0] - (cx - hw)) < T
+    assert abs(top[1] - (cy + hh)) < T
+    assert abs(top[2] - (cx + hw)) < T
+    assert abs(top[3] - (cy + hh)) < T
+
+    right = geom["r1_right"]
+    assert abs(right[0] - (cx + hw)) < T
+    assert abs(right[1] - (cy + hh)) < T
+    assert abs(right[2] - (cx + hw)) < T
+    assert abs(right[3] - (cy - hh)) < T
+
+    bottom = geom["r1_bottom"]
+    assert abs(bottom[0] - (cx + hw)) < T
+    assert abs(bottom[1] - (cy - hh)) < T
+    assert abs(bottom[2] - (cx - hw)) < T
+    assert abs(bottom[3] - (cy - hh)) < T
+
+    left = geom["r1_left"]
+    assert abs(left[0] - (cx - hw)) < T
+    assert abs(left[1] - (cy - hh)) < T
+    assert abs(left[2] - (cx - hw)) < T
+    assert abs(left[3] - (cy + hh)) < T
+
+
+def test_center_rect_mixed_with_regular_entity(sketch_log):
+    """center_rect mixed with a standalone entity: standalone preserved + rect lines."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: r1
+        kind: center_rect
+        xy: [2.0, 1.0]
+        size: [4.0, 2.0]
+      - id: pt1
+        kind: point
+    constraints: []
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_center_rect_mixed_with_regular_entity", yaml_str, result)
+
+    geom = result["geometry"]
+    assert "pt1" in geom
+    assert "r1_top" in geom
+    assert "r1_right" in geom
+    assert "r1_bottom" in geom
+    assert "r1_left" in geom
+
+    cx, cy, w, h = 2.0, 1.0, 4.0, 2.0
+    hw, hh = w / 2.0, h / 2.0
+    T = TOL
+
+    top = geom["r1_top"]
+    assert abs(top[0] - (cx - hw)) < T
+    assert abs(top[1] - (cy + hh)) < T
+    assert abs(top[2] - (cx + hw)) < T
+    assert abs(top[3] - (cy + hh)) < T
+
+    right = geom["r1_right"]
+    assert abs(right[0] - (cx + hw)) < T
+    assert abs(right[1] - (cy + hh)) < T
+    assert abs(right[2] - (cx + hw)) < T
+    assert abs(right[3] - (cy - hh)) < T
+
+    bottom = geom["r1_bottom"]
+    assert abs(bottom[0] - (cx + hw)) < T
+    assert abs(bottom[1] - (cy - hh)) < T
+    assert abs(bottom[2] - (cx - hw)) < T
+    assert abs(bottom[3] - (cy - hh)) < T
+
+    left = geom["r1_left"]
+    assert abs(left[0] - (cx - hw)) < T
+    assert abs(left[1] - (cy - hh)) < T
+    assert abs(left[2] - (cx - hw)) < T
+    assert abs(left[3] - (cy + hh)) < T
+
+
+def test_center_rect_zero_size(sketch_log):
+    """center_rect with zero width/height produces degenerate lines, no division error."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: r1
+        kind: center_rect
+        xy: [3.0, -2.0]
+        size: [0.0, 0.0]
+    constraints: []
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_center_rect_zero_size", yaml_str, result)
+
+    geom = result["geometry"]
+    assert "r1_top" in geom
+    assert "r1_right" in geom
+    assert "r1_bottom" in geom
+    assert "r1_left" in geom
+
+    T = TOL
+    for name in ("r1_top", "r1_right", "r1_bottom", "r1_left"):
+        line = geom[name]
+        assert abs(line[0] - 3.0) < T
+        assert abs(line[1] - -2.0) < T
+        assert abs(line[2] - 3.0) < T
+        assert abs(line[3] - -2.0) < T

@@ -207,3 +207,176 @@ def test_partial_rebuild_reusing_state_does_not_duplicate_brep_face_ancestry():
 
     assert repo.query(face_query)["body_id"] == "body_ex1"
     assert len(ancestry_ids) == 1
+
+
+def test_partial_rebuild_preserves_shape_identity():
+    """After partial rebuild, unchanged feature's body.shape is the same object."""
+    pytest.importorskip("OCP.gp")
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    spec = {'features': [sk1, ex1]}
+    r1 = build(spec)
+    sk2 = rect_sketch_spec(w=2.0, h=2.0, sketch_id='sk2')
+    spec2 = {'features': [sk1, ex1, sk2]}
+    r2 = build(spec2, prev_state=r1['_build_state'])
+    shape1 = r1['_build_state'].checkpoints['ex1'].body_store_snapshot['body_ex1'].shape
+    shape2 = r2['_build_state'].checkpoints['ex1'].body_store_snapshot['body_ex1'].shape
+    assert shape1 is shape2
+
+
+def test_body_addition_in_dirty_range():
+    """Insert a sketch between sk1 and ex1; ex1 re-solved but still ok."""
+    pytest.importorskip("OCP.gp")
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    spec = {'features': [sk1, ex1]}
+    r1 = build(spec)
+    new_sk = rect_sketch_spec(w=3.0, h=2.0, sketch_id='sk_insert')
+    spec2 = {'features': [sk1, new_sk, ex1]}
+    r2 = build(spec2, prev_state=r1['_build_state'])
+    assert r2['result']['ex1']['status'] == 'ok'
+
+
+def test_partial_rebuild_feature_inserted():
+    """[sk1, ex1] -> [sk1, fillet, ex1]: fillet checkpoint created, ex rebuilt."""
+    pytest.importorskip("OCP.gp")
+
+    sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+    ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+
+    # Full build: [sk1, ex1]
+    r1 = build({"features": [sk1, ex1]})
+    state1 = r1["_build_state"]
+
+    # Get an edge query from the extruded body
+    edge_query = r1["bodies"]["body_ex1"]["edge_queries"][0]
+
+    # Insert fillet at index 1 (between sk1 and ex1): [sk1, fillet, ex1]
+    fillet = {"id": "fil1", "kind": "fillet", "edges": [edge_query], "radius": 1.0}
+    r2 = build({"features": [sk1, fillet, ex1]}, prev_state=state1)
+    state2 = r2["_build_state"]
+
+    # sk1 checkpoint has the correct spec
+    assert state2.checkpoints["sk1"].spec == sk1
+    # fillet checkpoint exists
+    assert "fil1" in state2.checkpoints
+    # ex1 checkpoint exists and ex1 succeeded
+    assert "ex1" in state2.checkpoints
+    assert r2["result"]["ex1"]["status"] == "ok"
+
+
+def test_partial_rebuild_feature_deleted():
+    """[sk1, fillet, ex1] -> [sk1, ex1]: fillet checkpoint gone, ex rebuilt."""
+    pytest.importorskip("OCP.gp")
+
+    sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+
+    # Use a temp build to get valid edge queries
+    temp = build({"features": [
+        rect_sketch_spec(w=10.0, h=10.0, sketch_id="s"),
+        extrude_spec("s", "e", 5.0),
+    ]})
+    edge_query = temp["bodies"]["body_e"]["edge_queries"][0]
+
+    fillet = {"id": "fil1", "kind": "fillet", "edges": [edge_query], "radius": 1.0}
+    ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+
+    # Full build: [sk1, fillet, ex1]
+    r1 = build({"features": [sk1, fillet, ex1]})
+    state1 = r1["_build_state"]
+
+    # Delete fillet: [sk1, ex1]
+    r2 = build({"features": [sk1, ex1]}, prev_state=state1)
+    state2 = r2["_build_state"]
+
+    # sk1 checkpoint has the correct spec
+    assert state2.checkpoints["sk1"].spec == sk1
+    # fillet checkpoint gone
+    assert "fil1" not in state2.checkpoints
+    # ex1 checkpoint exists and ex1 succeeded
+    assert "ex1" in state2.checkpoints
+    assert r2["result"]["ex1"]["status"] == "ok"
+
+
+def test_partial_rebuild_feature_reordered():
+    """[sk1, ex1, fillet] -> [sk1, fillet, ex1]: all after index 0 rebuilt."""
+    pytest.importorskip("OCP.gp")
+
+    sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+    ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+
+    # Temp build to get edge queries
+    temp = build({"features": [
+        rect_sketch_spec(w=10.0, h=10.0, sketch_id="s"),
+        extrude_spec("s", "e", 5.0),
+    ]})
+    edge_query = temp["bodies"]["body_e"]["edge_queries"][0]
+
+    fillet = {"id": "fil1", "kind": "fillet", "edges": [edge_query], "radius": 1.0}
+
+    # Full build: [sk1, ex1, fillet]
+    r1 = build({"features": [sk1, ex1, fillet]})
+    state1 = r1["_build_state"]
+
+    # Reorder: [sk1, fillet, ex1]
+    r2 = build({"features": [sk1, fillet, ex1]}, prev_state=state1)
+    state2 = r2["_build_state"]
+
+    # sk1 checkpoint has the correct spec
+    assert state2.checkpoints["sk1"].spec == sk1
+    # fillet checkpoint exists
+    assert "fil1" in state2.checkpoints
+    # ex1 checkpoint exists
+    assert "ex1" in state2.checkpoints
+    # feature_order reflects new order
+    assert state2.feature_order == ["sk1", "fil1", "ex1"]
+    # ex1 succeeded after reorder
+    assert r2["result"]["ex1"]["status"] == "ok"
+
+
+def test_partial_rebuild_add_sketch_mid_stack():
+    """[sk1, ex1] -> [sk1, sk2, ex1, ex2]: sk1 checkpoint reused."""
+    pytest.importorskip("OCP.gp")
+
+    sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+    ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+
+    # Full build: [sk1, ex1]
+    r1 = build({"features": [sk1, ex1]})
+    state1 = r1["_build_state"]
+
+    # Add sketch mid-stack: [sk1, sk2, ex1, ex2]
+    sk2 = rect_sketch_spec(w=5.0, h=5.0, sketch_id="sk2")
+    ex2 = extrude_spec("sk2", "ex2", distance=3.0)
+    r2 = build({"features": [sk1, sk2, ex1, ex2]}, prev_state=state1)
+    state2 = r2["_build_state"]
+
+    # sk1 checkpoint has the correct spec
+    assert state2.checkpoints["sk1"].spec == sk1
+    # sk2 checkpoint created
+    assert "sk2" in state2.checkpoints
+    # ex1 checkpoint exists
+    assert "ex1" in state2.checkpoints
+    # ex2 checkpoint created
+    assert "ex2" in state2.checkpoints
+    # feature_order reflects all 4 features
+    assert state2.feature_order == ["sk1", "sk2", "ex1", "ex2"]
+    # Both extrudes succeeded
+    assert r2["result"]["ex1"]["status"] == "ok"
+    assert r2["result"]["ex2"]["status"] == "ok"
+    # At least body_ex1 is present (ex2 may fuse into the same body)
+    assert "body_ex1" in r2["bodies"]
+
+
+def test_corrupted_checkpoint_missing_body_id():
+    """Missing body_id in body_store_snapshot should not crash."""
+    pytest.importorskip("OCP.gp")
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    spec = {'features': [sk1, ex1]}
+    r1 = build(spec)
+    r1['_build_state'].checkpoints['ex1'].body_store_snapshot.pop('body_ex1', None)
+    sk_new = rect_sketch_spec(w=2.0, h=2.0, sketch_id='sk_new')
+    spec2 = {'features': [sk1, ex1, sk_new]}
+    r2 = build(spec2, prev_state=r1['_build_state'])
+    assert r2['result']['sk_new']['status'] != 'exception'
