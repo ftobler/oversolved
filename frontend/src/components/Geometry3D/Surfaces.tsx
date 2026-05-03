@@ -80,7 +80,7 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
 
   return (
     <mesh
-      position={[0, 0, -0.003]}
+      position={[0, 0, 0.003]}
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}
       onClick={handleClick}
