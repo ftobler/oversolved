@@ -4,78 +4,68 @@ import { makeSanitizedEvent } from '../Geometry3D/pointerAbstraction'
 import { worldToSketchLocalPure } from '../Geometry3D/coordTransform'
 import { CLICK_THRESHOLD_PX } from '../Geometry3D/constants'
 
-/**
- * REGRESSION TEST DOCUMENTATION: Dragging Coordinate and Collision Bugs
- *
- * These tests document the chain of interdependent fixes for dragging behavior.
- * Many regressions are hard to unit test (Three.js raycasting, coordinate distortion)
- * and are instead protected by code comments that explain the requirements.
- *
- * ============================================================================
- * REGRESSION 1: "Drag Coordinate Distortion at Camera Angles"
- * ============================================================================
- *
- * BUG: When camera tilted relative to sketch plane, dragged elements jumped
- *      away from cursor (shift direction depended on camera angle)
- * CAUSE: DragPlane was at z=0.5 or z=90, far from sketch plane (z=-0.001)
- * FIX: Position DragPlane at z=-0.001 (same as sketch plane)
- *
- * PROTECTION:
- *   ✓ Code comment in Dragging.tsx (line 13-20) explains z=-0.001 requirement
- *   ✓ Code comment in Dragging.tsx toLocal() (line 24-27) explains coordinate transform
- *   ✓ Code comment in Drawing.tsx toLocal() (line 207-213) explains same logic
- * TEST COVERAGE:
- *   ✓ Manual test: Drag element with tilted camera → element stays under cursor
- *
- * ============================================================================
- * REGRESSION 2: "Self-Intersection Blocking Dragging"
- * ============================================================================
- *
- * BUG: Dragging became choppy/jittery when element overlapped its own
- *      collision geometry (HitPolyline, vertex hit spheres)
- * CAUSE: Raycasts to DragPlane were blocked by entity's collision meshes
- * FIX: Hide collision geometry during drag, BUT ONLY AFTER MOVEMENT STARTS:
- *      - EntityLines.tsx: {!isDragged && <HitPolyline ... />}
- *      - VertexDots.tsx: {!isDragged && <mesh ref={hitRef} ... />}
- * CRITICAL: isDragged must check BOTH drag state AND movement to prevent
- *           regression where clicks couldn't register as selection
- *
- * SELECTION REGRESSION FIX:
- *   Problem: Naive hiding (collision hidden immediately on pointerDown) broke
- *            selection, making it hard to click without starting a drag
- *   Solution: Only hide collision after movement detected (currentWorld != startWorld)
- *             This allows quick clicks to select, but hides during actual dragging
- *
- * PROTECTION:
- *   ✓ Code comment in EntityLines.tsx explains isDragged with movement check
- *   ✓ Code comment in VertexDots.tsx explains isDragged with movement check
- *   ✓ Tests document why movement check is critical for preventing regression
- * TEST COVERAGE:
- *   ✓ Manual test: Click to select → works normally
- *   ✓ Manual test: Drag element → smooth movement, no jitter
- *
- * ============================================================================
- * REGRESSION 3: "Reference Planes Blocking Drags"
- * ============================================================================
- *
- * BUG: Dragging failed when cursor moved over reference planes (XY, XZ, YZ)
- * CAUSE: ReferencePlane mesh was blocking raycasts to DragPlane
- * FIX: Hide ReferencePlane mesh during drag:
- *      ReferencePlane.tsx: {!isDragging && <mesh ... />}
- *
- * PROTECTION:
- *   ✓ Code comment in ReferencePlane.tsx (line 49-51) explains isDragging logic
- *   ✓ Zustand tests in sketchEditorStore.test.ts verify drag state exists
- * TEST COVERAGE:
- *   ✓ Manual test: Drag over origin planes → continuous dragging works
- *
- * ============================================================================
- * NOTE: These regressions are protected by:
- * 1. Code comments explaining the root cause and fix
- * 2. Comments documenting why collision must be hidden
- * 3. Manual testing (UI interaction can't be unit tested easily)
- * ============================================================================
- */
+// REGRESSION TEST DOCUMENTATION: Dragging Coordinate and Collision Bugs
+//
+// These tests document the chain of interdependent fixes for dragging behavior.
+// Many regressions are hard to unit test (Three.js raycasting, coordinate distortion)
+// and are instead protected by code comments that explain the requirements.
+//
+// ─── REGRESSION 1: "Drag Coordinate Distortion at Camera Angles" ───
+//
+// BUG: When camera tilted relative to sketch plane, dragged elements jumped
+//      away from cursor (shift direction depended on camera angle)
+// CAUSE: DragPlane was at z=0.5 or z=90, far from sketch plane (z=-0.001)
+// FIX: Position DragPlane at z=-0.001 (same as sketch plane)
+//
+// PROTECTION:
+//   ✓ Code comment in Dragging.tsx (line 13-20) explains z=-0.001 requirement
+//   ✓ Code comment in Dragging.tsx toLocal() (line 24-27) explains coordinate transform
+//   ✓ Code comment in Drawing.tsx toLocal() (line 207-213) explains same logic
+// TEST COVERAGE:
+//   ✓ Manual test: Drag element with tilted camera → element stays under cursor
+//
+// ─── REGRESSION 2: "Self-Intersection Blocking Dragging" ───
+//
+// BUG: Dragging became choppy/jittery when element overlapped its own
+//      collision geometry (HitPolyline, vertex hit spheres)
+// CAUSE: Raycasts to DragPlane were blocked by entity's collision meshes
+// FIX: Hide collision geometry during drag, BUT ONLY AFTER MOVEMENT STARTS:
+//      - EntityLines.tsx: {!isDragged && <HitPolyline ... />}
+//      - VertexDots.tsx: {!isDragged && <mesh ref={hitRef} ... />}
+// CRITICAL: isDragged must check BOTH drag state AND movement to prevent
+//           regression where clicks couldn't register as selection
+//
+// SELECTION REGRESSION FIX:
+//   Problem: Naive hiding (collision hidden immediately on pointerDown) broke
+//            selection, making it hard to click without starting a drag
+//   Solution: Only hide collision after movement detected (currentWorld != startWorld)
+//             This allows quick clicks to select, but hides during actual dragging
+//
+// PROTECTION:
+//   ✓ Code comment in EntityLines.tsx explains isDragged with movement check
+//   ✓ Code comment in VertexDots.tsx explains isDragged with movement check
+//   ✓ Tests document why movement check is critical for preventing regression
+// TEST COVERAGE:
+//   ✓ Manual test: Click to select → works normally
+//   ✓ Manual test: Drag element → smooth movement, no jitter
+//
+// ─── REGRESSION 3: "Reference Planes Blocking Drags" ───
+//
+// BUG: Dragging failed when cursor moved over reference planes (XY, XZ, YZ)
+// CAUSE: ReferencePlane mesh was blocking raycasts to DragPlane
+// FIX: Hide ReferencePlane mesh during drag:
+//      ReferencePlane.tsx: {!isDragging && <mesh ... />}
+//
+// PROTECTION:
+//   ✓ Code comment in ReferencePlane.tsx (line 49-51) explains isDragging logic
+//   ✓ Zustand tests in sketchEditorStore.test.ts verify drag state exists
+// TEST COVERAGE:
+//   ✓ Manual test: Drag over origin planes → continuous dragging works
+//
+// ─── NOTE: These regressions are protected by: ───
+// 1. Code comments explaining the root cause and fix
+// 2. Comments documenting why collision must be hidden
+// 3. Manual testing (UI interaction can't be unit tested easily)
 
 describe('Dragging Regressions - Documentation', () => {
   describe('DragPlane z-position specification', () => {
@@ -239,9 +229,7 @@ describe('Dragging Regressions - Documentation', () => {
 
   describe('Spurious move mutation on click-to-select', () => {
     it('documents click-vs-drag distinction using screen pixel distance', () => {
-      // ============================================================================
-      // REGRESSION 4: "Spurious move mutation on vertex click-to-select"
-      // ============================================================================
+      // ─── REGRESSION 4: "Spurious move mutation on vertex click-to-select" ───
       //
       // BUG: Clicking on a vertex to select it emitted a move_vertex mutation and
       //      visually moved the vertex to the mouse-up position

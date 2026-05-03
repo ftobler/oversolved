@@ -81,9 +81,7 @@ export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5
   return <Line ref={lineRef} points={points} color={color} lineWidth={lineWidth} dashed dashSize={0.01} gapSize={0.005} onPointerOver={onPointerOver} onPointerOut={onPointerOut} />
 }
 
-// ----
-// Constraint symbol tile (read-only, used by Sketch3D / Visualizer)
-// ----
+// ─── Constraint symbol tile (read-only, used by Sketch3D / Visualizer) ───
 
 function ConstraintTile({ url, id }: { url: string; id: string }) {
   const [hovered, setHovered] = useState(false)
@@ -113,9 +111,7 @@ function ConstraintTile({ url, id }: { url: string; id: string }) {
   )
 }
 
-// ----
-// Shared interaction helpers
-// ----
+// ─── Shared interaction helpers ───
 
 function useDimInteraction(cid: string, value: number, interaction: DimInteraction | undefined, validatePositive = true) {
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
@@ -182,9 +178,7 @@ function useActiveLabelDrag(cid: string): [number, number] | null {
   return null
 }
 
-// ----
-// Dimension components (exported — used by both Sketch3D and Geometry3D)
-// ----
+// ─── Dimension components (exported — used by both Sketch3D and Geometry3D) ───
 
 export function LinearDimension({ cid, dim, dimOffset, interaction }: {
   cid: string
@@ -719,9 +713,7 @@ export function AngleDimension({ cid, dim, interaction }: {
   )
 }
 
-// ----
-// Read-only constraint overlays (used by Sketch3D / Visualizer)
-// ----
+// ─── Read-only constraint overlays (used by Sketch3D / Visualizer) ───
 
 interface ConstraintOverlaysProps {
   constraints: Constraints

@@ -1,8 +1,7 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-// ====
-// Constraint Registry — single source of truth for all sketch constraints.
+// ─── Constraint Registry — single source of truth for all sketch constraints. ───
 //
 // Every constraint recognised by the solver is listed here exactly once.
 // Toolbar buttons, keyboard shortcuts, icon mapping, dimension-tool detection,
@@ -13,9 +12,8 @@
 //   2. Add render logic in utils/geometryMapping.ts  (computeConstraintRender).
 //   3. Add solver residual in the backend  (solver.py → residuals).
 //   4. Optionally add an SVG icon in assets/icons/.
-// ====
 
-// -- Constraint definition ----
+// ─── Constraint definition ───
 
 export interface ConstraintDef {
   // Solver kind string — the canonical name used in the AST and solver.
@@ -80,10 +78,10 @@ export interface ConstraintDef {
   showInToolbar: boolean
 }
 
-// -- Registry ----
+// ─── Registry ───
 
 export const CONSTRAINTS: readonly ConstraintDef[] = [
-  // ── Geometric constraints ────
+  // ─── Geometric constraints ───
 
   {
     kind: 'horizontal',
@@ -293,7 +291,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
   },
 ] as const
 
-// -- Dimension tool auto-detection ----
+// ─── Dimension tool auto-detection ───
 // When the user activates the Dimension tool and clicks entities/vertices,
 // these rules determine which constraint kind to create.
 
@@ -351,7 +349,7 @@ export const DIMENSION_RULES: readonly DimensionRule[] = [
   },
 ] as const
 
-// -- Derived lookup tables (computed once at module load) ----
+// ─── Derived lookup tables (computed once at module load) ───
 
 // Map from constraint kind → full definition.
 export const CONSTRAINT_BY_KIND: ReadonlyMap<string, ConstraintDef> =

@@ -1,8 +1,7 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-// ====
-// Entity Registry — single source of truth for sketch entity types.
+// ─── Entity Registry — single source of truth for sketch entity types. ───
 //
 // Every entity kind recognised by the solver is listed here exactly once.
 // Toolbar buttons, vertex definitions, parameter layouts, and documentation
@@ -14,11 +13,10 @@
 //   3. Add solver handling in the backend  (solver.py).
 //   4. Add rendering in Geometry3D.tsx / SketchSvg.tsx.
 //   5. Optionally add an SVG icon in assets/icons/.
-// ====
 
 import type { ActiveTool } from '../stores/sketchEditorStore'
 
-// -- Entity definition ----
+// ─── Entity definition ───
 
 export interface VertexDef {
   // Vertex key (e.g. "start", "end", "center", "xy").
@@ -72,7 +70,7 @@ export interface EntityDef {
   showInToolbar: boolean
 }
 
-// -- Registry ----
+// ─── Registry ───
 
 export const ENTITIES: readonly EntityDef[] = [
   {
@@ -150,7 +148,7 @@ export const ENTITIES: readonly EntityDef[] = [
   },
 ] as const
 
-// -- Derived lookup tables (computed once at module load) ----
+// ─── Derived lookup tables (computed once at module load) ───
 
 // Map from entity kind → full definition.
 export const ENTITY_BY_KIND: ReadonlyMap<string, EntityDef> =

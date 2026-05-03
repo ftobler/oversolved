@@ -139,9 +139,7 @@ function sketchExtent(sketch: Sketch): number {
   return isFinite(minX) ? Math.max(maxX - minX, maxY - minY, 0.01) : 1
 }
 
-// ----
-// Entity rendering
-// ----
+// ─── Entity rendering ───
 
 interface EntityItemProps {
   entity: Entity
@@ -228,9 +226,7 @@ function EntityLines({ sketch, color, lineWidth = 1 }: EntityLinesProps) {
   )
 }
 
-// ----
-// Topology surface rendering
-// ----
+// ─── Topology surface rendering ───
 
 interface TopologySurfacesProps {
   topology: Topology
@@ -292,9 +288,7 @@ function TopologySurfaces({ topology }: TopologySurfacesProps) {
   )
 }
 
-// ----
-// Main component
-// ----
+// ─── Main component ───
 
 interface Sketch3DProps {
   initial: Sketch

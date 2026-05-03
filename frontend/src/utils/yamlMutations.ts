@@ -1,17 +1,13 @@
 import type { PartDoc, PartFeature, PartConstraint, PartTarget, BooleanFeatureDef, TransformFeatureDef } from '../types/cad'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '../registry'
 
-// ----
-// Architecture contract
-// ----
+// ─── Architecture contract ───
 //
 // PartDoc is the SOURCE OF TRUTH for the document.
 // ...
 // See ast.md for example.
 //
-// ----
-// Internals
-// ----
+// ─── Internals ───
 
 const round = (v: number) => Math.round(v * 1e6) / 1e6
 
@@ -53,9 +49,7 @@ function uniqueConstraintId(constraints: PartConstraint[], kind: string): string
   return id
 }
 
-// ----
-// Mutations — all modify the doc object in place
-// ----
+// ─── Mutations — all modify the doc object in place ───
 
 export function applyMoveVertex(
   doc: PartDoc,

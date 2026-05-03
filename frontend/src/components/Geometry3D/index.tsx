@@ -86,10 +86,12 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // POINTER EVENT PRIORITY STACK (highest to lowest, enforced by Three.js raycast z-depth):
   //   1. Vertex hit spheres      (z=0, sphere geometry wins at endpoints)
   //   2. Entity HitPolylines     (z=-0.001)
-  //   3. DragPlane mesh          (z=0, mounted only when drag != null - owns all move/up events during drag)
-  //   4. DrawPlane mesh          (z=-0.002, mounted only when activeTool is a drawing tool)
-  //   5. Deselect plane          (z=-1000, catch-all for click-on-empty)
-  //   6. OrbitControls           (canvas div level, suppressed via orbitEnabled=false during drag)
+  //   3. Sketch topology surfaces (z=0, when sketch active)
+  //   4. DragPlane mesh          (z=0, mounted only when drag != null - owns all move/up events during drag)
+  //   5. DrawPlane mesh          (z=-0.002, mounted only when activeTool is a drawing tool)
+  //   6. B-rep faces            (interactive=false when sketch active, see Viewport.tsx isSketchActive)
+  //   7. Deselect plane          (z=-1000, catch-all for click-on-empty)
+  //   8. OrbitControls           (canvas div level, suppressed via orbitEnabled=false during drag)
   //
   // New interaction consumers must fit into this stack via z-positioning.
   // Do not change z-offsets without understanding this ordering.
