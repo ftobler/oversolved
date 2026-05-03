@@ -158,14 +158,6 @@ def _repo_from_snapshot(repo_snapshot: dict) -> Repository:
     return repo
 
 
-def _snapshot_repo(repo: Repository) -> dict[str, Any]:
-    """Serialize the repository state needed for partial rebuild restoration."""
-    return {
-        "elements": copy.deepcopy(repo.elements),
-        "ancestral": copy.deepcopy(repo.ancestral),
-    }
-
-
 def _snapshot_with_brep_geometry(
     checkpoint: FeatureCheckpoint,
     bodies_out: dict[str, dict],
@@ -194,7 +186,10 @@ def _snapshot_with_brep_geometry(
             _register_solid_ancestry(repo, body)
             _register_extrusion_feature(repo, body.created_by, body.sketch_id)
 
-    return _snapshot_repo(repo)
+    return {
+        "elements": repo.elements,
+        "ancestral": repo.ancestral,
+    }
 
 
 # Keep old name as alias so any external callers are not broken.
@@ -375,7 +370,7 @@ def build(
         new_checkpoints[fid] = FeatureCheckpoint(
             spec=copy.deepcopy(feature),
             result=feature_result,
-            repo_snapshot=_snapshot_repo(global_repo),
+            repo_snapshot={"elements": dict(global_repo.elements), "ancestral": dict(global_repo.ancestral)},
             # Create new Body objects sharing the same (immutable) OCC shapes so that
             # later in-place mutations of body.shape by fuse operations do not corrupt
             # the shapes recorded at this checkpoint boundary.
