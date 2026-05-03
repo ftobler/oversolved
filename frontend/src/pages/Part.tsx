@@ -232,6 +232,9 @@ export default function Part() {
   const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
   const viewportRef = useRef<ViewportHandle>(null)
+  const handleFirstSolve = useCallback(() => {
+    viewportRef.current?.autoZoomToFit()
+  }, [])
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
   const [partColorPopover, setPartColorPopover] = useState<{ bodyId: string; position: [number, number] } | null>(null)
@@ -309,7 +312,7 @@ export default function Part() {
      startPreviewMode,
      commitPreview,
      cancelPreview,
-   } = usePartDoc(uuid, mode, setCodeText)
+    } = usePartDoc(uuid, mode, setCodeText, { onFirstSolve: handleFirstSolve })
 
   const readOnly = permission === 'view'
 
