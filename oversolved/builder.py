@@ -303,7 +303,16 @@ def build(
         last_clean_fid = features[first_dirty - 1].get("id", "")
         checkpoint = prev_state.checkpoints[last_clean_fid]
         global_repo = _repo_from_snapshot(checkpoint.repo_snapshot)
-        body_store = copy.copy(checkpoint.body_store_snapshot)
+        body_store = {
+            bid: Body(
+                id=body.id,
+                created_by=body.created_by,
+                modified_by=list(body.modified_by),
+                shape=body.shape,
+                sketch_id=body.sketch_id,
+            )
+            for bid, body in checkpoint.body_store_snapshot.items()
+        }
         for fid in prev_state.feature_order[:first_dirty]:
             result[fid] = prev_state.checkpoints[fid].result
             new_checkpoints[fid] = prev_state.checkpoints[fid]
@@ -325,7 +334,8 @@ def build(
         except Exception:
             logger.warning("Failed to register B-rep ancestry for body %s", body.id)
 
-    features_by_id = {f["id"]: f for f in features}
+    # Use full feature list for lookups (solver may need features past rollback)
+    features_by_id = {f["id"]: f for f in all_features}
     registered_this_cycle: set[str] = set()
 
     for i, feature in enumerate(features[first_dirty:]):

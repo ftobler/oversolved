@@ -12,45 +12,57 @@ const mockHandleMutation = vi.fn()
 const mockReSolve = vi.fn()
 const mockSetDoc = vi.fn()
 
-vi.mock('../../hooks/usePartDoc', () => ({
-  usePartDoc: () => ({
-    doc: {
-      version: 1,
-      kind: 'part',
-      features: [],
-      part_style: {
-        'body-1': { name: 'Test Body', color: '#FF0000', transparency: 0, metalness: 0.3 },
+vi.mock('../../hooks/usePartDoc', () => {
+  const _builtinDefaults = [
+    { id: 'Origin', kind: 'origin' },
+    { id: 'Top', kind: 'plane' },
+    { id: 'Front', kind: 'plane' },
+    { id: 'Right', kind: 'plane' },
+  ]
+  return {
+    BUILTIN_FEATURE_DEFAULTS: _builtinDefaults,
+    BUILTIN_FEATURE_IDS: new Set(_builtinDefaults.map(f => f.id)),
+    usePartDoc: () => ({
+      doc: {
+        version: 1,
+        kind: 'part',
+        features: [],
+        part_style: {
+          'body-1': { name: 'Test Body', color: '#FF0000', transparency: 0, metalness: 0.3 },
+        },
       },
-    },
-    setDoc: mockSetDoc,
-    docRef: { current: { version: 1, kind: 'part', features: [], part_style: {} } },
-    loading: false,
-    error: null,
-    setError: vi.fn(),
-    solveResults: {},
-    bodies: { 'body-1': { id: 'body-1', created_by: 'feature-1', modified_by: [] } },
-    pickBodies: {},
-    solving: false,
-    solveTime: null,
-    solveError: null,
-    setSolveError: vi.fn(),
-    solveResult: '',
-    undoStack: [],
-    redoStack: [],
-    reSolve: mockReSolve,
-    handleMutation: mockHandleMutation,
-    handleUndo: vi.fn(),
-    handleRedo: vi.fn(),
-    saveDoc: vi.fn(),
-    renameDoc: vi.fn(),
-    docName: 'Test Doc',
-    ownerUsername: 'user',
-    permission: 'owner',
-    startPreviewMode: mockStartPreviewMode,
-    commitPreview: mockCommitPreview,
-    cancelPreview: mockCancelPreview,
-  }),
-}))
+      setDoc: mockSetDoc,
+      docRef: { current: { version: 1, kind: 'part', features: [], part_style: {} } },
+      loading: false,
+      error: null,
+      setError: vi.fn(),
+      solveResults: {},
+      bodies: { 'body-1': { id: 'body-1', created_by: 'feature-1', modified_by: [] } },
+      pickBodies: {},
+      solving: false,
+      solveTime: null,
+      solveError: null,
+      setSolveError: vi.fn(),
+      solveResult: '',
+      undoStack: [],
+      redoStack: [],
+      reSolve: mockReSolve,
+      handleMutation: mockHandleMutation,
+      handleUndo: vi.fn(),
+      handleRedo: vi.fn(),
+      saveDoc: vi.fn(),
+      renameDoc: vi.fn(),
+      docName: 'Test Doc',
+      ownerUsername: 'user',
+      permission: 'owner',
+      setPickBoundary: vi.fn(),
+      setRollbackPos: vi.fn(),
+      startPreviewMode: mockStartPreviewMode,
+      commitPreview: mockCommitPreview,
+      cancelPreview: mockCancelPreview,
+    }),
+  }
+})
 
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({

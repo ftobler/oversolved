@@ -56,8 +56,9 @@ import contextCameraIcon from '../assets/icons/context-camera.svg'
 
 // IDs of built-in features that cannot be deleted.
 import { PART_COLOR_PALETTE, normalizeHexColor } from '../utils/partColors'
+import { BUILTIN_FEATURE_DEFAULTS } from '../hooks/usePartDoc'
 
-const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
+const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 
 function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
@@ -308,6 +309,7 @@ export default function Part() {
       pickBodies,
       setPickBodies,
       setPickBoundary,
+      setRollbackPos,
       permission,
       startPreviewMode,
       commitPreview,
@@ -401,8 +403,9 @@ useEffect(() => {
       rollbackInitializedForSolve.current = true
       return
     }
+    setPickBoundary(null)  // clear stale pick boundary when rollback changes
     if (docRef.current) reSolve(docRef.current, rollbackPosition ?? currentFeaturesLength.current)
-  }, [rollbackPosition, docRef, reSolve])
+  }, [rollbackPosition, docRef, reSolve, setPickBoundary])
 
   const activeSketchFeatureId = useMemo(() => {
     if (!editingFeatureId) return undefined
@@ -573,10 +576,11 @@ useEffect(() => {
     const fid = randomId(18)
     const label = `extrude ${Object.keys(bodies).length + 1}`
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
+    setRollbackPos(features.length + 1)  // Update ref BEFORE mutation so reSolve uses correct rollback
     handleMutation({ type: 'add_extrude', featureId: fid, label, sketchQuery: '', distance: 10 })
     setRollbackPosition(features.length + 1)
     setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary])
+  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
 
   const handleAddRevolve = useCallback(() => {
     if (!doc) return
@@ -996,14 +1000,19 @@ useEffect(() => {
 
   const exitEditFeature = useCallback(() => {
     if (savedRollbackPosition !== null) {
-      setRollbackPosition(savedRollbackPosition)
+      // Only restore saved rollback if user hasn't manually dragged the rollbar
+      // during editing. If the current rollback differs from the saved one,
+      // the user explicitly changed it.
+      if (rollbackPosition === savedRollbackPosition || rollbackPosition === null) {
+        setRollbackPosition(savedRollbackPosition)
+      }
       setSavedRollbackPosition(null)
     }
     setEditForcedVisible(new Set())
     setEditingFeatureId(null)
     setPendingPickField(null)
     setPickBoundary(null)
-  }, [savedRollbackPosition, setPendingPickField, setPickBoundary])
+  }, [savedRollbackPosition, rollbackPosition, setPendingPickField, setPickBoundary])
 
   const enterEditSketch = useCallback((featureId: string) => {
     enterEditFeature(featureId)

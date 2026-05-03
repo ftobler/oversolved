@@ -38,6 +38,10 @@ class DocumentSolver:
         """Release lock and store result."""
         with self._meta_lock:
             self._results[doc_id] = result
+            # Evict old entries to prevent unbounded memory growth.
+            if len(self._results) > 100:
+                for key in list(self._results.keys())[:len(self._results) - 100]:
+                    del self._results[key]
             lock = self._ensure_lock(doc_id)
         lock.release()
 

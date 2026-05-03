@@ -12,6 +12,18 @@ def _clear_feature_geometry_registrations(
     This prevents ghost references when entities are deleted and the
     feature is re-solved."""
     global_repo.clear_by_sketch_id(feature_id)
+    # Also clear ancestral entries that reference this feature.
+    # These accumulate across re-solves and cause AmbiguousQueryError.
+    keys_to_remove = []
+    for key, element_ids in list(global_repo.ancestral.items()):
+        for eid in element_ids:
+            payload = global_repo.elements.get(eid)
+            if payload and isinstance(payload, dict) and payload.get("sketch_id") == feature_id:
+                keys_to_remove.append(key)
+                global_repo.elements.pop(eid, None)
+                break
+    for key in keys_to_remove:
+        del global_repo.ancestral[key]
 
 
 def _post_register(
@@ -370,6 +382,19 @@ def _register_topology_surfaces(
             world_origin = list(origin)
 
         ids, _ = _parse_ancestry(query)
+        key = frozenset(ids)
+        existing_ids = global_repo.ancestral.get(key, [])
+        if any(global_repo.elements.get(eid) == {
+            "type": "flatface",
+            "origin": world_origin,
+            "x_axis": list(x_axis),
+            "y_axis": list(y_axis),
+            "normal": list(normal),
+        } for eid in existing_ids):
+            continue
+        for eid in existing_ids:
+            global_repo.elements.pop(eid, None)
+        global_repo.ancestral.pop(key, None)
         global_repo.register_ancestor(
             ids,
             {

@@ -127,8 +127,11 @@ class L2Cache(_BaseCache[BuildState]):
                     except OSError:
                         pass
                     return None
-                # Refresh access time for LRU
-                os.utime(path, None)
+                # Refresh access time for LRU; ignore errors (e.g. permission denied)
+                try:
+                    os.utime(path, None)
+                except OSError:
+                    pass
 
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -140,10 +143,16 @@ class L2Cache(_BaseCache[BuildState]):
         data = serialize_build_state(state)
         path = self._path(key)
         tmp_path = path + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f)
         with self._lock:
-            os.replace(tmp_path, path)
+            try:
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f)
+                os.replace(tmp_path, path)
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
             self._evict_expired_and_oversized()
 
     def _store_delete(self, key: str) -> None:

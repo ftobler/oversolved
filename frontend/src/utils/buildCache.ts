@@ -26,7 +26,10 @@ function evictStale(): void {
 
 function evictIfOverMax(): void {
   if (cache.size <= MAX_CACHE_SIZE) return
-  // Remove oldest entries (Map preserves insertion order)
+  // Evict stale entries first, then oldest by access time (Map preserves insertion order;
+  // getCachedBuildResponse moves accessed entries to end, so the front is LRU)
+  evictStale()
+  if (cache.size <= MAX_CACHE_SIZE) return
   const toDelete = cache.size - MAX_CACHE_SIZE
   const iter = cache.keys()
   for (let i = 0; i < toDelete; i++) {
@@ -41,7 +44,16 @@ export async function computeCacheKey(
   rollbackPosition: number,
   pickBoundary: number | null,
 ): Promise<string> {
-  const payload = JSON.stringify({ features, rollbackPosition, pickBoundary })
+  // Strip solver output (initial field) from feature specs so cache key
+  // depends only on the feature definition, not on solver results.
+  const cleanFeatures = features.map(f => {
+    const clean: Record<string, unknown> = {}
+    for (const key of Object.keys(f)) {
+      if (key !== 'initial') clean[key] = (f as unknown as Record<string, unknown>)[key]
+    }
+    return clean
+  })
+  const payload = JSON.stringify({ features: cleanFeatures, rollbackPosition, pickBoundary })
   const encoder = new TextEncoder()
   const data = encoder.encode(payload)
   const hashBuffer = await crypto.subtle.digest('SHA-256', data)

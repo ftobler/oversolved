@@ -1061,24 +1061,21 @@ def create_app(config: dict | None = None) -> Flask:
         rollback_position = data.get("rollback_position")
         pick_boundary = data.get("pick_boundary")
 
-        # Use the document-specific cache for prev_state.  The frontend no longer
-        # sends prev_state (shapes cannot be serialised over JSON), so the cache
-        # is the only viable source of geometric state.
-        prev_state: BuildState | None = None
-        if doc_id:
-            prev_state = _build_state_cache.get(doc_id)
-            if prev_state is None and app.config.get("L2_CACHE_ENABLED"):
-                prev_state = _l2_cache.get(doc_id)
-                if prev_state is not None:
-                    _build_state_cache.set(doc_id, prev_state)
-
         solver = get_document_solver()
 
         # Serialize ALL solves per document so that concurrent requests (previews,
         # full rebuilds, rollback changes) never race on the cache.
+        # Read prev_state INSIDE the lock to avoid stale reads.
+        prev_state: BuildState | None = None
         if doc_id:
             counter = solver.acquire(doc_id)
             try:
+                prev_state = _build_state_cache.get(doc_id)
+                if prev_state is None and app.config.get("L2_CACHE_ENABLED"):
+                    prev_state = _l2_cache.get(doc_id)
+                    if prev_state is not None:
+                        _build_state_cache.set(doc_id, prev_state)
+
                 build_result = build(
                     data,
                     prev_state=prev_state,

@@ -18,7 +18,9 @@ class LocalQuery:
         body = s[1:]
         for pt in ("start", "end", "center", "xy"):
             if body.endswith(pt) and len(body) > len(pt):
-                return LocalQuery(eid=body[: -len(pt)], sub=pt)
+                rest = body[: -len(pt)]
+                if rest and not rest[-1].isalpha():
+                    return LocalQuery(eid=rest, sub=pt)
         return LocalQuery(eid=body)
 
 
@@ -101,9 +103,12 @@ def emit_wire(q: "LocalQuery | AbsoluteQuery | AncestryQuery") -> str:
 def _parse_absolute(s: str) -> AbsoluteQuery:
     body = s[1:]
     for pt in ("start", "end", "center", "xy"):
+        # Require the sub-entity suffix to follow a non-alphanumeric boundary
+        # so that a feature_id like "sketch_start" is NOT parsed as "sketch_"+"start".
         if body.endswith(pt) and len(body) > len(pt):
             rest = body[: -len(pt)]
-            return AbsoluteQuery(feature_id=rest, eid="", sub=pt)
+            if rest and not rest[-1].isalpha():
+                return AbsoluteQuery(feature_id=rest, eid="", sub=pt)
     return AbsoluteQuery(feature_id=body)
 
 

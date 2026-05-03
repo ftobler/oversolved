@@ -1,5 +1,6 @@
 """Tests for backend L2 (persistent BREP) cache."""
 
+import builtins
 import json
 import os
 import threading
@@ -406,32 +407,44 @@ class TestL2Cache:
 
     # ─── B. Error Handling ───
 
-    def test_permission_denied_on_read(self, tmp_path):
+    def test_permission_denied_on_read(self, tmp_path, monkeypatch):
         cache = L2Cache(
             ttl_seconds=60.0, max_size=1000000, cache_dir=str(tmp_path / "permread")
         )
         state = BuildState(feature_order=["x"], checkpoints={})
         cache.set("doc1", state)
         path = str(tmp_path / "permread" / "doc1.json")
-        os.chmod(path, 0o000)
+
+        original_open = builtins.open
+
+        def denying_open(file, *args, **kwargs):
+            if str(file) == path:
+                raise PermissionError(13, "Permission denied")
+            return original_open(file, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", denying_open)
         result = cache.get("doc1")
         assert result is None
         assert os.path.exists(path)
-        os.chmod(path, 0o644)
 
-    def test_permission_denied_on_write(self, tmp_path):
+    def test_permission_denied_on_write(self, tmp_path, monkeypatch):
         cache_dir = tmp_path / "permwrite"
         cache_dir.mkdir()
         cache = L2Cache(
             ttl_seconds=60.0, max_size=1000000, cache_dir=str(cache_dir)
         )
         state = BuildState(feature_order=["x"], checkpoints={})
-        os.chmod(cache_dir, 0o444)
+        cache.set("doc1", state)
+
+        def failing_replace(src, dst):
+            raise OSError(13, "Permission denied")
+
+        monkeypatch.setattr(os, "replace", failing_replace)
         with pytest.raises(OSError):
             cache.set("doc1", state)
         tmp_files = list(cache_dir.glob("*.tmp"))
         assert len(tmp_files) == 0
-        os.chmod(cache_dir, 0o755)
+        assert cache.get("doc1") is not None
 
     def test_permission_denied_on_unlink_during_eviction(self, tmp_path, monkeypatch):
         cache = L2Cache(

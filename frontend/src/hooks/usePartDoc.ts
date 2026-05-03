@@ -308,11 +308,12 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     const currentRequestId = ++requestIdRef.current
     try {
       const allFeatures = d.features ?? []
-      const effectiveRollback = rollbackPosition ?? rollbackPosRef.current ?? allFeatures.length
+      const effectiveRollback = rollbackPosition !== undefined ? (rollbackPosition ?? allFeatures.length) : (rollbackPosRef.current ?? allFeatures.length)
 
       // Send ALL features to backend; backend handles rollback slicing internally.
       // Filter out built-in features for the solve payload.
-      const solveFeatures = allFeatures.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
+      // Only send features up to effectiveRollback for solve calculation
+      const solveFeatures = allFeatures.slice(0, effectiveRollback).filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
 
       // Rollback position is an index into the FULL feature list (including builtins).
       // Backend receives solveFeatures without builtins, so adjust the index.
@@ -332,6 +333,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
             return
           }
           rollbackPosRef.current = effectiveRollback
+          // Stale check: a newer solve may have started during applyBuildResponse
+          if (currentRequestId !== requestIdRef.current) {
+            return
+          }
           applyBuildResponse(d, cached.entry.buildResponse)
           setFromCache(true)
           setCacheTimestamp(cached.entry.timestamp)
@@ -341,6 +346,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
           }
           return
         }
+      }
+
+      // Stale check after async cache lookup (may have missed or been stale)
+      if (currentRequestId !== requestIdRef.current) {
+        return
       }
 
       const solvePayload: Record<string, unknown> = {
@@ -381,12 +391,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         setSolveRawResult(data.error || `Solve failed (${response.status})`)
       } else {
         const buildResponse = data as BuildResponse
-        applyBuildResponse(d, buildResponse, solveTimeMs)
         setFromCache(false)
         setCacheTimestamp(null)
         if (uuid) {
+          // Cache BEFORE applyBuildResponse mutates d with solver output
           await cacheBuildResponse(uuid, d, effectiveRollback, pickBoundary, buildResponse)
         }
+        applyBuildResponse(d, buildResponse, solveTimeMs)
         if (isFirstSolve && onFirstSolve) {
           setTimeout(onFirstSolve, 0)
         }
@@ -395,7 +406,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       setSolveError(String(e))
       setSolveRawResult(String(e))
     } finally {
-      if (!cancelledRef.current) setSolving(false)
+      if (currentRequestId === requestIdRef.current && !cancelledRef.current) setSolving(false)
     }
   }, [onFirstSolve, applyBuildResponse, uuid])
 
@@ -404,16 +415,17 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     const current = docRef.current
     if (!current) return
 
+    // Only clear for delete operations that remove features, not for edits
     setSolveResults(prev => {
-      const next = { ...prev }
       if (m.type === 'delete_feature') {
+        const next = { ...prev }
         delete next[m.featureId]
-      } else if ('featureId' in m) {
-        delete next[m.featureId]
-      } else if (m.type === 'delete') {
+        return next
+      }
+      if (m.type === 'delete') {
         return {}
       }
-      return next
+      return prev
     })
 
     const next: PartDoc = JSON.parse(JSON.stringify(current))
@@ -696,7 +708,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       if (docRef.current) setRedoStack(r => [...r, { doc: docRef.current!, mutation: entry.mutation }])
       docRef.current = entry.doc
       setDoc(entry.doc)
-      reSolve(entry.doc)
+      reSolve(entry.doc, entry.doc.features?.length ?? 0)
       return next
     })
   }, [reSolve])
@@ -709,7 +721,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       if (docRef.current) setUndoStack(u => [...u, { doc: docRef.current!, mutation: entry.mutation }])
       docRef.current = entry.doc
       setDoc(entry.doc)
-      reSolve(entry.doc)
+      reSolve(entry.doc, entry.doc.features?.length ?? 0)
       return next
     })
   }, [reSolve])
@@ -720,6 +732,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   }, [])
 
   useEffect(() => {
+    rollbackPosRef.current = null  // reset across document loads
     if (!uuid) return
     setLoading(true)
     fetch(`/api/documents/${uuid}`)
