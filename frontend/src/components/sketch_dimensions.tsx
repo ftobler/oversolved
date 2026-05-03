@@ -60,12 +60,14 @@ function ArrowTail({ origin, dir, color }: { origin: [number, number]; dir: [num
 }
 
 // Line with dash/gap sizes in pixels, constant regardless of zoom.
-export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5, onPointerOver, onPointerOut }: {
+export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5, depthTest, renderOrder, onPointerOver, onPointerOut }: {
   points: [number, number, number][]
   color: string
   lineWidth: number
   dashPx?: number
   gapPx?: number
+  depthTest?: boolean
+  renderOrder?: number
   onPointerOver?: (e: { stopPropagation: () => void }) => void
   onPointerOut?: () => void
 }) {
@@ -78,7 +80,7 @@ export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5
     mat.dashSize = dashPx * scale
     mat.gapSize = gapPx * scale
   })
-  return <Line ref={lineRef} points={points} color={color} lineWidth={lineWidth} dashed dashSize={0.01} gapSize={0.005} onPointerOver={onPointerOver} onPointerOut={onPointerOut} />
+  return <Line ref={lineRef} points={points} color={color} lineWidth={lineWidth} dashed dashSize={0.01} gapSize={0.005} depthTest={depthTest} renderOrder={renderOrder} onPointerOver={onPointerOver} onPointerOut={onPointerOut} />
 }
 
 // ─── Constraint symbol tile (read-only, used by Sketch3D / Visualizer) ───
