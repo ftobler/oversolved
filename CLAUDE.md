@@ -37,7 +37,7 @@ npx vitest run
 - code style: do not use em or en-dashes.
 - Agents must not commit to git.
 - Use two spaces before inline comments. Example: `be_nice = True  # sometimes`
-- Do not use banner comments or ASCII-art dividers (e.g. `====`, `----`). Keep any separators minimal.
+- Do not use banner comments or ASCII-art dividers (e.g. `====...`, `----...`). Keep any separators minimal. The approved divider is one line `# ─── {text} ───`.
 - Comments must describe intent, not restate the code.
 - try to keep files shorter than 1k lines.
 - icons are defined in `icons.py`.

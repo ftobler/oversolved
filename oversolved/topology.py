@@ -41,7 +41,7 @@ _MERGE = 1e-7  # distance tolerance for vertex deduplication
 _SPLIT_EPS = 1e-7  # parametric tolerance for split deduplication
 
 
-# ── Geometry helpers  ──
+# ─── Geometry helpers ───
 
 
 def _angle_in_arc(a_rad: float, start_deg: float, end_deg: float) -> bool:
@@ -64,7 +64,7 @@ def _arc_tangent(a_rad: float, ccw: bool = True) -> tuple:
     return (-s * math.sin(a_rad), s * math.cos(a_rad))
 
 
-# ── Intersection primitives  ──
+# ─── Intersection primitives ───
 
 
 def _ll(p1, p2, p3, p4):
