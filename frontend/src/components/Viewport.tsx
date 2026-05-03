@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrthographicCamera, Line } from '@react-three/drei'
+import { OrthographicCamera, Line, Text } from '@react-three/drei'
 import * as THREE from 'three'
 import type { SketchData, Feature, Sketch, BodyResult, PlaneDef } from '../types/cad'
 import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
@@ -131,9 +131,10 @@ function getActiveSketchPlane(activeFeatureId: string | undefined, features: Fea
 interface SketchPlaneDisplayProps {
   planeQuery: string
   size: number
+  sketchLabel?: string
 }
 
-function SketchPlaneDisplay({ planeQuery, size }: SketchPlaneDisplayProps) {
+export function SketchPlaneDisplay({ planeQuery, size, sketchLabel }: SketchPlaneDisplayProps) {
   const match = planeQuery.match(/@([^/]+)/)
   if (!match) return null
 
@@ -173,6 +174,20 @@ function SketchPlaneDisplay({ planeQuery, size }: SketchPlaneDisplayProps) {
         transparent
         opacity={0.3}
       />
+
+      {sketchLabel && (
+        <group position={[-ph + 0.03, ph - 0.05, 0.001]}>
+          <Text
+            fontSize={3}
+            color="#0077ff"
+            fillOpacity={0.6}
+            anchorX="left"
+            anchorY="top"
+          >
+            {sketchLabel}
+          </Text>
+        </group>
+      )}
     </group>
   )
 }
@@ -511,7 +526,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
             bodies,
           ) || 100
 
-          return <SketchPlaneDisplay key="sketch-plane" planeQuery={sketchPlaneQuery} size={planeSize} />
+          const sketchFeature = features?.find(f => f.id === activeFeatureId)
+          const sketchLabel = sketchFeature?.label || activeFeatureId
+
+          return <SketchPlaneDisplay key="sketch-plane" planeQuery={sketchPlaneQuery} size={planeSize} sketchLabel={sketchLabel} />
         })()}
 
         {activeSketchFeatures.map(f => {
