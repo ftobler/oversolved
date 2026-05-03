@@ -884,13 +884,16 @@ useEffect(() => {
 
   const toggleBodyVisibility = useCallback((bodyId: string) => {
     setBodiesVisibility(prev => {
-      const isHidden = prev[bodyId] === false
-      if (isHidden) {
-        const next = { ...prev }
-        delete next[bodyId]
-        return next
+      const current = prev[bodyId]
+      if (current === undefined) {
+        return { ...prev, [bodyId]: false }
       }
-      return { ...prev, [bodyId]: false }
+      if (current === false) {
+        return { ...prev, [bodyId]: true }
+      }
+      const next = { ...prev }
+      delete next[bodyId]
+      return next
     })
   }, [])
 
@@ -1536,9 +1539,8 @@ useEffect(() => {
                 if (e.key === 'Enter') {
                   const normalized = normalizeHexColor(partColorDraft)
                   if (normalized) {
-                    handleBodyColor(partColorPopover.bodyId, normalized)
-                    handleBodyTransparency(partColorPopover.bodyId, partTransparencyDraft)
-                    handleBodyMetalness(partColorPopover.bodyId, partMetalnessDraft)
+                    commitPreview({ type: 'set_part_color', bodyId: partColorPopover!.bodyId, color: normalized })
+                    colorPreviewActive.current = false
                     setPartColorPopover(null)
                   }
                 }
