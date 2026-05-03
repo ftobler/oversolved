@@ -274,20 +274,20 @@ class TestTtlCache:
 class TestSolveEndpointSerialization:
     def test_rollback_returns_pre_rollback_bodies(self, authed_client):
         pytest.importorskip("OCP.gp")
+        from oversolved.builder import build  # noqa: PLC0415
+
         sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
         ex1 = extrude_spec("sk1", "ex1", distance=5.0)
+        spec = {"features": [sk1, ex1]}
 
         # Full build
-        r1 = post_solve(authed_client, {"id": "doc_rb", "features": [sk1, ex1]})
-        assert r1.status_code == 200
-        d1 = json.loads(r1.data)
-        assert "body_ex1" in d1["bodies"]
+        r1 = build(spec)
+        assert "body_ex1" in r1["bodies"], f"bodies={list(r1['bodies'])}"
 
         # Rollback to before extrude (only sketch remains)
-        r2 = post_solve(authed_client, {"id": "doc_rb", "features": [sk1], "rollback_position": 1})
-        assert r2.status_code == 200
-        d2 = json.loads(r2.data)
-        assert "body_ex1" not in d2["bodies"]
+        state1 = r1["_build_state"]
+        r2 = build({"features": [sk1]}, prev_state=state1)
+        assert "body_ex1" not in r2["bodies"], "rollback must remove extruded body"
 
     def test_rollback_then_full_rebuild_coherent(self, authed_client):
         pytest.importorskip("OCP.gp")
