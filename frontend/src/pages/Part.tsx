@@ -238,7 +238,9 @@ export default function Part() {
   const [partColorDraft, setPartColorDraft] = useState<string>('#6AB59B')
   const [partTransparencyDraft, setPartTransparencyDraft] = useState(0)
   const [partMetalnessDraft, setPartMetalnessDraft] = useState(0.3)
+  const [colorOriginalState, setColorOriginalState] = useState<{ color?: string; transparency?: number; metalness?: number } | null>(null)
   const partColorPopoverRef = useRef<HTMLDivElement>(null)
+  const colorPreviewActive = useRef(false)
   const { user } = useAuth()
 
   const [debugOpen, setDebugOpen] = useState(false)
@@ -304,6 +306,9 @@ export default function Part() {
      pickBodies,
      setPickBoundary,
      permission,
+     startPreviewMode,
+     commitPreview,
+     cancelPreview,
    } = usePartDoc(uuid, mode, setCodeText)
 
   const readOnly = permission === 'view'
@@ -908,6 +913,18 @@ useEffect(() => {
     handleMutation({ type: 'set_part_metalness', bodyId, metalness: clamped })
   }, [handleMutation])
 
+  const handleColorCancel = useCallback((bodyId: string) => {
+    if (!colorPreviewActive.current) return
+    const originalDoc = cancelPreview()
+    if (originalDoc && docRef.current) {
+      docRef.current = originalDoc
+      setDoc(originalDoc)
+      reSolve(originalDoc)
+    }
+    colorPreviewActive.current = false
+    setPartColorPopover(null)
+  }, [cancelPreview, docRef, setDoc, reSolve])
+
   useEffect(() => {
     if (!partColorPopover) return
     const close = (e: MouseEvent) => {
@@ -915,17 +932,46 @@ useEffect(() => {
         setPartColorPopover(null)
       }
     }
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && partColorPopover) {
+        handleColorCancel(partColorPopover.bodyId)
+      }
+    }
     window.addEventListener('mousedown', close, { capture: true })
-    return () => window.removeEventListener('mousedown', close, { capture: true })
-  }, [partColorPopover])
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      window.removeEventListener('mousedown', close, { capture: true })
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [partColorPopover, handleColorCancel])
 
   useEffect(() => {
     if (partColorPopover) {
       const style = partStyle[partColorPopover.bodyId]
       setPartTransparencyDraft(style?.transparency ?? 0)
       setPartMetalnessDraft(style?.metalness ?? 0.3)
+      setColorOriginalState({
+        color: style?.color,
+        transparency: style?.transparency,
+        metalness: style?.metalness,
+      })
+      if (docRef.current) {
+        startPreviewMode(docRef.current)
+        colorPreviewActive.current = true
+      }
+    } else {
+      setColorOriginalState(null)
+      if (colorPreviewActive.current) {
+        const originalDoc = cancelPreview()
+        if (originalDoc && docRef.current) {
+          docRef.current = originalDoc
+          setDoc(originalDoc)
+          reSolve(originalDoc)
+        }
+        colorPreviewActive.current = false
+      }
     }
-  }, [partColorPopover, partStyle])
+  }, [partColorPopover, partStyle, docRef, setDoc, reSolve, startPreviewMode, cancelPreview])
 
   const enterEditFeature = useCallback((featureId: string) => {
     const idx = features.findIndex(f => f.id === featureId)

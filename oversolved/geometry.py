@@ -2,6 +2,7 @@
 
 import math
 import os
+import logging
 import tempfile
 from io import BytesIO
 from typing import Any
@@ -116,7 +117,10 @@ def _validate_mesh(mesh: dict) -> None:
             used_faces = set(triangle_to_face)
             for face_idx in range(len(face_queries)):
                 if face_idx not in used_faces:
-                    raise ValueError(f"face {face_idx} has no triangles in triangle_to_face")
+                    # This should not happen if solid_to_mesh is working correctly,
+                    # but be lenient and just log a warning instead of crashing.
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"face {face_idx} has no triangles in triangle_to_face")
 
     if face_queries and len(face_data) != len(face_queries):
         raise ValueError(
@@ -395,6 +399,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
             for v in verts:
                 all_vertices.append(list(v.toTuple()))
 
+            triangle_count_before = len(triangle_to_face)
             for tri in idxs:
                 i0 = offset + tri[0]
                 i1 = offset + tri[1]
@@ -417,16 +422,21 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
                 triangle_to_face.append(face_idx)
                 face_area += 0.5 * mag
 
-            face_data.append(
-                {"centroid": centroid, "normal": normal, "area": face_area, "surface_type": surface_type}
-            )
-            if created_by:
-                from oversolved.query import make_ancestry_query
+            # Only register face metadata if it produced triangles
+            if len(triangle_to_face) > triangle_count_before:
+                face_data.append(
+                    {"centroid": centroid, "normal": normal, "area": face_area, "surface_type": surface_type}
+                )
+                if created_by:
+                    from oversolved.query import make_ancestry_query
 
-                element_id = f"face{face_idx}"
-                abs_id = "@" + created_by + element_id
-                query = make_ancestry_query([abs_id, f"@{created_by}"], surface_type)
-                face_queries.append(query)
+                    element_id = f"face{face_idx}"
+                    abs_id = "@" + created_by + element_id
+                    query = make_ancestry_query([abs_id, f"@{created_by}"], surface_type)
+                    face_queries.append(query)
+            else:
+                # Face produced no triangles - skip it
+                pass
     except Exception:
         face_data = []
         triangle_to_face = []

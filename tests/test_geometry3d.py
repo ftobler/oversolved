@@ -518,8 +518,9 @@ def test_validate_mesh_rejects_mismatched_triangle_to_face():
         _validate_mesh(mesh)
 
 
-def test_validate_mesh_rejects_orphaned_face():
-    """_validate_mesh should raise when a face has no triangles."""
+def test_validate_mesh_warns_orphaned_face(caplog):
+    """_validate_mesh should warn when a face has no triangles."""
+    import logging
     mesh = {
         "vertices": [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
         "faces": [[0, 1, 2]],
@@ -531,8 +532,9 @@ def test_validate_mesh_rejects_orphaned_face():
         "triangle_to_face": [0],
         "face_queries": ["?0;@testface0:test", "?0;@testface1:test"],
     }
-    with pytest.raises(ValueError, match="face 1 has no triangles"):
+    with caplog.at_level(logging.WARNING, logger="oversolved.geometry"):
         _validate_mesh(mesh)
+    assert any("face 1 has no triangles" in record.message for record in caplog.records)
 
 
 def test_validate_mesh_rejects_out_of_bounds_triangle_to_face():

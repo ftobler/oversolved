@@ -182,6 +182,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [solveResult, setSolveRawResult] = useState<string>('')
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [redoStack, setRedoStack] = useState<UndoEntry[]>([])
+  const suppressUndoRef = useRef(false)
+  const previewOriginalDoc = useRef<PartDoc | null>(null)
   const [permission, setPermission] = useState<string>('owner')
   const [isPublic, setIsPublic] = useState(false)
   const [fromCache, setFromCache] = useState(false)
@@ -404,8 +406,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     })
 
     const next: PartDoc = JSON.parse(JSON.stringify(current))
-    setUndoStack(prev => [...prev, { doc: current, mutation: m }])
-    setRedoStack([])
+    if (!suppressUndoRef.current) {
+      setUndoStack(prev => [...prev, { doc: current, mutation: m }])
+      setRedoStack([])
+    }
     switch (m.type) {
       case 'move_vertex':
         applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to)
@@ -767,6 +771,26 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     }
   }, [])
 
+  const startPreviewMode = useCallback((originalDoc: PartDoc) => {
+    previewOriginalDoc.current = JSON.parse(JSON.stringify(originalDoc))
+    suppressUndoRef.current = true
+  }, [])
+
+  const commitPreview = useCallback((mutation: Mutation) => {
+    if (!previewOriginalDoc.current) return
+    setUndoStack(prev => [...prev, { doc: previewOriginalDoc.current!, mutation }])
+    setRedoStack([])
+    suppressUndoRef.current = false
+    previewOriginalDoc.current = null
+  }, [])
+
+  const cancelPreview = useCallback(() => {
+    suppressUndoRef.current = false
+    const original = previewOriginalDoc.current
+    previewOriginalDoc.current = null
+    return original
+  }, [])
+
   return {
     doc,
     setDoc,
@@ -802,5 +826,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     cacheTimestamp,
     setRollbackPos: (pos: number | null) => { rollbackPosRef.current = pos },
     setPickBoundary: (pos: number | null) => { pickBoundaryRef.current = pos },
+    startPreviewMode,
+    commitPreview,
+    cancelPreview,
   }
 }
