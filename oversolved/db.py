@@ -119,6 +119,49 @@ class Database:
         current = self.get_current_version()
         return [(v, n, f) for v, n, f in self._migrations if v > current]
 
+    def get_latest_version(self) -> int:
+        """Return the highest registered migration version."""
+        if not self._migrations:
+            return 0
+        return max(v for v, _, _ in self._migrations)
+
+    def check_version_sync(self, timeout: float = 5.0) -> tuple[bool, int, int]:
+        """Check the database schema version against the latest migration.
+
+        Uses a database-level lock to prevent multiprocessing races.
+        Returns (is_ok, current, latest).
+        """
+        import time
+
+        if isinstance(self.conn, MariaDBConnection):
+            lock_name = "oversolved_version_check"
+            cursor = self.conn.execute("SELECT GET_LOCK(%s, %s)", (lock_name, int(timeout)))
+            row = cursor.fetchone()
+            if not row or row[0] != 1:
+                raise TimeoutError("Could not acquire database lock for version check")
+            try:
+                current = self.get_current_version()
+                latest = self.get_latest_version()
+                return (current >= latest, current, latest)
+            finally:
+                self.conn.execute("SELECT RELEASE_LOCK(%s)", (lock_name,))
+        else:
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    self.conn.execute("BEGIN IMMEDIATE")
+                    break
+                except Exception:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("Could not acquire database lock for version check")
+                    time.sleep(0.1)
+            try:
+                current = self.get_current_version()
+                latest = self.get_latest_version()
+                return (current >= latest, current, latest)
+            finally:
+                self.conn.rollback()
+
     def apply_migration(self, version: int, name: str, func: Callable) -> None:
         """Run a single migration and record it in schema_version."""
         self._ensure_schema_table()

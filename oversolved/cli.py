@@ -210,11 +210,18 @@ def cmd_db(args: argparse.Namespace) -> None:
         return
 
     if args.db_command == "check":
-        pending = db.get_pending_migrations()
+        try:
+            is_ok, current, latest = db.check_version_sync()
+        except TimeoutError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            db.close()
+            sys.exit(1)
         db.close()
-        if pending:
-            names = ", ".join(n for _, n, _ in pending)
-            print(f"Pending migrations: {names}")
+        if not is_ok:
+            print(
+                f"Pending migrations (current: {current}, latest: {latest})",
+                file=sys.stderr,
+            )
             sys.exit(1)
         else:
             print("Database is up to date.")

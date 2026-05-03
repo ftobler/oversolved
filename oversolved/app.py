@@ -3,6 +3,7 @@
 import base64
 import json
 import os
+import sys
 import uuid
 from functools import wraps
 from pathlib import Path
@@ -109,10 +110,26 @@ def create_app(config: dict | None = None) -> Flask:
         "name": app.config.get("DB_NAME"),
     }
 
-    # Initialize database, run migrations, seed admin user
+    # Register migrations and verify schema version before starting
     db = _get_database(db_config)
     _register_migrations(db)
-    db.init()
+    if app.config.get("TESTING"):
+        db.init()
+    else:
+        try:
+            is_ok, current, latest = db.check_version_sync()
+        except TimeoutError:
+            print("ERROR: Could not acquire database lock for version check", file=sys.stderr)
+            sys.exit(1)
+        if not is_ok:
+            print(
+                f"ERROR: Database schema version mismatch "
+                f"(current: {current}, latest: {latest})",
+                file=sys.stderr,
+            )
+            print("Run: oversolved db upgrade", file=sys.stderr)
+            db.close()
+            sys.exit(1)
     _ensure_admin_user(db, debug=app.config.get("DEBUG", False))
     db.close()
 

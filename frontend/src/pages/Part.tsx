@@ -241,7 +241,6 @@ export default function Part() {
   const [partColorDraft, setPartColorDraft] = useState<string>('#6AB59B')
   const [partTransparencyDraft, setPartTransparencyDraft] = useState(0)
   const [partMetalnessDraft, setPartMetalnessDraft] = useState(0.3)
-  const [colorOriginalState, setColorOriginalState] = useState<{ color?: string; transparency?: number; metalness?: number } | null>(null)
   const partColorPopoverRef = useRef<HTMLDivElement>(null)
   const colorPreviewActive = useRef(false)
   const { user } = useAuth()
@@ -919,7 +918,7 @@ useEffect(() => {
     handleMutation({ type: 'set_part_metalness', bodyId, metalness: clamped })
   }, [handleMutation])
 
-  const handleColorCancel = useCallback((bodyId: string) => {
+  const handleColorCancel = useCallback(() => {
     if (!colorPreviewActive.current) return
     const originalDoc = cancelPreview()
     if (originalDoc && docRef.current) {
@@ -940,7 +939,7 @@ useEffect(() => {
     }
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && partColorPopover) {
-        handleColorCancel(partColorPopover.bodyId)
+        handleColorCancel()
       }
     }
     window.addEventListener('mousedown', close, { capture: true })
@@ -956,17 +955,13 @@ useEffect(() => {
       const style = partStyle[partColorPopover.bodyId]
       setPartTransparencyDraft(style?.transparency ?? 0)
       setPartMetalnessDraft(style?.metalness ?? 0.3)
-      setColorOriginalState({
-        color: style?.color,
-        transparency: style?.transparency,
-        metalness: style?.metalness,
-      })
+      // Preview mode started below
       if (docRef.current) {
         startPreviewMode(docRef.current)
         colorPreviewActive.current = true
       }
     } else {
-      setColorOriginalState(null)
+      // Preview mode cleanup below
       if (colorPreviewActive.current) {
         const originalDoc = cancelPreview()
         if (originalDoc && docRef.current) {
@@ -1533,7 +1528,14 @@ useEffect(() => {
               type="text"
               className="part-color-input"
               value={partColorDraft}
-              onChange={(e) => setPartColorDraft(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                const val = e.target.value.toUpperCase()
+                setPartColorDraft(val)
+                const normalized = normalizeHexColor(val)
+                if (normalized && partColorPopover) {
+                  handleBodyColor(partColorPopover.bodyId, normalized)
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') setPartColorPopover(null)
                 if (e.key === 'Enter') {
@@ -1556,7 +1558,13 @@ useEffect(() => {
               max="1"
               step="0.01"
               value={partTransparencyDraft}
-              onChange={(e) => setPartTransparencyDraft(parseFloat(e.target.value))}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value)
+                setPartTransparencyDraft(val)
+                if (partColorPopover) {
+                  handleBodyTransparency(partColorPopover.bodyId, val)
+                }
+              }}
               className="part-slider"
             />
             <span className="part-slider-value">{(partTransparencyDraft * 100).toFixed(0)}%</span>
@@ -1569,7 +1577,13 @@ useEffect(() => {
               max="1"
               step="0.01"
               value={partMetalnessDraft}
-              onChange={(e) => setPartMetalnessDraft(parseFloat(e.target.value))}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value)
+                setPartMetalnessDraft(val)
+                if (partColorPopover) {
+                  handleBodyMetalness(partColorPopover.bodyId, val)
+                }
+              }}
               className="part-slider"
             />
             <span className="part-slider-value">{(partMetalnessDraft * 100).toFixed(0)}%</span>
@@ -1581,13 +1595,18 @@ useEffect(() => {
                 className={`part-color-swatch ${normalizeHexColor(partColorDraft) === c ? 'selected' : ''}`}
                 style={{ background: c }}
                 title={c}
-                onClick={() => setPartColorDraft(c)}
+                onClick={() => {
+                  setPartColorDraft(c)
+                  if (partColorPopover) {
+                    handleBodyColor(partColorPopover.bodyId, c)
+                  }
+                }}
               />
             ))}
           </div>
           <div className="part-color-popover-actions">
             <button className="part-color-popover-btn" onClick={() => {
-              if (partColorPopover) handleColorCancel(partColorPopover.bodyId)
+              if (partColorPopover) handleColorCancel()
             }}>
               Cancel
             </button>
