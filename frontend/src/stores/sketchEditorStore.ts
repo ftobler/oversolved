@@ -335,6 +335,15 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       t.startsWith('entity:') || t.startsWith('vertex:') || t.startsWith('constraint:') || t.startsWith('@builtin_')
     )
     if (targets.length === 0) return
+
+    if (kind === 'midpoint') {
+      const entityTargets = targets.filter(t => t.startsWith('entity:'))
+      const vertexTargets = targets.filter(t => t.startsWith('vertex:'))
+      const validLinePoint = entityTargets.length === 1 && vertexTargets.length === 1
+      const validThreeVertex = vertexTargets.length === 3 && entityTargets.length === 0
+      if (!validLinePoint && !validThreeVertex) return
+    }
+
     onMutation({ type: 'add_constraint', featureId: activeFeatureId, kind, targets })
   },
 

@@ -181,6 +181,71 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
       expect(() => useSketchEditorStore.getState().applyConstraint('horizontal')).not.toThrow()
     })
+
+    describe('midpoint', () => {
+      it('accepts 1 entity + 1 vertex', () => {
+        const handler = vi.fn()
+        useSketchEditorStore.getState().setOnMutation(handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+        useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
+        useSketchEditorStore.getState().applyConstraint('midpoint')
+        expect(handler).toHaveBeenCalledOnce()
+        expect(handler).toHaveBeenCalledWith({
+          type: 'add_constraint',
+          featureId: 'S1',
+          kind: 'midpoint',
+          targets: expect.arrayContaining(['entity:S1:L1', 'vertex:S1:L1:start']),
+        })
+      })
+
+      it('accepts 3 vertices', () => {
+        const handler = vi.fn()
+        useSketchEditorStore.getState().setOnMutation(handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
+        useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L2:end')
+        useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L3:start')
+        useSketchEditorStore.getState().applyConstraint('midpoint')
+        expect(handler).toHaveBeenCalledOnce()
+        expect(handler).toHaveBeenCalledWith({
+          type: 'add_constraint',
+          featureId: 'S1',
+          kind: 'midpoint',
+          targets: expect.arrayContaining(['vertex:S1:L1:start', 'vertex:S1:L2:end', 'vertex:S1:L3:start']),
+        })
+      })
+
+      it('rejects 1 entity only', () => {
+        const handler = vi.fn()
+        useSketchEditorStore.getState().setOnMutation(handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+        useSketchEditorStore.getState().applyConstraint('midpoint')
+        expect(handler).not.toHaveBeenCalled()
+      })
+
+      it('rejects 2 entities', () => {
+        const handler = vi.fn()
+        useSketchEditorStore.getState().setOnMutation(handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L2')
+        useSketchEditorStore.getState().applyConstraint('midpoint')
+        expect(handler).not.toHaveBeenCalled()
+      })
+
+      it('rejects 1 entity + 2 vertices', () => {
+        const handler = vi.fn()
+        useSketchEditorStore.getState().setOnMutation(handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+        useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
+        useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:end')
+        useSketchEditorStore.getState().applyConstraint('midpoint')
+        expect(handler).not.toHaveBeenCalled()
+      })
+    })
   })
 
   describe('toggleConstruction', () => {

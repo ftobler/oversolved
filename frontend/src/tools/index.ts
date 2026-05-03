@@ -20,7 +20,7 @@ export function initializeTools(): void {
     toolRegistry.register(
       createConstraintTool({
         constraintKind: constraint.kind,
-        requiresSelection: constraint.refPattern === 'a_b' ? 2 : 1,
+        requiresSelection: constraint.refPattern === 'a_b' || constraint.kind === 'midpoint' ? 2 : 1,
       })
     )
   }
