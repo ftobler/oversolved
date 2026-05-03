@@ -15,6 +15,10 @@ export {
   COLOR_PREVIEW,
   COLOR_PROJECTED,
   COLOR_SNAP,
+  RENDER_ORDER_DEFAULT,
+  RENDER_ORDER_GHOST,
+  RENDER_ORDER_EDITING,
+  RENDER_ORDER_HIGHLIGHT,
 } from '../../utils/partColors'
 
 // Drag snap — vertex pull zone must be larger than entity body pull zone so that

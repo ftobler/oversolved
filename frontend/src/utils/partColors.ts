@@ -21,6 +21,12 @@ export const COLOR_SNAP = '#aaaaaa'  // snap indicator during drag (same hue as 
 // Constraint tile color (shared between 2D and 3D views)
 export const COLOR_CONSTRAINT = '#ffd54f'
 
+// Render order (higher = renders on top)
+export const RENDER_ORDER_DEFAULT = 0
+export const RENDER_ORDER_GHOST = 1
+export const RENDER_ORDER_EDITING = 10
+export const RENDER_ORDER_HIGHLIGHT = 999
+
 export function normalizeHexColor(color: string | undefined): string | null {
   if (!color) return null
   const trimmed = color.trim()

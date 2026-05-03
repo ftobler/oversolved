@@ -11,6 +11,9 @@ import {
   COLOR_SELECTED, COLOR_HOVER,
   ARC_SEGMENTS,
   HIT_PIXELS, POINT_HIT_PIXELS, POINT_VIS_PIXELS,
+  RENDER_ORDER_DEFAULT,
+  RENDER_ORDER_GHOST,
+  RENDER_ORDER_HIGHLIGHT,
 } from './constants'
 
 interface Body3DProps {
@@ -682,7 +685,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       {edges.length > 0 && (
         <lineSegments
           geometry={edgeGeometry}
-          renderOrder={ghost ? 1 : 0}
+          renderOrder={ghost ? RENDER_ORDER_GHOST : RENDER_ORDER_DEFAULT}
           raycast={interactive ? undefined : noRaycast}
           onPointerOver={interactive ? (e) => {
             e.stopPropagation()
@@ -764,7 +767,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
             ref={vertexDotRef}
             args={[undefined, undefined, vertices.length]}
             visible={false}
-            renderOrder={999}
+            renderOrder={RENDER_ORDER_HIGHLIGHT}
           >
             <sphereGeometry args={[1, 6, 6]} />
             <meshBasicMaterial color="white" depthTest={false} depthWrite={false} />

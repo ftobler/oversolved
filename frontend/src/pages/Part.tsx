@@ -1584,18 +1584,21 @@ useEffect(() => {
             ))}
           </div>
           <div className="part-color-popover-actions">
-            <button className="part-color-popover-btn" onClick={() => setPartColorPopover(null)}>
+            <button className="part-color-popover-btn" onClick={() => {
+              if (partColorPopover) handleColorCancel(partColorPopover.bodyId)
+            }}>
               Cancel
             </button>
             <button
               className="part-color-popover-btn part-color-popover-btn-primary"
               disabled={!normalizeHexColor(partColorDraft)}
               onClick={() => {
+                if (!partColorPopover) return
                 const normalized = normalizeHexColor(partColorDraft)
                 if (!normalized) return
-                handleBodyColor(partColorPopover.bodyId, normalized)
-                handleBodyTransparency(partColorPopover.bodyId, partTransparencyDraft)
-                handleBodyMetalness(partColorPopover.bodyId, partMetalnessDraft)
+                // Commit preview with a single undo entry
+                commitPreview({ type: 'set_part_color', bodyId: partColorPopover.bodyId, color: normalized })
+                colorPreviewActive.current = false
                 setPartColorPopover(null)
               }}
             >

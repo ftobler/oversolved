@@ -25,7 +25,7 @@ import { DrawPreview, DrawPlane } from './Drawing'
 import { planeRotation, planeRotationFromTransform } from './utils'
 
 // Colors
-import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from './constants'
+import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE, RENDER_ORDER_DEFAULT, RENDER_ORDER_EDITING } from './constants'
 
 export interface Geometry3DProps {
   featureId: string
@@ -96,7 +96,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // Drag-time snap uses findSnapTarget() in Dragging.tsx (full scan, dragged element hidden).
   // Draw-time snap reads hoveredVertexPosition from the store (VertexDots does the raycast hover).
   return (
-    <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
+    <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]} renderOrder={isEditing ? RENDER_ORDER_EDITING : RENDER_ORDER_DEFAULT}>
       {topology && <TopologySurfaces topology={topology} featureId={featureId} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
       {topology && <TopologyEdges topology={topology} featureId={featureId} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} planeGroupRef={groupRef} showDebugHit={showDebugHit ?? false} />
