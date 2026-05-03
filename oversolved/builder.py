@@ -7,25 +7,10 @@ from typing import Any
 from oversolved.query import Repository, emit_wire, absolute
 from oversolved.types3d import Body, FeatureCheckpoint, BuildState
 from oversolved.solver import _init_global_repo, _try_solve_feature
+from oversolved.solver_constants import _BUILTIN_PLANE_RESULTS
 from oversolved.solver_registry import _post_register
 
 logger = logging.getLogger(__name__)
-
-
-_BUILTIN_PLANE_RESULTS: dict[str, dict] = {
-    "builtin_plane_front": {
-        "status": "ok",
-        "plane": {"origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 1, 0], "normal": [0, 0, 1]},
-    },
-    "builtin_plane_top": {
-        "status": "ok",
-        "plane": {"origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 0, -1], "normal": [0, 1, 0]},
-    },
-    "builtin_plane_right": {
-        "status": "ok",
-        "plane": {"origin": [0, 0, 0], "x_axis": [0, 0, -1], "y_axis": [0, 1, 0], "normal": [1, 0, 0]},
-    },
-}
 
 
 def _find_first_dirty(features: list[dict], prev_state: BuildState | None) -> int:

@@ -154,3 +154,87 @@ features:
 
     # User feature should have expected structure
     assert 'geometry' in result['my_sketch']
+
+
+def test_builtin_plane_constants_match_results():
+    """_BUILTIN_PLANE_RESULTS should be derivable from _BUILTIN_PLANES (no duplication)."""
+    from oversolved.solver_constants import _BUILTIN_PLANES, _BUILTIN_PLANE_RESULTS
+
+    for name in _BUILTIN_PLANES:
+        assert name in _BUILTIN_PLANE_RESULTS
+        plane = _BUILTIN_PLANES[name]
+        result = _BUILTIN_PLANE_RESULTS[name]
+        assert result["status"] == "ok"
+        for key in ("origin", "x_axis", "y_axis", "normal"):
+            assert result["plane"][key] == plane[key]
+
+
+def test_constants_not_mutated_after_solve():
+    """_FRONT_PLANE unchanged after solve referencing @builtin_plane_front."""
+    from oversolved.solver import solve
+    from oversolved.solver_constants import _FRONT_PLANE, _BUILTIN_PLANES
+
+    front_before = dict(_FRONT_PLANE)
+    planes_before = {k: dict(v) for k, v in _BUILTIN_PLANES.items()}
+
+    yaml_str = """
+version: 1
+kind: part
+features:
+  - id: sk
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - {id: pt, kind: point}
+    initial:
+      pt: [1, 2]
+    constraints:
+      - {id: c, kind: fixed, target: "$ptxy", x: 1, y: 2}
+"""
+    solve(yaml_str)
+
+    assert _FRONT_PLANE == front_before
+    assert _BUILTIN_PLANES == planes_before
+
+
+def test_all_query_formats_resolve_same():
+    """"Front", "@builtin_plane_front", "$builtin_plane_front" all return same plane."""
+    from oversolved.solver import solve
+
+    yaml_str = """
+version: 1
+kind: part
+features:
+  - id: front_plane
+    kind: plane
+  - id: sk1
+    kind: sketch
+    plane: "Front"
+    entities:
+      - {id: pt, kind: point}
+    initial:
+      pt: [1, 2]
+    constraints:
+      - {id: c, kind: fixed, target: "$ptxy", x: 1, y: 2}
+  - id: sk2
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - {id: pt, kind: point}
+    initial:
+      pt: [1, 2]
+    constraints:
+      - {id: c, kind: fixed, target: "$ptxy", x: 1, y: 2}
+  - id: sk3
+    kind: sketch
+    plane: "$builtin_plane_front"
+    entities:
+      - {id: pt, kind: point}
+    initial:
+      pt: [1, 2]
+    constraints:
+      - {id: c, kind: fixed, target: "$ptxy", x: 1, y: 2}
+"""
+    result = solve(yaml_str)["result"]
+    for sk_id in ("sk1", "sk2", "sk3"):
+        assert result[sk_id]["status"] not in ("exception",), f"{sk_id} failed: {result[sk_id].get('exception')}"

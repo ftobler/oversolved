@@ -10,7 +10,7 @@ from oversolved.topology import detect_topology
 from oversolved.query import Repository
 from oversolved.solver_constants import (
     _FRONT_PLANE, ENTITY_SIZES, LOSS_THRESHOLD, RANK_TOL,
-    ORIGIN_ID, ORIGIN_FIX_ID, _BUILTIN_PLANES,
+    ORIGIN_ID, ORIGIN_FIX_ID, _BUILTIN_PLANES, _BUILTIN_PLANE_RESULTS,
     _PROJECTED_KINDS, _FACE_TYPES,
 )
 from oversolved.solver_plane import (  # noqa: F401
@@ -48,36 +48,8 @@ def _init_global_repo() -> Repository:
     """Create and populate the global repository with built-in planes and origin."""
     repo = Repository()
     repo.register("builtin_origin", {"external_xy": [0.0, 0.0]})
-    repo.register(
-        "builtin_plane_front",
-        {
-            "type": "plane",
-            "origin": [0, 0, 0],
-            "x_axis": [1, 0, 0],
-            "y_axis": [0, 1, 0],
-            "normal": [0, 0, 1],
-        },
-    )
-    repo.register(
-        "builtin_plane_top",
-        {
-            "type": "plane",
-            "origin": [0, 0, 0],
-            "x_axis": [1, 0, 0],
-            "y_axis": [0, 0, -1],
-            "normal": [0, 1, 0],
-        },
-    )
-    repo.register(
-        "builtin_plane_right",
-        {
-            "type": "plane",
-            "origin": [0, 0, 0],
-            "x_axis": [0, 0, -1],
-            "y_axis": [0, 1, 0],
-            "normal": [1, 0, 0],
-        },
-    )
+    for name, plane in _BUILTIN_PLANES.items():
+        repo.register(name, plane)
     return repo
 
 
@@ -107,34 +79,7 @@ def solve(yaml_str: str) -> dict:
         _post_register(global_repo, feature["id"], feature, feature_result)
 
     total_ms = round((time.perf_counter() - t0) * 1000, 1)
-    # Add builtin planes to result so frontend can access them consistently
-    result["builtin_plane_front"] = {
-        "status": "ok",
-        "plane": {
-            "origin": [0, 0, 0],
-            "x_axis": [1, 0, 0],
-            "y_axis": [0, 1, 0],
-            "normal": [0, 0, 1],
-        },
-    }
-    result["builtin_plane_top"] = {
-        "status": "ok",
-        "plane": {
-            "origin": [0, 0, 0],
-            "x_axis": [1, 0, 0],
-            "y_axis": [0, 0, -1],
-            "normal": [0, 1, 0],
-        },
-    }
-    result["builtin_plane_right"] = {
-        "status": "ok",
-        "plane": {
-            "origin": [0, 0, 0],
-            "x_axis": [0, 0, -1],
-            "y_axis": [0, 1, 0],
-            "normal": [1, 0, 0],
-        },
-    }
+    result.update(_BUILTIN_PLANE_RESULTS)
     return {"solve_ms": total_ms, "result": result}
 
 
@@ -414,36 +359,8 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
 
     # Register globally available built-in entities.
     repo.register("builtin_origin", {"entity": ORIGIN_ID, "point": "xy"})
-    repo.register(
-        "builtin_plane_front",
-        {
-            "type": "plane",
-            "origin": [0, 0, 0],
-            "x_axis": [1, 0, 0],
-            "y_axis": [0, 1, 0],
-            "normal": [0, 0, 1],
-        },
-    )
-    repo.register(
-        "builtin_plane_top",
-        {
-            "type": "plane",
-            "origin": [0, 0, 0],
-            "x_axis": [1, 0, 0],
-            "y_axis": [0, 0, -1],
-            "normal": [0, 1, 0],
-        },
-    )
-    repo.register(
-        "builtin_plane_right",
-        {
-            "type": "plane",
-            "origin": [0, 0, 0],
-            "x_axis": [0, 0, -1],
-            "y_axis": [0, 1, 0],
-            "normal": [1, 0, 0],
-        },
-    )
+    for name, plane in _BUILTIN_PLANES.items():
+        repo.register(name, plane)
 
     for eid, entity in entities.items():
         kind = entity["kind"]

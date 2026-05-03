@@ -51,3 +51,11 @@ _PLANE_TYPES = ("plane", "face", "flatface")
 _POINT_TYPES = ("point", "vertex")
 
 _ARC_SEGMENTS = 32  # tessellation resolution for arc edges in profiles
+
+_BUILTIN_PLANE_RESULTS: dict[str, dict] = {
+    name: {
+        "status": "ok",
+        "plane": {k: v for k, v in plane.items() if k != "type"},
+    }
+    for name, plane in _BUILTIN_PLANES.items()
+}
