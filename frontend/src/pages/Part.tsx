@@ -13,16 +13,16 @@ import { usePartDoc } from '../hooks/usePartDoc'
 import { useAuth } from '../contexts/AuthContext'
 import RightClickMenu from '../components/RightClickMenu'
 import type { ContextMenuItem } from '../components/RightClickMenu'
-import { BugReporter } from '../components/BugReporter'
 import { Sidebar } from '../components/Sidebar'
 import FooterMeasurementDisplay from '../components/FooterMeasurementDisplay'
 import ExportDialog, { type ExportFormat } from '../components/ExportDialog'
 import ShareDialog from '../components/ShareDialog'
 import LoadingOverlay from '../components/LoadingOverlay'
 
-import CacheInspector from '../components/CacheInspector'
 import { useSolverStore } from '../stores/solverStore'
 import { invalidateDocCache } from '../utils/buildCache'
+import { describeMutation } from '../utils/mutationDescriptions'
+import PartDebugPanel from './PartDebugPanel'
 import './Part.css'
 
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
@@ -62,161 +62,6 @@ const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 
 function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
-}
-
-function describeMutation(m: Mutation): string {
-  switch (m.type) {
-    case 'move_vertex':
-      return `move vertex ${m.vertexKey} on ${m.entityId} in ${m.featureId}`
-    case 'move_vertex_with_constraint':
-      return `snap vertex ${m.vertexKey} on ${m.entityId} with ${m.constraintKind} constraint`
-    case 'move_entity':
-      return `move ${m.entityId} in ${m.featureId}`
-    case 'add_constraint':
-      return `add ${m.kind} constraint in ${m.featureId}`
-    case 'set_constraint_value':
-      return `set ${m.constraintId} value in ${m.featureId}`
-    case 'set_constraint_pos':
-      return `set ${m.constraintId} pos in ${m.featureId}`
-    case 'delete':
-      return `delete ${m.targets.length} element(s)`
-    case 'add_entity':
-      return `add ${m.kind} in ${m.featureId}`
-    case 'add_entity_with_constraint':
-      return `add ${m.kind} with ${m.constraintKind} constraint in ${m.featureId}`
-    case 'add_projected_entity':
-      return `add ${m.kind} from ${m.source} in ${m.featureId}`
-    case 'add_rect':
-      return `add rect in ${m.featureId}`
-    case 'add_center_rect':
-      return `add center rect in ${m.featureId}`
-    case 'toggle_construction':
-      return `toggle construction on ${m.targets.length} element(s)`
-    case 'set_feature_plane':
-      return `set plane of ${m.featureId} to ${m.plane}`
-    case 'add_sketch':
-      return `add ${m.label || m.featureId}`
-    case 'delete_feature':
-      return `delete feature ${m.featureId}`
-    case 'set_feature_visibility':
-      return `${m.visible ? 'show' : 'hide'} ${m.featureId}`
-    case 'add_plane':
-      return `add ${m.label || m.featureId}`
-    case 'set_plane_definition_field':
-      return `edit plane ${m.featureId}: ${m.field}`
-    case 'rename_feature':
-      return `rename ${m.featureId} to ${m.label}`
-    case 'toggle_sketch_plane_visibility':
-      return 'toggle sketch/plane visibility'
-    case 'toggle_plane_visibility':
-      return 'toggle plane visibility'
-    case 'add_extrude':
-      return `add extrude ${m.label ?? m.featureId}`
-    case 'set_extrude_distance':
-      return `set extrude distance to ${m.distance}`
-    case 'set_extrude_direction':
-      return `set extrude direction to ${m.direction}`
-    case 'set_extrude_operation':
-      return `set extrude operation to ${m.operation}`
-    case 'add_extrude_profile':
-      return `add extrude profile ${m.sketchQuery}`
-    case 'remove_extrude_profile':
-      return `remove extrude profile at index ${m.index}`
-    case 'add_revolve':
-      return `add revolve ${m.label ?? m.featureId}`
-    case 'set_revolve_angle':
-      return `set revolve angle to ${m.angle}`
-    case 'set_revolve_axis':
-      return `set revolve axis to ${m.axis}`
-    case 'set_revolve_operation':
-      return `set revolve operation to ${m.operation}`
-    case 'add_revolve_profile':
-      return `add revolve profile ${m.sketchQuery}`
-    case 'remove_revolve_profile':
-      return `remove revolve profile at index ${m.index}`
-    case 'add_import_step':
-      return `import STEP ${m.label ?? m.featureId}`
-    case 'add_fillet':
-      return `add fillet ${m.label ?? m.featureId}`
-    case 'add_chamfer':
-      return `add chamfer ${m.label ?? m.featureId}`
-    case 'set_fillet_radius':
-      return `set fillet radius to ${m.radius}`
-    case 'set_chamfer_distance':
-      return `set chamfer distance to ${m.distance}`
-    case 'set_chamfer_angle':
-      return `set chamfer angle to ${m.angle}`
-    case 'set_chamfer_kind':
-      return `set chamfer kind to ${m.kind}`
-    case 'add_fillet_edge':
-      return `add fillet edge ${m.edgeQuery}`
-    case 'remove_fillet_edge':
-      return `remove fillet edge at index ${m.index}`
-    case 'add_chamfer_edge':
-      return `add chamfer edge ${m.edgeQuery}`
-    case 'remove_chamfer_edge':
-      return `remove chamfer edge at index ${m.index}`
-    case 'add_array':
-      return `add array ${m.label ?? m.featureId}`
-    case 'set_array_mode':
-      return `set array mode to ${m.mode}`
-    case 'set_array_source_body':
-      return `set array source body to ${m.sourceBody}`
-    case 'set_array_operation':
-      return `set array operation to ${m.operation}`
-    case 'set_array_include_source':
-      return `set array include source to ${m.includeSource}`
-    case 'set_array_count_x':
-      return `set array count_x to ${m.count}`
-    case 'set_array_pitch_x':
-      return `set array pitch_x to ${m.pitch}`
-    case 'set_array_direction_x_query':
-      return `set array direction_x query to ${m.query}`
-    case 'set_array_count_y':
-      return `set array count_y to ${m.count}`
-    case 'set_array_pitch_y':
-      return `set array pitch_y to ${m.pitch}`
-    case 'set_array_direction_y_query':
-      return `set array direction_y query to ${m.query}`
-    case 'set_array_count':
-      return `set array count to ${m.count}`
-    case 'set_array_step_angle':
-      return `set array step angle to ${m.stepAngle}`
-    case 'set_array_axis':
-      return `set array axis to ${m.axis}`
-    case 'set_array_direction_x':
-      return `set array direction_x to ${m.direction_x}`
-    case 'set_array_direction_y':
-      return `set array direction_y to ${m.direction_y}`
-    case 'add_delete_body':
-      return `add delete body ${m.label ?? m.featureId}`
-    case 'set_delete_body_target':
-      return `set delete body target to ${m.body}`
-    case 'add_hole':
-      return `add hole ${m.label ?? m.featureId}`
-    case 'set_hole_sketch':
-      return `set hole sketch to ${m.sketch}`
-    case 'set_hole_diameter':
-      return `set hole diameter to ${m.diameter}`
-    case 'set_hole_depth':
-      return `set hole depth to ${m.depth}`
-    case 'set_hole_depth_mode':
-      return `set hole depth mode to ${m.depthMode}`
-    case 'set_hole_direction':
-      return `set hole direction to ${m.direction}`
-    case 'set_hole_target':
-      return `set hole target to ${m.target}`
-    case 'add_transform':
-      return `add transform ${m.label ?? m.featureId}`
-    case 'set_transform_field':
-      return `set transform ${m.field} to ${m.value}`
-    case 'rename_part':
-      return `rename ${m.bodyId} to ${m.name}`
-    case 'set_part_color':
-      return `set ${m.bodyId} color to ${m.color}`
-    default:
-      return 'unknown mutation'
-  }
 }
 
 export default function Part() {
@@ -567,14 +412,26 @@ useEffect(() => {
     if (featureIds.length > 0) useSketchEditorStore.getState().clearNormalSelection()
   }, [editingFeatureId, handleMutation, setPendingPickField])
 
+  const handleAddFeature = useCallback((kind: string, extra?: Record<string, unknown>) => {
+    if (!doc) return
+    const fid = randomId(18)
+    const label = `${kind} ${Object.keys(bodies).length + 1}`
+    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
+    setRollbackPos(features.length + 1)
+    handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
+    rollbackChangeSource.current = 'handler'
+    setRollbackPosition(features.length + 1)
+    rollbackChangeSource.current = 'handler'
+    setEditingFeatureId(fid)
+  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
+
   const handleAddPlane = useCallback(() => {
     if (!doc) return
     const featureId = randomId(18)
     const planeCount = (doc.features ?? []).filter(f => f.kind === 'plane' && !BUILT_IN_IDS.has(f.id)).length
     const label = `plane ${planeCount + 1}`
-    // If exactly one face is selected, create an on_face plane directly
     const faceQuery = [...selection].find(id => id.startsWith('?') && id.includes(':face'))
-    const definition: import('../types/cad').PlaneDef | undefined = faceQuery ? { mode: 'on_face', face: faceQuery } : undefined
+    const definition = faceQuery ? { mode: 'on_face', face: faceQuery } as const : undefined
     setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_plane', featureId, label, definition })
     rollbackChangeSource.current = 'handler'
@@ -582,123 +439,6 @@ useEffect(() => {
     rollbackChangeSource.current = 'handler'
     setEditingFeatureId(featureId)
   }, [doc, features.length, handleMutation, selection, setRollbackPos])
-
-  const handleAddExtrude = useCallback(() => {
-    if (!doc) return
-    const fid = randomId(18)
-    const label = `extrude ${Object.keys(bodies).length + 1}`
-    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    setRollbackPos(features.length + 1)  // Update ref BEFORE mutation so reSolve uses correct rollback
-    handleMutation({ type: 'add_extrude', featureId: fid, label, sketchQuery: '', distance: 10 })
-    rollbackChangeSource.current = 'handler'
-    setRollbackPosition(features.length + 1)
-    rollbackChangeSource.current = 'handler'
-    setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
-
-  const handleAddRevolve = useCallback(() => {
-    if (!doc) return
-    const fid = randomId(18)
-    const label = `revolve ${Object.keys(bodies).length + 1}`
-    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    setRollbackPos(features.length + 1)
-    handleMutation({ type: 'add_revolve', featureId: fid, label, sketchQuery: '', angle: 360 })
-    rollbackChangeSource.current = 'handler'
-    setRollbackPosition(features.length + 1)
-    rollbackChangeSource.current = 'handler'
-    setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
-
-  const handleAddFillet = useCallback(() => {
-    if (!doc) return
-    const fid = randomId(18)
-    const label = `fillet ${Object.keys(bodies).length + 1}`
-    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    setRollbackPos(features.length + 1)
-    handleMutation({ type: 'add_fillet', featureId: fid, label })
-    rollbackChangeSource.current = 'handler'
-    setRollbackPosition(features.length + 1)
-    rollbackChangeSource.current = 'handler'
-    setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
-
-  const handleAddChamfer = useCallback(() => {
-    if (!doc) return
-    const fid = randomId(18)
-    const label = `chamfer ${Object.keys(bodies).length + 1}`
-    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    setRollbackPos(features.length + 1)
-    handleMutation({ type: 'add_chamfer', featureId: fid, label })
-    rollbackChangeSource.current = 'handler'
-    setRollbackPosition(features.length + 1)
-    rollbackChangeSource.current = 'handler'
-    setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
-
-  const handleAddArray = useCallback(() => {
-    if (!doc) return
-    const fid = randomId(18)
-    const label = `array ${Object.keys(bodies).length + 1}`
-    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    setRollbackPos(features.length + 1)
-    handleMutation({ type: 'add_array', featureId: fid, label })
-    rollbackChangeSource.current = 'handler'
-    setRollbackPosition(features.length + 1)
-    rollbackChangeSource.current = 'handler'
-    setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
-
-  const handleAddBoolean = useCallback(() => {
-    if (!doc) return
-    const fid = randomId(18)
-    const label = `boolean ${Object.keys(bodies).length + 1}`
-    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    setRollbackPos(features.length + 1)
-    handleMutation({ type: 'add_boolean', featureId: fid, label })
-    rollbackChangeSource.current = 'handler'
-    setRollbackPosition(features.length + 1)
-    rollbackChangeSource.current = 'handler'
-    setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
-
-  const handleAddDeleteBody = useCallback(() => {
-    if (!doc) return
-    const fid = randomId(18)
-    const label = `delete body ${Object.keys(bodies).length + 1}`
-    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    setRollbackPos(features.length + 1)
-    handleMutation({ type: 'add_delete_body', featureId: fid, label })
-    rollbackChangeSource.current = 'handler'
-    setRollbackPosition(features.length + 1)
-    rollbackChangeSource.current = 'handler'
-    setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
-
-  const handleAddHole = useCallback(() => {
-    if (!doc) return
-    const fid = randomId(18)
-    const label = `hole ${Object.keys(bodies).length + 1}`
-    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    setRollbackPos(features.length + 1)
-    handleMutation({ type: 'add_hole', featureId: fid, label })
-    rollbackChangeSource.current = 'handler'
-    setRollbackPosition(features.length + 1)
-    rollbackChangeSource.current = 'handler'
-    setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
-
-  const handleAddTransform = useCallback(() => {
-    if (!doc) return
-    const fid = randomId(18)
-    const label = `transform ${Object.keys(bodies).length + 1}`
-    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    setRollbackPos(features.length + 1)
-    handleMutation({ type: 'add_transform', featureId: fid, label })
-    rollbackChangeSource.current = 'handler'
-    setRollbackPosition(features.length + 1)
-    rollbackChangeSource.current = 'handler'
-    setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
@@ -814,8 +554,12 @@ useEffect(() => {
   }, [solving])
 
   const commands = useMemo(
-    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddExtrude, handleAddHole, handleAddTransform),
-    [handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddExtrude, handleAddHole, handleAddTransform],
+    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility,
+      () => handleAddFeature('extrude', { sketchQuery: '', distance: 10 }),
+      () => handleAddFeature('hole'),
+      () => handleAddFeature('transform'),
+    ),
+    [handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddFeature],
   )
 
   useCommandRegistration(commands)
@@ -1392,15 +1136,23 @@ useEffect(() => {
             {mode === 'sketch' && <SketchToolbar onResetViewport={() => setViewportReset(v => v + 1)} />}
             {mode === 'feature' && (
               <>
-                <button className="editor-btn" title="Add Extrude (E)" onClick={handleAddExtrude} disabled={readOnly}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
-                <button className="editor-btn" title="Add Revolve" onClick={handleAddRevolve} disabled={readOnly}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
-                <button className="editor-btn" title="Add Fillet" onClick={handleAddFillet} disabled={readOnly}><img src={featureFilletIcon} alt="Add Fillet" /></button>
-                <button className="editor-btn" title="Add Chamfer" onClick={handleAddChamfer} disabled={readOnly}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
-                <button className="editor-btn" title="Add Boolean" onClick={handleAddBoolean} disabled={readOnly}><img src={featureBooleanIcon} alt="Add Boolean" /></button>
-                <button className="editor-btn" title="Add Array" onClick={handleAddArray} disabled={readOnly}><img src={featureArrayIcon} alt="Add Array" /></button>
-                <button className="editor-btn" title="Delete Body" onClick={handleAddDeleteBody} disabled={readOnly}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
-                <button className="editor-btn" title="Add Hole" onClick={handleAddHole} disabled={readOnly}><img src={featureHoleIcon} alt="Add Hole" /></button>
-                <button className="editor-btn" title="Add Transform" onClick={handleAddTransform} disabled={readOnly}><img src={featureTransformIcon} alt="Add Transform" /></button>
+                <button className="editor-btn" title="Add Extrude (E)" onClick={() => handleAddFeature('extrude', { sketchQuery: '', distance: 10 })} disabled={readOnly}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
+
+                <button className="editor-btn" title="Add Revolve" onClick={() => handleAddFeature('revolve', { sketchQuery: '', angle: 360 })} disabled={readOnly}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
+
+                <button className="editor-btn" title="Add Fillet" onClick={() => handleAddFeature('fillet')} disabled={readOnly}><img src={featureFilletIcon} alt="Add Fillet" /></button>
+
+                <button className="editor-btn" title="Add Chamfer" onClick={() => handleAddFeature('chamfer')} disabled={readOnly}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
+
+                <button className="editor-btn" title="Add Boolean" onClick={() => handleAddFeature('boolean')} disabled={readOnly}><img src={featureBooleanIcon} alt="Add Boolean" /></button>
+
+                <button className="editor-btn" title="Add Array" onClick={() => handleAddFeature('array')} disabled={readOnly}><img src={featureArrayIcon} alt="Add Array" /></button>
+
+                <button className="editor-btn" title="Delete Body" onClick={() => handleAddFeature('delete_body')} disabled={readOnly}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
+
+                <button className="editor-btn" title="Add Hole" onClick={() => handleAddFeature('hole')} disabled={readOnly}><img src={featureHoleIcon} alt="Add Hole" /></button>
+
+                <button className="editor-btn" title="Add Transform" onClick={() => handleAddFeature('transform')} disabled={readOnly}><img src={featureTransformIcon} alt="Add Transform" /></button>
                 <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch} disabled={readOnly}><img src={featureSketchIcon} alt="Sketch" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane} disabled={readOnly}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
                 <button className="editor-btn" title="Import STEP" onClick={handleImportStep} disabled={readOnly}><img src={featureImportIcon} alt="Import STEP" /></button>
@@ -1437,115 +1189,29 @@ useEffect(() => {
           )}
         </div>
 
-        {debugOpen && user?.is_admin && (
-          <aside className="debug-drawer">
-            <div className="debug-tabs">
-              <button
-                className={`debug-tab ${debugTab === 'selection' ? 'active' : ''}`}
-                onClick={() => setDebugTab('selection')}
-              >
-                Selection
-              </button>
-              <button
-                className={`debug-tab ${debugTab === 'bug-report' ? 'active' : ''}`}
-                onClick={() => setDebugTab('bug-report')}
-              >
-                Bug Report
-              </button>
-              <button
-                className={`debug-tab ${debugTab === 'undo-redo' ? 'active' : ''}`}
-                onClick={() => setDebugTab('undo-redo')}
-              >
-                Undo
-              </button>
-              <button
-                className={`debug-tab ${debugTab === 'cache-inspector' ? 'active' : ''}`}
-                onClick={() => setDebugTab('cache-inspector')}
-              >
-                Cache
-              </button>
-            </div>
-            {debugTab === 'selection' && (
-              <div className="debug-content">
-                <div className="debug-section">
-                  <div className="debug-section-title">Hover</div>
-                  {hoveredEntityId
-                    ? <div className="debug-value">{hoveredEntityId}</div>
-                    : hoveredVertexId
-                      ? <div className="debug-value">{hoveredVertexId}</div>
-                      : hoveredPlaneId
-                        ? <div className="debug-value">{hoveredPlaneId}</div>
-                        : hoveredSurfaceId
-                          ? <div className="debug-value">{hoveredSurfaceId}</div>
-                          : hovered3DSurfaceId
-                            ? <div className="debug-value">{hovered3DSurfaceId}</div>
-                            : <div className="debug-empty">none</div>}
-                </div>
-                <div className="debug-section">
-                  <div className="debug-section-title">Dynamic ({dynamicSelection.size})</div>
-                  {dynamicSelection.size === 0
-                    ? <div className="debug-empty">none</div>
-                    : [...dynamicSelection].map(id => (
-                      <div key={id} className="debug-value">{id}</div>
-                    ))}
-                </div>
-                <div className="debug-section">
-                  <div className="debug-section-title">Normal ({selection.size})</div>
-                  {selection.size === 0
-                    ? <div className="debug-empty">none</div>
-                    : [...selection].map(id => (
-                      <div key={id} className="debug-value">{id}</div>
-                    ))}
-                </div>
-              </div>
-            )}
-            {debugTab === 'bug-report' && (
-              <BugReporter
-                bugReportForm={bugReportForm}
-                setBugReportForm={setBugReportForm}
-                bugReporting={bugReporting}
-                bugReportError={bugReportError}
-                bugReportAttachments={bugReportAttachments}
-                setBugReportAttachments={setBugReportAttachments}
-                onSubmit={handleSubmitBugReport}
-                selectionCount={selection.size}
-                hasSolveResults={!!(editingFeatureId && solveResults?.[editingFeatureId])}
-                undoStackCount={undoStack.length}
-              />
-            )}
-            {debugTab === 'undo-redo' && (
-              <div className="debug-content">
-                <div className="debug-section">
-                  <div className="debug-section-title">Undo Stack ({undoStack.length})</div>
-                  {undoStack.length === 0
-                    ? <div className="debug-empty">empty</div>
-                    : undoStack.map((entry, idx) => (
-                      <div key={idx} className="debug-value">
-                        <div>[{idx}] {describeMutation(entry.mutation)}</div>
-                        <div style={{ fontSize: '9px', color: '#666', marginTop: '2px' }}>
-                          {JSON.stringify(entry.mutation).slice(0, 100)}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-                <div className="debug-section">
-                  <div className="debug-section-title">Redo Stack ({redoStack.length})</div>
-                  {redoStack.length === 0
-                    ? <div className="debug-empty">empty</div>
-                    : redoStack.map((entry, idx) => (
-                      <div key={idx} className="debug-value">
-                        <div>[{idx}] {describeMutation(entry.mutation)}</div>
-                        <div style={{ fontSize: '9px', color: '#666', marginTop: '2px' }}>
-                          {JSON.stringify(entry.mutation).slice(0, 100)}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
-            {debugTab === 'cache-inspector' && <CacheInspector />}
-          </aside>
-        )}
+        <PartDebugPanel
+          debugOpen={debugOpen && !!user?.is_admin}
+          debugTab={debugTab}
+          setDebugTab={setDebugTab}
+          hoveredEntityId={hoveredEntityId}
+          hoveredVertexId={hoveredVertexId}
+          hoveredPlaneId={hoveredPlaneId}
+          hoveredSurfaceId={hoveredSurfaceId}
+          hovered3DSurfaceId={hovered3DSurfaceId}
+          dynamicSelection={dynamicSelection}
+          selection={selection}
+          bugReportForm={bugReportForm}
+          setBugReportForm={setBugReportForm}
+          bugReporting={bugReporting}
+          bugReportError={bugReportError}
+          bugReportAttachments={bugReportAttachments}
+          setBugReportAttachments={setBugReportAttachments}
+          onSubmitBugReport={handleSubmitBugReport}
+          editingFeatureId={editingFeatureId}
+          solveResults={solveResults}
+          undoStack={undoStack}
+          redoStack={redoStack}
+        />
       </div>
       <footer className="doc-footer">
         <p>Copyright 2026 - Oversolved</p>

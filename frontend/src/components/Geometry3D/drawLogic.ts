@@ -5,6 +5,7 @@ import type { Mutation, Entity } from '../../types/cad'
 import type { SnapKind } from '../../registry'
 import { suggestConstraint } from '../../registry'
 import { getEntityKind } from '../../types/cad'
+import { circumcircle, arcAnglesFromRadiusPoint } from './drawGeometry'
 
 export interface DrawSnapState {
   hoveredVertexId: string | null
@@ -65,7 +66,8 @@ export function computeDrawClick(
 
   const nothing: DrawClickResult = { mutations: [], nextDrawPoints: null, nextDrawSnap: null, clearTool: false }
 
-  if (tool === 'point') {
+  const t: string = tool  // prevent type narrowing across branches
+  if (t === 'point') {
     return {
       mutations: [{ type: 'add_entity', featureId, kind: 'point', params: [px, py] }],
       nextDrawPoints: null,
@@ -74,7 +76,7 @@ export function computeDrawClick(
     }
   }
 
-  if (tool === 'line') {
+  if (t === 'line') {
     if (pts.length === 0) {
       const drawSnap = snap.hoveredVertexId
         ? { vertexId: snap.hoveredVertexId }
@@ -122,7 +124,7 @@ export function computeDrawClick(
     return { mutations, nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
   }
 
-  if (tool === 'circle') {
+  if (t === 'circle') {
     if (pts.length === 0) {
       const drawSnap = snap.hoveredVertexId
         ? { vertexId: snap.hoveredVertexId }
@@ -144,7 +146,7 @@ export function computeDrawClick(
     return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
   }
 
-  if (tool === 'arc') {
+  if (t === 'arc') {
     if (pts.length === 0) {
       const drawSnap = snap.hoveredVertexId
         ? { vertexId: snap.hoveredVertexId }
@@ -157,9 +159,9 @@ export function computeDrawClick(
     }
 
     // Third click: compute arc from 3 points
-    const cc = circumcircle3(pts[0], pts[1], [px, py])
-    if (!cc || cc.r <= 0) return nothing
-    const [aStart, aEnd] = arcAngles3(cc.cx, cc.cy, pts[0], pts[1], [px, py])
+    const cc = circumcircle(pts[0], pts[1], [px, py])
+    if (cc) {
+      const [aStart, aEnd] = arcAnglesFromRadiusPoint(cc.cx, cc.cy, pts[0], pts[1], [px, py])
     return {
       mutations: [{ type: 'add_entity', featureId, kind: 'arc',
         params: [cc.cx, cc.cy, cc.r, aStart, aEnd] }],
@@ -169,7 +171,8 @@ export function computeDrawClick(
     }
   }
 
-  if (tool === 'rect') {
+  }
+  if (t === 'rect') {
     if (pts.length === 0) {
       const drawSnap = snap.hoveredVertexId
         ? { vertexId: snap.hoveredVertexId }
@@ -184,7 +187,7 @@ export function computeDrawClick(
     }
   }
 
-  if (tool === 'center_rect') {
+  if (t === 'center_rect') {
     if (pts.length === 0) {
       const drawSnap = snap.hoveredVertexId
         ? { vertexId: snap.hoveredVertexId }
@@ -199,7 +202,7 @@ export function computeDrawClick(
     }
   }
 
-  if (tool === 'project') {
+  if (t === 'project') {
     const hid = snap.hoveredEntityId
     if (!hid || !hid.startsWith('entity:')) return nothing
     const parts = hid.split(':')
@@ -229,37 +232,3 @@ export function computeDrawClick(
   return nothing
 }
 
-/** Compute circumcircle of 3 points. Returns null if points are collinear. */
-function circumcircle3(
-  p1: readonly [number, number],
-  p2: readonly [number, number],
-  p3: readonly [number, number],
-): { cx: number; cy: number; r: number } | null {
-  const ax = p1[0], ay = p1[1]
-  const bx = p2[0], by = p2[1]
-  const cx = p3[0], cy = p3[1]
-  const D = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
-  if (Math.abs(D) < 1e-10) return null
-  const ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / D
-  const uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / D
-  return { cx: ux, cy: uy, r: Math.hypot(ax - ux, ay - uy) }
-}
-
-/** Determine [aStart, aEnd] such that going CCW from aStart reaches aEnd,
- *  with the arc passing through the radius point p3. */
-function arcAngles3(
-  cx: number, cy: number,
-  start: readonly [number, number],
-  end: readonly [number, number],
-  radiusPt: readonly [number, number],
-): [number, number] {
-  const toDeg = (a: number) => a * (180 / Math.PI)
-  const norm = (a: number) => ((a % 360) + 360) % 360
-  const aStart = toDeg(Math.atan2(start[1] - cy, start[0] - cx))
-  const aEnd = toDeg(Math.atan2(end[1] - cy, end[0] - cx))
-  const aRadius = toDeg(Math.atan2(radiusPt[1] - cy, radiusPt[0] - cx))
-  const s = norm(aStart), e = norm(aEnd), rp = norm(aRadius)
-  const spanCCW = ((e - s) + 360) % 360
-  const rpInCCW = ((rp - s) + 360) % 360 < spanCCW
-  return rpInCCW ? [aStart, aEnd] : [aEnd, aStart]
-}

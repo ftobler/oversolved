@@ -262,6 +262,7 @@ def create_app(config: dict | None = None) -> Flask:
             "L2_CACHE_MAX_SIZE": 5 * 1024 * 1024 * 1024,  # 5 GB
             "L2_CACHE_TTL": 86400 * 30,  # 30 days
             "SESSION_COOKIE_SECURE": os.environ.get("OVERSOLVED_SESSION_COOKIE_SECURE", "false").lower() == "true",
+            "MAX_CONTENT_LENGTH": 100 * 1024 * 1024,  # 100 MB
         }
     )
 

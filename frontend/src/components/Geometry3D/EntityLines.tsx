@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
 import { isProjectedEntity } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { sampleArc, sampleArcCCW, getEntityBounds, pointTo3D, allFinite } from '../sketch_helpers'
+import { sampleArc, sampleArcCCW, pointTo3D, allFinite } from '../sketch_helpers'
 import { DashedLine } from '../sketch_dimensions'
 import { VertexDot, HitPolyline, ProjectedOriginPoint } from './VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, RENDER_ORDER_EDITING } from './constants'
@@ -194,33 +194,4 @@ export function ProjectedEntities({ sketch, featureId }: { sketch: Sketch; featu
   )
 }
 
-// Calculate the bounding box extent of a sketch.
-// eslint-disable-next-line react-refresh/only-export-components
-export function sketchExtent(sketch: Sketch): number {
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-  for (const entity of Object.values(sketch)) {
-    const b = getEntityBounds(entity as Entity)
-    minX = Math.min(minX, b.minX); maxX = Math.max(maxX, b.maxX)
-    minY = Math.min(minY, b.minY); maxY = Math.max(maxY, b.maxY)
-  }
-  return isFinite(minX) ? Math.max(maxX - minX, maxY - minY, 0.01) : 1
-}
 
-// Find all entity IDs in the sketch that have a vertex at the given point (within eps).
-// eslint-disable-next-line react-refresh/only-export-components
-export function findEntitiesAtPoint(sketch: Sketch, pt: [number, number], eps = 1e-4): string[] {
-  const [px, py] = pt
-  const near = (x: number, y: number) => Math.abs(x - px) <= eps && Math.abs(y - py) <= eps
-  const ids: string[] = []
-  for (const [eid, entity] of Object.entries(sketch)) {
-    const e = entity as Entity
-    if ('start' in e && 'end' in e) {
-      if (near(e.start[0], e.start[1]) || near(e.end[0], e.end[1])) ids.push(eid)
-    } else if ('x' in e) {
-      if (near(e.x, e.y)) ids.push(eid)
-    } else if ('center' in e) {
-      if (near(e.center[0], e.center[1])) ids.push(eid)
-    }
-  }
-  return ids
-}

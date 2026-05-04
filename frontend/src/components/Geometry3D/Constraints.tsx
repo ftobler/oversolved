@@ -5,7 +5,7 @@ import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl } from '../sketch_helpers'
 import { LinearDimension, RadiusDimension, DiameterDimension, AngleDimension } from '../sketch_dimensions'
 import { COLOR_SELECTED } from './constants'
-import { findEntitiesAtPoint } from './EntityLines'
+import { findEntitiesAtPoint } from './drawGeometry'
 
 function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean }) {
   const [hovered, setHovered] = useState(false)

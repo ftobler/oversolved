@@ -7,7 +7,8 @@ import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { VertexDot, HitPolyline, VertexHighlight, ProjectedOriginPoint } from './VertexDots'
 
 // Entity geometry rendering
-import { EntityLines, ProjectedEntities, sketchExtent } from './EntityLines'
+import { EntityLines, ProjectedEntities } from './EntityLines'
+import { sketchExtent } from './drawGeometry'
 
 // Constraint display
 import { ConstraintOverlays } from './Constraints'
@@ -16,7 +17,8 @@ import { ConstraintOverlays } from './Constraints'
 import { TopologySurfaces, TopologyEdges } from './Surfaces'
 
 // Dragging
-import { DragPlane, DragSnapIndicator, DragAlignmentIndicator, applyDragPreview } from './Dragging'
+import { DragPlane, DragSnapIndicator, DragAlignmentIndicator } from './Dragging'
+import { applyDragPreview } from './dragLogic'
 
 // Drawing tools
 import { DrawPreview, DrawPlane } from './Drawing'
@@ -115,10 +117,8 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
 
 // Re-export components for external use if needed
 export { VertexDot, HitPolyline, VertexHighlight, ProjectedOriginPoint }
-// eslint-disable-next-line react-refresh/only-export-components
-export { EntityLines, ProjectedEntities, sketchExtent }
+export { EntityLines, ProjectedEntities }
 export { ConstraintOverlays }
 export { TopologySurfaces, TopologyEdges }
-// eslint-disable-next-line react-refresh/only-export-components
-export { DragPlane, DragSnapIndicator, DragAlignmentIndicator, applyDragPreview }
+export { DragPlane, DragSnapIndicator, DragAlignmentIndicator }
 export { DrawPreview, DrawPlane }

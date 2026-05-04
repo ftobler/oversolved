@@ -228,6 +228,20 @@ def import_backup():
 
     try:
         zip_buffer = BytesIO(file.read())
+
+        MAX_ZIP_ENTRIES = 10000
+        MAX_ZIP_DECOMPRESSED = 500 * 1024 * 1024
+
+        with zipfile.ZipFile(zip_buffer, 'r') as bomb_check:
+            if len(bomb_check.filelist) > MAX_ZIP_ENTRIES:
+                return jsonify({"error": "Archive contains too many files"}), 400
+            total_decompressed = 0
+            for file_info in bomb_check.filelist:
+                total_decompressed += file_info.file_size
+                if total_decompressed > MAX_ZIP_DECOMPRESSED:
+                    return jsonify({"error": "Archive too large when decompressed"}), 400
+        zip_buffer.seek(0)
+
         db = get_db()
         user_store = UserStore(db)
         doc_store = DocumentStore(db)
