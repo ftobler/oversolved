@@ -13,6 +13,21 @@ from oversolved.solver_registry import _post_register
 logger = logging.getLogger(__name__)
 
 
+# Canonical keys that define a feature's identity for dirty detection.
+# Add new keys here when new feature kinds are introduced.
+# Transient/UI-only keys sent by the frontend are ignored during comparison.
+_FEATURE_CMP_KEYS = frozenset({
+    "id", "kind", "plane", "entities", "constraints", "initial",
+    "extrude", "revolve", "fillet", "chamfer", "boolean", "hole",
+    "transform", "array", "hide", "label",
+})
+
+
+def _normalize_spec(spec: dict) -> dict:
+    """Return a copy of spec containing only canonical feature keys."""
+    return {k: spec[k] for k in _FEATURE_CMP_KEYS if k in spec}
+
+
 def _find_first_dirty(features: list[dict], prev_state: BuildState | None) -> int:
     """Return the index of the first feature that differs from prev_state.
 
@@ -27,7 +42,7 @@ def _find_first_dirty(features: list[dict], prev_state: BuildState | None) -> in
         if i >= len(prev_order) or prev_order[i] != fid:
             return i
         prev_checkpoint = prev_state.checkpoints.get(fid)
-        if prev_checkpoint is None or prev_checkpoint.spec != feature:
+        if prev_checkpoint is None or _normalize_spec(prev_checkpoint.spec) != _normalize_spec(feature):
             return i
     return len(features)
 
