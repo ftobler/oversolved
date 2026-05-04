@@ -20,6 +20,8 @@ ENTITY_SIZES: dict[str, int] = {
 # above this the system is overconstrained (conflicting)
 LOSS_THRESHOLD = 1e-4
 RANK_TOL = 1e-6  # tolerance for numerical rank computation
+# when rank is within this many of the DOF boundary, log a diagnostic warning
+RANK_BOUNDARY_TOL = 1
 
 ORIGIN_ID = "_origin"
 ORIGIN_FIX_ID = "__builtin_origin_fix__"

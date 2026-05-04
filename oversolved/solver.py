@@ -9,7 +9,7 @@ from scipy.optimize import least_squares
 from oversolved.topology import detect_topology
 from oversolved.query import Repository
 from oversolved.solver_constants import (
-    _FRONT_PLANE, ENTITY_SIZES, LOSS_THRESHOLD, RANK_TOL,
+    _FRONT_PLANE, ENTITY_SIZES, LOSS_THRESHOLD, RANK_TOL, RANK_BOUNDARY_TOL,
     ORIGIN_ID, ORIGIN_FIX_ID, _BUILTIN_PLANES, _BUILTIN_PLANE_RESULTS,
     _PROJECTED_KINDS, _FACE_TYPES,
 )
@@ -524,6 +524,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         xtol=1e-10,
         gtol=1e-10,
         max_nfev=10000,
+        x_scale="jac",
     )
     x_sol = opt.x
     # least_squares cost = 0.5 * sum(residuals**2)
@@ -555,6 +556,14 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         status = "underconstrained"
     else:
         status = "fully_constrained"
+
+    boundary_distance = (n_params - rigid_body_dof) - rank
+    if 0 < boundary_distance <= RANK_BOUNDARY_TOL and final_loss <= LOSS_THRESHOLD:
+        logger.warning(
+            "rank near DOF boundary (rank=%d, expected=%d, rigid_body_dof=%d) — "
+            "classification may be fragile",
+            rank, n_params - rigid_body_dof, rigid_body_dof,
+        )
 
     geom_solved = _geometry_from_array(x_sol, entities, entity_offsets)
 
