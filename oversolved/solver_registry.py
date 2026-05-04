@@ -2,6 +2,15 @@ import logging
 import math
 from oversolved.query import Repository, _parse_ancestry, make_ancestry_query
 
+# ─── Ancestral registry lifecycle invariant ───
+# Each registration path must deduplicate before appending to global_repo.ancestral.
+# Without dedup, repeated solves accumulate entries for the same ancestry key, causing
+# AmbiguousQueryError. Dedup: if an identical payload already exists under the key,
+# skip; if a stale payload exists, evict all old entries first, then register fresh.
+# All payloads targeted by _clear_feature_geometry_registrations must include a
+# sketch_id field. The ancestral registry is append-only; dedup is the only defense
+# against unbounded growth.
+
 logger = logging.getLogger(__name__)
 
 
@@ -11,19 +20,24 @@ def _clear_feature_geometry_registrations(
     """Remove all geometry registrations previously made for a feature.
     This prevents ghost references when entities are deleted and the
     feature is re-solved."""
-    global_repo.clear_by_sketch_id(feature_id)
-    # Also clear ancestral entries that reference this feature.
-    # These accumulate across re-solves and cause AmbiguousQueryError.
+    # Clear ancestral entries first (elements must still exist for lookup).
+    # Removes ALL matching elements per key to prevent orphaned entries from
+    # accumulated re-solves.
     keys_to_remove = []
     for key, element_ids in list(global_repo.ancestral.items()):
+        to_remove = []
         for eid in element_ids:
             payload = global_repo.elements.get(eid)
             if payload and isinstance(payload, dict) and payload.get("sketch_id") == feature_id:
-                keys_to_remove.append(key)
+                to_remove.append(eid)
+        if to_remove:
+            keys_to_remove.append(key)
+            for eid in to_remove:
                 global_repo.elements.pop(eid, None)
-                break
     for key in keys_to_remove:
         del global_repo.ancestral[key]
+    # Clear any remaining direct elements registered via register() with this sketch_id.
+    global_repo.clear_by_sketch_id(feature_id)
 
 
 def _post_register(
@@ -452,6 +466,13 @@ def _register_topology_edges(
             edge_data["radius"] = edge["radius"]
 
         ids, _ = _parse_ancestry(query)
+        key = frozenset(ids)
+        existing_ids = global_repo.ancestral.get(key, [])
+        if any(global_repo.elements.get(eid) == edge_data for eid in existing_ids):
+            continue
+        for eid in existing_ids:
+            global_repo.elements.pop(eid, None)
+        global_repo.ancestral.pop(key, None)
         global_repo.register_ancestor(ids, edge_data)
 
 
@@ -493,12 +514,17 @@ def _register_topology_vertices(
         query = make_ancestry_query(ancestor_ids, "vertex")
 
         ids, _ = _parse_ancestry(query)
-        global_repo.register_ancestor(
-            ids,
-            {
-                "type": "vertex",
-                "x": world_xy[0],
-                "y": world_xy[1],
-                "z": world_xy[2],
-            },
-        )
+        vertex_data = {
+            "type": "vertex",
+            "x": world_xy[0],
+            "y": world_xy[1],
+            "z": world_xy[2],
+        }
+        key = frozenset(ids)
+        existing_ids = global_repo.ancestral.get(key, [])
+        if any(global_repo.elements.get(eid) == vertex_data for eid in existing_ids):
+            continue
+        for eid in existing_ids:
+            global_repo.elements.pop(eid, None)
+        global_repo.ancestral.pop(key, None)
+        global_repo.register_ancestor(ids, vertex_data)
