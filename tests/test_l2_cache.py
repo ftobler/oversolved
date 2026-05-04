@@ -557,16 +557,18 @@ class TestL2Cache:
     def test_size_eviction_same_mtime_tiebreaker(self, tmp_path):
         cache_dir = tmp_path / "tie"
         cache = L2Cache(ttl_seconds=60.0, max_size=100, cache_dir=str(cache_dir))
-        state = BuildState(feature_order=["x"], checkpoints={})
-        # Manually write two files to avoid eviction during set
         data = {"feature_order": ["x"], "checkpoints": {}}
-        for name in ("a_doc", "b_doc"):
+        # Write all three files directly with fully controlled mtimes.
+        # a_doc/b_doc share the same mtime; c_doc is newer so it survives.
+        for name in ("a_doc", "b_doc", "c_doc"):
             with open(str(cache_dir / f"{name}.json"), "w") as f:
                 json.dump(data, f)
         now = time.time()
-        os.utime(str(cache_dir / "b_doc.json"), (now, now))
         os.utime(str(cache_dir / "a_doc.json"), (now, now))
-        cache.set("c_doc", state)
+        os.utime(str(cache_dir / "b_doc.json"), (now, now))
+        os.utime(str(cache_dir / "c_doc.json"), (now + 10, now + 10))
+        # Trigger eviction directly without relying on natural write-time ordering.
+        cache._evict_expired_and_oversized()
         assert cache.get("a_doc") is None
         assert cache.get("b_doc") is not None
         assert cache.get("c_doc") is not None

@@ -1,10 +1,15 @@
 """Tests for POST /api/export/step route."""
 
+import importlib
 import json
 import pytest
 
 from oversolved.app import create_app
 from solver_helpers import rect_sketch_spec, extrude_spec
+
+pytestmark = pytest.mark.skipif(
+    not importlib.util.find_spec("vtkmodules"), reason="vtkmodules not installed"
+)
 
 
 @pytest.fixture
@@ -89,6 +94,7 @@ def test_export_single_extrude(authed_client):
 
 def test_export_reads_back(authed_client):
     """5. export reads back - exported STEP can be imported and produces mesh."""
+    pytest.importorskip("OCP.gp")
     from OCP.STEPControl import STEPControl_Reader
     from OCP.IFSelect import IFSelect_RetDone
     from oversolved.geometry import solid_to_mesh
@@ -126,6 +132,7 @@ def test_export_reads_back(authed_client):
 
 def test_export_multiple_bodies(authed_client):
     """6. export multiple bodies - both extrudes should be in exported STEP."""
+    pytest.importorskip("OCP.gp")
     from OCP.STEPControl import STEPControl_Reader
     from OCP.IFSelect import IFSelect_RetDone
     from oversolved.geometry import solid_to_mesh

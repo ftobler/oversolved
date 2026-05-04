@@ -1,9 +1,15 @@
 """Test suite for array feature (linear, rectangular, rotational)."""
+import importlib
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    not __import__("importlib").util.find_spec("cadquery"), reason="cadquery not installed"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not importlib.util.find_spec("cadquery"), reason="cadquery not installed"
+    ),
+    pytest.mark.skipif(
+        not importlib.util.find_spec("vtkmodules"), reason="vtkmodules not installed"
+    ),
+]
 
 
 def _linear_array_spec(count_x: int, pitch_x: float = 20, include_source: bool = True, box_w: float = 5):

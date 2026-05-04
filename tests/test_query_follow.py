@@ -4,9 +4,14 @@ Test cases for complex query following and disambiguation.
 These tests focus on scenarios where topology face queries might be ambiguous
 or fail to follow parent sketch changes correctly.
 """
+import importlib
 import textwrap
 import pytest
 from oversolved.solver import solve
+
+pytestmark = pytest.mark.skipif(
+    not importlib.util.find_spec("vtkmodules"), reason="vtkmodules not installed"
+)
 
 
 def gnome_hat_sketch() -> str:

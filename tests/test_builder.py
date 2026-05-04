@@ -1,11 +1,15 @@
-import pytest
-
+import importlib
 import json
+import pytest
 
 from oversolved.builder import build, _repo_from_snapshot
 from oversolved.query import Repository, make_ancestry_query
 from oversolved.types3d import Body
 from solver_helpers import rect_sketch_spec, full_rect_extrude_spec
+
+pytestmark = pytest.mark.skipif(
+    not importlib.util.find_spec("vtkmodules"), reason="vtkmodules not installed"
+)
 
 
 def test_round_trip_sketch():

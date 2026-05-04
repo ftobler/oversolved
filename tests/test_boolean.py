@@ -1,12 +1,18 @@
 """Test suite for boolean feature (union, subtract, intersect)."""
+import importlib
 import pytest
 
 from oversolved.types3d import Body
 from oversolved.solver import _resolve_body, _solve_boolean
 
-pytestmark = pytest.mark.skipif(
-    not __import__("importlib").util.find_spec("cadquery"), reason="cadquery not installed"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not importlib.util.find_spec("cadquery"), reason="cadquery not installed"
+    ),
+    pytest.mark.skipif(
+        not importlib.util.find_spec("vtkmodules"), reason="vtkmodules not installed"
+    ),
+]
 
 
 def _make_box(x, y, z, w, h, d):

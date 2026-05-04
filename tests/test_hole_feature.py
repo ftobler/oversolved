@@ -1,9 +1,21 @@
+import importlib
+import pytest
+
 from oversolved.builder import build
 from oversolved.solver import solve_features
 from solver_helpers import (
     rect_sketch_spec, extrude_spec, point_sketch_spec,
     hole_spec, assert_mesh_valid, assert_mesh_bbox,
 )
+
+pytestmark = [
+    pytest.mark.skipif(
+        not importlib.util.find_spec("cadquery"), reason="cadquery not installed"
+    ),
+    pytest.mark.skipif(
+        not importlib.util.find_spec("vtkmodules"), reason="vtkmodules not installed"
+    ),
+]
 
 
 def _box_with_holes(points, **hole_kwargs):

@@ -1,6 +1,10 @@
+import importlib
 import os
 import pytest
 import yaml
+
+vtk_installed = importlib.util.find_spec("vtkmodules") is not None
+requires_vtk = pytest.mark.skipif(not vtk_installed, reason="vtkmodules not installed")
 
 
 OUTPUT_FILE = "frontend/public/test_output/results.yaml"

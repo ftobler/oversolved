@@ -4,7 +4,9 @@ import math
 
 import pytest
 
-from oversolved.cadquery_ops import (
+pytest.importorskip("cadquery.occ_impl.shapes")
+
+from oversolved.cadquery_ops import (  # noqa: E402
     boolean_cut,
     boolean_intersection,
     boolean_union,
@@ -21,9 +23,7 @@ from oversolved.cadquery_ops import (
     from_cq_plane,
     to_cq_plane,
 )
-from cadquery.occ_impl.geom import Vector as CQVector
-
-pytest.importorskip("cadquery")
+from cadquery.occ_impl.geom import Vector as CQVector  # noqa: E402
 
 
 FRONT_PLANE = {

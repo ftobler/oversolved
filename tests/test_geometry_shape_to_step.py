@@ -3,9 +3,11 @@
 import tempfile
 import pytest
 
-from oversolved.geometry import shape_to_step_file, step_file_to_shape, solid_to_mesh
-from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
-from OCP.STEPControl import STEPControl_Reader
+pytest.importorskip("cadquery.occ_impl.shapes")
+
+from oversolved.geometry import shape_to_step_file, step_file_to_shape, solid_to_mesh  # noqa: E402
+from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
+from OCP.STEPControl import STEPControl_Reader  # noqa: E402
 
 
 def test_shape_to_step_file_basic():

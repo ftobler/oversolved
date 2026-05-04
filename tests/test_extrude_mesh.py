@@ -1,9 +1,15 @@
+import importlib
 import pytest
 from pytest import approx
 
-pytestmark = pytest.mark.skipif(
-    not __import__("importlib").util.find_spec("cadquery"), reason="cadquery not installed"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not importlib.util.find_spec("cadquery"), reason="cadquery not installed"
+    ),
+    pytest.mark.skipif(
+        not importlib.util.find_spec("vtkmodules"), reason="vtkmodules not installed"
+    ),
+]
 
 
 def test_rect_extrude_mesh_valid():

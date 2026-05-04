@@ -8,9 +8,14 @@ import importlib
 
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    not importlib.util.find_spec("cadquery"), reason="cadquery not installed"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not importlib.util.find_spec("cadquery"), reason="cadquery not installed"
+    ),
+    pytest.mark.skipif(
+        not importlib.util.find_spec("vtkmodules"), reason="vtkmodules not installed"
+    ),
+]
 
 from oversolved.builder import build  # noqa: E402
 

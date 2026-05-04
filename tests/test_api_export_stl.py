@@ -1,10 +1,15 @@
 """Tests for POST /api/export/stl route."""
 
+import importlib
 import json
 import pytest
 
 from oversolved.app import create_app
 from solver_helpers import rect_sketch_spec, extrude_spec
+
+pytestmark = pytest.mark.skipif(
+    not importlib.util.find_spec("vtkmodules"), reason="vtkmodules not installed"
+)
 
 
 @pytest.fixture

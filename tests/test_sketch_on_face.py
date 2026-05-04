@@ -1,7 +1,12 @@
+import importlib
 import numpy as np
 import pytest
 from oversolved.builder import build
 from solver_helpers import full_rect_extrude_spec
+
+pytestmark = pytest.mark.skipif(
+    not importlib.util.find_spec("vtkmodules"), reason="vtkmodules not installed"
+)
 
 
 def _extrude_doc() -> dict:

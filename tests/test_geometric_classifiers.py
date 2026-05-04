@@ -7,7 +7,10 @@ with synthetic indices. This test suite verifies that surfaces are classified
 by their actual geometric position.
 """
 
-from oversolved.geometry import (
+import pytest
+pytest.importorskip("cadquery.occ_impl.shapes")
+
+from oversolved.geometry import (  # noqa: E402
     signed_distance_to_line,
     point_in_circle,
     classify_surface_by_line_side,
