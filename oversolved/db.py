@@ -465,7 +465,7 @@ class SessionStore:
         self.db = db
 
     def create(self, user_id: int) -> str:
-        """Create a session and return the token."""
+        """Create a session, clean up old sessions for the user, return the token."""
         token = secrets.token_urlsafe(32)
         expires_at = (datetime.now(timezone.utc) + self.SESSION_DURATION).isoformat()
         with self.db.transaction():
@@ -473,7 +473,25 @@ class SessionStore:
                 "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
                 (token, user_id, expires_at),
             )
+            self.cleanup_for_user(user_id, keep_token=token)
         return token
+
+    def cleanup_for_user(self, user_id: int, keep_token: str | None = None) -> int:
+        """Remove active sessions for a user, optionally keeping one token.
+
+        Returns the number of sessions deleted.
+        """
+        if keep_token:
+            cursor = self.db.execute(
+                "DELETE FROM sessions WHERE user_id = ? AND token != ?",
+                (user_id, keep_token),
+            )
+        else:
+            cursor = self.db.execute(
+                "DELETE FROM sessions WHERE user_id = ?",
+                (user_id,),
+            )
+        return cursor.rowcount
 
     def find(self, token: str) -> Optional[dict]:
         """Find a valid (non-expired) session."""

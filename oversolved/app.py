@@ -223,6 +223,13 @@ def _register_migrations(db: Database) -> None:
 
     db.register_migration(15, "rebuild_times", migration_015_rebuild_times)
 
+    def migration_016_sessions_user_id_index(database: Database):
+        database.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)"
+        )
+
+    db.register_migration(16, "sessions_user_id_index", migration_016_sessions_user_id_index)
+
 
 def _ensure_admin_user(db: Database) -> None:
     """Create the default admin user if it doesn't exist."""

@@ -369,6 +369,144 @@ class TestSessionStore:
         session_store.delete(token)
         assert session_store.find(token) is None
 
+    def test_create_cleans_up_old_sessions(self, session_store, user_id):
+        token_a = session_store.create(user_id)
+        assert session_store.find(token_a) is not None
+
+        token_b = session_store.create(user_id)
+        assert session_store.find(token_b) is not None
+        assert session_store.find(token_a) is None
+
+    def test_cleanup_for_user_keeps_specified_token(self, session_store, user_id):
+        token_a = session_store.create(user_id)
+        session_store.cleanup_for_user(user_id, keep_token=token_a)
+
+        assert session_store.find(token_a) is not None
+
+    def test_cleanup_for_user_without_keep_removes_all(self, session_store, user_id):
+        token_a = session_store.create(user_id)
+
+        session_store.cleanup_for_user(user_id)
+
+        assert session_store.find(token_a) is None
+
+    def test_new_session_does_not_affect_other_users(self, session_store, user_store):
+        uid1 = user_store.create("user1", "hash")
+        uid2 = user_store.create("user2", "hash")
+
+        session_store.create(uid1)
+        session_store.create(uid2)
+
+        session_store.create(uid1)
+
+        cursor = session_store.db.execute(
+            "SELECT user_id, COUNT(*) as cnt FROM sessions GROUP BY user_id"
+        )
+        rows = {row[0]: row[1] for row in cursor.fetchall()}
+        assert rows[uid1] == 1
+        assert rows[uid2] == 1
+
+
+class TestSessionCleanupIntegration:
+    """Integration tests: login endpoint creates only one session per user."""
+
+    def test_login_creates_single_session(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
+        from oversolved.app import create_app
+        db_path = str(tmp_path / "test_login_cleanup.db")
+        app = create_app({
+            "DB_TYPE": "sqlite",
+            "TESTING": True,
+            "DB_PATH": db_path,
+        })
+        client = app.test_client()
+
+        resp1 = client.post(
+            "/api/auth/login",
+            data='{"username": "admin", "password": "admin"}',
+            content_type="application/json",
+        )
+        assert resp1.status_code == 200
+        cookie1 = resp1.headers.get("Set-Cookie", "")
+
+        resp2 = client.post(
+            "/api/auth/login",
+            data='{"username": "admin", "password": "admin"}',
+            content_type="application/json",
+        )
+        assert resp2.status_code == 200
+        cookie2 = resp2.headers.get("Set-Cookie", "")
+
+        assert cookie1 != cookie2, "Second login should set a different session cookie"
+
+    def test_old_session_invalid_after_new_login(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
+        from oversolved.app import create_app
+        db_path = str(tmp_path / "test_old_session_invalid.db")
+        app = create_app({
+            "DB_TYPE": "sqlite",
+            "TESTING": True,
+            "DB_PATH": db_path,
+        })
+        client = app.test_client()
+
+        resp1 = client.post(
+            "/api/auth/login",
+            data='{"username": "admin", "password": "admin"}',
+            content_type="application/json",
+        )
+        assert resp1.status_code == 200
+        set_cookie1 = resp1.headers.get("Set-Cookie", "")
+        token1 = set_cookie1.split(";")[0].split("=")[1]
+
+        client.post(
+            "/api/auth/login",
+            data='{"username": "admin", "password": "admin"}',
+            content_type="application/json",
+        )
+
+        from oversolved.db import SQLiteConnection, Database, SessionStore
+        db_conn = SQLiteConnection(db_path)
+        database = Database(db_conn)
+        database.init()
+        ss = SessionStore(database)
+        found = ss.find(token1)
+        database.close()
+        assert found is None, "Old session should have been deleted after new login"
+
+
+class TestMigrationIndex:
+    """Test migration 16 adds sessions(user_id) index."""
+
+    def test_sessions_user_id_index_exists(self):
+        conn = SQLiteConnection(":memory:")
+        database = Database(conn)
+
+        def migration_001(db):
+            db.execute("""
+                CREATE TABLE sessions (
+                    token TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    expires_at TEXT NOT NULL
+                )
+            """)
+
+        database.register_migration(1, "initial_schema", migration_001)
+
+        def migration_016(db):
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)"
+            )
+
+        database.register_migration(16, "sessions_user_id_index", migration_016)
+        database.init()
+
+        cursor = database.execute("PRAGMA index_list(sessions)")
+        indices = [row[1] for row in cursor.fetchall()]
+        assert "idx_sessions_user_id" in indices
+
+        database.close()
+
 
 class TestDocumentStore:
     """Tests for DocumentStore."""
