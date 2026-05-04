@@ -8,14 +8,14 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        # python-version: ["3.12", "3.13"]
-        python-version: ["3.13"]
+        python-version: ["3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
 
       - name: Install system dependencies
         run: |
@@ -30,6 +30,13 @@ jobs:
             libice6 \
             xvfb
 
+      - name: Smoke test (prod deps only)
+        run: |
+          pip install -e .
+          oversolved --help
+          python -c "from oversolved import cli; print('OK')"
+          python -c "from oversolved.app import create_app; app = create_app(); print('OK')"
+
       - name: Install dev dependencies
         run: pip install -e ".[dev]"
 
@@ -41,6 +48,15 @@ jobs:
 
       - name: pytest
         run: pytest tests
+
+      - name: Build wheel
+        run: pip install build && python -m build
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oversolved-wheel-${{ matrix.python-version }}
+          path: dist/*.whl
 
   frontend:
     strategy:
@@ -79,3 +95,9 @@ jobs:
       - name: npm test (vitest)
         run: npx vitest run
         working-directory: frontend
+
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist-${{ matrix.os }}
+          path: frontend/dist/

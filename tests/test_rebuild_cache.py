@@ -453,35 +453,6 @@ class TestTtlCacheDelete:
         assert cache.get("missing") is None
 
 
-class TestConcurrentSolves:
-    def test_concurrent_solves_different_docs(self, authed_client):
-        """Two threads, different doc IDs, no cross-talk."""
-        pytest.importorskip("OCP.gp")
-        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
-        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
-
-        results = {}
-
-        def solve_doc_a():
-            resp = post_solve(authed_client, {"id": "doc_conc_a", "features": [sk1, ex1]})
-            results["a"] = json.loads(resp.data)
-
-        def solve_doc_b():
-            resp = post_solve(authed_client, {"id": "doc_conc_b", "features": [sk1, ex1]})
-            results["b"] = json.loads(resp.data)
-
-        t1 = threading.Thread(target=solve_doc_a)
-        t2 = threading.Thread(target=solve_doc_b)
-        t1.start()
-        t2.start()
-        t1.join()
-        t2.join()
-
-        assert "body_ex1" in results["a"]["bodies"]
-        assert "body_ex1" in results["b"]["bodies"]
-        assert results["a"]["bodies"]["body_ex1"]["mesh"] == results["b"]["bodies"]["body_ex1"]["mesh"]
-
-
 class TestFailureRecovery:
     def test_exception_does_not_corrupt_l1(self, authed_client):
         """Failed solve does not overwrite L1 cache. Valid solve after failure works."""

@@ -10,6 +10,11 @@ from oversolved.solver import _init_global_repo, _try_solve_feature
 from oversolved.solver_constants import _BUILTIN_PLANE_RESULTS
 from oversolved.solver_registry import _post_register
 
+try:
+    import oversolved.geometry  # noqa: F401  # pre-warm to avoid concurrent-import race
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 

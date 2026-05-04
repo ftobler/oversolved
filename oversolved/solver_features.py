@@ -7,6 +7,11 @@ import numpy as np
 from oversolved.query import Repository, _parse_ancestry
 from oversolved.solver_constants import _ARC_SEGMENTS
 
+try:
+    import oversolved.geometry  # noqa: F401  # pre-warm to avoid concurrent-import race
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 
