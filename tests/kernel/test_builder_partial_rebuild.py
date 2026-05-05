@@ -368,6 +368,26 @@ def test_partial_rebuild_add_sketch_mid_stack():
     assert "body_ex1" in r2["bodies"]
 
 
+def test_rollback_zero_cascade_full_rebuild():
+    """build() with rollback_position=0 returns empty state; subsequent
+    build() with features does a full rebuild (no partial reuse)."""
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+
+    spec = {'features': [sk1, ex1]}
+
+    # Build with rollback_position=0 — empty feature list
+    r2 = build(spec, rollback_position=0)
+    state2 = r2['_build_state']
+    assert len(state2.checkpoints) == 0
+
+    # Build with full features using the empty state
+    r3 = build(spec, prev_state=state2)
+    assert r3['result']['sk1']['status'] != 'exception'
+    assert r3['result']['ex1']['status'] != 'exception'
+    assert 'body_ex1' in r3['bodies']
+
+
 def test_corrupted_checkpoint_missing_body_id():
     """Missing body_id in body_store_snapshot should not crash."""
     pytest.importorskip("OCP.gp")

@@ -310,17 +310,15 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     const currentRequestId = ++requestIdRef.current
     try {
       const allFeatures = d.features ?? []
-      const effectiveRollback = rollbackPosition !== undefined ? (rollbackPosition ?? allFeatures.length) : (rollbackPosRef.current ?? allFeatures.length)
+      const effectiveRollback = rollbackPosition !== undefined
+        ? (rollbackPosition ?? allFeatures.length)
+        : ((rollbackPosRef.current ?? allFeatures.length) || allFeatures.length)
 
-      // Send ALL features to backend; backend handles rollback slicing internally.
-      // Filter out built-in features for the solve payload.
-      // Only send features up to effectiveRollback for solve calculation
+      // Filter out built-in features and slice to effectiveRollback.
       const solveFeatures = allFeatures.slice(0, effectiveRollback).filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
 
-      // Rollback position is an index into the FULL feature list (including builtins).
-      // Backend receives solveFeatures without builtins, so adjust the index.
-      const builtinCount = allFeatures.length - solveFeatures.length
-      const adjustedRollback = Math.max(0, effectiveRollback - builtinCount)
+      // solveFeatures is already sliced; tell the backend to process all of them.
+      const adjustedRollback = solveFeatures.length
 
       const isPreview = rollbackPosition !== undefined || pickBoundaryRef.current !== null
       const pickBoundary = pickBoundaryRef.current
