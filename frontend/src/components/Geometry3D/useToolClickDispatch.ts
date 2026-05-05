@@ -4,36 +4,25 @@ import { toolRegistry } from '../../registry/toolRegistry'
 import type { Point } from '../../types/cad'
 
 /**
- * Layer 4 — Tool Layer: shared click dispatch for interactive sketch elements.
+ * Layer 4 -- Tool Layer: shared click dispatch for interactive sketch elements.
  *
- * Both EntityItem (entities/edges) and VertexDot (vertices) need the same
- * dispatch on click:
- *   1. dimension tool  → open dimension dialog via handleDimensionClick
- *   2. otherwise       → toggle normal selection; if pendingPickField is set,
- *                        also auto-commit the pick from normalSelection
- *
- * Parameters that differ between element types are passed as arguments so this
- * hook has no knowledge of what kind of element it operates on.
+ * Both EntityItem (entities/edges) and VertexDot (vertices) route clicks here.
+ * All tool-based clicks dispatch through the tool registry. Non-tool paths
+ * (pendingPickField commit, clear selection) remain direct store calls.
  */
 export function useToolClickDispatch({
   id,
-  featureId,
   isEditing,
-  dimensionKind,
   entityKind,
 }: {
   /** Full composite element ID. */
   id: string
-  featureId: string
   isEditing: boolean
-  /** 'entity' for edge elements, 'vertex' for vertex elements. */
-  dimensionKind: 'entity' | 'vertex'
-  /** Passed to handleDimensionClick for entity-level dimension resolution. */
+  /** Entity kind string for dimension resolution (e.g. 'line', 'circle'). */
   entityKind?: string
 }): (e: { stopPropagation: () => void; clientX: number; clientY: number }) => void {
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
-  const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
@@ -45,12 +34,26 @@ export function useToolClickDispatch({
   const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
   const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
   const onMutation = useSketchEditorStore(s => s.onMutation)
+  const pendingDimTarget = useSketchEditorStore(s => s.pendingDimTarget)
+  const pendingDimEntityKind = useSketchEditorStore(s => s.pendingDimEntityKind)
+  const setPendingDim = useSketchEditorStore(s => s.setPendingDim)
+  const openDialog = useSketchEditorStore(s => s.openDialog)
+  const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
 
   return useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     e.stopPropagation()
 
     const effectiveTool = getEffectiveTool(activeTool)
     const tool = toolRegistry.get(effectiveTool)
+
+    // Dimension tool owns its own two-click flow and must not be interrupted by
+    // a pending field pick -- it needs to stay active until the user places the
+    // dimension. All other tools treat any click as the pick confirmation.
+    if (pendingPickField && effectiveTool !== 'dimension') {
+      toggleNormalSelection(id)
+      commitFieldPick()
+      return
+    }
 
     const context = {
       normalSelection,
@@ -62,26 +65,36 @@ export function useToolClickDispatch({
       hoveredVertexPosition,
       hoveredSnapKind,
       onMutation,
+      // dimension-specific fields passed through context
+      pendingDimTarget,
+      pendingDimEntityKind,
+      hoveredEntityKind: entityKind ?? null,
+      setPendingDim,
+      openDialog,
+      setActiveTool,
     }
 
-    if (tool?.handlers.onClick && effectiveTool !== 'dimension' && !pendingPickField) {
+    if (tool?.handlers.onClick) {
+      // Dimension clicks on non-editing entities (inactive sketch geometry) must be
+      // silently ignored -- the two-click state machine should not advance on ghost hits.
+      if (effectiveTool === 'dimension' && !isEditing) return
       tool.handlers.onClick(
         { clientX: e.clientX, clientY: e.clientY } as PointerEvent,
         [0, 0] as Point,
-        context
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        context as any
       )
       return
     }
 
-    if (activeTool === 'dimension') {
-      if (!isEditing) return
-      handleDimClick(id, featureId, dimensionKind, [e.clientX, e.clientY], entityKind)
-    } else {
-      toggleNormalSelection(id)
-      if (pendingPickField) commitFieldPick()
-    }
-  }, [activeTool, isEditing, id, featureId, dimensionKind, entityKind,
-    handleDimClick, pendingPickField, commitFieldPick, toggleNormalSelection,
+    // Fallback: tool exists but has no onClick -- treat as plain selection.
+    // Mirror the dimension guard from above so a broken/future tool without onClick
+    // cannot accidentally commit a field pick while the dimension flow is running.
+    toggleNormalSelection(id)
+    if (pendingPickField && effectiveTool !== 'dimension') commitFieldPick()
+  }, [activeTool, isEditing, id, entityKind,
+    pendingPickField, commitFieldPick, toggleNormalSelection,
     normalSelection, dynamicSelection, isPointerDown, activeFeatureId,
-    internalHoverSelection, hoveredVertexId, hoveredVertexPosition, hoveredSnapKind, onMutation])
+    internalHoverSelection, hoveredVertexId, hoveredVertexPosition, hoveredSnapKind, onMutation,
+    pendingDimTarget, pendingDimEntityKind, setPendingDim, openDialog, setActiveTool])
 }

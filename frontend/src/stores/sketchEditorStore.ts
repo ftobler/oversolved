@@ -190,6 +190,7 @@ interface SketchEditorState {
   openContextMenu: (pos: [number, number]) => void
   closeContextMenu: () => void
   handleDimensionClick: (target: string, featureId: string, kind: 'entity' | 'vertex', screenPos: [number, number], entityKind?: string) => void
+  setPendingDim: (target: string | null, entityKind: string | null) => void
   setPlaneSelectionFeatureId: (id: string | null) => void
   commitPlaneSelection: (selectionId: string) => void
   setPendingPickField: (state: PendingPickField | null) => void
@@ -380,6 +381,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setPendingProjectTarget: (target) => set({ pendingProjectTarget: target }),
   openContextMenu: (pos) => set({ contextMenu: pos }),
   closeContextMenu: () => set({ contextMenu: null }),
+
+  setPendingDim: (target, entityKind) => set({ pendingDimTarget: target, pendingDimEntityKind: entityKind }),
 
   setPlaneSelectionFeatureId: (id) => set({ planeSelectionFeatureId: id }),
 

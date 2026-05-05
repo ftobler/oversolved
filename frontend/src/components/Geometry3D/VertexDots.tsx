@@ -148,8 +148,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   // Layer 4 — Tool Layer: dimension / fieldPick / select dispatch on click.
   // Guard: vertId/featureId may be absent for purely decorative vertex dots.
   const onClick = useToolClickDispatch({
-    id: vertId ?? '', featureId: featureId ?? '', isEditing: isEditing && !!vertId && !!featureId,
-    dimensionKind: 'vertex',
+    id: vertId ?? '', isEditing: isEditing && !!vertId && !!featureId,
   })
 
   // Layer 4 — Tool Layer: vertex drag initiation via DragPlane.
@@ -210,7 +209,7 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number;
   // Layer 4: dimension tool only for the active sketch's projected points.
   const isEditing = activeFeatureId === featureId
   const onClick = useToolClickDispatch({
-    id: entId, featureId, isEditing, dimensionKind: 'entity', entityKind: 'point',
+    id: entId, isEditing, entityKind: 'point',
   })
 
   useFrame(() => {

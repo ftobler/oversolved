@@ -53,7 +53,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
 
   // Layer 4 — Tool Layer: dimension / fieldPick / select dispatch on click.
   const onClick = useToolClickDispatch({
-    id: entId, featureId, isEditing, dimensionKind: 'entity', entityKind,
+    id: entId, isEditing, entityKind,
   })
 
   // Layer 4 — Tool Layer: edge drag initiation via DragPlane.
