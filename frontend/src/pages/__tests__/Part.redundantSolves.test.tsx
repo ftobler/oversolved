@@ -3,6 +3,15 @@ import { render, waitFor, fireEvent, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { forwardRef, useImperativeHandle } from 'react'
 import Part from '../Part'
+import { solverWs } from '../../hooks/solverWs'
+import { invalidateAllCache } from '../../utils/buildCache'
+
+vi.mock('../../hooks/solverWs', () => ({
+  solverWs: {
+    solve: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
+    disconnect: vi.fn(),
+  },
+}))
 
 vi.mock('../../components/Viewport', () => ({
   default: forwardRef(function MockViewport(_props: Record<string, unknown>, ref) {
@@ -19,9 +28,10 @@ vi.mock('../../components/Viewport', () => ({
 }))
 
 describe('Part - eliminate redundant solves', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks()
+  beforeEach(async () => {
+    vi.clearAllMocks()
     vi.unstubAllGlobals()
+    await invalidateAllCache()
   })
 
   function mockFetch() {
@@ -32,20 +42,17 @@ describe('Part - eliminate redundant solves', () => {
       if (url === '/api/documents/doc-1') {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ uuid: 'doc-1', name: 'TestDoc', content: 'version: 1\nkind: part\nfeatures: []\n', permission: 'owner' }) } as Response)
       }
-      if (url === '/api/solve') {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }) } as Response)
-      }
       return Promise.resolve({ ok: false, status: 404 } as Response)
     })
   }
 
-  function countSolveCalls(fetchMock: ReturnType<typeof vi.fn>): number {
-    return fetchMock.mock.calls.filter(c => c[0] === '/api/solve').length
+  function countSolveCalls(): number {
+    return (solverWs.solve as ReturnType<typeof vi.fn>).mock.calls.length
   }
 
   async function renderAndWaitForLoad() {
-    const fetchMock = mockFetch()
-    vi.stubGlobal('fetch', fetchMock)
+    mockFetch()
+    vi.stubGlobal('fetch', mockFetch())
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -56,57 +63,55 @@ describe('Part - eliminate redundant solves', () => {
     )
 
     await waitFor(() => {
-      expect(countSolveCalls(fetchMock)).toBeGreaterThanOrEqual(1)
+      expect(countSolveCalls()).toBeGreaterThanOrEqual(1)
     })
-
-    return fetchMock
   }
 
   it('adds extrude with exactly 1 solve', async () => {
-    const fetchMock = await renderAndWaitForLoad()
-    fetchMock.mockClear()
+    await renderAndWaitForLoad()
+    vi.mocked(solverWs.solve).mockClear()
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     fireEvent.click(screen.getByTitle('Add Extrude (E)'))
 
     await waitFor(() => {
-      expect(countSolveCalls(fetchMock)).toBe(1)
+      expect(countSolveCalls()).toBe(1)
     })
   })
 
   it('adds revolve with exactly 1 solve', async () => {
-    const fetchMock = await renderAndWaitForLoad()
-    fetchMock.mockClear()
+    await renderAndWaitForLoad()
+    vi.mocked(solverWs.solve).mockClear()
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     fireEvent.click(screen.getByTitle('Add Revolve'))
 
     await waitFor(() => {
-      expect(countSolveCalls(fetchMock)).toBe(1)
+      expect(countSolveCalls()).toBe(1)
     })
   })
 
   it('adds hole with exactly 1 solve', async () => {
-    const fetchMock = await renderAndWaitForLoad()
-    fetchMock.mockClear()
+    await renderAndWaitForLoad()
+    vi.mocked(solverWs.solve).mockClear()
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     fireEvent.click(screen.getByTitle('Add Hole'))
 
     await waitFor(() => {
-      expect(countSolveCalls(fetchMock)).toBe(1)
+      expect(countSolveCalls()).toBe(1)
     })
   })
 
   it('adds sketch with exactly 1 solve', async () => {
-    const fetchMock = await renderAndWaitForLoad()
-    fetchMock.mockClear()
+    await renderAndWaitForLoad()
+    vi.mocked(solverWs.solve).mockClear()
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     fireEvent.click(screen.getByTitle('Sketch'))
 
     await waitFor(() => {
-      expect(countSolveCalls(fetchMock)).toBe(1)
+      expect(countSolveCalls()).toBe(1)
     })
   })
 })

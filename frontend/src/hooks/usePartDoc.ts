@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, SketchData, Mutation, EntityStatus, BuildResponse, PartStyleEntry } from '../types/cad'
+import { solverWs } from './solverWs'
+import { useSolverStore } from '../stores/solverStore'
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
 import { unflattenGeometry } from '../utils/geometryMapping'
@@ -366,35 +368,25 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         solvePayload.pick_boundary = pickBoundary
       }
 
-      const response = await fetch('/api/solve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(solvePayload),
-      })
+      const response = await solverWs.solve(solvePayload)
 
-      // Discard stale response - if another solve started, ignore this one
+      // Discard stale response — another solve may have started while we were waiting
       if (currentRequestId !== requestIdRef.current) {
         return
       }
       rollbackPosRef.current = effectiveRollback
 
-      const data = await response.json()
       const endTime = performance.now()
       const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
 
-      // Re-check staleness — another solve may have started while reading body.
-      if (currentRequestId !== requestIdRef.current) {
-        return
-      }
-      if (!response.ok) {
-        setSolveError(data.error || `Solve failed (${response.status})`)
-        setSolveRawResult(data.error || `Solve failed (${response.status})`)
+      if (response.error) {
+        setSolveError(response.error)
+        setSolveRawResult(response.error)
       } else {
-        const buildResponse = data as BuildResponse
+        const buildResponse = response as BuildResponse
         setFromCache(false)
         setCacheTimestamp(null)
         if (uuid) {
-          // Cache BEFORE applyBuildResponse mutates d with solver output
           await cacheBuildResponse(uuid, d, effectiveRollback, pickBoundary, buildResponse)
         }
         applyBuildResponse(d, buildResponse, solveTimeMs)
@@ -732,6 +724,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   }, [])
 
   useEffect(() => {
+    return () => {
+      solverWs.disconnect()
+      useSolverStore.getState().setIsSolving(false)
+    }
+  }, [])
+
+  useEffect(() => {
     rollbackPosRef.current = null  // reset across document loads
     if (!uuid) return
     setLoading(true)
@@ -849,8 +848,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     isPublic,
     fromCache,
     cacheTimestamp,
-    setRollbackPos: (pos: number | null) => { rollbackPosRef.current = pos },
-    setPickBoundary: (pos: number | null) => { pickBoundaryRef.current = pos },
+    setRollbackPos: useCallback((pos: number | null) => { rollbackPosRef.current = pos }, []),
+    setPickBoundary: useCallback((pos: number | null) => { pickBoundaryRef.current = pos }, []),
     startPreviewMode,
     commitPreview,
     cancelPreview,

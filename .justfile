@@ -2,6 +2,8 @@
 
 # `just` command runner. Targets can be run with `just <target>`.
 
+export OVERSOLVED_ADMIN_PASSWORD := "admin"
+
 default:
     just backend
     just frontend

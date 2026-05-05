@@ -2,7 +2,6 @@
 
 import json
 import pytest
-import yaml
 from oversolved.app import create_app
 
 
@@ -419,95 +418,3 @@ class TestDocsAPI:
     def test_get_doc_nonexistent(self, client):
         response = client.get("/api/docs/nonexistent_doc_xyz")
         assert response.status_code == 404
-
-
-SIMPLE_YAML = """\
-version: 1
-kind: part
-
-features:
-  - id: sketch_1
-    kind: sketch
-    label: "Square"
-    initial:
-      line1: [0.0, 0.0, 1.0, 0.0]
-    entities:
-      - id: line1
-        kind: line
-    constraints:
-      - id: c_horiz
-        kind: horizontal
-        target: {entity: line1}
-"""
-
-
-class TestSolveAPI:
-    """Tests for the /api/solve endpoint."""
-
-    def test_solve_requires_auth(self, app):
-        """Unauthenticated POST /api/solve returns 401."""
-        c = app.test_client()
-        response = c.post(
-            "/api/solve",
-            data=json.dumps({"version": 1, "kind": "part", "features": []}),
-            content_type="application/json",
-        )
-        assert response.status_code == 401
-
-    def test_solve_accepts_json(self, authed_client):
-        parsed = yaml.safe_load(SIMPLE_YAML)
-        response = authed_client.post(
-            "/api/solve",
-            data=json.dumps(parsed),
-            content_type="application/json",
-        )
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert "result" in data
-        assert "sketch_1" in data["result"]
-
-    def test_solve_does_not_accept_plain_text(self, authed_client):
-        response = authed_client.post(
-            "/api/solve",
-            data=SIMPLE_YAML,
-            content_type="text/plain",
-        )
-        assert response.status_code != 200
-
-    def test_solve_empty_features(self, authed_client):
-        response = authed_client.post(
-            "/api/solve",
-            data=json.dumps({"version": 1, "kind": "part", "features": []}),
-            content_type="application/json",
-        )
-        assert response.status_code == 200
-        result = json.loads(response.data)["result"]
-        # Result should include builtin planes but no user features
-        assert "builtin_plane_front" in result
-        assert "builtin_plane_top" in result
-        assert "builtin_plane_right" in result
-        # Check plane structure
-        for plane_id in [
-            "builtin_plane_front",
-            "builtin_plane_top",
-            "builtin_plane_right",
-        ]:
-            assert "plane" in result[plane_id]
-            assert "status" in result[plane_id]
-
-    def test_solve_missing_features_key(self, authed_client):
-        response = authed_client.post(
-            "/api/solve",
-            data=json.dumps({"version": 1, "kind": "part"}),
-            content_type="application/json",
-        )
-        assert response.status_code == 400
-        assert "features required" in json.loads(response.data)["error"]
-
-    def test_solve_empty_body(self, authed_client):
-        response = authed_client.post(
-            "/api/solve",
-            data=json.dumps(None),
-            content_type="application/json",
-        )
-        assert response.status_code == 400

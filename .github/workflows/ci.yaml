@@ -37,7 +37,12 @@ jobs:
           pip install -e .
           oversolved --help
           python -c "from oversolved import cli; print('OK')"
-          python -c "from oversolved.app import create_app; app = create_app({'TESTING': True}); print('OK')"
+          python -c "import importlib; has_vtk = importlib.util.find_spec('vtkmodules') is not None; print('HAS_VTK:', has_vtk)"
+          if python -c "import importlib; exit(0 if importlib.util.find_spec('vtkmodules') is not None else 1)"; then
+            python -c "from oversolved.app import create_app; app = create_app({'TESTING': True}); print('OK')"
+          else
+            echo "SKIP: vtkmodules not available, skipping app import test"
+          fi
 
       - name: Install dev dependencies
         run: pip install -e ".[dev]"

@@ -6,6 +6,13 @@ import Part from '../Part'
 
 const mockAutoZoomToFit = vi.fn()
 
+vi.mock('../../hooks/solverWs', () => ({
+  solverWs: {
+    solve: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
+    disconnect: vi.fn(),
+  },
+}))
+
 vi.mock('../../components/Viewport', () => ({
   default: forwardRef(function MockViewport(_props: Record<string, unknown>, ref) {
     useImperativeHandle(ref, () => ({
@@ -22,7 +29,7 @@ vi.mock('../../components/Viewport', () => ({
 
 describe('Part - zoom to fit on open', () => {
   beforeEach(() => {
-    vi.restoreAllMocks()
+    vi.clearAllMocks()
   })
 
   function mockFetch() {
@@ -42,12 +49,6 @@ describe('Part - zoom to fit on open', () => {
             content: 'version: 1\nkind: part\nfeatures: []\n',
             permission: 'owner',
           }),
-        } as Response)
-      }
-      if (url === '/api/solve') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
         } as Response)
       }
       return Promise.resolve({ ok: false, status: 404 } as Response)

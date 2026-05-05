@@ -29,15 +29,6 @@ def client(app):
 class TestUnauthenticatedAccess:
     """Tests for verifying unauthenticated requests are rejected."""
 
-    def test_solve_rejected(self, client):
-        """POST /api/solve without session should return 401."""
-        response = client.post(
-            "/api/solve",
-            data=json.dumps({"features": []}),
-            content_type="application/json",
-        )
-        assert response.status_code == 401
-
     def test_upload_rejected(self, client):
         """POST /api/upload without session should return 401."""
         response = client.post("/api/upload")

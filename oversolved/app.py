@@ -11,11 +11,10 @@ from oversolved.blueprints.auth import auth_bp
 from oversolved.blueprints.users import users_bp
 from oversolved.blueprints.documents import documents_bp
 from oversolved.blueprints.upload_export import upload_export_bp
-from oversolved.blueprints.solver import solver_bp
-from oversolved.blueprints.cache_inspect import cache_inspect_bp
 from oversolved.blueprints.admin import admin_bp
 from oversolved.blueprints.docs import docs_bp
-from oversolved.cache import TtlCache
+from flask_sock import Sock
+from oversolved.blueprints.solver_ws import register_solver_ws
 
 
 def _register_migrations(db: Database) -> None:
@@ -301,18 +300,20 @@ def create_app(config: dict | None = None) -> Flask:
     _ensure_admin_user(db)
     db.close()
 
-    # Create cache instances accessible to blueprints
-    app.extensions["build_state_cache"] = TtlCache(ttl_seconds=300.0, max_size=1000)
+    # Set default config
+    app.config.setdefault("SOLVER_WS_CACHE_MAX_SIZE", 10)
 
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
     app.register_blueprint(documents_bp)
     app.register_blueprint(upload_export_bp)
-    app.register_blueprint(solver_bp)
-    app.register_blueprint(cache_inspect_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(docs_bp)
+
+    # Register WebSocket solver
+    sock = Sock(app)
+    register_solver_ws(sock)
 
     # ── Frontend static serving ───────────────────────────────────────────────
 

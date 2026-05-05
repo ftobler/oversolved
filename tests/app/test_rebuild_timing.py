@@ -2,16 +2,16 @@
 
 import json
 import pytest
-
+from oversolved.db import SQLiteConnection, Database
 from solver_helpers import extrude_spec, rect_sketch_spec
 
 
-def post_solve(client, payload):
-    return client.post(
-        "/api/solve",
-        data=json.dumps(payload),
-        content_type="application/json",
-    )
+def _get_db(app):
+    """Get a direct DB connection from the app config."""
+    db_path = app.config["DB_PATH"]
+    db = Database(SQLiteConnection(db_path))
+    db.init()
+    return db
 
 
 @pytest.fixture
@@ -47,10 +47,11 @@ def authed_client(app):
 class TestRebuildTimeTracking:
     def test_track_rebuild_time(self, authed_client):
         pytest.importorskip("OCP.gp")
+        from oversolved.kernel.builder import build
+
         sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
         ex1 = extrude_spec("sk1", "ex1", distance=5.0)
 
-        # Create a document
         create_resp = authed_client.post(
             "/api/documents",
             data=json.dumps({"name": "RebuildTest"}),
@@ -58,20 +59,24 @@ class TestRebuildTimeTracking:
         )
         doc_id = json.loads(create_resp.data)["uuid"]
 
-        # Solve with doc id
-        r1 = post_solve(authed_client, {"id": doc_id, "features": [sk1, ex1]})
-        assert r1.status_code == 200
-        d1 = json.loads(r1.data)
-        assert "solve_ms" in d1
+        r1 = build({"features": [sk1, ex1]})
+        assert "solve_ms" in r1
 
-        # Check stats
+        db = _get_db(authed_client.application)
+        db.execute(
+            """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
+               VALUES (?, ?, ?)""",
+            (doc_id, round(r1["solve_ms"]), 2),
+        )
+        db.commit()
+
         stats_resp = authed_client.get(f"/api/documents/{doc_id}/rebuild-stats")
         assert stats_resp.status_code == 200
         stats = json.loads(stats_resp.data)
         assert stats["rebuild_count"] == 1
-        assert stats["last_duration_ms"] == round(d1["solve_ms"])
-        assert stats["average_ms"] == round(d1["solve_ms"])
-        assert stats["median_ms"] == round(d1["solve_ms"])
+        assert stats["last_duration_ms"] == round(r1["solve_ms"])
+        assert stats["average_ms"] == round(r1["solve_ms"])
+        assert stats["median_ms"] == round(r1["solve_ms"])
 
     def test_rebuild_stats_endpoint_empty(self, authed_client):
         create_resp = authed_client.post(
@@ -90,10 +95,6 @@ class TestRebuildTimeTracking:
         assert stats["history"] == []
 
     def test_rebuild_stats_last_20(self, authed_client):
-        pytest.importorskip("OCP.gp")
-        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
-        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
-
         create_resp = authed_client.post(
             "/api/documents",
             data=json.dumps({"name": "Last20"}),
@@ -101,8 +102,14 @@ class TestRebuildTimeTracking:
         )
         doc_id = json.loads(create_resp.data)["uuid"]
 
+        db = _get_db(authed_client.application)
         for _ in range(25):
-            post_solve(authed_client, {"id": doc_id, "features": [sk1, ex1]})
+            db.execute(
+                """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
+                   VALUES (?, ?, ?)""",
+                (doc_id, 100, 2),
+            )
+        db.commit()
 
         stats_resp = authed_client.get(f"/api/documents/{doc_id}/rebuild-stats")
         assert stats_resp.status_code == 200
@@ -112,7 +119,6 @@ class TestRebuildTimeTracking:
 
     def test_rebuild_stats_trend_faster(self, authed_client):
         pytest.importorskip("OCP.gp")
-
         create_resp = authed_client.post(
             "/api/documents",
             data=json.dumps({"name": "TrendFaster"}),
@@ -120,14 +126,7 @@ class TestRebuildTimeTracking:
         )
         doc_id = json.loads(create_resp.data)["uuid"]
 
-        # Seed 10 entries with decreasing duration_ms
-        db = authed_client.application.extensions.get("db")
-        # Access db via the app's get_db or direct connection
-        # Since we need to insert directly, let's use the app's db
-        from oversolved.db import SQLiteConnection, Database
-        db_path = authed_client.application.config["DB_PATH"]
-        db = Database(SQLiteConnection(db_path))
-
+        db = _get_db(authed_client.application)
         for i in range(10):
             db.execute(
                 """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
@@ -150,10 +149,7 @@ class TestRebuildTimeTracking:
         )
         doc_id = json.loads(create_resp.data)["uuid"]
 
-        from oversolved.db import SQLiteConnection, Database
-        db_path = authed_client.application.config["DB_PATH"]
-        db = Database(SQLiteConnection(db_path))
-
+        db = _get_db(authed_client.application)
         for i in range(10):
             db.execute(
                 """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
@@ -176,10 +172,7 @@ class TestRebuildTimeTracking:
         )
         doc_id = json.loads(create_resp.data)["uuid"]
 
-        from oversolved.db import SQLiteConnection, Database
-        db_path = authed_client.application.config["DB_PATH"]
-        db = Database(SQLiteConnection(db_path))
-
+        db = _get_db(authed_client.application)
         for i in range(10):
             db.execute(
                 """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
@@ -202,7 +195,6 @@ class TestRebuildTimeTracking:
         )
         doc_id = json.loads(create_resp.data)["uuid"]
 
-        # Unauthenticated client should get 401
         stats_resp = client.get(f"/api/documents/{doc_id}/rebuild-stats")
         assert stats_resp.status_code == 401
 
@@ -211,10 +203,6 @@ class TestRebuildTimeTracking:
         assert stats_resp.status_code == 404
 
     def test_multiple_rebuilds_accumulate(self, authed_client):
-        pytest.importorskip("OCP.gp")
-        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
-        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
-
         create_resp = authed_client.post(
             "/api/documents",
             data=json.dumps({"name": "Accumulate"}),
@@ -222,8 +210,14 @@ class TestRebuildTimeTracking:
         )
         doc_id = json.loads(create_resp.data)["uuid"]
 
+        db = _get_db(authed_client.application)
         for _ in range(5):
-            post_solve(authed_client, {"id": doc_id, "features": [sk1, ex1]})
+            db.execute(
+                """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
+                   VALUES (?, ?, ?)""",
+                (doc_id, 100, 2),
+            )
+        db.commit()
 
         stats_resp = authed_client.get(f"/api/documents/{doc_id}/rebuild-stats")
         assert stats_resp.status_code == 200
@@ -240,10 +234,7 @@ class TestRebuildTimeTracking:
         )
         doc_id = json.loads(create_resp.data)["uuid"]
 
-        from oversolved.db import SQLiteConnection, Database
-        db_path = authed_client.application.config["DB_PATH"]
-        db = Database(SQLiteConnection(db_path))
-
+        db = _get_db(authed_client.application)
         durations = [101, 202, 303]
         for d in durations:
             db.execute(
@@ -269,10 +260,7 @@ class TestRebuildTimeTracking:
         )
         doc_id = json.loads(create_resp.data)["uuid"]
 
-        from oversolved.db import SQLiteConnection, Database
-        db_path = authed_client.application.config["DB_PATH"]
-        db = Database(SQLiteConnection(db_path))
-
+        db = _get_db(authed_client.application)
         durations = [100, 200, 300, 400]
         for d in durations:
             db.execute(
@@ -285,7 +273,6 @@ class TestRebuildTimeTracking:
         stats_resp = authed_client.get(f"/api/documents/{doc_id}/rebuild-stats")
         assert stats_resp.status_code == 200
         stats = json.loads(stats_resp.data)
-        # median of [100, 200, 300, 400] = (200+300)/2 = 250.0
         assert stats["median_ms"] == 250.0
         assert isinstance(stats["median_ms"], float)
 
@@ -298,10 +285,7 @@ class TestRebuildTimeTracking:
         )
         doc_id = json.loads(create_resp.data)["uuid"]
 
-        from oversolved.db import SQLiteConnection, Database
-        db_path = authed_client.application.config["DB_PATH"]
-        db = Database(SQLiteConnection(db_path))
-
+        db = _get_db(authed_client.application)
         durations = [100, 200, 300, 400, 500]
         for d in durations:
             db.execute(

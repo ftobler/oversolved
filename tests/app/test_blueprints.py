@@ -22,8 +22,6 @@ class TestBlueprintRegistration:
         "/api/documents",
         "/api/upload",
         "/api/export",
-        "/api/solve",
-        "/api/cache",
         "/api/admin",
         "/api/bug-report",
         "/api/docs",
@@ -67,17 +65,15 @@ class TestBlueprintRegistration:
         assert "/api/admin/periodic-tasks" in rules
         assert "/api/admin/periodic-tasks/<task_key>/run" in rules
 
-    def test_solver_routes_registered(self, app):
-        """Solver blueprint routes exist."""
+    def test_rebuild_stats_route_registered(self, app):
+        """Rebuild stats route exists on documents blueprint."""
         rules = [rule.rule for rule in app.url_map.iter_rules()]
-        assert "/api/solve" in rules
         assert "/api/documents/<doc_id>/rebuild-stats" in rules
 
-    def test_cache_routes_registered(self, app):
-        """Cache inspect blueprint routes exist."""
+    def test_solver_websocket_route_registered(self, app):
+        """WebSocket solver route exists."""
         rules = [rule.rule for rule in app.url_map.iter_rules()]
-        assert "/api/cache/flush" in rules
-        assert "/api/cache/inspect" in rules
+        assert "/api/solver-ws" in rules
 
     def test_upload_export_routes_registered(self, app):
         """Upload and export blueprint routes exist."""

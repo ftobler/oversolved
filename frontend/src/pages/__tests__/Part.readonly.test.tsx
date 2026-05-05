@@ -3,6 +3,13 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '../Part'
 
+vi.mock('../../hooks/solverWs', () => ({
+  solverWs: {
+    solve: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
+    disconnect: vi.fn(),
+  },
+}))
+
 vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
   __esModule: true,
@@ -10,7 +17,7 @@ vi.mock('../../components/Viewport', () => ({
 
 describe('Part read-only mode', () => {
   beforeEach(() => {
-    vi.restoreAllMocks()
+    vi.clearAllMocks()
   })
 
   function mockFetch(permission: string) {
@@ -30,12 +37,6 @@ describe('Part read-only mode', () => {
             content: 'version: 1\nkind: part\nfeatures: []\n',
             permission,
           }),
-        } as Response)
-      }
-      if (url === '/api/solve') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
         } as Response)
       }
       return Promise.resolve({ ok: false, status: 404 } as Response)
