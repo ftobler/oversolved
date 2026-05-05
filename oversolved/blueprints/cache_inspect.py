@@ -10,7 +10,7 @@ cache_inspect_bp = Blueprint("cache_inspect", __name__)
 def _estimate_shape_size(shape):
     """Estimate serialized size of an OCC shape in bytes."""
     try:
-        from oversolved.geometry import shape_to_step_file_buffer
+        from oversolved.kernel.geometry import shape_to_step_file_buffer
         buf = shape_to_step_file_buffer(shape)
         return len(buf.getvalue())
     except Exception:

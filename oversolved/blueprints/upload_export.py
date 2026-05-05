@@ -36,7 +36,7 @@ def export_step():
     if not data or "features" not in data:
         return jsonify({"error": "features required"}), 400
 
-    from oversolved.builder import build
+    from oversolved.kernel.builder import build
 
     build_result = build(data)
 
@@ -44,7 +44,7 @@ def export_step():
     if not body_shapes:
         return jsonify({"error": "no bodies to export"}), 400
 
-    from oversolved.geometry import shape_to_step_file_buffer, fuse_shapes
+    from oversolved.kernel.geometry import shape_to_step_file_buffer, fuse_shapes
     body_id = (data.get("body_id") or "").strip() if isinstance(data, dict) else ""
 
     if body_id:
@@ -74,7 +74,7 @@ def export_stl():
     if not data or "features" not in data:
         return jsonify({"error": "features required"}), 400
 
-    from oversolved.builder import build
+    from oversolved.kernel.builder import build
 
     build_result = build(data)
 
@@ -82,7 +82,7 @@ def export_stl():
     if not body_shapes:
         return jsonify({"error": "no bodies to export"}), 400
 
-    from oversolved.geometry import shape_to_stl_file_buffer, fuse_shapes
+    from oversolved.kernel.geometry import shape_to_stl_file_buffer, fuse_shapes
 
     deflection = data.get("deflection", 0.5)
     angular_deflection = data.get("angular_deflection", 0.3)

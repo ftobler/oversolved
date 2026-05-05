@@ -1,7 +1,10 @@
 import importlib
 import os
+import sys
 import pytest
 import yaml
+
+sys.path.insert(0, os.path.dirname(__file__))
 
 vtk_installed = importlib.util.find_spec("vtkmodules") is not None
 requires_vtk = pytest.mark.skipif(not vtk_installed, reason="vtkmodules not installed")

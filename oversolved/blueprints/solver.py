@@ -4,7 +4,7 @@ import json
 from flask import Blueprint, jsonify, request, Response, current_app
 from oversolved.blueprints import require_auth, get_db
 from oversolved.cache import TtlCache
-from oversolved.types3d import BuildState
+from oversolved.kernel.types3d import BuildState
 
 solver_bp = Blueprint("solver", __name__)
 
@@ -16,7 +16,7 @@ def solve_document():
     if not data or "features" not in data:
         return jsonify({"error": "features required"}), 400
 
-    from oversolved.builder import build
+    from oversolved.kernel.builder import build
 
     doc_id = data.get("id")
     rollback_position = data.get("rollback_position")
