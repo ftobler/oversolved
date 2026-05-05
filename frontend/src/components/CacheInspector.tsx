@@ -20,15 +20,6 @@ interface L1Entry {
   shape_size_estimate: number
 }
 
-interface L2Entry {
-  doc_id: string
-  file_path: string
-  file_size: number
-  created_at: string
-  modified_at: string
-  checkpoint_count: number
-}
-
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -244,126 +235,8 @@ function L1Tab({ searchQuery }: { searchQuery: string }) {
   )
 }
 
-function L2Tab({ searchQuery }: { searchQuery: string }) {
-  const [l2, setL2] = useState<L2Entry[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [preview, setPreview] = useState<Record<string, string>>({})
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/cache/inspect')
-      if (!res.ok) {
-        setError(`${res.status} ${res.statusText}`)
-        setL2([])
-        return
-      }
-      const data = await res.json()
-      setL2(data.l2 || [])
-    } catch (e) {
-      setL2([])
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  const handleClear = async () => {
-    await Promise.all(l2.map(entry =>
-      fetch('/api/cache/flush', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ doc_id: entry.doc_id, level: 'l2' }),
-      })
-    ))
-    await load()
-  }
-
-  const handleDelete = async (docId: string) => {
-    await fetch('/api/cache/flush', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ doc_id: docId, level: 'l2' }),
-    })
-    setL2(prev => prev.filter(e => e.doc_id !== docId))
-  }
-
-  const handleLoadJson = async (docId: string) => {
-    if (preview[docId]) {
-      setPreview(prev => ({ ...prev, [docId]: '' }))
-      return
-    }
-    try {
-      const res = await fetch(`/api/cache/inspect/l2/${docId}`)
-      const text = await res.text()
-      setPreview(prev => ({ ...prev, [docId]: text }))
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setPreview(prev => ({ ...prev, [docId]: `Error: ${message}` }))
-    }
-  }
-
-  const filtered = l2.filter(e => e.doc_id.includes(searchQuery))
-  const total = l2.reduce((sum, e) => sum + e.file_size, 0)
-
-  return (
-    <div className="cache-tab">
-      <div className="cache-stats">
-        {l2.length} entries, {formatBytes(total)}
-      </div>
-      <div className="cache-actions-bar">
-        <button onClick={load}>Refresh</button>
-        <button onClick={handleClear}>Clear</button>
-      </div>
-      {loading && <div className="cache-loading">Loading...</div>}
-      {error && <div className="cache-empty">Error: {error}</div>}
-      <div className="cache-entries">
-        {filtered.map(entry => {
-          const entryPreview = preview[entry.doc_id]
-          return (
-            <div key={entry.doc_id} className="cache-entry">
-              <div className="cache-entry-header">
-                <span className="cache-entry-id">{entry.doc_id}.json</span>
-                <span className="cache-entry-meta">{formatBytes(entry.file_size)}</span>
-              </div>
-              <div className="cache-entry-sub">
-                Created: {formatTime(new Date(entry.created_at).getTime())} |
-                Modified: {formatTime(new Date(entry.modified_at).getTime())} |
-                Checkpoints: {entry.checkpoint_count}
-              </div>
-              <div className="cache-entry-actions">
-                <button onClick={() => handleLoadJson(entry.doc_id)}>
-                  {entryPreview ? 'Hide JSON' : 'View JSON'}
-                </button>
-                <button className="cache-delete-btn" onClick={() => handleDelete(entry.doc_id)}>
-                  Delete
-                </button>
-              </div>
-              {entryPreview && (
-                <pre className="cache-entry-preview">
-                  {entryPreview.slice(0, 5000)}
-                  {entryPreview.length > 5000 && '...'}
-                </pre>
-              )}
-            </div>
-          )
-        })}
-        {filtered.length === 0 && !loading && (
-          <div className="cache-empty">No entries</div>
-        )}
-      </div>
-    </div>
-  )
-}
-
 export default function CacheInspector() {
-  const [activeTab, setActiveTab] = useState<'frontend' | 'l1' | 'l2'>('frontend')
+  const [activeTab, setActiveTab] = useState<'frontend' | 'l1'>('frontend')
   const [searchQuery, setSearchQuery] = useState('')
 
   return (
@@ -381,12 +254,6 @@ export default function CacheInspector() {
         >
           L1 Memory
         </button>
-        <button
-          className={`cache-inspector-tab ${activeTab === 'l2' ? 'active' : ''}`}
-          onClick={() => setActiveTab('l2')}
-        >
-          L2 Disk
-        </button>
       </div>
       <div className="cache-search-bar">
         <input
@@ -398,7 +265,6 @@ export default function CacheInspector() {
       </div>
       {activeTab === 'frontend' && <FrontendTab searchQuery={searchQuery} />}
       {activeTab === 'l1' && <L1Tab searchQuery={searchQuery} />}
-      {activeTab === 'l2' && <L2Tab searchQuery={searchQuery} />}
     </div>
   )
 }

@@ -15,7 +15,7 @@ from oversolved.blueprints.solver import solver_bp
 from oversolved.blueprints.cache_inspect import cache_inspect_bp
 from oversolved.blueprints.admin import admin_bp
 from oversolved.blueprints.docs import docs_bp
-from oversolved.cache import TtlCache, L2Cache
+from oversolved.cache import TtlCache
 
 
 def _register_migrations(db: Database) -> None:
@@ -257,10 +257,6 @@ def create_app(config: dict | None = None) -> Flask:
             "DB_TYPE": "sqlite",
             "DB_PATH": ":memory:",
             "JSON_SORT_KEYS": False,
-            "L2_CACHE_ENABLED": True,
-            "L2_CACHE_DIR": "/tmp/oversolved_l2_cache",
-            "L2_CACHE_MAX_SIZE": 5 * 1024 * 1024 * 1024,  # 5 GB
-            "L2_CACHE_TTL": 86400 * 30,  # 30 days
             "SESSION_COOKIE_SECURE": os.environ.get("OVERSOLVED_SESSION_COOKIE_SECURE", "false").lower() == "true",
             "MAX_CONTENT_LENGTH": 100 * 1024 * 1024,  # 100 MB
         }
@@ -307,11 +303,6 @@ def create_app(config: dict | None = None) -> Flask:
 
     # Create cache instances accessible to blueprints
     app.extensions["build_state_cache"] = TtlCache(ttl_seconds=300.0, max_size=1000)
-    app.extensions["l2_cache"] = L2Cache(
-        ttl_seconds=app.config["L2_CACHE_TTL"],
-        max_size=app.config["L2_CACHE_MAX_SIZE"],
-        cache_dir=app.config["L2_CACHE_DIR"],
-    )
 
     # Register blueprints
     app.register_blueprint(auth_bp)

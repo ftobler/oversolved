@@ -375,27 +375,6 @@ class TestCacheFlushEndpoint:
         assert data["status"] == "flushed"
         assert data["level"] == "l1"
 
-    def test_flush_endpoint_removes_l2(self, authed_client, app):
-        pytest.importorskip("OCP.gp")
-        app.config["L2_CACHE_ENABLED"] = True
-        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
-        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
-
-        # Build to populate L2 cache
-        r1 = post_solve(authed_client, {"id": "doc_flush_l2", "features": [sk1, ex1]})
-        assert r1.status_code == 200
-
-        # Flush all (includes L2)
-        resp = authed_client.post(
-            "/api/cache/flush",
-            data=json.dumps({"doc_id": "doc_flush_l2", "level": "all"}),
-            content_type="application/json",
-        )
-        assert resp.status_code == 200
-        data = json.loads(resp.data)
-        assert data["status"] == "flushed"
-        assert data["level"] == "all"
-
     def test_flush_endpoint_level_parameter(self, authed_client):
         pytest.importorskip("OCP.gp")
         sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
@@ -406,14 +385,6 @@ class TestCacheFlushEndpoint:
         resp = authed_client.post(
             "/api/cache/flush",
             data=json.dumps({"doc_id": "doc_flush_level", "level": "l1"}),
-            content_type="application/json",
-        )
-        assert resp.status_code == 200
-
-        # l2 should succeed even if not enabled (no-op)
-        resp = authed_client.post(
-            "/api/cache/flush",
-            data=json.dumps({"doc_id": "doc_flush_level", "level": "l2"}),
             content_type="application/json",
         )
         assert resp.status_code == 200
@@ -525,21 +496,3 @@ class TestAnonymousSolve:
         assert r3.status_code == 200
         d3 = json.loads(r3.data)
         assert d3["solve_ms"] <= d2["solve_ms"] * 1.5 or d3["solve_ms"] < 50
-
-
-class TestL2CacheDelete:
-    def test_delete_removes_file(self, tmp_path):
-        from oversolved.cache import L2Cache
-        from oversolved.types3d import BuildState
-        cache = L2Cache(cache_dir=str(tmp_path))
-        state = BuildState(feature_order=["sk1"], checkpoints={})
-        cache.set("doc1", state)
-        assert cache.get("doc1") is not None
-        cache.delete("doc1")
-        assert cache.get("doc1") is None
-
-    def test_delete_missing_key_is_noop(self, tmp_path):
-        from oversolved.cache import L2Cache
-        cache = L2Cache(cache_dir=str(tmp_path))
-        cache.delete("missing")  # should not raise
-        assert cache.get("missing") is None

@@ -25,8 +25,6 @@ def solve_document():
     from oversolved.solver_queue import get_document_solver
 
     cache: TtlCache[BuildState] | None = current_app.extensions.get("build_state_cache")
-    l2_enabled = current_app.config.get("L2_CACHE_ENABLED", False)
-    l2_cache = current_app.extensions.get("l2_cache") if l2_enabled else None
 
     prev_state: BuildState | None = None
     if doc_id:
@@ -34,10 +32,6 @@ def solve_document():
         counter = solver.acquire(doc_id)
         try:
             prev_state = cache.get(doc_id) if cache else None
-            if prev_state is None and l2_cache:
-                prev_state = l2_cache.get(doc_id)
-                if prev_state is not None and cache:
-                    cache.set(doc_id, prev_state)
 
             build_result = build(
                 data,
@@ -48,8 +42,6 @@ def solve_document():
             new_state = build_result.pop("_build_state")
             if cache:
                 cache.set(doc_id, new_state)
-            if l2_cache:
-                l2_cache.set(doc_id, new_state)
             solver.release(doc_id, counter, build_result)
 
             duration_ms = build_result.get("solve_ms")

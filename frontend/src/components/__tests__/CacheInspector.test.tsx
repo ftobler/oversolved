@@ -24,11 +24,10 @@ describe('CacheInspector', () => {
     await invalidateAllCache()
   })
 
-  it('renders frontend, l1, and l2 tabs', () => {
+  it('renders frontend and l1 tabs', () => {
     render(<CacheInspector />)
     expect(screen.getByRole('button', { name: /Frontend/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /L1 Memory/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /L2 Disk/i })).toBeInTheDocument()
   })
 
   it('switches to l1 tab on click', () => {
@@ -104,7 +103,6 @@ describe('CacheInspector', () => {
       ok: true,
       json: async () => ({
         l1: [{ doc_id: 'doc_a', feature_order: [], checkpoint_count: 1, accessed_at: new Date().toISOString(), shape_size_estimate: 0 }],
-        l2: [],
       }),
     } as unknown as Response)
 
@@ -124,7 +122,6 @@ describe('CacheInspector', () => {
           { doc_id: 'doc_a', feature_order: [], checkpoint_count: 1, accessed_at: new Date().toISOString(), shape_size_estimate: 0 },
           { doc_id: 'doc_b', feature_order: [], checkpoint_count: 1, accessed_at: new Date().toISOString(), shape_size_estimate: 0 },
         ],
-        l2: [],
       }),
     } as unknown as Response)
 
@@ -141,56 +138,6 @@ describe('CacheInspector', () => {
     await waitFor(() => {
       expect(screen.queryByText(/doc_a/)).not.toBeInTheDocument()
       expect(screen.getByText(/doc_b/)).toBeInTheDocument()
-    })
-  })
-
-  it('shows l2 entries when on l2 tab', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        l1: [],
-        l2: [{ doc_id: 'doc_x', file_path: '/tmp/doc_x.json', file_size: 100, created_at: new Date().toISOString(), modified_at: new Date().toISOString(), checkpoint_count: 1 }],
-      }),
-    } as unknown as Response)
-
-    render(<CacheInspector />)
-    fireEvent.click(screen.getByRole('button', { name: /L2 Disk/i }))
-
-    await waitFor(() => {
-      expect(screen.getByText(/doc_x/)).toBeInTheDocument()
-    })
-  })
-
-  it('loads l2 json preview on view json click', async () => {
-    global.fetch = vi.fn().mockImplementation((url: string) => {
-      if (url === '/api/cache/inspect') {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({
-            l1: [],
-            l2: [{ doc_id: 'doc_x', file_path: '/tmp/doc_x.json', file_size: 100, created_at: new Date().toISOString(), modified_at: new Date().toISOString(), checkpoint_count: 1 }],
-          }),
-        } as unknown as Response)
-      }
-      if (url === '/api/cache/inspect/l2/doc_x') {
-        return Promise.resolve({
-          ok: true,
-          text: async () => '{"checkpoints": {}}',
-        } as unknown as Response)
-      }
-      return Promise.resolve({ ok: true } as unknown as Response)
-    })
-
-    render(<CacheInspector />)
-    fireEvent.click(screen.getByRole('button', { name: /L2 Disk/i }))
-
-    await waitFor(() => {
-      expect(screen.getByText(/doc_x/)).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: /View JSON/i }))
-    await waitFor(() => {
-      expect(screen.getByText(/checkpoints/)).toBeInTheDocument()
     })
   })
 })
