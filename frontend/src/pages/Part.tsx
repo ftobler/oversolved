@@ -73,6 +73,7 @@ export default function Part() {
   const [mode, setModeRaw] = useState<'sketch' | 'feature' | 'code'>('sketch')
   const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
   const [savedRollbackPosition, setSavedRollbackPosition] = useState<number | null>(null)
+  const editEntryRollback = useRef<number | null>(null)
   const [editForcedVisible, setEditForcedVisible] = useState<Set<string>>(new Set())
   const [bodiesVisibility, setBodiesVisibility] = useState<Record<string, boolean>>({})
   const rollbackInitialized = useRef(false)
@@ -771,6 +772,7 @@ useEffect(() => {
     const idx = features.findIndex(f => f.id === featureId)
     if (idx < 0) return
     setSavedRollbackPosition(rollbackPosition ?? features.length)
+    editEntryRollback.current = idx + 1
     setRollbackPosition(idx + 1)
     setEditForcedVisible(new Set([featureId]))
     setEditingFeatureId(featureId)
@@ -783,12 +785,13 @@ useEffect(() => {
 
   const exitEditFeature = useCallback(() => {
     if (savedRollbackPosition !== null) {
-      // Only restore saved rollback if user hasn't manually dragged the rollbar
-      // during editing. If the current rollback differs from the saved one,
-      // the user explicitly changed it.
-      if (rollbackPosition === savedRollbackPosition || rollbackPosition === null) {
+      // Restore pre-edit rollback unless the user manually dragged the rollbar
+      // during editing (detected by comparing against the position set on entry,
+      // not the pre-edit position, since enterEditFeature changes rollback to idx+1).
+      if (rollbackPosition === editEntryRollback.current || rollbackPosition === null) {
         setRollbackPosition(savedRollbackPosition)
       }
+      editEntryRollback.current = null
       setSavedRollbackPosition(null)
     }
     setEditForcedVisible(new Set())

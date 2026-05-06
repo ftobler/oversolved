@@ -228,6 +228,140 @@ def test_pick_boundary_with_fillet_returns_before_state():
     assert "body_ex1" in r["bodies"]
 
 
+# ─── enter / exit feature editing model-state tests ───
+
+def test_enter_feature_pick_bodies_is_before_state_not_after():
+    """pick_bodies must reflect the model BEFORE the edited feature, bodies AFTER.
+
+    [sk1, ex1, sk2, ex2]: editing ex2 (pick_boundary=3, rollback=4).
+    ex2 fuses with ex1 into body_ex1 adding 3 extra faces (6->9).
+    pick_bodies must show the pre-ex2 shape (6 faces), bodies the post-ex2 shape (9 faces).
+    """
+    from solver_helpers import extrude_spec
+    sk1 = rect_sketch_spec(w=5.0, h=5.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    sk2 = rect_sketch_spec(w=3.0, h=3.0, sketch_id='sk2', plane='@builtin_plane_right')
+    ex2 = extrude_spec('sk2', 'ex2', 3.0)
+    spec = {'features': [sk1, ex1, sk2, ex2]}
+
+    r = build(spec, rollback_position=4, pick_boundary=3)
+
+    assert 'pick_bodies' in r
+    assert 'body_ex1' in r['pick_bodies']
+    assert 'body_ex1' in r['bodies']
+
+    pick_faces = len(r['pick_bodies']['body_ex1']['mesh']['face_data'])
+    body_faces = len(r['bodies']['body_ex1']['mesh']['face_data'])
+    assert pick_faces < body_faces, (
+        f"pick_bodies face count ({pick_faces}) should be less than "
+        f"bodies face count ({body_faces}) -- pick_bodies must be pre-ex2 shape"
+    )
+
+
+def test_enter_first_feature_gives_no_pick_bodies():
+    """Editing the first feature (pick_boundary=0) produces no pick_bodies -- nothing before it."""
+    from solver_helpers import extrude_spec
+    sk1 = rect_sketch_spec(w=5.0, h=5.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    spec = {'features': [sk1, ex1]}
+
+    r = build(spec, rollback_position=2, pick_boundary=0)
+
+    assert 'pick_bodies' not in r
+    assert 'body_ex1' in r['bodies']
+
+
+def test_exit_feature_no_pick_bodies_full_result():
+    """Exiting (no pick_boundary) produces no pick_bodies and full solved bodies."""
+    from solver_helpers import extrude_spec
+    sk1 = rect_sketch_spec(w=5.0, h=5.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    sk2 = rect_sketch_spec(w=3.0, h=3.0, sketch_id='sk2', plane='@builtin_plane_right')
+    ex2 = extrude_spec('sk2', 'ex2', 3.0)
+    spec = {'features': [sk1, ex1, sk2, ex2]}
+
+    r = build(spec)
+
+    assert 'pick_bodies' not in r
+    assert 'body_ex1' in r['bodies']
+    # ex2 fuses into body_ex1; verify the merged shape has more faces than ex1 alone
+    r_ex1_only = build({'features': [sk1, ex1]})
+    assert (
+        len(r['bodies']['body_ex1']['mesh']['face_data'])
+        > len(r_ex1_only['bodies']['body_ex1']['mesh']['face_data'])
+    )
+
+
+def test_fillet_pick_bodies_has_fewer_faces_than_bodies():
+    """pick_bodies (pre-fillet) has fewer faces than bodies (post-fillet).
+
+    A filleted box has extra faces for the rounded edges.
+    Verifies pick_bodies is genuinely the pre-operation geometry.
+    """
+    sk1 = rect_sketch_spec(w=5.0, h=5.0, sketch_id='sk1')
+    ex1 = {
+        'id': 'ex1', 'kind': 'extrude',
+        'sketch': '$sk1', 'distance': 5.0,
+    }
+    r_base = build({'features': [sk1, ex1]})
+    edge_query = r_base['bodies']['body_ex1']['edge_queries'][0]
+
+    fillet = {'id': 'fil1', 'kind': 'fillet', 'edges': [edge_query], 'radius': 0.5}
+    spec = {'features': [sk1, ex1, fillet]}
+
+    # Editing fillet: rollback=3 (all features), pick_boundary=2 (state after ex1)
+    r = build(spec, rollback_position=3, pick_boundary=2)
+
+    pick_face_count = len(r['pick_bodies']['body_ex1']['mesh']['face_data'])
+    bodies_face_count = len(r['bodies']['body_ex1']['mesh']['face_data'])
+
+    assert pick_face_count < bodies_face_count, (
+        f"pick_bodies face count ({pick_face_count}) should be less than "
+        f"bodies face count ({bodies_face_count}) after fillet"
+    )
+
+
+def test_enter_exit_enter_consistent():
+    """Enter -> exit -> re-enter gives the same pick_bodies geometry each time."""
+    from solver_helpers import extrude_spec
+    sk1 = rect_sketch_spec(w=5.0, h=5.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    sk2 = rect_sketch_spec(w=3.0, h=3.0, sketch_id='sk2', plane='@builtin_plane_right')
+    ex2 = extrude_spec('sk2', 'ex2', 3.0)
+    spec = {'features': [sk1, ex1, sk2, ex2]}
+
+    r_enter1 = build(spec, rollback_position=4, pick_boundary=3)
+    r_exit = build(spec)
+    r_enter2 = build(spec, prev_state=r_exit['_build_state'], rollback_position=4, pick_boundary=3)
+
+    assert 'pick_bodies' in r_enter1
+    assert 'pick_bodies' in r_enter2
+    assert set(r_enter1['pick_bodies'].keys()) == set(r_enter2['pick_bodies'].keys())
+    face_count1 = len(r_enter1['pick_bodies']['body_ex1']['mesh']['face_data'])
+    face_count2 = len(r_enter2['pick_bodies']['body_ex1']['mesh']['face_data'])
+    assert face_count1 == face_count2, "Re-entering must produce identical pick_bodies geometry"
+
+
+def test_pick_boundary_with_prev_state_uses_restored_checkpoint():
+    """When prev_state restores a checkpoint, pick_boundary correctly reads from it.
+
+    [sk1, ex1, sk2]: editing sk2 (pick_boundary=2, rollback=3).
+    Build once, then build again with prev_state -- pick_bodies must still be ex1's body.
+    """
+    from solver_helpers import extrude_spec
+    sk1 = rect_sketch_spec(w=5.0, h=5.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    sk2 = rect_sketch_spec(w=3.0, h=3.0, sketch_id='sk2')
+    spec = {'features': [sk1, ex1, sk2]}
+
+    r1 = build(spec, rollback_position=3, pick_boundary=2)
+    r2 = build(spec, prev_state=r1['_build_state'], rollback_position=3, pick_boundary=2)
+
+    assert 'pick_bodies' in r1
+    assert 'pick_bodies' in r2
+    assert set(r1['pick_bodies'].keys()) == set(r2['pick_bodies'].keys())
+
+
 def test_repo_from_snapshot_old_format():
     """Old-format snapshot without elements/ancestral keys should not raise."""
     repo = _repo_from_snapshot({"some_elem_id": {"payload": "data"}})
@@ -291,3 +425,43 @@ def test_double_copy_produces_same_payload():
     assert s1['ancestral'].keys() == s2['ancestral'].keys()
     for k in s1['ancestral']:
         assert len(s1['ancestral'][k]) == len(s2['ancestral'][k])
+
+
+def test_fillet_after_edit_mode_checkpoint_rebuilds_correctly():
+    """Regression: fillet built after another fillet via checkpoint must not raise.
+
+    Sequence mirrors entering/exiting edit mode on a non-last feature:
+      1. Full build: [sk1, ex1, fil1, fil2]
+      2. Edit-mode build (rollback=3): [sk1, ex1, fil1]  -- prev_state comes from step 1
+      3. Exit build (rollback=4): [sk1, ex1, fil1, fil2] -- prev_state comes from step 2
+
+    In step 3, first_dirty=3 so sk1/ex1/fil1 are restored from the step-2
+    checkpoint.  Before the fix, _copy_shape returned a raw OCC TopoDS_Shape
+    instead of re-wrapping the CadQuery Solid, causing fil2 to fail with
+    "'OCP.OCP.TopoDS.TopoDS_Shape' object has no attribute 'edges'".
+    """
+    from solver_helpers import extrude_spec
+    sk1 = rect_sketch_spec(w=5.0, h=5.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+
+    # Get a real edge query so fillet resolution actually calls body.shape.edges().
+    r_base = build({'features': [sk1, ex1]})
+    edge_query = r_base['bodies']['body_ex1']['edge_queries'][0]
+
+    fil1 = {'id': 'fil1', 'kind': 'fillet', 'edges': [edge_query], 'radius': 0.5}
+    # fil2 uses a query that resolves to body.shape.edges() via the checkpoint shape.
+    fil2 = {'id': 'fil2', 'kind': 'fillet', 'edges': [edge_query], 'radius': 0.3}
+    full_spec = {'features': [sk1, ex1, fil1, fil2]}
+    partial_spec = {'features': [sk1, ex1, fil1]}
+
+    # step 1: full build
+    r1 = build(full_spec)
+    # step 2: edit-mode build (rollback covers only first 3 features)
+    r2 = build(partial_spec, prev_state=r1['_build_state'], rollback_position=3)
+    # step 3: exit build -- fil2 rebuilt from fil1 checkpoint; must not raise
+    r3 = build(full_spec, prev_state=r2['_build_state'], rollback_position=4)
+
+    assert 'fil2' in r3['result'], "fil2 must appear in result after exit"
+    assert r3['result']['fil2'].get('exception') != (
+        "'OCP.OCP.TopoDS.TopoDS_Shape' object has no attribute 'edges'"
+    ), "fil2 must not fail with raw OCC TopoDS_Shape from checkpoint"

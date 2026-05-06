@@ -595,3 +595,148 @@ def test_checkpoint_result_is_independent_copy():
     checkpoint_result = state.checkpoints['sk1'].result
 
     assert id(returned_result) != id(checkpoint_result)
+
+
+# ─── rollback_position transition tests ───
+
+def test_rollback_mid_stack_only_solves_active_features():
+    """rollback_position=2 on a 4-feature stack only solves the first two."""
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    sk2 = rect_sketch_spec(w=2.0, h=2.0, sketch_id='sk2')
+    ex2 = extrude_spec('sk2', 'ex2', 3.0)
+    spec = {'features': [sk1, ex1, sk2, ex2]}
+
+    r = build(spec, rollback_position=2)
+
+    assert 'sk1' in r['result']
+    assert 'ex1' in r['result']
+    assert 'sk2' not in r['result']
+    assert 'ex2' not in r['result']
+    assert r['_build_state'].feature_order == ['sk1', 'ex1', 'sk2', 'ex2']
+
+
+def test_rollback_decrease_uses_prev_state_checkpoints():
+    """Decreasing rollback from 3 to 2 reuses checkpoints for features before the cut."""
+    pytest.importorskip("OCP.gp")
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    sk2 = rect_sketch_spec(w=2.0, h=2.0, sketch_id='sk2')
+    spec = {'features': [sk1, ex1, sk2]}
+
+    r_full = build(spec, rollback_position=3)
+    geom_sk1_full = r_full['result']['sk1']['geometry']
+
+    r_rollback = build(spec, prev_state=r_full['_build_state'], rollback_position=2)
+
+    assert 'sk1' in r_rollback['result']
+    assert 'ex1' in r_rollback['result']
+    assert 'sk2' not in r_rollback['result']
+    assert r_rollback['result']['sk1']['geometry'] == geom_sk1_full
+
+
+def test_rollback_increase_solves_newly_active_features():
+    """Increasing rollback from 2 to 3 solves the newly included feature."""
+    pytest.importorskip("OCP.gp")
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    sk2 = rect_sketch_spec(w=2.0, h=2.0, sketch_id='sk2')
+    spec = {'features': [sk1, ex1, sk2]}
+
+    r_short = build(spec, rollback_position=2)
+    r_extended = build(spec, prev_state=r_short['_build_state'], rollback_position=3)
+
+    assert 'sk2' in r_extended['result']
+    assert r_extended['result']['sk2']['status'] != 'exception'
+    assert r_extended['result']['sk1']['geometry'] == r_short['result']['sk1']['geometry']
+
+
+def test_edit_suppressed_feature_does_not_invalidate_active_checkpoints():
+    """Editing a feature past the rollback position does not dirty features before it."""
+    pytest.importorskip("OCP.gp")
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    sk2 = rect_sketch_spec(w=2.0, h=2.0, sketch_id='sk2')
+    spec = {'features': [sk1, ex1, sk2]}
+
+    r1 = build(spec, rollback_position=2)
+    geom_sk1 = r1['result']['sk1']['geometry']
+
+    sk2_modified = {**sk2, 'label': 'changed but suppressed'}
+    spec2 = {'features': [sk1, ex1, sk2_modified]}
+
+    r2 = build(spec2, prev_state=r1['_build_state'], rollback_position=2)
+
+    assert r2['result']['sk1']['geometry'] == geom_sk1
+    assert r2['result']['ex1']['status'] == 'ok'
+    assert 'sk2' not in r2['result']
+
+
+def test_rollback_full_after_partial_reuses_all_checkpoints():
+    """After a rollback=2 build, solving the full stack reuses checkpoints for sk1 and ex1."""
+    pytest.importorskip("OCP.gp")
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    sk2 = rect_sketch_spec(w=2.0, h=2.0, sketch_id='sk2')
+    spec = {'features': [sk1, ex1, sk2]}
+
+    r_partial = build(spec, rollback_position=2)
+    geom_sk1 = r_partial['result']['sk1']['geometry']
+
+    r_full = build(spec, prev_state=r_partial['_build_state'])
+
+    assert r_full['result']['sk1']['geometry'] == geom_sk1
+    assert r_full['result']['ex1']['status'] == 'ok'
+    assert r_full['result']['sk2']['status'] != 'exception'
+    assert set(r_full['result'].keys()) >= {'sk1', 'ex1', 'sk2'}
+
+
+def test_rollback_same_position_twice_is_stable():
+    """Solving at the same rollback position twice produces identical results."""
+    pytest.importorskip("OCP.gp")
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    sk2 = rect_sketch_spec(w=2.0, h=2.0, sketch_id='sk2')
+    spec = {'features': [sk1, ex1, sk2]}
+
+    r1 = build(spec, rollback_position=2)
+    r2 = build(spec, prev_state=r1['_build_state'], rollback_position=2)
+
+    assert r2['result']['sk1']['geometry'] == r1['result']['sk1']['geometry']
+    assert r2['result']['ex1']['status'] == r1['result']['ex1']['status']
+    assert r2['result']['ex1']['body_id'] == r1['result']['ex1']['body_id']
+
+
+def test_rollback_state_feature_order_always_contains_full_list():
+    """BuildState.feature_order includes all features regardless of rollback_position."""
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    sk2 = rect_sketch_spec(w=2.0, h=2.0, sketch_id='sk2')
+    sk3 = rect_sketch_spec(w=1.0, h=1.0, sketch_id='sk3')
+    spec = {'features': [sk1, sk2, sk3]}
+
+    for rollback in (1, 2, 3):
+        r = build(spec, rollback_position=rollback)
+        assert r['_build_state'].feature_order == ['sk1', 'sk2', 'sk3'], (
+            f"feature_order wrong at rollback={rollback}"
+        )
+
+
+def test_rollback_oscillation_undo_redo():
+    """Simulate undo/redo: rollback 3->2->3 reuses checkpoints correctly each way."""
+    pytest.importorskip("OCP.gp")
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    sk2 = rect_sketch_spec(w=2.0, h=2.0, sketch_id='sk2')
+    spec = {'features': [sk1, ex1, sk2]}
+
+    r_full = build(spec, rollback_position=3)
+    geom_sk1 = r_full['result']['sk1']['geometry']
+
+    r_undo = build(spec, prev_state=r_full['_build_state'], rollback_position=2)
+    assert 'sk2' not in r_undo['result']
+    assert r_undo['result']['sk1']['geometry'] == geom_sk1
+    assert r_undo['result']['ex1']['status'] == 'ok'
+
+    r_redo = build(spec, prev_state=r_undo['_build_state'], rollback_position=3)
+    assert r_redo['result']['sk2']['status'] != 'exception'
+    assert r_redo['result']['sk1']['geometry'] == geom_sk1

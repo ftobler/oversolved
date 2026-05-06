@@ -305,15 +305,15 @@ class TestSolverWebSocket:
         assert rows[0]["duration_ms"] == 42
         assert rows[0]["feature_count"] == 1
 
-    def test_http_solve_returns_404(self, client, auth_headers):
-        """HTTP POST /api/solve returns 404 since the route was removed."""
+    def test_http_solve_returns_405(self, client, auth_headers):
+        """HTTP POST /api/solve returns 405: no POST handler, only the SPA GET catch-all."""
         response = client.post(
             "/api/solve",
             data=json.dumps(SOLVE_PAYLOAD),
             content_type="application/json",
             headers=auth_headers,
         )
-        assert response.status_code == 404
+        assert response.status_code == 405
 
     def test_websocket_config_default_cache_size(self, app):
         """Default SOLVER_WS_CACHE_MAX_SIZE is 10."""

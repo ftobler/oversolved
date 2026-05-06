@@ -36,7 +36,11 @@ def _copy_shape(shape):
         if not copier.IsDone():
             logger.warning("BRepBuilderAPI_Copy failed, returning original shape")
             return shape
-        return copier.Shape()
+        copied = copier.Shape()
+        # Re-wrap in the same CadQuery type so callers can use CQ methods (.edges(), etc.)
+        if hasattr(shape, "wrapped"):
+            return type(shape)(copied)
+        return copied
     except Exception as exc:
         logger.warning("Failed to copy OCP shape: %s, returning original", exc)
         return shape

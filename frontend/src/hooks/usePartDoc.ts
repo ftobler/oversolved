@@ -388,6 +388,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
           // Apply cached geometry (binary) if available, else fall back to JSON bodies.
           if (cached.entry.geometry) {
             const { header, buffer, jsonHeaderLen } = cached.entry.geometry
+            // Update lastValidMsgId so applyGeometryUpdate doesn't discard the
+            // cached frame as stale (it checks msgId against the last WS response).
+            lastValidMsgIdRef.current = header.msgId
             applyGeometryUpdate(header.msgId, header, buffer, jsonHeaderLen)
           }
           setFromCache(true)
