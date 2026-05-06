@@ -6,8 +6,10 @@ import { useSolverStore } from '../stores/solverStore'
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
 import { unflattenGeometry } from '../utils/geometryMapping'
-import { getCachedBuildResponse, cacheBuildResponse } from '../utils/buildCache'
+import { getCachedBuildResponse, cacheBuildResponse, cacheGeometry } from '../utils/buildCache'
 import { PART_COLOR_PALETTE, normalizeHexColor } from '../utils/partColors'
+import { unpackBodies, unpackPickBodies } from '../utils/geometryUnpack'
+import type { GeometryHeader } from '../utils/geometryUnpack'
 import {
   applyMoveVertex,
   applyMoveEntity,
@@ -196,7 +198,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const requestIdRef = useRef(0)
   const cancelledRef = useRef(false)
 
-  const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
+  const applySolveResult = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
     const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; plane_transform?: import('../types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }>; plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }; body_id?: string; exception?: string; solve_ms?: number }>
 
     const results: Record<string, SketchData> = {}
@@ -284,9 +286,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       }
     }
     setFeatureTimings(timings)
-    reconcilePartStyle(d, data.bodies)
-    setBodies(data.bodies ?? {})
-    setPickBodies(data.pick_bodies ?? {})
     setSolveRawResult(stringifyYaml(data.result))
     const updatedDoc = { ...d }
     setDoc(updatedDoc)
@@ -299,6 +298,41 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       setSolveTime(solveTimeMs)
     }
   }, [setCodeText])
+
+  const applyGeometryUpdate = useCallback((_msgId: number, header: GeometryHeader, buffer: ArrayBuffer, jsonHeaderLen: number) => {
+    const unpacked = unpackBodies(header, buffer, jsonHeaderLen)
+    const d = docRef.current
+    if (d) reconcilePartStyle(d, unpacked)
+    setBodies(unpacked)
+    if (header.pick_bodies && Object.keys(header.pick_bodies).length > 0) {
+      setPickBodies(unpackPickBodies(header, buffer, jsonHeaderLen))
+    } else {
+      setPickBodies({})
+    }
+    // Cache geometry so future cache hits can restore the 3D view without re-solving.
+    if (uuid && d) {
+      const rollback = rollbackPosRef.current ?? (d.features?.length ?? 0)
+      const pickBoundary = pickBoundaryRef.current
+      cacheGeometry(uuid, d, rollback, pickBoundary, { header, buffer, jsonHeaderLen })
+    }
+  }, [uuid])
+
+  // Register the geometry listener once for the lifetime of the hook.
+  useEffect(() => {
+    return solverWs.onGeometryUpdate(applyGeometryUpdate)
+  }, [applyGeometryUpdate])
+
+  // Keep a stable ref for backward-compatible cache path that still has bodies in JSON.
+  const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
+    applySolveResult(d, data, solveTimeMs)
+    if (data.bodies) {
+      reconcilePartStyle(d, data.bodies)
+      setBodies(data.bodies)
+    }
+    if (data.pick_bodies !== undefined) {
+      setPickBodies(data.pick_bodies)
+    }
+  }, [applySolveResult])
 
   const reSolve = useCallback(async (d: PartDoc, rollbackPosition?: number | null) => {
     setSolving(true)
@@ -338,6 +372,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
             return
           }
           applyBuildResponse(d, cached.entry.buildResponse)
+          // Apply cached geometry (binary) if available, else fall back to JSON bodies.
+          if (cached.entry.geometry) {
+            const { header, buffer, jsonHeaderLen } = cached.entry.geometry
+            applyGeometryUpdate(header.msgId, header, buffer, jsonHeaderLen)
+          }
           setFromCache(true)
           setCacheTimestamp(cached.entry.timestamp)
           if (!cancelledRef.current) setSolving(false)
@@ -387,7 +426,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         if (uuid) {
           await cacheBuildResponse(uuid, d, effectiveRollback, pickBoundary, buildResponse)
         }
-        applyBuildResponse(d, buildResponse, solveTimeMs)
+        // Geometry arrives via binary frame; applySolveResult handles everything except bodies.
+        applySolveResult(d, buildResponse, solveTimeMs)
         if (isFirstSolve && onFirstSolve) {
           setTimeout(onFirstSolve, 0)
         }
@@ -398,7 +438,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     } finally {
       if (currentRequestId === requestIdRef.current && !cancelledRef.current) setSolving(false)
     }
-  }, [onFirstSolve, applyBuildResponse, uuid])
+  }, [onFirstSolve, applyBuildResponse, applySolveResult, applyGeometryUpdate, uuid])
 
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)

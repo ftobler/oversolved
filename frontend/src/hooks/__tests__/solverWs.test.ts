@@ -31,6 +31,10 @@ class MockWebSocket {
   receiveMessage(data: any): void {
     this.onmessage?.({ data: JSON.stringify(data) })
   }
+
+  receiveBinaryFrame(buf: ArrayBuffer): void {
+    this.onmessage?.({ data: buf })
+  }
 }
 
 function getLastWs(): MockWebSocket {
@@ -244,6 +248,64 @@ describe('SolverWs', () => {
 
       await expect(promise).rejects.toThrow('WebSocket connection timed out')
       expect(ws.readyState).toBe(WebSocket.CLOSED)
+    })
+  })
+
+  describe('binary frame handling', () => {
+    function makeGeometryFrame(msgId: number): ArrayBuffer {
+      const header = JSON.stringify({ msgId, bodies: {}, pick_bodies: {} })
+      const headerBytes = new TextEncoder().encode(header)
+      const paddedLen = Math.ceil(headerBytes.length / 4) * 4
+      const buf = new ArrayBuffer(4 + paddedLen)
+      const view = new DataView(buf)
+      view.setUint32(0, paddedLen)
+      const padded = new Uint8Array(paddedLen)
+      padded.set(headerBytes)
+      new Uint8Array(buf, 4).set(padded)
+      return buf
+    }
+
+    it('fires geometry listener when binary frame is received', () => {
+      solverWs.connect()
+      const ws = getLastWs()
+
+      const fired: number[] = []
+      const unsub = solverWs.onGeometryUpdate((msgId) => { fired.push(msgId) })
+
+      ws.receiveBinaryFrame(makeGeometryFrame(42))
+
+      expect(fired).toEqual([42])
+      unsub()
+    })
+
+    it('unsubscribe stops geometry listener from firing', () => {
+      solverWs.connect()
+      const ws = getLastWs()
+
+      const fired: number[] = []
+      const unsub = solverWs.onGeometryUpdate((msgId) => { fired.push(msgId) })
+      unsub()
+
+      ws.receiveBinaryFrame(makeGeometryFrame(99))
+
+      expect(fired).toHaveLength(0)
+    })
+
+    it('text solve_result resolves promise, binary frame fires geometry listener', async () => {
+      const promise = solverWs.solve({ foo: 'bar' })
+      const ws = getLastWs()
+      const msg = JSON.parse(ws.sentMessages[ws.sentMessages.length - 1])
+
+      const geomFired: number[] = []
+      const unsub = solverWs.onGeometryUpdate((msgId) => { geomFired.push(msgId) })
+
+      ws.receiveMessage({ type: 'solve_result', msgId: msg.msgId, result: {} })
+      await expect(promise).resolves.toBeDefined()
+
+      ws.receiveBinaryFrame(makeGeometryFrame(msg.msgId))
+      expect(geomFired).toEqual([msg.msgId])
+
+      unsub()
     })
   })
 })

@@ -13,13 +13,17 @@ class _MockWS:
     """Mock WebSocket for testing flask-sock handlers without a real connection."""
 
     def __init__(self):
-        self.sent = []
+        self.sent_raw = []  # raw payloads (str or bytes)
+        self.sent = []      # JSON-decoded text frames only
         self.connected = True
         self.receive_queue = []
         self.close_reason = None
         self.close_message = None
 
     def send(self, data):
+        self.sent_raw.append(data)
+        if isinstance(data, (bytes, bytearray)):
+            return  # binary frame — keep in sent_raw only
         self.sent.append(json.loads(data))
 
     def receive(self, timeout=None):
@@ -145,7 +149,8 @@ class TestSolverWebSocket:
         ws.receive_queue = [json.dumps({"type": "solve"}), None]
         _run_handler(app, ws, auth_headers)
         assert len(ws.sent) == 1
-        assert ws.sent[0] == {"type": "solve_result", "error": "features required"}
+        assert ws.sent[0]["type"] == "solve_result"
+        assert ws.sent[0]["error"] == "features required"
 
     @patch("oversolved.blueprints.solver_ws.build")
     def test_websocket_cache_retains_state(self, mock_build, app, auth_headers):
@@ -319,3 +324,112 @@ class TestSolverWebSocket:
             _run_handler(app, ws, auth_headers)
 
         assert len(close_called) >= 1
+
+
+class TestPackGeometryUpdate:
+
+    def test_pack_geometry_update_structure(self):
+        """Binary frame starts with 4-byte big-endian json length followed by JSON."""
+        import struct
+        from oversolved.blueprints.solver_ws import pack_geometry_update
+
+        result = pack_geometry_update(msg_id=7, bodies={}, pick_bodies=None)
+        assert isinstance(result, bytes)
+        padded_len = struct.unpack(">I", result[:4])[0]
+        assert padded_len % 4 == 0
+        header_bytes = result[4:4 + padded_len].rstrip(b"\x00")
+        header = json.loads(header_bytes)
+        assert header["msgId"] == 7
+        assert "bodies" in header
+
+    def test_pack_geometry_update_roundtrip(self):
+        """Vertex and face data survives a pack/unpack round-trip."""
+        import struct
+        import array as _array
+        from oversolved.blueprints.solver_ws import pack_geometry_update
+
+        body = {
+            "created_by": "extrude_0",
+            "modified_by": [],
+            "mesh": {
+                "vertices": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                "faces": [[0, 1, 2]],
+                "triangle_to_face": [0],
+                "face_data": [],
+                "face_queries": [],
+            },
+            "edges": [],
+            "edge_queries": [],
+            "vertices": [],
+            "vertex_queries": [],
+        }
+        result = pack_geometry_update(msg_id=1, bodies={"body_0": body})
+        padded_len = struct.unpack(">I", result[:4])[0]
+        header = json.loads(result[4:4 + padded_len].rstrip(b"\x00"))
+
+        body_meta = header["bodies"]["body_0"]
+        data_start = 4 + padded_len
+        v_off, v_len = body_meta["offsets"]["vertices"]
+        verts = _array.array('f')
+        verts.frombytes(result[data_start + v_off: data_start + v_off + v_len])
+        assert list(verts) == [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+
+        f_off, f_len = body_meta["offsets"]["faces"]
+        faces = _array.array('I')
+        faces.frombytes(result[data_start + f_off: data_start + f_off + f_len])
+        assert list(faces) == [0, 1, 2]
+
+    def test_solver_ws_sends_two_messages(self, app, auth_headers):
+        """Solve sends JSON text frame then binary geometry_update frame."""
+        from unittest.mock import patch
+
+        mock_body = {
+            "id": "body_0",
+            "created_by": "extrude_0",
+            "modified_by": [],
+            "mesh": {
+                "vertices": [[0.0, 0.0, 0.0]],
+                "faces": [],
+                "triangle_to_face": [],
+                "face_data": [],
+                "face_queries": [],
+            },
+            "edges": [],
+            "edge_queries": [],
+            "vertices": [],
+            "vertex_queries": [],
+        }
+        with patch("oversolved.blueprints.solver_ws.build") as mock_build:
+            mock_build.return_value = {
+                "result": {},
+                "bodies": {"body_0": mock_body},
+                "_build_state": {},
+                "solve_ms": 5,
+            }
+            ws = _MockWS()
+            ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
+            _run_handler(app, ws, auth_headers)
+
+        assert len(ws.sent_raw) == 2
+        assert isinstance(ws.sent_raw[0], str)
+        assert isinstance(ws.sent_raw[1], (bytes, bytearray))
+        first = json.loads(ws.sent_raw[0])
+        assert first["type"] == "solve_result"
+
+    def test_solver_ws_solve_result_no_bodies(self, app, auth_headers):
+        """JSON solve_result frame must not contain a bodies key."""
+        from unittest.mock import patch
+
+        with patch("oversolved.blueprints.solver_ws.build") as mock_build:
+            mock_build.return_value = {
+                "result": {},
+                "bodies": {"body_0": {}},
+                "_build_state": {},
+                "solve_ms": 3,
+            }
+            ws = _MockWS()
+            ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
+            _run_handler(app, ws, auth_headers)
+
+        json_frame = json.loads(ws.sent_raw[0])
+        assert "bodies" not in json_frame

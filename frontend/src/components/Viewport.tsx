@@ -51,7 +51,27 @@ function isActive(id: string, features: Feature[] | undefined, rollbackPos: numb
   return (rollbackPos === undefined || idx < rollbackPos) && (!visible || visible.has(id))
 }
 
-function calculateMeshExtent(vertices: [number, number, number][]): number {
+function calculateMeshExtentFromFlat(vertices: Float32Array): number {
+  if (vertices.length === 0) return 0
+
+  let minX = Infinity, maxX = -Infinity
+  let minY = Infinity, maxY = -Infinity
+  let minZ = Infinity, maxZ = -Infinity
+
+  for (let i = 0; i < vertices.length; i += 3) {
+    const x = vertices[i], y = vertices[i + 1], z = vertices[i + 2]
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue
+    if (x < minX) minX = x; if (x > maxX) maxX = x
+    if (y < minY) minY = y; if (y > maxY) maxY = y
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
+  }
+
+  if (!Number.isFinite(minX)) return 0
+  return Math.max(maxX - minX, maxY - minY, maxZ - minZ)
+}
+
+function calculateMeshExtent(vertices: Float32Array | [number, number, number][]): number {
+  if (vertices instanceof Float32Array) return calculateMeshExtentFromFlat(vertices)
   if (vertices.length === 0) return 0
 
   let minX = Infinity, maxX = -Infinity
@@ -77,14 +97,15 @@ function calculateMeshExtent(vertices: [number, number, number][]): number {
 function getModelBoundingBoxExtent(bodies: Record<string, BodyResult> | undefined): number {
   if (!bodies) return 0
 
-  const allVertices: [number, number, number][] = []
+  let maxExtent = 0
   for (const body of Object.values(bodies)) {
     if (body.mesh?.vertices) {
-      allVertices.push(...body.mesh.vertices)
+      const e = calculateMeshExtent(body.mesh.vertices)
+      if (e > maxExtent) maxExtent = e
     }
   }
 
-  return calculateMeshExtent(allVertices)
+  return maxExtent
 }
 
 function getFaceExtent(faceQuery: string, bodies: Record<string, BodyResult>): number {

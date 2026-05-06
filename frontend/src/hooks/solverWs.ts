@@ -1,3 +1,7 @@
+import type { GeometryHeader } from '../utils/geometryUnpack'
+
+export type GeometryListener = (msgId: number, header: GeometryHeader, buffer: ArrayBuffer, jsonHeaderLen: number) => void
+
 /**
  * Singleton WebSocket solver client. One connection per document session.
  */
@@ -7,9 +11,15 @@ class SolverWs {
   private resolveMap = new Map<number, (value: any) => void>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private rejectMap = new Map<number, (reason: any) => void>();
+  private geometryListeners = new Set<GeometryListener>();
   private msgId = 0;
-  private pendingMessages: string[] = [];
+  private pendingMessages: string[] = []
   private connectTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  onGeometryUpdate(cb: GeometryListener): () => void {
+    this.geometryListeners.add(cb)
+    return () => this.geometryListeners.delete(cb)
+  }
 
   private _rejectAll(reason: string): void {
     this.pendingMessages = [];
@@ -36,6 +46,7 @@ class SolverWs {
     this._clearConnectTimeout();
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}/api/solver-ws`);
+    ws.binaryType = 'arraybuffer';
     this.ws = ws;
 
     this.connectTimeoutId = setTimeout(() => {
@@ -58,6 +69,10 @@ class SolverWs {
 
     ws.onmessage = (e) => {
       if (this.ws !== ws) return;
+      if (e.data instanceof ArrayBuffer) {
+        this._handleBinaryFrame(e.data);
+        return;
+      }
       try {
         const data = JSON.parse(e.data);
         if (data.type === 'solve_result' && data.msgId != null) {
@@ -96,6 +111,24 @@ class SolverWs {
         this.pendingMessages.push(msg);
       }
     });
+  }
+
+  private _handleBinaryFrame(buf: ArrayBuffer): void {
+    try {
+      const view = new DataView(buf);
+      const jsonHeaderLen = view.getUint32(0);
+      const jsonBytes = new Uint8Array(buf, 4, jsonHeaderLen);
+      // Trim null padding before parsing.
+      let end = jsonHeaderLen;
+      while (end > 0 && jsonBytes[end - 1] === 0) end--;
+      const jsonStr = new TextDecoder().decode(new Uint8Array(buf, 4, end));
+      const header = JSON.parse(jsonStr) as import('../utils/geometryUnpack').GeometryHeader;
+      for (const listener of this.geometryListeners) {
+        listener(header.msgId, header, buf, jsonHeaderLen);
+      }
+    } catch {
+      // Ignore malformed binary frames
+    }
   }
 
   disconnect(): void {

@@ -39,10 +39,17 @@ export function buildBodyGeometry(mesh: Mesh3D): {
   positions: Float32Array
   indices: Uint32Array
 } {
+  if (mesh.vertices instanceof Float32Array && mesh.faces instanceof Uint32Array) {
+    // Zero-copy path for binary-unpacked geometry.
+    return { positions: mesh.vertices, indices: mesh.faces }
+  }
+
   // Validate mesh data to catch NaN/undefined early before it reaches WebGL.
-  const vertCount = mesh.vertices.length
+  const tupleVerts = mesh.vertices as [number, number, number][]
+  const tupleFaces = mesh.faces as [number, number, number][]
+  const vertCount = tupleVerts.length
   for (let i = 0; i < vertCount; i++) {
-    const v = mesh.vertices[i]
+    const v = tupleVerts[i]
     if (!Array.isArray(v) || v.length !== 3) {
       throw new Error(`Mesh vertex ${i} is not a 3-element array: ${JSON.stringify(v)}`)
     }
@@ -53,8 +60,8 @@ export function buildBodyGeometry(mesh: Mesh3D): {
       }
     }
   }
-  for (let i = 0; i < mesh.faces.length; i++) {
-    const f = mesh.faces[i]
+  for (let i = 0; i < tupleFaces.length; i++) {
+    const f = tupleFaces[i]
     if (!Array.isArray(f) || f.length !== 3) {
       throw new Error(`Mesh face ${i} is not a 3-element array: ${JSON.stringify(f)}`)
     }
@@ -66,15 +73,34 @@ export function buildBodyGeometry(mesh: Mesh3D): {
     }
   }
 
-  const positions = new Float32Array(mesh.vertices.length * 3)
-  mesh.vertices.forEach(([x, y, z], i) => {
+  const positions = new Float32Array(tupleVerts.length * 3)
+  tupleVerts.forEach(([x, y, z], i) => {
     positions[i * 3] = x; positions[i * 3 + 1] = y; positions[i * 3 + 2] = z
   })
-  const indices = new Uint32Array(mesh.faces.length * 3)
-  mesh.faces.forEach(([a, b, c], i) => {
+  const indices = new Uint32Array(tupleFaces.length * 3)
+  tupleFaces.forEach(([a, b, c], i) => {
     indices[i * 3] = a; indices[i * 3 + 1] = b; indices[i * 3 + 2] = c
   })
   return { positions, indices }
+}
+
+function _getFaceIndices(faces: Mesh3D['faces'], i: number): [number, number, number] {
+  if (faces instanceof Uint32Array) {
+    return [faces[i * 3], faces[i * 3 + 1], faces[i * 3 + 2]]
+  }
+  return faces[i]
+}
+
+function _getVertex(vertices: Mesh3D['vertices'], vi: number): [number, number, number] {
+  if (vertices instanceof Float32Array) {
+    return [vertices[vi * 3], vertices[vi * 3 + 1], vertices[vi * 3 + 2]]
+  }
+  return vertices[vi]
+}
+
+function _faceCount(faces: Mesh3D['faces']): number {
+  if (faces instanceof Uint32Array) return faces.length / 3
+  return faces.length
 }
 
 // Return line segment positions for the outer boundary of one B-rep face.
@@ -88,9 +114,10 @@ export function buildFaceBoundarySegments(mesh: Mesh3D, brepFaceIndex: number): 
   const edgeCount = new Map<string, number>()
   const edgeVerts = new Map<string, [number, number]>()
 
-  for (let i = 0; i < faces.length; i++) {
+  const numFaces = _faceCount(faces)
+  for (let i = 0; i < numFaces; i++) {
     if (triangle_to_face[i] !== brepFaceIndex) continue
-    const [a, b, c] = faces[i]
+    const [a, b, c] = _getFaceIndices(faces, i)
     for (const [v1, v2] of [[a, b], [b, c], [c, a]] as [number, number][]) {
       const key = v1 < v2 ? `${v1}:${v2}` : `${v2}:${v1}`
       edgeCount.set(key, (edgeCount.get(key) ?? 0) + 1)
@@ -102,7 +129,7 @@ export function buildFaceBoundarySegments(mesh: Mesh3D, brepFaceIndex: number): 
   for (const [key, count] of edgeCount) {
     if (count === 1) {
       const [v1, v2] = edgeVerts.get(key)!
-      pts.push(...vertices[v1], ...vertices[v2])
+      pts.push(..._getVertex(vertices, v1), ..._getVertex(vertices, v2))
     }
   }
   return new Float32Array(pts)
@@ -117,12 +144,13 @@ export function extractFaceGeometry(mesh: Mesh3D, brepFaceIndex: number): { vert
   const seen = new Set<number>()
   const faceVerts: [number, number, number][] = []
 
-  for (let i = 0; i < faces.length; i++) {
+  const numFaces = _faceCount(faces)
+  for (let i = 0; i < numFaces; i++) {
     if (triangle_to_face[i] !== brepFaceIndex) continue
-    for (const vi of faces[i]) {
+    for (const vi of _getFaceIndices(faces, i)) {
       if (!seen.has(vi)) {
         seen.add(vi)
-        faceVerts.push(vertices[vi])
+        faceVerts.push(_getVertex(vertices, vi))
       }
     }
   }
@@ -285,8 +313,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     indexed.dispose()
     // Pre-fill color attribute so vertexColors=true doesn't flash black on first render.
     const { r, g, b } = new THREE.Color(COLOR_BODY_DEFAULT)
-    const initialColors = new Float32Array(mesh.faces.length * 9)
-    for (let i = 0; i < mesh.faces.length * 3; i++) {
+    const numTris = _faceCount(mesh.faces)
+    const initialColors = new Float32Array(numTris * 9)
+    for (let i = 0; i < numTris * 3; i++) {
       initialColors[i * 3] = r; initialColors[i * 3 + 1] = g; initialColors[i * 3 + 2] = b
     }
     geo.setAttribute('color', new THREE.BufferAttribute(initialColors, 3))
@@ -341,8 +370,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     if (!triangle_to_face || !face_queries || face_queries.length === 0) return null
 
     const faceCount = face_queries.length
-    const colors = new Float32Array(mesh.faces.length * 3 * 3)
-    for (let i = 0; i < mesh.faces.length; i++) {
+    const numTris = _faceCount(mesh.faces)
+    const colors = new Float32Array(numTris * 3 * 3)
+    for (let i = 0; i < numTris; i++) {
       const brepFaceIdx = triangle_to_face[i] ?? 0
       const color = new THREE.Color().setHSL(brepFaceIdx / faceCount, 0.9, 0.55)
       const baseIdx = i * 9
@@ -468,12 +498,13 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   // Always compute face colors -- avoids toggling vertexColors on the material which
   // causes shader recompilation and a black-frame artifact.
   const faceColors = useMemo(() => {
-    const colors = new Float32Array(mesh.faces.length * 3 * 3)
+    const numTris = _faceCount(mesh.faces)
+    const colors = new Float32Array(numTris * 3 * 3)
     const defaultColor = new THREE.Color(bodyColor)
     const selectedColor = new THREE.Color(COLOR_SELECTED)
     const hoverColor = new THREE.Color(COLOR_HOVER)
 
-    for (let i = 0; i < mesh.faces.length; i++) {
+    for (let i = 0; i < numTris; i++) {
       let color = defaultColor
       if (interactive) {
         const query = resolveFaceQuery(i)

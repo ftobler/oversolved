@@ -7,6 +7,7 @@ vi.mock('../../hooks/solverWs', () => ({
   solverWs: {
     solve: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
     disconnect: vi.fn(),
+    onGeometryUpdate: vi.fn().mockReturnValue(() => {}),
   },
 }))
 

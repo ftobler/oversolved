@@ -98,8 +98,8 @@ export interface FaceData {
 }
 
 export interface Mesh3D {
-  vertices: [number, number, number][]
-  faces:    [number, number, number][]
+  vertices: Float32Array | [number, number, number][]
+  faces:    Uint32Array | [number, number, number][]
   normals:  [number, number, number][]
   face_data?: FaceData[]
   triangle_to_face?: number[]
