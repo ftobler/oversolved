@@ -371,6 +371,7 @@ def test_partial_rebuild_add_sketch_mid_stack():
 def test_rollback_zero_cascade_full_rebuild():
     """build() with rollback_position=0 returns empty state; subsequent
     build() with features does a full rebuild (no partial reuse)."""
+    pytest.importorskip("OCP.gp")
     sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
     ex1 = extrude_spec('sk1', 'ex1', 5.0)
 
@@ -562,3 +563,35 @@ def test_registered_this_cycle_reset():
     )
 
     assert r2['result']['skB']['status'] != 'exception'
+
+
+def test_result_mutation_does_not_corrupt_checkpoint():
+    """Mutating returned result does not corrupt cached checkpoint."""
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    sk2 = rect_sketch_spec(w=7.0, h=2.0, sketch_id='sk2')
+    spec = {'features': [sk1, sk2]}
+    r1 = build(spec)
+    state = r1['_build_state']
+
+    original_geom = r1['result']['sk1']['geometry']
+
+    r1['result']['sk1']['_mutated'] = 'taint'
+
+    spec_unchanged = {'features': [sk1, sk2]}
+    r2 = build(spec_unchanged, prev_state=state)
+
+    assert r2['result']['sk1']['geometry'] == original_geom
+    assert r2['result']['sk1'].get('_mutated') is None
+
+
+def test_checkpoint_result_is_independent_copy():
+    """Checkpoint result is a different object from the returned result."""
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    spec = {'features': [sk1]}
+    r = build(spec)
+    state = r['_build_state']
+
+    returned_result = r['result']['sk1']
+    checkpoint_result = state.checkpoints['sk1'].result
+
+    assert id(returned_result) != id(checkpoint_result)

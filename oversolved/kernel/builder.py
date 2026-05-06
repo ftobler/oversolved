@@ -409,7 +409,7 @@ def build(
 
         new_checkpoints[fid] = FeatureCheckpoint(
             spec=copy.deepcopy(feature),
-            result=feature_result,
+            result=dict(feature_result),
             repo_snapshot={"elements": dict(global_repo.elements), "ancestral": dict(global_repo.ancestral)},
             body_store_snapshot={
                 bid: Body(
