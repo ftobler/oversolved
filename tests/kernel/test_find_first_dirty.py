@@ -141,3 +141,59 @@ def test_nested_field_change_detected():
     new = [{'id': 'a', 'kind': 'sketch', 'entities': [{'id': 'line1', 'kind': 'circle'}]}]
     state = make_state(old)
     assert _find_first_dirty(new, state) == 0
+
+
+def test_sketch_param_change_detected():
+    old = [{'id': 'a', 'kind': 'extrude', 'sketch': 'sk1', 'distance': 10}]
+    new = [{'id': 'a', 'kind': 'extrude', 'sketch': 'sk1', 'distance': 20}]
+    state = make_state(old)
+    assert _find_first_dirty(new, state) == 0
+
+
+def test_direction_param_change_detected():
+    old = [{'id': 'a', 'kind': 'extrude', 'direction': 'normal'}]
+    new = [{'id': 'a', 'kind': 'extrude', 'direction': 'reversed'}]
+    state = make_state(old)
+    assert _find_first_dirty(new, state) == 0
+
+
+def test_operation_param_change_detected():
+    old = [{'id': 'a', 'kind': 'extrude', 'operation': 'add'}]
+    new = [{'id': 'a', 'kind': 'extrude', 'operation': 'cut'}]
+    state = make_state(old)
+    assert _find_first_dirty(new, state) == 0
+
+
+def test_radius_param_change_detected():
+    old = [{'id': 'a', 'kind': 'fillet', 'radius': 5}]
+    new = [{'id': 'a', 'kind': 'fillet', 'radius': 10}]
+    state = make_state(old)
+    assert _find_first_dirty(new, state) == 0
+
+
+def test_angle_param_change_detected():
+    old = [{'id': 'a', 'kind': 'revolve', 'angle': 180}]
+    new = [{'id': 'a', 'kind': 'revolve', 'angle': 360}]
+    state = make_state(old)
+    assert _find_first_dirty(new, state) == 0
+
+
+def test_edges_param_change_detected():
+    old = [{'id': 'a', 'kind': 'fillet', 'edges': ['e1']}]
+    new = [{'id': 'a', 'kind': 'fillet', 'edges': ['e1', 'e2']}]
+    state = make_state(old)
+    assert _find_first_dirty(new, state) == 0
+
+
+def test_file_id_param_change_detected():
+    old = [{'id': 'a', 'kind': 'import_step', 'file_id': 'file1.step'}]
+    new = [{'id': 'a', 'kind': 'import_step', 'file_id': 'file2.step'}]
+    state = make_state(old)
+    assert _find_first_dirty(new, state) == 0
+
+
+def test_scale_param_change_detected():
+    old = [{'id': 'a', 'kind': 'transform', 'scale': 1.0}]
+    new = [{'id': 'a', 'kind': 'transform', 'scale': 2.0}]
+    state = make_state(old)
+    assert _find_first_dirty(new, state) == 0
