@@ -4,6 +4,8 @@ import array as _array
 import json
 import logging
 import struct
+import threading
+from time import time
 from flask import request, current_app, g
 from flask_sock import Sock
 from oversolved.blueprints import get_db
@@ -12,6 +14,34 @@ from oversolved.kernel.builder import build
 from oversolved.kernel.types3d import BuildState
 
 logger = logging.getLogger(__name__)
+
+
+# ─── Rate limiting for WS auth failures ───
+
+_auth_failures: dict[str, list[float]] = {}
+_auth_failures_lock = threading.Lock()
+
+
+def _rate_limit_exceeded(ip: str) -> bool:
+    """Check if an IP has exceeded the auth failure threshold."""
+    now = time()
+    with _auth_failures_lock:
+        failures = _auth_failures.get(ip, [])
+        failures[:] = [t for t in failures if now - t < 60]
+        if not failures:
+            _auth_failures.pop(ip, None)
+        return len(failures) > 10
+
+
+def _record_auth_failure(ip: str):
+    """Record an auth failure for an IP."""
+    now = time()
+    with _auth_failures_lock:
+        failures = _auth_failures.get(ip)
+        if failures is None:
+            _auth_failures[ip] = [now]
+        else:
+            failures.append(now)
 
 
 def _float32_bytes(values):
@@ -96,38 +126,66 @@ def pack_geometry_update(msg_id, bodies, pick_bodies=None):
 
 
 def _check_auth(ws) -> bool:
-    """Check authentication on WS connect. Returns True if authenticated."""
-    token = request.cookies.get("session_token")
+    """Check authentication on WS connect/re-validate. Returns True if authenticated."""
+    client_ip = request.remote_addr or "unknown"
+
+    token = request.args.get("token") or request.cookies.get("session_token")
     if not token:
+        logger.warning("WS auth failed: no session token (client: %s)", client_ip)
         ws.close(4001, "Not authenticated")
         return False
+
     db = get_db()
     session = SessionStore(db).find(token)
     if session is None:
+        logger.warning("WS auth failed: invalid/expired session (client: %s)", client_ip)
         ws.close(4001, "Invalid or expired session")
         return False
+
     user = UserStore(db).find_by_id(session["user_id"])
     if user is None:
+        logger.warning("WS auth failed: user not found (client: %s)", client_ip)
         ws.close(4001, "User not found")
         return False
+
+    if not user.get("is_active", True):
+        logger.warning("WS auth failed: account deactivated (user_id=%s)", session.get("user_id"))
+        ws.close(4001, "Account deactivated")
+        return False
+
     g.current_user = user
     return True
 
 
 def solver_websocket(ws):
     """Persistent WebSocket for solver sessions."""
+    client_ip = request.remote_addr or "unknown"
+
+    if _rate_limit_exceeded(client_ip):
+        logger.warning("WS auth rate limit exceeded (client: %s)", client_ip)
+        ws.close(4001, "Rate limited")
+        return
+
     if not _check_auth(ws):
+        _record_auth_failure(client_ip)
         return
 
     max_cache_size = current_app.config.get("SOLVER_WS_CACHE_MAX_SIZE", 10)
+    auth_check_interval = current_app.config.get("WS_AUTH_CHECK_INTERVAL", 50)
     session_cache: dict[str, BuildState] = {}
     db = get_db()
 
     try:
+        msg_count = 0
         while ws.connected:
             message = ws.receive()
             if message is None:
                 break
+
+            msg_count += 1
+            if auth_check_interval > 0 and msg_count % auth_check_interval == 0:
+                if not _check_auth(ws):
+                    return
 
             try:
                 data = json.loads(message)

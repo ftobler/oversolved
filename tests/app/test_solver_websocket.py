@@ -5,7 +5,7 @@ import threading
 from unittest.mock import patch
 import pytest
 from oversolved.app import create_app
-from oversolved.blueprints.solver_ws import solver_websocket
+from oversolved.blueprints.solver_ws import solver_websocket, _auth_failures
 from oversolved.db import Database, SQLiteConnection
 
 
@@ -39,17 +39,29 @@ class _MockWS:
         self.close_message = message
 
 
-def _run_handler(app, ws, auth_headers):
+def _run_handler(app, ws, auth_headers, environ_base=None, query_string=None):
     """Run solver_websocket in a background thread with Flask context."""
+    kwargs = {"headers": auth_headers}
+    if environ_base:
+        kwargs["environ_base"] = environ_base
+    if query_string is not None:
+        kwargs["query_string"] = query_string
+
     def _run():
         with app.app_context():
-            with app.test_request_context(headers=auth_headers):
+            with app.test_request_context(**kwargs):
                 solver_websocket(ws)
 
     thread = threading.Thread(target=_run)
     thread.daemon = True
     thread.start()
     thread.join(timeout=5)
+
+
+@pytest.fixture(autouse=True)
+def reset_auth_failures():
+    """Clear the module-level auth failure tracker before each test."""
+    _auth_failures.clear()
 
 
 @pytest.fixture
@@ -324,6 +336,149 @@ class TestSolverWebSocket:
             _run_handler(app, ws, auth_headers)
 
         assert len(close_called) >= 1
+
+    def test_websocket_auth_with_query_token(self, app):
+        """Connect with ?token=... in URL, verify success."""
+        client = app.test_client()
+        resp = client.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        set_cookie = resp.headers.get("Set-Cookie", "")
+        token = set_cookie.split("session_token=")[1].split(";")[0]
+
+        ws = _MockWS()
+        ws.receive_queue = [
+            json.dumps({"type": "ping"}),
+            None,
+        ]
+        _run_handler(app, ws, {}, environ_base={"REMOTE_ADDR": "127.0.0.1"},
+                     query_string=f"token={token}")
+        assert len(ws.sent) == 1
+        assert ws.sent[0] == {"type": "pong"}
+
+    def test_websocket_auth_query_token_invalid(self, app):
+        """Connect with bad ?token=..., verify 4001."""
+        ws = _MockWS()
+        ws.receive_queue = [json.dumps({"type": "ping"}), None]
+        _run_handler(app, ws, {}, environ_base={"REMOTE_ADDR": "127.0.0.2"},
+                     query_string="token=bad-token")
+        assert not ws.connected
+        assert ws.close_reason == 4001
+
+    def test_websocket_auth_query_token_preferred(self, app):
+        """Query token wins over cookie when both provided."""
+        client = app.test_client()
+        resp = client.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        set_cookie = resp.headers.get("Set-Cookie", "")
+        valid_token = set_cookie.split("session_token=")[1].split(";")[0]
+
+        ws = _MockWS()
+        ws.receive_queue = [json.dumps({"type": "ping"}), None]
+        _run_handler(app, ws, {"Cookie": "session_token=invalid"},
+                     environ_base={"REMOTE_ADDR": "127.0.0.3"},
+                     query_string=f"token={valid_token}")
+        assert len(ws.sent) == 1
+        assert ws.sent[0] == {"type": "pong"}
+
+    def test_websocket_auth_deactivated_user(self, app):
+        """Deactivated user gets 4001."""
+        client = app.test_client()
+        resp = client.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        set_cookie = resp.headers.get("Set-Cookie", "")
+        token = set_cookie.split("session_token=")[1].split(";")[0]
+
+        with app.app_context():
+            from oversolved.blueprints import get_db
+            from oversolved.db import UserStore
+            db = get_db()
+            user = UserStore(db).find_by_username("admin")
+            assert user is not None
+            UserStore(db).set_active(user["id"], False)
+            db.close()
+
+        ws = _MockWS()
+        ws.receive_queue = [json.dumps({"type": "ping"}), None]
+        _run_handler(app, ws, {"Cookie": f"session_token={token}"}, environ_base={
+            "REMOTE_ADDR": "127.0.0.4",
+        })
+        assert not ws.connected
+        assert ws.close_reason == 4001
+
+    @patch("oversolved.blueprints.solver_ws.build")
+    def test_websocket_auth_periodic_recheck(self, mock_build, app):
+        """Auth is re-checked every WS_AUTH_CHECK_INTERVAL messages."""
+        app.config["WS_AUTH_CHECK_INTERVAL"] = 2
+        mock_build.return_value = {
+            "status": "ok", "result": {}, "bodies": {},
+            "_build_state": {"built": True}, "solve_ms": 1,
+        }
+
+        client = app.test_client()
+        resp = client.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        set_cookie = resp.headers.get("Set-Cookie", "")
+        token = set_cookie.split("session_token=")[1].split(";")[0]
+
+        solve_msg = json.dumps({"type": "solve", "features": []})
+        ws = _MockWS()
+        ws.receive_queue = [solve_msg, solve_msg, solve_msg, solve_msg, None]
+        _run_handler(app, ws, {"Cookie": f"session_token={token}"}, environ_base={
+            "REMOTE_ADDR": "127.0.0.5",
+        })
+        # 4 messages + auth check at msg_count % 2 == 0 (msgs 2 and 4)
+        # All should succeed since token is valid
+        assert len(ws.sent) >= 1
+        assert mock_build.call_count >= 1
+
+    @patch("oversolved.blueprints.solver_ws.logger")
+    def test_websocket_auth_failure_logged(self, mock_logger, app):
+        """Auth failure logs a warning."""
+        ws = _MockWS()
+        ws.receive_queue = [None]
+        _run_handler(app, ws, {}, environ_base={"REMOTE_ADDR": "127.0.0.6"})
+        mock_logger.warning.assert_called()
+
+    def test_websocket_auth_rate_limiting(self, app):
+        """11th auth failure from the same IP is rejected."""
+        from oversolved.blueprints.solver_ws import _rate_limit_exceeded, _record_auth_failure
+
+        ip = "10.0.0.1"
+        for _ in range(10):
+            _record_auth_failure(ip)
+        assert not _rate_limit_exceeded(ip)
+        _record_auth_failure(ip)
+        assert _rate_limit_exceeded(ip)
+
+    def test_websocket_rate_limit_rejects_connection(self, app):
+        """Rate-limited IP gets closed with 4001 on connect."""
+        from oversolved.blueprints.solver_ws import _record_auth_failure
+
+        ip = "10.0.0.2"
+        for _ in range(11):
+            _record_auth_failure(ip)
+
+        ws = _MockWS()
+        ws.receive_queue = [None]
+        _run_handler(app, ws, {}, environ_base={"REMOTE_ADDR": ip})
+        assert not ws.connected
+        assert ws.close_reason == 4001
 
 
 class TestPackGeometryUpdate:

@@ -302,6 +302,7 @@ def create_app(config: dict | None = None) -> Flask:
 
     # Set default config
     app.config.setdefault("SOLVER_WS_CACHE_MAX_SIZE", 10)
+    app.config.setdefault("WS_AUTH_CHECK_INTERVAL", 50)
 
     # Register blueprints
     app.register_blueprint(auth_bp)
