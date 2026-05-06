@@ -1,116 +1,99 @@
-# query
+# Query System
 
-the solver implements a query based approach to find geometry. the query syntax is made with a string. the following concepts apply:
-* Each feature once it is created gets its own unique id. If human written, it can be `sketch1`, but if machine generated it should be `randomBytes(18).toString("base64url")` or similar. Once created it will never change. Id length is 18.
-* Each sub element of the feature simply appends its own id to the parent feature id. Operation is simple string concatenation. `feat_id + element_id`. Inside the feature the element can be referred by its `element_id`. If the element has predefined sub elements like a line `start` and `end`, they get appended to the elementid. id length is 12 for the random part.
-* Each topology element that is created does not get an id. Instead it gets an annotation how it was built. The concept is called a *query*. Its identifier is the anchrstry list of the source elements. e.g `[element_id1 + "line", element_id2 + "arc"]` meaning it is the result of the intersection between a line and an arc. Nesting such identifiers must be possible and the list unpackable. That works best with slices, which need absolute positions. `"?J,K;<id1><id2>"` where `<id2> = "?A,B;<id3><id4>"` and `J`, `K`, `A`, `B` are hex encoded lengths.
+The solver uses queries to reference geometry. A query is a string (or typed object) that identifies an element registered in the `Repository`.
 
-Each element can refer to another one by an id. There are different requirements and types of querys:
+## ID Conventions
 
-| Query Syntax            | Description                                                         |
-|-------------------------|---------------------------------------------------------------------|
-| `$<ELE>`                | local id inside the feature.                                        |
-| `$<ELE><SUB>`           | local id inside the feature with a uniquely identified subelement.  |
-| `@<FEAT>`               | feature-plane reference: resolves to the defining plane of that feature (see below). |
-| `@<FEAT><ELE><SUB>`     | absolute element lookup by id.                                      |
-| `?A,B;<idA><idB>`       | anchrestry information list.                                        |
-| `?A,B;<idA><idB>:<TYPE>`| anchrestry information list, restricted to geometry type.           |
-| `?A,B;<idA><idB>:<TYPE>@<CLASSIFIER>`| anchrestry list with geometric classifier. |
+- **Feature IDs**: user-assigned in the YAML document, never change.
+- **Element IDs within a feature**: user-assigned at creation. Sub-element suffixes (`start`, `end`, `center`, `xy`) identify sub-portions.
+- **Auto-generated topology IDs**: `secrets.token_urlsafe(9)` → 12-char base64url, assigned during `register_ancestor`.
 
-In Anchestry information lists, lengths are hex encoded and comma separated. A semicolon separates it from the id strings which have no delimiters between them. Each ID string must be of valid Query Syntax. An optional `:<TYPE>` suffix after the id strings restricts resolution to a specific geometry type. This is useful when an intersection produces multiple geometry types and the desired one must be unambiguous.
+A fully-qualified key is `feature_id + element_id + sub_suffix`. Example: `sketch1line1start`.
 
-**Geometry types:**
+## Query Syntax
 
-| Type | Description |
-|------|-------------|
-| `vertex` | Point / topological vertex, single coordinate |
-| `straightedge` | Straight edge (line segment) with two endpoints |
-| `edge` | Non-straight edge (arc, circle, spline) |
-| `flatface` | Planar face with a clear boundary |
-| `cylinderface` | Cylindrical face with a defined center axis |
-| `face` | General face (not flat or cylindrical) |
+| Prefix | Kind | Description |
+|--------|------|-------------|
+| `$<ELE><SUB>` | Local | Element within current feature context. Resolved as `context + ele + sub`. |
+| `@<FEAT><ELE><SUB>` | Absolute | Cross-feature lookup by concatenated key `feat + ele + sub`. |
+| `?<H,L>;<idA><idB>[:TYPE][@CLASSIFIER]` | Ancestry | Ancestry-based query with hex-encoded lengths, optional type filter and geometric classifier. |
 
-### Geometric Classifiers
+Dispatched by `parse_query()` first character. Sub suffixes require a non-alphanumeric character before them to avoid false matches (e.g. `sketch_start` ≠ `sketch_` + `start`).
 
-When multiple surfaces are created from the same ancestry (e.g., a circle cut by a line), geometric classifiers disambiguate them by encoding spatial relationships:
+## Geometry Types
 
-**Line Division Classifiers** — When a geometry is divided by a line:
-- `@pos` — surface on the positive side (left/above when traversing line from start to end)
-- `@neg` — surface on the negative side (right/below when traversing)
+| Type | Description | Parent |
+|------|-------------|--------|
+| `solid` | 3D solid body | — |
+| `face` | General face | — |
+| `flatface` | Planar face | `face` |
+| `cylinderface` | Cylindrical face | `face` |
+| `edge` | Non-straight edge | — |
+| `straightedge` | Straight edge | `edge` |
+| `vertex` | Topological vertex | — |
 
-**Circle Containment Classifiers** — For surfaces relative to a circle:
-- `@inner` — surface inside the circle
-- `@outer` — surface outside the circle
+A query for a parent type also matches subtypes (e.g. `face` matches `flatface`).
 
-**Cardinal Direction Classifiers** — Surface location relative to origin:
-- `@north` — surface in positive Y direction
-- `@south` — surface in negative Y direction
-- `@east` — surface in positive X direction
-- `@west` — surface in negative X direction
+## Geometric Classifiers
 
-**Examples:**
+When multiple surfaces share ancestry (e.g. a circle cut by a line), classifiers disambiguate:
+
+- **Line Division**: `@pos` (left/above), `@neg` (right/below)
+- **Circle Containment**: `@inner` (inside), `@outer` (outside)
+- **Cardinal Direction**: `@north` (+Y), `@south` (-Y), `@east` (+X), `@west` (-X)
+
+Classifiers are parsed and carried in the `AncestryQuery` data model but the resolver does not yet filter on them.
+
+## Feature-Plane References (`@<FEAT>`)
+
+`@<FEAT>` where FEAT matches a registered feature ID resolves via flat lookup in `self.elements`. Sketches, extrudes, and built-in planes are registered this way. Must match the registered key exactly.
+
+## 3D B-rep Face Queries
+
+Faces of 3D bodies use:
+
 ```
-?5;@sketch_1circle:flatface@inner    # Inside a standalone circle
-?5;@sketch_1circle:flatface@outer    # Outside a standalone circle
-?f,13;@sketch_1circle@sketch_1line:flatface@pos  # Above the line
-?f,13;@sketch_1circle@sketch_1line:flatface@neg  # Below the line
-```
-
-A query is always used to refer to another element. The query should resolve unique. Anchestry information and classifiers are used to make the resolution unambiguous.
-
-### Feature-plane references (`@<FEAT>`)
-
-When `@<id>` appears and `<id>` exactly matches a registered feature ID (with no leftover characters that would form an element ID), it is a **feature-plane reference**. The resolver looks up the feature and returns its defining plane geometry:
-
-- **Sketch** (`@sketch1`): resolves to the sketch's plane transform (origin + rotation). This is the primary use case - selecting a sketch from the feature tree and using it as a plane reference for another sketch or operation.
-- **Extrude** (`@extrude1`): resolves to the extrude's origin plane (the sketch plane it was built from) or, if more useful, its top face. The exact resolution policy for non-sketch features is TBD but should default to the most geometrically useful reference plane.
-- **Built-in planes** (`@builtin_plane_front`, `@builtin_plane_top`, `@builtin_plane_right`): these are special-cased named feature-plane references and are already fully supported.
-
-**Disambiguation rule**: when parsing `@<string>`, the resolver first checks if `<string>` is a known feature ID. If it is and nothing remains, it is a feature-plane reference. If `<string>` starts with a known feature ID and has leftover characters, those characters form the element ID (`@<FEAT><ELE>`). Machine-generated feature IDs are 24-char base64url (18 bytes), so disambiguation is unambiguous. Human-readable IDs (e.g. `sketch1`) require the resolver to check all registered feature IDs by longest prefix match.
-
-**Frontend convention**: the UI selection system uses `@<featureId>` as the selection ID when a feature is clicked in the feature tree. This is a valid query string that passes through `parseTarget` unchanged and can be used directly as a plane reference in mutations (e.g. `set_feature_plane`).
-
-### 3D B-rep Face Queries
-
-The ancestry query pattern extends to 3D B-rep faces from solid bodies. This enables referencing specific faces of extruded volumes, STEP imports, and other 3D geometry.
-
-**Query format**: Same ancestry pattern `?A,B;<idA><idB>:<TYPE>`. The type reflects the surface classification: `flatface` for planar faces, `cylinderface` for cylindrical faces, `face` for other surfaces.
-
-**ID construction**: For 3D B-rep faces, the ancestor ID combines:
-- The feature ID that created the body (e.g., `extrude1`)
-- The face index in OCC explorer order (e.g., `face0`, `face1`)
-
-**Example queries:**
-```
-?d,d;@extrude1face0:flatface    # Flat face 0 of extrude1 feature
-?d,d;@extrude1face1:cylinderface  # Cylindrical face 1
-?14,14;@myextrudeface0@myextrudeface1:flatface  # Multiple flat faces
+?d,d;@extrude1face0:flatface
 ```
 
-**Breaking down the query:**
-- `?d,d;` — hex-encoded lengths: `d` (13 in decimal) = len("@extrude1face0")
-- `@extrude1face0` — absolute element ID: `@` prefix + feature ID + element ID
-- `:flatface` — type restriction (flatface / cylinderface / face)
+The ancestor ID combines feature ID with a face index. Resolution: parse → lookup in `Repository.ancestral` by subset match → filter by type → return.
 
-**Frontend usage**: When clicking a mesh face in the 3D viewport:
-1. Three.js returns `faceIndex` — the triangle index (unstable, changes with tessellation)
-2. Backend provides `triangle_to_face` mapping array to convert triangle → B-rep face
-3. Backend provides `face_queries` array indexed by B-rep face number
-4. Frontend uses the pre-computed query from `face_queries[faceIndex]`
+Frontend: Three.js `faceIndex` → backend `triangle_to_face` → B-rep face number → `face_queries[faceIndex]` → query string.
 
-**Resolution path:**
+## Repository Resolution
+
+`Repository.query(query_str, context, body_store)`:
+
+- **`$` (local)**: requires `context`. Looks up `self.elements[context + eid + sub]`.
+- **`@` (absolute)**: looks up `self.elements[feature_id + eid + sub]`.
+- **`?` (ancestry)**: finds elements whose registered ancestor set is a **subset** of the query's set (`registered ⊆ query`). If `type_restriction` given, filters to exact type matches first, then attempts type coercion. Raises `AmbiguousQueryError` if multiple candidates match.
+
+### Type Coercion
+
+When a type-restricted query finds no exact match:
+1. **Subtype match**: element returned as-is (e.g. `flatface` matches `face`)
+2. **Upward (child → solid)**: if target is `solid`, returns parent from `body_store`
+3. **Downward/sibling scan**: scan repo by `body_id`
+
+### Repository.query_all
+
+Finds elements whose registered ancestor set is a **superset** of the query's set (`query ⊆ registered`). Used to enumerate topology belonging to a feature. Only works with `?` queries.
+
+## Resolution Decision Tree
+
 ```
-Query: "?d,d;@extrude1face0:flatface"
-   ↓ parse (query.py:_parse_ancestry)
-IDs: ["@extrude1face0"]
-   ↓ lookup (Repository.ancestral)
-Registered under: frozenset({"@extrude1face0"})
-   ↓ match + type filter → return registered object
-Result: {"type": "flatface", "centroid": [...], "normal": [...]}
+Parse → extract IDs, type_restriction, classifier
+  ↓
+Find candidates where registered_key ⊆ query_set
+  |-- None → return None
+  ↓
+Apply type_restriction:
+  |-- Exact matches → narrow
+  |-- No matches → coerce (subtype/upward/downward)
+  |-- Still none → return None
+  ↓
+Check count:
+  |-- 0 → None
+  |-- 1 → return element
+  |-- >1 → raise AmbiguousQueryError
 ```
-
----
-
-When a element is created it's id must be registered. This is done with a dictionary. Elements which do not have a id but only ancestral information are given a new random ID. In a separate ancestral dictionary its ancestors resolve to that random id.
-
-
