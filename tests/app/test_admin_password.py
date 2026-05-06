@@ -27,11 +27,13 @@ class TestAdminPassword:
 
     def test_missing_password_raises_in_production(self, tmp_path):
         """create_app should raise RuntimeError when password not set and DEBUG=False."""
+        os.environ.pop("OVERSOLVED_ADMIN_PASSWORD", None)
         with pytest.raises(RuntimeError, match="OVERSOLVED_ADMIN_PASSWORD must be set"):
             _make_app(tmp_path, set_env=False)
 
     def test_missing_password_raises_in_debug_mode(self, tmp_path):
         """create_app should raise RuntimeError when password not set even in DEBUG mode."""
+        os.environ.pop("OVERSOLVED_ADMIN_PASSWORD", None)
         with pytest.raises(RuntimeError, match="OVERSOLVED_ADMIN_PASSWORD must be set"):
             db_path = str(tmp_path / "test_debug.db")
             config = {
@@ -196,6 +198,7 @@ class TestAdminPassword:
 
     def test_startup_fails_without_env_var(self, tmp_path):
         """create_app fails when OVERSOLVED_ADMIN_PASSWORD is unset, regardless of debug."""
+        os.environ.pop("OVERSOLVED_ADMIN_PASSWORD", None)
         for debug_val in (True, False):
             db_path = str(tmp_path / f"test_fail_{debug_val}.db")
             config = {

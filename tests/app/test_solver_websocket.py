@@ -306,14 +306,14 @@ class TestSolverWebSocket:
         assert rows[0]["feature_count"] == 1
 
     def test_http_solve_returns_404(self, client, auth_headers):
-        """HTTP POST /api/solve returns 404 since /api/solve was removed."""
+        """HTTP POST /api/solve returns 404 since the route was removed."""
         response = client.post(
             "/api/solve",
             data=json.dumps(SOLVE_PAYLOAD),
             content_type="application/json",
             headers=auth_headers,
         )
-        assert response.status_code == 405
+        assert response.status_code == 404
 
     def test_websocket_config_default_cache_size(self, app):
         """Default SOLVER_WS_CACHE_MAX_SIZE is 10."""
