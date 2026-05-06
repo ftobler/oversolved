@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { BugReporter, type BugReportAttachments } from '../components/BugReporter'
-import CacheInspector from '../components/CacheInspector'
+import WsReconnect from '../components/WsReconnect'
 import { describeMutation } from '../utils/mutationDescriptions'
 import type { Mutation } from '../types/cad'
 
@@ -8,8 +8,8 @@ type UndoEntry = { doc: unknown; mutation: Mutation }
 
 interface PartDebugPanelProps {
   debugOpen: boolean
-  debugTab: 'selection' | 'bug-report' | 'undo-redo' | 'cache-inspector'
-  setDebugTab: React.Dispatch<React.SetStateAction<'selection' | 'bug-report' | 'undo-redo' | 'cache-inspector'>>
+  debugTab: 'selection' | 'bug-report' | 'undo-redo' | 'ws'
+  setDebugTab: React.Dispatch<React.SetStateAction<'selection' | 'bug-report' | 'undo-redo' | 'ws'>>
   hoveredEntityId: string | null
   hoveredVertexId: string | null
   hoveredPlaneId: string | null
@@ -46,7 +46,7 @@ export default function PartDebugPanel({
         <button className={`debug-tab ${debugTab === 'selection' ? 'active' : ''}`} onClick={() => setDebugTab('selection')}>Selection</button>
         <button className={`debug-tab ${debugTab === 'bug-report' ? 'active' : ''}`} onClick={() => setDebugTab('bug-report')}>Bug Report</button>
         <button className={`debug-tab ${debugTab === 'undo-redo' ? 'active' : ''}`} onClick={() => setDebugTab('undo-redo')}>Undo</button>
-        <button className={`debug-tab ${debugTab === 'cache-inspector' ? 'active' : ''}`} onClick={() => setDebugTab('cache-inspector')}>Cache</button>
+        <button className={`debug-tab ${debugTab === 'ws' ? 'active' : ''}`} onClick={() => setDebugTab('ws')}>WS</button>
       </div>
       {debugTab === 'selection' && (
         <div className="debug-content">
@@ -113,7 +113,7 @@ export default function PartDebugPanel({
           </div>
         </div>
       )}
-      {debugTab === 'cache-inspector' && <CacheInspector />}
+      {debugTab === 'ws' && <WsReconnect />}
     </aside>
   )
 }

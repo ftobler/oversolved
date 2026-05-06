@@ -564,12 +564,19 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           )
         })}
 
-        {pickBodyItems.map(b => (
-          <Body3D key={`pick-${b.key}`} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={b.ghost} interactive={true} />
-        ))}
-        {bodyItems.map(b => (
-          <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={b.ghost} interactive={ghostMode === undefined && pickBodyItems.length === 0} />
-        ))}
+        {pickBodyItems.length > 0 ? (
+          // During feature editing (e.g., fillet edge picking): show only the pre-operation
+          // body as a solid interactive mesh, NOT the post-operation ghost overlay.
+          // Rendering both simultaneously produces a confusing semi-transparent composite
+          // that looks like stale/unpurged geometry.
+          pickBodyItems.map(b => (
+            <Body3D key={`pick-${b.key}`} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={false} interactive={true} />
+          ))
+        ) : (
+          bodyItems.map(b => (
+            <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={b.ghost} interactive={ghostMode === undefined} />
+          ))
+        )}
       </Canvas>
 
 

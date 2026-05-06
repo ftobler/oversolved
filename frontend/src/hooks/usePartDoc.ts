@@ -300,20 +300,24 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   }, [setCodeText])
 
   const applyGeometryUpdate = useCallback((_msgId: number, header: GeometryHeader, buffer: ArrayBuffer, jsonHeaderLen: number) => {
-    const unpacked = unpackBodies(header, buffer, jsonHeaderLen)
-    const d = docRef.current
-    if (d) reconcilePartStyle(d, unpacked)
-    setBodies(unpacked)
-    if (header.pick_bodies && Object.keys(header.pick_bodies).length > 0) {
-      setPickBodies(unpackPickBodies(header, buffer, jsonHeaderLen))
-    } else {
-      setPickBodies({})
-    }
-    // Cache geometry so future cache hits can restore the 3D view without re-solving.
-    if (uuid && d) {
-      const rollback = rollbackPosRef.current ?? (d.features?.length ?? 0)
-      const pickBoundary = pickBoundaryRef.current
-      cacheGeometry(uuid, d, rollback, pickBoundary, { header, buffer, jsonHeaderLen })
+    try {
+      const unpacked = unpackBodies(header, buffer, jsonHeaderLen)
+      const d = docRef.current
+      if (d) reconcilePartStyle(d, unpacked)
+      setBodies(unpacked)
+      if (header.pick_bodies && Object.keys(header.pick_bodies).length > 0) {
+        setPickBodies(unpackPickBodies(header, buffer, jsonHeaderLen))
+      } else {
+        setPickBodies({})
+      }
+      // Cache geometry so future cache hits can restore the 3D view without re-solving.
+      if (uuid && d) {
+        const rollback = rollbackPosRef.current ?? (d.features?.length ?? 0)
+        const pickBoundary = pickBoundaryRef.current
+        cacheGeometry(uuid, d, rollback, pickBoundary, { header, buffer, jsonHeaderLen })
+      }
+    } catch (e) {
+      console.error('[usePartDoc] Error applying geometry update:', e);
     }
   }, [uuid])
 
@@ -887,7 +891,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     fromCache,
     cacheTimestamp,
     setRollbackPos: useCallback((pos: number | null) => { rollbackPosRef.current = pos }, []),
-    setPickBoundary: useCallback((pos: number | null) => { pickBoundaryRef.current = pos }, []),
+    setPickBoundary: useCallback((pos: number | null) => {
+      pickBoundaryRef.current = pos
+      if (pos === null) setPickBodies({})
+    }, [setPickBodies]),
     startPreviewMode,
     commitPreview,
     cancelPreview,

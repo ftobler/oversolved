@@ -18,7 +18,7 @@ class FeatureCheckpoint:
     spec: dict
     result: dict
     repo_snapshot: dict[str, Any]
-    body_store_snapshot: dict[str, 'Body']  # shallow copy (shapes are immutable)
+    body_store_snapshot: dict[str, 'Body']  # shapes are mutable; use _copy_shape() to defensively copy
 
 
 @dataclass

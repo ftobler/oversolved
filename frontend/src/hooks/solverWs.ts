@@ -126,8 +126,8 @@ class SolverWs {
       for (const listener of this.geometryListeners) {
         listener(header.msgId, header, buf, jsonHeaderLen);
       }
-    } catch {
-      // Ignore malformed binary frames
+    } catch (e) {
+      console.error('[SolverWS] Error handling binary frame:', e);
     }
   }
 

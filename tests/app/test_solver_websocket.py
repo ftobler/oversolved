@@ -205,7 +205,7 @@ class TestSolverWebSocket:
 
     @patch("oversolved.blueprints.solver_ws.build")
     def test_websocket_cache_lru_eviction(self, mock_build, app, auth_headers):
-        """With max cache size 2, solving a 3rd doc evicts the 1st."""
+        """With max cache size 2, solving a 3rd doc evicts the 1st (FIFO order)."""
         app.config["SOLVER_WS_CACHE_MAX_SIZE"] = 2
         mock_build.return_value = {
             "status": "ok",
@@ -223,6 +223,42 @@ class TestSolverWebSocket:
         _run_handler(app, ws, auth_headers)
         for call in mock_build.call_args_list:
             assert call[1]["prev_state"] is None
+
+    @patch("oversolved.blueprints.solver_ws.build")
+    def test_websocket_cache_lru_promotes_on_access(self, mock_build, app, auth_headers):
+        """Re-solving an existing doc promotes it; new doc evicts the LRU (not the promoted one)."""
+        app.config["SOLVER_WS_CACHE_MAX_SIZE"] = 2
+        state_a = {"doc": "a"}
+
+        def _mock_build(*args, **kwargs):
+            prev = kwargs.get("prev_state")
+            if prev is None:
+                return {"status": "ok", "result": {}, "bodies": {}, "_build_state": state_a}
+            return {"status": "ok", "result": {}, "bodies": {}, "_build_state": prev}
+
+        mock_build.side_effect = _mock_build
+
+        ws = _MockWS()
+        ws.receive_queue = [
+            json.dumps({"type": "solve", "id": "doc1", "features": [{"id": "sk1", "kind": "sketch", "entities": []}]}),
+            json.dumps({"type": "solve", "id": "doc2", "features": [{"id": "sk1", "kind": "sketch", "entities": []}]}),
+            # Re-solve doc1 — promotes it to most-recently-used
+            json.dumps({"type": "solve", "id": "doc1", "features": [{"id": "sk1", "kind": "sketch", "entities": []}]}),
+            # Solve doc3 — cache is full, should evict doc2 (LRU), not doc1
+            json.dumps({"type": "solve", "id": "doc3", "features": [{"id": "sk1", "kind": "sketch", "entities": []}]}),
+            None,
+        ]
+        _run_handler(app, ws, auth_headers)
+
+        calls = mock_build.call_args_list
+        # doc1 first solve: no prev_state
+        assert calls[0][1]["prev_state"] is None
+        # doc2 first solve: no prev_state
+        assert calls[1][1]["prev_state"] is None
+        # doc1 re-solve: should have doc1's cached state (state_a)
+        assert calls[2][1]["prev_state"] == state_a
+        # doc3 solve: doc2 was evicted, so prev_state is None
+        assert calls[3][1]["prev_state"] is None
 
     @patch("oversolved.blueprints.solver_ws.build")
     def test_websocket_disconnect_clears_cache(self, mock_build, app, auth_headers):

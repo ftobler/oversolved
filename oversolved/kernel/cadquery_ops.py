@@ -4,10 +4,17 @@ Wraps cadquery.occ_impl shapes and geom primitives so the rest of the
 application can work with higher-level CAD operations instead of raw OCP.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
-from cadquery.occ_impl import shapes as cq_shapes
-from cadquery.occ_impl.geom import Plane as CQPlane, Vector as CQVector
+try:
+    from cadquery.occ_impl import shapes as cq_shapes
+    from cadquery.occ_impl.geom import Plane as CQPlane, Vector as CQVector
+except ImportError:
+    cq_shapes = None  # type: ignore
+    CQPlane = None  # type: ignore
+    CQVector = None  # type: ignore
 
 
 def to_cq_plane(plane: dict) -> CQPlane:

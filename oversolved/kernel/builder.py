@@ -18,6 +18,30 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _copy_shape(shape):
+    """Return a defensive copy of an OCC shape using BRepBuilderAPI_Copy.
+
+    OCC TopoDS_Shape objects are mutable; in-place operations (fuse, fillet, etc.)
+    mutate the original. This function creates an independent copy so that storing
+    a shape in a checkpoint does not get corrupted by later mutations.
+    """
+    if shape is None:
+        return None
+    try:
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+        # Cadquery wraps OCP shapes; unwrap to get the actual TopoDS_Shape
+        occ_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+        copier = BRepBuilderAPI_Copy(occ_shape, True)  # copy all sub-shapes
+        copier.Build()
+        if not copier.IsDone():
+            logger.warning("BRepBuilderAPI_Copy failed, returning original shape")
+            return shape
+        return copier.Shape()
+    except Exception as exc:
+        logger.warning("Failed to copy OCP shape: %s, returning original", exc)
+        return shape
+
+
 # Canonical keys that define a feature's identity for dirty detection.
 # Add new keys here when new feature kinds are introduced.
 # Transient/UI-only keys sent by the frontend are ignored during comparison.
@@ -328,7 +352,7 @@ def build(
                 id=body.id,
                 created_by=body.created_by,
                 modified_by=list(body.modified_by),
-                shape=body.shape,
+                shape=_copy_shape(body.shape),
                 sketch_id=body.sketch_id,
             )
             for bid, body in checkpoint.body_store_snapshot.items()
@@ -356,15 +380,14 @@ def build(
 
     # Use full feature list for lookups (solver may need features past rollback)
     features_by_id = {f["id"]: f for f in all_features}
-    registered_this_cycle: set[str] = set()
-
     for i, feature in enumerate(features[first_dirty:]):
         fid = feature.get("id", "")
 
         # BEFORE solving non-first features, re-register bodies that may have changed.
-        # Skip bodies already registered this cycle to avoid O(N*M) re-registration
-        # when many dirty features follow a single body-modifying feature.
+        # Reset registered_this_cycle per iteration so that every dirty feature
+        # sees the current shape, not the shape from a prior iteration.
         if i > 0:
+            registered_this_cycle: set[str] = set()
             for body in body_store.values():
                 if body.shape and body.created_by and body.id not in registered_this_cycle:
                     _register_body_faces(body)
@@ -386,15 +409,12 @@ def build(
             spec=copy.deepcopy(feature),
             result=feature_result,
             repo_snapshot={"elements": dict(global_repo.elements), "ancestral": dict(global_repo.ancestral)},
-            # Create new Body objects sharing the same (immutable) OCC shapes so that
-            # later in-place mutations of body.shape by fuse operations do not corrupt
-            # the shapes recorded at this checkpoint boundary.
             body_store_snapshot={
                 bid: Body(
                     id=body.id,
                     created_by=body.created_by,
                     modified_by=list(body.modified_by),
-                    shape=body.shape,
+                    shape=_copy_shape(body.shape),
                     sketch_id=body.sketch_id,
                 )
                 for bid, body in body_store.items()

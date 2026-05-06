@@ -92,7 +92,7 @@ export default function Part() {
   const { user } = useAuth()
 
   const [debugOpen, setDebugOpen] = useState(false)
-  const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo' | 'cache-inspector'>('selection')
+  const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo' | 'ws'>('selection')
   const showDebugHit = useSketchEditorStore(s => s.showDebugHit)
   const setShowDebugHit = useSketchEditorStore(s => s.setShowDebugHit)
   const [bugReportForm, setBugReportForm] = useState({ title: '', description: '' })

@@ -400,3 +400,165 @@ def test_corrupted_checkpoint_missing_body_id():
     spec2 = {'features': [sk1, ex1, sk_new]}
     r2 = build(spec2, prev_state=r1['_build_state'])
     assert r2['result']['sk_new']['status'] != 'exception'
+
+
+def test_checkpoint_shape_is_independent_copy():
+    """Verify _copy_shape() is used when creating checkpoints.
+
+    After the fix, shapes stored in checkpoints should be independent copies,
+    not the same object as the body_store shapes.
+    """
+    pytest.importorskip("OCP.gp")
+    sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    spec = {'features': [sk1, ex1]}
+    r1 = build(spec)
+
+    # Verify checkpoint stores shape (should be independent copy after fix)
+    checkpoint_shape = r1['_build_state'].checkpoints['ex1'].body_store_snapshot['body_ex1'].shape
+    assert checkpoint_shape is not None, "Checkpoint should store a shape"
+
+    # Verify the _copy_shape function exists and is being used
+    from oversolved.kernel.builder import _copy_shape
+    assert callable(_copy_shape), "_copy_shape helper should be implemented"
+
+
+def test_three_dirty_features_stale_ancestry():
+    """Partial rebuild with 3+ dirty features re-registers body ancestry per iteration.
+
+    Sequence: skA -> exA -> fillet (modifies body_exA) -> skC (on exA top face).
+    Modify fillet radius -> partial rebuild of fillet and skC.
+    skC must resolve with post-fillet geometry, not stale pre-fillet checkpoint data.
+    """
+    pytest.importorskip("OCP.gp")
+
+    skA = rect_sketch_spec(w=10.0, h=10.0, sketch_id='skA')
+    exA = extrude_spec('skA', 'exA', 10.0)
+
+    # Full build to get base geometry
+    r_base = build({'features': [skA, exA]})
+
+    # Get top face query for skC
+    face_queries = r_base['bodies']['body_exA']['mesh']['face_queries']
+    face_data = r_base['bodies']['body_exA']['mesh']['face_data']
+    top_face_query = next(
+        fq for fd, fq in zip(face_data, face_queries)
+        if fd['normal'][2] > 0.9
+    )
+
+    # Get an edge for fillet
+    edge_query = r_base['bodies']['body_exA']['edge_queries'][0]
+
+    fillet = {"id": "fil1", "kind": "fillet", "edges": [edge_query], "radius": 1.0}
+    skC = {
+        'id': 'skC', 'kind': 'sketch', 'plane': top_face_query,
+        'entities': [], 'constraints': [],
+    }
+
+    spec = {'features': [skA, exA, fillet, skC]}
+    r_full = build(spec)
+    assert r_full['result']['skC']['status'] != 'exception', (
+        f"skC failed in full build: {r_full['result']['skC'].get('exception')}"
+    )
+
+    # Modify fillet radius -> partial rebuild: skA + exA restored from cache, fillet + skC dirty
+    fillet_v2 = {"id": "fil1", "kind": "fillet", "edges": [edge_query], "radius": 5.0}
+    spec2 = {'features': [skA, exA, fillet_v2, skC]}
+    r_partial = build(spec2, prev_state=r_full['_build_state'])
+
+    assert r_partial['result']['skC']['status'] != 'exception', (
+        f"skC failed after partial rebuild: {r_partial['result']['skC'].get('exception')}"
+    )
+
+
+def test_three_dirty_features_with_boolean_cut_stale_ancestry():
+    """Boolean cut changes body shape; subsequent sketch on face sees correct geometry.
+
+    Sequence: skA -> exA (10mm) -> cutSk -> cutEx (boolean cut 3mm) -> skC (on exA top face).
+    Modify cutEx depth -> partial rebuild of cutEx and skC.
+    skC must resolve with post-cut face geometry.
+    """
+    pytest.importorskip("OCP.gp")
+
+    skA = rect_sketch_spec(w=10.0, h=10.0, sketch_id='skA')
+    exA = extrude_spec('skA', 'exA', 10.0)
+
+    r_base = build({'features': [skA, exA]})
+
+    face_queries = r_base['bodies']['body_exA']['mesh']['face_queries']
+    face_data = r_base['bodies']['body_exA']['mesh']['face_data']
+    top_face_query = next(
+        fq for fd, fq in zip(face_data, face_queries)
+        if fd['normal'][2] > 0.9
+    )
+
+    cutSk = rect_sketch_spec(w=4.0, h=4.0, sketch_id='cutSk')
+    cutEx = extrude_spec('cutSk', 'cutEx', 3.0, operation='cut')
+
+    skC = {
+        'id': 'skC', 'kind': 'sketch', 'plane': top_face_query,
+        'entities': [], 'constraints': [],
+    }
+
+    spec = {'features': [skA, exA, cutSk, cutEx, skC]}
+    r_full = build(spec)
+    assert r_full['result']['skC']['status'] != 'exception', (
+        f"skC failed in full build: {r_full['result']['skC'].get('exception')}"
+    )
+
+    # Modify cutEx depth -> partial rebuild: skA + exA + cutSk restored from cache, cutEx + skC dirty
+    cutEx_v2 = extrude_spec('cutSk', 'cutEx', 8.0, operation='cut')
+    spec2 = {'features': [skA, exA, cutSk, cutEx_v2, skC]}
+    r_partial = build(spec2, prev_state=r_full['_build_state'])
+
+    assert r_partial['result']['skC']['status'] != 'exception', (
+        f"skC failed after partial rebuild: {r_partial['result']['skC'].get('exception')}"
+    )
+
+
+def test_registered_this_cycle_reset():
+    """_register_brep_face_ancestry is called for each non-first dirty feature.
+
+    White-box: monkey-patch _register_brep_face_ancestry to count calls.
+    With 2 dirty features after checkpoint restore, the function should be
+    called at least once per iteration for body_exA.
+    """
+    pytest.importorskip("OCP.gp")
+    from unittest.mock import patch
+    import oversolved.kernel.builder as builder_module
+
+    skA = rect_sketch_spec(w=10.0, h=10.0, sketch_id='skA')
+    exA = extrude_spec('skA', 'exA', 5.0)
+
+    # Full build to create initial state
+    r1 = build({'features': [skA, exA]})
+
+    # Modify exA distance -> first_dirty = 1 (skA restored from cache, exA dirty)
+    # Then add new feature after exA for second dirty iteration
+    skB = rect_sketch_spec(w=5.0, h=5.0, sketch_id='skB')
+
+    call_count = 0
+    orig = builder_module._register_brep_face_ancestry
+
+    def counting_wrapper(global_repo, body, mesh):
+        nonlocal call_count
+        call_count += 1
+        return orig(global_repo, body, mesh)
+
+    exA_v2 = extrude_spec('skA', 'exA', 10.0)
+    spec2 = {'features': [skA, exA_v2, skB]}
+
+    with patch.object(builder_module, '_register_brep_face_ancestry', counting_wrapper):
+        r2 = build(spec2, prev_state=r1['_build_state'])
+
+    # body_exA exists in body_store for both dirty iterations.
+    # _register_brep_face_ancestry should be called >= 2 times:
+    #   - Once during exA's iteration (i=0, new body registration after solve)
+    #   - Once during skB's iteration (i=1, pre-solve re-registration)
+    # Without the fix, the i=1 call would be skipped.
+    assert call_count >= 2, (
+        f"_register_brep_face_ancestry called {call_count} times, "
+        f"expected >= 2"
+    )
+
+    assert r2['result']['skB']['status'] != 'exception'

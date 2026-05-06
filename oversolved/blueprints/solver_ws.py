@@ -230,7 +230,8 @@ def _handle_solve(data, session_cache, max_cache_size, db, ws):
 
     prev_state = None
     if doc_id and doc_id in session_cache:
-        prev_state = session_cache[doc_id]
+        prev_state = session_cache.pop(doc_id)
+        session_cache[doc_id] = prev_state
 
     build_result = build(
         data,
@@ -243,6 +244,7 @@ def _handle_solve(data, session_cache, max_cache_size, db, ws):
     if doc_id:
         if doc_id not in session_cache and len(session_cache) >= max_cache_size:
             session_cache.pop(next(iter(session_cache)))
+        session_cache.pop(doc_id, None)
         session_cache[doc_id] = new_state
 
     duration_ms = build_result.get("solve_ms")

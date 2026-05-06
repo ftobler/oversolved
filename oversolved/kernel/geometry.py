@@ -1,5 +1,7 @@
 """geometry.py - Geometric classification helpers and CAD shape operations."""
 
+from __future__ import annotations
+
 import math
 import os
 import logging
@@ -7,7 +9,10 @@ import tempfile
 from io import BytesIO
 from typing import Any
 
-from cadquery.occ_impl import shapes as cq_shapes
+try:
+    from cadquery.occ_impl import shapes as cq_shapes
+except ImportError:
+    cq_shapes = None  # type: ignore
 from oversolved.kernel.cadquery_ops import (
     _compute_face_centroid,
     _compute_face_normal,

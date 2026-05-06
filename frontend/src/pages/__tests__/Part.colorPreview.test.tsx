@@ -94,7 +94,7 @@ vi.mock('../../components/BugReporter', () => ({ BugReporter: () => null }))
 vi.mock('../../components/ExportDialog', () => ({ default: () => null }))
 vi.mock('../../components/ShareDialog', () => ({ default: () => null }))
 vi.mock('../../components/LoadingOverlay', () => ({ default: () => null }))
-vi.mock('../../components/CacheInspector', () => ({ default: () => null }))
+vi.mock('../../components/WsReconnect', () => ({ default: () => null }))
 
 interface MenuItem {
   label: string
