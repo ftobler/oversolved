@@ -296,13 +296,10 @@ useEffect(() => {
     return result
   }, [features, visibleFeatures, activeSketchFeatureId, solveResults])
 
-  const ghostMode: 'additive' | 'subtractive' | undefined = useMemo(() => {
-    const editingFeature = editingFeatureId ? features.find(f => f.id === editingFeatureId) : null
-    if (!editingFeature || editingFeature.kind === 'sketch') return undefined
-    if (editingFeature.kind !== 'boolean') return 'additive'
-    const op = editingFeature.boolean?.operation
-    if (op === 'subtract') return 'subtractive'
-    return 'additive'
+  const ghostMode = useMemo(() => {
+    if (!editingFeatureId) return false
+    const feature = features.find(f => f.id === editingFeatureId)
+    return !!feature && feature.kind !== 'sketch' && feature.kind !== 'plane'
   }, [features, editingFeatureId])
 
   const setMode = useCallback((newMode: 'sketch' | 'feature' | 'code') => {

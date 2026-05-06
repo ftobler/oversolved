@@ -313,7 +313,7 @@ class TestSolverWebSocket:
             content_type="application/json",
             headers=auth_headers,
         )
-        assert response.status_code == 404
+        assert response.status_code == 405
 
     def test_websocket_config_default_cache_size(self, app):
         """Default SOLVER_WS_CACHE_MAX_SIZE is 10."""

@@ -47,4 +47,10 @@ describe('getBodiesToRender', () => {
     const items = getBodiesToRender(bodies, features, 1, new Set(['body_ex1']))
     expect(items).toHaveLength(0)
   })
+
+  it('ghost is always false (ghost state determined by Viewport, not data layer)', () => {
+    const items = getBodiesToRender(bodies, features, undefined, undefined)
+    expect(items).toHaveLength(1)
+    expect(items[0].ghost).toBe(false)
+  })
 })

@@ -22,7 +22,9 @@ vi.mock('../Geometry3D', () => ({
 }))
 
 vi.mock('../Geometry3D/Body3D', () => ({
-  default: ({ interactive }: { interactive?: boolean }) => <div data-testid={`body-3d`} data-interactive={interactive} />,
+  default: ({ interactive, ghost }: { interactive?: boolean; ghost?: boolean }) => (
+    <div data-testid={`body-3d`} data-interactive={interactive} data-ghost={ghost} />
+  ),
   __esModule: true,
 }))
 
@@ -104,5 +106,24 @@ describe('Viewport body interactive flag', () => {
     container.querySelectorAll('[data-testid="body-3d"]').forEach(el => {
       expect(el.getAttribute('data-interactive')).toBe('true')
     })
+  })
+
+  it('ghostMode renders both sets semi-transparent with pickBodies interactive and bodyItems inert', () => {
+    const { getAllByTestId } = render(
+      <Viewport
+        features={[sketch, extrude]}
+        bodies={makeBody()}
+        pickBodies={makeBody()}
+        ghostMode={true}
+      />
+    )
+    const items = getAllByTestId('body-3d')
+    const ghostItems = items.filter(el => el.getAttribute('data-ghost') === 'true')
+    expect(ghostItems.length).toBeGreaterThanOrEqual(2)
+    // pickBodyItems are interactive, bodyItems are not
+    const interactiveItems = items.filter(el => el.getAttribute('data-interactive') === 'true')
+    const inertItems = items.filter(el => el.getAttribute('data-interactive') === 'false')
+    expect(interactiveItems.length).toBeGreaterThanOrEqual(1)
+    expect(inertItems.length).toBeGreaterThanOrEqual(1)
   })
 })

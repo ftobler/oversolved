@@ -41,7 +41,7 @@ interface ViewportProps {
   pickBodies?: Record<string, BodyResult>
   partColors?: Record<string, string>
   partStyle?: Record<string, import('../types/cad').PartStyleEntry>
-  ghostMode?: 'additive' | 'subtractive'
+  ghostMode?: boolean  // true when editing a non-sketch feature (enables body ghosting)
 }
 
 function isActive(id: string, features: Feature[] | undefined, rollbackPos: number | undefined, visible: Set<string> | undefined): boolean {
@@ -449,13 +449,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const showRight  = isActive('Right',  features, rollbackPosition, visibleFeatures)
 
   const bodyItems = useMemo(
-    () => getBodiesToRender(bodies, features, rollbackPosition, visibleBodies, ghostMode),
-    [bodies, features, rollbackPosition, visibleBodies, ghostMode]
+    () => getBodiesToRender(bodies, features, rollbackPosition, visibleBodies),
+    [bodies, features, rollbackPosition, visibleBodies]
   )
 
   const pickBodyItems = useMemo(
-    () => getBodiesToRender(pickBodies, features, undefined, visibleBodies, ghostMode),
-    [pickBodies, features, visibleBodies, ghostMode]
+    () => getBodiesToRender(pickBodies, features, undefined, visibleBodies),
+    [pickBodies, features, visibleBodies]
   )
 
   const activeSketchFeatures = useMemo(
@@ -564,17 +564,18 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           )
         })}
 
-        {pickBodyItems.length > 0 ? (
-          // During feature editing (e.g., fillet edge picking): show only the pre-operation
-          // body as a solid interactive mesh, NOT the post-operation ghost overlay.
-          // Rendering both simultaneously produces a confusing semi-transparent composite
-          // that looks like stale/unpurged geometry.
-          pickBodyItems.map(b => (
-            <Body3D key={`pick-${b.key}`} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={false} interactive={true} />
-          ))
+        {ghostMode ? (
+          <>
+            {pickBodyItems.map(b => (
+              <Body3D key={`old-${b.key}`} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={true} interactive={true} />
+            ))}
+            {bodyItems.map(b => (
+              <Body3D key={`new-${b.key}`} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={true} interactive={false} />
+            ))}
+          </>
         ) : (
           bodyItems.map(b => (
-            <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={b.ghost} interactive={ghostMode === undefined} />
+            <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={false} interactive={true} />
           ))
         )}
       </Canvas>

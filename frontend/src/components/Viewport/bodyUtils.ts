@@ -40,7 +40,6 @@ export function getBodiesToRender(
   features: Feature[] | undefined,
   rollbackPosition: number | undefined,
   visibleBodies: Set<string> | undefined,
-  ghostMode?: 'additive' | 'subtractive',
 ): BodyRenderItem[] {
   const items: BodyRenderItem[] = []
   if (!bodies) return items
@@ -49,11 +48,6 @@ export function getBodiesToRender(
     const createdBy = body.created_by
     if (!isInActiveRange(createdBy, features, rollbackPosition)) continue
     if (!body.mesh) continue
-
-    let ghost = false
-    if (ghostMode !== undefined) {
-      ghost = true
-    }
 
     items.push({
       key: bodyId,
@@ -65,7 +59,7 @@ export function getBodiesToRender(
       vertices: body.vertices,
       vertexQueries: body.vertex_queries,
       visible: visibleBodies ? visibleBodies.has(bodyId) : true,
-      ghost,
+      ghost: false,
     })
   }
   return items

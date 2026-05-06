@@ -823,7 +823,7 @@
   padding: 4px 4px;
   border-bottom: 1px solid #333;
   background: #111;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
   flex-wrap: nowrap;
 }

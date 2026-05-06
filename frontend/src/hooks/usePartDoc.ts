@@ -196,6 +196,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const rollbackPosRef = useRef<number | null>(null)
   const pickBoundaryRef = useRef<number | null>(null)
   const requestIdRef = useRef(0)
+  const lastValidMsgIdRef = useRef<number | null>(null)
   const cancelledRef = useRef(false)
 
   const applySolveResult = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
@@ -299,8 +300,16 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     }
   }, [setCodeText])
 
-  const applyGeometryUpdate = useCallback((_msgId: number, header: GeometryHeader, buffer: ArrayBuffer, jsonHeaderLen: number) => {
+  const applyGeometryUpdate = useCallback((msgId: number, header: GeometryHeader, buffer: ArrayBuffer, jsonHeaderLen: number) => {
     try {
+      // Discard stale geometry frames from previous solves.
+      // The binary frame always arrives after the JSON solve_result on the
+      // same WebSocket, so by the time we get here, reSolve has already set
+      // lastValidMsgIdRef from the non-stale JSON response. If the msgId
+      // doesn't match, this frame belongs to a superseded solve.
+      if (lastValidMsgIdRef.current !== null && msgId !== lastValidMsgIdRef.current) {
+        return
+      }
       const unpacked = unpackBodies(header, buffer, jsonHeaderLen)
       const d = docRef.current
       if (d) reconcilePartStyle(d, unpacked)
@@ -416,6 +425,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         return
       }
       rollbackPosRef.current = effectiveRollback
+      // Track the solver msgId so applyGeometryUpdate can discard stale
+      // binary frames from previous solves that arrive out of order.
+      if (response.msgId != null) {
+        lastValidMsgIdRef.current = response.msgId
+      }
 
       const endTime = performance.now()
       const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
