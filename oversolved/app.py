@@ -319,14 +319,15 @@ def create_app(config: dict | None = None) -> Flask:
     # ── Frontend static serving ───────────────────────────────────────────────
 
     frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
-    if frontend_dist.exists():
 
-        @app.route("/")
-        @app.route("/<path:path>")
-        def serve_frontend(path="index.html"):
-            if path and (frontend_dist / path).exists():
-                return send_from_directory(frontend_dist, path)
-            return send_from_directory(frontend_dist, "index.html")
+    @app.route("/")
+    @app.route("/<path:path>")
+    def serve_frontend(path="index.html"):
+        if not frontend_dist.exists():
+            return "", 404
+        if path and (frontend_dist / path).exists():
+            return send_from_directory(frontend_dist, path)
+        return send_from_directory(frontend_dist, "index.html")
 
     @app.teardown_appcontext
     def close_db(error):
