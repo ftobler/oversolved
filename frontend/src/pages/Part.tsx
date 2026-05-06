@@ -333,11 +333,6 @@ useEffect(() => {
     setIsRebuilding(true)
     try {
       await invalidateDocCache(uuid)
-      await fetch('/api/cache/flush', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ doc_id: uuid, level: 'all' }),
-      })
       await reSolve(docRef.current, rollbackPosition ?? features.length)
     } catch (e) {
       console.error('Rebuild failed:', e)

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import CacheInspector from '../CacheInspector'
 import { cacheBuildResponse, invalidateAllCache } from '../../utils/buildCache'
@@ -24,16 +24,9 @@ describe('CacheInspector', () => {
     await invalidateAllCache()
   })
 
-  it('renders frontend and l1 tabs', () => {
+  it('renders frontend tab', () => {
     render(<CacheInspector />)
     expect(screen.getByRole('button', { name: /Frontend/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /L1 Memory/i })).toBeInTheDocument()
-  })
-
-  it('switches to l1 tab on click', () => {
-    render(<CacheInspector />)
-    fireEvent.click(screen.getByRole('button', { name: /L1 Memory/i }))
-    expect(screen.getByRole('button', { name: /L1 Memory/i })).toHaveClass('active')
   })
 
   it('shows empty frontend cache message', async () => {
@@ -98,46 +91,5 @@ describe('CacheInspector', () => {
     })
   })
 
-  it('shows l1 entries when on l1 tab', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        l1: [{ doc_id: 'doc_a', feature_order: [], checkpoint_count: 1, accessed_at: new Date().toISOString(), shape_size_estimate: 0 }],
-      }),
-    } as unknown as Response)
 
-    render(<CacheInspector />)
-    fireEvent.click(screen.getByRole('button', { name: /L1 Memory/i }))
-
-    await waitFor(() => {
-      expect(screen.getByText(/doc_a/)).toBeInTheDocument()
-    })
-  })
-
-  it('filters l1 entries by search query', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        l1: [
-          { doc_id: 'doc_a', feature_order: [], checkpoint_count: 1, accessed_at: new Date().toISOString(), shape_size_estimate: 0 },
-          { doc_id: 'doc_b', feature_order: [], checkpoint_count: 1, accessed_at: new Date().toISOString(), shape_size_estimate: 0 },
-        ],
-      }),
-    } as unknown as Response)
-
-    render(<CacheInspector />)
-    fireEvent.click(screen.getByRole('button', { name: /L1 Memory/i }))
-
-    await waitFor(() => {
-      expect(screen.getByText(/doc_a/)).toBeInTheDocument()
-    })
-
-    const searchInput = screen.getByPlaceholderText(/Search by doc_id/i)
-    fireEvent.change(searchInput, { target: { value: 'doc_b' } })
-
-    await waitFor(() => {
-      expect(screen.queryByText(/doc_a/)).not.toBeInTheDocument()
-      expect(screen.getByText(/doc_b/)).toBeInTheDocument()
-    })
-  })
 })
