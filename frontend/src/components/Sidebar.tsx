@@ -922,6 +922,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span className="material-icons-outlined">close</span>
                       </button>
                     )}
+                    {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (
+                      <span className="feature-visibility-placeholder" />
+                    )}
                     {(feature.kind === 'sketch' || feature.kind === 'plane' || (BUILT_IN_IDS.has(feature.id) && feature.id !== 'Origin')) && feature.id !== editingFeatureId && (
                       <button
                         className="feature-visibility-btn"
