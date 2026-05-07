@@ -50,6 +50,10 @@ export default function UserDefinedPlane({
   })
 
   const onClick = usePlaneClickDispatch(selId)
+  const onPointerOver = useCallback((e: { stopPropagation: () => void }) => {
+    e.stopPropagation()
+    onOver(e)
+  }, [onOver])
 
   const planeState: PlaneState = hovered ? 'hovered' : selected ? 'selected' : 'default'
   const rot = planeRotationFromTransform(planeTransform)
@@ -62,7 +66,7 @@ export default function UserDefinedPlane({
         size={size}
         state={planeState}
         hideMesh={isDragging}
-        onPointerOver={onOver}
+        onPointerOver={onPointerOver}
         onPointerOut={onOut}
         onClick={onClick}
       />

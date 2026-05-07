@@ -45,7 +45,7 @@ export type PlaneState = 'default' | 'hovered' | 'selected'
 const STATE_STYLES: Record<PlaneState, { fillColor: string; fillOpacity: number; borderColor: string }> = {
   default: { fillColor: '#444444', fillOpacity: 0.05, borderColor: '#666666' },
   hovered: { fillColor: '#ffffff', fillOpacity: 0.08, borderColor: '#ffffff' },
-  selected: { fillColor: '#ff9800', fillOpacity: 0.08, borderColor: '#ff9800' },
+  selected: { fillColor: '#ff9800', fillOpacity: 0.05, borderColor: '#ff9800' },
 }
 
 interface PlaneSurfaceProps {

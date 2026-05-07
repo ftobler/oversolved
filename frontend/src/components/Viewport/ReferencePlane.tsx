@@ -20,7 +20,6 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
   const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
-  const activeTool = useSketchEditorStore(s => s.activeTool)
   const drag = useSketchEditorStore(s => s.drag)
   const setHoveredPlane = useSketchEditorStore(s => s.setHoveredPlane)
   const isRotating = useSketchEditorStore(s => s.isRotating)
@@ -28,7 +27,6 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
 
   const planeState: PlaneState = hovered ? 'hovered' : selected ? 'selected' : 'default'
-  const isDrawingTool = (activeTool ?? 'drag') !== 'select' && (activeTool ?? 'drag') !== 'dimension'
   // REGRESSION PROTECTION: Hide collision mesh during any drag
   // BUG: Reference planes (XY, XZ, YZ) collision could block DragPlane raycasts,
   //      causing dragging to fail when cursor moved over a reference plane.
@@ -45,7 +43,7 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
         size={PLANE_SIZE}
         state={planeState}
         hideMesh={isDragging}
-        onPointerOver={e => { if (isRotating) return; if (!isDrawingTool) e.stopPropagation(); setHovered(true); setHoveredPlane(selId) }}
+        onPointerOver={e => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredPlane(selId) }}
         onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredPlane(null) }}
         onClick={e => {
           e.stopPropagation()
