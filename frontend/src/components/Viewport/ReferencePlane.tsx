@@ -1,32 +1,10 @@
-import { useState, useRef } from 'react'
-import { Line, Text } from '@react-three/drei'
-import { useThree, useFrame } from '@react-three/fiber'
-import * as THREE from 'three'
+import { useState } from 'react'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { builtinSelectionId } from '../Geometry3D/utils'
-import { COLOR_HOVER, COLOR_INACTIVE, COLOR_SELECTED } from '../Geometry3D/constants'
+import { PlaneLabel, PlaneSurface, type PlaneState } from './PlaneVisual'
 
 const PLANE_SIZE = 100
 const PH = PLANE_SIZE / 2
-const PLANE_BORDER: [number,number,number][] = [[-PH,-PH,0],[PH,-PH,0],[PH,PH,0],[-PH,PH,0],[-PH,-PH,0]]
-
-function PlaneLabel({ x, y, children }: { x: number; y: number; children: string }) {
-  const groupRef = useRef<THREE.Group>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (groupRef.current) {
-      const s = 12 / (('zoom' in camera) ? (camera as THREE.OrthographicCamera).zoom : 1)
-      groupRef.current.scale.setScalar(s)
-    }
-  })
-  return (
-    <group ref={groupRef} position={[x + 1.0, y - 0.02, 0.001]}>
-      <Text fontSize={3} color="#888888" fillOpacity={0.20} anchorX="left" anchorY="top">
-        {children}
-      </Text>
-    </group>
-  )
-}
 
 interface ReferencePlaneProps {
   rotation: [number, number, number]
@@ -49,8 +27,7 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   const selId = builtinSelectionId(label)
   const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
 
-  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_INACTIVE
-  const opacity = hovered ? 0.15 : selected ? 0.10 : 0.05
+  const planeState: PlaneState = hovered ? 'hovered' : selected ? 'selected' : 'default'
   const isDrawingTool = (activeTool ?? 'drag') !== 'select' && (activeTool ?? 'drag') !== 'dimension'
   // REGRESSION PROTECTION: Hide collision mesh during any drag
   // BUG: Reference planes (XY, XZ, YZ) collision could block DragPlane raycasts,
@@ -64,21 +41,18 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
 
   return (
     <group rotation={rotation}>
-      {!isDragging && (
-        <mesh
-          onPointerOver={e => { if (isRotating) return; if (!isDrawingTool) e.stopPropagation(); setHovered(true); setHoveredPlane(selId) }}
-          onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredPlane(null) }}
-          onClick={e => {
-            e.stopPropagation()
-            if (planeSelectionFeatureId) commitPlaneSelection(selId)
-            else { toggleNormalSelection(selId); if (pendingPickField) commitFieldPick() }
-          }}
-        >
-          <planeGeometry args={[PLANE_SIZE, PLANE_SIZE]} />
-          <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
-        </mesh>
-      )}
-      <Line points={PLANE_BORDER} color={hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : '#666666'} lineWidth={1} />
+      <PlaneSurface
+        size={PLANE_SIZE}
+        state={planeState}
+        hideMesh={isDragging}
+        onPointerOver={e => { if (isRotating) return; if (!isDrawingTool) e.stopPropagation(); setHovered(true); setHoveredPlane(selId) }}
+        onPointerOut={() => { if (isRotating) return; setHovered(false); setHoveredPlane(null) }}
+        onClick={e => {
+          e.stopPropagation()
+          if (planeSelectionFeatureId) commitPlaneSelection(selId)
+          else { toggleNormalSelection(selId); if (pendingPickField) commitFieldPick() }
+        }}
+      />
       <PlaneLabel x={-PH} y={PH}>{label}</PlaneLabel>
     </group>
   )

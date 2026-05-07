@@ -1,38 +1,9 @@
-import { useCallback, useRef } from 'react'
-import { useThree } from '@react-three/fiber'
-import { Line, Text } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
-import * as THREE from 'three'
+import { useCallback } from 'react'
 import type { PlaneTransform } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { planeRotationFromTransform } from '../Geometry3D/utils'
-import { COLOR_SELECTED, COLOR_HOVER } from '../Geometry3D/constants'
 import { useHoverAndDynamicSelection } from '../Geometry3D/useHoverAndDynamicSelection'
-
-function createPlaneBorder(size: number): [number, number, number][] {
-  const ph = size / 2
-  return [
-    [-ph, -ph, 0], [ph, -ph, 0], [ph, ph, 0], [-ph, ph, 0], [-ph, -ph, 0],
-  ]
-}
-
-function PlaneLabel({ x, y, children }: { x: number; y: number; children: string }) {
-  const groupRef = useRef<THREE.Group>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (groupRef.current) {
-      const s = 12 / (('zoom' in camera) ? (camera as THREE.OrthographicCamera).zoom : 1)
-      groupRef.current.scale.setScalar(s)
-    }
-  })
-  return (
-    <group ref={groupRef} position={[x + 1.0, y - 0.02, 0.001]}>
-      <Text fontSize={3} color="#888888" fillOpacity={0.20} anchorX="left" anchorY="top">
-        {children}
-      </Text>
-    </group>
-  )
-}
+import { PlaneLabel, PlaneSurface, type PlaneState } from './PlaneVisual'
 
 /** Encapsulates click routing for plane elements:
  *  1. plane selection mode active  -> commitPlaneSelection
@@ -80,23 +51,21 @@ export default function UserDefinedPlane({
 
   const onClick = usePlaneClickDispatch(selId)
 
+  const planeState: PlaneState = hovered ? 'hovered' : selected ? 'selected' : 'default'
   const rot = planeRotationFromTransform(planeTransform)
   const [ox, oy, oz] = planeTransform.origin
   const ph = size / 2
-  const planeBorder = createPlaneBorder(size)
-
-  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : '#444444'
-  const opacity = hovered ? 0.15 : selected ? 0.10 : 0.05
 
   return (
     <group position={[ox, oy, oz]} rotation={rot}>
-      {!isDragging && (
-        <mesh onPointerOver={onOver} onPointerOut={onOut} onClick={onClick}>
-          <planeGeometry args={[size, size]} />
-          <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
-        </mesh>
-      )}
-      <Line points={planeBorder} color={hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : '#666666'} lineWidth={1} />
+      <PlaneSurface
+        size={size}
+        state={planeState}
+        hideMesh={isDragging}
+        onPointerOver={onOver}
+        onPointerOut={onOut}
+        onClick={onClick}
+      />
       <PlaneLabel x={-ph} y={ph}>{label}</PlaneLabel>
     </group>
   )

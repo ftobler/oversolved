@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrthographicCamera, Line, Text } from '@react-three/drei'
+import { OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
 import type { SketchData, Feature, Sketch, BodyResult, PlaneDef } from '../types/cad'
 import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
@@ -14,6 +14,7 @@ import ReferencePlane from './Viewport/ReferencePlane'
 import SceneController from './Viewport/SceneController'
 import CameraLight from './Viewport/CameraLight'
 import UserDefinedPlane from './Viewport/UserDefinedPlane'
+import { PlaneLabel, PlaneSurface } from './Viewport/PlaneVisual'
 import ContextMenuDialog from './ContextMenuDialog'
 import { CLICK_THRESHOLD_PX } from './Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from './interaction/useSelectionPointerUpCleanup'
@@ -169,45 +170,16 @@ export function SketchPlaneDisplay({ planeQuery, size, sketchLabel }: SketchPlan
     return null
   }
 
-  const ph = size / 2
-  const planeBorder: [number, number, number][] = [
-    [-ph, -ph, 0], [ph, -ph, 0], [ph, ph, 0], [-ph, ph, 0], [-ph, -ph, 0],
-  ]
-
   return (
     <group rotation={rotation}>
-      <mesh raycast={() => null}>
-        <planeGeometry args={[size, size]} />
-        <meshBasicMaterial
-          color="#0077ff"
-          transparent
-          opacity={0.05}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-          wireframe={false}
-        />
-      </mesh>
-
-      <Line
-        points={planeBorder}
-        color="#0077ff"
-        lineWidth={2}
-        transparent
-        opacity={0.3}
+      <PlaneSurface
+        size={size}
+        noRaycast
       />
-
       {sketchLabel && (
-        <group position={[-ph + 1.0, ph - 0.05, 0.001]}>
-          <Text
-            fontSize={3}
-            color="#0077ff"
-            fillOpacity={0.6}
-            anchorX="left"
-            anchorY="top"
-          >
-            {sketchLabel}
-          </Text>
-        </group>
+        <PlaneLabel x={-size/2} y={size/2}>
+          {sketchLabel}
+        </PlaneLabel>
       )}
     </group>
   )
