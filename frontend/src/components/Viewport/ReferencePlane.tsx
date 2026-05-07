@@ -20,7 +20,7 @@ function PlaneLabel({ x, y, children }: { x: number; y: number; children: string
     }
   })
   return (
-    <group ref={groupRef} position={[x + 0.03, y - 0.02, 0.001]}>
+    <group ref={groupRef} position={[x + 1.0, y - 0.02, 0.001]}>
       <Text fontSize={3} color="#888888" fillOpacity={0.20} anchorX="left" anchorY="top">
         {children}
       </Text>
@@ -50,7 +50,7 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_INACTIVE
-  const opacity = hovered ? 0.15 : selected ? 0.12 : 0.05
+  const opacity = hovered ? 0.15 : selected ? 0.10 : 0.05
   const isDrawingTool = (activeTool ?? 'drag') !== 'select' && (activeTool ?? 'drag') !== 'dimension'
   // REGRESSION PROTECTION: Hide collision mesh during any drag
   // BUG: Reference planes (XY, XZ, YZ) collision could block DragPlane raycasts,

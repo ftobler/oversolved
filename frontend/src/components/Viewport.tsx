@@ -181,7 +181,7 @@ export function SketchPlaneDisplay({ planeQuery, size, sketchLabel }: SketchPlan
         <meshBasicMaterial
           color="#0077ff"
           transparent
-          opacity={0.08}
+          opacity={0.05}
           side={THREE.DoubleSide}
           depthWrite={false}
           wireframe={false}
@@ -197,7 +197,7 @@ export function SketchPlaneDisplay({ planeQuery, size, sketchLabel }: SketchPlan
       />
 
       {sketchLabel && (
-        <group position={[-ph + 0.03, ph - 0.05, 0.001]}>
+        <group position={[-ph + 1.0, ph - 0.05, 0.001]}>
           <Text
             fontSize={3}
             color="#0077ff"
