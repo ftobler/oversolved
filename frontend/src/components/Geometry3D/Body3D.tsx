@@ -539,16 +539,24 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const defaultColor = new THREE.Color(edgeColor)
     const selectedColor = new THREE.Color(COLOR_SELECTED)
     const hoverColor = new THREE.Color(COLOR_HOVER)
+    const ghostColor = defaultColor.clone().lerp(new THREE.Color('#111111'), 0.5)
+    const bgColor = new THREE.Color('#111111')
 
     for (let segIdx = 0; segIdx < totalSegments; segIdx++) {
       const edgeIdx = segmentToEdgeMap[segIdx]
-      let color = defaultColor
+      let color: THREE.Color
       if (interactive) {
         if (getIsEdgeSelected(edgeIdx)) {
-          color = selectedColor
+          color = ghost ? bgColor : selectedColor
         } else if (edgeIdx === hoveredEdgeIndex) {
           color = hoverColor
+        } else if (ghost) {
+          color = ghostColor
+        } else {
+          color = defaultColor
         }
+      } else {
+        color = ghost ? ghostColor : defaultColor
       }
 
       // Set color for both vertices of this segment
@@ -561,7 +569,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       colors[baseIdx + 5] = color.b
     }
     return colors
-  }, [segmentToEdgeMap, getIsEdgeSelected, hoveredEdgeIndex, edgeColor, interactive])
+  }, [segmentToEdgeMap, getIsEdgeSelected, hoveredEdgeIndex, edgeColor, interactive, ghost])
 
   // debugFaceColors takes precedence when showDebugHit is on.
   const activeColors = debugFaceColors ?? faceColors
@@ -763,12 +771,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
             color="white"
             vertexColors={true}
             transparent={ghost}
-            opacity={ghost ? 1.0 : 1}
             depthWrite={!ghost}
-            blending={ghost ? THREE.CustomBlending : undefined}
-            blendEquation={ghost ? THREE.AddEquation : undefined}
-            blendSrc={ghost ? THREE.SrcAlphaFactor : undefined}
-            blendDst={ghost ? THREE.OneMinusSrcAlphaFactor : undefined}
           />
         </lineSegments>
       )}
@@ -833,8 +836,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         const geo = edgeBoundaryGeos.get(query)
         if (!geo) return null
         return (
-          <lineSegments key={query} geometry={geo}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} />
+          <lineSegments key={query} geometry={geo} renderOrder={RENDER_ORDER_HIGHLIGHT}>
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent />
           </lineSegments>
         )
       })}
