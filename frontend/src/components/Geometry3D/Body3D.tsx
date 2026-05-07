@@ -9,6 +9,7 @@ import {
   COLOR_BODY_SELECTED,
   COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL,
   COLOR_SELECTED, COLOR_HOVER,
+  blendWhite,
   ARC_SEGMENTS,
   HIT_PIXELS, POINT_HIT_PIXELS, POINT_VIS_PIXELS,
   RENDER_ORDER_DEFAULT,
@@ -502,7 +503,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const colors = new Float32Array(numTris * 3 * 3)
     const defaultColor = new THREE.Color(bodyColor)
     const selectedColor = new THREE.Color(COLOR_SELECTED)
-    const hoverColor = new THREE.Color(COLOR_HOVER)
+    const hoverColor = new THREE.Color(blendWhite(bodyColor))
 
     for (let i = 0; i < numTris; i++) {
       let color = defaultColor
@@ -810,7 +811,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         const geo = edgeBoundaryGeos.get(query)
         return geo ? (
           <lineSegments geometry={geo}>
-            <lineBasicMaterial color={COLOR_HOVER} linewidth={2} depthTest={false} />
+            <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
           </lineSegments>
         ) : null
       })()}
@@ -819,13 +820,13 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         if (!geo) return null
         return (
           <lineSegments key={query} geometry={geo}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={2} depthTest={false} />
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} />
           </lineSegments>
         )
       })}
       {interactive && faceBoundaryGeos && hovered3DSurfaceId && faceBoundaryGeos.has(hovered3DSurfaceId) && (
         <lineSegments geometry={faceBoundaryGeos.get(hovered3DSurfaceId)}>
-          <lineBasicMaterial color={COLOR_HOVER} linewidth={2} depthTest={false} />
+          <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
         </lineSegments>
       )}
       {interactive && faceBoundaryGeos && [...normalSelection].map(query => {
@@ -833,7 +834,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         if (!geo) return null
         return (
           <lineSegments key={query} geometry={geo}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={2} depthTest={false} />
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} />
           </lineSegments>
         )
       })}
