@@ -425,6 +425,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     [bodies, features, rollbackPosition, visibleBodies]
   )
 
+  // Show ALL pickBodies regardless of rollbackPosition — these represent the body
+  // state before entering edit mode, and the user needs to see every prior body to
+  // pick faces/edges as references for the feature being edited.
   const pickBodyItems = useMemo(
     () => getBodiesToRender(pickBodies, features, undefined, visibleBodies),
     [pickBodies, features, visibleBodies]

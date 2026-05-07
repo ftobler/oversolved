@@ -276,9 +276,13 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
 
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
+  const hoveredEdgeIndexRef = useRef<number | null>(null)
+  useEffect(() => { hoveredEdgeIndexRef.current = hoveredEdgeIndex }, [hoveredEdgeIndex])
   const [hoveredVertexIndex, setHoveredVertexIndex] = useState<number | null>(null)
 
   const lastHoveredFaceRef = useRef<string | null>(null)
+  const faceColorAttrRef = useRef<THREE.BufferAttribute | null>(null)
+  const edgeColorAttrRef = useRef<THREE.BufferAttribute | null>(null)
 
   const updateFaceGeometry = useCallback((faceIndex: number) => {
     const { triangle_to_face, face_queries } = mesh
@@ -482,7 +486,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     if (rawIndex !== undefined) {
       edgeIndex = segmentToEdgeMap[Math.floor(rawIndex / 2)]
     } else {
-      edgeIndex = hoveredEdgeIndex ?? undefined
+      edgeIndex = hoveredEdgeIndexRef.current ?? undefined
     }
 
     if (edgeIndex !== undefined) {
@@ -494,7 +498,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       }
       if (state.pendingPickField) state.commitFieldPick()
     }
-  }, [featureId, bodyId, edgeQueries, segmentToEdgeMap, hoveredEdgeIndex])
+  }, [featureId, bodyId, edgeQueries, segmentToEdgeMap])
 
   // Always compute face colors -- avoids toggling vertexColors on the material which
   // causes shader recompilation and a black-frame artifact.
@@ -564,16 +568,25 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
 
   // Always update the color attribute -- faceColors is always non-null so vertexColors
   // stays permanently enabled, avoiding shader recompilation on selection change.
+  // Dispose the previous attribute to avoid leaking GPU memory on each hover/selection change.
   useEffect(() => {
+    const oldAttr = faceColorAttrRef.current
     const attr = new THREE.BufferAttribute(activeColors, 3)
     geometry.setAttribute('color', attr)
+    faceColorAttrRef.current = attr
+    if (oldAttr && typeof oldAttr.dispose === 'function') oldAttr.dispose()
   }, [geometry, activeColors])
 
   // Always update the color attribute -- edgeColors is always non-null so vertexColors
   // stays permanently enabled, avoiding shader recompilation on selection change.
+  // Dispose the previous attribute to avoid leaking GPU memory on each hover/selection change.
   useEffect(() => {
     if (edgeColors) {
-      edgeGeometry.setAttribute('color', new THREE.BufferAttribute(edgeColors, 3))
+      const oldAttr = edgeColorAttrRef.current
+      const attr = new THREE.BufferAttribute(edgeColors, 3)
+      edgeGeometry.setAttribute('color', attr)
+      edgeColorAttrRef.current = attr
+      if (oldAttr && typeof oldAttr.dispose === 'function') oldAttr.dispose()
     }
   }, [edgeGeometry, edgeColors])
 
@@ -676,6 +689,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         } : undefined}
         onPointerMove={interactive ? (e) => {
           e.stopPropagation()
+          if (isRotating) return
           const rawFaceIndex = (e as unknown as { faceIndex?: number }).faceIndex
           const rawIndex = (e as unknown as { index?: number }).index
           const faceIndex = rawFaceIndex !== undefined ? rawFaceIndex : (rawIndex !== undefined ? Math.floor(rawIndex / 3) : undefined)
