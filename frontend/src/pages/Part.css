@@ -253,7 +253,7 @@
   height: 40px;
 }
 
-.exit-sketch-btn {
+.exit-feature-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -268,17 +268,17 @@
   height: 20px;
 }
 
-.exit-sketch-btn img {
+.exit-feature-btn img {
   width: 16px;
   height: 16px;
   filter: invert(0.8);
 }
 
-.exit-sketch-btn .material-icons-outlined {
+.exit-feature-btn .material-icons-outlined {
   font-size: 16px;
 }
 
-.exit-sketch-btn:hover {
+.exit-feature-btn:hover {
   background: #2a1a2a;
   color: #e060b0;
 }

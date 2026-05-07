@@ -760,7 +760,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     {feature.kind === 'revolve' && feature.id === editingFeatureId && (
                       <button
-                        className="exit-sketch-btn"
+                        className="exit-feature-btn"
                         onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
                         title="Exit revolve editor"
                       >
@@ -778,7 +778,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     {feature.kind === 'fillet' && feature.id === editingFeatureId && (
                       <button
-                        className="exit-sketch-btn"
+                        className="exit-feature-btn"
                         onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
                         title="Exit fillet editor"
                       >
@@ -796,7 +796,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     {feature.kind === 'chamfer' && feature.id === editingFeatureId && (
                       <button
-                        className="exit-sketch-btn"
+                        className="exit-feature-btn"
                         onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
                         title="Exit chamfer editor"
                       >
@@ -814,7 +814,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     {feature.kind === 'boolean' && feature.id === editingFeatureId && (
                       <button
-                        className="exit-sketch-btn"
+                        className="exit-feature-btn"
                         onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
                         title="Exit boolean editor"
                       >
@@ -832,7 +832,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     {feature.kind === 'array' && feature.id === editingFeatureId && (
                       <button
-                        className="exit-sketch-btn"
+                        className="exit-feature-btn"
                         onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
                         title="Exit array editor"
                       >
@@ -850,7 +850,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     {feature.kind === 'delete_body' && feature.id === editingFeatureId && (
                       <button
-                        className="exit-sketch-btn"
+                        className="exit-feature-btn"
                         onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
                         title="Exit delete body editor"
                       >
@@ -868,7 +868,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     {feature.kind === 'hole' && feature.id === editingFeatureId && (
                       <button
-                        className="exit-sketch-btn"
+                        className="exit-feature-btn"
                         onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
                         title="Exit hole editor"
                       >
@@ -886,7 +886,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     {feature.kind === 'transform' && feature.id === editingFeatureId && (
                       <button
-                        className="exit-sketch-btn"
+                        className="exit-feature-btn"
                         onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
                         title="Exit transform editor"
                       >
@@ -895,7 +895,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     {feature.kind === 'extrude' && feature.id === editingFeatureId && (
                       <button
-                        className="exit-sketch-btn"
+                        className="exit-feature-btn"
                         onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
                         title="Exit extrude editor"
                       >
@@ -905,7 +905,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {feature.kind === 'sketch' && feature.id === editingFeatureId && (
                       <>
                         <button
-                          className="exit-sketch-btn"
+                          className="exit-feature-btn"
                           onClick={(e) => { e.stopPropagation(); onExitEditSketch() }}
                           title="Exit sketch"
                         >
@@ -915,7 +915,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     {feature.kind === 'plane' && !BUILT_IN_IDS.has(feature.id) && feature.id === editingFeatureId && (
                       <button
-                        className="exit-sketch-btn"
+                        className="exit-feature-btn"
                         onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
                         title="Exit plane editor"
                       >
