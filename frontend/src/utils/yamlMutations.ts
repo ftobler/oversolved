@@ -541,7 +541,7 @@ export function applyTogglePlaneVisibility(doc: PartDoc): void {
 
 export function applyAddPlane(doc: PartDoc, featureId: string, label?: string, definition?: Record<string, unknown>): void {
   if (!doc.features) doc.features = []
-  const feature: PartFeature = { id: featureId, kind: 'plane', definition: definition ?? { mode: 'offset' } }
+  const feature: PartFeature = { id: featureId, kind: 'plane', definition: definition ?? { mode: 'offset', plane: '@builtin_plane_front' } }
   if (label) feature.label = label
   doc.features.push(feature)
 }

@@ -55,6 +55,7 @@ _FEATURE_CMP_KEYS = frozenset({
     "transform", "array", "hide", "label",
     "sketch", "distance", "direction", "operation", "angle",
     "radius", "edges", "file_id", "scale",
+    "definition",
 })
 
 

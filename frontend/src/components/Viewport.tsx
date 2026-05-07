@@ -18,7 +18,7 @@ import { PlaneLabel, PlaneSurface } from './Viewport/PlaneVisual'
 import ContextMenuDialog from './ContextMenuDialog'
 import { CLICK_THRESHOLD_PX } from './Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from './interaction/useSelectionPointerUpCleanup'
-import { getBodiesToRender, getSketchesToRender } from './Viewport/bodyUtils'
+import { getBodiesToRender, getSketchesToRender, getPreviewBodies } from './Viewport/bodyUtils'
 import { buildBodySnapSketch, builtinPlaneTransform, BODY_SNAP_FEAT_PREFIX } from './Geometry3D/bodySnapProjection'
 
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
@@ -430,6 +430,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     [pickBodies, features, visibleBodies]
   )
 
+  const previewBodyItems = useMemo(
+    () => getPreviewBodies(bodies, features, rollbackPosition, visibleBodies),
+    [bodies, features, rollbackPosition, visibleBodies]
+  )
+
   const activeSketchFeatures = useMemo(
     () => getSketchesToRender(features, rollbackPosition, visibleFeatures),
     [features, rollbackPosition, visibleFeatures]
@@ -541,8 +546,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
             {pickBodyItems.map(b => (
               <Body3D key={`old-${b.key}`} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={true} interactive={true} />
             ))}
-            {bodyItems.map(b => (
-              <Body3D key={`new-${b.key}`} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={true} interactive={false} />
+            {previewBodyItems.map(b => (
+              <Body3D key={`preview-${b.key}`} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} ghost={true} interactive={false} />
             ))}
           </>
         ) : (

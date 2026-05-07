@@ -108,19 +108,22 @@ describe('Viewport body interactive flag', () => {
     })
   })
 
-  it('ghostMode renders both sets semi-transparent with pickBodies interactive and bodyItems inert', () => {
+  it('ghostMode renders both pickBodies and preview bodies with pickBodies interactive and preview inert', () => {
     const { getAllByTestId } = render(
       <Viewport
         features={[sketch, extrude]}
         bodies={makeBody()}
         pickBodies={makeBody()}
         ghostMode={true}
+        rollbackPosition={1}
       />
     )
     const items = getAllByTestId('body-3d')
+    // pickBodyItems (1) + previewBodyItems (1) = 2
+    expect(items.length).toBe(2)
     const ghostItems = items.filter(el => el.getAttribute('data-ghost') === 'true')
     expect(ghostItems.length).toBeGreaterThanOrEqual(2)
-    // pickBodyItems are interactive, bodyItems are not
+    // pickBodyItems are interactive, previewBodyItems are not
     const interactiveItems = items.filter(el => el.getAttribute('data-interactive') === 'true')
     const inertItems = items.filter(el => el.getAttribute('data-interactive') === 'false')
     expect(interactiveItems.length).toBeGreaterThanOrEqual(1)

@@ -798,7 +798,8 @@ useEffect(() => {
     setEditingFeatureId(null)
     setPendingPickField(null)
     setPickBoundary(null)
-  }, [savedRollbackPosition, rollbackPosition, setPendingPickField, setPickBoundary])
+    handleRebuildRef.current?.()
+  }, [savedRollbackPosition, rollbackPosition, setPendingPickField, setPickBoundary, handleRebuildRef])
 
   const enterEditSketch = useCallback((featureId: string) => {
     enterEditFeature(featureId)

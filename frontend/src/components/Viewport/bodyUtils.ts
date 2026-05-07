@@ -64,3 +64,39 @@ export function getBodiesToRender(
   }
   return items
 }
+
+/** Returns bodies created by features at or after rollbackPosition (the "preview" bodies excluded by getBodiesToRender). */
+export function getPreviewBodies(
+  bodies: Record<string, BodyResult> | undefined,
+  features: Feature[] | undefined,
+  rollbackPosition: number | undefined,
+  visibleBodies: Set<string> | undefined,
+): BodyRenderItem[] {
+  const items: BodyRenderItem[] = []
+  if (!bodies || rollbackPosition === undefined) return items
+
+  // enterEditFeature sets rollbackPosition = idx + 1, so bodies from idx
+  // onwards are the preview (the edited feature and everything after it).
+  const previewFrom = Math.max(0, rollbackPosition - 1)
+
+  for (const [bodyId, body] of Object.entries(bodies)) {
+    const createdBy = body.created_by
+    const idx = features?.findIndex(f => f.id === createdBy) ?? -1
+    if (idx < 0 || idx < previewFrom) continue
+    if (!body.mesh) continue
+
+    items.push({
+      key: bodyId,
+      featureId: createdBy,
+      bodyId,
+      mesh: body.mesh,
+      edges: body.edges ?? [],
+      edgeQueries: body.edge_queries,
+      vertices: body.vertices,
+      vertexQueries: body.vertex_queries,
+      visible: visibleBodies ? visibleBodies.has(bodyId) : true,
+      ghost: false,
+    })
+  }
+  return items
+}

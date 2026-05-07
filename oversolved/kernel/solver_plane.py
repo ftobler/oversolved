@@ -403,8 +403,10 @@ def _plane_line_angle(definition: dict, global_repo: Repository) -> tuple:
 
 def _plane_offset(definition: dict, global_repo: Repository) -> tuple:
     """Plane parallel to a reference plane, offset along its normal."""
-    plane_query = definition.get("plane") or definition.get("reference", "")
-    offset = float(definition.get("offset") or definition.get("distance") or 0.0)
+    plane_val = definition.get("plane")
+    plane_query = plane_val if isinstance(plane_val, str) else (definition.get("reference") or "")
+    raw_offset = definition.get("offset") if definition.get("offset") is not None else definition.get("distance")
+    offset = float(raw_offset if raw_offset is not None else 0.0)
     plane = global_repo.query(plane_query)
     if plane is None:
         raise ValueError(f"plane not found: {plane_query!r}")

@@ -466,7 +466,7 @@ describe('applyAddPlane', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [] }
     applyAddPlane(doc, 'plane1')
     expect(doc.features).toHaveLength(1)
-    expect(doc.features![0]).toEqual({ id: 'plane1', kind: 'plane', definition: { mode: 'offset' } })
+    expect(doc.features![0]).toEqual({ id: 'plane1', kind: 'plane', definition: { mode: 'offset', plane: '@builtin_plane_front' } })
   })
 
   it('creates features array if missing', () => {
