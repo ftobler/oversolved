@@ -540,18 +540,15 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const selectedColor = new THREE.Color(COLOR_SELECTED)
     const hoverColor = new THREE.Color(COLOR_HOVER)
     const ghostColor = defaultColor.clone().lerp(new THREE.Color('#111111'), 0.5)
-    const bgColor = new THREE.Color('#111111')
 
     for (let segIdx = 0; segIdx < totalSegments; segIdx++) {
       const edgeIdx = segmentToEdgeMap[segIdx]
       let color: THREE.Color
       if (interactive) {
         if (getIsEdgeSelected(edgeIdx)) {
-          color = ghost ? bgColor : selectedColor
+          color = selectedColor
         } else if (edgeIdx === hoveredEdgeIndex) {
           color = hoverColor
-        } else if (ghost) {
-          color = ghostColor
         } else {
           color = defaultColor
         }
@@ -582,7 +579,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const attr = new THREE.BufferAttribute(activeColors, 3)
     geometry.setAttribute('color', attr)
     faceColorAttrRef.current = attr
-    if (oldAttr && typeof oldAttr.dispose === 'function') oldAttr.dispose()
+    if (oldAttr && typeof (oldAttr as any).dispose === 'function') (oldAttr as any).dispose()
   }, [geometry, activeColors])
 
   // Always update the color attribute -- edgeColors is always non-null so vertexColors
@@ -594,7 +591,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       const attr = new THREE.BufferAttribute(edgeColors, 3)
       edgeGeometry.setAttribute('color', attr)
       edgeColorAttrRef.current = attr
-      if (oldAttr && typeof oldAttr.dispose === 'function') oldAttr.dispose()
+      if (oldAttr && typeof (oldAttr as any).dispose === 'function') (oldAttr as any).dispose()
     }
   }, [edgeGeometry, edgeColors])
 
