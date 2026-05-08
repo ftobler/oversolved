@@ -876,6 +876,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span className="material-icons-outlined">close</span>
                       </button>
                     )}
+                    {feature.kind === 'hole' && feature.id === editingFeatureId && (
+                      <span className="feature-visibility-placeholder" />
+                    )}
                     {feature.kind === 'transform' && feature.id !== editingFeatureId && (
                       <button
                         className="feature-edit-btn"
@@ -893,6 +896,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       >
                         <span className="material-icons-outlined">close</span>
                       </button>
+                    )}
+                    {feature.kind === 'transform' && feature.id === editingFeatureId && (
+                      <span className="feature-visibility-placeholder" />
                     )}
                     {feature.kind === 'extrude' && feature.id === editingFeatureId && (
                       <button

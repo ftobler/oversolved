@@ -133,3 +133,31 @@ describe('commitFieldPick no-op when normalSelection is empty', () => {
     expect(useSketchEditorStore.getState().pendingPickField).toEqual({ featureId: 'plane1', field: 'plane' })
   })
 })
+
+describe('commitFieldPick with transform rotation_axis', () => {
+  beforeEach(reset)
+
+  it('dispatches set_transform_field for rotation_axis', () => {
+    const mutations: unknown[] = []
+    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    useSketchEditorStore.getState().setPendingPickField({ featureId: 'xf1', field: 'rotation_axis', hostKind: 'transform' })
+    useSketchEditorStore.setState({ normalSelection: new Set(['entity:sketch1:line1']) })
+    useSketchEditorStore.getState().commitFieldPick()
+    expect(mutations[0]).toEqual({ type: 'set_transform_field', featureId: 'xf1', field: 'rotation_axis', value: 'entity:sketch1:line1' })
+    expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+  })
+})
+
+describe('commitFieldPick with transform scale_center_from', () => {
+  beforeEach(reset)
+
+  it('dispatches set_transform_field for scale_center_from', () => {
+    const mutations: unknown[] = []
+    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    useSketchEditorStore.getState().setPendingPickField({ featureId: 'xf1', field: 'scale_center_from', hostKind: 'transform' })
+    useSketchEditorStore.setState({ normalSelection: new Set(['face:sketch1:?3;@sketch1abc']) })
+    useSketchEditorStore.getState().commitFieldPick()
+    expect(mutations[0]).toEqual({ type: 'set_transform_field', featureId: 'xf1', field: 'scale_center_from', value: '?3;@sketch1abc' })
+    expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+  })
+})

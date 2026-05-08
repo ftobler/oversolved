@@ -475,6 +475,22 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       return
     }
     let value: string
+    if (pendingPickField.field === 'rotation_axis' && pendingPickField.hostKind === 'transform') {
+      value = selectionId.startsWith('face:')
+        ? selectionId.split(':').slice(2).join(':')
+        : selectionId
+      onMutation?.({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'rotation_axis', value })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
+      return
+    }
+    if (pendingPickField.field === 'scale_center_from' && pendingPickField.hostKind === 'transform') {
+      value = selectionId.startsWith('face:')
+        ? selectionId.split(':').slice(2).join(':')
+        : selectionId
+      onMutation?.({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'scale_center_from', value })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
+      return
+    }
     if (selectionId.startsWith('face:')) {
       value = selectionId.split(':').slice(2).join(':')
     } else if (selectionId.startsWith('vertex:')) {

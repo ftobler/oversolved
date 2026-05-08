@@ -79,6 +79,13 @@ describe('Transform mutations', () => {
       expect(doc.features![0].transform!.scale).toBe(2.5)
     })
 
+    it('updates scale_center_from field', () => {
+      const doc = makeDoc()
+      applyAddTransform(doc, 'xf1')
+      applySetTransformField(doc, 'xf1', 'scale_center_from', '@sk1/pt1xy')
+      expect(doc.features![0].transform!.scale_center_from).toBe('@sk1/pt1xy')
+    })
+
     it('does nothing when feature is missing', () => {
       const doc = makeDoc()
       applySetTransformField(doc, 'missing', 'body', 'extrude1')

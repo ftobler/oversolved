@@ -109,6 +109,20 @@ export const TransformEditor: React.FC<TransformEditorProps> = ({ feature, onMut
       {numField('Factor', transform.scale, (v) => {
         onMutation({ type: 'set_transform_field', featureId: fid, field: 'scale', value: v })
       })}
+      <div className="feature-field-row feature-field-row--stacked">
+        <span className="feature-field-label">Origin</span>
+        <PickChip
+          values={transform.scale_center_from ? [transform.scale_center_from] : []}
+          isPicking={isPicking('scale_center_from')}
+          onActivate={() => {
+            if (isPicking('scale_center_from')) setPendingPickField(null)
+            else setPendingPickField({ featureId: fid, field: 'scale_center_from', hostKind: 'transform' })
+          }}
+          onRemove={() => onMutation({ type: 'set_transform_field', featureId: fid, field: 'scale_center_from', value: '' })}
+          features={features}
+          partLabels={partLabels}
+        />
+      </div>
     </div>
   )
 }

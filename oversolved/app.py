@@ -318,7 +318,8 @@ def create_app(config: dict | None = None) -> Flask:
 
     # ── Frontend static serving ───────────────────────────────────────────────
 
-    frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+    frontend_dist_config = config.get("FRONTEND_DIST", Path(__file__).parent.parent / "frontend" / "dist") if config else Path(__file__).parent.parent / "frontend" / "dist"
+    frontend_dist = Path(frontend_dist_config)
 
     @app.route("/")
     @app.route("/<path:path>")
