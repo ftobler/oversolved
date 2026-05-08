@@ -676,6 +676,7 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
         result: dict = {"status": "ok", "body_id": body_id}
 
         operation = feature.get("operation", "add")
+        merge_target = sub.get("merge_target") or feature.get("merge_target")
         body = Body(id=body_id, created_by=feature_id, shape=None, sketch_id=first_sketch_id)
 
         try:
@@ -688,16 +689,39 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
                 tool_shape = _rf(face, axis_origin, axis_direction, angle)
 
                 if operation == "cut":
-                    from oversolved.kernel.geometry import boolean_cut
+                    target_ids = _resolve_merge_targets(merge_target, body_store)
+                    if not target_ids and not merge_target:
+                        # No bodies exist and no target specified: silently succeed
+                        result["operation"] = "cut"
+                        return result
+                    from oversolved.kernel.geometry import boolean_cut, boolean_intersection
+                    cut_anything = False
                     cut_body_id = None
-                    for existing_body in body_store.values():
-                        if existing_body.shape is not None:
-                            existing_body.shape = boolean_cut(existing_body.shape, tool_shape)
-                            existing_body.modified_by.append(feature_id)
-                            if cut_body_id is None:
-                                cut_body_id = existing_body.id
-                    if cut_body_id is not None:
-                        result["body_id"] = cut_body_id
+                    for bid in target_ids:
+                        existing_body = body_store[bid]
+                        if existing_body.shape is None:
+                            continue
+                        try:
+                            intersection = boolean_intersection(existing_body.shape, tool_shape)
+                            if intersection is None or intersection.wrapped.IsNull():
+                                continue
+                            import cadquery as cq
+                            if cq.Shape.cast(intersection.wrapped).Volume() < 1e-10:
+                                continue
+                        except Exception:
+                            continue
+                        new_shape = boolean_cut(existing_body.shape, tool_shape)
+                        existing_body.shape = new_shape
+                        existing_body.modified_by.append(feature_id)
+                        cut_anything = True
+                        if cut_body_id is None:
+                            cut_body_id = bid
+                    if not cut_anything:
+                        raise ValueError(
+                            "revolve: cut does not intersect any target body "
+                            "- nothing to remove"
+                        )
+                    result["body_id"] = cut_body_id
                     result["operation"] = "cut"
                 elif operation == "new":
                     body.shape = tool_shape
@@ -705,22 +729,60 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
                     result["operation"] = "new"
                 else:
                     from oversolved.kernel.geometry import boolean_union
-                    fused = False
-                    fused_body_id = None
-                    for existing_body in body_store.values():
-                        if existing_body.shape is not None:
-                            existing_body.shape = boolean_union(existing_body.shape, tool_shape)
+                    target_ids = _resolve_merge_targets(merge_target, body_store)
+                    if not target_ids and not merge_target:
+                        need_new_body = True
+                    else:
+                        need_new_body = False
+                        if not target_ids:
+                            raise ValueError(
+                                f"revolve: merge target '{merge_target}' not found"
+                            )
+                    if need_new_body:
+                        fused = False
+                    else:
+                        fused = False
+                        fused_body_id = None
+                        for bid in target_ids:
+                            existing_body = body_store[bid]
+                            if existing_body.shape is None:
+                                continue
+                            try:
+                                new_shape = boolean_union(existing_body.shape, tool_shape)
+                            except Exception as exc:
+                                raise ValueError(f"revolve: add operation failed: {exc}")
+                            if merge_target:
+                                from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND
+                                from OCP.TopExp import TopExp_Explorer
+                                if new_shape.wrapped.ShapeType() == TopAbs_COMPOUND:
+                                    explorer = TopExp_Explorer(new_shape.wrapped, TopAbs_SOLID)
+                                    solid_count = 0
+                                    while explorer.More():
+                                        solid_count += 1
+                                        explorer.Next()
+                                    if solid_count > 1:
+                                        raise ValueError(
+                                            "revolve: add would create island shape "
+                                            "not touching target body"
+                                        )
+                            existing_body.shape = new_shape
                             existing_body.modified_by.append(feature_id)
                             fused = True
-                            fused_body_id = existing_body.id
+                            fused_body_id = bid
                             break
                     if fused:
                         result["body_id"] = fused_body_id
+                        result["body_ids"] = [fused_body_id]
                         result["operation"] = "add"
+                    elif not need_new_body:
+                        raise ValueError("revolve: add could not fuse with any target body")
                     else:
                         body.shape = tool_shape
                         body_store[body_id] = body
                         result["operation"] = "add"
+        except ValueError as exc:
+            result["status"] = "exception"
+            result["exception"] = str(exc)
         except Exception as exc:
             result["mesh_warning"] = str(exc)
 

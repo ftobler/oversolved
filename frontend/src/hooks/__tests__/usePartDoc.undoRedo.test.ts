@@ -38,9 +38,9 @@ describe('undo/redo stack integrity', () => {
   it('undo moves current to redo and restores previous state', () => {
     const docA = { value: 'A' }
     const docB = { value: 'B' }
-    let undoStack: UndoStack = [{ doc: docA, mutation: { type: 'add_sketch' } }]
-    let redoStack: RedoStack = []
-    let currentDoc = { ...docB }
+    const undoStack: UndoStack = [{ doc: docA, mutation: { type: 'add_sketch' } }]
+    const redoStack: RedoStack = []
+    const currentDoc = { ...docB }
 
     const result = simulateUndo(undoStack, redoStack, currentDoc)
     expect(result.currentDoc.value).toBe('A')
@@ -53,9 +53,9 @@ describe('undo/redo stack integrity', () => {
   it('redo moves current back to undo and restores previous state', () => {
     const docA = { value: 'A' }
     const docB = { value: 'B' }
-    let undoStack: UndoStack = []
-    let redoStack: RedoStack = [{ doc: docB, mutation: { type: 'add_sketch' } }]
-    let currentDoc = { ...docA }
+    const undoStack: UndoStack = []
+    const redoStack: RedoStack = [{ doc: docB, mutation: { type: 'add_sketch' } }]
+    const currentDoc = { ...docA }
 
     const result = simulateRedo(undoStack, redoStack, currentDoc)
     expect(result.currentDoc.value).toBe('B')
@@ -67,9 +67,9 @@ describe('undo/redo stack integrity', () => {
   it('undo then redo returns to original state', () => {
     const docA = { value: 'A' }
     const docB = { value: 'B' }
-    let undoStack: UndoStack = [{ doc: docA, mutation: { type: 'add_sketch' } }]
-    let redoStack: RedoStack = []
-    let currentDoc = { ...docB }
+    const undoStack: UndoStack = [{ doc: docA, mutation: { type: 'add_sketch' } }]
+    const redoStack: RedoStack = []
+    const currentDoc = { ...docB }
 
     // Undo
     const afterUndo = simulateUndo(undoStack, redoStack, currentDoc)
@@ -87,13 +87,13 @@ describe('undo/redo stack integrity', () => {
     const docA = { value: 'A' }
     const docB = { value: 'B' }
     const docC = { value: 'C' }
-    let undoStack: UndoStack = [
+    const undoStack: UndoStack = [
       { doc: docA, mutation: { type: 'add_sketch' } },
       { doc: docB, mutation: { type: 'add_extrude' } },
       { doc: docC, mutation: { type: 'add_fillet' } },
     ]
-    let redoStack: RedoStack = []
-    let currentDoc = { value: 'D' }
+    const redoStack: RedoStack = []
+    const currentDoc = { value: 'D' }
 
     // Undo once (should go to C)
     const u1 = simulateUndo(undoStack, redoStack, currentDoc)
@@ -114,7 +114,7 @@ describe('undo/redo stack integrity', () => {
     const docC = { value: 'C' }
     let undoStack: UndoStack = [{ doc: docA, mutation: { type: 'add_sketch' } }]
     let redoStack: RedoStack = [{ doc: docB, mutation: { type: 'add_extrude' } }]
-    let currentDoc = { ...docC }
+    const currentDoc = { ...docC }
 
     // New mutation: clear redo, push to undo
     const preMutationDoc = { ...currentDoc }
@@ -153,13 +153,13 @@ describe('undo/redo stack integrity', () => {
 
   it('undo across multiple steps rolls back correctly', () => {
     const docs = ['A', 'B', 'C', 'D'].map(v => ({ value: v }))
-    let undoStack: UndoStack = [
+    const undoStack: UndoStack = [
       { doc: docs[0], mutation: { type: 'm1' } },
       { doc: docs[1], mutation: { type: 'm2' } },
       { doc: docs[2], mutation: { type: 'm3' } },
     ]
-    let redoStack: RedoStack = []
-    let currentDoc = { ...docs[3] }
+    const redoStack: RedoStack = []
+    const currentDoc = { ...docs[3] }
 
     // Undo three times
     const u1 = simulateUndo(undoStack, redoStack, currentDoc)

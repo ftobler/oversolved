@@ -66,6 +66,8 @@ export function describeMutation(m: Mutation): string {
       return `set revolve axis to ${m.axis}`
     case 'set_revolve_operation':
       return `set revolve operation to ${m.operation}`
+    case 'set_revolve_merge_target':
+      return `set revolve merge target to ${m.mergeTarget}`
     case 'add_revolve_profile':
       return `add revolve profile ${m.sketchQuery}`
     case 'remove_revolve_profile':

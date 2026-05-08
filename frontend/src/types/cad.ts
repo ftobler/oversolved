@@ -62,6 +62,7 @@ export interface RevolveFeatureDef {
   axis_origin?: [number, number, number]
   axis_direction?: [number, number, number]
   operation?: 'add' | 'cut' | 'new'
+  merge_target?: string
 }
 
 export interface DeleteBodyFeatureDef {
@@ -528,6 +529,7 @@ export type Mutation =
   | { type: 'set_revolve_angle'; featureId: string; angle: number }
   | { type: 'set_revolve_axis'; featureId: string; axis: string }
   | { type: 'set_revolve_operation'; featureId: string; operation: 'add' | 'cut' | 'new' }
+  | { type: 'set_revolve_merge_target'; featureId: string; mergeTarget?: string }
   | { type: 'add_revolve_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_revolve_profile'; featureId: string; index: number }
   | { type: 'add_import_step'; featureId: string; fileId: string; label?: string }

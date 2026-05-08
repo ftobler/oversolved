@@ -408,7 +408,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const fid = feature.id
     const isPickingSketch = pendingPickField?.featureId === fid && pendingPickField.field === 'sketch'
     const isPickingAxis = pendingPickField?.featureId === fid && pendingPickField.field === 'axis'
+    const isPickingMergeTarget = pendingPickField?.featureId === fid && pendingPickField?.field === 'merge_target'
     const profiles = normalizeRevolveSketch(revolve.sketch)
+    const showMergeTarget = revolve.operation !== 'new'
 
     return (
       <div className="plane-editor">
@@ -462,6 +464,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <option value="new">New</option>
           </select>
         </div>
+        {showMergeTarget && (
+          <div className="feature-field-row feature-field-row--stacked">
+            <span className="feature-field-label">Merge Target</span>
+            <PickChip
+              values={revolve.merge_target ? [revolve.merge_target] : []}
+              isPicking={isPickingMergeTarget}
+              onActivate={() => {
+                if (isPickingMergeTarget) onSetPendingPickField(null)
+                else onSetPendingPickField({ featureId: fid, field: 'merge_target', hostKind: 'revolve' })
+              }}
+              onRemove={() => onMutation({ type: 'set_revolve_merge_target', featureId: fid })}
+              emptyText="(all bodies)"
+              features={features}
+              partLabels={partLabels}
+            />
+          </div>
+        )}
         <div className="feature-field-row feature-field-row--stacked">
           <span className="feature-field-label">Axis</span>
           <PickChip
@@ -694,7 +713,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   } else if (pendingPickField?.field === 'merge_target' && solveResults?.[feature.id] && isBodyFeatureResult(solveResults[feature.id])) {
                     const bodyResult = solveResults[feature.id] as { body_id?: string }
                     const bodyRef = bodyResult.body_id ? '@' + bodyResult.body_id : '@' + feature.id
-                    onMutation({ type: 'set_extrude_merge_target', featureId: pendingPickField.featureId, mergeTarget: bodyRef })
+                    const mutationType = pendingPickField.hostKind === 'revolve'
+                      ? 'set_revolve_merge_target'
+                      : 'set_extrude_merge_target'
+                    onMutation({ type: mutationType, featureId: pendingPickField.featureId, mergeTarget: bodyRef })
                     onSetPendingPickField(null)
                   } else if ((pendingPickField?.field === 'boolean_target' || pendingPickField?.field === 'boolean_tool') && solveResults?.[feature.id] && isBodyFeatureResult(solveResults[feature.id])) {
                     const bodyResult = solveResults[feature.id] as { body_id?: string }
@@ -1128,7 +1150,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className={`part-item ${selection.has(`@${bodyId}`) ? 'selected' : ''}`}
                   onClick={() => {
                     if (pendingPickField?.field === 'merge_target') {
-                      onMutation({ type: 'set_extrude_merge_target', featureId: pendingPickField.featureId, mergeTarget: '@' + bodyId })
+                      const mutationType = pendingPickField.hostKind === 'revolve'
+                        ? 'set_revolve_merge_target'
+                        : 'set_extrude_merge_target'
+                      onMutation({ type: mutationType, featureId: pendingPickField.featureId, mergeTarget: '@' + bodyId })
                       onSetPendingPickField(null)
                     } else if (pendingPickField?.field === 'boolean_target') {
                       onMutation({ type: 'set_boolean_target', featureId: pendingPickField.featureId, target: '@' + bodyId })

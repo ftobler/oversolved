@@ -650,7 +650,10 @@ export function applySetExtrudeMergeTarget(
   doc: PartDoc, featureId: string, mergeTarget?: string,
 ): void {
   const feature = findFeature(doc, featureId)
-  if (!feature?.extrude) return
+  if (!feature?.extrude) {
+    console.warn(`applySetExtrudeMergeTarget: feature ${featureId} has no extrude`)
+    return
+  }
   if (mergeTarget) {
     feature.extrude.merge_target = mergeTarget
   } else {
@@ -771,6 +774,21 @@ export function applySetRevolveOperation(
     return
   }
   feature.revolve.operation = operation
+}
+
+export function applySetRevolveMergeTarget(
+  doc: PartDoc, featureId: string, mergeTarget?: string,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.revolve) {
+    console.warn(`applySetRevolveMergeTarget: feature ${featureId} has no revolve`)
+    return
+  }
+  if (mergeTarget) {
+    feature.revolve.merge_target = mergeTarget
+  } else {
+    delete feature.revolve.merge_target
+  }
 }
 
 export function applyAddImportStep(

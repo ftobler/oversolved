@@ -5,6 +5,7 @@ import {
   applySetRevolveAngle,
   applySetRevolveAxis,
   applySetRevolveOperation,
+  applySetRevolveMergeTarget,
   applyAddRevolveProfile,
   applyRemoveRevolveProfile,
   normalizeRevolveSketch,
@@ -251,6 +252,57 @@ describe('set_revolve_operation', () => {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
     expect(() => applySetRevolveOperation(doc, 'rev1', 'cut')).not.toThrow()
+  })
+})
+
+describe('set_revolve_merge_target', () => {
+  it('sets merge_target on revolve sub-dict', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: ['$sk1'], angle: 360 },
+        },
+      ],
+    }
+    applySetRevolveMergeTarget(doc, 'rev1', '@body_ex0')
+    expect(doc.features![0].revolve!.merge_target).toBe('@body_ex0')
+  })
+
+  it('removes merge_target when argument is empty', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: ['$sk1'], angle: 360, merge_target: '@body_ex0' },
+        },
+      ],
+    }
+    applySetRevolveMergeTarget(doc, 'rev1', undefined)
+    expect(doc.features![0].revolve!).not.toHaveProperty('merge_target')
+  })
+
+  it('removes merge_target when empty string passed', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: ['$sk1'], angle: 360, merge_target: '@body_ex0' },
+        },
+      ],
+    }
+    applySetRevolveMergeTarget(doc, 'rev1', '')
+    expect(doc.features![0].revolve!).not.toHaveProperty('merge_target')
+  })
+
+  it('does nothing if revolve is undefined', () => {
+    const doc: PartDoc = {
+      features: [{ id: 'rev1', kind: 'sketch' }],
+    }
+    expect(() => applySetRevolveMergeTarget(doc, 'rev1', '@body_ex0')).not.toThrow()
   })
 })
 

@@ -454,7 +454,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     }
     if (pendingPickField.field === 'merge_target') {
       const bodyRef = _resolveBodyRef(selectionId)
-      onMutation?.({ type: 'set_extrude_merge_target', featureId: pendingPickField.featureId, mergeTarget: bodyRef })
+      const mutationType = pendingPickField.hostKind === 'revolve'
+        ? 'set_revolve_merge_target'
+        : 'set_extrude_merge_target'
+      onMutation?.({ type: mutationType, featureId: pendingPickField.featureId, mergeTarget: bodyRef })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return
     }

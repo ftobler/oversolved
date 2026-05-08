@@ -43,6 +43,7 @@ import {
   applySetRevolveAngle,
   applySetRevolveAxis,
   applySetRevolveOperation,
+  applySetRevolveMergeTarget,
   applyAddRevolveProfile,
   applyRemoveRevolveProfile,
   applyAddImportStep,
@@ -595,6 +596,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'set_revolve_operation':
         applySetRevolveOperation(next, m.featureId, m.operation)
+        break
+      case 'set_revolve_merge_target':
+        applySetRevolveMergeTarget(next, m.featureId, m.mergeTarget)
         break
       case 'add_revolve_profile':
         applyAddRevolveProfile(next, m.featureId, m.sketchQuery)

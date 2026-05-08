@@ -1133,6 +1133,38 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual([])
     })
 
+    it('merge_target pick with hostKind revolve dispatches set_revolve_merge_target', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'rev1', field: 'merge_target', hostKind: 'revolve' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@rev0/face/0')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_revolve_merge_target',
+        featureId: 'rev1',
+        mergeTarget: '@body_rev0',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
+
+    it('merge_target pick with hostKind revolve passes through direct @body_id', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'rev1', field: 'merge_target', hostKind: 'revolve' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@body_rev0')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_revolve_merge_target',
+        featureId: 'rev1',
+        mergeTarget: '@body_rev0',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
+
     it('sketch pick with hostKind hole dispatches set_hole_sketch', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)
