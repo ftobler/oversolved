@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { buildBodyGeometry, buildEdgeSegments, getEdgeSegmentCounts, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties } from '../Geometry3D/Body3D'
+import { buildBodyGeometry, buildEdgeSegments, getEdgeSegmentCounts, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties } from '../Geometry3D/bodyGeometry'
 import type { Mesh3D, EdgeData } from '../../types/cad'
 import { ARC_SEGMENTS } from '../Geometry3D/constants'
 

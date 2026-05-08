@@ -2,7 +2,7 @@ import { useMemo, useEffect } from 'react'
 import * as THREE from 'three'
 import type { EdgeData } from '../../types/cad'
 import type { BodyRenderItem } from '../Viewport/bodyUtils'
-import { buildEdgeSegments } from './Body3D'
+import { buildEdgeSegments } from './bodyGeometry'
 import { COLOR_PREVIEW_EDGE, RENDER_ORDER_HIGHLIGHT } from './constants'
 
 interface PreviewEdgeOverlayProps {
