@@ -341,7 +341,7 @@ def revolve_face(
     return _revolve_face(face, axis_origin, axis_direction, angle_deg)
 
 
-def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
+def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None = None) -> dict:
     """Tessellate a cadquery solid to a mesh dict.
 
     Iterates faces and tessellates each one individually so that face
@@ -350,6 +350,8 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
     Args:
         solid: Either a cadquery shape or a filepath string (STEP or STL file).
         created_by: Optional feature ID for ancestry queries.
+        body_id: Optional body ID -- when set, face queries are scoped to this
+            body so that multiple bodies from the same feature have unique queries.
     """
     if isinstance(solid, str):
         filepath = solid
@@ -436,8 +438,12 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
                     from oversolved.kernel.query import make_ancestry_query
 
                     element_id = f"face{face_idx}"
-                    abs_id = "@" + created_by + element_id
-                    query = make_ancestry_query([abs_id, f"@{created_by}"], surface_type)
+                    if body_id:
+                        abs_id = "@" + body_id + element_id
+                        query = make_ancestry_query([abs_id, f"@{created_by}", f"@{body_id}"], surface_type)
+                    else:
+                        abs_id = "@" + created_by + element_id
+                        query = make_ancestry_query([abs_id, f"@{created_by}"], surface_type)
                     face_queries.append(query)
             else:
                 # Face produced no triangles - skip it
@@ -505,12 +511,14 @@ def solid_to_mesh(solid: Any, created_by: str | None = None) -> dict:
     return mesh
 
 
-def solid_to_edges(solid: Any, created_by: str | None = None) -> dict:
+def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | None = None) -> dict:
     """Extract exact edge geometry from a cadquery solid.
 
     Returns a dict with keys "edges" (list of edge dicts, one per unique edge,
     with kind "line", "circle", "arc", or "spline") and "edge_queries" (list of
     ancestry query strings, populated only when created_by is set).
+
+    body_id: when set, edge queries are scoped to this body for uniqueness.
     """
     solid = _ensure_cq_shape(solid)
     TWO_PI = 2.0 * math.pi
@@ -580,13 +588,16 @@ def solid_to_edges(solid: Any, created_by: str | None = None) -> dict:
             from oversolved.kernel.query import make_ancestry_query
 
             edge_type = "straightedge" if edges[-1]["kind"] == "line" else "edge"
-            edge_queries.append(make_ancestry_query([f"@{created_by}edge{idx}", f"@{created_by}"], edge_type))
+            if body_id:
+                edge_queries.append(make_ancestry_query([f"@{body_id}edge{idx}", f"@{created_by}", f"@{body_id}"], edge_type))
+            else:
+                edge_queries.append(make_ancestry_query([f"@{created_by}edge{idx}", f"@{created_by}"], edge_type))
         idx += 1
 
     return {"edges": edges, "edge_queries": edge_queries}
 
 
-def solid_to_vertices(solid: Any, created_by: str | None = None) -> dict:
+def solid_to_vertices(solid: Any, created_by: str | None = None, body_id: str | None = None) -> dict:
     """Extract unique B-rep vertices from a cadquery solid."""
     solid = _ensure_cq_shape(solid)
     vertices: list[list[float]] = []
@@ -603,7 +614,10 @@ def solid_to_vertices(solid: Any, created_by: str | None = None) -> dict:
             from oversolved.kernel.query import make_ancestry_query
 
             idx = len(vertices) - 1
-            vertex_queries.append(make_ancestry_query([f"@{created_by}vertex{idx}", f"@{created_by}"], "vertex"))
+            if body_id:
+                vertex_queries.append(make_ancestry_query([f"@{body_id}vertex{idx}", f"@{created_by}", f"@{body_id}"], "vertex"))
+            else:
+                vertex_queries.append(make_ancestry_query([f"@{created_by}vertex{idx}", f"@{created_by}"], "vertex"))
 
     return {"vertices": vertices, "vertex_queries": vertex_queries}
 

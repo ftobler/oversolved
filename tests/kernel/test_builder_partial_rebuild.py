@@ -203,7 +203,7 @@ def test_partial_rebuild_reusing_state_does_not_duplicate_brep_face_ancestry():
 
     face_query = r3["bodies"]["body_ex1"]["mesh"]["face_queries"][0]
     repo = _repo_from_snapshot(r3["_build_state"].checkpoints["ex1"].repo_snapshot)
-    ancestry_ids = repo.ancestral[frozenset(["@ex1face0", "@ex1"])]
+    ancestry_ids = repo.ancestral[frozenset(["@body_ex1face0", "@ex1", "@body_ex1"])]
 
     assert repo.query(face_query)["body_id"] == "body_ex1"
     assert len(ancestry_ids) == 1

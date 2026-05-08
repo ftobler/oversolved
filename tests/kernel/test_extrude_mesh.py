@@ -1006,3 +1006,47 @@ def test_disjoint_pick_body_by_feature_id():
     # Instead verify via the builder output that body_ex1 was created.
     assert "body_ex1" in r["bodies"]
     assert "body_ex1_1" in r["bodies"]
+
+
+def test_disjoint_bodies_have_unique_face_queries():
+    """Bug fix: two-body extrude face queries must be unique per body.
+
+    When a single extrude produces two bodies, their face_queries were
+    feature-scoped (@featureId) so both bodies shared identical query strings.
+    Resolving such a query raised AmbiguousQueryError or silently returned the
+    wrong body.  The fix scopes queries to @body_id so each body is distinct.
+    """
+    pytest.importorskip("OCP.gp")
+    from oversolved.kernel.builder import build
+
+    r = build(_disjoint_two_rect_spec(operation="new"))
+    assert r["result"]["ex1"]["status"] == "ok"
+
+    fq1 = set(r["bodies"]["body_ex1"]["mesh"]["face_queries"])
+    fq2 = set(r["bodies"]["body_ex1_1"]["mesh"]["face_queries"])
+
+    assert fq1.isdisjoint(fq2), (
+        f"Bodies share face queries: {fq1 & fq2}"
+    )
+
+
+def test_disjoint_bodies_face_query_resolves_to_correct_body():
+    """Each face query must resolve unambiguously to the body it belongs to."""
+    pytest.importorskip("OCP.gp")
+    from oversolved.kernel.builder import build, _repo_from_snapshot
+
+    r = build(_disjoint_two_rect_spec(operation="new"))
+    assert r["result"]["ex1"]["status"] == "ok"
+
+    build_state = r["_build_state"]
+    last_fid = build_state.feature_order[-1]
+    checkpoint = build_state.checkpoints[last_fid]
+    repo = _repo_from_snapshot(checkpoint.repo_snapshot)
+
+    for bid in ("body_ex1", "body_ex1_1"):
+        for fq in r["bodies"][bid]["mesh"]["face_queries"]:
+            result = repo.query(fq)
+            assert result is not None, f"face query {fq!r} resolved to None"
+            assert result.get("body_id") == bid, (
+                f"face query for {bid} resolved to body {result.get('body_id')!r}"
+            )

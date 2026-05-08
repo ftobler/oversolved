@@ -113,7 +113,7 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
 
     face_data = mesh.get("face_data") or []
     for face_idx, face_info in enumerate(face_data):
-        ancestor_ids = [emit_wire(absolute(body.created_by, f"face{face_idx}")), emit_wire(absolute(body.created_by))]
+        ancestor_ids = [emit_wire(absolute(body.id, f"face{face_idx}")), emit_wire(absolute(body.created_by)), emit_wire(absolute(body.id))]
         centroid = face_info.get("centroid", [0.0, 0.0, 0.0])
         normal = face_info.get("normal", [0.0, 0.0, 1.0])
         x_axis, y_axis = _face_plane_axes(normal)
@@ -237,7 +237,7 @@ def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_quer
     if global_repo is None or not body.created_by or not edge_queries:
         return
     for idx, (edge, query) in enumerate(zip(edges, edge_queries)):
-        ancestor_ids = [emit_wire(absolute(body.created_by, f"edge{idx}")), emit_wire(absolute(body.created_by))]
+        ancestor_ids = [emit_wire(absolute(body.id, f"edge{idx}")), emit_wire(absolute(body.created_by)), emit_wire(absolute(body.id))]
         edge_type = "straightedge" if edge.get("kind") == "line" else "edge"
         payload: dict[str, Any] = {
             "type": edge_type,
@@ -259,7 +259,7 @@ def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vert
     if global_repo is None or not body.created_by or not vertex_queries:
         return
     for idx, (pt, query) in enumerate(zip(vertices, vertex_queries)):
-        ancestor_ids = [emit_wire(absolute(body.created_by, f"vertex{idx}")), emit_wire(absolute(body.created_by))]
+        ancestor_ids = [emit_wire(absolute(body.id, f"vertex{idx}")), emit_wire(absolute(body.created_by)), emit_wire(absolute(body.id))]
         payload: dict[str, Any] = {
             "type": "vertex",
             "body_id": body.id,
@@ -285,11 +285,11 @@ def _tessellate_body_geometry(body: Body) -> dict[str, Any]:
         return entry
     try:
         from oversolved.kernel.geometry import solid_to_mesh, solid_to_edges, solid_to_vertices  # type: ignore[attr-defined]
-        entry["mesh"] = solid_to_mesh(body.shape, created_by=body.created_by)
-        edges_result = solid_to_edges(body.shape, created_by=body.created_by)
+        entry["mesh"] = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id)
+        edges_result = solid_to_edges(body.shape, created_by=body.created_by, body_id=body.id)
         entry["edges"] = edges_result["edges"]
         entry["edge_queries"] = edges_result["edge_queries"]
-        verts_result = solid_to_vertices(body.shape, created_by=body.created_by)
+        verts_result = solid_to_vertices(body.shape, created_by=body.created_by, body_id=body.id)
         entry["vertices"] = verts_result["vertices"]
         entry["vertex_queries"] = verts_result["vertex_queries"]
     except ImportError:

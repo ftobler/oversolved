@@ -105,7 +105,7 @@ def test_build_mesh_includes_brep_face_metadata_and_queries():
     assert len(mesh["face_data"]) > 0
     assert len(mesh["triangle_to_face"]) == len(mesh["faces"])
     assert len(mesh["face_queries"]) == len(mesh["face_data"])
-    assert mesh["face_queries"][0] == make_ancestry_query(["@ex1face0", "@ex1"], "flatface")
+    assert mesh["face_queries"][0] == make_ancestry_query(["@body_ex1face0", "@ex1", "@body_ex1"], "flatface")
 
 
 def test_build_returns_edge_queries_and_vertices():
