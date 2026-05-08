@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import type { PartFeature } from '../types/cad'
 import { queryLabel } from '../utils/queryLabel'
+import { useSketchEditorStore } from '../stores/sketchEditorStore'
 
 export interface PickChipProps {
   values: string[]
@@ -23,8 +24,18 @@ export const PickChip: React.FC<PickChipProps> = ({
   features,
   partLabels,
 }) => {
+  const setPickChipHighlightItems = useSketchEditorStore(s => s.setPickChipHighlightItems)
   const isEmpty = values.length === 0
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (isPicking) {
+      setPickChipHighlightItems(values)
+    }
+    return () => {
+      if (isPicking) setPickChipHighlightItems([])
+    }
+  }, [isPicking, values, setPickChipHighlightItems])
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
   const [dropSide, setDropSide] = useState<'left' | 'right' | null>(null)
 

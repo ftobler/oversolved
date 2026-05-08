@@ -175,6 +175,8 @@ interface SketchEditorState {
   contextMenu: [number, number] | null
   planeSelectionFeatureId: string | null
   pendingPickField: PendingPickField | null
+  pickChipHighlightItems: string[]
+  setPickChipHighlightItems: (items: string[]) => void
   setActiveTool: (tool: ActiveTool) => void
   setActiveFeatureId: (id: string | null) => void
   setShowDebugHit: (enabled: boolean) => void
@@ -240,6 +242,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   contextMenu: null,
   planeSelectionFeatureId: null,
   pendingPickField: null,
+  pickChipHighlightItems: [],
 
   setInternalHoverSelection: (id) => set(s => {
     if (s.internalHoverSelection === id) return s
@@ -387,6 +390,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setPlaneSelectionFeatureId: (id) => set({ planeSelectionFeatureId: id }),
 
   setPendingPickField: (state) => set({ pendingPickField: state }),
+
+  setPickChipHighlightItems: (items) => set({ pickChipHighlightItems: items }),
 
   commitFieldPick: () => {
     const { pendingPickField, normalSelection, onMutation } = get()
