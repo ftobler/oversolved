@@ -1,6 +1,8 @@
 """Authentication routes."""
 
+import threading
 from datetime import datetime
+from time import time
 from flask import Blueprint, jsonify, request, make_response, current_app
 from werkzeug.security import check_password_hash
 from oversolved.db import UserStore, SessionStore
@@ -8,9 +10,45 @@ from oversolved.blueprints import get_db
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
+# ─── Rate limiting for login ───
+
+_login_failures: dict[str, list[float]] = {}
+_login_failures_lock = threading.Lock()
+_LOGIN_RATE_LIMIT = 10
+_LOGIN_RATE_WINDOW = 60
+
+
+def _login_rate_limit_exceeded(ip: str) -> bool:
+    now = time()
+    with _login_failures_lock:
+        failures = _login_failures.get(ip, [])
+        failures[:] = [t for t in failures if now - t < _LOGIN_RATE_WINDOW]
+        if not failures:
+            _login_failures.pop(ip, None)
+        return len(failures) >= _LOGIN_RATE_LIMIT
+
+
+def _record_login_failure(ip: str):
+    now = time()
+    with _login_failures_lock:
+        failures = _login_failures.get(ip)
+        if failures is None:
+            _login_failures[ip] = [now]
+        else:
+            failures.append(now)
+
+
+def _clear_login_failures(ip: str):
+    with _login_failures_lock:
+        _login_failures.pop(ip, None)
+
 
 @auth_bp.route("/login", methods=["POST"])
 def login():
+    client_ip = request.remote_addr or "unknown"
+    if _login_rate_limit_exceeded(client_ip):
+        return jsonify({"error": "Too many login attempts"}), 429
+
     if not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 400
     data = request.get_json()
@@ -25,7 +63,10 @@ def login():
         or user_store.find_by_email(credential)
     )
     if user is None or not check_password_hash(user["password_hash"], password):
+        _record_login_failure(client_ip)
         return jsonify({"error": "Invalid credentials"}), 401
+
+    _clear_login_failures(client_ip)
     if not user["is_active"]:
         return jsonify({"error": "Account is deactivated"}), 403
     user_store.update(user["id"], last_login_at=datetime.now().isoformat())
