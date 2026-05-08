@@ -2,7 +2,7 @@
 
 import base64
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request, Response
 from PIL import Image
 from oversolved.db import DocumentStore, UserStore
@@ -145,13 +145,13 @@ def delete_document(uuid):
     permission = doc_store.get_permission(uuid, g.current_user["id"])
     if permission != "owner":
         return jsonify({"error": "Forbidden"}), 403
-    deleted_at = datetime.now().isoformat()
+    deleted_at = datetime.now(timezone.utc).isoformat()
     doc_store.update(uuid, deleted_at=deleted_at)
     return jsonify({
         "uuid": uuid,
         "status": "moved_to_trash",
         "deleted_at": deleted_at,
-        "expires_at": (datetime.now() + timedelta(days=30)).isoformat()
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
     }), 200
 
 
@@ -180,7 +180,9 @@ def recover_document(uuid):
         return jsonify({"error": "Document is not in trash"}), 400
 
     deleted_time = datetime.fromisoformat(doc["deleted_at"])
-    if datetime.now() - deleted_time > timedelta(days=30):
+    if deleted_time.tzinfo is None:
+        deleted_time = deleted_time.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) - deleted_time > timedelta(days=30):
         return jsonify({"error": "Document has expired and cannot be recovered"}), 410
 
     doc_store.update(uuid, deleted_at=None)

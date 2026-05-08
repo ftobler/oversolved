@@ -502,6 +502,8 @@ class SessionStore:
         if row is None:
             return None
         expires_at = datetime.fromisoformat(row[2])
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
         if datetime.now(timezone.utc) >= expires_at:
             return None
         return {"token": row[0], "user_id": row[1], "expires_at": row[2]}
@@ -652,7 +654,7 @@ class DocumentStore:
             """SELECT uuid, name, owner_id, deleted_at
                FROM documents
                WHERE deleted_at IS NOT NULL AND deleted_at < ?""",
-            (cutoff.isoformat(),),
+            (cutoff.replace(tzinfo=None).isoformat(),),
         )
         return [
             {

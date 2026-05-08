@@ -1,7 +1,7 @@
 """Tests for the standalone task runner (no background thread)."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from oversolved.db import Database, SQLiteConnection, PeriodicTaskStore
 from oversolved.periodic_tasks import (
     TaskScheduler,
@@ -123,11 +123,11 @@ class TestIsTaskDue:
         assert is_task_due(None, "0 2 * * *") is True
 
     def test_recently_run_not_due(self):
-        last_run = (datetime.now() - timedelta(hours=1)).isoformat()
+        last_run = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
         assert is_task_due(last_run, "0 2 * * *") is False
 
     def test_overdue_is_due(self):
-        last_run = (datetime.now() - timedelta(days=2)).isoformat()
+        last_run = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
         assert is_task_due(last_run, "0 2 * * *") is True
 
 
@@ -145,12 +145,12 @@ class TestTaskSchedulerEdgeCases:
 
     def test_is_task_due_with_future_last_run(self, db):
         """A task with last_run_at in the future should not be due."""
-        future = (datetime.now() + timedelta(days=1)).isoformat()
+        future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
         assert is_task_due(future, "0 2 * * *") is False
 
     def test_is_task_due_at_exact_time(self, db):
         """A task last_run_at exactly at the cron time (within 1min) is not due."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         # If now matches cron (2:00), last_run at 2:00 means not due yet
         near_now = now.replace(hour=2, minute=0, second=0, microsecond=0)
         if near_now > now:
@@ -179,7 +179,7 @@ class TestRunDueTasks:
     def test_run_due_tasks_skips_recently_run_task(self, db, task_store):
         db.execute(
             "INSERT INTO periodic_tasks (task_key, last_run_at, last_run_status) VALUES (?, ?, ?)",
-            ("test.fake", (datetime.now() - timedelta(hours=1)).isoformat(), "success"),
+            ("test.fake", (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(), "success"),
         )
         db.commit()
 
@@ -195,7 +195,7 @@ class TestRunDueTasks:
     def test_run_due_tasks_executes_overdue_task(self, db, task_store):
         db.execute(
             "INSERT INTO periodic_tasks (task_key, last_run_at, last_run_status) VALUES (?, ?, ?)",
-            ("test.fake", (datetime.now() - timedelta(days=2)).isoformat(), "success"),
+            ("test.fake", (datetime.now(timezone.utc) - timedelta(days=2)).isoformat(), "success"),
         )
         db.commit()
 

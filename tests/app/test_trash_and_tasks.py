@@ -2,7 +2,7 @@
 
 import json
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from oversolved.app import create_app
 from oversolved.db import (
     Database,
@@ -257,7 +257,7 @@ class TestDocumentTrash:
         from flask import g
         with authed_client.application.app_context():
             g.db = _get_db_for_app(authed_client.application)
-            old_date = (datetime.now() - timedelta(days=31)).isoformat()
+            old_date = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat()
             DocumentStore(g.db).update(uuid, deleted_at=old_date)
 
         response = authed_client.post(f"/api/documents/{uuid}/recover")
@@ -340,13 +340,57 @@ class TestDocumentTrash:
         assert response.status_code == 400
         assert "not in trash" in json.loads(response.data)["error"].lower()
 
+    def test_recover_with_naive_deleted_at(self, authed_client):
+        """Regression: recover_document must handle old naive +00:00 free deleted_at strings."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "NaiveDelete"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        # Simulate old-style naive deleted_at (no timezone suffix)
+        from oversolved.db import DocumentStore
+        from flask import g
+        with authed_client.application.app_context():
+            g.db = _get_db_for_app(authed_client.application)
+            old_date = (datetime.now(timezone.utc) - timedelta(hours=1)).replace(tzinfo=None).isoformat()
+            assert "+" not in old_date  # must be naive
+            DocumentStore(g.db).update(uuid, deleted_at=old_date)
+
+        # Recover must not throw TypeError from naive/aware mismatch
+        response = authed_client.post(f"/api/documents/{uuid}/recover")
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "recovered"
+
+    def test_recover_with_aware_datetime(self, authed_client):
+        """Regression: recover_document must not crash with +00:00 suffix in deleted_at."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "AwareDelete"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        # Soft-delete (now stores aware UTC)
+        delete_resp = authed_client.delete(f"/api/documents/{uuid}")
+        assert delete_resp.status_code == 200
+        assert "+00:00" in json.loads(delete_resp.data)["deleted_at"]
+
+        # Recover must not throw TypeError
+        response = authed_client.post(f"/api/documents/{uuid}/recover")
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "recovered"
+
 
 class TestPeriodicTasks:
     """Tests for periodic task framework."""
 
     def test_cron_parser_daily(self):
         next_run = _parse_cron("0 2 * * *")
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         assert next_run.hour == 2
         assert next_run.minute == 0
         assert next_run > now or (next_run.day == now.day and next_run.hour >= 2)
@@ -354,7 +398,7 @@ class TestPeriodicTasks:
     def test_empty_trash_task_deletes_old_docs(self, db, doc_store, user_store, task_store):
         uid = user_store.create("testuser", "hash", email="test@example.com")
         uuid = doc_store.create("Old Doc", uid)
-        old_date = (datetime.now() - timedelta(days=31)).isoformat()
+        old_date = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat()
         doc_store.update(uuid, deleted_at=old_date)
 
         task = EmptyTrashTask()
@@ -367,7 +411,7 @@ class TestPeriodicTasks:
     def test_empty_trash_task_ignores_recent_docs(self, db, doc_store, user_store, task_store):
         uid = user_store.create("testuser2", "hash", email="test2@example.com")
         uuid = doc_store.create("Recent Doc", uid)
-        recent_date = (datetime.now() - timedelta(days=5)).isoformat()
+        recent_date = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
         doc_store.update(uuid, deleted_at=recent_date)
 
         task = EmptyTrashTask()
@@ -400,7 +444,7 @@ class TestPeriodicTasks:
         db.execute(
             """INSERT INTO periodic_tasks (task_key, last_run_at, last_run_status)
                VALUES (?, ?, ?)""",
-            ("task.a", datetime.now().isoformat(), "success"),
+            ("task.a", datetime.now(timezone.utc).isoformat(), "success"),
         )
         db.commit()
 

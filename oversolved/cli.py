@@ -3,7 +3,7 @@
 import argparse
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def _positive_int(value: str) -> int:
@@ -105,7 +105,7 @@ def run_tasks(args: argparse.Namespace) -> None:
         try:
             while True:
                 results = scheduler.run_due_tasks(db)
-                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 for r in results:
                     print(f"[{now}] {r['task_key']}: {r['status']}")
                 time.sleep(args.interval)
@@ -113,7 +113,7 @@ def run_tasks(args: argparse.Namespace) -> None:
             print("\nShutting down task runner.")
     else:
         results = scheduler.run_due_tasks(db)
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         for r in results:
             print(f"[{now}] {r['task_key']}: {r['status']}")
         if not results:

@@ -6,7 +6,7 @@ import yaml
 import zipfile
 from io import BytesIO
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
@@ -230,7 +230,7 @@ def backup_all_documents():
         zip_buffer,
         mimetype='application/zip',
         as_attachment=True,
-        download_name=f'oversolved-backup-{datetime.now().strftime("%Y-%m-%d")}.zip'
+        download_name=f'oversolved-backup-{datetime.now(timezone.utc).strftime("%Y-%m-%d")}.zip'
     )
 
 
@@ -353,7 +353,7 @@ def submit_bug_report():
     bugreports_dir.mkdir(exist_ok=True)
 
     safe_title = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")[:50]
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     filename = f"{safe_title}_{timestamp}.md"
     filepath = bugreports_dir / filename
 
@@ -370,7 +370,7 @@ def submit_bug_report():
 
     markdown = f"""# Bug Report: {title}
 
-**Timestamp:** {datetime.now().isoformat()}
+**Timestamp:** {datetime.now(timezone.utc).isoformat()}
 
 ## Description
 

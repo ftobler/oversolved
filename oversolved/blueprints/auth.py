@@ -1,7 +1,7 @@
 """Authentication routes."""
 
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from time import time
 from flask import Blueprint, jsonify, request, make_response, current_app
 from werkzeug.security import check_password_hash
@@ -69,7 +69,7 @@ def login():
     _clear_login_failures(client_ip)
     if not user["is_active"]:
         return jsonify({"error": "Account is deactivated"}), 403
-    user_store.update(user["id"], last_login_at=datetime.now().isoformat())
+    user_store.update(user["id"], last_login_at=datetime.now(timezone.utc).isoformat())
     token = SessionStore(db).create(user["id"])
     response = make_response(
         jsonify(
