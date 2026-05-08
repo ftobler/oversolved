@@ -24,6 +24,7 @@ import { HoleEditor } from './HoleEditor'
 import { TransformEditor } from './TransformEditor'
 import ArrayEditor from './ArrayEditor'
 import { PickChip } from './PickChip'
+import { DeleteBodyEditor } from './DeleteBodyEditor'
 import { RebuildButton } from './RebuildButton'
 import contextEditIcon from '../assets/icons/context-edit.svg'
 import iconDotsIcon from '../assets/icons/dots.svg'
@@ -1015,25 +1016,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   />
                 )}
                 {feature.kind === 'delete_body' && editingFeatureId === feature.id && (
-                  <div className="feature-editor">
-                    <div className="feature-field-row feature-field-row--stacked">
-                      <span className="feature-field-label">Body</span>
-                      <PickChip
-                        values={feature.delete_body?.body && feature.delete_body?.body !== 'None' ? [feature.delete_body.body] : []}
-                        isPicking={pendingPickField?.featureId === feature.id && pendingPickField?.field === 'body'}
-                        onActivate={() => {
-                          if (pendingPickField?.featureId === feature.id && pendingPickField?.field === 'body') {
-                            onSetPendingPickField(null)
-                          } else {
-                            onSetPendingPickField({ featureId: feature.id, field: 'body', hostKind: 'delete_body' })
-                          }
-                        }}
-                        onRemove={() => onMutation({ type: 'set_delete_body_target', featureId: feature.id, body: '' })}
-                        features={features}
-                        partLabels={partLabels}
-                      />
-                    </div>
-                  </div>
+                  <DeleteBodyEditor
+                    feature={feature}
+                    onMutation={onMutation}
+                    pendingPickField={pendingPickField}
+                    setPendingPickField={onSetPendingPickField}
+                    features={features}
+                    partLabels={partLabels}
+                  />
                 )}
                 {feature.kind === 'hole' && editingFeatureId === feature.id && (
                   <HoleEditor

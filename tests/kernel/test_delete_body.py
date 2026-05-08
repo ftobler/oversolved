@@ -61,6 +61,42 @@ def test_delete_body_two_bodies_only_removes_target():
     assert "body_ex1" not in r["bodies"]
 
 
+def test_delete_body_body_target_change_triggers_rebuild():
+    """Changing the body ref in delete_body must be detected as dirty."""
+    doc = _extrude_doc()
+    doc["features"].append({
+        "id": "db1", "kind": "delete_body",
+        "delete_body": {"body": "@body_ex1"},
+    })
+    r1 = build(doc)
+    assert r1["result"]["db1"]["status"] == "ok"
+    assert "body_ex1" not in r1["bodies"]
+
+    doc["features"][-1] = {
+        "id": "db1", "kind": "delete_body",
+        "delete_body": {"body": "@body_nonexistent"},
+    }
+    r2 = build(doc, prev_state=r1["_build_state"])
+    assert r2["result"]["db1"]["status"] == "exception"
+    assert r2["bodies"].get("body_ex1") is not None
+
+
+def test_delete_body_with_extrude_integration():
+    """Full feature stack: sketch -> extrude -> delete_body. Body absent from output."""
+    sk = rect_sketch_spec(10, 10, sketch_id="sk1")
+    ex = extrude_spec("sk1", "ex1", 5)
+    doc = {"features": [sk, ex]}
+    r1 = build(doc)
+    assert "body_ex1" in r1["bodies"]
+
+    doc["features"].append({
+        "id": "db1", "kind": "delete_body",
+        "delete_body": {"body": "@body_ex1"},
+    })
+    r2 = build(doc)
+    assert "body_ex1" not in r2["bodies"]
+
+
 def test_delete_body_uses_ancestry_coercion():
     doc = _extrude_doc()
     doc["features"].append({
