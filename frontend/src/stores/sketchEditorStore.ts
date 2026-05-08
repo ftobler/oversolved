@@ -11,7 +11,7 @@ import { parseQuery } from '../utils/query'
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type { Mutation }
 
-export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'point' | 'project' | 'drag' | null
+export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'point' | 'project' | 'drag' | 'mirror' | null
 
 export const getEffectiveTool = (activeTool: ActiveTool): NonNullable<ActiveTool> => activeTool ?? 'drag'
 
@@ -477,9 +477,19 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       const bodyRef = _resolveBodyRef(selectionId)
       if (pendingPickField.hostKind === 'transform') {
         onMutation?.({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
+      } else if (pendingPickField.hostKind === 'mirror') {
+        onMutation?.({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
       } else {
         onMutation?.({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: bodyRef })
       }
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
+      return
+    }
+    if (pendingPickField.field === 'plane' && pendingPickField.hostKind === 'mirror') {
+      const value = selectionId.startsWith('face:')
+        ? selectionId.split(':').slice(2).join(':')
+        : selectionId
+      onMutation?.({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'plane', value })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return
     }

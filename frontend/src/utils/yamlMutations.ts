@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, PartConstraint, PartTarget, BooleanFeatureDef, TransformFeatureDef } from '../types/cad'
+import type { PartDoc, PartFeature, PartConstraint, PartTarget, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef } from '../types/cad'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '../registry'
 
 // ─── Architecture contract ───
@@ -1268,6 +1268,89 @@ export function applySetTransformField(
   const feat = doc.features?.find(f => f.id === featureId)
   if (!feat?.transform) return
   ;(feat.transform as unknown as Record<string, unknown>)[field] = value
+}
+
+export function applyMirrorEntities(
+  doc: PartDoc,
+  featureId: string,
+  entityIds: string[],
+  mirrorLineId: string,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.initial || !feature.entities) return
+
+  const lineParams = feature.initial[mirrorLineId]
+  if (!lineParams || lineParams.length < 4) return
+
+  const [ax, ay, bx, by] = lineParams
+  const dx = bx - ax
+  const dy = by - ay
+  const len2 = dx * dx + dy * dy
+  if (len2 < 1e-12) return
+
+  const reflectPoint = (px: number, py: number): [number, number] => {
+    const t = ((px - ax) * dx + (py - ay) * dy) / len2
+    const rx = 2 * (ax + t * dx) - px
+    const ry = 2 * (ay + t * dy) - py
+    return [rx, ry]
+  }
+
+  const lineAngle = Math.atan2(dy, dx) * 180 / Math.PI
+
+  for (const eid of entityIds) {
+    const entDef = feature.entities.find(e => e.id === eid)
+    if (!entDef) continue
+    const params = feature.initial[eid]
+    if (!params) continue
+
+    const kind = entDef.kind
+    let newParams: number[]
+
+    if (kind === 'arc') {
+      const [cx, cy, r, a1, a2] = params
+      const [rcx, rcy] = reflectPoint(cx, cy)
+      const newA1 = ((2 * lineAngle - a2) % 360 + 360) % 360
+      const newA2 = ((2 * lineAngle - a1) % 360 + 360) % 360
+      newParams = [rcx, rcy, r, newA1, newA2]
+    } else {
+      const coordPairs = ALL_COORD_INDICES[kind]
+      if (!coordPairs) continue
+      newParams = [...params]
+      for (const [xi, yi] of coordPairs) {
+        const [rx, ry] = reflectPoint(params[xi], params[yi])
+        newParams[xi] = rx
+        newParams[yi] = ry
+      }
+    }
+
+    const newId = randomId(12)
+    feature.entities.push({ id: newId, kind })
+    feature.initial[newId] = newParams.map(round)
+  }
+}
+
+export function applyAddMirror(doc: PartDoc, featureId: string, label?: string): void {
+  if (!doc.features) doc.features = []
+  doc.features.push({
+    id: featureId,
+    kind: 'mirror',
+    label: label ?? 'Mirror',
+    mirror: { body: '', plane: '', keep_original: true, merge: true },
+  })
+}
+
+export function applySetMirrorField(
+  doc: PartDoc,
+  featureId: string,
+  field: keyof MirrorFeatureDef,
+  value: unknown,
+): void {
+  const feat = doc.features?.find(f => f.id === featureId)
+  if (!feat?.mirror) {
+    console.warn(`applySetMirrorField: feature ${featureId} has no mirror`)
+    return
+  }
+  ;(feat.mirror as unknown as Record<string, unknown>)[field] = value
 }
 
 export function applyReorderPickField(doc: PartDoc, featureId: string, field: string, fromIndex: number, toIndex: number): void {

@@ -169,6 +169,15 @@ def fuse_shapes(shapes: list[Any]) -> Any:
     return result
 
 
+def make_mirror_trsf(origin: tuple[float, float, float], normal: tuple[float, float, float]):
+    """Create a reflection transform across a plane."""
+    from OCP.gp import gp_Ax2, gp_Pnt, gp_Dir, gp_Trsf
+    ax = gp_Ax2(gp_Pnt(*origin), gp_Dir(*normal))
+    trsf = gp_Trsf()
+    trsf.SetMirror(ax)
+    return trsf
+
+
 def _compute_face_centroid(face: cq_shapes.Face) -> list[float]:
     """Compute face centroid using cadquery."""
     c = face.Center()

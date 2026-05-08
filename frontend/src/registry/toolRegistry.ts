@@ -18,6 +18,7 @@ export type ToolId =
   | 'project'
   | 'drag'
   | 'constraint'
+  | 'mirror'
 
 export type ToolCategory = 'navigation' | 'drawing' | 'constraint' | 'selection' | 'dimension' | 'drag'
 

@@ -34,6 +34,7 @@ import featureArrayIcon from '../assets/icons/feature-array.svg'
 import featureDeleteBodyIcon from '../assets/icons/feature-delete-body.svg'
 import featureHoleIcon from '../assets/icons/feature-hole.svg'
 import featureTransformIcon from '../assets/icons/feature-transform.svg'
+import featureMirrorIcon from '../assets/icons/feature-mirror.svg'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
 import featurePartIcon from '../assets/icons/feature-part.svg'
 import featureCodeIcon from '../assets/icons/icon-code.svg'
@@ -1185,6 +1186,7 @@ useEffect(() => {
                 <button className="editor-btn" title="Add Hole" onClick={() => handleAddFeature('hole')} disabled={readOnly}><img src={featureHoleIcon} alt="Add Hole" /></button>
 
                 <button className="editor-btn" title="Add Transform" onClick={() => handleAddFeature('transform')} disabled={readOnly}><img src={featureTransformIcon} alt="Add Transform" /></button>
+                <button className="editor-btn" title="Add Mirror" onClick={() => handleAddFeature('mirror')} disabled={readOnly}><img src={featureMirrorIcon} alt="Add Mirror" /></button>
                 <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch} disabled={readOnly}><img src={featureSketchIcon} alt="Sketch" /></button>
                 <button className="editor-btn" title="Add plane" onClick={handleAddPlane} disabled={readOnly}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
                 <button className="editor-btn" title="Import STEP" onClick={handleImportStep} disabled={readOnly}><img src={featureImportIcon} alt="Import STEP" /></button>

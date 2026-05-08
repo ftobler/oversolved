@@ -16,12 +16,14 @@ import featureArrayIcon from '../assets/icons/feature-array.svg'
 import featureDeleteBodyIcon from '../assets/icons/feature-delete-body.svg'
 import featureHoleIcon from '../assets/icons/feature-hole.svg'
 import featureTransformIcon from '../assets/icons/feature-transform.svg'
+import featureMirrorIcon from '../assets/icons/feature-mirror.svg'
 import featureImportIcon from '../assets/icons/icon-upload.svg'
 import { FilletEditor } from './FilletEditor'
 import { ChamferEditor } from './ChamferEditor'
 import { BooleanEditor } from './BooleanEditor'
 import { HoleEditor } from './HoleEditor'
 import { TransformEditor } from './TransformEditor'
+import { MirrorEditor } from './MirrorEditor'
 import ArrayEditor from './ArrayEditor'
 import { PickChip } from './PickChip'
 import { DeleteBodyEditor } from './DeleteBodyEditor'
@@ -156,6 +158,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         return featureHoleIcon
       case 'transform':
         return featureTransformIcon
+      case 'mirror':
+        return featureMirrorIcon
       case 'import_step':
         return featureImportIcon
       default:
@@ -946,6 +950,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {feature.kind === 'transform' && feature.id === editingFeatureId && (
                       <span className="feature-visibility-placeholder" />
                     )}
+                    {feature.kind === 'mirror' && feature.id !== editingFeatureId && (
+                      <button
+                        className="feature-edit-btn"
+                        onClick={(e) => { e.stopPropagation(); onEnterEditFeature(feature.id) }}
+                        title="Edit mirror"
+                      >
+                        <img src={contextEditIcon} alt="Edit" />
+                      </button>
+                    )}
+                    {feature.kind === 'mirror' && feature.id === editingFeatureId && (
+                      <button
+                        className="exit-feature-btn"
+                        onClick={(e) => { e.stopPropagation(); onExitEditFeature() }}
+                        title="Exit mirror editor"
+                      >
+                        <span className="material-icons-outlined">close</span>
+                      </button>
+                    )}
+                    {feature.kind === 'mirror' && feature.id === editingFeatureId && (
+                      <span className="feature-visibility-placeholder" />
+                    )}
                     {feature.kind === 'extrude' && feature.id === editingFeatureId && (
                       <button
                         className="exit-feature-btn"
@@ -996,7 +1021,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <img src={iconEyeIcon} alt="Visible" />
                       </button>
                     )}
-                    {(feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'delete_body' || feature.kind === 'import_step') && (
+                    {(feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'delete_body' || feature.kind === 'import_step' || feature.kind === 'mirror') && (
                       <span className="feature-visibility-placeholder" />
                     )}
 
@@ -1097,6 +1122,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     partLabels={partLabels}
                   />
                 )}
+                {feature.kind === 'mirror' && editingFeatureId === feature.id && (
+                  <MirrorEditor
+                    feature={feature}
+                    onMutation={onMutation}
+                    pendingPickField={pendingPickField}
+                    setPendingPickField={onSetPendingPickField}
+                    features={features}
+                    partLabels={partLabels}
+                  />
+                )}
               </li>
             </div>
           )})
@@ -1162,6 +1197,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onMutation({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: '@' + bodyId })
                     } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'transform') {
                       onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'body', value: '@' + bodyId })
+                      onSetPendingPickField(null)
+                    } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'mirror') {
+                      onMutation({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'body', value: '@' + bodyId })
                       onSetPendingPickField(null)
                     } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'delete_body') {
                       onMutation({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: '@' + bodyId })

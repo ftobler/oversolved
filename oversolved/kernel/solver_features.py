@@ -1289,6 +1289,63 @@ def _solve_boolean(
         return {"status": "exception", "exception": str(exc)}
 
 
+def _solve_mirror(feature: dict, global_repo: Repository, body_store: dict) -> dict:
+    from oversolved.kernel.types3d import Body
+    from oversolved.kernel.geometry import transform_copy, boolean_union
+
+    try:
+        feature_id = feature.get("id", "")
+        sub = feature.get("mirror") or {}
+        cfg = {**sub, **{k: v for k, v in feature.items() if k not in ("mirror",)}}
+
+        body_query = cfg.get("body", "")
+        source_body = _resolve_body(body_query, body_store) if body_query else None
+        if source_body is None or source_body.shape is None:
+            raise ValueError(f"mirror: body not found: {body_query!r}")
+
+        plane_query = cfg.get("plane", "")
+        if not plane_query:
+            raise ValueError("mirror: plane is required")
+        plane_data = global_repo.query(plane_query, body_store=body_store)
+        if plane_data is None:
+            raise ValueError(f"mirror: plane not found: {plane_query!r}")
+        if isinstance(plane_data, dict) and plane_data.get("type") in ("flatface", "plane"):
+            origin = plane_data.get("origin", [0, 0, 0])
+            normal = plane_data.get("normal", [0, 0, 1])
+        else:
+            raise ValueError(f"mirror: plane query did not resolve to a plane: {plane_query!r}")
+
+        keep_original = bool(cfg.get("keep_original", True))
+        merge = bool(cfg.get("merge", True))
+
+        from oversolved.kernel.cadquery_ops import make_mirror_trsf
+        trsf = make_mirror_trsf(tuple(origin), tuple(normal))
+        mirrored_shape = transform_copy(source_body.shape, trsf)
+
+        if not keep_original:
+            source_body.shape = mirrored_shape
+            source_body.modified_by.append(feature_id)
+            return {"status": "ok", "body_id": source_body.id, "operation": "replace"}
+
+        if merge:
+            new_shape = boolean_union(source_body.shape, mirrored_shape)
+            source_body.shape = new_shape
+            source_body.modified_by.append(feature_id)
+            return {"status": "ok", "body_id": source_body.id, "operation": "merge"}
+
+        new_body_id = "body_" + feature_id
+        body_store[new_body_id] = Body(
+            id=new_body_id,
+            created_by=feature_id,
+            modified_by=[],
+            shape=mirrored_shape,
+            sketch_id=source_body.sketch_id,
+        )
+        return {"status": "ok", "body_id": new_body_id, "body_ids": [source_body.id, new_body_id], "operation": "new"}
+    except Exception as exc:
+        return {"status": "exception", "exception": str(exc)}
+
+
 def _solve_delete_body(feature: dict, global_repo: Repository, body_store: dict) -> dict:
     try:
         sub = feature.get("delete_body") or {}

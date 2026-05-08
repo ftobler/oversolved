@@ -78,6 +78,13 @@ export interface HoleFeatureDef {
   target?: string
 }
 
+export interface MirrorFeatureDef {
+  body: string
+  plane: string
+  keep_original?: boolean
+  merge?: boolean
+}
+
 export interface TransformFeatureDef {
   body: string
   operation?: 'new' | 'replace'
@@ -244,6 +251,7 @@ export interface PartFeature {
   delete_body?: DeleteBodyFeatureDef  // present when kind === 'delete_body'
   hole?: HoleFeatureDef  // present when kind === 'hole'
   transform?: TransformFeatureDef  // present when kind === 'transform'
+  mirror?: MirrorFeatureDef  // present when kind === 'mirror'
   file_id?: string  // present when kind === 'import_step'
 }
 
@@ -580,5 +588,8 @@ export type Mutation =
   | { type: 'set_part_color'; bodyId: string; color: string }
   | { type: 'set_part_transparency'; bodyId: string; transparency: number }
   | { type: 'set_part_metalness'; bodyId: string; metalness: number }
+  | { type: 'mirror_entities'; featureId: string; entityIds: string[]; mirrorLineId: string }
+  | { type: 'add_mirror'; featureId: string; label?: string }
+  | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }
   | { type: 'reorder_features'; featureId: string; toIndex: number }
   | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }

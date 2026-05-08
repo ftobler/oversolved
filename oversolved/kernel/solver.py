@@ -37,7 +37,7 @@ from oversolved.kernel.solver_features import (  # noqa: F401
     _solve_extrude, _solve_revolve, _solve_array,
     _solve_import_step, _solve_fillet, _solve_chamfer,
     _solve_boolean, _solve_delete_body, _solve_hole,
-    _solve_transform,
+    _solve_transform, _solve_mirror,
     _extract_profile_loops, _resolve_body,
 )
 
@@ -158,6 +158,8 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict, feat
         return _solve_hole(feature, global_repo, body_store, features_by_id or {})
     if kind == "transform":
         return _solve_transform(feature, global_repo, body_store)
+    if kind == "mirror":
+        return _solve_mirror(feature, global_repo, body_store)
     raise Exception(f"unknown feature type: '{kind}'")
 
 

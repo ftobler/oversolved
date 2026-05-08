@@ -7,6 +7,7 @@ import {
   CenterRectangleTool,
   ConstructionToggleTool,
   ConstraintTools,
+  MirrorTool,
 } from './tools'
 
 interface SketchToolbarProps {
@@ -32,6 +33,7 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
       <CenterRectangleTool />
 
       <ConstructionToggleTool />
+      <MirrorTool />
 
       <div className="toolbar-separator" />
 

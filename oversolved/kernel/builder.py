@@ -57,6 +57,7 @@ _FEATURE_CMP_KEYS = frozenset({
     "radius", "edges", "file_id", "scale",
     "definition",
     "delete_body",
+    "mirror",
 })
 
 

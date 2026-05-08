@@ -1302,6 +1302,27 @@ def feature_hole(ctx):
     # stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-mirror.svg")
+def feature_mirror(ctx):
+    """Icon for Mirror: two congruent triangles mirrored across a dashed vertical centerline."""
+    # Left triangle (dashed)
+    ctx.move_to(0.5, 0.15)
+    ctx.line_to(0.15, 0.5)
+    ctx.line_to(0.5, 0.85)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # Right triangle (solid)
+    ctx.move_to(0.5, 0.15)
+    ctx.line_to(0.85, 0.5)
+    ctx.line_to(0.5, 0.85)
+    ctx.close_path()
+    stroke(ctx, 2.0)
+
+    # Vertical dashed centerline
+    draw_dotted_line(ctx, 0.5, 0.12, 0.5, 0.88, 3)
+
+
 @icon("frontend/src/assets/icons/feature-transform.svg")
 def feature_transform(ctx):
     """Icon for Transform: ghost box shifted with translation arrows."""

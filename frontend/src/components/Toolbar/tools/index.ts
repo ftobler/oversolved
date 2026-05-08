@@ -7,6 +7,7 @@ export { default as CenterRectangleTool } from './CenterRectangleTool'
 export { default as ConstructionToggleTool } from './ConstructionToggleTool'
 export { default as ConstraintTools } from './ConstraintTools'
 export { default as DragTool } from './DragTool'
+export { default as MirrorTool } from './MirrorTool'
 
 // Export utilities
 export { iconUrl, shortcutHint } from './toolUtils'
