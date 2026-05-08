@@ -373,8 +373,8 @@ class TestSolverWebSocket:
 
         assert len(close_called) >= 1
 
-    def test_websocket_auth_with_query_token(self, app):
-        """Connect with ?token=... in URL, verify success."""
+    def test_websocket_rejects_query_token(self, app):
+        """Connect with ?token=... in URL but no cookie, verify 4001."""
         client = app.test_client()
         resp = client.post(
             "/api/auth/login",
@@ -392,8 +392,8 @@ class TestSolverWebSocket:
         ]
         _run_handler(app, ws, {}, environ_base={"REMOTE_ADDR": "127.0.0.1"},
                      query_string=f"token={token}")
-        assert len(ws.sent) == 1
-        assert ws.sent[0] == {"type": "pong"}
+        assert not ws.connected
+        assert ws.close_reason == 4001
 
     def test_websocket_auth_query_token_invalid(self, app):
         """Connect with bad ?token=..., verify 4001."""
@@ -404,8 +404,8 @@ class TestSolverWebSocket:
         assert not ws.connected
         assert ws.close_reason == 4001
 
-    def test_websocket_auth_query_token_preferred(self, app):
-        """Query token wins over cookie when both provided."""
+    def test_websocket_auth_cookie_only(self, app):
+        """Connect with valid cookie and no query token, verify success."""
         client = app.test_client()
         resp = client.post(
             "/api/auth/login",
@@ -418,9 +418,8 @@ class TestSolverWebSocket:
 
         ws = _MockWS()
         ws.receive_queue = [json.dumps({"type": "ping"}), None]
-        _run_handler(app, ws, {"Cookie": "session_token=invalid"},
-                     environ_base={"REMOTE_ADDR": "127.0.0.3"},
-                     query_string=f"token={valid_token}")
+        _run_handler(app, ws, {"Cookie": f"session_token={valid_token}"},
+                     environ_base={"REMOTE_ADDR": "127.0.0.3"})
         assert len(ws.sent) == 1
         assert ws.sent[0] == {"type": "pong"}
 

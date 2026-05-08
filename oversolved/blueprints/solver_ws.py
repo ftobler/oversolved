@@ -129,7 +129,7 @@ def _check_auth(ws) -> bool:
     """Check authentication on WS connect/re-validate. Returns True if authenticated."""
     client_ip = request.remote_addr or "unknown"
 
-    token = request.args.get("token") or request.cookies.get("session_token")
+    token = request.cookies.get("session_token")
     if not token:
         logger.warning("WS auth failed: no session token (client: %s)", client_ip)
         ws.close(4001, "Not authenticated")
