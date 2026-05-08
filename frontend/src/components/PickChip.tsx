@@ -29,9 +29,7 @@ export const PickChip: React.FC<PickChipProps> = ({
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
 
   useEffect(() => {
-    if (isPicking) {
-      setPickChipHighlightItems(values)
-    }
+    setPickChipHighlightItems(isPicking ? values : [])
   }, [isPicking, values, setPickChipHighlightItems])
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
   const [dropSide, setDropSide] = useState<'left' | 'right' | null>(null)

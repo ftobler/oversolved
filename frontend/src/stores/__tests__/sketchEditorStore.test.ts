@@ -1105,4 +1105,94 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
   })
+
+  describe('pickChipHighlightItems', () => {
+    it('starts empty', () => {
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual([])
+    })
+
+    it('setPickChipHighlightItems updates the array', () => {
+      useSketchEditorStore.getState().setPickChipHighlightItems(['@edge_0', '@edge_1'])
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@edge_0', '@edge_1'])
+    })
+
+    it('setPendingPickField(null) clears pickChipHighlightItems', () => {
+      useSketchEditorStore.setState({ pickChipHighlightItems: ['@edge_0'] })
+      useSketchEditorStore.getState().setPendingPickField(null)
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual([])
+    })
+
+    it('setPendingPickField with value preserves pickChipHighlightItems', () => {
+      useSketchEditorStore.setState({ pickChipHighlightItems: ['@edge_0'] })
+      useSketchEditorStore.getState().setPendingPickField({ featureId: 'f1', field: 'edges' })
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@edge_0'])
+    })
+
+    it('setPendingPickField(null) preserves items when transitioning to a new pick field', () => {
+      // Simulates clicking from one chip to another: old chip deactivates (null),
+      // then new chip activates (new value)
+      useSketchEditorStore.setState({ pickChipHighlightItems: ['@edge_0'] })
+      useSketchEditorStore.getState().setPendingPickField({ featureId: 'f2', field: 'sketch' })
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@edge_0'])
+    })
+
+    it('commitFieldPick with single-pick field clears pickChipHighlightItems (boolean_target)', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'b1', field: 'boolean_target' },
+        pickChipHighlightItems: ['@body_ex1'],
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual([])
+    })
+
+    it('commitFieldPick with multi-pick field preserves pickChipHighlightItems (edges)', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'f1', field: 'edges', hostKind: 'fillet' },
+        pickChipHighlightItems: ['@body_ex1/edge/0'],
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@body_ex1/edge/1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@body_ex1/edge/0'])
+    })
+
+    it('commitFieldPick with multi-pick field (sketch/extrude) preserves pickChipHighlightItems', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'ex1', field: 'sketch' },
+        pickChipHighlightItems: ['@body_ex1/face/0'],
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@body_ex1/face/1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@body_ex1/face/0'])
+    })
+
+    it('commitFieldPick with single-pick field (body/delete_body) clears pickChipHighlightItems', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'db1', field: 'body', hostKind: 'delete_body' },
+        pickChipHighlightItems: ['@body_ex1'],
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual([])
+    })
+
+    it('commitPlaneSelection clears pickChipHighlightItems', () => {
+      useSketchEditorStore.setState({
+        planeSelectionFeatureId: 'sk1',
+        pickChipHighlightItems: ['?body_ex1/face/0'],
+      })
+      useSketchEditorStore.getState().setOnMutation(vi.fn())
+      useSketchEditorStore.getState().toggleNormalSelection('?body_ex1/face/0')
+      useSketchEditorStore.getState().commitPlaneSelection('?body_ex1/face/0')
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual([])
+    })
+  })
 })

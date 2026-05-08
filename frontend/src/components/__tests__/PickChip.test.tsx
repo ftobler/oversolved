@@ -1,6 +1,11 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { PickChip } from '../PickChip'
+import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+
+beforeEach(() => {
+  useSketchEditorStore.setState({ pickChipHighlightItems: [] })
+})
 
 describe('PickChip', () => {
   it('renders empty state without text when no emptyText provided', () => {
@@ -243,5 +248,75 @@ describe('PickChip', () => {
     fireEvent.dragOver(items[1], { dataTransfer, clientX: 0 })
     fireEvent.drop(items[1], { dataTransfer })
     expect(onReorder).not.toHaveBeenCalled()
+  })
+
+  describe('pickChipHighlightItems sync', () => {
+    it('sets highlight items when isPicking is true', () => {
+      render(
+        <PickChip
+          values={['@edge_0', '@edge_1']}
+          isPicking={true}
+          onActivate={vi.fn()}
+          onRemove={vi.fn()}
+        />
+      )
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@edge_0', '@edge_1'])
+    })
+
+    it('clears highlight items when isPicking becomes false', () => {
+      const { rerender } = render(
+        <PickChip
+          values={['@edge_0']}
+          isPicking={true}
+          onActivate={vi.fn()}
+          onRemove={vi.fn()}
+        />
+      )
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@edge_0'])
+
+      rerender(
+        <PickChip
+          values={['@edge_0']}
+          isPicking={false}
+          onActivate={vi.fn()}
+          onRemove={vi.fn()}
+        />
+      )
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual([])
+    })
+
+    it('updates highlight items when values change while picking', () => {
+      const { rerender } = render(
+        <PickChip
+          values={['@edge_0']}
+          isPicking={true}
+          onActivate={vi.fn()}
+          onRemove={vi.fn()}
+        />
+      )
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@edge_0'])
+
+      rerender(
+        <PickChip
+          values={['@edge_0', '@edge_1']}
+          isPicking={true}
+          onActivate={vi.fn()}
+          onRemove={vi.fn()}
+        />
+      )
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@edge_0', '@edge_1'])
+    })
+
+    it('does not set items when not picking even with values', () => {
+      render(
+        <PickChip
+          values={['@body_1']}
+          isPicking={false}
+          onActivate={vi.fn()}
+          onRemove={vi.fn()}
+        />
+      )
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual([])
+    })
   })
 })

@@ -742,6 +742,83 @@ def test_extrude_from_brep_face_ancestry_query():
     assert max(zs) == approx(d + 3.0, abs=0.2), f"ex2 should end at z={d + 3.0}, got {max(zs)}"
 
 
+def test_extrude_from_brep_face_after_fillet():
+    """Extrude uses a face query from a body that was modified by a fillet.
+
+    Regression test: after a fillet changes the body topology, the face index
+    ordering in _extract_loops_from_occ_face must match solid_to_mesh, otherwise
+    a different (non-flat) face is resolved and the extrude fails with
+    "Only flat faces can be used as extrude profiles".
+    """
+    from oversolved.kernel.builder import build
+    from solver_helpers import rect_sketch_spec, assert_mesh_valid
+
+    d = 5.0
+    spec1 = {
+        "features": [
+            rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": "$sk1",
+                "distance": d,
+                "direction": "normal",
+            },
+        ]
+    }
+    r1 = build(spec1)
+    assert r1["result"]["ex1"]["status"] == "ok"
+
+    # Pick a flat side face from the extruded body (not top/bottom, those
+    # are at z=0 and z=d).  Side faces have centroid z ~ d/2.
+    best_q = None
+    for body in r1.get("bodies", {}).values():
+        mesh = body.get("mesh") or {}
+        for fd, q in zip(mesh.get("face_data") or [], mesh.get("face_queries") or []):
+            cz = fd["centroid"][2]
+            if abs(cz - d / 2) < 0.1 and fd.get("surface_type") == "flatface":
+                best_q = q
+                break
+    assert best_q is not None, "expected a flat side face query"
+
+    spec2 = {
+        "features": [
+            rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": "$sk1",
+                "distance": d,
+                "direction": "normal",
+            },
+            {
+                "id": "fil1",
+                "kind": "fillet",
+                "edges": [
+                    # Pick top-front and top-right edges via ancestry from the
+                    # extrude body tessellation — these are straight edges on the
+                    # top face boundary that will become fillet edges.
+                    r1["bodies"]["body_ex1"]["edge_queries"][0],
+                    r1["bodies"]["body_ex1"]["edge_queries"][1],
+                ],
+                "radius": 0.5,
+            },
+            {
+                "id": "ex2",
+                "kind": "extrude",
+                "sketch": best_q,
+                "distance": 3.0,
+                "direction": "normal",
+                "operation": "new",
+            },
+        ]
+    }
+    r2 = build(spec2)
+    assert r2["result"]["ex2"]["status"] == "ok", r2["result"]["ex2"]
+    assert "body_ex2" in r2["bodies"]
+    assert_mesh_valid(r2["bodies"]["body_ex2"]["mesh"])
+
+
 def test_extrude_from_brep_face_slash_query():
     """Extrude accepts slash-style B-rep face IDs (@feature/face/N)."""
     from oversolved.kernel.builder import build
