@@ -432,12 +432,30 @@ def _split_compound(shape) -> list:
 # ── Feature solvers ──
 
 
+def _resolve_merge_targets(merge_target: str | None, body_store: dict) -> list[str]:
+    """Return list of body IDs to operate on.
+    None / empty means ALL bodies. Otherwise resolve the ref to one body."""
+    if not merge_target:
+        return list(body_store.keys())
+    key = merge_target.lstrip("@")
+    if key in body_store:
+        return [key]
+    prefixed = "body_" + key
+    if prefixed in body_store:
+        return [prefixed]
+    for bid, body in body_store.items():
+        if body.created_by == key:
+            return [bid]
+    raise ValueError(f"extrude: body not found for merge_target '{merge_target}'")
+
+
 def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:
     from oversolved.kernel.types3d import Body
 
     try:
         feature_id = feature.get("id", "")
         sub = feature.get("extrude") or {}
+        merge_target = sub.get("merge_target") or feature.get("merge_target")
         feature = {**sub, **feature}
         sketch_raw = feature.get("sketch", "")
         if isinstance(sketch_raw, list):
@@ -470,6 +488,24 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
 
         operation = feature.get("operation", "add")
 
+        if operation in ("add", "cut"):
+            target_ids = _resolve_merge_targets(merge_target, body_store)
+            if not target_ids and not merge_target and operation == "add":
+                need_new_body = True
+            else:
+                need_new_body = False
+                if not target_ids and not merge_target and operation == "cut":
+                    # No bodies exist and no target specified: silently succeed
+                    # (nothing to cut).
+                    result["operation"] = "cut"
+                    return result
+                if not target_ids:
+                    raise ValueError(
+                        f"extrude: merge target '{merge_target}' not found"
+                    )
+        else:
+            need_new_body = False
+
         try:
             from oversolved.kernel.geometry import extrude_profile as _ep
 
@@ -485,16 +521,34 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
                 )
 
                 if operation == "cut":
-                    from oversolved.kernel.geometry import boolean_cut
+                    from oversolved.kernel.geometry import boolean_cut, boolean_intersection
+                    cut_anything = False
                     cut_body_id = None
-                    for existing_body in body_store.values():
-                        if existing_body.shape is not None:
-                            existing_body.shape = boolean_cut(existing_body.shape, tool_shape)
-                            existing_body.modified_by.append(feature_id)
-                            if cut_body_id is None:
-                                cut_body_id = existing_body.id
-                    if cut_body_id is not None:
-                        result["body_id"] = cut_body_id
+                    for bid in target_ids:
+                        existing_body = body_store[bid]
+                        if existing_body.shape is None:
+                            continue
+                        try:
+                            intersection = boolean_intersection(existing_body.shape, tool_shape)
+                            if intersection is None or intersection.wrapped.IsNull():
+                                continue
+                            import cadquery as cq
+                            if cq.Shape.cast(intersection.wrapped).Volume() < 1e-10:
+                                continue
+                        except Exception:
+                            continue
+                        new_shape = boolean_cut(existing_body.shape, tool_shape)
+                        existing_body.shape = new_shape
+                        existing_body.modified_by.append(feature_id)
+                        cut_anything = True
+                        if cut_body_id is None:
+                            cut_body_id = bid
+                    if not cut_anything:
+                        raise ValueError(
+                            "extrude: cut does not intersect any target body "
+                            "- nothing to remove"
+                        )
+                    result["body_id"] = cut_body_id
                     result["operation"] = "cut"
                 elif operation == "new":
                     solids = _split_compound(tool_shape)
@@ -510,19 +564,44 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
                     result["operation"] = "new"
                 else:
                     from oversolved.kernel.geometry import boolean_union
-                    fused = False
-                    fused_body_id = None
-                    for existing_body in body_store.values():
-                        if existing_body.shape is not None:
-                            existing_body.shape = boolean_union(existing_body.shape, tool_shape)
+                    if need_new_body:
+                        fused = False
+                    else:
+                        fused = False
+                        fused_body_id = None
+                        for bid in target_ids:
+                            existing_body = body_store[bid]
+                            if existing_body.shape is None:
+                                continue
+                            try:
+                                new_shape = boolean_union(existing_body.shape, tool_shape)
+                            except Exception as exc:
+                                raise ValueError(f"extrude: add operation failed: {exc}")
+                            if merge_target:
+                                from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND
+                                from OCP.TopExp import TopExp_Explorer
+                                if new_shape.wrapped.ShapeType() == TopAbs_COMPOUND:
+                                    explorer = TopExp_Explorer(new_shape.wrapped, TopAbs_SOLID)
+                                    solid_count = 0
+                                    while explorer.More():
+                                        solid_count += 1
+                                        explorer.Next()
+                                    if solid_count > 1:
+                                        raise ValueError(
+                                            "extrude: add would create island shape "
+                                            "not touching target body"
+                                        )
+                            existing_body.shape = new_shape
                             existing_body.modified_by.append(feature_id)
                             fused = True
-                            fused_body_id = existing_body.id
+                            fused_body_id = bid
                             break
                     if fused:
                         result["body_id"] = fused_body_id
                         result["body_ids"] = [fused_body_id]
                         result["operation"] = "add"
+                    elif not need_new_body:
+                        raise ValueError("extrude: add could not fuse with any target body")
                     else:
                         solids = _split_compound(tool_shape)
                         body_ids = []
@@ -535,6 +614,9 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
                         result["body_id"] = body_ids[0]
                         result["body_ids"] = body_ids
                         result["operation"] = "add"
+        except ValueError as exc:
+            result["status"] = "exception"
+            result["exception"] = str(exc)
         except Exception as exc:
             result["mesh_warning"] = str(exc)
 

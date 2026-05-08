@@ -13,6 +13,7 @@ export interface ExtrudeFeatureDef {
   distance: number
   direction?: ExtrudeDirection
   operation?: ExtrudeOperation
+  merge_target?: string
 }
 
 export interface FilletFeatureDef {
@@ -520,6 +521,7 @@ export type Mutation =
   | { type: 'set_extrude_distance'; featureId: string; distance: number }
   | { type: 'set_extrude_direction'; featureId: string; direction: ExtrudeDirection }
   | { type: 'set_extrude_operation'; featureId: string; operation: ExtrudeOperation }
+  | { type: 'set_extrude_merge_target'; featureId: string; mergeTarget?: string }
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
   | { type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number }

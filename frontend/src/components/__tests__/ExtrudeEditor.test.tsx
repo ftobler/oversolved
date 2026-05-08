@@ -190,7 +190,79 @@ describe('operation select', () => {
   })
 })
 
-// 5: sketch pick - clicking a sketch row while pendingPickField.field === 'sketch' is active
+// 5: merge target PickChip visibility and interaction
+describe('merge target PickChip', () => {
+  it('is shown for add operation', () => {
+    render(<Sidebar {...makeSidebarProps({
+      features: [extrudeFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+    })} />)
+    expect(screen.getByText('Merge Target')).toBeInTheDocument()
+  })
+
+  it('is shown for cut operation', () => {
+    const cutFeature: PartFeature = {
+      id: 'ex1', kind: 'extrude',
+      extrude: { sketch: '$sk1', distance: 10, operation: 'cut' },
+    }
+    render(<Sidebar {...makeSidebarProps({
+      features: [cutFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+    })} />)
+    expect(screen.getByText('Merge Target')).toBeInTheDocument()
+  })
+
+  it('is hidden for new operation', () => {
+    const newFeature: PartFeature = {
+      id: 'ex1', kind: 'extrude',
+      extrude: { sketch: '$sk1', distance: 10, operation: 'new' },
+    }
+    render(<Sidebar {...makeSidebarProps({
+      features: [newFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+    })} />)
+    expect(screen.queryByText('Merge Target')).toBeNull()
+  })
+
+  it('shows (all bodies) when no merge_target is set', () => {
+    render(<Sidebar {...makeSidebarProps({
+      features: [extrudeFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+    })} />)
+    expect(screen.getByText('(all bodies)')).toBeInTheDocument()
+  })
+
+  it('activates pick mode on chip click', () => {
+    const onSetPendingPickField = vi.fn()
+    render(<Sidebar {...makeSidebarProps({
+      features: [extrudeFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+      onSetPendingPickField,
+    })} />)
+    fireEvent.click(screen.getByText('(all bodies)'))
+    expect(onSetPendingPickField).toHaveBeenCalledWith({ featureId: 'ex1', field: 'merge_target' })
+  })
+
+  it('deactivates pick mode when chip clicked while already picking', () => {
+    const onSetPendingPickField = vi.fn()
+    render(<Sidebar {...makeSidebarProps({
+      features: [extrudeFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+      pendingPickField: { featureId: 'ex1', field: 'merge_target' },
+      onSetPendingPickField,
+    })} />)
+    fireEvent.click(screen.getByText('(all bodies)'))
+    expect(onSetPendingPickField).toHaveBeenCalledWith(null)
+  })
+})
+
+// 6: sketch pick - clicking a sketch row while pendingPickField.field === 'sketch' is active
 describe('sketch pick resolution', () => {
   it('dispatches set_extrude_sketch and clears pendingPickField when sketch row is clicked', () => {
     const onMutation = vi.fn()

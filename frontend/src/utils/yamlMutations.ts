@@ -646,6 +646,18 @@ export function applySetExtrudeOperation(
   feature.extrude.operation = operation
 }
 
+export function applySetExtrudeMergeTarget(
+  doc: PartDoc, featureId: string, mergeTarget?: string,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.extrude) return
+  if (mergeTarget) {
+    feature.extrude.merge_target = mergeTarget
+  } else {
+    delete feature.extrude.merge_target
+  }
+}
+
 export function applyAddRevolve(
   doc: PartDoc,
   featureId: string,

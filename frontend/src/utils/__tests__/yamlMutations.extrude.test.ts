@@ -8,6 +8,7 @@ import {
   applySetExtrudeOperation,
   applyAddExtrudeProfile,
   applyRemoveExtrudeProfile,
+  applySetExtrudeMergeTarget,
   normalizeExtrudeSketch,
 } from '../yamlMutations'
 
@@ -320,6 +321,48 @@ describe('mutation does not mutate original doc', () => {
     const doc = JSON.parse(JSON.stringify(original))
     applySetExtrudeDirection(doc, 'ex1', 'symmetric')
     expect(original.features![0].extrude!.direction).toBe('normal')
+  })
+})
+
+describe('set_extrude_merge_target', () => {
+  it('sets merge_target on an extrude feature', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'ex1',
+          kind: 'extrude',
+          extrude: { sketch: '$sk1', distance: 10 },
+        },
+      ],
+    }
+    applySetExtrudeMergeTarget(doc, 'ex1', '@body_ex0')
+    expect(doc.features![0].extrude!.merge_target).toBe('@body_ex0')
+  })
+
+  it('removes merge_target when called without value', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'ex1',
+          kind: 'extrude',
+          extrude: { sketch: '$sk1', distance: 10, merge_target: '@body_ex0' },
+        },
+      ],
+    }
+    applySetExtrudeMergeTarget(doc, 'ex1')
+    expect(doc.features![0].extrude!.merge_target).toBeUndefined()
+  })
+
+  it('does nothing if extrude is undefined', () => {
+    const doc: PartDoc = {
+      features: [{ id: 'ex1', kind: 'sketch' }],
+    }
+    expect(() => applySetExtrudeMergeTarget(doc, 'ex1', '@body_ex0')).not.toThrow()
+  })
+
+  it('does nothing for unknown feature', () => {
+    const doc: PartDoc = { features: [] }
+    expect(() => applySetExtrudeMergeTarget(doc, 'nonexistent', '@body_ex0')).not.toThrow()
   })
 })
 

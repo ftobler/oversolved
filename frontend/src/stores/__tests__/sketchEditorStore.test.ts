@@ -1089,6 +1089,50 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
 
+    it('merge_target pick from face query dispatches set_extrude_merge_target and closes pick mode', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'ex2', field: 'merge_target' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_extrude_merge_target',
+        featureId: 'ex2',
+        mergeTarget: '@body_ex1',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
+
+    it('merge_target pick passes through direct @body_id', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'ex2', field: 'merge_target' },
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'set_extrude_merge_target',
+        featureId: 'ex2',
+        mergeTarget: '@body_ex1',
+      })
+      expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    })
+
+    it('merge_target pick clears pickChipHighlightItems after single selection', () => {
+      const handler = vi.fn()
+      useSketchEditorStore.getState().setOnMutation(handler)
+      useSketchEditorStore.setState({
+        pendingPickField: { featureId: 'ex2', field: 'merge_target' },
+        pickChipHighlightItems: ['@body_ex1'],
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
+      useSketchEditorStore.getState().commitFieldPick()
+      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual([])
+    })
+
     it('sketch pick with hostKind hole dispatches set_hole_sketch', () => {
       const handler = vi.fn()
       useSketchEditorStore.getState().setOnMutation(handler)

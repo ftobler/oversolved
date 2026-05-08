@@ -36,6 +36,7 @@ import {
   applySetExtrudeDistance,
   applySetExtrudeDirection,
   applySetExtrudeOperation,
+  applySetExtrudeMergeTarget,
   applyAddExtrudeProfile,
   applyRemoveExtrudeProfile,
   applyAddRevolve,
@@ -569,6 +570,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'set_extrude_operation':
         applySetExtrudeOperation(next, m.featureId, m.operation)
+        break
+      case 'set_extrude_merge_target':
+        applySetExtrudeMergeTarget(next, m.featureId, m.mergeTarget)
         break
       case 'add_extrude_profile':
         applyAddExtrudeProfile(next, m.featureId, m.sketchQuery)
