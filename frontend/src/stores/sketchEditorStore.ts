@@ -389,7 +389,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setPlaneSelectionFeatureId: (id) => set({ planeSelectionFeatureId: id }),
 
-  setPendingPickField: (state) => set({ pendingPickField: state }),
+  setPendingPickField: (state) => set({
+    pendingPickField: state,
+    pickChipHighlightItems: state ? get().pickChipHighlightItems : [],
+  }),
 
   setPickChipHighlightItems: (items) => set({ pickChipHighlightItems: items }),
 
@@ -424,7 +427,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         : selectionId  // raw selection id
       if (pendingPickField.hostKind === 'hole') {
         onMutation?.({ type: 'set_hole_sketch', featureId: pendingPickField.featureId, sketch: sketchQuery })
-        set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
+        set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
         return
       }
       const mutationType = pendingPickField.hostKind === 'revolve' ? 'add_revolve_profile' : 'add_extrude_profile'
@@ -446,13 +449,13 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         ? selectionId.split(':').slice(2).join(':')
         : selectionId
       onMutation?.({ type: 'set_revolve_axis', featureId: pendingPickField.featureId, axis: axisQuery })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return
     }
     if (pendingPickField.field === 'boolean_target') {
       const bodyRef = _resolveBodyRef(selectionId)
       onMutation?.({ type: 'set_boolean_target', featureId: pendingPickField.featureId, target: bodyRef })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return
     }
     if (pendingPickField.field === 'boolean_tool') {
@@ -468,7 +471,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       } else {
         onMutation?.({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: bodyRef })
       }
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return
     }
     let value: string
@@ -486,7 +489,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       value = selectionId
     }
     onMutation?.({ type: 'set_plane_definition_field', featureId: pendingPickField.featureId, field: pendingPickField.field, value })
-    set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d' })
+    set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
   },
 
   commitPlaneSelection: (selectionId) => {
@@ -496,7 +499,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
     onMutation?.({ type: 'set_feature_plane', featureId: planeSelectionFeatureId, plane })
-    set({ planeSelectionFeatureId: null })
+    set({ planeSelectionFeatureId: null, pickChipHighlightItems: [] })
   },
 
   handleDimensionClick: (target, featureId, kind, screenPos, entityKind) => {
