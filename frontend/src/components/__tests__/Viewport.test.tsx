@@ -22,9 +22,14 @@ vi.mock('../Geometry3D', () => ({
 }))
 
 vi.mock('../Geometry3D/Body3D', () => ({
-  default: ({ interactive, ghost }: { interactive?: boolean; ghost?: boolean }) => (
-    <div data-testid={`body-3d`} data-interactive={interactive} data-ghost={ghost} />
+  default: ({ interactive }: { interactive?: boolean }) => (
+    <div data-testid="body-3d" data-interactive={interactive} />
   ),
+  __esModule: true,
+}))
+
+vi.mock('../Geometry3D/PreviewEdgeOverlay', () => ({
+  default: () => <div data-testid="preview-edge-overlay" />,
   __esModule: true,
 }))
 
@@ -108,8 +113,8 @@ describe('Viewport body interactive flag', () => {
     })
   })
 
-  it('ghostMode renders both pickBodies and preview bodies with pickBodies interactive and preview inert', () => {
-    const { getAllByTestId } = render(
+  it('ghostMode renders pickBodies as normal interactive bodies and shows a preview edge overlay', () => {
+    const { getAllByTestId, getByTestId } = render(
       <Viewport
         features={[sketch, extrude]}
         bodies={makeBody()}
@@ -118,15 +123,12 @@ describe('Viewport body interactive flag', () => {
         rollbackPosition={1}
       />
     )
+    // Only pickBodyItems rendered as Body3D, no duplicate for preview
     const items = getAllByTestId('body-3d')
-    // pickBodyItems (1) + previewBodyItems (1) = 2
-    expect(items.length).toBe(2)
-    const ghostItems = items.filter(el => el.getAttribute('data-ghost') === 'true')
-    expect(ghostItems.length).toBeGreaterThanOrEqual(2)
-    // pickBodyItems are interactive, previewBodyItems are not
-    const interactiveItems = items.filter(el => el.getAttribute('data-interactive') === 'true')
-    const inertItems = items.filter(el => el.getAttribute('data-interactive') === 'false')
-    expect(interactiveItems.length).toBeGreaterThanOrEqual(1)
-    expect(inertItems.length).toBeGreaterThanOrEqual(1)
+    expect(items.length).toBe(1)
+    // All Body3D items are interactive (no ghost/inert Body3D)
+    items.forEach(el => expect(el.getAttribute('data-interactive')).toBe('true'))
+    // Preview edge overlay is present
+    expect(getByTestId('preview-edge-overlay')).toBeTruthy()
   })
 })

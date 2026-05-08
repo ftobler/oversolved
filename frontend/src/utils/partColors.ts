@@ -15,6 +15,7 @@ export const COLOR_HOVER = '#ffffff'
 export const COLOR_SELECTED = '#ff9800'
 export const COLOR_CONSTRAINT_HOVER = '#fff176'  // entity highlighted because a constraint on it is hovered
 export const COLOR_PREVIEW = '#aaaaaa'
+export const COLOR_PREVIEW_EDGE = '#A855F7'  // violet neon for edge-only preview overlay
 export const COLOR_PROJECTED = '#ffca28'  // amber for projected/reference geometry
 export const COLOR_SNAP = '#aaaaaa'  // snap indicator during drag (same hue as preview by default)
 
@@ -23,7 +24,6 @@ export const COLOR_CONSTRAINT = '#ffd54f'
 
 // Render order (higher = renders on top)
 export const RENDER_ORDER_DEFAULT = 0
-export const RENDER_ORDER_GHOST = 1
 export const RENDER_ORDER_EDITING = 10
 export const RENDER_ORDER_HIGHLIGHT = 999
 

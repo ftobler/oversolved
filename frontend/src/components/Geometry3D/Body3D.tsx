@@ -13,7 +13,6 @@ import {
   ARC_SEGMENTS,
   HIT_PIXELS, POINT_HIT_PIXELS, POINT_VIS_PIXELS,
   RENDER_ORDER_DEFAULT,
-  RENDER_ORDER_GHOST,
   RENDER_ORDER_HIGHLIGHT,
 } from './constants'
 
@@ -31,7 +30,6 @@ interface Body3DProps {
   transparency?: number  // 0-1 (0 = opaque, 1 = fully transparent)
   metalness?: number     // 0-1 (0 = non-metallic, 1 = fully metallic)
   interactive?: boolean
-  ghost?: boolean
 }
 
 // Export for unit testing without a WebGL context.
@@ -264,7 +262,7 @@ export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
   return counts
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, transparency = 0, metalness = 0.3, interactive = true, ghost = false }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, transparency = 0, metalness = 0.3, interactive = true }: Body3DProps) {
   const hovered3DSurfaceId = useSketchEditorStore(s => s.hovered3DSurfaceId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
@@ -539,7 +537,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const defaultColor = new THREE.Color(edgeColor)
     const selectedColor = new THREE.Color(COLOR_SELECTED)
     const hoverColor = new THREE.Color(COLOR_HOVER)
-    const ghostColor = defaultColor.clone().lerp(new THREE.Color('#111111'), 0.5)
 
     for (let segIdx = 0; segIdx < totalSegments; segIdx++) {
       const edgeIdx = segmentToEdgeMap[segIdx]
@@ -553,7 +550,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           color = defaultColor
         }
       } else {
-        color = ghost ? ghostColor : defaultColor
+        color = defaultColor
       }
 
       // Set color for both vertices of this segment
@@ -566,7 +563,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       colors[baseIdx + 5] = color.b
     }
     return colors
-  }, [segmentToEdgeMap, getIsEdgeSelected, hoveredEdgeIndex, edgeColor, interactive, ghost])
+  }, [segmentToEdgeMap, getIsEdgeSelected, hoveredEdgeIndex, edgeColor, interactive])
 
   // debugFaceColors takes precedence when showDebugHit is on.
   const activeColors = debugFaceColors ?? faceColors
@@ -725,10 +722,10 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           polygonOffset={true}
           polygonOffsetFactor={1}
           polygonOffsetUnits={1}
-          transparent={ghost || transparency > 0}
-          depthWrite={!(ghost || transparency > 0)}
-          opacity={ghost ? 0.5 : (1 - transparency)}
-          blending={ghost || transparency > 0 ? THREE.CustomBlending : THREE.NormalBlending}
+          transparent={transparency > 0}
+          depthWrite={transparency === 0}
+          opacity={1 - transparency}
+          blending={transparency > 0 ? THREE.CustomBlending : THREE.NormalBlending}
           blendSrc={THREE.SrcAlphaFactor}
           blendDst={THREE.OneMinusSrcAlphaFactor}
         />
@@ -736,7 +733,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       {edges.length > 0 && (
         <lineSegments
           geometry={edgeGeometry}
-          renderOrder={ghost ? RENDER_ORDER_GHOST : RENDER_ORDER_DEFAULT}
+          renderOrder={RENDER_ORDER_DEFAULT}
           raycast={interactive ? undefined : noRaycast}
           onPointerOver={interactive ? (e) => {
             e.stopPropagation()
@@ -767,9 +764,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           <lineBasicMaterial
             color="white"
             vertexColors={true}
-            transparent={ghost}
-            depthWrite={!ghost}
-            opacity={ghost ? 0.5 : 1}
           />
         </lineSegments>
       )}
@@ -826,7 +820,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         const geo = edgeBoundaryGeos.get(query)
         return geo ? (
           <lineSegments geometry={geo}>
-            <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} transparent={ghost} opacity={ghost ? 0.5 : 1} />
+            <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
           </lineSegments>
         ) : null
       })()}
@@ -835,13 +829,13 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         if (!geo) return null
         return (
           <lineSegments key={query} geometry={geo} renderOrder={RENDER_ORDER_HIGHLIGHT}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent opacity={ghost ? 0.5 : 1} />
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent />
           </lineSegments>
         )
       })}
       {interactive && faceBoundaryGeos && hovered3DSurfaceId && faceBoundaryGeos.has(hovered3DSurfaceId) && (
         <lineSegments geometry={faceBoundaryGeos.get(hovered3DSurfaceId)}>
-          <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} transparent={ghost} opacity={ghost ? 0.5 : 1} />
+          <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
         </lineSegments>
       )}
       {interactive && faceBoundaryGeos && [...normalSelection].map(query => {
@@ -849,7 +843,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         if (!geo) return null
         return (
           <lineSegments key={query} geometry={geo}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent={ghost} opacity={ghost ? 0.5 : 1} />
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent />
           </lineSegments>
         )
       })}

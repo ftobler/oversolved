@@ -25,7 +25,6 @@ export interface BodyRenderItem {
   vertices?: [number, number, number][]
   vertexQueries?: string[]
   visible: boolean
-  ghost: boolean
 }
 
 function isInActiveRange(id: string, features: Feature[] | undefined, rollbackPos: number | undefined): boolean {
@@ -59,7 +58,7 @@ export function getBodiesToRender(
       vertices: body.vertices,
       vertexQueries: body.vertex_queries,
       visible: visibleBodies ? visibleBodies.has(bodyId) : true,
-      ghost: false,
+
     })
   }
   return items
@@ -95,7 +94,7 @@ export function getPreviewBodies(
       vertices: body.vertices,
       vertexQueries: body.vertex_queries,
       visible: visibleBodies ? visibleBodies.has(bodyId) : true,
-      ghost: false,
+
     })
   }
   return items
