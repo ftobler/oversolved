@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Mesh3D, EdgeData } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
@@ -24,6 +24,42 @@ import {
   _faceCount,
 } from './bodyGeometry'
 
+// 2D point-to-segment distance in pixels for screen-space edge proximity.
+function distToSegment2D(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay
+  const lenSq = dx * dx + dy * dy
+  if (lenSq === 0) return Math.hypot(px - ax, py - ay)
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq))
+  return Math.hypot(px - ax - t * dx, py - ay - t * dy)
+}
+
+// Project edge segments to screen space and return the nearest edge index within HIT_PIXELS.
+// Handles concave (inside corner) edges that are occluded by the face mesh from the raycaster.
+function nearestEdgeScreenSpace(
+  clientX: number, clientY: number,
+  pts: Float32Array,
+  segToEdge: number[],
+  camera: THREE.Camera,
+  rect: DOMRect,
+): number | null {
+  const w = rect.width, h = rect.height
+  let minDist = HIT_PIXELS
+  let best = -1
+  const p1 = new THREE.Vector3(), p2 = new THREE.Vector3()
+  for (let i = 0; i < pts.length; i += 6) {
+    p1.set(pts[i], pts[i + 1], pts[i + 2]).project(camera)
+    p2.set(pts[i + 3], pts[i + 4], pts[i + 5]).project(camera)
+    if (p1.z > 1 && p2.z > 1) continue  // both behind camera
+    const x1 = (p1.x + 1) / 2 * w + rect.left
+    const y1 = (-p1.y + 1) / 2 * h + rect.top
+    const x2 = (p2.x + 1) / 2 * w + rect.left
+    const y2 = (-p2.y + 1) / 2 * h + rect.top
+    const d = distToSegment2D(clientX, clientY, x1, y1, x2, y2)
+    if (d < minDist) { minDist = d; best = segToEdge[i / 6] ?? -1 }
+  }
+  return best >= 0 ? best : null
+}
+
 interface Body3DProps {
   featureId: string
   bodyId: string
@@ -41,6 +77,7 @@ interface Body3DProps {
 }
 
 export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, transparency = 0, metalness = 0.3, interactive = true }: Body3DProps) {
+  const { camera, gl } = useThree()
   const hovered3DSurfaceId = useSketchEditorStore(s => s.hovered3DSurfaceId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
@@ -125,6 +162,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   useEffect(() => {
     return () => { edgeGeometry.dispose() }
   }, [edgeGeometry])
+
+  // Raw segment data kept separately for screen-space edge proximity (nearestEdgeScreenSpace).
+  const edgeSegmentPts = useMemo(() => buildEdgeSegments(edges), [edges])
 
   // Precompute segment counts for edge index mapping
   const edgeSegmentCounts = useMemo(() => getEdgeSegmentCounts(edges), [edges])
@@ -456,6 +496,16 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           e.stopPropagation()
           if (isRotating) return
           setHoveredBodyId(featureId)
+          // Screen-space edge check: catches concave/inside-corner edges occluded by the mesh.
+          const me = e.nativeEvent as MouseEvent
+          const rect = gl.domElement.getBoundingClientRect()
+          const nearEdge = nearestEdgeScreenSpace(me.clientX, me.clientY, edgeSegmentPts, segmentToEdgeMap, camera, rect)
+          if (nearEdge !== null) {
+            setHoveredEdgeIndex(nearEdge)
+            setHovered3DSurface(null)
+            return
+          }
+          setHoveredEdgeIndex(null)
           const rawFaceIndex = (e as unknown as { faceIndex?: number }).faceIndex
           const rawIndex = (e as unknown as { index?: number }).index
           const faceIndex = rawFaceIndex !== undefined ? rawFaceIndex : (rawIndex !== undefined ? Math.floor(rawIndex / 3) : undefined)
@@ -471,6 +521,16 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         onPointerMove={interactive ? (e) => {
           e.stopPropagation()
           if (isRotating) return
+          // Screen-space edge check: catches concave/inside-corner edges occluded by the mesh.
+          const me = e.nativeEvent as MouseEvent
+          const rect = gl.domElement.getBoundingClientRect()
+          const nearEdge = nearestEdgeScreenSpace(me.clientX, me.clientY, edgeSegmentPts, segmentToEdgeMap, camera, rect)
+          if (nearEdge !== null) {
+            setHoveredEdgeIndex(nearEdge)
+            setHovered3DSurface(null)
+            return
+          }
+          setHoveredEdgeIndex(null)
           const rawFaceIndex = (e as unknown as { faceIndex?: number }).faceIndex
           const rawIndex = (e as unknown as { index?: number }).index
           const faceIndex = rawFaceIndex !== undefined ? rawFaceIndex : (rawIndex !== undefined ? Math.floor(rawIndex / 3) : undefined)
@@ -487,10 +547,18 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           e.stopPropagation()
           setHoveredBodyId(current => current === featureId ? null : current)
           setHovered3DSurface(null)
+          setHoveredEdgeIndex(null)
           lastHoveredFaceRef.current = null
           setHoveredFaceGeometry(null, null)
         } : undefined}
-        onClick={interactive ? handleMeshClick : undefined}
+        onClick={interactive ? (e) => {
+          // When screen-space edge proximity detected an edge hover, treat click as edge click.
+          if (hoveredEdgeIndexRef.current !== null) {
+            handleEdgeClick(e)
+          } else {
+            handleMeshClick(e)
+          }
+        } : undefined}
       >
         <meshStandardMaterial
           color="white"
@@ -626,6 +694,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           </lineSegments>
         )
       })}
+      {/* Debug: show all edge hit zones as orange lines with depthTest=false so occluded edges are visible. */}
+      {showDebugHit && edges.length > 0 && (
+        <lineSegments geometry={edgeGeometry} renderOrder={RENDER_ORDER_HIGHLIGHT + 1} raycast={noRaycast}>
+          <lineBasicMaterial color="#ff6600" transparent opacity={0.6} depthTest={false} />
+        </lineSegments>
+      )}
     </group>
   )
 }
