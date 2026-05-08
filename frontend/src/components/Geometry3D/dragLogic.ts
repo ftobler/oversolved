@@ -143,7 +143,7 @@ export function computeDragMutation(
   endClient: readonly [number, number],
   drag: VertexOrEdgeDrag,
   snapTarget: SnapTarget | null,
-  alignmentSnap: { point: [number, number]; kind: string; vertexId: string } | null,
+  _alignmentSnap: { point: [number, number]; kind: string; vertexId: string } | null,
 ): Mutation | null {
   // Click-vs-drag: pixel distance from pointer-down to pointer-up
   if (isPureClick(drag.startClient, endClient)) return null
