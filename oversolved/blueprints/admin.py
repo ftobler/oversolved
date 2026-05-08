@@ -11,7 +11,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
 from oversolved.db import DocumentStore, UserStore, PeriodicTaskStore
 from flask import g
-from oversolved.blueprints import require_auth, require_admin, get_db
+from oversolved.blueprints import require_auth, require_admin, require_csrf, get_db
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -32,6 +32,7 @@ def _format_history(history):
 
 @admin_bp.route("/api/admin/users", methods=["GET"])
 @require_auth
+@require_csrf
 @require_admin
 def list_users():
     users = UserStore(get_db()).list_all()
@@ -40,6 +41,7 @@ def list_users():
 
 @admin_bp.route("/api/admin/users", methods=["POST"])
 @require_auth
+@require_csrf
 @require_admin
 def create_user_admin():
     if not request.is_json:
@@ -72,6 +74,7 @@ def create_user_admin():
 
 @admin_bp.route("/api/admin/users/<int:user_id>", methods=["PUT"])
 @require_auth
+@require_csrf
 @require_admin
 def admin_update_user(user_id):
     if not request.is_json:
@@ -108,6 +111,7 @@ def admin_update_user(user_id):
 
 @admin_bp.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
 @require_auth
+@require_csrf
 @require_admin
 def admin_delete_user(user_id):
     if user_id == g.current_user["id"]:
@@ -123,6 +127,7 @@ def admin_delete_user(user_id):
 
 @admin_bp.route("/api/admin/users/<int:user_id>/reset", methods=["POST"])
 @require_auth
+@require_csrf
 @require_admin
 def admin_reset_password(user_id):
     if not request.is_json:
@@ -145,6 +150,7 @@ def admin_reset_password(user_id):
 
 @admin_bp.route("/api/admin/periodic-tasks", methods=["GET"])
 @require_auth
+@require_csrf
 @require_admin
 def list_periodic_tasks():
     task_store = PeriodicTaskStore(get_db())
@@ -154,6 +160,7 @@ def list_periodic_tasks():
 
 @admin_bp.route("/api/admin/periodic-tasks/<task_key>/run", methods=["POST"])
 @require_auth
+@require_csrf
 @require_admin
 def force_run_periodic_task(task_key):
     from oversolved.periodic_tasks import TaskScheduler, EmptyTrashTask
@@ -170,6 +177,7 @@ def force_run_periodic_task(task_key):
 
 @admin_bp.route("/api/admin/backup", methods=["GET"])
 @require_auth
+@require_csrf
 @require_admin
 def backup_all_documents():
     db = get_db()
@@ -217,6 +225,7 @@ def backup_all_documents():
 
 @admin_bp.route("/api/admin/import-backup", methods=["POST"])
 @require_auth
+@require_csrf
 @require_admin
 def import_backup():
     if "file" not in request.files:
@@ -314,6 +323,7 @@ def import_backup():
 
 @admin_bp.route("/api/bug-report", methods=["POST"])
 @require_auth
+@require_csrf
 @require_admin
 def submit_bug_report():
     content_type = request.content_type or ""

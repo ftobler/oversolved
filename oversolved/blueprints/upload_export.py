@@ -4,7 +4,7 @@ import os
 import uuid
 from flask import Blueprint, jsonify, request, Response
 from werkzeug.utils import secure_filename
-from oversolved.blueprints import require_auth
+from oversolved.blueprints import require_auth, require_csrf
 
 upload_export_bp = Blueprint("upload_export", __name__)
 
@@ -14,6 +14,7 @@ ALLOWED_EXTENSIONS = {".step", ".stp", ".iges", ".igs"}
 
 @upload_export_bp.route("/api/upload", methods=["POST"])
 @require_auth
+@require_csrf
 def upload_file():
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     if "file" not in request.files:
@@ -31,6 +32,7 @@ def upload_file():
 
 @upload_export_bp.route("/api/export/step", methods=["POST"])
 @require_auth
+@require_csrf
 def export_step():
     data = request.get_json(silent=True)
     if not data or "features" not in data:
@@ -69,6 +71,7 @@ def export_step():
 
 @upload_export_bp.route("/api/export/stl", methods=["POST"])
 @require_auth
+@require_csrf
 def export_stl():
     data = request.get_json(silent=True)
     if not data or "features" not in data:

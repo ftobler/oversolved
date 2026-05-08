@@ -7,13 +7,14 @@ from flask import Blueprint, jsonify, request, Response
 from PIL import Image
 from oversolved.db import DocumentStore, UserStore
 from flask import g
-from oversolved.blueprints import get_db, require_auth
+from oversolved.blueprints import get_db, require_auth, require_csrf
 
 documents_bp = Blueprint("documents", __name__, url_prefix="/api/documents")
 
 
 @documents_bp.route("", methods=["GET"])
 @require_auth
+@require_csrf
 def list_documents():
     sort = request.args.get("sort", "name")
     search_query = request.args.get("search", "").strip()
@@ -34,6 +35,7 @@ def list_documents():
 
 @documents_bp.route("", methods=["POST"])
 @require_auth
+@require_csrf
 def create_document():
     if not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 400
@@ -48,6 +50,7 @@ def create_document():
 
 @documents_bp.route("/<uuid>", methods=["GET"])
 @require_auth
+@require_csrf
 def get_document(uuid):
     doc_store = DocumentStore(get_db())
     doc = doc_store.retrieve(uuid)
@@ -76,6 +79,7 @@ def get_document(uuid):
 
 @documents_bp.route("/<uuid>", methods=["PUT"])
 @require_auth
+@require_csrf
 def update_document(uuid):
     if not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 400
@@ -111,6 +115,7 @@ def update_document(uuid):
 
 @documents_bp.route("/<uuid>", methods=["PATCH"])
 @require_auth
+@require_csrf
 def rename_document(uuid):
     if not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 400
@@ -132,6 +137,7 @@ def rename_document(uuid):
 
 @documents_bp.route("/<uuid>", methods=["DELETE"])
 @require_auth
+@require_csrf
 def delete_document(uuid):
     db = get_db()
     doc_store = DocumentStore(db)
@@ -153,6 +159,7 @@ def delete_document(uuid):
 
 @documents_bp.route("/trash", methods=["GET"])
 @require_auth
+@require_csrf
 def list_trash():
     docs = DocumentStore(get_db()).list_trash(g.current_user["id"])
     return jsonify({"documents": docs})
@@ -160,6 +167,7 @@ def list_trash():
 
 @documents_bp.route("/<uuid>/recover", methods=["POST"])
 @require_auth
+@require_csrf
 def recover_document(uuid):
     doc_store = DocumentStore(get_db())
     doc = doc_store.retrieve(uuid)
@@ -183,6 +191,7 @@ def recover_document(uuid):
 
 @documents_bp.route("/<uuid>/trash", methods=["DELETE"])
 @require_auth
+@require_csrf
 def permanently_delete_from_trash(uuid):
     doc_store = DocumentStore(get_db())
     doc = doc_store.retrieve(uuid)
@@ -202,6 +211,7 @@ def permanently_delete_from_trash(uuid):
 
 @documents_bp.route("/<uuid>/duplicate", methods=["POST"])
 @require_auth
+@require_csrf
 def duplicate_document(uuid):
     db = get_db()
     doc_store = DocumentStore(db)
@@ -218,6 +228,7 @@ def duplicate_document(uuid):
 
 @documents_bp.route("/<uuid>/clone", methods=["POST"])
 @require_auth
+@require_csrf
 def clone_document(uuid):
     db = get_db()
     doc_store = DocumentStore(db)
@@ -242,6 +253,7 @@ def clone_document(uuid):
 
 @documents_bp.route("/<uuid>/share", methods=["POST"])
 @require_auth
+@require_csrf
 def create_share(uuid):
     if not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 400
@@ -272,6 +284,7 @@ def create_share(uuid):
 
 @documents_bp.route("/<uuid>/share", methods=["DELETE"])
 @require_auth
+@require_csrf
 def remove_share(uuid):
     if not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 400
@@ -301,6 +314,7 @@ def remove_share(uuid):
 
 @documents_bp.route("/<uuid>/shares", methods=["GET"])
 @require_auth
+@require_csrf
 def list_shares(uuid):
     db = get_db()
     doc_store = DocumentStore(db)
@@ -315,6 +329,7 @@ def list_shares(uuid):
 
 @documents_bp.route("/<uuid>/export", methods=["GET"])
 @require_auth
+@require_csrf
 def export_document(uuid):
     doc_store = DocumentStore(get_db())
     doc = doc_store.retrieve(uuid)
@@ -327,6 +342,7 @@ def export_document(uuid):
 
 @documents_bp.route("/<uuid>/thumbnail", methods=["GET"])
 @require_auth
+@require_csrf
 def get_thumbnail(uuid):
     doc_store = DocumentStore(get_db())
     doc = doc_store.retrieve(uuid)
@@ -341,6 +357,7 @@ def get_thumbnail(uuid):
 
 @documents_bp.route("/<doc_id>/rebuild-stats", methods=["GET"])
 @require_auth
+@require_csrf
 def rebuild_stats(doc_id):
     db = get_db()
 
@@ -410,6 +427,7 @@ def rebuild_stats(doc_id):
 
 @documents_bp.route("/import", methods=["POST"])
 @require_auth
+@require_csrf
 def import_document():
     if not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 400

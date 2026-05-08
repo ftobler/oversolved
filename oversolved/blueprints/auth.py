@@ -6,7 +6,7 @@ from time import time
 from flask import Blueprint, jsonify, request, make_response, current_app
 from werkzeug.security import check_password_hash
 from oversolved.db import UserStore, SessionStore
-from oversolved.blueprints import get_db
+from oversolved.blueprints import get_db, _set_csrf_token, require_csrf
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -95,10 +95,12 @@ def login():
         secure=secure,
         max_age=60 * 60 * 24 * 30,
     )
+    _set_csrf_token(response)
     return response
 
 
 @auth_bp.route("/logout", methods=["POST"])
+@require_csrf
 def logout():
     token = request.cookies.get("session_token")
     if token:
