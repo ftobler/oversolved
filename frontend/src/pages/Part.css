@@ -1507,3 +1507,44 @@
   background: #333;
   color: #fff;
 }
+
+.undo-redo-btn-group {
+  position: relative;
+  display: inline-flex;
+}
+
+.undo-redo-tooltip {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 8px 12px;
+  min-width: 220px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  pointer-events: none;
+  margin-top: 4px;
+}
+
+.redo-tooltip {
+  left: auto;
+  right: 0;
+}
+
+.undo-redo-tooltip-header {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 6px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.undo-redo-tooltip-item {
+  font-size: 12px;
+  color: #ddd;
+  padding: 3px 0;
+  line-height: 1.4;
+}

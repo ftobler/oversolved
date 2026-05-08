@@ -482,7 +482,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
     const next: PartDoc = JSON.parse(JSON.stringify(current))
     if (!suppressUndoRef.current) {
-      setUndoStack(prev => [...prev, { doc: current, mutation: m }])
+      setUndoStack(prev => {
+        const next = [...prev, { doc: current, mutation: m }]
+        if (next.length > 200) next.shift()
+        return next
+      })
       setRedoStack([])
     }
     switch (m.type) {
@@ -760,7 +764,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       if (prev.length === 0) return prev
       const next = [...prev]
       const entry = next.pop()!
-      if (docRef.current) setRedoStack(r => [...r, { doc: docRef.current!, mutation: entry.mutation }])
+      const preUndoDoc = docRef.current
+      if (preUndoDoc) setRedoStack(r => [...r, { doc: preUndoDoc, mutation: entry.mutation }])
       docRef.current = entry.doc
       setDoc(entry.doc)
       reSolve(entry.doc, entry.doc.features?.length ?? 0)
@@ -773,7 +778,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       if (prev.length === 0) return prev
       const next = [...prev]
       const entry = next.pop()!
-      if (docRef.current) setUndoStack(u => [...u, { doc: docRef.current!, mutation: entry.mutation }])
+      const preRedoDoc = docRef.current
+      if (preRedoDoc) setUndoStack(u => [...u, { doc: preRedoDoc, mutation: entry.mutation }])
       docRef.current = entry.doc
       setDoc(entry.doc)
       reSolve(entry.doc, entry.doc.features?.length ?? 0)

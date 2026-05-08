@@ -100,6 +100,8 @@ export default function Part() {
   const [bugReporting, setBugReporting] = useState(false)
   const [bugReportError, setBugReportError] = useState<string | null>(null)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [undoHover, setUndoHover] = useState(false)
+  const [redoHover, setRedoHover] = useState(false)
   const [exportTargetBodyId, setExportTargetBodyId] = useState<string | null>(null)
   const [shareDocOpen, setShareDocOpen] = useState(false)
   const [exportDefaultName, setExportDefaultName] = useState<string>('export')
@@ -1020,12 +1022,46 @@ useEffect(() => {
   return (
     <div className="document-viewer">
       <AppHeader>
-        <button className="toolbar-btn" title="Undo" onClick={handleUndo} disabled={undoStack.length === 0}>
-          <span className="material-icons-outlined">undo</span>
-        </button>
-        <button className="toolbar-btn" title="Redo" onClick={handleRedo} disabled={redoStack.length === 0}>
-          <span className="material-icons-outlined">redo</span>
-        </button>
+        <div className="undo-redo-btn-group">
+          <button
+            className="toolbar-btn"
+            onClick={handleUndo}
+            disabled={undoStack.length === 0}
+            onMouseEnter={() => setUndoHover(true)}
+            onMouseLeave={() => setUndoHover(false)}
+          >
+            <span className="material-icons-outlined">undo</span>
+          </button>
+          {undoHover && undoStack.length > 0 && (
+            <div className="undo-redo-tooltip undo-tooltip">
+              <div className="undo-redo-tooltip-header">Undo ({undoStack.length}) Ctrl+Z</div>
+              {undoStack.slice(-5).reverse().map((entry, i) => (
+                <div key={i} className="undo-redo-tooltip-item">
+                  {describeMutation(entry.mutation)}
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            className="toolbar-btn"
+            onClick={handleRedo}
+            disabled={redoStack.length === 0}
+            onMouseEnter={() => setRedoHover(true)}
+            onMouseLeave={() => setRedoHover(false)}
+          >
+            <span className="material-icons-outlined">redo</span>
+          </button>
+          {redoHover && redoStack.length > 0 && (
+            <div className="undo-redo-tooltip redo-tooltip">
+              <div className="undo-redo-tooltip-header">Redo ({redoStack.length}) Ctrl+Shift+Z</div>
+              {redoStack.slice(-5).reverse().map((entry, i) => (
+                <div key={i} className="undo-redo-tooltip-item">
+                  {describeMutation(entry.mutation)}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <button className="toolbar-btn" title="Save" onClick={handleSave} disabled={readOnly}>
           <span className="material-icons-outlined">save</span>
         </button>
