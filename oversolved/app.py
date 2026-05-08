@@ -325,8 +325,16 @@ def create_app(config: dict | None = None) -> Flask:
     def serve_frontend(path="index.html"):
         if not frontend_dist.exists():
             return "", 404
-        if path and (frontend_dist / path).exists():
-            return send_from_directory(frontend_dist, path)
+        if path:
+            try:
+                requested = (frontend_dist / path).resolve()
+                resolved_dist = frontend_dist.resolve()
+                if not str(requested).startswith(str(resolved_dist)):
+                    return "", 404
+            except (OSError, ValueError):
+                return "", 404
+            if requested.exists():
+                return send_from_directory(frontend_dist, path)
         return send_from_directory(frontend_dist, "index.html")
 
     @app.teardown_appcontext
