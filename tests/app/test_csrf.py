@@ -4,7 +4,7 @@ import json
 import pytest
 from flask import Flask, jsonify
 from oversolved.app import create_app
-from oversolved.blueprints import require_csrf, _set_csrf_token
+from oversolved.blueprints import require_csrf
 
 
 @pytest.fixture

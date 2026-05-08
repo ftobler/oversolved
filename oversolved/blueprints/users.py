@@ -3,7 +3,7 @@
 from flask import Blueprint, jsonify, request, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from oversolved.db import UserStore
-from oversolved.blueprints import get_db, require_auth, require_csrf
+from oversolved.blueprints import get_db, require_auth, require_csrf, validate_password_strength
 
 users_bp = Blueprint("users", __name__, url_prefix="/api/users/me")
 
@@ -34,6 +34,9 @@ def update_profile():
         updates["email"] = email.strip()
 
     if new_password:
+        pw_error = validate_password_strength(new_password)
+        if pw_error:
+            return jsonify({"error": pw_error}), 400
         if not current_password:
             return jsonify({"error": "Current password required to change password"}), 400
         user = user_store.find_by_id(user_id)

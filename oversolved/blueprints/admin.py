@@ -11,7 +11,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
 from oversolved.db import DocumentStore, UserStore, PeriodicTaskStore
 from flask import g
-from oversolved.blueprints import require_auth, require_admin, require_csrf, get_db
+from oversolved.blueprints import require_auth, require_admin, require_csrf, get_db, validate_password_strength
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -56,6 +56,10 @@ def create_user_admin():
         return jsonify({"error": "Username and password required"}), 400
     if not email:
         return jsonify({"error": "Email required"}), 400
+
+    pw_error = validate_password_strength(password)
+    if pw_error:
+        return jsonify({"error": pw_error}), 400
 
     db = get_db()
     user_store = UserStore(db)
@@ -136,6 +140,10 @@ def admin_reset_password(user_id):
     new_password = data.get("password") or ""
     if not new_password:
         return jsonify({"error": "Password required"}), 400
+
+    pw_error = validate_password_strength(new_password)
+    if pw_error:
+        return jsonify({"error": pw_error}), 400
 
     db = get_db()
     user_store = UserStore(db)

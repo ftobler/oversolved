@@ -312,7 +312,7 @@ class TestShareAPI:
         with sqlite3.connect(db_path) as conn:
             conn.execute(
                 "INSERT INTO users (username, password_hash, must_change_password) VALUES (?, ?, ?)",
-                ("user2", generate_password_hash("pass2"), 0),
+                ("user2", generate_password_hash("pass2word"), 0),
             )
             conn.commit()
 
@@ -354,14 +354,14 @@ class TestShareAPI:
         with sqlite3.connect(db_path) as conn:
             conn.execute(
                 "INSERT INTO users (username, password_hash, must_change_password) VALUES (?, ?, ?)",
-                ("user2", generate_password_hash("pass2"), 0),
+                ("user2", generate_password_hash("pass2word"), 0),
             )
             conn.commit()
 
         client2 = app.test_client()
         client2.post(
             "/api/auth/login",
-            data=json.dumps({"username": "user2", "password": "pass2"}),
+            data=json.dumps({"username": "user2", "password": "pass2word"}),
             content_type="application/json",
         )
 
@@ -394,14 +394,14 @@ class TestShareAPI:
         with sqlite3.connect(db_path) as conn:
             conn.execute(
                 "INSERT INTO users (username, password_hash, must_change_password) VALUES (?, ?, ?)",
-                ("user2", generate_password_hash("pass2"), 0),
+                ("user2", generate_password_hash("pass2word"), 0),
             )
             conn.commit()
 
         client2 = app.test_client()
         client2.post(
             "/api/auth/login",
-            data=json.dumps({"username": "user2", "password": "pass2"}),
+            data=json.dumps({"username": "user2", "password": "pass2word"}),
             content_type="application/json",
         )
 
@@ -424,7 +424,7 @@ class TestShareAPI:
         with sqlite3.connect(db_path) as conn:
             conn.execute(
                 "INSERT INTO users (username, password_hash, must_change_password) VALUES (?, ?, ?)",
-                ("user2", generate_password_hash("pass2"), 0),
+                ("user2", generate_password_hash("pass2word"), 0),
             )
             conn.commit()
 
@@ -455,7 +455,7 @@ class TestShareAPI:
         with sqlite3.connect(db_path) as conn:
             conn.execute(
                 "INSERT INTO users (username, password_hash, must_change_password) VALUES (?, ?, ?)",
-                ("user2", generate_password_hash("pass2"), 0),
+                ("user2", generate_password_hash("pass2word"), 0),
             )
             conn.commit()
 
@@ -483,7 +483,7 @@ class TestAccessControl:
         with sqlite3.connect(db_path) as conn:
             conn.execute(
                 "INSERT INTO users (username, password_hash, must_change_password) VALUES (?, ?, ?)",
-                ("user2", generate_password_hash("pass2"), 0),
+                ("user2", generate_password_hash("pass2word"), 0),
             )
             conn.commit()
 
@@ -491,7 +491,7 @@ class TestAccessControl:
         client2 = app.test_client()
         client2.post(
             "/api/auth/login",
-            data=json.dumps({"username": "user2", "password": "pass2"}),
+            data=json.dumps({"username": "user2", "password": "pass2word"}),
             content_type="application/json",
         )
         return client2

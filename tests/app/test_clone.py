@@ -361,14 +361,14 @@ class TestCloneAPI:
         with sqlite3.connect(db_path) as conn:
             conn.execute(
                 "INSERT INTO users (username, password_hash, must_change_password) VALUES (?, ?, ?)",
-                ("user2", generate_password_hash("pass2"), 0),
+                ("user2", generate_password_hash("pass2word"), 0),
             )
             conn.commit()
 
         client2 = app.test_client()
         login_resp = client2.post(
             "/api/auth/login",
-            data=json.dumps({"username": "user2", "password": "pass2"}),
+            data=json.dumps({"username": "user2", "password": "pass2word"}),
             content_type="application/json",
         )
         assert login_resp.status_code == 200

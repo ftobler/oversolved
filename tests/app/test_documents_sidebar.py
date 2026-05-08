@@ -201,14 +201,14 @@ def authed_client(app):
 def authed_client2(app, authed_client):
     resp = authed_client.post(
         "/api/admin/users",
-        data=json.dumps({"username": "user2", "password": "user2", "email": "user2@example.com", "is_admin": False}),
+        data=json.dumps({"username": "user2", "password": "user2pass", "email": "user2@example.com", "is_admin": False}),
         content_type="application/json",
     )
     assert resp.status_code == 201
     client = app.test_client()
     response = client.post(
         "/api/auth/login",
-        data=json.dumps({"username": "user2", "password": "user2"}),
+        data=json.dumps({"username": "user2", "password": "user2pass"}),
         content_type="application/json",
     )
     assert response.status_code == 200

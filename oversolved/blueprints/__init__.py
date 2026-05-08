@@ -97,3 +97,10 @@ def require_admin(f):
         return f(*args, **kwargs)
 
     return decorated_function
+
+
+def validate_password_strength(password: str) -> str | None:
+    """Validate password meets minimum requirements. Returns error message or None."""
+    if len(password) < 8:
+        return "Password must be at least 8 characters long"
+    return None
