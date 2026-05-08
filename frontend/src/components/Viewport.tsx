@@ -434,10 +434,12 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     [pickBodies, features, visibleBodies]
   )
 
-  const previewBodyItems = useMemo(
-    () => getPreviewBodies(bodies, features, rollbackPosition, visibleBodies),
-    [bodies, features, rollbackPosition, visibleBodies]
-  )
+  const previewBodyItems = useMemo(() => {
+    if (ghostMode) {
+      return getBodiesToRender(bodies, features, undefined, visibleBodies)
+    }
+    return getPreviewBodies(bodies, features, rollbackPosition, visibleBodies)
+  }, [bodies, features, rollbackPosition, visibleBodies, ghostMode])
 
   const activeSketchFeatures = useMemo(
     () => getSketchesToRender(features, rollbackPosition, visibleFeatures),
@@ -550,7 +552,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
             {pickBodyItems.map(b => (
               <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0.3} interactive={true} />
             ))}
-            <PreviewEdgeOverlay items={previewBodyItems} pickItems={pickBodyItems} />
+            <PreviewEdgeOverlay items={previewBodyItems} />
           </>
         ) : (
           bodyItems.map(b => (
