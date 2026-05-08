@@ -108,3 +108,37 @@ class TestMaxContentLength:
             content_type="multipart/form-data",
         )
         assert resp.status_code == 413
+
+    def test_import_backup_rejects_over_limit(self, admin_client):
+        buf = io.BytesIO(b"x" * (101 * 1024 * 1024))
+        resp = admin_client.post(
+            "/api/admin/import-backup",
+            data={"file": (buf, "large.zip")},
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 413
+
+    def test_import_backup_empty_zip(self, admin_client):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED):
+            pass
+        buf.seek(0)
+        resp = admin_client.post(
+            "/api/admin/import-backup",
+            data={"file": (buf, "empty.zip")},
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["imported_count"] == 0
+
+    def test_import_backup_corrupt_zip(self, admin_client):
+        buf = io.BytesIO(b"not a zip file")
+        resp = admin_client.post(
+            "/api/admin/import-backup",
+            data={"file": (buf, "corrupt.zip")},
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "invalid zip" in data.get("error", "").lower()

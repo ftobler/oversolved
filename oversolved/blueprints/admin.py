@@ -246,13 +246,16 @@ def import_backup():
     if not file.filename or not file.filename.endswith('.zip'):
         return jsonify({"error": "File must be a zip file"}), 400
 
-    try:
-        zip_buffer = BytesIO(file.read())
+    MAX_IMPORT_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
+    content_length = request.content_length
+    if content_length and content_length > MAX_IMPORT_FILE_SIZE:
+        return jsonify({"error": "File too large"}), 413
 
+    try:
         MAX_ZIP_ENTRIES = 10000
         MAX_ZIP_DECOMPRESSED = 500 * 1024 * 1024
 
-        with zipfile.ZipFile(zip_buffer, 'r') as bomb_check:
+        with zipfile.ZipFile(file.stream, 'r') as bomb_check:
             if len(bomb_check.filelist) > MAX_ZIP_ENTRIES:
                 return jsonify({"error": "Archive contains too many files"}), 400
             total_decompressed = 0
@@ -260,7 +263,7 @@ def import_backup():
                 total_decompressed += file_info.file_size
                 if total_decompressed > MAX_ZIP_DECOMPRESSED:
                     return jsonify({"error": "Archive too large when decompressed"}), 400
-        zip_buffer.seek(0)
+        file.stream.seek(0)
 
         db = get_db()
         user_store = UserStore(db)
@@ -270,7 +273,7 @@ def import_backup():
         skipped_count = 0
         errors = []
 
-        with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
+        with zipfile.ZipFile(file.stream, 'r') as zip_file:
             files_by_user = {}
             for file_info in zip_file.filelist:
                 path = file_info.filename
@@ -324,6 +327,8 @@ def import_backup():
             "errors": errors if errors else None
         }), 200
 
+    except OSError:
+        return jsonify({"error": "Failed to read uploaded file"}), 400
     except zipfile.BadZipFile:
         return jsonify({"error": "Invalid zip file"}), 400
     except Exception as e:
