@@ -1,5 +1,6 @@
 """Admin routes: users, periodic-tasks, backup, import-backup, bug-report."""
 
+import logging
 import re
 import yaml
 import zipfile
@@ -12,6 +13,8 @@ from werkzeug.security import generate_password_hash
 from oversolved.db import DocumentStore, UserStore, PeriodicTaskStore
 from flask import g
 from oversolved.blueprints import require_auth, require_admin, require_csrf, get_db, validate_password_strength
+
+logger = logging.getLogger(__name__)
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -311,7 +314,8 @@ def import_backup():
                         imported_count += 1
                     except Exception as e:
                         skipped_count += 1
-                        errors.append(f"Failed to import {yaml_name}: {str(e)}")
+                        logger.warning("Import failed for %s: %s", yaml_name, e, exc_info=True)
+                        errors.append(f"Import failed for {yaml_name}")
 
         return jsonify({
             "status": "imported",

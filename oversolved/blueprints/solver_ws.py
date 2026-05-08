@@ -206,7 +206,7 @@ def solver_websocket(ws):
                 ws.send(json.dumps({"type": "pong"}))
 
             else:
-                ws.send(json.dumps({"type": "error", "error": f"Unknown message type: {msg_type}"}))
+                ws.send(json.dumps({"type": "error", "error": "Unknown message type"}))
 
     except Exception:
         logger.exception("WebSocket error")

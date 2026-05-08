@@ -22,7 +22,7 @@ def upload_file():
     f = request.files["file"]
     ext = os.path.splitext(secure_filename(f.filename or ""))[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
-        return jsonify({"error": f"unsupported extension {ext!r}"}), 400
+        return jsonify({"error": "Unsupported file type"}), 400
     file_id = str(uuid.uuid4()) + ext
     if "/" in file_id or "\\" in file_id:
         return jsonify({"error": "Invalid file extension"}), 400

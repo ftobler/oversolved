@@ -383,7 +383,7 @@ class TestDocumentAPI:
             content_type="application/json",
         )
         assert response.status_code == 400
-        assert "512x512" in json.loads(response.data)["error"]
+        assert "Invalid image" in json.loads(response.data)["error"]
 
 
 class TestDocsAPI:

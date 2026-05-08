@@ -1,6 +1,5 @@
 """Shared utilities for Flask blueprints."""
 
-import secrets
 from functools import wraps
 from flask import g, jsonify, request, current_app
 from oversolved.db import Database, SQLiteConnection, MariaDBConnection, SessionStore, UserStore
@@ -30,26 +29,12 @@ def get_db():
     return g.db
 
 
-def _set_csrf_token(response):
-    """Set a non-httponly XSRF-TOKEN cookie for JS access."""
-    token = secrets.token_hex(16)
-    secure = current_app.config.get("SESSION_COOKIE_SECURE", False)
-    response.set_cookie(
-        "XSRF-TOKEN",
-        token,
-        httponly=False,
-        samesite="Lax",
-        secure=secure,
-        max_age=60 * 60 * 24 * 30,
-    )
-    return response
-
-
 def require_csrf(f):
-    """Decorator that requires a valid CSRF token for state-changing requests.
+    """Decorator that provides CSRF protection via Origin/Referer header check.
 
-    Uses the double-submit cookie pattern: validates X-XSRF-TOKEN header
-    matches the XSRF-TOKEN cookie. GET and HEAD requests are exempt.
+    Validates that the Origin or Referer header matches the request host.
+    This is the simplest CSRF defense for same-origin SPA applications and
+    requires no frontend changes. GET and HEAD requests are exempt.
     Skipped when TESTING is True for test compatibility.
     """
     @wraps(f)
@@ -58,9 +43,12 @@ def require_csrf(f):
             return f(*args, **kwargs)
         if current_app.config.get("TESTING"):
             return f(*args, **kwargs)
-        csrf_cookie = request.cookies.get("XSRF-TOKEN")
-        csrf_header = request.headers.get("X-XSRF-TOKEN")
-        if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+        origin = request.headers.get("Origin")
+        referer = request.headers.get("Referer")
+        host = request.host_url.rstrip("/")
+        if origin and origin != host:
+            return jsonify({"error": "Invalid CSRF token"}), 403
+        if referer and not referer.startswith(host):
             return jsonify({"error": "Invalid CSRF token"}), 403
         return f(*args, **kwargs)
     return decorated

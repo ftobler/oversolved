@@ -9,7 +9,6 @@ import '@fontsource/material-icons-outlined/index.css'
 import './index.css'
 import App from './App.tsx'
 import { initializeTools } from './tools'
-import './utils/apiFetch'
 
 initializeTools()
 

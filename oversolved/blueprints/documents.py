@@ -104,9 +104,7 @@ def update_document(uuid):
         try:
             img = Image.open(BytesIO(image_data))
             if img.width > 512 or img.height > 512:
-                return jsonify(
-                    {"error": "Preview image must be at most 512x512 pixels"}
-                ), 400
+                return jsonify({"error": "Invalid image"}), 400
         except Exception:
             return jsonify({"error": "Invalid image data"}), 400
         doc_store.store_preview_image(uuid, image_data)
