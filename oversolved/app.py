@@ -316,6 +316,17 @@ def create_app(config: dict | None = None) -> Flask:
     sock = Sock(app)
     register_solver_ws(sock)
 
+    @app.after_request
+    def add_security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("X-XSS-Protection", "0")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if app.config.get("SESSION_COOKIE_SECURE", False):
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
+
     # ── Frontend static serving ───────────────────────────────────────────────
 
     frontend_dist_config = config.get("FRONTEND_DIST", Path(__file__).parent.parent / "frontend" / "dist") if config else Path(__file__).parent.parent / "frontend" / "dist"
