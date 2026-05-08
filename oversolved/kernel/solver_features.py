@@ -11,6 +11,7 @@ try:
     import oversolved.kernel.geometry  # noqa: F401  # pre-warm to avoid concurrent-import race
 except ImportError:
     pass
+from oversolved.kernel.cadquery_ops import _compute_face_centroid, _compute_face_normal
 
 logger = logging.getLogger(__name__)
 
@@ -186,11 +187,10 @@ def _extract_loops_from_occ_face(
             faces = list(cq_shape.faces())
 
             def _face_sort_key(f):
-                ub = f._uvBounds()
-                n = f.normalAt((ub[0] + ub[1]) / 2, (ub[2] + ub[3]) / 2)[0]
-                c = f.Center()
-                return (round(n.x, 6), round(n.y, 6), round(n.z, 6),
-                        round(c.x, 6), round(c.y, 6), round(c.z, 6))
+                n = _compute_face_normal(f)
+                c = _compute_face_centroid(f)
+                return (round(n[0], 6), round(n[1], 6), round(n[2], 6),
+                        round(c[0], 6), round(c[1], 6), round(c[2], 6))
             faces.sort(key=_face_sort_key)
             if face_index >= len(faces):
                 raise ValueError(f"face_index {face_index} out of range")
