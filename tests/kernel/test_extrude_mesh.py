@@ -1050,3 +1050,70 @@ def test_disjoint_bodies_face_query_resolves_to_correct_body():
             assert result.get("body_id") == bid, (
                 f"face query for {bid} resolved to body {result.get('body_id')!r}"
             )
+
+
+def test_disjoint_bodies_have_unique_edge_queries():
+    """Edge queries from two bodies of the same extrude must be disjoint."""
+    pytest.importorskip("OCP.gp")
+    from oversolved.kernel.builder import build
+
+    r = build(_disjoint_two_rect_spec(operation="new"))
+    assert r["result"]["ex1"]["status"] == "ok"
+
+    eq1 = set(r["bodies"]["body_ex1"].get("edge_queries", []))
+    eq2 = set(r["bodies"]["body_ex1_1"].get("edge_queries", []))
+
+    assert eq1 and eq2, "both bodies must have edge_queries"
+    assert eq1.isdisjoint(eq2), f"Bodies share edge queries: {eq1 & eq2}"
+
+
+def test_disjoint_bodies_have_unique_vertex_queries():
+    """Vertex queries from two bodies of the same extrude must be disjoint."""
+    pytest.importorskip("OCP.gp")
+    from oversolved.kernel.builder import build
+
+    r = build(_disjoint_two_rect_spec(operation="new"))
+    assert r["result"]["ex1"]["status"] == "ok"
+
+    vq1 = set(r["bodies"]["body_ex1"].get("vertex_queries", []))
+    vq2 = set(r["bodies"]["body_ex1_1"].get("vertex_queries", []))
+
+    assert vq1 and vq2, "both bodies must have vertex_queries"
+    assert vq1.isdisjoint(vq2), f"Bodies share vertex queries: {vq1 & vq2}"
+
+
+def test_disjoint_body_face_query_usable_in_downstream_feature():
+    """A face query from the secondary body of a two-body extrude can be used
+    as a plane definition without AmbiguousQueryError.
+
+    This is the concrete scenario from the bug report: the user selects a face
+    that visually belongs to one part but the query resolved to both parts.
+    """
+    pytest.importorskip("OCP.gp")
+    from oversolved.kernel.builder import build
+    from solver_helpers import rect_sketch_spec
+
+    r1 = build(_disjoint_two_rect_spec(operation="new"))
+    assert r1["result"]["ex1"]["status"] == "ok"
+
+    # Pick a flatface from the secondary body and use it as a plane.
+    face_data = r1["bodies"]["body_ex1_1"]["mesh"]["face_data"]
+    face_queries = r1["bodies"]["body_ex1_1"]["mesh"]["face_queries"]
+    flat_query = next(
+        (fq for fd, fq in zip(face_data, face_queries) if fd.get("surface_type") == "flatface"),
+        None,
+    )
+    assert flat_query is not None, "secondary body must have a flatface"
+
+    sketch2 = rect_sketch_spec(w=2, h=2, sketch_id="sk2")
+    sketch2["plane"] = flat_query
+
+    spec2 = dict(_disjoint_two_rect_spec(operation="new"))
+    spec2["features"] = spec2["features"] + [sketch2]
+
+    r2 = build(spec2, prev_state=r1["_build_state"])
+    sk2_result = r2["result"]["sk2"]
+    # Plane must resolve without AmbiguousQueryError; sketch may be underconstrained.
+    assert sk2_result.get("plane_transform") is not None, (
+        f"sk2 plane did not resolve: {sk2_result}"
+    )
