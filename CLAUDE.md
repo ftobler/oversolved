@@ -39,7 +39,7 @@ npx vitest run
 - Use two spaces before inline comments. Example: `be_nice = True  # sometimes`
 - Do not use banner comments or ASCII-art dividers (e.g. `====...`, `----...`). Keep any separators minimal. The approved divider is one line `# ─── {text} ───`.
 - Comments must describe intent, not restate the code.
-- try to keep files shorter than 1k lines.
+- Try to keep files shorter than 1k lines. This is not a hard limit.
 - icons are defined in `icons.py`.
 
 ## Feature planning / implementing
