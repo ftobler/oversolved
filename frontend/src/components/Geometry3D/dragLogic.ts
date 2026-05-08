@@ -156,20 +156,6 @@ export function computeDragMutation(
     return { type: 'move_entity', featureId: drag.featureId, entityId: drag.entityId, delta }
   }
 
-  // Vertex drag: check alignment snap first, then regular snap, then raw move
-  if (alignmentSnap?.kind && alignmentSnap.point && alignmentSnap.vertexId) {
-    const constraintKind = alignmentSnap.kind === 'kinda_horizontal' ? 'horizontal' : 'vertical'
-    return {
-      type: 'move_vertex_with_constraint',
-      featureId: drag.featureId,
-      entityId: drag.entityId,
-      vertexKey: drag.vertexKey,
-      to: alignmentSnap.point,
-      constraintKind,
-      snapVertexId: alignmentSnap.vertexId,
-    }
-  }
-
   if (snapTarget?.kind === 'vertex') {
     // Body snap targets encode the body featureId with BODY_SNAP_FEAT_PREFIX; no constraint is
     // created because the projected 3D position is a positional reference only.

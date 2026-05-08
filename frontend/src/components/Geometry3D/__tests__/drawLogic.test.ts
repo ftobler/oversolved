@@ -113,31 +113,7 @@ describe('computeDrawClick - line tool', () => {
     expect(kinds).toContain('add_constraint')
   })
 
-  it('second click with kinda_horizontal alignment snap emits horizontal constraint', () => {
-    const snap = emptySnap()
-    snap.alignmentSnapPoint = [0, 0]
-    snap.alignmentSnapKind = 'kinda_horizontal'
-    snap.alignmentSnapVertexId = 'draw:last'
-    const result = computeDrawClick('line', [[0, 0]], [5, 0.1], snap, FEATURE, newId)
-    const constraintMutations = result.mutations.filter(m => m.type === 'add_constraint')
-    expect(constraintMutations.length).toBeGreaterThan(0)
-    if (constraintMutations[0].type === 'add_constraint') {
-      expect(constraintMutations[0].kind).toBe('horizontal')
-    }
-  })
 
-  it('second click with kinda_vertical alignment snap emits vertical constraint', () => {
-    const snap = emptySnap()
-    snap.alignmentSnapPoint = [0, 0]
-    snap.alignmentSnapKind = 'kinda_vertical'
-    snap.alignmentSnapVertexId = 'vertex:S1:L1:start'
-    const result = computeDrawClick('line', [[0, 0]], [0.1, 5], snap, FEATURE, newId)
-    const constraintMutations = result.mutations.filter(m => m.type === 'add_constraint')
-    expect(constraintMutations.length).toBeGreaterThan(0)
-    if (constraintMutations[0].type === 'add_constraint') {
-      expect(constraintMutations[0].kind).toBe('vertical')
-    }
-  })
 })
 
 describe('computeDrawClick - circle tool', () => {

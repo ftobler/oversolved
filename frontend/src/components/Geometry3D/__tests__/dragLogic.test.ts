@@ -187,7 +187,7 @@ describe('computeDragMutation', () => {
     }
   })
 
-  it('returns move_vertex_with_constraint with h constraint for alignment snap', () => {
+  it('returns move_vertex for alignment snap (no constraint)', () => {
     const drag = makeDrag({ startClient: [100, 100], currentWorld: [5, 0.1] })
     const alignmentSnap = {
       point: [0, 0] as [number, number],
@@ -195,10 +195,11 @@ describe('computeDragMutation', () => {
       vertexId: 'vertex:S1:L1:end',
     }
     const result = computeDragMutation([200, 200], drag, null, alignmentSnap)
-    expect(result?.type).toBe('move_vertex_with_constraint')
-    if (result?.type === 'move_vertex_with_constraint') {
-      expect(result.constraintKind).toBe('horizontal')
-      expect(result.snapVertexId).toBe('vertex:S1:L1:end')
+    // Alignment snap moves vertex to currentWorld position without creating a constraint.
+    // The alignment-snapped position is already baked into currentWorld by computeDragMove.
+    expect(result?.type).toBe('move_vertex')
+    if (result?.type === 'move_vertex') {
+      expect(result.to).toEqual([5, 0.1])
     }
   })
 

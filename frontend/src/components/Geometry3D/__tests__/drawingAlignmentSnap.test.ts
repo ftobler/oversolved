@@ -145,13 +145,5 @@ describe('alignment snap for draw tool', () => {
     })
   })
 
-  describe('constraint insertion pattern', () => {
-    it('horizontal alignment snap produces horizontal constraint', () => {
-      expect(suggestConstraint('vertex', 'kinda_horizontal')).toBe('horizontal')
-    })
 
-    it('vertical alignment snap produces vertical constraint', () => {
-      expect(suggestConstraint('vertex', 'kinda_vertical')).toBe('vertical')
-    })
-  })
 })

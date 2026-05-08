@@ -102,16 +102,7 @@ export function computeDrawClick(
           params: [pts[0][0], pts[0][1], px, py], entityId: lineId })
       }
 
-      if (snap.alignmentSnapPoint && snap.alignmentSnapKind && snap.alignmentSnapVertexId) {
-        const constraintKind = snap.alignmentSnapKind === 'kinda_horizontal' ? 'horizontal' : 'vertical'
-        if (snap.alignmentSnapVertexId === 'draw:last') {
-          mutations.push({ type: 'add_constraint', featureId, kind: constraintKind,
-            targets: [`entity:${featureId}:${lineId}`] })
-        } else {
-          mutations.push({ type: 'add_constraint', featureId, kind: constraintKind,
-            targets: [`vertex:${featureId}:${lineId}:end`, snap.alignmentSnapVertexId] })
-        }
-      } else if (snap.hoveredVertexId && snap.hoveredSnapKind) {
+      if (snap.hoveredVertexId && snap.hoveredSnapKind) {
         const constraintKind = suggestConstraint('vertex', snap.hoveredSnapKind) ?? 'coincident'
         mutations.push({ type: 'add_constraint', featureId, kind: constraintKind,
           targets: [`vertex:${featureId}:${lineId}:end`, snap.hoveredVertexId] })
