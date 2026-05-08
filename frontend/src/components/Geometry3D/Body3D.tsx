@@ -281,8 +281,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   const [hoveredVertexIndex, setHoveredVertexIndex] = useState<number | null>(null)
 
   const lastHoveredFaceRef = useRef<string | null>(null)
-  const faceColorAttrRef = useRef<THREE.BufferAttribute | null>(null)
-  const edgeColorAttrRef = useRef<THREE.BufferAttribute | null>(null)
+  const faceColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
+  const edgeColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
 
   const updateFaceGeometry = useCallback((faceIndex: number) => {
     const { triangle_to_face, face_queries } = mesh
@@ -579,7 +579,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const attr = new THREE.BufferAttribute(activeColors, 3)
     geometry.setAttribute('color', attr)
     faceColorAttrRef.current = attr
-    if (oldAttr && typeof (oldAttr as any).dispose === 'function') (oldAttr as any).dispose()
+    oldAttr?.dispose?.()
   }, [geometry, activeColors])
 
   // Always update the color attribute -- edgeColors is always non-null so vertexColors
@@ -591,7 +591,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       const attr = new THREE.BufferAttribute(edgeColors, 3)
       edgeGeometry.setAttribute('color', attr)
       edgeColorAttrRef.current = attr
-      if (oldAttr && typeof (oldAttr as any).dispose === 'function') (oldAttr as any).dispose()
+      oldAttr?.dispose?.()
     }
   }, [edgeGeometry, edgeColors])
 
@@ -769,6 +769,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
             vertexColors={true}
             transparent={ghost}
             depthWrite={!ghost}
+            opacity={ghost ? 0.5 : 1}
           />
         </lineSegments>
       )}
@@ -825,7 +826,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         const geo = edgeBoundaryGeos.get(query)
         return geo ? (
           <lineSegments geometry={geo}>
-            <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
+            <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} transparent={ghost} opacity={ghost ? 0.5 : 1} />
           </lineSegments>
         ) : null
       })()}
@@ -834,13 +835,13 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         if (!geo) return null
         return (
           <lineSegments key={query} geometry={geo} renderOrder={RENDER_ORDER_HIGHLIGHT}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent />
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent opacity={ghost ? 0.5 : 1} />
           </lineSegments>
         )
       })}
       {interactive && faceBoundaryGeos && hovered3DSurfaceId && faceBoundaryGeos.has(hovered3DSurfaceId) && (
         <lineSegments geometry={faceBoundaryGeos.get(hovered3DSurfaceId)}>
-          <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
+          <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} transparent={ghost} opacity={ghost ? 0.5 : 1} />
         </lineSegments>
       )}
       {interactive && faceBoundaryGeos && [...normalSelection].map(query => {
@@ -848,7 +849,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         if (!geo) return null
         return (
           <lineSegments key={query} geometry={geo}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} />
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent={ghost} opacity={ghost ? 0.5 : 1} />
           </lineSegments>
         )
       })}
