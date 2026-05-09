@@ -3,7 +3,6 @@
 import io
 import logging
 import os
-import pytest
 from werkzeug.security import check_password_hash
 from oversolved.app import create_app
 from oversolved.db import Database, SQLiteConnection, UserStore
@@ -25,24 +24,23 @@ def _make_app(tmp_path, set_env=True):
 class TestAdminPassword:
     """Tests for admin password security."""
 
-    def test_missing_password_raises_in_production(self, tmp_path):
-        """create_app should raise RuntimeError when password not set and DEBUG=False."""
+    def test_default_password_works(self, tmp_path):
+        """App starts with default password when env var is not set."""
         os.environ.pop("OVERSOLVED_ADMIN_PASSWORD", None)
-        with pytest.raises(RuntimeError, match="OVERSOLVED_ADMIN_PASSWORD must be set"):
-            _make_app(tmp_path, set_env=False)
-
-    def test_missing_password_raises_in_debug_mode(self, tmp_path):
-        """create_app should raise RuntimeError when password not set even in DEBUG mode."""
-        os.environ.pop("OVERSOLVED_ADMIN_PASSWORD", None)
-        with pytest.raises(RuntimeError, match="OVERSOLVED_ADMIN_PASSWORD must be set"):
-            db_path = str(tmp_path / "test_debug.db")
-            config = {
-                "DB_TYPE": "sqlite",
-                "TESTING": True,
-                "DB_PATH": db_path,
-                "DEBUG": True,
-            }
-            create_app(config)
+        db_path = str(tmp_path / "test_default.db")
+        config = {
+            "DB_TYPE": "sqlite",
+            "TESTING": True,
+            "DB_PATH": db_path,
+        }
+        app = create_app(config)
+        client = app.test_client()
+        response = client.post(
+            "/api/auth/login",
+            data='{"username": "admin", "password": "admin"}',
+            content_type="application/json",
+        )
+        assert response.status_code == 200
 
     def test_password_set_succeeds(self, tmp_path):
         """create_app should succeed when OVERSOLVED_ADMIN_PASSWORD is set."""
@@ -195,17 +193,3 @@ class TestAdminPassword:
         finally:
             del os.environ["OVERSOLVED_ADMIN_PASSWORD"]
             root_logger.removeHandler(handler)
-
-    def test_startup_fails_without_env_var(self, tmp_path):
-        """create_app fails when OVERSOLVED_ADMIN_PASSWORD is unset, regardless of debug."""
-        os.environ.pop("OVERSOLVED_ADMIN_PASSWORD", None)
-        for debug_val in (True, False):
-            db_path = str(tmp_path / f"test_fail_{debug_val}.db")
-            config = {
-                "DB_TYPE": "sqlite",
-                "TESTING": True,
-                "DB_PATH": db_path,
-                "DEBUG": debug_val,
-            }
-            with pytest.raises(RuntimeError, match="OVERSOLVED_ADMIN_PASSWORD must be set"):
-                create_app(config)

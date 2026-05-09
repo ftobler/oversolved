@@ -1,5 +1,6 @@
 """Flask application for the Oversolved solver API."""
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -15,6 +16,8 @@ from oversolved.blueprints.admin import admin_bp
 from oversolved.blueprints.docs import docs_bp
 from flask_sock import Sock
 from oversolved.blueprints.solver_ws import register_solver_ws
+
+logger = logging.getLogger(__name__)
 
 
 def _register_migrations(db: Database) -> None:
@@ -241,7 +244,11 @@ def _ensure_admin_user(db: Database) -> None:
     """Create the default admin user if it doesn't exist."""
     admin_password = os.environ.get("OVERSOLVED_ADMIN_PASSWORD")
     if not admin_password:
-        raise RuntimeError("OVERSOLVED_ADMIN_PASSWORD must be set")
+        admin_password = "admin"
+        logger.warning(
+            "OVERSOLVED_ADMIN_PASSWORD not set. Using default password 'admin'. "
+            "Set OVERSOLVED_ADMIN_PASSWORD in your environment for production."
+        )
     user_store = UserStore(db)
     admin = user_store.find_by_username("admin")
     if admin:
@@ -252,6 +259,20 @@ def _ensure_admin_user(db: Database) -> None:
             must_change_password=True, email="admin@local.oversolved",
         )
         user_store.update(uid, is_admin=1, must_change_password=1)
+
+
+def _check_production_config(app: Flask) -> None:
+    """Warn about missing production security settings.
+
+    Suppressed in TESTING mode to keep test output clean.
+    """
+    if app.config.get("TESTING"):
+        return
+    if not app.config.get("SESSION_COOKIE_SECURE", False):
+        logger.warning(
+            "SESSION_COOKIE_SECURE is False. Session cookies will NOT have the Secure flag. "
+            "Set OVERSOLVED_SESSION_COOKIE_SECURE=true in production (requires HTTPS)."
+        )
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -270,6 +291,8 @@ def create_app(config: dict | None = None) -> Flask:
 
     if config:
         app.config.update(config)
+
+    _check_production_config(app)
 
     db_config = {
         "type": app.config["DB_TYPE"],
