@@ -460,21 +460,48 @@ class SessionStore:
     """Session management."""
 
     SESSION_DURATION = timedelta(days=30)
+    MAX_SESSIONS = 5
 
     def __init__(self, db: Database):
         self.db = db
 
     def create(self, user_id: int) -> str:
-        """Create a session, clean up old sessions for the user, return the token."""
+        """Create a session, enforce per-user session limit, return the token."""
         token = secrets.token_urlsafe(32)
         expires_at = (datetime.now(timezone.utc) + self.SESSION_DURATION).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self.db.transaction():
             self.db.execute(
-                "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
-                (token, user_id, expires_at),
+                "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+                (token, user_id, expires_at, now),
             )
-            self.cleanup_for_user(user_id, keep_token=token)
+            self._enforce_session_limit(user_id, keep_token=token)
         return token
+
+    def _enforce_session_limit(self, user_id: int, keep_token: str, max_sessions: int | None = None) -> int:
+        """Delete oldest sessions for a user if count exceeds max_sessions.
+        Returns number of sessions deleted."""
+        if max_sessions is None:
+            max_sessions = self.MAX_SESSIONS
+        cursor = self.db.execute(
+            """SELECT token, created_at FROM sessions
+               WHERE user_id = ? AND token != ?
+               ORDER BY created_at DESC, token DESC""",
+            (user_id, keep_token),
+        )
+        rows = cursor.fetchall()
+        if len(rows) < max_sessions:
+            return 0
+        to_keep = max_sessions - 1
+        tokens_to_delete = [row[0] for row in rows[to_keep:]]
+        if not tokens_to_delete:
+            return 0
+        placeholders = ", ".join("?" for _ in tokens_to_delete)
+        cursor = self.db.execute(
+            f"DELETE FROM sessions WHERE token IN ({placeholders})",
+            tuple(tokens_to_delete),
+        )
+        return cursor.rowcount
 
     def cleanup_for_user(self, user_id: int, keep_token: str | None = None) -> int:
         """Remove active sessions for a user, optionally keeping one token.

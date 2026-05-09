@@ -29,6 +29,7 @@ def _make_db():
                 token TEXT PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
         """)
@@ -375,7 +376,8 @@ class TestSessionStore:
 
         token_b = session_store.create(user_id)
         assert session_store.find(token_b) is not None
-        assert session_store.find(token_a) is None
+        # With MAX_SESSIONS=5, both sessions survive (2 < 5)
+        assert session_store.find(token_a) is not None
 
     def test_cleanup_for_user_keeps_specified_token(self, session_store, user_id):
         token_a = session_store.create(user_id)
@@ -403,8 +405,48 @@ class TestSessionStore:
             "SELECT user_id, COUNT(*) as cnt FROM sessions GROUP BY user_id"
         )
         rows = {row[0]: row[1] for row in cursor.fetchall()}
-        assert rows[uid1] == 1
+        assert rows[uid1] == 2
         assert rows[uid2] == 1
+
+    def test_create_keeps_multiple_sessions_up_to_limit(self, session_store, user_id):
+        tokens = [session_store.create(user_id) for _ in range(4)]
+        for t in tokens:
+            assert session_store.find(t) is not None
+
+    def test_create_deletes_oldest_when_limit_exceeded(self, session_store, user_id):
+        tokens = [session_store.create(user_id) for _ in range(6)]
+        # Newest 5 should survive
+        for t in tokens[1:]:
+            assert session_store.find(t) is not None, f"newer session {t} should survive"
+        # Oldest (1st) should be deleted
+        assert session_store.find(tokens[0]) is None, "oldest session should be deleted"
+
+    def test_session_limit_does_not_affect_other_users(self, session_store, user_store):
+        uid_a = user_store.create("userA", "hash")
+        uid_b = user_store.create("userB", "hash")
+
+        for _ in range(6):
+            session_store.create(uid_a)
+        session_store.create(uid_b)
+
+        cursor = session_store.db.execute(
+            "SELECT user_id, COUNT(*) as cnt FROM sessions GROUP BY user_id"
+        )
+        rows = {row[0]: row[1] for row in cursor.fetchall()}
+        assert rows[uid_a] == 5
+        assert rows[uid_b] == 1
+
+    def test_session_limit_configurable(self, session_store, user_id):
+        tokens = []
+        for _ in range(3):
+            t = session_store.create(user_id)
+            tokens.append(t)
+        # Manually enforce a stricter limit
+        session_store._enforce_session_limit(user_id, keep_token=tokens[-1], max_sessions=2)
+        assert session_store.find(tokens[-1]) is not None
+        assert session_store.find(tokens[-2]) is not None
+        # Oldest should be deleted
+        assert session_store.find(tokens[0]) is None
 
 
 class TestSessionCleanupIntegration:
@@ -472,7 +514,43 @@ class TestSessionCleanupIntegration:
         ss = SessionStore(database)
         found = ss.find(token1)
         database.close()
-        assert found is None, "Old session should have been deleted after new login"
+        # With MAX_SESSIONS=5, both sessions survive (2 < 5)
+        assert found is not None, "Old session should still be valid (within session limit)"
+
+    def test_fifth_login_removes_oldest(self, tmp_path, monkeypatch):
+        """Login 6 times, verify the first session is invalidated and the 5 most recent are valid."""
+        monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
+        from oversolved.app import create_app
+        db_path = str(tmp_path / "test_fifth_login.db")
+        app = create_app({
+            "DB_TYPE": "sqlite",
+            "TESTING": True,
+            "DB_PATH": db_path,
+        })
+        client = app.test_client()
+        tokens = []
+        for _ in range(6):
+            resp = client.post(
+                "/api/auth/login",
+                data='{"username": "admin", "password": "admin"}',
+                content_type="application/json",
+            )
+            assert resp.status_code == 200
+            set_cookie = resp.headers.get("Set-Cookie", "")
+            token = set_cookie.split(";")[0].split("=")[1]
+            tokens.append(token)
+
+        from oversolved.db import SQLiteConnection, Database, SessionStore
+        db_conn = SQLiteConnection(db_path)
+        database = Database(db_conn)
+        database.init()
+        ss = SessionStore(database)
+        # First token should be deleted (oldest, beyond max 5)
+        assert ss.find(tokens[0]) is None, "Oldest session should be deleted"
+        # Newest 5 should survive
+        for t in tokens[1:]:
+            assert ss.find(t) is not None, f"Session {t} should survive"
+        database.close()
 
 
 class TestMigrationIndex:

@@ -229,6 +229,13 @@ def _register_migrations(db: Database) -> None:
 
     db.register_migration(16, "sessions_user_id_index", migration_016_sessions_user_id_index)
 
+    def migration_017_session_created_at(database: Database):
+        database.execute(
+            "ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+        )
+
+    db.register_migration(17, "session_created_at", migration_017_session_created_at)
+
 
 def _ensure_admin_user(db: Database) -> None:
     """Create the default admin user if it doesn't exist."""
