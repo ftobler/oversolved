@@ -724,8 +724,6 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
 
         operation = feature.get("operation", "add")
         merge_target = sub.get("merge_target") or feature.get("merge_target")
-        body = Body(id=body_id, created_by=feature_id, shape=None, sketch_id=first_sketch_id)
-
         try:
             from oversolved.kernel.geometry import sketch_loops_to_face, revolve_face as _rf
 

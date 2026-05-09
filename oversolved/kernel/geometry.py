@@ -546,7 +546,9 @@ def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | Non
                 "start": [sp.x, sp.y, sp.z],
                 "end": [ep.x, ep.y, ep.z],
             }
-            sort_key = ("line", round(sp.x, 6), round(sp.y, 6), round(sp.z, 6),
+            # type_order=0 keeps straight edges before curved so fillet arcs
+            # don't shift line edge indices.
+            sort_key = (0, "line", round(sp.x, 6), round(sp.y, 6), round(sp.z, 6),
                         round(ep.x, 6), round(ep.y, 6), round(ep.z, 6))
 
         elif gt == "CIRCLE":
@@ -570,7 +572,7 @@ def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | Non
                 "angle_start": u0,
                 "angle_end": u1,
             }
-            sort_key = (edge_kind, round(center.X(), 6), round(center.Y(), 6),
+            sort_key = (1, edge_kind, round(center.X(), 6), round(center.Y(), 6),
                         round(center.Z(), 6), round(radius, 6), round(u0, 6), round(u1, 6))
 
         else:
@@ -585,7 +587,7 @@ def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | Non
                 points.append([pt.x, pt.y, pt.z])
             ed = {"kind": "spline", "points": points}
             mid = points[n_pts // 2]
-            sort_key = ("spline", round(mid[0], 6), round(mid[1], 6), round(mid[2], 6))
+            sort_key = (1, "spline", round(mid[0], 6), round(mid[1], 6), round(mid[2], 6), 0.0, 0.0, 0.0)
 
         raw_edges.append((ed, sort_key))
 
