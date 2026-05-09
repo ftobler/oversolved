@@ -108,6 +108,70 @@ describe('DrawingTool', () => {
     })
   })
 
+  describe('rect tool (compound)', () => {
+    it('first click stores point, second click emits add_rect', () => {
+      const onMutation = vi.fn()
+      const clearDraw = vi.fn()
+      const setActiveTool = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'rect', paramCount: 0 })
+      const context = createMockContext({
+        onMutation,
+        clearDraw,
+        setActiveTool,
+        drawPoints: [],
+      })
+
+      // First click: store point
+      tool.handlers.onPointerDown!({} as PointerEvent, [1, 2], context)
+      expect(onMutation).not.toHaveBeenCalled()
+      expect(context.drawPoints).toEqual([[1, 2]])
+
+      // Second click: emit add_rect mutation
+      context.drawPoints = [[1, 2]]
+      tool.handlers.onPointerDown!({} as PointerEvent, [5, 6], context)
+      expect(onMutation).toHaveBeenCalledWith({
+        type: 'add_rect',
+        featureId: 'S1',
+        p0: [1, 2],
+        p1: [5, 6],
+      })
+      expect(clearDraw).toHaveBeenCalled()
+      expect(setActiveTool).toHaveBeenCalledWith(null)
+    })
+  })
+
+  describe('center_rect tool (compound)', () => {
+    it('first click stores center, second click emits add_center_rect', () => {
+      const onMutation = vi.fn()
+      const clearDraw = vi.fn()
+      const setActiveTool = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'center_rect', paramCount: 0 })
+      const context = createMockContext({
+        onMutation,
+        clearDraw,
+        setActiveTool,
+        drawPoints: [],
+      })
+
+      // First click: store center
+      tool.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
+      expect(onMutation).not.toHaveBeenCalled()
+      expect(context.drawPoints).toEqual([[0, 0]])
+
+      // Second click: emit add_center_rect mutation
+      context.drawPoints = [[0, 0]]
+      tool.handlers.onPointerDown!({} as PointerEvent, [3, 4], context)
+      expect(onMutation).toHaveBeenCalledWith({
+        type: 'add_center_rect',
+        featureId: 'S1',
+        center: [0, 0],
+        corner: [3, 4],
+      })
+      expect(clearDraw).toHaveBeenCalled()
+      expect(setActiveTool).toHaveBeenCalledWith(null)
+    })
+  })
+
   describe('alignment snap integration', () => {
     it('line tool creates entity on second click (prerequisite for alignment snap test)', () => {
       const onMutation = vi.fn()

@@ -298,5 +298,79 @@ describe('ToolRegistry', () => {
       expect(onMutation).toHaveBeenCalled()
       expect(clearDraw).toHaveBeenCalled()
     })
+
+    it('routes rect tool through registry and generates add_rect mutation', () => {
+      const registry = new ToolRegistry()
+      const tool = createDrawingTool({ entityKind: 'rect', paramCount: 0 })
+      registry.register(tool)
+
+      const onMutation = vi.fn()
+      const drawPoints: [number, number][] = [[1, 2]]
+      const context = {
+        normalSelection: new Set<string>(),
+        internalHoverSelection: null,
+        dynamicSelection: new Set<string>(),
+        isPointerDown: false,
+        activeFeatureId: 'S1',
+        hoveredVertexId: null,
+        hoveredVertexPosition: null as [number, number] | null,
+        hoveredSnapKind: null,
+        onMutation,
+        drawPoints,
+        drawSnapVertexId: null,
+        setDrawHover: vi.fn(),
+        clearDraw: vi.fn(),
+        setActiveTool: vi.fn(),
+        hoveredEntityId: null,
+        alignmentSnapPoint: null as [number, number] | null,
+        alignmentSnapKind: null,
+        alignmentSnapVertexId: null,
+        setDrawSnap: vi.fn(),
+      }
+      registry.get('rect')!.handlers.onPointerDown!({} as PointerEvent, [5, 6], context)
+      expect(onMutation).toHaveBeenCalledWith({
+        type: 'add_rect',
+        featureId: 'S1',
+        p0: [1, 2],
+        p1: [5, 6],
+      })
+    })
+
+    it('routes center_rect tool through registry and generates add_center_rect mutation', () => {
+      const registry = new ToolRegistry()
+      const tool = createDrawingTool({ entityKind: 'center_rect', paramCount: 0 })
+      registry.register(tool)
+
+      const onMutation = vi.fn()
+      const drawPoints: [number, number][] = [[0, 0]]
+      const context = {
+        normalSelection: new Set<string>(),
+        internalHoverSelection: null,
+        dynamicSelection: new Set<string>(),
+        isPointerDown: false,
+        activeFeatureId: 'S1',
+        hoveredVertexId: null,
+        hoveredVertexPosition: null as [number, number] | null,
+        hoveredSnapKind: null,
+        onMutation,
+        drawPoints,
+        drawSnapVertexId: null,
+        setDrawHover: vi.fn(),
+        clearDraw: vi.fn(),
+        setActiveTool: vi.fn(),
+        hoveredEntityId: null,
+        alignmentSnapPoint: null as [number, number] | null,
+        alignmentSnapKind: null,
+        alignmentSnapVertexId: null,
+        setDrawSnap: vi.fn(),
+      }
+      registry.get('center_rect')!.handlers.onPointerDown!({} as PointerEvent, [3, 4], context)
+      expect(onMutation).toHaveBeenCalledWith({
+        type: 'add_center_rect',
+        featureId: 'S1',
+        center: [0, 0],
+        corner: [3, 4],
+      })
+    })
   })
 })
