@@ -1,5 +1,36 @@
 import type { Feature, BodyResult, EdgeData } from '../../types/cad'
 
+/**
+ * Computes which bodies should be visible given explicit user overrides and
+ * feature-level visibility.
+ *
+ * Returns undefined when there are no overrides (show everything).
+ * Returns a Set (possibly empty) when at least one body has been explicitly
+ * hidden, so that hidden bodies stay hidden instead of snapping back.
+ */
+export function computeEffectiveVisibleBodies(
+  bodies: Record<string, BodyResult> | undefined,
+  visibleFeatures: Set<string>,
+  bodiesVisibility: Record<string, boolean>,
+): Set<string> | undefined {
+  const visible = new Set<string>()
+  let anyExplicitHide = false
+  for (const [bodyId, body] of Object.entries(bodies || {})) {
+    if (bodiesVisibility[bodyId] === false) {
+      anyExplicitHide = true
+      continue
+    }
+    if (bodiesVisibility[bodyId] === true) {
+      visible.add(bodyId)
+      continue
+    }
+    if (body.created_by && visibleFeatures.has(body.created_by)) {
+      visible.add(bodyId)
+    }
+  }
+  return (visible.size > 0 || anyExplicitHide) ? visible : undefined
+}
+
 // Returns the subset of sketch features that should be rendered (visible and within rollback range).
 // A hidden sketch's EntityLines and VertexDots are not mounted at all, so its collision
 // geometry cannot interfere with raycasting against features behind it.

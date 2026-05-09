@@ -58,6 +58,7 @@ import contextCameraIcon from '../assets/icons/context-camera.svg'
 
 // IDs of built-in features that cannot be deleted.
 import { PART_COLOR_PALETTE, normalizeHexColor } from '../utils/partColors'
+import { computeEffectiveVisibleBodies } from '../components/Viewport/bodyUtils'
 import { BUILTIN_FEATURE_DEFAULTS } from '../hooks/usePartDoc'
 
 const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
@@ -201,20 +202,10 @@ export default function Part() {
 
   // Bodies are visible when their creator feature is visible, unless the user
   // has explicitly overridden the body visibility in the parts list.
-  const effectiveVisibleBodies = useMemo(() => {
-    const visible = new Set<string>()
-    for (const [bodyId, body] of Object.entries(bodies || {})) {
-      if (bodiesVisibility[bodyId] === false) continue
-      if (bodiesVisibility[bodyId] === true) {
-        visible.add(bodyId)
-        continue
-      }
-      if (body.created_by && visibleFeatures.has(body.created_by)) {
-        visible.add(bodyId)
-      }
-    }
-    return visible.size > 0 ? visible : undefined
-  }, [bodies, visibleFeatures, bodiesVisibility])
+  const effectiveVisibleBodies = useMemo(
+    () => computeEffectiveVisibleBodies(bodies, visibleFeatures, bodiesVisibility),
+    [bodies, visibleFeatures, bodiesVisibility],
+  )
 
   // Initialize rollback position once on first doc load.
   useEffect(() => {
