@@ -1159,6 +1159,7 @@ def test_revolve_from_fillet_face_propagates_arcs():
         'id': 'rev1', 'kind': 'revolve', 'label': 'Revolve',
         'sketch': f'@ex1/face/{arc_face_index}',
         'angle': 45.0, 'axis_origin': [0, 0, 0], 'axis_direction': [0, 0, 1],
+        'operation': 'new',
     })
     r2 = build(spec)
     assert r2['result']['rev1']['status'] == 'ok', \

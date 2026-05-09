@@ -174,7 +174,7 @@ def _extract_loops_from_occ_face(
 ) -> tuple[list[list[dict]], dict]:
     from OCP.BRepAdaptor import BRepAdaptor_Curve2d, BRepAdaptor_Surface
     from OCP.BRepTools import BRepTools, BRepTools_WireExplorer
-    from OCP.GeomAbs import GeomAbs_Plane, GeomAbs_Line, GeomAbs_Circle
+    from OCP.GeomAbs import GeomAbs_Plane, GeomAbs_Circle
     from OCP.TopAbs import TopAbs_FACE, TopAbs_WIRE
     from OCP.TopExp import TopExp_Explorer
     from OCP.TopoDS import TopoDS, TopoDS_Face
@@ -281,13 +281,20 @@ def _extract_loops_from_occ_face(
                             "ccw": span >= 0,
                         })
                     else:
+                        p_start = c2d.Value(first)
+                        p_end = c2d.Value(last)
+                        cx, cy = center.X(), center.Y()
+                        a0 = math.atan2(p_start.Y() - cy, p_start.X() - cx)
+                        a1 = math.atan2(p_end.Y() - cy, p_end.X() - cx)
+                        span_ccw = (a1 - a0 + 2 * math.pi) % (2 * math.pi)
+                        arc_ccw = span_ccw < math.pi
                         loop.append({
                             "kind": "arc",
-                            "center": [center.X(), center.Y()],
+                            "center": [cx, cy],
                             "radius": radius,
-                            "angle_start_deg": math.degrees(first),
-                            "angle_end_deg": math.degrees(last),
-                            "ccw": span >= 0,
+                            "angle_start_deg": math.degrees(a0),
+                            "angle_end_deg": math.degrees(a1),
+                            "ccw": arc_ccw,
                         })
                 else:
                     p_s = c2d.Value(first)
