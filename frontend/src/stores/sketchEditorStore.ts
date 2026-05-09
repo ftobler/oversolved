@@ -3,7 +3,6 @@
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import { create } from 'zustand'
 import type { Mutation, PendingPickField, SelectionDomain } from '../types/cad'
-import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '../registry'
 import type { SnapKind } from '../registry'
 import type { SnapTarget } from '../components/Geometry3D/snapDetection'
 import { parseQuery } from '../utils/query'
@@ -191,7 +190,6 @@ interface SketchEditorState {
   setPendingProjectTarget: (target: { sourceFeatureId: string; sourceEntityId: string } | null) => void
   openContextMenu: (pos: [number, number]) => void
   closeContextMenu: () => void
-  handleDimensionClick: (target: string, featureId: string, kind: 'entity' | 'vertex', screenPos: [number, number], entityKind?: string) => void
   setPendingDim: (target: string | null, entityKind: string | null) => void
   setPlaneSelectionFeatureId: (id: string | null) => void
   commitPlaneSelection: (selectionId: string) => void
@@ -537,70 +535,4 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     set({ planeSelectionFeatureId: null, pickChipHighlightItems: [] })
   },
 
-  handleDimensionClick: (target, featureId, kind, screenPos, entityKind) => {
-    const { pendingDimTarget, pendingDimEntityKind, onMutation, activeFeatureId } = get()
-    const hostFeatureId = activeFeatureId ?? featureId
-    const openDialog = get().openDialog
-    if (!pendingDimTarget) {
-      // Single-entity dimension — immediately create for arc/circle, go pending for line
-      if (kind === 'entity' && entityKind !== 'line') {
-        const dimKind = entityKind ? resolveSingleEntityDimension(entityKind) : null
-        if (dimKind) {
-          openDialog({
-            position: screenPos,
-            label: 'Dimension value',
-            onConfirm: (input) => {
-              const val = parseFloat(input)
-              if (isNaN(val) || val <= 0) return
-              onMutation?.({ type: 'add_constraint', featureId: hostFeatureId, kind: dimKind, targets: [target], value: val })
-              set({ activeTool: null, pendingDimTarget: null, pendingDimEntityKind: null })
-            },
-          })
-          return
-        }
-      }
-      // First click: store pending (line goes pending for potential angle with second line)
-      set({ pendingDimTarget: target, pendingDimEntityKind: entityKind ?? null })
-    } else {
-      // Second click — resolve constraint kind from target pair
-      const first = pendingDimTarget
-      const firstEntityKind = pendingDimEntityKind
-      set({ pendingDimTarget: null, pendingDimEntityKind: null })
-
-      if (first === target && firstEntityKind) {
-        // Same entity clicked twice: create single-entity dimension (e.g. length for line)
-        const singleKind = resolveSingleEntityDimension(firstEntityKind)
-        if (!singleKind) return
-        openDialog({
-          position: screenPos,
-          label: 'Dimension value',
-          onConfirm: (input) => {
-            const val = parseFloat(input)
-            if (isNaN(val) || val <= 0) return
-            onMutation?.({ type: 'add_constraint', featureId: hostFeatureId, kind: singleKind, targets: [target], value: val })
-            set({ activeTool: null })
-            },
-            })
-            return
-            }
-
-            const isPoint = (t: string) => t.startsWith('vertex:') || t.startsWith('@builtin_')
-      const dimKind = resolveTwoTargetDimension(
-        isPoint(first),
-        isPoint(target),
-        firstEntityKind ?? undefined,
-        entityKind,
-      )
-      openDialog({
-        position: screenPos,
-        label: 'Dimension value',
-        onConfirm: (input) => {
-          const val = parseFloat(input)
-          if (isNaN(val) || val <= 0) return
-          onMutation?.({ type: 'add_constraint', featureId: hostFeatureId, kind: dimKind, targets: [first, target], value: val })
-          set({ activeTool: null })
-        },
-      })
-    }
-  },
 }))

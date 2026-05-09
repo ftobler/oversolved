@@ -6,22 +6,22 @@ import { builtinSelectionId } from '../Geometry3D/utils'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET, DEBUG_HIT } from '../Geometry3D/constants'
 import { Dot, VertexHighlight } from '../Geometry3D/VertexDots'
 import { p2w } from '../sketch_helpers'
+import { useToolClickDispatch } from '../Geometry3D/useToolClickDispatch'
 
 export default function OriginMarker() {
-  // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
-  // DO NOT use local hovered state alone - must also call setHoveredEntity().
   const [hovered, setHovered] = useState(false)
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
-  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
   const setHoveredVertex = useSketchEditorStore(s => s.setHoveredVertex)
   const selId = builtinSelectionId('Origin')
   const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
   const activeTool = useSketchEditorStore(s => s.activeTool)
-  const handleDimClick = useSketchEditorStore(s => s.handleDimensionClick)
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
   const isRotating = useSketchEditorStore(s => s.isRotating)
+  const isEditing = !!activeFeatureId
+
+  const onClick = useToolClickDispatch({ id: selId, isEditing })
 
   useFrame(() => {
     if (!hitRef.current) return
@@ -31,15 +31,6 @@ export default function OriginMarker() {
     const off = POINT_HIT_PIXELS_Z_OFFSET * scale
     hitRef.current.position.set(fwd.x * off, fwd.y * off, fwd.z * off)
   })
-
-  const onClick = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
-    e.stopPropagation()
-    if (activeTool === 'dimension' && activeFeatureId) {
-      handleDimClick(selId, activeFeatureId, 'vertex', [e.clientX, e.clientY])
-    } else {
-      toggleNormalSelection(selId)
-    }
-  }, [activeTool, activeFeatureId, selId, handleDimClick, toggleNormalSelection])
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_INACTIVE
   const isDrawingTool = (activeTool ?? 'drag') !== 'select' && (activeTool ?? 'drag') !== 'dimension'

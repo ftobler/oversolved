@@ -43,19 +43,10 @@ Re-exports from the module.
 
 ```typescript
 import {
-  buildClickHandler,
   buildDragPointerDownHandler,
 } from '@components/interaction'
 
 // In a component:
-const onClick = buildClickHandler(
-  handleDimensionClick,
-  toggleSelect,
-  fieldPickState,
-  commitFieldPick,
-  isEditing,
-)
-
 const onPointerDown = buildDragPointerDownHandler(
   setDrag,
   setOrbitEnabled,

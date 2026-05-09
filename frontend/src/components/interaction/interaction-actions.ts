@@ -82,17 +82,3 @@ export interface ToolHandlerContract {
   ) => void
   onPointerOut: () => void
 }
-
-/**
- * Handler contract for dimension tool click events.
- */
-export interface DimensionClickHandlers {
-  handleDimensionClick: (
-    target: string,
-    featureId: string,
-    kind: 'entity' | 'vertex',
-    screenPos: Point,
-    entityKind?: string,
-  ) => void
-  isEditing: boolean
-}
