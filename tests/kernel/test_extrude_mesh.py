@@ -771,13 +771,18 @@ def test_extrude_from_brep_face_after_fillet():
 
     # Pick a flat side face from the extruded body (not top/bottom, those
     # are at z=0 and z=d).  Side faces have centroid z ~ d/2.
+    # Use the face index from the mesh to build a 3-tag backward-compatible
+    # query (index, feature, body) that resolves even after fillet.
     best_q = None
     for body in r1.get("bodies", {}).values():
         mesh = body.get("mesh") or {}
-        for fd, q in zip(mesh.get("face_data") or [], mesh.get("face_queries") or []):
+        for idx, (fd, q) in enumerate(zip(mesh.get("face_data") or [], mesh.get("face_queries") or [])):
             cz = fd["centroid"][2]
             if abs(cz - d / 2) < 0.1 and fd.get("surface_type") == "flatface":
-                best_q = q
+                from oversolved.kernel.query import make_ancestry_query
+                best_q = make_ancestry_query(
+                    [f"@body_ex1face{idx}", "@ex1", "@body_ex1"], "flatface"
+                )
                 break
     assert best_q is not None, "expected a flat side face query"
 

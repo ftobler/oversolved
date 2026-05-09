@@ -1060,7 +1060,10 @@ def _solve_import_step(
 
 
 def _resolve_fillet_edges(body, edge_queries):
+    from oversolved.kernel.geom_hash import edge_geometry_hash
     from oversolved.kernel.query import make_ancestry_query, _parse_ancestry
+    from OCP.BRepAdaptor import BRepAdaptor_Curve  # noqa: PLC0415
+    from OCP.GeomAbs import GeomAbs_Line, GeomAbs_Circle  # noqa: PLC0415
 
     if body.shape is None or not edge_queries:
         return []
@@ -1068,26 +1071,54 @@ def _resolve_fillet_edges(body, edge_queries):
     seen_hashes = set()
     topo_edges = []
     edge_types = []
+    edge_dicts = []
     for edge in body.shape.edges():
         h = edge.hashCode()
         if h in seen_hashes:
             continue
         seen_hashes.add(h)
-        topo_edges.append(edge.wrapped)
+        wrapped = edge.wrapped
+        topo_edges.append(wrapped)
         gt = edge.geomType()
         edge_types.append("straightedge" if gt == "LINE" else "edge")
 
+        ed: dict = {"kind": gt.lower()}
+        adapt = BRepAdaptor_Curve(wrapped)
+        atype = adapt.GetType()
+        if atype == GeomAbs_Line:
+            sp = edge.startPoint()
+            ep = edge.endPoint()
+            ed["start"] = [sp.x, sp.y, sp.z]
+            ed["end"] = [ep.x, ep.y, ep.z]
+        elif atype == GeomAbs_Circle:
+            circ = adapt.Circle()
+            c = circ.Location()
+            ed["center"] = [c.X(), c.Y(), c.Z()]
+            ed["radius"] = circ.Radius()
+        else:
+            n_pts = 16
+            pts = []
+            for i in range(n_pts + 1):
+                pt = edge.positionAt(i / n_pts)
+                pts.append([pt.x, pt.y, pt.z])
+            ed["points"] = pts
+        edge_dicts.append(ed)
+
     query_to_edge = {}
-    for idx, (te, et) in enumerate(zip(topo_edges, edge_types)):
+    for idx, (te, et, ed) in enumerate(zip(topo_edges, edge_types, edge_dicts)):
         if body.created_by:
+            geom_hash = edge_geometry_hash(ed)
+            aq_hash = make_ancestry_query(
+                [f"@{geom_hash}", f"@{body.created_by}", f"@{body.id}"], et
+            )
+            query_to_edge[aq_hash] = te
+
             aq = make_ancestry_query(
-                [f"@{body.created_by}edge{idx}", f"@{body.created_by}"],
-                et
+                [f"@{body.created_by}edge{idx}", f"@{body.created_by}"], et
             )
             query_to_edge[aq] = te
             aq3 = make_ancestry_query(
-                [f"@{body.id}edge{idx}", f"@{body.created_by}", f"@{body.id}"],
-                et
+                [f"@{body.id}edge{idx}", f"@{body.created_by}", f"@{body.id}"], et
             )
             query_to_edge[aq3] = te
         query_to_edge[f"?{body.id}:edge:{idx}"] = te

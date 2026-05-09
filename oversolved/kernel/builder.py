@@ -4,6 +4,7 @@ import logging
 import math
 import time
 from typing import Any
+from oversolved.kernel.geom_hash import face_geometry_hash, edge_geometry_hash, vertex_geometry_hash
 from oversolved.kernel.query import Repository, emit_wire, absolute
 from oversolved.kernel.types3d import Body, FeatureCheckpoint, BuildState
 from oversolved.kernel.solver import _init_global_repo, _try_solve_feature
@@ -115,9 +116,16 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
 
     face_data = mesh.get("face_data") or []
     for face_idx, face_info in enumerate(face_data):
-        ancestor_ids = [emit_wire(absolute(body.id, f"face{face_idx}")), emit_wire(absolute(body.created_by)), emit_wire(absolute(body.id))]
         centroid = face_info.get("centroid", [0.0, 0.0, 0.0])
         normal = face_info.get("normal", [0.0, 0.0, 1.0])
+        area = face_info.get("area", 0.0)
+        geom_hash = face_geometry_hash(centroid, normal, area)
+        ancestor_ids = [
+            emit_wire(absolute(body.id, f"face{face_idx}")),
+            emit_wire(absolute(body.created_by)),
+            emit_wire(absolute(body.id)),
+            emit_wire(absolute(geom_hash)),
+        ]
         x_axis, y_axis = _face_plane_axes(normal)
         payload = {
             "type": face_info.get("surface_type", "face"),
@@ -134,7 +142,13 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
         existing_ids = global_repo.ancestral.get(key, [])
         if any(global_repo.elements.get(eid) == payload for eid in existing_ids):
             continue  # already registered with identical payload
-        # Remove stale entries (body modified by boolean ops since early registration).
+        # Remove stale registrations with the same face index tag but different hash.
+        index_tag = emit_wire(absolute(body.id, f"face{face_idx}"))
+        stale_keys = [k for k in global_repo.ancestral if index_tag in k and k != key]
+        for stale_key in stale_keys:
+            for eid in global_repo.ancestral.pop(stale_key, []):
+                global_repo.elements.pop(eid, None)
+        # Remove stale entries with the exact same key (hash unchanged, payload changed).
         for eid in existing_ids:
             global_repo.elements.pop(eid, None)
         global_repo.ancestral.pop(key, None)
@@ -241,7 +255,13 @@ def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_quer
     if global_repo is None or not body.created_by or not edge_queries:
         return
     for idx, (edge, query) in enumerate(zip(edges, edge_queries)):
-        ancestor_ids = [emit_wire(absolute(body.id, f"edge{idx}")), emit_wire(absolute(body.created_by)), emit_wire(absolute(body.id))]
+        geom_hash = edge_geometry_hash(edge)
+        ancestor_ids = [
+            emit_wire(absolute(body.id, f"edge{idx}")),
+            emit_wire(absolute(body.created_by)),
+            emit_wire(absolute(body.id)),
+            emit_wire(absolute(geom_hash)),
+        ]
         edge_type = "straightedge" if edge.get("kind") == "line" else "edge"
         payload: dict[str, Any] = {
             "type": edge_type,
@@ -253,6 +273,12 @@ def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_quer
             "end": edge.get("end"),
         }
         key = frozenset(ancestor_ids)
+        # Remove stale registrations with the same edge index tag but different hash.
+        index_tag = emit_wire(absolute(body.id, f"edge{idx}"))
+        stale_keys = [k for k in global_repo.ancestral if index_tag in k and k != key]
+        for stale_key in stale_keys:
+            for eid in global_repo.ancestral.pop(stale_key, []):
+                global_repo.elements.pop(eid, None)
         for old_id in global_repo.ancestral.pop(key, []):
             global_repo.elements.pop(old_id, None)
         global_repo.register_ancestor(ancestor_ids, payload)
@@ -263,7 +289,13 @@ def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vert
     if global_repo is None or not body.created_by or not vertex_queries:
         return
     for idx, (pt, query) in enumerate(zip(vertices, vertex_queries)):
-        ancestor_ids = [emit_wire(absolute(body.id, f"vertex{idx}")), emit_wire(absolute(body.created_by)), emit_wire(absolute(body.id))]
+        geom_hash = vertex_geometry_hash(pt)
+        ancestor_ids = [
+            emit_wire(absolute(body.id, f"vertex{idx}")),
+            emit_wire(absolute(body.created_by)),
+            emit_wire(absolute(body.id)),
+            emit_wire(absolute(geom_hash)),
+        ]
         payload: dict[str, Any] = {
             "type": "vertex",
             "body_id": body.id,
@@ -272,6 +304,12 @@ def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vert
             "origin": pt,
         }
         key = frozenset(ancestor_ids)
+        # Remove stale registrations with the same vertex index tag but different hash.
+        index_tag = emit_wire(absolute(body.id, f"vertex{idx}"))
+        stale_keys = [k for k in global_repo.ancestral if index_tag in k and k != key]
+        for stale_key in stale_keys:
+            for eid in global_repo.ancestral.pop(stale_key, []):
+                global_repo.elements.pop(eid, None)
         for old_id in global_repo.ancestral.pop(key, []):
             global_repo.elements.pop(old_id, None)
         global_repo.register_ancestor(ancestor_ids, payload)

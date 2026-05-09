@@ -334,13 +334,13 @@ class Repository:
     ) -> Any:
         query_set = frozenset(ids)
 
-        # Collect all registered elements whose ancestor set is a subset of the query set.
-        # Exact match is included (it is a subset of itself).
-        # This enables partial resolve: a query with more ids than needed still resolves
-        # if the element was re-registered with a smaller ancestor set.
+        # Collect all registered elements whose tag set is a superset of the query set.
+        # Exact match is included (the query set is a subset of itself).
+        # This enables partial resolve: a query with fewer tags still resolves
+        # if the element has been re-registered with additional tags (e.g. a hash tag).
         candidate_ids: list[str] = []
         for registered_key, element_ids in self.ancestral.items():
-            if registered_key <= query_set:
+            if query_set <= registered_key:
                 candidate_ids.extend(element_ids)
 
         if not candidate_ids:

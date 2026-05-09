@@ -197,26 +197,26 @@ def test_ancestry_query_no_type_restriction_ignores_obj_type():
 # re-registered with only {A, B}. The old query must still resolve because
 # {A, B} ⊆ {A, B, C}.
 
-def test_partial_resolve_extra_ancestor_in_query():
-    """Query carries ancestor C that the element no longer needs - still resolves."""
+def test_partial_resolve_fewer_query_tags_match():
+    """Query with fewer tags matches a registration with more tags (backward compat)."""
     repo = Repository()
     pt = {"type": "pt"}
-    # Element registered with only A and B (geometry simplified)
-    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
+    # Element registered with A, B, C (e.g. face with index, feature, body, hash)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3], pt)
 
-    # Old query was stored with A, B, C (e.g. originally three lines met here)
-    q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3])
+    # Old query only has A, B (missing the hash tag) - still resolves via subset match
+    q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2])
     assert repo.query(q) is pt
 
 
 def test_partial_resolve_with_type_restriction():
-    """Partial resolve still honours type restriction."""
+    """Partial resolve (fewer query tags) still honours type restriction."""
     repo = Repository()
     pt = {"type": "pt"}
-    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3], pt)
 
     q = make_ancestry_query(
-        ["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3],
+        ["@" + FEAT + ELE1, "@" + FEAT + ELE2],
         type_restriction="pt",
     )
     assert repo.query(q) is pt
@@ -225,10 +225,10 @@ def test_partial_resolve_with_type_restriction():
 def test_partial_resolve_type_mismatch_returns_none():
     repo = Repository()
     pt = {"type": "pt"}
-    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3], pt)
 
     q = make_ancestry_query(
-        ["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3],
+        ["@" + FEAT + ELE1, "@" + FEAT + ELE2],
         type_restriction="line",
     )
     assert repo.query(q) is None
@@ -266,17 +266,17 @@ def test_ambiguous_same_ancestor_set_raises():
 
 
 def test_ambiguous_partial_resolve_raises():
-    """Two elements share ancestor A; query with {A, B, C} finds both via
-    partial match → ambiguous."""
+    """Two elements share ancestor A; query with {A, B} finds both via
+    partial match (one exact, one subset of larger set) -> ambiguous."""
     repo = Repository()
     pt1 = {"type": "pt"}
     pt2 = {"type": "pt"}
-    # pt1 needs only {A, B}, pt2 needs only {A, C}
+    # pt1 registered with {A, B}, pt2 with {A, B, C}
     repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2], pt1)
-    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE3], pt2)
+    repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3], pt2)
 
-    # Query carries {A, B, C} - both subsets match
-    q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3])
+    # Query {A, B} matches both: {A,B} <= {A,B} (exact) and {A,B} <= {A,B,C} (subset)
+    q = make_ancestry_query(["@" + FEAT + ELE1, "@" + FEAT + ELE2])
     with pytest.raises(AmbiguousQueryError):
         repo.query(q)
 
@@ -305,7 +305,7 @@ def test_ambiguous_partial_resolved_by_type():
     repo.register_ancestor(["@" + FEAT + ELE1, "@" + FEAT + ELE3], line1)
 
     q = make_ancestry_query(
-        ["@" + FEAT + ELE1, "@" + FEAT + ELE2, "@" + FEAT + ELE3],
+        ["@" + FEAT + ELE1, "@" + FEAT + ELE2],
         type_restriction="pt",
     )
     assert repo.query(q) is pt1

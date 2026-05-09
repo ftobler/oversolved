@@ -105,7 +105,12 @@ def test_build_mesh_includes_brep_face_metadata_and_queries():
     assert len(mesh["face_data"]) > 0
     assert len(mesh["triangle_to_face"]) == len(mesh["faces"])
     assert len(mesh["face_queries"]) == len(mesh["face_data"])
-    assert mesh["face_queries"][0] == make_ancestry_query(["@body_ex1face0", "@ex1", "@body_ex1"], "flatface")
+    from oversolved.kernel.geom_hash import face_geometry_hash
+    fd0 = mesh["face_data"][0]
+    expected_hash = face_geometry_hash(fd0["centroid"], fd0["normal"], fd0["area"])
+    assert mesh["face_queries"][0] == make_ancestry_query(
+        [f"@{expected_hash}", "@ex1", "@body_ex1"], "flatface"
+    )
 
 
 def test_build_returns_edge_queries_and_vertices():
@@ -160,8 +165,10 @@ def test_tessellate_bodies_registers_brep_face_queries_in_repo():
     bodies = _tessellate_bodies({"body_ext1": body}, repo)
     mesh = bodies["body_ext1"]["mesh"]
 
-    face = repo.query(make_ancestry_query(["@ext1face0", "@ext1"], "flatface"))
-    assert face is not None
+    face = repo.query(make_ancestry_query(["@body_ext1face0", "@ext1", "@body_ext1"], "flatface"))
+    assert face is not None, (
+        f"Face query did not resolve. Ancestral keys: {[sorted(k) for k in repo.ancestral]}"
+    )
     assert face["type"] == "flatface"
     assert face["centroid"] == mesh["face_data"][0]["centroid"]
 
