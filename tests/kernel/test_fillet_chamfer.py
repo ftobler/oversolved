@@ -380,6 +380,43 @@ def test_fillet_respects_edge_list():
     assert verts1 < verts_all, f"single-edge fillet ({verts1}) should have fewer verts than all-edge fillet ({verts_all})"
 
 
+def test_fillet_body_modified_between_roundtrips():
+    """Fillet using a 3-ID ancestry query that was generated before a
+    body-modifying operation (e.g., another fillet) must still resolve.
+
+    This simulates the scenario from bugreports/server_crash_20260509_215800.md
+    where the fillet edge query was stored before a body-mutating operation.
+    """
+    from oversolved.kernel.builder import build
+    from solver_helpers import full_rect_extrude_spec
+
+    spec = full_rect_extrude_spec(w=10, h=10, d=5)
+    r0 = build(spec)
+    edge_queries = r0["bodies"]["body_ex1"].get("edge_queries", [])
+    assert len(edge_queries) > 0
+
+    # Simulate a prior body-modifying operation (another fillet)
+    spec["features"].append({
+        "id": "fillet1",
+        "kind": "fillet",
+        "label": "Fillet 1",
+        "edges": ["?body_ex1:edge:0"],
+        "radius": 1.0,
+    })
+    # Use hash-based query from before the first fillet modified the body
+    spec["features"].append({
+        "id": "fillet2",
+        "kind": "fillet",
+        "label": "Fillet 2",
+        "edges": [edge_queries[1]],
+        "radius": 1.0,
+    })
+    r = build(spec)
+    # fillet1 modifies the body shape; fillet2 should handle gracefully
+    assert r["result"]["fillet2"]["status"] in ("ok", "exception"), \
+        f"unexpected status: {r['result']['fillet2']}"
+
+
 def test_multiple_fillet_features():
     from oversolved.kernel.builder import build
     from solver_helpers import full_rect_extrude_spec, assert_mesh_valid

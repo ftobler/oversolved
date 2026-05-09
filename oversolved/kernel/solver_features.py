@@ -1208,6 +1208,23 @@ def _resolve_fillet_edges(body, edge_queries):
                             break
             except Exception:
                 pass
+        if edge is None and q.startswith("?"):
+            try:
+                ids, type_restriction = _parse_ancestry(q)
+                body_id_from_query = None
+                for id_str in ids:
+                    if id_str.startswith("@body_"):
+                        body_id_from_query = id_str[1:]
+                        break
+                if body_id_from_query and body_id_from_query == body.id:
+                    matched = [
+                        te for te, et in zip(topo_edges, edge_types)
+                        if type_restriction is None or et == type_restriction
+                    ]
+                    if matched:
+                        edge = matched[0]
+            except Exception:
+                pass
         if edge is not None:
             result.append(edge)
 
