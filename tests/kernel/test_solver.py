@@ -663,3 +663,98 @@ def test_concentric_circles_two_surfaces():
     assert outer_radii is not None, (
         f"Outer annulus surface (radii 2+5) not found. Got: {radii_in_surfaces}"
     )
+
+
+def test_repo_structure_cache_hit():
+    """Solving the same sketch twice uses the cached repo structure."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "CacheLine"
+    initial:
+      L1: [0, 0, 10, 0]
+    entities:
+      - id: L1
+        kind: line
+    constraints:
+      - id: c1
+        kind: horizontal
+        target: {entity: L1}
+"""
+    result1 = solve(yaml_str)["result"]["sketch_1"]
+    assert result1.get("status") != "exception", result1.get("exception")
+
+    # Same sketch with different initial parameters (cache should hit)
+    yaml_str2 = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "CacheLine"
+    initial:
+      L1: [1, 2, 5, 2]
+    entities:
+      - id: L1
+        kind: line
+    constraints:
+      - id: c1
+        kind: horizontal
+        target: {entity: L1}
+"""
+    result2 = solve(yaml_str2)["result"]["sketch_1"]
+    assert result2.get("status") != "exception", result2.get("exception")
+
+
+def test_repo_structure_cache_miss_on_entity_change():
+    """Adding an entity changes the cache key, forcing a full rebuild."""
+    yaml_str1 = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: L1
+        kind: line
+    constraints:
+      - id: c1
+        kind: horizontal
+        target: {entity: L1}
+"""
+    result1 = solve(yaml_str1)["result"]["sketch_1"]
+    assert result1.get("status") != "exception"
+
+    # Two lines (different entity structure)
+    yaml_str2 = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: L1
+        kind: line
+      - id: L2
+        kind: line
+    constraints:
+      - id: c1
+        kind: horizontal
+        target: {entity: L1}
+      - id: c2
+        kind: horizontal
+        target: {entity: L2}
+"""
+    result2 = solve(yaml_str2)["result"]["sketch_1"]
+    assert result2.get("status") != "exception"

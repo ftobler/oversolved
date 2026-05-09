@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import math
 import time
@@ -308,6 +309,44 @@ def _expand_center_rect(feature: dict) -> dict:
     return result
 
 
+# ─── Repo structure cache ───
+
+_repo_structure_cache: dict[str, tuple[str, Repository]] = {}
+
+
+def _build_repo_structure_key(feature_id: str, entities: dict) -> str:
+    items = sorted((eid, e["kind"]) for eid, e in entities.items())
+    raw = feature_id + str(items)
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
+def _get_or_build_repo(feature_id: str, entities: dict) -> Repository:
+    key = _build_repo_structure_key(feature_id, entities)
+    entry = _repo_structure_cache.get("last")
+    if entry is not None and entry[0] == key:
+        return entry[1]
+    repo = Repository()
+    repo.register("builtin_origin", {"entity": ORIGIN_ID, "point": "xy"})
+    for name, plane in _BUILTIN_PLANES.items():
+        repo.register(name, plane)
+    for eid, entity in entities.items():
+        kind = entity["kind"]
+        repo.register(feature_id + eid, {"entity": eid})
+        if kind == "line":
+            repo.register(feature_id + eid + "start", {"entity": eid, "point": "start"})
+            repo.register(feature_id + eid + "end", {"entity": eid, "point": "end"})
+        elif kind == "circle":
+            repo.register(feature_id + eid + "center", {"entity": eid, "point": "center"})
+        elif kind == "arc":
+            repo.register(feature_id + eid + "start", {"entity": eid, "point": "start"})
+            repo.register(feature_id + eid + "end", {"entity": eid, "point": "end"})
+            repo.register(feature_id + eid + "center", {"entity": eid, "point": "center"})
+        elif kind == "point":
+            repo.register(feature_id + eid + "xy", {"entity": eid, "point": "xy"})
+    _repo_structure_cache["last"] = (key, repo)
+    return repo
+
+
 def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> dict:
     # Expand compound entity kinds before processing.
     if any(e.get("kind") == "center_rect" for e in feature.get("entities", [])):
@@ -357,31 +396,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
 
     # Build a query Repository so constraints can reference entities by query string.
     feature_id = feature.get("id", "")
-    repo = Repository()
-
-    # Register globally available built-in entities.
-    repo.register("builtin_origin", {"entity": ORIGIN_ID, "point": "xy"})
-    for name, plane in _BUILTIN_PLANES.items():
-        repo.register(name, plane)
-
-    for eid, entity in entities.items():
-        kind = entity["kind"]
-        repo.register(feature_id + eid, {"entity": eid})
-        if kind == "line":
-            repo.register(feature_id + eid + "start", {"entity": eid, "point": "start"})
-            repo.register(feature_id + eid + "end", {"entity": eid, "point": "end"})
-        elif kind == "circle":
-            repo.register(
-                feature_id + eid + "center", {"entity": eid, "point": "center"}
-            )
-        elif kind == "arc":
-            repo.register(feature_id + eid + "start", {"entity": eid, "point": "start"})
-            repo.register(feature_id + eid + "end", {"entity": eid, "point": "end"})
-            repo.register(
-                feature_id + eid + "center", {"entity": eid, "point": "center"}
-            )
-        elif kind == "point":
-            repo.register(feature_id + eid + "xy", {"entity": eid, "point": "xy"})
+    repo = _get_or_build_repo(feature_id, entities)
 
     def resolve_ref(val):
         if isinstance(val, str):
