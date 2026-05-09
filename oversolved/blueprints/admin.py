@@ -1,10 +1,11 @@
 """Admin routes: users, periodic-tasks, backup, import-backup, bug-report."""
 
 import logging
+import os
 import re
+import tempfile
 import yaml
 import zipfile
-from io import BytesIO
 from pathlib import Path
 from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request, send_file
@@ -186,52 +187,68 @@ def force_run_periodic_task(task_key):
 # ── Admin Backup ───────────────────────────────────────────────────────────
 
 
+def _iter_documents_page(db, page_size=100):
+    """Yield documents in pages to avoid loading all into memory."""
+    offset = 0
+    while True:
+        cursor = db.execute(
+            "SELECT uuid, name, content, preview_image, owner_id FROM documents "
+            "WHERE deleted_at IS NULL ORDER BY owner_id, name "
+            "LIMIT ? OFFSET ?",
+            (page_size, offset),
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            break
+        for row in rows:
+            yield row
+        offset += page_size
+
+
 @admin_bp.route("/api/admin/backup", methods=["GET"])
 @require_auth
 @require_csrf
 @require_admin
 def backup_all_documents():
     db = get_db()
-    cursor = db.execute(
-        "SELECT uuid, name, content, preview_image, owner_id FROM documents "
-        "WHERE deleted_at IS NULL ORDER BY owner_id, name"
-    )
-    all_docs = cursor.fetchall()
+    user_store = UserStore(db)
+    file_counts = {}
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    try:
+        with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for doc_uuid, name, content, preview_image, owner_id in _iter_documents_page(db):
+                user = user_store.find_by_id(owner_id)
+                username = user["username"] if user else "unknown"
+                doc_name = secure_filename(name)
+                user_dir = f"{username}/"
 
-    zip_buffer = BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        user_store = UserStore(db)
-        file_counts = {}
-        for doc_uuid, name, content, preview_image, owner_id in all_docs:
-            user = user_store.find_by_id(owner_id)
-            username = user["username"] if user else "unknown"
-            doc_name = secure_filename(name)
-            user_dir = f"{username}/"
-
-            key = (username, doc_name)
-            if key not in file_counts:
-                file_counts[key] = 0
-            else:
-                file_counts[key] += 1
-
-            if file_counts[key] > 0:
-                base, ext = doc_name.rsplit(".", 1) if "." in doc_name else (doc_name, "")
-                if ext:
-                    doc_name = f"{base}_{file_counts[key]}.{ext}"
+                key = (username, doc_name)
+                if key not in file_counts:
+                    file_counts[key] = 0
                 else:
-                    doc_name = f"{doc_name}_{file_counts[key]}"
+                    file_counts[key] += 1
 
-            zip_file.writestr(f'{user_dir}{doc_name}.yaml', content)
-            if preview_image:
-                zip_file.writestr(f'{user_dir}{doc_name}.png', preview_image)
+                if file_counts[key] > 0:
+                    base, ext = doc_name.rsplit(".", 1) if "." in doc_name else (doc_name, "")
+                    if ext:
+                        doc_name = f"{base}_{file_counts[key]}.{ext}"
+                    else:
+                        doc_name = f"{doc_name}_{file_counts[key]}"
 
-    zip_buffer.seek(0)
-    return send_file(
-        zip_buffer,
-        mimetype='application/zip',
-        as_attachment=True,
-        download_name=f'oversolved-backup-{datetime.now(timezone.utc).strftime("%Y-%m-%d")}.zip'
-    )
+                zip_file.writestr(f'{user_dir}{doc_name}.yaml', content)
+                if preview_image:
+                    zip_file.writestr(f'{user_dir}{doc_name}.png', preview_image)
+
+        tmp.close()
+        return send_file(
+            tmp.name,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=f'oversolved-backup-{datetime.now(timezone.utc).strftime("%Y-%m-%d")}.zip'
+        )
+    finally:
+        if os.path.exists(tmp.name):
+            os.unlink(tmp.name)
 
 
 @admin_bp.route("/api/admin/import-backup", methods=["POST"])

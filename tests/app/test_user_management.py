@@ -456,6 +456,44 @@ class TestBackupEndpoint:
         assert response.content_type == 'application/zip'
         assert response.headers.get('Content-Disposition', '').startswith('attachment')
 
+    def test_backup_empty_returns_valid_zip(self, admin_client):
+        resp = admin_client.get("/api/admin/backup")
+        assert resp.status_code == 200
+        import zipfile
+        import io
+        zf = zipfile.ZipFile(io.BytesIO(resp.data))
+        assert len(zf.filelist) == 0
+
+    def test_backup_includes_all_documents(self, admin_client):
+        for i in range(5):
+            admin_client.post(
+                "/api/documents",
+                data=json.dumps({"name": f"backup_doc_{i}"}),
+                content_type="application/json",
+            )
+        resp = admin_client.get("/api/admin/backup")
+        assert resp.status_code == 200
+        import zipfile
+        import io
+        zf = zipfile.ZipFile(io.BytesIO(resp.data))
+        yaml_names = [n for n in zf.filelist if n.filename.endswith(".yaml")]
+        assert len(yaml_names) == 5
+
+    def test_backup_pagination(self, admin_client):
+        for i in range(250):
+            admin_client.post(
+                "/api/documents",
+                data=json.dumps({"name": f"page_doc_{i}"}),
+                content_type="application/json",
+            )
+        resp = admin_client.get("/api/admin/backup")
+        assert resp.status_code == 200
+        import zipfile
+        import io
+        zf = zipfile.ZipFile(io.BytesIO(resp.data))
+        yaml_names = [n for n in zf.filelist if n.filename.endswith(".yaml")]
+        assert len(yaml_names) == 250
+
 
 class TestAuthSecurity:
     """Tests for auth security hardening."""
