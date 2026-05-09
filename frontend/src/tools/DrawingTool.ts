@@ -1,12 +1,27 @@
 import type { Tool, ToolContext, ToolHandlers } from '../registry/toolRegistry'
-import type { Point } from '../types/cad'
+import type { Point, Entity } from '../types/cad'
 import { ENTITY_BY_ACTIVE_TOOL } from '../registry'
+import type { SnapKind } from '../registry'
+import { computeDrawClick } from '../components/Geometry3D/drawLogic'
+import type { DrawSnapState } from '../components/Geometry3D/drawLogic'
+import { randomId } from '../utils/yamlMutations'
 
 export interface DrawingToolContext extends ToolContext {
-  addDrawPoint: (pt: Point) => void
-  setDrawHover: (pt: Point | null) => void
   drawPoints: Point[]
   drawSnapVertexId: string | null
+  setDrawHover: (pt: Point | null) => void
+  clearDraw: () => void
+  setActiveTool: (tool: string | null) => void
+  hoveredVertexId: string | null
+  hoveredVertexPosition: Point | null
+  hoveredSnapKind: SnapKind | null
+  hoveredEntityId: string | null
+  alignmentSnapPoint: Point | null
+  alignmentSnapKind: string | null
+  alignmentSnapVertexId: string | null
+  setDrawSnap: (vertexId: string | null) => void
+  sketch?: Record<string, Entity>
+  otherSketches?: Record<string, Record<string, Entity>>
 }
 
 export interface DrawingTool extends Tool {
@@ -26,20 +41,42 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
 
   const handlers: ToolHandlers<DrawingToolContext> = {
     onPointerDown: (_e, worldPt, context) => {
-      const snapVertexId = context.drawSnapVertexId
-      const snapPosition = snapVertexId ? context.hoveredVertexPosition : null
+      const snap: DrawSnapState = {
+        hoveredVertexId: context.hoveredVertexId,
+        hoveredVertexPosition: context.hoveredVertexPosition,
+        hoveredSnapKind: context.hoveredSnapKind,
+        hoveredEntityId: context.hoveredEntityId,
+        drawSnapVertexId: context.drawSnapVertexId,
+        alignmentSnapPoint: context.alignmentSnapPoint,
+        alignmentSnapKind: context.alignmentSnapKind,
+        alignmentSnapVertexId: context.alignmentSnapVertexId,
+      }
 
-      context.addDrawPoint(snapPosition ?? worldPt)
+      const result = computeDrawClick(
+        config.entityKind,
+        context.drawPoints,
+        [worldPt[0], worldPt[1]],
+        snap,
+        context.activeFeatureId ?? 'S1',
+        () => randomId(12),
+        context.sketch as Record<string, Entity> | undefined,
+        context.otherSketches as Record<string, Record<string, Entity>> | undefined,
+      )
 
-      if (context.drawPoints.length + 1 >= paramCount / 2) {
-        context.onMutation?.({
-          type: 'add_entity',
-          featureId: context.activeFeatureId ?? 'S1',
-          kind: config.entityKind,
-          params: buildParams(context.drawPoints, snapVertexId),
-        })
+      for (const m of result.mutations) {
+        context.onMutation?.(m)
+      }
 
-        context.addDrawPoint(worldPt)
+      if (result.nextDrawSnap !== null) {
+        context.setDrawSnap(result.nextDrawSnap.vertexId)
+      }
+
+      if (result.clearTool) {
+        context.clearDraw()
+        context.setActiveTool(null)
+      } else if (result.nextDrawPoints !== null) {
+        context.drawPoints.length = 0
+        context.drawPoints.push(...result.nextDrawPoints)
       }
 
       return null
@@ -69,17 +106,4 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
 
     handlers,
   }
-}
-
-function buildParams(points: Point[], snapVertexId: string | null): number[] {
-  const params: number[] = []
-  for (const pt of points) {
-    params.push(pt[0], pt[1])
-  }
-  if (snapVertexId && points.length > 0) {
-    const lastIdx = points.length - 1
-    params[lastIdx * 2] = points[lastIdx][0]
-    params[lastIdx * 2 + 1] = points[lastIdx][1]
-  }
-  return params
 }

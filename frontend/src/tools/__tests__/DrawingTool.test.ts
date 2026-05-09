@@ -13,10 +13,16 @@ function createMockContext(overrides: Partial<DrawingToolContext> = {}): Drawing
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
     onMutation: null,
-    addDrawPoint: vi.fn(),
-    setDrawHover: vi.fn(),
     drawPoints: [],
     drawSnapVertexId: null,
+    setDrawHover: vi.fn(),
+    clearDraw: vi.fn(),
+    setActiveTool: vi.fn(),
+    hoveredEntityId: null,
+    alignmentSnapPoint: null,
+    alignmentSnapKind: null,
+    alignmentSnapVertexId: null,
+    setDrawSnap: vi.fn(),
     ...overrides,
   }
 }
@@ -25,39 +31,41 @@ describe('DrawingTool', () => {
   describe('line tool', () => {
     it('creates entity when enough points collected', () => {
       const onMutation = vi.fn()
-      const addDrawPoint = vi.fn()
+      const clearDraw = vi.fn()
+      const setActiveTool = vi.fn()
       const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
       const context = createMockContext({
         onMutation,
-        addDrawPoint,
+        clearDraw,
+        setActiveTool,
         drawPoints: [[0, 0]],
         activeFeatureId: 'S1',
       })
 
       tool.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
 
-      expect(addDrawPoint).toHaveBeenCalled()
       expect(onMutation).toHaveBeenCalledWith({
         type: 'add_entity',
         featureId: 'S1',
         kind: 'line',
         params: expect.any(Array),
       })
+      expect(clearDraw).toHaveBeenCalled()
+      expect(setActiveTool).toHaveBeenCalledWith(null)
     })
 
     it('adds point when not enough points', () => {
       const onMutation = vi.fn()
-      const addDrawPoint = vi.fn()
+      const clearDraw = vi.fn()
       const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
       const context = createMockContext({
         onMutation,
-        addDrawPoint,
+        clearDraw,
         drawPoints: [],
       })
 
       tool.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
 
-      expect(addDrawPoint).toHaveBeenCalledWith([10, 10])
       expect(onMutation).not.toHaveBeenCalled()
     })
   })
@@ -103,11 +111,13 @@ describe('DrawingTool', () => {
   describe('alignment snap integration', () => {
     it('line tool creates entity on second click (prerequisite for alignment snap test)', () => {
       const onMutation = vi.fn()
-      const addDrawPoint = vi.fn()
+      const clearDraw = vi.fn()
+      const setActiveTool = vi.fn()
       const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
       const context = createMockContext({
         onMutation,
-        addDrawPoint,
+        clearDraw,
+        setActiveTool,
         drawPoints: [[0, 0]],
         activeFeatureId: 'S1',
       })

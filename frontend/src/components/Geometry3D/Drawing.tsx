@@ -3,15 +3,14 @@ import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { toolRegistry } from '../../registry/toolRegistry'
 import { sanitizePointerEvent } from './pointerAbstractionAdapters'
 import { Dot } from './VertexDots'
 import { DashedLine } from '../sketch_dimensions'
 import { COLOR_PREVIEW } from './constants'
 import { useAlignmentSnapEffect } from '../interaction/useAlignmentSnapEffect'
 import type { Sketch } from '../../types/cad'
-import { randomId } from '../../utils/yamlMutations'
-import { computeDrawClick } from './drawLogic'
-import type { DrawSnapState } from './drawLogic'
+import type { DrawingToolContext } from '../../tools/DrawingTool'
 import { computePreviewPts } from './drawGeometry'
 
 export function DrawPreview({ activeFeatureId }: { activeFeatureId?: string }) {
@@ -63,10 +62,8 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const effectiveTool = activeTool ?? 'drag'
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
   const setDrawHover = useSketchEditorStore(s => s.setDrawHover)
-  const setDrawSnap = useSketchEditorStore(s => s.setDrawSnap)
   const clearDraw = useSketchEditorStore(s => s.clearDraw)
   const onMutation = useSketchEditorStore(s => s.onMutation)
-  const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
   const clearNormalSelection = useSketchEditorStore(s => s.clearNormalSelection)
   const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
@@ -140,46 +137,34 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
         if (!sanitized) return
         const [x, y] = sanitized.localPoint
 
-        // Read alignment snap state imperatively -- set reactively by useAlignmentSnapEffect
+        const tool = toolRegistry.get(effectiveTool)
+        if (!tool?.handlers.onPointerDown) return
+
         const state = useSketchEditorStore.getState()
-        const snap: DrawSnapState = {
+        const context: DrawingToolContext = {
+          normalSelection: state.normalSelection,
+          internalHoverSelection: state.internalHoverSelection,
+          dynamicSelection: state.dynamicSelection,
+          isPointerDown: state.isPointerDown,
+          activeFeatureId: state.activeFeatureId,
           hoveredVertexId,
           hoveredVertexPosition,
           hoveredSnapKind,
-          hoveredEntityId,
+          onMutation,
+          drawPoints,
           drawSnapVertexId: state.drawSnapVertexId,
+          setDrawHover,
+          clearDraw,
+          hoveredEntityId,
           alignmentSnapPoint: state.alignmentSnapPoint,
           alignmentSnapKind: state.alignmentSnapKind,
           alignmentSnapVertexId: state.alignmentSnapVertexId,
+          setDrawSnap: useSketchEditorStore.getState().setDrawSnap,
+          setActiveTool: (tool: string | null) => { useSketchEditorStore.getState().setActiveTool(tool as import('../../stores/sketchEditorStore').ActiveTool) },
+          sketch: sketch as Record<string, import('../../types/cad').Entity> | undefined,
+          otherSketches: otherSketches as Record<string, Record<string, import('../../types/cad').Entity>> | undefined,
         }
-
-        const result = computeDrawClick(
-          effectiveTool,
-          drawPoints,
-          [x, y],
-          snap,
-          featureId,
-          () => randomId(12),
-          sketch as Record<string, import('../../types/cad').Entity> | undefined,
-          otherSketches as Record<string, Record<string, import('../../types/cad').Entity>> | undefined,
-        )
-
-        for (const m of result.mutations) {
-          onMutation?.(m)
-        }
-
-        if (result.clearTool) {
-          // Second click or single-click completion: clear draw state and tool
-          clearDraw()
-          setActiveTool(null)
-        } else if (result.nextDrawPoints !== null) {
-          // Replace draw points in place (preserves drawSnap for intermediate arc clicks)
-          useSketchEditorStore.setState({ drawPoints: result.nextDrawPoints })
-        }
-
-        if (result.nextDrawSnap !== null) {
-          setDrawSnap(result.nextDrawSnap.vertexId)
-        }
+        tool.handlers.onPointerDown(e.nativeEvent, [x, y], context)
       }}
       onPointerOut={() => setDrawHover(null)}
     >

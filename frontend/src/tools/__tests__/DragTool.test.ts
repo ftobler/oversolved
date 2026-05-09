@@ -18,6 +18,9 @@ function createMockContext(overrides: Partial<DragToolContext> = {}): DragToolCo
     dragSnap: null,
     setDrag: vi.fn(),
     setDragPending: vi.fn(),
+    setDragSnap: vi.fn(),
+    startClient: [100, 100],
+    setOrbitEnabled: vi.fn(),
     ...overrides,
   }
 }
@@ -63,6 +66,7 @@ describe('DragTool', () => {
       const context = createMockContext({
         setDragPending,
         setDrag,
+        startClient: [100, 100],
         dragPending: {
           type: 'vertex',
           vertexId: 'vertex:S1:L1:start',
@@ -73,7 +77,7 @@ describe('DragTool', () => {
         },
       })
 
-      tool.handlers.onPointerMove!({} as PointerEvent, [10, 10], null, context)
+      tool.handlers.onPointerMove!({ clientX: 200, clientY: 200 } as PointerEvent, [10, 10], null, context)
 
       expect(setDrag).toHaveBeenCalled()
     })

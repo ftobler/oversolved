@@ -1,11 +1,4 @@
 // interaction/index.ts
-// Re-export interaction module types and shared hooks.
-
-export type {
-  DragInit,
-  InteractionHandlers,
-  ToolDragHandlers,
-  ToolHandlerContract,
-} from './interaction-actions'
+// Shared hooks only — tool dispatch now routes through toolRegistry. See tools/ and registry/.
 
 export { useDynamicSelectionPositions } from './snapHooks'

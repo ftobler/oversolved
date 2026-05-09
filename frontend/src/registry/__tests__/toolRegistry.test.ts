@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { ToolRegistry } from '../toolRegistry'
 import { getEffectiveTool } from '../../stores/sketchEditorStore'
+import { createDragTool } from '../../tools/DragTool'
+import { createDrawingTool } from '../../tools/DrawingTool'
 
 import type { Tool, ToolCategory, ToolId, ToolContext, ToolHandlers } from '../toolRegistry'
 
@@ -197,6 +199,104 @@ describe('ToolRegistry', () => {
       expect(getEffectiveTool('select')).toBe('select')
       expect(getEffectiveTool('line')).toBe('line')
       expect(getEffectiveTool('dimension')).toBe('dimension')
+    })
+  })
+
+  describe('integration: tool dispatch through registry', () => {
+    it('routes onPointerDown through registry for drag tool', () => {
+      const registry = new ToolRegistry()
+      const tool = createDragTool()
+      registry.register(tool)
+
+      const context = {
+        normalSelection: new Set<string>(),
+        internalHoverSelection: null,
+        dynamicSelection: new Set<string>(),
+        isPointerDown: false,
+        activeFeatureId: 'S1',
+        hoveredVertexId: 'vertex:S1:L1:start',
+        hoveredVertexPosition: [0, 0] as [number, number],
+        hoveredSnapKind: null,
+        onMutation: null,
+        drag: null,
+        dragPending: null,
+        dragSnap: null,
+        setDrag: vi.fn(),
+        setDragPending: vi.fn(),
+        setDragSnap: vi.fn(),
+        startClient: [100, 100] as [number, number],
+        setOrbitEnabled: vi.fn(),
+      }
+      const result = registry.get('drag')!.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
+      expect(result).toBeNull()
+      expect(context.setDragPending).toHaveBeenCalled()
+    })
+
+    it('routes onPointerUp through registry for drag tool', () => {
+      const registry = new ToolRegistry()
+      const tool = createDragTool()
+      registry.register(tool)
+
+      const onMutation = vi.fn()
+      const setDrag = vi.fn()
+      const setDragSnap = vi.fn()
+      const setOrbitEnabled = vi.fn()
+      const context = {
+        normalSelection: new Set<string>(),
+        internalHoverSelection: null,
+        dynamicSelection: new Set<string>(),
+        isPointerDown: false,
+        activeFeatureId: 'S1',
+        hoveredVertexId: null,
+        hoveredVertexPosition: null,
+        hoveredSnapKind: null,
+        onMutation,
+        drag: { type: 'vertex' as const, vertexId: 'v1', featureId: 'S1', entityId: 'L1', vertexKey: 'start', startWorld: [0, 0] as [number, number], currentWorld: [10, 10] as [number, number], startClient: [100, 100] as [number, number] },
+        dragPending: { type: 'vertex' as const, vertexId: 'v1', featureId: 'S1', entityId: 'L1', vertexKey: 'start', startWorld: [0, 0] as [number, number] },
+        dragSnap: null,
+        setDrag,
+        setDragPending: vi.fn(),
+        setDragSnap,
+        startClient: [100, 100] as [number, number],
+        setOrbitEnabled,
+      }
+      registry.get('drag')!.handlers.onPointerUp!({ clientX: 200, clientY: 200 } as PointerEvent, [10, 10], null, context)
+      expect(onMutation).toHaveBeenCalled()
+      expect(setDrag).toHaveBeenCalledWith(null)
+      expect(setOrbitEnabled).toHaveBeenCalledWith(true)
+    })
+
+    it('routes onPointerDown through registry for drawing tool', () => {
+      const registry = new ToolRegistry()
+      const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
+      registry.register(tool)
+
+      const onMutation = vi.fn()
+      const clearDraw = vi.fn()
+      const context = {
+        normalSelection: new Set<string>(),
+        internalHoverSelection: null,
+        dynamicSelection: new Set<string>(),
+        isPointerDown: false,
+        activeFeatureId: 'S1',
+        hoveredVertexId: null,
+        hoveredVertexPosition: null,
+        hoveredSnapKind: null,
+        onMutation,
+        drawPoints: [[0, 0]] as [number, number][],
+        drawSnapVertexId: null,
+        setDrawHover: vi.fn(),
+        clearDraw,
+        setActiveTool: vi.fn(),
+        hoveredEntityId: null,
+        alignmentSnapPoint: null,
+        alignmentSnapKind: null,
+        alignmentSnapVertexId: null,
+        setDrawSnap: vi.fn(),
+      }
+      registry.get('line')!.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
+      expect(onMutation).toHaveBeenCalled()
+      expect(clearDraw).toHaveBeenCalled()
     })
   })
 })

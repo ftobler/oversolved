@@ -1,20 +1,23 @@
 import type { Tool, ToolContext, ToolHandlers } from '../registry/toolRegistry'
 import type { Point } from '../types/cad'
+import { shouldActivateDrag, computeDragMutation } from '../components/Geometry3D/dragLogic'
+import type { SnapTarget } from '../components/Geometry3D/snapDetection'
 
 export interface DragToolContext extends ToolContext {
   drag: { type: 'vertex' | 'edge'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: Point; currentWorld: Point; startClient: [number, number] } | null
   dragPending: { type: 'vertex' | 'edge'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: Point } | null
-  dragSnap: { entityId: string; position: Point } | null
+  dragSnap: SnapTarget | null
   setDrag: (drag: DragToolContext['drag']) => void
   setDragPending: (pending: DragToolContext['dragPending']) => void
+  setDragSnap: (snap: SnapTarget | null) => void
+  startClient: [number, number] | null
+  setOrbitEnabled: (enabled: boolean) => void
 }
 
 export interface DragTool extends Tool {
   readonly category: 'drag'
   readonly dragModes: ('vertex' | 'edge' | 'dim_label')[]
 }
-
-const CLICK_VS_DRAG_THRESHOLD = 4
 
 export function createDragTool(): DragTool {
   const handlers: ToolHandlers<DragToolContext> = {
@@ -43,10 +46,8 @@ export function createDragTool(): DragTool {
       const pending = context.dragPending
       if (!pending) return
 
-      const dx = worldPt[0] - pending.startWorld[0]
-      const dy = worldPt[1] - pending.startWorld[1]
-
-      if (!context.drag && Math.hypot(dx, dy) > CLICK_VS_DRAG_THRESHOLD / 100) {
+      if (!context.drag && context.startClient) {
+        if (!shouldActivateDrag(context.startClient, [_e.clientX, _e.clientY])) return
         context.setDrag({
           type: pending.type,
           vertexId: pending.vertexId,
@@ -55,7 +56,7 @@ export function createDragTool(): DragTool {
           vertexKey: pending.vertexKey,
           startWorld: pending.startWorld,
           currentWorld: worldPt,
-          startClient: [0, 0],
+          startClient: context.startClient,
         })
       }
 
@@ -65,41 +66,26 @@ export function createDragTool(): DragTool {
       }
     },
 
-    onPointerUp: (_e, worldPt, _drag, context) => {
+    onPointerUp: (_e, _worldPt, _drag, context) => {
       const pending = context.dragPending
       if (!pending) return
 
       context.setDragPending(null)
 
-      const dx = worldPt[0] - pending.startWorld[0]
-      const dy = worldPt[1] - pending.startWorld[1]
-
-      if (Math.hypot(dx, dy) <= CLICK_VS_DRAG_THRESHOLD / 100) {
-        context.setDrag(null)
+      if (!context.drag || !context.startClient) {
+        context.setOrbitEnabled(true)
         return
       }
 
-      if (context.dragSnap) {
-        context.onMutation?.({
-          type: 'move_vertex_with_constraint',
-          featureId: pending.featureId,
-          entityId: pending.entityId,
-          vertexKey: pending.vertexKey,
-          to: worldPt,
-          constraintKind: 'coincident',
-          snapVertexId: context.dragSnap.entityId,
-        })
-      } else {
-        context.onMutation?.({
-          type: 'move_vertex',
-          featureId: pending.featureId,
-          entityId: pending.entityId,
-          vertexKey: pending.vertexKey,
-          to: worldPt,
-        })
+      const endClient: [number, number] = [_e.clientX, _e.clientY]
+      const mutation = computeDragMutation(endClient, context.drag, context.dragSnap ?? null, null)
+      if (mutation) {
+        context.onMutation?.(mutation)
       }
 
       context.setDrag(null)
+      context.setDragSnap(null)
+      context.setOrbitEnabled(true)
     },
   }
 

@@ -3,13 +3,15 @@ import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import type { Sketch } from '../../types/cad'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { toolRegistry } from '../../registry/toolRegistry'
 import { Dot, VertexHighlight } from './VertexDots'
 import { DashedLine } from '../sketch_dimensions'
 import { p2w } from '../sketch_helpers'
 import { useDynamicSelectionPositions } from '../interaction/snapHooks'
 import { COLOR_SNAP, COLOR_PREVIEW, POINT_HIT_PIXELS } from './constants'
 import { sanitizePointerEvent } from './pointerAbstractionAdapters'
-import { computeDragMove, computeDragMutation, shouldActivateDrag } from './dragLogic'
+import { computeDragMove, shouldActivateDrag } from './dragLogic'
+import type { DragToolContext } from '../../tools/DragTool'
 import { sketchToVertexCandidates, sketchToEntityCandidates } from './snapDetection'
 
 export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit, otherSketches }: {
@@ -94,6 +96,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit, oth
     }
 
     // Lazy drag initiation: activate when movement exceeds the click threshold.
+    // Dim_label drags are handled inline; vertex/edge drags route through DragTool.
     if (!drag && dragPending && dragStartClient && isPointerDown) {
       if (shouldActivateDrag(dragStartClient, [e.clientX, e.clientY])) {
         if (dragPending.type === 'dim_label') {
@@ -106,16 +109,30 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit, oth
             currentWorld: dragPending.startWorld,
           })
         } else {
-          setDrag({
-            type: dragPending.type,
-            vertexId: dragPending.vertexId,
-            featureId: dragPending.featureId,
-            entityId: dragPending.entityId,
-            vertexKey: dragPending.vertexKey,
-            startWorld: dragPending.startWorld,
-            currentWorld: dragPending.startWorld,
-            startClient: dragStartClient,
-          })
+          const dragTool = toolRegistry.get('drag')
+          if (dragTool) {
+            const state = useSketchEditorStore.getState()
+            const ctx: DragToolContext = {
+              normalSelection: state.normalSelection,
+              internalHoverSelection: state.internalHoverSelection,
+              dynamicSelection: state.dynamicSelection,
+              isPointerDown: state.isPointerDown,
+              activeFeatureId: state.activeFeatureId,
+              hoveredVertexId: dragPending.vertexId,
+              hoveredVertexPosition: [dragPending.startWorld[0], dragPending.startWorld[1]],
+              hoveredSnapKind: state.hoveredSnapKind,
+              onMutation: state.onMutation,
+              drag: null,
+              dragPending,
+              dragSnap: state.dragSnap,
+              setDrag,
+              setDragPending,
+              setDragSnap,
+              startClient: dragStartClient,
+              setOrbitEnabled,
+            }
+            dragTool.handlers.onPointerMove?.(e, dragPending.startWorld, null, ctx)
+          }
         }
       }
     }
@@ -189,17 +206,12 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit, oth
       position={[0, 0, 0]}
       onPointerUp={(e) => {
         e.stopPropagation()
-        // Clear drag-mode dynamic selection before the window pointerup listener fires.
-        // The drag plane populates dynamicSelection with proximity-scanned alignment refs
-        // during drag -- these must not be applied to normalSelection on pointer-up.
         useSketchEditorStore.getState().setIsPointerDown(false)
         useSketchEditorStore.setState({ dynamicSelection: new Set() })
         prevNearbyRef.current = new Set()
 
-        // Read from store directly -- not from the render closure -- to avoid stale values.
-        const { drag: currentDrag, dragSnap: currentDragSnap, dragPending, alignmentSnapKind, alignmentSnapPoint, alignmentSnapVertexId } = useSketchEditorStore.getState()
+        const { drag: currentDrag, dragPending } = useSketchEditorStore.getState()
 
-        // If drag never initiated (pure click), clear pending state and return
         if (!currentDrag && dragPending && dragPending.featureId === featureId) {
           setDragPending(null)
           setDragStartClient(null)
@@ -212,7 +224,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit, oth
         }
 
         if (currentDrag.type === 'dim_label') {
-          // Dimension label drag: emit position mutation
           if (onMutation) {
             const pos: [number, number] = [
               currentDrag.currentWorld[0] - currentDrag.anchorWorld[0],
@@ -223,19 +234,35 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit, oth
               onMutation({ type: 'set_constraint_pos', featureId: currentDrag.featureId, constraintId: currentDrag.constraintId, pos })
             }
           }
+          setDrag(null); setDragSnap(null); setOrbitEnabled(true)
         } else {
-          // Vertex or edge drag: delegate to pure dragLogic
-          const endClient: [number, number] = [e.nativeEvent.clientX, e.nativeEvent.clientY]
-          const alignmentSnap = (alignmentSnapKind && alignmentSnapPoint && alignmentSnapVertexId)
-            ? { point: alignmentSnapPoint, kind: alignmentSnapKind, vertexId: alignmentSnapVertexId }
-            : null
-          const mutation = computeDragMutation(endClient, currentDrag, currentDragSnap, alignmentSnap)
-          if (mutation && onMutation) onMutation(mutation)
+          const dragTool = toolRegistry.get('drag')
+          if (dragTool) {
+            const state = useSketchEditorStore.getState()
+            const context: DragToolContext = {
+              normalSelection: state.normalSelection,
+              internalHoverSelection: state.internalHoverSelection,
+              dynamicSelection: state.dynamicSelection,
+              isPointerDown: state.isPointerDown,
+              activeFeatureId: state.activeFeatureId,
+              hoveredVertexId: state.hoveredVertexId,
+              hoveredVertexPosition: state.hoveredVertexPosition,
+              hoveredSnapKind: state.hoveredSnapKind,
+              onMutation,
+              drag: currentDrag,
+              dragPending: state.dragPending as DragToolContext['dragPending'],
+              dragSnap: state.dragSnap,
+              setDrag,
+              setDragPending,
+              setDragSnap,
+              startClient: state.dragStartClient,
+              setOrbitEnabled,
+            }
+            dragTool.handlers.onPointerUp?.(e.nativeEvent, currentDrag.currentWorld, null, context)
+          } else {
+            setDrag(null); setDragSnap(null); setOrbitEnabled(true)
+          }
         }
-
-        setDrag(null)
-        setDragSnap(null)
-        setOrbitEnabled(true)
       }}
     >
       <planeGeometry args={[10000, 10000]} />
