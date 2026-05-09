@@ -46,7 +46,14 @@ export interface ToolDragInit {
   startClient: [number, number]
 }
 
-// Unified handlers interface
+/**
+ * Unified handlers interface — the single contract all tools must implement.
+ *
+ * Every tool (select, drag, dimension, drawing, constraint) provides these
+ * handlers through the ToolRegistry. The view layer (DragPlane, DrawPlane,
+ * useToolClickDispatch) calls these handlers instead of calling logic
+ * functions directly. See tools/ for implementations.
+ */
 export interface ToolHandlers<T extends ToolContext = ToolContext> {
   onPointerDown?(e: PointerEvent, worldPt: Point, context: T): ToolDragInit | null
   onPointerMove?(e: PointerEvent, worldPt: Point, drag: ToolDragInit | null, context: T): void
