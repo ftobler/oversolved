@@ -175,7 +175,7 @@ def _extract_loops_from_occ_face(
     from OCP.BRepAdaptor import BRepAdaptor_Curve2d, BRepAdaptor_Surface
     from OCP.BRepTools import BRepTools, BRepTools_WireExplorer
     from OCP.GeomAbs import GeomAbs_Plane, GeomAbs_Circle
-    from OCP.TopAbs import TopAbs_FACE, TopAbs_WIRE
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_WIRE, TopAbs_REVERSED
     from OCP.TopExp import TopExp_Explorer
     from OCP.TopoDS import TopoDS, TopoDS_Face
 
@@ -263,6 +263,10 @@ def _extract_loops_from_occ_face(
                 c2d = BRepAdaptor_Curve2d(edge, occ_face)
                 first = c2d.FirstParameter()
                 last = c2d.LastParameter()
+                # BRepAdaptor_Curve2d returns PCurve natural direction; for a
+                # reversed edge the traversal goes last→first, so swap.
+                if edge.Orientation() == TopAbs_REVERSED:
+                    first, last = last, first
                 curve_type = c2d.GetType()
                 if curve_type == GeomAbs_Circle:
                     circ = c2d.Circle()
@@ -693,19 +697,26 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
 
         axis_origin = feature.get("axis_origin", [0, 0, 0])
         axis_direction = feature.get("axis_direction", [0, 0, 1])
+        stored_direction = list(axis_direction)
         axis_query = feature.get("axis")
         if axis_query:
             axis_data = global_repo.query(axis_query, body_store=body_store)
             if axis_data and "start" in axis_data and "end" in axis_data:
                 start = axis_data["start"]
                 end = axis_data["end"]
-                axis_origin = list(start)
                 dx = end[0] - start[0]
                 dy = end[1] - start[1]
                 dz = end[2] - start[2]
                 length = math.sqrt(dx * dx + dy * dy + dz * dz)
                 if length > 1e-12:
-                    axis_direction = [dx / length, dy / length, dz / length]
+                    computed = [dx / length, dy / length, dz / length]
+                    dot = sum(computed[i] * stored_direction[i] for i in range(3))
+                    if dot < 0:
+                        axis_origin = list(end)
+                        axis_direction = [-computed[0], -computed[1], -computed[2]]
+                    else:
+                        axis_origin = list(start)
+                        axis_direction = computed
         body_id = "body_" + feature_id
         result: dict = {"status": "ok", "body_id": body_id}
 
@@ -767,8 +778,16 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
                     result["body_id"] = cut_body_id
                     result["operation"] = "cut"
                 elif operation == "new":
-                    body.shape = tool_shape
-                    body_store[body_id] = body
+                    solids = _split_compound(tool_shape)
+                    body_ids = []
+                    for i, solid in enumerate(solids):
+                        bid = body_id if i == 0 else f"{body_id}_{i}"
+                        b = Body(id=bid, created_by=feature_id, shape=solid,
+                                 sketch_id=first_sketch_id)
+                        body_store[bid] = b
+                        body_ids.append(bid)
+                    result["body_id"] = body_ids[0]
+                    result["body_ids"] = body_ids
                     result["operation"] = "new"
                 else:
                     from oversolved.kernel.geometry import boolean_union
@@ -820,8 +839,16 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
                     elif not need_new_body:
                         raise ValueError("revolve: add could not fuse with any target body")
                     else:
-                        body.shape = tool_shape
-                        body_store[body_id] = body
+                        solids = _split_compound(tool_shape)
+                        body_ids = []
+                        for i, solid in enumerate(solids):
+                            bid = body_id if i == 0 else f"{body_id}_{i}"
+                            b = Body(id=bid, created_by=feature_id, shape=solid,
+                                     sketch_id=first_sketch_id)
+                            body_store[bid] = b
+                            body_ids.append(bid)
+                        result["body_id"] = body_ids[0]
+                        result["body_ids"] = body_ids
                         result["operation"] = "add"
         except ValueError as exc:
             result["status"] = "exception"

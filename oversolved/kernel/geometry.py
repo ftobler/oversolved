@@ -524,10 +524,8 @@ def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | Non
     TWO_PI = 2.0 * math.pi
     CIRCLE_TOL = 1e-4
 
-    edges: list[dict] = []
-    edge_queries: list[str] = []
+    raw_edges: list[tuple] = []
     seen_hashes: set[int] = set()
-    idx = 0
 
     for edge in solid.edges():
         h = edge.hashCode()
@@ -540,13 +538,13 @@ def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | Non
         if gt == "LINE":
             sp = edge.startPoint()
             ep = edge.endPoint()
-            edges.append(
-                {
-                    "kind": "line",
-                    "start": [sp.x, sp.y, sp.z],
-                    "end": [ep.x, ep.y, ep.z],
-                }
-            )
+            ed = {
+                "kind": "line",
+                "start": [sp.x, sp.y, sp.z],
+                "end": [ep.x, ep.y, ep.z],
+            }
+            sort_key = ("line", round(sp.x, 6), round(sp.y, 6), round(sp.z, 6),
+                        round(ep.x, 6), round(ep.y, 6), round(ep.z, 6))
 
         elif gt == "CIRCLE":
             curve = edge._geomAdaptor()
@@ -560,17 +558,17 @@ def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | Non
             span = u1 - u0
             is_full = abs(abs(span) - TWO_PI) < CIRCLE_TOL or abs(span) < CIRCLE_TOL
             edge_kind = "circle" if is_full else "arc"
-            edges.append(
-                {
-                    "kind": edge_kind,
-                    "center": [center.X(), center.Y(), center.Z()],
-                    "radius": radius,
-                    "axis": [ax.X(), ax.Y(), ax.Z()],
-                    "x_axis": [xdir.X(), xdir.Y(), xdir.Z()],
-                    "angle_start": u0,
-                    "angle_end": u1,
-                }
-            )
+            ed = {
+                "kind": edge_kind,
+                "center": [center.X(), center.Y(), center.Z()],
+                "radius": radius,
+                "axis": [ax.X(), ax.Y(), ax.Z()],
+                "x_axis": [xdir.X(), xdir.Y(), xdir.Z()],
+                "angle_start": u0,
+                "angle_end": u1,
+            }
+            sort_key = (edge_kind, round(center.X(), 6), round(center.Y(), 6),
+                        round(center.Z(), 6), round(radius, 6), round(u0, 6), round(u1, 6))
 
         else:
             n_pts = 16
@@ -582,17 +580,28 @@ def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | Non
                 t = u0 + (u1 - u0) * i / n_pts
                 pt = edge.positionAt(t, mode="parameter")
                 points.append([pt.x, pt.y, pt.z])
-            edges.append({"kind": "spline", "points": points})
+            ed = {"kind": "spline", "points": points}
+            mid = points[n_pts // 2]
+            sort_key = ("spline", round(mid[0], 6), round(mid[1], 6), round(mid[2], 6))
 
+        raw_edges.append((ed, sort_key))
+
+    # Sort for deterministic edge indices across OCC iteration order variations.
+    raw_edges.sort(key=lambda item: item[1])
+
+    edges: list[dict] = []
+    edge_queries: list[str] = []
+
+    for idx, (ed, _) in enumerate(raw_edges):
+        edges.append(ed)
         if created_by:
             from oversolved.kernel.query import make_ancestry_query
 
-            edge_type = "straightedge" if edges[-1]["kind"] == "line" else "edge"
+            edge_type = "straightedge" if ed["kind"] == "line" else "edge"
             if body_id:
                 edge_queries.append(make_ancestry_query([f"@{body_id}edge{idx}", f"@{created_by}", f"@{body_id}"], edge_type))
             else:
                 edge_queries.append(make_ancestry_query([f"@{created_by}edge{idx}", f"@{created_by}"], edge_type))
-        idx += 1
 
     return {"edges": edges, "edge_queries": edge_queries}
 
