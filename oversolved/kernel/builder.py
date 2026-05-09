@@ -186,8 +186,10 @@ def _repo_from_snapshot(repo_snapshot: dict) -> Repository:
     """Rehydrate a repository snapshot, including ancestry index state."""
     repo = Repository()
     if "elements" in repo_snapshot or "ancestral" in repo_snapshot:
-        repo.elements = copy.deepcopy(repo_snapshot.get("elements", {}))
-        repo.ancestral = copy.deepcopy(repo_snapshot.get("ancestral", {}))
+        repo.elements = dict(repo_snapshot.get("elements", {}))
+        repo.ancestral = {
+            k: list(v) for k, v in repo_snapshot.get("ancestral", {}).items()
+        }
     else:
         # Backward compatibility for older snapshots that only stored elements.
         repo.elements = copy.deepcopy(repo_snapshot)
