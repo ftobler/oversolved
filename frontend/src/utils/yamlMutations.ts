@@ -724,6 +724,19 @@ export function applySetRevolveAngle(doc: PartDoc, featureId: string, angle: num
   feature.revolve.angle = angle
 }
 
+export function applySetRevolveDirection(
+  doc: PartDoc,
+  featureId: string,
+  direction: 'normal' | 'reverse' | 'symmetric',
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.revolve) {
+    console.warn(`applySetRevolveDirection: feature ${featureId} has no revolve`)
+    return
+  }
+  feature.revolve.direction = direction
+}
+
 export function applySetRevolveAxis(doc: PartDoc, featureId: string, axis: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.revolve) {

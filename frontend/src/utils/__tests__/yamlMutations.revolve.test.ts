@@ -3,6 +3,7 @@ import type { PartDoc } from '../../types/cad'
 import {
   applyAddRevolve,
   applySetRevolveAngle,
+  applySetRevolveDirection,
   applySetRevolveAxis,
   applySetRevolveOperation,
   applySetRevolveMergeTarget,
@@ -191,6 +192,44 @@ describe('set_revolve_angle', () => {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
     expect(() => applySetRevolveAngle(doc, 'rev1', 180)).not.toThrow()
+    expect(doc.features![0]).not.toHaveProperty('revolve')
+  })
+})
+
+describe('set_revolve_direction', () => {
+  it('updates revolve direction to reverse', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: '$sk1', angle: 360 },
+        },
+      ],
+    }
+    applySetRevolveDirection(doc, 'rev1', 'reverse')
+    expect(doc.features![0].revolve!.direction).toBe('reverse')
+  })
+
+  it('updates revolve direction to symmetric', () => {
+    const doc: PartDoc = {
+      features: [
+        {
+          id: 'rev1',
+          kind: 'revolve',
+          revolve: { sketch: '$sk1', angle: 360, direction: 'normal' },
+        },
+      ],
+    }
+    applySetRevolveDirection(doc, 'rev1', 'symmetric')
+    expect(doc.features![0].revolve!.direction).toBe('symmetric')
+  })
+
+  it('does nothing if revolve is undefined', () => {
+    const doc: PartDoc = {
+      features: [{ id: 'rev1', kind: 'sketch' }],
+    }
+    expect(() => applySetRevolveDirection(doc, 'rev1', 'reverse')).not.toThrow()
     expect(doc.features![0]).not.toHaveProperty('revolve')
   })
 })

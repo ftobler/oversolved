@@ -252,3 +252,55 @@ def test_revolve_new_creates_new_body():
     assert 'body_rev2' in r['bodies']
     assert_mesh_valid(r['bodies']['body_rev1']['mesh'])
     assert_mesh_valid(r['bodies']['body_rev2']['mesh'])
+
+
+def test_revolve_reverse_direction():
+    """reverse direction negates the revolve angle, producing a mirror shape."""
+    from oversolved.kernel.builder import build
+    from solver_helpers import assert_mesh_valid
+
+    spec = {
+        'features': [
+            _rect_sketch_at_offset(w=2.0, h=1.0, offset_x=1.0, sketch_id='sk1'),
+            {
+                'id': 'rev1',
+                'kind': 'revolve',
+                'sketch': '$sk1',
+                'angle': 90.0,
+                'direction': 'reverse',
+                'axis_origin': [0, 0, 0],
+                'axis_direction': [0, 1, 0],
+            },
+        ]
+    }
+    r = build(spec)
+    assert r['result']['rev1']['status'] == 'ok', r['result']['rev1']
+    assert 'body_rev1' in r['bodies']
+    mesh = r['bodies']['body_rev1']['mesh']
+    assert_mesh_valid(mesh)
+
+
+def test_revolve_symmetric_direction():
+    """symmetric direction revolves half the angle each way and fuses."""
+    from oversolved.kernel.builder import build
+    from solver_helpers import assert_mesh_valid
+
+    spec = {
+        'features': [
+            _rect_sketch_at_offset(w=2.0, h=1.0, offset_x=1.0, sketch_id='sk1'),
+            {
+                'id': 'rev1',
+                'kind': 'revolve',
+                'sketch': '$sk1',
+                'angle': 90.0,
+                'direction': 'symmetric',
+                'axis_origin': [0, 0, 0],
+                'axis_direction': [0, 1, 0],
+            },
+        ]
+    }
+    r = build(spec)
+    assert r['result']['rev1']['status'] == 'ok', r['result']['rev1']
+    assert 'body_rev1' in r['bodies']
+    mesh = r['bodies']['body_rev1']['mesh']
+    assert_mesh_valid(mesh)

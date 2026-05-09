@@ -448,6 +448,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
         </div>
         <div className="feature-field-row">
+          <span className="feature-field-label">Direction</span>
+          <select
+            className="feature-field-select"
+            aria-label="Direction"
+            value={revolve.direction ?? 'normal'}
+            onChange={(e) => {
+              e.stopPropagation()
+              onMutation({
+                type: 'set_revolve_direction',
+                featureId: fid,
+                direction: e.target.value as 'normal' | 'reverse' | 'symmetric',
+              })
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <option value="normal">Normal</option>
+            <option value="reverse">Reverse</option>
+            <option value="symmetric">Symmetric</option>
+          </select>
+        </div>
+        <div className="feature-field-row">
           <span className="feature-field-label">Operation</span>
           <select
             className="feature-field-select"

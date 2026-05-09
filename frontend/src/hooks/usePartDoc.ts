@@ -41,6 +41,7 @@ import {
   applyRemoveExtrudeProfile,
   applyAddRevolve,
   applySetRevolveAngle,
+  applySetRevolveDirection,
   applySetRevolveAxis,
   applySetRevolveOperation,
   applySetRevolveMergeTarget,
@@ -590,6 +591,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         break
       case 'set_revolve_angle':
         applySetRevolveAngle(next, m.featureId, m.angle)
+        break
+      case 'set_revolve_direction':
+        applySetRevolveDirection(next, m.featureId, m.direction)
         break
       case 'set_revolve_axis':
         applySetRevolveAxis(next, m.featureId, m.axis)

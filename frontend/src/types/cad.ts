@@ -55,9 +55,12 @@ export interface ArrayFeatureDef {
   axis_direction?: [number, number, number]
 }
 
+export type RevolveDirection = 'normal' | 'reverse' | 'symmetric'
+
 export interface RevolveFeatureDef {
   sketch: string | string[]
   angle: number
+  direction?: RevolveDirection
   axis?: string
   axis_origin?: [number, number, number]
   axis_direction?: [number, number, number]
@@ -535,6 +538,7 @@ export type Mutation =
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
   | { type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number }
   | { type: 'set_revolve_angle'; featureId: string; angle: number }
+  | { type: 'set_revolve_direction'; featureId: string; direction: RevolveDirection }
   | { type: 'set_revolve_axis'; featureId: string; axis: string }
   | { type: 'set_revolve_operation'; featureId: string; operation: 'add' | 'cut' | 'new' }
   | { type: 'set_revolve_merge_target'; featureId: string; mergeTarget?: string }

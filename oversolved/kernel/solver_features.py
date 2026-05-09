@@ -686,7 +686,16 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
                 result["mesh_warning"] = "no closed profile found; body has no shape"
             else:
                 face = sketch_loops_to_face(all_loops, first_pt)
-                tool_shape = _rf(face, axis_origin, axis_direction, angle)
+                direction = feature.get("direction", "normal")
+                if direction == "symmetric":
+                    half_angle = angle / 2.0
+                    tool_shape_pos = _rf(face, axis_origin, axis_direction, half_angle)
+                    tool_shape_neg = _rf(face, axis_origin, axis_direction, -half_angle)
+                    from oversolved.kernel.geometry import boolean_union
+                    tool_shape = boolean_union(tool_shape_pos, tool_shape_neg)
+                else:
+                    effective_angle = -angle if direction == "reverse" else angle
+                    tool_shape = _rf(face, axis_origin, axis_direction, effective_angle)
 
                 if operation == "cut":
                     target_ids = _resolve_merge_targets(merge_target, body_store)
