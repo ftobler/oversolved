@@ -7,6 +7,7 @@ import { randomId } from '../utils/yamlMutations'
 import { useSketchEditorStore } from '../stores/sketchEditorStore'
 import { useCommandRegistration } from './hooks/useCommandRegistration'
 import { buildCommandEntries } from './commandEntries'
+import { executeCommand } from '../stores/commandRegistry'
 import SketchToolbar from '../components/Toolbar/SketchToolbar'
 import AppHeader from '../components/AppHeader'
 import { usePartDoc } from '../hooks/usePartDoc'
@@ -170,18 +171,6 @@ export default function Part() {
   useEffect(() => {
     if (docName) setEditName(docName)
   }, [docName])
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      if (e.key === 'p' || e.key === 'P') {
-        e.preventDefault()
-        handleMutation({ type: 'toggle_plane_visibility' })
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleMutation])
 
   const features = useMemo(() => extractFeatures(doc), [doc])
   const partStyle = useMemo(() => doc?.part_style ?? {}, [doc])
@@ -1026,7 +1015,7 @@ useEffect(() => {
         <div className="undo-redo-btn-group">
           <button
             className="toolbar-btn"
-            onClick={handleUndo}
+            onClick={() => executeCommand('undo')}
             disabled={undoStack.length === 0}
             onMouseEnter={() => setUndoHover(true)}
             onMouseLeave={() => setUndoHover(false)}
@@ -1045,7 +1034,7 @@ useEffect(() => {
           )}
           <button
             className="toolbar-btn"
-            onClick={handleRedo}
+            onClick={() => executeCommand('redo')}
             disabled={redoStack.length === 0}
             onMouseEnter={() => setRedoHover(true)}
             onMouseLeave={() => setRedoHover(false)}
