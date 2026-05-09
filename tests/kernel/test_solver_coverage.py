@@ -894,3 +894,68 @@ features:
     constraints = result.get("constraints", {})
     superfluous = [cid for cid, c in constraints.items() if c.get("superfluous")]
     assert superfluous == [], f"Expected no superfluous, got: {superfluous}"
+
+
+def test_entity_status_early_exit_fully_constrained(sketch_log):
+    """A fully-constrained sketch returns all entities fully_constrained without per-entity matrix_rank calls."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    initial:
+      L1: [0, 0, 10, 0]
+    entities:
+      - id: L1
+        kind: line
+    constraints:
+      - id: c_fixed
+        kind: fixed
+        target: {entity: L1}
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_entity_status_early_exit", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    assert result["status"] == "fully_constrained"
+    features = result["features"]
+    assert features["L1"]["status"] == "fully_constrained"
+
+
+def test_superfluous_cached_rank_matches_original(sketch_log):
+    """Superfluous detection with cached rank_active matches original results."""
+    yaml_str = """
+version: 1
+kind: part
+
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    label: "Cache rank"
+    initial:
+      line1: [0.0, 0.0, 5.0, 0.0]
+    entities:
+      - id: line1
+        kind: line
+    constraints:
+      - id: c_horiz
+        kind: horizontal
+        target: {entity: line1}
+      - id: c_horiz_dup
+        kind: horizontal
+        target: {entity: line1}
+      - id: c_len
+        kind: length
+        target: {entity: line1}
+        value: 5.0
+"""
+    result = solve(yaml_str)["result"]["sketch_1"]
+    sketch_log("test_superfluous_cached_rank", yaml_str, result)
+    assert result.get("status") != "exception", result.get("exception")
+    constraints_out = result["constraints"]
+    superfluous_ids = [cid for cid, c in constraints_out.items() if c.get("superfluous")]
+    assert "c_horiz" in superfluous_ids or "c_horiz_dup" in superfluous_ids
+    assert "c_len" not in superfluous_ids

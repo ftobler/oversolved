@@ -265,6 +265,9 @@ def _entity_status(J, rank, entities, entity_offsets, n_params, overall_status):
     if overall_status == "overconstrained":
         return {eid: "overconstrained" for eid in entities}
 
+    if overall_status == "fully_constrained":
+        return {eid: "fully_constrained" for eid in entities}
+
     result = {}
     for eid, entity in entities.items():
         off = entity_offsets[eid]
@@ -607,16 +610,18 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     superfluous_ids: set[str] = set()
     if J.shape[0] > 0:
         active_rows = [r for r in range(J.shape[0]) if r not in origin_fix_rows]
+        rank_active = None
         for cid, start, end in constraint_row_ranges:
             crows = list(range(start, end))
             remaining = [r for r in active_rows if r not in crows]
-            J_active = J[active_rows + list(origin_fix_rows), :]
+            if rank_active is None:
+                J_active = J[active_rows + list(origin_fix_rows), :]
+                rank_active = int(np.linalg.matrix_rank(J_active, tol=RANK_TOL))
             J_remaining = J[remaining + list(origin_fix_rows), :]
-            if int(np.linalg.matrix_rank(J_remaining, tol=RANK_TOL)) == int(
-                np.linalg.matrix_rank(J_active, tol=RANK_TOL)
-            ):
+            if int(np.linalg.matrix_rank(J_remaining, tol=RANK_TOL)) == rank_active:
                 superfluous_ids.add(cid)
                 active_rows = remaining
+                rank_active = None
 
     constraints_out = {}
     for c in constraints:
