@@ -219,6 +219,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const cameraRef = useRef<THREE.Camera | null>(null)
   const glRef = useRef<THREE.WebGLRenderer | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
+  const bodiesRef = useRef<Record<string, BodyResult> | undefined>(undefined)
+  // eslint-disable-next-line react-hooks/refs
+  bodiesRef.current = bodies
 
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
     glRef.current = state.gl
@@ -274,75 +277,122 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     return canvas.toDataURL('image/png')
   }, [])
 
-  const autoZoomToFit = useCallback(() => {
+  const autoZoomToFitNow = useCallback(() => {
     const camera = cameraRef.current as THREE.OrthographicCamera | null
-    const scene = sceneRef.current
-    if (!camera || !scene) return
+    if (!camera) return false
 
-    // Only fit to actual body geometry (userData.featureId marks Body3D groups).
-    // Reference planes and gizmos are excluded intentionally — they are 100-unit
-    // meshes and would cause the camera to zoom out to show them instead of the model.
-    const box = new THREE.Box3()
-    let hasContent = false
+    let minX = Infinity, maxX = -Infinity
+    let minY = Infinity, maxY = -Infinity
+    let minZ = Infinity, maxZ = -Infinity
 
-    scene.traverse((obj) => {
-      if (!obj.userData.featureId) return
-      const b = new THREE.Box3().setFromObject(obj)
-      if (!b.isEmpty()) {
-        box.union(b)
-        hasContent = true
+    // Try body vertex data first (fast, accurate).
+    const bodiesData = bodiesRef.current
+    if (bodiesData && Object.keys(bodiesData).length > 0) {
+      for (const body of Object.values(bodiesData)) {
+        const verts = body.mesh?.vertices
+        if (!verts) continue
+        if (verts instanceof Float32Array) {
+          for (let i = 0; i < verts.length; i += 3) {
+            const x = verts[i], y = verts[i + 1], z = verts[i + 2]
+            if (!Number.isFinite(x)) continue
+            if (x < minX) minX = x; if (x > maxX) maxX = x
+            if (y < minY) minY = y; if (y > maxY) maxY = y
+            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
+          }
+        } else {
+          for (const [x, y, z] of verts) {
+            if (!Number.isFinite(x)) continue
+            if (x < minX) minX = x; if (x > maxX) maxX = x
+            if (y < minY) minY = y; if (y > maxY) maxY = y
+            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
+          }
+        }
       }
-    })
+    }
 
-    if (!hasContent) return
+    // Fall back to scene traversal if no body vertex data found.
+    if (!Number.isFinite(minX)) {
+      const scene = sceneRef.current
+      if (scene) {
+        const box = new THREE.Box3()
+        let hasContent = false
+        scene.traverse((obj) => {
+          if (obj instanceof THREE.Mesh) {
+            obj.geometry.computeBoundingBox()
+            const geoBox = obj.geometry.boundingBox
+            if (geoBox) {
+              const worldBox = geoBox.clone().applyMatrix4(obj.matrixWorld)
+              box.union(worldBox)
+              hasContent = true
+            }
+          }
+        })
+        if (hasContent) {
+          const size = box.getSize(new THREE.Vector3())
+          const center = box.getCenter(new THREE.Vector3())
+          if (Number.isFinite(size.x) && Number.isFinite(size.y)) {
+            minX = center.x - size.x / 2; maxX = center.x + size.x / 2
+            minY = center.y - size.y / 2; maxY = center.y + size.y / 2
+            minZ = center.z - size.z / 2; maxZ = center.z + size.z / 2
+          }
+        }
+      }
+    }
 
-    const size = box.getSize(new THREE.Vector3())
-    if (!Number.isFinite(size.x) || !Number.isFinite(size.y)) return
-    const center = box.getCenter(new THREE.Vector3())
+    if (!Number.isFinite(minX)) return false
 
-    const gl = glRef.current
-    if (!gl) return
+    const cx = (minX + maxX) / 2
+    const cy = (minY + maxY) / 2
+    const cz = (minZ + maxZ) / 2
 
-    const aspect = gl.domElement.width / gl.domElement.height
-    const margin = 1.2
-    // Use the camera frustum size (CSS units) rather than gl.domElement pixel
-    // dimensions, which are scaled by devicePixelRatio and would give wrong zoom
-    // on HiDPI displays.
     const frustumHeight = camera.top - camera.bottom
     const frustumWidth = camera.right - camera.left
     if (frustumHeight <= 0 || frustumWidth <= 0) return false
 
+    // Project bounding box corners through camera view matrix to get screen-space extents.
+    camera.updateMatrixWorld()
+    const viewMatrix = camera.matrixWorldInverse
+    const corners = [
+      [minX, minY, minZ], [maxX, minY, minZ], [minX, maxY, minZ], [maxX, maxY, minZ],
+      [minX, minY, maxZ], [maxX, minY, maxZ], [minX, maxY, maxZ], [maxX, maxY, maxZ],
+    ]
+    let minVX = Infinity, maxVX = -Infinity, minVY = Infinity, maxVY = -Infinity
+    const tmp = new THREE.Vector3()
+    for (const [x, y, z] of corners) {
+      tmp.set(x, y, z).applyMatrix4(viewMatrix)
+      if (tmp.x < minVX) minVX = tmp.x; if (tmp.x > maxVX) maxVX = tmp.x
+      if (tmp.y < minVY) minVY = tmp.y; if (tmp.y > maxVY) maxVY = tmp.y
+    }
+    const viewSizeX = maxVX - minVX
+    const viewSizeY = maxVY - minVY
+
     const margin = 2.0
-
-    const viewHeight = size.y * margin
-    const viewWidth = size.x * margin
-
-    let targetViewHeight = viewHeight
-    if (viewWidth * (frustumHeight / frustumWidth) > viewHeight) {
-      targetViewHeight = viewWidth * (frustumHeight / frustumWidth)
-    }
-
+    const targetViewHeight = Math.max(viewSizeY * margin, viewSizeX * margin * (frustumHeight / frustumWidth))
     const zoom = frustumHeight / targetViewHeight
-    if (zoom > 0) {
-      camera.zoom = zoom
-      camera.position.set(center.x, center.y, 100)
-      camera.updateProjectionMatrix()
-      return true
-    }
-    return false
+    if (zoom <= 0 || !Number.isFinite(zoom)) return false
+
+    camera.zoom = zoom
+    const centerWorld = new THREE.Vector3(cx, cy, cz)
+    const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
+    const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion)
+    const newPos = camera.position.clone()
+      .addScaledVector(camRight, camRight.dot(centerWorld) - camRight.dot(camera.position))
+      .addScaledVector(camUp, camUp.dot(centerWorld) - camUp.dot(camera.position))
+    camera.position.copy(newPos)
+    camera.updateProjectionMatrix()
+    return true
   }, [])
 
-  // Geometry arrives via a binary WS frame after the JSON solve result, so the
-  // Three.js scene may be empty when first called. Retry each frame until content
-  // appears or the limit is reached (graceful no-op for sketch-only documents).
-  const autoZoomToFitRef = useRef<(retriesLeft?: number) => void>(() => {})
-  const autoZoomToFit = useCallback((retriesLeft = 60) => {
-    if (autoZoomToFitNow()) return
-    if (retriesLeft > 0) {
-      requestAnimationFrame(() => autoZoomToFitRef.current(retriesLeft - 1))
-    }
+  // Binary geometry for 3D bodies arrives after the JSON solve result, so we
+  // must handle the timing gap: try immediately, then re-trigger when bodies
+  // prop populates. The ref prevents re-zooming after the first successful fit.
+  const zoomDoneRef = useRef(false)
+  const autoZoomToFit = useCallback(() => {
+    if (zoomDoneRef.current) return
+    if (autoZoomToFitNow()) { zoomDoneRef.current = true; return }
   }, [autoZoomToFitNow])
-  useEffect(() => { autoZoomToFitRef.current = autoZoomToFit })
+  // Re-trigger when bodies arrive (binary WS frame processed), unless already done.
+  useEffect(() => { if (!zoomDoneRef.current) autoZoomToFit() }, [bodies, autoZoomToFit])
 
   const alignCameraToPlane = useCallback((planeId: string) => {
     const camera = cameraRef.current as THREE.OrthographicCamera | null

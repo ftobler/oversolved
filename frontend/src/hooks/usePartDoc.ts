@@ -805,6 +805,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
   useEffect(() => {
     rollbackPosRef.current = null  // reset across document loads
+    firstSolveDone.current = false
     if (!uuid) return
     setLoading(true)
     fetch(`/api/documents/${uuid}`)

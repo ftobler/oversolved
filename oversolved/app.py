@@ -233,8 +233,12 @@ def _register_migrations(db: Database) -> None:
     db.register_migration(16, "sessions_user_id_index", migration_016_sessions_user_id_index)
 
     def migration_017_session_created_at(database: Database):
+        # SQLite ALTER TABLE requires a constant default; add nullable then backfill.
         database.execute(
-            "ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+            "ALTER TABLE sessions ADD COLUMN created_at TEXT"
+        )
+        database.execute(
+            "UPDATE sessions SET created_at = datetime('now') WHERE created_at IS NULL"
         )
 
     db.register_migration(17, "session_created_at", migration_017_session_created_at)

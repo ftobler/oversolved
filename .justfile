@@ -3,6 +3,7 @@
 # `just` command runner. Targets can be run with `just <target>`.
 
 export OVERSOLVED_ADMIN_PASSWORD := "admin"
+export OVERSOLVED_SESSION_COOKIE_SECURE := "false"
 
 default:
     just backend
