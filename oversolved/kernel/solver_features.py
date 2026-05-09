@@ -189,7 +189,9 @@ def _extract_loops_from_occ_face(
             def _face_sort_key(f):
                 n = _compute_face_normal(f)
                 c = _compute_face_centroid(f)
-                return (round(n[0], 6), round(n[1], 6), round(n[2], 6),
+                from oversolved.kernel.cadquery_ops import _get_face_surface_type
+                type_order = 0 if _get_face_surface_type(f) == "flatface" else 1
+                return (type_order, round(n[0], 6), round(n[1], 6), round(n[2], 6),
                         round(c[0], 6), round(c[1], 6), round(c[2], 6))
             faces.sort(key=_face_sort_key)
             if face_index >= len(faces):

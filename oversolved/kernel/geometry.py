@@ -391,10 +391,13 @@ def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None
             surface_type = _get_face_surface_type(face)
             raw_faces.append((face, verts, idxs, centroid, normal, surface_type))
 
-        # Sort by (normal, centroid) for deterministic face ordering.
+        # Sort flat faces before curved ones so that adding a fillet (which
+        # introduces cylindrical faces) never shifts existing flat face indices.
+        # Within each group, sort by (normal, centroid) for determinism.
         def _face_sort_key(item) -> tuple:
-            _f, _v, _i, c, n, _s = item
-            return (round(n[0], 6), round(n[1], 6), round(n[2], 6),
+            _f, _v, _i, c, n, s = item
+            type_order = 0 if s == "flatface" else 1
+            return (type_order, round(n[0], 6), round(n[1], 6), round(n[2], 6),
                     round(c[0], 6), round(c[1], 6), round(c[2], 6))
 
         raw_faces.sort(key=_face_sort_key)
