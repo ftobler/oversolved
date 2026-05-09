@@ -174,7 +174,7 @@ def _extract_loops_from_occ_face(
 ) -> tuple[list[list[dict]], dict]:
     from OCP.BRepAdaptor import BRepAdaptor_Curve2d, BRepAdaptor_Surface
     from OCP.BRepTools import BRepTools, BRepTools_WireExplorer
-    from OCP.GeomAbs import GeomAbs_Plane
+    from OCP.GeomAbs import GeomAbs_Plane, GeomAbs_Line, GeomAbs_Circle
     from OCP.TopAbs import TopAbs_FACE, TopAbs_WIRE
     from OCP.TopExp import TopExp_Explorer
     from OCP.TopoDS import TopoDS, TopoDS_Face
@@ -263,13 +263,40 @@ def _extract_loops_from_occ_face(
                 c2d = BRepAdaptor_Curve2d(edge, occ_face)
                 first = c2d.FirstParameter()
                 last = c2d.LastParameter()
-                p_s = c2d.Value(first)
-                p_e = c2d.Value(last)
-                loop.append({
-                    "kind": "line",
-                    "start": [p_s.X(), p_s.Y()],
-                    "end": [p_e.X(), p_e.Y()],
-                })
+                curve_type = c2d.GetType()
+                if curve_type == GeomAbs_Circle:
+                    circ = c2d.Circle()
+                    center = circ.Location()
+                    radius = circ.Radius()
+                    TWO_PI = 2.0 * math.pi
+                    span = last - first
+                    is_full = abs(abs(span) - TWO_PI) < 1e-6
+                    if is_full:
+                        loop.append({
+                            "kind": "arc",
+                            "center": [center.X(), center.Y()],
+                            "radius": radius,
+                            "angle_start_deg": 0.0,
+                            "angle_end_deg": 360.0,
+                            "ccw": span >= 0,
+                        })
+                    else:
+                        loop.append({
+                            "kind": "arc",
+                            "center": [center.X(), center.Y()],
+                            "radius": radius,
+                            "angle_start_deg": math.degrees(first),
+                            "angle_end_deg": math.degrees(last),
+                            "ccw": span >= 0,
+                        })
+                else:
+                    p_s = c2d.Value(first)
+                    p_e = c2d.Value(last)
+                    loop.append({
+                        "kind": "line",
+                        "start": [p_s.X(), p_s.Y()],
+                        "end": [p_e.X(), p_e.Y()],
+                    })
             except Exception:
                 logger.debug("Failed to extract 2D curve from edge in face extraction")
             we.Next()

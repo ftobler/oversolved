@@ -1117,3 +1117,77 @@ def test_disjoint_body_face_query_usable_in_downstream_feature():
     assert sk2_result.get("plane_transform") is not None, (
         f"sk2 plane did not resolve: {sk2_result}"
     )
+
+
+def test_revolve_from_fillet_face_propagates_arcs():
+    """A revolve using a flat face from a filleted body must capture the fillet's
+    curved boundary edges as arcs, not straight chords. Before the fix,
+    _extract_loops_from_occ_face hardcoded all edges as 'kind: line'."""
+    from oversolved.kernel.builder import build
+    from solver_helpers import assert_mesh_valid, rect_sketch_spec
+
+    sketch = rect_sketch_spec(w=5, h=5, sketch_id='sk1')
+    spec = {
+        'features': [
+            sketch,
+            {'id': 'ex1', 'kind': 'extrude', 'label': 'Extrude',
+             'sketch': '$sk1', 'distance': 5, 'direction': 'normal'},
+            {'id': 'fillet1', 'kind': 'fillet', 'label': 'Fillet',
+             'edges': ['?body_ex1:edge:0'], 'radius': 1.0},
+        ],
+    }
+    r = build(spec)
+    assert r['result']['fillet1']['status'] == 'ok'
+
+    body = r['_body_shapes']['body_ex1']
+    from oversolved.kernel.solver_features import _extract_loops_from_occ_face
+
+    arc_face_index = None
+    for fi in range(30):
+        try:
+            loops, _ = _extract_loops_from_occ_face(body, fi)
+            if any(e.get('kind') == 'arc' for loop in loops for e in loop):
+                arc_face_index = fi
+                break
+        except Exception:
+            continue
+
+    assert arc_face_index is not None, \
+        "no face with an arc boundary found after fillet — fix did not propagate arcs"
+
+    spec['features'].append({
+        'id': 'rev1', 'kind': 'revolve', 'label': 'Revolve',
+        'sketch': f'@ex1/face/{arc_face_index}',
+        'angle': 45.0, 'axis_origin': [0, 0, 0], 'axis_direction': [0, 0, 1],
+    })
+    r2 = build(spec)
+    assert r2['result']['rev1']['status'] == 'ok', \
+        f"revolve from fillet-adjacent face failed: {r2['result']['rev1'].get('exception')}"
+    assert 'body_rev1' in r2['bodies']
+    assert_mesh_valid(r2['bodies']['body_rev1']['mesh'])
+
+
+def test_extract_occ_face_returns_arcs_after_fillet():
+    """Direct unit test: _extract_loops_from_occ_face must return arc edges
+    for flat-face boundaries shared with a fillet (regression)."""
+    import cadquery as cq
+    from oversolved.kernel.solver_features import _extract_loops_from_occ_face
+    from OCP.BRepFilletAPI import BRepFilletAPI_MakeFillet
+
+    cq_solid = cq.Workplane('XY').rect(10, 10).extrude(5).solids().val()
+    edges = list(cq_solid.edges())
+    maker = BRepFilletAPI_MakeFillet(cq_solid.wrapped)
+    maker.Add(1.0, edges[0].wrapped)
+    maker.Build()
+    filleted = cq.Solid.cast(maker.Shape())
+
+    arc_found = False
+    for fi in range(20):
+        try:
+            loops, _ = _extract_loops_from_occ_face(filleted, fi)
+            if any(e.get('kind') == 'arc' for loop in loops for e in loop):
+                arc_found = True
+                break
+        except Exception:
+            continue
+    assert arc_found, "no arc edges found in any face boundary after fillet"
