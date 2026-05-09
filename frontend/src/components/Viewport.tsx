@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react'
+import { useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
@@ -279,18 +279,18 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     const scene = sceneRef.current
     if (!camera || !scene) return
 
+    // Only fit to actual body geometry (userData.featureId marks Body3D groups).
+    // Reference planes and gizmos are excluded intentionally — they are 100-unit
+    // meshes and would cause the camera to zoom out to show them instead of the model.
     const box = new THREE.Box3()
     let hasContent = false
 
     scene.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry.computeBoundingBox()
-        const geoBox = obj.geometry.boundingBox
-        if (geoBox) {
-          const worldBox = geoBox.clone().applyMatrix4(obj.matrixWorld)
-          box.union(worldBox)
-          hasContent = true
-        }
+      if (!obj.userData.featureId) return
+      const b = new THREE.Box3().setFromObject(obj)
+      if (!b.isEmpty()) {
+        box.union(b)
+        hasContent = true
       }
     })
 
@@ -305,25 +305,44 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
     const aspect = gl.domElement.width / gl.domElement.height
     const margin = 1.2
+    // Use the camera frustum size (CSS units) rather than gl.domElement pixel
+    // dimensions, which are scaled by devicePixelRatio and would give wrong zoom
+    // on HiDPI displays.
+    const frustumHeight = camera.top - camera.bottom
+    const frustumWidth = camera.right - camera.left
+    if (frustumHeight <= 0 || frustumWidth <= 0) return false
+
+    const margin = 2.0
 
     const viewHeight = size.y * margin
     const viewWidth = size.x * margin
 
     let targetViewHeight = viewHeight
-    let targetViewWidth = viewWidth
-    if (targetViewWidth / aspect > targetViewHeight) {
-      targetViewHeight = targetViewWidth / aspect
-    } else {
-      targetViewWidth = targetViewHeight * aspect
+    if (viewWidth * (frustumHeight / frustumWidth) > viewHeight) {
+      targetViewHeight = viewWidth * (frustumHeight / frustumWidth)
     }
 
-    const zoom = gl.domElement.height / targetViewHeight
+    const zoom = frustumHeight / targetViewHeight
     if (zoom > 0) {
       camera.zoom = zoom
       camera.position.set(center.x, center.y, 100)
       camera.updateProjectionMatrix()
+      return true
     }
+    return false
   }, [])
+
+  // Geometry arrives via a binary WS frame after the JSON solve result, so the
+  // Three.js scene may be empty when first called. Retry each frame until content
+  // appears or the limit is reached (graceful no-op for sketch-only documents).
+  const autoZoomToFitRef = useRef<(retriesLeft?: number) => void>(() => {})
+  const autoZoomToFit = useCallback((retriesLeft = 60) => {
+    if (autoZoomToFitNow()) return
+    if (retriesLeft > 0) {
+      requestAnimationFrame(() => autoZoomToFitRef.current(retriesLeft - 1))
+    }
+  }, [autoZoomToFitNow])
+  useEffect(() => { autoZoomToFitRef.current = autoZoomToFit })
 
   const alignCameraToPlane = useCallback((planeId: string) => {
     const camera = cameraRef.current as THREE.OrthographicCamera | null
