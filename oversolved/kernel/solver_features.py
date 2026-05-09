@@ -1015,6 +1015,11 @@ def _resolve_fillet_edges(body, edge_queries):
                 et
             )
             query_to_edge[aq] = te
+            aq3 = make_ancestry_query(
+                [f"@{body.id}edge{idx}", f"@{body.created_by}", f"@{body.id}"],
+                et
+            )
+            query_to_edge[aq3] = te
         query_to_edge[f"?{body.id}:edge:{idx}"] = te
 
     result = []
@@ -1024,7 +1029,7 @@ def _resolve_fillet_edges(body, edge_queries):
             try:
                 ids, _ = _parse_ancestry(q)
                 for id_str in ids:
-                    m = re.match(r"@(\w+)edge(\d+)$", id_str)
+                    m = re.match(r"@([^@]+)edge(\d+)$", id_str)
                     if m:
                         eidx = int(m.group(2))
                         if 0 <= eidx < len(topo_edges):
