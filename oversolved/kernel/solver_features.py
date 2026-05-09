@@ -319,6 +319,71 @@ def _extract_loops_from_occ_face(
     return loops, effective_plane
 
 
+def _resolve_face_index_via_hash(
+    shape: Any, old_index: int, global_repo: Repository
+) -> int | None:
+    """Resolve an old sorted face index to the current index via geometry hash.
+
+    Returns None if resolution fails (not a cadquery shape, index out of range,
+    tessellation error, or hash not found in repo).
+    """
+    if not hasattr(shape, "faces"):
+        return None
+
+    from oversolved.kernel.geom_hash import face_geometry_hash
+    from oversolved.kernel.cadquery_ops import _get_face_surface_type
+    from oversolved.kernel.query import make_ancestry_query
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh
+
+    faces = list(shape.faces())
+
+    def _sort_key(f):
+        n = _compute_face_normal(f)
+        c = _compute_face_centroid(f)
+        type_order = 0 if _get_face_surface_type(f) == "flatface" else 1
+        return (type_order, round(n[0], 6), round(n[1], 6), round(n[2], 6),
+                round(c[0], 6), round(c[1], 6), round(c[2], 6))
+
+    faces.sort(key=_sort_key)
+    if old_index >= len(faces):
+        return None
+
+    target_face = faces[old_index]
+    centroid = _compute_face_centroid(target_face)
+    normal = _compute_face_normal(target_face)
+
+    try:
+        topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+        BRepMesh_IncrementalMesh(topo_shape, 0.1, False, 0.1)
+        verts, idxs = target_face.tessellate(0.1)
+    except Exception:
+        return None
+
+    flat_verts = [list(v.toTuple()) for v in verts]
+    area = 0.0
+    for tri in idxs:
+        p0 = flat_verts[tri[0]]
+        p1 = flat_verts[tri[1]]
+        p2 = flat_verts[tri[2]]
+        v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]]
+        v2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]]
+        nx = v1[1] * v2[2] - v1[2] * v2[1]
+        ny = v1[2] * v2[0] - v1[0] * v2[2]
+        nz = v1[0] * v2[1] - v1[1] * v2[0]
+        mag = math.sqrt(nx * nx + ny * ny + nz * nz)
+        area += 0.5 * mag
+
+    geom_hash = face_geometry_hash(centroid, normal, area)
+    try:
+        query_str = make_ancestry_query([f"@{geom_hash}"], "face")
+        face_entry = global_repo.query(query_str, body_store={})
+        if face_entry and "face_index" in face_entry:
+            return face_entry["face_index"]
+    except Exception:
+        pass
+    return None
+
+
 def _resolve_face_profile(
     sketch_ref: str, global_repo: Repository, body_store: dict
 ) -> tuple[list[list[dict]], dict]:
@@ -341,6 +406,11 @@ def _resolve_face_profile(
         body = _find_body_for_feature(feat_id)
         if body is None:
             raise ValueError(f"No body found for feature {feat_id!r}")
+        resolved_face_index = _resolve_face_index_via_hash(
+            body.shape, face_index, global_repo
+        )
+        if resolved_face_index is not None:
+            face_index = resolved_face_index
         return _extract_loops_from_occ_face(body.shape, face_index)
 
     face_entry = global_repo.query(sketch_ref, body_store=body_store)
