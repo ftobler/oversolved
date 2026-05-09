@@ -6,7 +6,6 @@ export type {
   InteractionHandlers,
   ToolDragHandlers,
   ToolHandlerContract,
-  DimensionClickHandlers,
 } from './interaction-actions'
 
 export { useDynamicSelectionPositions } from './snapHooks'

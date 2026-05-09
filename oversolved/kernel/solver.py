@@ -544,9 +544,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     # Each fixed constraint pins 2 rigid-body DOF (tx, ty).  Reduce the 3-DOF
     # rigid-body allowance accordingly.
     n_fixed_pinned = sum(
-        ENTITY_SIZES[entities[c["target"]["entity"]]["kind"]]
-        if ("point" not in c.get("target", {}) and "x" not in c and "y" not in c)
-        else 2
+        2
         for c in constraints
         if c["kind"] == "fixed"
     )
