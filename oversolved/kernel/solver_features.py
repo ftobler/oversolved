@@ -1223,6 +1223,11 @@ def _resolve_fillet_edges(body, edge_queries):
                     ]
                     if matched:
                         edge = matched[0]
+                        logger.warning(
+                            "Resolved fillet edge via body-scoped type fallback: "
+                            "query=%s body=%s matched_type=%s",
+                            q, body.id, edge_types[topo_edges.index(edge)] if edge in topo_edges else "?",
+                        )
             except Exception:
                 pass
         if edge is not None:
@@ -1354,6 +1359,15 @@ def _solve_fillet(
         if body.shape is None:
             raise ValueError(f"body {body_id} has no shape")
 
+        # Validate the shape before passing to OCC; a corrupted shape
+        # can cause SIGSEGV inside the fillet kernel.
+        try:
+            topo = body.shape.wrapped if hasattr(body.shape, "wrapped") else body.shape
+            if topo.IsNull():
+                raise ValueError(f"body {body_id} shape is null")
+        except Exception:
+            raise ValueError(f"body {body_id} shape is invalid")
+
         topo_edges = _resolve_fillet_edges(body, edges)
         if not topo_edges:
             raise ValueError("no edges resolved for fillet")
@@ -1404,6 +1418,13 @@ def _solve_chamfer(
 
         if body.shape is None:
             raise ValueError(f"body {body_id} has no shape")
+
+        try:
+            topo = body.shape.wrapped if hasattr(body.shape, "wrapped") else body.shape
+            if topo.IsNull():
+                raise ValueError(f"body {body_id} shape is null")
+        except Exception:
+            raise ValueError(f"body {body_id} shape is invalid")
 
         topo_edges = _resolve_fillet_edges(body, edges)
         if not topo_edges:

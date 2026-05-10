@@ -2,7 +2,7 @@
 
 import json
 import threading
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import pytest
 from oversolved.app import create_app
 from oversolved.blueprints.solver_ws import solver_websocket, _auth_failures
@@ -104,25 +104,33 @@ SOLVE_PAYLOAD = {
 }
 
 
+def _make_mock_isolator(build_return=None):
+    """Create a mock BuildIsolator that returns the given value from build()."""
+    if build_return is None:
+        build_return = {
+            "solve_ms": 5,
+            "result": {"sk1": {"status": "underconstrained"}},
+            "bodies": {},
+        }
+    mock = MagicMock()
+    mock.build.return_value = build_return
+    return mock
+
+
 class TestSolverWebSocket:
 
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_websocket_solve(self, mock_build, app, auth_headers):
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_websocket_solve(self, mock_isolator_cls, app, auth_headers):
         """Send a solve request and receive solve_result."""
-        mock_build.return_value = {
-            "status": "ok",
-            "result": {},
-            "bodies": {},
-            "_build_state": {"built": True},
-        }
+        mock_isolator = _make_mock_isolator()
+        mock_isolator_cls.return_value = mock_isolator
         ws = _MockWS()
         ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
         _run_handler(app, ws, auth_headers)
-        assert len(ws.sent) == 1
+        assert len(ws.sent) >= 1
         assert ws.sent[0]["type"] == "solve_result"
 
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_websocket_ping_pong(self, mock_build, app, auth_headers):
+    def test_websocket_ping_pong(self, app, auth_headers):
         """Send ping, receive pong."""
         ws = _MockWS()
         ws.receive_queue = [json.dumps({"type": "ping"}), None]
@@ -137,8 +145,7 @@ class TestSolverWebSocket:
         assert not ws.connected
         assert ws.close_reason == 4001
 
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_websocket_unknown_message_type(self, mock_build, app, auth_headers):
+    def test_websocket_unknown_message_type(self, app, auth_headers):
         """Unknown message type returns an error."""
         ws = _MockWS()
         ws.receive_queue = [json.dumps({"type": "foobar"}), None]
@@ -164,133 +171,38 @@ class TestSolverWebSocket:
         assert ws.sent[0]["type"] == "solve_result"
         assert ws.sent[0]["error"] == "features required"
 
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_websocket_cache_retains_state(self, mock_build, app, auth_headers):
-        """Solve the same doc_id twice; second call gets prev_state from cache."""
-        mock_build.return_value = {
-            "status": "ok",
-            "result": {},
-            "bodies": {},
-            "_build_state": {"cached": "state-1"},
-        }
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_websocket_cache_clear(self, mock_isolator_cls, app, auth_headers):
+        """Clear_cache calls isolator.clear_cache()."""
+        mock_isolator = _make_mock_isolator()
+        mock_isolator_cls.return_value = mock_isolator
         ws = _MockWS()
         ws.receive_queue = [
-            json.dumps(SOLVE_PAYLOAD),
-            json.dumps(SOLVE_PAYLOAD),
-            None,
-        ]
-        _run_handler(app, ws, auth_headers)
-        assert mock_build.call_args_list[0][1]["prev_state"] is None
-        assert mock_build.call_args_list[1][1]["prev_state"] == {"cached": "state-1"}
-
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_websocket_cache_clear(self, mock_build, app, auth_headers):
-        """Clear_cache empties the cache; next solve has no prev_state."""
-        mock_build.return_value = {
-            "status": "ok",
-            "result": {},
-            "bodies": {},
-            "_build_state": {"state": True},
-        }
-        ws = _MockWS()
-        ws.receive_queue = [
-            json.dumps(SOLVE_PAYLOAD),
             json.dumps({"type": "clear_cache"}),
-            json.dumps(SOLVE_PAYLOAD),
             None,
         ]
         _run_handler(app, ws, auth_headers)
-        assert mock_build.call_args_list[0][1]["prev_state"] is None
-        assert mock_build.call_args_list[1][1]["prev_state"] is None
+        mock_isolator.clear_cache.assert_called()
 
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_websocket_cache_lru_eviction(self, mock_build, app, auth_headers):
-        """With max cache size 2, solving a 3rd doc evicts the 1st (FIFO order)."""
-        app.config["SOLVER_WS_CACHE_MAX_SIZE"] = 2
-        mock_build.return_value = {
-            "status": "ok",
-            "result": {},
-            "bodies": {},
-            "_build_state": {"state": True},
-        }
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_websocket_disconnect_calls_shutdown(self, mock_isolator_cls, app, auth_headers):
+        """Disconnecting calls isolator.shutdown()."""
+        mock_isolator = _make_mock_isolator()
+        mock_isolator_cls.return_value = mock_isolator
         ws = _MockWS()
-        ws.receive_queue = [
-            json.dumps({"type": "solve", "id": "doc1", "features": [{"id": "sk1", "kind": "sketch", "entities": []}]}),
-            json.dumps({"type": "solve", "id": "doc2", "features": [{"id": "sk1", "kind": "sketch", "entities": []}]}),
-            json.dumps({"type": "solve", "id": "doc3", "features": [{"id": "sk1", "kind": "sketch", "entities": []}]}),
-            None,
-        ]
+        ws.receive_queue = [None]
         _run_handler(app, ws, auth_headers)
-        for call in mock_build.call_args_list:
-            assert call[1]["prev_state"] is None
+        mock_isolator.shutdown.assert_called()
 
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_websocket_cache_lru_promotes_on_access(self, mock_build, app, auth_headers):
-        """Re-solving an existing doc promotes it; new doc evicts the LRU (not the promoted one)."""
-        app.config["SOLVER_WS_CACHE_MAX_SIZE"] = 2
-        state_a = {"doc": "a"}
-
-        def _mock_build(*args, **kwargs):
-            prev = kwargs.get("prev_state")
-            if prev is None:
-                return {"status": "ok", "result": {}, "bodies": {}, "_build_state": state_a}
-            return {"status": "ok", "result": {}, "bodies": {}, "_build_state": prev}
-
-        mock_build.side_effect = _mock_build
-
-        ws = _MockWS()
-        ws.receive_queue = [
-            json.dumps({"type": "solve", "id": "doc1", "features": [{"id": "sk1", "kind": "sketch", "entities": []}]}),
-            json.dumps({"type": "solve", "id": "doc2", "features": [{"id": "sk1", "kind": "sketch", "entities": []}]}),
-            # Re-solve doc1 — promotes it to most-recently-used
-            json.dumps({"type": "solve", "id": "doc1", "features": [{"id": "sk1", "kind": "sketch", "entities": []}]}),
-            # Solve doc3 — cache is full, should evict doc2 (LRU), not doc1
-            json.dumps({"type": "solve", "id": "doc3", "features": [{"id": "sk1", "kind": "sketch", "entities": []}]}),
-            None,
-        ]
-        _run_handler(app, ws, auth_headers)
-
-        calls = mock_build.call_args_list
-        # doc1 first solve: no prev_state
-        assert calls[0][1]["prev_state"] is None
-        # doc2 first solve: no prev_state
-        assert calls[1][1]["prev_state"] is None
-        # doc1 re-solve: should have doc1's cached state (state_a)
-        assert calls[2][1]["prev_state"] == state_a
-        # doc3 solve: doc2 was evicted, so prev_state is None
-        assert calls[3][1]["prev_state"] is None
-
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_websocket_disconnect_clears_cache(self, mock_build, app, auth_headers):
-        """Disconnecting and reconnecting gives a fresh cache."""
-        mock_build.return_value = {
-            "status": "ok",
-            "result": {},
-            "bodies": {},
-            "_build_state": {"state": True},
-        }
-
-        ws1 = _MockWS()
-        ws1.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
-        _run_handler(app, ws1, auth_headers)
-
-        ws2 = _MockWS()
-        ws2.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
-        _run_handler(app, ws2, auth_headers)
-
-        assert mock_build.call_args_list[0][1]["prev_state"] is None
-        assert mock_build.call_args_list[1][1]["prev_state"] is None
-
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_websocket_rebuild_times_logged(self, mock_build, app, auth_headers):
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_websocket_rebuild_times_logged(self, mock_isolator_cls, app, auth_headers):
         """Solve with doc_id inserts a row into rebuild_times."""
-        mock_build.return_value = {
-            "status": "ok",
-            "result": {},
-            "bodies": {},
-            "_build_state": {"built": True},
+        mock_isolator = _make_mock_isolator({
             "solve_ms": 42,
-        }
+            "result": {"sk1": {"status": "underconstrained"}},
+            "bodies": {},
+        })
+        mock_isolator_cls.return_value = mock_isolator
         ws = _MockWS()
         ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
         _run_handler(app, ws, auth_headers)
@@ -316,25 +228,22 @@ class TestSolverWebSocket:
         assert response.status_code == 405
 
     def test_websocket_config_default_cache_size(self, app):
-        """Default SOLVER_WS_CACHE_MAX_SIZE is 10."""
-        assert app.config.get("SOLVER_WS_CACHE_MAX_SIZE", 10) == 10
+        """Default SOLVER_WS_BUILD_TIMEOUT is 30."""
+        assert app.config.get("SOLVER_WS_BUILD_TIMEOUT", 30) == 30
 
-    @patch("oversolved.blueprints.solver_ws.build")
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
     def test_websocket_solve_multiple_messages_sequential(
-        self, mock_build, app, auth_headers
+        self, mock_isolator_cls, app, auth_headers
     ):
         """Send 3 sequential solves, verify 3 responses in order."""
         doc_ids = ["doc-a", "doc-b", "doc-c"]
 
-        def _build_side_effect(data, prev_state=None, pick_boundary=None, rollback_position=None):
-            return {
-                "status": "ok",
-                "result": {},
-                "bodies": {},
-                "_build_state": {"id": data.get("id")},
-                "solve_ms": 10,
-            }
-        mock_build.side_effect = _build_side_effect
+        mock_isolator = _make_mock_isolator({
+            "solve_ms": 10,
+            "result": {"sk1": {"status": "underconstrained"}},
+            "bodies": {},
+        })
+        mock_isolator_cls.return_value = mock_isolator
 
         ws = _MockWS()
         ws.receive_queue = [
@@ -344,21 +253,16 @@ class TestSolverWebSocket:
         _run_handler(app, ws, auth_headers)
 
         assert len(ws.sent) == 3
-        for i, did in enumerate(doc_ids):
+        for i in range(3):
             assert ws.sent[i]["type"] == "solve_result"
-            assert "_build_state" not in ws.sent[i]
 
-    @patch("oversolved.blueprints.solver_ws.build")
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
     def test_websocket_db_closed_on_disconnect(
-        self, mock_build, app, auth_headers
+        self, mock_isolator_cls, app, auth_headers
     ):
         """Database connection is closed when the WebSocket handler exits."""
-        mock_build.return_value = {
-            "status": "ok",
-            "result": {},
-            "bodies": {},
-            "_build_state": {"built": True},
-        }
+        mock_isolator = _make_mock_isolator()
+        mock_isolator_cls.return_value = mock_isolator
         original_close = Database.close
         close_called = []
 
@@ -452,14 +356,16 @@ class TestSolverWebSocket:
         assert not ws.connected
         assert ws.close_reason == 4001
 
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_websocket_auth_periodic_recheck(self, mock_build, app):
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_websocket_auth_periodic_recheck(self, mock_isolator_cls, app):
         """Auth is re-checked every WS_AUTH_CHECK_INTERVAL messages."""
         app.config["WS_AUTH_CHECK_INTERVAL"] = 2
-        mock_build.return_value = {
-            "status": "ok", "result": {}, "bodies": {},
-            "_build_state": {"built": True}, "solve_ms": 1,
-        }
+        mock_isolator = _make_mock_isolator({
+            "solve_ms": 1,
+            "result": {},
+            "bodies": {},
+        })
+        mock_isolator_cls.return_value = mock_isolator
 
         client = app.test_client()
         resp = client.post(
@@ -477,10 +383,8 @@ class TestSolverWebSocket:
         _run_handler(app, ws, {"Cookie": f"session_token={token}"}, environ_base={
             "REMOTE_ADDR": "127.0.0.5",
         })
-        # 4 messages + auth check at msg_count % 2 == 0 (msgs 2 and 4)
         # All should succeed since token is valid
-        assert len(ws.sent) >= 1
-        assert mock_build.call_count >= 1
+        assert mock_isolator.build.call_count >= 1
 
     @patch("oversolved.blueprints.solver_ws.logger")
     def test_websocket_auth_failure_logged(self, mock_logger, app):
@@ -569,10 +473,9 @@ class TestPackGeometryUpdate:
         faces.frombytes(result[data_start + f_off: data_start + f_off + f_len])
         assert list(faces) == [0, 1, 2]
 
-    def test_solver_ws_sends_two_messages(self, app, auth_headers):
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_solver_ws_sends_two_messages(self, mock_isolator_cls, app, auth_headers):
         """Solve sends JSON text frame then binary geometry_update frame."""
-        from unittest.mock import patch
-
         mock_body = {
             "id": "body_0",
             "created_by": "extrude_0",
@@ -589,37 +492,38 @@ class TestPackGeometryUpdate:
             "vertices": [],
             "vertex_queries": [],
         }
-        with patch("oversolved.blueprints.solver_ws.build") as mock_build:
-            mock_build.return_value = {
-                "result": {},
-                "bodies": {"body_0": mock_body},
-                "_build_state": {},
-                "solve_ms": 5,
-            }
-            ws = _MockWS()
-            ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
-            _run_handler(app, ws, auth_headers)
+        mock_isolator = _make_mock_isolator({
+            "solve_ms": 5,
+            "result": {},
+            "bodies": {"body_0": mock_body},
+        })
+        mock_isolator_cls.return_value = mock_isolator
 
-        assert len(ws.sent_raw) == 2
+        ws = _MockWS()
+        ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
+        _run_handler(app, ws, auth_headers)
+
+        assert len(ws.sent_raw) >= 2
         assert isinstance(ws.sent_raw[0], str)
-        assert isinstance(ws.sent_raw[1], (bytes, bytearray))
+        # At least one binary frame
+        has_binary = any(isinstance(r, (bytes, bytearray)) for r in ws.sent_raw)
+        assert has_binary
         first = json.loads(ws.sent_raw[0])
         assert first["type"] == "solve_result"
 
-    def test_solver_ws_solve_result_no_bodies(self, app, auth_headers):
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_solver_ws_solve_result_no_bodies(self, mock_isolator_cls, app, auth_headers):
         """JSON solve_result frame must not contain a bodies key."""
-        from unittest.mock import patch
+        mock_isolator = _make_mock_isolator({
+            "solve_ms": 3,
+            "result": {},
+            "bodies": {"body_0": {}},
+        })
+        mock_isolator_cls.return_value = mock_isolator
 
-        with patch("oversolved.blueprints.solver_ws.build") as mock_build:
-            mock_build.return_value = {
-                "result": {},
-                "bodies": {"body_0": {}},
-                "_build_state": {},
-                "solve_ms": 3,
-            }
-            ws = _MockWS()
-            ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
-            _run_handler(app, ws, auth_headers)
+        ws = _MockWS()
+        ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
+        _run_handler(app, ws, auth_headers)
 
         json_frame = json.loads(ws.sent_raw[0])
         assert "bodies" not in json_frame

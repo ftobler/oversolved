@@ -3,7 +3,7 @@
 import json
 import pytest
 import threading
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from oversolved.app import create_app
 from oversolved.blueprints.solver_ws import solver_websocket, _auth_failures
 from PIL import Image
@@ -89,23 +89,26 @@ def auth_env(app):
 
 class TestVerboseWsErrors:
 
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_ws_invalid_json_vague(self, mock_build, app, auth_env):
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_ws_invalid_json_vague(self, mock_isolator_cls, app, auth_env):
+        mock_isolator_cls.return_value = MagicMock()
         ws = _MockWS()
         ws.receive_queue = ["not json", None]
         _run_ws(app, ws, auth_env)
         assert any(s.get("error") == "Invalid JSON" for s in ws.sent)
 
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_ws_unknown_type_vague(self, mock_build, app, auth_env):
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_ws_unknown_type_vague(self, mock_isolator_cls, app, auth_env):
+        mock_isolator_cls.return_value = MagicMock()
         ws = _MockWS()
         ws.receive_queue = [json.dumps({"type": "unknown_xyz"}), None]
         _run_ws(app, ws, auth_env)
         assert any(s.get("error") == "Unknown message type" for s in ws.sent)
         assert not any("unknown_xyz" in str(s) for s in ws.sent)
 
-    @patch("oversolved.blueprints.solver_ws.build")
-    def test_ws_missing_fields_vague(self, mock_build, app, auth_env):
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_ws_missing_fields_vague(self, mock_isolator_cls, app, auth_env):
+        mock_isolator_cls.return_value = MagicMock()
         ws = _MockWS()
         ws.receive_queue = [json.dumps({"type": "solve"}), None]
         _run_ws(app, ws, auth_env)

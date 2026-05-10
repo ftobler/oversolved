@@ -770,20 +770,56 @@ def apply_fillet(shape: Any, radius: float, edges: list[Any] | None = None) -> A
 
     topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
 
-    maker = BRepFilletAPI_MakeFillet(topo_shape)
+    # Defensive: refuse to operate on a null shape.
+    try:
+        if topo_shape.IsNull():
+            return shape
+    except Exception:
+        return shape
+
+    # Collect valid edges from the shape for membership checks.
+    shape_edge_set: set[int] | None = None
+    if edges is not None and len(edges) > 0:
+        try:
+            shape_edge_set = set()
+            explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
+            while explorer.More():
+                shape_edge_set.add(explorer.Current().HashCode(1 << 24))
+                explorer.Next()
+        except Exception:
+            shape_edge_set = None
+
+    try:
+        maker = BRepFilletAPI_MakeFillet(topo_shape)
+    except Exception:
+        return shape
 
     edge_count = 0
     if edges is not None:
         for edge in edges:
-            maker.Add(radius, edge)
-            edge_count += 1
+            try:
+                # Skip edges that no longer exist on the shape.
+                if shape_edge_set is not None:
+                    edge_hash = edge.HashCode(1 << 24)
+                    if edge_hash not in shape_edge_set:
+                        continue
+            except Exception:
+                pass
+            try:
+                maker.Add(radius, edge)
+                edge_count += 1
+            except Exception:
+                continue
     else:
-        explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
-        while explorer.More():
-            edge = TopoDS.Edge_s(explorer.Current())
-            maker.Add(radius, edge)
-            edge_count += 1
-            explorer.Next()
+        try:
+            explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
+            while explorer.More():
+                edge = TopoDS.Edge_s(explorer.Current())
+                maker.Add(radius, edge)
+                edge_count += 1
+                explorer.Next()
+        except Exception:
+            return shape
 
     if edge_count == 0:
         return shape
@@ -816,26 +852,59 @@ def apply_chamfer(shape: Any, distance: float, kind: str = "distance", angle: fl
 
     topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
 
-    maker = BRepFilletAPI_MakeChamfer(topo_shape)
+    try:
+        if topo_shape.IsNull():
+            return shape
+    except Exception:
+        return shape
+
+    shape_edge_set: set[int] | None = None
+    if edges is not None and len(edges) > 0:
+        try:
+            shape_edge_set = set()
+            explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
+            while explorer.More():
+                shape_edge_set.add(explorer.Current().HashCode(1 << 24))
+                explorer.Next()
+        except Exception:
+            shape_edge_set = None
+
+    try:
+        maker = BRepFilletAPI_MakeChamfer(topo_shape)
+    except Exception:
+        return shape
 
     edge_count = 0
     if edges is not None:
         for edge in edges:
-            if kind == "angle_distance":
-                maker.AddDA(distance, angle, edge)
-            else:
-                maker.Add(distance, edge)
-            edge_count += 1
+            try:
+                if shape_edge_set is not None:
+                    edge_hash = edge.HashCode(1 << 24)
+                    if edge_hash not in shape_edge_set:
+                        continue
+            except Exception:
+                pass
+            try:
+                if kind == "angle_distance":
+                    maker.AddDA(distance, angle, edge)
+                else:
+                    maker.Add(distance, edge)
+                edge_count += 1
+            except Exception:
+                continue
     else:
-        explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
-        while explorer.More():
-            edge = TopoDS.Edge_s(explorer.Current())
-            if kind == "angle_distance":
-                maker.AddDA(distance, angle, edge)
-            else:
-                maker.Add(distance, edge)
-            edge_count += 1
-            explorer.Next()
+        try:
+            explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
+            while explorer.More():
+                edge = TopoDS.Edge_s(explorer.Current())
+                if kind == "angle_distance":
+                    maker.AddDA(distance, angle, edge)
+                else:
+                    maker.Add(distance, edge)
+                edge_count += 1
+                explorer.Next()
+        except Exception:
+            return shape
 
     if edge_count == 0:
         return shape

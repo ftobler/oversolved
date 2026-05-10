@@ -10,8 +10,7 @@ from flask import request, current_app, g
 from flask_sock import Sock
 from oversolved.blueprints import get_db
 from oversolved.db import SessionStore, UserStore
-from oversolved.kernel.builder import build
-from oversolved.kernel.types3d import BuildState
+from oversolved.kernel.build_isolated import BuildIsolator
 
 logger = logging.getLogger(__name__)
 
@@ -170,9 +169,9 @@ def solver_websocket(ws):
         _record_auth_failure(client_ip)
         return
 
-    max_cache_size = current_app.config.get("SOLVER_WS_CACHE_MAX_SIZE", 10)
+    build_timeout = current_app.config.get("SOLVER_WS_BUILD_TIMEOUT", 30)
     auth_check_interval = current_app.config.get("WS_AUTH_CHECK_INTERVAL", 50)
-    session_cache: dict[str, BuildState] = {}
+    isolator = BuildIsolator(timeout=build_timeout)
     db = get_db()
 
     try:
@@ -196,10 +195,10 @@ def solver_websocket(ws):
             msg_type = data.get("type")
 
             if msg_type == "solve":
-                _handle_solve(data, session_cache, max_cache_size, db, ws)
+                _handle_solve(data, isolator, db, ws)
 
             elif msg_type == "clear_cache":
-                session_cache.clear()
+                isolator.clear_cache()
                 ws.send(json.dumps({"type": "cache_cleared"}))
 
             elif msg_type == "ping":
@@ -211,11 +210,11 @@ def solver_websocket(ws):
     except Exception:
         logger.exception("WebSocket error")
     finally:
-        session_cache.clear()
+        isolator.shutdown()
         db.close()
 
 
-def _handle_solve(data, session_cache, max_cache_size, db, ws):
+def _handle_solve(data, isolator, db, ws):
     """Handle a solve request. Sends solve_result (JSON) then geometry_update (binary)."""
     features = data.get("features")
     msg_id = data.get("msgId")
@@ -228,28 +227,16 @@ def _handle_solve(data, session_cache, max_cache_size, db, ws):
     rollback_position = data.get("rollback_position")
     pick_boundary = data.get("pick_boundary")
 
-    prev_state = None
-    if doc_id and doc_id in session_cache:
-        prev_state = session_cache.pop(doc_id)
-        session_cache[doc_id] = prev_state
-
-    build_result = build(
+    build_result = isolator.build(
         data,
-        prev_state=prev_state,
+        doc_id=doc_id,
         pick_boundary=pick_boundary,
         rollback_position=rollback_position,
     )
 
-    new_state = build_result.pop("_build_state")
-    if doc_id:
-        if doc_id not in session_cache and len(session_cache) >= max_cache_size:
-            session_cache.pop(next(iter(session_cache)))
-        session_cache.pop(doc_id, None)
-        session_cache[doc_id] = new_state
-
     duration_ms = build_result.get("solve_ms")
-    if duration_ms is not None and doc_id:
-        feature_count = len(features)
+    if duration_ms is not None and duration_ms > 0 and doc_id:
+        feature_count = len(features) if features else 0
         db.execute(
             """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
                VALUES (?, ?, ?)""",
@@ -257,15 +244,25 @@ def _handle_solve(data, session_cache, max_cache_size, db, ws):
         )
         db.commit()
 
-    build_result.pop("_body_shapes", None)
     bodies = build_result.pop("bodies", {})
     pick_bodies = build_result.pop("pick_bodies", None)
+
+    result = build_result.get("result", {})
+    error_msg = result.get("_error") if isinstance(result, dict) else None
+    if error_msg:
+        ws.send(json.dumps({
+            "type": "solve_result",
+            "msgId": msg_id,
+            "solve_ms": build_result.get("solve_ms", 0),
+            "error": error_msg,
+        }))
+        return
 
     ws.send(json.dumps({
         "type": "solve_result",
         "msgId": msg_id,
         "solve_ms": build_result.get("solve_ms"),
-        "result": build_result.get("result", {}),
+        "result": result,
     }))
 
     geometry_bytes = pack_geometry_update(
