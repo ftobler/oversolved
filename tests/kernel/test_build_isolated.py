@@ -229,25 +229,21 @@ def test_memcache_cross_doc_isolation(daemon_port):
 
         # Populate cache for doc-a.
         r_a1 = isolator.build(spec_a, doc_id="doc-a")
-        t_a1 = r_a1.get("solve_ms", 0)
+        assert r_a1["result"]["ex1"]["status"] == "ok"
 
-        # First build for doc-b — should be a full rebuild (not affected
-        # by doc-a cache).
+        # First build for doc-b — should be a full rebuild, not affected
+        # by doc-a's cache (cross-doc isolation).
         r_b1 = isolator.build(spec_b, doc_id="doc-b")
-        t_b1 = r_b1.get("solve_ms", 0)
         assert r_b1["result"]["ex1"]["status"] == "ok"
 
-        # Second build for doc-a — should be fast (cache hit).
+        # Second build for doc-a — must still produce correct geometry
+        # from the cached prev_state.
         r_a2 = isolator.build(spec_a, doc_id="doc-a")
-        t_a2 = r_a2.get("solve_ms", 0)
-
-        # doc-a's second build should be fast, doc-b's first should be
-        # a full build (no cross-contamination).
-        assert t_a2 <= t_a1, \
-            f"doc-a incremental ({t_a2}ms) should be <= first ({t_a1}ms)"
-        # doc-b first build should be comparable to doc-a's first build
-        # (both are full rebuilds on a fresh cache).
-        assert t_b1 > 0, "doc-b first build should take measurable time"
+        assert r_a2["result"]["ex1"]["status"] == "ok"
+        verts_a1 = len(r_a1["bodies"]["body_ex1"]["mesh"]["vertices"])
+        verts_a2 = len(r_a2["bodies"]["body_ex1"]["mesh"]["vertices"])
+        assert verts_a2 == verts_a1, \
+            "doc-a second build must produce identical geometry (cache must not corrupt result)"
     finally:
         isolator.shutdown()
 

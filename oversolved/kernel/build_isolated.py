@@ -93,6 +93,21 @@ class BuildIsolator:
             entry["result"] = _error_result(reason)
             entry["event"].set()
 
+    def _try_reconnect(self) -> None:
+        """If the connection is lost, attempt to reconnect in place."""
+        with self._lock:
+            if self._ws is not None:
+                return
+        try:
+            ws = connect(self._address, close_timeout=5)
+        except Exception:
+            return
+        with self._lock:
+            self._ws = ws
+        self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
+        self._reader_thread.start()
+        logger.info("Reconnected to solver daemon at %s", self._address)
+
     def _send_request(self, msg_type: str, **kwargs: Any) -> dict:
         """Send a request and wait for the matching response."""
         self._request_counter += 1
@@ -102,8 +117,16 @@ class BuildIsolator:
         event = threading.Event()
         with self._lock:
             if self._ws is None:
-                return _error_result("solver daemon not connected")
-            self._pending[request_id] = {"event": event, "result": None}
+                pass  # fall through to reconnect attempt outside the lock
+            else:
+                self._pending[request_id] = {"event": event, "result": None}
+
+        if self._ws is None:
+            self._try_reconnect()
+            with self._lock:
+                if self._ws is None:
+                    return _error_result("solver daemon not connected")
+                self._pending[request_id] = {"event": event, "result": None}
 
         try:
             self._ws.send(json.dumps(msg))

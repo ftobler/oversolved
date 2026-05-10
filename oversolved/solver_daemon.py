@@ -9,10 +9,10 @@ import asyncio
 import json
 import logging
 import multiprocessing as mp
-import queue
 import time
 import traceback
 import uuid
+from queue import Empty as _QueueEmpty
 from typing import Any
 
 from websockets.asyncio.server import serve
@@ -168,7 +168,7 @@ class _Worker:
 
         try:
             rid, status, payload = self._output_queue.get(timeout=self._timeout)
-        except queue.Empty:
+        except _QueueEmpty:
             logger.error("Build worker timed out after %.1fs", self._timeout)
             self._kill()
             self._start()

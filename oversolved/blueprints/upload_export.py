@@ -1,5 +1,6 @@
 """File upload and STEP/STL export routes."""
 
+import importlib
 import os
 import uuid
 from flask import Blueprint, jsonify, request, Response
@@ -38,7 +39,11 @@ def export_step():
     if not data or "features" not in data:
         return jsonify({"error": "features required"}), 400
 
+    if not importlib.util.find_spec("cadquery"):
+        return jsonify({"error": "solver kernel not available (install oversolved[solver])"}), 503
+
     from oversolved.kernel.builder import build
+    from oversolved.kernel.geometry import shape_to_step_file_buffer, fuse_shapes
 
     build_result = build(data)
 
@@ -46,7 +51,6 @@ def export_step():
     if not body_shapes:
         return jsonify({"error": "no bodies to export"}), 400
 
-    from oversolved.kernel.geometry import shape_to_step_file_buffer, fuse_shapes
     body_id = (data.get("body_id") or "").strip() if isinstance(data, dict) else ""
 
     if body_id:
@@ -76,6 +80,9 @@ def export_stl():
     data = request.get_json(silent=True)
     if not data or "features" not in data:
         return jsonify({"error": "features required"}), 400
+
+    if not importlib.util.find_spec("cadquery"):
+        return jsonify({"error": "solver kernel not available (install oversolved[solver])"}), 503
 
     from oversolved.kernel.builder import build
 

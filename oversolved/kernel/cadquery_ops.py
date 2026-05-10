@@ -2,26 +2,30 @@
 
 Wraps cadquery.occ_impl shapes and geom primitives so the rest of the
 application can work with higher-level CAD operations instead of raw OCP.
+
+OCP imports stay inside function bodies (lazy) so that module-level import
+of this file does not require OCP to be installed.  This is critical for
+the webapp-only deployment where ``oversolved[solver]`` (cadquery/OCP) is
+not installed — the import boundary test
+(``tests/test_import_boundary.py``) enforces this.
+
+The solver daemon's worker subprocess imports ``oversolved.kernel.builder``
+at runtime, which triggers this module's cadquery imports at module level
+(under try/except).  OCP is then loaded lazily inside each function when
+the worker calls build().
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_Transform
-from OCP.BRepPrimAPI import BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakeRevol
-from OCP.GC import GC_MakeArcOfCircle
-from OCP.gp import (
-    gp_Ax1,
-    gp_Ax2,
-    gp_Circ,
-    gp_Dir,
-    gp_Pnt,
-    gp_Trsf,
-    gp_Vec,
-)
-from cadquery.occ_impl import shapes as cq_shapes
-from cadquery.occ_impl.geom import Plane as CQPlane, Vector as CQVector
+try:
+    from cadquery.occ_impl import shapes as cq_shapes
+    from cadquery.occ_impl.geom import Plane as CQPlane, Vector as CQVector
+except ImportError:
+    cq_shapes = None  # type: ignore[assignment,misc]
+    CQPlane = None  # type: ignore[assignment,misc]
+    CQVector = None  # type: ignore[assignment,misc]
 
 
 def to_cq_plane(plane: dict) -> CQPlane:
@@ -70,14 +74,18 @@ def make_arc_edge(
     span = abs(angle_end - angle_start)
     is_full = abs(span - 2 * math.pi) < 1e-6 or span < 1e-6
 
+    from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt, gp_Circ  # noqa: PLC0415
     ax2 = gp_Ax2(gp_Pnt(*c.toTuple()), gp_Dir(*n.toTuple()), gp_Dir(*x.toTuple()))
     circle = gp_Circ(ax2, radius)
 
     if is_full:
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge  # noqa: PLC0415
         builder = BRepBuilderAPI_MakeEdge(circle)
         return cq_shapes.Edge(builder.Edge())
 
+    from OCP.GC import GC_MakeArcOfCircle  # noqa: PLC0415
     arc = GC_MakeArcOfCircle(circle, angle_start, angle_end, True)
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge  # noqa: PLC0415
     builder = BRepBuilderAPI_MakeEdge(arc.Value())
     return cq_shapes.Edge(builder.Edge())
 
@@ -107,6 +115,8 @@ def revolve_face(face: Any, axis_origin: list[float], axis_direction: list[float
     if angle_deg == 0:
         raise ValueError("revolve angle must be non-zero")
     import math
+    from OCP.gp import gp_Ax1, gp_Pnt, gp_Dir  # noqa: PLC0415
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeRevol  # noqa: PLC0415
     ax = gp_Ax1(gp_Pnt(*axis_origin), gp_Dir(*axis_direction))
     topo_face = face.wrapped if hasattr(face, "wrapped") else face
     revol = BRepPrimAPI_MakeRevol(topo_face, ax, math.radians(angle_deg))
@@ -115,6 +125,8 @@ def revolve_face(face: Any, axis_origin: list[float], axis_direction: list[float
 
 def make_cylinder(center: list[float], axis: list[float], radius: float, height: float) -> cq_shapes.Solid:
     """Solid cylinder for hole cutting. center and axis are 3D world-space."""
+    from OCP.gp import gp_Ax2, gp_Pnt, gp_Dir  # noqa: PLC0415
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeCylinder  # noqa: PLC0415
     ax2 = gp_Ax2(gp_Pnt(*center), gp_Dir(*axis))
     return cq_shapes.Solid(BRepPrimAPI_MakeCylinder(ax2, radius, height).Shape())
 
@@ -170,6 +182,7 @@ def fuse_shapes(shapes: list[Any]) -> Any:
 
 def make_mirror_trsf(origin: tuple[float, float, float], normal: tuple[float, float, float]):
     """Create a reflection transform across a plane."""
+    from OCP.gp import gp_Ax2, gp_Pnt, gp_Dir, gp_Trsf  # noqa: PLC0415
     ax = gp_Ax2(gp_Pnt(*origin), gp_Dir(*normal))
     trsf = gp_Trsf()
     trsf.SetMirror(ax)
@@ -217,6 +230,8 @@ def apply_transform_shape(
     Returns a new cq Shape (or TopoDS_Shape matching input type).
     """
     import math
+    from OCP.gp import gp_Trsf, gp_Vec, gp_Pnt, gp_Dir, gp_Ax1  # noqa: PLC0415
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform  # noqa: PLC0415
 
     combined = gp_Trsf()  # identity
 
