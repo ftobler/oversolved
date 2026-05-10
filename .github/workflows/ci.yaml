@@ -47,6 +47,9 @@ jobs:
       - name: Install dev dependencies
         run: pip install -e ".[dev]"
 
+      - name: Install solver deps (optional, for kernel tests)
+        run: pip install -e ".[solver]" || echo "Solver deps not available — kernel tests will skip"
+
       - name: flake8
         run: flake8 oversolved tests
 

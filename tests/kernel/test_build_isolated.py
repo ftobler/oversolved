@@ -1,6 +1,10 @@
-"""Tests for BuildIsolator — subprocess isolation for build()."""
+"""Tests for BuildIsolator — WebSocket relay to solver daemon."""
 
 import importlib
+import multiprocessing as mp
+import socket
+import time
+from typing import Generator
 import pytest
 
 pytestmark = [
@@ -13,14 +17,38 @@ pytestmark = [
 ]
 
 
-def test_build_isolated_basic():
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _run_daemon(port: int) -> None:
+    import asyncio
+    from oversolved.solver_daemon import main_async
+    asyncio.run(main_async("127.0.0.1", port, 60.0))
+
+
+@pytest.fixture(scope="module")
+def daemon_port() -> Generator[int, None, None]:
+    port = _find_free_port()
+    ctx = mp.get_context("spawn")
+    proc = ctx.Process(target=_run_daemon, args=(port,))
+    proc.start()
+    time.sleep(1.5)
+    yield port
+    proc.terminate()
+    proc.join(5)
+
+
+def test_build_isolated_basic(daemon_port):
     """BuildIsolator should produce the same result as direct build()."""
     from oversolved.kernel.build_isolated import BuildIsolator
     from solver_helpers import full_rect_extrude_spec
 
     spec = full_rect_extrude_spec(w=10, h=10, d=5)
 
-    isolator = BuildIsolator(timeout=30)
+    isolator = BuildIsolator(host="127.0.0.1", port=daemon_port, timeout=30)
     try:
         result = isolator.build(spec)
     finally:
@@ -37,14 +65,14 @@ def test_build_isolated_basic():
     assert "_build_state" not in result
 
 
-def test_build_isolated_incremental():
+def test_build_isolated_incremental(daemon_port):
     """Two sequential builds with the same doc_id should reuse prev_state."""
     from oversolved.kernel.build_isolated import BuildIsolator
     from solver_helpers import full_rect_extrude_spec
 
     spec = full_rect_extrude_spec(w=10, h=10, d=5)
 
-    isolator = BuildIsolator(timeout=30)
+    isolator = BuildIsolator(host="127.0.0.1", port=daemon_port, timeout=30)
     try:
         r1 = isolator.build(spec, doc_id="doc-1")
         assert r1["result"]["ex1"]["status"] == "ok"
@@ -62,14 +90,14 @@ def test_build_isolated_incremental():
         isolator.shutdown()
 
 
-def test_build_isolated_clear_cache():
+def test_build_isolated_clear_cache(daemon_port):
     """clear_cache() should force a full rebuild."""
     from oversolved.kernel.build_isolated import BuildIsolator
     from solver_helpers import full_rect_extrude_spec
 
     spec = full_rect_extrude_spec(w=10, h=10, d=5)
 
-    isolator = BuildIsolator(timeout=30)
+    isolator = BuildIsolator(host="127.0.0.1", port=daemon_port, timeout=30)
     try:
         r1 = isolator.build(spec, doc_id="doc-2")
         assert r1["result"]["ex1"]["status"] == "ok"
@@ -82,7 +110,7 @@ def test_build_isolated_clear_cache():
         isolator.shutdown()
 
 
-def test_memcache_incremental_reuses_state():
+def test_memcache_incremental_reuses_state(daemon_port):
     """Incremental builds with the same doc_id must succeed — proving
     prev_state is correctly maintained inside the worker.
 
@@ -93,7 +121,7 @@ def test_memcache_incremental_reuses_state():
     from oversolved.kernel.build_isolated import BuildIsolator
     from solver_helpers import rect_sketch_spec, extrude_spec
 
-    isolator = BuildIsolator(timeout=30)
+    isolator = BuildIsolator(host="127.0.0.1", port=daemon_port, timeout=30)
     try:
         # Build a base spec with enough features that skipping them
         # would break if the cache were wrong.
@@ -135,7 +163,7 @@ def test_memcache_incremental_reuses_state():
         isolator.shutdown()
 
 
-def test_memcache_incremental_same_result():
+def test_memcache_incremental_same_result(daemon_port):
     """Incremental and full rebuild must produce identical geometry for
     the same spec — memcache must not affect correctness."""
     from oversolved.kernel.build_isolated import BuildIsolator
@@ -150,7 +178,7 @@ def test_memcache_incremental_same_result():
         ]
     }
 
-    isolator = BuildIsolator(timeout=30)
+    isolator = BuildIsolator(host="127.0.0.1", port=daemon_port, timeout=30)
     try:
         # Full rebuild (no prior cache for this doc_id).
         r_full = isolator.build(spec, doc_id="memcache-correct-1")
@@ -189,12 +217,12 @@ def test_memcache_incremental_same_result():
         isolator.shutdown()
 
 
-def test_memcache_cross_doc_isolation():
+def test_memcache_cross_doc_isolation(daemon_port):
     """Different doc_ids must have independent caches."""
     from oversolved.kernel.build_isolated import BuildIsolator
     from solver_helpers import full_rect_extrude_spec
 
-    isolator = BuildIsolator(timeout=30)
+    isolator = BuildIsolator(host="127.0.0.1", port=daemon_port, timeout=30)
     try:
         spec_a = full_rect_extrude_spec(w=10, h=10, d=5)
         spec_b = full_rect_extrude_spec(w=8, h=8, d=3)
@@ -224,7 +252,7 @@ def test_memcache_cross_doc_isolation():
         isolator.shutdown()
 
 
-def test_build_isolated_preserves_error():
+def test_build_isolated_preserves_error(daemon_port):
     """Errors from build() should be propagated, not crash the server."""
     from oversolved.kernel.build_isolated import BuildIsolator
     from solver_helpers import full_rect_extrude_spec
@@ -237,7 +265,7 @@ def test_build_isolated_preserves_error():
         "radius": 1.0,
     })
 
-    isolator = BuildIsolator(timeout=30)
+    isolator = BuildIsolator(host="127.0.0.1", port=daemon_port, timeout=30)
     try:
         result = isolator.build(spec)
     finally:
@@ -249,8 +277,8 @@ def test_build_isolated_preserves_error():
     assert result["result"]["bad_fillet"]["status"] == "exception"
 
 
-def test_build_isolated_fillet_chain_no_crash():
-    """Extrude -> fillet -> revolvers -> fillet with stale query should not crash."""
+def test_build_isolated_fillet_chain_no_crash(daemon_port):
+    """Extrude -> fillet -> revolves -> fillet with stale query should not crash."""
     from oversolved.kernel.build_isolated import BuildIsolator
     from solver_helpers import rect_sketch_spec, extrude_spec
 
@@ -263,7 +291,7 @@ def test_build_isolated_fillet_chain_no_crash():
             extrude_spec("sk1", "ex1", d),
         ]
     }
-    isolator = BuildIsolator(timeout=30)
+    isolator = BuildIsolator(host="127.0.0.1", port=daemon_port, timeout=30)
     try:
         r0 = isolator.build(spec, doc_id="crash-test")
         eq0 = r0["bodies"]["body_ex1"].get("edge_queries", [])

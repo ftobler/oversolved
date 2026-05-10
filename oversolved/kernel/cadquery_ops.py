@@ -8,13 +8,20 @@ from __future__ import annotations
 
 from typing import Any
 
-try:
-    from cadquery.occ_impl import shapes as cq_shapes
-    from cadquery.occ_impl.geom import Plane as CQPlane, Vector as CQVector
-except ImportError:
-    cq_shapes = None  # type: ignore
-    CQPlane = None  # type: ignore
-    CQVector = None  # type: ignore
+from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_Transform
+from OCP.BRepPrimAPI import BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakeRevol
+from OCP.GC import GC_MakeArcOfCircle
+from OCP.gp import (
+    gp_Ax1,
+    gp_Ax2,
+    gp_Circ,
+    gp_Dir,
+    gp_Pnt,
+    gp_Trsf,
+    gp_Vec,
+)
+from cadquery.occ_impl import shapes as cq_shapes
+from cadquery.occ_impl.geom import Plane as CQPlane, Vector as CQVector
 
 
 def to_cq_plane(plane: dict) -> CQPlane:
@@ -63,18 +70,14 @@ def make_arc_edge(
     span = abs(angle_end - angle_start)
     is_full = abs(span - 2 * math.pi) < 1e-6 or span < 1e-6
 
-    from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt, gp_Circ  # noqa: PLC0415
     ax2 = gp_Ax2(gp_Pnt(*c.toTuple()), gp_Dir(*n.toTuple()), gp_Dir(*x.toTuple()))
     circle = gp_Circ(ax2, radius)
 
     if is_full:
-        from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge  # noqa: PLC0415
         builder = BRepBuilderAPI_MakeEdge(circle)
         return cq_shapes.Edge(builder.Edge())
 
-    from OCP.GC import GC_MakeArcOfCircle  # noqa: PLC0415
     arc = GC_MakeArcOfCircle(circle, angle_start, angle_end, True)
-    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge  # noqa: PLC0415
     builder = BRepBuilderAPI_MakeEdge(arc.Value())
     return cq_shapes.Edge(builder.Edge())
 
@@ -91,7 +94,7 @@ def make_face_from_wires(outer_wire: cq_shapes.Wire, inner_wires: list | None = 
     return cq_shapes.Face.makeFromWires(outer_wire)
 
 
-def extrude_face(face: Any, direction_vec: list[float], distance: float) -> cq_shapes.Solid:
+def extrude_face(face: cq_shapes.Face, direction_vec: list[float], distance: float) -> cq_shapes.Solid:
     """Extrude a face along a direction vector."""
     if distance == 0:
         raise ValueError("extrude distance must be non-zero")
@@ -104,8 +107,6 @@ def revolve_face(face: Any, axis_origin: list[float], axis_direction: list[float
     if angle_deg == 0:
         raise ValueError("revolve angle must be non-zero")
     import math
-    from OCP.gp import gp_Ax1, gp_Pnt, gp_Dir
-    from OCP.BRepPrimAPI import BRepPrimAPI_MakeRevol
     ax = gp_Ax1(gp_Pnt(*axis_origin), gp_Dir(*axis_direction))
     topo_face = face.wrapped if hasattr(face, "wrapped") else face
     revol = BRepPrimAPI_MakeRevol(topo_face, ax, math.radians(angle_deg))
@@ -114,8 +115,6 @@ def revolve_face(face: Any, axis_origin: list[float], axis_direction: list[float
 
 def make_cylinder(center: list[float], axis: list[float], radius: float, height: float) -> cq_shapes.Solid:
     """Solid cylinder for hole cutting. center and axis are 3D world-space."""
-    from OCP.gp import gp_Ax2, gp_Pnt, gp_Dir
-    from OCP.BRepPrimAPI import BRepPrimAPI_MakeCylinder
     ax2 = gp_Ax2(gp_Pnt(*center), gp_Dir(*axis))
     return cq_shapes.Solid(BRepPrimAPI_MakeCylinder(ax2, radius, height).Shape())
 
@@ -171,7 +170,6 @@ def fuse_shapes(shapes: list[Any]) -> Any:
 
 def make_mirror_trsf(origin: tuple[float, float, float], normal: tuple[float, float, float]):
     """Create a reflection transform across a plane."""
-    from OCP.gp import gp_Ax2, gp_Pnt, gp_Dir, gp_Trsf
     ax = gp_Ax2(gp_Pnt(*origin), gp_Dir(*normal))
     trsf = gp_Trsf()
     trsf.SetMirror(ax)
@@ -219,8 +217,6 @@ def apply_transform_shape(
     Returns a new cq Shape (or TopoDS_Shape matching input type).
     """
     import math
-    from OCP.gp import gp_Trsf, gp_Vec, gp_Pnt, gp_Dir, gp_Ax1
-    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
 
     combined = gp_Trsf()  # identity
 

@@ -17,16 +17,18 @@ dependencies = [
     "jax[cpu]",
     "scipy",
     "pyyaml",
-    "cadquery",
     "multimethod",
     "PyMySQL",
-    "pillow"
+    "pillow",
+    "websockets",
 ]
 
 [project.scripts]
 oversolved = "oversolved.cli:main"
+oversolved-solver = "oversolved.solver_daemon:main"
 
 [project.optional-dependencies]
+solver = ["cadquery"]
 dev = [
     "pytest",
     "mypy",

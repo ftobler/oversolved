@@ -41,6 +41,7 @@ npx vitest run
 - Comments must describe intent, not restate the code.
 - Try to keep files shorter than 1k lines. This is not a hard limit.
 - icons are defined in `icons.py`.
+- CAD solver/core is 'blind and deaf'. It only communicates on a stateful websocket channel to the rest of the webapp.
 
 ## Feature planning / implementing
 
