@@ -1,7 +1,6 @@
 """Tests for import_step feature in solver.py."""
 
-import os
-import shutil
+import base64
 import pytest
 
 pytest.importorskip("OCP.gp")
@@ -17,11 +16,6 @@ from oversolved.kernel.builder import build  # noqa: E402
 from solver_helpers import assert_mesh_valid  # noqa: E402
 
 
-UPLOAD_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "oversolved", "uploads")
-)
-
-
 @pytest.fixture
 def step_cube_file(tmp_path):
     """Create a minimal 1x1x1 cube STEP file for testing."""
@@ -33,13 +27,10 @@ def step_cube_file(tmp_path):
     return path
 
 
-def _copy_to_uploads(step_cube_file):
-    """Copy step file to the actual uploads dir and return the file_id."""
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    cube_name = os.path.basename(step_cube_file)
-    dest = os.path.join(UPLOAD_DIR, cube_name)
-    shutil.copy(step_cube_file, dest)
-    return cube_name
+def _step_to_b64(path):
+    """Read a STEP file and return its base64-encoded content."""
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode("ascii")
 
 
 def test_reads_cube(step_cube_file):
@@ -63,15 +54,13 @@ def test_scale(step_cube_file):
 
 def test_writes_to_body_store(step_cube_file):
     """3. writes to body_store - call _solve_import_step; assert body_import1 in body_store."""
-    cube_name = _copy_to_uploads(step_cube_file)
-
     global_repo = Repository()
     body_store = {}
 
     feature = {
         "id": "import1",
         "kind": "import_step",
-        "file_id": cube_name,
+        "file_data": _step_to_b64(step_cube_file),
     }
 
     result = _solve_import_step(feature, global_repo, body_store)
@@ -82,15 +71,13 @@ def test_writes_to_body_store(step_cube_file):
 
 def test_builder_build_produces_mesh(step_cube_file):
     """4. builder.build produces mesh - build spec with one import_step; assert mesh in result."""
-    cube_name = _copy_to_uploads(step_cube_file)
-
     spec = {
         "id": "test",
         "features": [
             {
                 "id": "import1",
                 "kind": "import_step",
-                "file_id": cube_name,
+                "file_data": _step_to_b64(step_cube_file),
             }
         ],
     }
@@ -102,45 +89,42 @@ def test_builder_build_produces_mesh(step_cube_file):
     assert "mesh" in body or "mesh_error" in body
 
 
-def test_missing_file_id_raises():
-    """5. missing file_id returns exception status."""
+def test_missing_file_data_raises():
+    """5. missing file_data - empty file_data returns exception status."""
     global_repo = Repository()
     body_store = {}
 
-    feature = {"id": "import1", "kind": "import_step", "file_id": ""}
+    feature = {"id": "import1", "kind": "import_step", "file_data": ""}
 
     result = _try_solve_feature(feature, global_repo, body_store)
     assert result["status"] == "exception"
-    assert "file_id" in result["exception"]
+    assert "file_data" in result["exception"]
 
 
-def test_file_not_found():
-    """6. file not found - nonexistent file_id returns exception with 'file not found'."""
+def test_invalid_base64_raises():
+    """6. invalid base64 - garbage file_data returns exception."""
     global_repo = Repository()
     body_store = {}
 
     feature = {
         "id": "import1",
         "kind": "import_step",
-        "file_id": "nonexistent123.step",
+        "file_data": "not-valid-base64!!!",
     }
 
     result = _try_solve_feature(feature, global_repo, body_store)
     assert result["status"] == "exception"
-    assert "file not found" in result.get("exception", "")
 
 
 def test_status_ok_in_result(step_cube_file):
     """7. status ok in result - build_result['result']['import1']['status'] == 'ok'."""
-    cube_name = _copy_to_uploads(step_cube_file)
-
     spec = {
         "id": "test",
         "features": [
             {
                 "id": "import1",
                 "kind": "import_step",
-                "file_id": cube_name,
+                "file_data": _step_to_b64(step_cube_file),
             }
         ],
     }
@@ -149,27 +133,11 @@ def test_status_ok_in_result(step_cube_file):
     assert result["result"]["import1"]["status"] == "ok"
 
 
-def test_path_traversal_rejected():
-    """8. path traversal rejected - file_id with '..' returns exception status."""
-    global_repo = Repository()
-    body_store = {}
-
-    feature = {
-        "id": "import1",
-        "kind": "import_step",
-        "file_id": "../../../etc/passwd",
-    }
-
-    result = _try_solve_feature(feature, global_repo, body_store)
-    assert result["status"] == "exception"
-    assert "invalid file_id" in result.get("exception", "")
-
-
 def test_partial_rebuild_reuses_body(step_cube_file, monkeypatch):
-    """9. partial rebuild reuses body - build twice with same spec; step_file_to_shape called once."""
+    """8. partial rebuild reuses body - build twice with same spec; step_file_to_shape called once."""
     from oversolved.kernel import geometry
 
-    cube_name = _copy_to_uploads(step_cube_file)
+    b64 = _step_to_b64(step_cube_file)
 
     call_count = 0
     original = geometry.step_file_to_shape
@@ -188,7 +156,7 @@ def test_partial_rebuild_reuses_body(step_cube_file, monkeypatch):
                 "id": "import1",
                 "kind": "import_step",
                 "label": "Imported Part",
-                "file_id": cube_name,
+                "file_data": b64,
             }
         ],
     }

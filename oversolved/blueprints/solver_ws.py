@@ -1,8 +1,10 @@
 """WebSocket solver endpoint — thread-sticky, per-session cache, request/response model."""
 
 import array as _array
+import base64
 import json
 import logging
+import os
 import struct
 import threading
 from time import time
@@ -216,6 +218,30 @@ def solver_websocket(ws):
         db.close()
 
 
+def _resolve_import_files(data):
+    """Resolve file_id to base64-encoded file_data for import_step features.
+
+    The solver must never read from the filesystem, so the Flask app layer
+    reads each uploaded STEP file and inlines its content into the feature.
+    """
+    upload_dir = current_app.config["UPLOAD_DIR"]
+    features = data.get("features", []) or []
+    for feature in features:
+        if feature.get("kind") != "import_step":
+            continue
+        file_id = feature.get("file_id", "")
+        if not file_id:
+            continue
+        if os.sep in file_id or "/" in file_id or ".." in file_id:
+            raise ValueError(f"invalid file_id: {file_id!r}")
+        filepath = os.path.join(upload_dir, file_id)
+        if not os.path.isfile(filepath):
+            raise ValueError(f"file not found: {file_id!r}")
+        with open(filepath, "rb") as f:
+            feature["file_data"] = base64.b64encode(f.read()).decode("ascii")
+        del feature["file_id"]
+
+
 def _handle_solve(data, isolator, db, ws):
     """Handle a solve request. Sends solve_result (JSON) then geometry_update (binary)."""
     features = data.get("features")
@@ -224,6 +250,8 @@ def _handle_solve(data, isolator, db, ws):
     if features is None:
         ws.send(json.dumps({"type": "solve_result", "msgId": msg_id, "error": "features required"}))
         return
+
+    _resolve_import_files(data)
 
     doc_id = data.get("id")
     rollback_position = data.get("rollback_position")

@@ -317,6 +317,13 @@ def create_app(config: dict | None = None) -> Flask:
     db.close()
 
     # Set default config
+    app.config.setdefault(
+        "UPLOAD_DIR",
+        os.environ.get(
+            "OVERSOLVED_UPLOAD_DIR",
+            os.path.join(app.instance_path, "uploads"),
+        ),
+    )
     app.config.setdefault("SOLVER_WS_CACHE_MAX_SIZE", 10)
     app.config.setdefault("WS_AUTH_CHECK_INTERVAL", 50)
     app.config.setdefault("SOLVER_DAEMON_HOST", os.environ.get("SOLVER_DAEMON_HOST", "127.0.0.1"))

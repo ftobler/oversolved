@@ -11,12 +11,13 @@ from OCP.STEPControl import STEPControl_Writer, STEPControl_AsIs  # noqa: E402
 from OCP.IFSelect import IFSelect_RetDone  # noqa: E402
 
 from oversolved.app import create_app  # noqa: E402
-from oversolved.blueprints.upload_export import UPLOAD_DIR  # noqa: E402
 
 
 @pytest.fixture
 def app(tmp_path, monkeypatch):
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
+    upload_dir = str(tmp_path / "uploads")
+    monkeypatch.setenv("OVERSOLVED_UPLOAD_DIR", upload_dir)
     db_path = str(tmp_path / "test.db")
     test_app = create_app(
         {
@@ -112,10 +113,11 @@ def test_file_id_is_uuid_like(authed_client, step_file):
 
 
 def test_file_persisted(authed_client, step_file):
-    """5. file persisted - after upload, file exists at oversolved/uploads/<file_id>."""
+    """5. file persisted - after upload, file exists at upload_dir/<file_id>."""
     with open(step_file, "rb") as f:
         response = authed_client.post("/api/upload", data={"file": (f, "cube.step")})
     data = response.get_json()
     file_id = data["file_id"]
-    filepath = os.path.join(UPLOAD_DIR, file_id)
+    upload_dir = authed_client.application.config["UPLOAD_DIR"]
+    filepath = os.path.join(upload_dir, file_id)
     assert os.path.isfile(filepath), f"uploaded file not found at {filepath}"

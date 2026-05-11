@@ -8,6 +8,7 @@ services:
     environment:
       - OVERSOLVED_ADMIN_PASSWORD=${OVERSOLVED_ADMIN_PASSWORD:-admin}
       - OVERSOLVED_SESSION_COOKIE_SECURE=${OVERSOLVED_SESSION_COOKIE_SECURE:-false}
+      - OVERSOLVED_UPLOAD_DIR=/data/uploads
       - SOLVER_DAEMON_HOST=solver
       - SOLVER_DAEMON_PORT=9100
     volumes:

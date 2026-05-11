@@ -41,5 +41,6 @@ feature/
 # Uploads
 oversolved/uploads/*
 oversolved/exports/*
+instance/
 
 *.log

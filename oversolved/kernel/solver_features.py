@@ -1095,30 +1095,33 @@ def _solve_import_step(
     global_repo: Repository,
     body_store: dict,
 ) -> dict:
+    import base64
+    import tempfile
+
     try:
         from oversolved.kernel.types3d import Body
 
         feature_id = feature.get("id", "")
-        file_id = feature.get("file_id", "")
-        if not file_id:
-            raise ValueError("import_step requires 'file_id'")
-
-        if os.sep in file_id or "/" in file_id or ".." in file_id:
-            raise ValueError(f"invalid file_id: {file_id!r}")
-
-        upload_dir = os.path.normpath(
-            os.path.join(os.path.dirname(__file__), "..", "uploads")
-        )
-        filepath = os.path.join(upload_dir, file_id)
-        if not os.path.isfile(filepath):
-            raise ValueError(f"file not found: {file_id!r}")
-
+        file_data_b64 = feature.get("file_data", "")
         scale = float(feature.get("scale", 1.0))
-        body_id = "body_" + feature_id
+
+        if not file_data_b64:
+            raise ValueError("import_step requires 'file_data'")
+
+        raw = base64.b64decode(file_data_b64)
 
         from oversolved.kernel.geometry import step_file_to_shape
 
-        shape = step_file_to_shape(filepath, scale=scale)
+        body_id = "body_" + feature_id
+
+        with tempfile.NamedTemporaryFile(suffix=".step", delete=False) as f:
+            f.write(raw)
+            tmp_path = f.name
+        try:
+            shape = step_file_to_shape(tmp_path, scale=scale)
+        finally:
+            os.unlink(tmp_path)
+
         body_store[body_id] = Body(
             id=body_id,
             created_by=feature_id,

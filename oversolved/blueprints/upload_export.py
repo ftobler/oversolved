@@ -3,21 +3,34 @@
 import importlib
 import os
 import uuid
-from flask import Blueprint, jsonify, request, Response
+from flask import Blueprint, current_app, jsonify, request, Response
 from werkzeug.utils import secure_filename
 from oversolved.blueprints import require_auth, require_csrf
 
 upload_export_bp = Blueprint("upload_export", __name__)
 
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "uploads")
 ALLOWED_EXTENSIONS = {".step", ".stp", ".iges", ".igs"}
+
+
+def get_upload_dir():
+    """Return the upload directory from app config or env var fallback."""
+    try:
+        return current_app.config["UPLOAD_DIR"]
+    except RuntimeError:
+        return os.environ.get(
+            "OVERSOLVED_UPLOAD_DIR",
+            os.path.normpath(
+                os.path.join(os.path.dirname(__file__), "..", "uploads")
+            ),
+        )
 
 
 @upload_export_bp.route("/api/upload", methods=["POST"])
 @require_auth
 @require_csrf
 def upload_file():
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    upload_dir = get_upload_dir()
+    os.makedirs(upload_dir, exist_ok=True)
     if "file" not in request.files:
         return jsonify({"error": "no file field"}), 400
     f = request.files["file"]
@@ -27,7 +40,7 @@ def upload_file():
     file_id = str(uuid.uuid4()) + ext
     if "/" in file_id or "\\" in file_id:
         return jsonify({"error": "Invalid file extension"}), 400
-    f.save(os.path.join(UPLOAD_DIR, file_id))
+    f.save(os.path.join(upload_dir, file_id))
     return jsonify({"file_id": file_id})
 
 
