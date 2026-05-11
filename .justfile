@@ -66,4 +66,4 @@ runs:
     just run_solver
 
 run_solver:
-    oversolved-solver
+    oversolved-solver --debug

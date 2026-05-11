@@ -329,8 +329,12 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1", help="Listen address (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=9100, help="Listen port (default: 9100)")
     parser.add_argument("--timeout", type=float, default=30.0, help="Per-request timeout in seconds (default: 30.0)")
+    parser.add_argument("--debug", action="store_true", help="Run in debug mode (verbose logging)")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    level = logging.DEBUG if args.debug else logging.INFO
+    logging.basicConfig(level=level, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     logger.info("Starting solver daemon on %s:%s", args.host, args.port)
+    if args.debug:
+        logger.debug("Debug logging enabled")
     asyncio.run(main_async(args.host, args.port, args.timeout))
