@@ -1,19 +1,18 @@
 FROM python:3.12-slim
-
-WORKDIR /app
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    g++ \
     libgl1 \
     libglu1-mesa \
     libglib2.0-0 \
+    libxext6 \
+    libxrender1 \
+    libsm6 \
+    libice6 \
     && rm -rf /var/lib/apt/lists/*
-
-COPY pyproject.toml .
+WORKDIR /app
+COPY pyproject.toml setup.cfg ./
+COPY oversolved/ oversolved/
 RUN pip install --no-cache-dir ".[solver]"
-
-COPY oversolved/ ./oversolved/
-
 EXPOSE 9100
-
-CMD ["oversolved-solver", "--host", "0.0.0.0", "--port", "9100"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "from websockets.sync.client import connect; connect('ws://localhost:9100').close()" || exit 1
+ENTRYPOINT ["oversolved-solver", "--host", "0.0.0.0"]

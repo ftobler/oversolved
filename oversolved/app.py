@@ -2,7 +2,6 @@
 
 import logging
 import os
-import sys
 from pathlib import Path
 from flask import Flask, send_from_directory, g
 from werkzeug.security import generate_password_hash
@@ -286,7 +285,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.config.update(
         {
             "DB_TYPE": "sqlite",
-            "DB_PATH": ":memory:",
+            "DB_PATH": os.environ.get("OVERSOLVED_DB_PATH", ":memory:"),
             "JSON_SORT_KEYS": False,
             "SESSION_COOKIE_SECURE": os.environ.get("OVERSOLVED_SESSION_COOKIE_SECURE", "false").lower() == "true",
             "MAX_CONTENT_LENGTH": 100 * 1024 * 1024,  # 100 MB
@@ -310,33 +309,18 @@ def create_app(config: dict | None = None) -> Flask:
     # Make db_config accessible to blueprints via get_db()
     app.config["_DB_CONFIG"] = db_config
 
-    # Register migrations and verify schema version before starting
+    # Register and run all pending migrations on startup
     db = _get_database(db_config)
     _register_migrations(db)
-    if app.config.get("TESTING"):
-        db.init()
-    else:
-        try:
-            is_ok, current, latest = db.check_version_sync()
-        except TimeoutError:
-            print("ERROR: Could not acquire database lock for version check", file=sys.stderr)
-            db.close()
-            sys.exit(1)
-        if not is_ok:
-            print(
-                f"ERROR: Database schema version mismatch "
-                f"(current: {current}, latest: {latest})",
-                file=sys.stderr,
-            )
-            print("Run: oversolved db upgrade", file=sys.stderr)
-            db.close()
-            sys.exit(1)
+    db.init()
     _ensure_admin_user(db)
     db.close()
 
     # Set default config
     app.config.setdefault("SOLVER_WS_CACHE_MAX_SIZE", 10)
     app.config.setdefault("WS_AUTH_CHECK_INTERVAL", 50)
+    app.config.setdefault("SOLVER_DAEMON_HOST", os.environ.get("SOLVER_DAEMON_HOST", "127.0.0.1"))
+    app.config.setdefault("SOLVER_DAEMON_PORT", int(os.environ.get("SOLVER_DAEMON_PORT", "9100")))
 
     # Register blueprints
     app.register_blueprint(auth_bp)

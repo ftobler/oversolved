@@ -1,34 +1,33 @@
-version: "3.8"
-
 services:
-  backend:
-    build: .
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
     ports:
-      - "5000:5000"
+      - "${OVERSOLVED_PORT:-5000}:5000"
     environment:
-      - DB_TYPE=mariadb
-      - DB_HOST=mariadb
-      - DB_USER=oversolved
-      - DB_PASSWORD=devpass
-      - DB_NAME=oversolved
-    depends_on:
-      mariadb:
-        condition: service_healthy
-
-  mariadb:
-    image: mariadb:10.11
-    environment:
-      - MYSQL_ROOT_PASSWORD=rootpass
-      - MYSQL_DATABASE=oversolved
-      - MYSQL_USER=oversolved
-      - MYSQL_PASSWORD=devpass
+      - OVERSOLVED_ADMIN_PASSWORD=${OVERSOLVED_ADMIN_PASSWORD:-admin}
+      - OVERSOLVED_SESSION_COOKIE_SECURE=${OVERSOLVED_SESSION_COOKIE_SECURE:-false}
+      - SOLVER_DAEMON_HOST=solver
+      - SOLVER_DAEMON_PORT=9100
     volumes:
-      - mariadb_data:/var/lib/mysql
+      - oversolved_data:/data
+    depends_on:
+      solver:
+        condition: service_healthy
+    restart: unless-stopped
+
+  solver:
+    build:
+      context: .
+      dockerfile: Dockerfile.solver
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+      test: ["CMD", "python", "-c", "from websockets.sync.client import connect; connect('ws://localhost:9100').close()"]
 
 volumes:
-  mariadb_data:
+  oversolved_data:

@@ -171,7 +171,9 @@ def solver_websocket(ws):
 
     build_timeout = current_app.config.get("SOLVER_WS_BUILD_TIMEOUT", 30)
     auth_check_interval = current_app.config.get("WS_AUTH_CHECK_INTERVAL", 50)
-    isolator = BuildIsolator(timeout=build_timeout)
+    solver_host = current_app.config.get("SOLVER_DAEMON_HOST", "127.0.0.1")
+    solver_port = current_app.config.get("SOLVER_DAEMON_PORT", 9100)
+    isolator = BuildIsolator(host=solver_host, port=solver_port, timeout=build_timeout)
     db = get_db()
 
     try:
