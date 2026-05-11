@@ -61,3 +61,9 @@ runb:
 
 run_back:
     oversolved run_server --debug
+
+runs:
+    just run_solver
+
+run_solver:
+    oversolved-solver
