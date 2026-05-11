@@ -20,4 +20,4 @@ ENV OVERSOLVED_DB_PATH=/data/oversolved.db
 ENV OVERSOLVED_UPLOAD_DIR=/data/uploads
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/')" || exit 1
-ENTRYPOINT ["gunicorn", "-k", "gevent", "--bind", "0.0.0.0:5000", "--workers", "1", "oversolved.app:create_app()"]
+ENTRYPOINT exec gunicorn -k gevent --bind 0.0.0.0:5000 --workers ${GUNICORN_WORKERS:-1} "oversolved.app:create_app()"
