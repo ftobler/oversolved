@@ -1,6 +1,7 @@
 """Unified CLI for Oversolved with subcommands."""
 
 import argparse
+import signal
 import sys
 import time
 from datetime import datetime, timezone
@@ -110,6 +111,7 @@ def run_tasks(args: argparse.Namespace) -> None:
         return
 
     if args.loop:
+        signal.signal(signal.SIGTERM, lambda s, f: sys.exit(0))
         print(f"Task runner in loop mode (interval: {args.interval}s)")
         try:
             while True:
@@ -118,8 +120,10 @@ def run_tasks(args: argparse.Namespace) -> None:
                 for r in results:
                     print(f"[{now}] {r['task_key']}: {r['status']}")
                 time.sleep(args.interval)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, SystemExit):
             print("\nShutting down task runner.")
+        finally:
+            db.close()
     else:
         results = scheduler.run_due_tasks(db)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -127,6 +131,7 @@ def run_tasks(args: argparse.Namespace) -> None:
             print(f"[{now}] {r['task_key']}: {r['status']}")
         if not results:
             print("No tasks were due.")
+        db.close()
 
     db.close()
 

@@ -59,5 +59,17 @@ services:
       retries: 3
       test: ["CMD", "python", "-c", "from websockets.sync.client import connect; connect('ws://localhost:9100').close()"]
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - OVERSOLVED_DB_DSN=postgresql://oversolved:oversolved@postgres:5432/oversolved
+      - WORKER_INTERVAL=${WORKER_INTERVAL:-60}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
 volumes:
   oversolved_data:
