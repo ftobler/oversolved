@@ -72,7 +72,7 @@ jobs:
 
       - name: pytest
         env:
-          TEST_DB_DSN: postgresql://oversolved:oversolved@localhost:5432/oversolved
+          TEST_DB_DSN: postgresql://oversolved:oversolved@postgres:5432/oversolved
         run: pytest tests
 
       - name: Build wheel
