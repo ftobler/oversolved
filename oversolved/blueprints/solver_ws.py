@@ -267,12 +267,15 @@ def _handle_solve(data, isolator, db, ws):
     duration_ms = build_result.get("solve_ms")
     if duration_ms is not None and duration_ms > 0 and doc_id:
         feature_count = len(features) if features else 0
-        db.execute(
-            """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
-               VALUES (?, ?, ?)""",
-            (doc_id, round(duration_ms), feature_count),
-        )
-        db.commit()
+        try:
+            db.execute(
+                """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
+                   VALUES (?, ?, ?)""",
+                (doc_id, round(duration_ms), feature_count),
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
 
     bodies = build_result.pop("bodies", {})
     pick_bodies = build_result.pop("pick_bodies", None)

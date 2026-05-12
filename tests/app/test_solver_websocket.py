@@ -197,6 +197,21 @@ class TestSolverWebSocket:
     @patch("oversolved.blueprints.solver_ws.BuildIsolator")
     def test_websocket_rebuild_times_logged(self, mock_isolator_cls, app, auth_headers):
         """Solve with doc_id inserts a row into rebuild_times."""
+        # Create the document so the FK constraint on rebuild_times is satisfied
+        client = app.test_client()
+        client.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        create_resp = client.post(
+            "/api/documents",
+            data=json.dumps({"name": "test-doc"}),
+            content_type="application/json",
+        )
+        doc_id = json.loads(create_resp.data)["uuid"]
+        payload = dict(SOLVE_PAYLOAD, id=doc_id)
+
         mock_isolator = _make_mock_isolator({
             "solve_ms": 42,
             "result": {"sk1": {"status": "underconstrained"}},
@@ -204,7 +219,7 @@ class TestSolverWebSocket:
         })
         mock_isolator_cls.return_value = mock_isolator
         ws = _MockWS()
-        ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
+        ws.receive_queue = [json.dumps(payload), None]
         _run_handler(app, ws, auth_headers)
 
         conn = PostgreSQLConnection(app.config["DB_DSN"])
@@ -213,7 +228,7 @@ class TestSolverWebSocket:
         ).fetchall()
         conn.close()
         assert len(rows) == 1
-        assert rows[0]["document_uuid"] == "test-doc-1"
+        assert rows[0]["document_uuid"] == doc_id
         assert rows[0]["duration_ms"] == 42
         assert rows[0]["feature_count"] == 1
 

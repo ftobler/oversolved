@@ -37,7 +37,6 @@ dev = [
     "mypy",
     "flake8",
     "pycairo",
-    "pytest-postgresql",
 ]
 
 [tool.pytest.ini_options]

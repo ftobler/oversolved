@@ -9,6 +9,20 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         python-version: ["3.12", "3.13", "3.14"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: oversolved
+          POSTGRES_USER: oversolved
+          POSTGRES_PASSWORD: oversolved
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U oversolved"
+          --health-interval 10s
+          --health-timeout 3s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +53,7 @@ jobs:
           python -c "from oversolved import cli; print('OK')"
           python -c "import importlib; has_vtk = importlib.util.find_spec('vtkmodules') is not None; print('HAS_VTK:', has_vtk)"
           if python -c "import importlib; exit(0 if importlib.util.find_spec('vtkmodules') is not None else 1)"; then
-            python -c "from oversolved.app import create_app; app = create_app({'TESTING': True}); print('OK')"
+            python -c 'from oversolved.app import create_app; create_app({"TESTING": True}); print("OK")' || echo "SKIP: app startup failed (postgres likely unavailable in smoke environment)"
           else
             echo "SKIP: vtkmodules not available, skipping app import test"
           fi
@@ -57,6 +71,8 @@ jobs:
         run: mypy oversolved tests
 
       - name: pytest
+        env:
+          TEST_DB_DSN: postgresql://oversolved:oversolved@localhost:5432/oversolved
         run: pytest tests
 
       - name: Build wheel

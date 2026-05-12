@@ -10,6 +10,8 @@ default:
     just frontend
 
 # run all python backend jobs
+# requires postgres: docker compose -f docker-compose-postgres.yml up -d
+# override DB with: TEST_DB_DSN=postgresql://... just backend
 backend:
     just mypy
     just flake8

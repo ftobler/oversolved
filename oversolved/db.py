@@ -613,6 +613,15 @@ class SessionStore:
             self.db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
 
 
+def _to_bytes(value: object) -> Optional[bytes]:
+    """Normalize BYTEA values: psycopg2 returns memoryview, sqlite returns bytes."""
+    if value is None:
+        return None
+    if isinstance(value, memoryview):
+        return bytes(value)
+    return value  # type: ignore[return-value]
+
+
 class DocumentStore:
     """Store and retrieve YAML documents."""
 
@@ -706,7 +715,7 @@ class DocumentStore:
             "name": row[1],
             "content": row[2],
             "owner_id": row[3],
-            "preview_image": row[4],
+            "preview_image": _to_bytes(row[4]),
             "created_at": row[5],
             "updated_at": row[6],
             "deleted_at": row[7],
@@ -944,7 +953,7 @@ class DocumentStore:
             {
                 "uuid": row[0],
                 "name": row[1],
-                "preview_image": row[2],
+                "preview_image": _to_bytes(row[2]),
                 "created_at": row[3],
                 "updated_at": row[4],
                 "is_owner": row[5] == user_id,
@@ -968,7 +977,7 @@ class DocumentStore:
             {
                 "uuid": row[0],
                 "name": row[1],
-                "preview_image": row[2],
+                "preview_image": _to_bytes(row[2]),
                 "created_at": row[3],
                 "updated_at": row[4],
                 "is_owner": False,
@@ -994,7 +1003,7 @@ class DocumentStore:
             {
                 "uuid": row[0],
                 "name": row[1],
-                "preview_image": row[2],
+                "preview_image": _to_bytes(row[2]),
                 "created_at": row[3],
                 "updated_at": row[4],
                 "is_owner": False,
@@ -1056,7 +1065,7 @@ class DocumentStore:
             {
                 "uuid": row[0],
                 "name": row[1],
-                "preview_image": row[2],
+                "preview_image": _to_bytes(row[2]),
                 "created_at": row[3],
                 "updated_at": row[4],
                 "is_owner": row[5] == user_id,
