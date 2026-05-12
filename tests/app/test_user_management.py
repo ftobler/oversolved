@@ -6,15 +6,14 @@ from oversolved.app import create_app
 
 
 @pytest.fixture
-def app(tmp_path, monkeypatch):
-    """Create a test Flask app with a file-based SQLite database."""
+def app(pg_dsn, monkeypatch):
+    """Create a test Flask app with a PostgreSQL database."""
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    db_path = str(tmp_path / "test.db")
     test_app = create_app(
         {
-            "DB_TYPE": "sqlite",
+            "DB_TYPE": "postgres",
             "TESTING": True,
-            "DB_PATH": db_path,
+            "DB_DSN": pg_dsn,
             "DEBUG": False,
         }
     )
@@ -498,14 +497,13 @@ class TestBackupEndpoint:
 class TestAuthSecurity:
     """Tests for auth security hardening."""
 
-    def test_admin_password_from_env_var(self, monkeypatch, tmp_path):
+    def test_admin_password_from_env_var(self, monkeypatch, pg_dsn):
         """OVERSOLVED_ADMIN_PASSWORD env var sets admin password."""
         monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "custom-admin-pass")
-        db_path = str(tmp_path / "test_custom_admin.db")
         app = create_app({
-            "DB_TYPE": "sqlite",
+            "DB_TYPE": "postgres",
             "TESTING": True,
-            "DB_PATH": db_path,
+            "DB_DSN": pg_dsn,
         })
         c = app.test_client()
         resp = c.post(
@@ -517,14 +515,13 @@ class TestAuthSecurity:
         data = json.loads(resp.data)
         assert data["user"]["username"] == "admin"
 
-    def test_admin_password_env_var_wrong_password(self, monkeypatch, tmp_path):
+    def test_admin_password_env_var_wrong_password(self, monkeypatch, pg_dsn):
         """Wrong password against env-var-admin returns 401."""
         monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "custom-admin-pass")
-        db_path = str(tmp_path / "test_custom_admin2.db")
         app = create_app({
-            "DB_TYPE": "sqlite",
+            "DB_TYPE": "postgres",
             "TESTING": True,
-            "DB_PATH": db_path,
+            "DB_DSN": pg_dsn,
         })
         c = app.test_client()
         resp = c.post(
@@ -534,14 +531,13 @@ class TestAuthSecurity:
         )
         assert resp.status_code == 401
 
-    def test_session_cookie_secure_default(self, monkeypatch, tmp_path):
+    def test_session_cookie_secure_default(self, monkeypatch, pg_dsn):
         """session_token cookie does NOT have secure flag by default."""
         monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-        db_path = str(tmp_path / "test_secure_default.db")
         app = create_app({
-            "DB_TYPE": "sqlite",
+            "DB_TYPE": "postgres",
             "TESTING": True,
-            "DB_PATH": db_path,
+            "DB_DSN": pg_dsn,
         })
         c = app.test_client()
         resp = c.post(
@@ -553,15 +549,14 @@ class TestAuthSecurity:
         set_cookie = resp.headers.get("Set-Cookie", "")
         assert "Secure" not in set_cookie
 
-    def test_session_cookie_secure_enabled(self, monkeypatch, tmp_path):
+    def test_session_cookie_secure_enabled(self, monkeypatch, pg_dsn):
         """session_token cookie has secure flag when OVERSOLVED_SESSION_COOKIE_SECURE is True."""
         monkeypatch.setenv("OVERSOLVED_SESSION_COOKIE_SECURE", "true")
         monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-        db_path = str(tmp_path / "test_secure_on.db")
         app = create_app({
-            "DB_TYPE": "sqlite",
+            "DB_TYPE": "postgres",
             "TESTING": True,
-            "DB_PATH": db_path,
+            "DB_DSN": pg_dsn,
         })
         c = app.test_client()
         resp = c.post(

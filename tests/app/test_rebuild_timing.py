@@ -2,27 +2,26 @@
 
 import json
 import pytest
-from oversolved.db import SQLiteConnection, Database
+from oversolved.db import PostgreSQLConnection, Database
 from solver_helpers import extrude_spec, rect_sketch_spec
 
 
 def _get_db(app):
     """Get a direct DB connection from the app config."""
-    db_path = app.config["DB_PATH"]
-    db = Database(SQLiteConnection(db_path))
+    db = Database(PostgreSQLConnection(app.config["DB_DSN"]))
     db.init()
     return db
 
 
 @pytest.fixture
-def app(tmp_path, monkeypatch):
+def app(pg_dsn, monkeypatch):
     from oversolved.app import create_app
 
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     test_app = create_app({
-        "DB_TYPE": "sqlite",
+        "DB_TYPE": "postgres",
         "TESTING": True,
-        "DB_PATH": str(tmp_path / "test.db"),
+        "DB_DSN": pg_dsn,
     })
     return test_app
 

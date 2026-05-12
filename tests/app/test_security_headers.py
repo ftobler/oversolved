@@ -5,9 +5,9 @@ from oversolved.app import create_app
 
 
 @pytest.fixture
-def app(monkeypatch):
+def app(pg_dsn, monkeypatch):
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    test_app = create_app({"DB_TYPE": "sqlite", "TESTING": True, "DB_PATH": ":memory:"})
+    test_app = create_app({"DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn})
     return test_app
 
 
@@ -40,10 +40,10 @@ class TestSecurityHeaders:
         resp = client.get("/api/auth/me")
         assert resp.headers.get("Strict-Transport-Security") is None
 
-    def test_hsts_set_when_secure_enabled(self, monkeypatch):
+    def test_hsts_set_when_secure_enabled(self, pg_dsn, monkeypatch):
         monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
         app = create_app({
-            "DB_TYPE": "sqlite", "TESTING": True, "DB_PATH": ":memory:",
+            "DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn,
             "SESSION_COOKIE_SECURE": True,
         })
         client = app.test_client()

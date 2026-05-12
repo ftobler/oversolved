@@ -14,16 +14,15 @@ from oversolved.app import create_app  # noqa: E402
 
 
 @pytest.fixture
-def app(tmp_path, monkeypatch):
+def app(pg_dsn, tmp_path, monkeypatch):
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     upload_dir = str(tmp_path / "uploads")
     monkeypatch.setenv("OVERSOLVED_UPLOAD_DIR", upload_dir)
-    db_path = str(tmp_path / "test.db")
     test_app = create_app(
         {
-            "DB_TYPE": "sqlite",
+            "DB_TYPE": "postgres",
             "TESTING": True,
-            "DB_PATH": db_path,
+            "DB_DSN": pg_dsn,
         }
     )
     return test_app

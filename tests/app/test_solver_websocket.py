@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 from oversolved.app import create_app
 from oversolved.blueprints.solver_ws import solver_websocket, _auth_failures
-from oversolved.db import Database, SQLiteConnection
+from oversolved.db import Database, PostgreSQLConnection
 
 
 class _MockWS:
@@ -65,13 +65,13 @@ def reset_auth_failures():
 
 
 @pytest.fixture
-def app(tmp_path, monkeypatch):
-    """Create a test Flask app with a file-based SQLite database."""
+def app(pg_dsn, monkeypatch):
+    """Create a test Flask app backed by a fresh PostgreSQL database."""
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     test_app = create_app({
-        "DB_TYPE": "sqlite",
+        "DB_TYPE": "postgres",
         "TESTING": True,
-        "DB_PATH": str(tmp_path / "test.db"),
+        "DB_DSN": pg_dsn,
     })
     return test_app
 
@@ -207,7 +207,7 @@ class TestSolverWebSocket:
         ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
         _run_handler(app, ws, auth_headers)
 
-        conn = SQLiteConnection(app.config["DB_PATH"])
+        conn = PostgreSQLConnection(app.config["DB_DSN"])
         rows = conn.execute(
             "SELECT document_uuid, duration_ms, feature_count FROM rebuild_times"
         ).fetchall()

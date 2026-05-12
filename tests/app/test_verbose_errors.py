@@ -56,10 +56,9 @@ def reset():
 
 
 @pytest.fixture
-def app(tmp_path, monkeypatch):
+def app(pg_dsn, monkeypatch):
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    db_path = str(tmp_path / "test.db")
-    return create_app({"DB_TYPE": "sqlite", "TESTING": True, "DB_PATH": db_path})
+    return create_app({"DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn})
 
 
 @pytest.fixture

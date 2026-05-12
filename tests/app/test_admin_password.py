@@ -5,18 +5,17 @@ import logging
 import os
 from werkzeug.security import check_password_hash
 from oversolved.app import create_app
-from oversolved.db import Database, SQLiteConnection, UserStore
+from oversolved.db import Database, PostgreSQLConnection, UserStore
 
 
-def _make_app(tmp_path, set_env=True):
+def _make_app(pg_dsn, set_env=True):
     """Create app, optionally with env var set."""
     if set_env:
         os.environ["OVERSOLVED_ADMIN_PASSWORD"] = "test_admin_password"
-    db_path = str(tmp_path / "test.db")
     config = {
-        "DB_TYPE": "sqlite",
+        "DB_TYPE": "postgres",
         "TESTING": True,
-        "DB_PATH": db_path,
+        "DB_DSN": pg_dsn,
     }
     return create_app(config)
 
@@ -24,14 +23,13 @@ def _make_app(tmp_path, set_env=True):
 class TestAdminPassword:
     """Tests for admin password security."""
 
-    def test_default_password_works(self, tmp_path):
+    def test_default_password_works(self, pg_dsn):
         """App starts with default password when env var is not set."""
         os.environ.pop("OVERSOLVED_ADMIN_PASSWORD", None)
-        db_path = str(tmp_path / "test_default.db")
         config = {
-            "DB_TYPE": "sqlite",
+            "DB_TYPE": "postgres",
             "TESTING": True,
-            "DB_PATH": db_path,
+            "DB_DSN": pg_dsn,
         }
         app = create_app(config)
         client = app.test_client()
@@ -42,11 +40,11 @@ class TestAdminPassword:
         )
         assert response.status_code == 200
 
-    def test_password_set_succeeds(self, tmp_path):
+    def test_password_set_succeeds(self, pg_dsn):
         """create_app should succeed when OVERSOLVED_ADMIN_PASSWORD is set."""
         os.environ["OVERSOLVED_ADMIN_PASSWORD"] = "test_admin_password"
         try:
-            app = _make_app(tmp_path, set_env=True)
+            app = _make_app(pg_dsn, set_env=True)
             client = app.test_client()
             response = client.post(
                 "/api/auth/login",
@@ -57,15 +55,14 @@ class TestAdminPassword:
         finally:
             del os.environ["OVERSOLVED_ADMIN_PASSWORD"]
 
-    def test_password_set_succeeds_in_debug_mode(self, tmp_path):
+    def test_password_set_succeeds_in_debug_mode(self, pg_dsn):
         """create_app should succeed in DEBUG mode when env var is set."""
         os.environ["OVERSOLVED_ADMIN_PASSWORD"] = "test_admin_password"
         try:
-            db_path = str(tmp_path / "test_debug_ok.db")
             config = {
-                "DB_TYPE": "sqlite",
+                "DB_TYPE": "postgres",
                 "TESTING": True,
-                "DB_PATH": db_path,
+                "DB_DSN": pg_dsn,
                 "DEBUG": True,
             }
             app = create_app(config)
@@ -79,20 +76,17 @@ class TestAdminPassword:
         finally:
             del os.environ["OVERSOLVED_ADMIN_PASSWORD"]
 
-    def test_existing_admin_updated(self, tmp_path):
+    def test_existing_admin_updated(self, pg_dsn):
         """Existing admin users are updated to have is_admin=1."""
         os.environ["OVERSOLVED_ADMIN_PASSWORD"] = "test_admin_password"
         try:
-            db_path = str(tmp_path / "test_existing.db")
-            config = {
-                "DB_TYPE": "sqlite",
+            create_app({
+                "DB_TYPE": "postgres",
                 "TESTING": True,
-                "DB_PATH": db_path,
-            }
-            create_app(config)
+                "DB_DSN": pg_dsn,
+            })
 
-            db_path_str = str(tmp_path / "test_existing.db")
-            db = Database(SQLiteConnection(db_path_str))
+            db = Database(PostgreSQLConnection(pg_dsn))
             db.init()
             user_store = UserStore(db)
             admin = user_store.find_by_username("admin")
@@ -102,20 +96,17 @@ class TestAdminPassword:
         finally:
             del os.environ["OVERSOLVED_ADMIN_PASSWORD"]
 
-    def test_new_admin_created_with_correct_attrs(self, tmp_path):
+    def test_new_admin_created_with_correct_attrs(self, pg_dsn):
         """New admin user is created with correct username, email, and admin privileges."""
         os.environ["OVERSOLVED_ADMIN_PASSWORD"] = "test_admin_password"
         try:
-            db_path = str(tmp_path / "test_new_admin.db")
-            config = {
-                "DB_TYPE": "sqlite",
+            create_app({
+                "DB_TYPE": "postgres",
                 "TESTING": True,
-                "DB_PATH": db_path,
-            }
-            create_app(config)
+                "DB_DSN": pg_dsn,
+            })
 
-            db_path_str = str(tmp_path / "test_new_admin.db")
-            db = Database(SQLiteConnection(db_path_str))
+            db = Database(PostgreSQLConnection(pg_dsn))
             db.init()
             user_store = UserStore(db)
             admin = user_store.find_by_username("admin")
@@ -127,20 +118,17 @@ class TestAdminPassword:
         finally:
             del os.environ["OVERSOLVED_ADMIN_PASSWORD"]
 
-    def test_admin_password_hash_matches_env_var(self, tmp_path):
+    def test_admin_password_hash_matches_env_var(self, pg_dsn):
         """The admin user's password hash matches the env var password."""
         os.environ["OVERSOLVED_ADMIN_PASSWORD"] = "custom-admin-pass-123"
         try:
-            db_path = str(tmp_path / "test_hash.db")
-            config = {
-                "DB_TYPE": "sqlite",
+            create_app({
+                "DB_TYPE": "postgres",
                 "TESTING": True,
-                "DB_PATH": db_path,
-            }
-            create_app(config)
+                "DB_DSN": pg_dsn,
+            })
 
-            db_path_str = str(tmp_path / "test_hash.db")
-            db = Database(SQLiteConnection(db_path_str))
+            db = Database(PostgreSQLConnection(pg_dsn))
             db.init()
             user_store = UserStore(db)
             admin = user_store.find_by_username("admin")
@@ -150,24 +138,22 @@ class TestAdminPassword:
         finally:
             del os.environ["OVERSOLVED_ADMIN_PASSWORD"]
 
-    def test_no_password_printed_to_stdout(self, tmp_path, capsys):
+    def test_no_password_printed_to_stdout(self, pg_dsn, capsys):
         """No password is printed to stdout during _ensure_admin_user execution."""
         os.environ["OVERSOLVED_ADMIN_PASSWORD"] = "test_admin_password"
         try:
-            db_path = str(tmp_path / "test_noprint.db")
-            config = {
-                "DB_TYPE": "sqlite",
+            create_app({
+                "DB_TYPE": "postgres",
                 "TESTING": True,
-                "DB_PATH": db_path,
-            }
-            create_app(config)
+                "DB_DSN": pg_dsn,
+            })
             captured = capsys.readouterr()
             assert "WARNING" not in captured.out
             assert "password" not in captured.out.lower()
         finally:
             del os.environ["OVERSOLVED_ADMIN_PASSWORD"]
 
-    def test_no_password_logged(self, tmp_path):
+    def test_no_password_logged(self, pg_dsn):
         """No password is logged via the logging module."""
         log_capture = io.StringIO()
         handler = logging.StreamHandler(log_capture)
@@ -178,13 +164,11 @@ class TestAdminPassword:
 
         os.environ["OVERSOLVED_ADMIN_PASSWORD"] = "test_admin_password"
         try:
-            db_path = str(tmp_path / "test_nolog.db")
-            config = {
-                "DB_TYPE": "sqlite",
+            create_app({
+                "DB_TYPE": "postgres",
                 "TESTING": True,
-                "DB_PATH": db_path,
-            }
-            create_app(config)
+                "DB_DSN": pg_dsn,
+            })
 
             root_logger.removeHandler(handler)
             log_output = log_capture.getvalue().lower()

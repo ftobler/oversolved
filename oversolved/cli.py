@@ -15,10 +15,17 @@ def _positive_int(value: str) -> int:
 
 
 def _validate_db_args(args: argparse.Namespace) -> dict:
-    """Build DB config dict and validate MariaDB args."""
+    """Build DB config dict and validate database-specific args."""
+    import os
     config = {"DB_TYPE": args.db_type, "DEBUG": getattr(args, "debug", False)}
 
-    if args.db_type == "sqlite":
+    if args.db_type == "postgres":
+        dsn = getattr(args, "db_dsn", None) or os.environ.get("OVERSOLVED_DB_DSN")
+        if not dsn:
+            print("error: --db-dsn or OVERSOLVED_DB_DSN required for postgres")
+            sys.exit(1)
+        config["DB_DSN"] = dsn
+    elif args.db_type == "sqlite":
         config["DB_PATH"] = args.db_path
     elif args.db_type == "mariadb":
         missing = [opt for opt in ("db_host", "db_user", "db_password", "db_name")
@@ -61,12 +68,14 @@ def _get_db_from_config(args: argparse.Namespace, init_db: bool = True):
         args: Parsed CLI arguments.
         init_db: If True (default), runs pending migrations on connect.
     """
-    from oversolved.db import Database, DatabaseConnection, SQLiteConnection, MariaDBConnection
+    from oversolved.db import Database, DatabaseConnection, SQLiteConnection, MariaDBConnection, PostgreSQLConnection
 
     config = _validate_db_args(args)
 
     conn: DatabaseConnection
-    if config["DB_TYPE"] == "sqlite":
+    if config["DB_TYPE"] == "postgres":
+        conn = PostgreSQLConnection(config["DB_DSN"])
+    elif config["DB_TYPE"] == "sqlite":
         conn = SQLiteConnection(config["DB_PATH"])
     else:
         conn = MariaDBConnection(
@@ -131,8 +140,9 @@ def build_parser() -> argparse.ArgumentParser:
     server_parser = subparsers.add_parser("run_server", help="Start the API server")
     server_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
     server_parser.add_argument("--port", type=int, default=5000, help="Port to bind to (default: 5000)")
-    server_parser.add_argument("--db-type", choices=["sqlite", "mariadb"], default="sqlite", help="Database type (default: sqlite)")
-    server_parser.add_argument("--db-path", default="oversolved.db", help="SQLite database path (default: oversolved.db)")
+    server_parser.add_argument("--db-type", choices=["postgres", "sqlite", "mariadb"], default="postgres", help="Database type (default: postgres)")
+    server_parser.add_argument("--db-dsn", help="PostgreSQL DSN (default: OVERSOLVED_DB_DSN env var)")
+    server_parser.add_argument("--db-path", default="oversolved.db", help="SQLite database path")
     server_parser.add_argument("--db-host", help="MariaDB host")
     server_parser.add_argument("--db-user", help="MariaDB username")
     server_parser.add_argument("--db-password", help="MariaDB password")
@@ -141,8 +151,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     # db subcommand group
     db_parser = subparsers.add_parser("db", help="Manage database schema")
-    db_parser.add_argument("--db-type", choices=["sqlite", "mariadb"], default="sqlite", help="Database type (default: sqlite)")
-    db_parser.add_argument("--db-path", default="oversolved.db", help="SQLite database path (default: oversolved.db)")
+    db_parser.add_argument("--db-type", choices=["postgres", "sqlite", "mariadb"], default="postgres", help="Database type (default: postgres)")
+    db_parser.add_argument("--db-dsn", help="PostgreSQL DSN (default: OVERSOLVED_DB_DSN env var)")
+    db_parser.add_argument("--db-path", default="oversolved.db", help="SQLite database path")
     db_parser.add_argument("--db-host", help="MariaDB host")
     db_parser.add_argument("--db-user", help="MariaDB username")
     db_parser.add_argument("--db-password", help="MariaDB password")
@@ -154,8 +165,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     # run_tasks subcommand
     tasks_parser = subparsers.add_parser("run_tasks", help="Run periodic task checks")
-    tasks_parser.add_argument("--db-type", choices=["sqlite", "mariadb"], default="sqlite", help="Database type (default: sqlite)")
-    tasks_parser.add_argument("--db-path", default="oversolved.db", help="SQLite database path (default: oversolved.db)")
+    tasks_parser.add_argument("--db-type", choices=["postgres", "sqlite", "mariadb"], default="postgres", help="Database type (default: postgres)")
+    tasks_parser.add_argument("--db-dsn", help="PostgreSQL DSN (default: OVERSOLVED_DB_DSN env var)")
+    tasks_parser.add_argument("--db-path", default="oversolved.db", help="SQLite database path")
     tasks_parser.add_argument("--db-host", help="MariaDB host")
     tasks_parser.add_argument("--db-user", help="MariaDB username")
     tasks_parser.add_argument("--db-password", help="MariaDB password")

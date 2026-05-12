@@ -35,6 +35,7 @@ docs/notes.md
 docs/feature/*
 
 *.db
+data/*
 bugreports/
 feature/
 

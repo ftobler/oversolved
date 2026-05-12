@@ -5,7 +5,7 @@ from oversolved.app import create_app
 
 
 @pytest.fixture
-def app(monkeypatch, tmp_path):
+def app(pg_dsn, monkeypatch, tmp_path):
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     dist_dir = tmp_path / "frontend" / "dist"
     dist_dir.mkdir(parents=True)
@@ -13,7 +13,7 @@ def app(monkeypatch, tmp_path):
     (dist_dir / "assets").mkdir()
     (dist_dir / "assets" / "index.css").write_text("body {}")
     test_app = create_app({
-        "DB_TYPE": "sqlite", "TESTING": True, "DB_PATH": ":memory:",
+        "DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn,
         "FRONTEND_DIST": str(dist_dir),
     })
     return test_app

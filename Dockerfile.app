@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir .
 EXPOSE 5000
 ENV SOLVER_DAEMON_HOST=solver
 ENV SOLVER_DAEMON_PORT=9100
-ENV OVERSOLVED_DB_PATH=/data/oversolved.db
+ENV OVERSOLVED_DB_DSN=postgresql://oversolved:oversolved@postgres:5432/oversolved
 ENV OVERSOLVED_UPLOAD_DIR=/data/uploads
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/')" || exit 1

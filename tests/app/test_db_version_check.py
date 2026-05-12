@@ -1,18 +1,17 @@
 """Tests for database version check on startup."""
 
 import pytest
-from oversolved.db import Database, SQLiteConnection
+from oversolved.db import Database, PostgreSQLConnection
 
 
-def _make_db():
-    conn = SQLiteConnection(":memory:")
-    database = Database(conn)
+def _make_db(pg_dsn):
+    database = Database(PostgreSQLConnection(pg_dsn))
 
     def m1(db):
-        db.execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY)")
+        db.execute("CREATE TABLE t1 (id SERIAL PRIMARY KEY)")
 
     def m2(db):
-        db.execute("CREATE TABLE t2 (id INTEGER PRIMARY KEY)")
+        db.execute("CREATE TABLE t2 (id SERIAL PRIMARY KEY)")
 
     database.register_migration(1, "create_t1", m1)
     database.register_migration(2, "create_t2", m2)
@@ -21,29 +20,28 @@ def _make_db():
 
 
 @pytest.fixture
-def fresh_db():
-    db = _make_db()
+def fresh_db(pg_dsn):
+    db = _make_db(pg_dsn)
     yield db
     db.close()
 
 
 @pytest.fixture
-def migrated_db():
-    db = _make_db()
+def migrated_db(pg_dsn):
+    db = _make_db(pg_dsn)
     db.init()
     yield db
     db.close()
 
 
 class TestGetLatestVersion:
-    def test_no_migrations_returns_zero(self):
-        conn = SQLiteConnection(":memory:")
-        db = Database(conn)
+    def test_no_migrations_returns_zero(self, pg_dsn):
+        db = Database(PostgreSQLConnection(pg_dsn))
         assert db.get_latest_version() == 0
         db.close()
 
-    def test_returns_highest_registered(self):
-        db = _make_db()
+    def test_returns_highest_registered(self, pg_dsn):
+        db = _make_db(pg_dsn)
         assert db.get_latest_version() == 2
         db.close()
 
@@ -68,9 +66,8 @@ class TestCheckVersionSync:
         assert current == 1
         assert latest == 2
 
-    def test_fresh_db_no_migrations_ok(self):
-        conn = SQLiteConnection(":memory:")
-        db = Database(conn)
+    def test_fresh_db_no_migrations_ok(self, pg_dsn):
+        db = Database(PostgreSQLConnection(pg_dsn))
         is_ok, current, latest = db.check_version_sync()
         assert is_ok is True
         assert current == 0

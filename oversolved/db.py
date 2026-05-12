@@ -1,4 +1,4 @@
-"""Database abstraction layer supporting SQLite and MariaDB."""
+"""Database abstraction layer supporting SQLite, MariaDB, and PostgreSQL."""
 
 import sqlite3
 import secrets
@@ -15,6 +15,11 @@ class DatabaseConnection(ABC):
     @abstractmethod
     def execute(self, query: str, params: tuple = ()) -> Any:
         """Execute a query and return cursor."""
+        pass
+
+    @abstractmethod
+    def insert_returning_id(self, query: str, params: tuple = ()) -> int:
+        """Execute an INSERT and return the auto-generated row ID."""
         pass
 
     @abstractmethod
@@ -42,6 +47,11 @@ class SQLiteConnection(DatabaseConnection):
 
     def execute(self, query: str, params: tuple = ()) -> Any:
         return self.conn.execute(query, params)
+
+    def insert_returning_id(self, query: str, params: tuple = ()) -> int:
+        cursor = self.conn.execute(query, params)
+        assert cursor.lastrowid is not None
+        return cursor.lastrowid
 
     def commit(self) -> None:
         self.conn.commit()
@@ -71,6 +81,48 @@ class MariaDBConnection(DatabaseConnection):
         cursor = self.conn.cursor()
         cursor.execute(query, params)
         return cursor
+
+    def insert_returning_id(self, query: str, params: tuple = ()) -> int:
+        cursor = self.conn.cursor()
+        cursor.execute(query + " RETURNING id", params)
+        return cursor.fetchone()[0]
+
+    def commit(self) -> None:
+        self.conn.commit()
+
+    def rollback(self) -> None:
+        self.conn.rollback()
+
+    def close(self) -> None:
+        self.conn.close()
+
+
+class PostgreSQLConnection(DatabaseConnection):
+    """PostgreSQL connection wrapper using psycopg2.
+
+    Translates ? placeholders to %s automatically so query strings stay consistent
+    with the SQLite convention used throughout the codebase.
+    """
+
+    def __init__(self, dsn: str):
+        import psycopg2
+        self.conn = psycopg2.connect(dsn)
+        self.conn.autocommit = False
+
+    def _translate(self, query: str) -> str:
+        return query.replace("?", "%s")
+
+    def execute(self, query: str, params: tuple = ()) -> Any:
+        import psycopg2.extras
+        cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor.execute(self._translate(query), params)
+        return cursor
+
+    def insert_returning_id(self, query: str, params: tuple = ()) -> int:
+        import psycopg2.extras
+        cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor.execute(self._translate(query) + " RETURNING id", params)
+        return cursor.fetchone()[0]
 
     def commit(self) -> None:
         self.conn.commit()
@@ -133,7 +185,18 @@ class Database:
         """
         import time
 
-        if isinstance(self.conn, MariaDBConnection):
+        if isinstance(self.conn, PostgreSQLConnection):
+            _ADVISORY_LOCK_ID = 1234567890
+            cursor = self.conn.execute("SELECT pg_try_advisory_lock(?)", (_ADVISORY_LOCK_ID,))
+            if not cursor.fetchone()[0]:
+                raise TimeoutError("Could not acquire advisory lock for version check")
+            try:
+                current = self.get_current_version()
+                latest = self.get_latest_version()
+                return (current >= latest, current, latest)
+            finally:
+                self.conn.execute("SELECT pg_advisory_unlock(?)", (_ADVISORY_LOCK_ID,))
+        elif isinstance(self.conn, MariaDBConnection):
             lock_name = "oversolved_version_check"
             cursor = self.conn.execute("SELECT GET_LOCK(%s, %s)", (lock_name, int(timeout)))
             row = cursor.fetchone()
@@ -185,6 +248,10 @@ class Database:
     def execute(self, query: str, params: tuple = ()) -> Any:
         """Execute a query."""
         return self.conn.execute(query, params)
+
+    def insert_returning_id(self, query: str, params: tuple = ()) -> int:
+        """Execute an INSERT and return the auto-generated row ID."""
+        return self.conn.insert_returning_id(query, params)
 
     def commit(self) -> None:
         """Commit transaction."""
@@ -276,16 +343,15 @@ class UserStore:
             values.extend([1 if is_admin else 0, 1 if is_active else 0])
 
             placeholders = ", ".join(["?"] * len(values))
-            cursor = self.db.execute(
+            user_id = self.db.insert_returning_id(
                 f"""INSERT INTO users ({', '.join(columns)})
                    VALUES ({placeholders})""",
                 tuple(values),
             )
-            user_id = cursor.lastrowid
             # Register handle in accounts table
             self.db.execute(
-                """INSERT OR IGNORE INTO accounts (handle, owner_type, owner_id)
-                   VALUES (?, ?, ?)""",
+                """INSERT INTO accounts (handle, owner_type, owner_id)
+                   VALUES (?, ?, ?) ON CONFLICT DO NOTHING""",
                 (username, "user", user_id),
             )
             return user_id

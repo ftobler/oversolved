@@ -2,7 +2,7 @@
 
 import pytest
 from datetime import datetime, timedelta, timezone
-from oversolved.db import Database, SQLiteConnection, PeriodicTaskStore
+from oversolved.db import Database, PostgreSQLConnection, PeriodicTaskStore
 from oversolved.periodic_tasks import (
     TaskScheduler,
     PeriodicTask,
@@ -26,28 +26,17 @@ class FakeTask(PeriodicTask):
         return {"status": "success", "deleted_count": 0, "errors": []}
 
 
-def _make_db():
-    conn = SQLiteConnection(":memory:")
-    database = Database(conn)
-
-    def migration_011(db):
-        db.execute("""
-            CREATE TABLE periodic_tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_key TEXT UNIQUE NOT NULL,
-                last_run_at TEXT,
-                last_run_status TEXT
-            )
-        """)
-
-    database.register_migration(11, "periodic_tasks", migration_011)
+def _make_db(pg_dsn):
+    from oversolved.app import _register_migrations
+    database = Database(PostgreSQLConnection(pg_dsn))
+    _register_migrations(database)
     database.init()
     return database
 
 
 @pytest.fixture
-def db():
-    database = _make_db()
+def db(pg_dsn):
+    database = _make_db(pg_dsn)
     yield database
     database.close()
 

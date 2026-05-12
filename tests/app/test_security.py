@@ -6,14 +6,13 @@ import pytest
 
 
 @pytest.fixture
-def admin_client(tmp_path, monkeypatch):
+def admin_client(pg_dsn, monkeypatch):
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     from oversolved.app import create_app
-    db_path = str(tmp_path / "test_security.db")
     app = create_app({
-        "DB_TYPE": "sqlite",
+        "DB_TYPE": "postgres",
         "TESTING": True,
-        "DB_PATH": db_path,
+        "DB_DSN": pg_dsn,
     })
     client = app.test_client()
 
@@ -83,14 +82,13 @@ class TestZipBombProtection:
 class TestMaxContentLength:
     """Tests for MAX_CONTENT_LENGTH protection."""
 
-    def test_upload_rejects_over_limit(self, tmp_path, monkeypatch):
+    def test_upload_rejects_over_limit(self, pg_dsn, monkeypatch):
         monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
         from oversolved.app import create_app
-        db_path = str(tmp_path / "test_upload_limit.db")
         app = create_app({
-            "DB_TYPE": "sqlite",
+            "DB_TYPE": "postgres",
             "TESTING": True,
-            "DB_PATH": db_path,
+            "DB_DSN": pg_dsn,
         })
         client = app.test_client()
 

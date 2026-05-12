@@ -1,4 +1,19 @@
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: oversolved
+      POSTGRES_USER: oversolved
+      POSTGRES_PASSWORD: oversolved
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oversolved"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   app:
     build:
       context: .
@@ -11,12 +26,15 @@ services:
       - OVERSOLVED_ADMIN_PASSWORD=${OVERSOLVED_ADMIN_PASSWORD:-admin}
       - OVERSOLVED_SESSION_COOKIE_SECURE=${OVERSOLVED_SESSION_COOKIE_SECURE:-false}
       - OVERSOLVED_UPLOAD_DIR=/data/uploads
+      - OVERSOLVED_DB_DSN=postgresql://oversolved:oversolved@postgres:5432/oversolved
       - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
       - SOLVER_DAEMON_HOST=solver
       - SOLVER_DAEMON_PORT=9100
     volumes:
       - oversolved_data:/data
     depends_on:
+      postgres:
+        condition: service_healthy
       solver:
         condition: service_healthy
     restart: unless-stopped

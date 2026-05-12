@@ -28,11 +28,11 @@ def _register_migrations(db: Database) -> None:
     def migration_001_initial_schema(database: Database):
         database.execute("""
             CREATE TABLE users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 must_change_password INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at TEXT NOT NULL DEFAULT (NOW()::text)
             )
         """)
         database.execute("""
@@ -49,8 +49,8 @@ def _register_migrations(db: Database) -> None:
                 name TEXT NOT NULL,
                 content TEXT NOT NULL,
                 owner_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                created_at TEXT NOT NULL DEFAULT (NOW()::text),
+                updated_at TEXT NOT NULL DEFAULT (NOW()::text),
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
@@ -58,18 +58,18 @@ def _register_migrations(db: Database) -> None:
     db.register_migration(1, "initial_schema", migration_001_initial_schema)
 
     def migration_002_add_preview_image(database: Database):
-        database.execute("ALTER TABLE documents ADD COLUMN preview_image BLOB")
+        database.execute("ALTER TABLE documents ADD COLUMN preview_image BYTEA")
 
     db.register_migration(2, "add_preview_image", migration_002_add_preview_image)
 
     def migration_003_add_shares(database: Database):
         database.execute("""
             CREATE TABLE document_shares (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 document_uuid TEXT NOT NULL,
                 shared_with_user_id INTEGER NULL,
                 permission TEXT NOT NULL DEFAULT 'view',
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                created_at TEXT NOT NULL DEFAULT (NOW()::text),
                 FOREIGN KEY (document_uuid) REFERENCES documents(uuid) ON DELETE CASCADE,
                 FOREIGN KEY (shared_with_user_id) REFERENCES users(id) ON DELETE CASCADE,
                 UNIQUE(document_uuid, shared_with_user_id)
@@ -91,6 +91,14 @@ def _register_migrations(db: Database) -> None:
     db.register_migration(5, "add_last_login", migration_005_add_last_login)
 
     def _column_exists(database: Database, table: str, column: str) -> bool:
+        from oversolved.db import PostgreSQLConnection
+        if isinstance(database.conn, PostgreSQLConnection):
+            cursor = database.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = ? AND column_name = ? AND table_schema = 'public'",
+                (table, column),
+            )
+            return cursor.fetchone() is not None
         cursor = database.execute(f"PRAGMA table_info({table})")
         return any(row[1] == column for row in cursor.fetchall())
 
@@ -108,7 +116,7 @@ def _register_migrations(db: Database) -> None:
         if not _column_exists(database, "users", "updated_at"):
             database.execute("ALTER TABLE users ADD COLUMN updated_at TEXT")
         database.execute(
-            "UPDATE users SET updated_at = datetime('now') WHERE updated_at IS NULL"
+            "UPDATE users SET updated_at = NOW()::text WHERE updated_at IS NULL"
         )
         database.execute(
             "UPDATE users SET email = username || '@local.oversolved' WHERE email IS NULL"
@@ -154,7 +162,7 @@ def _register_migrations(db: Database) -> None:
     def migration_011_periodic_tasks(database: Database):
         database.execute("""
             CREATE TABLE IF NOT EXISTS periodic_tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 task_key TEXT UNIQUE NOT NULL,
                 last_run_at TEXT,
                 last_run_status TEXT
@@ -166,11 +174,11 @@ def _register_migrations(db: Database) -> None:
     def migration_012_accounts_table(database: Database):
         database.execute("""
             CREATE TABLE IF NOT EXISTS accounts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 handle TEXT UNIQUE NOT NULL,
                 owner_type TEXT NOT NULL,
                 owner_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at TEXT NOT NULL DEFAULT (NOW()::text)
             )
         """)
         database.execute("""
@@ -184,8 +192,8 @@ def _register_migrations(db: Database) -> None:
         for row in cursor.fetchall():
             uid, username = row[0], row[1]
             database.execute(
-                """INSERT OR IGNORE INTO accounts (handle, owner_type, owner_id)
-                   VALUES (?, ?, ?)""",
+                """INSERT INTO accounts (handle, owner_type, owner_id)
+                   VALUES (?, ?, ?) ON CONFLICT DO NOTHING""",
                 (username, "user", uid),
             )
 
@@ -209,11 +217,11 @@ def _register_migrations(db: Database) -> None:
     def migration_015_rebuild_times(database: Database):
         database.execute("""
             CREATE TABLE IF NOT EXISTS rebuild_times (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 document_uuid TEXT NOT NULL,
                 duration_ms INTEGER NOT NULL,
                 feature_count INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                created_at TEXT NOT NULL DEFAULT (NOW()::text),
                 FOREIGN KEY (document_uuid) REFERENCES documents(uuid) ON DELETE CASCADE
             )
         """)
@@ -232,12 +240,11 @@ def _register_migrations(db: Database) -> None:
     db.register_migration(16, "sessions_user_id_index", migration_016_sessions_user_id_index)
 
     def migration_017_session_created_at(database: Database):
-        # SQLite ALTER TABLE requires a constant default; add nullable then backfill.
         database.execute(
             "ALTER TABLE sessions ADD COLUMN created_at TEXT"
         )
         database.execute(
-            "UPDATE sessions SET created_at = datetime('now') WHERE created_at IS NULL"
+            "UPDATE sessions SET created_at = NOW()::text WHERE created_at IS NULL"
         )
 
     db.register_migration(17, "session_created_at", migration_017_session_created_at)
@@ -284,8 +291,11 @@ def create_app(config: dict | None = None) -> Flask:
 
     app.config.update(
         {
-            "DB_TYPE": "sqlite",
-            "DB_PATH": os.environ.get("OVERSOLVED_DB_PATH", ":memory:"),
+            "DB_TYPE": "postgres",
+            "DB_DSN": os.environ.get(
+                "OVERSOLVED_DB_DSN",
+                "postgresql://oversolved:oversolved@localhost:5432/oversolved",
+            ),
             "JSON_SORT_KEYS": False,
             "SESSION_COOKIE_SECURE": os.environ.get("OVERSOLVED_SESSION_COOKIE_SECURE", "false").lower() == "true",
             "MAX_CONTENT_LENGTH": 100 * 1024 * 1024,  # 100 MB
@@ -299,6 +309,7 @@ def create_app(config: dict | None = None) -> Flask:
 
     db_config = {
         "type": app.config["DB_TYPE"],
+        "dsn": app.config.get("DB_DSN"),
         "path": app.config.get("DB_PATH", ":memory:"),
         "host": app.config.get("DB_HOST"),
         "user": app.config.get("DB_USER"),

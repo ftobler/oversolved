@@ -21,6 +21,7 @@ dependencies = [
     "pyyaml",
     "multimethod",
     "PyMySQL",
+    "psycopg2-binary",
     "pillow",
     "websockets",
 ]
@@ -35,7 +36,8 @@ dev = [
     "pytest",
     "mypy",
     "flake8",
-    "pycairo"
+    "pycairo",
+    "pytest-postgresql",
 ]
 
 [tool.pytest.ini_options]

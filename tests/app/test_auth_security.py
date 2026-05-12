@@ -6,15 +6,14 @@ from oversolved.app import create_app
 
 
 @pytest.fixture
-def app(tmp_path, monkeypatch):
-    """Create a test Flask app with a file-based SQLite database."""
+def app(pg_dsn, monkeypatch):
+    """Create a test Flask app backed by a fresh PostgreSQL database."""
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    db_path = str(tmp_path / "test.db")
     test_app = create_app(
         {
-            "DB_TYPE": "sqlite",
+            "DB_TYPE": "postgres",
             "TESTING": True,
-            "DB_PATH": db_path,
+            "DB_DSN": pg_dsn,
         }
     )
     return test_app

@@ -28,12 +28,12 @@ PLANE_FEATURE = {
 
 
 @pytest.fixture
-def app(tmp_path, monkeypatch):
+def app(pg_dsn, monkeypatch):
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     test_app = create_app({
-        "DB_TYPE": "sqlite",
+        "DB_TYPE": "postgres",
         "TESTING": True,
-        "DB_PATH": str(tmp_path / "test.db"),
+        "DB_DSN": pg_dsn,
     })
     return test_app
 

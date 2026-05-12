@@ -7,9 +7,9 @@ from oversolved.app import create_app
 
 
 @pytest.fixture
-def app():
+def app(pg_dsn):
     os.environ["OVERSOLVED_ADMIN_PASSWORD"] = "admin"
-    app = create_app({"DB_TYPE": "sqlite", "TESTING": True, "DB_PATH": ":memory:"})
+    app = create_app({"DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn})
     return app
 
 

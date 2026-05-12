@@ -5,153 +5,23 @@ import pytest
 from oversolved.app import create_app
 from oversolved.db import (
     Database,
-    SQLiteConnection,
+    PostgreSQLConnection,
     DocumentStore,
     UserStore,
 )
 
 
-def _make_db():
-    conn = SQLiteConnection(":memory:")
-    database = Database(conn)
-
-    def migration_001(db: Database):
-        db.execute("""
-            CREATE TABLE users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                must_change_password INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-        """)
-        db.execute("""
-            CREATE TABLE sessions (
-                token TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                expires_at TEXT NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
-        db.execute("""
-            CREATE TABLE documents (
-                uuid TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                content TEXT NOT NULL,
-                owner_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (owner_id) REFERENCES users(id)
-            )
-        """)
-
-    database.register_migration(1, "initial_schema", migration_001)
-
-    def migration_002(db: Database):
-        db.execute("ALTER TABLE documents ADD COLUMN preview_image BLOB")
-
-    database.register_migration(2, "add_preview_image", migration_002)
-
-    def migration_003(db: Database):
-        db.execute("""
-            CREATE TABLE document_shares (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                document_uuid TEXT NOT NULL,
-                shared_with_user_id INTEGER NULL,
-                permission TEXT NOT NULL DEFAULT 'view',
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (document_uuid) REFERENCES documents(uuid) ON DELETE CASCADE,
-                FOREIGN KEY (shared_with_user_id) REFERENCES users(id) ON DELETE CASCADE,
-                UNIQUE(document_uuid, shared_with_user_id)
-            )
-        """)
-        db.execute("ALTER TABLE documents ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0")
-
-    database.register_migration(3, "add_shares", migration_003)
-
-    def migration_004(db: Database):
-        db.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
-        db.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
-
-    database.register_migration(4, "add_user_management_fields", migration_004)
-
-    def migration_005(db: Database):
-        db.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT")
-
-    database.register_migration(5, "add_last_login", migration_005)
-
-    def migration_006(db: Database):
-        db.execute("ALTER TABLE users ADD COLUMN email TEXT")
-        db.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
-        db.execute("ALTER TABLE users ADD COLUMN provider TEXT")
-        db.execute("ALTER TABLE users ADD COLUMN provider_data TEXT")
-        db.execute("ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))")
-        db.execute("UPDATE users SET email = username || '@local.oversolved' WHERE email IS NULL")
-        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
-        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_external_id_provider ON users(external_id, provider)")
-
-    database.register_migration(6, "user_oauth_prep", migration_006)
-
-    def migration_007(db: Database):
-        db.execute(
-            "ALTER TABLE users ADD COLUMN document_sort_preference TEXT DEFAULT 'alphabetical'"
-        )
-
-    database.register_migration(7, "user_sort_preference", migration_007)
-
-    def migration_008(db: Database):
-        pass
-
-    database.register_migration(8, "organizations", migration_008)
-
-    def migration_009(db: Database):
-        pass
-
-    database.register_migration(9, "documents_org_id", migration_009)
-
-    def migration_010(db: Database):
-        db.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_documents_deleted_at ON documents(deleted_at)")
-
-    database.register_migration(10, "document_trash", migration_010)
-
-    def migration_011(db: Database):
-        db.execute("""
-            CREATE TABLE periodic_tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_key TEXT UNIQUE NOT NULL,
-                last_run_at TEXT,
-                last_run_status TEXT
-            )
-        """)
-
-    database.register_migration(11, "periodic_tasks", migration_011)
-
-    def migration_012(db: Database):
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS accounts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                handle TEXT UNIQUE NOT NULL,
-                owner_type TEXT NOT NULL,
-                owner_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-        """)
-        db.execute("""
-            CREATE INDEX IF NOT EXISTS idx_accounts_handle ON accounts(handle)
-        """)
-        db.execute("""
-            CREATE INDEX IF NOT EXISTS idx_accounts_owner ON accounts(owner_type, owner_id)
-        """)
-
-    database.register_migration(12, "accounts_table", migration_012)
+def _make_db(pg_dsn):
+    from oversolved.app import _register_migrations
+    database = Database(PostgreSQLConnection(pg_dsn))
+    _register_migrations(database)
     database.init()
     return database
 
 
 @pytest.fixture
-def db():
-    database = _make_db()
+def db(pg_dsn):
+    database = _make_db(pg_dsn)
     yield database
     database.close()
 
@@ -167,15 +37,14 @@ def user_store(db):
 
 
 @pytest.fixture
-def app(tmp_path, monkeypatch):
-    """Create a test Flask app with a file-based SQLite database."""
+def app(pg_dsn, monkeypatch):
+    """Create a test Flask app with a PostgreSQL database."""
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    db_path = str(tmp_path / "test.db")
     test_app = create_app(
         {
-            "DB_TYPE": "sqlite",
+            "DB_TYPE": "postgres",
             "TESTING": True,
-            "DB_PATH": db_path,
+            "DB_DSN": pg_dsn,
         }
     )
     return test_app
@@ -355,15 +224,16 @@ class TestCloneAPI:
         uuid = json.loads(create_resp.data)["uuid"]
 
         # Create second user directly in app's database
-        import sqlite3
+        import psycopg2
         from werkzeug.security import generate_password_hash
-        db_path = app.config["DB_PATH"]
-        with sqlite3.connect(db_path) as conn:
-            conn.execute(
-                "INSERT INTO users (username, password_hash, must_change_password) VALUES (?, ?, ?)",
+        conn = psycopg2.connect(app.config["DB_DSN"])
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO users (username, password_hash, must_change_password) VALUES (%s, %s, %s)",
                 ("user2", generate_password_hash("pass2word"), 0),
             )
-            conn.commit()
+        conn.close()
 
         client2 = app.test_client()
         login_resp = client2.post(

@@ -2,12 +2,14 @@
 
 from functools import wraps
 from flask import g, jsonify, request, current_app
-from oversolved.db import Database, SQLiteConnection, MariaDBConnection, SessionStore, UserStore
+from oversolved.db import Database, SQLiteConnection, MariaDBConnection, PostgreSQLConnection, SessionStore, UserStore
 
 
 def _get_database(config):
     """Create a database connection based on config."""
-    if config["type"] == "sqlite":
+    if config["type"] == "postgres":
+        db_conn = PostgreSQLConnection(config["dsn"])
+    elif config["type"] == "sqlite":
         db_conn = SQLiteConnection(config["path"])
     elif config["type"] == "mariadb":
         db_conn = MariaDBConnection(

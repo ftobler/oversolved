@@ -2,22 +2,21 @@
 
 import json
 import pytest
-from oversolved.db import Database, SQLiteConnection
+from oversolved.db import Database, PostgreSQLConnection
 
 
-def _make_db(with_migrations=False):
-    conn = SQLiteConnection(":memory:")
-    database = Database(conn)
+def _make_db(pg_dsn, with_migrations=False):
+    database = Database(PostgreSQLConnection(pg_dsn))
 
     if with_migrations:
         def m1(db):
-            db.execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY)")
+            db.execute("CREATE TABLE t1 (id SERIAL PRIMARY KEY)")
 
         def m2(db):
-            db.execute("CREATE TABLE t2 (id INTEGER PRIMARY KEY)")
+            db.execute("CREATE TABLE t2 (id SERIAL PRIMARY KEY)")
 
         def m3(db):
-            db.execute("CREATE TABLE t3 (id INTEGER PRIMARY KEY)")
+            db.execute("CREATE TABLE t3 (id SERIAL PRIMARY KEY)")
 
         database.register_migration(1, "create_t1", m1)
         database.register_migration(2, "create_t2", m2)
@@ -27,15 +26,15 @@ def _make_db(with_migrations=False):
 
 
 @pytest.fixture
-def fresh_db():
-    db = _make_db(with_migrations=True)
+def fresh_db(pg_dsn):
+    db = _make_db(pg_dsn, with_migrations=True)
     yield db
     db.close()
 
 
 class TestGetCurrentVersion:
-    def test_get_current_version_fresh_db(self):
-        db = _make_db()
+    def test_get_current_version_fresh_db(self, pg_dsn):
+        db = _make_db(pg_dsn)
         assert db.get_current_version() == 0
         db.close()
 
@@ -59,16 +58,19 @@ class TestGetPendingMigrations:
 
 
 class TestApplyMigration:
-    def test_apply_migration(self):
-        db = _make_db()
+    def test_apply_migration(self, pg_dsn):
+        db = _make_db(pg_dsn)
 
         def m1(d):
-            d.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY)")
+            d.execute("CREATE TABLE test_table (id SERIAL PRIMARY KEY)")
         db.register_migration(1, "create_test_table", m1)
 
         db.apply_migration(1, "create_test_table", m1)
 
-        cursor = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='test_table'")
+        cursor = db.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema='public' AND table_name='test_table'"
+        )
         assert cursor.fetchone() is not None
 
         cursor = db.execute("SELECT version, name FROM schema_version WHERE version = 1")
@@ -91,30 +93,21 @@ class TestApplyMigration:
 
 
 class TestUpgradeCLI:
-    def test_upgrade_cli(self, tmp_path):
-        db_path = str(tmp_path / "test.db")
-
-        conn = SQLiteConnection(db_path)
-        database = Database(conn)
-        database.get_current_version()
-        assert database.get_current_version() == 0
-        database.close()
-
+    def test_upgrade_cli(self, pg_dsn):
         from oversolved.cli import build_parser, cmd_db
 
         parser = build_parser()
         args = parser.parse_args([
-            "db", "--db-type", "sqlite", "--db-path", db_path,
+            "db", "--db-type", "postgres", "--db-dsn", pg_dsn,
             "upgrade",
         ])
         cmd_db(args)
 
-        conn2 = SQLiteConnection(db_path)
-        database2 = Database(conn2)
+        database2 = Database(PostgreSQLConnection(pg_dsn))
         assert database2.get_current_version() > 0
         database2.close()
 
-    def test_migrations_not_registered_on_every_request(self, tmp_path, monkeypatch):
+    def test_migrations_not_registered_on_every_request(self, pg_dsn, monkeypatch):
         """_register_migrations should only be called at startup, not per-request."""
         import oversolved.app as app_mod
         registry_calls = []
@@ -129,9 +122,9 @@ class TestUpgradeCLI:
         monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
 
         app = app_mod.create_app({
-            "DB_TYPE": "sqlite",
+            "DB_TYPE": "postgres",
             "TESTING": True,
-            "DB_PATH": str(tmp_path / "mig_once.db"),
+            "DB_DSN": pg_dsn,
         })
         client = app.test_client()
         client.post(
@@ -140,30 +133,25 @@ class TestUpgradeCLI:
             content_type="application/json",
         )
 
-        # Make multiple requests
         for _ in range(3):
             resp = client.get("/api/documents")
             assert resp.status_code == 200
 
-        # _register_migrations should only have been called once (during create_app startup)
         assert len(registry_calls) == 1
 
-    def test_upgrade_twice_is_noop(self, tmp_path):
-        db_path = str(tmp_path / "test2.db")
-
+    def test_upgrade_twice_is_noop(self, pg_dsn):
         from oversolved.cli import build_parser, cmd_db
 
         parser = build_parser()
         args = parser.parse_args([
-            "db", "--db-type", "sqlite", "--db-path", db_path,
+            "db", "--db-type", "postgres", "--db-dsn", pg_dsn,
             "upgrade",
         ])
 
         cmd_db(args)
         cmd_db(args)
 
-        conn = SQLiteConnection(db_path)
-        database = Database(conn)
+        database = Database(PostgreSQLConnection(pg_dsn))
         cursor = database.execute("SELECT COUNT(*) FROM schema_version")
         count = cursor.fetchone()[0]
         assert count > 0
@@ -171,13 +159,12 @@ class TestUpgradeCLI:
 
 
 class TestStatusCLI:
-    def test_status_cli(self, capsys, tmp_path):
+    def test_status_cli(self, capsys, pg_dsn):
         from oversolved.cli import build_parser, cmd_db
 
         parser = build_parser()
-        db_path = str(tmp_path / "test3.db")
         args = parser.parse_args([
-            "db", "--db-type", "sqlite", "--db-path", db_path,
+            "db", "--db-type", "postgres", "--db-dsn", pg_dsn,
             "status",
         ])
 
@@ -188,19 +175,12 @@ class TestStatusCLI:
 
 
 class TestCheckCLI:
-    def test_check_cli_pending(self, tmp_path):
-        db_path = str(tmp_path / "test4.db")
-
-        conn = SQLiteConnection(db_path)
-        database = Database(conn)
-        database.get_current_version()
-        database.close()
-
+    def test_check_cli_pending(self, pg_dsn):
         from oversolved.cli import build_parser, cmd_db
 
         parser = build_parser()
         args = parser.parse_args([
-            "db", "--db-type", "sqlite", "--db-path", db_path,
+            "db", "--db-type", "postgres", "--db-dsn", pg_dsn,
             "check",
         ])
 
@@ -208,21 +188,19 @@ class TestCheckCLI:
             cmd_db(args)
         assert exc.value.code == 1
 
-    def test_check_cli_up_to_date(self, tmp_path):
-        db_path = str(tmp_path / "test5.db")
-
+    def test_check_cli_up_to_date(self, pg_dsn):
         from oversolved.cli import build_parser, cmd_db
 
         parser = build_parser()
 
         up_args = parser.parse_args([
-            "db", "--db-type", "sqlite", "--db-path", db_path,
+            "db", "--db-type", "postgres", "--db-dsn", pg_dsn,
             "upgrade",
         ])
         cmd_db(up_args)
 
         args = parser.parse_args([
-            "db", "--db-type", "sqlite", "--db-path", db_path,
+            "db", "--db-type", "postgres", "--db-dsn", pg_dsn,
             "check",
         ])
         cmd_db(args)
@@ -237,10 +215,10 @@ class TestCliDbArgParsing:
         assert args.command == "db"
         assert args.db_command == "status"
 
-        args = parser.parse_args(["db", "--db-type", "sqlite", "upgrade"])
+        args = parser.parse_args(["db", "--db-type", "postgres", "upgrade"])
         assert args.command == "db"
         assert args.db_command == "upgrade"
-        assert args.db_type == "sqlite"
+        assert args.db_type == "postgres"
 
         args = parser.parse_args(["db", "check"])
         assert args.command == "db"
