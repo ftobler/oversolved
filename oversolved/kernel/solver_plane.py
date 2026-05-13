@@ -472,4 +472,5 @@ def _solve_plane(feature: dict, global_repo: Repository, body_store: dict | None
             },
         }
     except Exception as e:
+        logger.warning("_solve_plane failed: %s", e)
         return {"status": "exception", "exception": str(e)}

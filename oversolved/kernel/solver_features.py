@@ -758,7 +758,8 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
             result["status"] = "exception"
             result["exception"] = str(exc)
         except Exception as exc:
-            result["mesh_warning"] = str(exc)
+            result["status"] = "exception"
+            result["exception"] = str(exc)
 
         return result
     except Exception as exc:
@@ -849,7 +850,8 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
             result["status"] = "exception"
             result["exception"] = str(exc)
         except Exception as exc:
-            result["mesh_warning"] = str(exc)
+            result["status"] = "exception"
+            result["exception"] = str(exc)
 
         return result
     except Exception as exc:
@@ -1136,8 +1138,8 @@ def _resolve_fillet_edges(body, edge_queries):
                         if 0 <= eidx < len(topo_edges):
                             edge = topo_edges[eidx]
                             break
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("fillet edge index resolution failed for query %s: %s", q, exc)
         if edge is None and q.startswith("?"):
             try:
                 ids, type_restriction = _parse_ancestry(q)
@@ -1158,8 +1160,8 @@ def _resolve_fillet_edges(body, edge_queries):
                             "query=%s body=%s matched_type=%s",
                             q, body.id, edge_types[topo_edges.index(edge)] if edge in topo_edges else "?",
                         )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("fillet edge body-scoped fallback failed for query %s: %s", q, exc)
         if edge is not None:
             result.append(edge)
 

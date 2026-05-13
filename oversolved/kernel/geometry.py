@@ -30,6 +30,8 @@ from oversolved.kernel.cadquery_ops import (
 )
 from oversolved.kernel.profile_loops import classify_loops
 
+logger = logging.getLogger(__name__)
+
 __all__ = [
     "signed_distance_to_line",
     "point_in_circle",
@@ -122,10 +124,8 @@ def _validate_mesh(mesh: dict) -> None:
             used_faces = set(triangle_to_face)
             for face_idx in range(len(face_queries)):
                 if face_idx not in used_faces:
-                    # This should not happen if solid_to_mesh is working correctly,
-                    # but be lenient and just log a warning instead of crashing.
-                    logger = logging.getLogger(__name__)
-                    logger.warning(f"face {face_idx} has no triangles in triangle_to_face")
+                    # Lenient: log a warning instead of crashing.
+                    logger.warning("face %d has no triangles in triangle_to_face", face_idx)
 
     if face_queries and len(face_data) != len(face_queries):
         raise ValueError(
@@ -370,7 +370,10 @@ def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None
     from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
 
     topo_shape = solid.wrapped if hasattr(solid, "wrapped") else solid
-    BRepMesh_IncrementalMesh(topo_shape, 0.1, False, 0.1)
+    try:
+        BRepMesh_IncrementalMesh(topo_shape, 0.1, False, 0.1)
+    except Exception as exc:
+        logger.warning("solid_to_mesh: BRepMesh_IncrementalMesh failed: %s", exc)
 
     face_data: list[dict] = []
     triangle_to_face: list[int] = []
@@ -452,7 +455,8 @@ def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None
             else:
                 # Face produced no triangles - skip it
                 pass
-    except Exception:
+    except Exception as exc:
+        logger.warning("solid_to_mesh tessellation failed, falling back to unit cube: %s", exc)
         face_data = []
         triangle_to_face = []
         face_queries = []
@@ -461,6 +465,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None
         all_normals = []
 
     if not all_vertices:
+        logger.warning("solid_to_mesh produced no vertices; returning unit cube fallback")
         face_data = []
         triangle_to_face = []
         face_queries = []
