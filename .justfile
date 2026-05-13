@@ -4,6 +4,7 @@
 
 export OVERSOLVED_ADMIN_PASSWORD := "admin"
 export OVERSOLVED_SESSION_COOKIE_SECURE := "false"
+export OVERSOLVED_DB_DSN := "postgresql://oversolved:oversolved@localhost:5432/oversolved"
 
 default:
     just backend
@@ -69,3 +70,10 @@ runs:
 
 run_solver:
     oversolved-solver --debug
+
+
+run:
+    just run_front &
+    just run_back &
+    just run_solver &
+    wait

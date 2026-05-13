@@ -48,7 +48,7 @@ services:
       replicas: 3
       resources:
         limits:
-          memory: 4G  # Hard cap to prevent the VM from freezing
+          memory: 1G  # Hard cap to prevent the VM from freezing
     read_only: true
     tmpfs:
       - /tmp
