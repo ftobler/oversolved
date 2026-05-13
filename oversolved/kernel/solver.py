@@ -559,10 +559,13 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     rank = int(np.linalg.matrix_rank(J, tol=RANK_TOL))
     n_params = len(x_sol)
 
-    # Each fixed constraint pins 2 rigid-body DOF (tx, ty).  Reduce the 3-DOF
-    # rigid-body allowance accordingly.
+    # Full-entity fixed constraints (no "point" key AND no "x"/"y" keys) pin
+    # all ENTITY_SIZES[kind] DOF; point-fixed or x/y-keyed constraints pin 2.
+    # Mirrors the branch logic in solver_residuals._build_residuals_fn.
     n_fixed_pinned = sum(
-        2
+        ENTITY_SIZES[entities[c["target"]["entity"]]["kind"]]
+        if "point" not in c.get("target", {}) and "x" not in c and "y" not in c
+        else 2
         for c in constraints
         if c["kind"] == "fixed"
     )
