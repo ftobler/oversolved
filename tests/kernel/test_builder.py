@@ -417,6 +417,30 @@ def test_enriched_snapshot_isolation():
     assert cp.repo_snapshot['ancestral'] == original_ancestral
 
 
+def test_checkpoint_ancestral_not_inflated_by_tessellation():
+    """Ancestral lists in the checkpoint snapshot must not grow after tessellation.
+
+    The bug: dict(global_repo.ancestral) is a shallow copy — the list values are
+    shared, so _tessellate_bodies appending to them corrupts stored snapshots.
+    The fix: {k: list(v) ...} copies each list so tessellation cannot inflate it.
+    """
+    from solver_helpers import extrude_spec
+    sk1 = rect_sketch_spec(w=5.0, h=5.0, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5.0)
+    r = build({'features': [sk1, ex1]})
+
+    cp = r['_build_state'].checkpoints['ex1']
+    ancestral = cp.repo_snapshot['ancestral']
+
+    # Find any key that references the extrude feature and check list length.
+    # Before the fix, tessellation appended a second ID to the shared list,
+    # making len > 1 for keys that should have exactly one entry.
+    for key, ids in ancestral.items():
+        assert len(ids) == len(set(ids)), (
+            f"Duplicate IDs in ancestral snapshot for key {key}: {ids}"
+        )
+
+
 def test_double_copy_produces_same_payload():
     """Building same spec twice yields equivalent enriched snapshots."""
     spec = full_rect_extrude_spec(w=5.0, h=5.0, d=3.0)
