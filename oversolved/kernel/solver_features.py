@@ -559,9 +559,147 @@ def _resolve_merge_targets(merge_target: str | None, body_store: dict) -> list[s
     raise ValueError(f"extrude: body not found for merge_target '{merge_target}'")
 
 
-def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:
+def _apply_body_operation(
+    tool_shape: "Any",
+    body_store: dict,
+    operation: str,
+    merge_target: "str | None",
+    body_id: str,
+    feature_id: str,
+    sketch_id: str,
+    op_name: str = "",
+) -> dict:
+    """Apply a boolean body operation (add / cut / new) using tool_shape.
+
+    Called by both _solve_extrude and _solve_revolve after tool shape creation.
+    Raises ValueError for user-facing errors; callers catch and record status.
+
+    Merge convention: callers do `feature = {**sub, **feature}` so top-level
+    feature keys win over sub-dict keys. This helper receives already-resolved
+    values, so no further merging is needed here.
+    """
     from oversolved.kernel.types3d import Body
 
+    result: dict = {"status": "ok", "body_id": body_id}
+
+    if operation in ("add", "cut"):
+        target_ids = _resolve_merge_targets(merge_target, body_store)
+        if not target_ids and not merge_target and operation == "add":
+            need_new_body = True
+        else:
+            need_new_body = False
+            if not target_ids and not merge_target and operation == "cut":
+                # No bodies exist and no target specified: silently succeed.
+                result["operation"] = "cut"
+                return result
+            if not target_ids:
+                raise ValueError(
+                    f"{op_name}: merge target '{merge_target}' not found"
+                )
+    else:
+        need_new_body = False
+        target_ids = []
+
+    if operation == "cut":
+        from oversolved.kernel.geometry import boolean_cut, boolean_intersection
+        cut_anything = False
+        cut_body_id = None
+        for bid in target_ids:
+            existing_body = body_store[bid]
+            if existing_body.shape is None:
+                continue
+            try:
+                intersection = boolean_intersection(existing_body.shape, tool_shape)
+                if intersection is None or intersection.wrapped.IsNull():
+                    continue
+                import cadquery as cq
+                if cq.Shape.cast(intersection.wrapped).Volume() < 1e-10:
+                    continue
+            except Exception:
+                continue
+            new_shape = boolean_cut(existing_body.shape, tool_shape)
+            existing_body.shape = new_shape
+            existing_body.modified_by.append(feature_id)
+            cut_anything = True
+            if cut_body_id is None:
+                cut_body_id = bid
+        if not cut_anything:
+            raise ValueError(
+                f"{op_name}: cut does not intersect any target body "
+                "- nothing to remove"
+            )
+        result["body_id"] = cut_body_id
+        result["operation"] = "cut"
+    elif operation == "new":
+        solids = _split_compound(tool_shape)
+        body_ids = []
+        for i, solid in enumerate(solids):
+            bid = body_id if i == 0 else f"{body_id}_{i}"
+            b = Body(id=bid, created_by=feature_id, shape=solid,
+                     sketch_id=sketch_id)
+            body_store[bid] = b
+            body_ids.append(bid)
+        result["body_id"] = body_ids[0]
+        result["body_ids"] = body_ids
+        result["operation"] = "new"
+    else:
+        from oversolved.kernel.geometry import boolean_union
+        if need_new_body:
+            fused = False
+            fused_body_id = None
+        else:
+            fused = False
+            fused_body_id = None
+            for bid in target_ids:
+                existing_body = body_store[bid]
+                if existing_body.shape is None:
+                    continue
+                try:
+                    new_shape = boolean_union(existing_body.shape, tool_shape)
+                except Exception as exc:
+                    raise ValueError(f"{op_name}: add operation failed: {exc}")
+                if merge_target:
+                    from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND
+                    from OCP.TopExp import TopExp_Explorer
+                    if new_shape.wrapped.ShapeType() == TopAbs_COMPOUND:
+                        explorer = TopExp_Explorer(new_shape.wrapped, TopAbs_SOLID)
+                        solid_count = 0
+                        while explorer.More():
+                            solid_count += 1
+                            explorer.Next()
+                        if solid_count > 1:
+                            raise ValueError(
+                                f"{op_name}: add would create island shape "
+                                "not touching target body"
+                            )
+                existing_body.shape = new_shape
+                existing_body.modified_by.append(feature_id)
+                fused = True
+                fused_body_id = bid
+                break
+        if fused:
+            result["body_id"] = fused_body_id
+            result["body_ids"] = [fused_body_id]
+            result["operation"] = "add"
+        elif not need_new_body:
+            raise ValueError(f"{op_name}: add could not fuse with any target body")
+        else:
+            solids = _split_compound(tool_shape)
+            body_ids = []
+            for i, solid in enumerate(solids):
+                bid = body_id if i == 0 else f"{body_id}_{i}"
+                b = Body(id=bid, created_by=feature_id, shape=solid,
+                         sketch_id=sketch_id)
+                body_store[bid] = b
+                body_ids.append(bid)
+            result["body_id"] = body_ids[0]
+            result["body_ids"] = body_ids
+            result["operation"] = "add"
+
+    return result
+
+
+def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:
     try:
         feature_id = feature.get("id", "")
         sub = feature.get("extrude") or {}
@@ -598,24 +736,6 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
 
         operation = feature.get("operation", "add")
 
-        if operation in ("add", "cut"):
-            target_ids = _resolve_merge_targets(merge_target, body_store)
-            if not target_ids and not merge_target and operation == "add":
-                need_new_body = True
-            else:
-                need_new_body = False
-                if not target_ids and not merge_target and operation == "cut":
-                    # No bodies exist and no target specified: silently succeed
-                    # (nothing to cut).
-                    result["operation"] = "cut"
-                    return result
-                if not target_ids:
-                    raise ValueError(
-                        f"extrude: merge target '{merge_target}' not found"
-                    )
-        else:
-            need_new_body = False
-
         try:
             from oversolved.kernel.geometry import extrude_profile as _ep
 
@@ -629,101 +749,11 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
                 tool_shape = _ep(
                     all_loops, effective_plane, direction_vec, effective_distance
                 )
-
-                if operation == "cut":
-                    from oversolved.kernel.geometry import boolean_cut, boolean_intersection
-                    cut_anything = False
-                    cut_body_id = None
-                    for bid in target_ids:
-                        existing_body = body_store[bid]
-                        if existing_body.shape is None:
-                            continue
-                        try:
-                            intersection = boolean_intersection(existing_body.shape, tool_shape)
-                            if intersection is None or intersection.wrapped.IsNull():
-                                continue
-                            import cadquery as cq
-                            if cq.Shape.cast(intersection.wrapped).Volume() < 1e-10:
-                                continue
-                        except Exception:
-                            continue
-                        new_shape = boolean_cut(existing_body.shape, tool_shape)
-                        existing_body.shape = new_shape
-                        existing_body.modified_by.append(feature_id)
-                        cut_anything = True
-                        if cut_body_id is None:
-                            cut_body_id = bid
-                    if not cut_anything:
-                        raise ValueError(
-                            "extrude: cut does not intersect any target body "
-                            "- nothing to remove"
-                        )
-                    result["body_id"] = cut_body_id
-                    result["operation"] = "cut"
-                elif operation == "new":
-                    solids = _split_compound(tool_shape)
-                    body_ids = []
-                    for i, solid in enumerate(solids):
-                        bid = body_id if i == 0 else f"{body_id}_{i}"
-                        b = Body(id=bid, created_by=feature_id, shape=solid,
-                                 sketch_id=first_sketch_id)
-                        body_store[bid] = b
-                        body_ids.append(bid)
-                    result["body_id"] = body_ids[0]
-                    result["body_ids"] = body_ids
-                    result["operation"] = "new"
-                else:
-                    from oversolved.kernel.geometry import boolean_union
-                    if need_new_body:
-                        fused = False
-                    else:
-                        fused = False
-                        fused_body_id = None
-                        for bid in target_ids:
-                            existing_body = body_store[bid]
-                            if existing_body.shape is None:
-                                continue
-                            try:
-                                new_shape = boolean_union(existing_body.shape, tool_shape)
-                            except Exception as exc:
-                                raise ValueError(f"extrude: add operation failed: {exc}")
-                            if merge_target:
-                                from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND
-                                from OCP.TopExp import TopExp_Explorer
-                                if new_shape.wrapped.ShapeType() == TopAbs_COMPOUND:
-                                    explorer = TopExp_Explorer(new_shape.wrapped, TopAbs_SOLID)
-                                    solid_count = 0
-                                    while explorer.More():
-                                        solid_count += 1
-                                        explorer.Next()
-                                    if solid_count > 1:
-                                        raise ValueError(
-                                            "extrude: add would create island shape "
-                                            "not touching target body"
-                                        )
-                            existing_body.shape = new_shape
-                            existing_body.modified_by.append(feature_id)
-                            fused = True
-                            fused_body_id = bid
-                            break
-                    if fused:
-                        result["body_id"] = fused_body_id
-                        result["body_ids"] = [fused_body_id]
-                        result["operation"] = "add"
-                    elif not need_new_body:
-                        raise ValueError("extrude: add could not fuse with any target body")
-                    else:
-                        solids = _split_compound(tool_shape)
-                        body_ids = []
-                        for i, solid in enumerate(solids):
-                            bid = body_id if i == 0 else f"{body_id}_{i}"
-                            b = Body(id=bid, created_by=feature_id, shape=solid,
-                                     sketch_id=first_sketch_id)
-                            body_store[bid] = b
-                            body_ids.append(bid)
-                        result["body_id"] = body_ids[0]
-                        result["body_ids"] = body_ids
-                        result["operation"] = "add"
+                op_result = _apply_body_operation(
+                    tool_shape, body_store, operation, merge_target,
+                    body_id, feature_id, first_sketch_id, op_name="extrude",
+                )
+                result.update(op_result)
         except ValueError as exc:
             result["status"] = "exception"
             result["exception"] = str(exc)
@@ -736,11 +766,10 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
 
 
 def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> dict:
-    from oversolved.kernel.types3d import Body
-
     try:
         feature_id = feature.get("id", "")
         sub = feature.get("revolve") or {}
+        merge_target = sub.get("merge_target") or feature.get("merge_target")
         feature = {**sub, **feature}
         sketch_raw = feature.get("sketch", "")
         if isinstance(sketch_raw, list):
@@ -793,7 +822,6 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
         result: dict = {"status": "ok", "body_id": body_id}
 
         operation = feature.get("operation", "add")
-        merge_target = sub.get("merge_target") or feature.get("merge_target")
         try:
             from oversolved.kernel.geometry import sketch_loops_to_face, revolve_face as _rf
 
@@ -812,114 +840,11 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
                     effective_angle = -angle if direction == "reverse" else angle
                     tool_shape = _rf(face, axis_origin, axis_direction, effective_angle)
 
-                if operation == "cut":
-                    target_ids = _resolve_merge_targets(merge_target, body_store)
-                    if not target_ids and not merge_target:
-                        # No bodies exist and no target specified: silently succeed
-                        result["operation"] = "cut"
-                        return result
-                    from oversolved.kernel.geometry import boolean_cut, boolean_intersection
-                    cut_anything = False
-                    cut_body_id = None
-                    for bid in target_ids:
-                        existing_body = body_store[bid]
-                        if existing_body.shape is None:
-                            continue
-                        try:
-                            intersection = boolean_intersection(existing_body.shape, tool_shape)
-                            if intersection is None or intersection.wrapped.IsNull():
-                                continue
-                            import cadquery as cq
-                            if cq.Shape.cast(intersection.wrapped).Volume() < 1e-10:
-                                continue
-                        except Exception:
-                            continue
-                        new_shape = boolean_cut(existing_body.shape, tool_shape)
-                        existing_body.shape = new_shape
-                        existing_body.modified_by.append(feature_id)
-                        cut_anything = True
-                        if cut_body_id is None:
-                            cut_body_id = bid
-                    if not cut_anything:
-                        raise ValueError(
-                            "revolve: cut does not intersect any target body "
-                            "- nothing to remove"
-                        )
-                    result["body_id"] = cut_body_id
-                    result["operation"] = "cut"
-                elif operation == "new":
-                    solids = _split_compound(tool_shape)
-                    body_ids = []
-                    for i, solid in enumerate(solids):
-                        bid = body_id if i == 0 else f"{body_id}_{i}"
-                        b = Body(id=bid, created_by=feature_id, shape=solid,
-                                 sketch_id=first_sketch_id)
-                        body_store[bid] = b
-                        body_ids.append(bid)
-                    result["body_id"] = body_ids[0]
-                    result["body_ids"] = body_ids
-                    result["operation"] = "new"
-                else:
-                    from oversolved.kernel.geometry import boolean_union
-                    target_ids = _resolve_merge_targets(merge_target, body_store)
-                    if not target_ids and not merge_target:
-                        need_new_body = True
-                    else:
-                        need_new_body = False
-                        if not target_ids:
-                            raise ValueError(
-                                f"revolve: merge target '{merge_target}' not found"
-                            )
-                    if need_new_body:
-                        fused = False
-                    else:
-                        fused = False
-                        fused_body_id = None
-                        for bid in target_ids:
-                            existing_body = body_store[bid]
-                            if existing_body.shape is None:
-                                continue
-                            try:
-                                new_shape = boolean_union(existing_body.shape, tool_shape)
-                            except Exception as exc:
-                                raise ValueError(f"revolve: add operation failed: {exc}")
-                            if merge_target:
-                                from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND
-                                from OCP.TopExp import TopExp_Explorer
-                                if new_shape.wrapped.ShapeType() == TopAbs_COMPOUND:
-                                    explorer = TopExp_Explorer(new_shape.wrapped, TopAbs_SOLID)
-                                    solid_count = 0
-                                    while explorer.More():
-                                        solid_count += 1
-                                        explorer.Next()
-                                    if solid_count > 1:
-                                        raise ValueError(
-                                            "revolve: add would create island shape "
-                                            "not touching target body"
-                                        )
-                            existing_body.shape = new_shape
-                            existing_body.modified_by.append(feature_id)
-                            fused = True
-                            fused_body_id = bid
-                            break
-                    if fused:
-                        result["body_id"] = fused_body_id
-                        result["body_ids"] = [fused_body_id]
-                        result["operation"] = "add"
-                    elif not need_new_body:
-                        raise ValueError("revolve: add could not fuse with any target body")
-                    else:
-                        solids = _split_compound(tool_shape)
-                        body_ids = []
-                        for i, solid in enumerate(solids):
-                            bid = body_id if i == 0 else f"{body_id}_{i}"
-                            b = Body(id=bid, created_by=feature_id, shape=solid,
-                                     sketch_id=first_sketch_id)
-                            body_store[bid] = b
-                            body_ids.append(bid)
-                        result["body_id"] = body_ids[0]
-                        result["body_ids"] = body_ids
-                        result["operation"] = "add"
+                op_result = _apply_body_operation(
+                    tool_shape, body_store, operation, merge_target,
+                    body_id, feature_id, first_sketch_id, op_name="revolve",
+                )
+                result.update(op_result)
         except ValueError as exc:
             result["status"] = "exception"
             result["exception"] = str(exc)
