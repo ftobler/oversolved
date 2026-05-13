@@ -36,9 +36,10 @@ import math
 from typing import Any
 from oversolved.kernel.query import make_ancestry_query, emit_wire, absolute
 
-_EPS = 1e-9
-_MERGE = 1e-7  # distance tolerance for vertex deduplication
-_SPLIT_EPS = 1e-7  # parametric tolerance for split deduplication
+_EPS = 1e-9  # general tolerance for point coincidence
+# _MERGE > _EPS: a point pair at ~5e-8 apart merges to one vertex but is not treated as intersecting
+_MERGE = 1e-7  # vertex merge tolerance
+_SPLIT_EPS = 1e-7  # parametric split tolerance for deduplicating split positions
 
 
 # ─── Geometry helpers ───
@@ -211,30 +212,16 @@ def _intersect(eid_a, ea, eid_b, eb, lines, circles, arcs):
         return [(r[0], r[1], r[2])] if r else []
 
     if ta == "l" and tb == "c":
-        return (
-            [
-                (t, ang, pt)
-                for t, ang, pt in _lc(
-                    ea["start"],
-                    ea["end"],
-                    ea if False else eb["center"][0],
-                    eb["center"][1],
-                    eb["radius"],
-                )
-                # inline expand to avoid *-unpack confusion
-            ]
-            if False
-            else [
-                (t, ang, pt)
-                for t, ang, pt in _lc(
-                    ea["start"],
-                    ea["end"],
-                    eb["center"][0],
-                    eb["center"][1],
-                    eb["radius"],
-                )
-            ]
-        )
+        return [
+            (t, ang, pt)
+            for t, ang, pt in _lc(
+                ea["start"],
+                ea["end"],
+                eb["center"][0],
+                eb["center"][1],
+                eb["radius"],
+            )
+        ]
 
     if ta == "c" and tb == "l":
         return [
@@ -354,24 +341,12 @@ def _dedup(spl):
     return out
 
 
-def _build_edge_queries(hes, he_eid, feature_id, verts) -> list[dict]:
+def _build_edge_queries(hes, he_eid, feature_id) -> list[dict]:
     """Build ancestry queries for each unique edge in the half-edge graph.
 
     Each edge is identified by the two boundary entities it connects.
     Returns list of {query, start, end, kind, ...} for each edge.
     """
-    edge_map: dict[tuple, dict] = {}  # (entity_a, entity_b, edge_idx) -> edge data
-
-    for i, (v0, v1, eg) in enumerate(hes):
-        eid = he_eid[i]
-        edge_key = (eid, i)
-        if edge_key not in edge_map:
-            edge_map[edge_key] = {
-                **eg,
-                "start_vertex": v0,
-                "end_vertex": v1,
-            }
-
     edges = []
     edge_idx = 0
     for i, (v0, v1, eg) in enumerate(hes):
@@ -622,6 +597,10 @@ def detect_topology(geometry: dict, feature_id: str = "") -> dict:
         # Half-edges are added in pairs (fwd, rev) at indices (2k, 2k+1),
         # so the twin of i is always i ^ 1.
         twin: dict = {i: i ^ 1 for i in range(len(hes))}
+        assert all(
+            hes[i][0] == hes[i ^ 1][1] and hes[i][1] == hes[i ^ 1][0]
+            for i in range(0, len(hes), 2)
+        )
 
         # next[twin[i]] = outgoing edge at vf one step before i in CCW order
         # (i.e. the most clockwise turn when arriving via twin[i])
@@ -741,6 +720,6 @@ def detect_topology(geometry: dict, feature_id: str = "") -> dict:
             vid: {"x": verts[vid][0], "y": verts[vid][1]} for vid in intersection_vids
         },
         "vertices": {vid: {"x": v[0], "y": v[1]} for vid, v in verts.items()},
-        "edges": _build_edge_queries(hes, he_eid, feature_id, verts),
+        "edges": _build_edge_queries(hes, he_eid, feature_id),
         "surfaces": surfaces,
     }
