@@ -26,6 +26,14 @@ class BuildIsolator:
 
     Uses the synchronous websockets client in a connection thread.  Each public
     method sends a request and blocks on a threading.Event for the response.
+
+    Threading invariants:
+    - _request_counter is incremented under _lock to guarantee unique IDs.
+    - Entry fields (result, json_done, etc.) are mutated only under _lock.
+    - _ws is captured under _lock before sending to avoid a concurrent
+      reconnect replacing the socket between check and use.
+    - _reconnecting flag prevents duplicate connect() calls when multiple
+      threads notice _ws is None simultaneously.
     """
 
     def __init__(self, host: str = "127.0.0.1", port: int = 9100, timeout: float = 30.0) -> None:
@@ -35,6 +43,7 @@ class BuildIsolator:
         self._lock = threading.Lock()
         self._pending: dict[str, dict] = {}
         self._ws: Any = None
+        self._reconnecting = False
         self._reader_thread: threading.Thread | None = None
         self._connect()
 
@@ -65,10 +74,16 @@ class BuildIsolator:
                 raw = ws.recv()
             except Exception:
                 logger.warning("Solver daemon connection lost")
+                with self._lock:
+                    if self._ws is ws:
+                        self._ws = None
                 self._cancel_pending("solver daemon disconnected")
                 break
             if raw is None:
                 logger.warning("Solver daemon connection closed")
+                with self._lock:
+                    if self._ws is ws:
+                        self._ws = None
                 self._cancel_pending("solver daemon disconnected")
                 break
 
@@ -84,31 +99,34 @@ class BuildIsolator:
         except json.JSONDecodeError:
             return
         request_id = response.get("request_id", "")
+        event_to_set = None
         with self._lock:
             entry = self._pending.get(request_id)
-        if entry is None:
-            return
-        status = response.get("status", "ok")
-        if status == "error":
-            payload = response.get("payload", {})
-            entry["result"] = _error_result(
-                payload.get("exception", "solver error")
-            )
-            entry["json_done"] = True
-            entry["expects_geometry"] = False
-            entry["event"].set()
-            return
-
-        entry["result"] = response.get("payload", {})
-        entry["json_done"] = True
-        entry["expects_geometry"] = response.get("has_geometry", False)
-
-        if not entry["expects_geometry"]:
-            entry["event"].set()
-        elif entry["geometry_bytes"] is not None:
-            # Binary frame arrived before text frame — resolve now.
-            entry["result"]["_geometry_bytes"] = entry["geometry_bytes"]
-            entry["event"].set()
+            if entry is None:
+                if request_id:
+                    logger.warning("Received text frame for unknown request_id %r", request_id)
+                return
+            status = response.get("status", "ok")
+            if status == "error":
+                payload = response.get("payload", {})
+                entry["result"] = _error_result(
+                    payload.get("exception", "solver error")
+                )
+                entry["json_done"] = True
+                entry["expects_geometry"] = False
+                event_to_set = entry["event"]
+            else:
+                entry["result"] = response.get("payload", {})
+                entry["json_done"] = True
+                entry["expects_geometry"] = response.get("has_geometry", False)
+                if not entry["expects_geometry"]:
+                    event_to_set = entry["event"]
+                elif entry["geometry_bytes"] is not None:
+                    # Binary frame arrived before text frame -- resolve now.
+                    entry["result"]["_geometry_bytes"] = entry["geometry_bytes"]
+                    event_to_set = entry["event"]
+        if event_to_set is not None:
+            event_to_set.set()
 
     def _handle_binary_frame(self, raw: bytes) -> None:
         """Process a binary geometry frame from the daemon.
@@ -127,43 +145,58 @@ class BuildIsolator:
         except json.JSONDecodeError:
             return
         request_id = header.get("request_id", "")
+        event_to_set = None
         with self._lock:
             entry = self._pending.get(request_id)
-        if entry is None:
-            return
-        entry["geometry_bytes"] = raw
-        if entry["json_done"]:
-            entry["result"]["_geometry_bytes"] = raw
-            entry["event"].set()
+            if entry is None:
+                if request_id:
+                    logger.warning("Received binary frame for unknown request_id %r", request_id)
+                return
+            entry["geometry_bytes"] = raw
+            if entry["json_done"]:
+                entry["result"]["_geometry_bytes"] = raw
+                event_to_set = entry["event"]
+        if event_to_set is not None:
+            event_to_set.set()
 
     def _cancel_pending(self, reason: str) -> None:
         """Cancel all pending requests with the given reason."""
         with self._lock:
             entries = list(self._pending.values())
             self._pending.clear()
+            for entry in entries:
+                entry["result"] = _error_result(reason)
         for entry in entries:
-            entry["result"] = _error_result(reason)
             entry["event"].set()
 
     def _try_reconnect(self) -> None:
-        """If the connection is lost, attempt to reconnect in place."""
+        """If the connection is lost, attempt to reconnect in place.
+
+        Uses _reconnecting flag to ensure only one thread calls connect()
+        even when multiple threads observe _ws is None simultaneously.
+        """
         with self._lock:
-            if self._ws is not None:
+            if self._ws is not None or self._reconnecting:
                 return
+            self._reconnecting = True
         try:
             ws = connect(self._address, close_timeout=5, max_size=None)
         except Exception:
+            with self._lock:
+                self._reconnecting = False
             return
         with self._lock:
             self._ws = ws
+            self._reconnecting = False
         self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
         self._reader_thread.start()
         logger.info("Reconnected to solver daemon at %s", self._address)
 
     def _send_request(self, msg_type: str, **kwargs: Any) -> dict:
         """Send a request and wait for the matching response."""
-        self._request_counter += 1
-        request_id = str(self._request_counter)
+        with self._lock:
+            self._request_counter += 1
+            request_id = str(self._request_counter)
         msg: dict[str, Any] = {"type": msg_type, "request_id": request_id, **kwargs}
 
         event = threading.Event()
@@ -187,8 +220,15 @@ class BuildIsolator:
                     return _error_result("solver daemon not connected")
                 self._pending[request_id] = entry
 
+        with self._lock:
+            ws = self._ws
+        if ws is None:
+            with self._lock:
+                self._pending.pop(request_id, None)
+            return _error_result("solver daemon not connected")
+
         try:
-            self._ws.send(json.dumps(msg))
+            ws.send(json.dumps(msg))
         except Exception:
             with self._lock:
                 self._pending.pop(request_id, None)
