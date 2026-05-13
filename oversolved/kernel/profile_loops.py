@@ -1,9 +1,45 @@
 """Pure-Python utilities for classifying 2D profile loops before OCC extrusion."""
 
+import math
+
+
+def _arc_midpoint(e: dict) -> list[float] | None:
+    """Return the midpoint of an arc edge, or None if not an arc or no center."""
+    if e.get("kind") != "arc":
+        return None
+    center = e.get("center")
+    if center is None:
+        return None
+    cx, cy = center[0], center[1]
+    r = e.get("radius", 0.0)
+    a0 = math.radians(e.get("angle_start_deg", 0.0))
+    a1 = math.radians(e.get("angle_end_deg", 0.0))
+    if not e.get("ccw", True):
+        a0, a1 = a1, a0
+    if a1 < a0:
+        a1 += 2 * math.pi
+    am = (a0 + a1) / 2
+    return [cx + r * math.cos(am), cy + r * math.sin(am)]
+
+
+def _loop_pts(loop: list[dict]) -> list[list[float]]:
+    """Build a polygon point list from a loop, inserting arc midpoints."""
+    pts: list[list[float]] = []
+    for e in loop:
+        if "start" in e:
+            pts.append(e["start"])
+        mid = _arc_midpoint(e)
+        if mid is not None:
+            pts.append(mid)
+        elif "start" not in e:
+            # OCC-sourced edge without start/end: skip (no geometry to place)
+            pass
+    return pts
+
 
 def _loop_signed_area(loop: list[dict]) -> float:
     """Signed 2D area via the shoelace formula. Positive = CCW (outer)."""
-    pts = [e["start"] for e in loop if "start" in e]
+    pts = _loop_pts(loop)
     n = len(pts)
     if n < 3:
         return 0.0
@@ -16,15 +52,16 @@ def _loop_signed_area(loop: list[dict]) -> float:
 def _point_in_loop(pt: list[float], loop: list[dict]) -> bool:
     """Ray-casting point-in-polygon test against a 2D loop."""
     x, y = pt[0], pt[1]
-    pts = [e["start"] for e in loop if "start" in e]
+    pts = _loop_pts(loop)
     n = len(pts)
     inside = False
     j = n - 1
     for i in range(n):
         xi, yi = pts[i][0], pts[i][1]
         xj, yj = pts[j][0], pts[j][1]
-        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-15) + xi):
-            inside = not inside
+        if (yi > y) != (yj > y):
+            if x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+                inside = not inside
         j = i
     return inside
 
@@ -49,6 +86,11 @@ def classify_loops(
         for e in loop:
             if "start" in e:
                 return list(e["start"])
+        # Fall back to arc midpoint for OCC-sourced arcs without start/end
+        for e in loop:
+            mid = _arc_midpoint(e)
+            if mid is not None:
+                return mid
         return [0.0, 0.0]
 
     n = len(loops)
