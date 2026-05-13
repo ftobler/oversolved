@@ -12,6 +12,7 @@ Public API (identical to the old subprocess-based version):
 
 import json
 import logging
+import struct
 import threading
 from typing import Any
 
@@ -40,7 +41,7 @@ class BuildIsolator:
     def _connect(self) -> None:
         """Establish the WebSocket connection and start the reader thread."""
         try:
-            self._ws = connect(self._address, close_timeout=5)
+            self._ws = connect(self._address, close_timeout=5, max_size=None)
         except Exception as exc:
             logger.warning("Failed to connect to solver daemon: %s", exc)
             self._ws = None
@@ -50,7 +51,12 @@ class BuildIsolator:
         logger.info("Connected to solver daemon at %s", self._address)
 
     def _read_loop(self) -> None:
-        """Read responses from the WebSocket and resolve pending requests."""
+        """Read responses from the WebSocket and resolve pending requests.
+
+        The daemon sends two frames per solve: a text JSON frame with metadata
+        and a binary frame with packed geometry.  Both must arrive before the
+        pending event is signalled.
+        """
         ws = self._ws
         if ws is None:
             return
@@ -65,23 +71,69 @@ class BuildIsolator:
                 logger.warning("Solver daemon connection closed")
                 self._cancel_pending("solver daemon disconnected")
                 break
-            try:
-                response = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            request_id = response.get("request_id", "")
-            with self._lock:
-                entry = self._pending.get(request_id)
-            if entry is None:
-                continue
-            status = response.get("status", "ok")
-            if status == "error":
-                payload = response.get("payload", {})
-                entry["result"] = _error_result(
-                    payload.get("exception", "solver error")
-                )
+
+            if isinstance(raw, bytes):
+                self._handle_binary_frame(raw)
             else:
-                entry["result"] = response.get("payload", {})
+                self._handle_text_frame(raw)
+
+    def _handle_text_frame(self, raw: str) -> None:
+        """Process a JSON text frame from the daemon."""
+        try:
+            response = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+        request_id = response.get("request_id", "")
+        with self._lock:
+            entry = self._pending.get(request_id)
+        if entry is None:
+            return
+        status = response.get("status", "ok")
+        if status == "error":
+            payload = response.get("payload", {})
+            entry["result"] = _error_result(
+                payload.get("exception", "solver error")
+            )
+            entry["json_done"] = True
+            entry["expects_geometry"] = False
+            entry["event"].set()
+            return
+
+        entry["result"] = response.get("payload", {})
+        entry["json_done"] = True
+        entry["expects_geometry"] = response.get("has_geometry", False)
+
+        if not entry["expects_geometry"]:
+            entry["event"].set()
+        elif entry["geometry_bytes"] is not None:
+            # Binary frame arrived before text frame — resolve now.
+            entry["result"]["_geometry_bytes"] = entry["geometry_bytes"]
+            entry["event"].set()
+
+    def _handle_binary_frame(self, raw: bytes) -> None:
+        """Process a binary geometry frame from the daemon.
+
+        The first 4 bytes are the padded JSON header length (big-endian uint32).
+        The header JSON contains a request_id field for correlation.
+        """
+        if len(raw) < 4:
+            return
+        padded_len = struct.unpack(">I", raw[:4])[0]
+        if len(raw) < 4 + padded_len:
+            return
+        header_bytes = raw[4:4 + padded_len].rstrip(b"\x00")
+        try:
+            header = json.loads(header_bytes)
+        except json.JSONDecodeError:
+            return
+        request_id = header.get("request_id", "")
+        with self._lock:
+            entry = self._pending.get(request_id)
+        if entry is None:
+            return
+        entry["geometry_bytes"] = raw
+        if entry["json_done"]:
+            entry["result"]["_geometry_bytes"] = raw
             entry["event"].set()
 
     def _cancel_pending(self, reason: str) -> None:
@@ -99,7 +151,7 @@ class BuildIsolator:
             if self._ws is not None:
                 return
         try:
-            ws = connect(self._address, close_timeout=5)
+            ws = connect(self._address, close_timeout=5, max_size=None)
         except Exception:
             return
         with self._lock:
@@ -115,18 +167,25 @@ class BuildIsolator:
         msg: dict[str, Any] = {"type": msg_type, "request_id": request_id, **kwargs}
 
         event = threading.Event()
+        entry: dict = {
+            "event": event,
+            "result": None,
+            "geometry_bytes": None,
+            "expects_geometry": False,
+            "json_done": False,
+        }
         with self._lock:
             if self._ws is None:
                 pass  # fall through to reconnect attempt outside the lock
             else:
-                self._pending[request_id] = {"event": event, "result": None}
+                self._pending[request_id] = entry
 
         if self._ws is None:
             self._try_reconnect()
             with self._lock:
                 if self._ws is None:
                     return _error_result("solver daemon not connected")
-                self._pending[request_id] = {"event": event, "result": None}
+                self._pending[request_id] = entry
 
         try:
             self._ws.send(json.dumps(msg))
@@ -141,10 +200,13 @@ class BuildIsolator:
             return _error_result("solver request timed out")
 
         with self._lock:
-            entry = self._pending.pop(request_id, None)
-        if entry is None or entry["result"] is None:
+            try:
+                pending_entry = self._pending.pop(request_id)
+            except KeyError:
+                pending_entry = None
+        if pending_entry is None or pending_entry["result"] is None:
             return _error_result("solver request failed")
-        return entry["result"]
+        return pending_entry["result"]
 
     def build(
         self,

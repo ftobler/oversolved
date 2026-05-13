@@ -1,11 +1,31 @@
 """Tests for BuildIsolator — WebSocket relay to solver daemon."""
 
 import importlib
+import json
 import multiprocessing as mp
 import socket
+import struct
 import time
 from typing import Generator
 import pytest
+
+
+def _unpack_geometry(geometry_bytes: bytes) -> dict:
+    """Parse the JSON header from a packed geometry binary frame."""
+    padded_len = struct.unpack(">I", geometry_bytes[:4])[0]
+    header_bytes = geometry_bytes[4:4 + padded_len].rstrip(b"\x00")
+    return json.loads(header_bytes)
+
+
+def _vert_count(result: dict, body_id: str) -> int:
+    header = _unpack_geometry(result["_geometry_bytes"])
+    return header["bodies"].get(body_id, {}).get("counts", {}).get("vertices", 0)
+
+
+def _face_count(result: dict, body_id: str) -> int:
+    header = _unpack_geometry(result["_geometry_bytes"])
+    return header["bodies"].get(body_id, {}).get("counts", {}).get("faces", 0)
+
 
 pytestmark = [
     pytest.mark.skipif(
@@ -54,13 +74,11 @@ def test_build_isolated_basic(daemon_port):
     finally:
         isolator.shutdown()
 
-    assert "bodies" in result
+    assert "_geometry_bytes" in result
     assert "result" in result
-    assert "body_ex1" in result["bodies"]
     assert result["result"]["ex1"]["status"] == "ok"
-    mesh = result["bodies"]["body_ex1"]["mesh"]
-    assert len(mesh["vertices"]) > 0
-    assert len(mesh["faces"]) > 0
+    assert _vert_count(result, "body_ex1") > 0
+    assert _face_count(result, "body_ex1") > 0
     # _build_state should NOT be in the result
     assert "_build_state" not in result
 
@@ -182,12 +200,12 @@ def test_memcache_incremental_same_result(daemon_port):
     try:
         # Full rebuild (no prior cache for this doc_id).
         r_full = isolator.build(spec, doc_id="memcache-correct-1")
-        verts_full = len(r_full["bodies"]["body_ex1"]["mesh"]["vertices"])
+        verts_full = _vert_count(r_full, "body_ex1")
 
         # Clear and rebuild — should give the same result.
         isolator.clear_cache(doc_id="memcache-correct-1")
         r_full2 = isolator.build(spec, doc_id="memcache-correct-1")
-        verts_full2 = len(r_full2["bodies"]["body_ex1"]["mesh"]["vertices"])
+        verts_full2 = _vert_count(r_full2, "body_ex1")
         assert verts_full2 == verts_full, \
             "second full rebuild differs from first"
 
@@ -208,7 +226,7 @@ def test_memcache_incremental_same_result(daemon_port):
         r_incr = isolator.build(spec_base, doc_id="memcache-correct-2")
         assert r_incr["result"]["fillet1"]["status"] == "ok", \
             f"incremental fillet failed: {r_incr['result']['fillet1']}"
-        verts_incr = len(r_incr["bodies"]["body_ex1"]["mesh"]["vertices"])
+        verts_incr = _vert_count(r_incr, "body_ex1")
 
         # Incremental must produce the same vertex count as full rebuild.
         assert verts_incr == verts_full, \
@@ -240,8 +258,8 @@ def test_memcache_cross_doc_isolation(daemon_port):
         # from the cached prev_state.
         r_a2 = isolator.build(spec_a, doc_id="doc-a")
         assert r_a2["result"]["ex1"]["status"] == "ok"
-        verts_a1 = len(r_a1["bodies"]["body_ex1"]["mesh"]["vertices"])
-        verts_a2 = len(r_a2["bodies"]["body_ex1"]["mesh"]["vertices"])
+        verts_a1 = _vert_count(r_a1, "body_ex1")
+        verts_a2 = _vert_count(r_a2, "body_ex1")
         assert verts_a2 == verts_a1, \
             "doc-a second build must produce identical geometry (cache must not corrupt result)"
     finally:
@@ -290,7 +308,8 @@ def test_build_isolated_fillet_chain_no_crash(daemon_port):
     isolator = BuildIsolator(host="127.0.0.1", port=daemon_port, timeout=30)
     try:
         r0 = isolator.build(spec, doc_id="crash-test")
-        eq0 = r0["bodies"]["body_ex1"].get("edge_queries", [])
+        geo0 = _unpack_geometry(r0["_geometry_bytes"])
+        eq0 = geo0["bodies"].get("body_ex1", {}).get("edge_queries", [])
 
         # Add fillet 1
         spec["features"].append({

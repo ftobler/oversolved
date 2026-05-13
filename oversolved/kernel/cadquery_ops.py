@@ -90,12 +90,12 @@ def make_arc_edge(
     return cq_shapes.Edge(builder.Edge())
 
 
-def make_wire(edges: list) -> cq_shapes.Wire:
+def make_wire(edges: list[cq_shapes.Edge]) -> cq_shapes.Wire:
     """Assemble edges into a wire."""
     return cq_shapes.Wire.assembleEdges(edges)
 
 
-def make_face_from_wires(outer_wire: cq_shapes.Wire, inner_wires: list | None = None) -> cq_shapes.Face:
+def make_face_from_wires(outer_wire: cq_shapes.Wire, inner_wires: list[cq_shapes.Wire] | None = None) -> cq_shapes.Face:
     """Create a face from an outer wire and optional hole wires."""
     if inner_wires:
         return cq_shapes.Face.makeFromWires(outer_wire, inner_wires)
@@ -107,7 +107,7 @@ def extrude_face(face: cq_shapes.Face, direction_vec: list[float], distance: flo
     if distance == 0:
         raise ValueError("extrude distance must be non-zero")
     vec = CQVector(*direction_vec) * distance
-    return cq_shapes.Solid.extrudeLinear(face, vec)
+    return cq_shapes.Solid.extrudeLinear(face, vec).clean()
 
 
 def revolve_face(face: Any, axis_origin: list[float], axis_direction: list[float], angle_deg: float) -> cq_shapes.Solid:

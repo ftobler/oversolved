@@ -1,11 +1,9 @@
 """WebSocket solver endpoint — thread-sticky, per-session cache, request/response model."""
 
-import array as _array
 import base64
 import json
 import logging
 import os
-import struct
 import threading
 from time import time
 from flask import request, current_app, g
@@ -13,6 +11,7 @@ from flask_sock import Sock
 from oversolved.blueprints import get_db
 from oversolved.db import SessionStore, UserStore
 from oversolved.kernel.build_isolated import BuildIsolator
+from oversolved.kernel.geometry_pack import pack_geometry_update  # noqa: F401 re-export
 
 logger = logging.getLogger(__name__)
 
@@ -43,87 +42,6 @@ def _record_auth_failure(ip: str):
             _auth_failures[ip] = [now]
         else:
             failures.append(now)
-
-
-def _float32_bytes(values):
-    return _array.array('f', values).tobytes()
-
-
-def _uint32_bytes(values):
-    return _array.array('I', values).tobytes()
-
-
-def _pack_body_section(body, body_offset, header_bodies, binary_chunks):
-    """Pack one body into binary chunks and write its header metadata."""
-    mesh = body.get("mesh", {}) or {}
-    raw_verts = mesh.get("vertices", []) or []
-    raw_faces = mesh.get("faces", []) or []
-    raw_tri2face = mesh.get("triangle_to_face", []) or []
-
-    flat_verts = [coord for v in raw_verts for coord in v]
-    flat_faces = [idx for f in raw_faces for idx in f]
-
-    verts_bytes = _float32_bytes(flat_verts)
-    faces_bytes = _uint32_bytes(flat_faces)
-    tri2face_bytes = _uint32_bytes(raw_tri2face)
-
-    v_len = len(verts_bytes)
-    f_len = len(faces_bytes)
-    t_len = len(tri2face_bytes)
-
-    header_bodies[body.get("id", "")] = {
-        "created_by": body.get("created_by"),
-        "modified_by": body.get("modified_by", []),
-        "face_data": mesh.get("face_data", []),
-        "face_queries": mesh.get("face_queries", []),
-        "edges": body.get("edges", []),
-        "edge_queries": body.get("edge_queries", []),
-        "brep_vertex_queries": body.get("vertex_queries", []),
-        "vertices": body.get("vertices", []),
-        "offsets": {
-            "vertices": [body_offset, v_len],
-            "faces": [body_offset + v_len, f_len],
-            "tri2face": [body_offset + v_len + f_len, t_len],
-        },
-        "counts": {
-            "vertices": len(raw_verts),
-            "faces": len(raw_faces),
-            "tri2face": len(raw_tri2face),
-        },
-    }
-
-    binary_chunks.extend([verts_bytes, faces_bytes, tri2face_bytes])
-    return body_offset + v_len + f_len + t_len
-
-
-def pack_geometry_update(msg_id, bodies, pick_bodies=None):
-    """Pack geometry data into a binary WebSocket frame.
-
-    Layout: [4B padded_json_len][JSON header (padded to 4B alignment)][binary data]
-    Offsets in the header are relative to the start of the binary data section.
-    Returns bytes suitable for ws.send().
-    """
-    header = {"msgId": msg_id, "bodies": {}, "pick_bodies": {}}
-    binary_chunks = []
-    body_offset = 0
-
-    for body_id, body in (bodies or {}).items():
-        body_with_id = {**body, "id": body_id}
-        body_offset = _pack_body_section(
-            body_with_id, body_offset, header["bodies"], binary_chunks
-        )
-
-    for body_id, body in (pick_bodies or {}).items():
-        body_with_id = {**body, "id": body_id}
-        body_offset = _pack_body_section(
-            body_with_id, body_offset, header["pick_bodies"], binary_chunks
-        )
-
-    header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
-    padded_len = ((len(header_bytes) + 3) // 4) * 4
-    header_bytes = header_bytes.ljust(padded_len, b"\x00")
-
-    return struct.pack(">I", padded_len) + header_bytes + b"".join(binary_chunks)
 
 
 def _check_auth(ws) -> bool:
@@ -277,8 +195,7 @@ def _handle_solve(data, isolator, db, ws):
         except Exception:
             db.rollback()
 
-    bodies = build_result.pop("bodies", {})
-    pick_bodies = build_result.pop("pick_bodies", None)
+    geometry_bytes = build_result.pop("_geometry_bytes", None)
 
     result = build_result.get("result", {})
     error_msg = result.get("_error") if isinstance(result, dict) else None
@@ -298,12 +215,8 @@ def _handle_solve(data, isolator, db, ws):
         "result": result,
     }))
 
-    geometry_bytes = pack_geometry_update(
-        msg_id=msg_id,
-        bodies=bodies,
-        pick_bodies=pick_bodies,
-    )
-    ws.send(geometry_bytes)
+    if geometry_bytes:
+        ws.send(geometry_bytes)
 
 
 def register_solver_ws(sock: Sock):

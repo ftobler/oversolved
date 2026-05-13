@@ -16,6 +16,7 @@ from queue import Empty as _QueueEmpty
 from typing import Any
 
 from websockets.asyncio.server import serve
+from oversolved.kernel.geometry_pack import pack_geometry_update
 
 logger = logging.getLogger(__name__)
 
@@ -278,11 +279,19 @@ async def handler(websocket: Any, pool: WorkerPool) -> None:
                         request.get("pick_boundary"),
                         request.get("rollback_position"),
                     )
+                    bodies = result.pop("bodies", {})
+                    pick_bodies = result.pop("pick_bodies", None)
+                    msg_id = request.get("spec", {}).get("msgId")
                     await websocket.send(json.dumps({
                         "request_id": request_id,
                         "status": "ok",
+                        "has_geometry": True,
                         "payload": result,
                     }))
+                    geometry = pack_geometry_update(
+                        msg_id, bodies, pick_bodies, request_id=request_id
+                    )
+                    await websocket.send(geometry)
                 except Exception as exc:
                     logger.exception("Solver error for request %s", request_id)
                     await websocket.send(json.dumps({
@@ -318,7 +327,7 @@ async def handler(websocket: Any, pool: WorkerPool) -> None:
 async def main_async(address: str, port: int, timeout: float) -> None:
     """Run the solver daemon until cancelled."""
     pool = WorkerPool(timeout=timeout)
-    async with serve(lambda ws: handler(ws, pool), address, port):
+    async with serve(lambda ws: handler(ws, pool), address, port, max_size=None):
         await asyncio.get_running_loop().create_future()
 
 

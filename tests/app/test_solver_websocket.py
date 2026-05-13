@@ -104,13 +104,18 @@ SOLVE_PAYLOAD = {
 }
 
 
+def _pack_empty_geometry():
+    from oversolved.kernel.geometry_pack import pack_geometry_update
+    return pack_geometry_update(None, {})
+
+
 def _make_mock_isolator(build_return=None):
     """Create a mock BuildIsolator that returns the given value from build()."""
     if build_return is None:
         build_return = {
             "solve_ms": 5,
             "result": {"sk1": {"status": "underconstrained"}},
-            "bodies": {},
+            "_geometry_bytes": _pack_empty_geometry(),
         }
     mock = MagicMock()
     mock.build.return_value = build_return
@@ -215,7 +220,7 @@ class TestSolverWebSocket:
         mock_isolator = _make_mock_isolator({
             "solve_ms": 42,
             "result": {"sk1": {"status": "underconstrained"}},
-            "bodies": {},
+            "_geometry_bytes": _pack_empty_geometry(),
         })
         mock_isolator_cls.return_value = mock_isolator
         ws = _MockWS()
@@ -256,7 +261,7 @@ class TestSolverWebSocket:
         mock_isolator = _make_mock_isolator({
             "solve_ms": 10,
             "result": {"sk1": {"status": "underconstrained"}},
-            "bodies": {},
+            "_geometry_bytes": _pack_empty_geometry(),
         })
         mock_isolator_cls.return_value = mock_isolator
 
@@ -378,7 +383,7 @@ class TestSolverWebSocket:
         mock_isolator = _make_mock_isolator({
             "solve_ms": 1,
             "result": {},
-            "bodies": {},
+            "_geometry_bytes": _pack_empty_geometry(),
         })
         mock_isolator_cls.return_value = mock_isolator
 
@@ -507,10 +512,11 @@ class TestPackGeometryUpdate:
             "vertices": [],
             "vertex_queries": [],
         }
+        from oversolved.kernel.geometry_pack import pack_geometry_update
         mock_isolator = _make_mock_isolator({
             "solve_ms": 5,
             "result": {},
-            "bodies": {"body_0": mock_body},
+            "_geometry_bytes": pack_geometry_update(None, {"body_0": mock_body}),
         })
         mock_isolator_cls.return_value = mock_isolator
 
@@ -532,7 +538,7 @@ class TestPackGeometryUpdate:
         mock_isolator = _make_mock_isolator({
             "solve_ms": 3,
             "result": {},
-            "bodies": {"body_0": {}},
+            "_geometry_bytes": _pack_empty_geometry(),
         })
         mock_isolator_cls.return_value = mock_isolator
 
