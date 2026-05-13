@@ -1093,6 +1093,8 @@ def _resolve_fillet_edges(body, edge_queries):
             c = circ.Location()
             ed["center"] = [c.X(), c.Y(), c.Z()]
             ed["radius"] = circ.Radius()
+            ed["angle_start"] = adapt.FirstParameter()
+            ed["angle_end"] = adapt.LastParameter()
         else:
             n_pts = 16
             pts = []
