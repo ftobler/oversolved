@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 vtk_installed = importlib.util.find_spec("vtkmodules") is not None
 requires_vtk = pytest.mark.skipif(not vtk_installed, reason="vtkmodules not installed")
 
+ocp_installed = importlib.util.find_spec("OCP") is not None
+requires_ocp = pytest.mark.skipif(not ocp_installed, reason="OCP (cadquery-ocp) not installed")
+
 
 OUTPUT_FILE = "frontend/public/test_output/results.yaml"
 

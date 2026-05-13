@@ -1256,6 +1256,55 @@ def _solve_transform(
         return {"status": "exception", "exception": str(exc)}
 
 
+def _apply_edge_feature(
+    feature: dict,
+    body_store: dict,
+    feature_kind: str,
+    geometry_fn: Any,
+    **geometry_kwargs: Any,
+) -> dict:
+    """Shared body-resolution and edge-application logic for fillet and chamfer.
+
+    Raises ValueError for user-facing errors; callers wrap in try/except.
+    """
+    feature_id = feature.get("id", "")
+    edges: list[str] = feature.get("edges", [])
+    if not edges:
+        raise ValueError(f"{feature_kind} requires at least one edge")
+
+    body_id = "body_" + feature.get("source_body", "")
+    if body_id not in body_store:
+        body = list(body_store.values())[0] if body_store else None
+        if body is None:
+            raise ValueError(f"no body found for {feature_kind}")
+        body_id = body.id
+        body = body_store[body_id]
+    else:
+        body = body_store[body_id]
+
+    if body.shape is None:
+        raise ValueError(f"body {body_id} has no shape")
+
+    # Validate the shape before passing to OCC; a corrupted shape
+    # can cause SIGSEGV inside the fillet/chamfer kernel.
+    try:
+        topo = body.shape.wrapped if hasattr(body.shape, "wrapped") else body.shape
+        if topo.IsNull():
+            raise ValueError(f"body {body_id} shape is null")
+    except Exception:
+        raise ValueError(f"body {body_id} shape is invalid")
+
+    topo_edges = _resolve_fillet_edges(body, edges)
+    if not topo_edges:
+        raise ValueError(f"no edges resolved for {feature_kind}")
+
+    new_shape = geometry_fn(body.shape, edges=topo_edges, **geometry_kwargs)
+    body.shape = new_shape
+    body.modified_by.append(feature_id)
+
+    return {"status": "ok", "body_id": body_id}
+
+
 def _solve_fillet(
     feature: dict,
     global_repo: Repository,
@@ -1264,51 +1313,13 @@ def _solve_fillet(
     from oversolved.kernel.geometry import apply_fillet
 
     try:
-        feature_id = feature.get("id", "")
         sub = feature.get("fillet") or {}
         feature = {**sub, **feature}
-
-        edges: list[str] = feature.get("edges", [])
         radius_raw = feature.get("radius")
         radius = float(radius_raw if radius_raw is not None else 1.0)
-
-        if not edges:
-            raise ValueError("fillet requires at least one edge")
-
         if radius <= 0:
             raise ValueError("fillet radius must be positive")
-
-        body_id = "body_" + feature.get("source_body", "")
-        if body_id not in body_store:
-            body = list(body_store.values())[0] if body_store else None
-            if body is None:
-                raise ValueError("no body found for fillet")
-            body_id = body.id
-            body = body_store[body_id]
-        else:
-            body = body_store[body_id]
-
-        if body.shape is None:
-            raise ValueError(f"body {body_id} has no shape")
-
-        # Validate the shape before passing to OCC; a corrupted shape
-        # can cause SIGSEGV inside the fillet kernel.
-        try:
-            topo = body.shape.wrapped if hasattr(body.shape, "wrapped") else body.shape
-            if topo.IsNull():
-                raise ValueError(f"body {body_id} shape is null")
-        except Exception:
-            raise ValueError(f"body {body_id} shape is invalid")
-
-        topo_edges = _resolve_fillet_edges(body, edges)
-        if not topo_edges:
-            raise ValueError("no edges resolved for fillet")
-
-        new_shape = apply_fillet(body.shape, radius, edges=topo_edges)
-        body.shape = new_shape
-        body.modified_by.append(feature_id)
-
-        return {"status": "ok", "body_id": body_id}
+        return _apply_edge_feature(feature, body_store, "fillet", apply_fillet, radius=radius)
     except Exception as exc:
         return {"status": "exception", "exception": str(exc)}
 
@@ -1321,52 +1332,19 @@ def _solve_chamfer(
     from oversolved.kernel.geometry import apply_chamfer
 
     try:
-        feature_id = feature.get("id", "")
         sub = feature.get("chamfer") or {}
         feature = {**sub, **feature}
-
-        edges: list[str] = feature.get("edges", [])
         distance_raw = feature.get("distance")
         distance = float(distance_raw if distance_raw is not None else 1.0)
         kind = feature.get("kind", "distance")
         angle_raw = feature.get("angle")
         angle = float(angle_raw if angle_raw is not None else 45.0)
-
-        if not edges:
-            raise ValueError("chamfer requires at least one edge")
-
         if distance <= 0:
             raise ValueError("chamfer distance must be positive")
-
-        body_id = "body_" + feature.get("source_body", "")
-        if body_id not in body_store:
-            body = list(body_store.values())[0] if body_store else None
-            if body is None:
-                raise ValueError("no body found for chamfer")
-            body_id = body.id
-            body = body_store[body_id]
-        else:
-            body = body_store[body_id]
-
-        if body.shape is None:
-            raise ValueError(f"body {body_id} has no shape")
-
-        try:
-            topo = body.shape.wrapped if hasattr(body.shape, "wrapped") else body.shape
-            if topo.IsNull():
-                raise ValueError(f"body {body_id} shape is null")
-        except Exception:
-            raise ValueError(f"body {body_id} shape is invalid")
-
-        topo_edges = _resolve_fillet_edges(body, edges)
-        if not topo_edges:
-            raise ValueError("no edges resolved for chamfer")
-
-        new_shape = apply_chamfer(body.shape, distance, kind=kind, angle=angle, edges=topo_edges)
-        body.shape = new_shape
-        body.modified_by.append(feature_id)
-
-        return {"status": "ok", "body_id": body_id}
+        return _apply_edge_feature(
+            feature, body_store, "chamfer", apply_chamfer,
+            distance=distance, kind=kind, angle=angle,
+        )
     except Exception as exc:
         return {"status": "exception", "exception": str(exc)}
 

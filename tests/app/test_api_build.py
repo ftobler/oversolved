@@ -7,7 +7,7 @@ from oversolved.kernel.builder import build
 
 
 try:
-    from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: F401
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: F401
     HAS_OCC = True
 except ImportError:
     HAS_OCC = False
@@ -53,6 +53,7 @@ class TestApiSolve:
         result = build({"features": [PLANE_FEATURE]})
         assert "plane" in result["result"]["pl1"]
 
+    @pytest.mark.skipif(not HAS_OCC, reason="OCP not available")
     def test_extrude_status_ok(self):
         result = build({"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
         assert result["result"]["ex1"]["status"] == "ok"

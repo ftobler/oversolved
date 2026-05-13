@@ -756,19 +756,17 @@ def shape_to_stl_file(shape: Any, filepath: str, deflection: float = 0.5, angula
     writer.Write(topo_shape, filepath)
 
 
-def apply_fillet(shape: Any, radius: float, edges: list[Any] | None = None) -> Any:
-    """Apply a fillet (round) to edges of a shape.
+def _apply_edge_modifier(
+    shape: Any,
+    edges: list[Any] | None,
+    maker_factory: Any,
+    add_edge_fn: Any,
+) -> Any:
+    """Shared OCC edge-modifier kernel used by apply_fillet and apply_chamfer.
 
-    Args:
-        shape: The CAD shape to fillet.
-        radius: The fillet radius.
-        edges: Optional list of specific TopoDS_Edge objects to fillet.
-               If None, all edges are filleted.
-
-    Returns:
-        The filleted shape, or the original shape if filleting fails.
+    maker_factory: (topo_shape) -> maker object; exception returns original shape.
+    add_edge_fn: (maker, topo_edge) -> None; exception skips that edge.
     """
-    from OCP.BRepFilletAPI import BRepFilletAPI_MakeFillet  # noqa: PLC0415
     from OCP.TopAbs import TopAbs_EDGE  # noqa: PLC0415
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
     from OCP.TopoDS import TopoDS  # noqa: PLC0415
@@ -795,7 +793,7 @@ def apply_fillet(shape: Any, radius: float, edges: list[Any] | None = None) -> A
             shape_edge_set = None
 
     try:
-        maker = BRepFilletAPI_MakeFillet(topo_shape)
+        maker = maker_factory(topo_shape)
     except Exception:
         return shape
 
@@ -811,7 +809,7 @@ def apply_fillet(shape: Any, radius: float, edges: list[Any] | None = None) -> A
             except Exception:
                 pass
             try:
-                maker.Add(radius, edge)
+                add_edge_fn(maker, edge)
                 edge_count += 1
             except Exception:
                 continue
@@ -820,7 +818,7 @@ def apply_fillet(shape: Any, radius: float, edges: list[Any] | None = None) -> A
             explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
             while explorer.More():
                 edge = TopoDS.Edge_s(explorer.Current())
-                maker.Add(radius, edge)
+                add_edge_fn(maker, edge)
                 edge_count += 1
                 explorer.Next()
         except Exception:
@@ -834,91 +832,40 @@ def apply_fillet(shape: Any, radius: float, edges: list[Any] | None = None) -> A
         return _ensure_cq_shape(maker.Shape())
     except Exception:
         return shape
+
+
+def apply_fillet(shape: Any, radius: float, edges: list[Any] | None = None) -> Any:
+    """Apply a fillet (round) to edges of a shape.
+
+    Returns the filleted shape, or the original shape if filleting fails.
+    """
+    from OCP.BRepFilletAPI import BRepFilletAPI_MakeFillet  # noqa: PLC0415
+    return _apply_edge_modifier(
+        shape, edges,
+        maker_factory=BRepFilletAPI_MakeFillet,
+        add_edge_fn=lambda maker, e: maker.Add(radius, e),
+    )
 
 
 def apply_chamfer(shape: Any, distance: float, kind: str = "distance", angle: float = 45.0, edges: list[Any] | None = None) -> Any:
     """Apply a chamfer (bevel) to edges of a shape.
 
-    Args:
-        shape: The CAD shape to chamfer.
-        distance: The chamfer distance.
-        kind: "distance" or "angle_distance".
-        angle: Angle in degrees (only used when kind is "angle_distance").
-        edges: Optional list of specific TopoDS_Edge objects to chamfer.
-               If None, all edges are chamfered.
-
-    Returns:
-        The chamfered shape, or the original shape if chamfering fails.
+    kind: "distance" or "angle_distance".
+    Returns the chamfered shape, or the original shape if chamfering fails.
     """
     from OCP.BRepFilletAPI import BRepFilletAPI_MakeChamfer  # noqa: PLC0415
-    from OCP.TopAbs import TopAbs_EDGE  # noqa: PLC0415
-    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
-    from OCP.TopoDS import TopoDS  # noqa: PLC0415
 
-    topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+    def _add(maker: Any, edge: Any) -> None:
+        if kind == "angle_distance":
+            maker.AddDA(distance, angle, edge)
+        else:
+            maker.Add(distance, edge)
 
-    try:
-        if topo_shape.IsNull():
-            return shape
-    except Exception:
-        return shape
-
-    shape_edge_set: set[int] | None = None
-    if edges is not None and len(edges) > 0:
-        try:
-            shape_edge_set = set()
-            explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
-            while explorer.More():
-                shape_edge_set.add(explorer.Current().HashCode(1 << 24))
-                explorer.Next()
-        except Exception:
-            shape_edge_set = None
-
-    try:
-        maker = BRepFilletAPI_MakeChamfer(topo_shape)
-    except Exception:
-        return shape
-
-    edge_count = 0
-    if edges is not None:
-        for edge in edges:
-            try:
-                if shape_edge_set is not None:
-                    edge_hash = edge.HashCode(1 << 24)
-                    if edge_hash not in shape_edge_set:
-                        continue
-            except Exception:
-                pass
-            try:
-                if kind == "angle_distance":
-                    maker.AddDA(distance, angle, edge)
-                else:
-                    maker.Add(distance, edge)
-                edge_count += 1
-            except Exception:
-                continue
-    else:
-        try:
-            explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
-            while explorer.More():
-                edge = TopoDS.Edge_s(explorer.Current())
-                if kind == "angle_distance":
-                    maker.AddDA(distance, angle, edge)
-                else:
-                    maker.Add(distance, edge)
-                edge_count += 1
-                explorer.Next()
-        except Exception:
-            return shape
-
-    if edge_count == 0:
-        return shape
-
-    try:
-        maker.Build()
-        return _ensure_cq_shape(maker.Shape())
-    except Exception:
-        return shape
+    return _apply_edge_modifier(
+        shape, edges,
+        maker_factory=BRepFilletAPI_MakeChamfer,
+        add_edge_fn=_add,
+    )
 
 
 def transform_copy(shape: Any, trsf: Any) -> Any:

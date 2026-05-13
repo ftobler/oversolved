@@ -1,7 +1,12 @@
+import importlib
 import textwrap
 import numpy as np
+import pytest
 from pytest import approx
 from oversolved.kernel.solver import solve, solve_features
+
+ocp_installed = importlib.util.find_spec("OCP") is not None
+requires_ocp = pytest.mark.skipif(not ocp_installed, reason="OCP (cadquery-ocp) not installed")
 
 # ── Plane feature tests ──
 
@@ -141,6 +146,7 @@ def test_plane_three_point_collinear():
     assert 'collinear' in result['features'][1].get('exception', '').lower()
 
 
+@requires_ocp
 def test_plane_on_face():
     """Plane aligned with topology face."""
     spec = {
@@ -180,6 +186,7 @@ def test_plane_on_face():
     np.testing.assert_array_almost_equal(plane['origin'], [0, 0, 1], decimal=5)
 
 
+@requires_ocp
 def test_plane_on_face_edge_angle():
     """Plane on face with X axis along edge, rotated by angle."""
     spec = {
@@ -1003,6 +1010,7 @@ def test_plane_unknown_mode():
     assert result['features'][0]['status'] == 'exception'
 
 
+@requires_ocp
 def test_plane_on_face_edge_angle_with_rotation():
     """Test on_face_edge_angle mode with angle parameter: verifies y_axis rotates around edge."""
     spec = {
