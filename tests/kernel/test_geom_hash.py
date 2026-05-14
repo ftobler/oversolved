@@ -1,5 +1,8 @@
 """Unit tests for geometry hash functions."""
 
+import math
+import pytest
+
 from oversolved.kernel.geom_hash import (
     face_geometry_hash,
     edge_geometry_hash,
@@ -141,3 +144,55 @@ class TestVertexGeometryHash:
         h1 = vertex_geometry_hash([1.0, 2.0, 3.0])
         h2 = vertex_geometry_hash([4.0, 2.0, 3.0])
         assert h1 != h2
+
+
+class TestArcAngleNormalization:
+    def test_geom_hash_arc_degree_radian_equivalence(self):
+        """Arc with angle_start_deg and equivalent angle_start (radians) hash equally."""
+        deg_edge = {
+            "kind": "arc",
+            "center": [1.0, 2.0, 0.0],
+            "radius": 5.0,
+            "angle_start_deg": 45.0,
+            "angle_end_deg": 135.0,
+        }
+        rad_edge = {
+            "kind": "arc",
+            "center": [1.0, 2.0, 0.0],
+            "radius": 5.0,
+            "angle_start": math.radians(45.0),
+            "angle_end": math.radians(135.0),
+        }
+        assert edge_geometry_hash(deg_edge) == edge_geometry_hash(rad_edge)
+
+    def test_geom_hash_arc_prefers_deg_key_over_rad_key(self):
+        """When both keys are present, degree key takes precedence."""
+        both_edge = {
+            "kind": "arc",
+            "center": [0.0, 0.0, 0.0],
+            "radius": 1.0,
+            "angle_start_deg": 90.0,
+            "angle_start": math.radians(45.0),  # conflicting radians key
+            "angle_end_deg": 180.0,
+            "angle_end": math.radians(90.0),
+        }
+        deg_only_edge = {
+            "kind": "arc",
+            "center": [0.0, 0.0, 0.0],
+            "radius": 1.0,
+            "angle_start_deg": 90.0,
+            "angle_end_deg": 180.0,
+        }
+        assert edge_geometry_hash(both_edge) == edge_geometry_hash(deg_only_edge)
+
+    def test_geom_hash_arc_missing_center_raises(self):
+        """arc edge without 'center' raises ValueError instead of silently hashing."""
+        edge = {"kind": "arc", "radius": 5.0, "angle_start_deg": 0.0, "angle_end_deg": 90.0}
+        with pytest.raises(ValueError, match="arc edge missing geometry fields"):
+            edge_geometry_hash(edge)
+
+    def test_geom_hash_arc_missing_radius_raises(self):
+        """arc edge without 'radius' raises ValueError instead of silently hashing."""
+        edge = {"kind": "arc", "center": [0.0, 0.0, 0.0], "angle_start_deg": 0.0, "angle_end_deg": 90.0}
+        with pytest.raises(ValueError, match="arc edge missing geometry fields"):
+            edge_geometry_hash(edge)

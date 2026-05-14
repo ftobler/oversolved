@@ -9,10 +9,25 @@ probability (birthday bound). Hashes are ephemeral per session -- never persiste
 
 Arc angle keys: topology-derived edges use 'angle_start_deg'/'angle_end_deg'
 (degrees); OCC-extracted edges use 'angle_start'/'angle_end' (radians). Both
-forms are checked via .get() fallback so the hash function handles either source.
+forms are accepted; radians are converted to degrees so hashes are unit-stable.
 """
 
 import hashlib
+import logging
+import math
+
+logger = logging.getLogger(__name__)
+
+
+def _arc_angle_deg(edge: dict, start: bool) -> float:
+    """Return arc angle in degrees, normalizing from radians if needed."""
+    deg_key = "angle_start_deg" if start else "angle_end_deg"
+    rad_key = "angle_start" if start else "angle_end"
+    if deg_key in edge:
+        return float(edge[deg_key])
+    if rad_key in edge:
+        return math.degrees(float(edge[rad_key]))
+    return 0.0
 
 
 def face_geometry_hash(centroid: list[float], normal: list[float], area: float) -> str:
@@ -35,13 +50,16 @@ def edge_geometry_hash(edge: dict) -> str:
         start, end = edge["start"], edge["end"]
         items.extend(str(round(v, 4)) for pt in (start, end) for v in pt)
     elif kind in ("circle", "arc"):
+        if kind == "arc":
+            if "center" not in edge or "radius" not in edge:
+                missing = [k for k in ("center", "radius") if k not in edge]
+                logger.warning("arc edge missing %s, cannot hash: %s", missing, edge)
+                raise ValueError(f"arc edge missing geometry fields: {missing}")
         items.append(str(round(edge.get("radius", 0), 4)))
         items.extend(str(round(v, 4)) for v in edge.get("center", [0, 0, 0]))
         if kind == "arc":
-            a_start = edge.get("angle_start_deg", edge.get("angle_start", 0.0))
-            a_end = edge.get("angle_end_deg", edge.get("angle_end", 0.0))
-            items.append(str(round(a_start, 4)))
-            items.append(str(round(a_end, 4)))
+            items.append(str(round(_arc_angle_deg(edge, start=True), 4)))
+            items.append(str(round(_arc_angle_deg(edge, start=False), 4)))
     else:
         items.extend(str(round(v, 4)) for pt in edge.get("points", [[0, 0, 0]]) for v in pt)
     digest = hashlib.sha256("|".join(items).encode()).hexdigest()[:16]
