@@ -96,6 +96,7 @@ def test_cut_with_empty_store_and_no_merge_target_returns_ok():
     result = _call_helper(tool, body_store, operation="cut", merge_target=None)
     assert result["status"] == "ok"
     assert result["operation"] == "cut"
+    assert "body_id" in result
 
 
 def test_add_with_nonexistent_merge_target_raises():

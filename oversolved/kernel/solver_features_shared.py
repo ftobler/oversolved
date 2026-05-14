@@ -476,6 +476,10 @@ def _apply_body_operation(
     Called by both _solve_extrude and _solve_revolve after tool shape creation.
     Raises ValueError for user-facing errors; callers catch and record status.
 
+    Guaranteed return keys: "status", "body_id", "operation".
+    "body_id" is always present; for a no-op cut (empty store, no target) it
+    holds the input body_id since no body was created or modified.
+
     Merge convention: callers do `feature = {**sub, **feature}` so top-level
     feature keys win over sub-dict keys. This helper receives already-resolved
     values, so no further merging is needed here.
