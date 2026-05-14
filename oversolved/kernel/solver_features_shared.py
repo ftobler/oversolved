@@ -543,12 +543,9 @@ def _apply_body_operation(
         result["operation"] = "new"
     else:
         from oversolved.kernel.geometry import boolean_union  # noqa: F811
-        if need_new_body:
-            fused = False
-            fused_body_id = None
-        else:
-            fused = False
-            fused_body_id = None
+        fused = False
+        fused_body_id = None
+        if not need_new_body:
             for bid in target_ids:
                 existing_body = body_store[bid]
                 if existing_body.shape is None:
