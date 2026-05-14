@@ -534,7 +534,7 @@ def test_validate_mesh_warns_orphaned_face(caplog):
     }
     with caplog.at_level(logging.WARNING, logger="oversolved.geometry"):
         _validate_mesh(mesh)
-    assert any("face 1 has no triangles" in record.message for record in caplog.records)
+    assert any("have no triangles" in record.message for record in caplog.records)
 
 
 def test_validate_mesh_rejects_out_of_bounds_triangle_to_face():

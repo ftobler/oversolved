@@ -170,10 +170,13 @@ def _validate_mesh(mesh: MeshDict) -> None:
                 )
         if face_queries:
             used_faces = set(triangle_to_face)
+            no_tri_count = 0
             for face_idx in range(len(face_queries)):
                 if face_idx not in used_faces:
-                    # Lenient: log a warning instead of crashing.
-                    logger.warning("face %d has no triangles in triangle_to_face", face_idx)
+                    logger.debug("face %d has no triangles in triangle_to_face", face_idx)
+                    no_tri_count += 1
+            if no_tri_count > 0:
+                logger.warning("%d face(s) have no triangles in triangle_to_face", no_tri_count)
 
     if face_queries and len(face_data) != len(face_queries):
         raise ValueError(
@@ -876,7 +879,7 @@ def _try_add_edge(maker: Any, edge: TopoDS_Shape, idx: int, add_edge_fn: Callabl
         add_edge_fn(maker, edge)
         return True
     except Exception as exc:
-        logger.warning("_apply_edge_modifier: adding edge %d failed: %s", idx, exc)
+        logger.debug("_apply_edge_modifier: adding edge %d failed: %s", idx, exc)
         return False
 
 
@@ -945,6 +948,12 @@ def _apply_edge_modifier(
         except Exception as exc:
             logger.warning("_apply_edge_modifier: explore edges failed: %s", exc)
             return _fail("explore_failed")
+
+    if failed_count > 0:
+        logger.warning(
+            "_apply_edge_modifier: %d of %d edges failed to apply",
+            failed_count, failed_count + successful_count,
+        )
 
     if successful_count == 0:
         return _fail("no_edges_applied")

@@ -317,8 +317,8 @@ def test_build_loop_from_wire_bad_edge_logs_warning(caplog):
         with caplog.at_level(logging.WARNING, logger="oversolved.kernel.ocp_ops"):
             loop = _build_loop_from_wire(outer_wire, face)
 
-    assert any("dropping edge" in r.message for r in caplog.records), (
-        "Expected 'dropping edge' warning but got: " + str([r.message for r in caplog.records])
+    assert any("dropped" in r.message and "edges" in r.message for r in caplog.records), (
+        "Expected aggregate 'dropped N edges' warning but got: " + str([r.message for r in caplog.records])
     )
     assert loop == []
 

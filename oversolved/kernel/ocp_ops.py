@@ -342,8 +342,8 @@ def _collect_face_wires(occ_face: Any) -> tuple[Any, list[Any]]:
 def _build_loop_from_wire(wire: Any, occ_face: Any) -> list[dict]:
     """Build a list of edge dicts (kind "line" or "arc") for *wire* on *occ_face*.
 
-    Per-edge exceptions are logged as warnings so that one bad edge does not
-    discard the whole loop.  Returns an empty list when no valid edges are found.
+    Per-edge exceptions are logged at DEBUG; one aggregate WARNING is emitted
+    if any edges are dropped.  Returns an empty list when no valid edges are found.
     """
     import math
     from OCP.BRepAdaptor import BRepAdaptor_Curve2d  # noqa: PLC0415
@@ -353,6 +353,7 @@ def _build_loop_from_wire(wire: Any, occ_face: Any) -> list[dict]:
 
     TWO_PI = 2.0 * math.pi
     loop: list[dict] = []
+    dropped = 0
     we = BRepTools_WireExplorer(wire, occ_face)
     while we.More():
         edge = we.Current()
@@ -405,9 +406,12 @@ def _build_loop_from_wire(wire: Any, occ_face: Any) -> list[dict]:
                     "end": [p_e.X(), p_e.Y()],
                 })
         except Exception as exc:
-            logger.warning("ocp_extract_face_loops: dropping edge: %s", exc)
+            logger.debug("ocp_extract_face_loops: dropping edge: %s", exc)
+            dropped += 1
         we.Next()
 
+    if dropped > 0:
+        logger.warning("ocp_extract_face_loops: dropped %d edges from wire", dropped)
     return loop
 
 

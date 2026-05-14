@@ -84,6 +84,9 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
         query_to_edge[f"?{body.id}:edge:{idx}"] = te
 
     result: list[TopoDS_Shape] = []
+    resolve_failed = 0
+    fallback_used = 0
+    fallback_failed = 0
     for q in edge_queries:
         edge = query_to_edge.get(q)  # type: ignore[assignment]
         if edge is None and q.startswith("?"):
@@ -97,7 +100,8 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
                             edge = topo_edges[eidx]
                             break
             except Exception as exc:
-                logger.warning("fillet edge index resolution failed for query %s: %s", q, exc)
+                logger.debug("fillet edge index resolution failed for query %s: %s", q, exc)
+                resolve_failed += 1
         if edge is None and q.startswith("?"):
             try:
                 ids, type_restriction = _parse_ancestry(q)
@@ -113,16 +117,24 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
                     ]
                     if matched:
                         edge = matched[0]
-                        logger.warning(
-                            "Resolved fillet edge via body-scoped type fallback: "
-                            "query=%s body=%s matched_type=%s",
-                            q, body.id, edge_types[topo_edges.index(edge)] if edge in topo_edges else "?",
+                        logger.debug(
+                            "fillet edge resolved via body-scoped type fallback: "
+                            "query=%s body=%s",
+                            q, body.id,
                         )
+                        fallback_used += 1
             except Exception as exc:
-                logger.warning("fillet edge body-scoped fallback failed for query %s: %s", q, exc)
+                logger.debug("fillet edge body-scoped fallback failed for query %s: %s", q, exc)
+                fallback_failed += 1
         if edge is not None:
             result.append(edge)
 
+    if resolve_failed > 0:
+        logger.warning("fillet: %d edge queries failed index resolution", resolve_failed)
+    if fallback_used > 0:
+        logger.warning("fillet: %d edge queries resolved via body-scoped type fallback", fallback_used)
+    if fallback_failed > 0:
+        logger.warning("fillet: %d edge queries failed body-scoped fallback", fallback_failed)
     return result
 
 

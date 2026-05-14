@@ -231,3 +231,26 @@ def test_solid_to_vertices_null_shape():
 
     result = solid_to_vertices(TopoDS_Shape())
     assert result == {"vertices": [], "vertex_queries": []}
+
+
+def test_apply_edge_modifier_warns_once(caplog):
+    """Multiple failing edges produce exactly one aggregate WARNING, not one per edge."""
+    import logging
+    import unittest.mock as mock
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    from oversolved.kernel.geometry import _apply_edge_modifier
+
+    box = BRepPrimAPI_MakeBox(5.0, 5.0, 5.0).Shape()
+
+    def always_fail(maker: object, edge: object) -> None:
+        raise RuntimeError("simulated edge failure")
+
+    with caplog.at_level(logging.WARNING, logger="oversolved.kernel.geometry"):
+        _apply_edge_modifier(box, None, lambda s: mock.MagicMock(), always_fail)
+
+    warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warning_records) == 1, (
+        f"expected 1 aggregate WARNING, got {len(warning_records)}: "
+        + str([r.message for r in warning_records])
+    )
+    assert "edges failed" in warning_records[0].message
