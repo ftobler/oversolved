@@ -19,8 +19,7 @@ __all__ = [
 
 
 def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict]) -> dict:
-    import numpy as np  # noqa: F811
-    from oversolved.kernel.cadquery_ops import make_cylinder, boolean_cut  # noqa: F811  # noqa: F811
+    from oversolved.kernel.cadquery_ops import make_cylinder, boolean_cut  # noqa: F811
 
     sub = feature.get("hole") or {}
     sketch_ref = sub.get("sketch", "").lstrip("@")
