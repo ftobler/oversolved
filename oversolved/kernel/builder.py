@@ -51,6 +51,8 @@ def _copy_shape(shape: TopoDS_Shape | None) -> TopoDS_Shape | None:
 # Canonical keys that define a feature's identity for dirty detection.
 # Add new keys here when new feature kinds are introduced.
 # Transient/UI-only keys sent by the frontend are ignored during comparison.
+# See test_feature_cmp_keys_* in tests/kernel/test_builder.py — the validation
+# test enforces that every solver-accessed key is present in this set.
 _FEATURE_CMP_KEYS = frozenset({
     "id", "kind", "plane", "entities", "constraints", "initial",
     "extrude", "revolve", "fillet", "chamfer", "boolean", "hole",
@@ -60,6 +62,30 @@ _FEATURE_CMP_KEYS = frozenset({
     "definition",
     "delete_body",
     "mirror",
+    # extrude / revolve
+    "depth", "merge_target",
+    # revolve / array / transform
+    "axis", "axis_origin", "axis_direction",
+    # array
+    "source_body", "mode",
+    "count", "count_x", "count_y",
+    "pitch_x", "pitch_y",
+    "direction_x", "direction_x_query", "direction_y", "direction_y_query",
+    "step_angle", "include_source",
+    # boolean
+    "tools", "keep_tools",
+    # delete_body / transform / mirror
+    "body",
+    # hole
+    "diameter", "depth_mode", "target",
+    # import_step
+    "file_data",
+    # transform
+    "translation", "translation_from", "translation_to",
+    "rotation_angle", "rotation_axis", "rotation_axis_origin", "rotation_axis_direction",
+    "scale_center", "scale_center_from",
+    # mirror
+    "keep_original", "merge",
 })
 
 

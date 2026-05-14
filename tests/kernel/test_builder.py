@@ -649,3 +649,106 @@ def test_features_by_id_normal_key():
     spec = rect_sketch_spec(w=4, h=4)
     r = build({'features': [spec]})
     assert 'sk1' in r['result']
+
+
+# ── _FEATURE_CMP_KEYS sync validation (fix-145) ──
+
+# Every key that at least one feature solver accesses from a feature dict.
+# When adding a new feature kind, update both this set and builder._FEATURE_CMP_KEYS.
+_SOLVER_FEATURE_KEYS = frozenset({
+    "id", "kind",
+    # sketch
+    "plane", "entities", "constraints", "initial",
+    # brep: extrude / revolved
+    "sketch", "distance", "depth", "operation", "direction",
+    "extrude", "revolve", "merge_target",
+    "angle", "axis_origin", "axis_direction", "axis",
+    # fillet / chamfer
+    "fillet", "chamfer", "edges", "radius",
+    # import
+    "file_data", "scale",
+    # hole
+    "hole", "diameter", "depth_mode", "target",
+    # array
+    "array", "mode", "source_body", "include_source",
+    "count", "count_x", "count_y",
+    "pitch_x", "pitch_y",
+    "direction_x_query", "direction_x", "direction_y_query", "direction_y",
+    "step_angle",
+    # boolean
+    "boolean", "tools", "keep_tools",
+    # delete_body
+    "delete_body", "body",
+    # transform
+    "transform",
+    "translation", "translation_from", "translation_to",
+    "rotation_angle", "rotation_axis_origin", "rotation_axis_direction", "rotation_axis",
+    "scale_center", "scale_center_from",
+    # mirror
+    "mirror", "keep_original", "merge",
+    # plane (via definition dict)
+    "definition",
+})
+
+# Keys the frontend sends that are intentionally NOT in _FEATURE_CMP_KEYS
+# because changes to them should NOT trigger re-solving (transient/display-only).
+_TRANSIENT_KEYS = frozenset({
+    "render",   # display hint from frontend
+    "_pick",    # internal interaction tracking
+})
+
+# Keys that are in _FEATURE_CMP_KEYS but NOT accessed by any solver.
+# These affect dirty detection for UI-level feature attributes (hide-toggle, label, file reference).
+_UI_FEATURE_KEYS = frozenset({
+    "hide", "label", "file_id",
+})
+
+
+def test_feature_cmp_keys_covers_all_solver_keys():
+    """Every key accessed by a feature solver must be in _FEATURE_CMP_KEYS."""
+    from oversolved.kernel.builder import _FEATURE_CMP_KEYS
+
+    missing = _SOLVER_FEATURE_KEYS - _FEATURE_CMP_KEYS
+    assert not missing, (
+        f"Keys used by feature solvers but missing from _FEATURE_CMP_KEYS:\n"
+        f"  {sorted(missing)}\n"
+        f"Add them to builder.py:_FEATURE_CMP_KEYS so dirty detection is not stale."
+    )
+
+
+def test_feature_cmp_keys_contains_only_known_keys():
+    """Every key in _FEATURE_CMP_KEYS must be a solver key, a UI key, or transient."""
+    from oversolved.kernel.builder import _FEATURE_CMP_KEYS
+
+    known = _SOLVER_FEATURE_KEYS | _UI_FEATURE_KEYS | _TRANSIENT_KEYS
+    unexpected = _FEATURE_CMP_KEYS - known
+    assert not unexpected, (
+        f"Keys in _FEATURE_CMP_KEYS not recognized as solver, UI, or transient:\n"
+        f"  {sorted(unexpected)}\n"
+        f"If these are legitimate keys, add them to _UI_FEATURE_KEYS or _SOLVER_FEATURE_KEYS\n"
+        f"in test_builder.py. If they are stale, remove them from builder._FEATURE_CMP_KEYS."
+    )
+
+
+def test_feature_cmp_keys_all_present_in_current_set():
+    """Sanity: the hard-coded expectation set matches the actual _FEATURE_CMP_KEYS."""
+    from oversolved.kernel.builder import _FEATURE_CMP_KEYS
+
+    expected = _SOLVER_FEATURE_KEYS | _UI_FEATURE_KEYS
+    actual = _FEATURE_CMP_KEYS
+
+    # Every expected key must be present
+    missing = expected - actual
+    assert not missing, (
+        f"Expected keys missing from _FEATURE_CMP_KEYS: {sorted(missing)}"
+    )
+
+    # Keys in actual but not in expected are flagged as unexpected
+    unexpected = actual - expected
+    assert not unexpected, (
+        f"Unexpected keys in _FEATURE_CMP_KEYS not in _SOLVER_FEATURE_KEYS or "
+        f"_UI_FEATURE_KEYS: {sorted(unexpected)}\n"
+        f"If these are new feature keys, add them to _SOLVER_FEATURE_KEYS.\n"
+        f"If they are UI-only keys, add them to _UI_FEATURE_KEYS.\n"
+        f"If they are stale, remove them from builder._FEATURE_CMP_KEYS."
+    )
