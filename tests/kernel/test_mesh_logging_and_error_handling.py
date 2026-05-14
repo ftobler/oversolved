@@ -22,18 +22,18 @@ def _make_box_shape():
 
 def test_solid_to_mesh_uses_module_level_logger(caplog):
     """Module-level logger is used, not a per-call local."""
-    from oversolved.kernel import geometry
+    from oversolved.kernel import geometry_tessellation
     from oversolved.kernel.geometry import solid_to_mesh
 
     shape = _make_box_shape()
 
     # BRepMesh_IncrementalMesh is a local import inside solid_to_mesh; patch at OCP level.
     with mock.patch("OCP.BRepMesh.BRepMesh_IncrementalMesh", side_effect=RuntimeError("mock tessellation error")):
-        with caplog.at_level(logging.WARNING, logger="oversolved.kernel.geometry"):
+        with caplog.at_level(logging.WARNING, logger="oversolved.kernel.geometry_tessellation"):
             result = solid_to_mesh(shape)
 
     assert len(caplog.records) >= 1
-    assert caplog.records[0].name == geometry.__name__
+    assert caplog.records[0].name == geometry_tessellation.__name__
     assert "tessellation" in caplog.records[0].message.lower() or "unit cube" in caplog.records[0].message.lower()
 
     # Should still return a valid fallback mesh (any non-empty vertex list).

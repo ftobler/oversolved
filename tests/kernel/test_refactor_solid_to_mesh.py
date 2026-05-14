@@ -27,7 +27,7 @@ def test_solid_to_mesh_fallback_is_detectable():
     """When tessellation fails the returned mesh must have is_fallback=True."""
     box = _make_box_shape()
     with patch(
-        "oversolved.kernel.geometry._sort_shape_faces",
+        "oversolved.kernel.geometry_tessellation._sort_shape_faces",
         side_effect=RuntimeError("simulated tessellation failure"),
     ):
         result = solid_to_mesh(box)
@@ -70,7 +70,7 @@ def test_tessellate_and_assemble_faces_exception():
     """When _sort_shape_faces raises, all six accumulators must be returned empty."""
     box = _make_box_shape()
     with patch(
-        "oversolved.kernel.geometry._sort_shape_faces",
+        "oversolved.kernel.geometry_tessellation._sort_shape_faces",
         side_effect=RuntimeError("simulated failure"),
     ):
         fd, t2f, fq, verts, faces, normals = _tessellate_and_assemble_faces(box, None, None)
