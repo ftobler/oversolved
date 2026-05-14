@@ -313,9 +313,12 @@ def _expand_center_rect(feature: dict) -> dict:
 
 
 # ─── Repo structure cache ───
+# Single-entry LRU: only the most-recently-built Repository is retained.
+# This avoids rebuilding for repeated calls with the same sketch structure
+# while bounding memory to one cached object.
 
-_repo_structure_cache: dict[str, tuple[str, Repository]] = {}
-_repo_structure_cache_lock = threading.Lock()
+_last_repo_structure: tuple[str, Repository] | None = None
+_last_repo_structure_lock = threading.Lock()
 
 
 def _build_repo_structure_key(feature_id: str, entities: dict) -> str:
@@ -325,9 +328,10 @@ def _build_repo_structure_key(feature_id: str, entities: dict) -> str:
 
 
 def _get_or_build_repo(feature_id: str, entities: dict) -> Repository:
+    global _last_repo_structure
     key = _build_repo_structure_key(feature_id, entities)
-    with _repo_structure_cache_lock:
-        entry = _repo_structure_cache.get("last")
+    with _last_repo_structure_lock:
+        entry = _last_repo_structure
         if entry is not None and entry[0] == key:
             return entry[1]
     repo = Repository()
@@ -348,8 +352,8 @@ def _get_or_build_repo(feature_id: str, entities: dict) -> Repository:
             repo.register(feature_id + eid + "center", {"entity": eid, "point": "center"})
         elif kind == "point":
             repo.register(feature_id + eid + "xy", {"entity": eid, "point": "xy"})
-    with _repo_structure_cache_lock:
-        _repo_structure_cache["last"] = (key, repo)
+    with _last_repo_structure_lock:
+        _last_repo_structure = (key, repo)
     return repo
 
 

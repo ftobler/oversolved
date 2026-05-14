@@ -758,3 +758,20 @@ features:
 """
     result2 = solve(yaml_str2)["result"]["sketch_1"]
     assert result2.get("status") != "exception"
+
+
+def test_repo_structure_cache_capped_to_one_entry():
+    """_last_repo_structure holds at most one entry regardless of how many repos are built."""
+    import oversolved.kernel.solver as _solver_mod
+
+    def _entities(prefix: str) -> dict:
+        return {f"{prefix}_l1": {"kind": "line"}}
+
+    for i in range(3):
+        _solver_mod._get_or_build_repo(f"sk_cap_{i}", _entities(f"cap{i}"))
+
+    entry = _solver_mod._last_repo_structure
+    assert entry is not None
+    # The variable is a single tuple (key, repo), not a dict with multiple entries.
+    assert isinstance(entry, tuple)
+    assert len(entry) == 2

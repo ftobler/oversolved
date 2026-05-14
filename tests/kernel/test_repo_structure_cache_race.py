@@ -1,6 +1,6 @@
 import concurrent.futures
 
-from oversolved.kernel.solver import _get_or_build_repo, _repo_structure_cache_lock
+from oversolved.kernel.solver import _get_or_build_repo, _last_repo_structure_lock
 
 
 def _make_entities(prefix: str) -> dict:
@@ -28,9 +28,9 @@ def test_get_or_build_repo_cache_miss_returns_distinct_objects():
 def test_get_or_build_repo_lock_is_held_correctly():
     """The module-level lock is accessible and not permanently held after a call."""
     _get_or_build_repo("sk_lock_test", _make_entities("lt"))
-    acquired = _repo_structure_cache_lock.acquire(blocking=False)
+    acquired = _last_repo_structure_lock.acquire(blocking=False)
     assert acquired, "lock was not released after _get_or_build_repo"
-    _repo_structure_cache_lock.release()
+    _last_repo_structure_lock.release()
 
 
 def test_get_or_build_repo_concurrent_same_key():
