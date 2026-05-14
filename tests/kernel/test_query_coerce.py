@@ -12,7 +12,7 @@ def test_query_coerce_face_to_solid():
     body_store = {"body_ex1": FakeBody("body_ex1")}
     repo.register_ancestor(
         ["@ex1"],
-        {"type": "flatface", "body_id": "body_ex1", "face_index": 0},
+        {"type": "flatface", "body_id": "body_ex1", "face_index": 0, "created_by": "ex1"},
     )
     q = make_ancestry_query(["@ex1"], type_restriction="solid")
     result = repo.query(q, body_store=body_store)
@@ -24,11 +24,11 @@ def test_query_coerce_solid_to_face():
     body_store = {"body_ex1": FakeBody("body_ex1")}
     repo.register_ancestor(
         ["@ex1"],
-        {"type": "solid", "body_id": "body_ex1"},
+        {"type": "solid", "body_id": "body_ex1", "created_by": "ex1"},
     )
     repo.register_ancestor(
         ["@ex1face0", "@ex1"],
-        {"type": "flatface", "body_id": "body_ex1", "face_index": 0},
+        {"type": "flatface", "body_id": "body_ex1", "face_index": 0, "created_by": "ex1"},
     )
     q = make_ancestry_query(["@ex1"], type_restriction="face")
     result = repo.query(q, body_store=body_store)
@@ -41,11 +41,11 @@ def test_query_coerce_edge_to_vertex():
     body_store = {"body_ex1": FakeBody("body_ex1")}
     repo.register_ancestor(
         ["@ex1edge0", "@ex1"],
-        {"type": "straightedge", "body_id": "body_ex1", "edge_index": 0},
+        {"type": "straightedge", "body_id": "body_ex1", "edge_index": 0, "created_by": "ex1"},
     )
     repo.register_ancestor(
         ["@ex1vertex0", "@ex1"],
-        {"type": "vertex", "body_id": "body_ex1", "vertex_index": 0},
+        {"type": "vertex", "body_id": "body_ex1", "vertex_index": 0, "created_by": "ex1"},
     )
     q = make_ancestry_query(["@ex1edge0", "@ex1"], type_restriction="vertex")
     result = repo.query(q, body_store=body_store)
@@ -58,11 +58,11 @@ def test_query_exact_match_takes_precedence():
     body_store = {"body_ex1": FakeBody("body_ex1")}
     repo.register_ancestor(
         ["@ex1"],
-        {"type": "face", "body_id": "body_ex1"},
+        {"type": "face", "body_id": "body_ex1", "created_by": "ex1"},
     )
     repo.register_ancestor(
         ["@ex1"],
-        {"type": "solid", "body_id": "body_ex1"},
+        {"type": "solid", "body_id": "body_ex1", "created_by": "ex1"},
     )
     q = make_ancestry_query(["@ex1"], type_restriction="face")
     result = repo.query(q, body_store=body_store)
@@ -75,7 +75,7 @@ def test_query_coerce_flatface_subtype_matches_face():
     body_store = {"body_ex1": FakeBody("body_ex1")}
     repo.register_ancestor(
         ["@ex1"],
-        {"type": "flatface", "body_id": "body_ex1", "face_index": 0},
+        {"type": "flatface", "body_id": "body_ex1", "face_index": 0, "created_by": "ex1"},
     )
     q = make_ancestry_query(["@ex1"], type_restriction="face")
     result = repo.query(q, body_store=body_store)
@@ -87,7 +87,7 @@ def test_query_no_coercion_when_body_store_missing():
     repo = Repository()
     repo.register_ancestor(
         ["@ex1"],
-        {"type": "flatface", "body_id": "body_ex1", "face_index": 0},
+        {"type": "flatface", "body_id": "body_ex1", "face_index": 0, "created_by": "ex1"},
     )
     q = make_ancestry_query(["@ex1"], type_restriction="solid")
     result = repo.query(q)
@@ -99,11 +99,11 @@ def test_query_coerce_face_to_edge():
     body_store = {"body_ex1": FakeBody("body_ex1")}
     repo.register_ancestor(
         ["@ex1face0", "@ex1"],
-        {"type": "flatface", "body_id": "body_ex1", "face_index": 0},
+        {"type": "flatface", "body_id": "body_ex1", "face_index": 0, "created_by": "ex1"},
     )
     repo.register_ancestor(
         ["@ex1edge0", "@ex1"],
-        {"type": "straightedge", "body_id": "body_ex1", "edge_index": 0},
+        {"type": "straightedge", "body_id": "body_ex1", "edge_index": 0, "created_by": "ex1"},
     )
     q = make_ancestry_query(["@ex1face0", "@ex1"], type_restriction="edge")
     result = repo.query(q, body_store=body_store)
@@ -116,11 +116,11 @@ def test_query_coerce_solid_to_edge():
     body_store = {"body_ex1": FakeBody("body_ex1")}
     repo.register_ancestor(
         ["@ex1"],
-        {"type": "solid", "body_id": "body_ex1"},
+        {"type": "solid", "body_id": "body_ex1", "created_by": "ex1"},
     )
     repo.register_ancestor(
         ["@ex1edge0", "@ex1"],
-        {"type": "straightedge", "body_id": "body_ex1", "edge_index": 0},
+        {"type": "straightedge", "body_id": "body_ex1", "edge_index": 0, "created_by": "ex1"},
     )
     q = make_ancestry_query(["@ex1"], type_restriction="edge")
     result = repo.query(q, body_store=body_store)

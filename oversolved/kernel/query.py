@@ -237,7 +237,12 @@ def _obj_type(obj: Any) -> str | None:
 def _coerce_type(
     element: Any, target_type: str, body_store: dict[str, Any] | None, repo_elements: dict[str, Any]
 ) -> Any:
-    """Attempt to coerce element to target_type using body_store and repo_elements."""
+    """Attempt to coerce element to target_type using body_store and repo_elements.
+
+    Downward/sibling scans are scoped to elements with the same ``created_by``
+    field to prevent cross-feature body_id collisions from returning a match
+    from the wrong feature.
+    """
     if element is None:
         return None
     obj_type = _obj_type(element)
@@ -250,13 +255,18 @@ def _coerce_type(
     body_id = element.get('body_id')
     if body_id is None:
         return None
+    created_by = element.get('created_by')
+    if created_by is None:
+        return None
     # Upward: child -> solid
     if target_type == 'solid' and body_store is not None:
         return body_store.get(body_id)
-    # Downward / sibling: scan repo for matching child elements by body_id
+    # Downward / sibling: scope search to same feature to prevent cross-feature collisions
     for el in repo_elements.values():
         el_type = _obj_type(el)
-        if isinstance(el, dict) and el.get('body_id') == body_id:
+        if (isinstance(el, dict)
+                and el.get('body_id') == body_id
+                and el.get('created_by') == created_by):
             if el_type == target_type or _is_subtype(el_type, target_type):
                 return el
     return None
