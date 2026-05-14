@@ -33,11 +33,15 @@ def _all_topo_edges(shape):
 
 
 def _vertex_count(shape):
-    return len(list(shape.Vertices()))
+    import cadquery as cq
+    s = cq.Shape.cast(shape.wrapped if hasattr(shape, "wrapped") else shape)
+    return len(list(s.Vertices()))
 
 
 def _edge_count(shape):
-    return len(list(shape.edges()))
+    import cadquery as cq
+    s = cq.Shape.cast(shape.wrapped if hasattr(shape, "wrapped") else shape)
+    return len(list(s.edges()))
 
 
 def test_apply_edge_modifier_fillet_all_edges():

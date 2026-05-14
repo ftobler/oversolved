@@ -7,7 +7,11 @@ import os
 import logging
 import tempfile
 from io import BytesIO
-from typing import Any, TypedDict
+from typing import Any, Callable, TypedDict, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from OCP.TopoDS import TopoDS_Shape
+    from OCP.gp import gp_Trsf
 
 try:
     from cadquery.occ_impl import shapes as cq_shapes
@@ -97,8 +101,8 @@ class VertexDict(TypedDict):
     vertex_queries: list[str]
 
 
-def _ensure_cq_shape(solid: Any) -> cq_shapes.Shape:
-    """Wrap a raw TopoDS shape in cadquery Shape if necessary."""
+def _ensure_cq_shape(solid: TopoDS_Shape) -> cq_shapes.Shape:
+    """Wrap a TopoDS_Shape in a cadquery Shape."""
     return cq_shapes.Shape.cast(_ensure_occ(solid))
 
 
@@ -363,17 +367,17 @@ def extrude_profile(
 
 
 def revolve_face(
-    face: Any,
+    face: cq_shapes.Face,
     axis_origin: list[float],
     axis_direction: list[float],
     angle_deg: float,
-) -> Any:
+) -> cq_shapes.Solid:
     """Revolve a face around an axis."""
     from oversolved.kernel.cadquery_ops import revolve_face as _revolve_face
     return _revolve_face(face, axis_origin, axis_direction, angle_deg)
 
 
-def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None = None) -> MeshDict:
+def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body_id: str | None = None) -> MeshDict:
     """Tessellate a cadquery solid to a mesh dict.
 
     Iterates faces and tessellates each one individually so that face
@@ -544,7 +548,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None
     return mesh
 
 
-def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | None = None) -> EdgeDict:
+def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: str | None = None) -> EdgeDict:
     """Extract exact edge geometry from a cadquery solid.
 
     Returns a dict with keys "edges" (list of edge dicts, one per unique edge,
@@ -643,7 +647,7 @@ def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | Non
     return {"edges": edges, "edge_queries": edge_queries}
 
 
-def solid_to_vertices(solid: Any, created_by: str | None = None, body_id: str | None = None) -> VertexDict:
+def solid_to_vertices(solid: TopoDS_Shape, created_by: str | None = None, body_id: str | None = None) -> VertexDict:
     """Extract unique B-rep vertices from a cadquery solid."""
     solid = _ensure_cq_shape(solid)
     vertices: list[list[float]] = []
@@ -670,7 +674,7 @@ def solid_to_vertices(solid: Any, created_by: str | None = None, body_id: str | 
     return {"vertices": vertices, "vertex_queries": vertex_queries}
 
 
-def step_file_to_shape(filepath: str, scale: float = 1.0) -> Any:
+def step_file_to_shape(filepath: str, scale: float = 1.0) -> cq_shapes.Shape:
     """Read a STEP file and return a cadquery shape.
 
     Optionally applies a scaling factor.
@@ -678,15 +682,16 @@ def step_file_to_shape(filepath: str, scale: float = 1.0) -> Any:
     import cadquery as cq  # noqa: PLC0415
 
     workplane = cq.importers.importStep(filepath)
-    shape: Any = workplane.val()
-    if shape is None or not hasattr(shape, "isValid"):
+    raw = workplane.val()
+    if raw is None or not isinstance(raw, cq_shapes.Shape):
         raise ValueError(f"STEP file produced no shape: {filepath!r}")
+    shape: cq_shapes.Shape = raw
     if scale != 1.0:
         shape = shape.scale(scale)
     return shape
 
 
-def stl_file_to_shape(filepath: str) -> Any:
+def stl_file_to_shape(filepath: str) -> TopoDS_Shape:
     """Read an STL file and return an OCC shape.
 
     Uses OCP StlAPI_Reader directly since cadquery does not provide an STL importer.
@@ -694,22 +699,22 @@ def stl_file_to_shape(filepath: str) -> Any:
     return ocp_read_stl(filepath)
 
 
-def shape_to_step_file(shape: Any, filepath: str) -> None:
+def shape_to_step_file(shape: TopoDS_Shape, filepath: str) -> None:
     """Write a shape to a STEP file."""
-    shape = _ensure_cq_shape(shape)
-    shape.exportStep(filepath)
+    cq_shape = _ensure_cq_shape(shape)
+    cq_shape.exportStep(filepath)
     if not os.path.isfile(filepath):
         raise ValueError(f"STEP write failed: file not created at {filepath!r}")
 
 
-def shape_to_step_file_buffer(shape: Any) -> BytesIO:
+def shape_to_step_file_buffer(shape: TopoDS_Shape) -> BytesIO:
     """Write a shape to a STEP file in memory."""
-    shape = _ensure_cq_shape(shape)
+    cq_shape = _ensure_cq_shape(shape)
     with tempfile.NamedTemporaryFile(suffix=".step", delete=False) as tmp:
         tmp_path = tmp.name
 
     try:
-        shape.exportStep(tmp_path)
+        cq_shape.exportStep(tmp_path)
         if not os.path.isfile(tmp_path):
             raise ValueError("STEP write failed: file not created")
         with open(tmp_path, "rb") as f:
@@ -721,7 +726,7 @@ def shape_to_step_file_buffer(shape: Any) -> BytesIO:
             os.unlink(tmp_path)
 
 
-def shape_to_stl_file_buffer(shape: Any, deflection: float = 0.5, angular_deflection: float = 0.3) -> BytesIO:
+def shape_to_stl_file_buffer(shape: TopoDS_Shape, deflection: float = 0.5, angular_deflection: float = 0.3) -> BytesIO:
     """Write a shape to an STL file in memory.
 
     Args:
@@ -729,11 +734,10 @@ def shape_to_stl_file_buffer(shape: Any, deflection: float = 0.5, angular_deflec
         deflection: Linear deflection for mesh tessellation (default 0.5).
         angular_deflection: Angular deflection for mesh tessellation (default 0.3 radians).
     """
-    topo_shape = _ensure_occ(shape)
     with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
         tmp_path = tmp.name
     try:
-        ocp_write_stl(topo_shape, tmp_path, deflection, angular_deflection)
+        ocp_write_stl(shape, tmp_path, deflection, angular_deflection)
         with open(tmp_path, "rb") as f:
             buffer = BytesIO(f.read())
         buffer.seek(0)
@@ -742,7 +746,7 @@ def shape_to_stl_file_buffer(shape: Any, deflection: float = 0.5, angular_deflec
         os.unlink(tmp_path)
 
 
-def shape_to_stl_file(shape: Any, filepath: str, deflection: float = 0.5, angular_deflection: float = 0.3) -> None:
+def shape_to_stl_file(shape: TopoDS_Shape, filepath: str, deflection: float = 0.5, angular_deflection: float = 0.3) -> None:
     """Write a shape to an STL file.
 
     Args:
@@ -751,15 +755,15 @@ def shape_to_stl_file(shape: Any, filepath: str, deflection: float = 0.5, angula
         deflection: Linear deflection for mesh tessellation (default 0.5).
         angular_deflection: Angular deflection for mesh tessellation (default 0.3 radians).
     """
-    ocp_write_stl(_ensure_occ(shape), filepath, deflection, angular_deflection)
+    ocp_write_stl(shape, filepath, deflection, angular_deflection)
 
 
 def _apply_edge_modifier(
-    shape: Any,
-    edges: list[Any] | None,
-    maker_factory: Any,
-    add_edge_fn: Any,
-) -> Any:
+    shape: TopoDS_Shape,
+    edges: list[TopoDS_Shape] | None,
+    maker_factory: Callable[[TopoDS_Shape], Any],
+    add_edge_fn: Callable[[Any, TopoDS_Shape], None],
+) -> TopoDS_Shape:
     """Shared OCC edge-modifier kernel used by apply_fillet and apply_chamfer.
 
     maker_factory: (topo_shape) -> maker object; exception returns original shape.
@@ -816,12 +820,12 @@ def _apply_edge_modifier(
 
     try:
         maker.Build()
-        return _ensure_cq_shape(maker.Shape())
+        return maker.Shape()
     except Exception:
         return shape
 
 
-def apply_fillet(shape: Any, radius: float, edges: list[Any] | None = None) -> Any:
+def apply_fillet(shape: TopoDS_Shape, radius: float, edges: list[TopoDS_Shape] | None = None) -> TopoDS_Shape:
     """Apply a fillet (round) to edges of a shape.
 
     Returns the filleted shape, or the original shape if filleting fails.
@@ -833,13 +837,13 @@ def apply_fillet(shape: Any, radius: float, edges: list[Any] | None = None) -> A
     )
 
 
-def apply_chamfer(shape: Any, distance: float, kind: str = "distance", angle: float = 45.0, edges: list[Any] | None = None) -> Any:
+def apply_chamfer(shape: TopoDS_Shape, distance: float, kind: str = "distance", angle: float = 45.0, edges: list[TopoDS_Shape] | None = None) -> TopoDS_Shape:
     """Apply a chamfer (bevel) to edges of a shape.
 
     kind: "distance" or "angle_distance".
     Returns the chamfered shape, or the original shape if chamfering fails.
     """
-    def _add(maker: Any, edge: Any) -> None:
+    def _add(maker: Any, edge: TopoDS_Shape) -> None:
         if kind == "angle_distance":
             maker.AddDA(distance, angle, edge)
         else:
@@ -852,16 +856,16 @@ def apply_chamfer(shape: Any, distance: float, kind: str = "distance", angle: fl
     )
 
 
-def transform_copy(shape: Any, trsf: Any) -> Any:
+def transform_copy(shape: TopoDS_Shape, trsf: gp_Trsf) -> TopoDS_Shape:
     """Return a new shape that is `shape` with OCC gp_Trsf applied."""
     return ocp_transform_copy(_ensure_occ(shape), trsf)
 
 
-def make_translation_trsf(dx: float, dy: float, dz: float) -> Any:
+def make_translation_trsf(dx: float, dy: float, dz: float) -> gp_Trsf:
     return ocp_make_translation_trsf(dx, dy, dz)
 
 
 def make_rotation_trsf(
     origin: list[float], direction: list[float], angle_rad: float
-) -> Any:
+) -> gp_Trsf:
     return ocp_make_rotation_trsf(origin, direction, angle_rad)

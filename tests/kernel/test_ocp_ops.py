@@ -224,11 +224,28 @@ def test_ocp_curve_info_circle():
 
 
 def test_no_ocp_imports_outside_ocp_ops():
-    """No kernel file other than ocp_ops.py may contain 'from OCP.' or 'import OCP'."""
+    """No kernel file other than ocp_ops.py may contain runtime OCP imports.
+
+    Imports inside ``if TYPE_CHECKING:`` blocks are allowed because they are
+    never executed at runtime -- they exist only for static type checkers.
+    """
     kernel_dir = os.path.join(
         os.path.dirname(__file__), "..", "..", "oversolved", "kernel"
     )
     kernel_dir = os.path.normpath(kernel_dir)
+
+    def _type_checking_import_lines(tree: ast.AST) -> set[int]:
+        """Return line numbers of imports that live inside if TYPE_CHECKING: blocks."""
+        lines: set[int] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.If):
+                continue
+            test = node.test
+            if isinstance(test, ast.Name) and test.id == "TYPE_CHECKING":
+                for child in ast.walk(node):
+                    if isinstance(child, (ast.Import, ast.ImportFrom)):
+                        lines.add(child.lineno)
+        return lines
 
     violations = []
     for fname in os.listdir(kernel_dir):
@@ -243,15 +260,19 @@ def test_no_ocp_imports_outside_ocp_ops():
             tree = ast.parse(source, filename=fpath)
         except SyntaxError:
             continue
+        guarded = _type_checking_import_lines(tree)
         for node in ast.walk(tree):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                if isinstance(node, ast.ImportFrom):
-                    module = node.module or ""
-                    if module == "OCP" or module.startswith("OCP."):
-                        violations.append(f"{fname}:{node.lineno}: from {module} import ...")
-                elif isinstance(node, ast.Import):
-                    for alias in node.names:
-                        if alias.name == "OCP" or alias.name.startswith("OCP."):
-                            violations.append(f"{fname}:{node.lineno}: import {alias.name}")
+            if not isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            if node.lineno in guarded:
+                continue
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if module == "OCP" or module.startswith("OCP."):
+                    violations.append(f"{fname}:{node.lineno}: from {module} import ...")
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "OCP" or alias.name.startswith("OCP."):
+                        violations.append(f"{fname}:{node.lineno}: import {alias.name}")
 
     assert violations == [], "OCP imports found outside ocp_ops.py:\n" + "\n".join(violations)

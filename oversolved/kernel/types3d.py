@@ -1,5 +1,10 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from OCP.TopoDS import TopoDS_Shape
 
 
 @dataclass
@@ -8,7 +13,7 @@ class Body:
     id: str
     created_by: str
     modified_by: list[str] = field(default_factory=list)
-    shape: Any = None  # canonical internal type: TopoDS_Shape (use _ensure_occ to unwrap, _ensure_cq to wrap)
+    shape: TopoDS_Shape | None = None  # canonical internal type: TopoDS_Shape
     sketch_id: str = ""  # sketch feature that was extruded to create this body
 
 
@@ -18,11 +23,11 @@ class FeatureCheckpoint:
     spec: dict
     result: dict
     repo_snapshot: dict[str, Any]
-    body_store_snapshot: dict[str, 'Body']  # shapes are mutable; use _copy_shape() to defensively copy
+    body_store_snapshot: dict[str, Body]  # shapes are mutable; use _copy_shape() to defensively copy
 
 
 @dataclass
 class BuildState:
     """Opaque cache passed from one build() call to the next."""
     feature_order: list[str]
-    checkpoints: dict[str, 'FeatureCheckpoint']
+    checkpoints: dict[str, FeatureCheckpoint]

@@ -17,7 +17,11 @@ the worker calls build().
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from OCP.TopoDS import TopoDS_Shape
+    from OCP.gp import gp_Trsf
 
 try:
     from cadquery.occ_impl import shapes as cq_shapes
@@ -45,7 +49,7 @@ from oversolved.kernel.ocp_ops import (
 import math as _math
 
 
-def _ensure_occ(shape: Any) -> Any:
+def _ensure_occ(shape: Any) -> TopoDS_Shape:
     """Unwrap a CadQuery Shape to its underlying TopoDS_Shape, or pass through raw OCC shapes."""
     return shape.wrapped if hasattr(shape, "wrapped") else shape
 
@@ -168,7 +172,7 @@ def extrude_face(face: cq_shapes.Face, direction_vec: list[float], distance: flo
     return cq_shapes.Solid.extrudeLinear(face, vec).clean()
 
 
-def revolve_face(face: Any, axis_origin: list[float], axis_direction: list[float], angle_deg: float) -> cq_shapes.Solid:
+def revolve_face(face: cq_shapes.Face, axis_origin: list[float], axis_direction: list[float], angle_deg: float) -> cq_shapes.Solid:
     """Revolve a face around an axis."""
     if angle_deg == 0:
         raise ValueError("revolve angle must be non-zero")
@@ -182,7 +186,7 @@ def make_cylinder(center: list[float], axis: list[float], radius: float, height:
 
 
 def _ensure_cq(target: Any) -> cq_shapes.Shape:
-    """Wrap raw TopoDS shape in cadquery Shape if necessary."""
+    """Convert any shape (TopoDS_Shape or cadquery Shape) to a cadquery Shape."""
     return cq_shapes.Shape.cast(_ensure_occ(target))
 
 
@@ -216,39 +220,39 @@ def boolean_intersection(target: Any, tool: Any) -> cq_shapes.Solid:
     return result
 
 
-def fuse_shapes(shapes: list[Any]) -> Any:
+def fuse_shapes(shapes: list[Any]) -> cq_shapes.Shape:
     """Fuse multiple shapes into one."""
     if not shapes:
         raise ValueError("no shapes to fuse")
     if len(shapes) == 1:
-        return shapes[0]
-    result = shapes[0]
+        return _ensure_cq(shapes[0])
+    result: cq_shapes.Shape = _ensure_cq(shapes[0])
     for shape in shapes[1:]:
         result = boolean_union(result, shape)
     return result
 
 
-def make_mirror_trsf(origin: tuple[float, float, float], normal: tuple[float, float, float]):
+def make_mirror_trsf(origin: tuple[float, float, float], normal: tuple[float, float, float]) -> gp_Trsf:
     """Create a reflection transform across a plane."""
     return ocp_make_mirror_trsf(origin, normal)
 
 
-def _compute_face_centroid(face: cq_shapes.Face) -> list[float]:
+def _compute_face_centroid(face: cq_shapes.Shape) -> list[float]:
     """Compute face centroid using cadquery."""
     c = face.Center()
     return [c.x, c.y, c.z]
 
 
-def _compute_face_normal(face: cq_shapes.Face) -> list[float]:
+def _compute_face_normal(face: cq_shapes.Shape) -> list[float]:
     """Compute face normal at the midpoint of its UV domain."""
     umin, umax, vmin, vmax = ocp_face_uv_bounds(_ensure_occ(face))
     u = (umin + umax) / 2.0
     v = (vmin + vmax) / 2.0
-    n = face.normalAt(CQVector(u, v))
+    n = face.normalAt(CQVector(u, v))  # type: ignore[attr-defined]
     return [n.x, n.y, n.z]
 
 
-def _get_face_surface_type(face: cq_shapes.Face) -> str:
+def _get_face_surface_type(face: cq_shapes.Shape) -> str:
     """Classify a face as flatface, cylinderface, or face."""
     gt = face.geomType()
     if gt == "PLANE":
@@ -258,7 +262,7 @@ def _get_face_surface_type(face: cq_shapes.Face) -> str:
     return "face"
 
 
-def _face_sort_key(face: cq_shapes.Face) -> tuple:
+def _face_sort_key(face: cq_shapes.Shape) -> tuple:
     """Sort key for a raw cadquery Face object.
 
     Flat faces sort before curved; within each group, sorted by normal then centroid.
@@ -271,14 +275,14 @@ def _face_sort_key(face: cq_shapes.Face) -> tuple:
 
 
 def apply_transform_shape(
-    shape,
-    translation=None,
-    rotation_axis_origin=None,
-    rotation_axis_direction=None,
-    rotation_angle_deg=0.0,
-    scale=1.0,
-    scale_center=None,
-):
+    shape: TopoDS_Shape,
+    translation: list[float] | None = None,
+    rotation_axis_origin: list[float] | None = None,
+    rotation_axis_direction: list[float] | None = None,
+    rotation_angle_deg: float = 0.0,
+    scale: float = 1.0,
+    scale_center: tuple[float, float, float] | None = None,
+) -> TopoDS_Shape:
     """Compose scale -> rotation -> translation into a single gp_Trsf and apply.
 
     Each component is skipped when it would be identity (scale==1, angle==0,

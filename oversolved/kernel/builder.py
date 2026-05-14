@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 import copy
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from OCP.TopoDS import TopoDS_Shape
 from oversolved.kernel.cadquery_ops import _normal_to_frame, _ensure_occ
 from oversolved.kernel.ocp_ops import ocp_copy_shape
 from oversolved.kernel.geom_hash import face_geometry_hash, edge_geometry_hash, vertex_geometry_hash
@@ -27,7 +32,7 @@ __all__ = [
 ]
 
 
-def _copy_shape(shape):
+def _copy_shape(shape: TopoDS_Shape | None) -> TopoDS_Shape | None:
     """Return a defensive copy of an OCC shape using BRepBuilderAPI_Copy.
 
     OCC TopoDS_Shape objects are mutable; in-place operations (fuse, fillet, etc.)
@@ -480,7 +485,7 @@ def build(
         checkpoints=new_checkpoints,
     )
 
-    body_shapes: dict[str, Any] = {bid: body.shape for bid, body in body_store.items() if body.shape is not None}
+    body_shapes: dict[str, TopoDS_Shape] = {bid: body.shape for bid, body in body_store.items() if body.shape is not None}
 
     pick_bodies_out: dict[str, dict] | None = None
     if pick_boundary is not None and pick_boundary > 0 and pick_boundary <= len(features):

@@ -113,7 +113,7 @@ def solve_features(spec: dict) -> dict:
     return {"features": results}
 
 
-def _try_solve_feature(feature: Any, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict] | None = None) -> dict:
+def _try_solve_feature(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict] | None = None) -> dict:
     t0 = time.perf_counter()
     try:
         result = _solve_feature(feature, global_repo, body_store, features_by_id)
@@ -131,7 +131,7 @@ def _try_solve_feature(feature: Any, global_repo: Repository, body_store: dict, 
         }
 
 
-def _solve_feature(feature: Any, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict] | None = None) -> dict:
+def _solve_feature(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict] | None = None) -> dict:
     kind = feature.get("kind")
     if kind == "sketch":
         feature_result = _solve_sketch(feature, global_repo)

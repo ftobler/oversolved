@@ -11,16 +11,20 @@ deployments where OCP is absent.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from OCP.TopoDS import TopoDS_Shape
+    from OCP.gp import gp_Trsf, gp_Circ
 
 
-def ocp_mesh_shape(topo: Any, lin_deflection: float, ang_deflection: float) -> None:
+def ocp_mesh_shape(topo: TopoDS_Shape, lin_deflection: float, ang_deflection: float) -> None:
     """Compute incremental mesh on *topo* in-place (BRepMesh_IncrementalMesh)."""
     from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
     BRepMesh_IncrementalMesh(topo, lin_deflection, False, ang_deflection)
 
 
-def ocp_read_stl(filepath: str) -> Any:
+def ocp_read_stl(filepath: str) -> TopoDS_Shape:
     """Read an STL file and return a TopoDS_Shape."""
     from OCP.StlAPI import StlAPI_Reader  # noqa: PLC0415
     from OCP.TopoDS import TopoDS_Shape  # noqa: PLC0415
@@ -31,7 +35,7 @@ def ocp_read_stl(filepath: str) -> Any:
     return shape
 
 
-def ocp_write_stl(topo: Any, filepath: str, deflection: float, angular_deflection: float) -> None:
+def ocp_write_stl(topo: TopoDS_Shape, filepath: str, deflection: float, angular_deflection: float) -> None:
     """Tessellate *topo* and write the result to *filepath* as ASCII STL."""
     from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
     from OCP.StlAPI import StlAPI_Writer  # noqa: PLC0415
@@ -42,7 +46,7 @@ def ocp_write_stl(topo: Any, filepath: str, deflection: float, angular_deflectio
     writer.Write(topo, filepath)
 
 
-def ocp_explore_edges(topo: Any) -> list[Any]:
+def ocp_explore_edges(topo: TopoDS_Shape) -> list[TopoDS_Shape]:
     """Return all TopoDS_Edge objects in *topo* via TopExp_Explorer."""
     from OCP.TopAbs import TopAbs_EDGE  # noqa: PLC0415
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
@@ -55,7 +59,7 @@ def ocp_explore_edges(topo: Any) -> list[Any]:
     return edges
 
 
-def ocp_collect_edge_hashes(topo: Any) -> set[int]:
+def ocp_collect_edge_hashes(topo: TopoDS_Shape) -> set[int]:
     """Return topology hashes for all edges in *topo* (via TopoDS_Shape identity)."""
     from OCP.TopAbs import TopAbs_EDGE  # noqa: PLC0415
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
@@ -67,7 +71,7 @@ def ocp_collect_edge_hashes(topo: Any) -> set[int]:
     return hashes
 
 
-def ocp_explore_solids(topo: Any) -> list[Any]:
+def ocp_explore_solids(topo: TopoDS_Shape) -> list[TopoDS_Shape]:
     """Return all TopoDS_Solid objects in *topo* via TopExp_Explorer."""
     from OCP.TopAbs import TopAbs_SOLID  # noqa: PLC0415
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
@@ -80,7 +84,7 @@ def ocp_explore_solids(topo: Any) -> list[Any]:
     return solids
 
 
-def ocp_count_solids(topo: Any) -> int:
+def ocp_count_solids(topo: TopoDS_Shape) -> int:
     """Count solid sub-shapes in *topo*."""
     from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND  # noqa: PLC0415
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
@@ -94,19 +98,19 @@ def ocp_count_solids(topo: Any) -> int:
     return count
 
 
-def ocp_fillet_factory(topo: Any) -> Any:
+def ocp_fillet_factory(topo: TopoDS_Shape) -> Any:
     """Return a BRepFilletAPI_MakeFillet builder for *topo*."""
     from OCP.BRepFilletAPI import BRepFilletAPI_MakeFillet  # noqa: PLC0415
     return BRepFilletAPI_MakeFillet(topo)
 
 
-def ocp_chamfer_factory(topo: Any) -> Any:
+def ocp_chamfer_factory(topo: TopoDS_Shape) -> Any:
     """Return a BRepFilletAPI_MakeChamfer builder for *topo*."""
     from OCP.BRepFilletAPI import BRepFilletAPI_MakeChamfer  # noqa: PLC0415
     return BRepFilletAPI_MakeChamfer(topo)
 
 
-def ocp_transform_copy(topo: Any, trsf: Any) -> Any:
+def ocp_transform_copy(topo: TopoDS_Shape, trsf: gp_Trsf) -> TopoDS_Shape:
     """Apply *trsf* to *topo* and return a new TopoDS_Shape (copy=True)."""
     from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform  # noqa: PLC0415
     builder = BRepBuilderAPI_Transform(topo, trsf, True)
@@ -114,7 +118,7 @@ def ocp_transform_copy(topo: Any, trsf: Any) -> Any:
     return builder.Shape()
 
 
-def ocp_make_translation_trsf(dx: float, dy: float, dz: float) -> Any:
+def ocp_make_translation_trsf(dx: float, dy: float, dz: float) -> gp_Trsf:
     """Return a gp_Trsf for a pure translation."""
     from OCP.gp import gp_Trsf, gp_Vec  # noqa: PLC0415
     t = gp_Trsf()
@@ -122,7 +126,7 @@ def ocp_make_translation_trsf(dx: float, dy: float, dz: float) -> Any:
     return t
 
 
-def ocp_make_rotation_trsf(origin: list[float], direction: list[float], angle_rad: float) -> Any:
+def ocp_make_rotation_trsf(origin: list[float], direction: list[float], angle_rad: float) -> gp_Trsf:
     """Return a gp_Trsf for a rotation around an axis."""
     from OCP.gp import gp_Trsf, gp_Ax1, gp_Pnt, gp_Dir  # noqa: PLC0415
     ax = gp_Ax1(gp_Pnt(*origin), gp_Dir(*direction))
@@ -131,7 +135,7 @@ def ocp_make_rotation_trsf(origin: list[float], direction: list[float], angle_ra
     return t
 
 
-def ocp_make_mirror_trsf(origin: tuple[float, float, float], normal: tuple[float, float, float]) -> Any:
+def ocp_make_mirror_trsf(origin: tuple[float, float, float], normal: tuple[float, float, float]) -> gp_Trsf:
     """Return a gp_Trsf for a mirror across a plane defined by origin and normal."""
     from OCP.gp import gp_Ax2, gp_Pnt, gp_Dir, gp_Trsf  # noqa: PLC0415
     ax = gp_Ax2(gp_Pnt(*origin), gp_Dir(*normal))
@@ -140,13 +144,13 @@ def ocp_make_mirror_trsf(origin: tuple[float, float, float], normal: tuple[float
     return trsf
 
 
-def ocp_face_uv_bounds(topo_face: Any) -> tuple[float, float, float, float]:
+def ocp_face_uv_bounds(topo_face: TopoDS_Shape) -> tuple[float, float, float, float]:
     """Return (umin, umax, vmin, vmax) UV parameter bounds for a face."""
     from OCP.BRepTools import BRepTools  # noqa: PLC0415
     return BRepTools.UVBounds_s(topo_face)
 
 
-def ocp_copy_shape(topo: Any) -> Any:
+def ocp_copy_shape(topo: TopoDS_Shape) -> TopoDS_Shape:
     """Return an independent copy of *topo* via BRepBuilderAPI_Copy."""
     from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy  # noqa: PLC0415
     copier = BRepBuilderAPI_Copy(topo, True)
@@ -156,20 +160,20 @@ def ocp_copy_shape(topo: Any) -> Any:
     return copier.Shape()
 
 
-def ocp_make_circle(center: tuple, normal: tuple, x_axis: tuple, radius: float) -> Any:
+def ocp_make_circle(center: tuple, normal: tuple, x_axis: tuple, radius: float) -> gp_Circ:
     """Return a gp_Circ from center, normal, x_axis and radius."""
     from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt, gp_Circ  # noqa: PLC0415
     ax2 = gp_Ax2(gp_Pnt(*center), gp_Dir(*normal), gp_Dir(*x_axis))
     return gp_Circ(ax2, radius)
 
 
-def ocp_make_edge_from_circle(circle: Any) -> Any:
+def ocp_make_edge_from_circle(circle: gp_Circ) -> TopoDS_Shape:
     """Return a full-circle TopoDS_Edge from a gp_Circ."""
     from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge  # noqa: PLC0415
     return BRepBuilderAPI_MakeEdge(circle).Edge()
 
 
-def ocp_make_arc_edge(circle: Any, angle_start: float, angle_end: float) -> Any:
+def ocp_make_arc_edge(circle: gp_Circ, angle_start: float, angle_end: float) -> TopoDS_Shape:
     """Return a partial arc TopoDS_Edge from a gp_Circ and angle range."""
     from OCP.GC import GC_MakeArcOfCircle  # noqa: PLC0415
     from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge  # noqa: PLC0415
@@ -177,7 +181,7 @@ def ocp_make_arc_edge(circle: Any, angle_start: float, angle_end: float) -> Any:
     return BRepBuilderAPI_MakeEdge(arc.Value()).Edge()
 
 
-def ocp_revolve(topo_face: Any, axis_origin: list[float], axis_direction: list[float], angle_rad: float) -> Any:
+def ocp_revolve(topo_face: TopoDS_Shape, axis_origin: list[float], axis_direction: list[float], angle_rad: float) -> TopoDS_Shape:
     """Revolve *topo_face* around an axis and return the resulting TopoDS_Shape."""
     from OCP.gp import gp_Ax1, gp_Pnt, gp_Dir  # noqa: PLC0415
     from OCP.BRepPrimAPI import BRepPrimAPI_MakeRevol  # noqa: PLC0415
@@ -185,7 +189,7 @@ def ocp_revolve(topo_face: Any, axis_origin: list[float], axis_direction: list[f
     return BRepPrimAPI_MakeRevol(topo_face, ax, angle_rad).Shape()
 
 
-def ocp_make_cylinder(center: list[float], axis: list[float], radius: float, height: float) -> Any:
+def ocp_make_cylinder(center: list[float], axis: list[float], radius: float, height: float) -> TopoDS_Shape:
     """Return a solid cylinder TopoDS_Shape."""
     from OCP.gp import gp_Ax2, gp_Pnt, gp_Dir  # noqa: PLC0415
     from OCP.BRepPrimAPI import BRepPrimAPI_MakeCylinder  # noqa: PLC0415
@@ -193,7 +197,7 @@ def ocp_make_cylinder(center: list[float], axis: list[float], radius: float, hei
     return BRepPrimAPI_MakeCylinder(ax2, radius, height).Shape()
 
 
-def ocp_make_scale_trsf(center: tuple[float, float, float], scale: float) -> Any:
+def ocp_make_scale_trsf(center: tuple[float, float, float], scale: float) -> gp_Trsf:
     """Return a gp_Trsf for a uniform scale around *center*."""
     from OCP.gp import gp_Trsf, gp_Pnt  # noqa: PLC0415
     t = gp_Trsf()
@@ -201,13 +205,13 @@ def ocp_make_scale_trsf(center: tuple[float, float, float], scale: float) -> Any
     return t
 
 
-def ocp_identity_trsf() -> Any:
+def ocp_identity_trsf() -> gp_Trsf:
     """Return an identity gp_Trsf."""
     from OCP.gp import gp_Trsf  # noqa: PLC0415
     return gp_Trsf()
 
 
-def ocp_curve_info(topo_edge: Any) -> dict:
+def ocp_curve_info(topo_edge: TopoDS_Shape) -> dict:
     """Classify a TopoDS_Edge and return its geometry as a plain dict.
 
     Keys always present: "type" ("line", "circle", or "other").
@@ -234,7 +238,7 @@ def ocp_curve_info(topo_edge: Any) -> dict:
 
 
 def ocp_extract_face_loops(
-    topo_shape: Any,
+    topo_shape: TopoDS_Shape,
     cq_faces_sorted: list | None,
     face_index: int,
 ) -> tuple[list[list[dict]], dict]:
@@ -254,7 +258,7 @@ def ocp_extract_face_loops(
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
     from OCP.TopoDS import TopoDS, TopoDS_Face  # noqa: PLC0415
 
-    def _face_from_explorer(topo: Any, idx: int) -> Any:
+    def _face_from_explorer(topo: TopoDS_Shape, idx: int) -> TopoDS_Face:
         exp = TopExp_Explorer(topo, TopAbs_FACE)
         for _ in range(idx):
             if not exp.More():

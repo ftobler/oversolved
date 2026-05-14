@@ -31,6 +31,11 @@ def _box_body(bid, x, y, z, w, h, d):
     return Body(id=bid, created_by=bid.replace("body_", ""), shape=_make_box(x, y, z, w, h, d))
 
 
+def _volume(shape):
+    import cadquery as cq
+    return cq.Shape.cast(shape).Volume()
+
+
 class TestResolveBody:
     def test_resolve_body_with_body_prefix(self):
         """@body_extrude1 should resolve when key is body_extrude1."""
@@ -69,7 +74,7 @@ class TestSolveBooleanDirect:
         result = _solve_boolean(feature, None, store)
         assert result["status"] == "ok"
         assert result["body_id"] == "body_target"
-        assert target.shape.Volume() == pytest.approx(64.0, abs=1e-3)
+        assert _volume(target.shape) == pytest.approx(64.0, abs=1e-3)
         assert "body_tool" not in store
 
     def test_boolean_subtract(self):
@@ -83,7 +88,7 @@ class TestSolveBooleanDirect:
         }
         result = _solve_boolean(feature, None, store)
         assert result["status"] == "ok"
-        assert target.shape.Volume() == pytest.approx(32.0, abs=1e-3)
+        assert _volume(target.shape) == pytest.approx(32.0, abs=1e-3)
 
     def test_boolean_intersect(self):
         """Intersect a 4x4x4 box with a 4x4x2 box should produce volume 32."""
@@ -96,7 +101,7 @@ class TestSolveBooleanDirect:
         }
         result = _solve_boolean(feature, None, store)
         assert result["status"] == "ok"
-        assert target.shape.Volume() == pytest.approx(32.0, abs=1e-3)
+        assert _volume(target.shape) == pytest.approx(32.0, abs=1e-3)
 
     def test_boolean_multiple_tools(self):
         """Boolean with two tools should consume both."""

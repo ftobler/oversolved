@@ -1,9 +1,15 @@
+from __future__ import annotations
+
 import logging
 import math
 import os
 import re
-from typing import Any
+from typing import Any, Callable, TYPE_CHECKING
 import numpy as np
+
+if TYPE_CHECKING:
+    from OCP.TopoDS import TopoDS_Shape
+    from OCP.gp import gp_Trsf
 from oversolved.kernel.query import Repository, _parse_ancestry
 from oversolved.kernel.types3d import Body
 from oversolved.kernel.solver_constants import _ARC_SEGMENTS
@@ -199,30 +205,28 @@ def _register_top_face(
 
 
 def _extract_loops_from_occ_face(
-    shape: Any, face_index: int
+    shape: TopoDS_Shape, face_index: int
 ) -> tuple[list[list[dict]], dict]:
-    topo_shape = _ensure_occ(shape)
-    cq_faces_sorted = None
-    if hasattr(shape, "faces"):
-        cq_faces_sorted = sorted(list(shape.faces()), key=_face_sort_key)
-    return ocp_extract_face_loops(topo_shape, cq_faces_sorted, face_index)
+    import cadquery as cq
+    cq_shape = cq.Shape.cast(_ensure_occ(shape))
+    cq_faces_sorted = sorted(list(cq_shape.faces()), key=_face_sort_key)
+    return ocp_extract_face_loops(_ensure_occ(shape), cq_faces_sorted, face_index)
 
 
 def _resolve_face_index_via_hash(
-    shape: Any, old_index: int, global_repo: Repository
+    shape: TopoDS_Shape, old_index: int, global_repo: Repository
 ) -> int | None:
     """Resolve an old sorted face index to the current index via geometry hash.
 
     Returns None if resolution fails (not a cadquery shape, index out of range,
     tessellation error, or hash not found in repo).
     """
-    if not hasattr(shape, "faces"):
-        return None
-
     from oversolved.kernel.geom_hash import face_geometry_hash
     from oversolved.kernel.query import make_ancestry_query
+    import cadquery as cq
 
-    faces = list(shape.faces())
+    cq_shape = cq.Shape.cast(shape)
+    faces = list(cq_shape.faces())
 
     faces.sort(key=_face_sort_key)
     if old_index >= len(faces):
@@ -396,12 +400,11 @@ def _collect_extrude_loops(
     return _extract_profile_loops(surfaces, pt), pt, sketch_id
 
 
-def _split_compound(shape) -> list:
-    from cadquery.occ_impl.shapes import Shape as CQShape
+def _split_compound(shape: TopoDS_Shape) -> list[TopoDS_Shape]:
     raw_solids = ocp_explore_solids(_ensure_occ(shape))
     if len(raw_solids) > 1:
-        return [CQShape.cast(s) for s in raw_solids]
-    return [shape]
+        return raw_solids
+    return [_ensure_occ(shape)]
 
 
 # ── Feature solvers ──
@@ -493,15 +496,12 @@ def _apply_body_operation(
                 continue
             try:
                 intersection = boolean_intersection(existing_body.shape, tool_shape)
-                if intersection is None or intersection.wrapped.IsNull():
-                    continue
-                import cadquery as cq
-                if cq.Shape.cast(intersection.wrapped).Volume() < 1e-10:
+                if intersection.Volume() < 1e-10:
                     continue
             except Exception:
                 continue
             new_shape = boolean_cut(existing_body.shape, tool_shape)
-            existing_body.shape = new_shape
+            existing_body.shape = _ensure_occ(new_shape)
             existing_body.modified_by.append(feature_id)
             cut_anything = True
             if cut_body_id is None:
@@ -518,7 +518,7 @@ def _apply_body_operation(
         body_ids = []
         for i, solid in enumerate(solids):
             bid = body_id if i == 0 else f"{body_id}_{i}"
-            b = Body(id=bid, created_by=feature_id, shape=solid,
+            b = Body(id=bid, created_by=feature_id, shape=_ensure_occ(solid),
                      sketch_id=sketch_id)
             body_store[bid] = b
             body_ids.append(bid)
@@ -547,7 +547,7 @@ def _apply_body_operation(
                             f"{op_name}: add would create island shape "
                             "not touching target body"
                         )
-                existing_body.shape = new_shape
+                existing_body.shape = _ensure_occ(new_shape)
                 existing_body.modified_by.append(feature_id)
                 fused = True
                 fused_body_id = bid
@@ -771,11 +771,11 @@ def _resolve_axis_query(
 def _build_array_transforms(
     feature: dict,
     global_repo: Repository,
-) -> list[Any]:
+) -> list[gp_Trsf]:
     from oversolved.kernel.geometry import make_translation_trsf, make_rotation_trsf
 
     mode = feature.get("mode", "linear")
-    trsfs: list[Any] = []
+    trsfs: list[gp_Trsf] = []
 
     if mode == "linear":
         count_x = int(feature.get("count_x", 2))
@@ -889,13 +889,13 @@ def _solve_array(
             new_body = Body(
                 id=result_body_id,
                 created_by=feature_id,
-                shape=tool_shape,
+                shape=_ensure_occ(tool_shape),
                 sketch_id="",
             )
             body_store[result_body_id] = new_body
             return {"status": "ok", "body_id": result_body_id, "operation": "new"}
         else:
-            body.shape = tool_shape
+            body.shape = _ensure_occ(tool_shape)
             body.modified_by.append(feature_id)
             return {"status": "ok", "body_id": source_body_id, "operation": "add"}
 
@@ -938,14 +938,14 @@ def _solve_import_step(
         body_store[body_id] = Body(
             id=body_id,
             created_by=feature_id,
-            shape=shape,
+            shape=_ensure_occ(shape),
         )
         return {"status": "ok", "body_id": body_id}
     except Exception as exc:
         raise ValueError(str(exc)) from exc
 
 
-def _resolve_fillet_edges(body, edge_queries):
+def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Shape]:
     from oversolved.kernel.geom_hash import edge_geometry_hash
     from oversolved.kernel.query import make_ancestry_query, _parse_ancestry
 
@@ -969,8 +969,8 @@ def _resolve_fillet_edges(body, edge_queries):
         curve = ocp_curve_info(wrapped)
         ed: dict = {"kind": gt.lower()}
         if curve["type"] == "line":
-            sp = edge.startPoint()
-            ep = edge.endPoint()
+            sp = edge.startPoint()  # type: ignore[attr-defined]
+            ep = edge.endPoint()  # type: ignore[attr-defined]
             ed["start"] = [sp.x, sp.y, sp.z]
             ed["end"] = [ep.x, ep.y, ep.z]
         elif curve["type"] == "circle":
@@ -982,7 +982,7 @@ def _resolve_fillet_edges(body, edge_queries):
             n_pts = 16
             pts = []
             for i in range(n_pts + 1):
-                pt = edge.positionAt(i / n_pts)
+                pt = edge.positionAt(i / n_pts)  # type: ignore[attr-defined]
                 pts.append([pt.x, pt.y, pt.z])
             ed["points"] = pts
         edge_dicts.append(ed)
@@ -1006,9 +1006,9 @@ def _resolve_fillet_edges(body, edge_queries):
             query_to_edge[aq3] = te
         query_to_edge[f"?{body.id}:edge:{idx}"] = te
 
-    result = []
+    result: list[TopoDS_Shape] = []
     for q in edge_queries:
-        edge = query_to_edge.get(q)
+        edge = query_to_edge.get(q)  # type: ignore[assignment]
         if edge is None and q.startswith("?"):
             try:
                 ids, _ = _parse_ancestry(q)
@@ -1120,7 +1120,7 @@ def _solve_transform(
 
         operation = cfg.get("operation", "new")
         if operation == "replace":
-            source_body.shape = new_shape
+            source_body.shape = _ensure_occ(new_shape)
             source_body.modified_by = list(source_body.modified_by or []) + [feature_id]
             return {"status": "ok", "body_id": source_body.id, "operation": "replace"}
         else:
@@ -1129,7 +1129,7 @@ def _solve_transform(
                 id=new_body_id,
                 created_by=feature_id,
                 modified_by=[],
-                shape=new_shape,
+                shape=_ensure_occ(new_shape),
                 sketch_id=source_body.sketch_id,
             )
             return {"status": "ok", "body_id": new_body_id, "operation": "new"}
@@ -1141,7 +1141,7 @@ def _apply_edge_feature(
     feature: dict,
     body_store: dict,
     feature_kind: str,
-    geometry_fn: Any,
+    geometry_fn: Callable[..., TopoDS_Shape],
     **geometry_kwargs: Any,
 ) -> dict:
     """Shared body-resolution and edge-application logic for fillet and chamfer.
@@ -1266,7 +1266,7 @@ def _solve_boolean(
             if not keep_tools:
                 consumed_keys.append(tool_body.id)
 
-        target_body.shape = result_shape
+        target_body.shape = _ensure_occ(result_shape)
         target_body.modified_by.append(feature_id)
 
         for key in consumed_keys:
@@ -1311,13 +1311,13 @@ def _solve_mirror(feature: dict, global_repo: Repository, body_store: dict) -> d
         mirrored_shape = transform_copy(source_body.shape, trsf)
 
         if not keep_original:
-            source_body.shape = mirrored_shape
+            source_body.shape = _ensure_occ(mirrored_shape)
             source_body.modified_by.append(feature_id)
             return {"status": "ok", "body_id": source_body.id, "operation": "replace"}
 
         if merge:
             new_shape = boolean_union(source_body.shape, mirrored_shape)
-            source_body.shape = new_shape
+            source_body.shape = _ensure_occ(new_shape)
             source_body.modified_by.append(feature_id)
             return {"status": "ok", "body_id": source_body.id, "operation": "merge"}
 
@@ -1326,7 +1326,7 @@ def _solve_mirror(feature: dict, global_repo: Repository, body_store: dict) -> d
             id=new_body_id,
             created_by=feature_id,
             modified_by=[],
-            shape=mirrored_shape,
+            shape=_ensure_occ(mirrored_shape),
             sketch_id=source_body.sketch_id,
         )
         return {"status": "ok", "body_id": new_body_id, "body_ids": [source_body.id, new_body_id], "operation": "new"}
@@ -1428,7 +1428,7 @@ def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, featur
                 h = depth
 
             cyl = make_cylinder(list(start_3d), list(axis), radius, h)
-            target_body.shape = boolean_cut(target_body.shape, cyl)
+            target_body.shape = _ensure_occ(boolean_cut(target_body.shape, cyl))
 
         target_body.modified_by.append(feature["id"])
         return {
