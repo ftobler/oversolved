@@ -398,8 +398,8 @@ def build(
             _register_brep_vertex_ancestry(global_repo, body, verts["vertices"], verts["vertex_queries"])
             edges = solid_to_edges(body.shape, created_by=body.created_by)
             _register_brep_edge_ancestry(global_repo, body, edges["edges"], edges["edge_queries"])
-        except Exception:
-            logger.warning("Failed to register B-rep ancestry for body %s", body.id)
+        except Exception as exc:
+            logger.warning("Failed to register B-rep ancestry for body %s: %s", body.id, exc)
 
     # Use full feature list for lookups (solver may need features past rollback)
     features_by_id = {f["id"]: f for f in all_features}

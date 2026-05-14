@@ -421,7 +421,7 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
         # canonical order.  Stable ordering means face indices are consistent
         # across boolean operations and tessellations.
         raw_faces: list[tuple] = []
-        for face in solid.faces():
+        for face in solid.Faces():
             verts, idxs = face.tessellate(0.1)
             centroid = _compute_face_centroid(face)
             normal = _compute_face_normal(face)
@@ -771,48 +771,49 @@ def _apply_edge_modifier(
     """
     topo_shape = _ensure_occ(shape)
 
-    # Defensive: refuse to operate on a null shape.
     try:
         if topo_shape.IsNull():
             return shape
-    except Exception:
+    except Exception as exc:
+        logger.warning("_apply_edge_modifier: null check failed: %s", exc)
         return shape
 
-    # Collect valid edges from the shape for membership checks.
     shape_edge_set: set[int] | None = None
     if edges is not None and len(edges) > 0:
         try:
             shape_edge_set = ocp_collect_edge_hashes(topo_shape)
-        except Exception:
+        except Exception as exc:
+            logger.warning("_apply_edge_modifier: edge hash collection failed: %s", exc)
             shape_edge_set = None
 
     try:
         maker = maker_factory(topo_shape)
-    except Exception:
+    except Exception as exc:
+        logger.warning("_apply_edge_modifier: maker factory failed: %s", exc)
         return shape
 
     edge_count = 0
     if edges is not None:
         for edge in edges:
             try:
-                # Skip edges that no longer exist on the shape.
                 if shape_edge_set is not None:
                     edge_hash = hash(edge)
                     if edge_hash not in shape_edge_set:
                         continue
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("_apply_edge_modifier: edge membership check failed: %s", exc)
             try:
                 add_edge_fn(maker, edge)
                 edge_count += 1
-            except Exception:
-                continue
+            except Exception as exc:
+                logger.warning("_apply_edge_modifier: adding edge failed: %s", exc)
     else:
         try:
             for edge in ocp_explore_edges(topo_shape):
                 add_edge_fn(maker, edge)
                 edge_count += 1
-        except Exception:
+        except Exception as exc:
+            logger.warning("_apply_edge_modifier: explore and add edges failed: %s", exc)
             return shape
 
     if edge_count == 0:
@@ -821,7 +822,8 @@ def _apply_edge_modifier(
     try:
         maker.Build()
         return maker.Shape()
-    except Exception:
+    except Exception as exc:
+        logger.warning("_apply_edge_modifier: build failed: %s", exc)
         return shape
 
 

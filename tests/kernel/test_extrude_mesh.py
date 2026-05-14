@@ -576,6 +576,48 @@ def test_extrude_sketch_empty_list_errors():
     assert r["result"]["ex1"]["status"] == "exception"
 
 
+def test_extrude_sketch_not_found_returns_exception():
+    """Extrude with a sketch ref that has no closed profile returns exception."""
+    from oversolved.kernel.builder import build
+
+    spec = {
+        "features": [
+            {
+                "id": "sk1",
+                "kind": "sketch",
+                "plane": "@builtin_plane_front",
+                "entities": [{"id": "L1", "kind": "line"}],
+                "constraints": [{"id": "c1", "kind": "horizontal", "target": {"entity": "L1"}}],
+            },
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": ["@sk1"],
+                "distance": 5.0,
+            },
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["ex1"]["status"] == "exception"
+
+
+def test_extrude_key_error_still_returns_exception_dict():
+    """A KeyError inside _solve_extrude must yield exception status (not crash)."""
+    from oversolved.kernel.builder import build
+
+    spec = {
+        "features": [
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": [],
+            }
+        ]
+    }
+    r = build(spec)
+    assert r["result"]["ex1"]["status"] == "exception"
+
+
 def test_cut_extrude_removes_volume():
     """Cut extrusion subtracts from a base body, leaving a partial solid."""
     from oversolved.kernel.builder import build

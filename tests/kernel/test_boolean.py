@@ -141,27 +141,25 @@ class TestSolveBooleanDirect:
         assert "body_tool" in store
 
     def test_boolean_missing_target(self):
-        """Missing target should return exception status."""
+        """Missing target should raise ValueError."""
         feature = {
             "id": "bool1",
             "boolean": {"operation": "union", "target": "", "tools": ["@tool"]},
         }
-        result = _solve_boolean(feature, None, {})
-        assert result["status"] == "exception"
-        assert "target" in result["exception"].lower()
+        with pytest.raises(ValueError, match="target"):
+            _solve_boolean(feature, None, {})
 
     def test_boolean_missing_tools(self):
-        """Empty tools list should return exception status."""
+        """Empty tools list should raise ValueError."""
         feature = {
             "id": "bool1",
             "boolean": {"operation": "union", "target": "@target", "tools": []},
         }
-        result = _solve_boolean(feature, None, {})
-        assert result["status"] == "exception"
-        assert "tools" in result["exception"].lower()
+        with pytest.raises(ValueError, match="tools"):
+            _solve_boolean(feature, None, {})
 
     def test_boolean_unknown_operation(self):
-        """Unknown operation should return exception status."""
+        """Unknown operation should raise ValueError."""
         target = _box_body("body_target", 0, 0, 0, 1, 1, 1)
         tool = _box_body("body_tool", 0, 0, 0, 1, 1, 1)
         store = {"body_target": target, "body_tool": tool}
@@ -173,18 +171,17 @@ class TestSolveBooleanDirect:
                 "tools": ["@body_tool"],
             },
         }
-        result = _solve_boolean(feature, None, store)
-        assert result["status"] == "exception"
-        assert "unknown operation" in result["exception"].lower()
+        with pytest.raises(ValueError, match="unknown operation"):
+            _solve_boolean(feature, None, store)
 
     def test_boolean_target_not_found(self):
-        """Target body that does not exist should return exception status."""
+        """Target body that does not exist should raise ValueError."""
         feature = {
             "id": "bool1",
             "boolean": {"operation": "union", "target": "@missing", "tools": ["@tool"]},
         }
-        result = _solve_boolean(feature, None, {})
-        assert result["status"] == "exception"
+        with pytest.raises(ValueError, match="body not found"):
+            _solve_boolean(feature, None, {})
 
     def test_boolean_modifies_target_modified_by(self):
         """Target body should record the boolean feature id in modified_by."""

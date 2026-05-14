@@ -209,7 +209,7 @@ def _extract_loops_from_occ_face(
 ) -> tuple[list[list[dict]], dict]:
     import cadquery as cq
     cq_shape = cq.Shape.cast(_ensure_occ(shape))
-    cq_faces_sorted = sorted(list(cq_shape.faces()), key=_face_sort_key)
+    cq_faces_sorted = sorted(list(cq_shape.Faces()), key=_face_sort_key)
     return ocp_extract_face_loops(_ensure_occ(shape), cq_faces_sorted, face_index)
 
 
@@ -226,7 +226,7 @@ def _resolve_face_index_via_hash(
     import cadquery as cq
 
     cq_shape = cq.Shape.cast(shape)
-    faces = list(cq_shape.faces())
+    faces = list(cq_shape.Faces())
 
     faces.sort(key=_face_sort_key)
     if old_index >= len(faces):
@@ -239,7 +239,8 @@ def _resolve_face_index_via_hash(
     try:
         ocp_mesh_shape(_ensure_occ(shape), 0.1, 0.1)
         verts, idxs = target_face.tessellate(0.1)
-    except Exception:
+    except Exception as exc:
+        logger.warning("face hash resolution: tessellation failed: %s", exc)
         return None
 
     flat_verts = [list(v.toTuple()) for v in verts]
@@ -254,8 +255,8 @@ def _resolve_face_index_via_hash(
         face_entry = global_repo.query(query_str, body_store={})
         if face_entry and "face_index" in face_entry:
             return face_entry["face_index"]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("face hash resolution: query failed: %s", exc)
     return None
 
 
@@ -575,162 +576,143 @@ def _apply_body_operation(
 
 
 def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:
-    try:
-        feature_id = feature.get("id", "")
-        sub = feature.get("extrude") or {}
-        merge_target = sub.get("merge_target") or feature.get("merge_target")
-        feature = {**sub, **feature}
-        sketch_raw = feature.get("sketch", "")
-        if isinstance(sketch_raw, list):
-            sketch_refs: list[str] = [s for s in sketch_raw if s]
-        else:
-            sketch_refs = [sketch_raw] if sketch_raw else []
-        distance = float(feature.get("distance") or feature.get("depth") or 1.0)
+    from oversolved.kernel.geometry import extrude_profile as _ep
 
-        if distance == 0:
-            raise ValueError("extrude distance must be non-zero")
+    feature_id = feature.get("id", "")
+    sub = feature.get("extrude") or {}
+    merge_target = sub.get("merge_target") or feature.get("merge_target")
+    feature = {**sub, **feature}
+    sketch_raw = feature.get("sketch", "")
+    if isinstance(sketch_raw, list):
+        sketch_refs: list[str] = [s for s in sketch_raw if s]
+    else:
+        sketch_refs = [sketch_raw] if sketch_raw else []
+    distance = float(feature.get("distance") or feature.get("depth") or 1.0)
 
-        if not sketch_refs:
-            raise ValueError("extrude requires at least one profile reference")
+    if distance == 0:
+        raise ValueError("extrude distance must be non-zero")
 
-        all_loops: list = []
-        first_pt: dict = {}
-        first_sketch_id = ""
-        for sketch_ref in sketch_refs:
-            loops, pt, sketch_id = _collect_extrude_loops(
-                sketch_ref, feature_id, feature, distance, global_repo, body_store
-            )
-            all_loops.extend(loops)
-            if not first_pt:
-                first_pt = pt
-                first_sketch_id = sketch_id
+    if not sketch_refs:
+        raise ValueError("extrude requires at least one profile reference")
 
-        normal = first_pt.get("normal", [0, 0, 1])
-        body_id = "body_" + feature_id
-        result: dict = {"status": "ok", "body_id": body_id}
+    all_loops: list = []
+    first_pt: dict = {}
+    first_sketch_id = ""
+    for sketch_ref in sketch_refs:
+        loops, pt, sketch_id = _collect_extrude_loops(
+            sketch_ref, feature_id, feature, distance, global_repo, body_store
+        )
+        all_loops.extend(loops)
+        if not first_pt:
+            first_pt = pt
+            first_sketch_id = sketch_id
 
-        operation = feature.get("operation", "add")
+    normal = first_pt.get("normal", [0, 0, 1])
+    body_id = "body_" + feature_id
+    result: dict = {"status": "ok", "body_id": body_id}
 
-        try:
-            from oversolved.kernel.geometry import extrude_profile as _ep
+    operation = feature.get("operation", "add")
 
-            if not all_loops:
-                result["mesh_warning"] = "no closed profile found; body has no shape"
-            else:
-                direction = feature.get("direction", "normal")
-                direction_vec, effective_distance, effective_plane = _resolve_direction(
-                    normal, first_pt, direction, distance
-                )
-                tool_shape = _ep(
-                    all_loops, effective_plane, direction_vec, effective_distance
-                )
-                op_result = _apply_body_operation(
-                    tool_shape, body_store, operation, merge_target,
-                    body_id, feature_id, first_sketch_id, op_name="extrude",
-                )
-                result.update(op_result)
-        except ValueError as exc:
-            result["status"] = "exception"
-            result["exception"] = str(exc)
-        except Exception as exc:
-            result["status"] = "exception"
-            result["exception"] = str(exc)
+    if not all_loops:
+        result["mesh_warning"] = "no closed profile found; body has no shape"
+    else:
+        direction = feature.get("direction", "normal")
+        direction_vec, effective_distance, effective_plane = _resolve_direction(
+            normal, first_pt, direction, distance
+        )
+        tool_shape = _ep(
+            all_loops, effective_plane, direction_vec, effective_distance
+        )
+        op_result = _apply_body_operation(
+            tool_shape, body_store, operation, merge_target,
+            body_id, feature_id, first_sketch_id, op_name="extrude",
+        )
+        result.update(op_result)
 
-        return result
-    except Exception as exc:
-        return {"status": "exception", "exception": str(exc)}
+    return result
 
 
 def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> dict:
-    try:
-        feature_id = feature.get("id", "")
-        sub = feature.get("revolve") or {}
-        merge_target = sub.get("merge_target") or feature.get("merge_target")
-        feature = {**sub, **feature}
-        sketch_raw = feature.get("sketch", "")
-        if isinstance(sketch_raw, list):
-            sketch_refs: list[str] = [s for s in sketch_raw if s]
-        else:
-            sketch_refs = [sketch_raw] if sketch_raw else []
-        angle = float(feature.get("angle") or 360.0)
+    from oversolved.kernel.geometry import sketch_loops_to_face, revolve_face as _rf
 
-        if angle == 0:
-            raise ValueError("revolve angle must be non-zero")
+    feature_id = feature.get("id", "")
+    sub = feature.get("revolve") or {}
+    merge_target = sub.get("merge_target") or feature.get("merge_target")
+    feature = {**sub, **feature}
+    sketch_raw = feature.get("sketch", "")
+    if isinstance(sketch_raw, list):
+        sketch_refs: list[str] = [s for s in sketch_raw if s]
+    else:
+        sketch_refs = [sketch_raw] if sketch_raw else []
+    angle = float(feature.get("angle") or 360.0)
 
-        if not sketch_refs:
-            raise ValueError("revolve requires at least one profile reference")
+    if angle == 0:
+        raise ValueError("revolve angle must be non-zero")
 
-        all_loops: list = []
-        first_pt: dict = {}
-        first_sketch_id = ""
-        for sketch_ref in sketch_refs:
-            loops, pt, sketch_id = _collect_extrude_loops(
-                sketch_ref, feature_id, feature, 0.0, global_repo, body_store
-            )
-            all_loops.extend(loops)
-            if not first_pt:
-                first_pt = pt
-                first_sketch_id = sketch_id
+    if not sketch_refs:
+        raise ValueError("revolve requires at least one profile reference")
 
-        axis_origin = feature.get("axis_origin", [0, 0, 0])
-        axis_direction = feature.get("axis_direction", [0, 0, 1])
-        stored_direction = list(axis_direction)
-        axis_query = feature.get("axis")
-        if axis_query:
-            axis_data = global_repo.query(axis_query, body_store=body_store)
-            if axis_data and "start" in axis_data and "end" in axis_data:
-                start = axis_data["start"]
-                end = axis_data["end"]
-                dx = end[0] - start[0]
-                dy = end[1] - start[1]
-                dz = end[2] - start[2]
-                length = math.sqrt(dx * dx + dy * dy + dz * dz)
-                if length > 1e-12:
-                    computed = [dx / length, dy / length, dz / length]
-                    dot = sum(computed[i] * stored_direction[i] for i in range(3))
-                    if dot < 0:
-                        axis_origin = list(end)
-                        axis_direction = [-computed[0], -computed[1], -computed[2]]
-                    else:
-                        axis_origin = list(start)
-                        axis_direction = computed
-        body_id = "body_" + feature_id
-        result: dict = {"status": "ok", "body_id": body_id}
+    all_loops: list = []
+    first_pt: dict = {}
+    first_sketch_id = ""
+    for sketch_ref in sketch_refs:
+        loops, pt, sketch_id = _collect_extrude_loops(
+            sketch_ref, feature_id, feature, 0.0, global_repo, body_store
+        )
+        all_loops.extend(loops)
+        if not first_pt:
+            first_pt = pt
+            first_sketch_id = sketch_id
 
-        operation = feature.get("operation", "add")
-        try:
-            from oversolved.kernel.geometry import sketch_loops_to_face, revolve_face as _rf
-
-            if not all_loops:
-                result["mesh_warning"] = "no closed profile found; body has no shape"
-            else:
-                face = sketch_loops_to_face(all_loops, first_pt)
-                direction = feature.get("direction", "normal")
-                if direction == "symmetric":
-                    half_angle = angle / 2.0
-                    tool_shape_pos = _rf(face, axis_origin, axis_direction, half_angle)
-                    tool_shape_neg = _rf(face, axis_origin, axis_direction, -half_angle)
-                    from oversolved.kernel.geometry import boolean_union
-                    tool_shape = boolean_union(tool_shape_pos, tool_shape_neg)
+    axis_origin = feature.get("axis_origin", [0, 0, 0])
+    axis_direction = feature.get("axis_direction", [0, 0, 1])
+    stored_direction = list(axis_direction)
+    axis_query = feature.get("axis")
+    if axis_query:
+        axis_data = global_repo.query(axis_query, body_store=body_store)
+        if axis_data and "start" in axis_data and "end" in axis_data:
+            start = axis_data["start"]
+            end = axis_data["end"]
+            dx = end[0] - start[0]
+            dy = end[1] - start[1]
+            dz = end[2] - start[2]
+            length = math.sqrt(dx * dx + dy * dy + dz * dz)
+            if length > 1e-12:
+                computed = [dx / length, dy / length, dz / length]
+                dot = sum(computed[i] * stored_direction[i] for i in range(3))
+                if dot < 0:
+                    axis_origin = list(end)
+                    axis_direction = [-computed[0], -computed[1], -computed[2]]
                 else:
-                    effective_angle = -angle if direction == "reverse" else angle
-                    tool_shape = _rf(face, axis_origin, axis_direction, effective_angle)
+                    axis_origin = list(start)
+                    axis_direction = computed
+    body_id = "body_" + feature_id
+    result: dict = {"status": "ok", "body_id": body_id}
 
-                op_result = _apply_body_operation(
-                    tool_shape, body_store, operation, merge_target,
-                    body_id, feature_id, first_sketch_id, op_name="revolve",
-                )
-                result.update(op_result)
-        except ValueError as exc:
-            result["status"] = "exception"
-            result["exception"] = str(exc)
-        except Exception as exc:
-            result["status"] = "exception"
-            result["exception"] = str(exc)
+    operation = feature.get("operation", "add")
 
-        return result
-    except Exception as exc:
-        return {"status": "exception", "exception": str(exc)}
+    if not all_loops:
+        result["mesh_warning"] = "no closed profile found; body has no shape"
+    else:
+        face = sketch_loops_to_face(all_loops, first_pt)
+        direction = feature.get("direction", "normal")
+        if direction == "symmetric":
+            half_angle = angle / 2.0
+            tool_shape_pos = _rf(face, axis_origin, axis_direction, half_angle)
+            tool_shape_neg = _rf(face, axis_origin, axis_direction, -half_angle)
+            from oversolved.kernel.geometry import boolean_union
+            tool_shape = boolean_union(tool_shape_pos, tool_shape_neg)
+        else:
+            effective_angle = -angle if direction == "reverse" else angle
+            tool_shape = _rf(face, axis_origin, axis_direction, effective_angle)
+
+        op_result = _apply_body_operation(
+            tool_shape, body_store, operation, merge_target,
+            body_id, feature_id, first_sketch_id, op_name="revolve",
+        )
+        result.update(op_result)
+
+    return result
 
 
 def _resolve_direction_query(query: str, global_repo: Repository, fallback: list[float], body_store: dict | None = None) -> list[float]:
@@ -843,64 +825,60 @@ def _solve_array(
     from oversolved.kernel.types3d import Body
     from oversolved.kernel.geometry import transform_copy, fuse_shapes
 
-    try:
-        feature_id = feature.get("id", "")
-        sub = feature.get("array") or {}
-        feature = {**sub, **feature}
+    feature_id = feature.get("id", "")
+    sub = feature.get("array") or {}
+    feature = {**sub, **feature}
 
-        source_body_ref = feature.get("source_body", "")
-        if source_body_ref:
-            try:
-                body = _resolve_body(source_body_ref, body_store)
-            except ValueError:
-                available = list(body_store.keys())
-                raise ValueError(
-                    f"array: source body '{source_body_ref}' not found; "
-                    f"available body IDs: {available}"
-                )
-        else:
-            _body_or_none = next(iter(body_store.values())) if body_store else None
-            if _body_or_none is None:
-                raise ValueError("array: no source body with shape found")
-            body = _body_or_none
-        source_body_id = body.id
-        if body.shape is None:
-            raise ValueError("array: source body has no shape")
-
-        include_source = bool(feature.get("include_source", True))
-        operation = feature.get("operation", "add")
-
-        trsfs = _build_array_transforms(feature, global_repo)
-
-        instances: list = []
-        for i, trsf in enumerate(trsfs):
-            if i == 0 and include_source:
-                instances.append(body.shape)
-            else:
-                instances.append(transform_copy(body.shape, trsf))
-
-        if not instances:
-            raise ValueError("array produced no instances")
-
-        tool_shape = fuse_shapes(instances)
-
-        result_body_id = "body_" + feature_id
-        if operation == "new":
-            new_body = Body(
-                id=result_body_id,
-                created_by=feature_id,
-                shape=_ensure_occ(tool_shape),
-                sketch_id="",
+    source_body_ref = feature.get("source_body", "")
+    if source_body_ref:
+        try:
+            body = _resolve_body(source_body_ref, body_store)
+        except ValueError:
+            available = list(body_store.keys())
+            raise ValueError(
+                f"array: source body '{source_body_ref}' not found; "
+                f"available body IDs: {available}"
             )
-            body_store[result_body_id] = new_body
-            return {"status": "ok", "body_id": result_body_id, "operation": "new"}
-        else:
-            body.shape = _ensure_occ(tool_shape)
-            body.modified_by.append(feature_id)
-            return {"status": "ok", "body_id": source_body_id, "operation": "add"}
+    else:
+        _body_or_none = next(iter(body_store.values())) if body_store else None
+        if _body_or_none is None:
+            raise ValueError("array: no source body with shape found")
+        body = _body_or_none
+    source_body_id = body.id
+    if body.shape is None:
+        raise ValueError("array: source body has no shape")
 
-    except Exception as exc:
-        return {"status": "exception", "exception": str(exc)}
+    include_source = bool(feature.get("include_source", True))
+    operation = feature.get("operation", "add")
+
+    trsfs = _build_array_transforms(feature, global_repo)
+
+    instances: list = []
+    for i, trsf in enumerate(trsfs):
+        if i == 0 and include_source:
+            instances.append(body.shape)
+        else:
+            instances.append(transform_copy(body.shape, trsf))
+
+    if not instances:
+        raise ValueError("array produced no instances")
+
+    tool_shape = fuse_shapes(instances)
+
+    result_body_id = "body_" + feature_id
+    if operation == "new":
+        new_body = Body(
+            id=result_body_id,
+            created_by=feature_id,
+            shape=_ensure_occ(tool_shape),
+            sketch_id="",
+        )
+        body_store[result_body_id] = new_body
+        return {"status": "ok", "body_id": result_body_id, "operation": "new"}
+    else:
+        body.shape = _ensure_occ(tool_shape)
+        body.modified_by.append(feature_id)
+        return {"status": "ok", "body_id": source_body_id, "operation": "add"}
 
 
 def _solve_import_step(
@@ -910,39 +888,34 @@ def _solve_import_step(
 ) -> dict:
     import base64
     import tempfile
+    from oversolved.kernel.types3d import Body
+    from oversolved.kernel.geometry import step_file_to_shape
 
+    feature_id = feature.get("id", "")
+    file_data_b64 = feature.get("file_data", "")
+    scale = float(feature.get("scale", 1.0))
+
+    if not file_data_b64:
+        raise ValueError("import_step requires 'file_data'")
+
+    raw = base64.b64decode(file_data_b64)
+
+    body_id = "body_" + feature_id
+
+    with tempfile.NamedTemporaryFile(suffix=".step", delete=False) as f:
+        f.write(raw)
+        tmp_path = f.name
     try:
-        from oversolved.kernel.types3d import Body
+        shape = step_file_to_shape(tmp_path, scale=scale)
+    finally:
+        os.unlink(tmp_path)
 
-        feature_id = feature.get("id", "")
-        file_data_b64 = feature.get("file_data", "")
-        scale = float(feature.get("scale", 1.0))
-
-        if not file_data_b64:
-            raise ValueError("import_step requires 'file_data'")
-
-        raw = base64.b64decode(file_data_b64)
-
-        from oversolved.kernel.geometry import step_file_to_shape
-
-        body_id = "body_" + feature_id
-
-        with tempfile.NamedTemporaryFile(suffix=".step", delete=False) as f:
-            f.write(raw)
-            tmp_path = f.name
-        try:
-            shape = step_file_to_shape(tmp_path, scale=scale)
-        finally:
-            os.unlink(tmp_path)
-
-        body_store[body_id] = Body(
-            id=body_id,
-            created_by=feature_id,
-            shape=_ensure_occ(shape),
-        )
-        return {"status": "ok", "body_id": body_id}
-    except Exception as exc:
-        raise ValueError(str(exc)) from exc
+    body_store[body_id] = Body(
+        id=body_id,
+        created_by=feature_id,
+        shape=_ensure_occ(shape),
+    )
+    return {"status": "ok", "body_id": body_id}
 
 
 def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Shape]:
@@ -956,7 +929,7 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
     topo_edges = []
     edge_types = []
     edge_dicts = []
-    for edge in _ensure_cq(body.shape).edges():
+    for edge in _ensure_cq(body.shape).Edges():
         h = edge.hashCode()
         if h in seen_hashes:
             continue
@@ -1058,83 +1031,80 @@ def _solve_transform(
     from oversolved.kernel.types3d import Body
     from oversolved.kernel.solver_plane import _get_point_3d, _get_edge_3d
 
-    try:
-        feature_id = feature.get("id", "")
-        sub = feature.get("transform") or {}
-        cfg = {**sub, **{k: v for k, v in feature.items() if k not in ("transform",)}}
+    feature_id = feature.get("id", "")
+    sub = feature.get("transform") or {}
+    cfg = {**sub, **{k: v for k, v in feature.items() if k not in ("transform",)}}
 
-        body_query = cfg.get("body", "")
-        source_body = _resolve_body(body_query, body_store) if body_query else None
-        if source_body is None or source_body.shape is None:
-            raise ValueError(f"transform: body not found: {body_query!r}")
+    body_query = cfg.get("body", "")
+    source_body = _resolve_body(body_query, body_store) if body_query else None
+    if source_body is None or source_body.shape is None:
+        raise ValueError(f"transform: body not found: {body_query!r}")
 
-        translation = cfg.get("translation")
-        tr_from = cfg.get("translation_from")
-        tr_to = cfg.get("translation_to")
-        if tr_from and tr_to:
-            p0_ref = global_repo.query(tr_from, body_store=body_store)
-            p1_ref = global_repo.query(tr_to, body_store=body_store)
-            if p0_ref is None:
-                raise ValueError(f"transform: translation_from not found: {tr_from!r}")
-            if p1_ref is None:
-                raise ValueError(f"transform: translation_to not found: {tr_to!r}")
-            p0 = _get_point_3d(p0_ref, global_repo)
-            p1 = _get_point_3d(p1_ref, global_repo)
-            translation = [float(p1[i] - p0[i]) for i in range(3)]
+    translation = cfg.get("translation")
+    tr_from = cfg.get("translation_from")
+    tr_to = cfg.get("translation_to")
+    if tr_from and tr_to:
+        p0_ref = global_repo.query(tr_from, body_store=body_store)
+        p1_ref = global_repo.query(tr_to, body_store=body_store)
+        if p0_ref is None:
+            raise ValueError(f"transform: translation_from not found: {tr_from!r}")
+        if p1_ref is None:
+            raise ValueError(f"transform: translation_to not found: {tr_to!r}")
+        p0 = _get_point_3d(p0_ref, global_repo)
+        p1 = _get_point_3d(p1_ref, global_repo)
+        translation = [float(p1[i] - p0[i]) for i in range(3)]
 
-        rotation_angle = float(cfg.get("rotation_angle", 0.0))
-        rotation_axis_origin = cfg.get("rotation_axis_origin")
-        rotation_axis_direction = cfg.get("rotation_axis_direction")
-        axis_query = cfg.get("rotation_axis")
-        if axis_query:
-            edge_ref = global_repo.query(axis_query, body_store=body_store)
-            if edge_ref is None:
-                raise ValueError(f"transform: rotation_axis not found: {axis_query!r}")
-            edge = _get_edge_3d(edge_ref, global_repo)
-            if edge:
-                p0, p1 = edge
-                d = [float(p1[i] - p0[i]) for i in range(3)]
-                length = sum(x * x for x in d) ** 0.5
-                if length > 1e-10:
-                    rotation_axis_origin = list(p0)
-                    rotation_axis_direction = [x / length for x in d]
+    rotation_angle = float(cfg.get("rotation_angle", 0.0))
+    rotation_axis_origin = cfg.get("rotation_axis_origin")
+    rotation_axis_direction = cfg.get("rotation_axis_direction")
+    axis_query = cfg.get("rotation_axis")
+    if axis_query:
+        edge_ref = global_repo.query(axis_query, body_store=body_store)
+        if edge_ref is None:
+            raise ValueError(f"transform: rotation_axis not found: {axis_query!r}")
+        edge = _get_edge_3d(edge_ref, global_repo)
+        if edge:
+            p0, p1 = edge
+            d = [float(p1[i] - p0[i]) for i in range(3)]
+            length = sum(x * x for x in d) ** 0.5
+            if length > 1e-10:
+                rotation_axis_origin = list(p0)
+                rotation_axis_direction = [x / length for x in d]
 
-        scale = float(cfg.get("scale", 1.0))
-        scale_center = cfg.get("scale_center")
-        scale_center_query = cfg.get("scale_center_from")
-        if scale_center_query:
-            pt_ref = global_repo.query(scale_center_query, body_store=body_store)
-            if pt_ref is None:
-                raise ValueError(f"transform: scale_center_from not found: {scale_center_query!r}")
-            scale_center = list(_get_point_3d(pt_ref, global_repo))
+    scale = float(cfg.get("scale", 1.0))
+    scale_center = cfg.get("scale_center")
+    scale_center_query = cfg.get("scale_center_from")
+    if scale_center_query:
+        pt_ref = global_repo.query(scale_center_query, body_store=body_store)
+        if pt_ref is None:
+            raise ValueError(f"transform: scale_center_from not found: {scale_center_query!r}")
+        scale_center = list(_get_point_3d(pt_ref, global_repo))
 
-        new_shape = apply_transform_shape(
-            source_body.shape,
-            translation=translation,
-            rotation_axis_origin=rotation_axis_origin,
-            rotation_axis_direction=rotation_axis_direction,
-            rotation_angle_deg=rotation_angle,
-            scale=scale,
-            scale_center=scale_center,
+    new_shape = apply_transform_shape(
+        source_body.shape,
+        translation=translation,
+        rotation_axis_origin=rotation_axis_origin,
+        rotation_axis_direction=rotation_axis_direction,
+        rotation_angle_deg=rotation_angle,
+        scale=scale,
+        scale_center=scale_center,
+    )
+
+    operation = cfg.get("operation", "new")
+    if operation == "replace":
+        source_body.shape = _ensure_occ(new_shape)
+        source_body.modified_by = list(source_body.modified_by or []) + [feature_id]
+        return {"status": "ok", "body_id": source_body.id, "operation": "replace"}
+    else:
+        new_body_id = "body_" + feature_id
+        body_store[new_body_id] = Body(
+            id=new_body_id,
+            created_by=feature_id,
+            modified_by=[],
+            shape=_ensure_occ(new_shape),
+            sketch_id=source_body.sketch_id,
         )
-
-        operation = cfg.get("operation", "new")
-        if operation == "replace":
-            source_body.shape = _ensure_occ(new_shape)
-            source_body.modified_by = list(source_body.modified_by or []) + [feature_id]
-            return {"status": "ok", "body_id": source_body.id, "operation": "replace"}
-        else:
-            new_body_id = "body_" + feature_id
-            body_store[new_body_id] = Body(
-                id=new_body_id,
-                created_by=feature_id,
-                modified_by=[],
-                shape=_ensure_occ(new_shape),
-                sketch_id=source_body.sketch_id,
-            )
-            return {"status": "ok", "body_id": new_body_id, "operation": "new"}
-    except Exception as exc:
-        return {"status": "exception", "exception": str(exc)}
+        return {"status": "ok", "body_id": new_body_id, "operation": "new"}
 
 
 def _apply_edge_feature(
@@ -1191,16 +1161,13 @@ def _solve_fillet(
 ) -> dict:
     from oversolved.kernel.geometry import apply_fillet
 
-    try:
-        sub = feature.get("fillet") or {}
-        feature = {**sub, **feature}
-        radius_raw = feature.get("radius")
-        radius = float(radius_raw if radius_raw is not None else 1.0)
-        if radius <= 0:
-            raise ValueError("fillet radius must be positive")
-        return _apply_edge_feature(feature, body_store, "fillet", apply_fillet, radius=radius)
-    except Exception as exc:
-        return {"status": "exception", "exception": str(exc)}
+    sub = feature.get("fillet") or {}
+    feature = {**sub, **feature}
+    radius_raw = feature.get("radius")
+    radius = float(radius_raw if radius_raw is not None else 1.0)
+    if radius <= 0:
+        raise ValueError("fillet radius must be positive")
+    return _apply_edge_feature(feature, body_store, "fillet", apply_fillet, radius=radius)
 
 
 def _solve_chamfer(
@@ -1210,22 +1177,19 @@ def _solve_chamfer(
 ) -> dict:
     from oversolved.kernel.geometry import apply_chamfer
 
-    try:
-        sub = feature.get("chamfer") or {}
-        feature = {**sub, **feature}
-        distance_raw = feature.get("distance")
-        distance = float(distance_raw if distance_raw is not None else 1.0)
-        kind = feature.get("kind", "distance")
-        angle_raw = feature.get("angle")
-        angle = float(angle_raw if angle_raw is not None else 45.0)
-        if distance <= 0:
-            raise ValueError("chamfer distance must be positive")
-        return _apply_edge_feature(
-            feature, body_store, "chamfer", apply_chamfer,
-            distance=distance, kind=kind, angle=angle,
-        )
-    except Exception as exc:
-        return {"status": "exception", "exception": str(exc)}
+    sub = feature.get("chamfer") or {}
+    feature = {**sub, **feature}
+    distance_raw = feature.get("distance")
+    distance = float(distance_raw if distance_raw is not None else 1.0)
+    kind = feature.get("kind", "distance")
+    angle_raw = feature.get("angle")
+    angle = float(angle_raw if angle_raw is not None else 45.0)
+    if distance <= 0:
+        raise ValueError("chamfer distance must be positive")
+    return _apply_edge_feature(
+        feature, body_store, "chamfer", apply_chamfer,
+        distance=distance, kind=kind, angle=angle,
+    )
 
 
 def _solve_boolean(
@@ -1235,206 +1199,194 @@ def _solve_boolean(
 ) -> dict:
     from oversolved.kernel.cadquery_ops import boolean_cut, boolean_union, boolean_intersection
 
-    try:
-        feature_id = feature.get("id", "")
-        sub = feature.get("boolean") or {}
-        operation = sub.get("operation", "union")
-        target_ref = sub.get("target", "")
-        tool_refs = sub.get("tools") or []
-        keep_tools = sub.get("keep_tools", False)
+    feature_id = feature.get("id", "")
+    sub = feature.get("boolean") or {}
+    operation = sub.get("operation", "union")
+    target_ref = sub.get("target", "")
+    tool_refs = sub.get("tools") or []
+    keep_tools = sub.get("keep_tools", False)
 
-        if not target_ref:
-            raise ValueError("boolean: 'target' is required")
-        if not tool_refs:
-            raise ValueError("boolean: 'tools' must have at least one entry")
+    if not target_ref:
+        raise ValueError("boolean: 'target' is required")
+    if not tool_refs:
+        raise ValueError("boolean: 'tools' must have at least one entry")
 
-        target_body = _resolve_body(target_ref, body_store)
+    target_body = _resolve_body(target_ref, body_store)
 
-        result_shape = target_body.shape
-        consumed_keys: list[str] = []
+    result_shape = target_body.shape
+    consumed_keys: list[str] = []
 
-        for tool_ref in tool_refs:
-            tool_body = _resolve_body(tool_ref, body_store)
-            if operation == "union":
-                result_shape = boolean_union(result_shape, tool_body.shape)
-            elif operation == "subtract":
-                result_shape = boolean_cut(result_shape, tool_body.shape)
-            elif operation == "intersect":
-                result_shape = boolean_intersection(result_shape, tool_body.shape)
-            else:
-                raise ValueError(f"boolean: unknown operation '{operation}'")
-            if not keep_tools:
-                consumed_keys.append(tool_body.id)
+    for tool_ref in tool_refs:
+        tool_body = _resolve_body(tool_ref, body_store)
+        if operation == "union":
+            result_shape = boolean_union(result_shape, tool_body.shape)
+        elif operation == "subtract":
+            result_shape = boolean_cut(result_shape, tool_body.shape)
+        elif operation == "intersect":
+            result_shape = boolean_intersection(result_shape, tool_body.shape)
+        else:
+            raise ValueError(f"boolean: unknown operation '{operation}'")
+        if not keep_tools:
+            consumed_keys.append(tool_body.id)
 
-        target_body.shape = _ensure_occ(result_shape)
-        target_body.modified_by.append(feature_id)
+    target_body.shape = _ensure_occ(result_shape)
+    target_body.modified_by.append(feature_id)
 
-        for key in consumed_keys:
-            body_store.pop(key, None)
+    for key in consumed_keys:
+        body_store.pop(key, None)
 
-        return {"status": "ok", "body_id": target_body.id, "operation": operation}
-    except Exception as exc:
-        return {"status": "exception", "exception": str(exc)}
+    return {"status": "ok", "body_id": target_body.id, "operation": operation}
 
 
 def _solve_mirror(feature: dict, global_repo: Repository, body_store: dict) -> dict:
     from oversolved.kernel.types3d import Body
     from oversolved.kernel.geometry import transform_copy, boolean_union
+    from oversolved.kernel.cadquery_ops import make_mirror_trsf
 
-    try:
-        feature_id = feature.get("id", "")
-        sub = feature.get("mirror") or {}
-        cfg = {**sub, **{k: v for k, v in feature.items() if k not in ("mirror",)}}
+    feature_id = feature.get("id", "")
+    sub = feature.get("mirror") or {}
+    cfg = {**sub, **{k: v for k, v in feature.items() if k not in ("mirror",)}}
 
-        body_query = cfg.get("body", "")
-        source_body = _resolve_body(body_query, body_store) if body_query else None
-        if source_body is None or source_body.shape is None:
-            raise ValueError(f"mirror: body not found: {body_query!r}")
+    body_query = cfg.get("body", "")
+    source_body = _resolve_body(body_query, body_store) if body_query else None
+    if source_body is None or source_body.shape is None:
+        raise ValueError(f"mirror: body not found: {body_query!r}")
 
-        plane_query = cfg.get("plane", "")
-        if not plane_query:
-            raise ValueError("mirror: plane is required")
-        plane_data = global_repo.query(plane_query, body_store=body_store)
-        if plane_data is None:
-            raise ValueError(f"mirror: plane not found: {plane_query!r}")
-        if isinstance(plane_data, dict) and plane_data.get("type") in ("flatface", "plane"):
-            origin = plane_data.get("origin", [0, 0, 0])
-            normal = plane_data.get("normal", [0, 0, 1])
-        else:
-            raise ValueError(f"mirror: plane query did not resolve to a plane: {plane_query!r}")
+    plane_query = cfg.get("plane", "")
+    if not plane_query:
+        raise ValueError("mirror: plane is required")
+    plane_data = global_repo.query(plane_query, body_store=body_store)
+    if plane_data is None:
+        raise ValueError(f"mirror: plane not found: {plane_query!r}")
+    if isinstance(plane_data, dict) and plane_data.get("type") in ("flatface", "plane"):
+        origin = plane_data.get("origin", [0, 0, 0])
+        normal = plane_data.get("normal", [0, 0, 1])
+    else:
+        raise ValueError(f"mirror: plane query did not resolve to a plane: {plane_query!r}")
 
-        keep_original = bool(cfg.get("keep_original", True))
-        merge = bool(cfg.get("merge", True))
+    keep_original = bool(cfg.get("keep_original", True))
+    merge = bool(cfg.get("merge", True))
 
-        from oversolved.kernel.cadquery_ops import make_mirror_trsf
-        trsf = make_mirror_trsf(tuple(origin), tuple(normal))
-        mirrored_shape = transform_copy(source_body.shape, trsf)
+    trsf = make_mirror_trsf(tuple(origin), tuple(normal))
+    mirrored_shape = transform_copy(source_body.shape, trsf)
 
-        if not keep_original:
-            source_body.shape = _ensure_occ(mirrored_shape)
-            source_body.modified_by.append(feature_id)
-            return {"status": "ok", "body_id": source_body.id, "operation": "replace"}
+    if not keep_original:
+        source_body.shape = _ensure_occ(mirrored_shape)
+        source_body.modified_by.append(feature_id)
+        return {"status": "ok", "body_id": source_body.id, "operation": "replace"}
 
-        if merge:
-            new_shape = boolean_union(source_body.shape, mirrored_shape)
-            source_body.shape = _ensure_occ(new_shape)
-            source_body.modified_by.append(feature_id)
-            return {"status": "ok", "body_id": source_body.id, "operation": "merge"}
+    if merge:
+        new_shape = boolean_union(source_body.shape, mirrored_shape)
+        source_body.shape = _ensure_occ(new_shape)
+        source_body.modified_by.append(feature_id)
+        return {"status": "ok", "body_id": source_body.id, "operation": "merge"}
 
-        new_body_id = "body_" + feature_id
-        body_store[new_body_id] = Body(
-            id=new_body_id,
-            created_by=feature_id,
-            modified_by=[],
-            shape=_ensure_occ(mirrored_shape),
-            sketch_id=source_body.sketch_id,
-        )
-        return {"status": "ok", "body_id": new_body_id, "body_ids": [source_body.id, new_body_id], "operation": "new"}
-    except Exception as exc:
-        return {"status": "exception", "exception": str(exc)}
+    new_body_id = "body_" + feature_id
+    body_store[new_body_id] = Body(
+        id=new_body_id,
+        created_by=feature_id,
+        modified_by=[],
+        shape=_ensure_occ(mirrored_shape),
+        sketch_id=source_body.sketch_id,
+    )
+    return {"status": "ok", "body_id": new_body_id, "body_ids": [source_body.id, new_body_id], "operation": "new"}
 
 
 def _solve_delete_body(feature: dict, global_repo: Repository, body_store: dict) -> dict:
-    try:
-        sub = feature.get("delete_body") or {}
-        body_query = sub.get("body", "")
-        if body_query.startswith("?"):
-            resolved = global_repo.query(body_query, body_store=body_store)
-            if resolved is None:
-                raise ValueError(f"delete_body: body not found: {body_query!r}")
-            if isinstance(resolved, Body):
-                body_key = resolved.id
-            elif isinstance(resolved, dict):
-                _raw_key = resolved.get("body_id")
-                if not _raw_key:
-                    raise ValueError(f"delete_body: query did not resolve to a body: {body_query!r}")
-                body_key = str(_raw_key)
-            else:
+    sub = feature.get("delete_body") or {}
+    body_query = sub.get("body", "")
+    if body_query.startswith("?"):
+        resolved = global_repo.query(body_query, body_store=body_store)
+        if resolved is None:
+            raise ValueError(f"delete_body: body not found: {body_query!r}")
+        if isinstance(resolved, Body):
+            body_key = resolved.id
+        elif isinstance(resolved, dict):
+            _raw_key = resolved.get("body_id")
+            if not _raw_key:
                 raise ValueError(f"delete_body: query did not resolve to a body: {body_query!r}")
+            body_key = str(_raw_key)
         else:
-            body = _resolve_body(body_query, body_store)
-            body_key = body.id
-        del body_store[body_key]
-        return {"status": "ok", "deleted_body_id": body_key}
-    except Exception as exc:
-        return {"status": "exception", "exception": str(exc)}
+            raise ValueError(f"delete_body: query did not resolve to a body: {body_query!r}")
+    else:
+        body = _resolve_body(body_query, body_store)
+        body_key = body.id
+    del body_store[body_key]
+    return {"status": "ok", "deleted_body_id": body_key}
 
 
 def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict]) -> dict:
-    try:
-        import numpy as np
-        from oversolved.kernel.cadquery_ops import make_cylinder, boolean_cut
+    import numpy as np
+    from oversolved.kernel.cadquery_ops import make_cylinder, boolean_cut
 
-        sub = feature.get("hole") or {}
-        sketch_ref = sub.get("sketch", "").lstrip("@")
-        diameter = float(sub.get("diameter", 10.0))
-        depth_mode = sub.get("depth_mode", "blind")
-        depth = float(sub.get("depth", 10.0))
-        direction = sub.get("direction", "normal")
-        target_ref = sub.get("target", "")
+    sub = feature.get("hole") or {}
+    sketch_ref = sub.get("sketch", "").lstrip("@")
+    diameter = float(sub.get("diameter", 10.0))
+    depth_mode = sub.get("depth_mode", "blind")
+    depth = float(sub.get("depth", 10.0))
+    direction = sub.get("direction", "normal")
+    target_ref = sub.get("target", "")
 
-        radius = diameter / 2.0
+    radius = diameter / 2.0
 
-        plane = global_repo.elements.get("_pt_" + sketch_ref)
-        if plane is None:
-            raise ValueError(f"hole: sketch '{sketch_ref}' has no plane transform registered")
+    plane = global_repo.elements.get("_pt_" + sketch_ref)
+    if plane is None:
+        raise ValueError(f"hole: sketch '{sketch_ref}' has no plane transform registered")
 
-        origin = np.array(plane["origin"])
-        x_axis = np.array(plane["x_axis"])
-        y_axis = np.array(plane["y_axis"])
-        normal = np.array(plane["normal"])
-        axis = normal if direction == "normal" else -normal
+    origin = np.array(plane["origin"])
+    x_axis = np.array(plane["x_axis"])
+    y_axis = np.array(plane["y_axis"])
+    normal = np.array(plane["normal"])
+    axis = normal if direction == "normal" else -normal
 
-        if target_ref:
-            target_body = _resolve_body(target_ref, body_store)
-        else:
-            if not body_store:
-                raise ValueError("hole: no bodies in body_store and no target specified")
-            target_body = next(iter(body_store.values()))
+    if target_ref:
+        target_body = _resolve_body(target_ref, body_store)
+    else:
+        if not body_store:
+            raise ValueError("hole: no bodies in body_store and no target specified")
+        target_body = next(iter(body_store.values()))
 
-        sketch_feature = features_by_id.get(sketch_ref, {})
-        entities = sketch_feature.get("entities", [])
-        point_entities = [e for e in entities if e.get("kind") == "point"]
+    sketch_feature = features_by_id.get(sketch_ref, {})
+    entities = sketch_feature.get("entities", [])
+    point_entities = [e for e in entities if e.get("kind") == "point"]
 
-        if not point_entities:
-            raise ValueError(f"hole: sketch '{sketch_ref}' has no point entities")
+    if not point_entities:
+        raise ValueError(f"hole: sketch '{sketch_ref}' has no point entities")
+
+    if depth_mode == "through_all":
+        bb = _ensure_cq(target_body.shape).BoundingBox()
+        span = max(bb.xmax - bb.xmin, bb.ymax - bb.ymin, bb.zmax - bb.zmin)
+        through_depth: float = span * 3.0
+        through_back_offset: float = span
+    else:
+        through_depth = 0.0
+        through_back_offset = 0.0
+
+    for entity in point_entities:
+        eid = entity["id"]
+        xy_entry = global_repo.elements.get(sketch_ref + "/" + eid + "/xy")
+        if xy_entry is None:
+            logger.warning(
+                "hole: xy entry not found for entity '%s' in sketch '%s'; skipping",
+                eid, sketch_ref,
+            )
+            continue
+        x2d, y2d = xy_entry["external_xy"]
+        center_3d = origin + x2d * x_axis + y2d * y_axis
 
         if depth_mode == "through_all":
-            bb = _ensure_cq(target_body.shape).BoundingBox()
-            span = max(bb.xmax - bb.xmin, bb.ymax - bb.ymin, bb.zmax - bb.zmin)
-            through_depth: float = span * 3.0
-            through_back_offset: float = span
+            start_3d = center_3d - axis * through_back_offset
+            h = through_depth
         else:
-            through_depth = 0.0
-            through_back_offset = 0.0
+            start_3d = center_3d
+            h = depth
 
-        for entity in point_entities:
-            eid = entity["id"]
-            xy_entry = global_repo.elements.get(sketch_ref + "/" + eid + "/xy")
-            if xy_entry is None:
-                logger.warning(
-                    "hole: xy entry not found for entity '%s' in sketch '%s'; skipping",
-                    eid, sketch_ref,
-                )
-                continue
-            x2d, y2d = xy_entry["external_xy"]
-            center_3d = origin + x2d * x_axis + y2d * y_axis
+        cyl = make_cylinder(list(start_3d), list(axis), radius, h)
+        target_body.shape = _ensure_occ(boolean_cut(target_body.shape, cyl))
 
-            if depth_mode == "through_all":
-                start_3d = center_3d - axis * through_back_offset
-                h = through_depth
-            else:
-                start_3d = center_3d
-                h = depth
-
-            cyl = make_cylinder(list(start_3d), list(axis), radius, h)
-            target_body.shape = _ensure_occ(boolean_cut(target_body.shape, cyl))
-
-        target_body.modified_by.append(feature["id"])
-        return {
-            "status": "ok",
-            "body_id": target_body.id,
-            "hole_count": len(point_entities),
-        }
-    except Exception as exc:
-        return {"status": "exception", "exception": str(exc)}
+    target_body.modified_by.append(feature["id"])
+    return {
+        "status": "ok",
+        "body_id": target_body.id,
+        "hole_count": len(point_entities),
+    }

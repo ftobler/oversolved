@@ -496,3 +496,31 @@ def test_fillet_after_edit_mode_checkpoint_rebuilds_correctly():
     assert r3['result']['fil2'].get('exception') != (
         "'OCP.OCP.TopoDS.TopoDS_Shape' object has no attribute 'edges'"
     ), "fil2 must not fail with raw OCC TopoDS_Shape from checkpoint"
+
+
+def test_register_body_faces_logs_on_failure(caplog):
+    """_register_body_faces logs exception when tessellation fails."""
+    import logging
+    import unittest.mock as mock
+    from oversolved.kernel.builder import build
+    from solver_helpers import rect_sketch_spec, extrude_spec
+
+    spec = {
+        "features": [
+            rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
+            extrude_spec("sk1", "ex1", distance=5.0),
+        ]
+    }
+
+    caplog.set_level(logging.WARNING)
+
+    with mock.patch(
+        "oversolved.kernel.geometry.solid_to_mesh",
+        side_effect=RuntimeError("tessellation crashed"),
+    ):
+        build(spec)
+
+    assert any(
+        "tessellation crashed" in record.message
+        for record in caplog.records
+    ), "Expected warning about tessellation failure in log"

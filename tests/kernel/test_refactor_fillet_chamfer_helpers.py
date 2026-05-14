@@ -114,29 +114,29 @@ def test_apply_edge_feature_missing_edges_raises():
         _apply_edge_feature(feature, {}, "fillet", lambda s, **kw: s, radius=1.0)
 
 
-def test_solve_fillet_geometry_fn_exception_returns_exception_status():
-    """When geometry raises inside _solve_fillet the result has status=exception."""
-    import unittest.mock as mock
+def test_solve_fillet_no_edges_raises_value_error():
+    """_solve_fillet raises ValueError when no edges can be resolved."""
     from oversolved.kernel.solver_features import _solve_fillet
     from oversolved.kernel.builder import build
     from oversolved.kernel.query import Repository
+    from oversolved.kernel.types3d import Body
+    from oversolved.kernel.cadquery_ops import _ensure_occ
     from solver_helpers import full_rect_extrude_spec
 
     spec = full_rect_extrude_spec(w=10, h=10, d=5)
     r = build(spec)
     assert r["result"]["ex1"]["status"] == "ok"
 
-    body_store = r["_body_shapes"]
+    raw_shape = r["_body_shapes"]["body_ex1"]
+    body_store = {"body_ex1": Body(id="body_ex1", created_by="ex1", shape=_ensure_occ(raw_shape))}
     global_repo = Repository()
 
-    with mock.patch("oversolved.kernel.geometry.apply_fillet", side_effect=RuntimeError("bad fillet")):
-        result = _solve_fillet(
-            {"id": "fi1", "fillet": {"edges": ["?dummy"], "radius": 1.0, "source_body": "ex1"}},
+    with pytest.raises(ValueError, match="no edges resolved"):
+        _solve_fillet(
+            {"id": "fi1", "fillet": {"edges": ["?nonexistent"], "radius": 1.0, "source_body": "ex1"}},
             global_repo,
             body_store,
         )
-
-    assert result["status"] == "exception"
 
 
 def test_fillet_behavioral_equivalence():

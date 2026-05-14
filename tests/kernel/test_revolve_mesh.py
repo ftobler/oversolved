@@ -56,6 +56,19 @@ def test_revolve_status_ok():
     assert_mesh_valid(mesh)
 
 
+def test_revolve_missing_sketch_returns_exception():
+    """Revolve with non-existent sketch ref returns exception status."""
+    from oversolved.kernel.builder import build
+
+    spec = {
+        'features': [
+            _revolve_spec('nonexistent_sketch', 'rev1'),
+        ]
+    }
+    r = build(spec)
+    assert r['result']['rev1']['status'] == 'exception'
+
+
 def test_revolve_has_body_id():
     from oversolved.kernel.builder import build
 
