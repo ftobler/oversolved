@@ -500,13 +500,14 @@ def _classify_entities(geometry: dict) -> tuple[dict[str, dict], dict[str, dict]
 
 def _normalize_arcs_and_init_splits(
     arcs: dict, verts: dict
-) -> tuple[dict[str, float], dict[str, list]]:
+) -> tuple[dict[str, float], dict[str, list], dict]:
     """Normalize CW arcs to CCW, init split points with endpoints.
 
-    Modifies arcs in-place (CW->CCW normalization). Returns (arc_a0, splits) where
-    arc_a0 maps eid -> a0 radians and splits maps eid -> [(param, vid)] with
-    endpoint split points for each arc.
+    Returns (arc_a0, splits, arcs) where arc_a0 maps eid -> a0 radians,
+    splits maps eid -> [(param, vid)] with endpoint split points, and arcs
+    is the normalized copy (CW arcs flipped to CCW).
     """
+    arcs = {**arcs}  # copy to avoid mutating caller's dict
     arc_a0: dict[str, float] = {}
     splits: dict[str, list] = {}
 
@@ -532,7 +533,7 @@ def _normalize_arcs_and_init_splits(
         arc_a0[eid] = a0
         splits[eid] = [(a0, _vid(verts, e["start"])), (a1, _vid(verts, e["end"]))]
 
-    return arc_a0, splits
+    return arc_a0, splits, arcs
 
 
 def _find_all_intersections(
@@ -810,7 +811,7 @@ def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
         splits[eid] = []
 
     arc_verts = verts.copy()  # isolate arc-init verts from line endpoints
-    a0_from_norm, arc_splits = _normalize_arcs_and_init_splits(arcs, arc_verts)
+    a0_from_norm, arc_splits, arcs = _normalize_arcs_and_init_splits(arcs, arc_verts)
     arc_a0.update(a0_from_norm)
     splits.update(arc_splits)
     verts.update(arc_verts)
