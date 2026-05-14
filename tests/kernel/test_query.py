@@ -1,6 +1,6 @@
 import pytest
 from oversolved.kernel.query import (
-    Query, Repository, AmbiguousQueryError,
+    Repository, AmbiguousQueryError,
     make_ancestry_query, _parse_ancestry,
 )
 
@@ -309,29 +309,6 @@ def test_ambiguous_partial_resolved_by_type():
         type_restriction="pt",
     )
     assert repo.query(q) is pt1
-
-
-# ── Query class  ──
-
-def test_query_class_absolute():
-    repo = Repository()
-    obj = {"v": 99}
-    repo.register(FEAT + ELE1, obj)
-    q = Query("@" + FEAT + ELE1)
-    assert q.resolve(repo) is obj
-
-
-def test_query_class_local():
-    repo = Repository()
-    obj = {"v": 7}
-    repo.register(FEAT + ELE1, obj)
-    q = Query("$" + ELE1)
-    assert q.resolve(repo, context=FEAT) is obj
-
-
-def test_query_class_str():
-    q = Query("@" + FEAT + ELE1)
-    assert str(q) == "@" + FEAT + ELE1
 
 
 def test_empty_query_returns_none():

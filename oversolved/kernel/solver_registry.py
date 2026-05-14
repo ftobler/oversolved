@@ -2,6 +2,19 @@ import logging
 import math
 from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query
 
+__all__ = [
+    "_clear_feature_geometry_registrations",
+    "_post_register",
+    "_enrich_geometry",
+    "_register_solved_geometry_slash",
+    "_register_solved_geometry",
+    "_plane_transform",
+    "_register_topology_surfaces",
+    "_register_topology_edges",
+    "_register_topology_vertices",
+    "_register_sketch_feature",
+]
+
 # ─── Ancestral registry lifecycle invariant ───
 # Each registration path must deduplicate before appending to global_repo.ancestral.
 # Without dedup, repeated solves accumulate entries for the same ancestry key, causing

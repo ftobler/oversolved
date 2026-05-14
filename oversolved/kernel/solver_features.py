@@ -18,6 +18,23 @@ from oversolved.kernel.cadquery_ops import (
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "_resolve_body",
+    "_apply_body_operation",
+    "_extract_profile_loops",
+    "_solve_extrude",
+    "_solve_revolve",
+    "_solve_array",
+    "_solve_import_step",
+    "_solve_fillet",
+    "_solve_chamfer",
+    "_solve_boolean",
+    "_solve_delete_body",
+    "_solve_hole",
+    "_solve_transform",
+    "_solve_mirror",
+]
+
 
 #  ── Topology helpers ──
 

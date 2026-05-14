@@ -44,6 +44,14 @@ from oversolved.kernel.solver_features import (  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "solve",
+    "solve_features",
+    "_try_solve_feature",
+    "_init_global_repo",
+    "_post_register",
+]
+
 
 def solve(yaml_str: str) -> dict:
     """Solve all sketch features in a YAML document.
@@ -155,7 +163,7 @@ def _solve_feature(feature: Any, global_repo: Repository, body_store: dict, feat
     raise Exception(f"unknown feature type: '{kind}'")
 
 
-#  ── Geometry helpers ──
+# ─── Geometry helpers ───
 
 
 def _geometry_from_array(x, entities: dict, entity_offsets: dict) -> dict[str, Any]:
@@ -272,10 +280,10 @@ def _entity_status(J, rank, entities, entity_offsets, n_params, overall_status):
     return result
 
 
-#  ── Sketch solver  ──
+# ─── Sketch solver ───
 
 def _expand_center_rect(feature: dict) -> dict:
-    """Return a copy of feature with center_rect entities expanded to 4 line entities."""
+    """Normalize center_rect sugar into 4 plain line entities so the solver sees a uniform entity set."""
     initial = dict(feature.get("initial", {}))
     expanded: list = []
     for e in feature.get("entities", []):

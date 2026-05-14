@@ -36,6 +36,8 @@ import math
 from typing import Any
 from oversolved.kernel.query import make_ancestry_query, emit_wire, absolute
 
+__all__ = ["detect_topology"]
+
 _EPS = 1e-9  # general tolerance for point coincidence
 # _MERGE > _EPS: a point pair at ~5e-8 apart merges to one vertex but is not treated as intersecting
 _MERGE = 1e-7  # vertex merge tolerance

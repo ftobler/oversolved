@@ -10,6 +10,35 @@ from oversolved.kernel.query import Repository
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "is_plane_type",
+    "is_point_type",
+    "_resolve_plane_early",
+    "_2d_to_3d",
+    "_3d_to_2d",
+    "_source_sketch_id",
+    "_resolve_source_geometry",
+    "_project_source_to_params",
+    "_get_point_3d",
+    "_get_edge_3d",
+    "_normalize",
+    "_rotate_frame_around_normal",
+    "_plane_three_point",
+    "_plane_on_face",
+    "_plane_on_face_edge_angle",
+    "_plane_edge_point",
+    "_plane_through_point",
+    "_plane_line_angle",
+    "_plane_offset",
+    "_solve_plane",
+]
+
+_BARE_ID_MAP = {
+    "Top": "builtin_plane_top",
+    "Front": "builtin_plane_front",
+    "Right": "builtin_plane_right",
+}
+
 
 def is_plane_type(obj: dict) -> bool:
     return obj.get("type") in _PLANE_TYPES
@@ -23,11 +52,6 @@ def _resolve_plane_early(
     plane_query: Optional[str], global_repo: Optional[Repository]
 ) -> dict:
     """Quick plane resolution without full repo setup (used before entity_offsets are built)."""
-    _BARE_ID_MAP = {
-        "Top": "builtin_plane_top",
-        "Front": "builtin_plane_front",
-        "Right": "builtin_plane_right",
-    }
     if not plane_query:
         return _FRONT_PLANE
     if plane_query in _BARE_ID_MAP:

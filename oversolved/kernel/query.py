@@ -3,6 +3,22 @@ from typing import Any, Optional
 import secrets
 from oversolved.kernel.solver_constants import _BUILTIN_PLANES
 
+__all__ = [
+    "AmbiguousQueryError",
+    "LocalQuery",
+    "AbsoluteQuery",
+    "AncestryQuery",
+    "Repository",
+    "parse_query",
+    "emit_wire",
+    "local",
+    "absolute",
+    "ancestry",
+    "make_ancestry_query",
+    "_parse_ancestry",
+    "_init_global_repo",
+]
+
 
 class AmbiguousQueryError(Exception):
     """Raised when an ancestry query matches more than one element."""
@@ -239,22 +255,6 @@ def _coerce_type(
     return None
 
 
-class Query:
-    def __init__(self, query_str: str):
-        self._query_str = query_str
-
-    def resolve(
-        self, repo: 'Repository', context: str | None = None, body_store: dict[str, Any] | None = None
-    ) -> Any:
-        return repo.query(self._query_str, context=context, body_store=body_store)
-
-    def __str__(self) -> str:
-        return self._query_str
-
-    def __repr__(self) -> str:
-        return f'Query({self._query_str!r})'
-
-
 class Repository:
     def __init__(self) -> None:
         self.elements: dict[str, Any] = {}
@@ -262,8 +262,8 @@ class Repository:
         # (multiple elements can share the same ancestor set, e.g. two circle intersections)
         self.ancestral: dict[frozenset, list[str]] = {}
 
-    def register(self, id: str, obj: Any):
-        self.elements[id] = obj
+    def register(self, element_id: str, obj: Any):
+        self.elements[element_id] = obj
 
     def register_ancestor(self, ancestors: list[str], obj: Any) -> str:
         id = secrets.token_urlsafe(9)

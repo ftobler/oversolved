@@ -17,7 +17,7 @@ ENTITY_SIZES: dict[str, int] = {
     "projected_point": 2,
 }
 
-# above this the system is overconstrained (conflicting)
+# Above this threshold the system transitions from well-constrained to overconstrained (conflicting constraints).
 LOSS_THRESHOLD = 1e-4
 RANK_TOL = 1e-6  # tolerance for numerical rank computation
 # when rank is within this many of the DOF boundary, log a diagnostic warning
@@ -49,8 +49,8 @@ _PROJECTED_KINDS = frozenset(
 )
 
 _FACE_TYPES = frozenset({"face", "flatface", "cylinderface"})
-_PLANE_TYPES = ("plane", "face", "flatface")
-_POINT_TYPES = ("point", "vertex")
+_PLANE_TYPES = frozenset({"plane", "face", "flatface"})
+_POINT_TYPES = frozenset({"point", "vertex"})
 
 _ARC_SEGMENTS = 32  # tessellation resolution for arc edges in profiles
 

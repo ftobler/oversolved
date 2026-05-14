@@ -18,6 +18,12 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "build",
+    "_repo_from_snapshot",
+    "_copy_shape",
+]
+
 
 def _copy_shape(shape):
     """Return a defensive copy of an OCC shape using BRepBuilderAPI_Copy.
@@ -221,10 +227,6 @@ def _snapshot_with_brep_geometry(
         "elements": repo.elements,
         "ancestral": repo.ancestral,
     }
-
-
-# Keep old name as alias so any external callers are not broken.
-_snapshot_with_brep_faces = _snapshot_with_brep_geometry
 
 
 def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_queries: list) -> None:
