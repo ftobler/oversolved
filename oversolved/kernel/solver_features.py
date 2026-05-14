@@ -973,7 +973,14 @@ def _solve_array(
 
         source_body_ref = feature.get("source_body", "")
         if source_body_ref:
-            body = _resolve_body(source_body_ref, body_store)
+            try:
+                body = _resolve_body(source_body_ref, body_store)
+            except ValueError:
+                available = list(body_store.keys())
+                raise ValueError(
+                    f"array: source body '{source_body_ref}' not found; "
+                    f"available body IDs: {available}"
+                )
         else:
             body = next(iter(body_store.values())) if body_store else None
             if body is None:
@@ -1530,6 +1537,10 @@ def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, featur
             eid = entity["id"]
             xy_entry = global_repo.elements.get(sketch_ref + "/" + eid + "/xy")
             if xy_entry is None:
+                logger.warning(
+                    "hole: xy entry not found for entity '%s' in sketch '%s'; skipping",
+                    eid, sketch_ref,
+                )
                 continue
             x2d, y2d = xy_entry["external_xy"]
             center_3d = origin + x2d * x_axis + y2d * y_axis

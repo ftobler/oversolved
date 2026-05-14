@@ -161,3 +161,51 @@ def test_hole_via_solve_features():
     assert hole_result.get("status") != "exception", (
         f"Hole failed: {hole_result.get('exception')}"
     )
+
+
+def test_hole_missing_xy_entry_warns(caplog):
+    """When xy entry is not found for a point entity, a warning is logged."""
+    import logging
+    from oversolved.kernel.query import Repository
+    from oversolved.kernel.solver_features import _solve_hole
+    from oversolved.kernel.types3d import Body
+
+    try:
+        from cadquery.occ_impl.shapes import Face, Solid
+        from cadquery.occ_impl.geom import Vector as CQVector
+    except ImportError:
+        pytest.skip("cadquery not installed")
+
+    shape = Solid.extrudeLinear(
+        Face.makePlane(50, 50, (25, 25, 0)),
+        CQVector(0, 0, 30),
+    )
+    body = Body(id="body_ex1", created_by="ex1", shape=shape)
+    body_store = {"body_ex1": body}
+
+    repo = Repository()
+    repo.elements["_pt_pts"] = {
+        "origin": [0, 0, 0],
+        "x_axis": [1, 0, 0],
+        "y_axis": [0, 1, 0],
+        "normal": [0, 0, 1],
+    }
+    # Deliberately do not register "pts/p1/xy" so it stays None
+
+    feature = {
+        "id": "h1",
+        "kind": "hole",
+        "hole": {
+            "sketch": "@pts",
+            "diameter": 10.0,
+            "depth": 20.0,
+            "depth_mode": "blind",
+        },
+        "entities": [{"id": "p1", "kind": "point"}],
+    }
+    features_by_id = {"pts": feature}
+
+    with caplog.at_level(logging.WARNING, logger="oversolved.kernel.solver_features"):
+        _solve_hole(feature, repo, body_store, features_by_id)
+
+    assert "p1" in caplog.text or "xy" in caplog.text.lower()

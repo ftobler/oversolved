@@ -8,6 +8,8 @@ def _geom_point(geom: dict, ref: dict) -> list:
     e = geom[ref["entity"]]
     pt = ref.get("point", "start")
     if "start" in e and "end" in e and "radius" in e:  # arc
+        if pt == "center":
+            return list(e["center"])
         return e["start"] if pt != "end" else e["end"]
     elif "start" in e:  # line
         return e["end"] if pt == "end" else e["start"]

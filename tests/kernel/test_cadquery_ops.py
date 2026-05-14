@@ -478,3 +478,28 @@ def test_make_cylinder_arbitrary_axis():
     assert bb.xmax == pytest.approx(12, abs=1e-6)
     assert bb.ymax - bb.ymin == pytest.approx(6, abs=1e-6)
     assert bb.zmax - bb.zmin == pytest.approx(6, abs=1e-6)
+
+
+def test_make_arc_edge_zero_span_raises():
+    """Zero-span arc must raise ValueError instead of silently producing a full circle."""
+    with pytest.raises(ValueError, match="degenerate"):
+        make_arc_edge([0, 0, 0], 1.0, [0, 0, 1], [1, 0, 0], 1.0, 1.0)
+
+
+def test_make_arc_edge_tiny_span_raises():
+    """Arc span below tolerance must raise ValueError."""
+    with pytest.raises(ValueError):
+        make_arc_edge([0, 0, 0], 1.0, [0, 0, 1], [1, 0, 0], 0.0, 1e-7)
+
+
+def test_apply_transform_shape_raises_on_missing_direction():
+    """Non-zero rotation angle without axis direction must raise ValueError."""
+    from oversolved.kernel.cadquery_ops import apply_transform_shape
+    from cadquery.occ_impl.shapes import Face, Solid
+    from cadquery.occ_impl.geom import Vector as CQVector
+    solid = Solid.extrudeLinear(
+        Face.makePlane(1, 1, (0, 0, 0)),
+        CQVector(0, 0, 1),
+    )
+    with pytest.raises(ValueError, match="rotation_axis_direction"):
+        apply_transform_shape(solid, rotation_angle_deg=45.0, rotation_axis_direction=None)

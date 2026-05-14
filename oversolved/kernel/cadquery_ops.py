@@ -117,7 +117,9 @@ def make_arc_edge(
     c = CQVector(*center)
 
     span = abs(angle_end - angle_start)
-    is_full = abs(span - 2 * math.pi) < 1e-6 or span < 1e-6
+    if span < 1e-6:
+        raise ValueError(f"make_arc_edge: degenerate zero-span arc (span={span})")
+    is_full = abs(span - 2 * math.pi) < 1e-6
 
     from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt, gp_Circ  # noqa: PLC0415
     ax2 = gp_Ax2(gp_Pnt(*c.toTuple()), gp_Dir(*n.toTuple()), gp_Dir(*x.toTuple()))
@@ -242,9 +244,11 @@ def _compute_face_centroid(face: cq_shapes.Face) -> list[float]:
 
 def _compute_face_normal(face: cq_shapes.Face) -> list[float]:
     """Compute face normal at the midpoint of its UV domain."""
-    bounds = face._uvBounds()
-    u = (bounds[0] + bounds[1]) / 2.0
-    v = (bounds[2] + bounds[3]) / 2.0
+    from OCP.BRepTools import BRepTools  # noqa: PLC0415
+    topo = face.wrapped if hasattr(face, "wrapped") else face
+    umin, umax, vmin, vmax = BRepTools.UVBounds_s(topo)
+    u = (umin + umax) / 2.0
+    v = (vmin + vmax) / 2.0
     n = face.normalAt(CQVector(u, v))
     return [n.x, n.y, n.z]
 
@@ -298,6 +302,10 @@ def apply_transform_shape(
         sc.SetScale(center, scale)
         combined.Multiply(sc)
 
+    if rotation_angle_deg and not rotation_axis_direction:
+        raise ValueError(
+            "apply_transform_shape: rotation_angle_deg is set but rotation_axis_direction is None"
+        )
     if rotation_angle_deg and rotation_axis_direction:
         rot = gp_Trsf()
         origin = gp_Pnt(*(rotation_axis_origin or (0, 0, 0)))

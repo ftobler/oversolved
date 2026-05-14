@@ -265,3 +265,28 @@ class TestArrayErrors:
         )
         r = build(spec)
         assert r["result"]["arr1"]["status"] == "exception"
+
+    def test_missing_source_body_id_error(self):
+        """Array with a non-existent source_body should report exception with available IDs."""
+        from oversolved.kernel.builder import build
+        from solver_helpers import box_extrude_spec
+
+        spec = box_extrude_spec(w=5, h=5, d=5, extrude_id="extrude1")
+        spec["features"].append(
+            {
+                "id": "arr1",
+                "kind": "array",
+                "array": {
+                    "source_body": "nonexistent_body",
+                    "mode": "linear",
+                    "count_x": 2,
+                    "pitch_x": 10,
+                    "direction_x": [1, 0, 0],
+                    "operation": "add",
+                },
+            }
+        )
+        r = build(spec)
+        assert r["result"]["arr1"]["status"] == "exception"
+        assert "nonexistent_body" in r["result"]["arr1"]["exception"]
+        assert "available" in r["result"]["arr1"]["exception"]
