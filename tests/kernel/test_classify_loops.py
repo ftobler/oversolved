@@ -340,3 +340,58 @@ def test_classify_loops_concave_outer_with_hole():
     assert got_outer is l_shape
     assert len(got_holes) == 1
     assert got_holes[0] is hole
+
+
+def test_classify_loop_small_arc_not_hole():
+    """Loop containing a very small arc (< 5 degrees) is outer, not a hole.
+
+    The arc midpoint can lie on the concave side of a tight-radius arc.
+    Using the centroid as rep point must classify this loop as an outer boundary.
+    """
+    # Triangle-like loop: two straight sides + a tiny arc replacing the third side
+    # The arc spans only 3 degrees at radius 10 -- its midpoint is almost collinear
+    # with start/end and lies slightly inward, but the loop is a valid outer boundary.
+    r = 10.0
+    a_start = 0.0
+    a_end = 3.0  # 3-degree span
+    arc = _arc_edge(0.0, 0.0, r, a_start, a_end, ccw=True)
+    arc_start = arc["start"]
+    arc_end = arc["end"]
+    # Close the loop back to arc start via two line segments through a point far above
+    apex = [r * math.cos(math.radians(1.5)), r * math.sin(math.radians(1.5)) + 2.0]
+    loop = [
+        arc,
+        {"kind": "line", "start": arc_end, "end": apex},
+        {"kind": "line", "start": apex, "end": arc_start},
+    ]
+    groups = classify_loops([loop])
+    assert len(groups) == 1
+    outer, holes = groups[0]
+    assert outer is loop
+    assert holes == []
+
+
+def test_classify_loop_arc_hole_inside_boundary():
+    """Outer rect + inner small-arc loop: inner is classified as a hole."""
+    outer = _rect_loop(-5, -5, 5, 5)
+
+    # Small arc loop centred near (0, 0): a tiny circular-ish triangle
+    r = 0.5
+    a_start = 0.0
+    a_end = 3.0  # 3-degree arc span
+    arc = _arc_edge(0.0, 0.0, r, a_start, a_end, ccw=True)
+    arc_start = arc["start"]
+    arc_end = arc["end"]
+    apex = [r * math.cos(math.radians(1.5)), r * math.sin(math.radians(1.5)) + 0.1]
+    inner = [
+        arc,
+        {"kind": "line", "start": arc_end, "end": apex},
+        {"kind": "line", "start": apex, "end": arc_start},
+    ]
+
+    groups = classify_loops([outer, inner])
+    assert len(groups) == 1
+    got_outer, got_holes = groups[0]
+    assert got_outer is outer
+    assert len(got_holes) == 1
+    assert got_holes[0] is inner
