@@ -17,7 +17,7 @@ class TestFrame3DConstruction:
         assert "type" not in frame.to_dict()
 
     def test_from_dict_rejects_missing_keys(self):
-        with pytest.raises(KeyError):
+        with pytest.raises(ValueError):
             Frame3D.from_dict({"origin": [0, 0, 0], "x_axis": [1, 0, 0]})
 
     def test_from_arrays_round_trip(self):
@@ -98,3 +98,38 @@ class TestFrame3DCQPlane:
         assert list(cq_back.origin.toTuple()) == [1, 2, 3]
         assert list(cq_back.xDir.toTuple()) == pytest.approx([1, 0, 0], abs=1e-10)
         assert list(cq_back.zDir.toTuple()) == pytest.approx([0, 0, 1], abs=1e-10)
+
+
+class TestFrame3DFromDictValidation:
+    _valid = {
+        "origin": [0.0, 0.0, 0.0],
+        "x_axis": [1.0, 0.0, 0.0],
+        "y_axis": [0.0, 1.0, 0.0],
+        "normal": [0.0, 0.0, 1.0],
+    }
+
+    def test_frame3d_from_dict_valid(self):
+        """Round-trip: valid dict produces correct Frame3D fields."""
+        f = Frame3D.from_dict(self._valid)
+        assert f.origin == [0.0, 0.0, 0.0]
+        assert f.x_axis == [1.0, 0.0, 0.0]
+        assert f.y_axis == [0.0, 1.0, 0.0]
+        assert f.normal == [0.0, 0.0, 1.0]
+
+    def test_frame3d_from_dict_missing_field_raises(self):
+        """Missing 'y_axis' raises ValueError naming the missing field."""
+        d = {k: v for k, v in self._valid.items() if k != "y_axis"}
+        with pytest.raises(ValueError, match="y_axis"):
+            Frame3D.from_dict(d)
+
+    def test_frame3d_from_dict_wrong_arity_origin_raises(self):
+        """'origin' with 2 elements raises ValueError naming the field and expected arity."""
+        d = {**self._valid, "origin": [0.0, 0.0]}
+        with pytest.raises(ValueError, match="origin"):
+            Frame3D.from_dict(d)
+
+    def test_frame3d_from_dict_wrong_arity_axis_raises(self):
+        """'x_axis' with 4 elements raises ValueError."""
+        d = {**self._valid, "x_axis": [1.0, 0.0, 0.0, 0.0]}
+        with pytest.raises(ValueError, match="x_axis"):
+            Frame3D.from_dict(d)

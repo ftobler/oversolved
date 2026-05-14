@@ -49,6 +49,13 @@ class Frame3D:
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any], /) -> Frame3D:
+        for key in ("origin", "x_axis", "y_axis", "normal"):
+            if key not in d:
+                raise ValueError(f"Frame3D.from_dict missing field '{key}'")
+            if len(d[key]) != 3:
+                raise ValueError(
+                    f"Frame3D.from_dict field '{key}' has {len(d[key])} elements, expected 3"
+                )
         return cls(
             origin=list(d["origin"]),
             x_axis=list(d["x_axis"]),
