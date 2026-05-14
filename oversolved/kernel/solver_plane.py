@@ -400,7 +400,8 @@ def _plane_line_angle(definition: dict, global_repo: Repository) -> Frame3D:
 def _plane_offset(definition: dict, global_repo: Repository) -> Frame3D:
     plane_val = definition.get("plane")
     plane_query = plane_val if isinstance(plane_val, str) else (definition.get("reference") or "")
-    raw_offset = definition.get("offset") if definition.get("offset") is not None else definition.get("distance")
+    raw_offset = definition.get("offset")
+    raw_offset = raw_offset if raw_offset is not None else definition.get("distance")
     offset = float(raw_offset if raw_offset is not None else 0.0)
     plane = global_repo.query(plane_query)
     if plane is None:
