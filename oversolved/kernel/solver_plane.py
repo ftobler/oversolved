@@ -2,6 +2,7 @@ import math
 import logging
 from typing import Optional
 import numpy as np
+from oversolved.kernel.types3d import Frame3D
 from oversolved.kernel.cadquery_ops import _normal_to_frame
 from oversolved.kernel.solver_constants import (
     _FRONT_PLANE, _BUILTIN_PLANES, _PLANE_TYPES, _POINT_TYPES,
@@ -40,7 +41,13 @@ _BARE_ID_MAP = {
 }
 
 
-def is_plane_type(obj: dict) -> bool:
+def _plane_dict(frame: Frame3D) -> dict:
+    return {**frame.to_dict(), "type": "plane"}
+
+
+def is_plane_type(obj: dict | Frame3D) -> bool:
+    if isinstance(obj, Frame3D):
+        return True
     return obj.get("type") in _PLANE_TYPES
 
 
@@ -51,7 +58,6 @@ def is_point_type(obj: dict) -> bool:
 def _resolve_plane_early(
     plane_query: Optional[str], global_repo: Optional[Repository]
 ) -> dict:
-    """Quick plane resolution without full repo setup (used before entity_offsets are built)."""
     if not plane_query:
         return _FRONT_PLANE
     if plane_query in _BARE_ID_MAP:
@@ -60,64 +66,57 @@ def _resolve_plane_early(
         builtin = _BUILTIN_PLANES.get(plane_query[1:])
         if builtin is not None:
             return builtin
-        # Also look up user-defined planes in global_repo (e.g. @plane1)
         if global_repo is not None:
             p = global_repo.elements.get(plane_query[1:])
             if p and is_plane_type(p):
-                return p
+                return p if isinstance(p, dict) else _plane_dict(p)
         return _FRONT_PLANE
     if plane_query.startswith("?") and global_repo is not None:
-        # Ancestry query -- resolves to a registered face (e.g. from a 3D body mesh)
         try:
-            origin, x_axis, y_axis, normal = _plane_on_face(
-                {"face": plane_query}, global_repo
-            )
-            return {
-                "origin": origin.tolist(),
-                "x_axis": x_axis.tolist(),
-                "y_axis": y_axis.tolist(),
-                "normal": normal.tolist(),
-            }
+            frame = _plane_on_face({"face": plane_query}, global_repo)
+            return _plane_dict(frame)
         except (ValueError, KeyError, TypeError):
             logger.debug("Failed to resolve plane from ancestry query: %s", plane_query)
     if plane_query.startswith("$") and global_repo is not None:
         p = global_repo.elements.get(plane_query[1:])
-        if p and is_plane_type(p):
-            return p
+        if p:
+            if isinstance(p, Frame3D):
+                return _plane_dict(p)
+            if isinstance(p, dict) and is_plane_type(p):
+                return p
     return _FRONT_PLANE
 
 
-def _2d_to_3d(xy: list, plane: dict) -> list:
-    """Convert 2D local coords to 3D world coords via plane transform."""
-    origin = np.array(plane["origin"])
-    x_axis = np.array(plane["x_axis"])
-    y_axis = np.array(plane["y_axis"])
+def _2d_to_3d(xy: list, plane: Frame3D | dict) -> list:
+    if isinstance(plane, Frame3D):
+        origin = np.array(plane.origin)
+        x_axis = np.array(plane.x_axis)
+        y_axis = np.array(plane.y_axis)
+    else:
+        origin = np.array(plane["origin"])
+        x_axis = np.array(plane["x_axis"])
+        y_axis = np.array(plane["y_axis"])
     return (origin + xy[0] * x_axis + xy[1] * y_axis).tolist()
 
 
-def _3d_to_2d(xyz: list, plane: dict) -> list:
-    """Project 3D world coords onto plane, returning [u, v]."""
-    origin = np.array(plane["origin"])
-    x_axis = np.array(plane["x_axis"])
-    y_axis = np.array(plane["y_axis"])
+def _3d_to_2d(xyz: list, plane: Frame3D | dict) -> list:
+    if isinstance(plane, Frame3D):
+        origin = np.array(plane.origin)
+        x_axis = np.array(plane.x_axis)
+        y_axis = np.array(plane.y_axis)
+    else:
+        origin = np.array(plane["origin"])
+        x_axis = np.array(plane["x_axis"])
+        y_axis = np.array(plane["y_axis"])
     v = np.array(xyz) - origin
     return [float(np.dot(v, x_axis)), float(np.dot(v, y_axis))]
 
 
 def _source_sketch_id(source_query: str) -> str:
-    """Extract sketch ID from '@sketch_id/...' or '@sketch_identity...' query."""
     return source_query.lstrip("@").split("/")[0]
 
 
 def _resolve_source_geometry(source_query: str, global_repo: Repository) -> tuple:
-    """Resolve source entity to 3D geometry. Returns (kind_hint, data_3d).
-
-    data_3d is:
-    - for point: [x, y, z]
-    - for line: {'start': [x,y,z], 'end': [x,y,z]}
-    - for circle: {'center': [x,y,z], 'radius': r}
-    - for arc: {'center': [x,y,z], 'radius': r, 'start_angle': a, 'end_angle': b}
-    """
     sketch_id = _source_sketch_id(source_query)
     source_plane = global_repo.elements.get("_pt_" + sketch_id) or _FRONT_PLANE
 
@@ -154,9 +153,8 @@ def _resolve_source_geometry(source_query: str, global_repo: Repository) -> tupl
 
 
 def _project_source_to_params(
-    projected_kind: str, source_query: str, target_plane: dict, global_repo: Repository
+    projected_kind: str, source_query: str, target_plane: Frame3D | dict, global_repo: Repository
 ) -> list:
-    """Compute flat 2D params for a projected entity on target_plane."""
     kind_hint, data_3d = _resolve_source_geometry(source_query, global_repo)
 
     if projected_kind == "projected_point":
@@ -176,14 +174,9 @@ def _project_source_to_params(
     raise ValueError(f"unknown projected kind: {projected_kind!r}")
 
 
-def _get_point_3d(ref: dict, global_repo: Repository) -> np.ndarray:
-    """Convert a registered point reference to a 3D world coordinate.
-
-    Uses sketch_id + _pt_ plane transform to lift 2D local coordinates to 3D
-    world space.  Falls back to [x, y, 0] when no plane transform is known.
-    Also accepts vertex objects (type == "vertex") and generic dicts with
-    an "origin" field (but no "normal", which would indicate a plane).
-    """
+def _get_point_3d(ref: Frame3D | dict, global_repo: Repository) -> np.ndarray:
+    if isinstance(ref, Frame3D):
+        raise ValueError("reference is a plane, not a point")
     if "external_xy" in ref:
         xy = ref["external_xy"]
         sketch_id = ref.get("sketch_id")
@@ -204,12 +197,9 @@ def _get_point_3d(ref: dict, global_repo: Repository) -> np.ndarray:
     raise ValueError("point reference has no coordinates")
 
 
-def _get_edge_3d(ref: dict, global_repo: Repository) -> tuple:
-    """Return (start_3d, end_3d) for a registered edge/line reference.
-
-    Uses sketch_id + _pt_ plane transform when available.
-    Falls back to z=0 for 2D-only references.
-    """
+def _get_edge_3d(ref: Frame3D | dict, global_repo: Repository) -> tuple:
+    if isinstance(ref, Frame3D):
+        raise ValueError("reference is a plane, not an edge")
     if "external_params" in ref and ref.get("kind") in ("line", "projected_line"):
         p = ref["external_params"]
         sketch_id = ref.get("sketch_id")
@@ -229,7 +219,6 @@ def _get_edge_3d(ref: dict, global_repo: Repository) -> tuple:
 
 
 def _normalize(v: np.ndarray) -> np.ndarray:
-    """Return unit vector in direction of v."""
     n = np.linalg.norm(v)
     if n < 1e-12:
         raise ValueError("Cannot normalize zero-length vector")
@@ -239,7 +228,6 @@ def _normalize(v: np.ndarray) -> np.ndarray:
 def _rotate_frame_around_normal(
     x_axis: np.ndarray, y_axis: np.ndarray, normal: np.ndarray, degrees: float
 ) -> tuple:
-    """Rotate x_axis and y_axis around normal by degrees (CW looking down normal)."""
     radians = np.radians(degrees)
     cos_a = np.cos(radians)
     sin_a = np.sin(radians)
@@ -248,8 +236,7 @@ def _rotate_frame_around_normal(
     return x_new, y_new
 
 
-def _plane_three_point(definition: dict, global_repo: Repository) -> tuple:
-    """Three-point plane: origin at p1, x_axis toward p2, y_axis toward p3 (Gram-Schmidt)."""
+def _plane_three_point(definition: dict, global_repo: Repository) -> Frame3D:
     r1 = global_repo.query(definition["p1"])
     r2 = global_repo.query(definition["p2"])
     r3 = global_repo.query(definition["p3"])
@@ -271,11 +258,10 @@ def _plane_three_point(definition: dict, global_repo: Repository) -> tuple:
         raise ValueError("collinear points: cannot define a plane")
     y_axis = _normalize(y_axis_raw)
     normal = np.cross(x_axis, y_axis)
-    return origin, x_axis, y_axis, normal
+    return Frame3D.from_arrays(origin, x_axis, y_axis, normal)
 
 
-def _plane_on_face(definition: dict, global_repo: Repository, body_store: dict | None = None) -> tuple:
-    """Plane aligned with a topology face."""
+def _plane_on_face(definition: dict, global_repo: Repository, body_store: dict | None = None) -> Frame3D:
     face_str = definition["face"]
     face = global_repo.query(face_str, body_store=body_store)
     if face is None:
@@ -287,11 +273,10 @@ def _plane_on_face(definition: dict, global_repo: Repository, body_store: dict |
     x_list, y_list = _normal_to_frame(list(normal))
     x_axis = np.array(x_list)
     y_axis = np.array(y_list)
-    return origin, x_axis, y_axis, normal
+    return Frame3D.from_arrays(origin, x_axis, y_axis, normal)
 
 
-def _plane_on_face_edge_angle(definition: dict, global_repo: Repository, body_store: dict | None = None) -> tuple:
-    """Plane on face with X axis along an edge, rotated by angle."""
+def _plane_on_face_edge_angle(definition: dict, global_repo: Repository, body_store: dict | None = None) -> Frame3D:
     face_str = definition["face"]
     edge_str = definition["edge"]
     angle = definition.get("angle", 0.0)
@@ -314,16 +299,10 @@ def _plane_on_face_edge_angle(definition: dict, global_repo: Repository, body_st
         x_axis_base, np.cross(normal, x_axis_base), normal, angle
     )
     y_axis = np.cross(normal, x_axis)
-    return origin, x_axis, y_axis, normal
+    return Frame3D.from_arrays(origin, x_axis, y_axis, normal)
 
 
-def _plane_edge_point(definition: dict, global_repo: Repository, body_store: dict | None = None) -> tuple:
-    """Plane with X axis along an edge and origin at a point.
-
-    The plane's origin is at the given point, x_axis is along the line direction,
-    and y_axis points from the point toward the line (perpendicular projection),
-    making the plane pivot around the line.
-    """
+def _plane_edge_point(definition: dict, global_repo: Repository, body_store: dict | None = None) -> Frame3D:
     edge_str = definition["edge"]
     point_str = definition["point"]
 
@@ -339,16 +318,13 @@ def _plane_edge_point(definition: dict, global_repo: Repository, body_store: dic
     origin = _get_point_3d(point_ref, global_repo)
     point_3d = origin
 
-    # Project point onto the line
     t = float(np.dot(point_3d - edge_start, x_axis))
     projected_point = edge_start + x_axis * t
 
-    # y_axis points from point toward its projection on the line
     point_to_projection = projected_point - point_3d
     if np.linalg.norm(point_to_projection) > 1e-10:
         y_axis = _normalize(point_to_projection)
     else:
-        # Point is on the line, use perpendicular direction
         if abs(x_axis[2]) < 0.9:
             arbitrary = np.array([0.0, 0.0, 1.0])
         else:
@@ -356,16 +332,10 @@ def _plane_edge_point(definition: dict, global_repo: Repository, body_store: dic
         y_axis = _normalize(np.cross(x_axis, arbitrary))
 
     normal = np.cross(x_axis, y_axis)
-    return origin, x_axis, y_axis, normal
+    return Frame3D.from_arrays(origin, x_axis, y_axis, normal)
 
 
-def _plane_through_point(definition: dict, global_repo: Repository) -> tuple:
-    """Plane parallel to a reference plane, with its origin positioned at a given point.
-
-    The plane keeps the same orientation (x_axis, y_axis, normal) as the reference
-    plane but its origin is set to the specified point projected onto the reference
-    plane's normal axis.
-    """
+def _plane_through_point(definition: dict, global_repo: Repository) -> Frame3D:
     plane_query = definition.get("plane", "")
     point_query = definition.get("point", "")
     ref_plane = global_repo.query(plane_query)
@@ -375,27 +345,26 @@ def _plane_through_point(definition: dict, global_repo: Repository) -> tuple:
     if point_ref is None:
         raise ValueError(f"point not found: {point_query!r}")
 
-    normal = np.array(ref_plane.get("normal", [0, 0, 1]))
-    x_axis = np.array(ref_plane.get("x_axis", [1, 0, 0]))
-    y_axis = np.array(ref_plane.get("y_axis", [0, 1, 0]))
-    ref_origin = np.array(ref_plane.get("origin", [0, 0, 0]))
+    if isinstance(ref_plane, Frame3D):
+        normal = np.array(ref_plane.normal)
+        x_axis = np.array(ref_plane.x_axis)
+        y_axis = np.array(ref_plane.y_axis)
+        ref_origin = np.array(ref_plane.origin)
+    else:
+        normal = np.array(ref_plane.get("normal", [0, 0, 1]))
+        x_axis = np.array(ref_plane.get("x_axis", [1, 0, 0]))
+        y_axis = np.array(ref_plane.get("y_axis", [0, 1, 0]))
+        ref_origin = np.array(ref_plane.get("origin", [0, 0, 0]))
 
     point_3d = _get_point_3d(point_ref, global_repo)
 
-    # Project point onto the normal axis to determine offset from reference origin
     t = float(np.dot(point_3d - ref_origin, normal))
     origin = ref_origin + normal * t
 
-    return origin, x_axis, y_axis, normal
+    return Frame3D.from_arrays(origin, x_axis, y_axis, normal)
 
 
-def _plane_line_angle(definition: dict, global_repo: Repository) -> tuple:
-    """Plane that contains a line (hinge axis) and is rotated around that line by a given angle.
-
-    At angle=0 the plane is oriented so its y_axis is perpendicular to the line and
-    points in the direction most aligned with the world Z axis (or world X when the
-    line is parallel to Z).  Increasing angle rotates the plane around the line.
-    """
+def _plane_line_angle(definition: dict, global_repo: Repository) -> Frame3D:
     line_str = definition.get("line", "")
     angle = float(definition.get("angle", 0.0))
 
@@ -404,26 +373,23 @@ def _plane_line_angle(definition: dict, global_repo: Repository) -> tuple:
         raise ValueError(f"line not found: {line_str!r}")
 
     line_start, line_end = _get_edge_3d(line_ref, global_repo)
-    x_axis = _normalize(line_end - line_start)  # hinge axis = line direction
+    x_axis = _normalize(line_end - line_start)
     origin = line_start.copy()
 
-    # Build a reference y_axis perpendicular to x_axis (default at angle=0)
     if abs(x_axis[2]) < 0.9:
         ref = np.array([0.0, 0.0, 1.0])
     else:
         ref = np.array([1.0, 0.0, 0.0])
     y_axis_default = _normalize(ref - np.dot(ref, x_axis) * x_axis)
 
-    # Rotate y_axis around x_axis by angle
     radians = math.radians(angle)
     z_axis_default = np.cross(x_axis, y_axis_default)
     y_axis = math.cos(radians) * y_axis_default + math.sin(radians) * z_axis_default
     normal = np.cross(x_axis, y_axis)
-    return origin, x_axis, y_axis, normal
+    return Frame3D.from_arrays(origin, x_axis, y_axis, normal)
 
 
-def _plane_offset(definition: dict, global_repo: Repository) -> tuple:
-    """Plane parallel to a reference plane, offset along its normal."""
+def _plane_offset(definition: dict, global_repo: Repository) -> Frame3D:
     plane_val = definition.get("plane")
     plane_query = plane_val if isinstance(plane_val, str) else (definition.get("reference") or "")
     raw_offset = definition.get("offset") if definition.get("offset") is not None else definition.get("distance")
@@ -431,66 +397,62 @@ def _plane_offset(definition: dict, global_repo: Repository) -> tuple:
     plane = global_repo.query(plane_query)
     if plane is None:
         raise ValueError(f"plane not found: {plane_query!r}")
-    normal = np.array(plane.get("normal", [0, 0, 1]))
-    origin = np.array(plane.get("origin", [0, 0, 0])) + normal * offset
-    x_axis = np.array(plane.get("x_axis", [1, 0, 0]))
-    y_axis = np.array(plane.get("y_axis", [0, 1, 0]))
-    return origin, x_axis, y_axis, normal
+
+    if isinstance(plane, Frame3D):
+        normal = np.array(plane.normal)
+        origin = np.array(plane.origin) + normal * offset
+        x_axis = np.array(plane.x_axis)
+        y_axis = np.array(plane.y_axis)
+    else:
+        normal = np.array(plane.get("normal", [0, 0, 1]))
+        origin = np.array(plane.get("origin", [0, 0, 0])) + normal * offset
+        x_axis = np.array(plane.get("x_axis", [1, 0, 0]))
+        y_axis = np.array(plane.get("y_axis", [0, 1, 0]))
+    return Frame3D.from_arrays(origin, x_axis, y_axis, normal)
 
 
 def _solve_plane(feature: dict, global_repo: Repository, body_store: dict | None = None) -> dict:
-    """Solve a plane feature, computing a 3D coordinate frame."""
     try:
         definition = feature.get("definition", {})
         mode = definition.get("mode")
 
         if mode == "three_point":
-            origin, x_axis, y_axis, normal = _plane_three_point(definition, global_repo)
+            frame = _plane_three_point(definition, global_repo)
         elif mode == "plane_point":
-            origin, x_axis, y_axis, normal = _plane_through_point(
-                definition, global_repo
-            )
+            frame = _plane_through_point(definition, global_repo)
         elif mode == "line_angle":
-            origin, x_axis, y_axis, normal = _plane_line_angle(definition, global_repo)
+            frame = _plane_line_angle(definition, global_repo)
         elif mode == "on_face":
-            origin, x_axis, y_axis, normal = _plane_on_face(definition, global_repo, body_store)
+            frame = _plane_on_face(definition, global_repo, body_store)
         elif mode == "on_face_edge_angle":
-            origin, x_axis, y_axis, normal = _plane_on_face_edge_angle(
-                definition, global_repo, body_store
-            )
+            frame = _plane_on_face_edge_angle(definition, global_repo, body_store)
         elif mode == "edge_point":
-            origin, x_axis, y_axis, normal = _plane_edge_point(definition, global_repo, body_store)
+            frame = _plane_edge_point(definition, global_repo, body_store)
         elif mode == "offset":
-            origin, x_axis, y_axis, normal = _plane_offset(definition, global_repo)
+            frame = _plane_offset(definition, global_repo)
         else:
             return {"status": "exception", "exception": f"unknown plane mode: {mode!r}"}
 
         rotation = definition.get("rotation", 0.0)
         if rotation != 0.0:
-            x_axis, y_axis = _rotate_frame_around_normal(
-                x_axis, y_axis, normal, rotation
+            x_a = np.array(frame.x_axis)
+            y_a = np.array(frame.y_axis)
+            n_a = np.array(frame.normal)
+            x_new, y_new = _rotate_frame_around_normal(x_a, y_a, n_a, rotation)
+            frame = Frame3D(
+                origin=frame.origin,
+                x_axis=x_new.tolist(),
+                y_axis=y_new.tolist(),
+                normal=frame.normal,
             )
 
         plane_id = feature["id"]
-        global_repo.register(
-            plane_id,
-            {
-                "type": "plane",
-                "origin": origin.tolist(),
-                "x_axis": x_axis.tolist(),
-                "y_axis": y_axis.tolist(),
-                "normal": normal.tolist(),
-            },
-        )
+        frame_dict = _plane_dict(frame)
+        global_repo.register(plane_id, frame_dict)
 
         return {
             "status": "ok",
-            "plane": {
-                "origin": origin.tolist(),
-                "x_axis": x_axis.tolist(),
-                "y_axis": y_axis.tolist(),
-                "normal": normal.tolist(),
-            },
+            "plane": frame.to_dict(),
         }
     except Exception as e:
         logger.warning("_solve_plane failed: %s", e)
