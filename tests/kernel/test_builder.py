@@ -524,3 +524,115 @@ def test_register_body_faces_logs_on_failure(caplog):
         "tessellation crashed" in record.message
         for record in caplog.records
     ), "Expected warning about tessellation failure in log"
+
+
+def test_register_brep_face_ancestry_stale_eviction():
+    """Call _register_brep_face_ancestry twice with different geometry; old element evicted."""
+    from oversolved.kernel.builder import _register_brep_face_ancestry
+    from oversolved.kernel.query import Repository
+    from oversolved.kernel.types3d import Body
+
+    # Use a simple box shape so body.shape is not None
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    shape = BRepPrimAPI_MakeBox(1, 1, 1).Shape()
+
+    body = Body(id="body_test", created_by="feat_test", sketch_id="sk1")
+    body.shape = shape
+
+    repo = Repository()
+    mesh = {
+        "face_data": [
+            {"centroid": [0.0, 0.0, 0.0], "normal": [0.0, 0.0, 1.0], "area": 1.0, "surface_type": "flatface"},
+        ],
+    }
+    _register_brep_face_ancestry(repo, body, mesh)
+    assert len(repo.ancestral) == 1
+
+    # Register again with different centroid -> different hash -> stale eviction
+    mesh2 = {
+        "face_data": [
+            {"centroid": [1.0, 1.0, 1.0], "normal": [0.0, 0.0, 1.0], "area": 2.0, "surface_type": "flatface"},
+        ],
+    }
+    _register_brep_face_ancestry(repo, body, mesh2)
+    assert len(repo.ancestral) == 1  # stale entry was evicted
+    assert len(repo.elements) == 1
+
+
+def test_register_brep_edge_ancestry_stale_eviction():
+    """Call _register_brep_edge_ancestry twice; old element evicted via index_tag."""
+    from oversolved.kernel.builder import _register_brep_edge_ancestry
+    from oversolved.kernel.query import Repository
+    from oversolved.kernel.types3d import Body
+
+    body = Body(id="body_test", created_by="feat_test", sketch_id="sk1")
+    repo = Repository()
+
+    edges = [{"kind": "line", "start": [0, 0, 0], "end": [1, 0, 0]}]
+    edge_queries = ["?c,c;dummy1"]
+
+    _register_brep_edge_ancestry(repo, body, edges, edge_queries)
+    assert len(repo.ancestral) == 1
+
+    edges2 = [{"kind": "line", "start": [0, 0, 0], "end": [2, 0, 0]}]
+    edge_queries2 = ["?c,c;dummy2"]
+    _register_brep_edge_ancestry(repo, body, edges2, edge_queries2)
+    assert len(repo.ancestral) == 1  # stale evicted
+    assert len(repo.elements) == 1
+
+
+def test_register_brep_vertex_ancestry_stale_eviction():
+    """Call _register_brep_vertex_ancestry twice; old element evicted via index_tag."""
+    from oversolved.kernel.builder import _register_brep_vertex_ancestry
+    from oversolved.kernel.query import Repository
+    from oversolved.kernel.types3d import Body
+
+    body = Body(id="body_test", created_by="feat_test", sketch_id="sk1")
+    repo = Repository()
+
+    vertices = [[0.0, 0.0, 0.0]]
+    vertex_queries = ["?c,c;dummy1"]
+
+    _register_brep_vertex_ancestry(repo, body, vertices, vertex_queries)
+    assert len(repo.ancestral) == 1
+
+    vertices2 = [[1.0, 1.0, 1.0]]
+    vertex_queries2 = ["?c,c;dummy2"]
+    _register_brep_vertex_ancestry(repo, body, vertices2, vertex_queries2)
+    assert len(repo.ancestral) == 1  # stale evicted
+    assert len(repo.elements) == 1
+
+
+def test_register_brep_ancestry_preserves_other_bodies():
+    """Register ancestry for body A, then body B with same indices; body A's entries survive."""
+    from oversolved.kernel.builder import _register_brep_face_ancestry
+    from oversolved.kernel.query import Repository
+    from oversolved.kernel.types3d import Body
+
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    shape = BRepPrimAPI_MakeBox(1, 1, 1).Shape()
+
+    repo = Repository()
+
+    body_a = Body(id="body_a", created_by="feat_a", sketch_id="sk1")
+    body_a.shape = shape
+    mesh_a = {
+        "face_data": [
+            {"centroid": [0.0, 0.0, 0.0], "normal": [0.0, 0.0, 1.0], "area": 1.0, "surface_type": "flatface"},
+        ],
+    }
+    _register_brep_face_ancestry(repo, body_a, mesh_a)
+    keys_after_a = set(repo.ancestral.keys())
+
+    body_b = Body(id="body_b", created_by="feat_b", sketch_id="sk1")
+    body_b.shape = shape
+    mesh_b = {
+        "face_data": [
+            {"centroid": [1.0, 1.0, 1.0], "normal": [0.0, 0.0, 1.0], "area": 1.0, "surface_type": "flatface"},
+        ],
+    }
+    _register_brep_face_ancestry(repo, body_b, mesh_b)
+
+    # body_a's keys should still be present
+    for key in keys_after_a:
+        assert key in repo.ancestral, f"body_a key {key} was evicted by body_b registration"

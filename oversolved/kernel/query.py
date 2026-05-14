@@ -18,6 +18,7 @@ __all__ = [
     "make_ancestry_query",
     "_parse_ancestry",
     "_init_global_repo",
+    "_evict_ancestry_and_register",
 ]
 
 QueryType: TypeAlias = "LocalQuery | AbsoluteQuery | AncestryQuery"
@@ -429,3 +430,29 @@ def _init_global_repo() -> "Repository":
     for name, plane in _BUILTIN_PLANES.items():
         repo.register(name, plane)
     return repo
+
+
+def _evict_ancestry_and_register(
+    repo: Repository,
+    ancestor_ids: list[str],
+    payload: dict,
+    index_tag: str | None = None,
+) -> str:
+    """Evict stale ancestry entries and register a new one.
+
+    If index_tag is provided, all ancestry keys containing that tag but
+    different from the new key are evicted (stale geometry-hash entries).
+    The exact-key entry (if any) is always evicted before re-registering.
+    """
+    key = frozenset(ancestor_ids)
+
+    if index_tag is not None:
+        stale_keys = [k for k in repo.ancestral if index_tag in k and k != key]
+        for stale_key in stale_keys:
+            for eid in repo.ancestral.pop(stale_key, []):
+                repo.elements.pop(eid, None)
+
+    for old_id in repo.ancestral.pop(key, []):
+        repo.elements.pop(old_id, None)
+
+    return repo.register_ancestor(ancestor_ids, payload)

@@ -1,6 +1,6 @@
 import logging
 import math
-from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query
+from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query, _evict_ancestry_and_register
 from oversolved.kernel.types3d import Frame3D
 
 __all__ = [
@@ -422,11 +422,8 @@ def _register_topology_surfaces(
             "normal": list(normal),
         } for eid in existing_ids):
             continue
-        for eid in existing_ids:
-            global_repo.elements.pop(eid, None)
-        global_repo.ancestral.pop(key, None)
-        global_repo.register_ancestor(
-            ids,
+        _evict_ancestry_and_register(
+            global_repo, ids,
             {
                 "type": "flatface",
                 "origin": world_origin,
@@ -491,10 +488,7 @@ def _register_topology_edges(
         existing_ids = global_repo.ancestral.get(key, [])
         if any(global_repo.elements.get(eid) == edge_data for eid in existing_ids):
             continue
-        for eid in existing_ids:
-            global_repo.elements.pop(eid, None)
-        global_repo.ancestral.pop(key, None)
-        global_repo.register_ancestor(ids, edge_data)
+        _evict_ancestry_and_register(global_repo, ids, edge_data)
 
 
 def _register_sketch_feature(
@@ -550,7 +544,4 @@ def _register_topology_vertices(
         existing_ids = global_repo.ancestral.get(key, [])
         if any(global_repo.elements.get(eid) == vertex_data for eid in existing_ids):
             continue
-        for eid in existing_ids:
-            global_repo.elements.pop(eid, None)
-        global_repo.ancestral.pop(key, None)
-        global_repo.register_ancestor(ids, vertex_data)
+        _evict_ancestry_and_register(global_repo, ids, vertex_data)

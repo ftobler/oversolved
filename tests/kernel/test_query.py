@@ -367,3 +367,113 @@ def test_query_all_superset_match():
     assert len(matches) == 2
     assert obj1 in matches
     assert obj2 in matches
+
+
+def test_evict_ancestry_and_register_creates_entry():
+    """Register with a simple ancestry; verify ancenstral and elements entries exist."""
+    from oversolved.kernel.query import _evict_ancestry_and_register
+    repo = Repository()
+    aid = _evict_ancestry_and_register(repo, ["@" + FEAT, "@body1"], {"type": "point", "x": 1.0})
+    key = frozenset(["@" + FEAT, "@body1"])
+    assert key in repo.ancestral
+    assert aid in repo.ancestral[key]
+    assert repo.elements[aid] == {"type": "point", "x": 1.0}
+
+
+def test_evict_ancestry_and_register_evicts_stale():
+    """Register entry A with index_tag, then B with same tag but different key. A is evicted."""
+    from oversolved.kernel.query import _evict_ancestry_and_register
+    repo = Repository()
+    aid1 = _evict_ancestry_and_register(
+        repo, ["@" + ELE1, "@index1"], {"v": 1}, index_tag="@index1",
+    )
+    key1 = frozenset(["@" + ELE1, "@index1"])
+    assert aid1 in repo.elements
+
+    aid2 = _evict_ancestry_and_register(
+        repo, ["@" + ELE2, "@index1"], {"v": 2}, index_tag="@index1",
+    )
+    key2 = frozenset(["@" + ELE2, "@index1"])
+    # Old entry should be gone
+    assert key1 not in repo.ancestral
+    assert aid1 not in repo.elements
+    # New entry should be present
+    assert key2 in repo.ancestral
+    assert aid2 in repo.elements
+
+
+def test_evict_ancestry_and_register_evicts_exact_key():
+    """Re-register with same ancestry but different payload (no index_tag). Old entry gone."""
+    from oversolved.kernel.query import _evict_ancestry_and_register
+    repo = Repository()
+    aid1 = _evict_ancestry_and_register(repo, ["@" + ELE1], {"v": 1})
+    assert aid1 in repo.elements
+    aid2 = _evict_ancestry_and_register(repo, ["@" + ELE1], {"v": 2})
+    assert aid1 not in repo.elements
+    assert aid2 in repo.elements
+    key = frozenset(["@" + ELE1])
+    assert aid2 in repo.ancestral[key]
+
+
+def test_evict_ancestry_and_register_keeps_unrelated_entries():
+    """Register two different tags, re-register one. The other survives."""
+    from oversolved.kernel.query import _evict_ancestry_and_register
+    repo = Repository()
+    aid1 = _evict_ancestry_and_register(
+        repo, ["@" + ELE1, "@tag_a"], {"v": 1}, index_tag="@tag_a",
+    )
+    aid2 = _evict_ancestry_and_register(
+        repo, ["@" + ELE2, "@tag_b"], {"v": 2}, index_tag="@tag_b",
+    )
+    key_a = frozenset(["@" + ELE1, "@tag_a"])
+    key_b = frozenset(["@" + ELE2, "@tag_b"])
+
+    _evict_ancestry_and_register(
+        repo, ["@" + ELE3, "@tag_a"], {"v": 3}, index_tag="@tag_a",
+    )
+    # tag_a entries evicted
+    assert key_a not in repo.ancestral
+    assert aid1 not in repo.elements
+    # tag_b entries untouched
+    assert key_b in repo.ancestral
+    assert aid2 in repo.elements
+
+
+def test_evict_ancestry_and_register_no_index_tag():
+    """Register with index_tag=None. No stale-scan, but exact-key eviction still works."""
+    from oversolved.kernel.query import _evict_ancestry_and_register
+    repo = Repository()
+    aid1 = _evict_ancestry_and_register(repo, ["@" + ELE1], {"v": 1}, index_tag=None)
+    # Register a different key; should not evict anything
+    _evict_ancestry_and_register(repo, ["@" + ELE2], {"v": 2}, index_tag=None)
+    assert aid1 in repo.elements
+    # Re-register same key; old entry should be evicted via exact-key path
+    aid3 = _evict_ancestry_and_register(repo, ["@" + ELE1], {"v": 3}, index_tag=None)
+    assert aid1 not in repo.elements
+    assert aid3 in repo.elements
+
+
+def test_evict_ancestry_and_register_multiple_stale_keys():
+    """Register multiple entries sharing same index_tag; re-register one. All stale gone."""
+    from oversolved.kernel.query import _evict_ancestry_and_register
+    repo = Repository()
+    _evict_ancestry_and_register(
+        repo, ["@" + ELE1, "@tag"], {"v": 1}, index_tag="@tag",
+    )
+    _evict_ancestry_and_register(
+        repo, ["@" + ELE2, "@tag"], {"v": 2}, index_tag="@tag",
+    )
+    _evict_ancestry_and_register(
+        repo, ["@" + ELE3, "@tag"], {"v": 3}, index_tag="@tag",
+    )
+    # Each registration evicts previous one with same index_tag, so only last survives
+    assert len(repo.ancestral) == 1
+    assert len(repo.elements) == 1
+
+    # Re-register with a fresh key; the previous stale entry is evicted
+    new_id = _evict_ancestry_and_register(
+        repo, ["@" + ELE4, "@tag"], {"v": 4}, index_tag="@tag",
+    )
+    assert len(repo.ancestral) == 1
+    assert len(repo.elements) == 1
+    assert new_id in repo.elements
