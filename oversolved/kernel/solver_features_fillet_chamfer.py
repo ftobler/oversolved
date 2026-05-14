@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import math
 import re
 from typing import Any, Callable, TYPE_CHECKING
 
@@ -128,91 +127,6 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
     return result
 
 
-def _solve_transform(
-    feature: dict,
-    global_repo: Repository,
-    body_store: dict,
-) -> dict:
-    from oversolved.kernel.cadquery_ops import apply_transform_shape  # noqa: F811
-    from oversolved.kernel.types3d import Body  # noqa: F811
-    from oversolved.kernel.solver_plane import _get_point_3d, _get_edge_3d  # noqa: F811
-
-    feature_id = feature.get("id", "")
-    sub = feature.get("transform") or {}
-    cfg = {**sub, **{k: v for k, v in feature.items() if k not in ("transform",)}}
-
-    body_query = cfg.get("body", "")
-    source_body = _resolve_body(body_query, body_store) if body_query else None
-    if source_body is None or source_body.shape is None:
-        raise ValueError(f"transform: body not found: {body_query!r}")
-
-    translation = cfg.get("translation")
-    tr_from = cfg.get("translation_from")
-    tr_to = cfg.get("translation_to")
-    if tr_from and tr_to:
-        p0_ref = global_repo.query(tr_from, body_store=body_store)
-        p1_ref = global_repo.query(tr_to, body_store=body_store)
-        if p0_ref is None:
-            raise ValueError(f"transform: translation_from not found: {tr_from!r}")
-        if p1_ref is None:
-            raise ValueError(f"transform: translation_to not found: {tr_to!r}")
-        p0 = _get_point_3d(p0_ref, global_repo)
-        p1 = _get_point_3d(p1_ref, global_repo)
-        translation = [float(p1[i] - p0[i]) for i in range(3)]
-
-    rotation_angle = float(cfg.get("rotation_angle", 0.0))
-    rotation_axis_origin = cfg.get("rotation_axis_origin")
-    rotation_axis_direction = cfg.get("rotation_axis_direction")
-    axis_query = cfg.get("rotation_axis")
-    if axis_query:
-        edge_ref = global_repo.query(axis_query, body_store=body_store)
-        if edge_ref is None:
-            raise ValueError(f"transform: rotation_axis not found: {axis_query!r}")
-        edge = _get_edge_3d(edge_ref, global_repo)
-        if edge:
-            p0, p1 = edge
-            d = [float(p1[i] - p0[i]) for i in range(3)]
-            length = sum(x * x for x in d) ** 0.5
-            if length > 1e-10:
-                rotation_axis_origin = list(p0)
-                rotation_axis_direction = [x / length for x in d]
-
-    scale = float(cfg.get("scale", 1.0))
-    scale_center = cfg.get("scale_center")
-    scale_center_query = cfg.get("scale_center_from")
-    if scale_center_query:
-        pt_ref = global_repo.query(scale_center_query, body_store=body_store)
-        if pt_ref is None:
-            raise ValueError(f"transform: scale_center_from not found: {scale_center_query!r}")
-        scale_center = list(_get_point_3d(pt_ref, global_repo))
-
-    new_shape = apply_transform_shape(
-        source_body.shape,
-        translation=translation,
-        rotation_axis_origin=rotation_axis_origin,
-        rotation_axis_direction=rotation_axis_direction,
-        rotation_angle_deg=rotation_angle,
-        scale=scale,
-        scale_center=scale_center,
-    )
-
-    operation = cfg.get("operation", "new")
-    if operation == "replace":
-        source_body.shape = _ensure_occ(new_shape)
-        source_body.modified_by = list(source_body.modified_by or []) + [feature_id]
-        return {"status": "ok", "body_id": source_body.id, "operation": "replace"}
-    else:
-        new_body_id = "body_" + feature_id
-        body_store[new_body_id] = Body(
-            id=new_body_id,
-            created_by=feature_id,
-            modified_by=[],
-            shape=_ensure_occ(new_shape),
-            sketch_id=source_body.sketch_id,
-        )
-        return {"status": "ok", "body_id": new_body_id, "operation": "new"}
-
-
 def _apply_edge_feature(
     feature: dict,
     body_store: dict,
@@ -284,10 +198,11 @@ def _solve_chamfer(
     from oversolved.kernel.geometry import apply_chamfer  # noqa: F811
 
     sub = feature.get("chamfer") or {}
+    chamfer_mode = sub.get("kind", "distance")
     feature = {**sub, **feature}
     distance_raw = feature.get("distance")
     distance = float(distance_raw if distance_raw is not None else 1.0)
-    kind = feature.get("kind", "distance")
+    kind = chamfer_mode
     angle_raw = feature.get("angle")
     angle = float(angle_raw if angle_raw is not None else 45.0)
     if distance <= 0:

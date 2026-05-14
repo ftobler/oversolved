@@ -441,3 +441,69 @@ def test_multiple_fillet_features():
     assert r["result"]["fillet2"]["status"] == "ok"
     mesh = r["bodies"]["body_ex1"]["mesh"]
     assert_mesh_valid(mesh)
+
+
+# ─── fix-143: _solve_transform module ownership ───
+
+def test_solve_transform_not_in_fillet_module():
+    """_solve_transform must not be defined in the fillet/chamfer module."""
+    import oversolved.kernel.solver_features_fillet_chamfer as fc_mod
+    assert not hasattr(fc_mod, "_solve_transform"), (
+        "_solve_transform should only live in solver_features_transform_mirror"
+    )
+
+
+def test_solve_transform_resolves_from_correct_module():
+    """_solve_transform imported via solver_features must come from transform_mirror."""
+    import oversolved.kernel.solver_features as sf
+    import oversolved.kernel.solver_features_transform_mirror as tm
+    assert hasattr(sf, "_solve_transform")
+    assert sf._solve_transform is tm._solve_transform
+
+
+# ─── fix-144: chamfer kind shadowed by feature kind ───
+
+def test_chamfer_distance_mode_unchanged():
+    """Default distance chamfer still works after the kind-shadow fix."""
+    from oversolved.kernel.builder import build
+    from solver_helpers import full_rect_extrude_spec, assert_mesh_valid
+
+    spec = full_rect_extrude_spec(w=10, h=10, d=5)
+    spec["features"].append({
+        "id": "ch1",
+        "kind": "chamfer",
+        "label": "Chamfer",
+        "edges": ["?body_ex1:edge:0"],
+        "chamfer": {"distance": 1.0, "kind": "distance"},
+    })
+    r = build(spec)
+    assert r["result"]["ch1"]["status"] == "ok", r["result"]["ch1"].get("exception")
+    assert_mesh_valid(r["bodies"]["body_ex1"]["mesh"])
+
+
+def test_chamfer_angle_distance_mode():
+    """Chamfer with kind=angle_distance in the sub-dict must not fall back to distance mode."""
+    import unittest.mock as mock
+    from oversolved.kernel.builder import build
+    from solver_helpers import full_rect_extrude_spec
+
+    spec = full_rect_extrude_spec(w=10, h=10, d=5)
+    spec["features"].append({
+        "id": "ch1",
+        "kind": "chamfer",
+        "label": "Chamfer",
+        "edges": ["?body_ex1:edge:0"],
+        "chamfer": {"distance": 1.0, "angle": 30.0, "kind": "angle_distance"},
+    })
+
+    with mock.patch("oversolved.kernel.geometry.apply_chamfer", wraps=__import__(
+        "oversolved.kernel.geometry", fromlist=["apply_chamfer"]
+    ).apply_chamfer) as mock_chamfer:
+        r = build(spec)
+
+    assert r["result"]["ch1"]["status"] == "ok", r["result"]["ch1"].get("exception")
+    assert mock_chamfer.called
+    _, kwargs = mock_chamfer.call_args
+    assert kwargs.get("kind") == "angle_distance", (
+        f"apply_chamfer was called with kind={kwargs.get('kind')!r}, expected 'angle_distance'"
+    )
