@@ -347,8 +347,10 @@ class Repository:
             return self.elements.get(query_str[1:])
 
         if start == '?':
-            ids, type_restriction = _parse_ancestry(query_str)
-            return self._resolve_ancestry_ids(ids, type_restriction, None, body_store)
+            q = _parse_ancestry_obj(query_str)
+            return self._resolve_ancestry_ids(
+                list(q.ancestor_ids), q.type_restriction, q.classifier, body_store
+            )
 
         return None
 
@@ -393,13 +395,10 @@ class Repository:
             return None
 
         # Filter by type restriction if given.
-        effective_type = type_restriction
-        if classifier is not None and effective_type is not None:
-            effective_type = effective_type  # classifier handled by future resolver
-        if effective_type is not None:
+        if type_restriction is not None:
             exact_matches = [
                 eid for eid in candidate_ids
-                if _obj_type(self.elements.get(eid)) == effective_type
+                if _obj_type(self.elements.get(eid)) == type_restriction
             ]
             if exact_matches:
                 candidate_ids = exact_matches
@@ -407,9 +406,18 @@ class Repository:
                 # Coercion: no exact match, try to resolve from candidates.
                 for eid in candidate_ids:
                     element = self.elements.get(eid)
-                    coerced = _coerce_type(element, effective_type, body_store, self.elements)
+                    coerced = _coerce_type(element, type_restriction, body_store, self.elements)
                     if coerced is not None:
                         return coerced
+                return None
+
+        # Filter by classifier if given.
+        if classifier is not None:
+            candidate_ids = [
+                eid for eid in candidate_ids
+                if self.elements.get(eid, {}).get("classifier") == classifier
+            ]
+            if not candidate_ids:
                 return None
 
         if len(candidate_ids) == 0:
@@ -457,6 +465,11 @@ class Repository:
             candidate_ids = [
                 eid for eid in candidate_ids
                 if _obj_type(self.elements.get(eid)) == q.type_restriction
+            ]
+        if q.classifier is not None:
+            candidate_ids = [
+                eid for eid in candidate_ids
+                if self.elements.get(eid, {}).get("classifier") == q.classifier
             ]
         return [self.elements[eid] for eid in candidate_ids if eid in self.elements]
 

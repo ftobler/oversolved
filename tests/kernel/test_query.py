@@ -2,6 +2,7 @@ import pytest
 from oversolved.kernel.query import (
     Repository, AmbiguousQueryError,
     make_ancestry_query, _parse_ancestry,
+    ancestry, emit_wire, AncestryQuery,
 )
 
 
@@ -477,3 +478,133 @@ def test_evict_ancestry_and_register_multiple_stale_keys():
     assert len(repo.ancestral) == 1
     assert len(repo.elements) == 1
     assert new_id in repo.elements
+
+
+# ── Classifier filtering (fix-141) ──
+
+def test_ancestry_classifier_filters_results():
+    """Elements with different classifiers are filtered correctly."""
+    repo = Repository()
+    surf_inner = {"type": "face", "classifier": "inner", "x": 1.0}
+    surf_outer = {"type": "face", "classifier": "outer", "x": 2.0}
+    repo.register_ancestor(["@fa", "@fb"], surf_inner)
+    repo.register_ancestor(["@fa", "@fb"], surf_outer)
+
+    # No classifier -> ambiguous (two matches)
+    with pytest.raises(AmbiguousQueryError):
+        repo.query(ancestry(["@fa", "@fb"]))
+
+    # With classifier -> resolves to the right one
+    assert repo.query(ancestry(["@fa", "@fb"], classifier="inner")) is surf_inner
+    assert repo.query(ancestry(["@fa", "@fb"], classifier="outer")) is surf_outer
+
+
+def test_ancestry_classifier_type_and_classifier_combined():
+    """Type restriction + classifier both narrow results."""
+    repo = Repository()
+    face_inner = {"type": "face", "classifier": "inner"}
+    edge_inner = {"type": "edge", "classifier": "inner"}
+    repo.register_ancestor(["@fa", "@fb"], face_inner)
+    repo.register_ancestor(["@fa", "@fb"], edge_inner)
+
+    q = ancestry(["@fa", "@fb"], type_restriction="face", classifier="inner")
+    assert repo.query(q) is face_inner
+
+
+def test_ancestry_classifier_mismatch_returns_none():
+    """Classifier with no matching element returns None."""
+    repo = Repository()
+    surf = {"type": "face", "classifier": "inner"}
+    repo.register_ancestor(["@fa", "@fb"], surf)
+
+    assert repo.query(ancestry(["@fa", "@fb"], classifier="outer")) is None
+
+
+def test_ancestry_classifier_none_returns_element():
+    """No classifier filter returns the matching element."""
+    repo = Repository()
+    surf = {"type": "face", "classifier": "inner"}
+    repo.register_ancestor(["@fa", "@fb"], surf)
+
+    assert repo.query(ancestry(["@fa", "@fb"])) is surf
+    assert repo.query(ancestry(["@fa", "@fb"], type_restriction="face")) is surf
+
+
+def test_ancestry_classifier_string_query_parses_correctly():
+    """String query with @classifier suffix is parsed and filtered."""
+    repo = Repository()
+    surf = {"type": "face", "classifier": "inner"}
+    repo.register_ancestor(["@a", "@b"], surf)
+
+    wire = emit_wire(ancestry(["@a", "@b"], "face", "inner"))
+    assert ":face@inner" in wire
+    assert repo.query(wire) is surf
+
+
+def test_ancestry_classifier_string_query_mismatch():
+    """String query with wrong classifier returns None."""
+    repo = Repository()
+    surf = {"type": "face", "classifier": "inner"}
+    repo.register_ancestor(["@a", "@b"], surf)
+
+    wire = emit_wire(ancestry(["@a", "@b"], "face", "outer"))
+    assert repo.query(wire) is None
+
+
+def test_query_all_typed_respects_classifier():
+    """query_all_typed filters by classifier from AncestryQuery."""
+    repo = Repository()
+    a = {"type": "face", "classifier": "inner", "x": 1}
+    b = {"type": "face", "classifier": "outer", "x": 2}
+    repo.register_ancestor(["@fa", "@fb"], a)
+    repo.register_ancestor(["@fa", "@fb"], b)
+
+    results = repo.query_all_typed(AncestryQuery(("@fa", "@fb"), classifier="inner"))
+    assert results == [a]
+
+    results = repo.query_all_typed(AncestryQuery(("@fa", "@fb"), classifier="outer"))
+    assert results == [b]
+
+    results = repo.query_all_typed(AncestryQuery(("@fa", "@fb"), classifier="nonexistent"))
+    assert results == []
+
+
+def test_query_all_typed_no_classifier_returns_all():
+    """query_all_typed without classifier returns all matching elements."""
+    repo = Repository()
+    a = {"type": "face", "classifier": "inner"}
+    b = {"type": "face", "classifier": "outer"}
+    repo.register_ancestor(["@fa", "@fb"], a)
+    repo.register_ancestor(["@fa", "@fb"], b)
+
+    results = repo.query_all_typed(AncestryQuery(("@fa", "@fb")))
+    assert len(results) == 2
+
+
+def test_ancestry_classifier_disambiguates_same_type():
+    """Two elements with same type but different classifiers — classifier resolves ambiguity."""
+    repo = Repository()
+    a = {"type": "face", "classifier": "pos"}
+    b = {"type": "face", "classifier": "neg"}
+    repo.register_ancestor(["@fa", "@fb"], a)
+    repo.register_ancestor(["@fa", "@fb"], b)
+
+    # No type, no classifier -> ambiguous
+    with pytest.raises(AmbiguousQueryError):
+        repo.query(ancestry(["@fa", "@fb"]))
+
+    # Type only -> still ambiguous
+    with pytest.raises(AmbiguousQueryError):
+        repo.query(ancestry(["@fa", "@fb"], type_restriction="face"))
+
+    # Type + classifier -> resolves
+    assert repo.query(ancestry(["@fa", "@fb"], type_restriction="face", classifier="pos")) is a
+
+
+def test_ancestry_classifier_element_without_classifier():
+    """Element without `classifier` key is NOT matched by a classifier query."""
+    repo = Repository()
+    surf_no_class = {"type": "face"}
+    repo.register_ancestor(["@fa", "@fb"], surf_no_class)
+
+    assert repo.query(ancestry(["@fa", "@fb"], classifier="inner")) is None
