@@ -276,17 +276,20 @@ def _tessellate_body_geometry(body: Body) -> dict[str, Any]:
         return entry
     try:
         from oversolved.kernel.geometry import solid_to_mesh, solid_to_edges, solid_to_vertices  # type: ignore[attr-defined]
-        entry["mesh"] = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id)
+        mesh = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id)
         edges_result = solid_to_edges(body.shape, created_by=body.created_by, body_id=body.id)
-        entry["edges"] = edges_result["edges"]
-        entry["edge_queries"] = edges_result["edge_queries"]
         verts_result = solid_to_vertices(body.shape, created_by=body.created_by, body_id=body.id)
-        entry["vertices"] = verts_result["vertices"]
-        entry["vertex_queries"] = verts_result["vertex_queries"]
     except ImportError:
         entry["mesh_error"] = "geometry.solid_to_mesh not available (F2 pending)"
+        return entry
     except Exception as exc:
         entry["mesh_error"] = str(exc)
+        return entry
+    entry["mesh"] = mesh
+    entry["edges"] = edges_result["edges"]
+    entry["edge_queries"] = edges_result["edge_queries"]
+    entry["vertices"] = verts_result["vertices"]
+    entry["vertex_queries"] = verts_result["vertex_queries"]
     return entry
 
 
@@ -367,11 +370,11 @@ def build(
             return
         try:
             from oversolved.kernel.geometry import solid_to_mesh, solid_to_edges, solid_to_vertices
-            mesh = solid_to_mesh(body.shape, created_by=body.created_by)
+            mesh = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id)
             _register_brep_face_ancestry(global_repo, body, mesh)
-            verts = solid_to_vertices(body.shape, created_by=body.created_by)
+            verts = solid_to_vertices(body.shape, created_by=body.created_by, body_id=body.id)
             _register_brep_vertex_ancestry(global_repo, body, verts["vertices"], verts["vertex_queries"])
-            edges = solid_to_edges(body.shape, created_by=body.created_by)
+            edges = solid_to_edges(body.shape, created_by=body.created_by, body_id=body.id)
             _register_brep_edge_ancestry(global_repo, body, edges["edges"], edges["edge_queries"])
         except Exception as exc:
             logger.warning("Failed to register B-rep ancestry for body %s: %s", body.id, exc)
