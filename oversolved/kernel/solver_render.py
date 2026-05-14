@@ -76,6 +76,7 @@ def _constraint_render(c: dict, geom: dict) -> dict:
         dx = e["end"][0] - e["start"][0]
         dy = e["end"][1] - e["start"][1]
         n = math.hypot(dx, dy)
+        # Degenerate (zero-length) line produces p1 == p2 render.
         normal = [-dy / n, dx / n] if n > 0 else [0.0, 1.0]
         return {
             "kind": "dim_linear",

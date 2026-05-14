@@ -617,9 +617,9 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
 
     entities = {e["id"]: e for e in feature["entities"]}
     initial = dict(feature.get("initial", {}))
-    constraints = list(feature.get("constraints", []))
+    constraints_base = list(feature.get("constraints", []))
 
-    _process_projected_entities(feature, global_repo, initial, constraints)
+    _process_projected_entities(feature, global_repo, initial, constraints_base)
 
     # Inject the projected origin point -- always present at (0, 0), not user-editable.
     entities[ORIGIN_ID] = {"id": ORIGIN_ID, "kind": "point", "projected": True}
@@ -643,12 +643,12 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         return val
 
     plane_obj = _resolve_sketch_plane(feature.get("plane"), resolve_ref, global_repo)
-    constraints, unresolved_refs = _filter_local_constraints(
-        constraints, entities, resolve_ref, plane_obj,
+    constraints_active, unresolved_refs = _filter_local_constraints(
+        constraints_base, entities, resolve_ref, plane_obj,
     )
 
     # Implicit constraint: pin the projected origin to (0, 0).
-    constraints.append(
+    constraints_active.append(
         {
             "id": ORIGIN_FIX_ID,
             "kind": "fixed",
@@ -659,9 +659,9 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     )
 
     x0 = np.array(params, dtype=np.float64)
-    residuals_fn, _ = _build_residuals_fn(constraints, entities, entity_offsets, x0)
+    residuals_fn, _ = _build_residuals_fn(constraints_active, entities, entity_offsets, x0)
     x_sol, status, J, rank, _final_loss, n_params = _run_solver(
-        x0, residuals_fn, constraints, entities, entity_offsets,
+        x0, residuals_fn, constraints_active, entities, entity_offsets,
     )
 
     geom_solved = _geometry_from_array(x_sol, entities, entity_offsets)
@@ -678,7 +678,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     constraint_row_ranges: list[tuple[str, int, int]] = []
     origin_fix_rows: set[int] = set()
     row_idx = 0
-    for c in constraints:
+    for c in constraints_active:
         r_vec = residuals_fn(x_sol, [c])
         n = len(r_vec)
         if c["id"] == ORIGIN_FIX_ID:
@@ -690,7 +690,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     superfluous_ids = _detect_superfluous_constraints(J, constraint_row_ranges, origin_fix_rows)
 
     constraints_out = {}
-    for c in constraints:
+    for c in constraints_active:
         if c["id"] == ORIGIN_FIX_ID:
             continue
         r_vec = residuals_fn(x_sol, [c])

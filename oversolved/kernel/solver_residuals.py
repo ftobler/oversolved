@@ -203,8 +203,10 @@ def _residual_angle(
     eb = get_params(x, c["b"]["entity"])
     da = ea[2:4] - ea[0:2]
     db = eb[2:4] - eb[0:2]
-    cos_val = np.dot(da, db) / (np.linalg.norm(da) * np.linalg.norm(db))
-    return [float(cos_val - np.cos(np.radians(c["value"])))]
+    dot = da[0] * db[0] + da[1] * db[1]
+    cross = da[0] * db[1] - da[1] * db[0]
+    angle = np.arctan2(np.abs(cross), dot)
+    return [float(angle - np.radians(c["value"]))]
 
 
 def _residual_tangent(
@@ -225,8 +227,9 @@ def _residual_tangent(
     line_ep = get_params(x, line_ref["entity"])
     arc_ep = get_params(x, arc_ref["entity"])
     line_dir = line_ep[2:4] - line_ep[0:2]
-    _eps = 0.01
-    line_dir = line_dir / np.sqrt(np.dot(line_dir, line_dir) + _eps * _eps)
+    norm = np.sqrt(np.dot(line_dir, line_dir))
+    norm = max(norm, 1e-12)
+    line_dir = line_dir / norm
     r = []
     if entities[arc_ref["entity"]]["kind"] == "circle":
         line_eid = line_ref["entity"]
@@ -400,7 +403,7 @@ def _build_residuals_fn(
         if entities[arc_eid]["kind"] == "circle":
             rv = contact_ep - ep[0:2]
             rn = np.linalg.norm(rv)
-            return rv / rn if rn > 1e-10 else np.array([1.0, 0.0])
+            return rv / rn if rn > 1e-10 else np.zeros(2)
         arc_pt = arc_ref.get("point", "start")
         a_deg = ep[3] if arc_pt != "end" else ep[4]
         return np.array([np.cos(np.radians(a_deg)), np.sin(np.radians(a_deg))])
