@@ -372,7 +372,7 @@ def test_extrude_from_sketch_surface_query():
     circle_id = "c1"
     # The topology code builds the surface query with these ancestor ids.
     surface_query = make_ancestry_query(
-        [f"@{sketch_id}{circle_id}", "surface:0", f"@{sketch_id}"],
+        [f"@{sketch_id}/{circle_id}", "surface:0", f"@{sketch_id}"],
         "flatface",
     )
 
@@ -421,7 +421,7 @@ def test_extrude_surface_query_uses_only_selected_surface():
     sk = "sk1"
     # Select only c2 (surface:1).
     surface_query = make_ancestry_query(
-        [f"@{sk}c2", "surface:1", f"@{sk}"],
+        [f"@{sk}/c2", "surface:1", f"@{sk}"],
         "flatface",
     )
 
@@ -823,7 +823,7 @@ def test_extrude_from_brep_face_after_fillet():
             if abs(cz - d / 2) < 0.1 and fd.get("surface_type") == "flatface":
                 from oversolved.kernel.query import make_ancestry_query
                 best_q = make_ancestry_query(
-                    [f"@body_ex1face{idx}", "@ex1", "@body_ex1"], "flatface"
+                    [f"@body_ex1/face{idx}", "@ex1", "@body_ex1"], "flatface"
                 )
                 break
     assert best_q is not None, "expected a flat side face query"

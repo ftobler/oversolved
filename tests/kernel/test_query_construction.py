@@ -1,5 +1,5 @@
 """Regression guards: typed construction helpers must produce the same strings
-as the old ad-hoc string concatenation they replaced.
+as the wire format they generate.
 """
 from oversolved.kernel.query import emit_wire, absolute, ancestry, make_ancestry_query, LocalQuery, Repository
 
@@ -8,43 +8,43 @@ ELE = "B" * 12
 
 
 def test_topology_edge_id_format():
-    assert emit_wire(absolute(FEAT, ELE + "line")) == "@" + FEAT + ELE + "line"
+    assert emit_wire(absolute(FEAT, ELE + "line")) == "@" + FEAT + "/" + ELE + "line"
 
 
 def test_topology_face_id_format():
-    assert emit_wire(absolute(FEAT, ELE)) == "@" + FEAT + ELE
+    assert emit_wire(absolute(FEAT, ELE)) == "@" + FEAT + "/" + ELE
 
 
 def test_builder_face_id_format():
-    assert emit_wire(absolute("extrude1", "face0")) == "@extrude1face0"
+    assert emit_wire(absolute("extrude1", "face0")) == "@extrude1/face0"
 
 
 def test_builder_edge_id_format():
-    assert emit_wire(absolute("extrude1", "edge3")) == "@extrude1edge3"
+    assert emit_wire(absolute("extrude1", "edge3")) == "@extrude1/edge3"
 
 
 def test_builder_vertex_id_format():
-    assert emit_wire(absolute("extrude1", "vertex7")) == "@extrude1vertex7"
+    assert emit_wire(absolute("extrude1", "vertex7")) == "@extrude1/vertex7"
 
 
 def test_solver_local_registration_start():
-    assert emit_wire(absolute(FEAT, ELE, "start")) == "@" + FEAT + ELE + "start"
+    assert emit_wire(absolute(FEAT, ELE, "start")) == "@" + FEAT + "/" + ELE + "/start"
 
 
 def test_solver_local_registration_end():
-    assert emit_wire(absolute(FEAT, ELE, "end")) == "@" + FEAT + ELE + "end"
+    assert emit_wire(absolute(FEAT, ELE, "end")) == "@" + FEAT + "/" + ELE + "/end"
 
 
 def test_solver_local_registration_center():
-    assert emit_wire(absolute(FEAT, ELE, "center")) == "@" + FEAT + ELE + "center"
+    assert emit_wire(absolute(FEAT, ELE, "center")) == "@" + FEAT + "/" + ELE + "/center"
 
 
 def test_solver_local_registration_xy():
-    assert emit_wire(absolute(FEAT, ELE, "xy")) == "@" + FEAT + ELE + "xy"
+    assert emit_wire(absolute(FEAT, ELE, "xy")) == "@" + FEAT + "/" + ELE + "/xy"
 
 
 def test_ancestry_face_format_unchanged():
-    ids = sorted(["@sk1a", "@sk1b"])
+    ids = sorted(["@sk1/a", "@sk1/b"])
     assert emit_wire(ancestry(ids, "flatface")) == make_ancestry_query(ids, "flatface")
 
 
@@ -60,7 +60,7 @@ def test_repo_query_accepts_local_query_object():
 def test_repo_query_accepts_absolute_query_object():
     repo = Repository()
     obj = {"v": 2}
-    repo.register(FEAT + ELE, obj)
+    repo.register(FEAT + "/" + ELE, obj)
     from oversolved.kernel.query import AbsoluteQuery
     assert repo.query(AbsoluteQuery(FEAT, ELE)) is obj
 
@@ -80,4 +80,5 @@ def test_repo_query_string_still_works():
     obj = {"v": 3}
     repo.register(FEAT + "e1", obj)
     assert repo.query("$e1", context=FEAT) is obj
-    assert repo.query("@" + FEAT + "e1") is obj
+    repo.register(FEAT + "/e2", {"v": 4})
+    assert repo.query("@" + FEAT + "/e2") == {"v": 4}

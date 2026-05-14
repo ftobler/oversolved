@@ -480,7 +480,7 @@ def _build_face_query(
             [f"@{geom_hash}", f"@{created_by}", f"@{body_id}"], surface_type
         )
     element_id = f"face{face_idx}"
-    abs_id = "@" + created_by + element_id
+    abs_id = "@" + created_by + "/" + element_id
     return make_ancestry_query([abs_id, f"@{created_by}"], surface_type)
 
 

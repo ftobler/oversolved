@@ -90,7 +90,7 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
             try:
                 ids, _ = _parse_ancestry(q)
                 for id_str in ids:
-                    m = re.match(r"@([^@]+)edge(\d+)$", id_str)
+                    m = re.match(r"@([^/]+)/edge(\d+)$", id_str)
                     if m:
                         eidx = int(m.group(2))
                         if 0 <= eidx < len(topo_edges):

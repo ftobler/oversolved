@@ -65,20 +65,28 @@ def test_absolute_feature_plane():
 
 
 def test_absolute_element():
-    assert emit_wire(AbsoluteQuery("sketch1", "line1")) == "@sketch1line1"
+    assert emit_wire(AbsoluteQuery("sketch1", "line1")) == "@sketch1/line1"
 
 
 def test_absolute_element_with_sub():
-    assert emit_wire(AbsoluteQuery("sketch1", "line1", "start")) == "@sketch1line1start"
+    assert emit_wire(AbsoluteQuery("sketch1", "line1", "start")) == "@sketch1/line1/start"
 
 
 def test_absolute_from_string():
-    q = parse_query("@sketch1line1")
+    q = parse_query("@sketch1/line1")
     assert isinstance(q, AbsoluteQuery)
+    assert q.feature_id == "sketch1"
+    assert q.eid == "line1"
+    assert q.sub == ""
+
+
+def test_absolute_from_string_sub():
+    q = parse_query("@sketch1/line1/start")
+    assert q == AbsoluteQuery(feature_id="sketch1", eid="line1", sub="start")
 
 
 def test_absolute_roundtrip():
-    for s in ("@sketch1", "@sketch1line1", "@sketch1line1start"):
+    for s in ("@sketch1", "@sketch1/line1", "@sketch1/line1/start"):
         assert emit_wire(parse_query(s)) == s
 
 
@@ -87,7 +95,7 @@ def test_absolute_feature_plane_factory():
 
 
 def test_absolute_element_factory():
-    assert emit_wire(AbsoluteQuery.element("sk1", "l1", "end")) == "@sk1l1end"
+    assert emit_wire(AbsoluteQuery.element("sk1", "l1", "end")) == "@sk1/l1/end"
 
 
 # AncestryQuery
@@ -146,7 +154,7 @@ def test_ancestry_accepts_query_objects():
     a = absolute("sk1", "a")
     b = absolute("sk1", "b")
     q = ancestry([a, b])
-    assert list(q.ancestor_ids) == ["@sk1a", "@sk1b"]
+    assert list(q.ancestor_ids) == ["@sk1/a", "@sk1/b"]
 
 
 # parse_query dispatch
@@ -194,7 +202,7 @@ def test_helper_ancestry_strings():
 
 def test_helper_ancestry_objects():
     q1 = ancestry([absolute("f", "a"), absolute("f", "b")])
-    q2 = ancestry(["@fa", "@fb"])
+    q2 = ancestry(["@f/a", "@f/b"])
     assert q1 == q2
 
 
@@ -205,7 +213,7 @@ def test_emit_wire_local():
 
 
 def test_emit_wire_absolute():
-    assert emit_wire(AbsoluteQuery("sk1", "l1", "end")) == "@sk1l1end"
+    assert emit_wire(AbsoluteQuery("sk1", "l1", "end")) == "@sk1/l1/end"
 
 
 def test_emit_wire_ancestry():
@@ -214,14 +222,11 @@ def test_emit_wire_ancestry():
 
 
 def test_emit_wire_roundtrip():
-    # LocalQuery round-trips structurally (parse_query reconstructs original fields)
     for q in [LocalQuery("e1"), LocalQuery("e1", "start")]:
         assert parse_query(emit_wire(q)) == q
 
-    # AbsoluteQuery parsed from wire folds everything into feature_id (no split),
-    # so structural equality doesn't hold -- only the wire string is stable.
     for q in [AbsoluteQuery("sk1"), AbsoluteQuery("sk1", "l1"), AbsoluteQuery("sk1", "l1", "end")]:
-        assert emit_wire(parse_query(emit_wire(q))) == emit_wire(q)
+        assert parse_query(emit_wire(q)) == q
 
 
 # Backward compatibility shim

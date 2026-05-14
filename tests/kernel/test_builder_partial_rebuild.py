@@ -205,7 +205,7 @@ def test_partial_rebuild_reusing_state_does_not_duplicate_brep_face_ancestry():
     repo = _repo_from_snapshot(r3["_build_state"].checkpoints["ex1"].repo_snapshot)
 
     # Find the registration key that includes the face index tag
-    face0_tag = "@body_ex1face0"
+    face0_tag = "@body_ex1/face0"
     matching_keys = [k for k in repo.ancestral if face0_tag in k]
     assert len(matching_keys) == 1, f"Expected exactly 1 key for {face0_tag}, got {len(matching_keys)}"
     ancestry_ids = repo.ancestral[matching_keys[0]]

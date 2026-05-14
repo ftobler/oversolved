@@ -135,7 +135,7 @@ class TestBackwardCompatibility:
 
         for idx, fq in enumerate(face_queries):
             old_3tag = make_ancestry_query(
-                [f"@body_ex1face{idx}", "@ex1", "@body_ex1"], None
+                [f"@body_ex1/face{idx}", "@ex1", "@body_ex1"], None
             )
             resolved = repo.query(old_3tag)
             if resolved is not None:

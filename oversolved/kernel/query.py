@@ -48,7 +48,7 @@ class LocalQuery:
 
 @dataclass(frozen=True)
 class AbsoluteQuery:
-    """@<feat><eid> or @<feat> (feature-plane reference)."""
+    """@<feat> or @<feat>/<eid> or @<feat>/<eid>/<sub>."""
     feature_id: str
     eid: str = ""
     sub: str = ""
@@ -113,7 +113,9 @@ def emit_wire(q: QueryType) -> str:
         case LocalQuery(eid, sub):
             return "$" + eid + sub
         case AbsoluteQuery(feature_id, eid, sub):
-            return "@" + feature_id + eid + sub
+            if eid:
+                return "@" + feature_id + "/" + eid + (("/" + sub) if sub else "")
+            return "@" + feature_id
         case AncestryQuery(ancestor_ids, type_restriction, classifier):
             lengths = ",".join(format(len(i), "x") for i in ancestor_ids)
             body = "?" + lengths + ";" + "".join(ancestor_ids)
@@ -126,14 +128,15 @@ def emit_wire(q: QueryType) -> str:
 
 
 def _parse_absolute(s: str) -> AbsoluteQuery:
-    body = s[1:]
-    for pt in ("start", "end", "center", "xy"):
-        # Require the sub-entity suffix to follow a non-alphanumeric boundary
-        # so that a feature_id like "sketch_start" is NOT parsed as "sketch_"+"start".
-        if body.endswith(pt) and len(body) > len(pt):
-            rest = body[: -len(pt)]
-            if rest and not rest[-1].isalpha():
-                return AbsoluteQuery(feature_id=rest, eid="", sub=pt)
+    body = s[1:]  # strip "@"
+    parts = body.split("/")
+    if len(parts) == 1:
+        return AbsoluteQuery(feature_id=parts[0])
+    if len(parts) == 2:
+        return AbsoluteQuery(feature_id=parts[0], eid=parts[1])
+    if len(parts) == 3:
+        return AbsoluteQuery(feature_id=parts[0], eid=parts[1], sub=parts[2])
+    # Fallback: treat entire body as feature_id (backward compat)
     return AbsoluteQuery(feature_id=body)
 
 
@@ -155,7 +158,7 @@ def local(eid: str, sub: str = "") -> LocalQuery:
 
 
 def absolute(feature_id: str, eid: str = "", sub: str = "") -> AbsoluteQuery:
-    """Construct an AbsoluteQuery (@<feature_id><eid><sub>)."""
+    """Construct an AbsoluteQuery (@<feature_id> or @<feature_id>/<eid>/<sub>)."""
     return AbsoluteQuery(feature_id=feature_id, eid=eid, sub=sub)
 
 
@@ -366,7 +369,11 @@ class Repository:
                     return None
                 return self.elements.get(context + eid + sub)
             case AbsoluteQuery(feature_id, eid, sub):
-                return self.elements.get(feature_id + eid + sub)
+                if eid:
+                    key = feature_id + "/" + eid + (("/" + sub) if sub else "")
+                else:
+                    key = feature_id
+                return self.elements.get(key)
             case AncestryQuery(ancestor_ids, type_restriction, classifier):
                 return self._resolve_ancestry_ids(
                     list(ancestor_ids), type_restriction, classifier, body_store

@@ -148,7 +148,7 @@ def test_revolve_from_sketch_surface_query():
     sketch_id = 'sk1'
     circle_id = 'c1'
     surface_query = make_ancestry_query(
-        [f'@{sketch_id}{circle_id}', 'surface:0', f'@{sketch_id}'],
+        [f'@{sketch_id}/{circle_id}', 'surface:0', f'@{sketch_id}'],
         'flatface',
     )
 

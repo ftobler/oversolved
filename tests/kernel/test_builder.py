@@ -165,7 +165,7 @@ def test_tessellate_bodies_registers_brep_face_queries_in_repo():
     bodies = _tessellate_bodies({"body_ext1": body}, repo)
     mesh = bodies["body_ext1"]["mesh"]
 
-    face = repo.query(make_ancestry_query(["@body_ext1face0", "@ext1", "@body_ext1"], "flatface"))
+    face = repo.query(make_ancestry_query(["@body_ext1/face0", "@ext1", "@body_ext1"], "flatface"))
     assert face is not None, (
         f"Face query did not resolve. Ancestral keys: {[sorted(k) for k in repo.ancestral]}"
     )
