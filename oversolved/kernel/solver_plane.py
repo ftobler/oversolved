@@ -421,48 +421,44 @@ def _plane_offset(definition: dict, global_repo: Repository) -> Frame3D:
 
 
 def _solve_plane(feature: dict, global_repo: Repository, body_store: dict | None = None) -> dict:
-    try:
-        definition = feature.get("definition", {})
-        mode = definition.get("mode")
+    definition = feature.get("definition", {})
+    mode = definition.get("mode")
 
-        if mode == "three_point":
-            frame = _plane_three_point(definition, global_repo)
-        elif mode == "plane_point":
-            frame = _plane_through_point(definition, global_repo)
-        elif mode == "line_angle":
-            frame = _plane_line_angle(definition, global_repo)
-        elif mode == "on_face":
-            frame = _plane_on_face(definition, global_repo, body_store)
-        elif mode == "on_face_edge_angle":
-            frame = _plane_on_face_edge_angle(definition, global_repo, body_store)
-        elif mode == "edge_point":
-            frame = _plane_edge_point(definition, global_repo, body_store)
-        elif mode == "offset":
-            frame = _plane_offset(definition, global_repo)
-        else:
-            return {"status": "exception", "exception": f"unknown plane mode: {mode!r}"}
+    if mode == "three_point":
+        frame = _plane_three_point(definition, global_repo)
+    elif mode == "plane_point":
+        frame = _plane_through_point(definition, global_repo)
+    elif mode == "line_angle":
+        frame = _plane_line_angle(definition, global_repo)
+    elif mode == "on_face":
+        frame = _plane_on_face(definition, global_repo, body_store)
+    elif mode == "on_face_edge_angle":
+        frame = _plane_on_face_edge_angle(definition, global_repo, body_store)
+    elif mode == "edge_point":
+        frame = _plane_edge_point(definition, global_repo, body_store)
+    elif mode == "offset":
+        frame = _plane_offset(definition, global_repo)
+    else:
+        raise ValueError(f"unknown plane mode: {mode!r}")
 
-        rotation = definition.get("rotation", 0.0)
-        if rotation != 0.0:
-            x_a = np.array(frame.x_axis)
-            y_a = np.array(frame.y_axis)
-            n_a = np.array(frame.normal)
-            x_new, y_new = _rotate_frame_around_normal(x_a, y_a, n_a, rotation)
-            frame = Frame3D(
-                origin=frame.origin,
-                x_axis=x_new.tolist(),
-                y_axis=y_new.tolist(),
-                normal=frame.normal,
-            )
+    rotation = definition.get("rotation", 0.0)
+    if rotation != 0.0:
+        x_a = np.array(frame.x_axis)
+        y_a = np.array(frame.y_axis)
+        n_a = np.array(frame.normal)
+        x_new, y_new = _rotate_frame_around_normal(x_a, y_a, n_a, rotation)
+        frame = Frame3D(
+            origin=frame.origin,
+            x_axis=x_new.tolist(),
+            y_axis=y_new.tolist(),
+            normal=frame.normal,
+        )
 
-        plane_id = feature["id"]
-        frame_dict = _plane_dict(frame)
-        global_repo.register(plane_id, frame_dict)
+    plane_id = feature["id"]
+    frame_dict = _plane_dict(frame)
+    global_repo.register(plane_id, frame_dict)
 
-        return {
-            "status": "ok",
-            "plane": frame.to_dict(),
-        }
-    except Exception as e:
-        logger.warning("_solve_plane failed: %s", e)
-        return {"status": "exception", "exception": str(e)}
+    return {
+        "status": "ok",
+        "plane": frame.to_dict(),
+    }
