@@ -378,6 +378,132 @@ def revolve_face(
     return _revolve_face(face, axis_origin, axis_direction, angle_deg)
 
 
+def _sort_shape_faces(
+    solid: cq_shapes.Shape,
+    deflection: float = 0.1,
+) -> list[tuple[Any, list, list, list, list, str]]:
+    """Return sorted [(face, verts, idxs, centroid, normal, surface_type), ...].
+
+    Sorting places flat faces before curved (so fillet never shifts indices).
+    Within each group, sort by (normal, centroid) for determinism.
+    """
+    raw_faces: list[tuple] = []
+    for face in solid.Faces():
+        verts, idxs = face.tessellate(deflection)
+        centroid = _compute_face_centroid(face)
+        normal = _compute_face_normal(face)
+        surface_type = _get_face_surface_type(face)
+        raw_faces.append((face, verts, idxs, centroid, normal, surface_type))
+    raw_faces.sort(key=_face_sort_key_from_tuple)
+    return raw_faces
+
+
+def _append_face_triangles(
+    all_vertices: list[list[float]],
+    all_faces: list[list[int]],
+    all_normals: list[list[float]],
+    triangle_to_face: list[int],
+    face_idx: int,
+    verts: list,
+    idxs: list,
+) -> tuple[float, int]:
+    """Append triangles from one face to accumulator lists.
+
+    Returns (face_area, triangle_count).
+    """
+    offset = len(all_vertices)
+    face_area = 0.0
+
+    for v in verts:
+        all_vertices.append(list(v.toTuple()))
+
+    triangle_count_before = len(triangle_to_face)
+    for tri in idxs:
+        i0 = offset + tri[0]
+        i1 = offset + tri[1]
+        i2 = offset + tri[2]
+        all_faces.append([i0, i1, i2])
+
+        p0 = all_vertices[i0]
+        p1 = all_vertices[i1]
+        p2 = all_vertices[i2]
+        v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]]
+        v2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]]
+        nx = v1[1] * v2[2] - v1[2] * v2[1]
+        ny = v1[2] * v2[0] - v1[0] * v2[2]
+        nz = v1[0] * v2[1] - v1[1] * v2[0]
+        mag = math.sqrt(nx * nx + ny * ny + nz * nz)
+        if mag > 0:
+            all_normals.append([nx / mag, ny / mag, nz / mag])
+        else:
+            all_normals.append([0.0, 0.0, 1.0])
+        triangle_to_face.append(face_idx)
+        face_area += _triangle_area(p0, p1, p2)
+
+    triangle_count = len(triangle_to_face) - triangle_count_before
+    return face_area, triangle_count
+
+
+def _build_face_query(
+    created_by: str | None,
+    body_id: str | None,
+    face_idx: int,
+    centroid: list,
+    normal: list,
+    face_area: float,
+    surface_type: str,
+) -> str | None:
+    """Return ancestry query string for a face, or None if created_by is None."""
+    if not created_by:
+        return None
+    from oversolved.kernel.geom_hash import face_geometry_hash
+    from oversolved.kernel.query import make_ancestry_query
+
+    geom_hash = face_geometry_hash(centroid, normal, face_area)
+    if body_id:
+        return make_ancestry_query(
+            [f"@{geom_hash}", f"@{created_by}", f"@{body_id}"], surface_type
+        )
+    element_id = f"face{face_idx}"
+    abs_id = "@" + created_by + element_id
+    return make_ancestry_query([abs_id, f"@{created_by}"], surface_type)
+
+
+def _unit_cube_mesh() -> MeshDict:
+    """Return a unit cube as fallback mesh."""
+    return {
+        "vertices": [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ],
+        "faces": [
+            [0, 1, 2], [0, 2, 3],
+            [4, 5, 6], [4, 6, 7],
+            [0, 4, 5], [0, 5, 1],
+            [1, 5, 6], [1, 6, 2],
+            [2, 6, 7], [2, 7, 3],
+            [3, 7, 4], [3, 4, 0],
+        ],
+        "normals": [
+            [0, 0, -1], [0, 0, -1],
+            [0, 0, 1], [0, 0, 1],
+            [-1, 0, 0], [-1, 0, 0],
+            [1, 0, 0], [1, 0, 0],
+            [0, 1, 0], [0, 1, 0],
+            [0, -1, 0], [0, -1, 0],
+        ],
+        "face_data": [],
+        "triangle_to_face": [],
+        "face_queries": [],
+    }
+
+
 def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body_id: str | None = None) -> MeshDict:
     """Tessellate a cadquery solid to a mesh dict.
 
@@ -402,8 +528,6 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
 
     solid = _ensure_cq_shape(solid)
 
-    # Pre-compute triangulation with absolute linear deflection to match the
-    # old OCP behavior; face.tessellate() will reuse it when tolerance matches.
     topo_shape = _ensure_occ(solid)
     try:
         ocp_mesh_shape(topo_shape, 0.1, 0.1)
@@ -418,72 +542,20 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
     all_normals: list[list[float]] = []
 
     try:
-        # Gather all faces with their geometric data so we can sort them into a
-        # canonical order.  Stable ordering means face indices are consistent
-        # across boolean operations and tessellations.
-        raw_faces: list[tuple] = []
-        for face in solid.Faces():
-            verts, idxs = face.tessellate(0.1)
-            centroid = _compute_face_centroid(face)
-            normal = _compute_face_normal(face)
-            surface_type = _get_face_surface_type(face)
-            raw_faces.append((face, verts, idxs, centroid, normal, surface_type))
-
-        # Sort flat faces before curved ones so that adding a fillet (which
-        # introduces cylindrical faces) never shifts existing flat face indices.
-        # Within each group, sort by (normal, centroid) for determinism.
-        raw_faces.sort(key=_face_sort_key_from_tuple)
+        raw_faces = _sort_shape_faces(solid)
 
         for face_idx, (face, verts, idxs, centroid, normal, surface_type) in enumerate(raw_faces):
-            offset = len(all_vertices)
-            face_area = 0.0
-
-            for v in verts:
-                all_vertices.append(list(v.toTuple()))
-
-            triangle_count_before = len(triangle_to_face)
-            for tri in idxs:
-                i0 = offset + tri[0]
-                i1 = offset + tri[1]
-                i2 = offset + tri[2]
-                all_faces.append([i0, i1, i2])
-
-                p0 = all_vertices[i0]
-                p1 = all_vertices[i1]
-                p2 = all_vertices[i2]
-                v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]]
-                v2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]]
-                nx = v1[1] * v2[2] - v1[2] * v2[1]
-                ny = v1[2] * v2[0] - v1[0] * v2[2]
-                nz = v1[0] * v2[1] - v1[1] * v2[0]
-                mag = math.sqrt(nx * nx + ny * ny + nz * nz)
-                if mag > 0:
-                    all_normals.append([nx / mag, ny / mag, nz / mag])
-                else:
-                    all_normals.append([0.0, 0.0, 1.0])
-                triangle_to_face.append(face_idx)
-                face_area += _triangle_area(p0, p1, p2)
-
-            # Only register face metadata if it produced triangles
-            if len(triangle_to_face) > triangle_count_before:
+            face_area, triangle_count = _append_face_triangles(
+                all_vertices, all_faces, all_normals,
+                triangle_to_face, face_idx, verts, idxs,
+            )
+            if triangle_count > 0:
                 face_data.append(
                     {"centroid": centroid, "normal": normal, "area": face_area, "surface_type": surface_type}
                 )
-                if created_by:
-                    from oversolved.kernel.geom_hash import face_geometry_hash
-                    from oversolved.kernel.query import make_ancestry_query
-
-                    element_id = f"face{face_idx}"
-                    geom_hash = face_geometry_hash(centroid, normal, face_area)
-                    if body_id:
-                        query = make_ancestry_query([f"@{geom_hash}", f"@{created_by}", f"@{body_id}"], surface_type)
-                    else:
-                        abs_id = "@" + created_by + element_id
-                        query = make_ancestry_query([abs_id, f"@{created_by}"], surface_type)
+                query = _build_face_query(created_by, body_id, face_idx, centroid, normal, face_area, surface_type)
+                if query:
                     face_queries.append(query)
-            else:
-                # Face produced no triangles - skip it
-                pass
     except Exception as exc:
         logger.warning("solid_to_mesh tessellation failed, falling back to unit cube: %s", exc)
         face_data = []
@@ -495,47 +567,7 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
 
     if not all_vertices:
         logger.warning("solid_to_mesh produced no vertices; returning unit cube fallback")
-        face_data = []
-        triangle_to_face = []
-        face_queries = []
-        all_vertices = [
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0],
-            [1.0, 0.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [0.0, 1.0, 1.0],
-        ]
-        all_faces = [
-            [0, 1, 2],
-            [0, 2, 3],
-            [4, 5, 6],
-            [4, 6, 7],
-            [0, 4, 5],
-            [0, 5, 1],
-            [1, 5, 6],
-            [1, 6, 2],
-            [2, 6, 7],
-            [2, 7, 3],
-            [3, 7, 4],
-            [3, 4, 0],
-        ]
-        all_normals = [
-            [0, 0, -1],
-            [0, 0, -1],
-            [0, 0, 1],
-            [0, 0, 1],
-            [-1, 0, 0],
-            [-1, 0, 0],
-            [1, 0, 0],
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 1, 0],
-            [0, -1, 0],
-            [0, -1, 0],
-        ]
+        return _unit_cube_mesh()
 
     mesh: MeshDict = {
         "vertices": all_vertices,

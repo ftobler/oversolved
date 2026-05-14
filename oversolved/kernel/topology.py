@@ -465,12 +465,14 @@ def _face_area(cycle, hes, verts) -> float:
     )
 
 
-# ── Main entry point  ──
+# ── Topology detection helpers ──
 
 
-def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
-    """Detect intersection points and bounded surfaces in solved sketch geometry."""
+def _classify_entities(geometry: dict) -> tuple[dict[str, dict], dict[str, dict], dict[str, dict]]:
+    """Split entities into lines, circles, and arcs, excluding construction entities.
 
+    Returns (lines, circles, arcs).
+    """
     lines, circles, arcs = {}, {}, {}
     for eid, e in geometry.items():
         if e.get("construction"):
@@ -481,27 +483,28 @@ def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
             lines[eid] = e
         elif "center" in e:
             circles[eid] = e
+    return lines, circles, arcs
 
-    verts: dict = {}  # vid -> [x, y]
-    splits: dict = {}  # eid -> [(param, vid)]
-    arc_a0: dict = {}  # eid -> arc start angle (for parameter normalisation)
 
-    for eid, e in lines.items():
-        splits[eid] = [(0.0, _vid(verts, e["start"])), (1.0, _vid(verts, e["end"]))]
+def _normalize_arcs_and_init_splits(
+    arcs: dict, verts: dict
+) -> tuple[dict[str, float], dict[str, list]]:
+    """Normalize CW arcs to CCW, init split points with endpoints.
 
-    for eid in circles:
-        splits[eid] = []
+    Modifies arcs in-place (CW->CCW normalization). Returns (arc_a0, splits) where
+    arc_a0 maps eid -> a0 radians and splits maps eid -> [(param, vid)] with
+    endpoint split points for each arc.
+    """
+    arc_a0: dict[str, float] = {}
+    splits: dict[str, list] = {}
 
     # Normalise CW arcs to CCW by swapping start/end angles and endpoints.
-    # An arc is CW when its CCW span (going the "long way") exceeds 180°,
-    # meaning the intended arc is actually the shorter CW path.
-    # Swapping produces an equivalent CCW arc so the rest of the algorithm works uniformly.
     for eid in list(arcs.keys()):
         e = arcs[eid]
         a0_rad = math.radians(e["angle_start"])
         a1_rad = math.radians(e["angle_end"])
-        ccw_span = (a1_rad - a0_rad) % (2 * math.pi)  # always in [0, 2π)
-        if ccw_span > math.pi + _EPS:  # > 180° → arc is actually CW
+        ccw_span = (a1_rad - a0_rad) % (2 * math.pi)
+        if ccw_span > math.pi + _EPS:
             arcs[eid] = {
                 **e,
                 "angle_start": e["angle_end"],
@@ -513,27 +516,37 @@ def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
     for eid, e in arcs.items():
         a0 = math.radians(e["angle_start"])
         a1 = math.radians(e["angle_end"])
-        # Normalise a1 into [a0, a0+2π) so that CCW arcs crossing 0° sort correctly.
         a1 = _norm_arc_param(a1, a0)
         arc_a0[eid] = a0
         splits[eid] = [(a0, _vid(verts, e["start"])), (a1, _vid(verts, e["end"]))]
 
-    # Track which vertex IDs come from entity endpoints (not intersections)
+    return arc_a0, splits
+
+
+def _find_all_intersections(
+    elist: list,
+    lines: dict,
+    circles: dict,
+    arcs: dict,
+    splits: dict,
+    verts: dict,
+    arc_a0: dict[str, float],
+) -> set[str]:
+    """Find all pairwise intersections, populate splits and verts.
+
+    Returns the set of intersection vertex IDs (verts not from endpoints).
+    """
     endpoint_vids = set(verts.keys())
 
-    # Find all pairwise intersections and record splits
-    elist = list(lines.items()) + list(circles.items()) + list(arcs.items())
     for i in range(len(elist)):
         eid_a, ea = elist[i]
         for j in range(i + 1, len(elist)):
             eid_b, eb = elist[j]
             results = _intersect(eid_a, ea, eid_b, eb, lines, circles, arcs)
-            # For collinear line pairs with no intersection, check overlap
             if not results and eid_a in lines and eid_b in lines:
                 results = _collinear_overlap(ea, eb)
             for pa, pb, pt in results:
                 v = _vid(verts, pt)
-                # Normalise arc parameters so they sort within [a0, a0+2π)
                 if eid_a in arc_a0:
                     pa = _norm_arc_param(pa, arc_a0[eid_a])
                 if eid_b in arc_a0:
@@ -543,12 +556,24 @@ def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
                 if not _has_param(splits[eid_b], pb):
                     splits[eid_b].append((pb, v))
 
-    intersection_vids = set(verts.keys()) - endpoint_vids
+    return set(verts.keys()) - endpoint_vids
 
-    # Build half-edge list: (vfrom, vto, egeom)
-    hes = []
-    he_eid = []  # source entity ID for each half-edge (parallel to hes)
-    seen_lines: set[tuple] = set()  # dedup only collinear overlapping line edges
+
+def _build_half_edge_graph(
+    lines: dict,
+    circles: dict,
+    arcs: dict,
+    splits: dict,
+) -> tuple[list, list]:
+    """Build (hes, he_eid) half-edge list from split points.
+
+    Returns:
+        hes:    list of (vfrom, vto, egeom) tuples
+        he_eid: list of source entity IDs parallel to hes
+    """
+    hes: list = []
+    he_eid: list = []
+    seen_lines: set[tuple] = set()
 
     for eid, e in lines.items():
         spl = _dedup(splits[eid])
@@ -581,7 +606,7 @@ def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
     for eid, e in circles.items():
         spl = _dedup(splits[eid])
         if len(spl) < 2:
-            continue  # standalone - handled below
+            continue
         for k in range(len(spl)):
             a0, v0 = spl[k]
             a1, v1 = spl[(k + 1) % len(spl)]
@@ -593,109 +618,127 @@ def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
             hes += [(v0, v1, eg), (v1, v0, _rev(eg))]
             he_eid += [eid, eid]
 
+    return hes, he_eid
+
+
+def _trace_face_cycles(
+    hes: list,
+    he_eid: list,
+    verts: dict,
+    feature_id: str,
+) -> list[dict]:
+    """Trace CCW face cycles from half-edge graph. Returns surface dicts.
+
+    Each surface dict has 'boundary' (list of edge dicts) and 'query' (str).
+    """
     surfaces: list[dict[str, Any]] = []
 
-    if hes:
-        # Outgoing half-edges per vertex, sorted by departure angle
-        out_map: dict = {}
-        for i, (vf, _vt, eg) in enumerate(hes):
-            angle = _depart(eg, verts, vf)
-            out_map.setdefault(vf, []).append((angle, i))
-        for vid in out_map:
-            out_map[vid].sort()
+    if not hes:
+        return surfaces
 
-        # Half-edges are added in pairs (fwd, rev) at indices (2k, 2k+1),
-        # so the twin of i is always i ^ 1.
-        twin: dict = {i: i ^ 1 for i in range(len(hes))}
-        assert all(
-            hes[i][0] == hes[i ^ 1][1] and hes[i][1] == hes[i ^ 1][0]
-            for i in range(0, len(hes), 2)
-        )
+    out_map: dict = {}
+    for i, (vf, _vt, eg) in enumerate(hes):
+        angle = _depart(eg, verts, vf)
+        out_map.setdefault(vf, []).append((angle, i))
+    for vid in out_map:
+        out_map[vid].sort()
 
-        # next[twin[i]] = outgoing edge at vf one step before i in CCW order
-        # (i.e. the most clockwise turn when arriving via twin[i])
-        next_he: dict = {}
-        for vid, outs in out_map.items():
-            k = len(outs)
-            for pos, (_, i) in enumerate(outs):
-                ti = twin.get(i)
-                if ti is not None:
-                    next_he[ti] = outs[(pos - 1) % k][1]
+    twin: dict = {i: i ^ 1 for i in range(len(hes))}
+    assert all(
+        hes[i][0] == hes[i ^ 1][1] and hes[i][1] == hes[i ^ 1][0]
+        for i in range(0, len(hes), 2)
+    )
 
-        # Trace face cycles
-        visited: set = set()
-        for start in range(len(hes)):
-            if start in visited or start not in next_he:
-                continue
-            cycle, cur = [], start
-            while cur not in visited and cur in next_he:
-                visited.add(cur)
-                cycle.append(cur)
-                cur = next_he[cur]
-                if cur == start:
-                    break
-            if cycle and cur == start and _face_area(cycle, hes, verts) > 1e-10:
-                abs_ids = sorted(emit_wire(absolute(feature_id, he_eid[i])) for i in cycle)
-                # Add surface index to disambiguate queries when multiple surfaces
-                # share the same boundary entities (prevents AmbiguousQueryError).
-                abs_ids_with_index = abs_ids + [f"surface:{len(surfaces)}", emit_wire(absolute(feature_id))]
-                query = make_ancestry_query(abs_ids_with_index, "flatface")
-                surfaces.append(
-                    {
-                        "boundary": [
-                            {
-                                **hes[i][2],
-                                "start_vertex": hes[i][0],
-                                "end_vertex": hes[i][1],
-                            }
-                            for i in cycle
-                        ],
-                        "query": query,
-                    }
-                )
+    next_he: dict = {}
+    for vid, outs in out_map.items():
+        k = len(outs)
+        for pos, (_, i) in enumerate(outs):
+            ti = twin.get(i)
+            if ti is not None:
+                next_he[ti] = outs[(pos - 1) % k][1]
 
-    # Standalone circles (no intersections) → one surface each.
-    # Represented as two semicircle arcs so the SVG path is non-degenerate
-    # (a single arc from a point back to itself collapses to zero in SVG).
-    # Concentric standalone circles (same center) produce nested surfaces:
-    # the innermost is a filled circle; each outer circle becomes an annulus
-    # with the next-inner circle as a hole.
+    visited: set = set()
+    for start in range(len(hes)):
+        if start in visited or start not in next_he:
+            continue
+        cycle, cur = [], start
+        while cur not in visited and cur in next_he:
+            visited.add(cur)
+            cycle.append(cur)
+            cur = next_he[cur]
+            if cur == start:
+                break
+        if cycle and cur == start and _face_area(cycle, hes, verts) > 1e-10:
+            abs_ids = sorted(emit_wire(absolute(feature_id, he_eid[i])) for i in cycle)
+            abs_ids_with_index = abs_ids + [f"surface:{len(surfaces)}", emit_wire(absolute(feature_id))]
+            query = make_ancestry_query(abs_ids_with_index, "flatface")
+            surfaces.append(
+                {
+                    "boundary": [
+                        {
+                            **hes[i][2],
+                            "start_vertex": hes[i][0],
+                            "end_vertex": hes[i][1],
+                        }
+                        for i in cycle
+                    ],
+                    "query": query,
+                }
+            )
+
+    return surfaces
+
+
+def _circle_arcs(cx: float, cy: float, r: float) -> list:
+    """Return two semicircle arcs representing a full circle boundary."""
+    return [
+        {
+            "kind": "arc",
+            "center": [cx, cy],
+            "radius": r,
+            "angle_start_deg": 0.0,
+            "angle_end_deg": 180.0,
+            "ccw": True,
+            "start": [cx + r, cy],
+            "end": [cx - r, cy],
+            "start_vertex": None,
+            "end_vertex": None,
+        },
+        {
+            "kind": "arc",
+            "center": [cx, cy],
+            "radius": r,
+            "angle_start_deg": 180.0,
+            "angle_end_deg": 360.0,
+            "ccw": True,
+            "start": [cx - r, cy],
+            "end": [cx + r, cy],
+            "start_vertex": None,
+            "end_vertex": None,
+        },
+    ]
+
+
+def _build_standalone_surfaces(
+    circles: dict,
+    splits: dict,
+    feature_id: str,
+    surfaces_so_far: int = 0,
+) -> list[dict]:
+    """Build surface dicts for standalone circles (no intersections).
+
+    Concentric circles produce nested surfaces (annuli).
+    """
+    _CENTER_TOL = 1e-6
+    surfaces: list[dict[str, Any]] = []
+    surf_count = surfaces_so_far
+
     standalone = [
         (eid, e)
         for eid, e in circles.items()
         if len(_dedup(splits.get(eid, []))) < 2
     ]
 
-    def _circle_arcs(cx: float, cy: float, r: float) -> list:
-        return [
-            {
-                "kind": "arc",
-                "center": [cx, cy],
-                "radius": r,
-                "angle_start_deg": 0.0,
-                "angle_end_deg": 180.0,
-                "ccw": True,
-                "start": [cx + r, cy],
-                "end": [cx - r, cy],
-                "start_vertex": None,
-                "end_vertex": None,
-            },
-            {
-                "kind": "arc",
-                "center": [cx, cy],
-                "radius": r,
-                "angle_start_deg": 180.0,
-                "angle_end_deg": 360.0,
-                "ccw": True,
-                "start": [cx - r, cy],
-                "end": [cx + r, cy],
-                "start_vertex": None,
-                "end_vertex": None,
-            },
-        ]
-
-    # Group standalone circles by center (within tolerance).
-    _CENTER_TOL = 1e-6
     groups: list[list[tuple]] = []
     for eid, e in standalone:
         cx, cy = e["center"][0], e["center"][1]
@@ -710,20 +753,56 @@ def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
             groups.append([(eid, e)])
 
     for grp in groups:
-        # Sort ascending by radius so smallest is innermost.
         grp_sorted = sorted(grp, key=lambda t: t[1]["radius"])
 
         for idx, (eid, e) in enumerate(grp_sorted):
             cx, cy, r = e["center"][0], e["center"][1], e["radius"]
-            ancestor_ids = [emit_wire(absolute(feature_id, eid)), f"surface:{len(surfaces)}", emit_wire(absolute(feature_id))]
+            ancestor_ids = [emit_wire(absolute(feature_id, eid)), f"surface:{surf_count}", emit_wire(absolute(feature_id))]
             query = make_ancestry_query(ancestor_ids, "flatface")
             boundary = _circle_arcs(cx, cy, r)
             if idx > 0:
-                # Annulus: append hole arcs from the next-inner circle.
                 inner_eid, inner_e = grp_sorted[idx - 1]
                 icx, icy, ir = inner_e["center"][0], inner_e["center"][1], inner_e["radius"]
                 boundary += _circle_arcs(icx, icy, ir)
             surfaces.append({"boundary": boundary, "query": query})
+            surf_count += 1
+
+    return surfaces
+
+
+# ── Main entry point  ──
+
+
+def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
+    """Detect intersection points and bounded surfaces in solved sketch geometry."""
+
+    lines, circles, arcs = _classify_entities(geometry)
+
+    verts: dict = {}
+    splits: dict = {}
+    arc_a0: dict[str, float] = {}
+
+    for eid, e in lines.items():
+        splits[eid] = [(0.0, _vid(verts, e["start"])), (1.0, _vid(verts, e["end"]))]
+
+    for eid in circles:
+        splits[eid] = []
+
+    arc_verts = verts.copy()  # isolate arc-init verts from line endpoints
+    a0_from_norm, arc_splits = _normalize_arcs_and_init_splits(arcs, arc_verts)
+    arc_a0.update(a0_from_norm)
+    splits.update(arc_splits)
+    verts.update(arc_verts)
+
+    elist = list(lines.items()) + list(circles.items()) + list(arcs.items())
+    intersection_vids = _find_all_intersections(
+        elist, lines, circles, arcs, splits, verts, arc_a0,
+    )
+
+    hes, he_eid = _build_half_edge_graph(lines, circles, arcs, splits)
+
+    surfaces = _trace_face_cycles(hes, he_eid, verts, feature_id)
+    surfaces += _build_standalone_surfaces(circles, splits, feature_id, len(surfaces))
 
     return {
         "intersection_points": {

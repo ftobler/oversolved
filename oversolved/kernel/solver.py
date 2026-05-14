@@ -3,7 +3,7 @@ import logging
 import math
 import time
 import traceback
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 import yaml
 import numpy as np
 from scipy.optimize import least_squares
@@ -349,87 +349,91 @@ def _get_or_build_repo(feature_id: str, entities: dict) -> Repository:
     return repo
 
 
-def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> dict:
-    # Expand compound entity kinds before processing.
-    if any(e.get("kind") == "center_rect" for e in feature.get("entities", [])):
-        feature = _expand_center_rect(feature)
+def _process_projected_entities(
+    feature: dict,
+    global_repo: Repository | None,
+    initial: dict,
+    constraints: list,
+) -> set[str]:
+    """Pre-compute projected entity params and add implicit fixed constraints.
 
-    entities = {e["id"]: e for e in feature["entities"]}
-    initial = dict(feature.get("initial", {}))
-    constraints = list(feature.get("constraints", []))
+    Returns the set of projected entity IDs.
+    """
+    projected_ids: set = set()
+    if global_repo is None:
+        return projected_ids
 
-    # Pre-compute projected entity parameters and add implicit fixed constraints.
-    _projected_ids: set = set()
-    if global_repo is not None:
-        target_plane = _resolve_plane_early(feature.get("plane"), global_repo)
-        for entity in feature.get("entities", []):
-            kind = entity.get("kind", "")
-            if kind in _PROJECTED_KINDS:
-                eid = entity["id"]
-                source_query = entity.get("source", "")
-                try:
-                    proj_params = _project_source_to_params(
-                        kind, source_query, target_plane, global_repo
-                    )
-                    initial[eid] = proj_params
-                    constraints.append(
-                        {
-                            "id": f"__proj_{eid}__",
-                            "kind": "fixed",
-                            "target": {"entity": eid},
-                        }
-                    )
-                    _projected_ids.add(eid)
-                except Exception as e:
-                    logger.warning(
-                        "Projection failed for entity %s in sketch %s: %s",
-                        eid, feature.get("id", "?"), e,
-                    )
+    target_plane = _resolve_plane_early(feature.get("plane"), global_repo)
+    for entity in feature.get("entities", []):
+        kind = entity.get("kind", "")
+        if kind in _PROJECTED_KINDS:
+            eid = entity["id"]
+            source_query = entity.get("source", "")
+            try:
+                proj_params = _project_source_to_params(
+                    kind, source_query, target_plane, global_repo
+                )
+                initial[eid] = proj_params
+                constraints.append(
+                    {
+                        "id": f"__proj_{eid}__",
+                        "kind": "fixed",
+                        "target": {"entity": eid},
+                    }
+                )
+                projected_ids.add(eid)
+            except Exception as e:
+                logger.warning(
+                    "Projection failed for entity %s in sketch %s: %s",
+                    eid, feature.get("id", "?"), e,
+                )
+    return projected_ids
 
-    # Inject the projected origin point -- always present at (0, 0), not user-editable.
-    entities[ORIGIN_ID] = {"id": ORIGIN_ID, "kind": "point", "projected": True}
 
-    entity_offsets: dict = {}
-    params: list = []
-    for eid, entity in entities.items():
-        entity_offsets[eid] = len(params)
-        size = ENTITY_SIZES[entity["kind"]]
-        params.extend(initial.get(eid, [0.0] * size))
+_REF_FIELDS = ("target", "line", "arc", "point", "a", "b", "point_a", "point_b")
 
-    # Build a query Repository so constraints can reference entities by query string.
-    feature_id = feature.get("id", "")
-    repo = _get_or_build_repo(feature_id, entities)
 
-    def resolve_ref(val):
-        if isinstance(val, str):
-            result = repo.query(val, context=feature_id)
-            if result is None and global_repo is not None:
-                result = global_repo.query(val, context=feature_id)
-            return result
-        return val
+def _resolve_sketch_plane(
+    plane_query: str | None,
+    resolve_ref: Callable,
+    global_repo: Repository | None,
+) -> dict:
+    """Resolve plane query to plane transform dict. Fall back to FRONT_PLANE."""
+    if not plane_query:
+        return _FRONT_PLANE
 
-    # Resolve plane reference; default to front plane when absent or unresolvable.
-    plane_query = feature.get("plane")
-    if plane_query:
-        plane_obj = resolve_ref(plane_query)
-        if (
-            (plane_obj is None or not is_plane_type(plane_obj))
-            and plane_query.startswith("$")
-            and global_repo is not None
-        ):
-            plane_obj = global_repo.elements.get(plane_query[1:])
-        if plane_obj is None or not is_plane_type(plane_obj):
-            _bare = {
-                "Top": "builtin_plane_top",
-                "Front": "builtin_plane_front",
-                "Right": "builtin_plane_right",
-            }
-            plane_obj = _BUILTIN_PLANES.get(_bare.get(plane_query, ""), _FRONT_PLANE)
-    else:
-        plane_obj = _FRONT_PLANE
+    plane_obj = resolve_ref(plane_query)
+    if (
+        (plane_obj is None or not is_plane_type(plane_obj))
+        and plane_query.startswith("$")
+        and global_repo is not None
+    ):
+        plane_obj = global_repo.elements.get(plane_query[1:])
+    if plane_obj is None or not is_plane_type(plane_obj):
+        _bare = {
+            "Top": "builtin_plane_top",
+            "Front": "builtin_plane_front",
+            "Right": "builtin_plane_right",
+        }
+        plane_obj = _BUILTIN_PLANES.get(_bare.get(plane_query, ""), _FRONT_PLANE)
+    return plane_obj
 
-    _REF_FIELDS = ("target", "line", "arc", "point", "a", "b", "point_a", "point_b")
 
+def _filter_local_constraints(
+    constraints: list,
+    entities: dict,
+    resolve_ref: Callable,
+    plane_obj: dict,
+) -> tuple[list, list]:
+    """Filter constraints to those referencing local entities.
+
+    Three-stage filter:
+    1. Keep only constraints whose entity IDs are all in entities.
+    2. Pre-resolve all query strings to dict refs.
+    3. Remove constraints that don't have valid local entity targets.
+
+    Returns (filtered_constraints, unresolved_refs).
+    """
     def _constraint_entity_ids(c: dict) -> list:
         ids = []
         for key in _REF_FIELDS:
@@ -455,7 +459,6 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         if all(eid in entities for eid in _constraint_entity_ids(c))
     ]
 
-    # Pre-resolve all query strings to {entity, point?} dicts.
     unresolved_refs = []
 
     def _pre_resolve(c: dict) -> dict:
@@ -518,22 +521,20 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         return False
 
     constraints = [c for c in constraints if _has_valid_local_target(c)]
+    return constraints, unresolved_refs
 
-    # Implicit constraint: pin the projected origin to (0, 0).
-    constraints.append(
-        {
-            "id": ORIGIN_FIX_ID,
-            "kind": "fixed",
-            "target": {"entity": ORIGIN_ID, "point": "xy"},
-            "x": 0.0,
-            "y": 0.0,
-        }
-    )
 
-    x0 = np.array(params, dtype=np.float64)
+def _run_solver(
+    x0: np.ndarray,
+    residuals_fn: Callable,
+    constraints: list,
+    entities: dict,
+    entity_offsets: dict,
+) -> tuple[np.ndarray, str, np.ndarray, int, float, int]:
+    """Run scipy least_squares, compute status, rank, DOF.
 
-    residuals_fn, _ = _build_residuals_fn(constraints, entities, entity_offsets, x0)
-
+    Returns (x_sol, status, J, rank, final_loss, n_params).
+    """
     opt = least_squares(
         residuals_fn,
         x0,
@@ -546,10 +547,8 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         x_scale="jac",
     )
     x_sol = opt.x
-    # least_squares cost = 0.5 * sum(residuals**2)
     final_loss = 2.0 * float(opt.cost)
 
-    # Constraint status via Jacobian rank
     J = (
         opt.jac
         if opt.jac is not None and opt.jac.shape[0] > 0
@@ -558,9 +557,6 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     rank = int(np.linalg.matrix_rank(J, tol=RANK_TOL))
     n_params = len(x_sol)
 
-    # Full-entity fixed constraints (no "point" key AND no "x"/"y" keys) pin
-    # all ENTITY_SIZES[kind] DOF; point-fixed or x/y-keyed constraints pin 2.
-    # Mirrors the branch logic in solver_residuals._build_residuals_fn.
     n_fixed_pinned = sum(
         ENTITY_SIZES[entities[c["target"]["entity"]]["kind"]]
         if "point" not in c.get("target", {}) and "x" not in c and "y" not in c
@@ -585,6 +581,89 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
             rank, n_params - rigid_body_dof, rigid_body_dof,
         )
 
+    return x_sol, status, J, rank, final_loss, n_params
+
+
+def _detect_superfluous_constraints(
+    J: np.ndarray,
+    constraint_row_ranges: list[tuple[str, int, int]],
+    origin_fix_rows: set[int],
+) -> set[str]:
+    """Greedily detect superfluous constraints. Returns set of superfluous constraint IDs."""
+    superfluous_ids: set[str] = set()
+    if J.shape[0] == 0:
+        return superfluous_ids
+
+    active_rows = [r for r in range(J.shape[0]) if r not in origin_fix_rows]
+    rank_active = None
+    for cid, start, end in constraint_row_ranges:
+        crows = list(range(start, end))
+        remaining = [r for r in active_rows if r not in crows]
+        if rank_active is None:
+            J_active = J[active_rows + list(origin_fix_rows), :]
+            rank_active = int(np.linalg.matrix_rank(J_active, tol=RANK_TOL))
+        J_remaining = J[remaining + list(origin_fix_rows), :]
+        if int(np.linalg.matrix_rank(J_remaining, tol=RANK_TOL)) == rank_active:
+            superfluous_ids.add(cid)
+            active_rows = remaining
+            rank_active = None
+    return superfluous_ids
+
+
+def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> dict:
+    # Expand compound entity kinds before processing.
+    if any(e.get("kind") == "center_rect" for e in feature.get("entities", [])):
+        feature = _expand_center_rect(feature)
+
+    entities = {e["id"]: e for e in feature["entities"]}
+    initial = dict(feature.get("initial", {}))
+    constraints = list(feature.get("constraints", []))
+
+    _process_projected_entities(feature, global_repo, initial, constraints)
+
+    # Inject the projected origin point -- always present at (0, 0), not user-editable.
+    entities[ORIGIN_ID] = {"id": ORIGIN_ID, "kind": "point", "projected": True}
+
+    entity_offsets: dict = {}
+    params: list = []
+    for eid, entity in entities.items():
+        entity_offsets[eid] = len(params)
+        size = ENTITY_SIZES[entity["kind"]]
+        params.extend(initial.get(eid, [0.0] * size))
+
+    feature_id = feature.get("id", "")
+    repo = _get_or_build_repo(feature_id, entities)
+
+    def resolve_ref(val):
+        if isinstance(val, str):
+            result = repo.query(val, context=feature_id)
+            if result is None and global_repo is not None:
+                result = global_repo.query(val, context=feature_id)
+            return result
+        return val
+
+    plane_obj = _resolve_sketch_plane(feature.get("plane"), resolve_ref, global_repo)
+    constraints, unresolved_refs = _filter_local_constraints(
+        constraints, entities, resolve_ref, plane_obj,
+    )
+
+    # Implicit constraint: pin the projected origin to (0, 0).
+    constraints.append(
+        {
+            "id": ORIGIN_FIX_ID,
+            "kind": "fixed",
+            "target": {"entity": ORIGIN_ID, "point": "xy"},
+            "x": 0.0,
+            "y": 0.0,
+        }
+    )
+
+    x0 = np.array(params, dtype=np.float64)
+    residuals_fn, _ = _build_residuals_fn(constraints, entities, entity_offsets, x0)
+    x_sol, status, J, rank, _final_loss, n_params = _run_solver(
+        x0, residuals_fn, constraints, entities, entity_offsets,
+    )
+
     geom_solved = _geometry_from_array(x_sol, entities, entity_offsets)
 
     # Topology: detect intersection points and bounded surfaces
@@ -608,22 +687,7 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
             constraint_row_ranges.append((c["id"], row_idx, row_idx + n))
         row_idx += n
 
-    # Greedy superfluous detection.
-    superfluous_ids: set[str] = set()
-    if J.shape[0] > 0:
-        active_rows = [r for r in range(J.shape[0]) if r not in origin_fix_rows]
-        rank_active = None
-        for cid, start, end in constraint_row_ranges:
-            crows = list(range(start, end))
-            remaining = [r for r in active_rows if r not in crows]
-            if rank_active is None:
-                J_active = J[active_rows + list(origin_fix_rows), :]
-                rank_active = int(np.linalg.matrix_rank(J_active, tol=RANK_TOL))
-            J_remaining = J[remaining + list(origin_fix_rows), :]
-            if int(np.linalg.matrix_rank(J_remaining, tol=RANK_TOL)) == rank_active:
-                superfluous_ids.add(cid)
-                active_rows = remaining
-                rank_active = None
+    superfluous_ids = _detect_superfluous_constraints(J, constraint_row_ranges, origin_fix_rows)
 
     constraints_out = {}
     for c in constraints:
