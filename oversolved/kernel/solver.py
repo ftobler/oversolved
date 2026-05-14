@@ -12,7 +12,7 @@ from oversolved.kernel.query import Repository, _init_global_repo  # noqa: F401
 from oversolved.kernel.solver_constants import (
     _FRONT_PLANE, ENTITY_SIZES, LOSS_THRESHOLD, RANK_TOL, RANK_BOUNDARY_TOL,
     ORIGIN_ID, ORIGIN_FIX_ID, _BUILTIN_PLANES, _BUILTIN_PLANE_RESULTS,
-    _PROJECTED_KINDS, _FACE_TYPES,
+    _PROJECTED_KINDS, _FACE_TYPES, _KNOWN_FEATURE_KINDS,
 )
 from oversolved.kernel.solver_plane import (  # noqa: F401
     is_plane_type, is_point_type, _resolve_plane_early,
@@ -131,36 +131,48 @@ def _try_solve_feature(feature: dict, global_repo: Repository, body_store: dict,
         }
 
 
+def _dispatch_sketch(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict]) -> dict:
+    return _solve_sketch(feature, global_repo)
+
+
+def _dispatch_hole(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict]) -> dict:
+    return _solve_hole(feature, global_repo, body_store, features_by_id)
+
+
+def _make_body_store_dispatcher(fn: Callable) -> Callable:
+    def _dispatch(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict]) -> dict:
+        return fn(feature, global_repo, body_store)
+    return _dispatch
+
+
+# Populated after _solve_sketch is defined at module bottom; see _build_feature_handlers().
+_FEATURE_HANDLERS: dict[str, Callable] = {}
+
+
+def _build_feature_handlers() -> None:
+    _FEATURE_HANDLERS.update({
+        "sketch": _dispatch_sketch,
+        "plane": _make_body_store_dispatcher(_solve_plane),
+        "extrude": _make_body_store_dispatcher(_solve_extrude),
+        "import_step": _make_body_store_dispatcher(_solve_import_step),
+        "fillet": _make_body_store_dispatcher(_solve_fillet),
+        "chamfer": _make_body_store_dispatcher(_solve_chamfer),
+        "revolve": _make_body_store_dispatcher(_solve_revolve),
+        "array": _make_body_store_dispatcher(_solve_array),
+        "boolean": _make_body_store_dispatcher(_solve_boolean),
+        "delete_body": _make_body_store_dispatcher(_solve_delete_body),
+        "hole": _dispatch_hole,
+        "transform": _make_body_store_dispatcher(_solve_transform),
+        "mirror": _make_body_store_dispatcher(_solve_mirror),
+    })
+
+
 def _solve_feature(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict] | None = None) -> dict:
     kind = feature.get("kind")
-    if kind == "sketch":
-        feature_result = _solve_sketch(feature, global_repo)
-        return feature_result
-    if kind == "plane":
-        return _solve_plane(feature, global_repo, body_store)
-    if kind == "extrude":
-        return _solve_extrude(feature, global_repo, body_store)
-    if kind == "import_step":
-        return _solve_import_step(feature, global_repo, body_store)
-    if kind == "fillet":
-        return _solve_fillet(feature, global_repo, body_store)
-    if kind == "chamfer":
-        return _solve_chamfer(feature, global_repo, body_store)
-    if kind == "revolve":
-        return _solve_revolve(feature, global_repo, body_store)
-    if kind == "array":
-        return _solve_array(feature, global_repo, body_store)
-    if kind == "boolean":
-        return _solve_boolean(feature, global_repo, body_store)
-    if kind == "delete_body":
-        return _solve_delete_body(feature, global_repo, body_store)
-    if kind == "hole":
-        return _solve_hole(feature, global_repo, body_store, features_by_id or {})
-    if kind == "transform":
-        return _solve_transform(feature, global_repo, body_store)
-    if kind == "mirror":
-        return _solve_mirror(feature, global_repo, body_store)
-    raise Exception(f"unknown feature type: '{kind}'")
+    handler = _FEATURE_HANDLERS.get(kind)  # type: ignore[arg-type]
+    if handler is None:
+        raise ValueError(f"unknown feature kind: {kind!r}")
+    return handler(feature, global_repo, body_store, features_by_id or {})
 
 
 # ─── Geometry helpers ───
@@ -745,3 +757,6 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
         ]
 
     return result
+
+
+_build_feature_handlers()

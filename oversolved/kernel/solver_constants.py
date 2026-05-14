@@ -46,6 +46,13 @@ _POINT_TYPES = frozenset({"point", "vertex"})
 
 _ARC_SEGMENTS = 32
 
+_KNOWN_FEATURE_KINDS = frozenset({
+    "sketch", "plane", "extrude", "revolve",
+    "import_step", "fillet", "chamfer",
+    "array", "boolean", "delete_body",
+    "hole", "transform", "mirror",
+})
+
 _BUILTIN_PLANE_RESULTS: dict[str, dict] = {
     name: {
         "status": "ok",
