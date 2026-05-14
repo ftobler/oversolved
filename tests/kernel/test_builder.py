@@ -636,3 +636,16 @@ def test_register_brep_ancestry_preserves_other_bodies():
     # body_a's keys should still be present
     for key in keys_after_a:
         assert key in repo.ancestral, f"body_a key {key} was evicted by body_b registration"
+
+
+def test_features_by_id_missing_key():
+    """Features without an 'id' key must not crash the build with KeyError."""
+    r = build({'features': [{}]})
+    assert 'result' in r
+
+
+def test_features_by_id_normal_key():
+    """Features with 'id' are still indexed and their results are returned."""
+    spec = rect_sketch_spec(w=4, h=4)
+    r = build({'features': [spec]})
+    assert 'sk1' in r['result']

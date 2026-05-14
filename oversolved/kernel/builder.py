@@ -377,7 +377,7 @@ def build(
             logger.warning("Failed to register B-rep ancestry for body %s: %s", body.id, exc)
 
     # Use full feature list for lookups (solver may need features past rollback)
-    features_by_id = {f["id"]: f for f in all_features}
+    features_by_id = {f.get("id", ""): f for f in all_features}
     for i, feature in enumerate(features[first_dirty:]):
         fid = feature.get("id", "")
 
