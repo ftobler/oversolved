@@ -35,13 +35,13 @@ FRONT_PLANE = {
 
 
 def test_plane_round_trip():
-    """Plane dict -> CQPlane -> plane dict should preserve axes."""
+    """Plane dict -> CQPlane -> Frame3D should preserve axes."""
     cq = to_cq_plane(FRONT_PLANE)
     back = from_cq_plane(cq)
-    assert back["origin"] == [0.0, 0.0, 0.0]
-    assert back["x_axis"] == [1.0, 0.0, 0.0]
-    assert back["y_axis"] == [0.0, 1.0, 0.0]
-    assert back["normal"] == [0.0, 0.0, 1.0]
+    assert back.origin == [0.0, 0.0, 0.0]
+    assert back.x_axis == [1.0, 0.0, 0.0]
+    assert back.y_axis == [0.0, 1.0, 0.0]
+    assert back.normal == [0.0, 0.0, 1.0]
 
 
 def test_plane_round_trip_rotated():
@@ -53,8 +53,10 @@ def test_plane_round_trip_rotated():
         "normal": [1.0, 0.0, 0.0],
     }
     back = from_cq_plane(to_cq_plane(plane))
-    for key in plane:
-        assert back[key] == pytest.approx(plane[key], abs=1e-6)
+    assert back.origin == pytest.approx(plane["origin"], abs=1e-6)
+    assert back.x_axis == pytest.approx(plane["x_axis"], abs=1e-6)
+    assert back.y_axis == pytest.approx(plane["y_axis"], abs=1e-6)
+    assert back.normal == pytest.approx(plane["normal"], abs=1e-6)
 
 
 def test_make_line_edge():

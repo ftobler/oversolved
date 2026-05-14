@@ -48,6 +48,7 @@ from oversolved.kernel.ocp_ops import (
     ocp_write_stl,
 )
 from oversolved.kernel.profile_loops import classify_loops
+from oversolved.kernel.types3d import Frame3D
 
 logger = logging.getLogger(__name__)
 
@@ -267,12 +268,12 @@ def classify_surface_cardinal(
 # }
 
 
-def plane_dict_to_gp_pln(plane: dict) -> Any:
+def plane_dict_to_gp_pln(plane: Frame3D | dict) -> Any:
     """Convert a PlaneTransform dict to a cadquery Plane object."""
     return to_cq_plane(plane)
 
 
-def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> cq_shapes.Face:
+def sketch_loops_to_face(loops: list[list[dict]], plane: Frame3D | dict) -> cq_shapes.Face:
     """Convert 2D profile boundary-edge loops to a cadquery Face with holes.
 
     loops[0] = outer boundary, loops[1:] = holes.
@@ -341,7 +342,7 @@ def sketch_loops_to_face(loops: list[list[dict]], plane: dict) -> cq_shapes.Face
 
 def extrude_profile(
     loops: list[list[dict]],
-    plane: dict,
+    plane: Frame3D | dict,
     direction_vec: list[float],
     distance: float,
 ) -> cq_shapes.Solid:

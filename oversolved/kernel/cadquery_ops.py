@@ -45,6 +45,7 @@ from oversolved.kernel.ocp_ops import (
     ocp_make_translation_trsf,
     ocp_transform_copy,
 )
+from oversolved.kernel.types3d import Frame3D
 
 import math as _math
 
@@ -96,8 +97,10 @@ def _face_sort_key_from_tuple(item: tuple) -> tuple:
             round(c[0], 6), round(c[1], 6), round(c[2], 6))
 
 
-def to_cq_plane(plane: dict) -> CQPlane:
-    """Convert our plane dict to a CQ Plane."""
+def to_cq_plane(plane: Frame3D | dict) -> CQPlane:
+    """Convert a Frame3D or plane dict to a CQ Plane."""
+    if isinstance(plane, Frame3D):
+        return plane.to_cq_plane()
     return CQPlane(
         origin=tuple(plane.get("origin", [0.0, 0.0, 0.0])),
         xDir=tuple(plane.get("x_axis", [1.0, 0.0, 0.0])),
@@ -105,14 +108,9 @@ def to_cq_plane(plane: dict) -> CQPlane:
     )
 
 
-def from_cq_plane(cq_plane: CQPlane) -> dict:
-    """Convert CQ Plane to our plane dict."""
-    return {
-        "origin": list(cq_plane.origin.toTuple()),
-        "x_axis": list(cq_plane.xDir.toTuple()),
-        "y_axis": list(cq_plane.yDir.toTuple()),
-        "normal": list(cq_plane.zDir.toTuple()),
-    }
+def from_cq_plane(cq_plane: CQPlane) -> Frame3D:
+    """Convert CQ Plane to a Frame3D."""
+    return Frame3D.from_cq_plane(cq_plane)
 
 
 def make_line_edge(start: list, end: list) -> cq_shapes.Edge:

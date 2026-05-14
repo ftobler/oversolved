@@ -241,14 +241,14 @@ def ocp_extract_face_loops(
     topo_shape: TopoDS_Shape,
     cq_faces_sorted: list | None,
     face_index: int,
-) -> tuple[list[list[dict]], dict]:
+) -> tuple[list[list[dict]], Any]:
     """Extract 2D loops and plane from a face of *topo_shape*.
 
     *cq_faces_sorted* is a pre-sorted list of CadQuery Face objects (or None
     for raw TopoDS inputs).  The face at *face_index* is used.
 
     Returns (loops, effective_plane) where loops is a list of loop dicts and
-    effective_plane is a plane dict.
+    effective_plane is a Frame3D.
     """
     import math
     from OCP.BRepAdaptor import BRepAdaptor_Curve2d, BRepAdaptor_Surface  # noqa: PLC0415
@@ -257,6 +257,7 @@ def ocp_extract_face_loops(
     from OCP.TopAbs import TopAbs_FACE, TopAbs_WIRE, TopAbs_REVERSED  # noqa: PLC0415
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
     from OCP.TopoDS import TopoDS, TopoDS_Face  # noqa: PLC0415
+    from oversolved.kernel.types3d import Frame3D
 
     def _face_from_explorer(topo: TopoDS_Shape, idx: int) -> TopoDS_Face:
         exp = TopExp_Explorer(topo, TopAbs_FACE)
@@ -301,12 +302,12 @@ def ocp_extract_face_loops(
     ydir = ax3.YDirection()
     ndir = ax3.Direction()
 
-    effective_plane: dict = {
-        "origin": [loc.X(), loc.Y(), loc.Z()],
-        "x_axis": [xdir.X(), xdir.Y(), xdir.Z()],
-        "y_axis": [ydir.X(), ydir.Y(), ydir.Z()],
-        "normal": [ndir.X(), ndir.Y(), ndir.Z()],
-    }
+    effective_plane = Frame3D(
+        origin=[loc.X(), loc.Y(), loc.Z()],
+        x_axis=[xdir.X(), xdir.Y(), xdir.Z()],
+        y_axis=[ydir.X(), ydir.Y(), ydir.Z()],
+        normal=[ndir.X(), ndir.Y(), ndir.Z()],
+    )
 
     outer_wire = BRepTools.OuterWire_s(occ_face)
     all_wires = [outer_wire]

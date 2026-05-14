@@ -108,9 +108,9 @@ class Frame3D:
     def to_cq_plane(self) -> Any:
         from cadquery.occ_impl.geom import Plane as CQPlane, Vector as CQVector
         return CQPlane(
-            origin=tuple(self.origin),
-            xDir=tuple(self.x_axis),
-            normal=tuple(self.normal),
+            origin=(self.origin[0], self.origin[1], self.origin[2]),
+            xDir=(self.x_axis[0], self.x_axis[1], self.x_axis[2]),
+            normal=(self.normal[0], self.normal[1], self.normal[2]),
         )
 
     @classmethod

@@ -58,10 +58,12 @@ class TestApiSolve:
         result = build({"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
         assert result["result"]["ex1"]["status"] == "ok"
 
+    @pytest.mark.skipif(not HAS_OCC, reason="OCP not available")
     def test_extrude_has_body_id(self):
         result = build({"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
         assert result["result"]["ex1"]["body_id"] == "body_ex1"
 
+    @pytest.mark.skipif(not HAS_OCC, reason="OCP not available")
     def test_bodies_key_present(self):
         result = build({"features": [SKETCH_FEATURE, EXTRUDE_FEATURE]})
         assert isinstance(result["bodies"], dict)

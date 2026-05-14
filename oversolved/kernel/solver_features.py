@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from OCP.TopoDS import TopoDS_Shape
     from OCP.gp import gp_Trsf
 from oversolved.kernel.query import Repository, _parse_ancestry
-from oversolved.kernel.types3d import Body
+from oversolved.kernel.types3d import Body, Frame3D
 from oversolved.kernel.solver_constants import _ARC_SEGMENTS
 
 try:
@@ -80,7 +80,7 @@ def _tessellate_edge(edge: dict) -> list[list[float]]:
 
 def _extract_profile_loops(
     surfaces: list[dict],
-    plane_transform: dict,
+    plane_transform: Frame3D | dict,
 ) -> list[list[dict]]:
     if not surfaces:
         return []
@@ -145,14 +145,20 @@ def _extract_profile_loops(
 def _register_top_face(
     global_repo: Repository,
     feature_id: str,
-    pt: dict,
+    pt: Frame3D | dict,
     surfaces: list[dict],
     distance: float,
 ) -> None:
-    origin = np.array(pt["origin"])
-    x_axis = np.array(pt["x_axis"])
-    y_axis = np.array(pt["y_axis"])
-    normal = np.array(pt["normal"])
+    if isinstance(pt, Frame3D):
+        origin = np.array(pt.origin)
+        x_axis = np.array(pt.x_axis)
+        y_axis = np.array(pt.y_axis)
+        normal = np.array(pt.normal)
+    else:
+        origin = np.array(pt["origin"])
+        x_axis = np.array(pt["x_axis"])
+        y_axis = np.array(pt["y_axis"])
+        normal = np.array(pt["normal"])
 
     if surfaces:
         pts_2d = []
@@ -206,7 +212,7 @@ def _register_top_face(
 
 def _extract_loops_from_occ_face(
     shape: TopoDS_Shape, face_index: int
-) -> tuple[list[list[dict]], dict]:
+) -> tuple[list[list[dict]], Frame3D]:
     import cadquery as cq
     cq_shape = cq.Shape.cast(_ensure_occ(shape))
     cq_faces_sorted = sorted(list(cq_shape.Faces()), key=_face_sort_key)
@@ -262,7 +268,7 @@ def _resolve_face_index_via_hash(
 
 def _resolve_face_profile(
     sketch_ref: str, global_repo: Repository, body_store: dict
-) -> tuple[list[list[dict]], dict]:
+) -> tuple[list[list[dict]], Frame3D | dict]:
     def _find_body_for_feature(feat_id: str):
         body = body_store.get("body_" + feat_id)
         if body is not None and body.shape is not None:
@@ -354,8 +360,22 @@ def _resolve_face_profile(
 
 
 def _resolve_direction(
-    normal: list, pt: dict, direction: str, distance: float
-) -> tuple[list, float, dict]:
+    normal: list, pt: Frame3D | dict, direction: str, distance: float
+) -> tuple[list, float, Frame3D | dict]:
+    if isinstance(pt, Frame3D):
+        if direction == "reverse":
+            direction_vec = [-n for n in normal]
+            return direction_vec, distance, pt
+        elif direction == "symmetric":
+            direction_vec = list(normal)
+            shift_val = [-n * distance / 2 for n in normal]
+            shifted = Frame3D(
+                origin=[pt.origin[0] + shift_val[0], pt.origin[1] + shift_val[1], pt.origin[2] + shift_val[2]],
+                x_axis=pt.x_axis, y_axis=pt.y_axis, normal=pt.normal,
+            )
+            return direction_vec, distance, shifted
+        else:
+            return list(normal), distance, pt
     if direction == "reverse":
         direction_vec = [-n for n in normal]
         return direction_vec, distance, pt
@@ -385,8 +405,8 @@ def _collect_extrude_loops(
     distance: float,
     global_repo: Repository,
     body_store: dict,
-) -> tuple[list, dict, str]:
-    pt: dict
+) -> tuple[list, Frame3D | dict, str]:
+    pt: Frame3D | dict
     if sketch_ref.startswith("?") or sketch_ref.startswith("@"):
         loops, pt = _resolve_face_profile(sketch_ref, global_repo, body_store)
         return loops, pt, ""
@@ -596,7 +616,7 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
         raise ValueError("extrude requires at least one profile reference")
 
     all_loops: list = []
-    first_pt: dict = {}
+    first_pt: Frame3D | dict = {}
     first_sketch_id = ""
     for sketch_ref in sketch_refs:
         loops, pt, sketch_id = _collect_extrude_loops(
@@ -607,7 +627,12 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
             first_pt = pt
             first_sketch_id = sketch_id
 
-    normal = first_pt.get("normal", [0, 0, 1])
+    if isinstance(first_pt, Frame3D):
+        normal = first_pt.normal
+    elif isinstance(first_pt, dict):
+        normal = first_pt.get("normal", [0, 0, 1])
+    else:
+        normal = [0, 0, 1]
     body_id = "body_" + feature_id
     result: dict = {"status": "ok", "body_id": body_id}
 
@@ -653,7 +678,7 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
         raise ValueError("revolve requires at least one profile reference")
 
     all_loops: list = []
-    first_pt: dict = {}
+    first_pt: Frame3D | dict = {}
     first_sketch_id = ""
     for sketch_ref in sketch_refs:
         loops, pt, sketch_id = _collect_extrude_loops(
@@ -1258,7 +1283,10 @@ def _solve_mirror(feature: dict, global_repo: Repository, body_store: dict) -> d
     plane_data = global_repo.query(plane_query, body_store=body_store)
     if plane_data is None:
         raise ValueError(f"mirror: plane not found: {plane_query!r}")
-    if isinstance(plane_data, dict) and plane_data.get("type") in ("flatface", "plane"):
+    if isinstance(plane_data, Frame3D):
+        origin = plane_data.origin
+        normal = plane_data.normal
+    elif isinstance(plane_data, dict) and plane_data.get("type") in ("flatface", "plane"):
         origin = plane_data.get("origin", [0, 0, 0])
         normal = plane_data.get("normal", [0, 0, 1])
     else:
@@ -1267,7 +1295,7 @@ def _solve_mirror(feature: dict, global_repo: Repository, body_store: dict) -> d
     keep_original = bool(cfg.get("keep_original", True))
     merge = bool(cfg.get("merge", True))
 
-    trsf = make_mirror_trsf(tuple(origin), tuple(normal))
+    trsf = make_mirror_trsf((float(origin[0]), float(origin[1]), float(origin[2])), (float(normal[0]), float(normal[1]), float(normal[2])))
     mirrored_shape = transform_copy(source_body.shape, trsf)
 
     if not keep_original:
@@ -1333,10 +1361,16 @@ def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, featur
     if plane is None:
         raise ValueError(f"hole: sketch '{sketch_ref}' has no plane transform registered")
 
-    origin = np.array(plane["origin"])
-    x_axis = np.array(plane["x_axis"])
-    y_axis = np.array(plane["y_axis"])
-    normal = np.array(plane["normal"])
+    if isinstance(plane, Frame3D):
+        origin = np.array(plane.origin)
+        x_axis = np.array(plane.x_axis)
+        y_axis = np.array(plane.y_axis)
+        normal = np.array(plane.normal)
+    else:
+        origin = np.array(plane["origin"])
+        x_axis = np.array(plane["x_axis"])
+        y_axis = np.array(plane["y_axis"])
+        normal = np.array(plane["normal"])
     axis = normal if direction == "normal" else -normal
 
     if target_ref:

@@ -1,6 +1,7 @@
 import logging
 import math
 from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query
+from oversolved.kernel.types3d import Frame3D
 
 __all__ = [
     "_clear_feature_geometry_registrations",
@@ -92,28 +93,22 @@ def _post_register(
             _register_solved_geometry(global_repo, feature_id, feature, flat_geometry)
     if "plane_transform" in feature_result:
         pt = feature_result["plane_transform"]
-        rot = pt["rotation"]
+        frame = Frame3D.from_plane_transform(pt)
         global_repo.register(
             "_pt_" + feature_id,
-            {
-                "origin": pt["origin"],
-                "x_axis": rot[0:3],
-                "y_axis": rot[3:6],
-                "normal": rot[6:9],
-            },
+            frame.to_dict(),
         )
     if "topology" in feature_result:
         global_repo.register("_topo_" + feature_id, feature_result["topology"])
         pt = feature_result.get("plane_transform")
         if pt:
-            rot = pt["rotation"]
-            plane_obj = {
-                "type": "face",
-                "origin": pt["origin"],
-                "x_axis": rot[0:3],
-                "y_axis": rot[3:6],
-                "normal": rot[6:9],
-            }
+            frame = Frame3D.from_plane_transform(pt)
+            plane_obj: Frame3D = Frame3D(
+                origin=frame.origin,
+                x_axis=frame.x_axis,
+                y_axis=frame.y_axis,
+                normal=frame.normal,
+            )
             _register_topology_surfaces(
                 global_repo, feature_result["topology"], plane_obj
             )
@@ -363,8 +358,10 @@ def _register_solved_geometry(
             )
 
 
-def _plane_transform(plane_obj: dict) -> dict:
-    """Convert a plane object (x_axis, y_axis, normal, origin) to a plane_transform dict."""
+def _plane_transform(plane_obj: Frame3D | dict) -> dict:
+    """Convert a Frame3D or plane dict to a plane_transform dict."""
+    if isinstance(plane_obj, Frame3D):
+        return plane_obj.to_plane_transform()
     x_axis = plane_obj.get("x_axis", [1, 0, 0])
     y_axis = plane_obj.get("y_axis", [0, 1, 0])
     normal = plane_obj.get("normal", [0, 0, 1])
@@ -376,13 +373,19 @@ def _plane_transform(plane_obj: dict) -> dict:
 
 
 def _register_topology_surfaces(
-    global_repo: Repository, topology: dict, plane_obj: dict
+    global_repo: Repository, topology: dict, plane_obj: Frame3D | dict
 ) -> None:
     """Register each topology surface as a face-typed plane in the global repository."""
-    x_axis = plane_obj["x_axis"]
-    y_axis = plane_obj["y_axis"]
-    normal = plane_obj["normal"]
-    origin = plane_obj["origin"]
+    if isinstance(plane_obj, Frame3D):
+        x_axis = plane_obj.x_axis
+        y_axis = plane_obj.y_axis
+        normal = plane_obj.normal
+        origin = plane_obj.origin
+    else:
+        x_axis = plane_obj["x_axis"]
+        y_axis = plane_obj["y_axis"]
+        normal = plane_obj["normal"]
+        origin = plane_obj["origin"]
 
     for surface in topology.get("surfaces", []):
         query = surface.get("query")
@@ -435,12 +438,17 @@ def _register_topology_surfaces(
 
 
 def _register_topology_edges(
-    global_repo: Repository, topology: dict, plane_obj: dict
+    global_repo: Repository, topology: dict, plane_obj: Frame3D | dict
 ) -> None:
     """Register each topology edge with its ancestry query."""
-    x_axis = plane_obj["x_axis"]
-    y_axis = plane_obj["y_axis"]
-    origin = plane_obj["origin"]
+    if isinstance(plane_obj, Frame3D):
+        x_axis = plane_obj.x_axis
+        y_axis = plane_obj.y_axis
+        origin = plane_obj.origin
+    else:
+        x_axis = plane_obj["x_axis"]
+        y_axis = plane_obj["y_axis"]
+        origin = plane_obj["origin"]
 
     for edge in topology.get("edges", []):
         query = edge.get("query")
@@ -502,12 +510,17 @@ def _register_sketch_feature(
 
 
 def _register_topology_vertices(
-    global_repo: Repository, topology: dict, plane_obj: dict, feature_id: str = ""
+    global_repo: Repository, topology: dict, plane_obj: Frame3D | dict, feature_id: str = ""
 ) -> None:
     """Register each topology vertex with its ancestry query."""
-    x_axis = plane_obj["x_axis"]
-    y_axis = plane_obj["y_axis"]
-    origin = plane_obj["origin"]
+    if isinstance(plane_obj, Frame3D):
+        x_axis = plane_obj.x_axis
+        y_axis = plane_obj.y_axis
+        origin = plane_obj.origin
+    else:
+        x_axis = plane_obj["x_axis"]
+        y_axis = plane_obj["y_axis"]
+        origin = plane_obj["origin"]
 
     all_vertices = {}
     all_vertices.update(topology.get("vertices", {}))
