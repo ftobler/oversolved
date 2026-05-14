@@ -1,4 +1,3 @@
-import hashlib
 import logging
 import math
 import threading
@@ -317,14 +316,13 @@ def _expand_center_rect(feature: dict) -> dict:
 # This avoids rebuilding for repeated calls with the same sketch structure
 # while bounding memory to one cached object.
 
-_last_repo_structure: tuple[str, Repository] | None = None
+_last_repo_structure: tuple[tuple, Repository] | None = None
 _last_repo_structure_lock = threading.Lock()
 
 
-def _build_repo_structure_key(feature_id: str, entities: dict) -> str:
-    items = sorted((eid, e["kind"]) for eid, e in entities.items())
-    raw = feature_id + str(items)
-    return hashlib.md5(raw.encode()).hexdigest()
+def _build_repo_structure_key(feature_id: str, entities: dict) -> tuple:
+    items = tuple(sorted((eid, e["kind"]) for eid, e in entities.items()))
+    return (feature_id, items)
 
 
 def _get_or_build_repo(feature_id: str, entities: dict) -> Repository:
