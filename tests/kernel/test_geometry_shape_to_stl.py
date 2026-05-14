@@ -1,10 +1,14 @@
 """Tests for geometry.shape_to_stl_file function."""
 
+import os
 import tempfile
+from io import BytesIO
+from unittest.mock import patch
+
 import pytest
 
 pytest.importorskip("cadquery.occ_impl.shapes")
-from oversolved.kernel.geometry import shape_to_stl_file, solid_to_mesh  # noqa: E402
+from oversolved.kernel.geometry import shape_to_stl_file, shape_to_stl_file_buffer, solid_to_mesh  # noqa: E402
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
 
 
@@ -69,3 +73,42 @@ def test_shape_to_stl_file_produces_triangles():
         mesh = solid_to_mesh(filepath)
         assert "faces" in mesh
         assert len(mesh["faces"]) > 0
+
+
+def test_stl_buffer_cleans_up_on_success():
+    """6. shape_to_stl_file_buffer success - temp file deleted after successful export"""
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    created_path: list[str] = []
+    real_ntf = tempfile.NamedTemporaryFile
+
+    def capturing_ntf(*args, **kwargs):
+        f = real_ntf(*args, **kwargs)
+        created_path.append(f.name)
+        return f
+
+    with patch("oversolved.kernel.geometry_io.tempfile.NamedTemporaryFile", capturing_ntf):
+        result = shape_to_stl_file_buffer(box)
+
+    assert isinstance(result, BytesIO)
+    assert len(created_path) == 1
+    assert not os.path.exists(created_path[0])
+
+
+def test_stl_buffer_cleans_up_on_failure():
+    """7. shape_to_stl_file_buffer failure - temp file deleted even when write raises"""
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    created_path: list[str] = []
+    real_ntf = tempfile.NamedTemporaryFile
+
+    def capturing_ntf(*args, **kwargs):
+        f = real_ntf(*args, **kwargs)
+        created_path.append(f.name)
+        return f
+
+    with patch("oversolved.kernel.geometry_io.tempfile.NamedTemporaryFile", capturing_ntf):
+        with patch("oversolved.kernel.geometry_io.ocp_write_stl", side_effect=RuntimeError("write error")):
+            with pytest.raises(RuntimeError, match="write error"):
+                shape_to_stl_file_buffer(box)
+
+    assert len(created_path) == 1
+    assert not os.path.exists(created_path[0])

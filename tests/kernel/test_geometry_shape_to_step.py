@@ -1,11 +1,15 @@
 """Tests for geometry.shape_to_step_file function."""
 
+import os
 import tempfile
+from io import BytesIO
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 pytest.importorskip("cadquery.occ_impl.shapes")
 
-from oversolved.kernel.geometry import shape_to_step_file, step_file_to_shape, solid_to_mesh  # noqa: E402
+from oversolved.kernel.geometry import shape_to_step_file, shape_to_step_file_buffer, step_file_to_shape, solid_to_mesh  # noqa: E402
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
 from OCP.STEPControl import STEPControl_Reader  # noqa: E402
 
@@ -50,3 +54,45 @@ def test_shape_to_step_file_preserves_geometry():
         assert abs(x_range - 1.0) < 0.1
         assert abs(y_range - 2.0) < 0.1
         assert abs(z_range - 3.0) < 0.1
+
+
+def test_step_buffer_cleans_up_on_success():
+    """4. shape_to_step_file_buffer success - temp file deleted after successful export"""
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    created_path: list[str] = []
+    real_ntf = tempfile.NamedTemporaryFile
+
+    def capturing_ntf(*args, **kwargs):
+        f = real_ntf(*args, **kwargs)
+        created_path.append(f.name)
+        return f
+
+    with patch("oversolved.kernel.geometry_io.tempfile.NamedTemporaryFile", capturing_ntf):
+        result = shape_to_step_file_buffer(box)
+
+    assert isinstance(result, BytesIO)
+    assert len(created_path) == 1
+    assert not os.path.exists(created_path[0])
+
+
+def test_step_buffer_cleans_up_on_failure():
+    """5. shape_to_step_file_buffer failure - temp file deleted even when write raises"""
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    created_path: list[str] = []
+    real_ntf = tempfile.NamedTemporaryFile
+
+    def capturing_ntf(*args, **kwargs):
+        f = real_ntf(*args, **kwargs)
+        created_path.append(f.name)
+        return f
+
+    mock_cq = MagicMock()
+    mock_cq.exportStep.side_effect = RuntimeError("write error")
+
+    with patch("oversolved.kernel.geometry_io.tempfile.NamedTemporaryFile", capturing_ntf):
+        with patch("oversolved.kernel.geometry_io._ensure_cq", return_value=mock_cq):
+            with pytest.raises(RuntimeError, match="write error"):
+                shape_to_step_file_buffer(box)
+
+    assert len(created_path) == 1
+    assert not os.path.exists(created_path[0])
