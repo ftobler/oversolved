@@ -228,6 +228,24 @@ def _register_solved_geometry_slash(
             )
 
 
+def _sketch_to_world_2d(xy: list[float], plane_obj: Frame3D | dict) -> list[float]:
+    """Transform 2D sketch coordinates to 3D world space."""
+    if isinstance(plane_obj, Frame3D):
+        x_axis = plane_obj.x_axis
+        y_axis = plane_obj.y_axis
+        origin = plane_obj.origin
+    else:
+        x_axis = plane_obj["x_axis"]
+        y_axis = plane_obj["y_axis"]
+        origin = plane_obj["origin"]
+    u, v = xy
+    return [
+        origin[0] + u * x_axis[0] + v * y_axis[0],
+        origin[1] + u * x_axis[1] + v * y_axis[1],
+        origin[2] + u * x_axis[2] + v * y_axis[2],
+    ]
+
+
 def _plane_transform(plane_obj: Frame3D | dict) -> dict:
     """Convert a Frame3D or plane dict to a plane_transform dict."""
     if isinstance(plane_obj, Frame3D):
@@ -276,11 +294,7 @@ def _register_topology_surfaces(
         if pts_2d:
             u = sum(p[0] for p in pts_2d) / len(pts_2d)
             v = sum(p[1] for p in pts_2d) / len(pts_2d)
-            world_origin = [
-                origin[0] + u * x_axis[0] + v * y_axis[0],
-                origin[1] + u * x_axis[1] + v * y_axis[1],
-                origin[2] + u * x_axis[2] + v * y_axis[2],
-            ]
+            world_origin = _sketch_to_world_2d([u, v], plane_obj)
         else:
             world_origin = list(origin)
 
@@ -311,33 +325,13 @@ def _register_topology_edges(
     global_repo: Repository, topology: dict, plane_obj: Frame3D | dict
 ) -> None:
     """Register each topology edge with its ancestry query."""
-    if isinstance(plane_obj, Frame3D):
-        x_axis = plane_obj.x_axis
-        y_axis = plane_obj.y_axis
-        origin = plane_obj.origin
-    else:
-        x_axis = plane_obj["x_axis"]
-        y_axis = plane_obj["y_axis"]
-        origin = plane_obj["origin"]
-
     for edge in topology.get("edges", []):
         query = edge.get("query")
         if not query or not query.startswith("?"):
             continue
 
-        start_2d = edge.get("start", [0, 0])
-        end_2d = edge.get("end", [0, 0])
-
-        world_start = [
-            origin[0] + start_2d[0] * x_axis[0] + start_2d[1] * y_axis[0],
-            origin[1] + start_2d[0] * x_axis[1] + start_2d[1] * y_axis[1],
-            origin[2] + start_2d[0] * x_axis[2] + start_2d[1] * y_axis[2],
-        ]
-        world_end = [
-            origin[0] + end_2d[0] * x_axis[0] + end_2d[1] * y_axis[0],
-            origin[1] + end_2d[0] * x_axis[1] + end_2d[1] * y_axis[1],
-            origin[2] + end_2d[0] * x_axis[2] + end_2d[1] * y_axis[2],
-        ]
+        world_start = _sketch_to_world_2d(edge.get("start", [0, 0]), plane_obj)
+        world_end = _sketch_to_world_2d(edge.get("end", [0, 0]), plane_obj)
 
         edge_type = "straightedge" if edge.get("kind", "line") == "line" else "edge"
         edge_data = {
@@ -348,12 +342,7 @@ def _register_topology_edges(
         }
 
         if "center" in edge:
-            cx_2d, cy_2d = edge["center"]
-            edge_data["center"] = [
-                origin[0] + cx_2d * x_axis[0] + cy_2d * y_axis[0],
-                origin[1] + cx_2d * x_axis[1] + cy_2d * y_axis[1],
-                origin[2] + cx_2d * x_axis[2] + cy_2d * y_axis[2],
-            ]
+            edge_data["center"] = _sketch_to_world_2d(edge["center"], plane_obj)
             edge_data["radius"] = edge["radius"]
 
         ids, _ = _parse_ancestry(query)
@@ -380,26 +369,12 @@ def _register_topology_vertices(
     global_repo: Repository, topology: dict, plane_obj: Frame3D | dict, feature_id: str = ""
 ) -> None:
     """Register each topology vertex with its ancestry query."""
-    if isinstance(plane_obj, Frame3D):
-        x_axis = plane_obj.x_axis
-        y_axis = plane_obj.y_axis
-        origin = plane_obj.origin
-    else:
-        x_axis = plane_obj["x_axis"]
-        y_axis = plane_obj["y_axis"]
-        origin = plane_obj["origin"]
-
     all_vertices = {}
     all_vertices.update(topology.get("vertices", {}))
     all_vertices.update(topology.get("intersection_points", {}))
 
     for vid, v in all_vertices.items():
-        xy_2d = [v.get("x", 0), v.get("y", 0)]
-        world_xy = [
-            origin[0] + xy_2d[0] * x_axis[0] + xy_2d[1] * y_axis[0],
-            origin[1] + xy_2d[0] * x_axis[1] + xy_2d[1] * y_axis[1],
-            origin[2] + xy_2d[0] * x_axis[2] + xy_2d[1] * y_axis[2],
-        ]
+        world_xy = _sketch_to_world_2d([v.get("x", 0), v.get("y", 0)], plane_obj)
 
         ancestor_ids = [vid, "vertex"]
         if feature_id:
