@@ -2,7 +2,8 @@
 that reference entities in the first sketch via query strings."""
 
 import math
-from oversolved.kernel.solver import solve
+from oversolved.kernel.query import Repository
+from oversolved.kernel.solver import solve, _register_solved_geometry_slash
 
 
 TOL = 1e-5
@@ -668,3 +669,22 @@ features:
 
     assert abs(line_end[0] - pt[0]) < TOL, f"line end x {line_end[0]} != point x {pt[0]}"
     assert abs(line_end[1] - pt[1]) < TOL, f"line end y {line_end[1]} != point y {pt[1]}"
+
+
+def test_legacy_concat_keys_not_registered():
+    """Legacy concat format keys are absent from registry after slash-format registration."""
+    repo = Repository()
+    feature = {"entities": [{"id": "line1", "kind": "line"}]}
+    geometry = {"line1": {"start": [0, 0], "end": [5, 0]}}
+
+    _register_solved_geometry_slash(repo, "sketch_1", feature, geometry)
+
+    # Legacy concat keys should NOT exist
+    assert repo.elements.get("sketch_1line1") is None
+    assert repo.elements.get("sketch_1line1start") is None
+    assert repo.elements.get("sketch_1line1end") is None
+
+    # Slash keys SHOULD exist
+    assert repo.elements.get("sketch_1/line1") is not None
+    assert repo.elements.get("sketch_1/line1/start") is not None
+    assert repo.elements.get("sketch_1/line1/end") is not None

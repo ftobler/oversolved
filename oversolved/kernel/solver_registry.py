@@ -8,7 +8,6 @@ __all__ = [
     "_post_register",
     "_enrich_geometry",
     "_register_solved_geometry_slash",
-    "_register_solved_geometry",
     "_plane_transform",
     "_register_topology_surfaces",
     "_register_topology_edges",
@@ -68,29 +67,7 @@ def _post_register(
         _register_solved_geometry_slash(
             global_repo, feature_id, feature, feature_result["geometry"]
         )
-        # Also register in legacy format for backward compatibility with plane features
-        # that query via feature_id+entity_id (no slash)
-        if feature.get("kind") == "sketch":
 
-            def to_flat_params(val):
-                if not isinstance(val, dict):
-                    return list(val)
-                if "start" in val and "end" in val:
-                    return list(val.get("start", [])) + list(val.get("end", []))
-                if "center" in val and "radius" in val:
-                    c = val.get("center", [0, 0])
-                    r = val.get("radius", 0)
-                    a0 = val.get("angle_start", 0)
-                    a1 = val.get("angle_end", 0)
-                    return [c[0], c[1], r, a0, a1]
-                if "xy" in val:
-                    return list(val.get("xy", []))
-                return list(val)
-
-            flat_geometry = {
-                k: to_flat_params(v) for k, v in feature_result["geometry"].items()
-            }
-            _register_solved_geometry(global_repo, feature_id, feature, flat_geometry)
     if "plane_transform" in feature_result:
         pt = feature_result["plane_transform"]
         frame = Frame3D.from_plane_transform(pt)
@@ -180,7 +157,6 @@ def _register_solved_geometry_slash(
             continue
         kind = entity["kind"]
         prefix = feature_id + "/" + eid
-        concat_prefix = feature_id + eid
         # Normalize to flat params for registration
         if isinstance(val, dict):
             if kind in ("line", "projected_line"):
@@ -205,10 +181,6 @@ def _register_solved_geometry_slash(
         global_repo.register(
             prefix, {"external_params": params, "kind": kind, "sketch_id": feature_id}
         )
-        global_repo.register(
-            concat_prefix,
-            {"external_params": params, "kind": kind, "sketch_id": feature_id},
-        )
         if kind in ("line", "projected_line"):
             global_repo.register(
                 prefix + "/start",
@@ -218,21 +190,9 @@ def _register_solved_geometry_slash(
                 prefix + "/end",
                 {"external_xy": list(params[2:4]), "sketch_id": feature_id},
             )
-            global_repo.register(
-                concat_prefix + "start",
-                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
-            )
-            global_repo.register(
-                concat_prefix + "end",
-                {"external_xy": list(params[2:4]), "sketch_id": feature_id},
-            )
         elif kind in ("circle", "projected_circle"):
             global_repo.register(
                 prefix + "/center",
-                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
-            )
-            global_repo.register(
-                concat_prefix + "center",
                 {"external_xy": list(params[0:2]), "sketch_id": feature_id},
             )
         elif kind in ("arc", "projected_arc"):
@@ -261,99 +221,9 @@ def _register_solved_geometry_slash(
             global_repo.register(
                 prefix + "/center", {"external_xy": [cx, cy], "sketch_id": feature_id}
             )
-            global_repo.register(
-                concat_prefix + "start",
-                {
-                    "external_xy": [
-                        cx + r * math.cos(math.radians(a_start)),
-                        cy + r * math.sin(math.radians(a_start)),
-                    ],
-                    "sketch_id": feature_id,
-                },
-            )
-            global_repo.register(
-                concat_prefix + "end",
-                {
-                    "external_xy": [
-                        cx + r * math.cos(math.radians(a_end)),
-                        cy + r * math.sin(math.radians(a_end)),
-                    ],
-                    "sketch_id": feature_id,
-                },
-            )
-            global_repo.register(
-                concat_prefix + "center",
-                {"external_xy": [cx, cy], "sketch_id": feature_id},
-            )
         elif kind in ("point", "projected_point"):
             global_repo.register(
                 prefix + "/xy",
-                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
-            )
-            global_repo.register(
-                concat_prefix + "xy",
-                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
-            )
-
-
-def _register_solved_geometry(
-    global_repo: Repository, feature_id: str, feature: dict, geometry: dict
-) -> None:
-    """Register solved geometry from a sketch into the global repo as fixed external references."""
-    entities = {e["id"]: e for e in feature.get("entities", [])}
-    for eid, params in geometry.items():
-        entity = entities.get(eid)
-        if entity is None:
-            continue
-        kind = entity["kind"]
-        global_repo.register(
-            feature_id + eid,
-            {"external_params": params, "kind": kind, "sketch_id": feature_id},
-        )
-        if kind == "line":
-            global_repo.register(
-                feature_id + eid + "start",
-                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
-            )
-            global_repo.register(
-                feature_id + eid + "end",
-                {"external_xy": list(params[2:4]), "sketch_id": feature_id},
-            )
-        elif kind == "circle":
-            global_repo.register(
-                feature_id + eid + "center",
-                {"external_xy": list(params[0:2]), "sketch_id": feature_id},
-            )
-        elif kind == "arc":
-            cx, cy, r = params[0], params[1], params[2]
-            a_start, a_end = params[3], params[4]
-            global_repo.register(
-                feature_id + eid + "start",
-                {
-                    "external_xy": [
-                        cx + r * math.cos(math.radians(a_start)),
-                        cy + r * math.sin(math.radians(a_start)),
-                    ],
-                    "sketch_id": feature_id,
-                },
-            )
-            global_repo.register(
-                feature_id + eid + "end",
-                {
-                    "external_xy": [
-                        cx + r * math.cos(math.radians(a_end)),
-                        cy + r * math.sin(math.radians(a_end)),
-                    ],
-                    "sketch_id": feature_id,
-                },
-            )
-            global_repo.register(
-                feature_id + eid + "center",
-                {"external_xy": [cx, cy], "sketch_id": feature_id},
-            )
-        elif kind == "point":
-            global_repo.register(
-                feature_id + eid + "xy",
                 {"external_xy": list(params[0:2]), "sketch_id": feature_id},
             )
 

@@ -27,7 +27,7 @@ from oversolved.kernel.solver_plane import (  # noqa: F401
 from oversolved.kernel.solver_registry import (  # noqa: F401
     _clear_feature_geometry_registrations,
     _post_register, _enrich_geometry,
-    _register_solved_geometry_slash, _register_solved_geometry,
+    _register_solved_geometry_slash,
     _plane_transform,
     _register_topology_surfaces, _register_topology_edges,
     _register_topology_vertices, _register_sketch_feature,
