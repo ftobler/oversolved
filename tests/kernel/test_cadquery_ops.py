@@ -550,3 +550,32 @@ def test_combined_scale_and_rotation():
     assert abs((xmax - xmin) - 2.0) < 0.01
     assert abs((ymax - ymin) - 2.0) < 0.01
     assert abs((zmax - zmin) - 2.0) < 0.01
+
+
+def test_ensure_cq_from_topods():
+    """_ensure_cq wraps a TopoDS_Shape as a CQ Shape with usable geometry."""
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    from oversolved.kernel.cadquery_ops import _ensure_cq
+
+    topo = BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()
+    cq_shape = _ensure_cq(topo)
+
+    assert cq_shape is not None
+    bb = cq_shape.BoundingBox()
+    assert abs(bb.xlen - 1.0) < 0.01
+    assert abs(bb.ylen - 2.0) < 0.01
+    assert abs(bb.zlen - 3.0) < 0.01
+
+
+def test_ensure_cq_from_cq_shape():
+    """_ensure_cq passed a CQ Shape returns a usable CQ Shape."""
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    from cadquery.occ_impl import shapes as cq_shapes
+    from oversolved.kernel.cadquery_ops import _ensure_cq
+
+    topo = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    original = cq_shapes.Shape.cast(topo)
+    result = _ensure_cq(original)
+
+    assert result is not None
+    assert result.BoundingBox().xlen == pytest.approx(1.0, abs=0.01)

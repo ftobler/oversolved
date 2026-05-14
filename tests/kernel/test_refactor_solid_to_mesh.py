@@ -8,19 +8,19 @@ pytest.importorskip("OCP.BRep", reason="OCP not installed")
 
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
 
+from oversolved.kernel.cadquery_ops import _ensure_cq  # noqa: E402
 from oversolved.kernel.geometry import (  # noqa: E402
     _init_mesh_accumulators,
     _load_shape_from_path,
     _tessellate_and_assemble_faces,
     solid_to_mesh,
-    _ensure_cq_shape,
 )
 
 
 def _make_box_shape():
     """Return a cadquery Shape wrapping a 1x1x1 OCC box."""
     topo = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
-    return _ensure_cq_shape(topo)
+    return _ensure_cq(topo)
 
 
 def test_solid_to_mesh_fallback_is_detectable():

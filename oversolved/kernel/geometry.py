@@ -21,6 +21,7 @@ except ImportError:
 from oversolved.kernel.cadquery_ops import (
     _compute_face_centroid,
     _compute_face_normal,
+    _ensure_cq,
     _ensure_occ,
     _face_sort_key_from_tuple,
     _get_face_surface_type,
@@ -115,11 +116,6 @@ class EdgeModifierResult:
     skipped_count: int
     failed_indices: list[int]
     skipped_indices: list[int]
-
-
-def _ensure_cq_shape(solid: TopoDS_Shape) -> cq_shapes.Shape:
-    """Wrap a TopoDS_Shape in a cadquery Shape."""
-    return cq_shapes.Shape.cast(_ensure_occ(solid))
 
 
 def _validate_mesh(mesh: MeshDict) -> None:
@@ -529,7 +525,7 @@ def _load_shape_from_path(filepath: str) -> cq_shapes.Shape:
         raise ValueError(f"File not found: {filepath!r}")
     ext = os.path.splitext(filepath)[1].lower()
     if ext in (".stl",):
-        return _ensure_cq_shape(stl_file_to_shape(filepath))
+        return _ensure_cq(stl_file_to_shape(filepath))
     if ext in (".step", ".stp", ""):
         return step_file_to_shape(filepath)
     raise ValueError(f"Unsupported file extension {ext!r}: {filepath!r}")
@@ -607,7 +603,7 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
     """
     if isinstance(solid, str):
         solid = _load_shape_from_path(solid)
-    solid = _ensure_cq_shape(solid)
+    solid = _ensure_cq(solid)
 
     topo_shape = _ensure_occ(solid)
     try:
@@ -642,7 +638,7 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
 
     body_id: when set, edge queries are scoped to this body for uniqueness.
     """
-    solid = _ensure_cq_shape(solid)
+    solid = _ensure_cq(solid)
     TWO_PI = 2.0 * math.pi
     CIRCLE_TOL = 1e-4
 
@@ -734,7 +730,7 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
 
 def solid_to_vertices(solid: TopoDS_Shape, created_by: str | None = None, body_id: str | None = None) -> VertexDict:
     """Extract unique B-rep vertices from a cadquery solid."""
-    solid = _ensure_cq_shape(solid)
+    solid = _ensure_cq(solid)
     vertices: list[list[float]] = []
     vertex_queries: list[str] = []
     seen_hashes: set[int] = set()
@@ -786,7 +782,7 @@ def stl_file_to_shape(filepath: str) -> TopoDS_Shape:
 
 def shape_to_step_file(shape: TopoDS_Shape, filepath: str) -> None:
     """Write a shape to a STEP file."""
-    cq_shape = _ensure_cq_shape(shape)
+    cq_shape = _ensure_cq(shape)
     cq_shape.exportStep(filepath)
     if not os.path.isfile(filepath):
         raise ValueError(f"STEP write failed: file not created at {filepath!r}")
@@ -794,7 +790,7 @@ def shape_to_step_file(shape: TopoDS_Shape, filepath: str) -> None:
 
 def shape_to_step_file_buffer(shape: TopoDS_Shape) -> BytesIO:
     """Write a shape to a STEP file in memory."""
-    cq_shape = _ensure_cq_shape(shape)
+    cq_shape = _ensure_cq(shape)
     with tempfile.NamedTemporaryFile(suffix=".step", delete=False) as tmp:
         tmp_path = tmp.name
 
