@@ -15,6 +15,7 @@ try:
 except ImportError:
     cq_shapes = None  # type: ignore
 
+from oversolved.kernel.solver_constants import TOL_MESH_NORMAL
 from oversolved.kernel.cadquery_ops import (
     _compute_face_centroid,
     _compute_face_normal,
@@ -92,7 +93,7 @@ def _validate_mesh(mesh: MeshDict) -> None:
 
     for i, normal in enumerate(normals):
         mag = math.sqrt(sum(x * x for x in normal))
-        if abs(mag - 1.0) > 1e-5:
+        if abs(mag - 1.0) > TOL_MESH_NORMAL:
             raise ValueError(f"normal {i} not unit length: mag={mag}")
 
     if triangle_to_face:

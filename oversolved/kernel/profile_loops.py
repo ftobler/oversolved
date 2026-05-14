@@ -1,6 +1,7 @@
 """Pure-Python utilities for classifying 2D profile loops before OCC extrusion."""
 
 import math
+from oversolved.kernel.solver_constants import TOL_NEAR_ZERO_AREA
 
 
 def _arc_midpoint(e: dict) -> list[float] | None:
@@ -87,7 +88,7 @@ def _loop_centroid(loop: list[dict]) -> list[float]:
         cx += (pts[i][0] + pts[j][0]) * cross
         cy += (pts[i][1] + pts[j][1]) * cross
     area /= 2.0
-    if abs(area) < 1e-12:
+    if abs(area) < TOL_NEAR_ZERO_AREA:
         return [pts[0][0], pts[0][1]]
     cx /= 6.0 * area
     cy /= 6.0 * area

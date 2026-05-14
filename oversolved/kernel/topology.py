@@ -36,6 +36,9 @@ import logging
 import math
 from typing import Any, TypedDict
 from oversolved.kernel.query import make_ancestry_query, emit_wire, absolute
+from oversolved.kernel.solver_constants import (
+    TOL_LOOP_CLOSURE, TOL_TOPOLOGY_EPS, TOL_TOPOLOGY_MERGE, TOL_TOPOLOGY_SPLIT
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +52,10 @@ class TopologyDict(TypedDict):
     surfaces: list[dict]
 
 
-_EPS = 1e-9  # general tolerance for point coincidence
+_EPS = TOL_TOPOLOGY_EPS
 # _MERGE > _EPS: a point pair at ~5e-8 apart merges to one vertex but is not treated as intersecting
-_MERGE = 1e-7  # vertex merge tolerance
-_SPLIT_EPS = 1e-7  # parametric split tolerance for deduplicating split positions
+_MERGE = TOL_TOPOLOGY_MERGE
+_SPLIT_EPS = TOL_TOPOLOGY_SPLIT
 
 
 # ─── Geometry helpers ───
@@ -742,7 +745,7 @@ def _build_standalone_surfaces(
 
     Concentric circles produce nested surfaces (annuli).
     """
-    _CENTER_TOL = 1e-6
+    _CENTER_TOL = TOL_LOOP_CLOSURE
     surfaces: list[dict[str, Any]] = []
     surf_count = surfaces_so_far
 

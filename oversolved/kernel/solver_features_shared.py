@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from OCP.gp import gp_Trsf
 from oversolved.kernel.query import Repository, _parse_ancestry
 from oversolved.kernel.types3d import Body, Frame3D
-from oversolved.kernel.solver_constants import _ARC_SEGMENTS
+from oversolved.kernel.solver_constants import _ARC_SEGMENTS, TOL_LOOP_CLOSURE
 
 try:
     import oversolved.kernel.geometry  # noqa: F401  # pre-warm to avoid concurrent-import race
@@ -80,7 +80,7 @@ def _extract_profile_loops(
     if not surfaces:
         return []
 
-    TOL = 1e-6
+    TOL = TOL_LOOP_CLOSURE
 
     def dist2d(a: list, b: list) -> float:
         return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
