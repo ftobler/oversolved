@@ -494,14 +494,59 @@ def test_make_arc_edge_tiny_span_raises():
         make_arc_edge([0, 0, 0], 1.0, [0, 0, 1], [1, 0, 0], 0.0, 1e-7)
 
 
-def test_apply_transform_shape_raises_on_missing_direction():
-    """Non-zero rotation angle without axis direction must raise ValueError."""
+def test_rotation_z_default():
+    """90-degree rotation with no axis direction defaults to Z-axis."""
     from oversolved.kernel.cadquery_ops import apply_transform_shape
-    from cadquery.occ_impl.shapes import Face, Solid
-    from cadquery.occ_impl.geom import Vector as CQVector
-    solid = Solid.extrudeLinear(
-        Face.makePlane(1, 1, (0, 0, 0)),
-        CQVector(0, 0, 1),
-    )
-    with pytest.raises(ValueError, match="rotation_axis_direction"):
-        apply_transform_shape(solid, rotation_angle_deg=45.0, rotation_axis_direction=None)
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    box = BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()
+    result = apply_transform_shape(box, rotation_angle_deg=90.0)
+    from OCP.Bnd import Bnd_Box
+    from OCP.BRepBndLib import BRepBndLib
+    bnd = Bnd_Box()
+    BRepBndLib.Add_s(result, bnd)
+    xmin, ymin, zmin, xmax, ymax, zmax = bnd.Get()
+    # Original 1x2 footprint rotated 90deg: X extent ~2, Y extent ~1, Z ~3
+    assert abs((xmax - xmin) - 2.0) < 0.01
+    assert abs((ymax - ymin) - 1.0) < 0.01
+    assert abs((zmax - zmin) - 3.0) < 0.01
+
+
+def test_rotation_explicit_axis():
+    """90-degree rotation around Y-axis maps Z extent to X."""
+    from oversolved.kernel.cadquery_ops import apply_transform_shape
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    box = BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()
+    result = apply_transform_shape(box, rotation_axis_direction=[0, 1, 0], rotation_angle_deg=90.0)
+    from OCP.Bnd import Bnd_Box
+    from OCP.BRepBndLib import BRepBndLib
+    bnd = Bnd_Box()
+    BRepBndLib.Add_s(result, bnd)
+    xmin, ymin, zmin, xmax, ymax, zmax = bnd.Get()
+    # Z extent (3) becomes X, X extent (1) becomes Z
+    assert abs((xmax - xmin) - 3.0) < 0.01
+    assert abs((zmax - zmin) - 1.0) < 0.01
+
+
+def test_no_rotation_zero_angle():
+    """Zero angle with no axis direction must not raise."""
+    from oversolved.kernel.cadquery_ops import apply_transform_shape
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    result = apply_transform_shape(box, rotation_angle_deg=0.0)
+    assert result is not None
+
+
+def test_combined_scale_and_rotation():
+    """scale=2 + 90-degree Z rotation produces 2x2x2 result."""
+    from oversolved.kernel.cadquery_ops import apply_transform_shape
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    result = apply_transform_shape(box, rotation_angle_deg=90.0, scale=2.0)
+    from OCP.Bnd import Bnd_Box
+    from OCP.BRepBndLib import BRepBndLib
+    bnd = Bnd_Box()
+    BRepBndLib.Add_s(result, bnd)
+    xmin, ymin, zmin, xmax, ymax, zmax = bnd.Get()
+    assert abs((xmax - xmin) - 2.0) < 0.01
+    assert abs((ymax - ymin) - 2.0) < 0.01
+    assert abs((zmax - zmin) - 2.0) < 0.01

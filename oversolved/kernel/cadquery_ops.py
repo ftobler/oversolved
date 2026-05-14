@@ -285,6 +285,8 @@ def apply_transform_shape(
 
     Each component is skipped when it would be identity (scale==1, angle==0,
     translation==None) to avoid unnecessary B-rep invalidation.
+    When rotation_angle_deg is set and rotation_axis_direction is None, defaults
+    to Z-axis [0, 0, 1].
     Returns a new cq Shape (or TopoDS_Shape matching input type).
     """
     import math
@@ -295,14 +297,11 @@ def apply_transform_shape(
         sc = ocp_make_scale_trsf(scale_center or (0, 0, 0), scale)
         combined.Multiply(sc)
 
-    if rotation_angle_deg and not rotation_axis_direction:
-        raise ValueError(
-            "apply_transform_shape: rotation_angle_deg is set but rotation_axis_direction is None"
-        )
-    if rotation_angle_deg and rotation_axis_direction:
+    if rotation_angle_deg:
+        axis_direction = rotation_axis_direction or [0, 0, 1]
         rot = ocp_make_rotation_trsf(
             list(rotation_axis_origin or (0, 0, 0)),
-            list(rotation_axis_direction),
+            list(axis_direction),
             math.radians(rotation_angle_deg),
         )
         combined.Multiply(rot)
