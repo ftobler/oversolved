@@ -16,6 +16,7 @@ import RightClickMenu from '../components/RightClickMenu'
 import type { ContextMenuItem } from '../components/RightClickMenu'
 import { Sidebar } from '../components/Sidebar'
 import FooterMeasurementDisplay from '../components/FooterMeasurementDisplay'
+import WsStatusIndicator from '../components/WsStatusIndicator'
 import ExportDialog, { type ExportFormat } from '../components/ExportDialog'
 import ShareDialog from '../components/ShareDialog'
 import LoadingOverlay from '../components/LoadingOverlay'
@@ -1229,6 +1230,7 @@ useEffect(() => {
       </div>
       <footer className="doc-footer">
         <p>Copyright 2026 - Oversolved</p>
+        <WsStatusIndicator />
         <FooterMeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
         <div className="debug-buttons">
           {user?.is_admin && (

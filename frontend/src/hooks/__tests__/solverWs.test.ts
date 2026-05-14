@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { solverWs } from '../solverWs'
+import { useSolverStore } from '../../stores/solverStore'
 
 class MockWebSocket {
   static CONNECTING = 0
@@ -248,6 +249,51 @@ describe('SolverWs', () => {
 
       await expect(promise).rejects.toThrow('WebSocket connection timed out')
       expect(ws.readyState).toBe(WebSocket.CLOSED)
+    })
+  })
+
+  describe('connection state tracking', () => {
+    it('sets status to connecting when connect() is called', () => {
+      solverWs.connect()
+      expect(useSolverStore.getState().wsStatus).toBe('connecting')
+    })
+
+    it('sets status to open on ws.onopen', () => {
+      solverWs.connect()
+      getLastWs().onopen?.(new Event('open'))
+      expect(useSolverStore.getState().wsStatus).toBe('open')
+    })
+
+    it('sets status to closed on ws.onclose', () => {
+      solverWs.connect()
+      getLastWs().onopen?.(new Event('open'))
+      getLastWs().onclose?.(new Event('close'))
+      expect(useSolverStore.getState().wsStatus).toBe('closed')
+    })
+
+    it('sets status to closed on disconnect()', () => {
+      solverWs.connect()
+      getLastWs().onopen?.(new Event('open'))
+      solverWs.disconnect()
+      expect(useSolverStore.getState().wsStatus).toBe('closed')
+    })
+
+    it('sets status to closed when connection times out', async () => {
+      const ws = new MockWebSocket('ws://test/')
+      ws.readyState = WebSocket.CONNECTING
+      const wsCtor = vi.fn(() => ws) as any
+      wsCtor.CONNECTING = 0
+      wsCtor.OPEN = 1
+      wsCtor.CLOSED = 3
+      vi.stubGlobal('WebSocket', wsCtor)
+      vi.useFakeTimers()
+
+      solverWs.connect()
+      expect(useSolverStore.getState().wsStatus).toBe('connecting')
+
+      vi.advanceTimersByTime(15_000)
+
+      expect(useSolverStore.getState().wsStatus).toBe('closed')
     })
   })
 

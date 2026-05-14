@@ -1117,6 +1117,36 @@
   margin: 0;
 }
 
+.ws-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #666;
+  font-size: 12px;
+}
+
+.ws-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ws-status-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.ws-status-btn:disabled {
+  cursor: default;
+  text-decoration: none;
+}
+
 .debug-buttons {
   display: flex;
   align-items: center;

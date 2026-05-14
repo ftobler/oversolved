@@ -1,4 +1,5 @@
 import type { GeometryHeader } from '../utils/geometryUnpack'
+import { useSolverStore } from '../stores/solverStore'
 
 export type GeometryListener = (msgId: number, header: GeometryHeader, buffer: ArrayBuffer, jsonHeaderLen: number) => void
 
@@ -44,6 +45,7 @@ class SolverWs {
       this.ws = null;
     }
     this._clearConnectTimeout();
+    useSolverStore.getState().setWsStatus('connecting');
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}/api/solver-ws`);
     ws.binaryType = 'arraybuffer';
@@ -55,11 +57,13 @@ class SolverWs {
       this._rejectAll('WebSocket connection timed out');
       this.ws = null;
       ws.close();
+      useSolverStore.getState().setWsStatus('closed');
     }, 15_000);
 
     ws.onopen = () => {
       if (this.ws !== ws) return;
       this._clearConnectTimeout();
+      useSolverStore.getState().setWsStatus('open');
       for (const msg of this.pendingMessages) {
         ws.send(msg);
       }
@@ -94,6 +98,7 @@ class SolverWs {
       this._clearConnectTimeout();
       this._rejectAll('WebSocket closed');
       this.ws = null;
+      useSolverStore.getState().setWsStatus('closed');
     };
   }
 
@@ -136,6 +141,7 @@ class SolverWs {
     this.ws?.close();
     this.ws = null;
     this._rejectAll('WebSocket closed');
+    useSolverStore.getState().setWsStatus('closed');
   }
 }
 
