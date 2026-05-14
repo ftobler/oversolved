@@ -621,7 +621,12 @@ def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> di
     initial = dict(feature.get("initial", {}))
     constraints_base = list(feature.get("constraints", []))
 
-    _process_projected_entities(feature, global_repo, initial, constraints_base)
+    projected_ids = _process_projected_entities(feature, global_repo, initial, constraints_base)
+    if projected_ids:
+        logger.debug(
+            "sketch %s: projected entity IDs: %s",
+            feature.get("id", "?"), projected_ids,
+        )
 
     # Inject the projected origin point -- always present at (0, 0), not user-editable.
     entities[ORIGIN_ID] = {"id": ORIGIN_ID, "kind": "point", "projected": True}
