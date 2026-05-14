@@ -5,7 +5,7 @@ These tests cover fixes for the following bug reports:
 - failed_ghost_constraint_20260403_233849
 - constraint_between_two_sketches_20260403_233102
 """
-from oversolved.kernel.solver import _solve_sketch, _post_register
+from oversolved.kernel.solver import _solve_sketch, _post_register, _filter_local_constraints
 from oversolved.kernel.query import Repository
 from oversolved.kernel.solver import _register_solved_geometry_slash
 
@@ -216,3 +216,49 @@ cleared so downstream cross-sketch constraints are garbage-collected."""
         assert 'c_dist' not in sketch2_result['constraints'], \
             "Cross-sketch constraint to deleted entity should be garbage collected"
         assert sketch2_result['status'] != 'exception'
+
+
+class TestFilterLocalConstraintsNormalAngle:
+    """Test that normal/angle constraints are validated like other local-entity constraints."""
+
+    _plane: dict = {"origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 1, 0]}
+    _entities: dict = {"line1": {}}
+
+    def _resolve(self, val):
+        if isinstance(val, dict):
+            return val
+        return None
+
+    def test_filter_local_constraints_malformed_normal(self):
+        """normal constraint with plain-string target is filtered out."""
+        constraints = [{"id": "c1", "kind": "normal", "target": "some_unresolved_string"}]
+        kept, unresolved = _filter_local_constraints(
+            constraints, self._entities, self._resolve, self._plane
+        )
+        assert kept == []
+
+    def test_filter_local_constraints_malformed_angle(self):
+        """angle constraint with plain-string target is filtered out."""
+        constraints = [{"id": "c1", "kind": "angle", "target": "some_unresolved_string"}]
+        kept, unresolved = _filter_local_constraints(
+            constraints, self._entities, self._resolve, self._plane
+        )
+        assert kept == []
+
+    def test_filter_local_constraints_valid_normal(self):
+        """Well-formed normal constraint with resolved dict target passes through."""
+        constraints = [{"id": "c1", "kind": "normal", "target": {"entity": "line1"}}]
+        kept, _ = _filter_local_constraints(
+            constraints, self._entities, self._resolve, self._plane
+        )
+        assert len(kept) == 1
+        assert kept[0]["id"] == "c1"
+
+    def test_filter_local_constraints_valid_angle(self):
+        """Well-formed angle constraint with resolved dict target passes through."""
+        constraints = [{"id": "c1", "kind": "angle", "target": {"entity": "line1"}}]
+        kept, _ = _filter_local_constraints(
+            constraints, self._entities, self._resolve, self._plane
+        )
+        assert len(kept) == 1
+        assert kept[0]["id"] == "c1"

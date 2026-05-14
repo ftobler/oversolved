@@ -505,6 +505,8 @@ def _filter_local_constraints(
             "concentric",
             "equal_length",
             "tangent",
+            "normal",
+            "angle",
         }
         if kind not in needs_local_entity:
             return True
