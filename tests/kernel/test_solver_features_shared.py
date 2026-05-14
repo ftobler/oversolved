@@ -76,6 +76,7 @@ def test_ancestry_order_three_ids() -> None:
 
 def test_extract_loops_from_occ_face_null_shape_raises():
     """A null TopoDS_Shape raises ValueError rather than segfaulting."""
+    pytest.importorskip("OCP.TopoDS")
     from OCP.TopoDS import TopoDS_Shape
     from oversolved.kernel.solver_features_shared import _extract_loops_from_occ_face
 
