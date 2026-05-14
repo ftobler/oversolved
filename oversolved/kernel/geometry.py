@@ -31,6 +31,18 @@ from oversolved.kernel.cadquery_ops import (
     make_wire,
     to_cq_plane,
 )
+from oversolved.kernel.ocp_ops import (
+    ocp_chamfer_factory,
+    ocp_collect_edge_hashes,
+    ocp_explore_edges,
+    ocp_fillet_factory,
+    ocp_make_rotation_trsf,
+    ocp_make_translation_trsf,
+    ocp_mesh_shape,
+    ocp_read_stl,
+    ocp_transform_copy,
+    ocp_write_stl,
+)
 from oversolved.kernel.profile_loops import classify_loops
 
 logger = logging.getLogger(__name__)
@@ -368,11 +380,9 @@ def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None
 
     # Pre-compute triangulation with absolute linear deflection to match the
     # old OCP behavior; face.tessellate() will reuse it when tolerance matches.
-    from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
-
     topo_shape = _ensure_occ(solid)
     try:
-        BRepMesh_IncrementalMesh(topo_shape, 0.1, False, 0.1)
+        ocp_mesh_shape(topo_shape, 0.1, 0.1)
     except Exception as exc:
         logger.warning("solid_to_mesh: BRepMesh_IncrementalMesh failed: %s", exc)
 
@@ -662,14 +672,7 @@ def stl_file_to_shape(filepath: str) -> Any:
 
     Uses OCP StlAPI_Reader directly since cadquery does not provide an STL importer.
     """
-    from OCP.StlAPI import StlAPI_Reader  # noqa: PLC0415
-    from OCP.TopoDS import TopoDS_Shape  # noqa: PLC0415
-
-    reader = StlAPI_Reader()
-    shape = TopoDS_Shape()
-    if not reader.Read(shape, filepath):
-        raise ValueError(f"STL read failed for {filepath!r}")
-    return shape
+    return ocp_read_stl(filepath)
 
 
 def shape_to_step_file(shape: Any, filepath: str) -> None:
@@ -707,21 +710,11 @@ def shape_to_stl_file_buffer(shape: Any, deflection: float = 0.5, angular_deflec
         deflection: Linear deflection for mesh tessellation (default 0.5).
         angular_deflection: Angular deflection for mesh tessellation (default 0.3 radians).
     """
-    from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
-    from OCP.StlAPI import StlAPI_Writer  # noqa: PLC0415
-
     topo_shape = _ensure_occ(shape)
-    mesh = BRepMesh_IncrementalMesh(topo_shape, deflection, False, angular_deflection, True)
-    mesh.Perform()
-
     with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
         tmp_path = tmp.name
-
     try:
-        writer = StlAPI_Writer()
-        writer.ASCIIMode = True
-        writer.Write(topo_shape, tmp_path)
-
+        ocp_write_stl(topo_shape, tmp_path, deflection, angular_deflection)
         with open(tmp_path, "rb") as f:
             buffer = BytesIO(f.read())
         buffer.seek(0)
@@ -739,16 +732,7 @@ def shape_to_stl_file(shape: Any, filepath: str, deflection: float = 0.5, angula
         deflection: Linear deflection for mesh tessellation (default 0.5).
         angular_deflection: Angular deflection for mesh tessellation (default 0.3 radians).
     """
-    from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
-    from OCP.StlAPI import StlAPI_Writer  # noqa: PLC0415
-
-    topo_shape = _ensure_occ(shape)
-    mesh = BRepMesh_IncrementalMesh(topo_shape, deflection, False, angular_deflection, True)
-    mesh.Perform()
-
-    writer = StlAPI_Writer()
-    writer.ASCIIMode = True
-    writer.Write(topo_shape, filepath)
+    ocp_write_stl(_ensure_occ(shape), filepath, deflection, angular_deflection)
 
 
 def _apply_edge_modifier(
@@ -762,10 +746,6 @@ def _apply_edge_modifier(
     maker_factory: (topo_shape) -> maker object; exception returns original shape.
     add_edge_fn: (maker, topo_edge) -> None; exception skips that edge.
     """
-    from OCP.TopAbs import TopAbs_EDGE  # noqa: PLC0415
-    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
-    from OCP.TopoDS import TopoDS  # noqa: PLC0415
-
     topo_shape = _ensure_occ(shape)
 
     # Defensive: refuse to operate on a null shape.
@@ -779,11 +759,7 @@ def _apply_edge_modifier(
     shape_edge_set: set[int] | None = None
     if edges is not None and len(edges) > 0:
         try:
-            shape_edge_set = set()
-            explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
-            while explorer.More():
-                shape_edge_set.add(explorer.Current().HashCode(1 << 24))
-                explorer.Next()
+            shape_edge_set = ocp_collect_edge_hashes(topo_shape)
         except Exception:
             shape_edge_set = None
 
@@ -798,7 +774,7 @@ def _apply_edge_modifier(
             try:
                 # Skip edges that no longer exist on the shape.
                 if shape_edge_set is not None:
-                    edge_hash = edge.HashCode(1 << 24)
+                    edge_hash = hash(edge)
                     if edge_hash not in shape_edge_set:
                         continue
             except Exception:
@@ -810,12 +786,9 @@ def _apply_edge_modifier(
                 continue
     else:
         try:
-            explorer = TopExp_Explorer(topo_shape, TopAbs_EDGE)
-            while explorer.More():
-                edge = TopoDS.Edge_s(explorer.Current())
+            for edge in ocp_explore_edges(topo_shape):
                 add_edge_fn(maker, edge)
                 edge_count += 1
-                explorer.Next()
         except Exception:
             return shape
 
@@ -834,10 +807,9 @@ def apply_fillet(shape: Any, radius: float, edges: list[Any] | None = None) -> A
 
     Returns the filleted shape, or the original shape if filleting fails.
     """
-    from OCP.BRepFilletAPI import BRepFilletAPI_MakeFillet  # noqa: PLC0415
     return _apply_edge_modifier(
         shape, edges,
-        maker_factory=BRepFilletAPI_MakeFillet,
+        maker_factory=ocp_fillet_factory,
         add_edge_fn=lambda maker, e: maker.Add(radius, e),
     )
 
@@ -848,8 +820,6 @@ def apply_chamfer(shape: Any, distance: float, kind: str = "distance", angle: fl
     kind: "distance" or "angle_distance".
     Returns the chamfered shape, or the original shape if chamfering fails.
     """
-    from OCP.BRepFilletAPI import BRepFilletAPI_MakeChamfer  # noqa: PLC0415
-
     def _add(maker: Any, edge: Any) -> None:
         if kind == "angle_distance":
             maker.AddDA(distance, angle, edge)
@@ -858,31 +828,21 @@ def apply_chamfer(shape: Any, distance: float, kind: str = "distance", angle: fl
 
     return _apply_edge_modifier(
         shape, edges,
-        maker_factory=BRepFilletAPI_MakeChamfer,
+        maker_factory=ocp_chamfer_factory,
         add_edge_fn=_add,
     )
 
 
 def transform_copy(shape: Any, trsf: Any) -> Any:
     """Return a new shape that is `shape` with OCC gp_Trsf applied."""
-    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform  # noqa: PLC0415
-    builder = BRepBuilderAPI_Transform(_ensure_occ(shape), trsf, True)  # True = copy
-    builder.Build()
-    return builder.Shape()
+    return ocp_transform_copy(_ensure_occ(shape), trsf)
 
 
 def make_translation_trsf(dx: float, dy: float, dz: float) -> Any:
-    from OCP.gp import gp_Trsf, gp_Vec  # noqa: PLC0415
-    t = gp_Trsf()
-    t.SetTranslation(gp_Vec(dx, dy, dz))
-    return t
+    return ocp_make_translation_trsf(dx, dy, dz)
 
 
 def make_rotation_trsf(
     origin: list[float], direction: list[float], angle_rad: float
 ) -> Any:
-    from OCP.gp import gp_Trsf, gp_Ax1, gp_Pnt, gp_Dir  # noqa: PLC0415
-    ax = gp_Ax1(gp_Pnt(*origin), gp_Dir(*direction))
-    t = gp_Trsf()
-    t.SetRotation(ax, angle_rad)
-    return t
+    return ocp_make_rotation_trsf(origin, direction, angle_rad)

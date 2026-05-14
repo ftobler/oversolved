@@ -16,6 +16,13 @@ from oversolved.kernel.cadquery_ops import (
     _ensure_cq, _ensure_occ,
     _face_sort_key, _triangle_area,
 )
+from oversolved.kernel.ocp_ops import (
+    ocp_count_solids,
+    ocp_curve_info,
+    ocp_explore_solids,
+    ocp_extract_face_loops,
+    ocp_mesh_shape,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -193,144 +200,11 @@ def _register_top_face(
 def _extract_loops_from_occ_face(
     shape: Any, face_index: int
 ) -> tuple[list[list[dict]], dict]:
-    from OCP.BRepAdaptor import BRepAdaptor_Curve2d, BRepAdaptor_Surface
-    from OCP.BRepTools import BRepTools, BRepTools_WireExplorer
-    from OCP.GeomAbs import GeomAbs_Plane, GeomAbs_Circle
-    from OCP.TopAbs import TopAbs_FACE, TopAbs_WIRE, TopAbs_REVERSED
-    from OCP.TopExp import TopExp_Explorer
-    from OCP.TopoDS import TopoDS, TopoDS_Face
-
     topo_shape = _ensure_occ(shape)
-
-    try:
-        cq_shape = shape if hasattr(shape, "faces") else None
-        if cq_shape is not None:
-            faces = list(cq_shape.faces())
-
-            faces.sort(key=_face_sort_key)
-            if face_index >= len(faces):
-                raise ValueError(f"face_index {face_index} out of range")
-            target_face = faces[face_index]
-            occ_face = TopoDS_Face()
-            occ_face.TShape(target_face.wrapped.TShape())
-            occ_face.Location(target_face.wrapped.Location())
-            occ_face.Orientation(target_face.wrapped.Orientation())
-        else:
-            explorer = TopExp_Explorer(topo_shape, TopAbs_FACE)
-            for _ in range(face_index):
-                if not explorer.More():
-                    raise ValueError(f"face_index {face_index} out of range")
-                explorer.Next()
-            if not explorer.More():
-                raise ValueError(f"face_index {face_index} out of range")
-            face_shape = explorer.Current()
-            occ_face = TopoDS_Face()
-            occ_face.TShape(face_shape.TShape())
-            occ_face.Location(face_shape.Location())
-            occ_face.Orientation(face_shape.Orientation())
-    except Exception:
-        explorer = TopExp_Explorer(topo_shape, TopAbs_FACE)
-        for _ in range(face_index):
-            if not explorer.More():
-                raise ValueError(f"face_index {face_index} out of range")
-            explorer.Next()
-        if not explorer.More():
-            raise ValueError(f"face_index {face_index} out of range")
-        face_shape = explorer.Current()
-        occ_face = TopoDS_Face()
-        occ_face.TShape(face_shape.TShape())
-        occ_face.Location(face_shape.Location())
-        occ_face.Orientation(face_shape.Orientation())
-
-    adaptor = BRepAdaptor_Surface(occ_face, True)
-    if adaptor.GetType() != GeomAbs_Plane:
-        raise ValueError("Only flat faces can be used as extrude profiles")
-
-    gp_pln = adaptor.Plane()
-    ax3 = gp_pln.Position()
-    loc = ax3.Location()
-    xdir = ax3.XDirection()
-    ydir = ax3.YDirection()
-    ndir = ax3.Direction()
-
-    effective_plane: dict = {
-        "origin": [loc.X(), loc.Y(), loc.Z()],
-        "x_axis": [xdir.X(), xdir.Y(), xdir.Z()],
-        "y_axis": [ydir.X(), ydir.Y(), ydir.Z()],
-        "normal": [ndir.X(), ndir.Y(), ndir.Z()],
-    }
-
-    outer_wire = BRepTools.OuterWire_s(occ_face)
-    all_wires = [outer_wire]
-    wire_exp = TopExp_Explorer(occ_face, TopAbs_WIRE)
-    while wire_exp.More():
-        w = TopoDS.Wire_s(wire_exp.Current())
-        if not w.IsSame(outer_wire):
-            all_wires.append(w)
-        wire_exp.Next()
-
-    loops: list[list[dict]] = []
-    for wire in all_wires:
-        loop: list[dict] = []
-        we = BRepTools_WireExplorer(wire, occ_face)
-        while we.More():
-            edge = we.Current()
-            try:
-                c2d = BRepAdaptor_Curve2d(edge, occ_face)
-                first = c2d.FirstParameter()
-                last = c2d.LastParameter()
-                # BRepAdaptor_Curve2d returns PCurve natural direction; for a
-                # reversed edge the traversal goes last→first, so swap.
-                if edge.Orientation() == TopAbs_REVERSED:
-                    first, last = last, first
-                curve_type = c2d.GetType()
-                if curve_type == GeomAbs_Circle:
-                    circ = c2d.Circle()
-                    center = circ.Location()
-                    radius = circ.Radius()
-                    TWO_PI = 2.0 * math.pi
-                    span = last - first
-                    is_full = abs(abs(span) - TWO_PI) < 1e-6
-                    if is_full:
-                        loop.append({
-                            "kind": "arc",
-                            "center": [center.X(), center.Y()],
-                            "radius": radius,
-                            "angle_start_deg": 0.0,
-                            "angle_end_deg": 360.0,
-                            "ccw": span >= 0,
-                        })
-                    else:
-                        p_start = c2d.Value(first)
-                        p_end = c2d.Value(last)
-                        cx, cy = center.X(), center.Y()
-                        a0 = math.atan2(p_start.Y() - cy, p_start.X() - cx)
-                        a1 = math.atan2(p_end.Y() - cy, p_end.X() - cx)
-                        span_ccw = (a1 - a0 + 2 * math.pi) % (2 * math.pi)
-                        arc_ccw = span_ccw < math.pi
-                        loop.append({
-                            "kind": "arc",
-                            "center": [cx, cy],
-                            "radius": radius,
-                            "angle_start_deg": math.degrees(a0),
-                            "angle_end_deg": math.degrees(a1),
-                            "ccw": arc_ccw,
-                        })
-                else:
-                    p_s = c2d.Value(first)
-                    p_e = c2d.Value(last)
-                    loop.append({
-                        "kind": "line",
-                        "start": [p_s.X(), p_s.Y()],
-                        "end": [p_e.X(), p_e.Y()],
-                    })
-            except Exception:
-                logger.debug("Failed to extract 2D curve from edge in face extraction")
-            we.Next()
-        if loop:
-            loops.append(loop)
-
-    return loops, effective_plane
+    cq_faces_sorted = None
+    if hasattr(shape, "faces"):
+        cq_faces_sorted = sorted(list(shape.faces()), key=_face_sort_key)
+    return ocp_extract_face_loops(topo_shape, cq_faces_sorted, face_index)
 
 
 def _resolve_face_index_via_hash(
@@ -346,7 +220,6 @@ def _resolve_face_index_via_hash(
 
     from oversolved.kernel.geom_hash import face_geometry_hash
     from oversolved.kernel.query import make_ancestry_query
-    from OCP.BRepMesh import BRepMesh_IncrementalMesh
 
     faces = list(shape.faces())
 
@@ -359,7 +232,7 @@ def _resolve_face_index_via_hash(
     normal = _compute_face_normal(target_face)
 
     try:
-        BRepMesh_IncrementalMesh(_ensure_occ(shape), 0.1, False, 0.1)
+        ocp_mesh_shape(_ensure_occ(shape), 0.1, 0.1)
         verts, idxs = target_face.tessellate(0.1)
     except Exception:
         return None
@@ -523,17 +396,11 @@ def _collect_extrude_loops(
 
 
 def _split_compound(shape) -> list:
-    from OCP.TopAbs import TopAbs_SOLID
-    from OCP.TopExp import TopExp_Explorer
-    from OCP.TopoDS import TopoDS
     from cadquery.occ_impl.shapes import Shape as CQShape
-
-    explorer = TopExp_Explorer(_ensure_occ(shape), TopAbs_SOLID)
-    solids = []
-    while explorer.More():
-        solids.append(CQShape.cast(TopoDS.Solid_s(explorer.Current())))
-        explorer.Next()
-    return solids if len(solids) > 1 else [shape]
+    raw_solids = ocp_explore_solids(_ensure_occ(shape))
+    if len(raw_solids) > 1:
+        return [CQShape.cast(s) for s in raw_solids]
+    return [shape]
 
 
 # ── Feature solvers ──
@@ -674,19 +541,11 @@ def _apply_body_operation(
                 except Exception as exc:
                     raise ValueError(f"{op_name}: add operation failed: {exc}")
                 if merge_target:
-                    from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND
-                    from OCP.TopExp import TopExp_Explorer
-                    if new_shape.wrapped.ShapeType() == TopAbs_COMPOUND:
-                        explorer = TopExp_Explorer(new_shape.wrapped, TopAbs_SOLID)
-                        solid_count = 0
-                        while explorer.More():
-                            solid_count += 1
-                            explorer.Next()
-                        if solid_count > 1:
-                            raise ValueError(
-                                f"{op_name}: add would create island shape "
-                                "not touching target body"
-                            )
+                    if ocp_count_solids(_ensure_occ(new_shape)) > 1:
+                        raise ValueError(
+                            f"{op_name}: add would create island shape "
+                            "not touching target body"
+                        )
                 existing_body.shape = new_shape
                 existing_body.modified_by.append(feature_id)
                 fused = True
@@ -1087,8 +946,6 @@ def _solve_import_step(
 def _resolve_fillet_edges(body, edge_queries):
     from oversolved.kernel.geom_hash import edge_geometry_hash
     from oversolved.kernel.query import make_ancestry_query, _parse_ancestry
-    from OCP.BRepAdaptor import BRepAdaptor_Curve  # noqa: PLC0415
-    from OCP.GeomAbs import GeomAbs_Line, GeomAbs_Circle  # noqa: PLC0415
 
     if body.shape is None or not edge_queries:
         return []
@@ -1107,21 +964,18 @@ def _resolve_fillet_edges(body, edge_queries):
         gt = edge.geomType()
         edge_types.append("straightedge" if gt == "LINE" else "edge")
 
+        curve = ocp_curve_info(wrapped)
         ed: dict = {"kind": gt.lower()}
-        adapt = BRepAdaptor_Curve(wrapped)
-        atype = adapt.GetType()
-        if atype == GeomAbs_Line:
+        if curve["type"] == "line":
             sp = edge.startPoint()
             ep = edge.endPoint()
             ed["start"] = [sp.x, sp.y, sp.z]
             ed["end"] = [ep.x, ep.y, ep.z]
-        elif atype == GeomAbs_Circle:
-            circ = adapt.Circle()
-            c = circ.Location()
-            ed["center"] = [c.X(), c.Y(), c.Z()]
-            ed["radius"] = circ.Radius()
-            ed["angle_start"] = adapt.FirstParameter()
-            ed["angle_end"] = adapt.LastParameter()
+        elif curve["type"] == "circle":
+            ed["center"] = curve["center"]
+            ed["radius"] = curve["radius"]
+            ed["angle_start"] = curve["angle_start"]
+            ed["angle_end"] = curve["angle_end"]
         else:
             n_pts = 16
             pts = []

@@ -27,6 +27,20 @@ except ImportError:
     CQPlane = None  # type: ignore[assignment,misc]
     CQVector = None  # type: ignore[assignment,misc]
 
+from oversolved.kernel.ocp_ops import (
+    ocp_face_uv_bounds,
+    ocp_make_arc_edge,
+    ocp_make_circle,
+    ocp_make_cylinder,
+    ocp_make_edge_from_circle,
+    ocp_make_mirror_trsf,
+    ocp_revolve,
+    ocp_identity_trsf,
+    ocp_make_scale_trsf,
+    ocp_make_rotation_trsf,
+    ocp_make_translation_trsf,
+    ocp_transform_copy,
+)
 
 import math as _math
 
@@ -126,20 +140,12 @@ def make_arc_edge(
         raise ValueError(f"make_arc_edge: degenerate zero-span arc (span={span})")
     is_full = abs(span - 2 * math.pi) < 1e-6
 
-    from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt, gp_Circ  # noqa: PLC0415
-    ax2 = gp_Ax2(gp_Pnt(*c.toTuple()), gp_Dir(*n.toTuple()), gp_Dir(*x.toTuple()))
-    circle = gp_Circ(ax2, radius)
+    circle = ocp_make_circle(c.toTuple(), n.toTuple(), x.toTuple(), radius)
 
     if is_full:
-        from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge  # noqa: PLC0415
-        builder = BRepBuilderAPI_MakeEdge(circle)
-        return cq_shapes.Edge(builder.Edge())
+        return cq_shapes.Edge(ocp_make_edge_from_circle(circle))
 
-    from OCP.GC import GC_MakeArcOfCircle  # noqa: PLC0415
-    arc = GC_MakeArcOfCircle(circle, angle_start, angle_end, True)
-    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge  # noqa: PLC0415
-    builder = BRepBuilderAPI_MakeEdge(arc.Value())
-    return cq_shapes.Edge(builder.Edge())
+    return cq_shapes.Edge(ocp_make_arc_edge(circle, angle_start, angle_end))
 
 
 def make_wire(edges: list[cq_shapes.Edge]) -> cq_shapes.Wire:
@@ -167,19 +173,12 @@ def revolve_face(face: Any, axis_origin: list[float], axis_direction: list[float
     if angle_deg == 0:
         raise ValueError("revolve angle must be non-zero")
     import math
-    from OCP.gp import gp_Ax1, gp_Pnt, gp_Dir  # noqa: PLC0415
-    from OCP.BRepPrimAPI import BRepPrimAPI_MakeRevol  # noqa: PLC0415
-    ax = gp_Ax1(gp_Pnt(*axis_origin), gp_Dir(*axis_direction))
-    revol = BRepPrimAPI_MakeRevol(_ensure_occ(face), ax, math.radians(angle_deg))
-    return cq_shapes.Solid(revol.Shape())
+    return cq_shapes.Solid(ocp_revolve(_ensure_occ(face), axis_origin, axis_direction, math.radians(angle_deg)))
 
 
 def make_cylinder(center: list[float], axis: list[float], radius: float, height: float) -> cq_shapes.Solid:
     """Solid cylinder for hole cutting. center and axis are 3D world-space."""
-    from OCP.gp import gp_Ax2, gp_Pnt, gp_Dir  # noqa: PLC0415
-    from OCP.BRepPrimAPI import BRepPrimAPI_MakeCylinder  # noqa: PLC0415
-    ax2 = gp_Ax2(gp_Pnt(*center), gp_Dir(*axis))
-    return cq_shapes.Solid(BRepPrimAPI_MakeCylinder(ax2, radius, height).Shape())
+    return cq_shapes.Solid(ocp_make_cylinder(center, axis, radius, height))
 
 
 def _ensure_cq(target: Any) -> cq_shapes.Shape:
@@ -231,11 +230,7 @@ def fuse_shapes(shapes: list[Any]) -> Any:
 
 def make_mirror_trsf(origin: tuple[float, float, float], normal: tuple[float, float, float]):
     """Create a reflection transform across a plane."""
-    from OCP.gp import gp_Ax2, gp_Pnt, gp_Dir, gp_Trsf  # noqa: PLC0415
-    ax = gp_Ax2(gp_Pnt(*origin), gp_Dir(*normal))
-    trsf = gp_Trsf()
-    trsf.SetMirror(ax)
-    return trsf
+    return ocp_make_mirror_trsf(origin, normal)
 
 
 def _compute_face_centroid(face: cq_shapes.Face) -> list[float]:
@@ -246,8 +241,7 @@ def _compute_face_centroid(face: cq_shapes.Face) -> list[float]:
 
 def _compute_face_normal(face: cq_shapes.Face) -> list[float]:
     """Compute face normal at the midpoint of its UV domain."""
-    from OCP.BRepTools import BRepTools  # noqa: PLC0415
-    umin, umax, vmin, vmax = BRepTools.UVBounds_s(_ensure_occ(face))
+    umin, umax, vmin, vmax = ocp_face_uv_bounds(_ensure_occ(face))
     u = (umin + umax) / 2.0
     v = (vmin + vmax) / 2.0
     n = face.normalAt(CQVector(u, v))
@@ -292,15 +286,11 @@ def apply_transform_shape(
     Returns a new cq Shape (or TopoDS_Shape matching input type).
     """
     import math
-    from OCP.gp import gp_Trsf, gp_Vec, gp_Pnt, gp_Dir, gp_Ax1  # noqa: PLC0415
-    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform  # noqa: PLC0415
 
-    combined = gp_Trsf()  # identity
+    combined = ocp_identity_trsf()
 
     if scale != 1.0:
-        sc = gp_Trsf()
-        center = gp_Pnt(*(scale_center or (0, 0, 0)))
-        sc.SetScale(center, scale)
+        sc = ocp_make_scale_trsf(scale_center or (0, 0, 0), scale)
         combined.Multiply(sc)
 
     if rotation_angle_deg and not rotation_axis_direction:
@@ -308,17 +298,15 @@ def apply_transform_shape(
             "apply_transform_shape: rotation_angle_deg is set but rotation_axis_direction is None"
         )
     if rotation_angle_deg and rotation_axis_direction:
-        rot = gp_Trsf()
-        origin = gp_Pnt(*(rotation_axis_origin or (0, 0, 0)))
-        direction = gp_Dir(*rotation_axis_direction)
-        ax1 = gp_Ax1(origin, direction)
-        rot.SetRotation(ax1, math.radians(rotation_angle_deg))
+        rot = ocp_make_rotation_trsf(
+            list(rotation_axis_origin or (0, 0, 0)),
+            list(rotation_axis_direction),
+            math.radians(rotation_angle_deg),
+        )
         combined.Multiply(rot)
 
     if translation:
-        tr = gp_Trsf()
-        tr.SetTranslation(gp_Vec(*translation))
+        tr = ocp_make_translation_trsf(*translation)
         combined.Multiply(tr)
 
-    builder = BRepBuilderAPI_Transform(_ensure_occ(shape), combined, True)  # copy=True
-    return builder.Shape()
+    return ocp_transform_copy(_ensure_occ(shape), combined)

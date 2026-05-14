@@ -4,6 +4,7 @@ import logging
 import time
 from typing import Any
 from oversolved.kernel.cadquery_ops import _normal_to_frame, _ensure_occ
+from oversolved.kernel.ocp_ops import ocp_copy_shape
 from oversolved.kernel.geom_hash import face_geometry_hash, edge_geometry_hash, vertex_geometry_hash
 from oversolved.kernel.query import Repository, emit_wire, absolute
 from oversolved.kernel.types3d import Body, FeatureCheckpoint, BuildState
@@ -35,13 +36,7 @@ def _copy_shape(shape):
     if shape is None:
         return None
     try:
-        from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
-        copier = BRepBuilderAPI_Copy(_ensure_occ(shape), True)  # copy all sub-shapes
-        copier.Build()
-        if not copier.IsDone():
-            logger.warning("BRepBuilderAPI_Copy failed, returning original shape")
-            return shape
-        return copier.Shape()
+        return ocp_copy_shape(_ensure_occ(shape))
     except Exception as exc:
         logger.warning("Failed to copy OCP shape: %s, returning original", exc)
         return shape
