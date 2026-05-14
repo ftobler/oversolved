@@ -1,7 +1,7 @@
 """Tests for topology.py - intersection detection and surface extraction."""
 
 import math
-from oversolved.kernel.topology import detect_topology
+from oversolved.kernel.topology import detect_topology, _arc_tangent
 
 
 def num_surfaces(result):
@@ -483,3 +483,40 @@ def test_construction_helpers_do_not_split_surfaces():
     }
     result = detect_topology(geom)
     assert num_surfaces(result) == 1   # construction midline ignored; still one face
+
+
+# ── _arc_tangent orientation tests ──
+
+def test_arc_tangent_ccw():
+    """At angle 0 (3 o'clock position), CCW tangent points up: (0, 1)."""
+    tx, ty = _arc_tangent(0.0, ccw=True)
+    assert abs(tx - 0.0) < 1e-10
+    assert abs(ty - 1.0) < 1e-10
+
+
+def test_arc_tangent_cw():
+    """At angle 0, CW arc tangent points down: (0, -1)."""
+    tx, ty = _arc_tangent(0.0, ccw=False)
+    assert abs(tx - 0.0) < 1e-10
+    assert abs(ty - (-1.0)) < 1e-10
+
+
+def test_arc_tangent_ccw_cw_are_negations():
+    """CCW and CW tangents at any angle are exact negatives of each other."""
+    for a in [0.0, math.pi / 4, math.pi / 2, math.pi, 3 * math.pi / 2]:
+        ccw = _arc_tangent(a, ccw=True)
+        cw = _arc_tangent(a, ccw=False)
+        assert abs(ccw[0] + cw[0]) < 1e-10
+        assert abs(ccw[1] + cw[1]) < 1e-10
+
+
+def test_detect_topology_cw_arc_face():
+    """Half-disk using an arc from 180° to 0° (CW) + diameter line → 1 surface."""
+    # A CW arc from 180° to 0° traverses the lower semicircle.
+    # Together with a diameter line from (1,0) to (-1,0) it encloses a half-disk.
+    geom = {
+        "semi": arc(0, 0, 1, 180, 0),   # CW: 180->0 is the lower half
+        "chord": line(1, 0, -1, 0),
+    }
+    result = detect_topology(geom)
+    assert num_surfaces(result) == 1
