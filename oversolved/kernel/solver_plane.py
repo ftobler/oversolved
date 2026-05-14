@@ -292,8 +292,16 @@ def _plane_on_face_edge_angle(definition: dict, global_repo: Repository, body_st
     normal = np.array(face["normal"])
 
     edge_dir = _normalize(np.array(edge["end"]) - np.array(edge["start"]))
-    x_axis_base = edge_dir - np.dot(edge_dir, normal) * normal
-    x_axis_base = _normalize(x_axis_base)
+    x_axis_raw = edge_dir - np.dot(edge_dir, normal) * normal
+    if np.linalg.norm(x_axis_raw) < 1e-12:
+        # edge_dir is parallel to normal -- pick an arbitrary perpendicular direction
+        if abs(normal[2]) < 0.9:
+            arbitrary = np.array([0.0, 0.0, 1.0])
+        else:
+            arbitrary = np.array([1.0, 0.0, 0.0])
+        x_axis_base = _normalize(np.cross(normal, arbitrary))
+    else:
+        x_axis_base = _normalize(x_axis_raw)
 
     x_axis, _ = _rotate_frame_around_normal(
         x_axis_base, np.cross(normal, x_axis_base), normal, angle

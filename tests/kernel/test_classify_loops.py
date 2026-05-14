@@ -303,7 +303,6 @@ def test_classify_loops_hole_touching_outer_boundary():
     assert got_holes[0] is hole
 
 
-
 def test_classify_loops_equal_area_containment_limitation():
     """Two loops with equal area: the area guard prevents containment detection.
 

@@ -5,7 +5,7 @@ import pytest
 
 pytest.importorskip("OCP.BRep", reason="OCP not installed")
 
-from oversolved.kernel.geometry import extrude_profile, solid_to_edges  # noqa: E402
+from oversolved.kernel.geometry import extrude_profile, solid_to_edges, solid_to_vertices  # noqa: E402
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder  # noqa: E402
 
 
@@ -108,6 +108,26 @@ def test_profile_solid_is_valid():
     for loop, name in [(circle_loop, "circle"), (rect_loop, "rect")]:
         solid = extrude_profile([loop], FRONT_PLANE, [0.0, 0.0, 1.0], 1.0)
         assert solid.isValid(), f"{name} solid failed isValid"
+
+
+def test_solid_to_edges_dedup_consistent():
+    """solid_to_edges must return the same unique edge count regardless of hash method.
+
+    A box has 12 unique edges; dedup via hash(edge.wrapped) must not over- or under-count.
+    """
+    solid = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    edges = solid_to_edges(solid)["edges"]
+    assert len(edges) == 12, f"expected 12 unique edges, got {len(edges)}"
+
+
+def test_solid_to_vertices_dedup_consistent():
+    """solid_to_vertices must return the same unique vertex count regardless of hash method.
+
+    A box has 8 unique vertices; dedup via hash(v.wrapped) must not over- or under-count.
+    """
+    solid = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    vertices = solid_to_vertices(solid)["vertices"]
+    assert len(vertices) == 8, f"expected 8 unique vertices, got {len(vertices)}"
 
 
 def test_solid_to_edges_box():

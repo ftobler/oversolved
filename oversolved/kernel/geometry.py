@@ -650,7 +650,7 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
     seen_hashes: set[int] = set()
 
     for edge in solid.edges():
-        h = edge.hashCode()
+        h = hash(edge.wrapped)
         if h in seen_hashes:
             continue
         seen_hashes.add(h)
@@ -740,7 +740,7 @@ def solid_to_vertices(solid: TopoDS_Shape, created_by: str | None = None, body_i
     seen_hashes: set[int] = set()
 
     for v in solid.Vertices():
-        h = v.hashCode()
+        h = hash(v.wrapped)
         if h in seen_hashes:
             continue
         seen_hashes.add(h)
@@ -925,7 +925,7 @@ def _apply_edge_modifier(
 
     if edges is not None:
         for idx, edge in enumerate(edges):
-            if shape_edge_set is not None and hash(edge) not in shape_edge_set:
+            if shape_edge_set is not None and hash(_ensure_occ(edge)) not in shape_edge_set:
                 skipped_count += 1
                 skipped_indices.append(idx)
                 continue

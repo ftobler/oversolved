@@ -82,6 +82,20 @@ def test_ocp_collect_edge_hashes_non_empty():
     assert len(hashes) > 0
 
 
+def test_ocp_collect_edge_hashes_same_domain_as_wrapped():
+    """hash(edge.wrapped) on CQ edges matches ocp_collect_edge_hashes on the same solid.
+
+    This verifies that solid_to_edges dedup and _apply_edge_modifier membership
+    checks operate in the same hash domain.
+    """
+    from cadquery.occ_impl.shapes import Shape as CQShape
+    box = _unit_box_topo()
+    cq_box = CQShape.cast(box)
+    cq_hashes = {hash(e.wrapped) for e in cq_box.Edges()}
+    topo_hashes = ocp_collect_edge_hashes(box)
+    assert cq_hashes == topo_hashes
+
+
 def test_ocp_explore_solids_returns_solid():
     """A box is one solid."""
     solids = ocp_explore_solids(_unit_box_topo())

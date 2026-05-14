@@ -30,16 +30,15 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
     if body.shape is None or not edge_queries:
         return []
 
-    seen_hashes = set()
+    seen_edges: list[TopoDS_Shape] = []
     topo_edges = []
     edge_types = []
     edge_dicts = []
     for edge in _ensure_cq(body.shape).Edges():
-        h = edge.hashCode()
-        if h in seen_hashes:
-            continue
-        seen_hashes.add(h)
         wrapped = edge.wrapped
+        if any(wrapped.IsEqual(s) for s in seen_edges):
+            continue
+        seen_edges.append(wrapped)
         topo_edges.append(wrapped)
         gt = edge.geomType()
         edge_types.append("straightedge" if gt == "LINE" else "edge")
