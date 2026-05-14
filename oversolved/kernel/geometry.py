@@ -90,6 +90,7 @@ class MeshDict(TypedDict):
     face_data: list[dict]
     triangle_to_face: list[int]
     face_queries: list[str]
+    is_fallback: bool
 
 
 class EdgeDict(TypedDict):
@@ -501,7 +502,81 @@ def _unit_cube_mesh() -> MeshDict:
         "face_data": [],
         "triangle_to_face": [],
         "face_queries": [],
+        "is_fallback": True,
     }
+
+
+def _load_shape_from_path(filepath: str) -> cq_shapes.Shape:
+    """Load a shape from a STEP or STL file path.
+
+    Raises ValueError for a missing file or unrecognised extension.
+    """
+    if not os.path.isfile(filepath):
+        raise ValueError(f"File not found: {filepath!r}")
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext in (".stl",):
+        return _ensure_cq_shape(stl_file_to_shape(filepath))
+    if ext in (".step", ".stp", ""):
+        return step_file_to_shape(filepath)
+    raise ValueError(f"Unsupported file extension {ext!r}: {filepath!r}")
+
+
+def _init_mesh_accumulators() -> tuple[
+    list[dict],
+    list[int],
+    list[str],
+    list[list[float]],
+    list[list[int]],
+    list[list[float]],
+]:
+    """Return six empty accumulator lists for mesh assembly."""
+    face_data: list[dict] = []
+    triangle_to_face: list[int] = []
+    face_queries: list[str] = []
+    all_vertices: list[list[float]] = []
+    all_faces: list[list[int]] = []
+    all_normals: list[list[float]] = []
+    return face_data, triangle_to_face, face_queries, all_vertices, all_faces, all_normals
+
+
+def _tessellate_and_assemble_faces(
+    solid: cq_shapes.Shape,
+    created_by: str | None,
+    body_id: str | None,
+) -> tuple[
+    list[dict],
+    list[int],
+    list[str],
+    list[list[float]],
+    list[list[int]],
+    list[list[float]],
+]:
+    """Iterate faces of solid and assemble mesh accumulators.
+
+    Returns (face_data, triangle_to_face, face_queries, vertices, faces, normals).
+    On exception all six lists are returned empty so the caller can detect failure.
+    """
+    face_data, triangle_to_face, face_queries, all_vertices, all_faces, all_normals = (
+        _init_mesh_accumulators()
+    )
+    try:
+        raw_faces = _sort_shape_faces(solid)
+        for face_idx, (face, verts, idxs, centroid, normal, surface_type) in enumerate(raw_faces):
+            face_area, triangle_count = _append_face_triangles(
+                all_vertices, all_faces, all_normals,
+                triangle_to_face, face_idx, verts, idxs,
+            )
+            if triangle_count > 0:
+                face_data.append(
+                    {"centroid": centroid, "normal": normal, "area": face_area, "surface_type": surface_type}
+                )
+                query = _build_face_query(created_by, body_id, face_idx, centroid, normal, face_area, surface_type)
+                if query:
+                    face_queries.append(query)
+    except Exception as exc:
+        logger.warning("solid_to_mesh tessellation failed, falling back to unit cube: %s", exc)
+        return _init_mesh_accumulators()
+    return face_data, triangle_to_face, face_queries, all_vertices, all_faces, all_normals
 
 
 def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body_id: str | None = None) -> MeshDict:
@@ -517,15 +592,7 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
             body so that multiple bodies from the same feature have unique queries.
     """
     if isinstance(solid, str):
-        filepath = solid
-        if not os.path.isfile(filepath):
-            raise ValueError(f"File not found: {filepath!r}")
-        ext = os.path.splitext(filepath)[1].lower()
-        if ext in (".stl",):
-            solid = stl_file_to_shape(filepath)
-        else:
-            solid = step_file_to_shape(filepath)
-
+        solid = _load_shape_from_path(solid)
     solid = _ensure_cq_shape(solid)
 
     topo_shape = _ensure_occ(solid)
@@ -534,48 +601,19 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
     except Exception as exc:
         logger.warning("solid_to_mesh: BRepMesh_IncrementalMesh failed: %s", exc)
 
-    face_data: list[dict] = []
-    triangle_to_face: list[int] = []
-    face_queries: list[str] = []
-    all_vertices: list[list[float]] = []
-    all_faces: list[list[int]] = []
-    all_normals: list[list[float]] = []
-
-    try:
-        raw_faces = _sort_shape_faces(solid)
-
-        for face_idx, (face, verts, idxs, centroid, normal, surface_type) in enumerate(raw_faces):
-            face_area, triangle_count = _append_face_triangles(
-                all_vertices, all_faces, all_normals,
-                triangle_to_face, face_idx, verts, idxs,
-            )
-            if triangle_count > 0:
-                face_data.append(
-                    {"centroid": centroid, "normal": normal, "area": face_area, "surface_type": surface_type}
-                )
-                query = _build_face_query(created_by, body_id, face_idx, centroid, normal, face_area, surface_type)
-                if query:
-                    face_queries.append(query)
-    except Exception as exc:
-        logger.warning("solid_to_mesh tessellation failed, falling back to unit cube: %s", exc)
-        face_data = []
-        triangle_to_face = []
-        face_queries = []
-        all_vertices = []
-        all_faces = []
-        all_normals = []
-
-    if not all_vertices:
+    fd, t2f, fq, verts, faces, normals = _tessellate_and_assemble_faces(solid, created_by, body_id)
+    if not verts:
         logger.warning("solid_to_mesh produced no vertices; returning unit cube fallback")
         return _unit_cube_mesh()
 
     mesh: MeshDict = {
-        "vertices": all_vertices,
-        "faces": all_faces,
-        "normals": all_normals,
-        "face_data": face_data,
-        "triangle_to_face": triangle_to_face,
-        "face_queries": face_queries,
+        "vertices": verts,
+        "faces": faces,
+        "normals": normals,
+        "face_data": fd,
+        "triangle_to_face": t2f,
+        "face_queries": fq,
+        "is_fallback": False,
     }
     _validate_mesh(mesh)
     return mesh
