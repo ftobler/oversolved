@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Optional
 import secrets
+from oversolved.kernel.solver_constants import _BUILTIN_PLANES
 
 
 class AmbiguousQueryError(Exception):
@@ -413,3 +414,12 @@ class Repository:
                 if _obj_type(self.elements.get(eid)) == q.type_restriction
             ]
         return [self.elements[eid] for eid in candidate_ids if eid in self.elements]
+
+
+def _init_global_repo() -> "Repository":
+    """Create and populate the global repository with built-in planes and origin."""
+    repo = Repository()
+    repo.register("builtin_origin", {"external_xy": [0.0, 0.0]})
+    for name, plane in _BUILTIN_PLANES.items():
+        repo.register(name, plane)
+    return repo

@@ -8,7 +8,7 @@ import yaml
 import numpy as np
 from scipy.optimize import least_squares
 from oversolved.kernel.topology import detect_topology
-from oversolved.kernel.query import Repository
+from oversolved.kernel.query import Repository, _init_global_repo  # noqa: F401
 from oversolved.kernel.solver_constants import (
     _FRONT_PLANE, ENTITY_SIZES, LOSS_THRESHOLD, RANK_TOL, RANK_BOUNDARY_TOL,
     ORIGIN_ID, ORIGIN_FIX_ID, _BUILTIN_PLANES, _BUILTIN_PLANE_RESULTS,
@@ -43,15 +43,6 @@ from oversolved.kernel.solver_features import (  # noqa: F401
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _init_global_repo() -> Repository:
-    """Create and populate the global repository with built-in planes and origin."""
-    repo = Repository()
-    repo.register("builtin_origin", {"external_xy": [0.0, 0.0]})
-    for name, plane in _BUILTIN_PLANES.items():
-        repo.register(name, plane)
-    return repo
 
 
 def solve(yaml_str: str) -> dict:

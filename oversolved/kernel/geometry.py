@@ -16,7 +16,9 @@ except ImportError:
 from oversolved.kernel.cadquery_ops import (
     _compute_face_centroid,
     _compute_face_normal,
+    _face_sort_key_from_tuple,
     _get_face_surface_type,
+    _triangle_area,
     boolean_cut,
     boolean_intersection,
     boolean_union,
@@ -397,13 +399,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None
         # Sort flat faces before curved ones so that adding a fillet (which
         # introduces cylindrical faces) never shifts existing flat face indices.
         # Within each group, sort by (normal, centroid) for determinism.
-        def _face_sort_key(item) -> tuple:
-            _f, _v, _i, c, n, s = item
-            type_order = 0 if s == "flatface" else 1
-            return (type_order, round(n[0], 6), round(n[1], 6), round(n[2], 6),
-                    round(c[0], 6), round(c[1], 6), round(c[2], 6))
-
-        raw_faces.sort(key=_face_sort_key)
+        raw_faces.sort(key=_face_sort_key_from_tuple)
 
         for face_idx, (face, verts, idxs, centroid, normal, surface_type) in enumerate(raw_faces):
             offset = len(all_vertices)
@@ -433,7 +429,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None
                 else:
                     all_normals.append([0.0, 0.0, 1.0])
                 triangle_to_face.append(face_idx)
-                face_area += 0.5 * mag
+                face_area += _triangle_area(p0, p1, p2)
 
             # Only register face metadata if it produced triangles
             if len(triangle_to_face) > triangle_count_before:

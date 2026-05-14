@@ -2,6 +2,7 @@ import math
 import logging
 from typing import Optional
 import numpy as np
+from oversolved.kernel.cadquery_ops import _normal_to_frame
 from oversolved.kernel.solver_constants import (
     _FRONT_PLANE, _BUILTIN_PLANES, _PLANE_TYPES, _POINT_TYPES,
 )
@@ -259,13 +260,9 @@ def _plane_on_face(definition: dict, global_repo: Repository, body_store: dict |
     origin = np.array(face["centroid"])
     normal = np.array(face["normal"])
 
-    if abs(normal[2]) < 0.9:
-        arbitrary = np.array([0.0, 0.0, 1.0])
-    else:
-        arbitrary = np.array([1.0, 0.0, 0.0])
-
-    x_axis = _normalize(np.cross(normal, arbitrary))
-    y_axis = np.cross(normal, x_axis)
+    x_list, y_list = _normal_to_frame(list(normal))
+    x_axis = np.array(x_list)
+    y_axis = np.array(y_list)
     return origin, x_axis, y_axis, normal
 
 

@@ -11,7 +11,10 @@ try:
     import oversolved.kernel.geometry  # noqa: F401  # pre-warm to avoid concurrent-import race
 except ImportError:
     pass
-from oversolved.kernel.cadquery_ops import _compute_face_centroid, _compute_face_normal
+from oversolved.kernel.cadquery_ops import (
+    _compute_face_centroid, _compute_face_normal,
+    _face_sort_key, _triangle_area,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -186,13 +189,6 @@ def _extract_loops_from_occ_face(
         if cq_shape is not None:
             faces = list(cq_shape.faces())
 
-            def _face_sort_key(f):
-                n = _compute_face_normal(f)
-                c = _compute_face_centroid(f)
-                from oversolved.kernel.cadquery_ops import _get_face_surface_type
-                type_order = 0 if _get_face_surface_type(f) == "flatface" else 1
-                return (type_order, round(n[0], 6), round(n[1], 6), round(n[2], 6),
-                        round(c[0], 6), round(c[1], 6), round(c[2], 6))
             faces.sort(key=_face_sort_key)
             if face_index >= len(faces):
                 raise ValueError(f"face_index {face_index} out of range")
@@ -331,20 +327,12 @@ def _resolve_face_index_via_hash(
         return None
 
     from oversolved.kernel.geom_hash import face_geometry_hash
-    from oversolved.kernel.cadquery_ops import _get_face_surface_type
     from oversolved.kernel.query import make_ancestry_query
     from OCP.BRepMesh import BRepMesh_IncrementalMesh
 
     faces = list(shape.faces())
 
-    def _sort_key(f):
-        n = _compute_face_normal(f)
-        c = _compute_face_centroid(f)
-        type_order = 0 if _get_face_surface_type(f) == "flatface" else 1
-        return (type_order, round(n[0], 6), round(n[1], 6), round(n[2], 6),
-                round(c[0], 6), round(c[1], 6), round(c[2], 6))
-
-    faces.sort(key=_sort_key)
+    faces.sort(key=_face_sort_key)
     if old_index >= len(faces):
         return None
 
@@ -360,18 +348,10 @@ def _resolve_face_index_via_hash(
         return None
 
     flat_verts = [list(v.toTuple()) for v in verts]
-    area = 0.0
-    for tri in idxs:
-        p0 = flat_verts[tri[0]]
-        p1 = flat_verts[tri[1]]
-        p2 = flat_verts[tri[2]]
-        v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]]
-        v2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]]
-        nx = v1[1] * v2[2] - v1[2] * v2[1]
-        ny = v1[2] * v2[0] - v1[0] * v2[2]
-        nz = v1[0] * v2[1] - v1[1] * v2[0]
-        mag = math.sqrt(nx * nx + ny * ny + nz * nz)
-        area += 0.5 * mag
+    area = sum(
+        _triangle_area(flat_verts[tri[0]], flat_verts[tri[1]], flat_verts[tri[2]])
+        for tri in idxs
+    )
 
     geom_hash = face_geometry_hash(centroid, normal, area)
     try:
@@ -540,6 +520,24 @@ def _split_compound(shape) -> list:
 
 
 # ── Feature solvers ──
+
+
+def _resolve_body(ref: str, body_store: dict) -> Any:
+    """Resolve a body reference to a Body object.
+
+    Accepts "@feat", "feat", or "body_feat" forms.
+    Raises ValueError if no matching body is found.
+    """
+    key = ref.lstrip("@")
+    if key in body_store:
+        return body_store[key]
+    prefixed = "body_" + key
+    if prefixed in body_store:
+        return body_store[prefixed]
+    for body in body_store.values():
+        if body.created_by == key:
+            return body
+    raise ValueError(f"body not found for ref '{ref}'")
 
 
 def _resolve_merge_targets(merge_target: str | None, body_store: dict) -> list[str]:
@@ -973,13 +971,16 @@ def _solve_array(
         sub = feature.get("array") or {}
         feature = {**sub, **feature}
 
-        source_body_id = "body_" + feature.get("source_body", "")
-        body = body_store.get(source_body_id)
-        if body is None or body.shape is None:
-            body = list(body_store.values())[0] if body_store else None
-            if body is None or body.shape is None:
+        source_body_ref = feature.get("source_body", "")
+        if source_body_ref:
+            body = _resolve_body(source_body_ref, body_store)
+        else:
+            body = next(iter(body_store.values())) if body_store else None
+            if body is None:
                 raise ValueError("array: no source body with shape found")
-            source_body_id = body.id
+        source_body_id = body.id
+        if body.shape is None:
+            raise ValueError("array: source body has no shape")
 
         include_source = bool(feature.get("include_source", True))
         operation = feature.get("operation", "add")
@@ -1272,15 +1273,14 @@ def _apply_edge_feature(
     if not edges:
         raise ValueError(f"{feature_kind} requires at least one edge")
 
-    body_id = "body_" + feature.get("source_body", "")
-    if body_id not in body_store:
-        body = list(body_store.values())[0] if body_store else None
-        if body is None:
-            raise ValueError(f"no body found for {feature_kind}")
-        body_id = body.id
-        body = body_store[body_id]
+    source_body = feature.get("source_body", "")
+    if source_body:
+        body = _resolve_body(source_body, body_store)
     else:
-        body = body_store[body_id]
+        if not body_store:
+            raise ValueError(f"no body found for {feature_kind}")
+        body = next(iter(body_store.values()))
+    body_id = body.id
 
     if body.shape is None:
         raise ValueError(f"body {body_id} has no shape")
@@ -1347,21 +1347,6 @@ def _solve_chamfer(
         )
     except Exception as exc:
         return {"status": "exception", "exception": str(exc)}
-
-
-def _resolve_body(ref: str, body_store: dict):
-    from oversolved.kernel.types3d import Body  # noqa: F401
-
-    key = ref.lstrip("@")
-    if key in body_store:
-        return body_store[key]
-    prefixed = "body_" + key
-    if prefixed in body_store:
-        return body_store[prefixed]
-    for body in body_store.values():
-        if body.created_by == key:
-            return body
-    raise ValueError(f"boolean: body not found for ref '{ref}'")
 
 
 def _solve_boolean(
@@ -1485,13 +1470,8 @@ def _solve_delete_body(feature: dict, global_repo: Repository, body_store: dict)
             else:
                 raise ValueError(f"delete_body: query did not resolve to a body: {body_query!r}")
         else:
-            body_key = body_query.lstrip("@")
-            if body_key not in body_store:
-                prefixed = "body_" + body_key
-                if prefixed in body_store:
-                    body_key = prefixed
-                else:
-                    raise ValueError(f"delete_body: body not found: {body_query!r}")
+            body = _resolve_body(body_query, body_store)
+            body_key = body.id
         del body_store[body_key]
         return {"status": "ok", "deleted_body_id": body_key}
     except Exception as exc:
@@ -1524,10 +1504,7 @@ def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, featur
         axis = normal if direction == "normal" else -normal
 
         if target_ref:
-            key = target_ref.lstrip("@")
-            target_body = body_store.get(key) or body_store.get("body_" + key)
-            if target_body is None:
-                raise ValueError(f"hole: target body '{target_ref}' not found")
+            target_body = _resolve_body(target_ref, body_store)
         else:
             if not body_store:
                 raise ValueError("hole: no bodies in body_store and no target specified")

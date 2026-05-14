@@ -1,9 +1,9 @@
 import copy
 import json
 import logging
-import math
 import time
 from typing import Any
+from oversolved.kernel.cadquery_ops import _normal_to_frame
 from oversolved.kernel.geom_hash import face_geometry_hash, edge_geometry_hash, vertex_geometry_hash
 from oversolved.kernel.query import Repository, emit_wire, absolute
 from oversolved.kernel.types3d import Body, FeatureCheckpoint, BuildState
@@ -86,29 +86,6 @@ def _find_first_dirty(features: list[dict], prev_state: BuildState | None) -> in
     return len(features)
 
 
-def _face_plane_axes(normal: list) -> tuple[list, list]:
-    """Compute orthonormal x_axis and y_axis for a face given its unit normal."""
-    nx, ny, nz = normal
-    if abs(nz) < 0.9:
-        ax, ay, az = 0.0, 0.0, 1.0
-    else:
-        ax, ay, az = 1.0, 0.0, 0.0
-    # x_axis = normalize(cross(normal, arbitrary))
-    cx = ny * az - nz * ay
-    cy = nz * ax - nx * az
-    cz = nx * ay - ny * ax
-    mag = math.sqrt(cx * cx + cy * cy + cz * cz)
-    if mag > 1e-12:
-        cx, cy, cz = cx / mag, cy / mag, cz / mag
-    else:
-        cx, cy, cz = 1.0, 0.0, 0.0
-    # y_axis = cross(normal, x_axis)
-    yx = ny * cz - nz * cy
-    yy = nz * cx - nx * cz
-    yz = nx * cy - ny * cx
-    return [cx, cy, cz], [yx, yy, yz]
-
-
 def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
     """Register B-rep face ancestry objects in the global query repository."""
     if global_repo is None or body.shape is None or not body.created_by:
@@ -126,7 +103,7 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
             emit_wire(absolute(body.id)),
             emit_wire(absolute(geom_hash)),
         ]
-        x_axis, y_axis = _face_plane_axes(normal)
+        x_axis, y_axis = _normal_to_frame(normal)
         payload = {
             "type": face_info.get("surface_type", "face"),
             "body_id": body.id,

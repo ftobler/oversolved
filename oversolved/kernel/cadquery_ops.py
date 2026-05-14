@@ -28,6 +28,51 @@ except ImportError:
     CQVector = None  # type: ignore[assignment,misc]
 
 
+import math as _math
+
+
+def _triangle_area(p0: list, p1: list, p2: list) -> float:
+    """Return the area of a triangle defined by three 3D points."""
+    v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]]
+    v2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]]
+    nx = v1[1] * v2[2] - v1[2] * v2[1]
+    ny = v1[2] * v2[0] - v1[0] * v2[2]
+    nz = v1[0] * v2[1] - v1[1] * v2[0]
+    return 0.5 * _math.sqrt(nx * nx + ny * ny + nz * nz)
+
+
+def _normal_to_frame(normal: list) -> tuple[list, list]:
+    """Compute orthonormal (x_axis, y_axis) for a plane given its unit normal.
+
+    Chooses an arbitrary axis to cross with, avoiding near-parallel vectors.
+    """
+    nx, ny, nz = normal
+    if abs(nz) < 0.9:
+        ax, ay, az = 0.0, 0.0, 1.0
+    else:
+        ax, ay, az = 1.0, 0.0, 0.0
+    cx = ny * az - nz * ay
+    cy = nz * ax - nx * az
+    cz = nx * ay - ny * ax
+    mag = _math.sqrt(cx * cx + cy * cy + cz * cz)
+    if mag > 1e-12:
+        cx, cy, cz = cx / mag, cy / mag, cz / mag
+    else:
+        cx, cy, cz = 1.0, 0.0, 0.0
+    yx = ny * cz - nz * cy
+    yy = nz * cx - nx * cz
+    yz = nx * cy - ny * cx
+    return [cx, cy, cz], [yx, yy, yz]
+
+
+def _face_sort_key_from_tuple(item: tuple) -> tuple:
+    """Sort key for a precomputed face tuple (face, verts, idxs, centroid, normal, surface_type)."""
+    _f, _v, _i, c, n, s = item
+    type_order = 0 if s == "flatface" else 1
+    return (type_order, round(n[0], 6), round(n[1], 6), round(n[2], 6),
+            round(c[0], 6), round(c[1], 6), round(c[2], 6))
+
+
 def to_cq_plane(plane: dict) -> CQPlane:
     """Convert our plane dict to a CQ Plane."""
     return CQPlane(
@@ -212,6 +257,18 @@ def _get_face_surface_type(face: cq_shapes.Face) -> str:
     if gt == "CYLINDER":
         return "cylinderface"
     return "face"
+
+
+def _face_sort_key(face: cq_shapes.Face) -> tuple:
+    """Sort key for a raw cadquery Face object.
+
+    Flat faces sort before curved; within each group, sorted by normal then centroid.
+    """
+    n = _compute_face_normal(face)
+    c = _compute_face_centroid(face)
+    type_order = 0 if _get_face_surface_type(face) == "flatface" else 1
+    return (type_order, round(n[0], 6), round(n[1], 6), round(n[2], 6),
+            round(c[0], 6), round(c[1], 6), round(c[2], 6))
 
 
 def apply_transform_shape(
