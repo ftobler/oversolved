@@ -745,3 +745,60 @@ def test_rollback_oscillation_undo_redo():
     r_redo = build(spec, prev_state=r_undo['_build_state'], rollback_position=3)
     assert r_redo['result']['sk2']['status'] != 'exception'
     assert r_redo['result']['sk1']['geometry'] == geom_sk1
+
+
+def test_builder_dirty_on_feature_remove():
+    """[sk1, sk2, sk3] -> [sk1, sk2]: sk3 absent from result and checkpoints."""
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    sk2 = rect_sketch_spec(w=4.0, h=2.0, sketch_id='sk2')
+    sk3 = rect_sketch_spec(w=3.0, h=1.0, sketch_id='sk3')
+
+    r1 = build({'features': [sk1, sk2, sk3]})
+    state1 = r1['_build_state']
+    assert 'sk3' in state1.checkpoints
+
+    r2 = build({'features': [sk1, sk2]}, prev_state=state1)
+    state2 = r2['_build_state']
+
+    assert 'sk3' not in r2['result']
+    assert 'sk3' not in state2.checkpoints
+    assert state2.feature_order == ['sk1', 'sk2']
+    assert r2['result']['sk1']['status'] != 'exception'
+    assert r2['result']['sk2']['status'] != 'exception'
+
+
+def test_builder_dirty_on_feature_insert():
+    """[sk1, sk3] -> [sk1, sk2, sk3]: sk2 and sk3 are both re-solved."""
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    sk2 = rect_sketch_spec(w=4.0, h=2.0, sketch_id='sk2')
+    sk3 = rect_sketch_spec(w=3.0, h=1.0, sketch_id='sk3')
+
+    r1 = build({'features': [sk1, sk3]})
+    state1 = r1['_build_state']
+    geom_sk3_before = r1['result']['sk3']['geometry']
+
+    r2 = build({'features': [sk1, sk2, sk3]}, prev_state=state1)
+    state2 = r2['_build_state']
+
+    assert 'sk2' in state2.checkpoints
+    assert 'sk3' in state2.checkpoints
+    assert state2.feature_order == ['sk1', 'sk2', 'sk3']
+    assert r2['result']['sk2']['status'] != 'exception'
+    assert r2['result']['sk3']['status'] != 'exception'
+    # sk3 geometry is unchanged since its spec didn't change
+    assert r2['result']['sk3']['geometry'] == geom_sk3_before
+
+
+def test_builder_clean_unchanged_list():
+    """[sk1, sk2] -> [sk1, sk2] unchanged: checkpoints are reused from cache."""
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    sk2 = rect_sketch_spec(w=4.0, h=2.0, sketch_id='sk2')
+
+    r1 = build({'features': [sk1, sk2]})
+    state1 = r1['_build_state']
+    geom1 = r1['result']['sk1']['geometry']
+    geom2 = r1['result']['sk2']['geometry']
+
+    r2 = build({'features': [sk1, sk2]}, prev_state=state1)
+    assert r2['result']['sk1']['geometry'] == geom1
+    assert r2['result']['sk2']['geometry'] == geom2
