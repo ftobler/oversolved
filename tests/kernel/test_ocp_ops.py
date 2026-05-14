@@ -17,6 +17,7 @@ from oversolved.kernel.ocp_ops import (  # noqa: E402
     ocp_curve_info,
     ocp_explore_edges,
     ocp_explore_solids,
+    ocp_extract_face_loops,
     ocp_face_uv_bounds,
     ocp_fillet_factory,
     ocp_identity_trsf,
@@ -33,6 +34,10 @@ from oversolved.kernel.ocp_ops import (  # noqa: E402
     ocp_transform_copy,
     ocp_write_stl,
     ocp_read_stl,
+    _compute_face_plane,
+    _collect_face_wires,
+    _build_loop_from_wire,
+    _extract_occ_face,
 )
 
 
@@ -221,6 +226,70 @@ def test_ocp_curve_info_circle():
     info = ocp_curve_info(edge_topo)
     assert info["type"] == "circle"
     assert info["radius"] == pytest.approx(3.0, abs=1e-6)
+
+
+def _flat_box_face():
+    """Return the top (Z-normal) face of a 1x1x1 box as a TopoDS_Face."""
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopoDS import TopoDS
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    exp = TopExp_Explorer(box, TopAbs_FACE)
+    return TopoDS.Face_s(exp.Current())
+
+
+def test_compute_face_plane_flat_face():
+    """_compute_face_plane must return a Frame3D whose normal is a unit vector."""
+    face = _flat_box_face()
+    plane = _compute_face_plane(face)
+    nx, ny, nz = plane.normal
+    length = math.sqrt(nx ** 2 + ny ** 2 + nz ** 2)
+    assert length == pytest.approx(1.0, abs=1e-6)
+
+
+def test_compute_face_plane_non_planar_raises():
+    """_compute_face_plane must raise ValueError containing 'flat' for a sphere face."""
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeSphere
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopoDS import TopoDS
+    sphere = BRepPrimAPI_MakeSphere(1.0).Shape()
+    exp = TopExp_Explorer(sphere, TopAbs_FACE)
+    face = TopoDS.Face_s(exp.Current())
+    with pytest.raises(ValueError, match="flat"):
+        _compute_face_plane(face)
+
+
+def test_collect_face_wires_no_holes():
+    """A simple rectangular face has no hole wires."""
+    face = _flat_box_face()
+    outer_wire, hole_wires = _collect_face_wires(face)
+    assert outer_wire is not None
+    assert hole_wires == []
+
+
+def test_build_loop_from_wire_lines():
+    """A rectangular face wire must produce 4 line dicts."""
+    face = _flat_box_face()
+    outer_wire, _ = _collect_face_wires(face)
+    loop = _build_loop_from_wire(outer_wire, face)
+    assert len(loop) == 4
+    for seg in loop:
+        assert seg["kind"] == "line"
+
+
+def test_ocp_extract_face_loops_integration():
+    """ocp_extract_face_loops must return (loops, plane) for a flat box face."""
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    loops, plane = ocp_extract_face_loops(box, None, 0)
+    assert isinstance(loops, list)
+    assert len(loops) >= 1
+    assert all(isinstance(seg, dict) for seg in loops[0])
+    nx, ny, nz = plane.normal
+    length = math.sqrt(nx ** 2 + ny ** 2 + nz ** 2)
+    assert length == pytest.approx(1.0, abs=1e-6)
 
 
 def test_no_ocp_imports_outside_ocp_ops():
