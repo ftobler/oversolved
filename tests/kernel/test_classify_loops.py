@@ -8,6 +8,7 @@ import math
 
 from oversolved.kernel.profile_loops import (
     classify_loops,
+    _loop_centroid,
     _loop_signed_area,
     _point_in_loop,
     _arc_midpoint,
@@ -224,7 +225,7 @@ def test_classify_loops_with_arc_loop_outer():
     assert got_holes[0] is inner
 
 
-def test_rep_pt_falls_back_to_arc_midpoint():
+def test_loop_centroid_arc_only_no_crash():
     """classify_loops should work when the loop has no 'start' keys (OCC arcs)."""
     arc_only = [
         {
@@ -239,3 +240,104 @@ def test_rep_pt_falls_back_to_arc_midpoint():
     # Should not raise even with no start keys; loop is too small to matter
     groups = classify_loops([arc_only])
     assert len(groups) == 1
+
+
+# ─── _loop_centroid unit tests ───
+
+
+def test_loop_centroid_square():
+    loop = _rect_loop(0, 0, 1, 1)
+    cx, cy = _loop_centroid(loop)
+    assert abs(cx - 0.5) < 1e-9
+    assert abs(cy - 0.5) < 1e-9
+
+
+def test_loop_centroid_empty_loop():
+    result = _loop_centroid([])
+    assert result == [0.0, 0.0]
+
+
+def test_loop_centroid_two_point_loop():
+    loop = [{"kind": "line", "start": [0, 0], "end": [1, 0]}]
+    result = _loop_centroid(loop)
+    assert result == [0.0, 0.0]
+
+
+def test_loop_centroid_offset_rect():
+    loop = _rect_loop(2, 3, 6, 7)
+    cx, cy = _loop_centroid(loop)
+    assert abs(cx - 4.0) < 1e-9
+    assert abs(cy - 5.0) < 1e-9
+
+
+# ─── Boundary ambiguity regression tests ───
+
+
+def test_classify_loops_shared_boundary_point():
+    """Two non-overlapping loops whose edge endpoints touch: both independent outers."""
+    # Loop A: (0,0)-(1,0)-(1,1)-(0,1), Loop B: (1,0)-(2,0)-(2,1)-(1,1)
+    # They share the edge x=1, so start points of B lie on A's boundary.
+    a = _rect_loop(0, 0, 1, 1)
+    b = _rect_loop(1, 0, 2, 1)
+    groups = classify_loops([a, b])
+    assert len(groups) == 2
+    outers = {id(g[0]) for g in groups}
+    assert id(a) in outers
+    assert id(b) in outers
+    for _, holes in groups:
+        assert holes == []
+
+
+def test_classify_loops_hole_touching_outer_boundary():
+    """Hole whose start point lies on the outer loop's boundary is still classified correctly."""
+    # Outer: (0,0)-(4,0)-(4,4)-(0,4)
+    # Hole: (2,0)-(3,0)-(3,2)-(2,2) — bottom edge of hole starts on outer's bottom edge
+    outer = _rect_loop(0, 0, 4, 4)
+    hole = _rect_loop(2, 0, 3, 2)
+    groups = classify_loops([outer, hole])
+    # hole centroid (2.5, 1.0) is strictly inside outer; must be a hole
+    assert len(groups) == 1
+    got_outer, got_holes = groups[0]
+    assert got_outer is outer
+    assert len(got_holes) == 1
+    assert got_holes[0] is hole
+
+
+
+def test_classify_loops_equal_area_containment_limitation():
+    """Two loops with equal area: the area guard prevents containment detection.
+
+    Known limitation: equal-area loops are always treated as independent outers
+    even if one geometrically encloses the other. This is acceptable because
+    equal-area nested loops are pathological in practice.
+    """
+    # 2x2 square at origin
+    outer_sq = _rect_loop(0, 0, 2, 2)
+    # 2x2 rhombus-like loop that fits inside outer_sq — but same area
+    # Approximate with a shifted 2x2 square that overlaps but isn't nested
+    # For simplicity: two identical squares (same area, same geometry)
+    import copy
+    outer_sq2 = copy.deepcopy(outer_sq)
+    groups = classify_loops([outer_sq, outer_sq2])
+    # With area guard, neither can contain the other (equal areas) -- both outers
+    assert len(groups) == 2
+
+
+def test_classify_loops_concave_outer_with_hole():
+    """Concave outer (L-shape) with a hole inside is classified correctly."""
+    # L-shape approximated with a slightly concave polygon
+    l_shape = [
+        {"kind": "line", "start": [0, 0], "end": [4, 0]},
+        {"kind": "line", "start": [4, 0], "end": [4, 2]},
+        {"kind": "line", "start": [4, 2], "end": [2, 2]},
+        {"kind": "line", "start": [2, 2], "end": [2, 4]},
+        {"kind": "line", "start": [2, 4], "end": [0, 4]},
+        {"kind": "line", "start": [0, 4], "end": [0, 0]},
+    ]
+    hole = _rect_loop(0.5, 0.5, 1.5, 1.5)
+    groups = classify_loops([l_shape, hole])
+    assert len(groups) == 1
+    got_outer, got_holes = groups[0]
+    assert got_outer is l_shape
+    assert len(got_holes) == 1
+    assert got_holes[0] is hole

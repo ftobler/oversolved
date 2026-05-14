@@ -66,6 +66,34 @@ def _point_in_loop(pt: list[float], loop: list[dict]) -> bool:
     return inside
 
 
+def _loop_centroid(loop: list[dict]) -> list[float]:
+    """Area-weighted centroid of a 2D loop polygon.
+
+    Returns a point strictly interior to convex loops, avoiding the boundary
+    ambiguity that arises when using edge endpoints as representative points.
+    Falls back to the first polygon point for near-zero-area loops, or to
+    [0.0, 0.0] for loops with fewer than 3 sampled points.
+    """
+    pts = _loop_pts(loop)
+    n = len(pts)
+    if n < 3:
+        return [0.0, 0.0]
+    cx = cy = 0.0
+    area = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        cross = pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1]
+        area += cross
+        cx += (pts[i][0] + pts[j][0]) * cross
+        cy += (pts[i][1] + pts[j][1]) * cross
+    area /= 2.0
+    if abs(area) < 1e-12:
+        return [pts[0][0], pts[0][1]]
+    cx /= 6.0 * area
+    cy /= 6.0 * area
+    return [cx, cy]
+
+
 def classify_loops(
     loops: list[list[dict]],
 ) -> list[tuple[list[dict], list[list[dict]]]]:
@@ -82,42 +110,23 @@ def classify_loops(
     if len(loops) == 1:
         return [(loops[0], [])]
 
-    def rep_pt(loop: list[dict]) -> list[float]:
-        for e in loop:
-            if "start" in e:
-                return list(e["start"])
-        # Fall back to arc midpoint for OCC-sourced arcs without start/end
-        for e in loop:
-            mid = _arc_midpoint(e)
-            if mid is not None:
-                return mid
-        return [0.0, 0.0]
-
     n = len(loops)
     areas = [abs(_loop_signed_area(loop)) for loop in loops]
 
     # For each loop, find the smallest loop that strictly contains it.
+    # A containing loop must have strictly larger area than the loop it contains.
     contained_by: list[int] = [-1] * n
     for i in range(n):
-        pt = rep_pt(loops[i])
+        pt = _loop_centroid(loops[i])
         best = -1
         best_area = float("inf")
         for j in range(n):
             if i == j:
                 continue
-            if areas[j] < best_area and _point_in_loop(pt, loops[j]):
+            if areas[j] > areas[i] and areas[j] < best_area and _point_in_loop(pt, loops[j]):
                 best = j
                 best_area = areas[j]
         contained_by[i] = best
-
-    # Break mutual-containment cycles (e.g. identical or exactly overlapping loops).
-    # If A is contained by B and B is contained by A, neither is truly nested;
-    # treat both as independent outers.
-    for i in range(n):
-        j = contained_by[i]
-        if j != -1 and contained_by[j] == i:
-            contained_by[i] = -1
-            contained_by[j] = -1
 
     outer_indices = [i for i in range(n) if contained_by[i] == -1]
     result = []
