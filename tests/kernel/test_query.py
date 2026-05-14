@@ -608,3 +608,42 @@ def test_ancestry_classifier_element_without_classifier():
     repo.register_ancestor(["@fa", "@fb"], surf_no_class)
 
     assert repo.query(ancestry(["@fa", "@fb"], classifier="inner")) is None
+
+
+class TestParseAncestryBoundsCheck:
+    def test_parse_ancestry_truncated_raises(self):
+        """String truncated mid-segment raises ValueError containing 'truncated'."""
+        # Length field says 10 chars but only 3 are present
+        q = "?a;abc"  # hex 'a' = 10, but only 3 chars follow ';'
+        with pytest.raises(ValueError, match="truncated"):
+            _parse_ancestry(q)
+
+    def test_parse_ancestry_missing_semicolon_raises(self):
+        """String without ';' separator raises ValueError containing 'truncated'."""
+        with pytest.raises(ValueError, match="truncated"):
+            _parse_ancestry("?4abcd")
+
+    def test_parse_ancestry_invalid_hex_raises(self):
+        """Non-hex length field raises ValueError."""
+        with pytest.raises(ValueError, match="invalid hex length"):
+            _parse_ancestry("?zz;abcd")
+
+    def test_parse_ancestry_overrun_raises(self):
+        """Length field claiming more bytes than remain raises ValueError."""
+        # hex 'ff' = 255, but rest is only 4 chars
+        q = "?ff;abcd"
+        with pytest.raises(ValueError, match="truncated"):
+            _parse_ancestry(q)
+
+    def test_parse_ancestry_valid_round_trips(self):
+        """Valid ancestry strings survive emit -> parse round-trips."""
+        cases = [
+            (["@sk1", "line1", "start"], None),
+            (["@sk1", "line1"], "vertex"),
+            (["@feat1"], None),
+        ]
+        for ids, typ in cases:
+            q = make_ancestry_query(ids, typ)
+            parsed_ids, parsed_typ = _parse_ancestry(q)
+            assert parsed_ids == ids
+            assert parsed_typ == typ

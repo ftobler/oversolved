@@ -185,15 +185,28 @@ def _parse_ancestry(query_str: str) -> tuple[list[str], str | None]:
     """
     if not query_str.startswith('?'):
         raise ValueError(f"Invalid ancestry query: {query_str!r}")
-    semi = query_str.index(';')
+    try:
+        semi = query_str.index(';')
+    except ValueError:
+        raise ValueError(f"ancestry query truncated: missing ';' in {query_str!r}")
     lengths_hex = query_str[1:semi]
     rest = query_str[semi + 1:]
 
-    lengths = [int(x, 16) for x in lengths_hex.split(',')]
+    try:
+        lengths = [int(x, 16) for x in lengths_hex.split(',')]
+    except ValueError as exc:
+        raise ValueError(
+            f"invalid hex length field in ancestry query {query_str!r}"
+        ) from exc
 
     ids = []
     pos = 0
-    for length in lengths:
+    for i, length in enumerate(lengths):
+        if pos + length > len(rest):
+            raise ValueError(
+                f"ancestry string truncated at position {pos}: "
+                f"segment {i} needs {length} bytes but only {len(rest) - pos} remain"
+            )
         ids.append(rest[pos:pos + length])
         pos += length
 
