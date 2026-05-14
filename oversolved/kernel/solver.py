@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import math
+import threading
 import time
 import traceback
 from typing import Any, Callable, Optional
@@ -314,6 +315,7 @@ def _expand_center_rect(feature: dict) -> dict:
 # ─── Repo structure cache ───
 
 _repo_structure_cache: dict[str, tuple[str, Repository]] = {}
+_repo_structure_cache_lock = threading.Lock()
 
 
 def _build_repo_structure_key(feature_id: str, entities: dict) -> str:
@@ -324,9 +326,10 @@ def _build_repo_structure_key(feature_id: str, entities: dict) -> str:
 
 def _get_or_build_repo(feature_id: str, entities: dict) -> Repository:
     key = _build_repo_structure_key(feature_id, entities)
-    entry = _repo_structure_cache.get("last")
-    if entry is not None and entry[0] == key:
-        return entry[1]
+    with _repo_structure_cache_lock:
+        entry = _repo_structure_cache.get("last")
+        if entry is not None and entry[0] == key:
+            return entry[1]
     repo = Repository()
     repo.register("builtin_origin", {"entity": ORIGIN_ID, "point": "xy"})
     for name, plane in _BUILTIN_PLANES.items():
@@ -345,7 +348,8 @@ def _get_or_build_repo(feature_id: str, entities: dict) -> Repository:
             repo.register(feature_id + eid + "center", {"entity": eid, "point": "center"})
         elif kind == "point":
             repo.register(feature_id + eid + "xy", {"entity": eid, "point": "xy"})
-    _repo_structure_cache["last"] = (key, repo)
+    with _repo_structure_cache_lock:
+        _repo_structure_cache["last"] = (key, repo)
     return repo
 
 
