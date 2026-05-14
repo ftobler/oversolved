@@ -810,7 +810,13 @@ def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
     for eid in circles:
         splits[eid] = []
 
-    arc_verts = verts.copy()  # isolate arc-init verts from line endpoints
+    # Copy verts to seed arc vertex registration with pre-existing line endpoint
+    # data. _vid() inside _normalize_arcs_and_init_splits will return an existing
+    # vertex key when an arc endpoint lies at the same coordinates as a line
+    # endpoint, so coincident arc/line endpoints share vertex IDs in the topology.
+    # After arc init, any new arc-endpoint vertices added to the copy are merged
+    # back into the shared verts dict via verts.update(arc_verts) below.
+    arc_verts = verts.copy()
     a0_from_norm, arc_splits, arcs = _normalize_arcs_and_init_splits(arcs, arc_verts)
     arc_a0.update(a0_from_norm)
     splits.update(arc_splits)
