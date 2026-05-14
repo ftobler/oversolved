@@ -44,8 +44,8 @@ def _copy_shape(shape: TopoDS_Shape | None) -> TopoDS_Shape | None:
     try:
         return ocp_copy_shape(_ensure_occ(shape))
     except Exception as exc:
-        logger.warning("Failed to copy OCP shape: %s, returning original", exc)
-        return shape
+        logger.warning("Failed to copy OCP shape, discarding shape: %s", exc)
+        return None
 
 
 # Canonical keys that define a feature's identity for dirty detection.
