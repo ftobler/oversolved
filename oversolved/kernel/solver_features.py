@@ -5,6 +5,7 @@ import re
 from typing import Any
 import numpy as np
 from oversolved.kernel.query import Repository, _parse_ancestry
+from oversolved.kernel.types3d import Body
 from oversolved.kernel.solver_constants import _ARC_SEGMENTS
 
 try:
@@ -406,7 +407,7 @@ def _split_compound(shape) -> list:
 # ── Feature solvers ──
 
 
-def _resolve_body(ref: str, body_store: dict) -> Any:
+def _resolve_body(ref: str, body_store: dict) -> Body:
     """Resolve a body reference to a Body object.
 
     Accepts "@feat", "feat", or "body_feat" forms.
@@ -858,9 +859,10 @@ def _solve_array(
                     f"available body IDs: {available}"
                 )
         else:
-            body = next(iter(body_store.values())) if body_store else None
-            if body is None:
+            _body_or_none = next(iter(body_store.values())) if body_store else None
+            if _body_or_none is None:
                 raise ValueError("array: no source body with shape found")
+            body = _body_or_none
         source_body_id = body.id
         if body.shape is None:
             raise ValueError("array: source body has no shape")
@@ -1340,10 +1342,13 @@ def _solve_delete_body(feature: dict, global_repo: Repository, body_store: dict)
             resolved = global_repo.query(body_query, body_store=body_store)
             if resolved is None:
                 raise ValueError(f"delete_body: body not found: {body_query!r}")
-            if hasattr(resolved, 'id'):
+            if isinstance(resolved, Body):
                 body_key = resolved.id
-            elif isinstance(resolved, dict) and resolved.get("body_id"):
-                body_key = resolved["body_id"]
+            elif isinstance(resolved, dict):
+                _raw_key = resolved.get("body_id")
+                if not _raw_key:
+                    raise ValueError(f"delete_body: query did not resolve to a body: {body_query!r}")
+                body_key = str(_raw_key)
             else:
                 raise ValueError(f"delete_body: query did not resolve to a body: {body_query!r}")
         else:

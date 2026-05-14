@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, TypeAlias
 import secrets
 from oversolved.kernel.solver_constants import _BUILTIN_PLANES
 
@@ -8,6 +8,7 @@ __all__ = [
     "LocalQuery",
     "AbsoluteQuery",
     "AncestryQuery",
+    "QueryType",
     "Repository",
     "parse_query",
     "emit_wire",
@@ -18,6 +19,8 @@ __all__ = [
     "_parse_ancestry",
     "_init_global_repo",
 ]
+
+QueryType: TypeAlias = "LocalQuery | AbsoluteQuery | AncestryQuery"
 
 
 class AmbiguousQueryError(Exception):
@@ -77,7 +80,10 @@ class AncestryQuery:
         )
 
 
-def parse_query(s: str) -> "LocalQuery | AbsoluteQuery | AncestryQuery":
+_QUERY_TYPES = (LocalQuery, AbsoluteQuery, AncestryQuery)
+
+
+def parse_query(s: str) -> QueryType:
     """Central parse entry-point -- replaces every inline startswith check."""
     if s.startswith("$"):
         return LocalQuery.from_string(s)
@@ -88,7 +94,7 @@ def parse_query(s: str) -> "LocalQuery | AbsoluteQuery | AncestryQuery":
     raise ValueError(f"Unrecognized query string: {s!r}")
 
 
-def emit_wire(q: "LocalQuery | AbsoluteQuery | AncestryQuery") -> str:
+def emit_wire(q: QueryType) -> str:
     """Serialize a typed query to its wire-format string.
 
     Call this ONLY at true serialization boundaries:
@@ -152,7 +158,7 @@ def absolute(feature_id: str, eid: str = "", sub: str = "") -> AbsoluteQuery:
 
 
 def ancestry(
-    ids: "list[LocalQuery | AbsoluteQuery | AncestryQuery | str]",
+    ids: "list[QueryType | str]",
     type_restriction: Optional[str] = None,
     classifier: Optional[str] = None,
 ) -> AncestryQuery:
@@ -162,7 +168,7 @@ def ancestry(
     just to pass something to this function.
     """
     wire_ids = [
-        emit_wire(i) if isinstance(i, (LocalQuery, AbsoluteQuery, AncestryQuery)) else i
+        emit_wire(i) if isinstance(i, _QUERY_TYPES) else i
         for i in ids
     ]
     return AncestryQuery.from_parts(wire_ids, type_restriction, classifier)
@@ -283,11 +289,11 @@ class Repository:
 
     def query(
         self,
-        query_str: "str | LocalQuery | AbsoluteQuery | AncestryQuery",
+        query_str: "str | QueryType",
         context: str | None = None,
         body_store: dict[str, Any] | None = None,
     ) -> Any:
-        if isinstance(query_str, (LocalQuery, AbsoluteQuery, AncestryQuery)):
+        if isinstance(query_str, _QUERY_TYPES):
             return self._query_typed(query_str, context, body_store)
         if not query_str:
             return None
@@ -309,7 +315,7 @@ class Repository:
 
     def _query_typed(
         self,
-        q: "LocalQuery | AbsoluteQuery | AncestryQuery",
+        q: QueryType,
         context: str | None,
         body_store: dict[str, Any] | None = None,
     ) -> Any:

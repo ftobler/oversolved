@@ -33,10 +33,18 @@ Output
 """
 
 import math
-from typing import Any
+from typing import Any, TypedDict
 from oversolved.kernel.query import make_ancestry_query, emit_wire, absolute
 
-__all__ = ["detect_topology"]
+__all__ = ["detect_topology", "TopologyDict"]
+
+
+class TopologyDict(TypedDict):
+    intersection_points: dict
+    vertices: dict
+    edges: list[dict]
+    surfaces: list[dict]
+
 
 _EPS = 1e-9  # general tolerance for point coincidence
 # _MERGE > _EPS: a point pair at ~5e-8 apart merges to one vertex but is not treated as intersecting
@@ -460,7 +468,7 @@ def _face_area(cycle, hes, verts) -> float:
 # ── Main entry point  ──
 
 
-def detect_topology(geometry: dict, feature_id: str = "") -> dict:
+def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
     """Detect intersection points and bounded surfaces in solved sketch geometry."""
 
     lines, circles, arcs = {}, {}, {}

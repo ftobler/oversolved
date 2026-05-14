@@ -7,7 +7,7 @@ import os
 import logging
 import tempfile
 from io import BytesIO
-from typing import Any
+from typing import Any, TypedDict
 
 try:
     from cadquery.occ_impl import shapes as cq_shapes
@@ -78,12 +78,31 @@ __all__ = [
 ]
 
 
+class MeshDict(TypedDict):
+    vertices: list[list[float]]
+    faces: list[list[int]]
+    normals: list[list[float]]
+    face_data: list[dict]
+    triangle_to_face: list[int]
+    face_queries: list[str]
+
+
+class EdgeDict(TypedDict):
+    edges: list[dict]
+    edge_queries: list[str]
+
+
+class VertexDict(TypedDict):
+    vertices: list[list[float]]
+    vertex_queries: list[str]
+
+
 def _ensure_cq_shape(solid: Any) -> cq_shapes.Shape:
     """Wrap a raw TopoDS shape in cadquery Shape if necessary."""
     return cq_shapes.Shape.cast(_ensure_occ(solid))
 
 
-def _validate_mesh(mesh: dict) -> None:
+def _validate_mesh(mesh: MeshDict) -> None:
     """Validate mesh data: no NaN/inf vertices, valid face indices, unit normals.
 
     Raises ValueError with descriptive message if mesh is invalid.
@@ -354,7 +373,7 @@ def revolve_face(
     return _revolve_face(face, axis_origin, axis_direction, angle_deg)
 
 
-def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None = None) -> dict:
+def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None = None) -> MeshDict:
     """Tessellate a cadquery solid to a mesh dict.
 
     Iterates faces and tessellates each one individually so that face
@@ -513,7 +532,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None
             [0, -1, 0],
         ]
 
-    mesh = {
+    mesh: MeshDict = {
         "vertices": all_vertices,
         "faces": all_faces,
         "normals": all_normals,
@@ -525,7 +544,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None
     return mesh
 
 
-def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | None = None) -> dict:
+def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | None = None) -> EdgeDict:
     """Extract exact edge geometry from a cadquery solid.
 
     Returns a dict with keys "edges" (list of edge dicts, one per unique edge,
@@ -624,7 +643,7 @@ def solid_to_edges(solid: Any, created_by: str | None = None, body_id: str | Non
     return {"edges": edges, "edge_queries": edge_queries}
 
 
-def solid_to_vertices(solid: Any, created_by: str | None = None, body_id: str | None = None) -> dict:
+def solid_to_vertices(solid: Any, created_by: str | None = None, body_id: str | None = None) -> VertexDict:
     """Extract unique B-rep vertices from a cadquery solid."""
     solid = _ensure_cq_shape(solid)
     vertices: list[list[float]] = []

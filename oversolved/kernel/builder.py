@@ -7,6 +7,7 @@ from oversolved.kernel.cadquery_ops import _normal_to_frame, _ensure_occ
 from oversolved.kernel.ocp_ops import ocp_copy_shape
 from oversolved.kernel.geom_hash import face_geometry_hash, edge_geometry_hash, vertex_geometry_hash
 from oversolved.kernel.query import Repository, emit_wire, absolute
+from oversolved.kernel.geometry import MeshDict
 from oversolved.kernel.types3d import Body, FeatureCheckpoint, BuildState
 from oversolved.kernel.solver import _init_global_repo, _try_solve_feature
 from oversolved.kernel.solver_constants import _BUILTIN_PLANE_RESULTS
@@ -81,7 +82,7 @@ def _find_first_dirty(features: list[dict], prev_state: BuildState | None) -> in
     return len(features)
 
 
-def _register_brep_face_ancestry(global_repo, body: Body, mesh: dict) -> None:
+def _register_brep_face_ancestry(global_repo, body: Body, mesh: MeshDict) -> None:
     """Register B-rep face ancestry objects in the global query repository."""
     if global_repo is None or body.shape is None or not body.created_by:
         return
