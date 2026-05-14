@@ -209,6 +209,9 @@ def make_ancestry_query(ids: list[str], type_restriction: str | None = None) -> 
     return s
 
 
+# When adding a new geometry type, add it here and list any parent types.
+# _validate_type_hierarchy() below raises AssertionError at import if the
+# dict and the known_types set diverge.
 _TYPE_HIERARCHY: dict[str, dict[str, list[str]]] = {
     'solid': {'parents': []},
     'face': {'parents': []},
@@ -218,6 +221,30 @@ _TYPE_HIERARCHY: dict[str, dict[str, list[str]]] = {
     'straightedge': {'parents': ['edge']},
     'vertex': {'parents': []},
 }
+
+_KNOWN_GEOMETRY_TYPES = {
+    'solid', 'face', 'flatface', 'cylinderface',
+    'edge', 'straightedge', 'vertex',
+}
+
+
+def _validate_type_hierarchy() -> None:
+    registered = set(_TYPE_HIERARCHY.keys())
+    missing = _KNOWN_GEOMETRY_TYPES - registered
+    if missing:
+        raise AssertionError(
+            f"_TYPE_HIERARCHY is missing types: {missing}. "
+            "Update _TYPE_HIERARCHY when adding new geometry types."
+        )
+    for type_name, meta in _TYPE_HIERARCHY.items():
+        for parent in meta.get('parents', []):
+            if parent not in registered:
+                raise AssertionError(
+                    f"_TYPE_HIERARCHY: type '{type_name}' references unknown parent '{parent}'."
+                )
+
+
+_validate_type_hierarchy()
 
 
 def _is_subtype(actual_type: str | None, target_type: str) -> bool:

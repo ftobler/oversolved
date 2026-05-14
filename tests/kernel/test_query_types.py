@@ -8,6 +8,7 @@ from oversolved.kernel.query import (
     parse_query, emit_wire,
     local, absolute, ancestry,
     make_ancestry_query,
+    _TYPE_HIERARCHY, _KNOWN_GEOMETRY_TYPES, _validate_type_hierarchy, _is_subtype,
 )
 
 
@@ -228,3 +229,41 @@ def test_emit_wire_roundtrip():
 def test_make_ancestry_query_shim():
     ids = ["@sk1a", "@sk1b"]
     assert make_ancestry_query(ids, "flatface") == emit_wire(ancestry(ids, "flatface"))
+
+
+# ─── Type hierarchy validation (fix-119) ───
+
+def test_type_hierarchy_is_complete():
+    assert _KNOWN_GEOMETRY_TYPES <= set(_TYPE_HIERARCHY.keys())
+
+
+def test_type_hierarchy_parents_are_valid():
+    registered = set(_TYPE_HIERARCHY.keys())
+    for type_name, meta in _TYPE_HIERARCHY.items():
+        for parent in meta.get('parents', []):
+            assert parent in registered, f"type '{type_name}' has unknown parent '{parent}'"
+
+
+def test_is_subtype_known_relationships():
+    assert _is_subtype('flatface', 'face') is True
+    assert _is_subtype('cylinderface', 'face') is True
+    assert _is_subtype('straightedge', 'edge') is True
+    assert _is_subtype('face', 'flatface') is False
+    assert _is_subtype('flatface', 'edge') is False
+    assert _is_subtype(None, 'face') is False
+
+
+def test_validate_raises_on_missing_type():
+    import unittest.mock as mock
+    truncated = {k: v for k, v in _TYPE_HIERARCHY.items() if k != 'vertex'}
+    with mock.patch('oversolved.kernel.query._TYPE_HIERARCHY', truncated):
+        with pytest.raises(AssertionError, match="missing types"):
+            _validate_type_hierarchy()
+
+
+def test_validate_raises_on_bad_parent():
+    import unittest.mock as mock
+    bad = {**_TYPE_HIERARCHY, 'newtype': {'parents': ['nonexistent']}}
+    with mock.patch('oversolved.kernel.query._TYPE_HIERARCHY', bad):
+        with pytest.raises(AssertionError, match="unknown parent"):
+            _validate_type_hierarchy()

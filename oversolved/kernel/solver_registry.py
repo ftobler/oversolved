@@ -375,7 +375,10 @@ def _plane_transform(plane_obj: Frame3D | dict) -> dict:
 def _register_topology_surfaces(
     global_repo: Repository, topology: dict, plane_obj: Frame3D | dict
 ) -> None:
-    """Register each topology surface as a face-typed plane in the global repository."""
+    """Register each topology surface as a face-typed plane in the global repository.
+
+    New geometry types introduced here must also be added to _TYPE_HIERARCHY in query.py.
+    """
     if isinstance(plane_obj, Frame3D):
         x_axis = plane_obj.x_axis
         y_axis = plane_obj.y_axis
