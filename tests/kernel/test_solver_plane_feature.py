@@ -1267,10 +1267,9 @@ def test_plane_three_point_concatenated_format():
                 'kind': 'plane',
                 'definition': {
                     'mode': 'three_point',
-                    # Use concatenated format (e.g., sketch2pt2xy) instead of slash format
-                    'p1': '@sketch2pt2xy',
-                    'p2': '@sketch1pt1xy',
-                    'p3': '@sketch2pt3xy',
+                    'p1': '@sketch2/pt2/xy',
+                    'p2': '@sketch1/pt1/xy',
+                    'p3': '@sketch2/pt3/xy',
                 },
             },
         ]
@@ -1323,7 +1322,7 @@ def test_plane_plane_point_concatenated_format():
                 'definition': {
                     'mode': 'plane_point',
                     'plane': '@builtin_plane_top',
-                    'point': '@sketch1pt1xy',
+                    'point': '@sketch1/pt1/xy',
                 },
             },
         ]
@@ -1354,7 +1353,7 @@ def test_plane_line_angle_concatenated_format():
                 'kind': 'plane',
                 'definition': {
                     'mode': 'line_angle',
-                    'line': '@sketch1line1',  # This queries the line entity itself
+                    'line': '@sketch1/line1',  # This queries the line entity itself
                     'angle': 45.0,
                 },
             },
@@ -1392,8 +1391,8 @@ def test_plane_edge_point_pivots_on_line():
                 'kind': 'plane',
                 'definition': {
                     'mode': 'edge_point',
-                    'edge': '@sketch0line1',
-                    'point': '@sketch0pt1xy',
+                    'edge': '@sketch0/line1',
+                    'point': '@sketch0/pt1/xy',
                 },
             },
         ]
@@ -1439,8 +1438,8 @@ def test_plane_edge_point_concatenated_format():
                 'kind': 'plane',
                 'definition': {
                     'mode': 'edge_point',
-                    'edge': '@sketch1line1',
-                    'point': '@sketch1pt1xy',
+                    'edge': '@sketch1/line1',
+                    'point': '@sketch1/pt1/xy',
                 },
             },
         ]

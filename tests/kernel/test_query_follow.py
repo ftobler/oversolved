@@ -676,7 +676,7 @@ def test_query_with_ambiguous_ancestry() -> None:
     repo = Repository()
 
     # Register two "surfaces" that both depend on the same ancestors
-    ancestor_ids = ["@sketch_1circle", "@sketch_1right_line"]
+    ancestor_ids = ["@sketch_1/circle", "@sketch_1/right_line"]
     query = make_ancestry_query(ancestor_ids, "face")
 
     print(f"\nQuery string: {query}")
@@ -704,7 +704,7 @@ def test_surface_index_disambiguates_queries() -> None:
     from oversolved.kernel.query import make_ancestry_query
 
     # Original problematic case: two surfaces with the same ancestry
-    ancestor_ids = ["@sketch_1circle", "@sketch_1right_line"]
+    ancestor_ids = ["@sketch_1/circle", "@sketch_1/right_line"]
     query1 = make_ancestry_query(ancestor_ids, 'face')
     query2 = make_ancestry_query(ancestor_ids, 'face')
 
@@ -714,8 +714,8 @@ def test_surface_index_disambiguates_queries() -> None:
     print(f"Identical: {query1 == query2} ← PROBLEM!")
 
     # With indices, they should be different
-    ancestor_ids_0 = ["@sketch_1circle", "@sketch_1right_line", "surface:0"]
-    ancestor_ids_1 = ["@sketch_1circle", "@sketch_1right_line", "surface:1"]
+    ancestor_ids_0 = ["@sketch_1/circle", "@sketch_1/right_line", "surface:0"]
+    ancestor_ids_1 = ["@sketch_1/circle", "@sketch_1/right_line", "surface:1"]
 
     query1_indexed = make_ancestry_query(ancestor_ids_0, 'face')
     query2_indexed = make_ancestry_query(ancestor_ids_1, 'face')
@@ -737,8 +737,8 @@ def test_indexed_queries_dont_match_both() -> None:
     repo = Repository()
 
     # Register two surfaces with indexed ancestry
-    ancestor_ids_0 = ["@sketch_1circle", "@sketch_1right_line", "surface:0"]
-    ancestor_ids_1 = ["@sketch_1circle", "@sketch_1right_line", "surface:1"]
+    ancestor_ids_0 = ["@sketch_1/circle", "@sketch_1/right_line", "surface:0"]
+    ancestor_ids_1 = ["@sketch_1/circle", "@sketch_1/right_line", "surface:1"]
 
     query0 = make_ancestry_query(ancestor_ids_0, "face")
     query1 = make_ancestry_query(ancestor_ids_1, "face")
@@ -795,8 +795,8 @@ def test_geometric_classifiers_disambiguate_circle_divided_by_line() -> None:
     print("\nCircle cut by line:")
     print(f"  Upper region classifier: {classifier_upper}")
     print(f"  Lower region classifier: {classifier_lower}")
-    print(f"  Query for upper: ?f,13;@sketch_1circle@sketch_1line:face{classifier_upper}")
-    print(f"  Query for lower: ?f,13;@sketch_1circle@sketch_1line:face{classifier_lower}")
+    print(f"  Query for upper: ?f,13;@sketch_1/circle@sketch_1/line:face{classifier_upper}")
+    print(f"  Query for lower: ?f,13;@sketch_1/circle@sketch_1/line:face{classifier_lower}")
 
     assert classifier_upper == '@pos', "Upper region should be @pos"
     assert classifier_lower == '@neg', "Lower region should be @neg"
@@ -829,8 +829,8 @@ def test_geometric_classifiers_disambiguate_standalone_circle() -> None:
     print("\nStandalone circle:")
     print(f"  Interior classifier: {classifier_inner}")
     print(f"  Exterior classifier: {classifier_outer}")
-    print(f"  Query for interior: ?5;@sketch_1circle:face{classifier_inner}")
-    print(f"  Query for exterior: ?5;@sketch_1circle:face{classifier_outer}")
+    print(f"  Query for interior: ?5;@sketch_1/circle:face{classifier_inner}")
+    print(f"  Query for exterior: ?5;@sketch_1/circle:face{classifier_outer}")
 
     assert classifier_inner == '@inner', "Interior should be @inner"
     assert classifier_outer == '@outer', "Exterior should be @outer"

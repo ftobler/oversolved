@@ -179,7 +179,7 @@ features:
       - id: c_on_end
         kind: coincident
         a: "$ptxy"
-        b: "@sketch_1line1end"
+        b: "@sketch_1/line1/end"
 """
     result = solve(yaml_str)["result"]
     sketch_log("test_cross_sketch_point_coincident_with_line_end", yaml_str, result["sketch_2"])
@@ -301,7 +301,7 @@ features:
       - id: c_bad
         kind: coincident
         a: "$ptxy"
-        b: "@sketch_1doesnotexist"
+        b: "@sketch_1/doesnotexist"
 """
     result = solve(yaml_str)["result"]
     sketch_log("test_sketch_1_unaffected_by_sketch_2_bad_query", yaml_str, result["sketch_1"])
@@ -597,7 +597,7 @@ features:
       - id: c_bad
         kind: coincident
         a: "$armstart"
-        b: "@sketch_1doesnotexist"
+        b: "@sketch_1/doesnotexist"
 """
     result = solve(yaml_str)["result"]
     sketch_log("test_cross_sketch_length_constraint_with_unresolvable_query", yaml_str, result["sketch_1"])
@@ -654,7 +654,7 @@ features:
       - id: c_coincident_B1n1WgtE
         kind: coincident
         a: $NsCWBgu0btgcyVQVend
-        b: "@sketch_1soQKp5gabTAWeXxrxy"
+        b: "@sketch_1/soQKp5gabTAWeXxr/xy"
     label: thelabel
 """
     result = solve(yaml_str)["result"]

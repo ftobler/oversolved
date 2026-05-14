@@ -7,7 +7,7 @@ These tests cover fixes for the following bug reports:
 """
 from oversolved.kernel.solver import _solve_sketch, _post_register
 from oversolved.kernel.query import Repository
-from oversolved.kernel.solver import _register_solved_geometry
+from oversolved.kernel.solver import _register_solved_geometry_slash
 
 
 class TestConstraintAutoDeletion:
@@ -86,7 +86,7 @@ class TestConstraintAutoDeletion:
 
         # Register sketch1's geometry in global repo
         global_repo = Repository()
-        _register_solved_geometry(
+        _register_solved_geometry_slash(
             global_repo,
             'sketch1',
             {'entities': [{'id': 'pt1', 'kind': 'point'}]},
@@ -104,7 +104,7 @@ class TestConstraintAutoDeletion:
                 {
                     'id': 'c_vertical_external',
                     'kind': 'vertical',
-                    'target': '@sketch1pt1xy'  # only external target - invalid
+                    'target': '@sketch1/pt1/xy'  # only external target - invalid
                 }
             ]
         }, global_repo=global_repo)
@@ -129,7 +129,7 @@ class TestConstraintAutoDeletion:
 
         # Register sketch1's geometry
         global_repo = Repository()
-        _register_solved_geometry(
+        _register_solved_geometry_slash(
             global_repo,
             'sketch1',
             {'entities': [{'id': 'pt1', 'kind': 'point'}]},
@@ -148,7 +148,7 @@ class TestConstraintAutoDeletion:
                     'id': 'c_distance',
                     'kind': 'point_distance',
                     'a': '$pt2',
-                    'b': '@sketch1pt1xy',  # external reference
+                    'b': '@sketch1/pt1/xy',  # external reference
                     'value': 1
                 }
             ]
@@ -177,7 +177,7 @@ cleared so downstream cross-sketch constraints are garbage-collected."""
         _post_register(global_repo, 'sketch1', sketch1, sketch1_result)
 
         # Verify line1 is registered
-        assert global_repo.query('@sketch1line1') is not None
+        assert global_repo.query('@sketch1/line1') is not None
 
         # Re-solve sketch1 without line1 (entity deleted)
         sketch1_v2 = {
@@ -192,8 +192,8 @@ cleared so downstream cross-sketch constraints are garbage-collected."""
         _post_register(global_repo, 'sketch1', sketch1_v2, sketch1_result_v2)
 
         # Old registration must be gone
-        assert global_repo.query('@sketch1line1') is None
-        assert global_repo.query('@sketch1line1start') is None
+        assert global_repo.query('@sketch1/line1') is None
+        assert global_repo.query('@sketch1/line1/start') is None
 
         # Downstream sketch2 referencing the deleted line1
         sketch2_result = _solve_sketch({
@@ -207,7 +207,7 @@ cleared so downstream cross-sketch constraints are garbage-collected."""
                     'id': 'c_dist',
                     'kind': 'point_distance',
                     'a': '$pt1',
-                    'b': '@sketch1line1start',
+                    'b': '@sketch1/line1/start',
                     'value': 5.0
                 }
             ]

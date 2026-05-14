@@ -52,7 +52,7 @@ def test_make_ancestry_query_roundtrip():
 
 def test_make_ancestry_query_face_format():
     """Result starts with '?' and ends with ':face'."""
-    ids = ['@sketchAlineX', '@sketchAlineY']
+    ids = ['@sketchA/lineX', '@sketchA/lineY']
     q = make_ancestry_query(ids, 'face')
     assert q.startswith('?')
     assert q.endswith(':face')
