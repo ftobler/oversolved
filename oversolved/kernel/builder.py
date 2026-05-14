@@ -381,30 +381,27 @@ def build(
 
     # Use full feature list for lookups (solver may need features past rollback)
     features_by_id = {f.get("id", ""): f for f in all_features}
-    for i, feature in enumerate(features[first_dirty:]):
+    for feature in features[first_dirty:]:
         fid = feature.get("id", "")
 
-        # BEFORE solving non-first features, re-register bodies that may have changed.
-        # Reset registered_this_cycle per iteration so that every dirty feature
-        # sees the current shape, not the shape from a prior iteration.
-        if i > 0:
-            registered_this_cycle: set[str] = set()
-            for body in body_store.values():
-                if body.shape and body.created_by and body.id not in registered_this_cycle:
-                    _register_body_faces(body)
-                    registered_this_cycle.add(body.id)
+        # Snapshot modified_by lengths so we can detect which bodies this feature changes.
+        modified_by_len_before = {bid: len(body.modified_by) for bid, body in body_store.items()}
 
         feature_result = _try_solve_feature(feature, global_repo, body_store, features_by_id)
         _post_register(global_repo, fid, feature, feature_result)
         result[fid] = feature_result
 
-        # Register new bodies created by this feature.
+        # Register new bodies and re-register bodies modified by this feature.
+        # Modified bodies must be re-registered so downstream features see updated face ancestry.
         for body_id, body in body_store.items():
             if body_id not in registered_body_ids and body.shape is not None:
                 _register_body_faces(body)
                 _register_solid_ancestry(global_repo, body)
                 _register_extrusion_feature(global_repo, body.created_by or "", body.sketch_id)
                 registered_body_ids.add(body_id)
+            elif (body.shape is not None
+                  and len(body.modified_by) > modified_by_len_before.get(body_id, 0)):
+                _register_body_faces(body)
 
         new_checkpoints[fid] = FeatureCheckpoint(
             spec=copy.deepcopy(feature),
