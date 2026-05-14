@@ -215,3 +215,19 @@ def test_builder_body_has_edges():
     body = next(iter(bodies.values()))
     assert "edges" in body, "body missing 'edges' key"
     assert len(body["edges"]) > 0, "body edges list is empty"
+
+
+def test_solid_to_edges_null_shape():
+    """A null TopoDS_Shape returns an empty edge dict without raising."""
+    from OCP.TopoDS import TopoDS_Shape
+
+    result = solid_to_edges(TopoDS_Shape())
+    assert result == {"edges": [], "edge_queries": []}
+
+
+def test_solid_to_vertices_null_shape():
+    """A null TopoDS_Shape returns an empty vertex dict without raising."""
+    from OCP.TopoDS import TopoDS_Shape
+
+    result = solid_to_vertices(TopoDS_Shape())
+    assert result == {"vertices": [], "vertex_queries": []}

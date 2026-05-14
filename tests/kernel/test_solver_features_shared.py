@@ -72,3 +72,12 @@ def test_ancestry_order_three_ids() -> None:
 
     matched, _ = _resolve_face_profile(q_acb, repo_acb, {})
     assert matched == surface_acb["loops"]
+
+
+def test_extract_loops_from_occ_face_null_shape_raises():
+    """A null TopoDS_Shape raises ValueError rather than segfaulting."""
+    from OCP.TopoDS import TopoDS_Shape
+    from oversolved.kernel.solver_features_shared import _extract_loops_from_occ_face
+
+    with pytest.raises(ValueError, match="null shape"):
+        _extract_loops_from_occ_face(TopoDS_Shape(), 0)

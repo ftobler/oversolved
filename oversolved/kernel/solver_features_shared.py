@@ -208,10 +208,13 @@ def _register_top_face(
 def _extract_loops_from_occ_face(
     shape: TopoDS_Shape, face_index: int
 ) -> tuple[list[list[dict]], Frame3D]:
+    occ_shape = _ensure_occ(shape)
+    if occ_shape.IsNull():
+        raise ValueError("_extract_loops_from_occ_face received a null shape")
     import cadquery as cq
-    cq_shape = cq.Shape.cast(_ensure_occ(shape))
+    cq_shape = cq.Shape.cast(occ_shape)
     cq_faces_sorted = sorted(list(cq_shape.Faces()), key=_face_sort_key)
-    return ocp_extract_face_loops(_ensure_occ(shape), cq_faces_sorted, face_index)
+    return ocp_extract_face_loops(occ_shape, cq_faces_sorted, face_index)
 
 
 def _resolve_face_index_via_hash(

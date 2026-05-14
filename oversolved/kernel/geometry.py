@@ -638,6 +638,8 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
 
     body_id: when set, edge queries are scoped to this body for uniqueness.
     """
+    if _ensure_occ(solid).IsNull():
+        return {"edges": [], "edge_queries": []}
     solid = _ensure_cq(solid)
     TWO_PI = 2.0 * math.pi
     CIRCLE_TOL = 1e-4
@@ -730,6 +732,8 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
 
 def solid_to_vertices(solid: TopoDS_Shape, created_by: str | None = None, body_id: str | None = None) -> VertexDict:
     """Extract unique B-rep vertices from a cadquery solid."""
+    if _ensure_occ(solid).IsNull():
+        return {"vertices": [], "vertex_queries": []}
     solid = _ensure_cq(solid)
     vertices: list[list[float]] = []
     vertex_queries: list[str] = []
