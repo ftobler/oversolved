@@ -59,8 +59,8 @@ def test_apply_edge_modifier_fillet_all_edges():
         add_edge_fn=lambda maker, e: maker.Add(radius, e),
     )
 
-    assert _vertex_count(direct) == _vertex_count(via_helper)
-    assert _edge_count(direct) == _edge_count(via_helper)
+    assert _vertex_count(direct) == _vertex_count(via_helper.shape)
+    assert _edge_count(direct) == _edge_count(via_helper.shape)
 
 
 def test_apply_edge_modifier_chamfer_all_edges():
@@ -78,12 +78,12 @@ def test_apply_edge_modifier_chamfer_all_edges():
         add_edge_fn=lambda maker, e: maker.Add(distance, e),
     )
 
-    assert _vertex_count(direct) == _vertex_count(via_helper)
-    assert _edge_count(direct) == _edge_count(via_helper)
+    assert _vertex_count(direct) == _vertex_count(via_helper.shape)
+    assert _edge_count(direct) == _edge_count(via_helper.shape)
 
 
 def test_apply_edge_modifier_null_shape_returns_original():
-    """_apply_edge_modifier returns the original shape when the shape is null."""
+    """_apply_edge_modifier returns EdgeModifierResult with original shape when null."""
     from oversolved.kernel.geometry import _apply_edge_modifier
 
     called = []
@@ -100,7 +100,8 @@ def test_apply_edge_modifier_null_shape_returns_original():
         maker_factory=lambda s: called.append("maker") or object(),
         add_edge_fn=lambda maker, e: None,
     )
-    assert result is shape
+    assert result.shape is shape
+    assert result.success is False
     assert not called
 
 
