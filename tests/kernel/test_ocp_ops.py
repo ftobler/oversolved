@@ -306,6 +306,36 @@ def test_ocp_extract_face_loops_integration():
     assert length == pytest.approx(1.0, abs=1e-6)
 
 
+def test_build_loop_from_wire_bad_edge_logs_warning(caplog):
+    """An exception during edge processing must be logged as a warning, not silently dropped."""
+    import unittest.mock as mock
+    import logging
+    face = _flat_box_face()
+    outer_wire, _ = _collect_face_wires(face)
+
+    with mock.patch("OCP.BRepAdaptor.BRepAdaptor_Curve2d", side_effect=RuntimeError("bad edge")):
+        with caplog.at_level(logging.WARNING, logger="oversolved.kernel.ocp_ops"):
+            loop = _build_loop_from_wire(outer_wire, face)
+
+    assert any("dropping edge" in r.message for r in caplog.records), (
+        "Expected 'dropping edge' warning but got: " + str([r.message for r in caplog.records])
+    )
+    assert loop == []
+
+
+def test_build_loop_from_wire_normal_face_no_warnings(caplog):
+    """A normal rectangular face must produce no warnings."""
+    import logging
+    face = _flat_box_face()
+    outer_wire, _ = _collect_face_wires(face)
+
+    with caplog.at_level(logging.WARNING, logger="oversolved.kernel.ocp_ops"):
+        loop = _build_loop_from_wire(outer_wire, face)
+
+    assert not caplog.records, f"Unexpected warnings: {[r.message for r in caplog.records]}"
+    assert len(loop) == 4
+
+
 def test_no_ocp_imports_outside_ocp_ops():
     """No kernel file other than ocp_ops.py may contain runtime OCP imports.
 

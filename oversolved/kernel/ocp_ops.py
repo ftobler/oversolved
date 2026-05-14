@@ -11,7 +11,10 @@ deployments where OCP is absent.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from OCP.TopoDS import TopoDS_Shape
@@ -339,7 +342,7 @@ def _collect_face_wires(occ_face: Any) -> tuple[Any, list[Any]]:
 def _build_loop_from_wire(wire: Any, occ_face: Any) -> list[dict]:
     """Build a list of edge dicts (kind "line" or "arc") for *wire* on *occ_face*.
 
-    Per-edge exceptions are silently ignored so that one bad edge does not
+    Per-edge exceptions are logged as warnings so that one bad edge does not
     discard the whole loop.  Returns an empty list when no valid edges are found.
     """
     import math
@@ -401,8 +404,8 @@ def _build_loop_from_wire(wire: Any, occ_face: Any) -> list[dict]:
                     "start": [p_s.X(), p_s.Y()],
                     "end": [p_e.X(), p_e.Y()],
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("ocp_extract_face_loops: dropping edge: %s", exc)
         we.Next()
 
     return loop
