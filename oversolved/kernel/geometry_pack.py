@@ -30,6 +30,9 @@ def _pack_body_section(body, body_offset, header_bodies, binary_chunks):
     raw_faces = mesh.get("faces", []) or []
     raw_tri2face = mesh.get("triangle_to_face", []) or []
 
+    for i, v in enumerate(raw_verts):
+        if len(v) != 3:
+            raise ValueError(f"vertex {i} has {len(v)} components, expected 3")
     flat_verts = [coord for v in raw_verts for coord in v]
     flat_faces = [idx for f in raw_faces for idx in f]
 
