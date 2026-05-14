@@ -16,6 +16,7 @@ except ImportError:
 from oversolved.kernel.cadquery_ops import (
     _compute_face_centroid,
     _compute_face_normal,
+    _ensure_occ,
     _face_sort_key_from_tuple,
     _get_face_surface_type,
     _triangle_area,
@@ -66,10 +67,8 @@ __all__ = [
 
 
 def _ensure_cq_shape(solid: Any) -> cq_shapes.Shape:
-    """Ensure a shape is a cadquery Shape, wrapping raw TopoDS if necessary."""
-    if hasattr(solid, "edges"):
-        return solid
-    return cq_shapes.Shape.cast(solid)
+    """Wrap a raw TopoDS shape in cadquery Shape if necessary."""
+    return cq_shapes.Shape.cast(_ensure_occ(solid))
 
 
 def _validate_mesh(mesh: dict) -> None:
@@ -371,7 +370,7 @@ def solid_to_mesh(solid: Any, created_by: str | None = None, body_id: str | None
     # old OCP behavior; face.tessellate() will reuse it when tolerance matches.
     from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
 
-    topo_shape = solid.wrapped if hasattr(solid, "wrapped") else solid
+    topo_shape = _ensure_occ(solid)
     try:
         BRepMesh_IncrementalMesh(topo_shape, 0.1, False, 0.1)
     except Exception as exc:
@@ -711,7 +710,7 @@ def shape_to_stl_file_buffer(shape: Any, deflection: float = 0.5, angular_deflec
     from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
     from OCP.StlAPI import StlAPI_Writer  # noqa: PLC0415
 
-    topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+    topo_shape = _ensure_occ(shape)
     mesh = BRepMesh_IncrementalMesh(topo_shape, deflection, False, angular_deflection, True)
     mesh.Perform()
 
@@ -743,7 +742,7 @@ def shape_to_stl_file(shape: Any, filepath: str, deflection: float = 0.5, angula
     from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
     from OCP.StlAPI import StlAPI_Writer  # noqa: PLC0415
 
-    topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+    topo_shape = _ensure_occ(shape)
     mesh = BRepMesh_IncrementalMesh(topo_shape, deflection, False, angular_deflection, True)
     mesh.Perform()
 
@@ -767,7 +766,7 @@ def _apply_edge_modifier(
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
     from OCP.TopoDS import TopoDS  # noqa: PLC0415
 
-    topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+    topo_shape = _ensure_occ(shape)
 
     # Defensive: refuse to operate on a null shape.
     try:
@@ -867,8 +866,7 @@ def apply_chamfer(shape: Any, distance: float, kind: str = "distance", angle: fl
 def transform_copy(shape: Any, trsf: Any) -> Any:
     """Return a new shape that is `shape` with OCC gp_Trsf applied."""
     from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform  # noqa: PLC0415
-    topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
-    builder = BRepBuilderAPI_Transform(topo_shape, trsf, True)  # True = copy
+    builder = BRepBuilderAPI_Transform(_ensure_occ(shape), trsf, True)  # True = copy
     builder.Build()
     return builder.Shape()
 

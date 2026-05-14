@@ -3,7 +3,7 @@ import json
 import logging
 import time
 from typing import Any
-from oversolved.kernel.cadquery_ops import _normal_to_frame
+from oversolved.kernel.cadquery_ops import _normal_to_frame, _ensure_occ
 from oversolved.kernel.geom_hash import face_geometry_hash, edge_geometry_hash, vertex_geometry_hash
 from oversolved.kernel.query import Repository, emit_wire, absolute
 from oversolved.kernel.types3d import Body, FeatureCheckpoint, BuildState
@@ -36,18 +36,12 @@ def _copy_shape(shape):
         return None
     try:
         from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
-        # Cadquery wraps OCP shapes; unwrap to get the actual TopoDS_Shape
-        occ_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
-        copier = BRepBuilderAPI_Copy(occ_shape, True)  # copy all sub-shapes
+        copier = BRepBuilderAPI_Copy(_ensure_occ(shape), True)  # copy all sub-shapes
         copier.Build()
         if not copier.IsDone():
             logger.warning("BRepBuilderAPI_Copy failed, returning original shape")
             return shape
-        copied = copier.Shape()
-        # Re-wrap in the same CadQuery type so callers can use CQ methods (.edges(), etc.)
-        if hasattr(shape, "wrapped"):
-            return type(shape)(copied)
-        return copied
+        return copier.Shape()
     except Exception as exc:
         logger.warning("Failed to copy OCP shape: %s, returning original", exc)
         return shape

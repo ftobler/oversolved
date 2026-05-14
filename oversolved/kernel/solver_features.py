@@ -13,6 +13,7 @@ except ImportError:
     pass
 from oversolved.kernel.cadquery_ops import (
     _compute_face_centroid, _compute_face_normal,
+    _ensure_cq, _ensure_occ,
     _face_sort_key, _triangle_area,
 )
 
@@ -199,7 +200,7 @@ def _extract_loops_from_occ_face(
     from OCP.TopExp import TopExp_Explorer
     from OCP.TopoDS import TopoDS, TopoDS_Face
 
-    topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
+    topo_shape = _ensure_occ(shape)
 
     try:
         cq_shape = shape if hasattr(shape, "faces") else None
@@ -358,8 +359,7 @@ def _resolve_face_index_via_hash(
     normal = _compute_face_normal(target_face)
 
     try:
-        topo_shape = shape.wrapped if hasattr(shape, "wrapped") else shape
-        BRepMesh_IncrementalMesh(topo_shape, 0.1, False, 0.1)
+        BRepMesh_IncrementalMesh(_ensure_occ(shape), 0.1, False, 0.1)
         verts, idxs = target_face.tessellate(0.1)
     except Exception:
         return None
@@ -528,7 +528,7 @@ def _split_compound(shape) -> list:
     from OCP.TopoDS import TopoDS
     from cadquery.occ_impl.shapes import Shape as CQShape
 
-    explorer = TopExp_Explorer(shape.wrapped, TopAbs_SOLID)
+    explorer = TopExp_Explorer(_ensure_occ(shape), TopAbs_SOLID)
     solids = []
     while explorer.More():
         solids.append(CQShape.cast(TopoDS.Solid_s(explorer.Current())))
@@ -1097,7 +1097,7 @@ def _resolve_fillet_edges(body, edge_queries):
     topo_edges = []
     edge_types = []
     edge_dicts = []
-    for edge in body.shape.edges():
+    for edge in _ensure_cq(body.shape).edges():
         h = edge.hashCode()
         if h in seen_hashes:
             continue
@@ -1312,8 +1312,7 @@ def _apply_edge_feature(
     # Validate the shape before passing to OCC; a corrupted shape
     # can cause SIGSEGV inside the fillet/chamfer kernel.
     try:
-        topo = body.shape.wrapped if hasattr(body.shape, "wrapped") else body.shape
-        if topo.IsNull():
+        if _ensure_occ(body.shape).IsNull():
             raise ValueError(f"body {body_id} shape is null")
     except Exception:
         raise ValueError(f"body {body_id} shape is invalid")
@@ -1542,12 +1541,12 @@ def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, featur
             raise ValueError(f"hole: sketch '{sketch_ref}' has no point entities")
 
         if depth_mode == "through_all":
-            bb = target_body.shape.BoundingBox()
+            bb = _ensure_cq(target_body.shape).BoundingBox()
             span = max(bb.xmax - bb.xmin, bb.ymax - bb.ymin, bb.zmax - bb.zmin)
-            through_depth = span * 3.0
-            through_back_offset = span
+            through_depth: float = span * 3.0
+            through_back_offset: float = span
         else:
-            through_depth = None
+            through_depth = 0.0
             through_back_offset = 0.0
 
         for entity in point_entities:

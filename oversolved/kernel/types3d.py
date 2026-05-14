@@ -8,7 +8,7 @@ class Body:
     id: str
     created_by: str
     modified_by: list[str] = field(default_factory=list)
-    shape: Any = None  # TopoDS_Shape when OCC is available, else None
+    shape: Any = None  # canonical internal type: TopoDS_Shape (use _ensure_occ to unwrap, _ensure_cq to wrap)
     sketch_id: str = ""  # sketch feature that was extruded to create this body
 
 

@@ -31,6 +31,11 @@ except ImportError:
 import math as _math
 
 
+def _ensure_occ(shape: Any) -> Any:
+    """Unwrap a CadQuery Shape to its underlying TopoDS_Shape, or pass through raw OCC shapes."""
+    return shape.wrapped if hasattr(shape, "wrapped") else shape
+
+
 def _triangle_area(p0: list, p1: list, p2: list) -> float:
     """Return the area of a triangle defined by three 3D points."""
     v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]]
@@ -165,8 +170,7 @@ def revolve_face(face: Any, axis_origin: list[float], axis_direction: list[float
     from OCP.gp import gp_Ax1, gp_Pnt, gp_Dir  # noqa: PLC0415
     from OCP.BRepPrimAPI import BRepPrimAPI_MakeRevol  # noqa: PLC0415
     ax = gp_Ax1(gp_Pnt(*axis_origin), gp_Dir(*axis_direction))
-    topo_face = face.wrapped if hasattr(face, "wrapped") else face
-    revol = BRepPrimAPI_MakeRevol(topo_face, ax, math.radians(angle_deg))
+    revol = BRepPrimAPI_MakeRevol(_ensure_occ(face), ax, math.radians(angle_deg))
     return cq_shapes.Solid(revol.Shape())
 
 
@@ -180,9 +184,7 @@ def make_cylinder(center: list[float], axis: list[float], radius: float, height:
 
 def _ensure_cq(target: Any) -> cq_shapes.Shape:
     """Wrap raw TopoDS shape in cadquery Shape if necessary."""
-    if hasattr(target, "cut"):
-        return target
-    return cq_shapes.Shape.cast(target)
+    return cq_shapes.Shape.cast(_ensure_occ(target))
 
 
 def boolean_cut(target: Any, tool: Any) -> cq_shapes.Solid:
@@ -245,8 +247,7 @@ def _compute_face_centroid(face: cq_shapes.Face) -> list[float]:
 def _compute_face_normal(face: cq_shapes.Face) -> list[float]:
     """Compute face normal at the midpoint of its UV domain."""
     from OCP.BRepTools import BRepTools  # noqa: PLC0415
-    topo = face.wrapped if hasattr(face, "wrapped") else face
-    umin, umax, vmin, vmax = BRepTools.UVBounds_s(topo)
+    umin, umax, vmin, vmax = BRepTools.UVBounds_s(_ensure_occ(face))
     u = (umin + umax) / 2.0
     v = (vmin + vmax) / 2.0
     n = face.normalAt(CQVector(u, v))
@@ -319,9 +320,5 @@ def apply_transform_shape(
         tr.SetTranslation(gp_Vec(*translation))
         combined.Multiply(tr)
 
-    raw = shape.wrapped if hasattr(shape, "wrapped") else shape
-    builder = BRepBuilderAPI_Transform(raw, combined, True)  # copy=True
-    result_shape = builder.Shape()
-    if hasattr(shape, "wrapped"):
-        return cq_shapes.Shape.cast(result_shape)
-    return result_shape
+    builder = BRepBuilderAPI_Transform(_ensure_occ(shape), combined, True)  # copy=True
+    return builder.Shape()
