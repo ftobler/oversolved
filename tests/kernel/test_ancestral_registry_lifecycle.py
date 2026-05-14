@@ -174,3 +174,52 @@ def test_no_ambiguous_query_after_resolves():
         pytest.fail(f"AmbiguousQueryError raised after repeated _post_register calls: {exc}")
 
     assert result is not None, "edge query should resolve to a valid element"
+
+
+# ── Repository.gc() tests ──
+
+def test_registry_gc_removes_stale_entry():
+    """Ancestry entry for removed feature is evicted by gc(active_fids=set())."""
+    repo = Repository()
+    repo.register_ancestor(["@f1", "surf1"], {"type": "flatface"})
+    assert len(repo.ancestral) == 1
+
+    repo.gc(active_fids=set())
+
+    assert len(repo.ancestral) == 0
+    assert len(repo.elements) == 0
+
+
+def test_registry_gc_keeps_active_entry():
+    """Ancestry entry for active feature is kept by gc(active_fids={"f1"})."""
+    repo = Repository()
+    eid = repo.register_ancestor(["@f1", "surf1"], {"type": "flatface"})
+    assert len(repo.ancestral) == 1
+
+    repo.gc(active_fids={"f1"})
+
+    assert len(repo.ancestral) == 1
+    assert repo.elements.get(eid) is not None
+
+
+def test_registry_gc_keeps_builtin_entries():
+    """Entries without @-prefixed tags (built-ins) are not evicted."""
+    repo = Repository()
+    repo.register_ancestor(["builtin_front", "builtin_plane"], {"type": "plane"})
+
+    repo.gc(active_fids=set())
+
+    assert len(repo.ancestral) == 1
+
+
+def test_registry_gc_partial_eviction():
+    """Only stale entries are removed; active entries survive."""
+    repo = Repository()
+    repo.register_ancestor(["@f1", "surf1"], {"type": "flatface"})
+    repo.register_ancestor(["@f2", "surf1"], {"type": "flatface"})
+
+    repo.gc(active_fids={"f1"})
+
+    remaining = [key for key in repo.ancestral]
+    assert len(remaining) == 1
+    assert frozenset(["@f1", "surf1"]) in repo.ancestral

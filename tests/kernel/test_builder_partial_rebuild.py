@@ -802,3 +802,32 @@ def test_builder_clean_unchanged_list():
     r2 = build({'features': [sk1, sk2]}, prev_state=state1)
     assert r2['result']['sk1']['geometry'] == geom1
     assert r2['result']['sk2']['geometry'] == geom2
+
+
+def test_builder_gc_after_feature_remove():
+    """After rebuilding with fewer features, the final repo snapshot has no entries for removed features."""
+    sk1 = rect_sketch_spec(w=5.0, h=3.0, sketch_id='sk1')
+    sk2 = rect_sketch_spec(w=4.0, h=2.0, sketch_id='sk2')
+
+    r1 = build({'features': [sk1, sk2]})
+    state1 = r1['_build_state']
+
+    # sk2 checkpoint repo_snapshot should have @sk2 entries
+    sk2_snap = state1.checkpoints['sk2'].repo_snapshot
+    has_sk2 = any(
+        '@sk2' in str(k)
+        for k in sk2_snap.get('ancestral', {})
+    )
+    assert has_sk2, "sanity: sk2 checkpoint must have @sk2 ancestry entries"
+
+    # Rebuild with only sk1
+    r2 = build({'features': [sk1]}, prev_state=state1)
+    state2 = r2['_build_state']
+
+    # sk1 checkpoint in new state must have no @sk2 ancestry entries
+    sk1_snap = state2.checkpoints['sk1'].repo_snapshot
+    has_sk2_after = any(
+        '@sk2' in str(k)
+        for k in sk1_snap.get('ancestral', {})
+    )
+    assert not has_sk2_after, "sk2 ancestry entries must be absent after rebuild without sk2"

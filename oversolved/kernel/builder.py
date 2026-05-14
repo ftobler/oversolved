@@ -445,6 +445,9 @@ def build(
             },
         )
 
+    active_fids = {f.get("id", "") for f in all_features}
+    global_repo.gc(active_fids)
+
     bodies_out = _tessellate_bodies(body_store, global_repo)
 
     # Build a cache of tessellations keyed by shape object identity so that

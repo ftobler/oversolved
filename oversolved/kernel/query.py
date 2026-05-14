@@ -342,6 +342,22 @@ class Repository:
         for k in keys_to_remove:
             del self.elements[k]
 
+    def gc(self, active_fids: set[str]) -> None:
+        """Evict ancestry entries for features not in active_fids.
+
+        Ancestry keys that contain an @-prefixed tag are considered feature-owned.
+        An entry is stale when all its feature references are absent from active_fids.
+        Entries with no @-prefixed tags (e.g. built-in planes) are always kept.
+        """
+        stale_keys = [
+            key for key in self.ancestral
+            if (refs := {tag[1:] for tag in key if tag.startswith('@')})
+            and not refs.intersection(active_fids)
+        ]
+        for key in stale_keys:
+            for eid in self.ancestral.pop(key):
+                self.elements.pop(eid, None)
+
     def query(
         self,
         query_str: "str | QueryType",
