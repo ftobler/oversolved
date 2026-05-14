@@ -76,7 +76,6 @@ def _tessellate_edge(edge: dict) -> list[list[float]]:
 
 def _extract_profile_loops(
     surfaces: list[dict],
-    plane_transform: Frame3D | dict,
 ) -> list[list[dict]]:
     if not surfaces:
         return []
@@ -317,8 +316,7 @@ def _resolve_face_profile(
             "y_axis": face_entry.get("y_axis", [0, 1, 0]),
             "normal": face_entry.get("normal", [0, 0, 1]),
         }
-        sketch_pt = global_repo.elements.get("_pt_" + body.sketch_id) or effective_plane
-        loops = _extract_profile_loops(surfaces, sketch_pt)
+        loops = _extract_profile_loops(surfaces)
         return loops, effective_plane
 
     if sketch_ref.startswith("?"):
@@ -346,7 +344,7 @@ def _resolve_face_profile(
             if s.get("query", "").startswith("?")
             and _parse_ancestry(s["query"])[0] == target_ids
         ]
-        loops = _extract_profile_loops(matched or all_surfaces, surface_pt)
+        loops = _extract_profile_loops(matched or all_surfaces)
         return loops, surface_pt
 
     raise ValueError(f"Cannot resolve profile from: {sketch_ref!r}")
@@ -413,7 +411,7 @@ def _collect_extrude_loops(
     topo = global_repo.elements.get("_topo_" + sketch_id, {})
     surfaces = topo.get("surfaces", []) if topo else []
     _register_top_face(global_repo, feature_id, pt, surfaces, distance)
-    return _extract_profile_loops(surfaces, pt), pt, sketch_id
+    return _extract_profile_loops(surfaces), pt, sketch_id
 
 
 def _split_compound(shape: TopoDS_Shape) -> list[TopoDS_Shape]:
