@@ -32,9 +32,12 @@ Output
 }
 """
 
+import logging
 import math
 from typing import Any, TypedDict
 from oversolved.kernel.query import make_ancestry_query, emit_wire, absolute
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["detect_topology", "TopologyDict"]
 
@@ -151,7 +154,8 @@ def _collinear_overlap(ea, eb):
     When two line segments are collinear (same infinite line) and overlap,
     returns the endpoints of the overlap region projected onto each segment's
     parameter space.
-    Returns [] if not collinear, not overlapping, or just touching at a point.
+    Returns [] if not collinear, not overlapping, just touching at a point,
+    or either segment is degenerate (logs a warning in the degenerate case).
     """
     p1, p2 = ea["start"], ea["end"]
     q1, q2 = eb["start"], eb["end"]
@@ -170,6 +174,10 @@ def _collinear_overlap(ea, eb):
 
     len1_sq = dx1 * dx1 + dy1 * dy1
     if len1_sq < _EPS:
+        logger.warning(
+            "_collinear_overlap: segment A degenerate (len_sq=%.3e), start=%s end=%s",
+            len1_sq, p1, p2,
+        )
         return []
 
     def proj_a(pt):
@@ -177,6 +185,10 @@ def _collinear_overlap(ea, eb):
 
     len2_sq = dx2 * dx2 + dy2 * dy2
     if len2_sq < _EPS:
+        logger.warning(
+            "_collinear_overlap: segment B degenerate (len_sq=%.3e), start=%s end=%s",
+            len2_sq, q1, q2,
+        )
         return []
 
     def proj_b(pt):
@@ -777,6 +789,15 @@ def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
     """Detect intersection points and bounded surfaces in solved sketch geometry."""
 
     lines, circles, arcs = _classify_entities(geometry)
+
+    for eid, e in lines.items():
+        dx = e["end"][0] - e["start"][0]
+        dy = e["end"][1] - e["start"][1]
+        if dx * dx + dy * dy < _EPS:
+            logger.warning(
+                "detect_topology: line '%s' is degenerate, start=%s end=%s",
+                eid, e["start"], e["end"],
+            )
 
     verts: dict = {}
     splits: dict = {}
