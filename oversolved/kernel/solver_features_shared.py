@@ -322,10 +322,9 @@ def _resolve_face_profile(
         return loops, effective_plane
 
     if sketch_ref.startswith("?"):
-        ids, _ = _parse_ancestry(sketch_ref)
-        target_set = frozenset(ids)
+        target_ids, _ = _parse_ancestry(sketch_ref)
         sketch_id = None
-        for aid in ids:
+        for aid in target_ids:
             if aid.startswith("@"):
                 candidate = aid[1:]
                 if global_repo.elements.get("_pt_" + candidate) is not None:
@@ -345,7 +344,7 @@ def _resolve_face_profile(
         matched = [
             s for s in all_surfaces
             if s.get("query", "").startswith("?")
-            and frozenset(_parse_ancestry(s["query"])[0]) == target_set
+            and _parse_ancestry(s["query"])[0] == target_ids
         ]
         loops = _extract_profile_loops(matched or all_surfaces, surface_pt)
         return loops, surface_pt
