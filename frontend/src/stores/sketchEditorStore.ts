@@ -27,7 +27,7 @@ export function getSketchCallback<K extends keyof typeof _sketchCbs>(key: K): (t
 
 const devOnly = import.meta.env.DEV
 
-function guard<T extends (...args: any[]) => any>(
+function guard<T extends (...args: never[]) => unknown>(
   fn: T | null | undefined,
   label: string,
 ): T {
