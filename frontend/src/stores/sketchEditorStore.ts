@@ -25,6 +25,18 @@ export function getSketchCallback<K extends keyof typeof _sketchCbs>(key: K): (t
   return _sketchCbs[key]
 }
 
+const devOnly = import.meta.env.DEV
+
+function guard<T extends (...args: any[]) => any>(
+  fn: T | null | undefined,
+  label: string,
+): T {
+  if (devOnly && !fn) {
+    console.warn(`[sketchEditorStore] ${label}: callback not registered — action will be ignored. Ensure setSketchCallback() was called before this action.`)
+  }
+  return (fn ?? (() => {})) as unknown as T
+}
+
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type { Mutation }
 
@@ -338,7 +350,11 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   applyConstraint: (kind) => {
     const { normalSelection: selection, activeFeatureId } = get()
     const onMutation = _sketchCbs.onMutation
-    if (selection.size === 0 || !onMutation || !activeFeatureId) return
+    if (!onMutation) {
+      if (devOnly) console.warn('[sketchEditorStore] onMutation: callback not registered — applyConstraint will be a no-op.')
+      return
+    }
+    if (selection.size === 0 || !activeFeatureId) return
     const targets = [...selection].filter(t =>
       t.startsWith('entity:') || t.startsWith('vertex:') || t.startsWith('constraint:') || t.startsWith('@builtin_')
     )
@@ -358,7 +374,11 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   toggleConstruction: () => {
     const { normalSelection: selection } = get()
     const onMutation = _sketchCbs.onMutation
-    if (selection.size === 0 || !onMutation) return
+    if (!onMutation) {
+      if (devOnly) console.warn('[sketchEditorStore] onMutation: callback not registered — toggleConstruction will be a no-op.')
+      return
+    }
+    if (selection.size === 0) return
     const targets = [...selection].filter(t => t.startsWith('entity:'))
     if (targets.length === 0) return
     onMutation({ type: 'toggle_construction', targets })
@@ -367,7 +387,11 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   deleteSelected: () => {
     const { normalSelection: selection, activeFeatureId } = get()
     const onMutation = _sketchCbs.onMutation
-    if (selection.size === 0 || !onMutation) return
+    if (!onMutation) {
+      if (devOnly) console.warn('[sketchEditorStore] onMutation: callback not registered — deleteSelected will be a no-op.')
+      return
+    }
+    if (selection.size === 0) return
     const targets = [...selection].filter(target => {
       if (target.startsWith('entity:') || target.startsWith('vertex:') || target.startsWith('constraint:')) {
         const parts = target.split(':')
@@ -404,7 +428,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   commitFieldPick: () => {
     const { pendingPickField, normalSelection } = get()
-    const onMutation = _sketchCbs.onMutation
+    const onMutation = guard(_sketchCbs.onMutation, 'onMutation (from commitFieldPick)')
     if (!pendingPickField) return
     const selectionId = [...normalSelection].pop()
     if (!selectionId) return
@@ -433,12 +457,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         ? selectionId.split(':').slice(2).join(':')  // face pick: pass ancestry query through unchanged
         : selectionId  // raw selection id
       if (pendingPickField.hostKind === 'hole') {
-        onMutation?.({ type: 'set_hole_sketch', featureId: pendingPickField.featureId, sketch: sketchQuery })
+        onMutation({ type: 'set_hole_sketch', featureId: pendingPickField.featureId, sketch: sketchQuery })
         set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
         return
       }
       const mutationType = pendingPickField.hostKind === 'revolve' ? 'add_revolve_profile' : 'add_extrude_profile'
-      onMutation?.({ type: mutationType, featureId: pendingPickField.featureId, sketchQuery })
+      onMutation({ type: mutationType, featureId: pendingPickField.featureId, sketchQuery })
       set({ normalSelection: new Set() })  // clear selection but keep pick mode open
       return
     }
@@ -447,7 +471,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         ? selectionId.split(':').slice(2).join(':')
         : selectionId
       const mutationType = pendingPickField.hostKind === 'chamfer' ? 'add_chamfer_edge' : 'add_fillet_edge'
-      onMutation?.({ type: mutationType, featureId: pendingPickField.featureId, edgeQuery })
+      onMutation({ type: mutationType, featureId: pendingPickField.featureId, edgeQuery })
       set({ normalSelection: new Set() })  // clear selection but keep pick mode open
       return
     }
@@ -455,7 +479,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       const axisQuery = selectionId.startsWith('face:')
         ? selectionId.split(':').slice(2).join(':')
         : selectionId
-      onMutation?.({ type: 'set_revolve_axis', featureId: pendingPickField.featureId, axis: axisQuery })
+      onMutation({ type: 'set_revolve_axis', featureId: pendingPickField.featureId, axis: axisQuery })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return
     }
@@ -464,30 +488,30 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       const mutationType = pendingPickField.hostKind === 'revolve'
         ? 'set_revolve_merge_target'
         : 'set_extrude_merge_target'
-      onMutation?.({ type: mutationType, featureId: pendingPickField.featureId, mergeTarget: bodyRef })
+      onMutation({ type: mutationType, featureId: pendingPickField.featureId, mergeTarget: bodyRef })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return
     }
     if (pendingPickField.field === 'boolean_target') {
       const bodyRef = _resolveBodyRef(selectionId)
-      onMutation?.({ type: 'set_boolean_target', featureId: pendingPickField.featureId, target: bodyRef })
+      onMutation({ type: 'set_boolean_target', featureId: pendingPickField.featureId, target: bodyRef })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return
     }
     if (pendingPickField.field === 'boolean_tool') {
       const bodyRef = _resolveBodyRef(selectionId)
-      onMutation?.({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: bodyRef })
+      onMutation({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: bodyRef })
       set({ normalSelection: new Set() })  // keep pick mode open for multiple tools
       return
     }
     if (pendingPickField.field === 'body') {
       const bodyRef = _resolveBodyRef(selectionId)
       if (pendingPickField.hostKind === 'transform') {
-        onMutation?.({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
+        onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
       } else if (pendingPickField.hostKind === 'mirror') {
-        onMutation?.({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
+        onMutation({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
       } else {
-        onMutation?.({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: bodyRef })
+        onMutation({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: bodyRef })
       }
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return
@@ -496,7 +520,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       const value = selectionId.startsWith('face:')
         ? selectionId.split(':').slice(2).join(':')
         : selectionId
-      onMutation?.({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'plane', value })
+      onMutation({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'plane', value })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return
     }
@@ -505,7 +529,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       value = selectionId.startsWith('face:')
         ? selectionId.split(':').slice(2).join(':')
         : selectionId
-      onMutation?.({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'rotation_axis', value })
+      onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'rotation_axis', value })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return
     }
@@ -513,7 +537,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       value = selectionId.startsWith('face:')
         ? selectionId.split(':').slice(2).join(':')
         : selectionId
-      onMutation?.({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'scale_center_from', value })
+      onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'scale_center_from', value })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return
     }
@@ -530,18 +554,18 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     } else {
       value = selectionId
     }
-    onMutation?.({ type: 'set_plane_definition_field', featureId: pendingPickField.featureId, field: pendingPickField.field, value })
+    onMutation({ type: 'set_plane_definition_field', featureId: pendingPickField.featureId, field: pendingPickField.field, value })
     set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
   },
 
   commitPlaneSelection: (selectionId) => {
     const { planeSelectionFeatureId } = get()
-    const onMutation = _sketchCbs.onMutation
+    const onMutation = guard(_sketchCbs.onMutation, 'onMutation (from commitPlaneSelection)')
     if (!planeSelectionFeatureId) return
     const plane = selectionId.startsWith('face:')
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
-    onMutation?.({ type: 'set_feature_plane', featureId: planeSelectionFeatureId, plane })
+    onMutation({ type: 'set_feature_plane', featureId: planeSelectionFeatureId, plane })
     set({ planeSelectionFeatureId: null, pickChipHighlightItems: [] })
   },
 
