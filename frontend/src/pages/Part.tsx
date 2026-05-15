@@ -294,17 +294,22 @@ useEffect(() => {
     }
   }, [uuid, reSolve, rollbackPosition, features, docRef])
 
-  useEffect(() => { usePartEditorStore.getState().setFeatures(features) }, [features])
-  useEffect(() => { usePartEditorStore.getState().setDoc(doc) }, [doc])
-  useEffect(() => { usePartEditorStore.getState().setRollbackPosition(rollbackPosition) }, [rollbackPosition])
-  useEffect(() => { usePartEditorStore.getState().setEditingFeatureId(editingFeatureId) }, [editingFeatureId])
-  useEffect(() => { usePartEditorStore.getState().setVisibleFeatures(visibleFeatures) }, [visibleFeatures])
-  useEffect(() => { usePartEditorStore.getState().setVisibleBodies(effectiveVisibleBodies ?? new Set()) }, [effectiveVisibleBodies])
-  useEffect(() => { usePartEditorStore.getState().setPartLabels(partLabels) }, [partLabels])
-  useEffect(() => { usePartEditorStore.getState().setSolveResults(solveResults ?? {}) }, [solveResults])
-  useEffect(() => { usePartEditorStore.getState().setBodies(bodies ?? {}) }, [bodies])
-  useEffect(() => { usePartEditorStore.getState().setIsRebuilding(isRebuilding) }, [isRebuilding])
-  useEffect(() => { usePartEditorStore.getState().setFeatureTimings(featureTimings ?? {}) }, [featureTimings])
+  useEffect(() => {
+    usePartEditorStore.getState().sync({
+      features,
+      doc,
+      rollbackPosition,
+      editingFeatureId,
+      visibleFeatures,
+      visibleBodies: effectiveVisibleBodies ?? new Set(),
+      partLabels,
+      solveResults: solveResults ?? {},
+      bodies: bodies ?? {},
+      isRebuilding,
+      featureTimings: featureTimings ?? {},
+    })
+  }, [features, doc, rollbackPosition, editingFeatureId, visibleFeatures,
+    effectiveVisibleBodies, partLabels, solveResults, bodies, isRebuilding, featureTimings])
 
   useEffect(() => {
     return () => {

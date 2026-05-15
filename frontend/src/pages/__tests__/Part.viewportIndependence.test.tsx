@@ -87,7 +87,7 @@ describe('sketch enter without viewport', () => {
   it('partEditorStore reflects editingFeatureId after sketch enter', () => {
     const onEnterEditSketch = vi.fn((id: string) => {
       // Simulate what Part.tsx does when enterEditSketch fires
-      usePartEditorStore.getState().setEditingFeatureId(id)
+      usePartEditorStore.getState().sync({ editingFeatureId: id })
     })
     renderSidebar([sketchFeature], null, { onEnterEditSketch })
     fireEvent.click(screen.getByTitle('Edit sketch'))
@@ -106,7 +106,7 @@ describe('sketch exit without viewport', () => {
   it('partEditorStore editingFeatureId is cleared after sketch exit', () => {
     const onExitEditSketch = vi.fn(() => {
       // Simulate what Part.tsx does when exitEditSketch fires
-      usePartEditorStore.getState().setEditingFeatureId(null)
+      usePartEditorStore.getState().sync({ editingFeatureId: null })
     })
     renderSidebar([sketchFeature], 'sk1', { onExitEditSketch })
     fireEvent.click(screen.getByTitle('Exit sketch'))

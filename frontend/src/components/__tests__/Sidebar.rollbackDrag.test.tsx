@@ -280,7 +280,7 @@ describe('rollback bar drag convergence', () => {
 
 describe('partEditorStore', () => {
   it('holds state correctly', () => {
-    usePartEditorStore.getState().setFeatures([{ id: 'f1', kind: 'sketch' }])
+    usePartEditorStore.getState().sync({ features: [{ id: 'f1', kind: 'sketch' }] })
     expect(usePartEditorStore.getState().features).toHaveLength(1)
     expect(usePartEditorStore.getState().features[0].id).toBe('f1')
   })
