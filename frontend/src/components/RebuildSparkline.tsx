@@ -1,10 +1,8 @@
-import React from 'react'
-
 interface RebuildSparklineProps {
   durations: number[]
 }
 
-export const RebuildSparkline: React.FC<RebuildSparklineProps> = ({ durations }) => {
+export function RebuildSparkline({ durations }: RebuildSparklineProps) {
   if (durations.length === 0) return null
 
   const max = Math.max(...durations)

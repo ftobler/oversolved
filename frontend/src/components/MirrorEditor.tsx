@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 
@@ -11,9 +10,9 @@ interface MirrorEditorProps {
   partLabels?: Record<string, string>
 }
 
-export const MirrorEditor: React.FC<MirrorEditorProps> = ({
+export function MirrorEditor({
   feature, onMutation, pendingPickField, setPendingPickField, features, partLabels,
-}) => {
+}: MirrorEditorProps) {
   const mirror = feature.mirror ?? { body: '', plane: '', keep_original: true, merge: true }
   const fid = feature.id
   const isPicking = (field: string) => pendingPickField?.featureId === fid && pendingPickField.field === field

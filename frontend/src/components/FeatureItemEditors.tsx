@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
 import { PlaneEditor } from '@/components/PlaneEditor'
 import { PlaneSelector } from '@/components/PlaneSelector'
@@ -29,7 +28,7 @@ interface FeatureItemEditorsProps {
 
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
 
-export const FeatureItemEditors: React.FC<FeatureItemEditorsProps> = ({
+export function FeatureItemEditors({
   feature,
   editingFeatureId,
   doc,
@@ -41,7 +40,7 @@ export const FeatureItemEditors: React.FC<FeatureItemEditorsProps> = ({
   partLabels,
   planeSelectionFeatureId,
   setPlaneSelectionFeatureId,
-}) => {
+}: FeatureItemEditorsProps) {
   const fps = features
   const labels = partLabels
 

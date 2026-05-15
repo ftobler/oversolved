@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 
@@ -11,9 +10,9 @@ interface DeleteBodyEditorProps {
   partLabels?: Record<string, string>
 }
 
-export const DeleteBodyEditor: React.FC<DeleteBodyEditorProps> = ({
+export function DeleteBodyEditor({
   feature, onMutation, pendingPickField, setPendingPickField, features, partLabels,
-}) => {
+}: DeleteBodyEditorProps) {
   const db = feature.delete_body ?? { body: '' }
   const fid = feature.id
   const isPicking = (field: string) =>

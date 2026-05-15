@@ -1,4 +1,3 @@
-import React from 'react'
 import '@/components/BugReporter.css'
 
 export interface BugReportAttachments {
@@ -23,7 +22,7 @@ interface BugReporterProps {
   undoStackCount?: number
 }
 
-export const BugReporter: React.FC<BugReporterProps> = ({
+export function BugReporter({
   bugReportForm,
   setBugReportForm,
   bugReporting,
@@ -34,7 +33,7 @@ export const BugReporter: React.FC<BugReporterProps> = ({
   selectionCount = 0,
   hasSolveResults = false,
   undoStackCount = 0,
-}) => {
+}: BugReporterProps) {
   return (
     <div className="debug-content">
       <div className="debug-section">

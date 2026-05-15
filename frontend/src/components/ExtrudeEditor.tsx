@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, Mutation, PendingPickField, ExtrudeDirection, ExtrudeOperation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 import { normalizeExtrudeSketch } from '@/utils/yamlMutations'
@@ -12,9 +11,9 @@ interface ExtrudeEditorProps {
   partLabels?: Record<string, string>
 }
 
-export const ExtrudeEditor: React.FC<ExtrudeEditorProps> = ({
+export function ExtrudeEditor({
   feature, onMutation, pendingPickField, setPendingPickField, features, partLabels,
-}) => {
+}: ExtrudeEditorProps) {
   const extrude = feature.extrude ?? { sketch: [], distance: 10, direction: 'normal' }
   const fid = feature.id
   const isPickingSketch = pendingPickField?.featureId === fid && pendingPickField.field === 'sketch'

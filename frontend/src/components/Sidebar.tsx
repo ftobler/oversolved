@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { FeatureTree } from '@/components/FeatureTree'
 import { BodyPartsList } from '@/components/BodyPartsList'
 
@@ -6,7 +6,7 @@ const MIN_SPLIT_PERCENT = 20
 const MAX_SPLIT_PERCENT = 80
 const DEFAULT_SPLIT_PERCENT = 70
 
-export const Sidebar: React.FC = () => {
+export function Sidebar() {
   const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
   const isDraggingRef = useRef(false)
   const sidebarRef = useRef<HTMLDivElement>(null)

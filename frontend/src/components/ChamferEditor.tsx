@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 
@@ -11,7 +10,7 @@ interface ChamferEditorProps {
   partLabels?: Record<string, string>
 }
 
-export const ChamferEditor: React.FC<ChamferEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }) => {
+export function ChamferEditor({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }: ChamferEditorProps) {
   const chamfer = feature.chamfer ?? { edges: [], distance: 1, kind: 'distance', angle: 45 }
   const fid = feature.id
   const isPickingEdges = pendingPickField?.featureId === fid && pendingPickField?.field === 'edges'

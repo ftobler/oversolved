@@ -24,6 +24,22 @@ function collectFiles(dir: string, exts: string[]): string[] {
 const tsFiles = collectFiles(SRC, ['.ts', '.tsx'])
 const srcOnlyFiles = tsFiles.filter(f => !f.includes('__tests__'))
 
+describe('circular dependency guards', () => {
+  it('registry/ does not import from stores/', () => {
+    const registryDir = join(SRC, 'registry')
+    const registryFiles = collectFiles(registryDir, ['.ts', '.tsx'])
+      .filter(f => !f.includes('__tests__'))
+    const violations: string[] = []
+    for (const file of registryFiles) {
+      const src = readFileSync(file, 'utf8')
+      if (src.includes("from '@/stores/") || src.includes('from "@/stores/')) {
+        violations.push(file.replace(SRC, 'src/'))
+      }
+    }
+    expect(violations).toEqual([])
+  })
+})
+
 describe('code conventions', () => {
   it('no underscore-prefixed exports', () => {
     const violations: string[] = []

@@ -62,7 +62,7 @@ interface FeatureTreeProps {
   splitPercent: number
 }
 
-export const FeatureTree: React.FC<FeatureTreeProps> = ({ splitPercent }) => {
+export function FeatureTree({ splitPercent }: FeatureTreeProps) {
   const features = usePartEditorStore(s => s.features)
   const doc = usePartEditorStore(s => s.doc)
   const rollbackPosition = usePartEditorStore(s => s.rollbackPosition)

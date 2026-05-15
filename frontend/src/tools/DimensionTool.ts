@@ -1,5 +1,5 @@
 import type { Tool, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
-import type { ActiveTool } from '@/stores/sketchEditorStore'
+import type { ActiveTool } from '@/types/cad'
 import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '@/registry'
 
 export interface DimensionToolContext extends ToolContext {

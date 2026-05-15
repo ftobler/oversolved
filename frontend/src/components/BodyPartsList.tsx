@@ -1,4 +1,3 @@
-import React from 'react'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
@@ -11,7 +10,7 @@ interface BodyPartsListProps {
   splitPercent: number
 }
 
-export const BodyPartsList: React.FC<BodyPartsListProps> = ({ splitPercent }) => {
+export function BodyPartsList({ splitPercent }: BodyPartsListProps) {
   const bodies = usePartEditorStore(s => s.bodies)
   const visibleBodies = usePartEditorStore(s => s.visibleBodies)
   const partLabels = usePartEditorStore(s => s.partLabels)

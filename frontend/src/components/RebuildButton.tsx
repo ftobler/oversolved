@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import rebuildIcon from '@/assets/icons/context-rebuild.svg'
 import { RebuildTimingPopover } from '@/components/RebuildTimingPopover'
 import type { PartFeature } from '@/types/cad'
@@ -11,7 +11,7 @@ interface RebuildButtonProps {
   disabled?: boolean
 }
 
-export const RebuildButton: React.FC<RebuildButtonProps> = ({ featureTimings, features, onClick, isLoading, disabled }) => {
+export function RebuildButton({ featureTimings, features, onClick, isLoading, disabled }: RebuildButtonProps) {
   const [isButtonHovered, setIsButtonHovered] = useState(false)
   const [isPopoverHovered, setIsPopoverHovered] = useState(false)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)

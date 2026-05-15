@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 
@@ -11,7 +10,7 @@ interface FilletEditorProps {
   partLabels?: Record<string, string>
 }
 
-export const FilletEditor: React.FC<FilletEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }) => {
+export function FilletEditor({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }: FilletEditorProps) {
   const fillet = feature.fillet ?? { edges: [], radius: 1 }
   const fid = feature.id
   const isPickingEdges = pendingPickField?.featureId === fid && pendingPickField?.field === 'edges'

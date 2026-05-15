@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature } from '@/types/cad'
 
 interface RebuildTimingPopoverProps {
@@ -9,7 +8,7 @@ interface RebuildTimingPopoverProps {
   onMouseLeave?: () => void
 }
 
-export const RebuildTimingPopover: React.FC<RebuildTimingPopoverProps> = ({ featureTimings, features, isVisible, onMouseEnter, onMouseLeave }) => {
+export function RebuildTimingPopover({ featureTimings, features, isVisible, onMouseEnter, onMouseLeave }: RebuildTimingPopoverProps) {
   if (!isVisible) return null
 
   const formatMs = (ms: number) => {

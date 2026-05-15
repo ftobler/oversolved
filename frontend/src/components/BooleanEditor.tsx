@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, Mutation, PendingPickField, BooleanFeatureDef } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 
@@ -11,7 +10,7 @@ interface BooleanEditorProps {
   partLabels?: Record<string, string>
 }
 
-export const BooleanEditor: React.FC<BooleanEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }) => {
+export function BooleanEditor({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }: BooleanEditorProps) {
   const bool = feature.boolean ?? { operation: 'union', target: '', tools: [] }
   const fid = feature.id
   const isPickingTarget = pendingPickField?.featureId === fid && pendingPickField?.field === 'boolean_target'

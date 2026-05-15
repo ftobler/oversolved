@@ -1,4 +1,3 @@
-import React from 'react'
 import contextEditIcon from '@/assets/icons/context-edit.svg'
 import iconDotsIcon from '@/assets/icons/dots.svg'
 import iconEyeIcon from '@/assets/icons/icon-eye.svg'
@@ -21,7 +20,7 @@ interface FeatureItemActionsProps {
   onRightClick: (pos: [number, number], id: string) => void
 }
 
-export const FeatureItemActions: React.FC<FeatureItemActionsProps> = ({
+export function FeatureItemActions({
   featureKind,
   featureId,
   isEditing,
@@ -35,7 +34,7 @@ export const FeatureItemActions: React.FC<FeatureItemActionsProps> = ({
   onExitEditFeature,
   onToggleVisibility,
   onRightClick,
-}) => {
+}: FeatureItemActionsProps) {
   const showEditBtn = !isEditing
   const showExitBtn = isEditing
   const showVisBtn = !isEditing

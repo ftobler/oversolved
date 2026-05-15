@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, ArrayFeatureDef, Mutation } from '@/types/cad'
 
 interface ArrayEditorProps {
@@ -6,7 +5,7 @@ interface ArrayEditorProps {
   onMutation: (m: Mutation) => void
 }
 
-const ArrayEditor: React.FC<ArrayEditorProps> = ({ feature, onMutation }) => {
+function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
   const array = feature.array as ArrayFeatureDef ?? {}
   const fid = feature.id
   const mode = array.mode ?? 'linear'

@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 
@@ -11,7 +10,7 @@ interface TransformEditorProps {
   partLabels?: Record<string, string>
 }
 
-export const TransformEditor: React.FC<TransformEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }) => {
+export function TransformEditor({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }: TransformEditorProps) {
   const transform = feature.transform ?? { body: '', operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 }
   const fid = feature.id
 

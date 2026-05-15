@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 import { planeLabel } from '@/components/Geometry3D/utils'
@@ -14,9 +13,9 @@ interface PlaneSelectorProps {
   partLabels: Record<string, string>
 }
 
-export const PlaneSelector: React.FC<PlaneSelectorProps> = ({
+export function PlaneSelector({
   feature, featureDef, onMutation, planeSelectionFeatureId, setPlaneSelectionFeatureId, selectionQuery, features, partLabels,
-}) => {
+}: PlaneSelectorProps) {
   const isPicking = planeSelectionFeatureId === feature.id
   return (
     <div className="plane-editor">

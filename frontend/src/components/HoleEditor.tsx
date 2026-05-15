@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 
@@ -11,7 +10,7 @@ interface HoleEditorProps {
   partLabels?: Record<string, string>
 }
 
-export const HoleEditor: React.FC<HoleEditorProps> = ({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }) => {
+export function HoleEditor({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }: HoleEditorProps) {
   const hole = feature.hole ?? { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' }
   const fid = feature.id
   const isPickingSketch = pendingPickField?.featureId === fid && pendingPickField?.field === 'sketch'

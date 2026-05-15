@@ -160,7 +160,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           alignmentSnapKind: state.alignmentSnapKind,
           alignmentSnapVertexId: state.alignmentSnapVertexId,
           setDrawSnap: useSketchEditorStore.getState().setDrawSnap,
-          setActiveTool: (tool: string | null) => { useSketchEditorStore.getState().setActiveTool(tool as import('@/stores/sketchEditorStore').ActiveTool) },
+          setActiveTool: (tool: string | null) => { useSketchEditorStore.getState().setActiveTool(tool as import('@/types/cad').ActiveTool) },
           sketch: sketch as Record<string, import('@/types/cad').Entity> | undefined,
           otherSketches: otherSketches as Record<string, Record<string, import('@/types/cad').Entity>> | undefined,
         }

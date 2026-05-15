@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, PlaneDef, Mutation, PendingPickField } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 import { planeLabel } from '@/components/Geometry3D/utils'
@@ -14,9 +13,9 @@ interface PlaneEditorProps {
   partLabels: Record<string, string>
 }
 
-export const PlaneEditor: React.FC<PlaneEditorProps> = ({
+export function PlaneEditor({
   feature, featureDef, onMutation, pendingPickField, setPendingPickField, selectionQuery, features, partLabels,
-}) => {
+}: PlaneEditorProps) {
   const def = (featureDef?.definition as PlaneDef | undefined) ?? { mode: 'offset' }
   const mode = def.mode ?? 'offset'
   const fid = feature.id

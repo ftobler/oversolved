@@ -14,7 +14,7 @@ export interface PickChipProps {
   partLabels?: Record<string, string>
 }
 
-export const PickChip: React.FC<PickChipProps> = ({
+export function PickChip({
   values,
   isPicking,
   onActivate,
@@ -23,7 +23,7 @@ export const PickChip: React.FC<PickChipProps> = ({
   emptyText,
   features,
   partLabels,
-}) => {
+}: PickChipProps) {
   const setPickChipHighlightItems = useSketchEditorStore(s => s.setPickChipHighlightItems)
   const isEmpty = values.length === 0
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)

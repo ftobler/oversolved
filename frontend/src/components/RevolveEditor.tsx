@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 import { normalizeRevolveSketch } from '@/utils/yamlMutations'
@@ -13,9 +12,9 @@ interface RevolveEditorProps {
   partLabels?: Record<string, string>
 }
 
-export const RevolveEditor: React.FC<RevolveEditorProps> = ({
+export function RevolveEditor({
   feature, onMutation, pendingPickField, setPendingPickField, selectionQuery, features, partLabels,
-}) => {
+}: RevolveEditorProps) {
   const revolve = feature.revolve ?? { sketch: [], angle: 360, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] }
   const fid = feature.id
   const isPickingSketch = pendingPickField?.featureId === fid && pendingPickField.field === 'sketch'

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { ActiveTool } from '@/stores/sketchEditorStore'
+import type { ActiveTool } from '@/types/cad'
 import {
   CONSTRAINTS,
   CONSTRAINT_BY_KIND,

@@ -8,20 +8,22 @@ interface RollbackSliderProps {
   onDragEnd: () => void
 }
 
-export const RollbackSlider: React.FC<RollbackSliderProps> = ({
+export function RollbackSlider({
   isDragging,
   onDragStart,
   onDragOver,
   onDrop,
   onDragEnd,
-}) => (
-  <li
-    className={`rollback-bar ${isDragging ? 'dragging' : ''}`}
-    title="Rollback"
-    draggable
-    onDragStart={onDragStart}
-    onDragOver={onDragOver}
-    onDrop={onDrop}
-    onDragEnd={onDragEnd}
-  ></li>
-)
+}: RollbackSliderProps) {
+  return (
+    <li
+      className={`rollback-bar ${isDragging ? 'dragging' : ''}`}
+      title="Rollback"
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+    ></li>
+  )
+}
