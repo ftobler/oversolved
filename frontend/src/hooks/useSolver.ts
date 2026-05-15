@@ -235,8 +235,6 @@ export function useSolver(
     setSolving(true)
     setSolveTime(null)
     const startTime = performance.now()
-    const isFirstSolve = !firstSolveDone.current
-    if (isFirstSolve) firstSolveDone.current = true
 
     const currentRequestId = ++requestIdRef.current
     try {
@@ -259,9 +257,6 @@ export function useSolver(
             return
           }
           rollbackPosRef.current = effectiveRollback
-          if (currentRequestId !== requestIdRef.current) {
-            return
-          }
           applyBuildResponse(d, cached.entry.buildResponse)
           if (cached.entry.geometry) {
             const { header, buffer, jsonHeaderLen } = cached.entry.geometry
@@ -269,7 +264,8 @@ export function useSolver(
             applyGeometryUpdate(header.msgId, header, buffer, jsonHeaderLen)
           }
           if (!cancelledRef.current) setSolving(false)
-          if (isFirstSolve && onFirstSolve) {
+          if (!firstSolveDone.current && onFirstSolve) {
+            firstSolveDone.current = true
             setTimeout(onFirstSolve, 0)
           }
           return
@@ -313,9 +309,11 @@ export function useSolver(
         const buildResponse = response as unknown as BuildResponse
         if (uuid) {
           await cacheBuildResponse(d, effectiveRollback, pickBoundary, buildResponse)
+          if (currentRequestId !== requestIdRef.current) return
         }
         applySolveResult(d, buildResponse, solveTimeMs)
-        if (isFirstSolve && onFirstSolve) {
+        if (!firstSolveDone.current && onFirstSolve) {
+          firstSolveDone.current = true
           setTimeout(onFirstSolve, 0)
         }
       }
