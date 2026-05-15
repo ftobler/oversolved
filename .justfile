@@ -2,8 +2,9 @@
 
 # `just` command runner. Targets can be run with `just <target>`.
 
-export OVERSOLVED_ADMIN_PASSWORD := "admin"
+export OVERSOLVED_ADMIN_PASSWORD := "aadmin"
 export OVERSOLVED_SESSION_COOKIE_SECURE := "false"
+export TESTING := "true"
 export OVERSOLVED_DB_DSN := "postgresql://oversolved:oversolved@localhost:5432/oversolved"
 
 default:
