@@ -21,6 +21,8 @@ from oversolved.kernel.ocp_ops import ocp_read_stl, ocp_write_stl
 
 logger = logging.getLogger(__name__)
 
+_TMP_DIR: str | None = os.environ.get("OVERSOLVED_TMP_DIR")
+
 
 def step_file_to_shape(filepath: str, scale: float = 1.0) -> cq_shapes.Shape:
     """Read a STEP file and return a cadquery shape.
@@ -58,7 +60,7 @@ def shape_to_step_file(shape: TopoDS_Shape, filepath: str) -> None:
 def shape_to_step_file_buffer(shape: TopoDS_Shape) -> BytesIO:
     """Write a shape to a STEP file in memory."""
     cq_shape = _ensure_cq(shape)
-    with tempfile.NamedTemporaryFile(suffix=".step", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".step", delete=False, dir=_TMP_DIR) as tmp:
         tmp_path = tmp.name
 
     try:
@@ -82,7 +84,7 @@ def shape_to_stl_file_buffer(shape: TopoDS_Shape, deflection: float = 0.5, angul
         deflection: Linear deflection for mesh tessellation (default 0.5).
         angular_deflection: Angular deflection for mesh tessellation (default 0.3 radians).
     """
-    with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".stl", delete=False, dir=_TMP_DIR) as tmp:
         tmp_path = tmp.name
     try:
         ocp_write_stl(shape, tmp_path, deflection, angular_deflection)
