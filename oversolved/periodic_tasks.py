@@ -1,7 +1,10 @@
 """Periodic task framework for background maintenance jobs."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class PeriodicTask:
@@ -77,8 +80,7 @@ def _cron_next(cron_expr: str, from_time: datetime) -> datetime:
         return target.replace(hour=next_hour, minute=minute, second=0, microsecond=0)
 
     # Fallback: next day at midnight
-    import sys
-    print(f"warning: unhandled cron expression {cron_expr!r}, defaulting to tomorrow midnight", file=sys.stderr)
+    logger.warning("unhandled cron expression %r, defaulting to tomorrow midnight", cron_expr)
     return (from_time + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
 

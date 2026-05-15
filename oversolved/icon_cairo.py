@@ -1,7 +1,10 @@
+import logging
 import math
 import cairo
 from io import BytesIO
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 SIZE = 24
 _registry = []
@@ -69,9 +72,9 @@ def _draw_one(path, fn, angle, offset_x=0, offset_y=0):
         return
 
     if existing is None:
-        print(f"creating: {path}")
+        logger.info("creating: %s", path)
     else:
-        print(f"updating: {path}")
+        logger.info("updating: %s", path)
 
     path.write_text(written)
 
@@ -80,4 +83,4 @@ def draw_all():
     for entry in _registry:
         path, fn, angle, offset_x, offset_y = entry
         _draw_one(path, fn, angle, offset_x, offset_y)
-    print("→ icons up to date")
+    logger.info("\u2192 icons up to date")

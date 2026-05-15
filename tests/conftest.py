@@ -39,13 +39,6 @@ def sketch_log():
             "ast_input": doc,
             "solve_result": solve_result
         }
-        # features = doc.get("features", [])
-        # if features:
-        #     feature_id = features[0]["id"]
-        #     if test_name not in log:
-        #         log[test_name] = {}
-        #     log[test_name][feature_id] = solve_result
-
     # Store log dict as attribute so topology_log can access it (kinda a hack)
     log_result._log = log
 

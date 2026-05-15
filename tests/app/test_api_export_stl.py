@@ -84,8 +84,6 @@ def test_export_single_extrude(authed_client):
             ]
         },
     )
-    if response.status_code != 200:
-        print("ERROR:", response.get_json())
     assert response.status_code == 200
     assert "application/sla" in response.content_type or "model/stl" in response.content_type or "text/plain" in response.content_type
     assert "attachment" in response.headers["Content-Disposition"]
@@ -120,8 +118,6 @@ def test_export_with_tessellation_params(authed_client):
             "angular_deflection": 0.1,
         },
     )
-    if response.status_code != 200:
-        print("ERROR:", response.get_json())
     assert response.status_code == 200
     data = response.data.decode("utf-8", errors="replace")
     assert "solid" in data or data.startswith("STL")

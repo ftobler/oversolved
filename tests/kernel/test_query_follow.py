@@ -112,11 +112,6 @@ def test_gnome_hat_sketch_solves() -> None:
     assert result.get("status") != "exception", result.get("exception")
     assert "topology" in result, "Must produce topology for face plane reference"
     assert "surfaces" in result["topology"], "Must have surfaces"
-    # Print surface count for debugging
-    num_surfaces = len(result["topology"]["surfaces"])
-    print(f"\nGnome hat produces {num_surfaces} surface(s)")
-    for i, surf in enumerate(result["topology"]["surfaces"]):
-        print(f"  Surface {i}: query={surf.get('query')}")
 
 
 def test_gnome_hat_with_derived_sketch_stable() -> None:
@@ -134,7 +129,6 @@ def test_gnome_hat_with_derived_sketch_stable() -> None:
     assert len(r1["topology"]["surfaces"]) > 0, "sketch_1 must produce at least one surface"
 
     face_query = r1["topology"]["surfaces"][0]["query"]
-    print(f"\nExtracted face query: {face_query}")
 
     # Now build the two-sketch doc with sketch_2 on sketch_1's face
     two_sketch_yaml = textwrap.dedent(f"""\
@@ -248,10 +242,6 @@ def test_gnome_hat_with_derived_sketch_stable() -> None:
         s1_status = result["sketch_1"].get("status")
         s2_status = result["sketch_2"].get("status")
         s2_exception = result["sketch_2"].get("exception")
-
-        print(f"Attempt {attempt + 1}: sketch_1={s1_status}, sketch_2={s2_status}")
-        if s2_exception:
-            print(f"  sketch_2 exception: {s2_exception}")
 
         assert s1_status != "exception", f"sketch_1 failed on attempt {attempt + 1}: {result['sketch_1'].get('exception')}"
         assert s2_status != "exception", f"sketch_2 failed on attempt {attempt + 1}: {s2_exception}"
@@ -487,7 +477,6 @@ def test_gnome_hat_with_cross_sketch_constraints() -> None:
     assert len(r1["topology"]["surfaces"]) > 0
 
     face_query = r1["topology"]["surfaces"][0]["query"]
-    print(f"\nExtracted face query: {face_query}")
 
     # Now sketch_2 with cross-sketch constraints that reference sketch_1
     two_sketch_yaml = textwrap.dedent(f"""\
@@ -658,9 +647,6 @@ def test_ambiguous_face_query_multiple_surfaces() -> None:
     assert "topology" in result
 
     num_surfaces = len(result["topology"]["surfaces"])
-    print(f"\nRectangle produces {num_surfaces} surface(s)")
-    for i, surf in enumerate(result["topology"]["surfaces"]):
-        print(f"  Surface {i}: query={surf.get('query')}")
 
     # Should have 1 surface (the rectangular face)
     assert num_surfaces == 1, f"Expected 1 surface, got {num_surfaces}"
@@ -679,8 +665,6 @@ def test_query_with_ambiguous_ancestry() -> None:
     ancestor_ids = ["@sketch_1/circle", "@sketch_1/right_line"]
     query = make_ancestry_query(ancestor_ids, "face")
 
-    print(f"\nQuery string: {query}")
-
     # Register two surfaces with the same ancestor set
     _surface1 = repo.register_ancestor(ancestor_ids, {"type": "face", "id": "surface1"})  # noqa: F841
     _surface2 = repo.register_ancestor(ancestor_ids, {"type": "face", "id": "surface2"})  # noqa: F841
@@ -690,7 +674,6 @@ def test_query_with_ambiguous_ancestry() -> None:
         _result = repo.query(query)  # noqa: F841
         assert False, "Should have raised AmbiguousQueryError, but didn't"
     except AmbiguousQueryError as e:
-        print(f"Got expected error: {e}")
         assert "matched 2" in str(e)
 
 
@@ -710,8 +693,6 @@ def test_surface_index_disambiguates_queries() -> None:
 
     # Without indices, they're identical (that's the problem!)
     assert query1 == query2
-    print(f"\nWithout indices: query1={query1}, query2={query2}")
-    print(f"Identical: {query1 == query2} ← PROBLEM!")
 
     # With indices, they should be different
     ancestor_ids_0 = ["@sketch_1/circle", "@sketch_1/right_line", "surface:0"]
@@ -721,8 +702,6 @@ def test_surface_index_disambiguates_queries() -> None:
     query2_indexed = make_ancestry_query(ancestor_ids_1, 'face')
 
     assert query1_indexed != query2_indexed
-    print(f"\nWith indices: query1={query1_indexed}, query2={query2_indexed}")
-    print(f"Different: {query1_indexed != query2_indexed} ← FIXED!")
 
 
 def test_indexed_queries_dont_match_both() -> None:
@@ -758,10 +737,6 @@ def test_indexed_queries_dont_match_both() -> None:
     assert surface0_id in repo.elements
     assert surface1_id in repo.elements
 
-    print(f"\nquery0 resolves to surface0: {result0['id']}")
-    print(f"query1 resolves to surface1: {result1['id']}")
-    print("No ambiguity! ✓")
-
 
 def test_geometric_classifiers_disambiguate_circle_divided_by_line() -> None:
     """
@@ -792,12 +767,6 @@ def test_geometric_classifiers_disambiguate_circle_divided_by_line() -> None:
 
     # Both surfaces have the same ancestors: circle + line
     # But different classifiers make them unambiguous
-    print("\nCircle cut by line:")
-    print(f"  Upper region classifier: {classifier_upper}")
-    print(f"  Lower region classifier: {classifier_lower}")
-    print(f"  Query for upper: ?f,13;@sketch_1/circle@sketch_1/line:face{classifier_upper}")
-    print(f"  Query for lower: ?f,13;@sketch_1/circle@sketch_1/line:face{classifier_lower}")
-
     assert classifier_upper == '@pos', "Upper region should be @pos"
     assert classifier_lower == '@neg', "Lower region should be @neg"
     assert classifier_upper != classifier_lower, "Classifiers must differ"
@@ -825,12 +794,6 @@ def test_geometric_classifiers_disambiguate_standalone_circle() -> None:
     # Exterior surface centroid (far from circle)
     exterior_centroid = (5, 5)
     classifier_outer = classify_surface_by_circle_side(exterior_centroid, center, radius)
-
-    print("\nStandalone circle:")
-    print(f"  Interior classifier: {classifier_inner}")
-    print(f"  Exterior classifier: {classifier_outer}")
-    print(f"  Query for interior: ?5;@sketch_1/circle:face{classifier_inner}")
-    print(f"  Query for exterior: ?5;@sketch_1/circle:face{classifier_outer}")
 
     assert classifier_inner == '@inner', "Interior should be @inner"
     assert classifier_outer == '@outer', "Exterior should be @outer"
@@ -871,14 +834,9 @@ def test_classifiers_are_stable_under_geometric_transformation() -> None:
     classifier_above_2 = classify_surface_by_line_side(point_above_2, line_start_2, line_end_2)
     classifier_below_2 = classify_surface_by_line_side(point_below_2, line_start_2, line_end_2)
 
-    print("\nClassifier stability:")
-    print(f"  Original: above={classifier_above_1}, below={classifier_below_1}")
-    print(f"  Translated: above={classifier_above_2}, below={classifier_below_2}")
-
     # The classifiers should remain the same after geometric transformation
     assert classifier_above_1 == classifier_above_2 == '@pos'
     assert classifier_below_1 == classifier_below_2 == '@neg'
-    print("  ✓ Classifiers stable under translation")
 
 
 def test_cardinal_classifiers_track_position_changes() -> None:
@@ -900,12 +858,7 @@ def test_cardinal_classifiers_track_position_changes() -> None:
     point_south = (0, -10)
     classifier_south = classify_surface_cardinal(point_south, origin)
 
-    print("\nCardinal classifiers:")
-    print(f"  North of origin: {classifier_north}")
-    print(f"  South of origin: {classifier_south}")
-
     # Classifiers should change with position
     assert classifier_north == '@north'
     assert classifier_south == '@south'
     assert classifier_north != classifier_south
-    print("  ✓ Classifiers track position changes")

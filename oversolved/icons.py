@@ -263,14 +263,6 @@ def constraint_midpoint(ctx):
     ctx.line_to(x1, y1)
     stroke(ctx, 2)
 
-    # # One tick mark per half, at the quarter and three-quarter points
-    # for t in [0.28, 0.72]:
-    #     tx = x0 + dx * t
-    #     ty = y0 + dy * t
-    #     ctx.move_to(tx - nx * tick_half, ty - ny * tick_half)
-    #     ctx.line_to(tx + nx * tick_half, ty + ny * tick_half)
-    #     stroke(ctx, 2)
-
     # Midpoint dot (drawn last so it sits on top)
     ctx.arc((x0 + x1) / 2, (y0 + y1) / 2, dot_r, 0, 2 * math.pi)
     ctx.fill()

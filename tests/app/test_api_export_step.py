@@ -84,8 +84,6 @@ def test_export_single_extrude(authed_client):
             ]
         },
     )
-    if response.status_code != 200:
-        print("ERROR:", response.get_json())
     assert response.status_code == 200
     assert "step" in response.content_type
     assert "attachment" in response.headers["Content-Disposition"]
