@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { http } from '../utils/httpClient'
 
 export interface RebuildStats {
   uuid: string
@@ -24,9 +25,7 @@ export function useRebuildStats(docId: string | undefined) {
     if (!docId) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/documents/${docId}/rebuild-stats`)
-      if (!res.ok) throw new Error('Failed to fetch rebuild stats')
-      const data = await res.json()
+      const data = await http.getJson<RebuildStats>(`/api/documents/${docId}/rebuild-stats`)
       setStats(data)
     } catch (err) {
       console.error('Failed to load rebuild stats:', err)

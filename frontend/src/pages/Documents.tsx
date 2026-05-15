@@ -5,6 +5,7 @@ import Dialog from '../components/Dialog'
 import ShareDialog from '../components/ShareDialog'
 import { useUserPreferences } from '../hooks/useUserPreferences'
 import type { DocumentSort } from '../hooks/useUserPreferences'
+import { http, HttpError } from '../utils/httpClient'
 import './Documents.css'
 
 interface DocumentMeta {
@@ -62,11 +63,7 @@ export default function Documents() {
     params.set('filter', filter)
     if (search) params.set('search', search)
 
-    fetch(`/api/documents?${params.toString()}`)
-      .then(r => {
-        if (!r.ok) throw new Error('Failed to fetch documents')
-        return r.json()
-      })
+    http.getJson<{ documents: DocumentMeta[] }>(`/api/documents?${params.toString()}`)
       .then(data => {
         setDocuments(data.documents || [])
         setError(null)
@@ -90,36 +87,24 @@ export default function Documents() {
     }
 
     try {
-      const response = await fetch('/api/documents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newDocName.trim() }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to create document')
-      }
-
+      await http.postJson<{ uuid: string }>('/api/documents', { name: newDocName.trim() })
       setNewDocName('')
       setShowAddForm(false)
       setAddError(null)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
-      setAddError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setAddError(parsed.error || 'Failed to create document')
+      } else {
+        setAddError(String(e))
+      }
     }
   }
 
   const handleDeleteDocument = async (uuid: string) => {
     try {
-      const response = await fetch(`/api/documents/${uuid}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to delete document')
-      }
-
+      await http.deleteJson(`/api/documents/${uuid}`)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
       setError(String(e))
@@ -128,30 +113,21 @@ export default function Documents() {
 
   const handleDuplicate = async (uuid: string) => {
     try {
-      const response = await fetch(`/api/documents/${uuid}/duplicate`, {
-        method: 'POST',
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to duplicate document')
-      }
-
+      await http.postJson(`/api/documents/${uuid}/duplicate`)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
-      setError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setError(parsed.error || 'Failed to duplicate document')
+      } else {
+        setError(String(e))
+      }
     }
   }
 
   const handleExport = async (uuid: string, name: string) => {
     try {
-      const response = await fetch(`/api/documents/${uuid}/export`)
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to export document')
-      }
-
-      const data = await response.json()
+      const data = await http.getJson<{ content: string }>(`/api/documents/${uuid}/export`)
       const blob = new Blob([data.content], { type: 'text/yaml' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -160,7 +136,12 @@ export default function Documents() {
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {
-      setError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setError(parsed.error || 'Failed to export document')
+      } else {
+        setError(String(e))
+      }
     }
   }
 
@@ -176,29 +157,22 @@ export default function Documents() {
 
     try {
       const text = await file.text()
-      const response = await fetch('/api/documents/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, content: text }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to import document')
-      }
-
+      await http.postJson('/api/documents/import', { name, content: text })
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (err) {
-      setError(String(err))
+      if (err instanceof HttpError) {
+        const parsed = JSON.parse(err.body || '{}') as { error?: string }
+        setError(parsed.error || 'Failed to import document')
+      } else {
+        setError(String(err))
+      }
     }
   }
 
   const fetchTrash = useCallback(async () => {
     setTrashLoading(true)
     try {
-      const response = await fetch('/api/documents/trash')
-      if (!response.ok) throw new Error('Failed to fetch trash')
-      const data = await response.json()
+      const data = await http.getJson<{ documents: TrashDoc[] }>('/api/documents/trash')
       setTrashDocs(data.documents || [])
     } catch (e) {
       setError(String(e))
@@ -209,15 +183,16 @@ export default function Documents() {
 
   const handleRecover = async (uuid: string) => {
     try {
-      const response = await fetch(`/api/documents/${uuid}/recover`, { method: 'POST' })
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to recover document')
-      }
+      await http.postJson(`/api/documents/${uuid}/recover`)
       fetchTrash()
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
-      setError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setError(parsed.error || 'Failed to recover document')
+      } else {
+        setError(String(e))
+      }
     }
   }
 
@@ -226,14 +201,15 @@ export default function Documents() {
       return
     }
     try {
-      const response = await fetch(`/api/documents/${uuid}/trash`, { method: 'DELETE' })
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to delete document')
-      }
+      await http.deleteJson(`/api/documents/${uuid}/trash`)
       fetchTrash()
     } catch (e) {
-      setError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setError(parsed.error || 'Failed to delete document')
+      } else {
+        setError(String(e))
+      }
     }
   }
 
@@ -485,11 +461,9 @@ export default function Documents() {
                                   e.preventDefault()
                                   e.stopPropagation()
                                   if (window.confirm('Remove this shared document?')) {
-                                    fetch(`/api/documents/${doc.uuid}/share`, {
-                                      method: 'DELETE',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({}),
-                                    }).then(() => fetchDocuments(activeFilter, debouncedSearch))
+                                    http.deleteJson(`/api/documents/${doc.uuid}/share`)
+                                      .then(() => fetchDocuments(activeFilter, debouncedSearch))
+                                      .catch(() => undefined)
                                   }
                                 }}
                                 title="Remove shared document"

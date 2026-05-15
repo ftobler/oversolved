@@ -25,6 +25,7 @@ import { useSolverStore } from '../stores/solverStore'
 import { invalidateDocCache } from '../utils/buildCache'
 import { describeMutation } from '../utils/mutationDescriptions'
 import PartDebugPanel from './PartDebugPanel'
+import { http, HttpError } from '../utils/httpClient'
 import './Part.css'
 
 import featureExtrudeIcon from '../assets/icons/feature-extrude.svg'
@@ -441,10 +442,8 @@ useEffect(() => {
       if (!file) return
       const form = new FormData()
       form.append('file', file)
-      const res = await fetch('/api/upload', { method: 'POST', body: form })
-      if (!res.ok) return
-      const data = await res.json() as { file_id?: string }
-      if (!data.file_id) return
+      const data = await http.postForm<{ file_id?: string }>('/api/upload', form).catch(() => null)
+      if (!data?.file_id) return
       const featureId = randomId(18)
       const label = file.name.replace(/\.(step|stp)$/i, '')
       setRollbackPos(features.length + 1)
@@ -469,18 +468,7 @@ useEffect(() => {
       body.angular_deflection = tessellation * 0.6
     }
     try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) {
-        const err = await res.text()
-        console.error('Export failed:', res.status, err)
-        alert(`Export failed: ${err}`)
-        return
-      }
-      const blob = await res.blob()
+      const blob = await http.postBlob(endpoint, body)
       const filename = format === 'step' ? `${exportDefaultName}.step` : `${exportDefaultName}.stl`
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -491,8 +479,13 @@ useEffect(() => {
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
     } catch (e) {
-      console.error('Export error:', e)
-      alert(`Export error: ${e}`)
+      if (e instanceof HttpError) {
+        console.error('Export failed:', e.status, e.body)
+        alert(`Export failed: ${e.body}`)
+      } else {
+        console.error('Export error:', e)
+        alert(`Export error: ${e}`)
+      }
     }
     setExportTargetBodyId(null)
     setExportDialogOpen(false)
@@ -563,17 +556,15 @@ useEffect(() => {
   const handleClone = async () => {
     if (!uuid) return
     try {
-      const response = await fetch(`/api/documents/${uuid}/clone`, {
-        method: 'POST',
-      })
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to clone document')
-      }
-      const data = await response.json()
+      const data = await http.postJson<{ uuid: string }>(`/api/documents/${uuid}/clone`)
       navigate(`/documents/${data.uuid}`)
     } catch (e) {
-      setError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setError(parsed.error || 'Failed to clone document')
+      } else {
+        setError(String(e))
+      }
     }
   }
 
@@ -621,14 +612,7 @@ useEffect(() => {
         }))
         report.history = historyItems
       }
-      const response = await fetch('/api/bug-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(report),
-      })
-      if (!response.ok) {
-        throw new Error(`Server responded with ${response.status}`)
-      }
+      await http.postJson('/api/bug-report', report)
       setBugReportForm({ title: '', description: '' })
       alert('Bug report submitted successfully!')
       setDebugTab('selection')

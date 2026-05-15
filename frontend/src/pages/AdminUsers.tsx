@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import Dialog from '../components/Dialog'
+import { http, HttpError } from '../utils/httpClient'
 import './AdminUsers.css'
 
 interface UserRecord {
@@ -42,16 +43,16 @@ export default function AdminUsers() {
   const fetchUsers = async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/admin/users')
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to fetch users')
-      }
-      const data = await response.json()
+      const data = await http.getJson<{ users: UserRecord[] }>('/api/admin/users')
       setUsers(data.users || [])
       setError(null)
     } catch (e) {
-      setError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setError(parsed.error || 'Failed to fetch users')
+      } else {
+        setError(String(e))
+      }
     } finally {
       setLoading(false)
     }
@@ -64,16 +65,7 @@ export default function AdminUsers() {
       return
     }
     try {
-      const response = await fetch('/api/admin/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: newUsername.trim(), email: newEmail.trim() || undefined, password: newPassword, is_admin: newIsAdmin }),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        setFormError(data.error || 'Failed to create user')
-        return
-      }
+      await http.postJson('/api/admin/users', { username: newUsername.trim(), email: newEmail.trim() || undefined, password: newPassword, is_admin: newIsAdmin })
       setNewUsername('')
       setNewEmail('')
       setNewPassword('')
@@ -81,7 +73,12 @@ export default function AdminUsers() {
       setShowCreateForm(false)
       fetchUsers()
     } catch (e) {
-      setFormError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setFormError(parsed.error || 'Failed to create user')
+      } else {
+        setFormError(String(e))
+      }
     }
   }
 
@@ -95,20 +92,16 @@ export default function AdminUsers() {
       body.is_active = editingUser.is_active
       body.is_admin = editingUser.is_admin
 
-      const response = await fetch(`/api/admin/users/${editingUser.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        setFormError(data.error || 'Failed to update user')
-        return
-      }
+      await http.putJson(`/api/admin/users/${editingUser.id}`, body)
       setEditingUser(null)
       fetchUsers()
     } catch (e) {
-      setFormError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setFormError(parsed.error || 'Failed to update user')
+      } else {
+        setFormError(String(e))
+      }
     }
   }
 
@@ -117,14 +110,15 @@ export default function AdminUsers() {
       return
     }
     try {
-      const response = await fetch(`/api/admin/users/${u.id}`, { method: 'DELETE' })
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to delete user')
-      }
+      await http.deleteJson(`/api/admin/users/${u.id}`)
       fetchUsers()
     } catch (e) {
-      setError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setError(parsed.error || 'Failed to delete user')
+      } else {
+        setError(String(e))
+      }
     }
   }
 
@@ -135,21 +129,17 @@ export default function AdminUsers() {
       return
     }
     try {
-      const response = await fetch(`/api/admin/users/${resetUser.id}/reset`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: resetPassword }),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        setFormError(data.error || 'Failed to reset password')
-        return
-      }
+      await http.postJson(`/api/admin/users/${resetUser.id}/reset`, { password: resetPassword })
       setResetUser(null)
       setResetPassword('')
       fetchUsers()
     } catch (e) {
-      setFormError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setFormError(parsed.error || 'Failed to reset password')
+      } else {
+        setFormError(String(e))
+      }
     }
   }
 

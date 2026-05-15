@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { load as yamlLoad } from 'js-yaml'
-import { stringify as yamlStringify } from 'yaml'
+import { parse as yamlLoad, stringify as yamlStringify } from 'yaml'
+import { http } from '../utils/httpClient'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import Sketch3D from '../components/Sketch3D'
@@ -187,14 +187,9 @@ export default function Visualizer() {
   const openAsDocument = useCallback(async (card: CardData) => {
     if (!card.astInput) return
     const docId = card.id
-    const response = await fetch(`/api/documents/${docId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: yamlStringify(card.astInput) }),
-    })
-    if (response.ok) {
-      navigate(`/documents/${docId}`)
-    }
+    await http.putJson(`/api/documents/${docId}`, { content: yamlStringify(card.astInput) })
+      .then(() => navigate(`/documents/${docId}`))
+      .catch(() => undefined)
   }, [navigate])
 
   useEffect(() => {

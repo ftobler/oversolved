@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { http, HttpError } from '../utils/httpClient'
 import './AdminPeriodicTasks.css'
 
 interface PeriodicTask {
@@ -29,16 +30,16 @@ export default function AdminPeriodicTasks() {
   const fetchTasks = async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/admin/periodic-tasks')
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to fetch tasks')
-      }
-      const data = await response.json()
+      const data = await http.getJson<{ tasks: PeriodicTask[] }>('/api/admin/periodic-tasks')
       setTasks(data.tasks || [])
       setError(null)
     } catch (e) {
-      setError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setError(parsed.error || 'Failed to fetch tasks')
+      } else {
+        setError(String(e))
+      }
     } finally {
       setLoading(false)
     }
@@ -47,16 +48,15 @@ export default function AdminPeriodicTasks() {
   const handleForceRun = async (taskKey: string) => {
     setRunningTask(taskKey)
     try {
-      const response = await fetch(`/api/admin/periodic-tasks/${taskKey}/run`, {
-        method: 'POST',
-      })
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to run task')
-      }
+      await http.postJson(`/api/admin/periodic-tasks/${taskKey}/run`)
       fetchTasks()
     } catch (e) {
-      setError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setError(parsed.error || 'Failed to run task')
+      } else {
+        setError(String(e))
+      }
     } finally {
       setRunningTask(null)
     }

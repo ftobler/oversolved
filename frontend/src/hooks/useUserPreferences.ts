@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { http } from '../utils/httpClient'
 
 export type DocumentSort = 'alphabetical' | 'date_newest_first' | 'date_oldest_first'
 
@@ -13,11 +14,7 @@ export function useUserPreferences() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/users/me/preferences')
-      .then(r => {
-        if (!r.ok) throw new Error('Failed to fetch preferences')
-        return r.json()
-      })
+    http.getJson<{ document_sort?: DocumentSort }>('/api/users/me/preferences')
       .then(data => setPreferences({ document_sort: data.document_sort ?? 'alphabetical' }))
       .catch(() => { /* fall back to defaults */ })
       .finally(() => setLoading(false))
@@ -27,14 +24,7 @@ export function useUserPreferences() {
     const next = { ...preferences, [key]: value } as UserPreferences
     setPreferences(next)
     try {
-      const res = await fetch('/api/users/me/preferences', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [key]: value }),
-      })
-      if (!res.ok) {
-        setPreferences(preferences)  // revert on failure
-      }
+      await http.putJson('/api/users/me/preferences', { [key]: value })
     } catch {
       setPreferences(preferences)  // revert on failure
     }

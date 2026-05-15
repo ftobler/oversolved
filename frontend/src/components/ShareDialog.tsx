@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { http, HttpError } from '../utils/httpClient'
 
 interface ShareInfo {
   id: number
@@ -27,9 +28,7 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
   const fetchShares = useCallback(async () => {
     if (!isOwner) return
     try {
-      const response = await fetch(`/api/documents/${documentUuid}/shares`)
-      if (!response.ok) throw new Error('Failed to fetch shares')
-      const data = await response.json()
+      const data = await http.getJson<{ shares: ShareInfo[] }>(`/api/documents/${documentUuid}/shares`)
       const sharesList = data.shares || []
       setShares(sharesList)
       setLinkSharing(sharesList.some((s: ShareInfo) => s.shared_with_user_id === null))
@@ -54,19 +53,16 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch(`/api/documents/${documentUuid}/share`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: shareUsername.trim(), permission: sharePermission }),
-      })
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to share')
-      }
+      await http.postJson(`/api/documents/${documentUuid}/share`, { username: shareUsername.trim(), permission: sharePermission })
       setShareUsername('')
       fetchShares()
     } catch (e) {
-      setError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setError(parsed.error || 'Failed to share')
+      } else {
+        setError(String(e))
+      }
     } finally {
       setLoading(false)
     }
@@ -82,7 +78,7 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
         body: JSON.stringify(username ? { username } : {}),
       })
       if (!response.ok) {
-        const data = await response.json()
+        const data = await response.json() as { error?: string }
         throw new Error(data.error || 'Failed to remove share')
       }
       fetchShares()
@@ -127,17 +123,21 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
                       setLoading(true)
                       setError(null)
                       try {
-                        const method = checked ? 'POST' : 'DELETE'
-                        const response = await fetch(`/api/documents/${documentUuid}/share`, {
-                          method,
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(checked ? { permission: 'view' } : {}),
-                        })
-                        if (!response.ok) {
-                          const data = await response.json()
-                          throw new Error(data.error || 'Failed to update link sharing')
+                        let updated: { shares?: ShareInfo[] }
+                        if (checked) {
+                          updated = await http.postJson<{ shares?: ShareInfo[] }>(`/api/documents/${documentUuid}/share`, { permission: 'view' })
+                        } else {
+                          const response = await fetch(`/api/documents/${documentUuid}/share`, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({}),
+                          })
+                          if (!response.ok) {
+                            const data = await response.json() as { error?: string }
+                            throw new Error(data.error || 'Failed to update link sharing')
+                          }
+                          updated = await response.json() as { shares?: ShareInfo[] }
                         }
-                        const updated = await response.json()
                         if (updated.shares) {
                           setShares(updated.shares)
                         }
@@ -215,18 +215,15 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
                                 setLoading(true)
                                 setError(null)
                                 try {
-                                  const response = await fetch(`/api/documents/${documentUuid}/share`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ username: share.username, permission: e.target.value }),
-                                  })
-                                  if (!response.ok) {
-                                    const data = await response.json()
-                                    throw new Error(data.error || 'Failed to update permission')
-                                  }
+                                  await http.postJson(`/api/documents/${documentUuid}/share`, { username: share.username, permission: e.target.value })
                                   fetchShares()
                                 } catch (err) {
-                                  setError(String(err))
+                                  if (err instanceof HttpError) {
+                                    const parsed = JSON.parse(err.body || '{}') as { error?: string }
+                                    setError(parsed.error || 'Failed to update permission')
+                                  } else {
+                                    setError(String(err))
+                                  }
                                 } finally {
                                   setLoading(false)
                                 }

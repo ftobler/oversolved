@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { http } from '../utils/httpClient'
 
 export interface User {
   id: number
@@ -29,20 +30,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then(r => (r.ok ? r.json() : null))
-      .then(data => {
-        setUser(data?.user ?? null)
-        setLoading(false)
-      })
-      .catch(() => {
-        setUser(null)
-        setLoading(false)
-      })
+    http.getJson<{ user: User }>('/api/auth/me')
+      .then(data => setUser(data.user))
+      .catch(() => setUser(null))
+      .finally(() => setLoading(false))
   }, [])
 
   const logout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
+    await http.postJson('/api/auth/logout').catch(() => undefined)
     setUser(null)
   }
 

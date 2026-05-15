@@ -191,12 +191,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const { triangle_to_face, face_queries } = mesh
     if (!triangle_to_face || !face_queries || face_queries.length === 0) return null
 
-    const faceCount = face_queries.length
+    const numFaces = face_queries.length
     const numTris = faceCount(mesh.faces)
     const colors = new Float32Array(numTris * 3 * 3)
     for (let i = 0; i < numTris; i++) {
       const brepFaceIdx = triangle_to_face[i] ?? 0
-      const color = new THREE.Color().setHSL(brepFaceIdx / faceCount, 0.9, 0.55)
+      const color = new THREE.Color().setHSL(brepFaceIdx / numFaces, 0.9, 0.55)
       const baseIdx = i * 9
       for (let v = 0; v < 9; v += 3) {
         colors[baseIdx + v] = color.r

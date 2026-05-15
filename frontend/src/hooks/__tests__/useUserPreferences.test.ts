@@ -45,14 +45,22 @@ describe('useUserPreferences', () => {
   })
 
   it('updatePreference calls PUT and updates local state', async () => {
-    const mockFetch = vi.fn((url: string) => {
-      if (url === '/api/users/me/preferences' && typeof url === 'string') {
+    const mockFetch = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({}),
+          text: () => Promise.resolve('{}'),
+        } as Response)
+      }
+      if (url === '/api/users/me/preferences') {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ document_sort: 'alphabetical' }),
+          text: () => Promise.resolve(JSON.stringify({ document_sort: 'alphabetical' })),
         } as Response)
       }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}), text: () => Promise.resolve('{}') } as Response)
     })
     vi.stubGlobal('fetch', mockFetch)
 

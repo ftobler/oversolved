@@ -58,6 +58,7 @@ describe('UserProfile', () => {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ status: 'updated' }),
+          text: () => Promise.resolve(JSON.stringify({ status: 'updated' })),
         } as Response)
       }
       return Promise.resolve({ ok: false, status: 404 } as Response)
@@ -94,6 +95,7 @@ describe('UserProfile', () => {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ status: 'updated' }),
+          text: () => Promise.resolve(JSON.stringify({ status: 'updated' })),
         } as Response)
       }
       return Promise.resolve({ ok: false, status: 404 } as Response)

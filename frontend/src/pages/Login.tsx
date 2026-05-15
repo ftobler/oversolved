@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import type { User } from '../contexts/AuthContext'
+import { http, HttpError } from '../utils/httpClient'
 import './Login.css'
 
 export default function Login() {
@@ -20,20 +22,16 @@ export default function Login() {
     setSubmitting(true)
     setError(null)
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential, password }),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        setError(data.error || 'Login failed')
-        return
-      }
+      const data = await http.postJson<{ user: User }>('/api/auth/login', { credential, password })
       setUser(data.user)
       navigate('/documents')
     } catch (e) {
-      setError(String(e))
+      if (e instanceof HttpError) {
+        const parsed = JSON.parse(e.body || '{}') as { error?: string }
+        setError(parsed.error || 'Login failed')
+      } else {
+        setError(String(e))
+      }
     } finally {
       setSubmitting(false)
     }

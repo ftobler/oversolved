@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import AppHeader from '../components/AppHeader'
+import { http } from '../utils/httpClient'
 import './Documentation.css'
 
 interface DocFile {
@@ -31,15 +32,13 @@ export default function Documentation() {
   useEffect(() => {
     // Fetch list of docs and their content to extract labels
     if (docFiles.length === 0) {
-      fetch('/api/docs')
-        .then(r => r.json())
+      http.getJson<{ docs: string[] }>('/api/docs')
         .then(data => {
           const names = data.docs || []
           // Fetch content for all docs to extract labels
           Promise.all(
             names.map((name: string) =>
-              fetch(`/api/docs/${name}`)
-                .then(r => r.json())
+              http.getJson<{ name: string; content: string }>(`/api/docs/${name}`)
                 .catch(() => ({ name, content: '' }))
             )
           )
@@ -65,13 +64,7 @@ export default function Documentation() {
   }, [docFiles.length])
 
   useEffect(() => {
-    fetch(`/api/docs/${currentDoc}`)
-      .then(r => {
-        if (!r.ok) {
-          throw new Error(`Failed to load ${currentDoc}`)
-        }
-        return r.json()
-      })
+    http.getJson<{ content: string }>(`/api/docs/${currentDoc}`)
       .then(data => {
         setContent(data.content)
         setLoading(false)

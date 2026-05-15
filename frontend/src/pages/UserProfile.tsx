@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useUserPreferences } from '../hooks/useUserPreferences'
+import { http, HttpError } from '../utils/httpClient'
 import './UserProfile.css'
 
 export default function UserProfile() {
@@ -52,15 +53,15 @@ export default function UserProfile() {
         return
       }
 
-      const response = await fetch('/api/users/me', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-
-      const data = await response.json()
-      if (!response.ok) {
-        setError(data.error || 'Update failed')
+      try {
+        await http.putJson('/api/users/me', body)
+      } catch (e) {
+        if (e instanceof HttpError) {
+          const parsed = JSON.parse(e.body || '{}') as { error?: string }
+          setError(parsed.error || 'Update failed')
+        } else {
+          setError(String(e))
+        }
         setLoading(false)
         return
       }

@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { http } from '../utils/httpClient'
 import './UserProfile.css'
 
 export default function Backup() {
@@ -19,16 +20,7 @@ export default function Backup() {
   const handleDownload = async () => {
     setLoadingDownload(true)
     try {
-      const response = await fetch('/api/admin/backup', {
-        method: 'GET',
-      })
-
-      if (!response.ok) {
-        alert('Failed to download backup')
-        return
-      }
-
-      const blob = await response.blob()
+      const blob = await http.getBlob('/api/admin/backup')
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -57,17 +49,7 @@ export default function Backup() {
       const formData = new FormData()
       formData.append('file', file)
 
-      const response = await fetch('/api/admin/import-backup', {
-        method: 'POST',
-        body: formData,
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        alert(`Import failed: ${data.error}`)
-        return
-      }
+      const data = await http.postForm<{ imported_count: number; skipped_count: number; errors?: string[] }>('/api/admin/import-backup', formData)
 
       const message = `Import complete!\nImported: ${data.imported_count} documents`
         + (data.skipped_count > 0 ? `\nSkipped: ${data.skipped_count}` : '')

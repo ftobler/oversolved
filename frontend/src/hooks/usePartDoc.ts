@@ -3,6 +3,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, SketchData, Mutation, EntityStatus, BuildResponse, PartStyleEntry } from '../types/cad'
 import { solverWs } from './solverWs'
 import { useSolverStore } from '../stores/solverStore'
+import { http } from '../utils/httpClient'
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
 import { unflattenGeometry } from '../utils/geometryMapping'
@@ -806,11 +807,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     firstSolveDone.current = false
     if (!uuid) return
     setLoading(true)
-    fetch(`/api/documents/${uuid}`)
-      .then(r => {
-        if (!r.ok) throw new Error('Failed to load document')
-        return r.json()
-      })
+    http.getJson<{ content: string; name: string; owner_username?: string; permission?: string; is_public?: boolean }>(`/api/documents/${uuid}`)
       .then(data => {
         const parsed = healDoc(parseYaml(data.content))
         docRef.current = parsed
@@ -837,12 +834,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
           body.preview_image = dataUrl.split(',')[1]
         }
       }
-      const response = await fetch(`/api/documents/${uuid}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!response.ok) throw new Error('Failed to save document')
+      await http.putJson(`/api/documents/${uuid}`, body)
       return true
     } catch (e) {
       setError(String(e))
@@ -852,12 +844,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
   const renameDoc = useCallback(async (uuid: string, name: string) => {
     try {
-      const response = await fetch(`/api/documents/${uuid}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      })
-      if (!response.ok) throw new Error('Failed to rename document')
+      await http.patchJson(`/api/documents/${uuid}`, { name })
       setDocName(name)
       return true
     } catch (e) {
