@@ -30,17 +30,10 @@ import PartColorPopover from '@/pages/PartColorPopover'
 import PartExportImport from '@/pages/PartExportImport'
 import { usePartCommands } from '@/pages/PartKeyboardShortcuts'
 
-import featureExportIcon from '@/assets/icons/icon-download.svg'
 import measurementIcon from '@/assets/icons/measurement.svg'
-import iconRenameIcon from '@/assets/icons/rename.svg'
 
-import contextRebuildIcon from '@/assets/icons/context-rebuild.svg'
-import contextExitIcon from '@/assets/icons/context-exit.svg'
-import contextHideIcon from '@/assets/icons/context-hide.svg'
-import contextDeleteIcon from '@/assets/icons/context-delete.svg'
-import contextEditIcon from '@/assets/icons/context-edit.svg'
-import contextColorIcon from '@/assets/icons/context-color.svg'
-import contextCameraIcon from '@/assets/icons/context-camera.svg'
+import { buildContextMenu } from './buildContextMenu'
+import type { BuildContextMenuInput, BuildContextMenuCallbacks } from './buildContextMenu'
 
 import { normalizeHexColor } from '@/utils/partColors'
 import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
@@ -770,167 +763,43 @@ export default function Part() {
 
   const handleRightClick = useCallback((pos: [number, number], targetId?: string) => {
     const store = useSketchEditorStore.getState()
-    const hoveredSurfaceId = store.hoveredSurfaceId ?? store.hovered3DSurfaceId
-    const hoveredFaceNormal = store.hoveredFaceNormal
-    const hoveredFaceCenter = store.hoveredFaceCenter
-
-    if (hoveredSurfaceId && hoveredFaceNormal && hoveredFaceCenter) {
-      setContextMenu({
-        position: pos,
-        items: [
-          {
-            label: 'Align to Face',
-            onClick: () => {
-              viewportRef.current?.alignCameraToFace(hoveredFaceNormal, hoveredFaceCenter)  // camera-only; intentional no-op when Viewport absent
-            },
-          },
-        ],
-      })
-      return
-    }
-
-    if (targetId?.startsWith('body:')) {
-      const bodyId = targetId.slice('body:'.length)
-      setContextMenu({
-        position: pos,
-        targetId,
-        items: [
-          {
-            label: 'Rename',
-            icon: iconRenameIcon,
-            onClick: () => {
-              const newLabel = window.prompt('Enter new name:', partLabels[bodyId] || bodyId)
-              if (newLabel && newLabel.trim()) {
-                handleBodyRename(bodyId, newLabel)
-              }
-            },
-          },
-          {
-            label: 'Color',
-            icon: contextColorIcon,
-            onClick: () => {
-              setPartColorDraft(partColors[bodyId] || '#6AB59B')
-              setPartColorPopover({ bodyId, position: pos })
-            },
-          },
-          {
-            label: 'Export',
-            icon: featureExportIcon,
-            onClick: () => {
-              setExportTargetBodyId(bodyId)
-              setExportDefaultName(partLabels[bodyId] || bodyId)
-              setExportDialogOpen(true)
-            },
-          },
-        ],
-      })
-      return
-    }
-
-    const featureId = targetId
-    const items: ContextMenuItem[] = [
-      {
-        label: 'Rebuild',
-        icon: contextRebuildIcon,
-        onClick: handleRebuild,
-      },
-    ]
-
-    if (activeSketchFeatureId) {
-      const target = features.find(f => f.id === activeSketchFeatureId)
-      const isVisible = target && visibleFeatures.has(target.id)
-      if (isVisible) {
-        items.push({
-          label: 'Hide',
-          icon: contextHideIcon,
-          onClick: () => toggleVisibility(activeSketchFeatureId),
-        })
-      }
-      items.push({
-        label: 'Edit',
-        icon: contextEditIcon,
-        onClick: () => enterEditSketch(activeSketchFeatureId),
-      })
-      items.push({
-        label: 'Exit Sketch',
-        icon: contextExitIcon,
-        onClick: handleExitSketch,
-      })
-      if (featureId === activeSketchFeatureId) {
-        items.push({
-          label: 'Align camera',
-          icon: contextCameraIcon,
-          onClick: handleAlignCameraToSketchPlane,
-        })
-      }
-    }
-
-    if (featureId && featureId !== activeSketchFeatureId) {
-      const target = features.find(f => f.id === featureId)
-      if (target?.kind === 'plane') {
-        const isVisible = visibleFeatures.has(target.id)
-        if (!BUILT_IN_IDS.has(target.id)) {
-          items.push({
-            label: 'Edit',
-            icon: contextEditIcon,
-            onClick: () => {
-              handleRightClick(pos, target.id)
-              enterEditSketch(target.id)
-            },
-          })
-          items.push({
-            label: isVisible ? 'Hide' : 'Show',
-            icon: contextHideIcon,
-            onClick: () => toggleVisibility(target.id),
-          })
-        }
-      } else if (target?.kind === 'sketch') {
-        const isVisible = visibleFeatures.has(target.id)
-        if (!BUILT_IN_IDS.has(target.id)) {
-          items.push({
-            label: 'Edit',
-            icon: contextEditIcon,
-            onClick: () => {
-              handleRightClick(pos, target.id)
-              enterEditSketch(target.id)
-            },
-          })
-        }
-        if (isVisible) {
-          items.push({
-            label: 'Hide',
-            icon: contextHideIcon,
-            onClick: () => toggleVisibility(target.id),
-          })
-        }
-      }
-      if (!BUILT_IN_IDS.has(featureId)) {
-        const target = features.find(f => f.id === featureId)
-        items.push({
-          label: 'Rename',
-          icon: iconRenameIcon,
-          onClick: () => {
-            const newLabel = window.prompt('Enter new name:', target?.label || target?.id)
-            if (newLabel && newLabel.trim()) {
-              handleFeatureRename(featureId, newLabel.trim())
-            }
-          },
-        })
-        items.push({
-          label: 'Delete',
-          icon: contextDeleteIcon,
-          onClick: () => handleDeleteFeature(featureId),
-          className: 'right-click-menu-item--delete',
-        })
-      }
-    }
-
-    setContextMenu({
-      position: pos,
+    const input: BuildContextMenuInput = {
+      pos,
       targetId,
-      items,
-    })
-  }, [handleRebuild, activeSketchFeatureId, handleExitSketch, enterEditSketch, features, visibleFeatures, toggleVisibility, handleDeleteFeature, handleFeatureRename, partLabels, handleBodyRename, partColors, handleAlignCameraToSketchPlane])
+      hoveredSurfaceId: store.hoveredSurfaceId ?? store.hovered3DSurfaceId,
+      hoveredFaceNormal: store.hoveredFaceNormal,
+      hoveredFaceCenter: store.hoveredFaceCenter,
+      features,
+      visibleFeatures,
+      activeSketchFeatureId: activeSketchFeatureId ?? undefined,
+      partLabels,
+      partColors,
+      builtInIds: BUILT_IN_IDS,
+    }
+    const callbacks: BuildContextMenuCallbacks = {
+      onRebuild: handleRebuild,
+      onToggleVisibility: toggleVisibility,
+      onEnterEditSketch: enterEditSketch,
+      onExitSketch: handleExitSketch,
+      onDeleteFeature: handleDeleteFeature,
+      onFeatureRename: handleFeatureRename,
+      onBodyRename: handleBodyRename,
+      onAlignToFace: (normal, center) => viewportRef.current?.alignCameraToFace(normal, center),
+      onAlignCameraToSketchPlane: handleAlignCameraToSketchPlane,
+      onSetPartColorDraft: setPartColorDraft,
+      onSetPartColorPopover: setPartColorPopover,
+      onSetExportTargetBodyId: setExportTargetBodyId,
+      onSetExportDefaultName: setExportDefaultName,
+      onSetExportDialogOpen: setExportDialogOpen,
+      onShowContextMenu: (items, tid) => setContextMenu({ position: pos, targetId: tid, items }),
+    }
+    const { items } = buildContextMenu(input, callbacks)
+    setContextMenu({ position: pos, targetId, items })
+  }, [handleRebuild, toggleVisibility, enterEditSketch, handleExitSketch, handleDeleteFeature,
+    handleFeatureRename, handleBodyRename, handleAlignCameraToSketchPlane,
+    features, visibleFeatures, activeSketchFeatureId, partLabels, partColors,
+    viewportRef, setPartColorDraft, setPartColorPopover, setExportTargetBodyId,
+    setExportDefaultName, setExportDialogOpen, setContextMenu])
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
