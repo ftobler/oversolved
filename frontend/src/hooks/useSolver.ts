@@ -10,11 +10,11 @@ import { unpackBodies, unpackPickBodies } from '@/utils/geometryUnpack'
 import type { GeometryHeader } from '@/utils/geometryUnpack'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
-function pickPartColor(partNumber: number): string {
+export function pickPartColor(partNumber: number): string {
   return PART_COLOR_PALETTE[(partNumber - 1) % PART_COLOR_PALETTE.length]
 }
 
-function reconcilePartStyle(doc: PartDoc, bodies: Record<string, BodyResult> | undefined): void {
+export function reconcilePartStyle(doc: PartDoc, bodies: Record<string, BodyResult> | undefined): void {
   const bodyIds = Object.keys(bodies ?? {})
   if (bodyIds.length === 0) return
 
