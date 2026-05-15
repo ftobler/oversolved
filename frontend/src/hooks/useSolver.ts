@@ -237,6 +237,8 @@ export function useSolver(
     const startTime = performance.now()
 
     const currentRequestId = ++requestIdRef.current
+    const isStale = () => currentRequestId !== requestIdRef.current
+    const isCurrent = () => currentRequestId === requestIdRef.current && !cancelledRef.current
     try {
       const allFeatures = d.features ?? []
       const effectiveRollback = rollbackPosition !== undefined
@@ -253,7 +255,7 @@ export function useSolver(
       if (uuid) {
         const cached = await getCachedBuildResponse(d, effectiveRollback, pickBoundary)
         if (cached && cached.isFresh) {
-          if (currentRequestId !== requestIdRef.current) {
+          if (isStale()) {
             return
           }
           rollbackPosRef.current = effectiveRollback
@@ -272,7 +274,7 @@ export function useSolver(
         }
       }
 
-      if (currentRequestId !== requestIdRef.current) {
+      if (isStale()) {
         return
       }
 
@@ -291,7 +293,7 @@ export function useSolver(
 
       const response = await solverWs.solve(solvePayload) as Record<string, unknown>
 
-      if (currentRequestId !== requestIdRef.current) {
+      if (isStale()) {
         return
       }
       rollbackPosRef.current = effectiveRollback
@@ -309,7 +311,7 @@ export function useSolver(
         const buildResponse = response as unknown as BuildResponse
         if (uuid) {
           await cacheBuildResponse(d, effectiveRollback, pickBoundary, buildResponse)
-          if (currentRequestId !== requestIdRef.current) return
+          if (isStale()) return
         }
         applySolveResult(d, buildResponse, solveTimeMs)
         if (!firstSolveDone.current && onFirstSolve) {
@@ -321,7 +323,7 @@ export function useSolver(
       setSolveError(String(e))
       setSolveRawResult(String(e))
     } finally {
-      if (currentRequestId === requestIdRef.current && !cancelledRef.current) setSolving(false)
+      if (isCurrent()) setSolving(false)
     }
   }, [onFirstSolve, uuid, applyBuildResponse, applySolveResult, applyGeometryUpdate, getCachedBuildResponse, cacheBuildResponse])
 
