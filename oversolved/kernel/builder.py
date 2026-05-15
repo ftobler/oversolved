@@ -450,25 +450,24 @@ def build(
 
     bodies_out = _tessellate_bodies(body_store, global_repo)
 
-    # Build a cache of tessellations keyed by shape object identity so that
-    # each unique OCC shape is tessellated at most once across all checkpoints.
-    # Using id(shape) is safe here because all Body objects are kept alive by
-    # body_store and the checkpoint body_store_snapshots for the duration of
-    # this function.
+    # Build a cache of tessellations keyed by OCC shape hash so that each unique
+    # OCC shape is tessellated at most once across all checkpoints.
+    # hash(shape) uses the underlying TShape pointer (not the Python wrapper address),
+    # so it remains stable across Python wrapper GC/reallocation at the same address.
     _shape_tess_cache: dict[int, dict] = {}
     for body_id, body in body_store.items():
         if body.shape is not None and body_id in bodies_out:
-            _shape_tess_cache[id(body.shape)] = bodies_out[body_id]
+            _shape_tess_cache[hash(body.shape)] = bodies_out[body_id]
 
     for checkpoint in new_checkpoints.values():
         for body_id, body in checkpoint.body_store_snapshot.items():
-            if body.shape is not None and id(body.shape) not in _shape_tess_cache:
+            if body.shape is not None and hash(body.shape) not in _shape_tess_cache:
                 # Body was replaced by a later operation; tessellate its original shape.
-                _shape_tess_cache[id(body.shape)] = _tessellate_body_geometry(body)
+                _shape_tess_cache[hash(body.shape)] = _tessellate_body_geometry(body)
 
     def _checkpoint_bodies_out(checkpoint: FeatureCheckpoint) -> dict[str, dict]:
         return {
-            body_id: _shape_tess_cache.get(id(body.shape), {})
+            body_id: _shape_tess_cache.get(hash(body.shape), {})
             for body_id, body in checkpoint.body_store_snapshot.items()
         }
 
