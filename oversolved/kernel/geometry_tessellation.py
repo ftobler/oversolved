@@ -318,7 +318,7 @@ def extrude_profile(
         if solid is None:
             solid = part
         else:
-            solid = boolean_union(solid, part)
+            solid = boolean_union(solid, part)  # type: ignore[assignment]
     return solid  # type: ignore[return-value]
 
 

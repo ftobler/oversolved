@@ -189,34 +189,63 @@ def _ensure_cq(target: Any) -> cq_shapes.Shape:
     return cq_shapes.Shape.cast(_ensure_occ(target))
 
 
-def boolean_cut(target: Any, tool: Any) -> cq_shapes.Solid:
-    """Boolean cut: target - tool."""
-    target = _ensure_cq(target)
-    tool = _ensure_cq(tool)
-    result = target.cut(tool).clean()
-    if not result.isValid():
-        raise ValueError("boolean cut produced invalid shape")
-    return result
+def _boolean_with_diff(target: Any, tool: Any, op: str) -> tuple[cq_shapes.Shape, Any]:
+    """Run boolean (cut|fuse|common), then ShapeUpgrade.clean.
+
+    Returns (cleaned cq.Shape, BrepDiff in cleaned-shape handle space).
+    Uses OCP-direct path so we can capture history before clean and compose it
+    through the clean step. See solver_arch.user.md §B-rep Operation Tracking.
+    """
+    from oversolved.kernel.ocp_ops import (
+        ocp_boolean_with_history,
+        ocp_clean_with_history,
+        ocp_compose_diff_through_clean,
+    )
+    target_occ = _ensure_occ(target)
+    tool_occ = _ensure_occ(tool)
+    raw_result, raw_diff = ocp_boolean_with_history(target_occ, tool_occ, op)
+    cleaned, clean_hist = ocp_clean_with_history(raw_result)
+    composed_diff = ocp_compose_diff_through_clean(raw_diff, clean_hist, raw_result, cleaned)
+    shape = cq_shapes.Shape.cast(cleaned)
+    if not shape.isValid():
+        raise ValueError(f"boolean {op!r} produced invalid shape")
+    return shape, composed_diff
 
 
-def boolean_union(target: Any, tool: Any) -> cq_shapes.Solid:
+def boolean_cut(target: Any, tool: Any) -> cq_shapes.Shape:
+    """Boolean cut: target - tool. Returns the cleaned shape only.
+
+    For history-aware callers (ancestry registration), use boolean_cut_with_diff.
+    """
+    shape, _ = _boolean_with_diff(target, tool, "cut")
+    return shape
+
+
+def boolean_cut_with_diff(target: Any, tool: Any) -> tuple[cq_shapes.Shape, Any]:
+    """Boolean cut: returns (shape, BrepDiff). See _boolean_with_diff."""
+    return _boolean_with_diff(target, tool, "cut")
+
+
+def boolean_union(target: Any, tool: Any) -> cq_shapes.Shape:
     """Boolean union: target + tool."""
-    target = _ensure_cq(target)
-    tool = _ensure_cq(tool)
-    result = target.fuse(tool).clean()
-    if not result.isValid():
-        raise ValueError("boolean union produced invalid shape")
-    return result
+    shape, _ = _boolean_with_diff(target, tool, "fuse")
+    return shape
 
 
-def boolean_intersection(target: Any, tool: Any) -> cq_shapes.Solid:
+def boolean_union_with_diff(target: Any, tool: Any) -> tuple[cq_shapes.Shape, Any]:
+    """Boolean union: returns (shape, BrepDiff)."""
+    return _boolean_with_diff(target, tool, "fuse")
+
+
+def boolean_intersection(target: Any, tool: Any) -> cq_shapes.Shape:
     """Boolean intersection: target ∩ tool."""
-    target = _ensure_cq(target)
-    tool = _ensure_cq(tool)
-    result = target.intersect(tool).clean()
-    if not result.isValid():
-        raise ValueError("boolean intersection produced invalid shape")
-    return result
+    shape, _ = _boolean_with_diff(target, tool, "common")
+    return shape
+
+
+def boolean_intersection_with_diff(target: Any, tool: Any) -> tuple[cq_shapes.Shape, Any]:
+    """Boolean intersection: returns (shape, BrepDiff)."""
+    return _boolean_with_diff(target, tool, "common")
 
 
 def fuse_shapes(shapes: list[Any]) -> cq_shapes.Shape:

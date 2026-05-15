@@ -505,7 +505,7 @@ def _apply_body_operation(
         target_ids = []
 
     if operation == "cut":
-        from oversolved.kernel.cadquery_ops import boolean_cut, boolean_intersection  # noqa: F811
+        from oversolved.kernel.cadquery_ops import boolean_cut_with_diff, boolean_intersection  # noqa: F811
         cut_anything = False
         cut_body_id = None
         for bid in target_ids:
@@ -518,9 +518,10 @@ def _apply_body_operation(
                     continue
             except Exception:
                 continue
-            new_shape = boolean_cut(existing_body.shape, tool_shape)
+            new_shape, brep_diff = boolean_cut_with_diff(existing_body.shape, tool_shape)
             existing_body.shape = _ensure_occ(new_shape)
             existing_body.modified_by.append(feature_id)
+            existing_body.brep_diff = brep_diff
             cut_anything = True
             if cut_body_id is None:
                 cut_body_id = bid
@@ -544,7 +545,7 @@ def _apply_body_operation(
         result["body_ids"] = body_ids
         result["operation"] = "new"
     else:
-        from oversolved.kernel.cadquery_ops import boolean_union  # noqa: F811
+        from oversolved.kernel.cadquery_ops import boolean_union_with_diff  # noqa: F811
         fused = False
         fused_body_id = None
         if not need_new_body:
@@ -553,7 +554,7 @@ def _apply_body_operation(
                 if existing_body.shape is None:
                     continue
                 try:
-                    new_shape = boolean_union(existing_body.shape, tool_shape)
+                    new_shape, brep_diff = boolean_union_with_diff(existing_body.shape, tool_shape)
                 except Exception as exc:
                     raise ValueError(f"{op_name}: add operation failed: {exc}")
                 if merge_target:
@@ -564,6 +565,7 @@ def _apply_body_operation(
                         )
                 existing_body.shape = _ensure_occ(new_shape)
                 existing_body.modified_by.append(feature_id)
+                existing_body.brep_diff = brep_diff
                 fused = True
                 fused_body_id = bid
                 break

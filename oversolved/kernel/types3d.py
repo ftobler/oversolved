@@ -10,6 +10,32 @@ if TYPE_CHECKING:
 
 
 @dataclass
+class BrepDiff:
+    """History from an OCP boolean operation, classifying output sub-shapes.
+
+    Lists hold opaque OCP TopoDS handles (typed Any to keep the dataclass importable
+    without OCP). Identity tests use TopoDS_Shape.IsSame(), not Python equality.
+
+    new_*    : output sub-shapes with no preimage in either input (e.g. the inner
+               walls of a cut). These should be tagged with the CUTTING feature's id.
+    inherited_*: output sub-shapes whose preimage existed unchanged in the prior body.
+               Keep the preimage's created_by (the body's original creator).
+    modified_in_inputs: input shapes that the algorithm reported as Modified -- their
+               output counterparts may have changed topology (e.g. an edge split).
+    deleted_inputs: input shapes that disappeared in the output (e.g. a face fully
+               absorbed by another).
+    """
+    new_faces: list[Any] = field(default_factory=list)
+    inherited_faces: list[Any] = field(default_factory=list)
+    new_edges: list[Any] = field(default_factory=list)
+    inherited_edges: list[Any] = field(default_factory=list)
+    modified_input_faces: list[Any] = field(default_factory=list)
+    deleted_input_faces: list[Any] = field(default_factory=list)
+    modified_input_edges: list[Any] = field(default_factory=list)
+    deleted_input_edges: list[Any] = field(default_factory=list)
+
+
+@dataclass
 class Body:
     """A 3D solid body tracked through the feature stack."""
     id: str
@@ -17,6 +43,10 @@ class Body:
     modified_by: list[str] = field(default_factory=list)
     shape: TopoDS_Shape | None = None  # canonical internal type: TopoDS_Shape
     sketch_id: str = ""  # sketch feature that was extruded to create this body
+    # Topological history from the most recent boolean op that touched this body.
+    # None for bodies that haven't been through a boolean op (fresh extrudes, etc.).
+    # See solver_arch.user.md §B-rep Operation Tracking.
+    brep_diff: BrepDiff | None = None
 
 
 @dataclass

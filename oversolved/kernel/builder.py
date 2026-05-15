@@ -253,10 +253,48 @@ def _validate_incremental(
     return {"level": 3, "passed": True, "diffs": {}}
 
 
+def _brep_diff_new_face_hashes(body: Body) -> set[str]:
+    """Compute geom_hashes for TopoDS_Faces in body.brep_diff.new_faces.
+
+    Used to identify which face_data entries are "new" (introduced by the
+    boolean op) so their `@created_by` can be tagged with the cutting feature
+    rather than the body's original creator.
+    """
+    diff = getattr(body, "brep_diff", None)
+    if diff is None or not diff.new_faces:
+        return set()
+    try:
+        from oversolved.kernel.cadquery_ops import _compute_face_centroid, _compute_face_normal
+        from oversolved.kernel.ocp_ops import ocp_face_area
+        import cadquery.occ_impl.shapes as cq_shapes  # noqa: PLC0415
+    except ImportError:
+        return set()
+    hashes: set[str] = set()
+    for topo_face in diff.new_faces:
+        try:
+            cq_face = cq_shapes.Shape.cast(topo_face)
+            centroid = _compute_face_centroid(cq_face)
+            normal = _compute_face_normal(cq_face)
+            area = ocp_face_area(topo_face)
+            hashes.add(face_geometry_hash(centroid, normal, area))
+        except Exception as exc:  # narrow OCP errors aren't easy to type
+            logger.debug("brep_diff hash skip: %s", exc)
+    return hashes
+
+
 def _register_brep_face_ancestry(global_repo, body: Body, mesh: MeshDict) -> None:
-    """Register B-rep face ancestry objects in the global query repository."""
+    """Register B-rep face ancestry objects in the global query repository.
+
+    User invariant (solver_arch.user.md §B-rep Operation Tracking):
+      "New faces created by a cut in extrude2 track to extrude2 only."
+    When body.brep_diff is populated, faces classified as "new" by the OCP
+    history get @created_by = body.modified_by[-1] (the cutting feature),
+    while inherited faces keep body.created_by (the original feature).
+    """
     if global_repo is None or body.shape is None or not body.created_by:
         return
+
+    new_face_hashes = _brep_diff_new_face_hashes(body)
 
     face_data = mesh.get("face_data") or []
     for face_idx, face_info in enumerate(face_data):
@@ -264,9 +302,17 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: MeshDict) -> Non
         normal = face_info.get("normal", [0.0, 0.0, 1.0])
         area = face_info.get("area", 0.0)
         geom_hash = face_geometry_hash(centroid, normal, area)
+
+        # Per-face provenance: new faces track to the latest modifier, not the
+        # body's original creator. Falls back to body.created_by for inherited
+        # faces or when brep_diff is unavailable.
+        face_created_by = body.created_by
+        if new_face_hashes and geom_hash in new_face_hashes and body.modified_by:
+            face_created_by = body.modified_by[-1]
+
         ancestor_ids = [
             emit_wire(absolute(body.id, f"face{face_idx}")),
-            emit_wire(absolute(body.created_by)),
+            emit_wire(absolute(face_created_by)),
             emit_wire(absolute(body.id)),
             emit_wire(absolute(geom_hash)),
         ]
@@ -274,7 +320,7 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: MeshDict) -> Non
         payload = {
             "type": face_info.get("surface_type", "face"),
             "body_id": body.id,
-            "created_by": body.created_by,
+            "created_by": face_created_by,
             "face_index": face_idx,
             "centroid": centroid,
             "normal": normal,
@@ -523,6 +569,7 @@ def build(
                 modified_by=list(body.modified_by),
                 shape=_copy_shape(body.shape),
                 sketch_id=body.sketch_id,
+                brep_diff=body.brep_diff,
             )
             for bid, body in checkpoint.body_store_snapshot.items()
         }
@@ -585,6 +632,7 @@ def build(
                     modified_by=list(body.modified_by),
                     shape=_copy_shape(body.shape),
                     sketch_id=body.sketch_id,
+                    brep_diff=body.brep_diff,
                 )
                 for bid, body in body_store.items()
             },

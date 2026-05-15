@@ -436,3 +436,223 @@ def ocp_extract_face_loops(
     loops = [_build_loop_from_wire(w, occ_face) for w in all_wires]
     loops = [loop for loop in loops if loop]
     return loops, effective_plane
+
+
+def ocp_face_area(topo_face: Any) -> float:
+    """Surface area of a TopoDS_Face."""
+    from OCP.BRepGProp import BRepGProp  # noqa: PLC0415
+    from OCP.GProp import GProp_GProps  # noqa: PLC0415
+    props = GProp_GProps()
+    BRepGProp.SurfaceProperties_s(topo_face, props)
+    return float(props.Mass())
+
+
+def ocp_boolean_with_history(
+    target_shape: Any,
+    tool_shape: Any,
+    op: str,
+) -> tuple[Any, Any]:
+    """Run a BRepAlgoAPI_* boolean and return (result_shape, BrepDiff).
+
+    op is one of 'cut', 'fuse', 'common'. The result shape is the raw output
+    of the boolean (no ShapeUpgrade.clean). Callers that want clean topology
+    must call ocp_clean_with_history() separately and compose the diffs.
+
+    User invariant (solver_arch.user.md §B-rep Operation Tracking):
+      "Old geometry from extrude1 still belongs to extrude1. New faces created
+       by a cut in extrude2 track to extrude2 only."
+    The BrepDiff returned here classifies each output sub-shape so the ancestry
+    registration can tag new sub-shapes with the cutting feature instead of the
+    body's original creator.
+    """
+    from OCP.BRepAlgoAPI import (  # noqa: PLC0415
+        BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse, BRepAlgoAPI_Common,
+    )
+    from OCP.TopTools import TopTools_ListOfShape  # noqa: PLC0415
+    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE  # noqa: PLC0415
+
+    from oversolved.kernel.types3d import BrepDiff  # noqa: PLC0415
+
+    api_cls = {"cut": BRepAlgoAPI_Cut, "fuse": BRepAlgoAPI_Fuse, "common": BRepAlgoAPI_Common}.get(op)
+    if api_cls is None:
+        raise ValueError(f"unknown boolean op: {op!r}")
+
+    algo = api_cls()
+    args = TopTools_ListOfShape()
+    args.Append(target_shape)
+    tools = TopTools_ListOfShape()
+    tools.Append(tool_shape)
+    algo.SetArguments(args)
+    algo.SetTools(tools)
+    algo.SetToFillHistory(True)
+    algo.Build()
+    if not algo.IsDone():
+        raise ValueError(f"boolean {op!r} did not complete")
+
+    result = algo.Shape()
+    history = algo.History() if algo.HasHistory() else None
+
+    diff = BrepDiff()
+
+    if history is not None:
+        # Classify TARGET sub-shapes only as "inherited" preimages -- target geometry
+        # that survives (unchanged or just reshaped) inherits @created_by from the
+        # target body.
+        # TOOL sub-shapes that appear in the output are NEW from the result's POV --
+        # they are walls/faces introduced into the target body by this operation
+        # (e.g. cut-hole inner walls came from the tool's side faces).
+        def _classify_target(shape_in, kind):
+            exp = TopExp_Explorer(shape_in, kind)
+            modified_inputs: list[Any] = []
+            deleted_inputs: list[Any] = []
+            preimages_in_output: list[Any] = []  # outputs reachable from target inputs
+            while exp.More():
+                s = exp.Current()
+                if history.IsRemoved(s):
+                    deleted_inputs.append(s)
+                else:
+                    mods = history.Modified(s)
+                    if mods.Size() > 0:
+                        modified_inputs.append(s)
+                        for m in mods:
+                            preimages_in_output.append(m)
+                    else:
+                        # Unchanged: same TopoDS_Shape appears in output.
+                        preimages_in_output.append(s)
+                exp.Next()
+            return modified_inputs, deleted_inputs, preimages_in_output
+
+        mod_in_t, del_in_t, inherited_out_faces = _classify_target(target_shape, TopAbs_FACE)
+        e_mod_in_t, e_del_in_t, inherited_out_edges = _classify_target(target_shape, TopAbs_EDGE)
+
+        # Tool tracking: just record what was modified/deleted in tool inputs (informational).
+        def _record_tool(shape_in, kind):
+            exp = TopExp_Explorer(shape_in, kind)
+            mod_in: list[Any] = []
+            del_in: list[Any] = []
+            while exp.More():
+                s = exp.Current()
+                if history.IsRemoved(s):
+                    del_in.append(s)
+                elif history.Modified(s).Size() > 0:
+                    mod_in.append(s)
+                exp.Next()
+            return mod_in, del_in
+
+        mod_in_u, del_in_u = _record_tool(tool_shape, TopAbs_FACE)
+        e_mod_in_u, e_del_in_u = _record_tool(tool_shape, TopAbs_EDGE)
+
+        diff.modified_input_faces = mod_in_t + mod_in_u
+        diff.deleted_input_faces = del_in_t + del_in_u
+        diff.modified_input_edges = e_mod_in_t + e_mod_in_u
+        diff.deleted_input_edges = e_del_in_t + e_del_in_u
+
+        # Walk the output and classify each sub-shape:
+        #   IsSame any inherited_pool -> "inherited" (target lineage)
+        #   else                      -> "new"       (from tool or genuinely new)
+        def _walk_outputs(shape_out, kind, inherited_pool):
+            new_list: list[Any] = []
+            inherited_list: list[Any] = []
+            exp = TopExp_Explorer(shape_out, kind)
+            while exp.More():
+                s = exp.Current()
+                if any(s.IsSame(p) for p in inherited_pool):
+                    inherited_list.append(s)
+                else:
+                    new_list.append(s)
+                exp.Next()
+            return new_list, inherited_list
+
+        new_faces, inh_faces = _walk_outputs(result, TopAbs_FACE, inherited_out_faces)
+        new_edges, inh_edges = _walk_outputs(result, TopAbs_EDGE, inherited_out_edges)
+        diff.new_faces = new_faces
+        diff.inherited_faces = inh_faces
+        diff.new_edges = new_edges
+        diff.inherited_edges = inh_edges
+
+    return result, diff
+
+
+def ocp_clean_with_history(shape: Any) -> tuple[Any, Any]:
+    """Run ShapeUpgrade_UnifySameDomain and return (cleaned_shape, history).
+
+    Equivalent to cadquery's Shape.clean() but exposes the upgrade history so
+    callers can chain it with a prior boolean history when tracking ancestry
+    through the cut → clean pipeline.
+    """
+    from OCP.ShapeUpgrade import ShapeUpgrade_UnifySameDomain  # noqa: PLC0415
+    upgrader = ShapeUpgrade_UnifySameDomain(shape, True, True, True)
+    upgrader.AllowInternalEdges(False)
+    upgrader.Build()
+    return upgrader.Shape(), upgrader.History()
+
+
+def ocp_compose_diff_through_clean(
+    diff: Any,
+    clean_history: Any,
+    raw_shape: Any,
+    cleaned_shape: Any,
+) -> Any:
+    """Map a BrepDiff's sub-shape lists from raw_shape to cleaned_shape.
+
+    After ShapeUpgrade, the TopoDS handles in `diff` reference faces/edges of
+    `raw_shape`. This walks `clean_history` to translate each entry to its
+    counterpart in `cleaned_shape`, dropping entries removed by the upgrade.
+    Returns a NEW BrepDiff.
+    """
+    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE  # noqa: PLC0415
+    from oversolved.kernel.types3d import BrepDiff  # noqa: PLC0415
+
+    # Collect cleaned-shape sub-shape handles to choose canonical instances.
+    cleaned_faces: list[Any] = []
+    exp = TopExp_Explorer(cleaned_shape, TopAbs_FACE)
+    while exp.More():
+        cleaned_faces.append(exp.Current())
+        exp.Next()
+    cleaned_edges: list[Any] = []
+    exp = TopExp_Explorer(cleaned_shape, TopAbs_EDGE)
+    while exp.More():
+        cleaned_edges.append(exp.Current())
+        exp.Next()
+
+    def _map_one(s, pool):
+        # Map s (in raw_shape) through clean_history; return list of replacements
+        # actually present in cleaned_shape (matched via IsSame against `pool`).
+        if clean_history.IsRemoved(s):
+            return []
+        mods = clean_history.Modified(s)
+        if mods.Size() == 0:
+            # Unchanged through clean step: same shape may appear in pool.
+            return [p for p in pool if p.IsSame(s)] or [s]
+        out: list[Any] = []
+        for m in mods:
+            matched = [p for p in pool if p.IsSame(m)]
+            out.extend(matched or [m])
+        return out
+
+    def _map_list(items, pool):
+        result: list[Any] = []
+        seen_ids: set[int] = set()
+        for s in items:
+            for m in _map_one(s, pool):
+                # Dedupe by Python id; IsSame may match the same wrapper repeatedly.
+                if id(m) not in seen_ids:
+                    seen_ids.add(id(m))
+                    result.append(m)
+        return result
+
+    new_diff = BrepDiff(
+        new_faces=_map_list(diff.new_faces, cleaned_faces),
+        inherited_faces=_map_list(diff.inherited_faces, cleaned_faces),
+        new_edges=_map_list(diff.new_edges, cleaned_edges),
+        inherited_edges=_map_list(diff.inherited_edges, cleaned_edges),
+        modified_input_faces=list(diff.modified_input_faces),
+        deleted_input_faces=list(diff.deleted_input_faces),
+        modified_input_edges=list(diff.modified_input_edges),
+        deleted_input_edges=list(diff.deleted_input_edges),
+    )
+    # Silence the "raw_shape unused" lint -- accepted for future provenance hooks.
+    _ = raw_shape
+    return new_diff
