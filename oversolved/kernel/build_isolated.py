@@ -71,7 +71,13 @@ class BuildIsolator:
             return
         while True:
             try:
-                raw = ws.recv()
+                raw = ws.recv(timeout=30)
+            except TimeoutError:
+                try:
+                    ws.ping()
+                except Exception:
+                    break
+                continue
             except Exception:
                 logger.warning("Solver daemon connection lost")
                 with self._lock:
@@ -207,13 +213,14 @@ class BuildIsolator:
             "expects_geometry": False,
             "json_done": False,
         }
+        needs_reconnect = False
         with self._lock:
             if self._ws is None:
-                pass  # fall through to reconnect attempt outside the lock
+                needs_reconnect = True
             else:
                 self._pending[request_id] = entry
 
-        if self._ws is None:
+        if needs_reconnect:
             self._try_reconnect()
             with self._lock:
                 if self._ws is None:
@@ -270,12 +277,13 @@ class BuildIsolator:
 
     def shutdown(self) -> None:
         """Close the WebSocket connection."""
-        if self._ws is not None:
-            try:
-                self._ws.close()
-            except Exception:
-                pass
-            self._ws = None
+        with self._lock:
+            if self._ws is not None:
+                try:
+                    self._ws.close()
+                except Exception:
+                    pass
+                self._ws = None
 
 
 def _error_result(message: str) -> dict:

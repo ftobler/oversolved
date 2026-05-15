@@ -37,7 +37,7 @@ def _make_isolator_with_mock_ws(recv_sequence: list) -> tuple[BuildIsolator, Mag
     mock_ws = MagicMock()
     recv_iter = iter(recv_sequence + [Exception("done")])
 
-    def fake_recv():
+    def fake_recv(**kwargs):
         val = next(recv_iter)
         if isinstance(val, type) and issubclass(val, Exception):
             raise val("done")
@@ -58,7 +58,7 @@ def _make_isolator_with_mock_ws(recv_sequence: list) -> tuple[BuildIsolator, Mag
 def test_concurrent_requests_have_unique_ids():
     """All request IDs generated concurrently must be unique."""
     mock_ws = MagicMock()
-    mock_ws.recv.side_effect = lambda: (_ for _ in ()).throw(Exception("done"))
+    mock_ws.recv.side_effect = lambda **kwargs: (_ for _ in ()).throw(Exception("done"))
 
     with patch("oversolved.kernel.build_isolated.connect", return_value=mock_ws):
         isolator = BuildIsolator(host="127.0.0.1", port=9999, timeout=0.05)  # noqa: F841
@@ -128,7 +128,7 @@ def test_unknown_request_id_text_frame_logs_warning(caplog):
     frames = [_make_text_frame("nonexistent-id")]
     recv_iter = iter(frames + [Exception("done")])
 
-    def fake_recv():
+    def fake_recv(**kwargs):
         val = next(recv_iter)
         if isinstance(val, Exception):
             raise val
@@ -153,7 +153,7 @@ def test_unknown_request_id_binary_frame_logs_warning(caplog):
     frames = [_make_binary_frame("no-such-request")]
     recv_iter = iter(frames + [Exception("done")])
 
-    def fake_recv():
+    def fake_recv(**kwargs):
         val = next(recv_iter)
         if isinstance(val, Exception):
             raise val
@@ -194,7 +194,7 @@ def test_send_request_resolves_after_text_frame():
     mock_ws.send.side_effect = fake_send
     recv_barrier = threading.Event()
 
-    def fake_recv():
+    def fake_recv(**kwargs):
         if injected:
             return injected.pop(0)
         recv_barrier.wait(timeout=1.0)
