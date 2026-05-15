@@ -353,7 +353,7 @@ describe('applySetBooleanOperation', () => {
   it('sets boolean operation', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'bool1', kind: 'boolean', boolean: { operation: 'union', target: '', tools: [] } }] }
     applySetBooleanOperation(doc, 'bool1', 'subtract')
-    expect(doc.features![0].boolean!.operation).toBe('difference')
+    expect(doc.features![0].boolean!.operation).toBe('subtract')
   })
 
   it('no-ops for feature without boolean', () => {
