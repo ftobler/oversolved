@@ -364,6 +364,8 @@ def create_app(config: dict | None = None) -> Flask:
 
     @app.after_request
     def add_security_headers(response):
+        if response.status_code == 101:
+            return response
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("X-XSS-Protection", "0")
