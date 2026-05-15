@@ -29,8 +29,20 @@ vi.mock('../Geometry3D/Body3D', () => ({
   __esModule: true,
 }))
 
+type PreviewEdgeOverlayProps = {
+  items?: unknown[]
+  pickItems?: unknown[]
+}
+const previewEdgeOverlayProps = vi.fn<(p: PreviewEdgeOverlayProps) => void>()
 vi.mock('../Geometry3D/PreviewEdgeOverlay', () => ({
-  default: () => <div data-testid="preview-edge-overlay" />,
+  default: (props: PreviewEdgeOverlayProps) => {
+    previewEdgeOverlayProps(props)
+    return <div
+      data-testid="preview-edge-overlay"
+      data-has-pick-items={props.pickItems != null ? 'true' : 'false'}
+      data-pick-item-count={String(props.pickItems?.length ?? 0)}
+    />
+  },
   __esModule: true,
 }))
 
@@ -148,5 +160,27 @@ describe('Viewport body interactive flag', () => {
     items.forEach(el => expect(el.getAttribute('data-interactive')).toBe('true'))
     // Preview edge overlay is present
     expect(getByTestId('preview-edge-overlay')).toBeTruthy()
+  })
+
+  it('ghostMode passes pickBodyItems to PreviewEdgeOverlay so inherited edges are filtered out', () => {
+    // Regression test: without pickItems, the violet edge overlay renders every
+    // edge of every body, including those that already existed before the edit
+    // (per user invariant: violet shows only the new geometry contributed by
+    // the edited feature).
+    previewEdgeOverlayProps.mockClear()
+    usePartEditorStore.setState({
+      features: [sketch, extrude],
+      bodies: makeBody(),
+      pickBodies: makeBody(),
+      ghostMode: true,
+      rollbackPosition: 1,
+    })
+    const { getByTestId } = render(<Viewport />)
+    const overlay = getByTestId('preview-edge-overlay')
+    expect(overlay.getAttribute('data-has-pick-items')).toBe('true')
+    expect(Number(overlay.getAttribute('data-pick-item-count'))).toBeGreaterThan(0)
+    const lastCall = previewEdgeOverlayProps.mock.calls.at(-1)?.[0]
+    expect(lastCall?.pickItems).toBeDefined()
+    expect(Array.isArray(lastCall?.pickItems)).toBe(true)
   })
 })

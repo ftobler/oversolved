@@ -106,4 +106,22 @@ describe('PreviewEdgeOverlay', () => {
     )
     expect(container.innerHTML).not.toBe('')
   })
+
+  it('preview is immutable: emits only non-interactive lineSegments (no onClick / onPointerOver)', () => {
+    // User invariant (solver_arch.user.md §Feature Editing):
+    //   "Preview is fully immutable."
+    //
+    // Structural check: PreviewEdgeOverlay must not attach pointer handlers to
+    // any element it emits, so raycasts cannot fire selection or pick-chip
+    // mutations on preview edges.
+    const previewItem = makeItem('b1', [lineEdge], ['q:edge/1'])
+    const { container } = render(<PreviewEdgeOverlay items={[previewItem]} />)
+    // Walk every emitted DOM element and assert no pointer-event handlers in props.
+    const all = container.querySelectorAll('*')
+    for (const el of Array.from(all)) {
+      for (const attr of Array.from(el.attributes)) {
+        expect(attr.name.toLowerCase()).not.toMatch(/^onclick$|^onpointer|^onmouse/)
+      }
+    }
+  })
 })
