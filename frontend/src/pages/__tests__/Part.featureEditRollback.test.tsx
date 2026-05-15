@@ -9,9 +9,13 @@
  * savedRollbackPosition so the condition was always false and the rollback
  * was never restored -- features after the edited one disappeared.
  */
+import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { ThemeProvider, createTheme } from '@mui/material/styles'
+import CssBaseline from '@mui/material/CssBaseline'
+import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
 
 vi.mock('../../hooks/solverWs', () => ({
@@ -67,6 +71,16 @@ features:
     radius: 2
 `
 
+const theme = createTheme()
+function Wrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <ToastProvider>{children}</ToastProvider>
+    </ThemeProvider>
+  )
+}
+
 describe('feature edit rollback restore', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -80,7 +94,8 @@ describe('feature edit rollback restore', () => {
         <Routes>
           <Route path="/documents/:uuid" element={<Part />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
     )
 
     await waitFor(() => {
@@ -123,7 +138,8 @@ describe('feature edit rollback restore', () => {
         <Routes>
           <Route path="/documents/:uuid" element={<Part />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
     )
 
     await waitFor(() => {

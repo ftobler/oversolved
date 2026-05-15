@@ -1,57 +1,37 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import Viewport, { type ViewportHandle } from '@/components/Viewport'
+import type { ViewportHandle } from '@/components/Viewport'
 import type { Feature, PartDoc, PartFeature, Mutation, Sketch } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
-import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
-import { buildCommandEntries } from '@/pages/commandEntries'
-import { executeCommand } from '@/stores/commandRegistry'
-import SketchToolbar from '@/components/Toolbar/SketchToolbar'
-import AppHeader from '@/components/AppHeader'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { useAuth } from '@/contexts/AuthContext'
 import { useNotify } from '@/contexts/ToastContext'
+import type { ExportFormat } from '@/components/ExportDialog'
 import RightClickMenu from '@/components/RightClickMenu'
 import type { ContextMenuItem } from '@/components/RightClickMenu'
 import { Sidebar } from '@/components/Sidebar'
 import FooterMeasurementDisplay from '@/components/FooterMeasurementDisplay'
 import WsStatusIndicator from '@/components/WsStatusIndicator'
-import ExportDialog, { type ExportFormat } from '@/components/ExportDialog'
-import ShareDialog from '@/components/ShareDialog'
-import LoadingOverlay from '@/components/LoadingOverlay'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 
 import { useSolverStore } from '@/stores/solverStore'
 import { invalidateDocCache } from '@/utils/buildCache'
 import { describeMutation } from '@/utils/mutationDescriptions'
-import PartDebugPanel from '@/pages/PartDebugPanel'
 import { http, HttpError } from '@/utils/httpClient'
 import '@/pages/Part.css'
 
-import featureExtrudeIcon from '@/assets/icons/feature-extrude.svg'
-import featureRevolveIcon from '@/assets/icons/feature-revolve.svg'
-import featureFilletIcon from '@/assets/icons/feature-fillet.svg'
-import featureChamferIcon from '@/assets/icons/feature-chamfer.svg'
-import featureBooleanIcon from '@/assets/icons/feature-boolean.svg'
-import featureArrayIcon from '@/assets/icons/feature-array.svg'
-import featureDeleteBodyIcon from '@/assets/icons/feature-delete-body.svg'
-import featureHoleIcon from '@/assets/icons/feature-hole.svg'
-import featureTransformIcon from '@/assets/icons/feature-transform.svg'
-import featureMirrorIcon from '@/assets/icons/feature-mirror.svg'
-import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
-import featurePartIcon from '@/assets/icons/feature-part.svg'
-import featureCodeIcon from '@/assets/icons/icon-code.svg'
-import featureAddPlaneIcon from '@/assets/icons/feature-add-plane.svg'
-import toolbarPlayIcon from '@/assets/icons/toolbar-play.svg'
-import toolbarCopyCodeIcon from '@/assets/icons/toolbar-copy-code.svg'
-import toolbarCopyResultIcon from '@/assets/icons/toolbar-copy-result.svg'
-import measurementIcon from '@/assets/icons/measurement.svg'
-import featureImportIcon from '@/assets/icons/icon-upload.svg'
-import iconRenameIcon from '@/assets/icons/rename.svg'
+import PartToolbar from '@/pages/PartToolbar'
+import PartEditorPanel from '@/pages/PartEditorPanel'
+import PartColorPopover from '@/pages/PartColorPopover'
+import PartExportImport from '@/pages/PartExportImport'
+import { usePartCommands } from '@/pages/PartKeyboardShortcuts'
+
 import featureExportIcon from '@/assets/icons/icon-download.svg'
+import measurementIcon from '@/assets/icons/measurement.svg'
+import iconRenameIcon from '@/assets/icons/rename.svg'
 
 import contextRebuildIcon from '@/assets/icons/context-rebuild.svg'
 import contextExitIcon from '@/assets/icons/context-exit.svg'
@@ -61,8 +41,7 @@ import contextEditIcon from '@/assets/icons/context-edit.svg'
 import contextColorIcon from '@/assets/icons/context-color.svg'
 import contextCameraIcon from '@/assets/icons/context-camera.svg'
 
-// IDs of built-in features that cannot be deleted.
-import { PART_COLOR_PALETTE, normalizeHexColor } from '@/utils/partColors'
+import { normalizeHexColor } from '@/utils/partColors'
 import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
 
@@ -127,8 +106,6 @@ export default function Part() {
   const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
   const setPendingPickField = useSketchEditorStore(s => s.setPendingPickField)
    const selection = useSketchEditorStore(s => s.normalSelection)
-   // Temporary accumulation of elements while pointer is held down
-   // Used for dynamic selection during mouse-down + hover (see feature_dynamic_select.md)
    const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
   const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
@@ -196,7 +173,6 @@ export default function Part() {
     return colors
   }, [partStyle])
 
-  // Derive visibility from the doc; also include features forced visible while editing.
   const visibleFeatures = useMemo(
     () => new Set([
       ...features.filter(f => f.visible !== false).map(f => f.id),
@@ -205,14 +181,11 @@ export default function Part() {
     [features, editForcedVisible]
   )
 
-  // Bodies are visible when their creator feature is visible, unless the user
-  // has explicitly overridden the body visibility in the parts list.
   const effectiveVisibleBodies = useMemo(
     () => computeEffectiveVisibleBodies(bodies, visibleFeatures, bodiesVisibility),
     [bodies, visibleFeatures, bodiesVisibility],
   )
 
-  // Initialize rollback position once on first doc load.
   useEffect(() => {
     if (doc && !rollbackInitialized.current) {
       rollbackInitialized.current = true
@@ -220,7 +193,6 @@ export default function Part() {
     }
   }, [doc])
 
-  // Validate rollback position when features change.
   useEffect(() => {
     if (rollbackPosition !== null && rollbackPosition > features.length) {
       setRollbackPosition(features.length)
@@ -228,7 +200,6 @@ export default function Part() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [features.length])
 
-  // Re-solve when rollback position changes (but not on initial mount).
   const rollbackInitializedForSolve = useRef(false)
   const currentFeaturesLength = useRef(features.length)
   currentFeaturesLength.current = features.length
@@ -241,7 +212,7 @@ useEffect(() => {
     if (rollbackChangeSource.current === 'handler') {
       return
     }
-    setPickBoundary(null)  // clear stale pick boundary when rollback changes
+    setPickBoundary(null)
     if (docRef.current) reSolve(docRef.current, rollbackPosition ?? currentFeaturesLength.current)
   }, [rollbackPosition, docRef, reSolve, setPickBoundary])
 
@@ -254,8 +225,6 @@ useEffect(() => {
     return sketches.some(f => f.id === editingFeatureId) ? editingFeatureId : undefined
   }, [features, rollbackPosition, visibleFeatures, editingFeatureId])
 
-  // Measurement sketch: when editing a specific sketch, use its solve result;
-  // otherwise combine sketches from all visible features.
   const measurementSketch = useMemo(() => {
     if (activeSketchFeatureId && solveResults?.[activeSketchFeatureId]?.solved) {
       return solveResults[activeSketchFeatureId].solved
@@ -270,7 +239,6 @@ useEffect(() => {
     return sketch
   }, [activeSketchFeatureId, features, solveResults])
 
-  // Other sketches: for project tool - all sketches except the active one
   const otherSketches = useMemo(() => {
     const result: Record<string, Sketch> = {}
     for (const feature of features) {
@@ -327,7 +295,6 @@ useEffect(() => {
     }
   }, [uuid, reSolve, rollbackPosition, features, docRef])
 
-  // Sync computed state into the partEditorStore so Sidebar can read it without props.
   useEffect(() => { usePartEditorStore.getState().setFeatures(features) }, [features])
   useEffect(() => { usePartEditorStore.getState().setDoc(doc) }, [doc])
   useEffect(() => { usePartEditorStore.getState().setRollbackPosition(rollbackPosition) }, [rollbackPosition])
@@ -340,7 +307,6 @@ useEffect(() => {
   useEffect(() => { usePartEditorStore.getState().setIsRebuilding(isRebuilding) }, [isRebuilding])
   useEffect(() => { usePartEditorStore.getState().setFeatureTimings(featureTimings ?? {}) }, [featureTimings])
 
-  // Reset the store when this component unmounts.
   useEffect(() => {
     return () => {
       usePartEditorStore.setState({
@@ -370,16 +336,11 @@ useEffect(() => {
     const feature = features.find(f => f.id === editingFeatureId)
     let nextBoundary: number | null = null
     if (feature && feature.kind !== 'sketch' && feature.kind !== 'plane') {
-      // Backend solve features exclude built-in display features, so the
-      // pick boundary must be indexed within the non-built-in subset only.
       const nonBuiltInFeatures = features.filter(f => !BUILT_IN_IDS.has(f.id))
       const index = nonBuiltInFeatures.findIndex(f => f.id === editingFeatureId)
       if (index >= 0) nextBoundary = index
     }
     setPickBoundary(nextBoundary)
-    // Only trigger reSolve when a non-null pick boundary is set (feature editing).
-    // For sketch/plane editing, the rollback-position effect already triggers the
-    // solve, and the pick boundary is already null from enterEditFeature.
     if (nextBoundary !== null) {
       handleRebuildRef.current()
     }
@@ -550,16 +511,13 @@ useEffect(() => {
     useSolverStore.getState().setIsSolving(solving)
   }, [solving])
 
-  const commands = useMemo(
-    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility,
-      () => handleAddFeature('extrude', { sketchQuery: '', distance: 10 }),
-      () => handleAddFeature('hole'),
-      () => handleAddFeature('transform'),
-    ),
-    [handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddFeature],
+  usePartCommands(
+    handleUndo,
+    handleRedo,
+    handleDeleteSelectedFeatures,
+    handleToggleSketchPlaneVisibility,
+    handleAddFeature,
   )
-
-  useCommandRegistration(commands)
 
   const handleRename = async () => {
     if (!editName.trim() || editName === docName) {
@@ -744,18 +702,15 @@ useEffect(() => {
       const style = partStyle[partColorPopover.bodyId]
       setPartTransparencyDraft(style?.transparency ?? 0)
       setPartMetalnessDraft(style?.metalness ?? 0.3)
-      // Preview mode started below
       if (docRef.current) {
         startPreviewMode(docRef.current)
         colorPreviewActive.current = true
       }
-      // Focus the first focusable element inside the popover
       requestAnimationFrame(() => {
         const firstInput = partColorPopoverRef.current?.querySelector('input, button') as HTMLElement | null
         firstInput?.focus()
       })
     } else {
-      // Preview mode cleanup below
       if (colorPreviewActive.current) {
         const originalDoc = cancelPreview()
         if (originalDoc && docRef.current) {
@@ -777,17 +732,11 @@ useEffect(() => {
     setEditForcedVisible(new Set([featureId]))
     setEditingFeatureId(featureId)
     setPickBoundary(null)
-    // Clear pickBodies so bodyItems remain interactive during sketch edit.
-    // Without this, stale pick_bodies from a previous operation (e.g. creating
-    // an extrude) would make bodyItems non-interactive.
     setPickBodies({})
   }, [features, rollbackPosition, setPickBoundary, setPickBodies])
 
   const exitEditFeature = useCallback(() => {
     if (savedRollbackPosition !== null) {
-      // Restore pre-edit rollback unless the user manually dragged the rollbar
-      // during editing (detected by comparing against the position set on entry,
-      // not the pre-edit position, since enterEditFeature changes rollback to idx+1).
       if (rollbackPosition === editEntryRollback.current || rollbackPosition === null) {
         setRollbackPosition(savedRollbackPosition)
       }
@@ -822,8 +771,6 @@ useEffect(() => {
     viewportRef.current?.alignCameraToPlane(cleanPlaneId)
   }, [activeSketchFeatureId, features])
 
-  // When the sketch-on-face plane selection completes (planeSelectionFeatureId clears),
-  // open the pending sketch for editing if one was created via handleAddSketchOnFace.
   const pendingSketchOnFaceId = useRef<string | null>(null)
   useEffect(() => {
     if (planeSelectionFeatureId) {
@@ -1017,7 +964,6 @@ useEffect(() => {
     return () => window.removeEventListener('keydown', handleKeyPress)
   }, [user?.is_admin])
 
-  // Stable callbacks object for PartEditorContext -- Sidebar reads these instead of props.
   const partEditorCallbacks = useMemo(() => ({
     onToggleSelect: toggleNormalSelection,
     onEnterEditSketch: enterEditSketch,
@@ -1040,205 +986,92 @@ useEffect(() => {
 
   return (
     <div className="document-viewer">
-      <AppHeader>
-        <div className="undo-redo-btn-group">
-          <button
-            className="toolbar-btn"
-            aria-label="Undo"
-            onClick={() => executeCommand('undo')}
-            disabled={undoStack.length === 0}
-            onMouseEnter={() => setUndoHover(true)}
-            onMouseLeave={() => setUndoHover(false)}
-          >
-            <span className="material-icons-outlined">undo</span>
-          </button>
-          {undoHover && undoStack.length > 0 && (
-            <div className="undo-redo-tooltip undo-tooltip">
-              <div className="undo-redo-tooltip-header">Undo ({undoStack.length}) Ctrl+Z</div>
-              {undoStack.slice(-5).reverse().map((entry, i) => (
-                <div key={i} className="undo-redo-tooltip-item">
-                  {describeMutation(entry.mutation)}
-                </div>
-              ))}
-            </div>
-          )}
-          <button
-            className="toolbar-btn"
-            aria-label="Redo"
-            onClick={() => executeCommand('redo')}
-            disabled={redoStack.length === 0}
-            onMouseEnter={() => setRedoHover(true)}
-            onMouseLeave={() => setRedoHover(false)}
-          >
-            <span className="material-icons-outlined">redo</span>
-          </button>
-          {redoHover && redoStack.length > 0 && (
-            <div className="undo-redo-tooltip redo-tooltip">
-              <div className="undo-redo-tooltip-header">Redo ({redoStack.length}) Ctrl+Shift+Z</div>
-              {redoStack.slice(-5).reverse().map((entry, i) => (
-                <div key={i} className="undo-redo-tooltip-item">
-                  {describeMutation(entry.mutation)}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <button className="toolbar-btn" aria-label="Save" title="Save" onClick={handleSave} disabled={readOnly}>
-          <span className="material-icons-outlined">save</span>
-        </button>
-        <button className="toolbar-btn" aria-label="Clone document" title="Clone document" onClick={handleClone}>
-          <span className="material-icons-outlined">file_copy</span>
-        </button>
-        {permission === 'owner' && (
-          <button
-            className="toolbar-btn"
-            aria-label="Share document"
-            title="Share document"
-            onClick={() => setShareDocOpen(true)}
-            disabled={readOnly}
-          >
-            <span className="material-icons-outlined">share</span>
-          </button>
-        )}
-        {readOnly && (
-          <span className="doc-name" style={{ color: '#ef5350', fontSize: '12px', marginLeft: '8px' }}>
-            <span className="material-icons-outlined" style={{ fontSize: '14px', verticalAlign: 'middle' }}>lock</span>
-            {' '}View Only
-          </span>
-        )}
-        {isEditing ? (
-          <input
-            className="doc-name-input"
-            value={editName}
-            onChange={e => setEditName(e.target.value)}
-            onBlur={handleRename}
-            onKeyDown={e => {
-              if (e.key === 'Enter') handleRename()
-            }}
-            autoFocus
-          />
-        ) : (
-          <button className="doc-name" aria-label="Edit document name" onClick={() => setIsEditing(true)}>
-            {docName}
-          </button>
-        )}
-      </AppHeader>
+      <PartToolbar
+        undoStack={undoStack}
+        redoStack={redoStack}
+        undoHover={undoHover}
+        setUndoHover={setUndoHover}
+        redoHover={redoHover}
+        setRedoHover={setRedoHover}
+        readOnly={readOnly}
+        permission={permission}
+        docName={docName}
+        isEditing={isEditing}
+        editName={editName}
+        setIsEditing={setIsEditing}
+        setEditName={setEditName}
+        handleRename={handleRename}
+        handleSave={handleSave}
+        handleClone={handleClone}
+        setShareDocOpen={setShareDocOpen}
+      />
 
-      <div className="doc-container">
+      <PartEditorPanel
+        mode={mode}
+        setMode={setMode}
+        codeText={codeText}
+        setCodeText={setCodeText}
+        solving={solving}
+        solveTime={solveTime}
+        solveResult={solveResult}
+        handleRun={handleRun}
+        solveError={solveError}
+        setSolveError={setSolveError}
+        error={error}
+        setError={setError}
+        readOnly={readOnly}
+        loading={loading}
+        planeSelectionFeatureId={planeSelectionFeatureId}
+        handleAddFeature={handleAddFeature}
+        handleAddSketch={handleAddSketch}
+        handleAddPlane={handleAddPlane}
+        handleImportStep={handleImportStep}
+        handleExportStep={handleExportStep}
+        setViewportReset={setViewportReset}
+        viewportRef={viewportRef}
+        features={features as Feature[]}
+        featureDefs={doc?.features}
+        rollbackPosition={rollbackPosition}
+        visibleFeatures={visibleFeatures}
+        effectiveVisibleBodies={effectiveVisibleBodies}
+        solveResults={solveResults}
+        viewportReset={viewportReset}
+        activeSketchFeatureId={activeSketchFeatureId}
+        handleRightClick={handleRightClick}
+        showDebugHit={showDebugHit}
+        otherSketches={otherSketches}
+        bodies={bodies}
+        pickBodies={pickBodies}
+        partColors={partColors}
+        partStyle={partStyle}
+        ghostMode={ghostMode}
+        userIsAdmin={!!user?.is_admin}
+        debugOpen={debugOpen}
+        debugTab={debugTab}
+        setDebugTab={setDebugTab}
+        hoveredEntityId={hoveredEntityId}
+        hoveredVertexId={hoveredVertexId}
+        hoveredPlaneId={hoveredPlaneId}
+        hoveredSurfaceId={hoveredSurfaceId}
+        hovered3DSurfaceId={hovered3DSurfaceId}
+        dynamicSelection={dynamicSelection}
+        selection={selection}
+        bugReportForm={bugReportForm}
+        setBugReportForm={setBugReportForm}
+        bugReporting={bugReporting}
+        bugReportError={bugReportError}
+        bugReportAttachments={bugReportAttachments}
+        setBugReportAttachments={setBugReportAttachments}
+        onSubmitBugReport={handleSubmitBugReport}
+        editingFeatureId={editingFeatureId}
+        undoStack={undoStack}
+        redoStack={redoStack}
+      >
         <PartEditorProvider value={partEditorCallbacks}>
           <Sidebar />
         </PartEditorProvider>
+      </PartEditorPanel>
 
-        <div className="doc-editor">
-          <div className="editor-toolbar">
-            <div className="mode-selector">
-              <button className={`mode-btn ${mode === 'sketch' ? 'active' : ''}`} onClick={() => setMode('sketch')} title="Sketch mode">
-                <img src={featureSketchIcon} alt="Sketch" />
-              </button>
-              <button className={`mode-btn ${mode === 'feature' ? 'active' : ''}`} onClick={() => setMode('feature')} title="Feature mode">
-                <img src={featurePartIcon} alt="Feature" />
-              </button>
-              <button className={`mode-btn ${mode === 'code' ? 'active' : ''}`} onClick={() => setMode('code')} title="Code mode">
-                <img src={featureCodeIcon} alt="Code" />
-              </button>
-            </div>
-            <div className="toolbar-separator" />
-            {mode === 'code' && (
-              <>
-                <button className="editor-btn" title="Run" onClick={handleRun} disabled={solving}>
-                  <img src={toolbarPlayIcon} alt="Run" />
-                </button>
-                {solveTime !== null && <span className="solve-time">{solveTime}ms</span>}
-                <div className="toolbar-separator" />
-                <button className="editor-btn" title="Copy code" onClick={() => navigator.clipboard.writeText(codeText)}>
-                  <img src={toolbarCopyCodeIcon} alt="Copy code" />
-                </button>
-                <button className="editor-btn" title="Copy result" onClick={() => navigator.clipboard.writeText(solveResult)}>
-                  <img src={toolbarCopyResultIcon} alt="Copy result" />
-                </button>
-              </>
-            )}
-            {mode === 'sketch' && <SketchToolbar onResetViewport={() => setViewportReset(v => v + 1)} />}
-            {mode === 'feature' && (
-              <>
-                <button className="editor-btn" title="Add Extrude (E)" onClick={() => handleAddFeature('extrude', { sketchQuery: '', distance: 10 })} disabled={readOnly}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
-
-                <button className="editor-btn" title="Add Revolve" onClick={() => handleAddFeature('revolve', { sketchQuery: '', angle: 360 })} disabled={readOnly}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
-
-                <button className="editor-btn" title="Add Fillet" onClick={() => handleAddFeature('fillet')} disabled={readOnly}><img src={featureFilletIcon} alt="Add Fillet" /></button>
-
-                <button className="editor-btn" title="Add Chamfer" onClick={() => handleAddFeature('chamfer')} disabled={readOnly}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
-
-                <button className="editor-btn" title="Add Boolean" onClick={() => handleAddFeature('boolean')} disabled={readOnly}><img src={featureBooleanIcon} alt="Add Boolean" /></button>
-
-                <button className="editor-btn" title="Add Array" onClick={() => handleAddFeature('array')} disabled={readOnly}><img src={featureArrayIcon} alt="Add Array" /></button>
-
-                <button className="editor-btn" title="Delete Body" onClick={() => handleAddFeature('delete_body')} disabled={readOnly}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
-
-                <button className="editor-btn" title="Add Hole" onClick={() => handleAddFeature('hole')} disabled={readOnly}><img src={featureHoleIcon} alt="Add Hole" /></button>
-
-                <button className="editor-btn" title="Add Transform" onClick={() => handleAddFeature('transform')} disabled={readOnly}><img src={featureTransformIcon} alt="Add Transform" /></button>
-                <button className="editor-btn" title="Add Mirror" onClick={() => handleAddFeature('mirror')} disabled={readOnly}><img src={featureMirrorIcon} alt="Add Mirror" /></button>
-                <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch} disabled={readOnly}><img src={featureSketchIcon} alt="Sketch" /></button>
-                <button className="editor-btn" title="Add plane" onClick={handleAddPlane} disabled={readOnly}><img src={featureAddPlaneIcon} alt="Add plane" /></button>
-                <button className="editor-btn" title="Import STEP" onClick={handleImportStep} disabled={readOnly}><img src={featureImportIcon} alt="Import STEP" /></button>
-                <button className="editor-btn" title="Export" onClick={handleExportStep}><img src={featureExportIcon} alt="Export" /></button>
-              </>
-            )}
-          </div>
-
-          {solveError && (
-            <div className="solve-error-banner">
-              Solver error: {solveError}
-              <button className="solve-error-dismiss" onClick={() => setSolveError(null)}>×</button>
-            </div>
-          )}
-          {error && (
-            <div className="error-banner">
-              <p className="error-banner-text">Error loading document: {error}</p>
-              <button className="error-banner-dismiss" onClick={() => setError(null)}>×</button>
-            </div>
-          )}
-          {!loading && !error && mode === 'code' && (
-            <div className="code-split">
-              <textarea className="code-input" value={codeText} onChange={e => setCodeText(e.target.value)} placeholder="Document content..." spellCheck="false" />
-              <div className="code-result">
-                {solving ? <span className="code-result-status">Solving...</span> : solveResult ? <pre>{solveResult}</pre> : <span className="code-result-status">Press Run to solve</span>}
-              </div>
-            </div>
-          )}
-          {mode !== 'code' && (
-            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-              <Viewport ref={viewportRef} features={features as Feature[]} featureDefs={doc?.features} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={effectiveVisibleBodies} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} partStyle={partStyle} ghostMode={ghostMode} />
-              <LoadingOverlay isDocumentLoading={loading} />
-            </div>
-          )}
-        </div>
-
-        <PartDebugPanel
-          debugOpen={debugOpen && !!user?.is_admin}
-          debugTab={debugTab}
-          setDebugTab={setDebugTab}
-          hoveredEntityId={hoveredEntityId}
-          hoveredVertexId={hoveredVertexId}
-          hoveredPlaneId={hoveredPlaneId}
-          hoveredSurfaceId={hoveredSurfaceId}
-          hovered3DSurfaceId={hovered3DSurfaceId}
-          dynamicSelection={dynamicSelection}
-          selection={selection}
-          bugReportForm={bugReportForm}
-          setBugReportForm={setBugReportForm}
-          bugReporting={bugReporting}
-          bugReportError={bugReportError}
-          bugReportAttachments={bugReportAttachments}
-          setBugReportAttachments={setBugReportAttachments}
-          onSubmitBugReport={handleSubmitBugReport}
-          editingFeatureId={editingFeatureId}
-          solveResults={solveResults}
-          undoStack={undoStack}
-          redoStack={redoStack}
-        />
-      </div>
       <footer className="doc-footer">
         <p>Copyright 2026 - Oversolved</p>
         <WsStatusIndicator />
@@ -1273,163 +1106,37 @@ useEffect(() => {
           onClose={() => setContextMenu(null)}
         />
       )}
-      {partColorPopover && (
-        <div
-          ref={partColorPopoverRef}
-          className="part-color-popover"
-          tabIndex={-1}
-          style={{ left: partColorPopover.position[0], top: partColorPopover.position[1] + 6 }}
-          onMouseDown={e => e.stopPropagation()}
-          onPointerDown={e => e.stopPropagation()}
-          onClick={e => e.stopPropagation()}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault()
-              handleColorCancel()
-              return
-            }
-            if (e.key === 'Tab') {
-              const container = partColorPopoverRef.current
-              if (!container) return
-              const focusable = container.querySelectorAll<HTMLElement>(
-                'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
-              )
-              if (focusable.length === 0) return
-              const first = focusable[0]
-              const last = focusable[focusable.length - 1]
-              if (e.shiftKey) {
-                if (document.activeElement === first) {
-                  e.preventDefault()
-                  last.focus()
-                }
-              } else {
-                if (document.activeElement === last) {
-                  e.preventDefault()
-                  first.focus()
-                }
-              }
-            }
-          }}
-        >
-          <div className="part-color-popover-row">
-            <span className="part-color-popover-label">Color</span>
-            <input
-              type="text"
-              className="part-color-input"
-              value={partColorDraft}
-              onChange={(e) => {
-                const val = e.target.value.toUpperCase()
-                setPartColorDraft(val)
-                const normalized = normalizeHexColor(val)
-                if (normalized && partColorPopover) {
-                  handleBodyColor(partColorPopover.bodyId, normalized)
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setPartColorPopover(null)
-                if (e.key === 'Enter') {
-                  const normalized = normalizeHexColor(partColorDraft)
-                  if (normalized) {
-                    commitPreview({ type: 'set_part_color', bodyId: partColorPopover!.bodyId, color: normalized })
-                    colorPreviewActive.current = false
-                    setPartColorPopover(null)
-                  }
-                }
-              }}
-              placeholder="#RRGGBB"
-            />
-          </div>
-          <div className="part-color-popover-row">
-            <span className="part-color-popover-label">Transparency</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={partTransparencyDraft}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value)
-                setPartTransparencyDraft(val)
-                if (partColorPopover) {
-                  handleBodyTransparency(partColorPopover.bodyId, val)
-                }
-              }}
-              className="part-slider"
-            />
-            <span className="part-slider-value">{(partTransparencyDraft * 100).toFixed(0)}%</span>
-          </div>
-          <div className="part-color-popover-row">
-            <span className="part-color-popover-label">Metalness</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={partMetalnessDraft}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value)
-                setPartMetalnessDraft(val)
-                if (partColorPopover) {
-                  handleBodyMetalness(partColorPopover.bodyId, val)
-                }
-              }}
-              className="part-slider"
-            />
-            <span className="part-slider-value">{(partMetalnessDraft * 100).toFixed(0)}%</span>
-          </div>
-          <div className="part-color-swatches">
-            {PART_COLOR_PALETTE.map(c => (
-              <button
-                key={c}
-                className={`part-color-swatch ${normalizeHexColor(partColorDraft) === c ? 'selected' : ''}`}
-                style={{ background: c }}
-                title={c}
-                onClick={() => {
-                  setPartColorDraft(c)
-                  if (partColorPopover) {
-                    handleBodyColor(partColorPopover.bodyId, c)
-                  }
-                }}
-              />
-            ))}
-          </div>
-          <div className="part-color-popover-actions">
-            <button className="part-color-popover-btn" onClick={() => {
-              if (partColorPopover) handleColorCancel()
-            }}>
-              Cancel
-            </button>
-            <button
-              className="part-color-popover-btn part-color-popover-btn-primary"
-              disabled={!normalizeHexColor(partColorDraft)}
-              onClick={() => {
-                if (!partColorPopover) return
-                const normalized = normalizeHexColor(partColorDraft)
-                if (!normalized) return
-                // Commit preview with a single undo entry
-                commitPreview({ type: 'set_part_color', bodyId: partColorPopover.bodyId, color: normalized })
-                colorPreviewActive.current = false
-                setPartColorPopover(null)
-              }}
-            >
-              Apply
-            </button>
-          </div>
-        </div>
-      )}
-      <ExportDialog
-        isOpen={exportDialogOpen}
-        defaultName={exportDefaultName}
-        onDownload={handleExportDownload}
-        onCancel={handleExportCancel}
+      <PartColorPopover
+        popover={partColorPopover}
+        popoverRef={partColorPopoverRef}
+        colorDraft={partColorDraft}
+        onColorDraftChange={setPartColorDraft}
+        transparencyDraft={partTransparencyDraft}
+        onTransparencyDraftChange={setPartTransparencyDraft}
+        metalnessDraft={partMetalnessDraft}
+        onMetalnessDraftChange={setPartMetalnessDraft}
+        onColorSet={handleBodyColor}
+        onTransparencySet={handleBodyTransparency}
+        onMetalnessSet={handleBodyMetalness}
+        onCancel={handleColorCancel}
+        onApply={(mutation) => {
+          commitPreview(mutation)
+          colorPreviewActive.current = false
+          setPartColorPopover(null)
+        }}
+        onClose={() => setPartColorPopover(null)}
       />
-      <ShareDialog
-        isOpen={shareDocOpen}
-        documentUuid={uuid!}
-        documentName={docName || 'Untitled'}
-        ownerUsername={ownerUsername || ''}
-        isOwner={permission === 'owner'}
-        onClose={() => setShareDocOpen(false)}
+      <PartExportImport
+        exportDialogOpen={exportDialogOpen}
+        exportDefaultName={exportDefaultName}
+        handleExportDownload={handleExportDownload}
+        handleExportCancel={handleExportCancel}
+        shareDocOpen={shareDocOpen}
+        setShareDocOpen={setShareDocOpen}
+        uuid={uuid!}
+        docName={docName}
+        ownerUsername={ownerUsername}
+        permission={permission}
       />
     </div>
   )

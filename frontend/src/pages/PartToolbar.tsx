@@ -1,0 +1,132 @@
+import type { Mutation } from '@/types/cad'
+import { executeCommand } from '@/stores/commandRegistry'
+import { describeMutation } from '@/utils/mutationDescriptions'
+import AppHeader from '@/components/AppHeader'
+
+type StackEntry = { mutation: Mutation }
+
+interface PartToolbarProps {
+  undoStack: StackEntry[]
+  redoStack: StackEntry[]
+  undoHover: boolean
+  setUndoHover: (v: boolean) => void
+  redoHover: boolean
+  setRedoHover: (v: boolean) => void
+  readOnly: boolean
+  permission: string | null
+  docName: string | null
+  isEditing: boolean
+  editName: string
+  setIsEditing: (v: boolean) => void
+  setEditName: (v: string) => void
+  handleRename: () => void
+  handleSave: () => void
+  handleClone: () => void
+  setShareDocOpen: (v: boolean) => void
+}
+
+export default function PartToolbar({
+  undoStack,
+  redoStack,
+  undoHover,
+  setUndoHover,
+  redoHover,
+  setRedoHover,
+  readOnly,
+  permission,
+  docName,
+  isEditing,
+  editName,
+  setIsEditing,
+  setEditName,
+  handleRename,
+  handleSave,
+  handleClone,
+  setShareDocOpen,
+}: PartToolbarProps) {
+  return (
+    <AppHeader>
+      <div className="undo-redo-btn-group">
+        <button
+          className="toolbar-btn"
+          aria-label="Undo"
+          onClick={() => executeCommand('undo')}
+          disabled={undoStack.length === 0}
+          onMouseEnter={() => setUndoHover(true)}
+          onMouseLeave={() => setUndoHover(false)}
+        >
+          <span className="material-icons-outlined">undo</span>
+        </button>
+        {undoHover && undoStack.length > 0 && (
+          <div className="undo-redo-tooltip undo-tooltip">
+            <div className="undo-redo-tooltip-header">Undo ({undoStack.length}) Ctrl+Z</div>
+            {undoStack.slice(-5).reverse().map((entry, i) => (
+              <div key={i} className="undo-redo-tooltip-item">
+                {describeMutation(entry.mutation)}
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          className="toolbar-btn"
+          aria-label="Redo"
+          onClick={() => executeCommand('redo')}
+          disabled={redoStack.length === 0}
+          onMouseEnter={() => setRedoHover(true)}
+          onMouseLeave={() => setRedoHover(false)}
+        >
+          <span className="material-icons-outlined">redo</span>
+        </button>
+        {redoHover && redoStack.length > 0 && (
+          <div className="undo-redo-tooltip redo-tooltip">
+            <div className="undo-redo-tooltip-header">Redo ({redoStack.length}) Ctrl+Shift+Z</div>
+            {redoStack.slice(-5).reverse().map((entry, i) => (
+              <div key={i} className="undo-redo-tooltip-item">
+                {describeMutation(entry.mutation)}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <button className="toolbar-btn" aria-label="Save" title="Save" onClick={handleSave} disabled={readOnly}>
+        <span className="material-icons-outlined">save</span>
+      </button>
+      <button className="toolbar-btn" aria-label="Clone document" title="Clone document" onClick={handleClone}>
+        <span className="material-icons-outlined">file_copy</span>
+      </button>
+      {permission === 'owner' && (
+        <button
+          className="toolbar-btn"
+          aria-label="Share document"
+          title="Share document"
+          onClick={() => setShareDocOpen(true)}
+          disabled={readOnly}
+        >
+          <span className="material-icons-outlined">share</span>
+        </button>
+      )}
+      {readOnly && (
+        <span className="doc-name" style={{ color: '#ef5350', fontSize: '12px', marginLeft: '8px' }}>
+          <span className="material-icons-outlined" style={{ fontSize: '14px', verticalAlign: 'middle' }}>lock</span>
+          {' '}View Only
+        </span>
+      )}
+      {isEditing ? (
+        <input
+          className="doc-name-input"
+          value={editName}
+          onChange={e => setEditName(e.target.value)}
+          onBlur={handleRename}
+          onKeyDown={e => {
+            if (e.key === 'Enter') handleRename()
+          }}
+          autoFocus
+        />
+      ) : (
+        <button className="doc-name" aria-label="Edit document name" onClick={() => setIsEditing(true)}>
+          {docName}
+        </button>
+      )}
+    </AppHeader>
+  )
+}

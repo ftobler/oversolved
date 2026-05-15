@@ -3,6 +3,9 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
+import { ThemeProvider, createTheme } from '@mui/material/styles'
+import CssBaseline from '@mui/material/CssBaseline'
+import { ToastProvider } from '@/contexts/ToastContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import Part from '@/pages/Part'
 
@@ -139,6 +142,16 @@ vi.mock('../../components/Sidebar', async () => {
   }
 })
 
+const theme = createTheme()
+function Wrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <ToastProvider>{children}</ToastProvider>
+    </ThemeProvider>
+  )
+}
+
 describe('Part Color Preview', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -163,7 +176,8 @@ describe('Part Color Preview', () => {
         <Routes>
           <Route path="/documents/:uuid" element={<Part />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
     )
   }
 

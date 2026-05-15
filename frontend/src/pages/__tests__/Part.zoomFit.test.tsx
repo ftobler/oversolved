@@ -1,7 +1,10 @@
+import React, { forwardRef, useImperativeHandle } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { forwardRef, useImperativeHandle } from 'react'
+import { ThemeProvider, createTheme } from '@mui/material/styles'
+import CssBaseline from '@mui/material/CssBaseline'
+import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
 
 const mockAutoZoomToFit = vi.fn()
@@ -27,6 +30,16 @@ vi.mock('../../components/Viewport', () => ({
   }),
   __esModule: true,
 }))
+
+const theme = createTheme()
+function Wrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <ToastProvider>{children}</ToastProvider>
+    </ThemeProvider>
+  )
+}
 
 describe('Part - zoom to fit on open', () => {
   beforeEach(() => {
@@ -64,7 +77,8 @@ describe('Part - zoom to fit on open', () => {
         <Routes>
           <Route path="/documents/:uuid" element={<Part />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
     )
 
     await waitFor(() => {

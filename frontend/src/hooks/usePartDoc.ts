@@ -1,16 +1,8 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import type { PartDoc, SketchData, Mutation, EntityStatus, BuildResponse, PartStyleEntry } from '@/types/cad'
-import { solverWs } from '@/hooks/solverWs'
-import { useSolverStore } from '@/stores/solverStore'
-import { http } from '@/utils/httpClient'
-
-type UndoEntry = { doc: PartDoc; mutation: Mutation }
-import { unflattenGeometry } from '@/utils/geometryMapping'
-import { getCachedBuildResponse, cacheBuildResponse, cacheGeometry } from '@/utils/buildCache'
-import { PART_COLOR_PALETTE, normalizeHexColor } from '@/utils/partColors'
-import { unpackBodies, unpackPickBodies } from '@/utils/geometryUnpack'
-import type { GeometryHeader } from '@/utils/geometryUnpack'
+import { useCallback, useEffect, useRef } from 'react'
+import type { PartDoc, Mutation } from '@/types/cad'
+import { useDocumentState } from '@/hooks/useDocumentState'
+import { useSolver } from '@/hooks/useSolver'
+import { useUndoRedo } from '@/hooks/useUndoRedo'
 import {
   applyMoveVertex,
   applyMoveEntity,
@@ -99,372 +91,38 @@ import {
   applyReorderFeatures,
   applyReorderPickField,
 } from '@/utils/yamlMutations'
-import type { PartFeature } from '@/types/cad'
 
-export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
-  { id: 'Origin', kind: 'origin' },
-  { id: 'Top',    kind: 'plane' },
-  { id: 'Front',  kind: 'plane' },
-  { id: 'Right',  kind: 'plane' },
-]
-
-const BUILTIN_FEATURE_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
-
-function pickPartColor(partNumber: number): string {
-  return PART_COLOR_PALETTE[(partNumber - 1) % PART_COLOR_PALETTE.length]
-}
-
-function reconcilePartStyle(doc: PartDoc, bodies: Record<string, import('@/types/cad').BodyResult> | undefined): void {
-  const bodyIds = Object.keys(bodies ?? {})
-  if (bodyIds.length === 0) return
-
-  const style = doc.part_style ?? {}
-  const usedPartNumbers = new Set<number>()
-  for (const entry of Object.values(style)) {
-    const match = /^part (\d+)$/i.exec(entry?.name ?? '')
-    if (match) usedPartNumbers.add(Number(match[1]))
-  }
-
-  const nextStyle: Record<string, PartStyleEntry> = { ...style }
-  let nextPartNumber = 1
-  const nextFreePartNumber = () => {
-    while (usedPartNumbers.has(nextPartNumber)) nextPartNumber += 1
-    usedPartNumbers.add(nextPartNumber)
-    return nextPartNumber++
-  }
-
-  for (const bodyId of bodyIds) {
-    const current = nextStyle[bodyId]
-    if (current) {
-      const normalizedColor = normalizeHexColor(current.color)
-      nextStyle[bodyId] = {
-        ...current,
-        ...(normalizedColor ? { color: normalizedColor } : {}),
-      }
-      continue
-    }
-    const partNumber = nextFreePartNumber()
-    const createdBy = bodies?.[bodyId]?.created_by
-    nextStyle[bodyId] = {
-      name: `part ${partNumber}`,
-      color: pickPartColor(partNumber),
-      created_by: createdBy,
-    }
-  }
-
-  doc.part_style = nextStyle
-}
-
-export function healDoc(raw: unknown): PartDoc {
-  const doc = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const userFeatures = Array.isArray(doc.features) ? (doc.features as PartFeature[]) : []
-  const existingIds = new Set(userFeatures.map(f => f.id))
-  const missingBuiltins = BUILTIN_FEATURE_DEFAULTS.filter(f => !existingIds.has(f.id))
-  return {
-    ...doc,
-    version:  (doc.version as number) ?? 1,
-    kind:     (doc.kind    as string) ?? 'part',
-    features: [...missingBuiltins, ...userFeatures],
-  } as PartDoc
-}
+export { healDoc, BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
 export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
-  const [doc, setDoc] = useState<PartDoc | null>(null)
-  const [docName, setDocName] = useState<string>('')
-  const [ownerUsername, setOwnerUsername] = useState<string>('')
-  const docRef = useRef<PartDoc | null>(null)
-  // Use a ref for mode so reSolve does not change identity on every mode switch.
-  // Without this, reSolve changing would re-trigger the document-load useEffect,
-  // discarding any unsaved in-memory mutations (e.g. a freshly added sketch).
   const modeRef = useRef(mode)
-  modeRef.current = mode
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [solveResults, setSolveResults] = useState<Record<string, SketchData>>({})
-  const [bodies, setBodies] = useState<Record<string, import('@/types/cad').BodyResult>>({})
-  const [pickBodies, setPickBodies] = useState<Record<string, import('@/types/cad').BodyResult>>({})
-  const [solving, setSolving] = useState(false)
-  const [featureTimings, setFeatureTimings] = useState<Record<string, number>>({})
-  const [solveTime, setSolveTime] = useState<number | null>(null)
-  const [solveError, setSolveError] = useState<string | null>(null)
-  const [solveResult, setSolveRawResult] = useState<string>('')
-  const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
-  const [redoStack, setRedoStack] = useState<UndoEntry[]>([])
-  const suppressUndoRef = useRef(false)
-  const previewOriginalDoc = useRef<PartDoc | null>(null)
-  const [permission, setPermission] = useState<string>('owner')
-  const [isPublic, setIsPublic] = useState(false)
-  const firstSolveDone = useRef(false)
-  const rollbackPosRef = useRef<number | null>(null)
-  const pickBoundaryRef = useRef<number | null>(null)
-  const requestIdRef = useRef(0)
-  const lastValidMsgIdRef = useRef<number | null>(null)
-  const cancelledRef = useRef(false)
+  useEffect(() => { modeRef.current = mode }, [mode])
 
-  const applySolveResult = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
-    const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('@/types/cad').Topology; plane_transform?: import('@/types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('@/types/cad').ConstraintRender; superfluous: boolean }>; plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }; body_id?: string; exception?: string; solve_ms?: number }>
+  const reSolveRef = useRef<((d: PartDoc) => void) | null>(null)
 
-    const results: Record<string, SketchData> = {}
-    for (const [id, feature] of Object.entries(result)) {
-      const featureDef = (d.features ?? []).find(f => f.id === id)
-      if (feature.geometry) {
-        if (featureDef) {
-          featureDef.initial = feature.geometry
-          if (feature.constraints && featureDef.constraints) {
-            const superfluousIds = new Set(
-              Object.entries(feature.constraints)
-                .filter(([, c]) => c.superfluous)
-                .map(([cid]) => cid)
-            )
-            if (superfluousIds.size > 0) {
-              featureDef.constraints = featureDef.constraints.filter(c => !superfluousIds.has(c.id))
-            }
-          }
-        }
-        const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
-        const astPosById = new Map(
-          (featureDef?.constraints ?? [])
-            .filter(c => c.pos)
-            .map(c => [c.id, c.pos!])
-        )
-        const constraints: import('@/types/cad').Constraints | undefined = feature.constraints
-          ? Object.fromEntries(
-              Object.entries(feature.constraints)
-                .filter(([, c]) => !c.superfluous)
-                .map(([cid, c]) => {
-                  const pos = astPosById.get(cid)
-                  const render = pos ? { ...c.render, pos } : c.render
-                  return [cid, { render, residual: c.residual }]
-                })
-            )
-          : undefined
-        const entityStatus = feature.features
-          ? (Object.fromEntries(
-              Object.entries(feature.features).map(([eid, e]) => [eid, (e as { status?: string }).status || 'underconstrained'])
-            ) as EntityStatus)
-          : undefined
-        results[id] = {
-          solved,
-          topology: feature.topology,
-          status: feature.status,
-          ...(constraints && { constraints }),
-          ...(entityStatus && { features: entityStatus }),
-          ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
-        }
-      } else if (feature.plane) {
-        const planeRaw = feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }
-        const plane = {
-          origin: planeRaw.origin as [number, number, number],
-          x_axis: planeRaw.x_axis as [number, number, number],
-          y_axis: planeRaw.y_axis as [number, number, number],
-          normal: planeRaw.normal as [number, number, number],
-        }
-        results[id] = {
-          solved: {},
-          status: feature.status,
-          plane,
-          plane_transform: {
-            rotation: [
-              ...plane.x_axis,
-              ...plane.y_axis,
-              ...plane.normal,
-            ],
-            origin: plane.origin,
-          },
-        }
-      } else {
-        results[id] = {
-          solved: unflattenGeometry(featureDef?.initial, featureDef?.entities),
-          status: feature.status ?? 'exception',
-          ...(feature.body_id !== undefined && { body_id: feature.body_id }),
-          ...(feature.exception !== undefined && { exception: feature.exception }),
-        }
-      }
-    }
-    setSolveResults(results)
-    const timings: Record<string, number> = {}
-    for (const [id, feature] of Object.entries(result)) {
-      if (typeof feature.solve_ms === 'number') {
-        timings[id] = feature.solve_ms
-      }
-    }
-    setFeatureTimings(timings)
-    setSolveRawResult(stringifyYaml(data.result))
-    const updatedDoc = { ...d }
-    setDoc(updatedDoc)
-    docRef.current = updatedDoc
-    if (modeRef.current === 'code') {
-      setCodeText(stringifyYaml(d))
-    }
-    setSolveError(null)
-    if (solveTimeMs !== undefined) {
-      setSolveTime(solveTimeMs)
-    }
-  }, [setCodeText])
+  const {
+    doc, setDoc, docRef, docName, setDocName, ownerUsername,
+    loading, error, setError, permission, isPublic,
+    saveDoc, renameDoc,
+  } = useDocumentState(uuid, reSolveRef, { solveOnLoad })
 
-  const applyGeometryUpdate = useCallback((msgId: number, header: GeometryHeader, buffer: ArrayBuffer, jsonHeaderLen: number) => {
-    try {
-      // Discard stale geometry frames from previous solves.
-      // The binary frame always arrives after the JSON solve_result on the
-      // same WebSocket, so by the time we get here, reSolve has already set
-      // lastValidMsgIdRef from the non-stale JSON response. If the msgId
-      // doesn't match, this frame belongs to a superseded solve.
-      if (lastValidMsgIdRef.current !== null && msgId !== lastValidMsgIdRef.current) {
-        return
-      }
-      const unpacked = unpackBodies(header, buffer, jsonHeaderLen)
-      const d = docRef.current
-      if (d) reconcilePartStyle(d, unpacked)
-      setBodies(unpacked)
-      if (header.pick_bodies && Object.keys(header.pick_bodies).length > 0) {
-        setPickBodies(unpackPickBodies(header, buffer, jsonHeaderLen))
-      } else {
-        setPickBodies({})
-      }
-      // Cache geometry so future cache hits can restore the 3D view without re-solving.
-      if (uuid && d) {
-        const rollback = rollbackPosRef.current ?? (d.features?.length ?? 0)
-        const pickBoundary = pickBoundaryRef.current
-        cacheGeometry(uuid, d, rollback, pickBoundary, { header, buffer, jsonHeaderLen })
-      }
-    } catch (e) {
-      console.error('[usePartDoc] Error applying geometry update:', e);
-    }
-  }, [uuid])
+  const {
+    solveResults, setSolveResults, bodies, pickBodies, setPickBodies,
+    solving, solveTime, solveError, setSolveError, solveResult, setSolveRawResult,
+    featureTimings, reSolve, setRollbackPos, setPickBoundary,
+  } = useSolver(uuid, setCodeText, modeRef, { onFirstSolve }, docRef, setDoc)
 
-  // Register the geometry listener once for the lifetime of the hook.
-  useEffect(() => {
-    return solverWs.onGeometryUpdate(applyGeometryUpdate)
-  }, [applyGeometryUpdate])
+  useEffect(() => { reSolveRef.current = reSolve }, [reSolve])
 
-  // Keep a stable ref for backward-compatible cache path that still has bodies in JSON.
-  const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
-    applySolveResult(d, data, solveTimeMs)
-    if (data.bodies) {
-      reconcilePartStyle(d, data.bodies)
-      setBodies(data.bodies)
-    }
-    if (data.pick_bodies !== undefined) {
-      setPickBodies(data.pick_bodies)
-    }
-  }, [applySolveResult])
-
-  const reSolve = useCallback(async (d: PartDoc, rollbackPosition?: number | null) => {
-    setSolving(true)
-    setSolveTime(null)
-    const startTime = performance.now()
-    const isFirstSolve = !firstSolveDone.current
-    if (isFirstSolve) firstSolveDone.current = true
-
-    const currentRequestId = ++requestIdRef.current
-    try {
-      const allFeatures = d.features ?? []
-      const effectiveRollback = rollbackPosition !== undefined
-        ? (rollbackPosition ?? allFeatures.length)
-        : ((rollbackPosRef.current ?? allFeatures.length) || allFeatures.length)
-
-      // Filter out built-in features and slice to effectiveRollback.
-      const solveFeatures = allFeatures.slice(0, effectiveRollback).filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
-
-      // solveFeatures is already sliced; tell the backend to process all of them.
-      const adjustedRollback = solveFeatures.length
-
-      const isPreview = rollbackPosition !== undefined || pickBoundaryRef.current !== null
-      const pickBoundary = pickBoundaryRef.current
-
-      // Check cache before fetching.
-      if (uuid) {
-        const cached = await getCachedBuildResponse(uuid, d, effectiveRollback, pickBoundary)
-        if (cached && cached.isFresh) {
-          // Discard stale response — a newer solve may have started while we
-          // were awaiting the cache lookup.
-          if (currentRequestId !== requestIdRef.current) {
-            return
-          }
-          rollbackPosRef.current = effectiveRollback
-          // Stale check: a newer solve may have started during applyBuildResponse
-          if (currentRequestId !== requestIdRef.current) {
-            return
-          }
-          applyBuildResponse(d, cached.entry.buildResponse)
-          // Apply cached geometry (binary) if available, else fall back to JSON bodies.
-          if (cached.entry.geometry) {
-            const { header, buffer, jsonHeaderLen } = cached.entry.geometry
-            // Update lastValidMsgId so applyGeometryUpdate doesn't discard the
-            // cached frame as stale (it checks msgId against the last WS response).
-            lastValidMsgIdRef.current = header.msgId
-            applyGeometryUpdate(header.msgId, header, buffer, jsonHeaderLen)
-          }
-          if (!cancelledRef.current) setSolving(false)
-          if (isFirstSolve && onFirstSolve) {
-            setTimeout(onFirstSolve, 0)
-          }
-          return
-        }
-      }
-
-      // Stale check after async cache lookup (may have missed or been stale)
-      if (currentRequestId !== requestIdRef.current) {
-        return
-      }
-
-      const solvePayload: Record<string, unknown> = {
-        ...d,
-        ...(uuid ? { id: uuid } : {}),
-        features: solveFeatures,
-        rollback_position: adjustedRollback,
-        request_id: currentRequestId,
-        is_preview: isPreview,
-      }
-
-      if (pickBoundary !== null) {
-        solvePayload.pick_boundary = pickBoundary
-      }
-
-      const response = await solverWs.solve(solvePayload) as Record<string, unknown>
-
-      // Discard stale response — another solve may have started while we were waiting
-      if (currentRequestId !== requestIdRef.current) {
-        return
-      }
-      rollbackPosRef.current = effectiveRollback
-      // Track the solver msgId so applyGeometryUpdate can discard stale
-      // binary frames from previous solves that arrive out of order.
-      if (response.msgId != null) {
-        lastValidMsgIdRef.current = response.msgId as number
-      }
-
-      const endTime = performance.now()
-      const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
-
-      if (response.error) {
-        setSolveError(String(response.error))
-        setSolveRawResult(String(response.error))
-      } else {
-        const buildResponse = response as unknown as BuildResponse
-        if (uuid) {
-          await cacheBuildResponse(uuid, d, effectiveRollback, pickBoundary, buildResponse)
-        }
-        // Geometry arrives via binary frame; applySolveResult handles everything except bodies.
-        applySolveResult(d, buildResponse, solveTimeMs)
-        if (isFirstSolve && onFirstSolve) {
-          setTimeout(onFirstSolve, 0)
-        }
-      }
-    } catch (e) {
-      setSolveError(String(e))
-      setSolveRawResult(String(e))
-    } finally {
-      if (currentRequestId === requestIdRef.current && !cancelledRef.current) setSolving(false)
-    }
-  }, [onFirstSolve, applyBuildResponse, applySolveResult, applyGeometryUpdate, uuid])
+  const {
+    undoStack, redoStack, suppressUndoRef, pushUndo, handleUndo, handleRedo,
+  } = useUndoRedo(docRef, setDoc, reSolve)
 
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)
     const current = docRef.current
     if (!current) return
 
-    // Only clear for delete operations that remove features, not for edits
     setSolveResults(prev => {
       if (m.type === 'delete_feature') {
         const next = { ...prev }
@@ -479,12 +137,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
     const next: PartDoc = structuredClone(current)
     if (!suppressUndoRef.current) {
-      setUndoStack(prev => {
-        const next = [...prev, { doc: current, mutation: m }]
-        if (next.length > 50) next.shift()
-        return next
-      })
-      setRedoStack([])
+      pushUndo(m, current)
     }
     switch (m.type) {
       case 'move_vertex':
@@ -493,7 +146,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       case 'move_vertex_with_constraint': {
         applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to)
         const draggedRef = `vertex:${m.featureId}:${m.entityId}:${m.vertexKey}`
-        // snapVertexId: point-to-point coincident; snapEntityRef: point-on-entity coincident
         const snapRef = m.snapVertexId ?? m.snapEntityRef
         if (snapRef) {
           applyAddConstraint(next, m.featureId, m.constraintKind, [draggedRef, snapRef])
@@ -760,118 +412,28 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     docRef.current = next
     setDoc(next)
     reSolve(next)
-  }, [reSolve])
+  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo])
 
-  const handleUndo = useCallback(() => {
-    setUndoStack(prev => {
-      if (prev.length === 0) return prev
-      const next = [...prev]
-      const entry = next.pop()!
-      const preUndoDoc = docRef.current
-      if (preUndoDoc) setRedoStack(r => [...r, { doc: preUndoDoc, mutation: entry.mutation }])
-      docRef.current = entry.doc
-      setDoc(entry.doc)
-      reSolve(entry.doc, entry.doc.features?.length ?? 0)
-      return next
-    })
-  }, [reSolve])
-
-  const handleRedo = useCallback(() => {
-    setRedoStack(prev => {
-      if (prev.length === 0) return prev
-      const next = [...prev]
-      const entry = next.pop()!
-      const preRedoDoc = docRef.current
-      if (preRedoDoc) setUndoStack(u => [...u, { doc: preRedoDoc, mutation: entry.mutation }])
-      docRef.current = entry.doc
-      setDoc(entry.doc)
-      reSolve(entry.doc, entry.doc.features?.length ?? 0)
-      return next
-    })
-  }, [reSolve])
-
-  useEffect(() => {
-    cancelledRef.current = false
-    return () => { cancelledRef.current = true }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      solverWs.disconnect()
-      useSolverStore.getState().setIsSolving(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    rollbackPosRef.current = null  // reset across document loads
-    firstSolveDone.current = false
-    if (!uuid) return
-    setLoading(true)
-    http.getJson<{ content: string; name: string; owner_username?: string; permission?: string; is_public?: boolean }>(`/api/documents/${uuid}`)
-      .then(data => {
-        const parsed = healDoc(parseYaml(data.content))
-        docRef.current = parsed
-        setDoc(parsed)
-        setDocName(data.name)
-        setOwnerUsername(data.owner_username || '')
-        setPermission(data.permission || 'owner')
-        setIsPublic(data.is_public || false)
-        setLoading(false)
-        if (solveOnLoad) reSolve(parsed)
-      })
-      .catch(e => {
-        setError(String(e))
-        setLoading(false)
-      })
-  }, [uuid, solveOnLoad, reSolve])
-
-  const saveDoc = useCallback(async (uuid: string, document: PartDoc, screenshot?: () => Promise<string | null>) => {
-    try {
-      const body: { content: string; preview_image?: string } = { content: stringifyYaml(document) }
-      if (screenshot) {
-        const dataUrl = await screenshot()
-        if (dataUrl) {
-          body.preview_image = dataUrl.split(',')[1]
-        }
-      }
-      await http.putJson(`/api/documents/${uuid}`, body)
-      return true
-    } catch (e) {
-      setError(String(e))
-      return false
-    }
-  }, [])
-
-  const renameDoc = useCallback(async (uuid: string, name: string) => {
-    try {
-      await http.patchJson(`/api/documents/${uuid}`, { name })
-      setDocName(name)
-      return true
-    } catch (e) {
-      setError(String(e))
-      return false
-    }
-  }, [])
+  const previewOriginalDoc = useRef<PartDoc | null>(null)
 
   const startPreviewMode = useCallback((originalDoc: PartDoc) => {
     previewOriginalDoc.current = structuredClone(originalDoc)
     suppressUndoRef.current = true
-  }, [])
+  }, [suppressUndoRef])
 
   const commitPreview = useCallback((mutation: Mutation) => {
     if (!previewOriginalDoc.current) return
-    setUndoStack(prev => [...prev, { doc: previewOriginalDoc.current!, mutation }])
-    setRedoStack([])
+    pushUndo(mutation, previewOriginalDoc.current)
     suppressUndoRef.current = false
     previewOriginalDoc.current = null
-  }, [])
+  }, [suppressUndoRef, pushUndo])
 
   const cancelPreview = useCallback(() => {
     suppressUndoRef.current = false
     const original = previewOriginalDoc.current
     previewOriginalDoc.current = null
     return original
-  }, [])
+  }, [suppressUndoRef])
 
   return {
     doc,
@@ -905,11 +467,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     renameDoc,
     permission,
     isPublic,
-    setRollbackPos: useCallback((pos: number | null) => { rollbackPosRef.current = pos }, []),
-    setPickBoundary: useCallback((pos: number | null) => {
-      pickBoundaryRef.current = pos
-      if (pos === null) setPickBodies({})
-    }, [setPickBodies]),
+    setRollbackPos,
+    setPickBoundary,
     startPreviewMode,
     commitPreview,
     cancelPreview,

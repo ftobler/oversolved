@@ -1,6 +1,10 @@
+import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { ThemeProvider, createTheme } from '@mui/material/styles'
+import CssBaseline from '@mui/material/CssBaseline'
+import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
 
 vi.mock('../../hooks/solverWs', () => ({
@@ -52,6 +56,16 @@ features:
   })
 }
 
+const theme = createTheme()
+function Wrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <ToastProvider>{children}</ToastProvider>
+    </ThemeProvider>
+  )
+}
+
 describe('rollback position clamping on feature delete', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -65,7 +79,8 @@ describe('rollback position clamping on feature delete', () => {
         <Routes>
           <Route path="/documents/:uuid" element={<Part />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
     )
 
     // Wait for the doc to load and features to render
@@ -111,7 +126,8 @@ describe('rollback position clamping on feature delete', () => {
         <Routes>
           <Route path="/documents/:uuid" element={<Part />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
     )
 
     await waitFor(() => {

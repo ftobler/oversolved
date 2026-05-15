@@ -1,6 +1,10 @@
+import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { ThemeProvider, createTheme } from '@mui/material/styles'
+import CssBaseline from '@mui/material/CssBaseline'
+import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
 
 vi.mock('../../hooks/solverWs', () => ({
@@ -15,6 +19,16 @@ vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
   __esModule: true,
 }))
+
+const theme = createTheme()
+function Wrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <ToastProvider>{children}</ToastProvider>
+    </ThemeProvider>
+  )
+}
 
 describe('Part read-only mode', () => {
   beforeEach(() => {
@@ -52,7 +66,8 @@ describe('Part read-only mode', () => {
         <Routes>
           <Route path="/documents/:uuid" element={<Part />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
     )
 
     await waitFor(() => {
@@ -68,7 +83,8 @@ describe('Part read-only mode', () => {
         <Routes>
           <Route path="/documents/:uuid" element={<Part />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
     )
 
     await waitFor(() => {
@@ -85,7 +101,8 @@ describe('Part read-only mode', () => {
         <Routes>
           <Route path="/documents/:uuid" element={<Part />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
     )
 
     await waitFor(() => {
@@ -104,7 +121,8 @@ describe('Part read-only mode', () => {
         <Routes>
           <Route path="/documents/:uuid" element={<Part />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
     )
 
     await waitFor(() => {
