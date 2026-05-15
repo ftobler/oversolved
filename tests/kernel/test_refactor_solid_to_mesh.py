@@ -9,7 +9,7 @@ pytest.importorskip("OCP.BRep", reason="OCP not installed")
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
 
 from oversolved.kernel.cadquery_ops import _ensure_cq  # noqa: E402
-from oversolved.kernel.geometry import (  # noqa: E402
+from oversolved.kernel.geometry_tessellation import (  # noqa: E402
     _init_mesh_accumulators,
     _load_shape_from_path,
     _tessellate_and_assemble_faces,

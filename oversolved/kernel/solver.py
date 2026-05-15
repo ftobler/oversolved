@@ -34,13 +34,15 @@ from oversolved.kernel.solver_registry import (  # noqa: F401
 )
 from oversolved.kernel.solver_residuals import _build_residuals_fn
 from oversolved.kernel.solver_render import _constraint_render
-from oversolved.kernel.solver_features import (  # noqa: F401
-    _solve_extrude, _solve_revolve, _solve_array,
-    _solve_import_step, _solve_fillet, _solve_chamfer,
-    _solve_boolean, _solve_delete_body, _solve_hole,
-    _solve_transform, _solve_mirror,
-    _extract_profile_loops, _resolve_body,
-)
+from oversolved.kernel.solver_features_brep import _solve_extrude, _solve_revolve  # noqa: F401
+from oversolved.kernel.solver_features_array import _solve_array  # noqa: F401
+from oversolved.kernel.solver_features_import import _solve_import_step  # noqa: F401
+from oversolved.kernel.solver_features_fillet_chamfer import _solve_fillet, _solve_chamfer  # noqa: F401
+from oversolved.kernel.solver_features_boolean import _solve_boolean  # noqa: F401
+from oversolved.kernel.solver_features_delete import _solve_delete_body  # noqa: F401
+from oversolved.kernel.solver_features_hole import _solve_hole  # noqa: F401
+from oversolved.kernel.solver_features_transform_mirror import _solve_transform, _solve_mirror  # noqa: F401
+from oversolved.kernel.solver_features_shared import _extract_profile_loops, _resolve_body  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

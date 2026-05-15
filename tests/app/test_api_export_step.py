@@ -94,7 +94,7 @@ def test_export_reads_back(authed_client):
     pytest.importorskip("OCP.gp")
     from OCP.STEPControl import STEPControl_Reader
     from OCP.IFSelect import IFSelect_RetDone
-    from oversolved.kernel.geometry import solid_to_mesh
+    from oversolved.kernel.geometry_tessellation import solid_to_mesh
 
     response = authed_client.post(
         "/api/export/step",
@@ -132,7 +132,7 @@ def test_export_multiple_bodies(authed_client):
     pytest.importorskip("OCP.gp")
     from OCP.STEPControl import STEPControl_Reader
     from OCP.IFSelect import IFSelect_RetDone
-    from oversolved.kernel.geometry import solid_to_mesh
+    from oversolved.kernel.geometry_tessellation import solid_to_mesh
 
     response = authed_client.post(
         "/api/export/step",

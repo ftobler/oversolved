@@ -57,7 +57,7 @@ def test_build_tessellates_once_per_body():
     times. The new code calls it at most O(N + M_modified) times, where M_modified
     is the number of features that actually change a body.
     """
-    from oversolved.kernel import geometry as geom_mod
+    from oversolved.kernel import geometry_tessellation as geom_mod
 
     spec = full_rect_extrude_spec(w=10, h=10, d=5)
     spec["features"].append(_fillet_feature("fi1", radius=0.5))

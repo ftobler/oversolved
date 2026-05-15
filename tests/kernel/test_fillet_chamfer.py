@@ -454,11 +454,9 @@ def test_solve_transform_not_in_fillet_module():
 
 
 def test_solve_transform_resolves_from_correct_module():
-    """_solve_transform imported via solver_features must come from transform_mirror."""
-    import oversolved.kernel.solver_features as sf
+    """_solve_transform must be defined in solver_features_transform_mirror."""
     import oversolved.kernel.solver_features_transform_mirror as tm
-    assert hasattr(sf, "_solve_transform")
-    assert sf._solve_transform is tm._solve_transform
+    assert hasattr(tm, "_solve_transform")
 
 
 # ─── fix-144: chamfer kind shadowed by feature kind ───
@@ -496,8 +494,8 @@ def test_chamfer_angle_distance_mode():
         "chamfer": {"distance": 1.0, "angle": 30.0, "kind": "angle_distance"},
     })
 
-    with mock.patch("oversolved.kernel.geometry.apply_chamfer", wraps=__import__(
-        "oversolved.kernel.geometry", fromlist=["apply_chamfer"]
+    with mock.patch("oversolved.kernel.geometry_features.apply_chamfer", wraps=__import__(
+        "oversolved.kernel.geometry_features", fromlist=["apply_chamfer"]
     ).apply_chamfer) as mock_chamfer:
         r = build(spec)
 

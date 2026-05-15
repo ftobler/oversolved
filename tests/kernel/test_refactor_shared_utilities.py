@@ -125,7 +125,7 @@ def test_init_global_repo_still_importable_from_solver():
 
 def test_resolve_body_error_message_no_longer_says_boolean():
     """_resolve_body error no longer says 'boolean: body not found'."""
-    from oversolved.kernel.solver_features import _resolve_body
+    from oversolved.kernel.solver_features_shared import _resolve_body
     with pytest.raises(ValueError) as exc_info:
         _resolve_body("nonexistent", {})
     assert "boolean" not in str(exc_info.value)

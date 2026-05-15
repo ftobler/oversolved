@@ -7,7 +7,7 @@ pytest.importorskip("OCP.BRep", reason="OCP not installed")
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
 from OCP.TopoDS import TopoDS_Shape  # noqa: E402
 
-from oversolved.kernel.geometry import (  # noqa: E402
+from oversolved.kernel.geometry_features import (  # noqa: E402
     EdgeModifierResult,
     _apply_edge_modifier,
     _check_null_shape,

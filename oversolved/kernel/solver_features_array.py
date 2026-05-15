@@ -27,7 +27,7 @@ def _build_array_transforms(
     feature: dict,
     global_repo: Repository,
 ) -> list[gp_Trsf]:
-    from oversolved.kernel.geometry import make_translation_trsf, make_rotation_trsf  # noqa: F811
+    from oversolved.kernel.geometry_features import make_translation_trsf, make_rotation_trsf  # noqa: F811
 
     mode = feature.get("mode", "linear")
     trsfs: list[gp_Trsf] = []
@@ -96,7 +96,8 @@ def _solve_array(
     body_store: dict,
 ) -> dict:
     from oversolved.kernel.types3d import Body  # noqa: F811
-    from oversolved.kernel.geometry import transform_copy, fuse_shapes  # noqa: F811
+    from oversolved.kernel.geometry_features import transform_copy  # noqa: F811
+    from oversolved.kernel.cadquery_ops import fuse_shapes  # noqa: F811
 
     feature_id = feature.get("id", "")
     sub = feature.get("array") or {}

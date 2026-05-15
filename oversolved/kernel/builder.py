@@ -12,14 +12,14 @@ from oversolved.kernel.cadquery_ops import _normal_to_frame, _ensure_occ
 from oversolved.kernel.ocp_ops import ocp_copy_shape
 from oversolved.kernel.geom_hash import face_geometry_hash, edge_geometry_hash, vertex_geometry_hash
 from oversolved.kernel.query import Repository, emit_wire, absolute, _evict_ancestry_and_register
-from oversolved.kernel.geometry import MeshDict
+from oversolved.kernel.geometry_tessellation import MeshDict
 from oversolved.kernel.types3d import Body, FeatureCheckpoint, BuildState
 from oversolved.kernel.solver import _init_global_repo, _try_solve_feature
 from oversolved.kernel.solver_constants import _BUILTIN_PLANE_RESULTS
 from oversolved.kernel.solver_registry import _post_register
 
 try:
-    import oversolved.kernel.geometry  # noqa: F401  # pre-warm to avoid concurrent-import race
+    import oversolved.kernel.geometry_tessellation  # noqa: F401  # pre-warm to avoid concurrent-import race
 except ImportError:
     pass
 
@@ -299,7 +299,7 @@ def _tessellate_body_geometry(body: Body) -> dict[str, Any]:
         entry["mesh_error"] = "no shape"
         return entry
     try:
-        from oversolved.kernel.geometry import solid_to_mesh, solid_to_edges, solid_to_vertices  # type: ignore[attr-defined]
+        from oversolved.kernel.geometry_tessellation import solid_to_mesh, solid_to_edges, solid_to_vertices
         mesh = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id)
         edges_result = solid_to_edges(body.shape, created_by=body.created_by, body_id=body.id)
         verts_result = solid_to_vertices(body.shape, created_by=body.created_by, body_id=body.id)
@@ -393,7 +393,7 @@ def build(
         if body.shape is None:
             return
         try:
-            from oversolved.kernel.geometry import solid_to_mesh, solid_to_edges, solid_to_vertices
+            from oversolved.kernel.geometry_tessellation import solid_to_mesh, solid_to_edges, solid_to_vertices
             mesh = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id)
             _register_brep_face_ancestry(global_repo, body, mesh)
             verts = solid_to_vertices(body.shape, created_by=body.created_by, body_id=body.id)

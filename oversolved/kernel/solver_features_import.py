@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from OCP.TopoDS import TopoDS_Shape
 from oversolved.kernel.query import Repository
 from oversolved.kernel.types3d import Body
-from oversolved.kernel.geometry import step_file_to_shape
+from oversolved.kernel.geometry_io import step_file_to_shape
 from oversolved.kernel.cadquery_ops import _ensure_occ
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ def _solve_import_step(
     import base64  # noqa: F811
     import tempfile  # noqa: F811
     from oversolved.kernel.types3d import Body  # noqa: F811  # noqa: F811
-    from oversolved.kernel.geometry import step_file_to_shape  # noqa: F811  # noqa: F811
+    from oversolved.kernel.geometry_io import step_file_to_shape  # noqa: F811
 
     feature_id = feature.get("id", "")
     file_data_b64 = feature.get("file_data", "")

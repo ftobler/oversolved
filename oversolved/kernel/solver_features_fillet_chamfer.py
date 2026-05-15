@@ -190,7 +190,7 @@ def _solve_fillet(
     global_repo: Repository,
     body_store: dict,
 ) -> dict:
-    from oversolved.kernel.geometry import apply_fillet  # noqa: F811
+    from oversolved.kernel.geometry_features import apply_fillet  # noqa: F811
 
     sub = feature.get("fillet") or {}
     feature = {**sub, **feature}
@@ -206,7 +206,7 @@ def _solve_chamfer(
     global_repo: Repository,
     body_store: dict,
 ) -> dict:
-    from oversolved.kernel.geometry import apply_chamfer  # noqa: F811
+    from oversolved.kernel.geometry_features import apply_chamfer  # noqa: F811
 
     sub = feature.get("chamfer") or {}
     chamfer_mode = sub.get("kind", "distance")

@@ -513,7 +513,7 @@ def test_register_body_faces_logs_on_failure(caplog):
     caplog.set_level(logging.WARNING)
 
     with mock.patch(
-        "oversolved.kernel.geometry.solid_to_mesh",
+        "oversolved.kernel.geometry_tessellation.solid_to_mesh",
         side_effect=RuntimeError("tessellation crashed"),
     ):
         build(spec)

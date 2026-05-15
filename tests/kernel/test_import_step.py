@@ -9,7 +9,8 @@ from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
 from OCP.STEPControl import STEPControl_Writer, STEPControl_AsIs  # noqa: E402
 from OCP.IFSelect import IFSelect_RetDone  # noqa: E402
 
-from oversolved.kernel.geometry import step_file_to_shape, solid_to_mesh  # noqa: E402
+from oversolved.kernel.geometry_io import step_file_to_shape  # noqa: E402
+from oversolved.kernel.geometry_tessellation import solid_to_mesh  # noqa: E402
 from oversolved.kernel.solver import _solve_import_step, _try_solve_feature  # noqa: E402
 from oversolved.kernel.query import Repository  # noqa: E402
 from oversolved.kernel.builder import build  # noqa: E402
@@ -135,19 +136,19 @@ def test_status_ok_in_result(step_cube_file):
 
 def test_partial_rebuild_reuses_body(step_cube_file, monkeypatch):
     """8. partial rebuild reuses body - build twice with same spec; step_file_to_shape called once."""
-    from oversolved.kernel import geometry
+    from oversolved.kernel import geometry_io
 
     b64 = _step_to_b64(step_cube_file)
 
     call_count = 0
-    original = geometry.step_file_to_shape
+    original = geometry_io.step_file_to_shape
 
     def counting_step_file_to_shape(filepath, scale=1.0):
         nonlocal call_count
         call_count += 1
         return original(filepath, scale)
 
-    monkeypatch.setattr(geometry, "step_file_to_shape", counting_step_file_to_shape)
+    monkeypatch.setattr(geometry_io, "step_file_to_shape", counting_step_file_to_shape)
 
     spec_v1 = {
         "id": "test",

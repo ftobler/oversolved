@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(
 
 def test_loop_without_guard_processes_all_bodies():
     """Every body with a shape is registered at least once (no guard can skip it)."""
-    from oversolved.kernel import geometry as geom_mod
+    from oversolved.kernel import geometry_tessellation as geom_mod
 
     spec = full_rect_extrude_spec(w=10, h=10, d=5)
     original = geom_mod.solid_to_mesh
@@ -41,7 +41,7 @@ def test_loop_without_guard_processes_all_bodies():
 
 def test_loop_skips_bodies_without_shape():
     """A sketch-only spec has no shaped body, so solid_to_mesh is never called."""
-    from oversolved.kernel import geometry as geom_mod
+    from oversolved.kernel import geometry_tessellation as geom_mod
 
     spec: dict = {
         "features": [

@@ -25,7 +25,7 @@ def _make_body_store(shape, body_id="body_b0", feature_id="b0", sketch_id="sk0")
 def _call_helper(tool_shape, body_store, operation, merge_target=None,
                  body_id="body_feat1", feature_id="feat1", sketch_id="sk0",
                  op_name="test"):
-    from oversolved.kernel.solver_features import _apply_body_operation
+    from oversolved.kernel.solver_features_shared import _apply_body_operation
     return _apply_body_operation(
         tool_shape, body_store, operation, merge_target,
         body_id, feature_id, sketch_id, op_name=op_name,

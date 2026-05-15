@@ -56,7 +56,8 @@ def export_step():
         return jsonify({"error": "solver kernel not available (install oversolved[solver])"}), 503
 
     from oversolved.kernel.builder import build
-    from oversolved.kernel.geometry import shape_to_step_file_buffer, fuse_shapes
+    from oversolved.kernel.geometry_io import shape_to_step_file_buffer
+    from oversolved.kernel.cadquery_ops import fuse_shapes
 
     build_result = build(data)
 
@@ -105,7 +106,8 @@ def export_stl():
     if not body_shapes:
         return jsonify({"error": "no bodies to export"}), 400
 
-    from oversolved.kernel.geometry import shape_to_stl_file_buffer, fuse_shapes
+    from oversolved.kernel.geometry_io import shape_to_stl_file_buffer
+    from oversolved.kernel.cadquery_ops import fuse_shapes
 
     deflection = data.get("deflection", 0.5)
     angular_deflection = data.get("angular_deflection", 0.3)

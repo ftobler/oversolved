@@ -8,7 +8,8 @@ from unittest.mock import patch
 import pytest
 
 pytest.importorskip("cadquery.occ_impl.shapes")
-from oversolved.kernel.geometry import shape_to_stl_file, shape_to_stl_file_buffer, solid_to_mesh  # noqa: E402
+from oversolved.kernel.geometry_io import shape_to_stl_file, shape_to_stl_file_buffer  # noqa: E402
+from oversolved.kernel.geometry_tessellation import solid_to_mesh  # noqa: E402
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
 
 

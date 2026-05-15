@@ -14,7 +14,7 @@ from oversolved.kernel.types3d import Body, Frame3D
 from oversolved.kernel.solver_constants import _ARC_SEGMENTS, TOL_LOOP_CLOSURE
 
 try:
-    import oversolved.kernel.geometry  # noqa: F401  # pre-warm to avoid concurrent-import race
+    import oversolved.kernel.geometry_tessellation  # noqa: F401  # pre-warm to avoid concurrent-import race
 except ImportError:
     pass
 from oversolved.kernel.cadquery_ops import (
@@ -507,7 +507,7 @@ def _apply_body_operation(
         target_ids = []
 
     if operation == "cut":
-        from oversolved.kernel.geometry import boolean_cut, boolean_intersection  # noqa: F811
+        from oversolved.kernel.cadquery_ops import boolean_cut, boolean_intersection  # noqa: F811
         cut_anything = False
         cut_body_id = None
         for bid in target_ids:
@@ -546,7 +546,7 @@ def _apply_body_operation(
         result["body_ids"] = body_ids
         result["operation"] = "new"
     else:
-        from oversolved.kernel.geometry import boolean_union  # noqa: F811
+        from oversolved.kernel.cadquery_ops import boolean_union  # noqa: F811
         fused = False
         fused_body_id = None
         if not need_new_body:

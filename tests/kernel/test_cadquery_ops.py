@@ -266,7 +266,7 @@ def test_tessellation_format():
 
 def test_mesh_face_ordering_stable():
     """solid_to_mesh should return identical face ordering across multiple calls."""
-    from oversolved.kernel.geometry import solid_to_mesh, extrude_profile
+    from oversolved.kernel.geometry_tessellation import solid_to_mesh, extrude_profile
 
     loops = [
         [{"kind": "line", "start": [0, 0], "end": [1, 0]},
@@ -283,7 +283,8 @@ def test_mesh_face_ordering_stable():
 
 def test_query_face_stability_across_boolean():
     """Face queries should remain stable after boolean operations."""
-    from oversolved.kernel.geometry import solid_to_mesh, boolean_cut, extrude_profile
+    from oversolved.kernel.geometry_tessellation import solid_to_mesh, extrude_profile
+    from oversolved.kernel.cadquery_ops import boolean_cut
 
     outer = [
         [{"kind": "line", "start": [0, 0], "end": [2, 0]},
@@ -321,7 +322,7 @@ def test_boolean_validity_check_rejects_invalid():
 
 def test_validate_mesh_rejects_nan_vertex():
     """_validate_mesh should raise ValueError if a vertex contains NaN."""
-    from oversolved.kernel.geometry import _validate_mesh
+    from oversolved.kernel.geometry_tessellation import _validate_mesh
 
     mesh = {
         "vertices": [[0.0, 0.0, 0.0], [float("nan"), 1.0, 0.0], [1.0, 1.0, 0.0]],
@@ -334,7 +335,7 @@ def test_validate_mesh_rejects_nan_vertex():
 
 def test_validate_mesh_rejects_out_of_range_index():
     """_validate_mesh should raise ValueError if a face index is out of range."""
-    from oversolved.kernel.geometry import _validate_mesh
+    from oversolved.kernel.geometry_tessellation import _validate_mesh
 
     mesh = {
         "vertices": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
@@ -393,7 +394,7 @@ def test_wire_with_arc_on_rotated_plane():
 
 def test_sketch_loops_to_face_with_arc_on_rotated_plane():
     """sketch_loops_to_face must produce a valid face for arcs on rotated planes."""
-    from oversolved.kernel.geometry import sketch_loops_to_face
+    from oversolved.kernel.geometry_tessellation import sketch_loops_to_face
 
     plane = {
         "origin": [0.0, 0.0, 0.0],
@@ -423,7 +424,7 @@ def test_sketch_loops_to_face_with_arc_on_rotated_plane():
 
 def test_extrude_profile_with_arc_on_rotated_plane():
     """extrude_profile must produce a valid solid for arcs on rotated planes."""
-    from oversolved.kernel.geometry import extrude_profile
+    from oversolved.kernel.geometry_tessellation import extrude_profile
 
     plane = {
         "origin": [0.0, 0.0, 0.0],

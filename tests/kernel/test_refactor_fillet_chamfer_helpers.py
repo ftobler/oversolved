@@ -46,7 +46,7 @@ def _edge_count(shape):
 
 def test_apply_edge_modifier_fillet_all_edges():
     """_apply_edge_modifier produces same result as direct apply_fillet call."""
-    from oversolved.kernel.geometry import apply_fillet, _apply_edge_modifier
+    from oversolved.kernel.geometry_features import apply_fillet, _apply_edge_modifier
     from OCP.BRepFilletAPI import BRepFilletAPI_MakeFillet
 
     shape = _box_shape()
@@ -65,7 +65,7 @@ def test_apply_edge_modifier_fillet_all_edges():
 
 def test_apply_edge_modifier_chamfer_all_edges():
     """_apply_edge_modifier produces same result as direct apply_chamfer call."""
-    from oversolved.kernel.geometry import apply_chamfer, _apply_edge_modifier
+    from oversolved.kernel.geometry_features import apply_chamfer, _apply_edge_modifier
     from OCP.BRepFilletAPI import BRepFilletAPI_MakeChamfer
 
     shape = _box_shape()
@@ -84,7 +84,7 @@ def test_apply_edge_modifier_chamfer_all_edges():
 
 def test_apply_edge_modifier_null_shape_returns_original():
     """_apply_edge_modifier returns EdgeModifierResult with original shape when null."""
-    from oversolved.kernel.geometry import _apply_edge_modifier
+    from oversolved.kernel.geometry_features import _apply_edge_modifier
 
     called = []
 
@@ -107,7 +107,7 @@ def test_apply_edge_modifier_null_shape_returns_original():
 
 def test_apply_edge_feature_missing_edges_raises():
     """_apply_edge_feature raises ValueError when no edges provided."""
-    from oversolved.kernel.solver_features import _apply_edge_feature
+    from oversolved.kernel.solver_features_fillet_chamfer import _apply_edge_feature
 
     # Empty edge list should raise immediately.
     feature = {"id": "fi1", "edges": [], "source_body": "ex1"}
@@ -117,7 +117,7 @@ def test_apply_edge_feature_missing_edges_raises():
 
 def test_solve_fillet_no_edges_raises_value_error():
     """_solve_fillet raises ValueError when no edges can be resolved."""
-    from oversolved.kernel.solver_features import _solve_fillet
+    from oversolved.kernel.solver_features_fillet_chamfer import _solve_fillet
     from oversolved.kernel.builder import build
     from oversolved.kernel.query import Repository
     from oversolved.kernel.types3d import Body
@@ -157,7 +157,7 @@ def test_fillet_behavioral_equivalence():
 
 def test_chamfer_behavioral_equivalence():
     """apply_chamfer still produces fewer edges than the plain box."""
-    from oversolved.kernel.geometry import apply_chamfer
+    from oversolved.kernel.geometry_features import apply_chamfer
 
     shape = _box_shape()
     box_edges = _edge_count(shape)

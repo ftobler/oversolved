@@ -10,7 +10,7 @@ by their actual geometric position.
 import pytest
 pytest.importorskip("cadquery.occ_impl.shapes")
 
-from oversolved.kernel.geometry import (  # noqa: E402
+from oversolved.kernel.geometry_tessellation import (  # noqa: E402
     signed_distance_to_line,
     point_in_circle,
     classify_surface_by_line_side,

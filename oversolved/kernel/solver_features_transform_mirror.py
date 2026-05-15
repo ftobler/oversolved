@@ -7,8 +7,8 @@ if TYPE_CHECKING:
     from OCP.TopoDS import TopoDS_Shape
 from oversolved.kernel.query import Repository
 from oversolved.kernel.types3d import Body, Frame3D
-from oversolved.kernel.cadquery_ops import _ensure_occ, apply_transform_shape, make_mirror_trsf
-from oversolved.kernel.geometry import transform_copy, boolean_union
+from oversolved.kernel.cadquery_ops import _ensure_occ, apply_transform_shape, make_mirror_trsf, boolean_union
+from oversolved.kernel.geometry_features import transform_copy
 from oversolved.kernel.solver_features_shared import _resolve_body
 from oversolved.kernel.solver_plane import _get_edge_3d, _get_point_3d
 
@@ -107,8 +107,8 @@ def _solve_transform(
 
 def _solve_mirror(feature: dict, global_repo: Repository, body_store: dict) -> dict:
     from oversolved.kernel.types3d import Body  # noqa: F811
-    from oversolved.kernel.geometry import transform_copy, boolean_union  # noqa: F811
-    from oversolved.kernel.cadquery_ops import make_mirror_trsf  # noqa: F811
+    from oversolved.kernel.geometry_features import transform_copy  # noqa: F811
+    from oversolved.kernel.cadquery_ops import boolean_union, make_mirror_trsf  # noqa: F811
 
     feature_id = feature.get("id", "")
     sub = feature.get("mirror") or {}

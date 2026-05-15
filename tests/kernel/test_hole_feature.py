@@ -167,7 +167,7 @@ def test_hole_missing_xy_entry_warns(caplog):
     """When xy entry is not found for a point entity, a warning is logged."""
     import logging
     from oversolved.kernel.query import Repository
-    from oversolved.kernel.solver_features import _solve_hole
+    from oversolved.kernel.solver_features_hole import _solve_hole
     from oversolved.kernel.types3d import Body
 
     try:
@@ -205,7 +205,7 @@ def test_hole_missing_xy_entry_warns(caplog):
     }
     features_by_id = {"pts": feature}
 
-    with caplog.at_level(logging.WARNING, logger="oversolved.kernel.solver_features"):
+    with caplog.at_level(logging.WARNING, logger="oversolved.kernel.solver_features_hole"):
         _solve_hole(feature, repo, body_store, features_by_id)
 
     assert "p1" in caplog.text or "xy" in caplog.text.lower()

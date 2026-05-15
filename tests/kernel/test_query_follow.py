@@ -749,7 +749,7 @@ def test_geometric_classifiers_disambiguate_circle_divided_by_line() -> None:
     Instead of arbitrary indices like surface:0, surface:1, they should have
     meaningful classifiers like @pos and @neg based on their position.
     """
-    from oversolved.kernel.geometry import classify_surface_by_line_side
+    from oversolved.kernel.geometry_tessellation import classify_surface_by_line_side
 
     # Simulate a circle cut by a horizontal line
     # The circle is divided into upper and lower regions
@@ -782,7 +782,7 @@ def test_geometric_classifiers_disambiguate_standalone_circle() -> None:
 
     These are distinguished by @inner and @outer classifiers.
     """
-    from oversolved.kernel.geometry import classify_surface_by_circle_side
+    from oversolved.kernel.geometry_tessellation import classify_surface_by_circle_side
 
     center = (0, 0)
     radius = 1
@@ -808,7 +808,7 @@ def test_classifiers_are_stable_under_geometric_transformation() -> None:
     if you rotate or translate the sketch, the @pos/@neg relationship
     remains valid (point is still on the same side of the line).
     """
-    from oversolved.kernel.geometry import classify_surface_by_line_side
+    from oversolved.kernel.geometry_tessellation import classify_surface_by_line_side
 
     # Original configuration
     line_start_1 = (0, 0)
@@ -846,7 +846,7 @@ def test_cardinal_classifiers_track_position_changes() -> None:
     If geometry moves, the classification may change, which is correct:
     the surface is now in a different cardinal direction.
     """
-    from oversolved.kernel.geometry import classify_surface_cardinal
+    from oversolved.kernel.geometry_tessellation import classify_surface_cardinal
 
     origin = (0, 0)
 

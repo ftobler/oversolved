@@ -5,7 +5,7 @@ import pytest
 
 pytest.importorskip("OCP.BRep", reason="OCP not installed")
 
-from oversolved.kernel.geometry import extrude_profile, solid_to_edges, solid_to_vertices  # noqa: E402
+from oversolved.kernel.geometry_tessellation import extrude_profile, solid_to_edges, solid_to_vertices  # noqa: E402
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder  # noqa: E402
 
 
@@ -238,14 +238,14 @@ def test_apply_edge_modifier_warns_once(caplog):
     import logging
     import unittest.mock as mock
     from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
-    from oversolved.kernel.geometry import _apply_edge_modifier
+    from oversolved.kernel.geometry_features import _apply_edge_modifier
 
     box = BRepPrimAPI_MakeBox(5.0, 5.0, 5.0).Shape()
 
     def always_fail(maker: object, edge: object) -> None:
         raise RuntimeError("simulated edge failure")
 
-    with caplog.at_level(logging.WARNING, logger="oversolved.kernel.geometry"):
+    with caplog.at_level(logging.WARNING, logger="oversolved.kernel.geometry_features"):
         _apply_edge_modifier(box, None, lambda s: mock.MagicMock(), always_fail)
 
     warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]

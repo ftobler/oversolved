@@ -1187,7 +1187,7 @@ def test_revolve_from_fillet_face_propagates_arcs():
     assert r['result']['fillet1']['status'] == 'ok'
 
     body = r['_body_shapes']['body_ex1']
-    from oversolved.kernel.solver_features import _extract_loops_from_occ_face
+    from oversolved.kernel.solver_features_shared import _extract_loops_from_occ_face
 
     arc_face_index = None
     for fi in range(30):
@@ -1219,7 +1219,7 @@ def test_extract_occ_face_returns_arcs_after_fillet():
     """Direct unit test: _extract_loops_from_occ_face must return arc edges
     for flat-face boundaries shared with a fillet (regression)."""
     import cadquery as cq
-    from oversolved.kernel.solver_features import _extract_loops_from_occ_face
+    from oversolved.kernel.solver_features_shared import _extract_loops_from_occ_face
     from OCP.BRepFilletAPI import BRepFilletAPI_MakeFillet
 
     cq_solid = cq.Workplane('XY').rect(10, 10).extrude(5).solids().val()

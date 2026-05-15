@@ -7,19 +7,17 @@ from solver_helpers import assert_mesh_valid
 
 pytest.importorskip("OCP.gp")
 
-from oversolved.kernel.geometry import (  # noqa: E402
+from oversolved.kernel.geometry_tessellation import (  # noqa: E402
     sketch_loops_to_face,
-    extrude_face,
     extrude_profile,
     revolve_face,
-    boolean_cut,
-    boolean_union,
     solid_to_mesh,
     solid_to_edges,
     solid_to_vertices,
-    step_file_to_shape,
     _validate_mesh,
 )
+from oversolved.kernel.cadquery_ops import extrude_face, boolean_cut, boolean_union  # noqa: E402
+from oversolved.kernel.geometry_io import step_file_to_shape  # noqa: E402
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
 from OCP.STEPControl import STEPControl_Writer, STEPControl_StepModelType  # noqa: E402
 from oversolved.kernel.query import make_ancestry_query  # noqa: E402

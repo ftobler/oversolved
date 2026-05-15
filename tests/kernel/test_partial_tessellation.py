@@ -34,9 +34,9 @@ def _make_body(bid: str = "body_ex1") -> Body:
 
 def test_tessellate_partial_mesh_clears_on_edge_failure():
     body = _make_body()
-    with mock.patch("oversolved.kernel.geometry.solid_to_mesh", return_value=_FAKE_MESH), \
-         mock.patch("oversolved.kernel.geometry.solid_to_edges", side_effect=RuntimeError("edges boom")), \
-         mock.patch("oversolved.kernel.geometry.solid_to_vertices", return_value=_FAKE_VERTS):
+    with mock.patch("oversolved.kernel.geometry_tessellation.solid_to_mesh", return_value=_FAKE_MESH), \
+         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_edges", side_effect=RuntimeError("edges boom")), \
+         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_vertices", return_value=_FAKE_VERTS):
         entry = _tessellate_body_geometry(body)
     assert "mesh" not in entry, "partial mesh must be cleared on subsequent failure"
     assert "mesh_error" in entry
@@ -44,9 +44,9 @@ def test_tessellate_partial_mesh_clears_on_edge_failure():
 
 def test_tessellate_partial_mesh_clears_on_vertex_failure():
     body = _make_body()
-    with mock.patch("oversolved.kernel.geometry.solid_to_mesh", return_value=_FAKE_MESH), \
-         mock.patch("oversolved.kernel.geometry.solid_to_edges", return_value=_FAKE_EDGES), \
-         mock.patch("oversolved.kernel.geometry.solid_to_vertices", side_effect=RuntimeError("verts boom")):
+    with mock.patch("oversolved.kernel.geometry_tessellation.solid_to_mesh", return_value=_FAKE_MESH), \
+         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_edges", return_value=_FAKE_EDGES), \
+         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_vertices", side_effect=RuntimeError("verts boom")):
         entry = _tessellate_body_geometry(body)
     assert "mesh" not in entry
     assert "mesh_error" in entry
@@ -54,9 +54,9 @@ def test_tessellate_partial_mesh_clears_on_vertex_failure():
 
 def test_tessellate_full_success_has_no_mesh_error():
     body = _make_body()
-    with mock.patch("oversolved.kernel.geometry.solid_to_mesh", return_value=_FAKE_MESH), \
-         mock.patch("oversolved.kernel.geometry.solid_to_edges", return_value=_FAKE_EDGES), \
-         mock.patch("oversolved.kernel.geometry.solid_to_vertices", return_value=_FAKE_VERTS):
+    with mock.patch("oversolved.kernel.geometry_tessellation.solid_to_mesh", return_value=_FAKE_MESH), \
+         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_edges", return_value=_FAKE_EDGES), \
+         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_vertices", return_value=_FAKE_VERTS):
         entry = _tessellate_body_geometry(body)
     assert "mesh" in entry
     assert "mesh_error" not in entry
@@ -67,9 +67,9 @@ def test_tessellate_bodies_skips_partial_entry():
     body = _make_body()
     body_store = {"body_ex1": body}
     repo = _init_global_repo()
-    with mock.patch("oversolved.kernel.geometry.solid_to_mesh", return_value=_FAKE_MESH), \
-         mock.patch("oversolved.kernel.geometry.solid_to_edges", side_effect=RuntimeError("boom")), \
-         mock.patch("oversolved.kernel.geometry.solid_to_vertices", return_value=_FAKE_VERTS), \
+    with mock.patch("oversolved.kernel.geometry_tessellation.solid_to_mesh", return_value=_FAKE_MESH), \
+         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_edges", side_effect=RuntimeError("boom")), \
+         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_vertices", return_value=_FAKE_VERTS), \
          mock.patch("oversolved.kernel.builder._register_brep_face_ancestry") as mock_reg:
         _tessellate_bodies(body_store, global_repo=repo)
     mock_reg.assert_not_called()
@@ -87,16 +87,16 @@ def test_register_body_faces_passes_body_id():
 
     real_solid_to_mesh = None
     try:
-        from oversolved.kernel import geometry as _geo
+        from oversolved.kernel import geometry_tessellation as _geo
         real_solid_to_mesh = _geo.solid_to_mesh
     except Exception:
-        pytest.skip("geometry module not available")
+        pytest.skip("geometry_tessellation module not available")
 
     def capturing_solid_to_mesh(shape, **kwargs):
         calls.append(dict(kwargs))
         return real_solid_to_mesh(shape, **kwargs)
 
-    with mock.patch("oversolved.kernel.geometry.solid_to_mesh", side_effect=capturing_solid_to_mesh):
+    with mock.patch("oversolved.kernel.geometry_tessellation.solid_to_mesh", side_effect=capturing_solid_to_mesh):
         build(spec)
 
     assert calls, "solid_to_mesh was never called"
@@ -114,11 +114,11 @@ def test_register_body_faces_passes_body_id_to_edges_and_vertices():
     vert_calls: list[dict] = []
 
     try:
-        from oversolved.kernel import geometry as _geo
+        from oversolved.kernel import geometry_tessellation as _geo
         real_edges = _geo.solid_to_edges
         real_verts = _geo.solid_to_vertices
     except Exception:
-        pytest.skip("geometry module not available")
+        pytest.skip("geometry_tessellation module not available")
 
     def cap_edges(shape, **kwargs):
         edge_calls.append(dict(kwargs))
@@ -128,8 +128,8 @@ def test_register_body_faces_passes_body_id_to_edges_and_vertices():
         vert_calls.append(dict(kwargs))
         return real_verts(shape, **kwargs)
 
-    with mock.patch("oversolved.kernel.geometry.solid_to_edges", side_effect=cap_edges), \
-         mock.patch("oversolved.kernel.geometry.solid_to_vertices", side_effect=cap_verts):
+    with mock.patch("oversolved.kernel.geometry_tessellation.solid_to_edges", side_effect=cap_edges), \
+         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_vertices", side_effect=cap_verts):
         build(spec)
 
     assert edge_calls, "solid_to_edges was never called"

@@ -24,7 +24,7 @@ __all__ = [
 
 
 def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:
-    from oversolved.kernel.geometry import extrude_profile as _ep  # noqa: F811
+    from oversolved.kernel.geometry_tessellation import extrude_profile as _ep  # noqa: F811
 
     feature_id = feature.get("id", "")
     sub = feature.get("extrude") or {}
@@ -86,7 +86,7 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
 
 
 def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> dict:
-    from oversolved.kernel.geometry import sketch_loops_to_face, revolve_face as _rf  # noqa: F811
+    from oversolved.kernel.geometry_tessellation import sketch_loops_to_face, revolve_face as _rf  # noqa: F811
 
     feature_id = feature.get("id", "")
     sub = feature.get("revolve") or {}
@@ -153,7 +153,7 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
             half_angle = angle / 2.0
             tool_shape_pos = _rf(face, axis_origin, axis_direction, half_angle)
             tool_shape_neg = _rf(face, axis_origin, axis_direction, -half_angle)
-            from oversolved.kernel.geometry import boolean_union  # noqa: F811
+            from oversolved.kernel.cadquery_ops import boolean_union  # noqa: F811
             tool_shape = boolean_union(tool_shape_pos, tool_shape_neg)
         else:
             effective_angle = -angle if direction == "reverse" else angle
