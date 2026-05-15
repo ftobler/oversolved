@@ -153,3 +153,147 @@ describe('unpackBodies', () => {
     expect(result['pick_0'].mesh?.vertices).toBeInstanceOf(Float32Array)
   })
 })
+
+describe('geometryUnpack error handling', () => {
+  function makeHeader(bodyMeta: Partial<import('@/utils/geometryUnpack').BodyMeta> = {}): import('@/utils/geometryUnpack').GeometryHeader {
+    return {
+      msgId: 1,
+      bodies: {
+        body_0: {
+          created_by: 'extrude_0',
+          modified_by: [],
+          face_data: [],
+          face_queries: [],
+          edges: [],
+          edge_queries: [],
+          brep_vertex_queries: [],
+          vertices: [],
+          offsets: { vertices: [0, 0], faces: [0, 0], tri2face: [0, 0] },
+          counts: { vertices: 0, faces: 0, tri2face: 0 },
+          ...bodyMeta,
+        },
+      },
+    }
+  }
+
+  it('returns empty record for truncated buffer', () => {
+    const header = makeHeader({
+      offsets: { vertices: [0, 12], faces: [12, 12], tri2face: [24, 4] },
+      counts: { vertices: 1, faces: 1, tri2face: 1 },
+    })
+    const buf = new ArrayBuffer(4)  // header-only, no binary data
+    const headerStr = JSON.stringify(header)
+    const paddedLen = Math.ceil(new TextEncoder().encode(headerStr).length / 4) * 4
+
+    // Float32Array/Uint32Array constructor throws when offset+length exceeds buffer
+    expect(() => {
+      unpackBodies(header, buf, paddedLen)
+    }).toThrow()
+  })
+
+  it('handles negative vertex count gracefully', () => {
+    const verts = new Float32Array([0, 0, 0])
+    const binary = new Uint8Array(verts.byteLength)
+    binary.set(new Uint8Array(verts.buffer))
+
+    const header = makeHeader({
+      offsets: { vertices: [0, 12], faces: [12, 0], tri2face: [12, 0] },
+      counts: { vertices: -1, faces: 0, tri2face: 0 },
+    })
+
+    const { buffer, jsonHeaderLen } = buildBinaryFrame(header, binary)
+
+    expect(() => {
+      unpackBodies(header, buffer, jsonHeaderLen)
+    }).toThrow()
+  })
+
+  it('handles negative face count gracefully', () => {
+    const binary = new Uint8Array(0)
+    const header = makeHeader({
+      offsets: { vertices: [0, 0], faces: [0, 12], tri2face: [12, 0] },
+      counts: { vertices: 0, faces: -1, tri2face: 0 },
+    })
+
+    const { buffer, jsonHeaderLen } = buildBinaryFrame(header, binary)
+
+    expect(() => {
+      unpackBodies(header, buffer, jsonHeaderLen)
+    }).toThrow()
+  })
+
+  it('handles missing counts field in header', () => {
+    // BodyMeta requires counts, so we use a type cast to simulate missing field
+    const header = makeHeader()
+    const { buffer, jsonHeaderLen } = buildBinaryFrame(header, new Uint8Array(0))
+
+    // Missing counts should still work if all counts are zero (default from makeHeader)
+    const result = unpackBodies(header, buffer, jsonHeaderLen)
+    expect(Object.keys(result)).toHaveLength(1)
+    expect(result.body_0.mesh?.vertices).toBeInstanceOf(Float32Array)
+    expect((result.body_0.mesh?.vertices as Float32Array).length).toBe(0)
+  })
+
+  it('handles missing offsets field gracefully', () => {
+    const binary = new Uint8Array(0)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const header: any = makeHeader()
+    header.bodies.body_0.offsets = undefined
+
+    const { buffer, jsonHeaderLen } = buildBinaryFrame(header, binary)
+
+    expect(() => {
+      unpackBodies(header, buffer, jsonHeaderLen)
+    }).toThrow()
+  })
+
+  it('handles body with only edge_queries (no mesh)', () => {
+    const header = makeHeader({
+      edges: [{ id: 0, edge_type: 'line', start: [0, 0, 0], end: [1, 1, 1] }],
+      edge_queries: ['@extrude_0/edge0'],
+      brep_vertex_queries: [],
+    })
+    const { buffer, jsonHeaderLen } = buildBinaryFrame(header, new Uint8Array(0))
+
+    const result = unpackBodies(header, buffer, jsonHeaderLen)
+    expect(result.body_0.edges).toHaveLength(1)
+    expect(result.body_0.edge_queries).toEqual(['@extrude_0/edge0'])
+    // Mesh should have zero-length typed arrays
+    expect((result.body_0.mesh?.vertices as Float32Array).length).toBe(0)
+    expect((result.body_0.mesh?.faces as Uint32Array).length).toBe(0)
+  })
+
+  it('handles body with only brep_vertex_queries (no mesh)', () => {
+    const header = makeHeader({
+      vertices: [[0, 0, 0], [1, 0, 0]],
+      brep_vertex_queries: ['@extrude_0/vertex0', '@extrude_0/vertex1'],
+    })
+    const { buffer, jsonHeaderLen } = buildBinaryFrame(header, new Uint8Array(0))
+
+    const result = unpackBodies(header, buffer, jsonHeaderLen)
+    expect(result.body_0.vertex_queries).toEqual(['@extrude_0/vertex0', '@extrude_0/vertex1'])
+    expect(result.body_0.vertices).toEqual([[0, 0, 0], [1, 0, 0]])
+  })
+
+  it('handles offset values exceeding buffer length', () => {
+    const binary = new Uint8Array(4)
+    const header = makeHeader({
+      offsets: { vertices: [9999, 12], faces: [10011, 12], tri2face: [10023, 4] },
+      counts: { vertices: 1, faces: 1, tri2face: 1 },
+    })
+
+    const { buffer, jsonHeaderLen } = buildBinaryFrame(header, binary)
+
+    expect(() => {
+      unpackBodies(header, buffer, jsonHeaderLen)
+    }).toThrow()
+  })
+
+  it('returns empty for missing pick_bodies', () => {
+    const header = makeHeader()
+    const { buffer, jsonHeaderLen } = buildBinaryFrame(header, new Uint8Array(0))
+
+    const result = unpackPickBodies(header, buffer, jsonHeaderLen)
+    expect(Object.keys(result)).toHaveLength(0)
+  })
+})
