@@ -12,6 +12,7 @@ import SketchToolbar from '@/components/Toolbar/SketchToolbar'
 import AppHeader from '@/components/AppHeader'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { useAuth } from '@/contexts/AuthContext'
+import { useNotify } from '@/contexts/ToastContext'
 import RightClickMenu from '@/components/RightClickMenu'
 import type { ContextMenuItem } from '@/components/RightClickMenu'
 import { Sidebar } from '@/components/Sidebar'
@@ -98,6 +99,7 @@ export default function Part() {
   const partColorPopoverRef = useRef<HTMLDivElement>(null)
   const colorPreviewActive = useRef(false)
   const { user } = useAuth()
+  const notify = useNotify()
 
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo' | 'ws'>('selection')
@@ -506,15 +508,15 @@ useEffect(() => {
     } catch (e) {
       if (e instanceof HttpError) {
         console.error('Export failed:', e.status, e.body)
-        alert(`Export failed: ${e.body}`)
+        notify(`Export failed: ${e.body}`, 'error')
       } else {
         console.error('Export error:', e)
-        alert(`Export error: ${e}`)
+        notify(`Export error: ${e}`, 'error')
       }
     }
     setExportTargetBodyId(null)
     setExportDialogOpen(false)
-  }, [doc, exportTargetBodyId, exportDefaultName])
+  }, [doc, exportTargetBodyId, exportDefaultName, notify])
 
   const handleExportCancel = useCallback(() => {
     setExportTargetBodyId(null)
@@ -639,7 +641,7 @@ useEffect(() => {
       }
       await http.postJson('/api/bug-report', report)
       setBugReportForm({ title: '', description: '' })
-      alert('Bug report submitted successfully!')
+      notify('Bug report submitted successfully!', 'success')
       setDebugTab('selection')
     } catch (e) {
       setBugReportError(`Failed to submit: ${e}`)
@@ -747,6 +749,11 @@ useEffect(() => {
         startPreviewMode(docRef.current)
         colorPreviewActive.current = true
       }
+      // Focus the first focusable element inside the popover
+      requestAnimationFrame(() => {
+        const firstInput = partColorPopoverRef.current?.querySelector('input, button') as HTMLElement | null
+        firstInput?.focus()
+      })
     } else {
       // Preview mode cleanup below
       if (colorPreviewActive.current) {
@@ -1037,6 +1044,7 @@ useEffect(() => {
         <div className="undo-redo-btn-group">
           <button
             className="toolbar-btn"
+            aria-label="Undo"
             onClick={() => executeCommand('undo')}
             disabled={undoStack.length === 0}
             onMouseEnter={() => setUndoHover(true)}
@@ -1056,6 +1064,7 @@ useEffect(() => {
           )}
           <button
             className="toolbar-btn"
+            aria-label="Redo"
             onClick={() => executeCommand('redo')}
             disabled={redoStack.length === 0}
             onMouseEnter={() => setRedoHover(true)}
@@ -1074,15 +1083,16 @@ useEffect(() => {
             </div>
           )}
         </div>
-        <button className="toolbar-btn" title="Save" onClick={handleSave} disabled={readOnly}>
+        <button className="toolbar-btn" aria-label="Save" title="Save" onClick={handleSave} disabled={readOnly}>
           <span className="material-icons-outlined">save</span>
         </button>
-        <button className="toolbar-btn" title="Clone document" onClick={handleClone}>
+        <button className="toolbar-btn" aria-label="Clone document" title="Clone document" onClick={handleClone}>
           <span className="material-icons-outlined">file_copy</span>
         </button>
         {permission === 'owner' && (
           <button
             className="toolbar-btn"
+            aria-label="Share document"
             title="Share document"
             onClick={() => setShareDocOpen(true)}
             disabled={readOnly}
@@ -1108,9 +1118,9 @@ useEffect(() => {
             autoFocus
           />
         ) : (
-          <h2 className="doc-name" onClick={() => setIsEditing(true)}>
+          <button className="doc-name" aria-label="Edit document name" onClick={() => setIsEditing(true)}>
             {docName}
-          </h2>
+          </button>
         )}
       </AppHeader>
 
@@ -1267,10 +1277,39 @@ useEffect(() => {
         <div
           ref={partColorPopoverRef}
           className="part-color-popover"
+          tabIndex={-1}
           style={{ left: partColorPopover.position[0], top: partColorPopover.position[1] + 6 }}
           onMouseDown={e => e.stopPropagation()}
           onPointerDown={e => e.stopPropagation()}
           onClick={e => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              handleColorCancel()
+              return
+            }
+            if (e.key === 'Tab') {
+              const container = partColorPopoverRef.current
+              if (!container) return
+              const focusable = container.querySelectorAll<HTMLElement>(
+                'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+              )
+              if (focusable.length === 0) return
+              const first = focusable[0]
+              const last = focusable[focusable.length - 1]
+              if (e.shiftKey) {
+                if (document.activeElement === first) {
+                  e.preventDefault()
+                  last.focus()
+                }
+              } else {
+                if (document.activeElement === last) {
+                  e.preventDefault()
+                  first.focus()
+                }
+              }
+            }
+          }}
         >
           <div className="part-color-popover-row">
             <span className="part-color-popover-label">Color</span>
