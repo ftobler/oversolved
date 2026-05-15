@@ -129,4 +129,57 @@ describe('Part - eliminate redundant solves', () => {
       expect(countSolveCalls()).toBe(1)
     })
   })
+
+  it('adds extrude then sketch with exactly 2 total solves', async () => {
+    await renderAndWaitForLoad()
+    vi.mocked(solverWs.solve).mockClear()
+
+    fireEvent.click(screen.getByTitle('Feature mode'))
+    fireEvent.click(screen.getByTitle('Add Extrude (E)'))
+
+    await waitFor(() => {
+      expect(countSolveCalls()).toBe(1)
+    })
+
+    fireEvent.click(screen.getByTitle('Sketch'))
+
+    await waitFor(() => {
+      expect(countSolveCalls()).toBe(2)
+    })
+  })
+
+  it('user rollback change triggers exactly 1 solve', async () => {
+    await renderAndWaitForLoad()
+    vi.mocked(solverWs.solve).mockClear()
+
+    fireEvent.click(screen.getByTitle('Feature mode'))
+    fireEvent.click(screen.getByTitle('Add Extrude (E)'))
+
+    await waitFor(() => {
+      expect(countSolveCalls()).toBe(1)
+    })
+
+    vi.mocked(solverWs.solve).mockClear()
+
+    const rollbackBars = screen.getAllByTitle('Rollback')
+    const lastBar = rollbackBars[rollbackBars.length - 1]
+
+    const dragStartEvent = new MouseEvent('dragstart', { bubbles: true, cancelable: true })
+    Object.defineProperty(dragStartEvent, 'dataTransfer', {
+      value: { effectAllowed: '', setData: vi.fn(), getData: vi.fn() },
+      configurable: true,
+    })
+    fireEvent(lastBar, dragStartEvent)
+
+    const dropEvent = new MouseEvent('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(dropEvent, 'dataTransfer', {
+      value: { effectAllowed: '', setData: vi.fn(), getData: vi.fn() },
+      configurable: true,
+    })
+    fireEvent(lastBar, dropEvent)
+
+    await waitFor(() => {
+      expect(countSolveCalls()).toBe(1)
+    })
+  })
 })

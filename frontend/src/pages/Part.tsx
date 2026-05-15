@@ -48,6 +48,8 @@ import { BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
 
 const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 
+type RollbackState = { position: number | null; source: 'user' | 'handler' | null }
+
 function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
 }
@@ -59,7 +61,12 @@ export default function Part() {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [mode, setModeRaw] = useState<'sketch' | 'feature' | 'code'>('sketch')
-  const [rollbackPosition, setRollbackPosition] = useState<number | null>(null)
+  const [rollbackState, setRollbackState] = useState<RollbackState>({ position: null, source: null })
+  const rollbackPosition = rollbackState.position
+  const setRollbackFromUser = useCallback((pos: number | null) =>
+    setRollbackState({ position: pos, source: 'user' }), [])
+  const setRollbackFromHandler = useCallback((pos: number | null) =>
+    setRollbackState({ position: pos, source: 'handler' }), [])
   const [savedRollbackPosition, setSavedRollbackPosition] = useState<number | null>(null)
   const editEntryRollback = useRef<number | null>(null)
   const [editForcedVisible, setEditForcedVisible] = useState<Set<string>>(new Set())
@@ -183,32 +190,22 @@ export default function Part() {
   useEffect(() => {
     if (doc && !rollbackInitialized.current) {
       rollbackInitialized.current = true
-      setRollbackPosition(extractFeatures(doc).length)
+      setRollbackFromHandler(extractFeatures(doc).length)
     }
-  }, [doc])
+  }, [doc, setRollbackFromHandler])
 
   useEffect(() => {
     if (rollbackPosition !== null && rollbackPosition > features.length) {
-      setRollbackPosition(features.length)
+      setRollbackFromHandler(features.length)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [features.length])
 
-  const rollbackInitializedForSolve = useRef(false)
-  const currentFeaturesLength = useRef(features.length)
-  currentFeaturesLength.current = features.length
-  const rollbackChangeSource = useRef<'handler' | 'user' | null>(null)
-useEffect(() => {
-    if (!rollbackInitializedForSolve.current) {
-      rollbackInitializedForSolve.current = true
-      return
-    }
-    if (rollbackChangeSource.current === 'handler') {
-      return
-    }
+  useEffect(() => {
+    if (rollbackState.source !== 'user') return
     setPickBoundary(null)
-    if (docRef.current) reSolve(docRef.current, rollbackPosition ?? currentFeaturesLength.current)
-  }, [rollbackPosition, docRef, reSolve, setPickBoundary])
+    if (docRef.current) reSolve(docRef.current, rollbackState.position ?? features.length)
+  }, [rollbackState, docRef, reSolve, setPickBoundary, features.length])
 
   const activeSketchFeatureId = useMemo(() => {
     if (!editingFeatureId) return undefined
@@ -338,11 +335,6 @@ useEffect(() => {
     prevEditingIdRef.current = editingFeatureId
     if (prev === editingFeatureId) return
 
-    if (rollbackChangeSource.current === 'handler') {
-      rollbackChangeSource.current = null
-      return
-    }
-
     const feature = features.find(f => f.id === editingFeatureId)
     let nextBoundary: number | null = null
     if (feature && feature.kind !== 'sketch' && feature.kind !== 'plane') {
@@ -395,11 +387,9 @@ useEffect(() => {
     setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     setRollbackPos(features.length + 1)
     handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
-    rollbackChangeSource.current = 'handler'
-    setRollbackPosition(features.length + 1)
-    rollbackChangeSource.current = 'handler'
+    setRollbackFromHandler(features.length + 1)
     setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos])
+  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos, setRollbackFromHandler])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
@@ -410,11 +400,9 @@ useEffect(() => {
     const definition = faceQuery ? { mode: 'on_face', face: faceQuery } as const : undefined
     setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_plane', featureId, label, definition })
-    rollbackChangeSource.current = 'handler'
-    setRollbackPosition(features.length + 1)
-    rollbackChangeSource.current = 'handler'
+    setRollbackFromHandler(features.length + 1)
     setEditingFeatureId(featureId)
-  }, [doc, features.length, handleMutation, selection, setRollbackPos])
+  }, [doc, features.length, handleMutation, selection, setRollbackPos, setRollbackFromHandler])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
@@ -424,12 +412,10 @@ useEffect(() => {
     setPendingPickField(null)
     setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_sketch', featureId, label })
-    rollbackChangeSource.current = 'handler'
-    setRollbackPosition(features.length + 1)
+    setRollbackFromHandler(features.length + 1)
     setPlaneSelectionFeatureId(featureId)
-    rollbackChangeSource.current = 'handler'
     setEditingFeatureId(featureId)
-  }, [doc, features.length, handleMutation, setPendingPickField, setPlaneSelectionFeatureId, setRollbackPos])
+  }, [doc, features.length, handleMutation, setPendingPickField, setPlaneSelectionFeatureId, setRollbackPos, setRollbackFromHandler])
 
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')
@@ -623,9 +609,8 @@ useEffect(() => {
   }, [])
 
   const handleUserRollbackChange = useCallback((pos: number | null) => {
-    rollbackChangeSource.current = 'user'
-    setRollbackPosition(pos)
-  }, [])
+    setRollbackFromUser(pos)
+  }, [setRollbackFromUser])
 
   const toggleVisibility = useCallback((featureId: string) => {
     handleMutation({ type: 'set_feature_visibility', featureId, visible: !visibleFeatures.has(featureId) })
@@ -725,17 +710,17 @@ useEffect(() => {
     if (idx < 0) return
     setSavedRollbackPosition(rollbackPosition ?? features.length)
     editEntryRollback.current = idx + 1
-    setRollbackPosition(idx + 1)
+    setRollbackFromHandler(idx + 1)
     setEditForcedVisible(new Set([featureId]))
     setEditingFeatureId(featureId)
     setPickBoundary(null)
     setPickBodies({})
-  }, [features, rollbackPosition, setPickBoundary, setPickBodies])
+  }, [features, rollbackPosition, setPickBoundary, setPickBodies, setRollbackFromHandler])
 
   const exitEditFeature = useCallback(() => {
     if (savedRollbackPosition !== null) {
       if (rollbackPosition === editEntryRollback.current || rollbackPosition === null) {
-        setRollbackPosition(savedRollbackPosition)
+        setRollbackFromHandler(savedRollbackPosition)
       }
       editEntryRollback.current = null
       setSavedRollbackPosition(null)
@@ -745,7 +730,7 @@ useEffect(() => {
     setPendingPickField(null)
     setPickBoundary(null)
     handleRebuildRef.current?.()
-  }, [savedRollbackPosition, rollbackPosition, setPendingPickField, setPickBoundary, handleRebuildRef])
+  }, [savedRollbackPosition, rollbackPosition, setPendingPickField, setPickBoundary, handleRebuildRef, setRollbackFromHandler])
 
   const enterEditSketch = useCallback((featureId: string) => {
     enterEditFeature(featureId)
