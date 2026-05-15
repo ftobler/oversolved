@@ -249,7 +249,7 @@ describe('geometryUnpack error handling', () => {
 
   it('handles body with only edge_queries (no mesh)', () => {
     const header = makeHeader({
-      edges: [{ id: 0, edge_type: 'line', start: [0, 0, 0], end: [1, 1, 1] }],
+      edges: [{ kind: 'line', start: [0, 0, 0], end: [1, 1, 1] }],
       edge_queries: ['@extrude_0/edge0'],
       brep_vertex_queries: [],
     })

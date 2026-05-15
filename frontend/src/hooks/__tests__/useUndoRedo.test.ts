@@ -118,7 +118,7 @@ describe('useUndoRedo', () => {
     reSolve.mockClear()
 
     act(() => {
-      result.current.pushUndo({ type: 'new_mutation' } as Mutation, docRef.current!)
+      result.current.pushUndo({ type: 'new_mutation' } as unknown as Mutation, docRef.current!)
     })
 
     expect(result.current.redoStack).toHaveLength(0)

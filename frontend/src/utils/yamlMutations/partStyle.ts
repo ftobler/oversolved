@@ -1,5 +1,5 @@
 import type { PartDoc, PartFeature, PartStyleEntry } from '@/types/cad'
-import { warn, findFeature } from './helpers'
+import { findFeature } from './helpers'
 
 const BUILTIN_FEATURE_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
 

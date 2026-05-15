@@ -25,7 +25,7 @@ const defaultState: Record<string, unknown> = {
 
 describe('partEditorStore', () => {
   beforeEach(() => {
-    usePartEditorStore.setState(defaultState as Parameters<typeof usePartEditorStore.setState>[0])
+    usePartEditorStore.setState(defaultState as unknown as Parameters<typeof usePartEditorStore.setState>[0])
   })
 
   it('default state has empty features and null doc', () => {

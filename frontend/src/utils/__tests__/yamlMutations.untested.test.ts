@@ -352,13 +352,13 @@ describe('applyAddBoolean', () => {
 describe('applySetBooleanOperation', () => {
   it('sets boolean operation', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'bool1', kind: 'boolean', boolean: { operation: 'union', target: '', tools: [] } }] }
-    applySetBooleanOperation(doc, 'bool1', 'difference')
+    applySetBooleanOperation(doc, 'bool1', 'subtract')
     expect(doc.features![0].boolean!.operation).toBe('difference')
   })
 
   it('no-ops for feature without boolean', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ext1', kind: 'extrude', extrude: { sketch: ['s1'], distance: 10, direction: 'normal' } }] }
-    applySetBooleanOperation(doc, 'ext1', 'intersection')
+    applySetBooleanOperation(doc, 'ext1', 'intersect')
     expect(doc.features![0].extrude!.distance).toBe(10)
   })
 })
