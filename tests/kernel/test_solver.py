@@ -1,5 +1,6 @@
 import math
 import yaml as yaml_module
+import pytest
 from pytest import approx
 from oversolved.kernel.solver import solve
 from solver_helpers import TOL, length, angle_between, to_geom
@@ -775,3 +776,19 @@ def test_repo_structure_cache_capped_to_one_entry():
     # The variable is a single tuple (key, repo), not a dict with multiple entries.
     assert isinstance(entry, tuple)
     assert len(entry) == 2
+
+
+@pytest.mark.parametrize("plane_name", ["Top", "Front", "Right"])
+def test_resolve_sketch_plane_fallback(plane_name):
+    """Built-in plane names resolve to standard planes when resolve_ref fails."""
+    from oversolved.kernel.solver import _resolve_sketch_plane
+
+    def resolve_ref(_query):
+        return None
+
+    result = _resolve_sketch_plane(plane_name, resolve_ref, None)
+    assert result is not None
+    assert "origin" in result
+    assert "x_axis" in result
+    assert "y_axis" in result
+    assert "normal" in result
