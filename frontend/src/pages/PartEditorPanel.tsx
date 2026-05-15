@@ -25,6 +25,7 @@ import featureExportIcon from '@/assets/icons/icon-download.svg'
 
 interface PartEditorPanelProps {
   children: ReactNode
+  rightPanel?: ReactNode
   mode: string
   setMode: (newMode: 'sketch' | 'feature' | 'code') => void
   codeText: string
@@ -53,6 +54,7 @@ interface PartEditorPanelProps {
 
 export default function PartEditorPanel({
   children,
+  rightPanel,
   mode, setMode,
   codeText, setCodeText,
   solving, solveTime, solveResult,
@@ -161,6 +163,7 @@ export default function PartEditorPanel({
           </div>
         )}
       </div>
+      {rightPanel}
     </div>
   )
 }

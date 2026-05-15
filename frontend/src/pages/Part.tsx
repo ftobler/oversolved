@@ -865,24 +865,25 @@ export default function Part() {
         viewportRef={viewportRef}
         viewportReset={viewportReset}
         handleRightClick={handleRightClick}
+        rightPanel={
+          <PartDebugPanel
+            debugOpen={debugOpen && !!user?.is_admin}
+            debugTab={debugTab}
+            setDebugTab={setDebugTab}
+            bugReportForm={bugReportForm}
+            setBugReportForm={setBugReportForm}
+            bugReporting={bugReporting}
+            bugReportError={bugReportError}
+            bugReportAttachments={bugReportAttachments}
+            setBugReportAttachments={setBugReportAttachments}
+            onSubmitBugReport={handleSubmitBugReport}
+          />
+        }
       >
         <PartEditorProvider value={partEditorCallbacks}>
           <Sidebar />
         </PartEditorProvider>
       </PartEditorPanel>
-
-      <PartDebugPanel
-        debugOpen={debugOpen && !!user?.is_admin}
-        debugTab={debugTab}
-        setDebugTab={setDebugTab}
-        bugReportForm={bugReportForm}
-        setBugReportForm={setBugReportForm}
-        bugReporting={bugReporting}
-        bugReportError={bugReportError}
-        bugReportAttachments={bugReportAttachments}
-        setBugReportAttachments={setBugReportAttachments}
-        onSubmitBugReport={handleSubmitBugReport}
-      />
 
       <footer className="doc-footer">
         <p>Copyright 2026 - Oversolved</p>
