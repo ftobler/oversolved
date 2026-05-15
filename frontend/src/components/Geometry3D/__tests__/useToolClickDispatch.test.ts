@@ -26,7 +26,6 @@ beforeEach(() => {
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
     isPointerDown: false,
-    onMutation: null,
     pendingPickField: null,
     pendingDimTarget: null,
     pendingDimEntityKind: null,

@@ -2,7 +2,7 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import { useCallback } from 'react'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore, getSketchCallback } from '../../stores/sketchEditorStore'
 import { toolRegistry } from '../../registry/toolRegistry'
 import type { DragToolContext } from '../../tools/DragTool'
 
@@ -51,7 +51,7 @@ export function useDragInitiation() {
         hoveredVertexId: config.id,
         hoveredVertexPosition: [config.startWorld[0], config.startWorld[1]],
         hoveredSnapKind: state.hoveredSnapKind,
-        onMutation: state.onMutation,
+        onMutation: getSketchCallback('onMutation'),
         drag: null,
         dragPending: null,
         dragSnap: state.dragSnap,

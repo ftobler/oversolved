@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { builtinSelectionId } from '../Geometry3D/utils'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback } from '../../stores/sketchEditorStore'
 
 describe('builtinSelectionId', () => {
   it('returns @builtin_plane_front for Front', () => {
@@ -57,13 +57,13 @@ describe('builtin click in normal mode (planeSelectionFeatureId=null)', () => {
 
   it('toggleNormalSelection emits no mutation when onMutation is null (normal mode)', () => {
     const state = useSketchEditorStore.getState()
-    expect(state.onMutation).toBeNull()
+    // onMutation is stored outside the Zustand state; verify no throw with no callback set
     expect(() => state.toggleNormalSelection('@builtin_plane_front')).not.toThrow()
   })
 
   it('adds builtin to selection and emits no set_feature_plane mutation', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.getState().toggleNormalSelection('@builtin_plane_top')
     expect(useSketchEditorStore.getState().normalSelection.has('@builtin_plane_top')).toBe(true)
     expect(mutations).toHaveLength(0)
@@ -71,7 +71,7 @@ describe('builtin click in normal mode (planeSelectionFeatureId=null)', () => {
 
   it('commitPlaneSelection is no-op when planeSelectionFeatureId is null', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.getState().commitPlaneSelection('@builtin_plane_top')
     expect(mutations).toHaveLength(0)
   })

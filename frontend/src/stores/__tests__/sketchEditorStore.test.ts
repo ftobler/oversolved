@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useSketchEditorStore } from '../sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback } from '../sketchEditorStore'
 
 function reset() {
   useSketchEditorStore.setState({
@@ -9,7 +9,6 @@ function reset() {
     isPointerDown: false,
     drag: null,
     orbitEnabled: true,
-    onMutation: null,
     activeTool: 'dimension',
     activeFeatureId: null,
     pendingDimTarget: null,
@@ -22,6 +21,7 @@ function reset() {
     hoveredSnapKind: null,
     hoveredConstraintEntityIds: new Set(),
   })
+  setSketchCallback('onMutation', null)
 }
 
 describe('sketchEditorStore', () => {
@@ -85,7 +85,7 @@ describe('sketchEditorStore', () => {
   describe('deleteSelected', () => {
     it('dispatches mutation and clears selection', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
       useSketchEditorStore.getState().toggleNormalSelection('constraint:S1:C1')
@@ -102,7 +102,7 @@ describe('sketchEditorStore', () => {
 
     it('does nothing with no selection', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().deleteSelected()
       expect(handler).not.toHaveBeenCalled()
     })
@@ -117,7 +117,7 @@ describe('sketchEditorStore', () => {
   describe('applyConstraint', () => {
     it('dispatches add_constraint with selected targets', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L2')
@@ -135,7 +135,7 @@ describe('sketchEditorStore', () => {
 
     it('dispatches parallel constraint with two selected lines', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L2')
@@ -153,14 +153,14 @@ describe('sketchEditorStore', () => {
 
     it('does nothing with empty selection', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().applyConstraint('horizontal')
       expect(handler).not.toHaveBeenCalled()
     })
 
     it('does nothing with no activeFeatureId', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
       useSketchEditorStore.getState().applyConstraint('horizontal')
       expect(handler).not.toHaveBeenCalled()
@@ -175,7 +175,7 @@ describe('sketchEditorStore', () => {
     describe('midpoint', () => {
       it('accepts 1 entity + 1 vertex', () => {
         const handler = vi.fn()
-        useSketchEditorStore.getState().setOnMutation(handler)
+        setSketchCallback('onMutation', handler)
         useSketchEditorStore.getState().setActiveFeatureId('S1')
         useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
         useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
@@ -191,7 +191,7 @@ describe('sketchEditorStore', () => {
 
       it('accepts 3 vertices', () => {
         const handler = vi.fn()
-        useSketchEditorStore.getState().setOnMutation(handler)
+        setSketchCallback('onMutation', handler)
         useSketchEditorStore.getState().setActiveFeatureId('S1')
         useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
         useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L2:end')
@@ -208,7 +208,7 @@ describe('sketchEditorStore', () => {
 
       it('rejects 1 entity only', () => {
         const handler = vi.fn()
-        useSketchEditorStore.getState().setOnMutation(handler)
+        setSketchCallback('onMutation', handler)
         useSketchEditorStore.getState().setActiveFeatureId('S1')
         useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
         useSketchEditorStore.getState().applyConstraint('midpoint')
@@ -217,7 +217,7 @@ describe('sketchEditorStore', () => {
 
       it('rejects 2 entities', () => {
         const handler = vi.fn()
-        useSketchEditorStore.getState().setOnMutation(handler)
+        setSketchCallback('onMutation', handler)
         useSketchEditorStore.getState().setActiveFeatureId('S1')
         useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
         useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L2')
@@ -227,7 +227,7 @@ describe('sketchEditorStore', () => {
 
       it('rejects 1 entity + 2 vertices', () => {
         const handler = vi.fn()
-        useSketchEditorStore.getState().setOnMutation(handler)
+        setSketchCallback('onMutation', handler)
         useSketchEditorStore.getState().setActiveFeatureId('S1')
         useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
         useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
@@ -241,7 +241,7 @@ describe('sketchEditorStore', () => {
   describe('toggleConstruction', () => {
     it('dispatches toggle_construction with entity targets', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L2')
       useSketchEditorStore.getState().toggleConstruction()
@@ -253,7 +253,7 @@ describe('sketchEditorStore', () => {
 
     it('filters out non-entity selection items', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
       useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
       useSketchEditorStore.getState().toggleNormalSelection('constraint:S1:C1')
@@ -266,7 +266,7 @@ describe('sketchEditorStore', () => {
 
     it('does nothing when only non-entity items are selected', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
       useSketchEditorStore.getState().toggleConstruction()
       expect(handler).not.toHaveBeenCalled()
@@ -274,7 +274,7 @@ describe('sketchEditorStore', () => {
 
     it('does nothing with empty selection', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().toggleConstruction()
       expect(handler).not.toHaveBeenCalled()
     })
@@ -288,7 +288,7 @@ describe('sketchEditorStore', () => {
   describe('deleteSelected', () => {
     it('skips entities from a different feature', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:S2:L1')
@@ -301,7 +301,7 @@ describe('sketchEditorStore', () => {
 
     it('does nothing when all selected entities belong to other features', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:S2:L1')
       useSketchEditorStore.getState().deleteSelected()
@@ -310,7 +310,7 @@ describe('sketchEditorStore', () => {
 
     it('clears selection after dispatch', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
       useSketchEditorStore.getState().deleteSelected()
@@ -500,7 +500,7 @@ describe('sketchEditorStore', () => {
 
     it('commitPlaneSelection dispatches mutation with face query', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
       useSketchEditorStore.getState().commitPlaneSelection('face:sketch0:?3;@sketch0abc')
       expect(handler).toHaveBeenCalledWith({
@@ -512,7 +512,7 @@ describe('sketchEditorStore', () => {
 
     it('commitPlaneSelection is no-op when no feature selected', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().commitPlaneSelection('face:sketch0:?3;@sketch0abc')
       expect(handler).not.toHaveBeenCalled()
     })
@@ -578,7 +578,7 @@ describe('sketchEditorStore', () => {
 
     it('applyConstraint does nothing when domain is body_3d', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('@ex1/edge/0')
       useSketchEditorStore.getState().applyConstraint('horizontal')
@@ -587,7 +587,7 @@ describe('sketchEditorStore', () => {
 
     it('applyConstraint applies to sketch entities even in mixed domain', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
       useSketchEditorStore.getState().toggleNormalSelection('@ex1/edge/0')
@@ -603,7 +603,7 @@ describe('sketchEditorStore', () => {
 
     it('applyConstraint includes @builtin_origin in targets for coincident constraint', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
       useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
@@ -618,7 +618,7 @@ describe('sketchEditorStore', () => {
 
     it('applyConstraint does nothing in mixed domain with no sketch entities', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('@ex1/edge/0')
       useSketchEditorStore.getState().toggleNormalSelection('@plane1')
@@ -630,7 +630,7 @@ describe('sketchEditorStore', () => {
   describe('commitFieldPick (sketch field)', () => {
     it('dispatches add_extrude_profile with face ancestry query and keeps pick mode open', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'ex2', field: 'sketch' },
       })
@@ -649,7 +649,7 @@ describe('sketchEditorStore', () => {
 
     it('passes raw selection id through for non-face picks', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'ex1', field: 'sketch' },
       })
@@ -664,7 +664,7 @@ describe('sketchEditorStore', () => {
 
     it('face pick dispatches set_plane_definition_field with ancestry query', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'plane1', field: 'origin' },
       })
@@ -682,7 +682,7 @@ describe('sketchEditorStore', () => {
 
     it('vertex pick dispatches set_plane_definition_field with @ reference', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'plane1', field: 'x_axis' },
       })
@@ -698,7 +698,7 @@ describe('sketchEditorStore', () => {
 
     it('entity pick dispatches set_plane_definition_field with @ reference', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'plane1', field: 'normal' },
       })
@@ -714,7 +714,7 @@ describe('sketchEditorStore', () => {
 
     it('does nothing when no pendingPickField', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).not.toHaveBeenCalled()
@@ -722,7 +722,7 @@ describe('sketchEditorStore', () => {
 
     it('does nothing when selection is empty', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'plane1', field: 'origin' },
       })
@@ -732,7 +732,7 @@ describe('sketchEditorStore', () => {
 
     it('edge pick dispatches add_fillet_edge and keeps pick mode open', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'fillet1', field: 'edges', hostKind: 'fillet' },
       })
@@ -750,7 +750,7 @@ describe('sketchEditorStore', () => {
 
     it('edge pick dispatches add_chamfer_edge for chamfer hostKind', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'chamfer1', field: 'edges', hostKind: 'chamfer' },
       })
@@ -766,7 +766,7 @@ describe('sketchEditorStore', () => {
 
     it('body pick from body: prefix dispatches set_delete_body_target', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'db1', field: 'body', hostKind: 'delete_body' },
       })
@@ -782,7 +782,7 @@ describe('sketchEditorStore', () => {
 
     it('body pick from ancestry query extracts parent feature id', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'db1', field: 'body', hostKind: 'delete_body' },
       })
@@ -799,7 +799,7 @@ describe('sketchEditorStore', () => {
 
     it('body pick from @featureId/face/N extracts feature id', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'db1', field: 'body', hostKind: 'delete_body' },
       })
@@ -815,7 +815,7 @@ describe('sketchEditorStore', () => {
 
     it('body pick passes through direct @body_id', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'db1', field: 'body', hostKind: 'delete_body' },
       })
@@ -831,7 +831,7 @@ describe('sketchEditorStore', () => {
 
     it('boolean target pick from face query extracts feature id', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'b1', field: 'boolean_target' },
       })
@@ -847,7 +847,7 @@ describe('sketchEditorStore', () => {
 
     it('boolean tool pick from ancestry query extracts parent id', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'b1', field: 'boolean_tool' },
       })
@@ -864,7 +864,7 @@ describe('sketchEditorStore', () => {
 
     it('boolean target pick passes through direct @body_id', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'b1', field: 'boolean_target' },
       })
@@ -880,7 +880,7 @@ describe('sketchEditorStore', () => {
 
     it('transform body pick dispatches set_transform_field', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 't1', field: 'body', hostKind: 'transform' },
       })
@@ -897,7 +897,7 @@ describe('sketchEditorStore', () => {
 
     it('merge_target pick from face query dispatches set_extrude_merge_target and closes pick mode', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'ex2', field: 'merge_target' },
       })
@@ -913,7 +913,7 @@ describe('sketchEditorStore', () => {
 
     it('merge_target pick passes through direct @body_id', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'ex2', field: 'merge_target' },
       })
@@ -929,7 +929,7 @@ describe('sketchEditorStore', () => {
 
     it('merge_target pick clears pickChipHighlightItems after single selection', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'ex2', field: 'merge_target' },
         pickChipHighlightItems: ['@body_ex1'],
@@ -941,7 +941,7 @@ describe('sketchEditorStore', () => {
 
     it('merge_target pick with hostKind revolve dispatches set_revolve_merge_target', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'rev1', field: 'merge_target', hostKind: 'revolve' },
       })
@@ -957,7 +957,7 @@ describe('sketchEditorStore', () => {
 
     it('merge_target pick with hostKind revolve passes through direct @body_id', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'rev1', field: 'merge_target', hostKind: 'revolve' },
       })
@@ -973,7 +973,7 @@ describe('sketchEditorStore', () => {
 
     it('sketch pick with hostKind hole dispatches set_hole_sketch', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'h1', field: 'sketch', hostKind: 'hole' },
       })
@@ -1020,7 +1020,7 @@ describe('sketchEditorStore', () => {
 
     it('commitFieldPick with single-pick field clears pickChipHighlightItems (boolean_target)', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'b1', field: 'boolean_target' },
         pickChipHighlightItems: ['@body_ex1'],
@@ -1032,7 +1032,7 @@ describe('sketchEditorStore', () => {
 
     it('commitFieldPick with multi-pick field preserves pickChipHighlightItems (edges)', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'f1', field: 'edges', hostKind: 'fillet' },
         pickChipHighlightItems: ['@body_ex1/edge/0'],
@@ -1044,7 +1044,7 @@ describe('sketchEditorStore', () => {
 
     it('commitFieldPick with multi-pick field (sketch/extrude) preserves pickChipHighlightItems', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'ex1', field: 'sketch' },
         pickChipHighlightItems: ['@body_ex1/face/0'],
@@ -1056,7 +1056,7 @@ describe('sketchEditorStore', () => {
 
     it('commitFieldPick with single-pick field (body/delete_body) clears pickChipHighlightItems', () => {
       const handler = vi.fn()
-      useSketchEditorStore.getState().setOnMutation(handler)
+      setSketchCallback('onMutation', handler)
       useSketchEditorStore.setState({
         pendingPickField: { featureId: 'db1', field: 'body', hostKind: 'delete_body' },
         pickChipHighlightItems: ['@body_ex1'],
@@ -1071,7 +1071,7 @@ describe('sketchEditorStore', () => {
         planeSelectionFeatureId: 'sk1',
         pickChipHighlightItems: ['?body_ex1/face/0'],
       })
-      useSketchEditorStore.getState().setOnMutation(vi.fn())
+      setSketchCallback('onMutation', vi.fn())
       useSketchEditorStore.getState().toggleNormalSelection('?body_ex1/face/0')
       useSketchEditorStore.getState().commitPlaneSelection('?body_ex1/face/0')
       expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual([])

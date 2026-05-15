@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback } from '../../stores/sketchEditorStore'
 import { registerCommand, executeCommand, unregisterCommand, clearAllHandlers } from '../../stores/commandRegistry'
 
 // Ensure clean state before each test
@@ -11,9 +11,9 @@ function reset() {
     internalHoverSelection: null,
     dynamicSelection: new Set(),
     isPointerDown: false,
-    onMutation: null,
     planeSelectionFeatureId: null,
   })
+  setSketchCallback('onMutation', null)
 }
 
 // 4a: initial state
@@ -46,7 +46,7 @@ describe('commitPlaneSelection with builtin ID', () => {
 
   it('dispatches set_feature_plane and clears selection mode', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.getState().setPlaneSelectionFeatureId('sketch1')
     useSketchEditorStore.getState().commitPlaneSelection('@builtin_plane_top')
     expect(mutations[0]).toEqual({ type: 'set_feature_plane', featureId: 'sketch1', plane: '@builtin_plane_top' })
@@ -60,7 +60,7 @@ describe('commitPlaneSelection with face ID', () => {
 
   it('strips face:<featureId>: prefix to get query', () => {
     const mutations: { plane?: string }[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m as { plane?: string }))
+    setSketchCallback('onMutation', m => mutations.push(m as { plane?: string }))
     useSketchEditorStore.getState().setPlaneSelectionFeatureId('sketch1')
     useSketchEditorStore.getState().commitPlaneSelection('face:sketch0:?3;@sketch0abc')
     expect(mutations[0].plane).toBe('?3;@sketch0abc')
@@ -68,7 +68,7 @@ describe('commitPlaneSelection with face ID', () => {
 
   it('preserves colons inside the query (type restriction suffix)', () => {
     const mutations: { plane?: string }[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m as { plane?: string }))
+    setSketchCallback('onMutation', m => mutations.push(m as { plane?: string }))
     useSketchEditorStore.getState().setPlaneSelectionFeatureId('sketch1')
     useSketchEditorStore.getState().commitPlaneSelection('face:sketch0:?3;@sketch0abc:face')
     expect(mutations[0].plane).toBe('?3;@sketch0abc:face')
@@ -84,7 +84,7 @@ describe('commitPlaneSelection with @featureId', () => {
 
   it('stores @sketch1 as plane verbatim', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.getState().setPlaneSelectionFeatureId('sketch2')
     useSketchEditorStore.getState().commitPlaneSelection('@sketch1')
     expect(mutations[0]).toEqual({ type: 'set_feature_plane', featureId: 'sketch2', plane: '@sketch1' })
@@ -93,7 +93,7 @@ describe('commitPlaneSelection with @featureId', () => {
 
   it('stores @extrude1 as plane verbatim (future: resolves to top/origin face)', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.getState().setPlaneSelectionFeatureId('sketch1')
     useSketchEditorStore.getState().commitPlaneSelection('@extrude1')
     expect(mutations[0]).toEqual({ type: 'set_feature_plane', featureId: 'sketch1', plane: '@extrude1' })
@@ -106,7 +106,7 @@ describe('commitPlaneSelection no-op when inactive', () => {
 
   it('emits nothing when planeSelectionFeatureId is null', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.getState().commitPlaneSelection('@builtin_plane_top')
     expect(mutations).toHaveLength(0)
   })

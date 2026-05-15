@@ -57,6 +57,9 @@ export const FEATURE_KEYMAP: Record<string, string> = {
 // ── Registration ────
 
 export function registerCommand(name: string, fn: () => void): void {
+  if (import.meta.env.DEV && handlers.has(name)) {
+    console.warn(`registerCommand: overwriting existing handler for "${name}"`)
+  }
   handlers.set(name, fn)
 }
 

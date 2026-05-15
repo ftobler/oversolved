@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
-import { useSketchEditorStore, getEffectiveTool } from '../../stores/sketchEditorStore'
+import { useShallow } from 'zustand/react/shallow'
+import { useSketchEditorStore, getEffectiveTool, getSketchCallback } from '../../stores/sketchEditorStore'
 import { toolRegistry } from '../../registry/toolRegistry'
 import type { DimensionToolContext } from '../../tools/DimensionTool'
 import type { Point } from '../../types/cad'
@@ -10,6 +11,9 @@ import type { Point } from '../../types/cad'
  * Both EntityItem (entities/edges) and VertexDot (vertices) route clicks here.
  * All tool-based clicks dispatch through the tool registry. Non-tool paths
  * (pendingPickField commit, clear selection) remain direct store calls.
+ *
+ * Uses a single combined selector via useShallow to reduce per-entity
+ * subscription count from 15+ down to 1.
  */
 export function useToolClickDispatch({
   id,
@@ -22,24 +26,43 @@ export function useToolClickDispatch({
   /** Entity kind string for dimension resolution (e.g. 'line', 'circle'). */
   entityKind?: string
 }): (e: { stopPropagation: () => void; clientX: number; clientY: number }) => void {
-  const activeTool = useSketchEditorStore(s => s.activeTool)
-  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
-  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
-  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
-  const normalSelection = useSketchEditorStore(s => s.normalSelection)
-  const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
-  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
-  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
-  const internalHoverSelection = useSketchEditorStore(s => s.internalHoverSelection)
-  const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
-  const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
-  const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
-  const onMutation = useSketchEditorStore(s => s.onMutation)
-  const pendingDimTarget = useSketchEditorStore(s => s.pendingDimTarget)
-  const pendingDimEntityKind = useSketchEditorStore(s => s.pendingDimEntityKind)
-  const setPendingDim = useSketchEditorStore(s => s.setPendingDim)
-  const openDialog = useSketchEditorStore(s => s.openDialog)
-  const setActiveTool = useSketchEditorStore(s => s.setActiveTool)
+  const {
+    activeTool,
+    toggleNormalSelection,
+    pendingPickField,
+    commitFieldPick,
+    normalSelection,
+    dynamicSelection,
+    isPointerDown,
+    activeFeatureId,
+    internalHoverSelection,
+    hoveredVertexId,
+    hoveredVertexPosition,
+    hoveredSnapKind,
+    pendingDimTarget,
+    pendingDimEntityKind,
+    setPendingDim,
+    openDialog,
+    setActiveTool,
+  } = useSketchEditorStore(useShallow(s => ({
+    activeTool: s.activeTool,
+    toggleNormalSelection: s.toggleNormalSelection,
+    pendingPickField: s.pendingPickField,
+    commitFieldPick: s.commitFieldPick,
+    normalSelection: s.normalSelection,
+    dynamicSelection: s.dynamicSelection,
+    isPointerDown: s.isPointerDown,
+    activeFeatureId: s.activeFeatureId,
+    internalHoverSelection: s.internalHoverSelection,
+    hoveredVertexId: s.hoveredVertexId,
+    hoveredVertexPosition: s.hoveredVertexPosition,
+    hoveredSnapKind: s.hoveredSnapKind,
+    pendingDimTarget: s.pendingDimTarget,
+    pendingDimEntityKind: s.pendingDimEntityKind,
+    setPendingDim: s.setPendingDim,
+    openDialog: s.openDialog,
+    setActiveTool: s.setActiveTool,
+  })))
 
   return useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     e.stopPropagation()
@@ -65,7 +88,8 @@ export function useToolClickDispatch({
       hoveredVertexId,
       hoveredVertexPosition,
       hoveredSnapKind,
-      onMutation,
+      // onMutation is not in store state; read from module-level ref at call time.
+      onMutation: getSketchCallback('onMutation'),
       // dimension-specific fields passed through context
       pendingDimTarget,
       pendingDimEntityKind,
@@ -95,6 +119,6 @@ export function useToolClickDispatch({
   }, [activeTool, isEditing, id, entityKind,
     pendingPickField, commitFieldPick, toggleNormalSelection,
     normalSelection, dynamicSelection, isPointerDown, activeFeatureId,
-    internalHoverSelection, hoveredVertexId, hoveredVertexPosition, hoveredSnapKind, onMutation,
+    internalHoverSelection, hoveredVertexId, hoveredVertexPosition, hoveredSnapKind,
     pendingDimTarget, pendingDimEntityKind, setPendingDim, openDialog, setActiveTool])
 }

@@ -7,6 +7,24 @@ import type { SnapKind } from '../registry'
 import type { SnapTarget } from '../components/Geometry3D/snapDetection'
 import { parseQuery } from '../utils/query'
 
+// Callbacks registered by the editor page, stored outside Zustand state so
+// function references don't pollute serializable store snapshots.
+const _sketchCbs: {
+  onMutation: ((m: Mutation) => void) | null
+  onRebuild: (() => void) | null
+  onExitSketch: (() => void) | null
+} = { onMutation: null, onRebuild: null, onExitSketch: null }
+
+export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => void) | null): void
+export function setSketchCallback(key: 'onRebuild' | 'onExitSketch', cb: (() => void) | null): void
+export function setSketchCallback(key: keyof typeof _sketchCbs, cb: unknown): void {
+  (_sketchCbs as Record<string, unknown>)[key] = cb
+}
+
+export function getSketchCallback<K extends keyof typeof _sketchCbs>(key: K): (typeof _sketchCbs)[K] {
+  return _sketchCbs[key]
+}
+
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type { Mutation }
 
@@ -164,9 +182,6 @@ interface SketchEditorState {
   activeTool: ActiveTool
   activeFeatureId: string | null
   showDebugHit: boolean
-  onMutation: ((m: Mutation) => void) | null
-  onRebuild: (() => void) | null
-  onExitSketch: (() => void) | null
   pendingDimTarget: string | null
   pendingDimEntityKind: string | null
   pendingDialog: DialogState | null
@@ -179,9 +194,6 @@ interface SketchEditorState {
   setActiveTool: (tool: ActiveTool) => void
   setActiveFeatureId: (id: string | null) => void
   setShowDebugHit: (enabled: boolean) => void
-  setOnMutation: (cb: ((m: Mutation) => void) | null) => void
-  setOnRebuild: (cb: (() => void) | null) => void
-  setOnExitSketch: (cb: (() => void) | null) => void
   applyConstraint: (kind: string) => void
   toggleConstruction: () => void
   deleteSelected: () => void
@@ -213,9 +225,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   orbitEnabled: true,
   isRotating: false,
   showDebugHit: false,
-  onMutation: null,
-  onRebuild: null,
-  onExitSketch: null,
   hoveredConstraintEntityIds: new Set(),
   hoveredEntityId: null,
   hoveredVertexId: null,
@@ -300,10 +309,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setShowDebugHit: (enabled) => set({ showDebugHit: enabled }),
 
-  setOnMutation: (cb) => set({ onMutation: cb }),
-  setOnRebuild: (cb) => set({ onRebuild: cb }),
-  setOnExitSketch: (cb) => set({ onExitSketch: cb }),
-
   setActiveFeatureId: (id) => set({ activeFeatureId: id }),
 
   setHoveredConstraintEntities: (ids) => set({ hoveredConstraintEntityIds: ids }),
@@ -331,7 +336,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   },
 
   applyConstraint: (kind) => {
-    const { normalSelection: selection, onMutation, activeFeatureId } = get()
+    const { normalSelection: selection, activeFeatureId } = get()
+    const onMutation = _sketchCbs.onMutation
     if (selection.size === 0 || !onMutation || !activeFeatureId) return
     const targets = [...selection].filter(t =>
       t.startsWith('entity:') || t.startsWith('vertex:') || t.startsWith('constraint:') || t.startsWith('@builtin_')
@@ -350,7 +356,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   },
 
   toggleConstruction: () => {
-    const { normalSelection: selection, onMutation } = get()
+    const { normalSelection: selection } = get()
+    const onMutation = _sketchCbs.onMutation
     if (selection.size === 0 || !onMutation) return
     const targets = [...selection].filter(t => t.startsWith('entity:'))
     if (targets.length === 0) return
@@ -358,7 +365,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   },
 
   deleteSelected: () => {
-    const { normalSelection: selection, onMutation, activeFeatureId } = get()
+    const { normalSelection: selection, activeFeatureId } = get()
+    const onMutation = _sketchCbs.onMutation
     if (selection.size === 0 || !onMutation) return
     const targets = [...selection].filter(target => {
       if (target.startsWith('entity:') || target.startsWith('vertex:') || target.startsWith('constraint:')) {
@@ -395,7 +403,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setPickChipHighlightItems: (items) => set({ pickChipHighlightItems: items }),
 
   commitFieldPick: () => {
-    const { pendingPickField, normalSelection, onMutation } = get()
+    const { pendingPickField, normalSelection } = get()
+    const onMutation = _sketchCbs.onMutation
     if (!pendingPickField) return
     const selectionId = [...normalSelection].pop()
     if (!selectionId) return
@@ -526,7 +535,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   },
 
   commitPlaneSelection: (selectionId) => {
-    const { planeSelectionFeatureId, onMutation } = get()
+    const { planeSelectionFeatureId } = get()
+    const onMutation = _sketchCbs.onMutation
     if (!planeSelectionFeatureId) return
     const plane = selectionId.startsWith('face:')
       ? selectionId.split(':').slice(2).join(':')

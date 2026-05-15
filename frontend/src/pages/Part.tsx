@@ -4,7 +4,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import Viewport, { type ViewportHandle } from '../components/Viewport'
 import type { Feature, PartDoc, PartFeature, Mutation, Sketch } from '../types/cad'
 import { randomId } from '../utils/yamlMutations'
-import { useSketchEditorStore } from '../stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback } from '../stores/sketchEditorStore'
 import { useCommandRegistration } from './hooks/useCommandRegistration'
 import { buildCommandEntries } from './commandEntries'
 import { executeCommand } from '../stores/commandRegistry'
@@ -526,18 +526,18 @@ useEffect(() => {
   }, [handleMutation])
 
   useEffect(() => {
-    useSketchEditorStore.getState().setOnMutation(handleMutation)
-    return () => useSketchEditorStore.getState().setOnMutation(null)
+    setSketchCallback('onMutation', handleMutation)
+    return () => setSketchCallback('onMutation', null)
   }, [handleMutation])
 
   useEffect(() => {
-    useSketchEditorStore.getState().setOnRebuild(handleRebuild)
-    return () => useSketchEditorStore.getState().setOnRebuild(null)
+    setSketchCallback('onRebuild', handleRebuild)
+    return () => setSketchCallback('onRebuild', null)
   }, [handleRebuild])
 
   useEffect(() => {
-    useSketchEditorStore.getState().setOnExitSketch(handleExitSketch)
-    return () => useSketchEditorStore.getState().setOnExitSketch(null)
+    setSketchCallback('onExitSketch', handleExitSketch)
+    return () => setSketchCallback('onExitSketch', null)
   }, [handleExitSketch])
 
   useEffect(() => {

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import type { Sketch } from '../../types/cad'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore, getSketchCallback } from '../../stores/sketchEditorStore'
 import { toolRegistry } from '../../registry/toolRegistry'
 import { Dot, VertexHighlight } from './VertexDots'
 import { DashedLine } from '../sketch_dimensions'
@@ -30,7 +30,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
   const setDragSnap = useSketchEditorStore(s => s.setDragSnap)
   const setAlignmentSnap = useSketchEditorStore(s => s.setAlignmentSnap)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
-  const onMutation = useSketchEditorStore(s => s.onMutation)
+  const onMutation = getSketchCallback('onMutation')
   const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
   const { camera, gl } = useThree()
 
@@ -116,7 +116,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
               hoveredVertexId: dragPending.vertexId,
               hoveredVertexPosition: [dragPending.startWorld[0], dragPending.startWorld[1]],
               hoveredSnapKind: state.hoveredSnapKind,
-              onMutation: state.onMutation,
+              onMutation: getSketchCallback('onMutation'),
               drag: null,
               dragPending,
               dragSnap: state.dragSnap,

@@ -4,7 +4,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Line2 } from 'three-stdlib'
 import type { Sketch, Constraints, Entity } from '../types/cad'
-import { useSketchEditorStore } from '../stores/sketchEditorStore'
+import { useSketchEditorStore, getSketchCallback } from '../stores/sketchEditorStore'
 import {
   COLOR_CONSTRAINT, p2w, ARROW_SHAPE, sampleArc, getEntityBounds,
   ICON_SIZE, ICON_COLS, getIconUrl,
@@ -152,7 +152,7 @@ function useDimInteraction(cid: string, value: number, interaction: DimInteracti
       onConfirm: (input) => {
         const val = parseFloat(input)
         if (isNaN(val) || (validatePositive && val <= 0)) return
-        useSketchEditorStore.getState().onMutation?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: val })
+        getSketchCallback('onMutation')?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: val })
       },
     })
   }, [interaction, cid, value, validatePositive])

@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback } from '../../stores/sketchEditorStore'
 
 function reset() {
   useSketchEditorStore.setState({
     pendingPickField: null,
     normalSelection: new Set(),
     selectionDomain: 'sketch_2d',
-    onMutation: null,
     planeSelectionFeatureId: null,
   })
+  setSketchCallback('onMutation', null)
 }
 
 describe('pendingPickField initial state', () => {
@@ -43,7 +43,7 @@ describe('commitFieldPick with builtin plane in normalSelection', () => {
 
   it('dispatches set_plane_definition_field and clears pendingPickField and normalSelection', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.getState().setPendingPickField({ featureId: 'plane1', field: 'plane' })
     useSketchEditorStore.setState({ normalSelection: new Set(['@builtin_plane_top']) })
     useSketchEditorStore.getState().commitFieldPick()
@@ -58,7 +58,7 @@ describe('commitFieldPick with face ID in normalSelection', () => {
 
   it('strips face:<featureId>: prefix', () => {
     const mutations: { value?: unknown }[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m as { value?: unknown }))
+    setSketchCallback('onMutation', m => mutations.push(m as { value?: unknown }))
     useSketchEditorStore.getState().setPendingPickField({ featureId: 'plane1', field: 'plane' })
     useSketchEditorStore.setState({ normalSelection: new Set(['face:sketch0:?3;@sketch0abc']) })
     useSketchEditorStore.getState().commitFieldPick()
@@ -71,7 +71,7 @@ describe('commitFieldPick with vertex ID in normalSelection', () => {
 
   it('converts vertex ID to query string', () => {
     const mutations: { value?: unknown }[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m as { value?: unknown }))
+    setSketchCallback('onMutation', m => mutations.push(m as { value?: unknown }))
     useSketchEditorStore.getState().setPendingPickField({ featureId: 'plane1', field: 'p1' })
     useSketchEditorStore.setState({ normalSelection: new Set(['vertex:sketch1:line1:start']) })
     useSketchEditorStore.getState().commitFieldPick()
@@ -84,7 +84,7 @@ describe('commitFieldPick no-op when pendingPickField is null', () => {
 
   it('emits nothing when pendingPickField is null', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.setState({ normalSelection: new Set(['@builtin_plane_top']) })
     useSketchEditorStore.getState().commitFieldPick()
     expect(mutations).toHaveLength(0)
@@ -96,7 +96,7 @@ describe('commitFieldPick with sketch field and face ID in normalSelection', () 
 
   it('dispatches add_extrude_profile and keeps pick mode open', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.getState().setPendingPickField({ featureId: 'extrude1', field: 'sketch' })
     useSketchEditorStore.setState({ normalSelection: new Set(['face:sketch1:?some;query']) })
     useSketchEditorStore.getState().commitFieldPick()
@@ -108,7 +108,7 @@ describe('commitFieldPick with sketch field and face ID in normalSelection', () 
 
   it('can add a second profile without closing pick mode', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.getState().setPendingPickField({ featureId: 'ex1', field: 'sketch' })
     useSketchEditorStore.setState({ normalSelection: new Set(['face:sk1:?q1;id']) })
     useSketchEditorStore.getState().commitFieldPick()
@@ -126,7 +126,7 @@ describe('commitFieldPick no-op when normalSelection is empty', () => {
 
   it('emits nothing when nothing is selected', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.getState().setPendingPickField({ featureId: 'plane1', field: 'plane' })
     useSketchEditorStore.getState().commitFieldPick()
     expect(mutations).toHaveLength(0)
@@ -139,7 +139,7 @@ describe('commitFieldPick with transform rotation_axis', () => {
 
   it('dispatches set_transform_field for rotation_axis', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.getState().setPendingPickField({ featureId: 'xf1', field: 'rotation_axis', hostKind: 'transform' })
     useSketchEditorStore.setState({ normalSelection: new Set(['entity:sketch1:line1']) })
     useSketchEditorStore.getState().commitFieldPick()
@@ -153,7 +153,7 @@ describe('commitFieldPick with transform scale_center_from', () => {
 
   it('dispatches set_transform_field for scale_center_from', () => {
     const mutations: unknown[] = []
-    useSketchEditorStore.getState().setOnMutation(m => mutations.push(m))
+    setSketchCallback('onMutation', m => mutations.push(m))
     useSketchEditorStore.getState().setPendingPickField({ featureId: 'xf1', field: 'scale_center_from', hostKind: 'transform' })
     useSketchEditorStore.setState({ normalSelection: new Set(['face:sketch1:?3;@sketch1abc']) })
     useSketchEditorStore.getState().commitFieldPick()

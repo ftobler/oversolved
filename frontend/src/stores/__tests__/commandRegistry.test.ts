@@ -348,6 +348,26 @@ describe('tool commands via store', () => {
   })
 })
 
+// ── registerCommand collision warning ────
+
+describe('registerCommand collision warning', () => {
+  it('warns in dev mode when overwriting an existing handler', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    registerCommand('__collision__', vi.fn())
+    registerCommand('__collision__', vi.fn())
+    expect(warnSpy).toHaveBeenCalledOnce()
+    expect(warnSpy.mock.calls[0][0]).toContain('__collision__')
+    warnSpy.mockRestore()
+  })
+
+  it('does not warn when registering a new (non-duplicate) handler', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    registerCommand('__unique_a__', vi.fn())
+    expect(warnSpy).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+})
+
 // ── clearAllHandlers ────
 
 describe('clearAllHandlers', () => {

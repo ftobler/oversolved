@@ -2,7 +2,7 @@ import { useRef, useEffect } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore, getSketchCallback } from '../../stores/sketchEditorStore'
 import { toolRegistry } from '../../registry/toolRegistry'
 import { sanitizePointerEvent } from './pointerAbstractionAdapters'
 import { Dot } from './VertexDots'
@@ -63,7 +63,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
   const setDrawHover = useSketchEditorStore(s => s.setDrawHover)
   const clearDraw = useSketchEditorStore(s => s.clearDraw)
-  const onMutation = useSketchEditorStore(s => s.onMutation)
+  const onMutation = getSketchCallback('onMutation')
   const clearNormalSelection = useSketchEditorStore(s => s.clearNormalSelection)
   const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
