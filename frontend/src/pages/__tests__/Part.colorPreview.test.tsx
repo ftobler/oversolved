@@ -210,6 +210,19 @@ describe('Part Color Preview', () => {
     expect(mockCancelPreview).toHaveBeenCalled()
   })
 
+  it('calls cancelPreview exactly once when cancel button is clicked twice', async () => {
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('context-btn-body-1'))
+    fireEvent.click(screen.getByText('Color'))
+
+    const cancelBtn = screen.getByText('Cancel')
+    fireEvent.click(cancelBtn)
+    fireEvent.click(cancelBtn)
+
+    expect(mockCancelPreview).toHaveBeenCalledTimes(1)
+  })
+
   it('calls commitPreview when apply button is clicked', async () => {
     renderPart()
 

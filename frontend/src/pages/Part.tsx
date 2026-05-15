@@ -76,7 +76,6 @@ export default function Part() {
   const [partTransparencyDraft, setPartTransparencyDraft] = useState(0)
   const [partMetalnessDraft, setPartMetalnessDraft] = useState(0.3)
   const partColorPopoverRef = useRef<HTMLDivElement>(null)
-  const colorPreviewActive = useRef(false)
   const { user } = useAuth()
   const notify = useNotify()
 
@@ -666,22 +665,21 @@ useEffect(() => {
   }, [handleMutation])
 
   const handleColorCancel = useCallback(() => {
-    if (!colorPreviewActive.current) return
+    if (!partColorPopover) return
     const originalDoc = cancelPreview()
     if (originalDoc && docRef.current) {
       docRef.current = originalDoc
       setDoc(originalDoc)
       reSolve(originalDoc)
     }
-    colorPreviewActive.current = false
     setPartColorPopover(null)
-  }, [cancelPreview, docRef, setDoc, reSolve])
+  }, [partColorPopover, cancelPreview, docRef, setDoc, reSolve])
 
   useEffect(() => {
     if (!partColorPopover) return
     const close = (e: MouseEvent) => {
       if (partColorPopoverRef.current && !partColorPopoverRef.current.contains(e.target as Node)) {
-        setPartColorPopover(null)
+        handleColorCancel()
       }
     }
     const handleEscape = (e: KeyboardEvent) => {
@@ -698,30 +696,18 @@ useEffect(() => {
   }, [partColorPopover, handleColorCancel])
 
   useEffect(() => {
-    if (partColorPopover) {
-      const style = partStyle[partColorPopover.bodyId]
-      setPartTransparencyDraft(style?.transparency ?? 0)
-      setPartMetalnessDraft(style?.metalness ?? 0.3)
-      if (docRef.current) {
-        startPreviewMode(docRef.current)
-        colorPreviewActive.current = true
-      }
-      requestAnimationFrame(() => {
-        const firstInput = partColorPopoverRef.current?.querySelector('input, button') as HTMLElement | null
-        firstInput?.focus()
-      })
-    } else {
-      if (colorPreviewActive.current) {
-        const originalDoc = cancelPreview()
-        if (originalDoc && docRef.current) {
-          docRef.current = originalDoc
-          setDoc(originalDoc)
-          reSolve(originalDoc)
-        }
-        colorPreviewActive.current = false
-      }
+    if (!partColorPopover) return
+    const style = partStyle[partColorPopover.bodyId]
+    setPartTransparencyDraft(style?.transparency ?? 0)
+    setPartMetalnessDraft(style?.metalness ?? 0.3)
+    if (docRef.current) {
+      startPreviewMode(docRef.current)
     }
-  }, [partColorPopover, partStyle, docRef, setDoc, reSolve, startPreviewMode, cancelPreview])
+    requestAnimationFrame(() => {
+      const firstInput = partColorPopoverRef.current?.querySelector('input, button') as HTMLElement | null
+      firstInput?.focus()
+    })
+  }, [partColorPopover, partStyle, docRef, startPreviewMode])
 
   const enterEditFeature = useCallback((featureId: string) => {
     const idx = features.findIndex(f => f.id === featureId)
@@ -1121,10 +1107,8 @@ useEffect(() => {
         onCancel={handleColorCancel}
         onApply={(mutation) => {
           commitPreview(mutation)
-          colorPreviewActive.current = false
           setPartColorPopover(null)
         }}
-        onClose={() => setPartColorPopover(null)}
       />
       <PartExportImport
         exportDialogOpen={exportDialogOpen}

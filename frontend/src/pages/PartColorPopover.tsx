@@ -16,7 +16,6 @@ interface PartColorPopoverProps {
   onMetalnessSet: (bodyId: string, m: number) => void
   onCancel: () => void
   onApply: (mutation: Mutation) => void
-  onClose: () => void
 }
 
 export default function PartColorPopover({
@@ -33,7 +32,6 @@ export default function PartColorPopover({
   onMetalnessSet,
   onCancel,
   onApply,
-  onClose,
 }: PartColorPopoverProps) {
   if (!popover) return null
 
@@ -49,6 +47,7 @@ export default function PartColorPopover({
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.preventDefault()
+          e.stopPropagation()  // prevent window-level Escape handler from double-firing
           onCancel()
           return
         }
@@ -90,12 +89,10 @@ export default function PartColorPopover({
             }
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') onClose()
             if (e.key === 'Enter') {
               const normalized = normalizeHexColor(colorDraft)
               if (normalized) {
                 onApply({ type: 'set_part_color', bodyId: popover.bodyId, color: normalized })
-                onClose()
               }
             }
           }}
@@ -161,7 +158,6 @@ export default function PartColorPopover({
             const normalized = normalizeHexColor(colorDraft)
             if (!normalized) return
             onApply({ type: 'set_part_color', bodyId: popover.bodyId, color: normalized })
-            onClose()
           }}
         >
           Apply
