@@ -3,7 +3,7 @@ import math
 import threading
 import time
 import traceback
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 import yaml
 import numpy as np
 from scipy.optimize import least_squares
@@ -630,7 +630,7 @@ def _detect_superfluous_constraints(
     return superfluous_ids
 
 
-def _solve_sketch(feature: dict, global_repo: Optional[Repository] = None) -> dict:
+def _solve_sketch(feature: dict, global_repo: Repository | None = None) -> dict:
     # Expand compound entity kinds before processing.
     if any(e.get("kind") == "center_rect" for e in feature.get("entities", [])):
         feature = _expand_center_rect(feature)

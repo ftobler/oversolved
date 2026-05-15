@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Optional, TypeAlias
+from typing import Any, TypeAlias
 import secrets
 from oversolved.kernel.solver_constants import _BUILTIN_PLANES
 
@@ -66,14 +66,14 @@ class AbsoluteQuery:
 class AncestryQuery:
     """?A,B;<id0><id1>...[:<type>][@<classifier>]"""
     ancestor_ids: tuple[str, ...]
-    type_restriction: Optional[str] = None
-    classifier: Optional[str] = None
+    type_restriction: str | None = None
+    classifier: str | None = None
 
     @staticmethod
     def from_parts(
         ids: list[str],
-        type_restriction: Optional[str] = None,
-        classifier: Optional[str] = None,
+        type_restriction: str | None = None,
+        classifier: str | None = None,
     ) -> "AncestryQuery":
         return AncestryQuery(
             ancestor_ids=tuple(ids),
@@ -141,7 +141,7 @@ def _parse_absolute(s: str) -> AbsoluteQuery:
 
 def _parse_ancestry_obj(s: str) -> AncestryQuery:
     ids, type_restriction = _parse_ancestry(s)
-    classifier: Optional[str] = None
+    classifier: str | None = None
     if type_restriction and "@" in type_restriction:
         type_restriction, classifier = type_restriction.split("@", 1)
     return AncestryQuery(
@@ -163,8 +163,8 @@ def absolute(feature_id: str, eid: str = "", sub: str = "") -> AbsoluteQuery:
 
 def ancestry(
     ids: "list[QueryType | str]",
-    type_restriction: Optional[str] = None,
-    classifier: Optional[str] = None,
+    type_restriction: str | None = None,
+    classifier: str | None = None,
 ) -> AncestryQuery:
     """Build an AncestryQuery from typed Query objects or raw wire strings.
 
@@ -411,8 +411,8 @@ class Repository:
     def _resolve_ancestry_ids(
         self,
         ids: list[str],
-        type_restriction: Optional[str],
-        classifier: Optional[str],
+        type_restriction: str | None,
+        classifier: str | None,
         body_store: dict[str, Any] | None = None,
     ) -> Any:
         query_set = frozenset(ids)

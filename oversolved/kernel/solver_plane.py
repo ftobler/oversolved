@@ -1,6 +1,5 @@
 import math
 import logging
-from typing import Optional
 import numpy as np
 from oversolved.kernel.types3d import Frame3D
 from oversolved.kernel.cadquery_ops import _normal_to_frame
@@ -56,7 +55,7 @@ def is_point_type(obj: dict) -> bool:
 
 
 def _resolve_plane_early(
-    plane_query: Optional[str], global_repo: Optional[Repository]
+    plane_query: str | None, global_repo: Repository | None
 ) -> dict:
     if not plane_query:
         return _FRONT_PLANE

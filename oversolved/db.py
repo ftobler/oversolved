@@ -5,7 +5,7 @@ import secrets
 import uuid as uuid_mod
 import contextlib
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional, Callable
+from typing import Any, Callable
 from abc import ABC, abstractmethod
 
 
@@ -282,7 +282,7 @@ class AccountStore:
     def __init__(self, db: Database):
         self.db = db
 
-    def find_by_handle(self, handle: str) -> Optional[dict]:
+    def find_by_handle(self, handle: str) -> dict | None:
         """Find an account by handle. Returns {id, handle, owner_type, owner_id}."""
         cursor = self.db.execute(
             "SELECT id, handle, owner_type, owner_id FROM accounts WHERE handle = ?",
@@ -356,7 +356,7 @@ class UserStore:
             )
             return user_id
 
-    def find_by_username(self, username: str) -> Optional[dict]:
+    def find_by_username(self, username: str) -> dict | None:
         """Find a user by username."""
         cursor = self.db.execute(
             """SELECT id, username, password_hash, email, external_id, provider,
@@ -381,7 +381,7 @@ class UserStore:
             "updated_at": row[10],
         }
 
-    def find_by_email(self, email: str) -> Optional[dict]:
+    def find_by_email(self, email: str) -> dict | None:
         """Find a user by email (case-insensitive)."""
         cursor = self.db.execute(
             """SELECT id, username, password_hash, email, external_id, provider,
@@ -406,7 +406,7 @@ class UserStore:
             "updated_at": row[10],
         }
 
-    def find_by_external_id(self, external_id: str, provider: str) -> Optional[dict]:
+    def find_by_external_id(self, external_id: str, provider: str) -> dict | None:
         """Find a user by OAuth external_id and provider."""
         cursor = self.db.execute(
             """SELECT id, username, password_hash, email, external_id, provider,
@@ -431,7 +431,7 @@ class UserStore:
             "updated_at": row[10],
         }
 
-    def find_by_id(self, user_id: int) -> Optional[dict]:
+    def find_by_id(self, user_id: int) -> dict | None:
         """Find a user by id."""
         cursor = self.db.execute(
             """SELECT id, username, email, external_id, provider,
@@ -586,7 +586,7 @@ class SessionStore:
             )
         return cursor.rowcount
 
-    def find(self, token: str) -> Optional[dict]:
+    def find(self, token: str) -> dict | None:
         """Find a valid (non-expired) session."""
         cursor = self.db.execute(
             "SELECT token, user_id, expires_at FROM sessions WHERE token = ?", (token,)
@@ -613,7 +613,7 @@ class SessionStore:
             self.db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
 
 
-def _to_bytes(value: object) -> Optional[bytes]:
+def _to_bytes(value: object) -> bytes | None:
     """Normalize BYTEA values: psycopg2 returns memoryview, sqlite returns bytes."""
     if value is None:
         return None
@@ -698,7 +698,7 @@ class DocumentStore:
             )
             return cursor.rowcount > 0
 
-    def retrieve(self, uuid: str) -> Optional[dict]:
+    def retrieve(self, uuid: str) -> dict | None:
         """Retrieve a document by UUID."""
         cursor = self.db.execute(
             """SELECT d.uuid, d.name, d.content, d.owner_id, d.preview_image,
@@ -774,7 +774,7 @@ class DocumentStore:
             cursor = self.db.execute("DELETE FROM documents WHERE uuid = ?", (uuid,))
             return cursor.rowcount > 0
 
-    def duplicate(self, uuid: str, new_name: str) -> Optional[str]:
+    def duplicate(self, uuid: str, new_name: str) -> str | None:
         """Duplicate a document with a new name. Returns new UUID or None if source not found."""
         doc = self.retrieve(uuid)
         if doc is None:
@@ -787,7 +787,7 @@ class DocumentStore:
             )
         return new_uuid
 
-    def clone_document(self, uuid: str, new_owner_id: int, new_name: str) -> Optional[str]:
+    def clone_document(self, uuid: str, new_owner_id: int, new_name: str) -> str | None:
         """Clone a document with new owner. Returns new UUID or None if source not found."""
         doc = self.retrieve(uuid)
         if doc is None:
@@ -892,7 +892,7 @@ class DocumentStore:
             return True
         return False
 
-    def get_permission(self, uuid: str, user_id: int) -> Optional[str]:
+    def get_permission(self, uuid: str, user_id: int) -> str | None:
         """Get the permission level for a user on a document. Returns 'owner', 'edit', 'view', or None."""
         cursor = self.db.execute(
             """SELECT d.owner_id, d.is_public, ds.permission
@@ -914,7 +914,7 @@ class DocumentStore:
             return "view"
         return None
 
-    def get_owner_username(self, uuid: str) -> Optional[str]:
+    def get_owner_username(self, uuid: str) -> str | None:
         """Get the username of the document owner."""
         cursor = self.db.execute(
             "SELECT u.username FROM documents d JOIN users u ON d.owner_id = u.id WHERE d.uuid = ?",

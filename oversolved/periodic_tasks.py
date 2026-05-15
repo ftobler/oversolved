@@ -2,7 +2,6 @@
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +94,7 @@ def _parse_cron(cron_expr: str) -> datetime:
     return _cron_next(cron_expr, datetime.now(timezone.utc))
 
 
-def is_task_due(last_run_at: Optional[str], cron_expr: str, now: Optional[datetime] = None) -> bool:
+def is_task_due(last_run_at: str | None, cron_expr: str, now: datetime | None = None) -> bool:
     """Check if a task is due to run based on last_run_at and cron schedule."""
     if now is None:
         now = datetime.now(timezone.utc)
