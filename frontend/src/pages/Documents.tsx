@@ -219,14 +219,6 @@ export default function Documents() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
-  const daysRemaining = (deletedAt: string) => {
-    const deleted = new Date(deletedAt)
-    const expires = new Date(deleted.getTime() + 30 * 24 * 60 * 60 * 1000)
-    const now = new Date()
-    const diff = Math.ceil((expires.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-    return diff
-  }
-
   const sidebarItems: { label: string; filter: SidebarFilter; icon: string }[] = [
     { label: 'My Documents', filter: 'owned', icon: 'folder' },
     { label: 'Shared with me', filter: 'shared', icon: 'people' },
@@ -351,9 +343,7 @@ export default function Documents() {
               )}
               {!trashLoading && trashDocs.length > 0 && (
                 <div className="doc-tiles">
-                  {trashDocs.map(doc => {
-                    const days = daysRemaining(doc.deleted_at)
-                    return (
+                  {trashDocs.map(doc => (
                       <div key={doc.uuid} className="doc-tile">
                         <div className="doc-tile-link">
                           <div className="doc-tile-preview">
@@ -377,8 +367,6 @@ export default function Documents() {
                           <div className="doc-tile-meta">
                             <span className="doc-tile-date">
                               Deleted: {formatDate(doc.deleted_at)}
-                              {days <= 5 && <span className="trash-warning"> ({days} days left)</span>}
-                              {days > 5 && <span> ({days} days left)</span>}
                             </span>
                             <div className="doc-tile-actions">
                               <button
@@ -399,8 +387,8 @@ export default function Documents() {
                           </div>
                         </div>
                       </div>
-                    )
-                  })}
+                    ))}
+
                 </div>
               )}
             </>

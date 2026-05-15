@@ -417,11 +417,6 @@
   position: relative;
 }
 
-.trash-warning {
-  color: #ef5350;
-  font-weight: 600;
-}
-
 .share-dialog-overlay {
   position: fixed;
   top: 0;
