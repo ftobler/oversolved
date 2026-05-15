@@ -6,7 +6,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import Sketch3D from '../components/Sketch3D'
 import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
-import type { Sketch, Constraints, Topology } from '../types/cad'
+import type { Sketch, Constraints, Topology, Arc, PartFeature } from '../types/cad'
 import AppHeader from '../components/AppHeader'
 import './Visualizer.css'
 
@@ -74,7 +74,7 @@ function extractCards(results: Results): CardData[] {
       const entities = feature?.entities ?? []
       const solved = unflattenGeometry(entry.solve_result.geometry, entities)
       const initial = unflattenGeometry(feature?.initial, entities)
-      const constraints = feature ? deriveConstraints(feature, solved) : {}
+      const constraints = feature ? deriveConstraints(feature as unknown as PartFeature, solved) : {}
       cards.push({ id: testName, label: testName, solved, initial, constraints, solve_ms: entry.solve_result.solve_ms, status: entry.solve_result.status, topology: entry.solve_result.topology, astInput: entry.ast_input })
     } else {
       for (const [featureId, data] of Object.entries(entry as TopologyLogEntry)) {
@@ -92,21 +92,20 @@ const CARD_SIZE = 330
 function sketchBounds(sketch: Sketch): { cx: number; cy: number; extent: number } {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
   for (const e of Object.values(sketch)) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const entity = e as any
-    if (entity.start && entity.end && entity.radius != null) {
-      const pts = [entity.start, entity.end,
-        [entity.center[0] - entity.radius, entity.center[1]], [entity.center[0] + entity.radius, entity.center[1]],
-        [entity.center[0], entity.center[1] - entity.radius], [entity.center[0], entity.center[1] + entity.radius]]
+    if ('start' in e && 'end' in e && 'radius' in e) {
+      const arc = e as Arc
+      const pts = [arc.start, arc.end,
+        [arc.center[0] - arc.radius, arc.center[1]], [arc.center[0] + arc.radius, arc.center[1]],
+        [arc.center[0], arc.center[1] - arc.radius], [arc.center[0], arc.center[1] + arc.radius]]
       for (const [x, y] of pts) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y) }
-    } else if (entity.start && entity.end) {
-      minX = Math.min(minX, entity.start[0], entity.end[0]); maxX = Math.max(maxX, entity.start[0], entity.end[0])
-      minY = Math.min(minY, entity.start[1], entity.end[1]); maxY = Math.max(maxY, entity.start[1], entity.end[1])
-    } else if (entity.center && entity.radius != null) {
-      minX = Math.min(minX, entity.center[0] - entity.radius); maxX = Math.max(maxX, entity.center[0] + entity.radius)
-      minY = Math.min(minY, entity.center[1] - entity.radius); maxY = Math.max(maxY, entity.center[1] + entity.radius)
-    } else if (entity.x != null) {
-      minX = Math.min(minX, entity.x); maxX = Math.max(maxX, entity.x); minY = Math.min(minY, entity.y); maxY = Math.max(maxY, entity.y)
+    } else if ('start' in e && 'end' in e) {
+      minX = Math.min(minX, e.start[0], e.end[0]); maxX = Math.max(maxX, e.start[0], e.end[0])
+      minY = Math.min(minY, e.start[1], e.end[1]); maxY = Math.max(maxY, e.start[1], e.end[1])
+    } else if ('center' in e && 'radius' in e) {
+      minX = Math.min(minX, e.center[0] - e.radius); maxX = Math.max(maxX, e.center[0] + e.radius)
+      minY = Math.min(minY, e.center[1] - e.radius); maxY = Math.max(maxY, e.center[1] + e.radius)
+    } else if ('x' in e) {
+      minX = Math.min(minX, e.x); maxX = Math.max(maxX, e.x); minY = Math.min(minY, e.y); maxY = Math.max(maxY, e.y)
     }
   }
   const cx = isFinite(minX) ? (minX + maxX) / 2 : 0

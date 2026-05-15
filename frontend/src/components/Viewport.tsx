@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandl
 import { Canvas } from '@react-three/fiber'
 import { OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
-import type { SketchData, Feature, Sketch, BodyResult, PlaneDef } from '../types/cad'
+import type { SketchData, Feature, PartFeature, Sketch, BodyResult, PlaneDef } from '../types/cad'
 import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
 import Geometry3D from './Geometry3D'
 import { CubeGizmoCanvas } from './CubeGizmo'
@@ -28,8 +28,7 @@ const INITIAL_ZOOM = 200
 
 interface ViewportProps {
   features?: Feature[]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  featureDefs?: any[]
+  featureDefs?: PartFeature[]
   rollbackPosition?: number
   visibleFeatures?: Set<string>
   visibleBodies?: Set<string>

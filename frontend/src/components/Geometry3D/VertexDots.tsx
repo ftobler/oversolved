@@ -1,7 +1,7 @@
 import { useRef, useMemo, useCallback } from 'react'
 import { useDragInitiation } from './useDragInitiation'
 import { Line } from '@react-three/drei'
-import { useThree, useFrame } from '@react-three/fiber'
+import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { p2w } from '../sketch_helpers'
@@ -42,8 +42,7 @@ export function Dot({ x, y, px, color, billboard = false }: { x: number; y: numb
 /** One invisible cylinder per segment. Radius scales to HIT_PIXELS each frame so
  *  coverage is gapless at any zoom. Placed at z=-0.001 so vertex spheres (z=0,
  *  extending to z=+R) always win the raycast at endpoint positions. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type PointerHandler = (e: any) => void
+type PointerHandler = (e: ThreeEvent<MouseEvent> | ThreeEvent<PointerEvent>) => void
 
 export function HitPolyline({ pts, showDebugCollision, showDebugHit, onClick, onPointerDown, onPointerOver, onPointerOut }: {
   pts: [number, number, number][]

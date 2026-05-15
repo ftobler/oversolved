@@ -179,7 +179,7 @@ export function renderConstraints(
 ) {
   const byEntity: Record<string, [string, Constraint][]> = {}
   for (const [id, c] of Object.entries(constraints)) {
-    const eid = c.render.entity || 'default'
+    const eid = ('entity' in c.render ? c.render.entity : undefined) || 'default'
     if (!byEntity[eid]) byEntity[eid] = []
     byEntity[eid].push([id, c])
   }

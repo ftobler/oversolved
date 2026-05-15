@@ -420,7 +420,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         solvePayload.pick_boundary = pickBoundary
       }
 
-      const response = await solverWs.solve(solvePayload)
+      const response = await solverWs.solve(solvePayload) as Record<string, unknown>
 
       // Discard stale response — another solve may have started while we were waiting
       if (currentRequestId !== requestIdRef.current) {
@@ -430,17 +430,17 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       // Track the solver msgId so applyGeometryUpdate can discard stale
       // binary frames from previous solves that arrive out of order.
       if (response.msgId != null) {
-        lastValidMsgIdRef.current = response.msgId
+        lastValidMsgIdRef.current = response.msgId as number
       }
 
       const endTime = performance.now()
       const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
 
       if (response.error) {
-        setSolveError(response.error)
-        setSolveRawResult(response.error)
+        setSolveError(String(response.error))
+        setSolveRawResult(String(response.error))
       } else {
-        const buildResponse = response as BuildResponse
+        const buildResponse = response as unknown as BuildResponse
         if (uuid) {
           await cacheBuildResponse(uuid, d, effectiveRollback, pickBoundary, buildResponse)
         }

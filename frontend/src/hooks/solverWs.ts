@@ -8,10 +8,8 @@ export type GeometryListener = (msgId: number, header: GeometryHeader, buffer: A
  */
 class SolverWs {
   private ws: WebSocket | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private resolveMap = new Map<number, (value: any) => void>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private rejectMap = new Map<number, (reason: any) => void>();
+  private resolveMap = new Map<number, (value: unknown) => void>();
+  private rejectMap = new Map<number, (reason: unknown) => void>();
   private geometryListeners = new Set<GeometryListener>();
   private msgId = 0;
   private pendingMessages: string[] = []
@@ -102,8 +100,7 @@ class SolverWs {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  solve(data: Record<string, unknown>): Promise<any> {
+  solve(data: Record<string, unknown>): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const msgId = ++this.msgId;
       this.connect();

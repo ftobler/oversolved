@@ -425,7 +425,11 @@ export interface DimAngleRender {
   pos?: Point
 }
 
-export type ConstraintRender = SymbolRender | DimLinearRender | DimRadiusRender | DimDiameterRender | DimAngleRender
+export interface UnknownRender {
+  kind: 'unknown'
+}
+
+export type ConstraintRender = SymbolRender | DimLinearRender | DimRadiusRender | DimDiameterRender | DimAngleRender | UnknownRender
 
 export interface Constraint {
   render: ConstraintRender

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { OrbitControls } from '@react-three/drei'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
@@ -25,8 +26,7 @@ interface SceneControllerProps {
 
 export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverRef, snapRef, cameraRef }: SceneControllerProps) {
   const { camera } = useThree()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ctrlRef = useRef<any>(null)
+  const ctrlRef = useRef<OrbitControlsImpl | null>(null)
   const mounted = useRef(false)
 
   cameraRef.current = camera

@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useSketchEditorStore, getEffectiveTool } from '../../stores/sketchEditorStore'
 import { toolRegistry } from '../../registry/toolRegistry'
+import type { DimensionToolContext } from '../../tools/DimensionTool'
 import type { Point } from '../../types/cad'
 
 /**
@@ -81,8 +82,7 @@ export function useToolClickDispatch({
       tool.handlers.onClick(
         { clientX: e.clientX, clientY: e.clientY } as PointerEvent,
         [0, 0] as Point,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        context as any
+        context as DimensionToolContext
       )
       return
     }
