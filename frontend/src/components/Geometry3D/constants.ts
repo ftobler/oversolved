@@ -44,4 +44,4 @@ export const VERTEX_RADIUS = 0.04
 
 // Debug and z-offset (re-exported from Sketch3D constants)
 export const POINT_HIT_PIXELS_Z_OFFSET = 10
-export const DEBUG_HIT = false
+

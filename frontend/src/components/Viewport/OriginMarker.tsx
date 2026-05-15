@@ -3,7 +3,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '../../stores/sketchEditorStore'
 import { builtinSelectionId } from '../Geometry3D/utils'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET, DEBUG_HIT } from '../Geometry3D/constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET } from '../Geometry3D/constants'
 import { Dot, VertexHighlight } from '../Geometry3D/VertexDots'
 import { p2w } from '../sketch_helpers'
 import { useToolClickDispatch } from '../Geometry3D/useToolClickDispatch'
@@ -60,7 +60,7 @@ export default function OriginMarker() {
       {(hovered || selected) && <VertexHighlight x={0} y={0} px={POINT_HIT_PIXELS * 0.3} color={color} />}
       <mesh ref={hitRef}>
         <sphereGeometry args={[1, 8, 8]} />
-        <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.35 : 0} color="#00aaff" depthWrite={false} />
+        <meshBasicMaterial transparent opacity={0} color="#00aaff" depthWrite={false} />
       </mesh>
     </group>
   )

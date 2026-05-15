@@ -32,8 +32,6 @@ const HIT_PIXELS = 8
 const POINT_HIT_PIXELS = 20
 const POINT_HIT_PIXELS_Z_OFFSET = 10
 
-// Set to true to visualise hit geometry (orange cylinders for edges, blue spheres for vertices)
-const DEBUG_HIT = false
 
 /** One invisible cylinder per segment. Radius scales to HIT_PIXELS each frame so
  *  coverage is gapless at any zoom. Placed at z=-0.001 so vertex spheres (z=0,
@@ -68,7 +66,7 @@ function HitPolyline({ pts, onPointerOver, onPointerOut }: {
           onPointerOver={onPointerOver} onPointerOut={onPointerOut}
         >
           <cylinderGeometry args={[1, 1, 1, 8, 1]} />
-          <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.25 : 0} color="#ff6600" depthWrite={false} side={THREE.DoubleSide} />
+          <meshBasicMaterial transparent opacity={0} color="#ff6600" depthWrite={false} side={THREE.DoubleSide} />
         </mesh>
       ))}
     </>
@@ -123,7 +121,7 @@ function VertexDot({ x, y, px, baseColor }: { x: number; y: number; px: number; 
       {hovered && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
       <mesh ref={hitRef} position={[x, y, 0]}>
         <sphereGeometry args={[1, 8, 8]} />
-        <meshBasicMaterial transparent opacity={DEBUG_HIT ? 0.35 : 0} color="#00aaff" depthWrite={false} />
+        <meshBasicMaterial transparent opacity={0} color="#00aaff" depthWrite={false} />
       </mesh>
     </group>
   )

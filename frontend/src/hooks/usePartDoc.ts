@@ -193,8 +193,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const previewOriginalDoc = useRef<PartDoc | null>(null)
   const [permission, setPermission] = useState<string>('owner')
   const [isPublic, setIsPublic] = useState(false)
-  const [fromCache, setFromCache] = useState(false)
-  const [cacheTimestamp, setCacheTimestamp] = useState<number | null>(null)
   const firstSolveDone = useRef(false)
   const rollbackPosRef = useRef<number | null>(null)
   const pickBoundaryRef = useRef<number | null>(null)
@@ -396,8 +394,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
             lastValidMsgIdRef.current = header.msgId
             applyGeometryUpdate(header.msgId, header, buffer, jsonHeaderLen)
           }
-          setFromCache(true)
-          setCacheTimestamp(cached.entry.timestamp)
           if (!cancelledRef.current) setSolving(false)
           if (isFirstSolve && onFirstSolve) {
             setTimeout(onFirstSolve, 0)
@@ -445,8 +441,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         setSolveRawResult(response.error)
       } else {
         const buildResponse = response as BuildResponse
-        setFromCache(false)
-        setCacheTimestamp(null)
         if (uuid) {
           await cacheBuildResponse(uuid, d, effectiveRollback, pickBoundary, buildResponse)
         }
@@ -924,8 +918,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     renameDoc,
     permission,
     isPublic,
-    fromCache,
-    cacheTimestamp,
     setRollbackPos: useCallback((pos: number | null) => { rollbackPosRef.current = pos }, []),
     setPickBoundary: useCallback((pos: number | null) => {
       pickBoundaryRef.current = pos

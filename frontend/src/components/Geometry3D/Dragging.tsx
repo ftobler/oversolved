@@ -14,11 +14,10 @@ import { computeDragMove, shouldActivateDrag } from './dragLogic'
 import type { DragToolContext } from '../../tools/DragTool'
 import { sketchToVertexCandidates, sketchToEntityCandidates } from './snapDetection'
 
-export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit, otherSketches }: {
+export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: {
   featureId: string
   sketch?: Sketch
   sketchGroupRef?: React.RefObject<THREE.Group | null>
-  showDebugHit?: boolean
   otherSketches?: Record<string, Sketch>
 }) {
   const meshRef = useRef<THREE.Mesh>(null)
@@ -90,10 +89,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, showDebugHit, oth
     const sanitized = sanitizePointerEvent({ point: worldPt, clientX: e.clientX, clientY: e.clientY }, resolvedGroupRef)
     if (!sanitized) return
     const localPoint = sanitized.localPoint
-
-    if (showDebugHit) {
-      console.log('DEBUG RAYCAST:', { clientX: e.clientX, clientY: e.clientY, world: { x: worldPt.x, y: worldPt.y, z: worldPt.z } })
-    }
 
     // Lazy drag initiation: activate when movement exceeds the click threshold.
     // Dim_label drags are handled inline; vertex/edge drags route through DragTool.
