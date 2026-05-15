@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { planeRotationFromTransform } from '../utils'
+import { planeRotationFromTransform } from '@/components/Geometry3D/utils'
 
 describe('planeRotationFromTransform', () => {
   it('converts Front plane transform correctly', () => {

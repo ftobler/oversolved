@@ -20,10 +20,10 @@ describe('no dead imports', () => {
           const content = readFileSync(full, 'utf-8')
           if (
             !full.includes('noDeadImports') &&
-            (content.includes("from './interaction-actions'") ||
-            content.includes('from "./interaction-actions"') ||
-            content.includes("from '../../interaction/interaction-actions'") ||
-            content.includes('from "../../interaction/interaction-actions"'))
+            (content.includes("from '@/components/interaction/__tests__/interaction-actions'") ||
+            content.includes('from "@/components/interaction/__tests__/interaction-actions"') ||
+            content.includes("from '@/components/interaction/interaction-actions'") ||
+            content.includes('from "@/components/interaction/interaction-actions"'))
           ) {
             offenders.push(full)
           }

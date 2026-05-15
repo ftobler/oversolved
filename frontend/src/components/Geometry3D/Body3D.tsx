@@ -1,9 +1,9 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { Mesh3D, EdgeData } from '../../types/cad'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { p2w } from '../sketch_helpers'
+import type { Mesh3D, EdgeData } from '@/types/cad'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { p2w } from '@/components/sketch_helpers'
 import {
   COLOR_BODY_DEFAULT,
   COLOR_BODY_SELECTED,
@@ -13,7 +13,7 @@ import {
   HIT_PIXELS, POINT_HIT_PIXELS, POINT_VIS_PIXELS,
   RENDER_ORDER_DEFAULT,
   RENDER_ORDER_HIGHLIGHT,
-} from './constants'
+} from '@/components/Geometry3D/constants'
 import {
   buildBodyGeometry,
   buildFaceBoundarySegments,
@@ -22,7 +22,7 @@ import {
   buildEdgeSegments,
   getEdgeSegmentCounts,
   faceCount,
-} from './bodyGeometry'
+} from '@/components/Geometry3D/bodyGeometry'
 
 // 2D point-to-segment distance in pixels for screen-space edge proximity.
 function distToSegment2D(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {

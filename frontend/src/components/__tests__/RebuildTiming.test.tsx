@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { RebuildButton } from '../RebuildButton'
-import { RebuildSparkline } from '../RebuildSparkline'
-import { RebuildTimingPopover } from '../RebuildTimingPopover'
+import { RebuildButton } from '@/components/RebuildButton'
+import { RebuildSparkline } from '@/components/RebuildSparkline'
+import { RebuildTimingPopover } from '@/components/RebuildTimingPopover'
 
 describe('RebuildSparkline', () => {
   it('renders with data', () => {

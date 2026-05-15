@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import AppHeader from '../components/AppHeader'
-import Dialog from '../components/Dialog'
-import ShareDialog from '../components/ShareDialog'
-import { useUserPreferences } from '../hooks/useUserPreferences'
-import type { DocumentSort } from '../hooks/useUserPreferences'
-import { http, HttpError } from '../utils/httpClient'
-import './Documents.css'
+import AppHeader from '@/components/AppHeader'
+import Dialog from '@/components/Dialog'
+import ShareDialog from '@/components/ShareDialog'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
+import type { DocumentSort } from '@/hooks/useUserPreferences'
+import { http, HttpError } from '@/utils/httpClient'
+import '@/pages/Documents.css'
 
 interface DocumentMeta {
   uuid: string

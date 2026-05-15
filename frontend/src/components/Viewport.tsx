@@ -2,25 +2,25 @@ import { useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandl
 import { Canvas } from '@react-three/fiber'
 import { OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
-import type { SketchData, Feature, PartFeature, Sketch, BodyResult, PlaneDef } from '../types/cad'
-import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
-import Geometry3D from './Geometry3D'
-import { CubeGizmoCanvas } from './CubeGizmo'
-import { type Hit, type Pv } from './CubeGizmo.utils'
-import { useSketchEditorStore } from '../stores/sketchEditorStore'
-import Body3D from './Geometry3D/Body3D'
-import PreviewEdgeOverlay from './Geometry3D/PreviewEdgeOverlay'
-import OriginMarker from './Viewport/OriginMarker'
-import ReferencePlane from './Viewport/ReferencePlane'
-import SceneController from './Viewport/SceneController'
-import CameraLight from './Viewport/CameraLight'
-import UserDefinedPlane from './Viewport/UserDefinedPlane'
-import { PlaneLabel, PlaneSurface } from './Viewport/PlaneVisual'
-import ContextMenuDialog from './ContextMenuDialog'
-import { CLICK_THRESHOLD_PX } from './Geometry3D/constants'
-import { useSelectionPointerUpCleanup } from './interaction/useSelectionPointerUpCleanup'
-import { getBodiesToRender, getSketchesToRender, getPreviewBodies } from './Viewport/bodyUtils'
-import { buildBodySnapSketch, builtinPlaneTransform, BODY_SNAP_FEAT_PREFIX } from './Geometry3D/bodySnapProjection'
+import type { SketchData, Feature, PartFeature, Sketch, BodyResult, PlaneDef } from '@/types/cad'
+import { unflattenGeometry, deriveConstraints } from '@/utils/geometryMapping'
+import Geometry3D from '@/components/Geometry3D'
+import { CubeGizmoCanvas } from '@/components/CubeGizmo'
+import { type Hit, type Pv } from '@/components/CubeGizmo.utils'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import Body3D from '@/components/Geometry3D/Body3D'
+import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
+import OriginMarker from '@/components/Viewport/OriginMarker'
+import ReferencePlane from '@/components/Viewport/ReferencePlane'
+import SceneController from '@/components/Viewport/SceneController'
+import CameraLight from '@/components/Viewport/CameraLight'
+import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
+import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
+import ContextMenuDialog from '@/components/ContextMenuDialog'
+import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
+import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
+import { getBodiesToRender, getSketchesToRender, getPreviewBodies } from '@/components/Viewport/bodyUtils'
+import { buildBodySnapSketch, builtinPlaneTransform, BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjection'
 
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 
@@ -41,7 +41,7 @@ interface ViewportProps {
   bodies?: Record<string, BodyResult>
   pickBodies?: Record<string, BodyResult>
   partColors?: Record<string, string>
-  partStyle?: Record<string, import('../types/cad').PartStyleEntry>
+  partStyle?: Record<string, import('@/types/cad').PartStyleEntry>
   ghostMode?: boolean  // true when editing a non-sketch feature (enables body ghosting)
 }
 

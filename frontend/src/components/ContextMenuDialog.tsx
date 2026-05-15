@@ -1,8 +1,8 @@
 import { useRef, useEffect } from 'react'
-import { useSketchEditorStore } from '../stores/sketchEditorStore'
-import okIcon from '../assets/icons/dialog-ok.svg'
-import cancelIcon from '../assets/icons/dialog-cancel.svg'
-import './ContextMenuDialog.css'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import okIcon from '@/assets/icons/dialog-ok.svg'
+import cancelIcon from '@/assets/icons/dialog-cancel.svg'
+import '@/components/ContextMenuDialog.css'
 
 export default function ContextMenuDialog() {
   const dialog = useSketchEditorStore(s => s.pendingDialog)

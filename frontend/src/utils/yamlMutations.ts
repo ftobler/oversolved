@@ -1,5 +1,5 @@
-import type { PartDoc, PartFeature, PartConstraint, PartTarget, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef } from '../types/cad'
-import { VERTEX_INDICES, ALL_COORD_INDICES } from '../registry'
+import type { PartDoc, PartFeature, PartConstraint, PartTarget, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef } from '@/types/cad'
+import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 
 const warn = import.meta.env.DEV ? console.warn.bind(console) : () => undefined
 

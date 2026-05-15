@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '../../contexts/AuthContext'
-import Documents from '../Documents'
+import { AuthProvider } from '@/contexts/AuthContext'
+import Documents from '@/pages/Documents'
 
 describe('Documents share', () => {
   beforeEach(() => {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { RENDER_ORDER_DEFAULT, RENDER_ORDER_EDITING, RENDER_ORDER_HIGHLIGHT } from '../../../utils/partColors'
-import * as geomConstants from '../constants'
+import { RENDER_ORDER_DEFAULT, RENDER_ORDER_EDITING, RENDER_ORDER_HIGHLIGHT } from '@/utils/partColors'
+import * as geomConstants from '@/components/Geometry3D/constants'
 
 describe('render order constants', () => {
   it('defines RENDER_ORDER_DEFAULT as 0', () => {

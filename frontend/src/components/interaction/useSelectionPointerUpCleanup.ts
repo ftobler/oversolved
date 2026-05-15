@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 export function runPointerUpCleanup() {
   const state = useSketchEditorStore.getState()

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { SketchPlaneDisplay } from '../Viewport'
+import { SketchPlaneDisplay } from '@/components/Viewport'
 
 const MockText = vi.fn(({ children }: { children: string }) => (
   <div data-testid="sketch-label">{children}</div>

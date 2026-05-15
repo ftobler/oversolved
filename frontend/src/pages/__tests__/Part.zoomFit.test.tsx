@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { forwardRef, useImperativeHandle } from 'react'
-import Part from '../Part'
+import Part from '@/pages/Part'
 
 const mockAutoZoomToFit = vi.fn()
 

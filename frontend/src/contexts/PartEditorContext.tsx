@@ -1,5 +1,5 @@
 import React, { createContext, useContext } from 'react'
-import type { Mutation } from '../types/cad'
+import type { Mutation } from '@/types/cad'
 
 export interface PartEditorCallbacks {
   onToggleSelect: (id: string) => void

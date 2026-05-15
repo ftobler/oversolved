@@ -1,7 +1,7 @@
-import { useSketchEditorStore } from '../../../stores/sketchEditorStore'
-import { executeCommand } from '../../../stores/commandRegistry'
-import ToolbarButton from '../ToolbarButton'
-import toolbarRectangleIcon from '../../../assets/icons/toolbar-rectangle.svg'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { executeCommand } from '@/stores/commandRegistry'
+import ToolbarButton from '@/components/Toolbar/ToolbarButton'
+import toolbarRectangleIcon from '@/assets/icons/toolbar-rectangle.svg'
 
 export default function RectangleTool() {
   const activeTool = useSketchEditorStore(s => s.activeTool)

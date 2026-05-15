@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useSketchEditorStore } from '../../../stores/sketchEditorStore'
-import { suggestConstraint, ALIGNMENT_TOLERANCE_DEG } from '../../../registry'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { suggestConstraint, ALIGNMENT_TOLERANCE_DEG } from '@/registry'
 
 describe('alignment snap for draw tool', () => {
   beforeEach(() => {

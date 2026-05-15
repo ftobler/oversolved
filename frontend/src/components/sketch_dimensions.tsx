@@ -3,12 +3,12 @@ import { Line, Html } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Line2 } from 'three-stdlib'
-import type { Sketch, Constraints, Entity } from '../types/cad'
-import { useSketchEditorStore, getSketchCallback } from '../stores/sketchEditorStore'
+import type { Sketch, Constraints, Entity } from '@/types/cad'
+import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import {
   COLOR_CONSTRAINT, p2w, ARROW_SHAPE, sampleArc, getEntityBounds,
   ICON_SIZE, ICON_COLS, getIconUrl,
-} from './sketch_helpers'
+} from '@/components/sketch_helpers'
 
 /** Optional interactive context for dimension components.
  *  When provided, hover highlights entities, click opens an edit prompt,

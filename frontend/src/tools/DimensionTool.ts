@@ -1,6 +1,6 @@
-import type { Tool, ToolContext, ToolHandlers } from '../registry/toolRegistry'
-import type { ActiveTool } from '../stores/sketchEditorStore'
-import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '../registry'
+import type { Tool, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
+import type { ActiveTool } from '@/stores/sketchEditorStore'
+import { resolveSingleEntityDimension, resolveTwoTargetDimension } from '@/registry'
 
 export interface DimensionToolContext extends ToolContext {
   pendingDimTarget: string | null

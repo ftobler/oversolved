@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { solverWs } from '../hooks/solverWs'
+import { solverWs } from '@/hooks/solverWs'
 
 type WsState = 'connecting' | 'open' | 'closing' | 'closed' | 'unknown'
 

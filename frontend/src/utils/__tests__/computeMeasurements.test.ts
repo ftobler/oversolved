@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { computeMeasurements } from '../computeMeasurements'
-import type { Sketch, BodyResult } from '../../types/cad'
+import { computeMeasurements } from '@/utils/computeMeasurements'
+import type { Sketch, BodyResult } from '@/types/cad'
 
 const sketch: Sketch = {
   P1: { x: 0, y: 0 },

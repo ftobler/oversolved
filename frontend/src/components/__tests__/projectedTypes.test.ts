@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { unflattenGeometry } from '../../utils/geometryMapping'
+import { unflattenGeometry } from '@/utils/geometryMapping'
 import {
   isProjectedEntity,
   isProjectedLine,
   isProjectedCircle,
   isProjectedArc,
   isProjectedPoint,
-} from '../../types/cad'
-import type { Entity, ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity, LineSegment } from '../../types/cad'
+} from '@/types/cad'
+import type { Entity, ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity, LineSegment } from '@/types/cad'
 
 describe('unflattenGeometry projected_line', () => {
   it('produces a projected line with correct start and end points', () => {

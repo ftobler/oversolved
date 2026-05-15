@@ -1,11 +1,11 @@
-import { toolRegistry } from '../registry/toolRegistry'
-import { createSelectionTool } from './SelectionTool'
-import { createDrawingTool } from './DrawingTool'
-import { createConstraintTool } from './ConstraintTool'
-import { createDimensionTool } from './DimensionTool'
-import { createDragTool } from './DragTool'
-import { ENTITIES } from '../registry/entityRegistry'
-import { CONSTRAINTS } from '../registry/constraintRegistry'
+import { toolRegistry } from '@/registry/toolRegistry'
+import { createSelectionTool } from '@/tools/SelectionTool'
+import { createDrawingTool } from '@/tools/DrawingTool'
+import { createConstraintTool } from '@/tools/ConstraintTool'
+import { createDimensionTool } from '@/tools/DimensionTool'
+import { createDragTool } from '@/tools/DragTool'
+import { ENTITIES } from '@/registry/entityRegistry'
+import { CONSTRAINTS } from '@/registry/constraintRegistry'
 
 export function initializeTools(): void {
   toolRegistry.register(createSelectionTool())
@@ -39,4 +39,4 @@ export function initializeTools(): void {
 }
 
 export { createSelectionTool, createDrawingTool, createConstraintTool, createDimensionTool, createDragTool }
-export { toolRegistry } from '../registry/toolRegistry'
+export { toolRegistry } from '@/registry/toolRegistry'

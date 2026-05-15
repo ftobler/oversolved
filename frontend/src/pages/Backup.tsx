@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
-import { useAuth } from '../contexts/AuthContext'
-import { http } from '../utils/httpClient'
-import './UserProfile.css'
+import { useAuth } from '@/contexts/AuthContext'
+import { http } from '@/utils/httpClient'
+import '@/pages/UserProfile.css'
 
 export default function Backup() {
   const { user } = useAuth()

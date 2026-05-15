@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { applyDynamicHover } from '../Geometry3D/useHoverAndDynamicSelection'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { applyDynamicHover } from '@/components/Geometry3D/useHoverAndDynamicSelection'
 
 beforeEach(() => {
   useSketchEditorStore.setState({

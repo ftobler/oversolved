@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import type { Feature, BodyResult } from '../../types/cad'
-import Viewport from '../Viewport'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import type { Feature, BodyResult } from '@/types/cad'
+import Viewport from '@/components/Viewport'
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children: React.ReactNode }) => <div data-testid="canvas">{children}</div>,

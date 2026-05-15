@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 /**
  * Layer 3B — Selection Subsystem: hover state and dynamic selection.

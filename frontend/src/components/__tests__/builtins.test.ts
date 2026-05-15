@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { builtinSelectionId } from '../Geometry3D/utils'
-import { useSketchEditorStore, setSketchCallback } from '../../stores/sketchEditorStore'
+import { builtinSelectionId } from '@/components/Geometry3D/utils'
+import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 
 describe('builtinSelectionId', () => {
   it('returns @builtin_plane_front for Front', () => {

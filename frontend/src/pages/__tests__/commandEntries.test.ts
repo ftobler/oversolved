@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { buildCommandEntries } from '../commandEntries'
-import { KEYMAP, FEATURE_KEYMAP, clearAllHandlers } from '../../stores/commandRegistry'
+import { buildCommandEntries } from '@/pages/commandEntries'
+import { KEYMAP, FEATURE_KEYMAP, clearAllHandlers } from '@/stores/commandRegistry'
 
 // Ensure clean state before each test
 beforeEach(() => { clearAllHandlers() })

@@ -5,7 +5,7 @@ import {
   executeCommand,
   clearAllHandlers,
   dispatchKey,
-} from '../../stores/commandRegistry'
+} from '@/stores/commandRegistry'
 
 beforeEach(() => { clearAllHandlers() })
 

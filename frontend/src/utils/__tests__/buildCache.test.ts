@@ -9,9 +9,9 @@ import {
   getAllCachedEntries,
   deleteCacheEntry,
   formatCacheAge,
-} from '../buildCache'
-import type { CacheEntry } from '../buildCache'
-import type { PartDoc, BuildResponse, PartFeature } from '../../types/cad'
+} from '@/utils/buildCache'
+import type { CacheEntry } from '@/utils/buildCache'
+import type { PartDoc, BuildResponse, PartFeature } from '@/types/cad'
 
 const emptyDoc: PartDoc = { features: [] }
 const emptyResponse: BuildResponse = { solve_ms: 0, result: {}, bodies: {} }
@@ -118,7 +118,7 @@ describe('cacheBuildResponse / getCachedBuildResponse', () => {
   it('marks stale responses correctly', async () => {
     await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
     const key = await computeCacheKey('doc1', [], 1, null)
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     const entry = getCache().get(key) as CacheEntry
     entry.timestamp = Date.now() - 6 * 60 * 1000
 
@@ -130,7 +130,7 @@ describe('cacheBuildResponse / getCachedBuildResponse', () => {
   it('returns null for stale entry when TTL has passed and entry was evicted', async () => {
     await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
     const key = await computeCacheKey('doc1', [], 1, null)
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     const entry = getCache().get(key) as CacheEntry
     entry.timestamp = Date.now() - 6 * 60 * 1000
 
@@ -141,7 +141,7 @@ describe('cacheBuildResponse / getCachedBuildResponse', () => {
   })
 
   it('LRU: accessed entry moves to end of map', async () => {
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
     await cacheBuildResponse('doc1', emptyDoc, 2, null, emptyResponse)
     await cacheBuildResponse('doc1', emptyDoc, 3, null, emptyResponse)
@@ -188,7 +188,7 @@ describe('cacheGeometry', () => {
   it('does nothing when no cache entry exists for the key', async () => {
     const geometry = { header: {} as never, buffer: new ArrayBuffer(4), jsonHeaderLen: 2 }
     await cacheGeometry('doc1', emptyDoc, 1, null, geometry)
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     expect(getCache().size).toBe(0)
   })
 
@@ -207,7 +207,7 @@ describe('cacheGeometry', () => {
     const geometry = { header: {} as never, buffer: new ArrayBuffer(8), jsonHeaderLen: 4 }
     await cacheGeometry('doc1', emptyDoc, 1, null, geometry)
     const key = await computeCacheKey('doc1', [], 1, null)
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     const entry = getCache().get(key) as CacheEntry
     entry.timestamp = Date.now() - 6 * 60 * 1000
 
@@ -241,7 +241,7 @@ describe('invalidateDocCache', () => {
 
   it('handles invalidate on empty cache', async () => {
     await invalidateDocCache('doc1')
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     expect(getCache().size).toBe(0)
   })
 
@@ -249,7 +249,7 @@ describe('invalidateDocCache', () => {
     await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
     await cacheBuildResponse('doc1', emptyDoc, 2, null, emptyResponse)
     await invalidateDocCache('doc1')
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     expect(getCache().size).toBe(0)
   })
 })
@@ -259,7 +259,7 @@ describe('invalidateAllCache', () => {
     await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
     await cacheBuildResponse('doc2', emptyDoc, 1, null, emptyResponse)
     await invalidateAllCache()
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     expect(getCache().size).toBe(0)
   })
 })
@@ -287,14 +287,14 @@ describe('getAllCachedEntries / deleteCacheEntry', () => {
 
   it('deleteCacheEntry on nonexistent key does not throw', async () => {
     await deleteCacheEntry('nonexistent-key')
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     expect(getCache().size).toBe(0)
   })
 })
 
 describe('eviction', () => {
   it('evictIfOverMax removes oldest entries when cache exceeds MAX_CACHE_SIZE', async () => {
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     const maxSize = 100
     for (let i = 0; i < maxSize + 10; i++) {
       await cacheBuildResponse(`doc${i}`, emptyDoc, 1, null, emptyResponse)
@@ -309,7 +309,7 @@ describe('eviction', () => {
     }
     // Access the first entry so it moves to end
     const key0 = await computeCacheKey('doc0', [], 1, null)
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     getCache().delete(key0)
     getCache().set(key0, { cache_key: key0 } as CacheEntry)
 
@@ -325,7 +325,7 @@ describe('eviction', () => {
   it('stale entries are evicted during cacheBuildResponse', async () => {
     await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
     const key = await computeCacheKey('doc1', [], 1, null)
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     const entry = getCache().get(key) as CacheEntry
     entry.timestamp = Date.now() - 6 * 60 * 1000
 
@@ -339,7 +339,7 @@ describe('eviction', () => {
   it('entries just within TTL survive eviction', async () => {
     await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
     const key = await computeCacheKey('doc1', [], 1, null)
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     const entry = getCache().get(key) as CacheEntry
     entry.timestamp = Date.now() - 4 * 60 * 1000  // 4 minutes, below 5 min TTL
 
@@ -352,7 +352,7 @@ describe('eviction', () => {
   it('new entry replaces existing at same key with updated timestamp', async () => {
     await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
     const key = await computeCacheKey('doc1', [], 1, null)
-    const { getCache } = await import('../buildCache')
+    const { getCache } = await import('@/utils/buildCache')
     const ts1 = getCache().get(key)!.timestamp
 
     await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)

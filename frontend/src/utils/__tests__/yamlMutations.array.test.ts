@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc } from '../../types/cad'
+import type { PartDoc } from '@/types/cad'
 import {
   applyAddArray,
   applySetArrayMode,
@@ -13,7 +13,7 @@ import {
   applySetArrayCount,
   applySetArrayStepAngle,
   applySetArrayAxis,
-} from '../../utils/yamlMutations'
+} from '@/utils/yamlMutations'
 
 const baseDoc: PartDoc = { features: [] }
 

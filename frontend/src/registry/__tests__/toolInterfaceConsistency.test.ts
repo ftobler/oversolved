@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { ToolRegistry, type Tool } from '../toolRegistry'
-import { createDragTool } from '../../tools/DragTool'
-import { createDimensionTool } from '../../tools/DimensionTool'
+import { ToolRegistry, type Tool } from '@/registry/toolRegistry'
+import { createDragTool } from '@/tools/DragTool'
+import { createDimensionTool } from '@/tools/DimensionTool'
 
 describe('ToolHandlers interface consistency', () => {
   it('DragTool handlers satisfy ToolHandlers type', () => {

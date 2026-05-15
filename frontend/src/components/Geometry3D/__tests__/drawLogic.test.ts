@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { resolveSnapPoint, computeDrawClick } from '../drawLogic'
-import type { DrawSnapState } from '../drawLogic'
+import { resolveSnapPoint, computeDrawClick } from '@/components/Geometry3D/drawLogic'
+import type { DrawSnapState } from '@/components/Geometry3D/drawLogic'
 
 const FEATURE = 'S1'
 let idCounter = 0

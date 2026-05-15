@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { http } from '../utils/httpClient'
+import { http } from '@/utils/httpClient'
 
 export interface RebuildStats {
   uuid: string

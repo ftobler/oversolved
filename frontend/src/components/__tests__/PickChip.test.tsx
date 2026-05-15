@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { PickChip } from '../PickChip'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { PickChip } from '@/components/PickChip'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 beforeEach(() => {
   useSketchEditorStore.setState({ pickChipHighlightItems: [] })

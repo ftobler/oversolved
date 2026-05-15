@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { applySetFeatureVisibility } from '../yamlMutations'
-import type { PartDoc } from '../../types/cad'
+import { applySetFeatureVisibility } from '@/utils/yamlMutations'
+import type { PartDoc } from '@/types/cad'
 
 describe('applySetFeatureVisibility', () => {
   function makeDoc(): PartDoc {

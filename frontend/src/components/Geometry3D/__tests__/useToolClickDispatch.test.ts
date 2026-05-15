@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useToolClickDispatch } from '../useToolClickDispatch'
-import { useSketchEditorStore } from '../../../stores/sketchEditorStore'
-import { toolRegistry } from '../../../registry/toolRegistry'
+import { useToolClickDispatch } from '@/components/Geometry3D/useToolClickDispatch'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { toolRegistry } from '@/registry/toolRegistry'
 
 vi.mock('../../../registry/toolRegistry', () => ({
   toolRegistry: { get: vi.fn() },

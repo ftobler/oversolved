@@ -1,5 +1,5 @@
 import React from 'react'
-import './BugReporter.css'
+import '@/components/BugReporter.css'
 
 export interface BugReportAttachments {
   ast: boolean

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import WsStatusIndicator from '../WsStatusIndicator'
-import { useSolverStore } from '../../stores/solverStore'
+import WsStatusIndicator from '@/components/WsStatusIndicator'
+import { useSolverStore } from '@/stores/solverStore'
 
 vi.mock('../../hooks/solverWs', () => ({
   solverWs: {
@@ -10,7 +10,7 @@ vi.mock('../../hooks/solverWs', () => ({
   },
 }))
 
-import { solverWs } from '../../hooks/solverWs'
+import { solverWs } from '@/hooks/solverWs'
 
 beforeEach(() => {
   vi.clearAllMocks()

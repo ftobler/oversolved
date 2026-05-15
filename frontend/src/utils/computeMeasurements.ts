@@ -1,6 +1,6 @@
-import type { Sketch, LineSegment, Arc, Circle, PointEntity, BodyResult } from '../types/cad'
-import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, measure3dSelection, type Plane3D } from '../registry/measurementRegistry'
-import { getEntityKind } from '../types/cad'
+import type { Sketch, LineSegment, Arc, Circle, PointEntity, BodyResult } from '@/types/cad'
+import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, measure3dSelection, type Plane3D } from '@/registry/measurementRegistry'
+import { getEntityKind } from '@/types/cad'
 
 /**
  * Compute the best measurement for a set of selected entities.

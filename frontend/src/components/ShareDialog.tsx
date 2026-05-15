@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { http, HttpError } from '../utils/httpClient'
+import { http, HttpError } from '@/utils/httpClient'
 
 interface ShareInfo {
   id: number

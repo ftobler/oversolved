@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '../../contexts/AuthContext'
-import AdminUsers from '../AdminUsers'
+import { AuthProvider } from '@/contexts/AuthContext'
+import AdminUsers from '@/pages/AdminUsers'
 
 describe('AdminUsers', () => {
   beforeEach(() => {

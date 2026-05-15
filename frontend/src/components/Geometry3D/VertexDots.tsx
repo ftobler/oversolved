@@ -1,14 +1,14 @@
 import { useRef, useMemo, useCallback } from 'react'
-import { useDragInitiation } from './useDragInitiation'
+import { useDragInitiation } from '@/components/Geometry3D/useDragInitiation'
 import { Line } from '@react-three/drei'
 import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { p2w } from '../sketch_helpers'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS } from './constants'
-import type { SnapKind } from '../../registry'
-import { useHoverAndDynamicSelection } from './useHoverAndDynamicSelection'
-import { useToolClickDispatch } from './useToolClickDispatch'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { p2w } from '@/components/sketch_helpers'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS } from '@/components/Geometry3D/constants'
+import type { SnapKind } from '@/registry'
+import { useHoverAndDynamicSelection } from '@/components/Geometry3D/useHoverAndDynamicSelection'
+import { useToolClickDispatch } from '@/components/Geometry3D/useToolClickDispatch'
 
 /** Derive snap kind from the hover target. All point handles (line endpoints,
  *  circle centers, point xy) are broadly categorized as 'vertex'. */

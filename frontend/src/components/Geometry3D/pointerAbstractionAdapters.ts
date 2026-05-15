@@ -1,7 +1,7 @@
 import * as THREE from 'three'
-import { worldToLocal3D } from './coordTransformAdapters'
-import { makeSanitizedEvent } from './pointerAbstraction'
-import type { SanitizedPointerEvent } from './pointerAbstraction'
+import { worldToLocal3D } from '@/components/Geometry3D/coordTransformAdapters'
+import { makeSanitizedEvent } from '@/components/Geometry3D/pointerAbstraction'
+import type { SanitizedPointerEvent } from '@/components/Geometry3D/pointerAbstraction'
 
 export type { SanitizedPointerEvent }
 

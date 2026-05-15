@@ -1,6 +1,6 @@
 import React from 'react'
-import type { PartFeature, Mutation, PendingPickField } from '../types/cad'
-import { PickChip } from './PickChip'
+import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
+import { PickChip } from '@/components/PickChip'
 
 interface FilletEditorProps {
   feature: PartFeature

@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc } from '../../types/cad'
+import type { PartDoc } from '@/types/cad'
 import {
   applyAddMirror,
   applySetMirrorField,
   applyMirrorEntities,
-} from '../../utils/yamlMutations'
+} from '@/utils/yamlMutations'
 
 const baseDoc: PartDoc = { features: [] }
 

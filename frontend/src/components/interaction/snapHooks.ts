@@ -6,7 +6,7 @@
 // - Supports kinda_horizontal/kinda_vertical snapping by providing reference points
 
 import { useMemo } from 'react'
-import type { Sketch, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
+import type { Sketch, LineSegment, Circle, Arc, PointEntity } from '@/types/cad'
 
 /**
  * Build a map from selection ID to world position for alignment snap detection.

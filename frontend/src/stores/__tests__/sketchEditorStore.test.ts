@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useSketchEditorStore, setSketchCallback } from '../sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 
 function reset() {
   useSketchEditorStore.setState({

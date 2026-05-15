@@ -9,9 +9,9 @@ import {
   clearAllHandlers,
   buildKeyString,
   dispatchKey,
-} from '../commandRegistry'
-import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '../../registry'
-import { useSketchEditorStore } from '../sketchEditorStore'
+} from '@/stores/commandRegistry'
+import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '@/registry'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 // Ensure clean state before each test
 beforeEach(() => { clearAllHandlers() })

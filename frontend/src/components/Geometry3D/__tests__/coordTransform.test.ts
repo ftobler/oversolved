@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyQuaternionInverse, worldToSketchLocalPure } from '../coordTransform'
+import { applyQuaternionInverse, worldToSketchLocalPure } from '@/components/Geometry3D/coordTransform'
 
 // Identity quaternion [x, y, z, w] = [0, 0, 0, 1]
 const IDENTITY: [number, number, number, number] = [0, 0, 0, 1]

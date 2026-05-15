@@ -3,8 +3,8 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import Part from '../Part'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import Part from '@/pages/Part'
 
 const mockStartPreviewMode = vi.fn()
 const mockCommitPreview = vi.fn()
@@ -115,8 +115,8 @@ vi.mock('../../components/RightClickMenu', () => ({
 }))
 
 vi.mock('../../components/Sidebar', async () => {
-  const { usePartEditorStore } = await import('../../stores/partEditorStore')
-  const { usePartEditorCallbacks } = await import('../../contexts/PartEditorContext')
+  const { usePartEditorStore } = await import('@/stores/partEditorStore')
+  const { usePartEditorCallbacks } = await import('@/contexts/PartEditorContext')
   return {
     Sidebar: vi.fn(() => {
       const bodies = usePartEditorStore(s => s.bodies)

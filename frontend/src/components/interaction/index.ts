@@ -1,4 +1,4 @@
 // interaction/index.ts
 // Shared hooks only — tool dispatch now routes through toolRegistry. See tools/ and registry/.
 
-export { useDynamicSelectionPositions } from './snapHooks'
+export { useDynamicSelectionPositions } from '@/components/interaction/snapHooks'

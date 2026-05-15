@@ -1,5 +1,5 @@
 import React from 'react'
-import type { PartFeature } from '../types/cad'
+import type { PartFeature } from '@/types/cad'
 
 interface RebuildTimingPopoverProps {
   featureTimings: Record<string, number>

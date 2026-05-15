@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { ToolRegistry } from '../toolRegistry'
-import { getEffectiveTool } from '../../stores/sketchEditorStore'
-import { createDragTool } from '../../tools/DragTool'
-import { createDrawingTool } from '../../tools/DrawingTool'
+import { ToolRegistry } from '@/registry/toolRegistry'
+import { getEffectiveTool } from '@/stores/sketchEditorStore'
+import { createDragTool } from '@/tools/DragTool'
+import { createDrawingTool } from '@/tools/DrawingTool'
 
-import type { Tool, ToolCategory, ToolId, ToolContext, ToolHandlers } from '../toolRegistry'
+import type { Tool, ToolCategory, ToolId, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
 
 const mockHandlers: ToolHandlers = {
   onPointerDown: () => null,

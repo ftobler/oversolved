@@ -2,11 +2,11 @@ import { useRef, useMemo, useState } from 'react'
 import { Line } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { Sketch, Constraints, Topology, Point, TopologySurface, TopologyEdge, TopologyArcEdge, Entity, LineSegment, Circle, Arc, PointEntity } from '../types/cad'
-import { COLOR_SOLVED, COLOR_HOVER } from '../utils/partColors'
-import { p2w, sampleArc, getEntityBounds } from './sketch_helpers'
-import { DashedLine, ConstraintOverlays } from './sketch_dimensions'
-import { useSketchEditorStore } from '../stores/sketchEditorStore'
+import type { Sketch, Constraints, Topology, Point, TopologySurface, TopologyEdge, TopologyArcEdge, Entity, LineSegment, Circle, Arc, PointEntity } from '@/types/cad'
+import { COLOR_SOLVED, COLOR_HOVER } from '@/utils/partColors'
+import { p2w, sampleArc, getEntityBounds } from '@/components/sketch_helpers'
+import { DashedLine, ConstraintOverlays } from '@/components/sketch_dimensions'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 const ARC_SEGMENTS = 64
 

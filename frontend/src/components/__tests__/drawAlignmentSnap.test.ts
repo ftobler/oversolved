@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectDrawAlignment } from '../interaction/useAlignmentSnapEffect'
+import { detectDrawAlignment } from '@/components/interaction/useAlignmentSnapEffect'
 
 const LAST: [number, number] = [0, 0]
 

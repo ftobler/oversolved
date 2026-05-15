@@ -1,5 +1,5 @@
-import type { PartFeature } from '../types/cad'
-import { parseQuery } from './query'
+import type { PartFeature } from '@/types/cad'
+import { parseQuery } from '@/utils/query'
 
 function extractFeatureId(ancestorId: string): string | null {
   const m = ancestorId.match(/^@(\w+?)(face\d+|edge\d+|vertex\d+)?$/)

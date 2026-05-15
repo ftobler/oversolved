@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc, PartConstraint } from '../../types/cad'
-import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddPointWithConstraint, applyAddImportStep, applyDeleteFeature } from '../yamlMutations'
+import type { PartDoc, PartConstraint } from '@/types/cad'
+import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddPointWithConstraint, applyAddImportStep, applyDeleteFeature } from '@/utils/yamlMutations'
 
 const makeSampleDoc = (): PartDoc => ({
   version: 1,
@@ -269,8 +269,8 @@ describe('applyDeleteElements', () => {
 
 // ── Step 6: face: selection ID handling ────
 
-import { parseTarget, applySetFeatureVisibility, applyReorderFeatures } from '../yamlMutations'
-import { healDoc, BUILTIN_FEATURE_DEFAULTS } from '../../hooks/usePartDoc'
+import { parseTarget, applySetFeatureVisibility, applyReorderFeatures } from '@/utils/yamlMutations'
+import { healDoc, BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
 
 const docWithSketch = (id: string): PartDoc => ({
   version: 1, kind: 'part',

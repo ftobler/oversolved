@@ -1,4 +1,4 @@
-import type { Mutation } from '../types/cad'
+import type { Mutation } from '@/types/cad'
 
 export function describeMutation(m: Mutation): string {
   switch (m.type) {

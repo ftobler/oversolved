@@ -1,9 +1,9 @@
-import { useSketchEditorStore } from '../../../stores/sketchEditorStore'
-import { TOOLBAR_ENTITIES } from '../../../registry'
-import type { EntityDef } from '../../../registry'
-import { executeCommand } from '../../../stores/commandRegistry'
-import ToolbarButton from '../ToolbarButton'
-import { iconUrl, shortcutHint } from './toolUtils'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { TOOLBAR_ENTITIES } from '@/registry'
+import type { EntityDef } from '@/registry'
+import { executeCommand } from '@/stores/commandRegistry'
+import ToolbarButton from '@/components/Toolbar/ToolbarButton'
+import { iconUrl, shortcutHint } from '@/components/Toolbar/tools/toolUtils'
 
 // Renders entity drawing tools from the entity registry (point, line, circle, arc)
 export default function EntityTools() {

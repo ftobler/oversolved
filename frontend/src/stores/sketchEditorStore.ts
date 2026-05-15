@@ -2,10 +2,10 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import { create } from 'zustand'
-import type { Mutation, PendingPickField, SelectionDomain } from '../types/cad'
-import type { SnapKind } from '../registry'
-import type { SnapTarget } from '../components/Geometry3D/snapDetection'
-import { parseQuery } from '../utils/query'
+import type { Mutation, PendingPickField, SelectionDomain } from '@/types/cad'
+import type { SnapKind } from '@/registry'
+import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
+import { parseQuery } from '@/utils/query'
 
 // Callbacks registered by the editor page, stored outside Zustand state so
 // function references don't pollute serializable store snapshots.

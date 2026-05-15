@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { queryLabel } from '../queryLabel'
-import type { PartFeature } from '../../types/cad'
+import { queryLabel } from '@/utils/queryLabel'
+import type { PartFeature } from '@/types/cad'
 
 const features: PartFeature[] = [
   { id: 'extrude1', kind: 'extrude', label: 'My Extrude' },

@@ -7,8 +7,8 @@ export {
   DIMENSION_RULES,
   resolveSingleEntityDimension,
   resolveTwoTargetDimension,
-} from './constraintRegistry'
-export type { ConstraintDef, DimensionRule } from './constraintRegistry'
+} from '@/registry/constraintRegistry'
+export type { ConstraintDef, DimensionRule } from '@/registry/constraintRegistry'
 
 export {
   ENTITIES,
@@ -19,8 +19,8 @@ export {
   ALL_COORD_INDICES,
   TOOLBAR_ENTITIES,
   getDefaultParams,
-} from './entityRegistry'
-export type { EntityDef, VertexDef } from './entityRegistry'
+} from '@/registry/entityRegistry'
+export type { EntityDef, VertexDef } from '@/registry/entityRegistry'
 
 export {
   SNAP_RULES,
@@ -29,12 +29,12 @@ export {
   suggestConstraint,
   detectAlignmentSnap,
   ALIGNMENT_TOLERANCE_DEG,
-} from './snapRegistry'
-export type { SnapKind, DraggedElementType, AlignmentSnapResult } from './snapRegistry'
+} from '@/registry/snapRegistry'
+export type { SnapKind, DraggedElementType, AlignmentSnapResult } from '@/registry/snapRegistry'
 
 export {
   toolRegistry,
-} from './toolRegistry'
+} from '@/registry/toolRegistry'
 export type {
   ToolId,
   ToolCategory,
@@ -48,4 +48,4 @@ export type {
   SelectionTool,
   DragTool,
   ToolRegistry,
-} from './toolRegistry'
+} from '@/registry/toolRegistry'

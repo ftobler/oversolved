@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { Mutation } from '../../types/cad'
+import type { Mutation } from '@/types/cad'
 
 interface TooltipEntry {
   mutation: Mutation

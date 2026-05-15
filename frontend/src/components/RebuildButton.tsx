@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react'
-import rebuildIcon from '../assets/icons/context-rebuild.svg'
-import { RebuildTimingPopover } from './RebuildTimingPopover'
-import type { PartFeature } from '../types/cad'
+import rebuildIcon from '@/assets/icons/context-rebuild.svg'
+import { RebuildTimingPopover } from '@/components/RebuildTimingPopover'
+import type { PartFeature } from '@/types/cad'
 
 interface RebuildButtonProps {
   featureTimings: Record<string, number>

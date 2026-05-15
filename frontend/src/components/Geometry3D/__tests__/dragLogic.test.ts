@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import type { Sketch } from '../../../types/cad'
-import { shouldActivateDrag, computeDragMove, computeDragMutation } from '../dragLogic'
-import { sketchToVertexCandidates, sketchToEntityCandidates } from '../snapDetection'
-import { CLICK_THRESHOLD_PX } from '../pointerAbstraction'
+import type { Sketch } from '@/types/cad'
+import { shouldActivateDrag, computeDragMove, computeDragMutation } from '@/components/Geometry3D/dragLogic'
+import { sketchToVertexCandidates, sketchToEntityCandidates } from '@/components/Geometry3D/snapDetection'
+import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
 
 const FEATURE = 'S1'
 
@@ -11,7 +11,7 @@ const makeSketch = (): Sketch => ({
   L2: { start: [10, 0], end: [10, 10] } as Sketch[string],
 })
 
-const makeDrag = (overrides: Partial<import('../../../stores/sketchEditorStore').VertexOrEdgeDrag> = {}) => ({
+const makeDrag = (overrides: Partial<import('@/stores/sketchEditorStore').VertexOrEdgeDrag> = {}) => ({
   type: 'vertex' as const,
   vertexId: 'vertex:S1:L1:start',
   featureId: FEATURE,

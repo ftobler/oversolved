@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { buildBodyGeometry, buildEdgeSegments, getEdgeSegmentCounts, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties } from '../Geometry3D/bodyGeometry'
-import type { Mesh3D, EdgeData } from '../../types/cad'
-import { ARC_SEGMENTS } from '../Geometry3D/constants'
+import { buildBodyGeometry, buildEdgeSegments, getEdgeSegmentCounts, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties } from '@/components/Geometry3D/bodyGeometry'
+import type { Mesh3D, EdgeData } from '@/types/cad'
+import { ARC_SEGMENTS } from '@/components/Geometry3D/constants'
 
 const CUBE_MESH: Mesh3D = {
   vertices: [

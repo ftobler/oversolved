@@ -1,7 +1,7 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
-import AppHeader from '../components/AppHeader'
-import './Settings.css'
+import { useAuth } from '@/contexts/AuthContext'
+import AppHeader from '@/components/AppHeader'
+import '@/pages/Settings.css'
 
 export default function Settings() {
   const { user } = useAuth()

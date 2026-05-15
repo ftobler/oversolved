@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import './ExportDialog.css'
+import '@/components/ExportDialog.css'
 
 export type ExportFormat = 'step' | 'stl'
 

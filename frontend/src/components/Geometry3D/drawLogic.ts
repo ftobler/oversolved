@@ -1,11 +1,11 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-import type { Mutation, Entity } from '../../types/cad'
-import type { SnapKind } from '../../registry'
-import { suggestConstraint } from '../../registry'
-import { getEntityKind } from '../../types/cad'
-import { circumcircle, arcAnglesFromRadiusPoint } from './drawGeometry'
+import type { Mutation, Entity } from '@/types/cad'
+import type { SnapKind } from '@/registry'
+import { suggestConstraint } from '@/registry'
+import { getEntityKind } from '@/types/cad'
+import { circumcircle, arcAnglesFromRadiusPoint } from '@/components/Geometry3D/drawGeometry'
 
 export interface DrawSnapState {
   hoveredVertexId: string | null

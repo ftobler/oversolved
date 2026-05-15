@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
-import { useSketchEditorStore } from '../stores/sketchEditorStore'
-import { measureSingleEntity } from '../registry/measurementRegistry'
-import type { Sketch, LineSegment, Arc, Circle, PointEntity } from '../types/cad'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { measureSingleEntity } from '@/registry/measurementRegistry'
+import type { Sketch, LineSegment, Arc, Circle, PointEntity } from '@/types/cad'
 
 /**
  * Registry component for debugging measurement combinations.

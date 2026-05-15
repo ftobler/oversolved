@@ -1,12 +1,12 @@
 import { useState, useRef, useCallback } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { builtinSelectionId } from '../Geometry3D/utils'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET } from '../Geometry3D/constants'
-import { Dot, VertexHighlight } from '../Geometry3D/VertexDots'
-import { p2w } from '../sketch_helpers'
-import { useToolClickDispatch } from '../Geometry3D/useToolClickDispatch'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { builtinSelectionId } from '@/components/Geometry3D/utils'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET } from '@/components/Geometry3D/constants'
+import { Dot, VertexHighlight } from '@/components/Geometry3D/VertexDots'
+import { p2w } from '@/components/sketch_helpers'
+import { useToolClickDispatch } from '@/components/Geometry3D/useToolClickDispatch'
 
 export default function OriginMarker() {
   const [hovered, setHovered] = useState(false)

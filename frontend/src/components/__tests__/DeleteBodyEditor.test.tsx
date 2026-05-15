@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
-import { DeleteBodyEditor } from '../DeleteBodyEditor'
-import type { PartFeature } from '../../types/cad'
+import { DeleteBodyEditor } from '@/components/DeleteBodyEditor'
+import type { PartFeature } from '@/types/cad'
 
 function makeFeature(body = ''): PartFeature {
   return {

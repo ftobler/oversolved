@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { solverWs } from '../solverWs'
-import { useSolverStore } from '../../stores/solverStore'
+import { solverWs } from '@/hooks/solverWs'
+import { useSolverStore } from '@/stores/solverStore'
 
 class MockWebSocket {
   static CONNECTING = 0

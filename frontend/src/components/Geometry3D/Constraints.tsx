@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Html } from '@react-three/drei'
-import type { Sketch, Constraints, Entity } from '../../types/cad'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl } from '../sketch_helpers'
-import { LinearDimension, RadiusDimension, DiameterDimension, AngleDimension } from '../sketch_dimensions'
-import { COLOR_SELECTED } from './constants'
-import { findEntitiesAtPoint } from './drawGeometry'
+import type { Sketch, Constraints, Entity } from '@/types/cad'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl } from '@/components/sketch_helpers'
+import { LinearDimension, RadiusDimension, DiameterDimension, AngleDimension } from '@/components/sketch_dimensions'
+import { COLOR_SELECTED } from '@/components/Geometry3D/constants'
+import { findEntitiesAtPoint } from '@/components/Geometry3D/drawGeometry'
 
 function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean }) {
   const [hovered, setHovered] = useState(false)

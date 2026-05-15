@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createSelectionTool } from '../SelectionTool'
-import type { SelectionToolContext } from '../SelectionTool'
+import { createSelectionTool } from '@/tools/SelectionTool'
+import type { SelectionToolContext } from '@/tools/SelectionTool'
 
 function createMockContext(overrides: Partial<SelectionToolContext> = {}): SelectionToolContext {
   return {

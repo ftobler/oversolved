@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { sel, selectionKey, parseSelectionId, selectionToQuery } from '../selectionId'
-import { emitWire } from '../query'
-import type { LocalQuery, AbsoluteQuery } from '../../types/query'
+import { sel, selectionKey, parseSelectionId, selectionToQuery } from '@/utils/selectionId'
+import { emitWire } from '@/utils/query'
+import type { LocalQuery, AbsoluteQuery } from '@/types/query'
 
 describe('selectionKey', () => {
   it('entity',     () => expect(selectionKey(sel.entity('sk1', 'l1'))).toBe('entity:sk1:l1'))

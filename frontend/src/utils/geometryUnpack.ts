@@ -1,11 +1,11 @@
-import type { BodyResult, FaceData } from '../types/cad'
+import type { BodyResult, FaceData } from '@/types/cad'
 
 export interface BodyMeta {
   created_by: string
   modified_by: string[]
   face_data: FaceData[]
   face_queries: string[]
-  edges: import('../types/cad').EdgeData[]
+  edges: import('@/types/cad').EdgeData[]
   edge_queries: string[]
   brep_vertex_queries: string[]
   vertices: [number, number, number][]

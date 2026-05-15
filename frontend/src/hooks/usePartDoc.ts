@@ -1,16 +1,16 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import type { PartDoc, SketchData, Mutation, EntityStatus, BuildResponse, PartStyleEntry } from '../types/cad'
-import { solverWs } from './solverWs'
-import { useSolverStore } from '../stores/solverStore'
-import { http } from '../utils/httpClient'
+import type { PartDoc, SketchData, Mutation, EntityStatus, BuildResponse, PartStyleEntry } from '@/types/cad'
+import { solverWs } from '@/hooks/solverWs'
+import { useSolverStore } from '@/stores/solverStore'
+import { http } from '@/utils/httpClient'
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
-import { unflattenGeometry } from '../utils/geometryMapping'
-import { getCachedBuildResponse, cacheBuildResponse, cacheGeometry } from '../utils/buildCache'
-import { PART_COLOR_PALETTE, normalizeHexColor } from '../utils/partColors'
-import { unpackBodies, unpackPickBodies } from '../utils/geometryUnpack'
-import type { GeometryHeader } from '../utils/geometryUnpack'
+import { unflattenGeometry } from '@/utils/geometryMapping'
+import { getCachedBuildResponse, cacheBuildResponse, cacheGeometry } from '@/utils/buildCache'
+import { PART_COLOR_PALETTE, normalizeHexColor } from '@/utils/partColors'
+import { unpackBodies, unpackPickBodies } from '@/utils/geometryUnpack'
+import type { GeometryHeader } from '@/utils/geometryUnpack'
 import {
   applyMoveVertex,
   applyMoveEntity,
@@ -98,8 +98,8 @@ import {
   applySetPartMetalness,
   applyReorderFeatures,
   applyReorderPickField,
-} from '../utils/yamlMutations'
-import type { PartFeature } from '../types/cad'
+} from '@/utils/yamlMutations'
+import type { PartFeature } from '@/types/cad'
 
 export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
   { id: 'Origin', kind: 'origin' },
@@ -114,7 +114,7 @@ function pickPartColor(partNumber: number): string {
   return PART_COLOR_PALETTE[(partNumber - 1) % PART_COLOR_PALETTE.length]
 }
 
-function reconcilePartStyle(doc: PartDoc, bodies: Record<string, import('../types/cad').BodyResult> | undefined): void {
+function reconcilePartStyle(doc: PartDoc, bodies: Record<string, import('@/types/cad').BodyResult> | undefined): void {
   const bodyIds = Object.keys(bodies ?? {})
   if (bodyIds.length === 0) return
 
@@ -181,8 +181,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [solveResults, setSolveResults] = useState<Record<string, SketchData>>({})
-  const [bodies, setBodies] = useState<Record<string, import('../types/cad').BodyResult>>({})
-  const [pickBodies, setPickBodies] = useState<Record<string, import('../types/cad').BodyResult>>({})
+  const [bodies, setBodies] = useState<Record<string, import('@/types/cad').BodyResult>>({})
+  const [pickBodies, setPickBodies] = useState<Record<string, import('@/types/cad').BodyResult>>({})
   const [solving, setSolving] = useState(false)
   const [featureTimings, setFeatureTimings] = useState<Record<string, number>>({})
   const [solveTime, setSolveTime] = useState<number | null>(null)
@@ -202,7 +202,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const cancelledRef = useRef(false)
 
   const applySolveResult = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
-    const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('../types/cad').Topology; plane_transform?: import('../types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('../types/cad').ConstraintRender; superfluous: boolean }>; plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }; body_id?: string; exception?: string; solve_ms?: number }>
+    const result = data.result as Record<string, { geometry?: Record<string, number[]>; status?: string; features?: Record<string, { status?: string }>; topology?: import('@/types/cad').Topology; plane_transform?: import('@/types/cad').PlaneTransform; constraints?: Record<string, { residual: number; render: import('@/types/cad').ConstraintRender; superfluous: boolean }>; plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }; body_id?: string; exception?: string; solve_ms?: number }>
 
     const results: Record<string, SketchData> = {}
     for (const [id, feature] of Object.entries(result)) {
@@ -227,7 +227,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
             .filter(c => c.pos)
             .map(c => [c.id, c.pos!])
         )
-        const constraints: import('../types/cad').Constraints | undefined = feature.constraints
+        const constraints: import('@/types/cad').Constraints | undefined = feature.constraints
           ? Object.fromEntries(
               Object.entries(feature.constraints)
                 .filter(([, c]) => !c.superfluous)

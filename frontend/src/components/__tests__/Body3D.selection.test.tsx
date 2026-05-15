@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 beforeEach(() => {
   useSketchEditorStore.setState({

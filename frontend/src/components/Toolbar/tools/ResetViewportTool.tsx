@@ -1,5 +1,5 @@
-import ToolbarButton from '../ToolbarButton'
-import viewportResetIcon from '../../../assets/icons/viewport-reset.svg'
+import ToolbarButton from '@/components/Toolbar/ToolbarButton'
+import viewportResetIcon from '@/assets/icons/viewport-reset.svg'
 
 interface ResetViewportToolProps {
   onResetViewport: () => void

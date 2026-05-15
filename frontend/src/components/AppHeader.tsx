@@ -1,7 +1,7 @@
 import { useNavigate, Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
-import { useAuth } from '../contexts/AuthContext'
-import './AppHeader.css'
+import { useAuth } from '@/contexts/AuthContext'
+import '@/components/AppHeader.css'
 
 interface AppHeaderProps {
   title?: string

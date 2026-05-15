@@ -1,5 +1,5 @@
-import { useSolverStore, type WsStatus } from '../stores/solverStore'
-import { solverWs } from '../hooks/solverWs'
+import { useSolverStore, type WsStatus } from '@/stores/solverStore'
+import { solverWs } from '@/hooks/solverWs'
 
 const DOT_COLORS: Record<WsStatus, string> = {
   open: '#4caf50',

@@ -4,8 +4,8 @@ import {
   builtinPlaneTransform,
   buildBodySnapSketch,
   BODY_SNAP_FEAT_PREFIX,
-} from '../bodySnapProjection'
-import type { PlaneTransform } from '../../../types/cad'
+} from '@/components/Geometry3D/bodySnapProjection'
+import type { PlaneTransform } from '@/types/cad'
 
 const FRONT_PT = builtinPlaneTransform('@builtin_plane_front')!
 const TOP_PT   = builtinPlaneTransform('@builtin_plane_top')!

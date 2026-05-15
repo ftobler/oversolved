@@ -1,5 +1,5 @@
-import { useSolverStore } from '../stores/solverStore'
-import './LoadingOverlay.css'
+import { useSolverStore } from '@/stores/solverStore'
+import '@/components/LoadingOverlay.css'
 
 interface LoadingOverlayProps {
   isDocumentLoading?: boolean

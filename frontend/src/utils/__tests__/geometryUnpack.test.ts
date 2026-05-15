@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { unpackBodies, unpackPickBodies } from '../geometryUnpack'
-import type { GeometryHeader } from '../geometryUnpack'
+import { unpackBodies, unpackPickBodies } from '@/utils/geometryUnpack'
+import type { GeometryHeader } from '@/utils/geometryUnpack'
 
 function buildBinaryFrame(
   header: GeometryHeader,

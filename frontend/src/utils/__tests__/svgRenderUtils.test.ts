@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { buildSurfacePath } from '../svgRenderUtils'
-import type { TopologySurface } from '../../types/cad'
+import { buildSurfacePath } from '@/utils/svgRenderUtils'
+import type { TopologySurface } from '@/types/cad'
 
 const identity = (x: number, y: number): [number, number] => [x, y]
 

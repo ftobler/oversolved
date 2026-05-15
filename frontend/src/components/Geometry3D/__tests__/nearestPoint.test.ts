@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { nearestPointOnLine, nearestPointOnCircle, nearestPointOnArc, nearestPointOnEntity } from '../nearestPoint'
-import type { LineSegment, Circle, Arc, PointEntity } from '../../../types/cad'
+import { nearestPointOnLine, nearestPointOnCircle, nearestPointOnArc, nearestPointOnEntity } from '@/components/Geometry3D/nearestPoint'
+import type { LineSegment, Circle, Arc, PointEntity } from '@/types/cad'
 
 describe('nearestPointOnLine', () => {
   it('returns nearest point when projection falls within segment', () => {

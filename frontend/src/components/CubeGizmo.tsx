@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { GIZMO_STYLE, type Pv, type Hit, computeGizmoHit } from './CubeGizmo.utils'
+import { GIZMO_STYLE, type Pv, type Hit, computeGizmoHit } from '@/components/CubeGizmo.utils'
 
 // ── Canvas overlay component ────
 

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { worldToSketchLocalPure } from './coordTransform'
+import { worldToSketchLocalPure } from '@/components/Geometry3D/coordTransform'
 
 /** Extract parent transform from a Three.js group ref and return the hit point in
  *  sketch-local 3D coordinates. Returns null when the group ref is not mounted.

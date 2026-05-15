@@ -1,4 +1,4 @@
-import type { Tool, ToolCategory, ToolContext, ToolHandlers } from '../registry/toolRegistry'
+import type { Tool, ToolCategory, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
 
 export interface SelectionToolContext extends ToolContext {
   internalHoverSelection: string | null

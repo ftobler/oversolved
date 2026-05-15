@@ -6,9 +6,9 @@ import '@fontsource/roboto/500.css'
 import '@fontsource/roboto-mono/400.css'
 import '@fontsource/material-icons/index.css'
 import '@fontsource/material-icons-outlined/index.css'
-import './index.css'
-import App from './App.tsx'
-import { initializeTools } from './tools'
+import '@/index.css'
+import App from '@/App.tsx'
+import { initializeTools } from '@/tools'
 
 initializeTools()
 

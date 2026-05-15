@@ -1,4 +1,4 @@
-import type { Feature, BodyResult, EdgeData } from '../../types/cad'
+import type { Feature, BodyResult, EdgeData } from '@/types/cad'
 
 /**
  * Computes which bodies should be visible given explicit user overrides and

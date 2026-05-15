@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import type { PartFeature } from '../types/cad'
-import { queryLabel } from '../utils/queryLabel'
-import { useSketchEditorStore } from '../stores/sketchEditorStore'
+import type { PartFeature } from '@/types/cad'
+import { queryLabel } from '@/utils/queryLabel'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 export interface PickChipProps {
   values: string[]

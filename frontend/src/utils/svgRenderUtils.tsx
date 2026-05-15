@@ -1,5 +1,5 @@
-import type { Sketch, Point, Arc, LineSegment, PointEntity, Circle, Topology, TopologyEdge, TopologyArcEdge, Constraints, Constraint, DimLinearRender, DimRadiusRender, DimAngleRender, Entity } from '../types/cad'
-import { COLOR_CONSTRAINT } from '../components/sketch_helpers'
+import type { Sketch, Point, Arc, LineSegment, PointEntity, Circle, Topology, TopologyEdge, TopologyArcEdge, Constraints, Constraint, DimLinearRender, DimRadiusRender, DimAngleRender, Entity } from '@/types/cad'
+import { COLOR_CONSTRAINT } from '@/components/sketch_helpers'
 const ICON_SIZE = 14
 
 export function arrowhead(x1: number, y1: number, x2: number, y2: number, size = 6): string {

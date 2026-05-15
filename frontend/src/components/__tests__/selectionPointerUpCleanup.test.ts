@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { runPointerUpCleanup } from '../interaction/useSelectionPointerUpCleanup'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { runPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
 
 beforeEach(() => {
   useSketchEditorStore.setState({

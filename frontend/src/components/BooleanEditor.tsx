@@ -1,6 +1,6 @@
 import React from 'react'
-import type { PartFeature, Mutation, PendingPickField, BooleanFeatureDef } from '../types/cad'
-import { PickChip } from './PickChip'
+import type { PartFeature, Mutation, PendingPickField, BooleanFeatureDef } from '@/types/cad'
+import { PickChip } from '@/components/PickChip'
 
 interface BooleanEditorProps {
   feature: PartFeature

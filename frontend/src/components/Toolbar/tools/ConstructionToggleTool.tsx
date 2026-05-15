@@ -1,6 +1,6 @@
-import { executeCommand, CORE_KEYBINDINGS } from '../../../stores/commandRegistry'
-import ToolbarButton from '../ToolbarButton'
-import toolbarConstructionIcon from '../../../assets/icons/constraint-line-swap.svg'
+import { executeCommand, CORE_KEYBINDINGS } from '@/stores/commandRegistry'
+import ToolbarButton from '@/components/Toolbar/ToolbarButton'
+import toolbarConstructionIcon from '@/assets/icons/constraint-line-swap.svg'
 
 const constructionKey = CORE_KEYBINDINGS.find(b => b.command === 'toggle_construction')?.key.toUpperCase()
 

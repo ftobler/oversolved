@@ -1,8 +1,8 @@
 // PURE GEOMETRY -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
-import type { Sketch, Entity } from '../../types/cad'
-import { getEntityBounds } from '../sketch_helpers'
-import { sampleArc, sampleArcCCW } from '../sketch_helpers'
+import type { Sketch, Entity } from '@/types/cad'
+import { getEntityBounds } from '@/components/sketch_helpers'
+import { sampleArc, sampleArcCCW } from '@/components/sketch_helpers'
 
 /** Compute circumcircle of 3 points. Returns null if points are collinear. */
 export function circumcircle(

@@ -1,5 +1,5 @@
-import type { Tool, ToolContext, ToolHandlers, ToolId } from '../registry/toolRegistry'
-import { CONSTRAINT_BY_KIND } from '../registry'
+import type { Tool, ToolContext, ToolHandlers, ToolId } from '@/registry/toolRegistry'
+import { CONSTRAINT_BY_KIND } from '@/registry'
 
 export type ConstraintToolContext = ToolContext
 

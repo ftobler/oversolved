@@ -7,8 +7,8 @@ import {
   applySetHoleDepthMode,
   applySetHoleDirection,
   applySetHoleTarget,
-} from '../yamlMutations'
-import type { PartDoc } from '../../types/cad'
+} from '@/utils/yamlMutations'
+import type { PartDoc } from '@/types/cad'
 
 function emptyDoc(): PartDoc { return { features: [] } }
 

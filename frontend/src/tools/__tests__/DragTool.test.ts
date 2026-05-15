@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createDragTool } from '../DragTool'
-import type { DragToolContext } from '../DragTool'
+import { createDragTool } from '@/tools/DragTool'
+import type { DragToolContext } from '@/tools/DragTool'
 
 function createMockContext(overrides: Partial<DragToolContext> = {}): DragToolContext {
   return {

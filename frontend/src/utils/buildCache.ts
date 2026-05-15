@@ -1,5 +1,5 @@
-import type { PartDoc, BuildResponse, PartFeature } from '../types/cad'
-import type { GeometryHeader } from './geometryUnpack'
+import type { PartDoc, BuildResponse, PartFeature } from '@/types/cad'
+import type { GeometryHeader } from '@/utils/geometryUnpack'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 const MAX_CACHE_SIZE = 100

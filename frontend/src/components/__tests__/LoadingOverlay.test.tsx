@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
-import LoadingOverlay from '../LoadingOverlay'
-import { useSolverStore } from '../../stores/solverStore'
+import LoadingOverlay from '@/components/LoadingOverlay'
+import { useSolverStore } from '@/stores/solverStore'
 
 function resetStore() {
   useSolverStore.setState({ isSolving: false })

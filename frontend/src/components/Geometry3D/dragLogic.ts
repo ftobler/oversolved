@@ -1,14 +1,14 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-import type { Mutation, Sketch, LineSegment, Circle, Arc, PointEntity } from '../../types/cad'
-import type { VertexOrEdgeDrag, DragState } from '../../stores/sketchEditorStore'
-import type { SnapTarget, SnapCandidate, EntityCandidate } from './snapDetection'
-import { findSnapTarget, collectVertexTargetsFlat, collectEntityCandidatesFlat } from './snapDetection'
-import { detectAlignmentSnap } from '../../registry'
-import { isPureClick, CLICK_THRESHOLD_PX } from './pointerAbstraction'
-import { DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX } from './constants'
-import { BODY_SNAP_FEAT_PREFIX } from './bodySnapProjection'
+import type { Mutation, Sketch, LineSegment, Circle, Arc, PointEntity } from '@/types/cad'
+import type { VertexOrEdgeDrag, DragState } from '@/stores/sketchEditorStore'
+import type { SnapTarget, SnapCandidate, EntityCandidate } from '@/components/Geometry3D/snapDetection'
+import { findSnapTarget, collectVertexTargetsFlat, collectEntityCandidatesFlat } from '@/components/Geometry3D/snapDetection'
+import { detectAlignmentSnap } from '@/registry'
+import { isPureClick, CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
+import { DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX } from '@/components/Geometry3D/constants'
+import { BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjection'
 
 export interface DragMoveResult {
   snapTarget: SnapTarget | null

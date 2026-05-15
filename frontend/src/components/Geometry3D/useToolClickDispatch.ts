@@ -1,9 +1,9 @@
 import { useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useSketchEditorStore, getEffectiveTool, getSketchCallback } from '../../stores/sketchEditorStore'
-import { toolRegistry } from '../../registry/toolRegistry'
-import type { DimensionToolContext } from '../../tools/DimensionTool'
-import type { Point } from '../../types/cad'
+import { useSketchEditorStore, getEffectiveTool, getSketchCallback } from '@/stores/sketchEditorStore'
+import { toolRegistry } from '@/registry/toolRegistry'
+import type { DimensionToolContext } from '@/tools/DimensionTool'
+import type { Point } from '@/types/cad'
 
 /**
  * Layer 4 -- Tool Layer: shared click dispatch for interactive sketch elements.

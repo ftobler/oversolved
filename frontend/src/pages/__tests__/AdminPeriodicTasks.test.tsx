@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '../../contexts/AuthContext'
-import AdminPeriodicTasks from '../AdminPeriodicTasks'
+import { AuthProvider } from '@/contexts/AuthContext'
+import AdminPeriodicTasks from '@/pages/AdminPeriodicTasks'
 
 describe('AdminPeriodicTasks', () => {
   beforeEach(() => {

@@ -1,5 +1,5 @@
 import React from 'react'
-import type { PartFeature, ArrayFeatureDef, Mutation } from '../types/cad'
+import type { PartFeature, ArrayFeatureDef, Mutation } from '@/types/cad'
 
 interface ArrayEditorProps {
   feature: PartFeature

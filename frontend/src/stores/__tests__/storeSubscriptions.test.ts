@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { useSketchEditorStore } from '../sketchEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 const SRC = join(__dirname, '../../')
 

@@ -8,7 +8,7 @@ import {
   ConstructionToggleTool,
   ConstraintTools,
   MirrorTool,
-} from './tools'
+} from '@/components/Toolbar/tools'
 
 interface SketchToolbarProps {
   onResetViewport: () => void

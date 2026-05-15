@@ -2,9 +2,9 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import { useCallback } from 'react'
-import { useSketchEditorStore, getSketchCallback } from '../../stores/sketchEditorStore'
-import { toolRegistry } from '../../registry/toolRegistry'
-import type { DragToolContext } from '../../tools/DragTool'
+import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
+import { toolRegistry } from '@/registry/toolRegistry'
+import type { DragToolContext } from '@/tools/DragTool'
 
 /** Returns a function that initiates drag through the tool registry when the pointer
  *  goes down on a sketch element. The store writes (setDragPending, setOrbitEnabled,

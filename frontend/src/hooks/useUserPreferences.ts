@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { http } from '../utils/httpClient'
+import { http } from '@/utils/httpClient'
 
 export type DocumentSort = 'alphabetical' | 'date_newest_first' | 'date_oldest_first'
 

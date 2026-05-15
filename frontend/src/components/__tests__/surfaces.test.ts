@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { surfaceSelectionId, planeLabel } from '../Geometry3D/utils'
-import { buildSurfaceShapes } from '../Geometry3D/Surfaces'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import type { Topology } from '../../types/cad'
+import { surfaceSelectionId, planeLabel } from '@/components/Geometry3D/utils'
+import { buildSurfaceShapes } from '@/components/Geometry3D/Surfaces'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import type { Topology } from '@/types/cad'
 
 // 3a: surfaceSelectionId helper
 describe('surfaceSelectionId', () => {

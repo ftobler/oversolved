@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import Part from '../Part'
+import Part from '@/pages/Part'
 
 vi.mock('../../hooks/solverWs', () => ({
   solverWs: {

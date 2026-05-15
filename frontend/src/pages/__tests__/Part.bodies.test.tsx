@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { Sidebar } from '../../components/Sidebar'
-import { getBodiesToRender } from '../../components/Viewport/bodyUtils'
-import type { PartFeature, BodyResult, Mesh3D } from '../../types/cad'
-import { usePartEditorStore } from '../../stores/partEditorStore'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { PartEditorProvider } from '../../contexts/PartEditorContext'
-import type { PartEditorCallbacks } from '../../contexts/PartEditorContext'
+import { Sidebar } from '@/components/Sidebar'
+import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
+import type { PartFeature, BodyResult, Mesh3D } from '@/types/cad'
+import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { PartEditorProvider } from '@/contexts/PartEditorContext'
+import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
 
 const TEST_CUBE_MESH: Mesh3D = {
   vertices: [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]],

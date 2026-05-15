@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react'
 import * as THREE from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
-import type { Topology, TopologySurface, TopologyEdge, TopologyArcEdge, TopologyEdgeQuery, Point } from '../../types/cad'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { ARC_SEGMENTS, COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE } from './constants'
-import { surfaceSelectionId, edgeSelectionId } from './utils'
+import type { Topology, TopologySurface, TopologyEdge, TopologyArcEdge, TopologyEdgeQuery, Point } from '@/types/cad'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { ARC_SEGMENTS, COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
+import { surfaceSelectionId, edgeSelectionId } from '@/components/Geometry3D/utils'
 
 type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string }
 

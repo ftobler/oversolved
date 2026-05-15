@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import './RightClickMenu.css'
+import '@/components/RightClickMenu.css'
 
 export interface ContextMenuItem {
   label: string

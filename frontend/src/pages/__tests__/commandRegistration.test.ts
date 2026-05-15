@@ -3,9 +3,9 @@ import {
   registerCommand,
   executeCommand,
   clearAllHandlers,
-} from '../../stores/commandRegistry'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { buildCommandEntries } from '../commandEntries'
+} from '@/stores/commandRegistry'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { buildCommandEntries } from '@/pages/commandEntries'
 
 // Ensure clean state before each test
 beforeEach(() => { clearAllHandlers() })

@@ -1,4 +1,4 @@
-import type { Query, LocalQuery, AbsoluteQuery, AncestryQuery } from "../types/query"
+import type { Query, LocalQuery, AbsoluteQuery, AncestryQuery } from "@/types/query"
 
 /**
  * Convert a Query to its wire-format string.

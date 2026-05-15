@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { Sidebar } from '../Sidebar'
-import type { PartFeature, Mutation } from '../../types/cad'
-import { usePartEditorStore } from '../../stores/partEditorStore'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { PartEditorProvider } from '../../contexts/PartEditorContext'
-import type { PartEditorCallbacks } from '../../contexts/PartEditorContext'
+import { Sidebar } from '@/components/Sidebar'
+import type { PartFeature, Mutation } from '@/types/cad'
+import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { PartEditorProvider } from '@/contexts/PartEditorContext'
+import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
 
 function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {

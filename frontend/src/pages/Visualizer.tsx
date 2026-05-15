@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { parse as yamlLoad, stringify as yamlStringify } from 'yaml'
-import { http } from '../utils/httpClient'
+import { http } from '@/utils/httpClient'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import Sketch3D from '../components/Sketch3D'
-import { unflattenGeometry, deriveConstraints } from '../utils/geometryMapping'
-import type { Sketch, Constraints, Topology, Arc, PartFeature } from '../types/cad'
-import AppHeader from '../components/AppHeader'
-import './Visualizer.css'
+import Sketch3D from '@/components/Sketch3D'
+import { unflattenGeometry, deriveConstraints } from '@/utils/geometryMapping'
+import type { Sketch, Constraints, Topology, Arc, PartFeature } from '@/types/cad'
+import AppHeader from '@/components/AppHeader'
+import '@/pages/Visualizer.css'
 
 // Two formats are written by conftest.py:
 //   sketch_log → { ast_input, solve_result }

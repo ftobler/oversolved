@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { computeCacheKey } from '../../utils/buildCache'
-import type { PartFeature } from '../../types/cad'
+import { computeCacheKey } from '@/utils/buildCache'
+import type { PartFeature } from '@/types/cad'
 
 describe('buildCache key consistency', () => {
   it('different rollback positions produce different keys', async () => {

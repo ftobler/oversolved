@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { BodyResult, PartFeature, PartDoc } from '../types/cad'
+import type { BodyResult, PartFeature, PartDoc } from '@/types/cad'
 
 interface PartEditorState {
   features: PartFeature[]

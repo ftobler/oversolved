@@ -1,7 +1,7 @@
-import { executeCommand, CORE_KEYBINDINGS } from '../../../stores/commandRegistry'
-import ToolbarButton from '../ToolbarButton'
-import mirrorIcon from '../../../assets/icons/feature-mirror.svg'
-import { useSketchEditorStore } from '../../../stores/sketchEditorStore'
+import { executeCommand, CORE_KEYBINDINGS } from '@/stores/commandRegistry'
+import ToolbarButton from '@/components/Toolbar/ToolbarButton'
+import mirrorIcon from '@/assets/icons/feature-mirror.svg'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 export default function MirrorTool() {
   const normalSelection = useSketchEditorStore(s => s.normalSelection)

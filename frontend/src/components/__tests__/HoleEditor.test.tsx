@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { HoleEditor } from '../HoleEditor'
-import type { PartFeature } from '../../types/cad'
+import { HoleEditor } from '@/components/HoleEditor'
+import type { PartFeature } from '@/types/cad'
 
 function makeFeature(overrides: Partial<PartFeature['hole']> = {}): PartFeature {
   return {

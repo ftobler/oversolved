@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '../../contexts/AuthContext'
-import Documents from '../Documents'
+import { AuthProvider } from '@/contexts/AuthContext'
+import Documents from '@/pages/Documents'
 
 const authOk = {
   ok: true,

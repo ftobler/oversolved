@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { CLICK_THRESHOLD_PX } from '../Geometry3D/pointerAbstraction'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
 
 beforeEach(() => {
   useSketchEditorStore.setState({

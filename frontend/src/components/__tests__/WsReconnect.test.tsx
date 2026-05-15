@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import WsReconnect from '../WsReconnect'
-import { solverWs } from '../../hooks/solverWs'
+import WsReconnect from '@/components/WsReconnect'
+import { solverWs } from '@/hooks/solverWs'
 
 vi.mock('../../hooks/solverWs', () => ({
   solverWs: {

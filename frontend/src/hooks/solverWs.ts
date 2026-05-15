@@ -1,5 +1,5 @@
-import type { GeometryHeader } from '../utils/geometryUnpack'
-import { useSolverStore } from '../stores/solverStore'
+import type { GeometryHeader } from '@/utils/geometryUnpack'
+import { useSolverStore } from '@/stores/solverStore'
 
 export type GeometryListener = (msgId: number, header: GeometryHeader, buffer: ArrayBuffer, jsonHeaderLen: number) => void
 
@@ -124,7 +124,7 @@ class SolverWs {
       let end = jsonHeaderLen;
       while (end > 0 && jsonBytes[end - 1] === 0) end--;
       const jsonStr = new TextDecoder().decode(new Uint8Array(buf, 4, end));
-      const header = JSON.parse(jsonStr) as import('../utils/geometryUnpack').GeometryHeader;
+      const header = JSON.parse(jsonStr) as import('@/utils/geometryUnpack').GeometryHeader;
       for (const listener of this.geometryListeners) {
         listener(header.msgId, header, buf, jsonHeaderLen);
       }

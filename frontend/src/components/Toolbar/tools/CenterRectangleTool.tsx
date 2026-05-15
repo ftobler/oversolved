@@ -1,7 +1,7 @@
-import { useSketchEditorStore } from '../../../stores/sketchEditorStore'
-import { executeCommand } from '../../../stores/commandRegistry'
-import ToolbarButton from '../ToolbarButton'
-import toolbarCenterRectangleIcon from '../../../assets/icons/toolbar-center-rectangle.svg'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { executeCommand } from '@/stores/commandRegistry'
+import ToolbarButton from '@/components/Toolbar/ToolbarButton'
+import toolbarCenterRectangleIcon from '@/assets/icons/toolbar-center-rectangle.svg'
 
 export default function CenterRectangleTool() {
   const activeTool = useSketchEditorStore(s => s.activeTool)

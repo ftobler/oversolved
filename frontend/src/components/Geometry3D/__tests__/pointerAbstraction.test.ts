@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { makeSanitizedEvent, screenPixelDistance, isPureClick, CLICK_THRESHOLD_PX } from '../pointerAbstraction'
+import { makeSanitizedEvent, screenPixelDistance, isPureClick, CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
 
 describe('makeSanitizedEvent', () => {
   it('returns event when local z is within plane (|z| <= 1)', () => {

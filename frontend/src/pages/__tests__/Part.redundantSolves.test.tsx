@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor, fireEvent, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { forwardRef, useImperativeHandle } from 'react'
-import Part from '../Part'
-import { solverWs } from '../../hooks/solverWs'
-import { invalidateAllCache } from '../../utils/buildCache'
+import Part from '@/pages/Part'
+import { solverWs } from '@/hooks/solverWs'
+import { invalidateAllCache } from '@/utils/buildCache'
 
 vi.mock('../../hooks/solverWs', () => ({
   solverWs: {

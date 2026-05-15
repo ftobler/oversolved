@@ -1,7 +1,7 @@
-import type { Tool, ToolContext, ToolHandlers } from '../registry/toolRegistry'
-import type { Point } from '../types/cad'
-import { shouldActivateDrag, computeDragMutation } from '../components/Geometry3D/dragLogic'
-import type { SnapTarget } from '../components/Geometry3D/snapDetection'
+import type { Tool, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
+import type { Point } from '@/types/cad'
+import { shouldActivateDrag, computeDragMutation } from '@/components/Geometry3D/dragLogic'
+import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 
 export interface DragToolContext extends ToolContext {
   drag: { type: 'vertex' | 'edge'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: Point; currentWorld: Point; startClient: [number, number] } | null

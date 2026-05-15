@@ -1,8 +1,8 @@
 import * as React from 'react'
-import { BugReporter, type BugReportAttachments } from '../components/BugReporter'
-import WsReconnect from '../components/WsReconnect'
-import { describeMutation } from '../utils/mutationDescriptions'
-import type { Mutation } from '../types/cad'
+import { BugReporter, type BugReportAttachments } from '@/components/BugReporter'
+import WsReconnect from '@/components/WsReconnect'
+import { describeMutation } from '@/utils/mutationDescriptions'
+import type { Mutation } from '@/types/cad'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
 

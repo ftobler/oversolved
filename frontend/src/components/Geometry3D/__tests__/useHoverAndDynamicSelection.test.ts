@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useSketchEditorStore } from '../../../stores/sketchEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 describe('useHoverAndDynamicSelection hook behavior', () => {
   beforeEach(() => {

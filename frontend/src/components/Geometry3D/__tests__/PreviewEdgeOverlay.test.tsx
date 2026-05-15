@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render } from '@testing-library/react'
-import type { BodyRenderItem } from '../../Viewport/bodyUtils'
-import type { EdgeData } from '../../../types/cad'
+import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
+import type { EdgeData } from '@/types/cad'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: () => {},
@@ -40,7 +40,7 @@ function mockLineSegments({ renderOrder, children }: {
 
 vi.stubGlobal('lineSegments', mockLineSegments)
 
-import PreviewEdgeOverlay from '../PreviewEdgeOverlay'
+import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
 
 function makeItem(key: string, edges: EdgeData[], edgeQueries?: string[]): BodyRenderItem {
   return {

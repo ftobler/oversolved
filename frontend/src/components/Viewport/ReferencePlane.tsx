@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { builtinSelectionId } from '../Geometry3D/utils'
-import { PlaneLabel, PlaneSurface, type PlaneState } from './PlaneVisual'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { builtinSelectionId } from '@/components/Geometry3D/utils'
+import { PlaneLabel, PlaneSurface, type PlaneState } from '@/components/Viewport/PlaneVisual'
 
 const PLANE_SIZE = 100
 const PH = PLANE_SIZE / 2

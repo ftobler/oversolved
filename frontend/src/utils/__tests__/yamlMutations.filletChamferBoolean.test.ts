@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc } from '../../types/cad'
+import type { PartDoc } from '@/types/cad'
 import {
   applyAddFilletEdge,
   applyRemoveFilletEdge,
@@ -7,7 +7,7 @@ import {
   applyRemoveChamferEdge,
   applyAddBooleanTool,
   applyRemoveBooleanTool,
-} from '../yamlMutations'
+} from '@/utils/yamlMutations'
 
 describe('applyAddFilletEdge toggle', () => {
   it('adds a new edge query', () => {

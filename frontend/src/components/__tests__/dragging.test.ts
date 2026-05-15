@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { shouldActivateDrag } from '../Geometry3D/dragLogic'
-import { makeSanitizedEvent } from '../Geometry3D/pointerAbstraction'
-import { worldToSketchLocalPure } from '../Geometry3D/coordTransform'
-import { CLICK_THRESHOLD_PX } from '../Geometry3D/constants'
+import { shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
+import { makeSanitizedEvent } from '@/components/Geometry3D/pointerAbstraction'
+import { worldToSketchLocalPure } from '@/components/Geometry3D/coordTransform'
+import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
 
 // REGRESSION TEST DOCUMENTATION: Dragging Coordinate and Collision Bugs
 //

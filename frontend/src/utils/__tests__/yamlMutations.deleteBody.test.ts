@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { applyAddDeleteBody, applySetDeleteBodyTarget } from '../yamlMutations'
-import type { PartDoc } from '../../types/cad'
+import { applyAddDeleteBody, applySetDeleteBodyTarget } from '@/utils/yamlMutations'
+import type { PartDoc } from '@/types/cad'
 
 function emptyDoc(): PartDoc { return { features: [] } }
 

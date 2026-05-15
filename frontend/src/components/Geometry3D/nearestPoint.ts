@@ -1,8 +1,8 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-import type { LineSegment, Circle, Arc, PointEntity, Entity } from '../../types/cad'
-import { getEntityKind } from '../../types/cad'
+import type { LineSegment, Circle, Arc, PointEntity, Entity } from '@/types/cad'
+import { getEntityKind } from '@/types/cad'
 
 export interface NearestPointResult {
   position: [number, number]

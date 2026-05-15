@@ -2,16 +2,16 @@ import { useRef, useEffect } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
-import { useSketchEditorStore, getSketchCallback } from '../../stores/sketchEditorStore'
-import { toolRegistry } from '../../registry/toolRegistry'
-import { sanitizePointerEvent } from './pointerAbstractionAdapters'
-import { Dot } from './VertexDots'
-import { DashedLine } from '../sketch_dimensions'
-import { COLOR_PREVIEW } from './constants'
-import { useAlignmentSnapEffect } from '../interaction/useAlignmentSnapEffect'
-import type { Sketch } from '../../types/cad'
-import type { DrawingToolContext } from '../../tools/DrawingTool'
-import { computePreviewPts } from './drawGeometry'
+import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
+import { toolRegistry } from '@/registry/toolRegistry'
+import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
+import { Dot } from '@/components/Geometry3D/VertexDots'
+import { DashedLine } from '@/components/sketch_dimensions'
+import { COLOR_PREVIEW } from '@/components/Geometry3D/constants'
+import { useAlignmentSnapEffect } from '@/components/interaction/useAlignmentSnapEffect'
+import type { Sketch } from '@/types/cad'
+import type { DrawingToolContext } from '@/tools/DrawingTool'
+import { computePreviewPts } from '@/components/Geometry3D/drawGeometry'
 
 export function DrawPreview({ activeFeatureId }: { activeFeatureId?: string }) {
   const activeTool = useSketchEditorStore(s => s.activeTool)
@@ -160,9 +160,9 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           alignmentSnapKind: state.alignmentSnapKind,
           alignmentSnapVertexId: state.alignmentSnapVertexId,
           setDrawSnap: useSketchEditorStore.getState().setDrawSnap,
-          setActiveTool: (tool: string | null) => { useSketchEditorStore.getState().setActiveTool(tool as import('../../stores/sketchEditorStore').ActiveTool) },
-          sketch: sketch as Record<string, import('../../types/cad').Entity> | undefined,
-          otherSketches: otherSketches as Record<string, Record<string, import('../../types/cad').Entity>> | undefined,
+          setActiveTool: (tool: string | null) => { useSketchEditorStore.getState().setActiveTool(tool as import('@/stores/sketchEditorStore').ActiveTool) },
+          sketch: sketch as Record<string, import('@/types/cad').Entity> | undefined,
+          otherSketches: otherSketches as Record<string, Record<string, import('@/types/cad').Entity>> | undefined,
         }
         tool.handlers.onPointerDown(e.nativeEvent, [x, y], context)
       }}

@@ -1,10 +1,10 @@
-import type { Tool, ToolContext, ToolHandlers } from '../registry/toolRegistry'
-import type { Point, Entity } from '../types/cad'
-import { ENTITY_BY_ACTIVE_TOOL } from '../registry'
-import type { SnapKind } from '../registry'
-import { computeDrawClick } from '../components/Geometry3D/drawLogic'
-import type { DrawSnapState } from '../components/Geometry3D/drawLogic'
-import { randomId } from '../utils/yamlMutations'
+import type { Tool, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
+import type { Point, Entity } from '@/types/cad'
+import { ENTITY_BY_ACTIVE_TOOL } from '@/registry'
+import type { SnapKind } from '@/registry'
+import { computeDrawClick } from '@/components/Geometry3D/drawLogic'
+import type { DrawSnapState } from '@/components/Geometry3D/drawLogic'
+import { randomId } from '@/utils/yamlMutations'
 
 export interface DrawingToolContext extends ToolContext {
   drawPoints: Point[]

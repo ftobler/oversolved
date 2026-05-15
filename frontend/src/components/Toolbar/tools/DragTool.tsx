@@ -1,7 +1,7 @@
-import { useSketchEditorStore } from '../../../stores/sketchEditorStore'
-import { executeCommand } from '../../../stores/commandRegistry'
-import ToolbarButton from '../ToolbarButton'
-import { iconUrl } from './toolUtils'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { executeCommand } from '@/stores/commandRegistry'
+import ToolbarButton from '@/components/Toolbar/ToolbarButton'
+import { iconUrl } from '@/components/Toolbar/tools/toolUtils'
 
 export default function DragTool() {
   const activeTool = useSketchEditorStore(s => s.activeTool)

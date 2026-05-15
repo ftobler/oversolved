@@ -1,8 +1,8 @@
 // Central command registry: maps command names to actions registered at runtime.
 // Keymaps are defined here so they are testable and independently configurable.
 
-import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '../registry'
-import { useSketchEditorStore } from './sketchEditorStore'
+import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '@/registry'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 const handlers = new Map<string, () => void>()
 

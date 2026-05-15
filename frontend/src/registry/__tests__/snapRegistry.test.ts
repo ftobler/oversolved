@@ -4,8 +4,8 @@ import {
   SNAP_KINDS,
   canSnapTo,
   suggestConstraint,
-} from '../snapRegistry'
-import { CONSTRAINT_BY_KIND } from '../constraintRegistry'
+} from '@/registry/snapRegistry'
+import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 
 // ── Snap registry consistency ────
 

@@ -14,7 +14,7 @@
 //   4. Add rendering in Geometry3D.tsx / SketchSvg.tsx.
 //   5. Optionally add an SVG icon in assets/icons/.
 
-import type { ActiveTool } from '../stores/sketchEditorStore'
+import type { ActiveTool } from '@/stores/sketchEditorStore'
 
 // ─── Entity definition ───
 

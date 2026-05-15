@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import AppHeader from '../components/AppHeader'
-import { http } from '../utils/httpClient'
-import './Documentation.css'
+import AppHeader from '@/components/AppHeader'
+import { http } from '@/utils/httpClient'
+import '@/pages/Documentation.css'
 
 interface DocFile {
   name: string

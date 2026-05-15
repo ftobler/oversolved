@@ -1,5 +1,5 @@
-import type { Mesh3D, EdgeData } from '../../types/cad'
-import { ARC_SEGMENTS } from './constants'
+import type { Mesh3D, EdgeData } from '@/types/cad'
+import { ARC_SEGMENTS } from '@/components/Geometry3D/constants'
 
 export function buildBodyGeometry(mesh: Mesh3D): {
   positions: Float32Array

@@ -1,33 +1,33 @@
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus } from '../../types/cad'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus } from '@/types/cad'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 // Vertex/point rendering
-import { VertexDot, HitPolyline, VertexHighlight, ProjectedOriginPoint } from './VertexDots'
+import { VertexDot, HitPolyline, VertexHighlight, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
 
 // Entity geometry rendering
-import { EntityLines, ProjectedEntities } from './EntityLines'
-import { sketchExtent } from './drawGeometry'
+import { EntityLines, ProjectedEntities } from '@/components/Geometry3D/EntityLines'
+import { sketchExtent } from '@/components/Geometry3D/drawGeometry'
 
 // Constraint display
-import { ConstraintOverlays } from './Constraints'
+import { ConstraintOverlays } from '@/components/Geometry3D/Constraints'
 
 // Topology surface rendering
-import { TopologySurfaces, TopologyEdges } from './Surfaces'
+import { TopologySurfaces, TopologyEdges } from '@/components/Geometry3D/Surfaces'
 
 // Dragging
-import { DragPlane, DragSnapIndicator, DragAlignmentIndicator } from './Dragging'
-import { applyDragPreview } from './dragLogic'
+import { DragPlane, DragSnapIndicator, DragAlignmentIndicator } from '@/components/Geometry3D/Dragging'
+import { applyDragPreview } from '@/components/Geometry3D/dragLogic'
 
 // Drawing tools
-import { DrawPreview, DrawPlane } from './Drawing'
+import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'
 
 // Utilities
-import { planeRotation, planeRotationFromTransform } from './utils'
+import { planeRotation, planeRotationFromTransform } from '@/components/Geometry3D/utils'
 
 // Colors
-import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from './constants'
+import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
 
 export interface Geometry3DProps {
   featureId: string

@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
-import type { Sketch } from '../../types/cad'
-import { useSketchEditorStore } from '../../stores/sketchEditorStore'
-import { detectAlignmentSnap, ALIGNMENT_TOLERANCE_DEG } from '../../registry'
-import { useDynamicSelectionPositions } from './snapHooks'
+import type { Sketch } from '@/types/cad'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { detectAlignmentSnap, ALIGNMENT_TOLERANCE_DEG } from '@/registry'
+import { useDynamicSelectionPositions } from '@/components/interaction/snapHooks'
 
 export interface DrawAlignmentResult {
   kind: 'kinda_horizontal' | 'kinda_vertical'

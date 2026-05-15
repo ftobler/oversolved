@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { getBodiesToRender, computeEffectiveVisibleBodies } from '../bodyUtils'
-import type { Feature, BodyResult } from '../../../types/cad'
+import { getBodiesToRender, computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
+import type { Feature, BodyResult } from '@/types/cad'
 
 describe('getBodiesToRender', () => {
   const features: Feature[] = [

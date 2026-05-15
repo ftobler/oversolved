@@ -1,6 +1,6 @@
-import type { SelectionId, EntitySelectionId, VertexSelectionId, FaceSelectionId, EdgeSelectionId, PlaneSelectionId, ConstraintSelId } from "../types/query"
-import { parseQuery } from "./query"
-import type { Query } from "../types/query"
+import type { SelectionId, EntitySelectionId, VertexSelectionId, FaceSelectionId, EdgeSelectionId, PlaneSelectionId, ConstraintSelId } from "@/types/query"
+import { parseQuery } from "@/utils/query"
+import type { Query } from "@/types/query"
 
 export const sel = {
   entity:     (featureId: string, eid: string): EntitySelectionId =>

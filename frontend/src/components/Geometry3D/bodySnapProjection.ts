@@ -1,6 +1,6 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
-import type { PlaneTransform, EdgeData, Sketch } from '../../types/cad'
+import type { PlaneTransform, EdgeData, Sketch } from '@/types/cad'
 
 /** Sentinel prefix for body-snap featureIds in synthetic otherSketches entries.
  *  computeDragMutation detects this to emit move_vertex (position only, no constraint). */

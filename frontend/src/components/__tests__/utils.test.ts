@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { planeRotationFromTransform, planeRotation } from '../Geometry3D/utils'
+import { planeRotationFromTransform, planeRotation } from '@/components/Geometry3D/utils'
 
 // 5h: planeRotationFromTransform
 

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '../../contexts/AuthContext'
-import UserProfile from '../UserProfile'
+import { AuthProvider } from '@/contexts/AuthContext'
+import UserProfile from '@/pages/UserProfile'
 
 const makeUserResponse = (overrides = {}) => ({
   ok: true,

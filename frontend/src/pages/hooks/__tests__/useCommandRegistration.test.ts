@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { clearAllHandlers } from '../../../stores/commandRegistry'
+import { clearAllHandlers } from '@/stores/commandRegistry'
 
 beforeEach(() => { clearAllHandlers() })
 

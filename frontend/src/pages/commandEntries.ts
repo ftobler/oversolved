@@ -1,6 +1,6 @@
-import { CONSTRAINTS } from '../registry'
-import { useSketchEditorStore } from '../stores/sketchEditorStore'
-import type { CommandEntry } from './hooks/useCommandRegistration'
+import { CONSTRAINTS } from '@/registry'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import type { CommandEntry } from '@/pages/hooks/useCommandRegistration'
 
 /**
  * Builds the full command entry list for the sketch editor.

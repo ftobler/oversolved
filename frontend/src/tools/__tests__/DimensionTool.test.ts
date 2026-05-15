@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createDimensionTool } from '../DimensionTool'
-import type { DimensionToolContext } from '../DimensionTool'
+import { createDimensionTool } from '@/tools/DimensionTool'
+import type { DimensionToolContext } from '@/tools/DimensionTool'
 
 function createMockContext(overrides: Partial<DimensionToolContext> = {}): DimensionToolContext {
   return {

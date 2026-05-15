@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
-import { http, HttpError } from '../utils/httpClient'
-import './AdminPeriodicTasks.css'
+import { useAuth } from '@/contexts/AuthContext'
+import { http, HttpError } from '@/utils/httpClient'
+import '@/pages/AdminPeriodicTasks.css'
 
 interface PeriodicTask {
   id: number

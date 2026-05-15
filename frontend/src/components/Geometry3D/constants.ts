@@ -21,7 +21,7 @@ export {
   RENDER_ORDER_DEFAULT,
   RENDER_ORDER_EDITING,
   RENDER_ORDER_HIGHLIGHT,
-} from '../../utils/partColors'
+} from '@/utils/partColors'
 
 // Drag snap — vertex pull zone must be larger than entity body pull zone so that
 // dragging near an endpoint always snaps to the vertex, not the entity body.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { ActiveTool } from '../../stores/sketchEditorStore'
+import type { ActiveTool } from '@/stores/sketchEditorStore'
 import {
   CONSTRAINTS,
   CONSTRAINT_BY_KIND,
@@ -9,7 +9,7 @@ import {
   DIMENSION_RULES,
   resolveSingleEntityDimension,
   resolveTwoTargetDimension,
-} from '../constraintRegistry'
+} from '@/registry/constraintRegistry'
 import {
   ENTITIES,
   ENTITY_BY_KIND,
@@ -18,7 +18,7 @@ import {
   VERTEX_INDICES,
   ALL_COORD_INDICES,
   getDefaultParams,
-} from '../entityRegistry'
+} from '@/registry/entityRegistry'
 
 // ── Constraint registry consistency ────
 

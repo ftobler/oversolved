@@ -1,6 +1,6 @@
-import type { Sketch, Constraints, Topology, EntityStatus } from '../types/cad'
-import { renderSketch, renderTopology, renderConstraints } from '../utils/svgRenderUtils'
-import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR } from './Geometry3D/constants'
+import type { Sketch, Constraints, Topology, EntityStatus } from '@/types/cad'
+import { renderSketch, renderTopology, renderConstraints } from '@/utils/svgRenderUtils'
+import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR } from '@/components/Geometry3D/constants'
 
 interface Props {
   initial: Sketch
@@ -14,13 +14,13 @@ interface Props {
 
 const PADDING = 40
 
-const iconModules = import.meta.glob('../assets/icons/*.svg', {
+const iconModules = import.meta.glob('@/assets/icons/*.svg', {
   eager: true,
   query: '?url',
   import: 'default',
 }) as Record<string, string>
 
-import constraintParallelUrl from '../assets/icons/constraint-parallel.svg?url'
+import constraintParallelUrl from '@/assets/icons/constraint-parallel.svg?url'
 
 const SYMBOL_TO_ICON: Record<string, string> = {
   symbol_h:          'constraint-horizontal',

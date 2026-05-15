@@ -3,9 +3,9 @@ import type {
   PartEntityDef, PartFeature, PartConstraint, ConstraintRender,
   LineSegment, Circle, Arc, PointEntity,
   ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity,
-} from '../types/cad'
-import { getDefaultParams } from '../registry'
-import { getEntityKind } from '../types/cad'
+} from '@/types/cad'
+import { getDefaultParams } from '@/registry'
+import { getEntityKind } from '@/types/cad'
 
 type ResolvedRef = { entity: string; point?: string } | null | undefined
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emitWire, parseQuery, q } from '../query'
+import { emitWire, parseQuery, q } from '@/utils/query'
 
 describe('emitWire', () => {
   it('local no sub',       () => expect(emitWire(q.local('e1'))).toBe('$e1'))

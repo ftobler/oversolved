@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
-import { useSketchEditorStore } from '../stores/sketchEditorStore'
-import { computeMeasurements } from '../utils/computeMeasurements'
-import type { Sketch, BodyResult } from '../types/cad'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { computeMeasurements } from '@/utils/computeMeasurements'
+import type { Sketch, BodyResult } from '@/types/cad'
 
 interface FooterMeasurementDisplayProps {
   sketch: Sketch
