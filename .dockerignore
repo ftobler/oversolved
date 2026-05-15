@@ -21,3 +21,4 @@ frontend/.vite/
 oversolved/uploads/
 oversolved/exports/
 *.log
+frontend/dist/

@@ -359,6 +359,14 @@ def create_app(config: dict | None = None) -> Flask:
         response.headers.setdefault("X-XSS-Protection", "0")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' ws: wss:; "
+            "worker-src 'self' blob:; "
+        )
         if app.config.get("SESSION_COOKIE_SECURE", False):
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return response

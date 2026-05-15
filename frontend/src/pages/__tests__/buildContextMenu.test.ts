@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildContextMenu } from '@/pages/buildContextMenu'
 import type { BuildContextMenuInput, BuildContextMenuCallbacks } from '@/pages/buildContextMenu'
+import type { ContextMenuItem } from '@/components/RightClickMenu'
 import type { PartFeature } from '@/types/cad'
 
 function makeFeature(overrides: Partial<PartFeature> & { id: string; kind: string }): PartFeature {
@@ -44,7 +45,7 @@ function defaultCallbacks(): BuildContextMenuCallbacks {
   }
 }
 
-function findLabel(items: { label: string }[], label: string) {
+function findLabel(items: ContextMenuItem[], label: string) {
   return items.find(i => i.label === label)
 }
 
@@ -229,9 +230,8 @@ describe('buildContextMenu', () => {
   })
 
   it('calls onBodyRename when Rename on body is clicked', () => {
-    let renamed = ''
     const callbacks = defaultCallbacks()
-    callbacks.onBodyRename = (id, label) => { renamed = `${id}:${label}` }
+    callbacks.onBodyRename = () => {}
     const result = buildContextMenu(
       defaultInput({
         targetId: 'body:b1',
