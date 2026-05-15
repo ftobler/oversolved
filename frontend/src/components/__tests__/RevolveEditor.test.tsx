@@ -1,18 +1,14 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Sidebar } from '../Sidebar'
 import type { PartFeature } from '../../types/cad'
+import { usePartEditorStore } from '../../stores/partEditorStore'
+import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { PartEditorProvider } from '../../contexts/PartEditorContext'
+import type { PartEditorCallbacks } from '../../contexts/PartEditorContext'
 
-function makeSidebarProps(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}) {
+function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {
-    features: [] as PartFeature[],
-    doc: null,
-    rollbackPosition: null,
-    visibleFeatures: new Set<string>(),
-    editingFeatureId: null,
-    selection: new Set<string>(),
-    pendingPickField: null,
-    planeSelectionFeatureId: null,
     onToggleSelect: vi.fn(),
     onEnterEditSketch: vi.fn(),
     onExitEditSketch: vi.fn(),
@@ -23,12 +19,56 @@ function makeSidebarProps(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}
     onRollbackDragStart: vi.fn(),
     onMutation: vi.fn(),
     onSetRollbackPosition: vi.fn(),
-    onSetPendingPickField: vi.fn(),
-    onSetPlaneSelectionFeatureId: vi.fn(),
-    featureTimings: {},
     ...overrides,
   }
 }
+
+function renderSidebar(storeFeatures: PartFeature[], editingFeatureId: string | null, callbacks: Partial<PartEditorCallbacks> = {}, pendingPickField?: unknown) {
+  usePartEditorStore.setState({
+    features: storeFeatures,
+    visibleFeatures: new Set(storeFeatures.map(f => f.id)),
+    editingFeatureId,
+    rollbackPosition: null,
+    doc: null,
+    visibleBodies: new Set(),
+    partLabels: {},
+    solveResults: {},
+    bodies: {},
+    isRebuilding: false,
+    featureTimings: {},
+  })
+  useSketchEditorStore.setState({
+    normalSelection: new Set(),
+    pendingPickField: (pendingPickField ?? null) as never,
+    planeSelectionFeatureId: null,
+  })
+  return render(
+    <PartEditorProvider value={makeCallbacks(callbacks)}>
+      <Sidebar />
+    </PartEditorProvider>
+  )
+}
+
+beforeEach(() => {
+  usePartEditorStore.setState({
+    features: [],
+    rollbackPosition: null,
+    visibleFeatures: new Set(),
+    editingFeatureId: null,
+    doc: null,
+    visibleBodies: new Set(),
+    partLabels: {},
+    solveResults: {},
+    bodies: {},
+    isRebuilding: false,
+    featureTimings: {},
+  })
+  useSketchEditorStore.setState({
+    normalSelection: new Set(),
+    pendingPickField: null,
+    planeSelectionFeatureId: null,
+  })
+})
 
 const revolveFeature: PartFeature = {
   id: 'rev1',
@@ -38,11 +78,7 @@ const revolveFeature: PartFeature = {
 
 describe('merge target PickChip in RevolveEditor', () => {
   it('is shown for add operation (default)', () => {
-    render(<Sidebar {...makeSidebarProps({
-      features: [revolveFeature],
-      visibleFeatures: new Set(['rev1']),
-      editingFeatureId: 'rev1',
-    })} />)
+    renderSidebar([revolveFeature], 'rev1')
     expect(screen.getByText('Merge Target')).toBeInTheDocument()
   })
 
@@ -51,11 +87,7 @@ describe('merge target PickChip in RevolveEditor', () => {
       id: 'rev1', kind: 'revolve',
       revolve: { sketch: '$sk1', angle: 360, operation: 'cut' },
     }
-    render(<Sidebar {...makeSidebarProps({
-      features: [cutFeature],
-      visibleFeatures: new Set(['rev1']),
-      editingFeatureId: 'rev1',
-    })} />)
+    renderSidebar([cutFeature], 'rev1')
     expect(screen.getByText('Merge Target')).toBeInTheDocument()
   })
 
@@ -64,48 +96,26 @@ describe('merge target PickChip in RevolveEditor', () => {
       id: 'rev1', kind: 'revolve',
       revolve: { sketch: '$sk1', angle: 360, operation: 'new' },
     }
-    render(<Sidebar {...makeSidebarProps({
-      features: [newFeature],
-      visibleFeatures: new Set(['rev1']),
-      editingFeatureId: 'rev1',
-    })} />)
+    renderSidebar([newFeature], 'rev1')
     expect(screen.queryByText('Merge Target')).toBeNull()
   })
 
   it('shows (all bodies) when no merge_target set', () => {
-    render(<Sidebar {...makeSidebarProps({
-      features: [revolveFeature],
-      visibleFeatures: new Set(['rev1']),
-      editingFeatureId: 'rev1',
-    })} />)
+    renderSidebar([revolveFeature], 'rev1')
     expect(screen.getByText('(all bodies)')).toBeInTheDocument()
   })
 
   it('activates pick mode with hostKind revolve on chip click', () => {
-    const onSetPendingPickField = vi.fn()
-    render(<Sidebar {...makeSidebarProps({
-      features: [revolveFeature],
-      visibleFeatures: new Set(['rev1']),
-      editingFeatureId: 'rev1',
-      onSetPendingPickField,
-    })} />)
+    renderSidebar([revolveFeature], 'rev1')
     fireEvent.click(screen.getByText('(all bodies)'))
-    expect(onSetPendingPickField).toHaveBeenCalledWith({
+    expect(useSketchEditorStore.getState().pendingPickField).toEqual({
       featureId: 'rev1', field: 'merge_target', hostKind: 'revolve',
     })
   })
 
   it('deactivates pick mode when chip clicked while already picking', () => {
-    const onSetPendingPickField = vi.fn()
-    render(<Sidebar {...makeSidebarProps({
-      features: [revolveFeature],
-      visibleFeatures: new Set(['rev1']),
-      editingFeatureId: 'rev1',
-      pendingPickField: { featureId: 'rev1', field: 'merge_target', hostKind: 'revolve' },
-      onSetPendingPickField,
-    })} />)
+    renderSidebar([revolveFeature], 'rev1', {}, { featureId: 'rev1', field: 'merge_target', hostKind: 'revolve' })
     fireEvent.click(screen.getByText('(all bodies)'))
-    expect(onSetPendingPickField).toHaveBeenCalledWith(null)
+    expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
   })
-
 })

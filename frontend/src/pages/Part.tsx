@@ -20,6 +20,8 @@ import WsStatusIndicator from '../components/WsStatusIndicator'
 import ExportDialog, { type ExportFormat } from '../components/ExportDialog'
 import ShareDialog from '../components/ShareDialog'
 import LoadingOverlay from '../components/LoadingOverlay'
+import { usePartEditorStore } from '../stores/partEditorStore'
+import { PartEditorProvider } from '../contexts/PartEditorContext'
 
 import { useSolverStore } from '../stores/solverStore'
 import { invalidateDocCache } from '../utils/buildCache'
@@ -121,7 +123,6 @@ export default function Part() {
 
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
-  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
   const setPendingPickField = useSketchEditorStore(s => s.setPendingPickField)
    const selection = useSketchEditorStore(s => s.normalSelection)
    // Temporary accumulation of elements while pointer is held down
@@ -323,6 +324,30 @@ useEffect(() => {
       setIsRebuilding(false)
     }
   }, [uuid, reSolve, rollbackPosition, features, docRef])
+
+  // Sync computed state into the partEditorStore so Sidebar can read it without props.
+  useEffect(() => { usePartEditorStore.getState().setFeatures(features) }, [features])
+  useEffect(() => { usePartEditorStore.getState().setDoc(doc) }, [doc])
+  useEffect(() => { usePartEditorStore.getState().setRollbackPosition(rollbackPosition) }, [rollbackPosition])
+  useEffect(() => { usePartEditorStore.getState().setEditingFeatureId(editingFeatureId) }, [editingFeatureId])
+  useEffect(() => { usePartEditorStore.getState().setVisibleFeatures(visibleFeatures) }, [visibleFeatures])
+  useEffect(() => { usePartEditorStore.getState().setVisibleBodies(effectiveVisibleBodies ?? new Set()) }, [effectiveVisibleBodies])
+  useEffect(() => { usePartEditorStore.getState().setPartLabels(partLabels) }, [partLabels])
+  useEffect(() => { usePartEditorStore.getState().setSolveResults(solveResults ?? {}) }, [solveResults])
+  useEffect(() => { usePartEditorStore.getState().setBodies(bodies ?? {}) }, [bodies])
+  useEffect(() => { usePartEditorStore.getState().setIsRebuilding(isRebuilding) }, [isRebuilding])
+  useEffect(() => { usePartEditorStore.getState().setFeatureTimings(featureTimings ?? {}) }, [featureTimings])
+
+  // Reset the store when this component unmounts.
+  useEffect(() => {
+    return () => {
+      usePartEditorStore.setState({
+        features: [], doc: null, rollbackPosition: null, editingFeatureId: null,
+        visibleFeatures: new Set(), visibleBodies: new Set(), partLabels: {},
+        solveResults: {}, bodies: {}, isRebuilding: false, featureTimings: {},
+      })
+    }
+  }, [])
 
   const handleRebuildRef = useRef(handleRebuild)
   handleRebuildRef.current = handleRebuild
@@ -623,9 +648,9 @@ useEffect(() => {
     }
   }
 
-  const handleRollbackDragStart = (e: React.DragEvent) => {
+  const handleRollbackDragStart = useCallback((e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'move'
-  }
+  }, [])
 
   const handleUserRollbackChange = useCallback((pos: number | null) => {
     rollbackChangeSource.current = 'user'
@@ -985,6 +1010,27 @@ useEffect(() => {
     return () => window.removeEventListener('keydown', handleKeyPress)
   }, [user?.is_admin])
 
+  // Stable callbacks object for PartEditorContext -- Sidebar reads these instead of props.
+  const partEditorCallbacks = useMemo(() => ({
+    onToggleSelect: toggleNormalSelection,
+    onEnterEditSketch: enterEditSketch,
+    onExitEditSketch: exitEditSketch,
+    onAlignCameraToSketchPlane: handleAlignCameraToSketchPlane,
+    onEnterEditFeature: enterEditFeature,
+    onExitEditFeature: exitEditFeature,
+    onToggleVisibility: toggleVisibility,
+    onRightClick: handleRightClick,
+    onRename: handleFeatureRename,
+    onRollbackDragStart: handleRollbackDragStart,
+    onMutation: handleMutation,
+    onSetRollbackPosition: handleUserRollbackChange,
+    onToggleBodyVisibility: toggleBodyVisibility,
+    onRebuild: handleClearCacheAndRebuild,
+  }), [toggleNormalSelection, enterEditSketch, exitEditSketch, handleAlignCameraToSketchPlane,
+    enterEditFeature, exitEditFeature, toggleVisibility, handleRightClick, handleFeatureRename,
+    handleRollbackDragStart, handleMutation, handleUserRollbackChange, toggleBodyVisibility,
+    handleClearCacheAndRebuild])
+
   return (
     <div className="document-viewer">
       <AppHeader>
@@ -1069,38 +1115,9 @@ useEffect(() => {
       </AppHeader>
 
       <div className="doc-container">
-        <Sidebar
-          features={features}
-          doc={doc}
-          rollbackPosition={rollbackPosition}
-          visibleFeatures={visibleFeatures}
-          editingFeatureId={editingFeatureId}
-          selection={selection}
-          pendingPickField={pendingPickField}
-          planeSelectionFeatureId={planeSelectionFeatureId}
-          onToggleSelect={toggleNormalSelection}
-          onEnterEditSketch={enterEditSketch}
-          onExitEditSketch={exitEditSketch}
-          onAlignCameraToSketchPlane={handleAlignCameraToSketchPlane}
-          onEnterEditFeature={enterEditFeature}
-          onExitEditFeature={exitEditFeature}
-          onToggleVisibility={toggleVisibility}
-          onRightClick={handleRightClick}
-          onRename={handleFeatureRename}
-          onRollbackDragStart={handleRollbackDragStart}
-          onMutation={handleMutation}
-          onSetRollbackPosition={handleUserRollbackChange}
-          onSetPendingPickField={setPendingPickField}
-          onSetPlaneSelectionFeatureId={setPlaneSelectionFeatureId}
-          onToggleBodyVisibility={toggleBodyVisibility}
-          partLabels={partLabels}
-          visibleBodies={effectiveVisibleBodies}
-          solveResults={solveResults}
-          bodies={bodies}
-          onRebuild={handleClearCacheAndRebuild}
-          isRebuilding={isRebuilding}
-          featureTimings={featureTimings}
-        />
+        <PartEditorProvider value={partEditorCallbacks}>
+          <Sidebar />
+        </PartEditorProvider>
 
         <div className="doc-editor">
           <div className="editor-toolbar">

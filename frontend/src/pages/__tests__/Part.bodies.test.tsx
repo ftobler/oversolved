@@ -1,8 +1,12 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { Sidebar } from '../../components/Sidebar'
 import { getBodiesToRender } from '../../components/Viewport/bodyUtils'
 import type { PartFeature, BodyResult, Mesh3D } from '../../types/cad'
+import { usePartEditorStore } from '../../stores/partEditorStore'
+import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { PartEditorProvider } from '../../contexts/PartEditorContext'
+import type { PartEditorCallbacks } from '../../contexts/PartEditorContext'
 
 const TEST_CUBE_MESH: Mesh3D = {
   vertices: [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]],
@@ -21,16 +25,8 @@ const extrudeFeature: PartFeature = {
   extrude: { sketch: '$sk1', distance: 10, direction: 'normal' },
 }
 
-function makeSidebarProps(overrides: Record<string, unknown> = {}) {
+function makeCallbacks(): PartEditorCallbacks {
   return {
-    features: [] as PartFeature[],
-    doc: null,
-    rollbackPosition: null,
-    visibleFeatures: new Set<string>(),
-    editingFeatureId: null,
-    selection: new Set<string>(),
-    pendingPickField: null,
-    planeSelectionFeatureId: null,
     onToggleSelect: vi.fn(),
     onEnterEditSketch: vi.fn(),
     onExitEditSketch: vi.fn(),
@@ -41,21 +37,63 @@ function makeSidebarProps(overrides: Record<string, unknown> = {}) {
     onRollbackDragStart: vi.fn(),
     onMutation: vi.fn(),
     onSetRollbackPosition: vi.fn(),
-    onSetPendingPickField: vi.fn(),
-    onSetPlaneSelectionFeatureId: vi.fn(),
-    featureTimings: {},
-    ...overrides,
   }
 }
 
+function renderSidebar(features: PartFeature[], solveResults?: Record<string, unknown>, bodies?: Record<string, BodyResult | undefined>) {
+  usePartEditorStore.setState({
+    features,
+    visibleFeatures: new Set(features.map(f => f.id)),
+    editingFeatureId: null,
+    rollbackPosition: null,
+    doc: null,
+    visibleBodies: new Set(),
+    partLabels: {},
+    solveResults: solveResults ?? {},
+    bodies: (bodies ?? {}) as Record<string, BodyResult>,
+    isRebuilding: false,
+    featureTimings: {},
+  })
+  useSketchEditorStore.setState({
+    normalSelection: new Set(),
+    pendingPickField: null,
+    planeSelectionFeatureId: null,
+  })
+  return render(
+    <PartEditorProvider value={makeCallbacks()}>
+      <Sidebar />
+    </PartEditorProvider>
+  )
+}
+
+beforeEach(() => {
+  usePartEditorStore.setState({
+    features: [],
+    rollbackPosition: null,
+    visibleFeatures: new Set(),
+    editingFeatureId: null,
+    doc: null,
+    visibleBodies: new Set(),
+    partLabels: {},
+    solveResults: {},
+    bodies: {},
+    isRebuilding: false,
+    featureTimings: {},
+  })
+  useSketchEditorStore.setState({
+    normalSelection: new Set(),
+    pendingPickField: null,
+    planeSelectionFeatureId: null,
+  })
+})
+
 describe('extrude feature name error state', () => {
   it('shows neutral name when status ok and mesh present', () => {
-    render(<Sidebar {...makeSidebarProps({
-      features: [extrudeFeature],
-      visibleFeatures: new Set(['ex1']),
-      solveResults: { ex1: { status: 'ok', body_id: 'body_ex1' } },
-      bodies: TEST_BODIES,
-    })} />)
+    renderSidebar(
+      [extrudeFeature],
+      { ex1: { status: 'ok', body_id: 'body_ex1' } },
+      TEST_BODIES,
+    )
     const name = document.querySelector('.feature-name')
     expect(name?.classList.contains('feature-name-error')).toBe(false)
   })
@@ -64,46 +102,34 @@ describe('extrude feature name error state', () => {
     const bodiesWithError: Record<string, BodyResult> = {
       body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh_error: 'no shape' },
     }
-    render(<Sidebar {...makeSidebarProps({
-      features: [extrudeFeature],
-      visibleFeatures: new Set(['ex1']),
-      solveResults: { ex1: { status: 'ok', body_id: 'body_ex1' } },
-      bodies: bodiesWithError,
-    })} />)
+    renderSidebar(
+      [extrudeFeature],
+      { ex1: { status: 'ok', body_id: 'body_ex1' } },
+      bodiesWithError,
+    )
     const name = screen.getByTitle('no shape')
     expect(name.classList.contains('feature-name-error')).toBe(true)
   })
 
   it('shows error name when feature has exception', () => {
-    render(<Sidebar {...makeSidebarProps({
-      features: [extrudeFeature],
-      visibleFeatures: new Set(['ex1']),
-      solveResults: { ex1: { status: 'exception', body_id: 'body_ex1', exception: 'sketch not found' } },
-      bodies: TEST_BODIES,
-    })} />)
+    renderSidebar(
+      [extrudeFeature],
+      { ex1: { status: 'exception', body_id: 'body_ex1', exception: 'sketch not found' } },
+      TEST_BODIES,
+    )
     const name = screen.getByTitle('sketch not found')
     expect(name.classList.contains('feature-name-error')).toBe(true)
   })
 
   it('shows neutral name when no solve result', () => {
-    render(<Sidebar {...makeSidebarProps({
-      features: [extrudeFeature],
-      visibleFeatures: new Set(['ex1']),
-      solveResults: undefined,
-      bodies: undefined,
-    })} />)
+    renderSidebar([extrudeFeature], undefined, undefined)
     const name = document.querySelector('.feature-name')
     expect(name?.classList.contains('feature-name-error')).toBe(false)
   })
 
   it('does not show error for non-extrude features', () => {
     const sketchFeature: PartFeature = { id: 'sk1', kind: 'sketch' }
-    render(<Sidebar {...makeSidebarProps({
-      features: [sketchFeature],
-      visibleFeatures: new Set(['sk1']),
-      solveResults: { sk1: { status: 'ok' } },
-      bodies: {},
-    })} />)
+    renderSidebar([sketchFeature], { sk1: { status: 'ok' } }, {})
     const name = document.querySelector('.feature-name')
     expect(name?.classList.contains('feature-name-error')).toBe(false)
   })

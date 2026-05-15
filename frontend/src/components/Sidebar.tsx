@@ -1,6 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import type { PartFeature, PartDoc, PlaneDef, Mutation, PendingPickField, ExtrudeDirection, ExtrudeOperation, BodyResult } from '../types/cad'
+import type { PartFeature, PlaneDef, ExtrudeDirection, ExtrudeOperation } from '../types/cad'
 import { isBodyFeatureResult } from '../types/cad'
+import { usePartEditorStore } from '../stores/partEditorStore'
+import { useSketchEditorStore } from '../stores/sketchEditorStore'
+import { usePartEditorCallbacks } from '../contexts/PartEditorContext'
 import { normalizeExtrudeSketch, normalizeRevolveSketch } from '../utils/yamlMutations'
 import { planeLabel } from './Geometry3D/utils'
 import featureSketchIcon from '../assets/icons/feature-sketch.svg'
@@ -39,69 +42,43 @@ const MIN_SPLIT_PERCENT = 20
 const MAX_SPLIT_PERCENT = 80
 const DEFAULT_SPLIT_PERCENT = 70
 
-interface SidebarProps {
-  features: PartFeature[]
-  doc: PartDoc | null
-  rollbackPosition: number | null
-  visibleFeatures: Set<string>
-  editingFeatureId: string | null
-  selection: Set<string>
-  pendingPickField: PendingPickField | null
-  planeSelectionFeatureId: string | null
-  onToggleSelect: (id: string) => void
-  onEnterEditSketch: (featureId: string) => void
-  onExitEditSketch: () => void
-  onAlignCameraToSketchPlane?: () => void
-  onEnterEditFeature: (featureId: string) => void
-  onExitEditFeature: () => void
-  onToggleVisibility: (featureId: string) => void
-  onRightClick: (pos: [number, number], targetId?: string) => void
-  onRename?: (featureId: string, label: string) => void
-  onRollbackDragStart: (e: React.DragEvent) => void
-  onMutation: (mutation: Mutation) => void
-  onSetRollbackPosition: (pos: number | null) => void
-  onSetPendingPickField: (state: PendingPickField | null) => void
-  onSetPlaneSelectionFeatureId: (id: string | null) => void
-  onToggleBodyVisibility?: (bodyId: string) => void
-  partLabels?: Record<string, string>
-  visibleBodies?: Set<string>
-  solveResults?: Record<string, unknown>
-  bodies?: Record<string, BodyResult>
-  onRebuild?: () => void
-  isRebuilding?: boolean
-  featureTimings: Record<string, number>
-}
+// Sidebar takes no props -- all state comes from usePartEditorStore and usePartEditorCallbacks.
+export const Sidebar: React.FC = () => {
+  // State from stores
+  const features = usePartEditorStore(s => s.features)
+  const doc = usePartEditorStore(s => s.doc)
+  const rollbackPosition = usePartEditorStore(s => s.rollbackPosition)
+  const editingFeatureId = usePartEditorStore(s => s.editingFeatureId)
+  const visibleFeatures = usePartEditorStore(s => s.visibleFeatures)
+  const visibleBodies = usePartEditorStore(s => s.visibleBodies)
+  const partLabels = usePartEditorStore(s => s.partLabels)
+  const solveResults = usePartEditorStore(s => s.solveResults)
+  const bodies = usePartEditorStore(s => s.bodies)
+  const isRebuilding = usePartEditorStore(s => s.isRebuilding)
+  const featureTimings = usePartEditorStore(s => s.featureTimings)
 
-export const Sidebar: React.FC<SidebarProps> = ({
-  features,
-  doc,
-  rollbackPosition,
-  visibleFeatures,
-  editingFeatureId,
-  selection,
-  pendingPickField,
-  planeSelectionFeatureId,
-  onToggleSelect,
-  onEnterEditSketch,
-  onExitEditSketch,
-  onEnterEditFeature,
-  onExitEditFeature,
-  onToggleVisibility,
-  onRightClick,
-  onRollbackDragStart,
-  onMutation,
-  onSetRollbackPosition,
-  onSetPendingPickField,
-  onSetPlaneSelectionFeatureId,
-  onToggleBodyVisibility,
-  partLabels,
-  visibleBodies,
-  solveResults,
-  bodies,
-  onRebuild,
-  isRebuilding,
-  featureTimings,
-}) => {
+  // Selection and pick state from sketch editor store
+  const selection = useSketchEditorStore(s => s.normalSelection)
+  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
+  const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
+  const onSetPendingPickField = useSketchEditorStore(s => s.setPendingPickField)
+  const onSetPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
+
+  // Callbacks from context
+  const {
+    onToggleSelect,
+    onEnterEditSketch,
+    onExitEditSketch,
+    onEnterEditFeature,
+    onExitEditFeature,
+    onToggleVisibility,
+    onRightClick,
+    onRollbackDragStart,
+    onMutation,
+    onSetRollbackPosition,
+    onToggleBodyVisibility,
+    onRebuild,
+  } = usePartEditorCallbacks()
   const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
   const isDraggingRef = useRef(false)
   const sidebarRef = useRef<HTMLDivElement>(null)

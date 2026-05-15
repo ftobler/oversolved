@@ -1,18 +1,14 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Sidebar } from '../Sidebar'
 import type { PartFeature, Mutation } from '../../types/cad'
+import { usePartEditorStore } from '../../stores/partEditorStore'
+import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { PartEditorProvider } from '../../contexts/PartEditorContext'
+import type { PartEditorCallbacks } from '../../contexts/PartEditorContext'
 
-function makeSidebarProps(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}) {
+function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {
-    features: [] as PartFeature[],
-    doc: null,
-    rollbackPosition: null,
-    visibleFeatures: new Set<string>(),
-    editingFeatureId: null,
-    selection: new Set<string>(),
-    pendingPickField: null,
-    planeSelectionFeatureId: null,
     onToggleSelect: vi.fn(),
     onEnterEditSketch: vi.fn(),
     onExitEditSketch: vi.fn(),
@@ -23,12 +19,65 @@ function makeSidebarProps(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}
     onRollbackDragStart: vi.fn(),
     onMutation: vi.fn(),
     onSetRollbackPosition: vi.fn(),
-    onSetPendingPickField: vi.fn(),
-    onSetPlaneSelectionFeatureId: vi.fn(),
-    featureTimings: {},
     ...overrides,
   }
 }
+
+interface StoreState {
+  features?: PartFeature[]
+  visibleFeatures?: Set<string>
+  editingFeatureId?: string | null
+  pendingPickField?: unknown
+  solveResults?: Record<string, unknown>
+  bodies?: Record<string, unknown>
+}
+
+function renderSidebar(storeState: StoreState = {}, callbacks: Partial<PartEditorCallbacks> = {}) {
+  usePartEditorStore.setState({
+    features: storeState.features ?? [],
+    visibleFeatures: storeState.visibleFeatures ?? new Set(),
+    editingFeatureId: storeState.editingFeatureId ?? null,
+    rollbackPosition: null,
+    doc: null,
+    visibleBodies: new Set(),
+    partLabels: {},
+    solveResults: storeState.solveResults ?? {},
+    bodies: (storeState.bodies ?? {}) as never,
+    isRebuilding: false,
+    featureTimings: {},
+  })
+  useSketchEditorStore.setState({
+    normalSelection: new Set(),
+    pendingPickField: (storeState.pendingPickField ?? null) as never,
+    planeSelectionFeatureId: null,
+  })
+  return render(
+    <PartEditorProvider value={makeCallbacks(callbacks)}>
+      <Sidebar />
+    </PartEditorProvider>
+  )
+}
+
+beforeEach(() => {
+  usePartEditorStore.setState({
+    features: [],
+    rollbackPosition: null,
+    visibleFeatures: new Set(),
+    editingFeatureId: null,
+    doc: null,
+    visibleBodies: new Set(),
+    partLabels: {},
+    solveResults: {},
+    bodies: {},
+    isRebuilding: false,
+    featureTimings: {},
+  })
+  useSketchEditorStore.setState({
+    normalSelection: new Set(),
+    pendingPickField: null,
+    planeSelectionFeatureId: null,
+  })
+})
 
 const extrudeFeature: PartFeature = {
   id: 'ex1',
@@ -39,21 +88,21 @@ const extrudeFeature: PartFeature = {
 // 1: ExtrudeEditor renders distance input and direction select
 describe('ExtrudeEditor renders in Sidebar', () => {
   it('shows distance input and direction select when extrude feature is being edited', () => {
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-    })} />)
+    })
     expect(screen.getByRole('spinbutton')).toBeInTheDocument()
     expect(screen.getAllByRole('combobox')).toHaveLength(2)
   })
 
   it('does not render editor when editingFeatureId is null', () => {
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: null,
-    })} />)
+    })
     expect(screen.queryByRole('spinbutton')).toBeNull()
     expect(screen.queryByRole('combobox')).toBeNull()
   })
@@ -63,12 +112,11 @@ describe('ExtrudeEditor renders in Sidebar', () => {
 describe('distance input', () => {
   it('dispatches set_extrude_distance on blur with valid value', () => {
     const onMutation = vi.fn()
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-      onMutation,
-    })} />)
+    }, { onMutation })
     const input = screen.getByRole('spinbutton') as HTMLInputElement
     fireEvent.change(input, { target: { value: '25' } })
     fireEvent.blur(input)
@@ -81,12 +129,11 @@ describe('distance input', () => {
 
   it('does not dispatch for non-positive value', () => {
     const onMutation = vi.fn()
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-      onMutation,
-    })} />)
+    }, { onMutation })
     const input = screen.getByRole('spinbutton') as HTMLInputElement
     fireEvent.change(input, { target: { value: '-5' } })
     fireEvent.blur(input)
@@ -95,12 +142,11 @@ describe('distance input', () => {
 
   it('dispatches on Enter key (keyDown then blur)', () => {
     const onMutation = vi.fn()
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-      onMutation,
-    })} />)
+    }, { onMutation })
     const input = screen.getByRole('spinbutton') as HTMLInputElement
     fireEvent.change(input, { target: { value: '30' } })
     // jsdom does not auto-fire blur when .blur() is called programmatically,
@@ -119,12 +165,11 @@ describe('distance input', () => {
 describe('direction select', () => {
   it('dispatches set_extrude_direction on change to symmetric', () => {
     const onMutation = vi.fn()
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-      onMutation,
-    })} />)
+    }, { onMutation })
     fireEvent.change(screen.getByRole('combobox', { name: 'Direction' }), { target: { value: 'symmetric' } })
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
       type: 'set_extrude_direction',
@@ -135,12 +180,11 @@ describe('direction select', () => {
 
   it('dispatches set_extrude_direction on change to reverse', () => {
     const onMutation = vi.fn()
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-      onMutation,
-    })} />)
+    }, { onMutation })
     fireEvent.change(screen.getByRole('combobox', { name: 'Direction' }), { target: { value: 'reverse' } })
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
       type: 'set_extrude_direction',
@@ -154,12 +198,11 @@ describe('direction select', () => {
 describe('operation select', () => {
   it('dispatches set_extrude_operation on change to cut', () => {
     const onMutation = vi.fn()
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-      onMutation,
-    })} />)
+    }, { onMutation })
     fireEvent.change(screen.getByRole('combobox', { name: 'Operation' }), { target: { value: 'cut' } })
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
       type: 'set_extrude_operation',
@@ -175,12 +218,11 @@ describe('operation select', () => {
       kind: 'extrude',
       extrude: { sketch: '$sk1', distance: 10, direction: 'normal', operation: 'cut' },
     }
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [cutFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-      onMutation,
-    })} />)
+    }, { onMutation })
     fireEvent.change(screen.getByRole('combobox', { name: 'Operation' }), { target: { value: 'add' } })
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
       type: 'set_extrude_operation',
@@ -193,11 +235,11 @@ describe('operation select', () => {
 // 5: merge target PickChip visibility and interaction
 describe('merge target PickChip', () => {
   it('is shown for add operation', () => {
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-    })} />)
+    })
     expect(screen.getByText('Merge Target')).toBeInTheDocument()
   })
 
@@ -206,11 +248,11 @@ describe('merge target PickChip', () => {
       id: 'ex1', kind: 'extrude',
       extrude: { sketch: '$sk1', distance: 10, operation: 'cut' },
     }
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [cutFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-    })} />)
+    })
     expect(screen.getByText('Merge Target')).toBeInTheDocument()
   })
 
@@ -219,46 +261,43 @@ describe('merge target PickChip', () => {
       id: 'ex1', kind: 'extrude',
       extrude: { sketch: '$sk1', distance: 10, operation: 'new' },
     }
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [newFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-    })} />)
+    })
     expect(screen.queryByText('Merge Target')).toBeNull()
   })
 
   it('shows (all bodies) when no merge_target is set', () => {
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-    })} />)
+    })
     expect(screen.getByText('(all bodies)')).toBeInTheDocument()
   })
 
   it('activates pick mode on chip click', () => {
-    const onSetPendingPickField = vi.fn()
-    render(<Sidebar {...makeSidebarProps({
+    renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-      onSetPendingPickField,
-    })} />)
+    })
     fireEvent.click(screen.getByText('(all bodies)'))
-    expect(onSetPendingPickField).toHaveBeenCalledWith({ featureId: 'ex1', field: 'merge_target' })
+    expect(useSketchEditorStore.getState().pendingPickField).toEqual({ featureId: 'ex1', field: 'merge_target' })
   })
 
   it('deactivates pick mode when chip clicked while already picking', () => {
-    const onSetPendingPickField = vi.fn()
-    render(<Sidebar {...makeSidebarProps({
+    useSketchEditorStore.setState({ pendingPickField: { featureId: 'ex1', field: 'merge_target' } })
+    renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-      pendingPickField: { featureId: 'ex1', field: 'merge_target' },
-      onSetPendingPickField,
-    })} />)
+      pendingPickField: { featureId: 'ex1', field: 'merge_target' } as never,
+    })
     fireEvent.click(screen.getByText('(all bodies)'))
-    expect(onSetPendingPickField).toHaveBeenCalledWith(null)
+    expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
   })
 })
 
@@ -266,16 +305,14 @@ describe('merge target PickChip', () => {
 describe('sketch pick resolution', () => {
   it('dispatches set_extrude_sketch and clears pendingPickField when sketch row is clicked', () => {
     const onMutation = vi.fn()
-    const onSetPendingPickField = vi.fn()
     const sketchFeature: PartFeature = { id: 'sk1', kind: 'sketch' }
-    render(<Sidebar {...makeSidebarProps({
+    useSketchEditorStore.setState({ pendingPickField: { featureId: 'ex1', field: 'sketch' } })
+    renderSidebar({
       features: [extrudeFeature, sketchFeature],
       visibleFeatures: new Set(['ex1', 'sk1']),
       editingFeatureId: 'ex1',
-      pendingPickField: { featureId: 'ex1', field: 'sketch' },
-      onMutation,
-      onSetPendingPickField,
-    })} />)
+      pendingPickField: { featureId: 'ex1', field: 'sketch' } as never,
+    }, { onMutation })
     // Click the feature row li, not the inner name span (which stops propagation for renaming).
     const sketchRow = screen.getByText((content, el) =>
       !!(content === 'sk1' && el?.classList.contains('feature-name'))
@@ -287,6 +324,6 @@ describe('sketch pick resolution', () => {
       sketchQuery: '$sk1',
     })
     // pick mode stays open after each selection
-    expect(onSetPendingPickField).not.toHaveBeenCalledWith(null)
+    expect(useSketchEditorStore.getState().pendingPickField).not.toBeNull()
   })
 })

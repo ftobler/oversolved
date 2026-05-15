@@ -1,3 +1,4 @@
+import React from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
@@ -113,22 +114,30 @@ vi.mock('../../components/RightClickMenu', () => ({
   )),
 }))
 
-vi.mock('../../components/Sidebar', () => ({
-  Sidebar: vi.fn(({ onRightClick, bodies }: { onRightClick: (pos: [number, number], id: string) => void; bodies?: Record<string, unknown> }) => (
-    <div data-testid="sidebar">
-      {Object.keys(bodies || {}).map((bodyId: string) => (
-        <div key={bodyId} data-testid={`body-${bodyId}`}>
-          <button
-            data-testid={`context-btn-${bodyId}`}
-            onClick={(e) => onRightClick([e.clientX, e.clientY], `body:${bodyId}`)}
-          >
-            Context
-          </button>
+vi.mock('../../components/Sidebar', async () => {
+  const { usePartEditorStore } = await import('../../stores/partEditorStore')
+  const { usePartEditorCallbacks } = await import('../../contexts/PartEditorContext')
+  return {
+    Sidebar: vi.fn(() => {
+      const bodies = usePartEditorStore(s => s.bodies)
+      const { onRightClick } = usePartEditorCallbacks()
+      return (
+        <div data-testid="sidebar">
+          {Object.keys(bodies || {}).map((bodyId: string) => (
+            <div key={bodyId} data-testid={`body-${bodyId}`}>
+              <button
+                data-testid={`context-btn-${bodyId}`}
+                onClick={(e: React.MouseEvent) => onRightClick([e.clientX, e.clientY], `body:${bodyId}`)}
+              >
+                Context
+              </button>
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
-  )),
-}))
+      )
+    }),
+  }
+})
 
 describe('Part Color Preview', () => {
   beforeEach(() => {

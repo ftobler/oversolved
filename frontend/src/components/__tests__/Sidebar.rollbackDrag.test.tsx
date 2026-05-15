@@ -1,18 +1,14 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Sidebar } from '../Sidebar'
 import type { PartFeature } from '../../types/cad'
+import { usePartEditorStore } from '../../stores/partEditorStore'
+import { useSketchEditorStore } from '../../stores/sketchEditorStore'
+import { PartEditorProvider } from '../../contexts/PartEditorContext'
+import type { PartEditorCallbacks } from '../../contexts/PartEditorContext'
 
-function makeSidebarProps(overrides: Record<string, unknown> = {}) {
+function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {
-    features: [] as PartFeature[],
-    doc: null,
-    rollbackPosition: null as number | null,
-    visibleFeatures: new Set<string>(),
-    editingFeatureId: null,
-    selection: new Set<string>(),
-    pendingPickField: null,
-    planeSelectionFeatureId: null,
     onToggleSelect: vi.fn(),
     onEnterEditSketch: vi.fn(),
     onExitEditSketch: vi.fn(),
@@ -23,11 +19,16 @@ function makeSidebarProps(overrides: Record<string, unknown> = {}) {
     onRollbackDragStart: vi.fn(),
     onMutation: vi.fn(),
     onSetRollbackPosition: vi.fn(),
-    onSetPendingPickField: vi.fn(),
-    onSetPlaneSelectionFeatureId: vi.fn(),
-    featureTimings: {},
     ...overrides,
   }
+}
+
+function renderSidebar(callbacks: PartEditorCallbacks = makeCallbacks()) {
+  return render(
+    <PartEditorProvider value={callbacks}>
+      <Sidebar />
+    </PartEditorProvider>
+  )
 }
 
 function createDragEvent(type: string, overrides: Record<string, unknown> = {}) {
@@ -66,14 +67,53 @@ const sketchFeature: PartFeature = {
   kind: 'sketch',
 }
 
+function setupStore(features: PartFeature[], rollbackPosition: number | null) {
+  usePartEditorStore.setState({
+    features,
+    rollbackPosition,
+    visibleFeatures: new Set(features.map(f => f.id)),
+    editingFeatureId: null,
+    doc: null,
+    visibleBodies: new Set(),
+    partLabels: {},
+    solveResults: {},
+    bodies: {},
+    isRebuilding: false,
+    featureTimings: {},
+  })
+  useSketchEditorStore.setState({
+    normalSelection: new Set(),
+    pendingPickField: null,
+    planeSelectionFeatureId: null,
+  })
+}
+
+beforeEach(() => {
+  usePartEditorStore.setState({
+    features: [],
+    rollbackPosition: null,
+    visibleFeatures: new Set(),
+    editingFeatureId: null,
+    doc: null,
+    visibleBodies: new Set(),
+    partLabels: {},
+    solveResults: {},
+    bodies: {},
+    isRebuilding: false,
+    featureTimings: {},
+  })
+  useSketchEditorStore.setState({
+    normalSelection: new Set(),
+    pendingPickField: null,
+    planeSelectionFeatureId: null,
+  })
+})
+
 describe('rollback bar drag convergence', () => {
   it('adds dragging class to rollback bar while dragged', () => {
     const features = [...builtInFeatures, extrudeFeature]
-    render(<Sidebar {...makeSidebarProps({
-      features,
-      rollbackPosition: 4,
-      visibleFeatures: new Set(features.map(f => f.id)),
-    })} />)
+    setupStore(features, 4)
+    renderSidebar()
 
     const rollbackBar = screen.getByTitle('Rollback')
     fireEvent(rollbackBar, createDragEvent('dragstart'))
@@ -82,11 +122,8 @@ describe('rollback bar drag convergence', () => {
 
   it('shows drop-target-top when rollback bar dragged to top half of a feature', () => {
     const features = [...builtInFeatures, extrudeFeature]
-    render(<Sidebar {...makeSidebarProps({
-      features,
-      rollbackPosition: 4,
-      visibleFeatures: new Set(features.map(f => f.id)),
-    })} />)
+    setupStore(features, 4)
+    renderSidebar()
 
     const rollbackBar = screen.getByTitle('Rollback')
     const featureItem = screen.getByText('ex1').closest('.feature-item')!
@@ -112,11 +149,8 @@ describe('rollback bar drag convergence', () => {
 
   it('shows drop-target-bottom when rollback bar dragged to bottom half of a feature', () => {
     const features = [...builtInFeatures, extrudeFeature]
-    render(<Sidebar {...makeSidebarProps({
-      features,
-      rollbackPosition: 4,
-      visibleFeatures: new Set(features.map(f => f.id)),
-    })} />)
+    setupStore(features, 4)
+    renderSidebar()
 
     const rollbackBar = screen.getByTitle('Rollback')
     const featureItem = screen.getByText('ex1').closest('.feature-item')!
@@ -143,12 +177,8 @@ describe('rollback bar drag convergence', () => {
   it('calls onSetRollbackPosition with correct index on rollback bar drop', () => {
     const onSetRollbackPosition = vi.fn()
     const features = [...builtInFeatures, extrudeFeature]
-    render(<Sidebar {...makeSidebarProps({
-      features,
-      rollbackPosition: 4,
-      visibleFeatures: new Set(features.map(f => f.id)),
-      onSetRollbackPosition,
-    })} />)
+    setupStore(features, 4)
+    renderSidebar(makeCallbacks({ onSetRollbackPosition }))
 
     const rollbackBar = screen.getByTitle('Rollback')
     const featureItem = screen.getByText('ex1').closest('.feature-item')!
@@ -174,11 +204,8 @@ describe('rollback bar drag convergence', () => {
 
   it('does not highlight built-in features during rollback bar drag', () => {
     const features = [...builtInFeatures, extrudeFeature]
-    render(<Sidebar {...makeSidebarProps({
-      features,
-      rollbackPosition: 1,
-      visibleFeatures: new Set(features.map(f => f.id)),
-    })} />)
+    setupStore(features, 1)
+    renderSidebar()
 
     const rollbackBars = screen.getAllByTitle('Rollback')
     const originItem = screen.getByText('Origin').closest('.feature-item')!
@@ -205,12 +232,8 @@ describe('rollback bar drag convergence', () => {
   it('still reorders features when dragging a feature item', () => {
     const onMutation = vi.fn()
     const features = [...builtInFeatures, sketchFeature, extrudeFeature]
-    render(<Sidebar {...makeSidebarProps({
-      features,
-      rollbackPosition: 6,
-      visibleFeatures: new Set(features.map(f => f.id)),
-      onMutation,
-    })} />)
+    setupStore(features, 6)
+    renderSidebar(makeCallbacks({ onMutation }))
 
     const sketchItem = screen.getByText('sk1').closest('.feature-item')!
     const extrudeItem = screen.getByText('ex1').closest('.feature-item')!
@@ -241,12 +264,8 @@ describe('rollback bar drag convergence', () => {
   it('end-of-list rollback bar can be dragged to set rollback to end', () => {
     const onSetRollbackPosition = vi.fn()
     const features = [...builtInFeatures, extrudeFeature]
-    render(<Sidebar {...makeSidebarProps({
-      features,
-      rollbackPosition: 5,
-      visibleFeatures: new Set(features.map(f => f.id)),
-      onSetRollbackPosition,
-    })} />)
+    setupStore(features, 5)
+    renderSidebar(makeCallbacks({ onSetRollbackPosition }))
 
     const rollbackBars = screen.getAllByTitle('Rollback')
     const lastRollbackBar = rollbackBars[rollbackBars.length - 1]
@@ -258,3 +277,20 @@ describe('rollback bar drag convergence', () => {
     expect(onSetRollbackPosition).toHaveBeenCalledWith(5)
   })
 })
+
+describe('partEditorStore', () => {
+  it('holds state correctly', () => {
+    usePartEditorStore.getState().setFeatures([{ id: 'f1', kind: 'sketch' }])
+    expect(usePartEditorStore.getState().features).toHaveLength(1)
+    expect(usePartEditorStore.getState().features[0].id).toBe('f1')
+  })
+
+  it('Sidebar is defined and takes no required props', () => {
+    expect(Sidebar).toBeDefined()
+    // TypeScript guarantees no required props -- verified at compile time.
+    // We render it inside the provider to confirm it mounts without error.
+    const { container } = renderSidebar()
+    expect(container).toBeTruthy()
+  })
+})
+
