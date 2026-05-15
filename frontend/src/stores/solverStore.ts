@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type WsStatus = 'connecting' | 'open' | 'closed' | 'reconnecting'
+export type WsStatus = 'connecting' | 'open' | 'closed'
 
 interface SolverStoreState {
   isSolving: boolean

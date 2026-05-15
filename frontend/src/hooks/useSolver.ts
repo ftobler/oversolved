@@ -320,8 +320,11 @@ export function useSolver(
         }
       }
     } catch (e) {
-      setSolveError(String(e))
-      setSolveRawResult(String(e))
+      const msg = String(e)
+      if (!msg.includes('WebSocket closed')) {
+        setSolveError(msg)
+        setSolveRawResult(msg)
+      }
     } finally {
       if (isCurrent()) setSolving(false)
     }

@@ -39,13 +39,6 @@ describe('WsStatusIndicator', () => {
     expect(screen.getByRole('button')).toBeDisabled()
   })
 
-  it('shows reconnecting state with disabled button', () => {
-    useSolverStore.setState({ wsStatus: 'reconnecting' })
-    render(<WsStatusIndicator />)
-    expect(screen.getByText('Reconnecting...')).toBeInTheDocument()
-    expect(screen.getByRole('button')).toBeDisabled()
-  })
-
   it('disconnect button calls solverWs.disconnect()', () => {
     useSolverStore.setState({ wsStatus: 'open' })
     render(<WsStatusIndicator />)
