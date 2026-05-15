@@ -250,6 +250,7 @@ export interface PartFeature {
   kind: string
   label?: string
   visible?: boolean  // absent means visible; false means hidden
+  auto_hidden_by?: string  // transient frontend-only: feature ID that auto-hid this sketch
   plane?: string  // query string, e.g. "@builtin_plane_front"
   entities?: PartEntityDef[]
   initial?: Record<string, number[]>

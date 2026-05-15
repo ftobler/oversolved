@@ -2,6 +2,34 @@ import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, Mirr
 import { ALL_COORD_INDICES } from '@/registry'
 import { warn, round, findFeature, randomId, normalizeExtrudeSketch, normalizeRevolveSketch } from './helpers'
 
+// ─── Auto-hide consumed sketches (feature 223) ───
+
+function findSketchFeatureIdFromQuery(doc: PartDoc, query: string): string | null {
+  if (query.startsWith('entity:')) {
+    const featId = query.split(':')[1]
+    const feat = doc.features?.find(f => f.id === featId && f.kind === 'sketch')
+    return feat ? featId : null
+  }
+  if (query.startsWith('@')) {
+    const rest = query.slice(1)
+    for (const f of doc.features ?? []) {
+      if (f.kind === 'sketch' && rest.startsWith(f.id)) {
+        return f.id
+      }
+    }
+    return null
+  }
+  return null
+}
+
+function autoHideIfNotOverridden(doc: PartDoc, sketchId: string, consumingFeatureId: string): void {
+  const sketch = doc.features?.find(f => f.id === sketchId && f.kind === 'sketch')
+  if (!sketch) return
+  if (sketch.auto_hidden_by) return  // user overrode — skip auto-hide
+  sketch.visible = false
+  sketch.auto_hidden_by = consumingFeatureId
+}
+
 // ─── Extrude ───
 
 export function applyAddExtrude(
@@ -37,6 +65,9 @@ export function applyAddExtrudeProfile(doc: PartDoc, featureId: string, sketchQu
     current.splice(idx, 1)
   } else {
     current.push(sketchQuery)
+    // Auto-hide consumed sketch (feature 223)
+    const sourceSketchId = findSketchFeatureIdFromQuery(doc, sketchQuery)
+    if (sourceSketchId) autoHideIfNotOverridden(doc, sourceSketchId, featureId)
   }
   feature.extrude.sketch = current
 }
@@ -138,6 +169,9 @@ export function applyAddRevolveProfile(doc: PartDoc, featureId: string, sketchQu
     current.splice(idx, 1)
   } else {
     current.push(sketchQuery)
+    // Auto-hide consumed sketch (feature 223)
+    const sourceSketchId = findSketchFeatureIdFromQuery(doc, sketchQuery)
+    if (sourceSketchId) autoHideIfNotOverridden(doc, sourceSketchId, featureId)
   }
   feature.revolve.sketch = current
 }
@@ -636,6 +670,9 @@ export function applySetHoleSketch(doc: PartDoc, featureId: string, sketch: stri
   const f = doc.features?.find(feat => feat.id === featureId)
   if (!f?.hole) return
   f.hole.sketch = sketch
+  // Auto-hide consumed sketch (feature 223)
+  const sourceSketchId = findSketchFeatureIdFromQuery(doc, sketch)
+  if (sourceSketchId) autoHideIfNotOverridden(doc, sourceSketchId, featureId)
 }
 
 export function applySetHoleDiameter(doc: PartDoc, featureId: string, diameter: number): void {

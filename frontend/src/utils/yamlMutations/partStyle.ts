@@ -78,6 +78,8 @@ export function applySetFeatureVisibility(doc: PartDoc, featureId: string, visib
   if (!feature) return
   if (visible) {
     delete feature.visible
+    // Per-feature eye-icon toggle: keep auto_hidden_by as override signal,
+    // preventing future auto-hides (feature 223).
   } else {
     feature.visible = false
   }
@@ -103,6 +105,7 @@ export function applyToggleSketchPlaneVisibility(doc: PartDoc): void {
       f.visible = false
     } else {
       delete f.visible
+      delete f.auto_hidden_by  // user override wins (feature 223)
     }
   }
 }
