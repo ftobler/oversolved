@@ -99,6 +99,23 @@ describe('computeCacheKey', () => {
     const key2 = await computeCacheKey('doc1', features as PartFeature[], 50, null)
     expect(key1).toBe(key2)
   })
+
+  it('produces same key for null pick_boundary across repeated calls', async () => {
+    const features = [{ id: 'sk1', kind: 'sketch' }]
+    const key1 = await computeCacheKey('doc1', features as PartFeature[], 1, null)
+    const key2 = await computeCacheKey('doc1', features as PartFeature[], 1, null)
+    const key3 = await computeCacheKey('doc1', features as PartFeature[], 1, null)
+    expect(key1).toBe(key2)
+    expect(key2).toBe(key3)
+  })
+
+  it('produces same key for structurally identical feature arrays with different refs', async () => {
+    const f1 = [{ id: 'a', kind: 'sketch', distance: 5 }]
+    const f2 = [{ id: 'a', kind: 'sketch', distance: 5 }]
+    const key1 = await computeCacheKey('doc1', f1 as PartFeature[], 1, null)
+    const key2 = await computeCacheKey('doc1', f2 as PartFeature[], 1, null)
+    expect(key1).toBe(key2)
+  })
 })
 
 describe('cacheBuildResponse / getCachedBuildResponse', () => {
@@ -173,6 +190,37 @@ describe('cacheBuildResponse / getCachedBuildResponse', () => {
     expect(cached!.entry.buildResponse.solve_ms).toBe(123)
     expect(cached!.entry.buildResponse.result?.sk1).toBeDefined()
   })
+
+  it('handles interleaved writes and reads for different docs without corruption', async () => {
+    await cacheBuildResponse('doc1', emptyDoc, 1, null, { solve_ms: 1, result: {}, bodies: {} })
+    await cacheBuildResponse('doc2', emptyDoc, 2, null, { solve_ms: 2, result: {}, bodies: {} })
+    const r1 = await getCachedBuildResponse('doc1', emptyDoc, 1, null)
+    const r2 = await getCachedBuildResponse('doc2', emptyDoc, 2, null)
+    expect(r1!.entry.buildResponse.solve_ms).toBe(1)
+    expect(r2!.entry.buildResponse.solve_ms).toBe(2)
+    // Interleave writes and reads
+    await cacheBuildResponse('doc3', emptyDoc, 3, null, { solve_ms: 3, result: {}, bodies: {} })
+    const r1again = await getCachedBuildResponse('doc1', emptyDoc, 1, null)
+    await cacheBuildResponse('doc4', emptyDoc, 4, null, { solve_ms: 4, result: {}, bodies: {} })
+    const r2again = await getCachedBuildResponse('doc2', emptyDoc, 2, null)
+    expect(r1again!.entry.buildResponse.solve_ms).toBe(1)
+    expect(r2again!.entry.buildResponse.solve_ms).toBe(2)
+  })
+
+  it('does not lose entries when writing while reading', async () => {
+    for (let i = 0; i < 10; i++) {
+      await cacheBuildResponse(`doc${i}`, emptyDoc, 1, null, { solve_ms: i, result: {}, bodies: {} })
+    }
+    for (let i = 0; i < 5; i++) {
+      const r = await getCachedBuildResponse(`doc${i}`, emptyDoc, 1, null)
+      expect(r).not.toBeNull()
+      await cacheBuildResponse(`new${i}`, emptyDoc, 1, null, { solve_ms: 100 + i, result: {}, bodies: {} })
+    }
+    for (let i = 0; i < 10; i++) {
+      const r = await getCachedBuildResponse(`doc${i}`, emptyDoc, 1, null)
+      expect(r).not.toBeNull()
+    }
+  })
 })
 
 describe('cacheGeometry', () => {
@@ -216,6 +264,17 @@ describe('cacheGeometry', () => {
     expect(cached!.isFresh).toBe(false)
     expect(cached!.entry.geometry).toBeDefined()
   })
+
+  it('does not attach geometry to wrong entry when features differ', async () => {
+    const docA: PartDoc = { features: [{ id: 'a', kind: 'sketch' }] }
+    const docB: PartDoc = { features: [{ id: 'b', kind: 'sketch' }] }
+    await cacheBuildResponse('doc1', docA, 1, null, { solve_ms: 1, result: {}, bodies: {} })
+    const geometry = { header: {} as never, buffer: new ArrayBuffer(8), jsonHeaderLen: 4 }
+    await cacheGeometry('doc1', docB, 1, null, geometry)
+    const cachedA = await getCachedBuildResponse('doc1', docA, 1, null)
+    expect(cachedA).not.toBeNull()
+    expect(cachedA!.entry.geometry).toBeUndefined()
+  })
 })
 
 describe('invalidateDocCache', () => {
@@ -251,6 +310,13 @@ describe('invalidateDocCache', () => {
     await invalidateDocCache('doc1')
     const { getCache } = await import('@/utils/buildCache')
     expect(getCache().size).toBe(0)
+  })
+
+  it('does not throw when invalidating a doc ID that was never cached', async () => {
+    await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
+    await invalidateDocCache('doc2')
+    const c1 = await getCachedBuildResponse('doc1', emptyDoc, 1, null)
+    expect(c1).not.toBeNull()
   })
 })
 
@@ -289,6 +355,25 @@ describe('getAllCachedEntries / deleteCacheEntry', () => {
     await deleteCacheEntry('nonexistent-key')
     const { getCache } = await import('@/utils/buildCache')
     expect(getCache().size).toBe(0)
+  })
+
+  it('does not throw when deleting an already-deleted key', async () => {
+    await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
+    const key = await computeCacheKey('doc1', [], 1, null)
+    await deleteCacheEntry(key)
+    await deleteCacheEntry(key)
+    const { getCache } = await import('@/utils/buildCache')
+    expect(getCache().size).toBe(0)
+  })
+
+  it('preserves LRU order so recently accessed entries appear later', async () => {
+    await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
+    await cacheBuildResponse('doc2', emptyDoc, 2, null, emptyResponse)
+    await cacheBuildResponse('doc3', emptyDoc, 3, null, emptyResponse)
+    const key1 = await computeCacheKey('doc1', [], 1, null)
+    await getCachedBuildResponse('doc1', emptyDoc, 1, null)
+    const entries = await getAllCachedEntries()
+    expect(entries[entries.length - 1].cache_key).toBe(key1)
   })
 })
 
@@ -384,5 +469,14 @@ describe('formatCacheAge', () => {
 
   it('formats future timestamp as just now', () => {
     expect(formatCacheAge(Date.now() + 60 * 1000)).toBe('just now')
+  })
+
+  it('formats 1ms before minute boundary as just now', () => {
+    expect(formatCacheAge(Date.now() - 59999)).toBe('just now')
+    expect(formatCacheAge(Date.now() - 60000)).toBe('1m ago')
+  })
+
+  it('formats very old timestamp as many minutes ago', () => {
+    expect(formatCacheAge(Date.now() - 90 * 60 * 1000)).toBe('90m ago')
   })
 })
