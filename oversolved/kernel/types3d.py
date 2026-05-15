@@ -113,7 +113,7 @@ class Frame3D:
         )
 
     def to_cq_plane(self) -> Any:
-        from cadquery.occ_impl.geom import Plane as CQPlane, Vector as CQVector
+        from cadquery.occ_impl.geom import Plane as CQPlane
         return CQPlane(
             origin=(self.origin[0], self.origin[1], self.origin[2]),
             xDir=(self.x_axis[0], self.x_axis[1], self.x_axis[2]),

@@ -10,14 +10,9 @@ from OCP.TopoDS import TopoDS_Shape  # noqa: E402
 from oversolved.kernel.geometry_features import (  # noqa: E402
     EdgeModifierResult,
     _apply_edge_modifier,
-    _check_null_shape,
-    _try_add_edge,
-    _try_build_shape,
-    _try_collect_edge_hashes,
-    _try_create_maker,
     apply_fillet,
 )
-from oversolved.kernel.ocp_ops import ocp_explore_edges, ocp_fillet_factory  # noqa: E402
+from oversolved.kernel.ocp_ops import ocp_fillet_factory  # noqa: E402
 
 
 def _make_box() -> TopoDS_Shape:

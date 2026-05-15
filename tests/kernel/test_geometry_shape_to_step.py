@@ -9,7 +9,9 @@ import pytest
 
 pytest.importorskip("cadquery.occ_impl.shapes")
 
-from oversolved.kernel.geometry_io import shape_to_step_file, shape_to_step_file_buffer, step_file_to_shape  # noqa: E402
+from oversolved.kernel.geometry_io import (  # noqa: E402
+    shape_to_step_file, shape_to_step_file_buffer, step_file_to_shape,
+)
 from oversolved.kernel.geometry_tessellation import solid_to_mesh  # noqa: E402
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox  # noqa: E402
 from OCP.STEPControl import STEPControl_Reader  # noqa: E402

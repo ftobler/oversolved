@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 import numpy as np
 
-if TYPE_CHECKING:
-    from OCP.TopoDS import TopoDS_Shape
 from oversolved.kernel.query import Repository
-from oversolved.kernel.types3d import Body, Frame3D
-from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, make_cylinder, boolean_cut
+from oversolved.kernel.types3d import Frame3D
+from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ
 from oversolved.kernel.solver_features_shared import _resolve_body
 
 logger = logging.getLogger(__name__)

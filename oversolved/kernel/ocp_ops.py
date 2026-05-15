@@ -184,7 +184,8 @@ def ocp_make_arc_edge(circle: gp_Circ, angle_start: float, angle_end: float) -> 
     return BRepBuilderAPI_MakeEdge(arc.Value()).Edge()
 
 
-def ocp_revolve(topo_face: TopoDS_Shape, axis_origin: list[float], axis_direction: list[float], angle_rad: float) -> TopoDS_Shape:
+def ocp_revolve(topo_face: TopoDS_Shape, axis_origin: list[float],
+                axis_direction: list[float], angle_rad: float) -> TopoDS_Shape:
     """Revolve *topo_face* around an axis and return the resulting TopoDS_Shape."""
     from OCP.gp import gp_Ax1, gp_Pnt, gp_Dir  # noqa: PLC0415
     from OCP.BRepPrimAPI import BRepPrimAPI_MakeRevol  # noqa: PLC0415

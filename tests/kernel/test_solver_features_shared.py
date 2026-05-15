@@ -4,7 +4,10 @@ from oversolved.kernel.query import Repository, make_ancestry_query
 from oversolved.kernel.solver_features_shared import _resolve_face_profile
 
 
-def _make_repo_with_surfaces(surfaces: list[dict], sketch_id: str = "sk1", ancestor_ids: list[str] | None = None) -> Repository:
+def _make_repo_with_surfaces(
+    surfaces: list[dict], sketch_id: str = "sk1",
+    ancestor_ids: list[str] | None = None,
+) -> Repository:
     """Build a minimal repo with _pt_ and _topo_ entries for _resolve_face_profile.
 
     Also registers an ancestral placeholder element so that global_repo.query()

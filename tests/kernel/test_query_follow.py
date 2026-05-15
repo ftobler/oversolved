@@ -243,8 +243,12 @@ def test_gnome_hat_with_derived_sketch_stable() -> None:
         s2_status = result["sketch_2"].get("status")
         s2_exception = result["sketch_2"].get("exception")
 
-        assert s1_status != "exception", f"sketch_1 failed on attempt {attempt + 1}: {result['sketch_1'].get('exception')}"
-        assert s2_status != "exception", f"sketch_2 failed on attempt {attempt + 1}: {s2_exception}"
+        assert s1_status != "exception", (
+            f"sketch_1 failed on attempt {attempt + 1}: {result['sketch_1'].get('exception')}"
+        )
+        assert s2_status != "exception", (
+            f"sketch_2 failed on attempt {attempt + 1}: {s2_exception}"
+        )
 
 
 @pytest.mark.repeat(10)
@@ -373,7 +377,10 @@ def test_gnome_hat_with_derived_sketch_repeated(request) -> None:
     s2_status = result["sketch_2"].get("status")
 
     assert s1_status != "exception", f"sketch_1 failed: {result['sketch_1'].get('exception')}"
-    assert s2_status != "exception", f"sketch_2 failed on iteration {request.node.callspec.indices['request'] + 1}: {result['sketch_2'].get('exception')}"
+    _idx = request.node.callspec.indices['request'] + 1 if hasattr(request.node, 'callspec') else '?'
+    assert s2_status != "exception", (
+        f"sketch_2 failed on iteration {_idx}: {result['sketch_2'].get('exception')}"
+    )
 
 
 def test_gnome_hat_with_cross_sketch_constraints() -> None:

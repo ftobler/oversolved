@@ -377,7 +377,9 @@ def test_fillet_respects_edge_list():
     r_all = build(spec_all)
     verts_all = len(r_all["bodies"]["body_ex1"]["mesh"]["vertices"])
 
-    assert verts1 < verts_all, f"single-edge fillet ({verts1}) should have fewer verts than all-edge fillet ({verts_all})"
+    assert verts1 < verts_all, (
+        f"single-edge fillet ({verts1}) should have fewer verts than all-edge fillet ({verts_all})"
+    )
 
 
 def test_fillet_body_modified_between_roundtrips():

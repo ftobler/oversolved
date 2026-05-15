@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from OCP.TopoDS import TopoDS_Shape
 from oversolved.kernel.query import Repository
 from oversolved.kernel.types3d import Body
 from oversolved.kernel.solver_features_shared import _resolve_body

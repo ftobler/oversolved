@@ -929,19 +929,22 @@ class DocumentStore:
 
         if include_shared:
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
+                f"""SELECT d.uuid, d.name, d.preview_image,
+                            d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     WHERE d.deleted_at IS NULL
                       AND (d.owner_id = ?
-                         OR EXISTS (SELECT 1 FROM document_shares WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
+                         OR EXISTS (SELECT 1 FROM document_shares
+                                     WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
                          OR d.is_public = 1)
                     ORDER BY {order}""",
                 (user_id, user_id),
             )
         else:
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
+                f"""SELECT d.uuid, d.name, d.preview_image,
+                            d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                     FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     WHERE d.deleted_at IS NULL AND d.owner_id = ?
@@ -967,7 +970,8 @@ class DocumentStore:
         """List all public documents with owner username."""
         order = self._SORT_ORDERS.get(sort, "name")
         cursor = self.db.execute(
-            f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
+            f"""SELECT d.uuid, d.name, d.preview_image,
+                        d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
                 JOIN users u ON d.owner_id = u.id
                 WHERE d.deleted_at IS NULL AND d.is_public = 1
@@ -991,7 +995,8 @@ class DocumentStore:
         """List documents explicitly shared with this user (excluding owned and public-only)."""
         order = self._SORT_ORDERS.get(sort, "name")
         cursor = self.db.execute(
-            f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
+            f"""SELECT DISTINCT d.uuid, d.name, d.preview_image,
+                        d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
                 JOIN users u ON d.owner_id = u.id
                 JOIN document_shares ds ON d.uuid = ds.document_uuid
@@ -1022,7 +1027,8 @@ class DocumentStore:
 
         if filter_type == "owned":
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
+                f"""SELECT d.uuid, d.name, d.preview_image,
+                            d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     WHERE d.deleted_at IS NULL AND d.owner_id = ? AND LOWER(d.name) LIKE LOWER(?)
@@ -1031,17 +1037,20 @@ class DocumentStore:
             )
         elif filter_type == "shared":
             cursor = self.db.execute(
-                f"""SELECT DISTINCT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
+                f"""SELECT DISTINCT d.uuid, d.name, d.preview_image,
+                            d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     JOIN document_shares ds ON d.uuid = ds.document_uuid
-                    WHERE d.deleted_at IS NULL AND ds.shared_with_user_id = ? AND d.owner_id != ? AND LOWER(d.name) LIKE LOWER(?)
+                    WHERE d.deleted_at IS NULL AND ds.shared_with_user_id = ? AND d.owner_id != ?
+                      AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
                 (user_id, user_id, like),
             )
         elif filter_type == "public":
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
+                f"""SELECT d.uuid, d.name, d.preview_image,
+                            d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     WHERE d.deleted_at IS NULL AND d.is_public = 1 AND LOWER(d.name) LIKE LOWER(?)
@@ -1050,11 +1059,13 @@ class DocumentStore:
             )
         else:  # all
             cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
+                f"""SELECT d.uuid, d.name, d.preview_image,
+                            d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
                 FROM documents d
                     JOIN users u ON d.owner_id = u.id
                     WHERE d.deleted_at IS NULL AND (d.owner_id = ?
-                       OR EXISTS (SELECT 1 FROM document_shares WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
+                       OR EXISTS (SELECT 1 FROM document_shares
+                                   WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
                        OR d.is_public = 1)
                     AND LOWER(d.name) LIKE LOWER(?)
                     ORDER BY {order}""",
@@ -1093,11 +1104,16 @@ class DocumentStore:
         """List all documents for an owner."""
         order = self._SORT_ORDERS.get(sort, "name")
         cursor = self.db.execute(
-            f"SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at, d.is_public FROM documents d WHERE d.deleted_at IS NULL AND d.owner_id = ? ORDER BY {order}",
+            f"SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at,"
+            f" d.is_public FROM documents d WHERE d.deleted_at IS NULL"
+            f" AND d.owner_id = ? ORDER BY {order}",
             (owner_id,),
         )
         return [
-            {"uuid": row[0], "name": row[1], "preview_image": row[2], "created_at": row[3], "updated_at": row[4], "is_public": bool(row[5])}
+            {
+                "uuid": row[0], "name": row[1], "preview_image": row[2],
+                "created_at": row[3], "updated_at": row[4], "is_public": bool(row[5]),
+            }
             for row in cursor.fetchall()
         ]
 

@@ -44,9 +44,12 @@ def test_tessellate_partial_mesh_clears_on_edge_failure():
 
 def test_tessellate_partial_mesh_clears_on_vertex_failure():
     body = _make_body()
-    with mock.patch("oversolved.kernel.geometry_tessellation.solid_to_mesh", return_value=_FAKE_MESH), \
-         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_edges", return_value=_FAKE_EDGES), \
-         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_vertices", side_effect=RuntimeError("verts boom")):
+    with (
+        mock.patch("oversolved.kernel.geometry_tessellation.solid_to_mesh", return_value=_FAKE_MESH),
+        mock.patch("oversolved.kernel.geometry_tessellation.solid_to_edges", return_value=_FAKE_EDGES),
+        mock.patch("oversolved.kernel.geometry_tessellation.solid_to_vertices",
+                   side_effect=RuntimeError("verts boom")),
+    ):
         entry = _tessellate_body_geometry(body)
     assert "mesh" not in entry
     assert "mesh_error" in entry

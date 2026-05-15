@@ -12,7 +12,7 @@ from oversolved.kernel.query import Repository, _init_global_repo  # noqa: F401
 from oversolved.kernel.solver_constants import (
     _FRONT_PLANE, ENTITY_SIZES, LOSS_THRESHOLD, RANK_TOL, RANK_BOUNDARY_TOL,
     ORIGIN_ID, ORIGIN_FIX_ID, _BUILTIN_PLANES, _BUILTIN_PLANE_RESULTS,
-    _PROJECTED_KINDS, _FACE_TYPES, _KNOWN_FEATURE_KINDS,
+    _PROJECTED_KINDS, _FACE_TYPES,
 )
 from oversolved.kernel.solver_plane import (  # noqa: F401
     is_plane_type, is_point_type, _resolve_plane_early,
@@ -115,7 +115,8 @@ def solve_features(spec: dict) -> dict:
     return {"features": results}
 
 
-def _try_solve_feature(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict] | None = None) -> dict:
+def _try_solve_feature(feature: dict, global_repo: Repository, body_store: dict,
+                       features_by_id: dict[str, dict] | None = None) -> dict:
     t0 = time.perf_counter()
     try:
         result = _solve_feature(feature, global_repo, body_store, features_by_id)
@@ -169,7 +170,8 @@ def _build_feature_handlers() -> None:
     })
 
 
-def _solve_feature(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict] | None = None) -> dict:
+def _solve_feature(feature: dict, global_repo: Repository, body_store: dict,
+                   features_by_id: dict[str, dict] | None = None) -> dict:
     kind = feature.get("kind")
     handler = _FEATURE_HANDLERS.get(kind)  # type: ignore[arg-type]
     if handler is None:

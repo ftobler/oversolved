@@ -99,7 +99,8 @@ def test_revolve_occ_exception_sets_status_exception():
     }
 
     # sketch_loops_to_face is imported locally inside _solve_revolve; patch at source.
-    with mock.patch("oversolved.kernel.geometry_tessellation.sketch_loops_to_face", side_effect=RuntimeError("occ failure")):
+    with mock.patch("oversolved.kernel.geometry_tessellation.sketch_loops_to_face",
+                    side_effect=RuntimeError("occ failure")):
         result = build(spec)
 
     body_result = result.get("result", {}).get("rev1") or {}

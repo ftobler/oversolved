@@ -326,8 +326,12 @@ def _tessellate_bodies(
         entry = _tessellate_body_geometry(body)
         if global_repo is not None and "mesh" in entry:
             _register_brep_face_ancestry(global_repo, body, entry["mesh"])
-            _register_brep_edge_ancestry(global_repo, body, entry.get("edges", []), entry.get("edge_queries", []))
-            _register_brep_vertex_ancestry(global_repo, body, entry.get("vertices", []), entry.get("vertex_queries", []))
+            _register_brep_edge_ancestry(
+                global_repo, body, entry.get("edges", []), entry.get("edge_queries", []),
+            )
+            _register_brep_vertex_ancestry(
+                global_repo, body, entry.get("vertices", []), entry.get("vertex_queries", []),
+            )
             _register_solid_ancestry(global_repo, body)
             _register_extrusion_feature(global_repo, body.created_by or "", body.sketch_id)
         out[body_id] = entry
@@ -430,7 +434,10 @@ def build(
         new_checkpoints[fid] = FeatureCheckpoint(
             spec=copy.deepcopy(feature),
             result=dict(feature_result),
-            repo_snapshot={"elements": dict(global_repo.elements), "ancestral": {k: list(v) for k, v in global_repo.ancestral.items()}},
+            repo_snapshot={
+                "elements": dict(global_repo.elements),
+                "ancestral": {k: list(v) for k, v in global_repo.ancestral.items()},
+            },
             body_store_snapshot={
                 bid: Body(
                     id=body.id,
@@ -486,7 +493,9 @@ def build(
         checkpoints=new_checkpoints,
     )
 
-    body_shapes: dict[str, TopoDS_Shape] = {bid: body.shape for bid, body in body_store.items() if body.shape is not None}
+    body_shapes: dict[str, TopoDS_Shape] = {
+        bid: body.shape for bid, body in body_store.items() if body.shape is not None
+    }
 
     pick_bodies_out: dict[str, dict] | None = None
     if pick_boundary is not None and pick_boundary > 0 and pick_boundary <= len(features):

@@ -773,7 +773,11 @@ def _build_standalone_surfaces(
 
         for idx, (eid, e) in enumerate(grp_sorted):
             cx, cy, r = e["center"][0], e["center"][1], e["radius"]
-            ancestor_ids = [emit_wire(absolute(feature_id, eid)), f"surface:{surf_count}", emit_wire(absolute(feature_id))]
+            ancestor_ids = [
+                emit_wire(absolute(feature_id, eid)),
+                f"surface:{surf_count}",
+                emit_wire(absolute(feature_id)),
+            ]
             query = make_ancestry_query(ancestor_ids, "flatface")
             boundary = _circle_arcs(cx, cy, r)
             if idx > 0:

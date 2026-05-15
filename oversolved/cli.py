@@ -145,7 +145,9 @@ def build_parser() -> argparse.ArgumentParser:
     server_parser = subparsers.add_parser("run_server", help="Start the API server")
     server_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
     server_parser.add_argument("--port", type=int, default=5000, help="Port to bind to (default: 5000)")
-    server_parser.add_argument("--db-type", choices=["postgres", "sqlite", "mariadb"], default="postgres", help="Database type (default: postgres)")
+    _DB_TYPE_HELP = "Database type (default: postgres)"
+    _DB_CHOICES = ["postgres", "sqlite", "mariadb"]
+    server_parser.add_argument("--db-type", choices=_DB_CHOICES, default="postgres", help=_DB_TYPE_HELP)
     server_parser.add_argument("--db-dsn", help="PostgreSQL DSN (default: OVERSOLVED_DB_DSN env var)")
     server_parser.add_argument("--db-path", default="oversolved.db", help="SQLite database path")
     server_parser.add_argument("--db-host", help="MariaDB host")
@@ -156,7 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # db subcommand group
     db_parser = subparsers.add_parser("db", help="Manage database schema")
-    db_parser.add_argument("--db-type", choices=["postgres", "sqlite", "mariadb"], default="postgres", help="Database type (default: postgres)")
+    db_parser.add_argument("--db-type", choices=_DB_CHOICES, default="postgres", help=_DB_TYPE_HELP)
     db_parser.add_argument("--db-dsn", help="PostgreSQL DSN (default: OVERSOLVED_DB_DSN env var)")
     db_parser.add_argument("--db-path", default="oversolved.db", help="SQLite database path")
     db_parser.add_argument("--db-host", help="MariaDB host")
@@ -170,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # run_tasks subcommand
     tasks_parser = subparsers.add_parser("run_tasks", help="Run periodic task checks")
-    tasks_parser.add_argument("--db-type", choices=["postgres", "sqlite", "mariadb"], default="postgres", help="Database type (default: postgres)")
+    tasks_parser.add_argument("--db-type", choices=_DB_CHOICES, default="postgres", help=_DB_TYPE_HELP)
     tasks_parser.add_argument("--db-dsn", help="PostgreSQL DSN (default: OVERSOLVED_DB_DSN env var)")
     tasks_parser.add_argument("--db-path", default="oversolved.db", help="SQLite database path")
     tasks_parser.add_argument("--db-host", help="MariaDB host")
@@ -178,7 +180,8 @@ def build_parser() -> argparse.ArgumentParser:
     tasks_parser.add_argument("--db-password", help="MariaDB password")
     tasks_parser.add_argument("--db-name", help="MariaDB database name")
     tasks_parser.add_argument("--loop", action="store_true", help="Run continuously instead of once")
-    tasks_parser.add_argument("--interval", type=_positive_int, default=60, help="Seconds between checks in loop mode (default: 60)")
+    tasks_parser.add_argument("--interval", type=_positive_int, default=60,
+                              help="Seconds between checks in loop mode (default: 60)")
     tasks_parser.add_argument("--force-task", help="Run a single task by key immediately")
 
     return parser

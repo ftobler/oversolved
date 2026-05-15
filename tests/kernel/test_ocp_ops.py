@@ -37,7 +37,6 @@ from oversolved.kernel.ocp_ops import (  # noqa: E402
     _compute_face_plane,
     _collect_face_wires,
     _build_loop_from_wire,
-    _extract_occ_face,
 )
 
 
@@ -194,9 +193,7 @@ def test_ocp_make_arc_edge():
 
 def test_ocp_revolve():
     """Revolving a face 360 degrees must produce a non-null shape."""
-    from cadquery.occ_impl.shapes import Shape as CQShape
     from cadquery.occ_impl import shapes as cq_shapes
-    from cadquery.occ_impl.geom import Vector as CQVector
     face = cq_shapes.Face.makePlane(1, 1, (1, 0, 0))
     result = ocp_revolve(face.wrapped, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], math.radians(360))
     assert not result.IsNull()

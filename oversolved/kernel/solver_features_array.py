@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from OCP.gp import gp_Trsf
 from oversolved.kernel.query import Repository
-from oversolved.kernel.types3d import Body
 from oversolved.kernel.cadquery_ops import _ensure_occ
 from oversolved.kernel.solver_features_shared import (
     _resolve_axis_query,

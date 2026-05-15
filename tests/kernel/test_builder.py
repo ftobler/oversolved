@@ -13,7 +13,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_round_trip_sketch():
-    """round-trip sketch - rect_sketch_spec(w=6, h=4) through build(); verify line length matches approx(6.0, abs=0.1)."""
+    """round-trip sketch through build(); verify line length ~6.0."""
     spec = rect_sketch_spec(w=6, h=4)
     r = build({'features': [spec]})
     geom = r['result']['sk1']['geometry']

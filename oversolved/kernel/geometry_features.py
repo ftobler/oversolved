@@ -176,7 +176,8 @@ def apply_fillet(shape: TopoDS_Shape, radius: float, edges: list[TopoDS_Shape] |
     ).shape
 
 
-def apply_chamfer(shape: TopoDS_Shape, distance: float, kind: str = "distance", angle: float = 45.0, edges: list[TopoDS_Shape] | None = None) -> TopoDS_Shape:
+def apply_chamfer(shape: TopoDS_Shape, distance: float, kind: str = "distance",
+                  angle: float = 45.0, edges: list[TopoDS_Shape] | None = None) -> TopoDS_Shape:
     """Apply a chamfer (bevel) to edges of a shape.
 
     kind: "distance" or "angle_distance".

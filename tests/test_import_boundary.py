@@ -30,7 +30,8 @@ def test_webapp_no_cadquery_at_module_level():
                         errors.append(f"{rel}:{node.lineno} imports {name}")
             elif isinstance(node, ast.ImportFrom):
                 module = node.module or ""
-                if module == "OCP" or module.startswith("OCP.") or module == "cadquery" or module.startswith("cadquery."):
+                if (module == "OCP" or module.startswith("OCP.")
+                        or module == "cadquery" or module.startswith("cadquery.")):
                     names = [a.name for a in node.names]
                     errors.append(f"{rel}:{node.lineno} from {module} import {', '.join(names)}")
     assert not errors, (

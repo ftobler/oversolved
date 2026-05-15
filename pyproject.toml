@@ -11,19 +11,19 @@ name = "oversolved"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "flask",
-    "flask-sock",
-    "waitress",
-    "gunicorn",
+    "flask>=3.0",
+    "flask-sock>=0.7",
+    "waitress>=3.0",
+    "gunicorn>=22.0",
     "gevent",
     "jax[cpu]",
-    "scipy",
-    "pyyaml",
+    "numpy>=1.26",
+    "scipy>=1.12",
+    "pyyaml>=6.0",
     "multimethod",
-    "PyMySQL",
-    "psycopg2-binary",
+    "psycopg2-binary>=2.9",
     "pillow",
-    "websockets",
+    "websockets>=12.0",
 ]
 
 [project.scripts]
@@ -31,12 +31,12 @@ oversolved = "oversolved.cli:main"
 oversolved-solver = "oversolved.solver_daemon:main"
 
 [project.optional-dependencies]
-solver = ["cadquery"]
+solver = ["cadquery>=5.0", "OCP>=7.7"]
 dev = [
     "pytest",
     "mypy",
     "flake8",
-    "pycairo",
+    "pycairo>=1.25",
 ]
 
 [tool.pytest.ini_options]

@@ -2,7 +2,6 @@
 
 import ast
 import pathlib
-import re
 
 REPO_ROOT = pathlib.Path(__file__).parent.parent.parent
 

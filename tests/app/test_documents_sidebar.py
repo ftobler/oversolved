@@ -70,7 +70,8 @@ def authed_client(app):
 def authed_client2(app, authed_client):
     resp = authed_client.post(
         "/api/admin/users",
-        data=json.dumps({"username": "user2", "password": "user2pass", "email": "user2@example.com", "is_admin": False}),
+        data=json.dumps({"username": "user2", "password": "user2pass",
+                         "email": "user2@example.com", "is_admin": False}),
         content_type="application/json",
     )
     assert resp.status_code == 201

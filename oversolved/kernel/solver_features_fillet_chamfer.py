@@ -6,11 +6,10 @@ from typing import Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from OCP.TopoDS import TopoDS_Shape
-from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query
+from oversolved.kernel.query import Repository
 from oversolved.kernel.types3d import Body
 from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ
 from oversolved.kernel.ocp_ops import ocp_curve_info
-from oversolved.kernel.geom_hash import edge_geometry_hash
 from oversolved.kernel.solver_features_shared import _resolve_body
 
 logger = logging.getLogger(__name__)

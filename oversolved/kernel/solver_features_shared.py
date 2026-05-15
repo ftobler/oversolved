@@ -3,12 +3,11 @@ from __future__ import annotations
 import logging
 import math
 import re
-from typing import Any, Callable, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
     from OCP.TopoDS import TopoDS_Shape
-    from OCP.gp import gp_Trsf
 from oversolved.kernel.query import Repository, _parse_ancestry
 from oversolved.kernel.types3d import Body, Frame3D
 from oversolved.kernel.solver_constants import _ARC_SEGMENTS, TOL_LOOP_CLOSURE
@@ -19,12 +18,11 @@ except ImportError:
     pass
 from oversolved.kernel.cadquery_ops import (
     _compute_face_centroid, _compute_face_normal,
-    _ensure_cq, _ensure_occ,
+    _ensure_occ,
     _face_sort_key, _triangle_area,
 )
 from oversolved.kernel.ocp_ops import (
     ocp_count_solids,
-    ocp_curve_info,
     ocp_explore_solids,
     ocp_extract_face_loops,
     ocp_mesh_shape,
@@ -591,7 +589,10 @@ def _apply_body_operation(
     return result
 
 
-def _resolve_direction_query(query: str, global_repo: Repository, fallback: list[float], body_store: dict | None = None) -> list[float]:
+def _resolve_direction_query(
+    query: str, global_repo: Repository,
+    fallback: list[float], body_store: dict | None = None,
+) -> list[float]:
     if not query:
         return fallback
     data = global_repo.query(query, body_store=body_store)

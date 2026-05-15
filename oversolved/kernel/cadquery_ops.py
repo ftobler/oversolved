@@ -170,7 +170,8 @@ def extrude_face(face: cq_shapes.Face, direction_vec: list[float], distance: flo
     return cq_shapes.Solid.extrudeLinear(face, vec).clean()
 
 
-def revolve_face(face: cq_shapes.Face, axis_origin: list[float], axis_direction: list[float], angle_deg: float) -> cq_shapes.Solid:
+def revolve_face(face: cq_shapes.Face, axis_origin: list[float],
+                 axis_direction: list[float], angle_deg: float) -> cq_shapes.Solid:
     """Revolve a face around an axis."""
     if angle_deg == 0:
         raise ValueError("revolve angle must be non-zero")

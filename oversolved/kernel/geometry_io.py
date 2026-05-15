@@ -96,7 +96,8 @@ def shape_to_stl_file_buffer(shape: TopoDS_Shape, deflection: float = 0.5, angul
         os.unlink(tmp_path)
 
 
-def shape_to_stl_file(shape: TopoDS_Shape, filepath: str, deflection: float = 0.5, angular_deflection: float = 0.3) -> None:
+def shape_to_stl_file(shape: TopoDS_Shape, filepath: str,
+                      deflection: float = 0.5, angular_deflection: float = 0.3) -> None:
     """Write a shape to an STL file.
 
     Args:

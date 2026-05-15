@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-import base64
 import logging
 import os
-import tempfile
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from OCP.TopoDS import TopoDS_Shape
 from oversolved.kernel.query import Repository
-from oversolved.kernel.types3d import Body
-from oversolved.kernel.geometry_io import step_file_to_shape
 from oversolved.kernel.cadquery_ops import _ensure_occ
 
 logger = logging.getLogger(__name__)

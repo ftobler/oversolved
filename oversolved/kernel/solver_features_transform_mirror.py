@@ -1,16 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from OCP.TopoDS import TopoDS_Shape
 from oversolved.kernel.query import Repository
-from oversolved.kernel.types3d import Body, Frame3D
-from oversolved.kernel.cadquery_ops import _ensure_occ, apply_transform_shape, make_mirror_trsf, boolean_union
-from oversolved.kernel.geometry_features import transform_copy
+from oversolved.kernel.types3d import Frame3D
+from oversolved.kernel.cadquery_ops import _ensure_occ
 from oversolved.kernel.solver_features_shared import _resolve_body
-from oversolved.kernel.solver_plane import _get_edge_3d, _get_point_3d
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +132,10 @@ def _solve_mirror(feature: dict, global_repo: Repository, body_store: dict) -> d
     keep_original = bool(cfg.get("keep_original", True))
     merge = bool(cfg.get("merge", True))
 
-    trsf = make_mirror_trsf((float(origin[0]), float(origin[1]), float(origin[2])), (float(normal[0]), float(normal[1]), float(normal[2])))
+    trsf = make_mirror_trsf(
+        (float(origin[0]), float(origin[1]), float(origin[2])),
+        (float(normal[0]), float(normal[1]), float(normal[2])),
+    )
     mirrored_shape = transform_copy(source_body.shape, trsf)
 
     if not keep_original:

@@ -1,7 +1,6 @@
 """Tests for _collinear_overlap degenerate-segment handling."""
 
 import logging
-import pytest
 from oversolved.kernel.topology import _collinear_overlap, detect_topology
 
 

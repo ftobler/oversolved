@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from OCP.TopoDS import TopoDS_Shape
 from oversolved.kernel.query import Repository
-from oversolved.kernel.cadquery_ops import boolean_cut, boolean_union, boolean_intersection, _ensure_occ
+from oversolved.kernel.cadquery_ops import _ensure_occ
 from oversolved.kernel.solver_features_shared import _resolve_body
 
 logger = logging.getLogger(__name__)

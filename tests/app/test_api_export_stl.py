@@ -85,7 +85,9 @@ def test_export_single_extrude(authed_client):
         },
     )
     assert response.status_code == 200
-    assert "application/sla" in response.content_type or "model/stl" in response.content_type or "text/plain" in response.content_type
+    assert ("application/sla" in response.content_type
+            or "model/stl" in response.content_type
+            or "text/plain" in response.content_type)
     assert "attachment" in response.headers["Content-Disposition"]
 
 

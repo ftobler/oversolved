@@ -856,7 +856,9 @@ features:
     angle_at_cd = angle_between_lines(transv_start, transv_end, line_cd_start, line_cd_end)
 
     # Verify that the lines are parallel (lines AB and CD should have same angle with transversal)
-    assert abs(angle_at_ab - angle_at_cd) < ATOL, f"Angles should be equal for parallel lines: {angle_at_ab}° vs {angle_at_cd}°"
+    assert abs(angle_at_ab - angle_at_cd) < ATOL, (
+        f"Angles should be equal for parallel lines: {angle_at_ab} deg vs {angle_at_cd} deg"
+    )
 
 
 def test_exterior_angle_theorem(sketch_log):
@@ -1373,8 +1375,12 @@ features:
     fixed_start = [-0.838727, 0.849922]
     fixed_end = [-0.071016, 1.154386]
 
-    assert abs(line.start[0] - fixed_start[0]) < TOL, f"start x should be fixed at {fixed_start[0]}, got {line.start[0]}"
-    assert abs(line.start[1] - fixed_start[1]) < TOL, f"start y should be fixed at {fixed_start[1]}, got {line.start[1]}"
+    assert abs(line.start[0] - fixed_start[0]) < TOL, (
+        f"start x should be fixed at {fixed_start[0]}, got {line.start[0]}"
+    )
+    assert abs(line.start[1] - fixed_start[1]) < TOL, (
+        f"start y should be fixed at {fixed_start[1]}, got {line.start[1]}"
+    )
     assert abs(line.end[0] - fixed_end[0]) < TOL, f"end x should be fixed at {fixed_end[0]}, got {line.end[0]}"
     assert abs(line.end[1] - fixed_end[1]) < TOL, f"end y should be fixed at {fixed_end[1]}, got {line.end[1]}"
     assert result["status"] == "fully_constrained"

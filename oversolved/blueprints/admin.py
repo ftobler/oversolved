@@ -291,7 +291,7 @@ def import_backup():
         errors = []
 
         with zipfile.ZipFile(file.stream, 'r') as zip_file:
-            files_by_user = {}
+            files_by_user: dict[str, dict[str, str]] = {}
             for file_info in zip_file.filelist:
                 path = file_info.filename
                 if path.endswith('/'):
@@ -386,6 +386,11 @@ def submit_bug_report():
     )
     selection = data.get("selection") or []
     solve_results = data.get("solveResults")
+    if solve_results:
+        solve_yaml = yaml.dump(solve_results, default_flow_style=False)
+        solve_text = f"```yaml{chr(10)}{solve_yaml}{chr(10)}```"
+    else:
+        solve_text = "*(not available)*"
     internal_state = data.get("internalState") or {}
     history = data.get("history") or []
     history_section = _format_history(history)
@@ -421,7 +426,7 @@ def submit_bug_report():
 
 ## Solver Result
 
-{f"```yaml{chr(10)}{yaml.dump(solve_results, default_flow_style=False)}{chr(10)}```" if solve_results else "*(not available)*"}
+{solve_text}
 
 ## Edit History
 
