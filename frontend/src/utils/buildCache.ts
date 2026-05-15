@@ -147,7 +147,7 @@ export async function deleteCacheEntry(key: string): Promise<void> {
   cache.delete(key)
 }
 
-export function _getCache(): Map<string, CacheEntry> {
+export function getCache(): Map<string, CacheEntry> {
   return cache
 }
 

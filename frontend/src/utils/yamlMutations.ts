@@ -1,6 +1,8 @@
 import type { PartDoc, PartFeature, PartConstraint, PartTarget, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef } from '../types/cad'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '../registry'
 
+const warn = import.meta.env.DEV ? console.warn.bind(console) : () => undefined
+
 // ─── Architecture contract ───
 //
 // PartDoc is the SOURCE OF TRUTH for the document.
@@ -587,7 +589,7 @@ export function normalizeExtrudeSketch(sketch: string | string[]): string[] {
 export function applyAddExtrudeProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.extrude) {
-    console.warn(`applyAddExtrudeProfile: feature ${featureId} has no extrude`)
+    warn(`applyAddExtrudeProfile: feature ${featureId} has no extrude`)
     return
   }
   const current = normalizeExtrudeSketch(feature.extrude.sketch)
@@ -603,7 +605,7 @@ export function applyAddExtrudeProfile(doc: PartDoc, featureId: string, sketchQu
 export function applyRemoveExtrudeProfile(doc: PartDoc, featureId: string, index: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.extrude) {
-    console.warn(`applyRemoveExtrudeProfile: feature ${featureId} has no extrude`)
+    warn(`applyRemoveExtrudeProfile: feature ${featureId} has no extrude`)
     return
   }
   const current = normalizeExtrudeSketch(feature.extrude.sketch)
@@ -614,7 +616,7 @@ export function applyRemoveExtrudeProfile(doc: PartDoc, featureId: string, index
 export function applySetExtrudeDistance(doc: PartDoc, featureId: string, distance: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.extrude) {
-    console.warn(`applySetExtrudeDistance: feature ${featureId} has no extrude`)
+    warn(`applySetExtrudeDistance: feature ${featureId} has no extrude`)
     return
   }
   feature.extrude.distance = distance
@@ -627,7 +629,7 @@ export function applySetExtrudeDirection(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.extrude) {
-    console.warn(`applySetExtrudeDirection: feature ${featureId} has no extrude`)
+    warn(`applySetExtrudeDirection: feature ${featureId} has no extrude`)
     return
   }
   feature.extrude.direction = direction
@@ -640,7 +642,7 @@ export function applySetExtrudeOperation(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.extrude) {
-    console.warn(`applySetExtrudeOperation: feature ${featureId} has no extrude`)
+    warn(`applySetExtrudeOperation: feature ${featureId} has no extrude`)
     return
   }
   feature.extrude.operation = operation
@@ -651,7 +653,7 @@ export function applySetExtrudeMergeTarget(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.extrude) {
-    console.warn(`applySetExtrudeMergeTarget: feature ${featureId} has no extrude`)
+    warn(`applySetExtrudeMergeTarget: feature ${featureId} has no extrude`)
     return
   }
   if (mergeTarget) {
@@ -691,7 +693,7 @@ export function normalizeRevolveSketch(sketch: string | string[]): string[] {
 export function applyAddRevolveProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.revolve) {
-    console.warn(`applyAddRevolveProfile: feature ${featureId} has no revolve`)
+    warn(`applyAddRevolveProfile: feature ${featureId} has no revolve`)
     return
   }
   const current = normalizeRevolveSketch(feature.revolve.sketch)
@@ -707,7 +709,7 @@ export function applyAddRevolveProfile(doc: PartDoc, featureId: string, sketchQu
 export function applyRemoveRevolveProfile(doc: PartDoc, featureId: string, index: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.revolve) {
-    console.warn(`applyRemoveRevolveProfile: feature ${featureId} has no revolve`)
+    warn(`applyRemoveRevolveProfile: feature ${featureId} has no revolve`)
     return
   }
   const current = normalizeRevolveSketch(feature.revolve.sketch)
@@ -718,7 +720,7 @@ export function applyRemoveRevolveProfile(doc: PartDoc, featureId: string, index
 export function applySetRevolveAngle(doc: PartDoc, featureId: string, angle: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.revolve) {
-    console.warn(`applySetRevolveAngle: feature ${featureId} has no revolve`)
+    warn(`applySetRevolveAngle: feature ${featureId} has no revolve`)
     return
   }
   feature.revolve.angle = angle
@@ -731,7 +733,7 @@ export function applySetRevolveDirection(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.revolve) {
-    console.warn(`applySetRevolveDirection: feature ${featureId} has no revolve`)
+    warn(`applySetRevolveDirection: feature ${featureId} has no revolve`)
     return
   }
   feature.revolve.direction = direction
@@ -740,7 +742,7 @@ export function applySetRevolveDirection(
 export function applySetRevolveAxis(doc: PartDoc, featureId: string, axis: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.revolve) {
-    console.warn(`applySetRevolveAxis: feature ${featureId} has no revolve`)
+    warn(`applySetRevolveAxis: feature ${featureId} has no revolve`)
     return
   }
   feature.revolve.axis = axis
@@ -783,7 +785,7 @@ export function applySetRevolveOperation(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.revolve) {
-    console.warn(`applySetRevolveOperation: feature ${featureId} has no revolve`)
+    warn(`applySetRevolveOperation: feature ${featureId} has no revolve`)
     return
   }
   feature.revolve.operation = operation
@@ -794,7 +796,7 @@ export function applySetRevolveMergeTarget(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.revolve) {
-    console.warn(`applySetRevolveMergeTarget: feature ${featureId} has no revolve`)
+    warn(`applySetRevolveMergeTarget: feature ${featureId} has no revolve`)
     return
   }
   if (mergeTarget) {
@@ -849,7 +851,7 @@ export function applyAddChamfer(
 export function applySetFilletRadius(doc: PartDoc, featureId: string, radius: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.fillet) {
-    console.warn(`applySetFilletRadius: feature ${featureId} has no fillet`)
+    warn(`applySetFilletRadius: feature ${featureId} has no fillet`)
     return
   }
   feature.fillet.radius = radius
@@ -858,7 +860,7 @@ export function applySetFilletRadius(doc: PartDoc, featureId: string, radius: nu
 export function applySetChamferDistance(doc: PartDoc, featureId: string, distance: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.chamfer) {
-    console.warn(`applySetChamferDistance: feature ${featureId} has no chamfer`)
+    warn(`applySetChamferDistance: feature ${featureId} has no chamfer`)
     return
   }
   feature.chamfer.distance = distance
@@ -867,7 +869,7 @@ export function applySetChamferDistance(doc: PartDoc, featureId: string, distanc
 export function applySetChamferAngle(doc: PartDoc, featureId: string, angle: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.chamfer) {
-    console.warn(`applySetChamferAngle: feature ${featureId} has no chamfer`)
+    warn(`applySetChamferAngle: feature ${featureId} has no chamfer`)
     return
   }
   feature.chamfer.angle = angle
@@ -880,7 +882,7 @@ export function applySetChamferKind(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.chamfer) {
-    console.warn(`applySetChamferKind: feature ${featureId} has no chamfer`)
+    warn(`applySetChamferKind: feature ${featureId} has no chamfer`)
     return
   }
   feature.chamfer.kind = kind
@@ -889,7 +891,7 @@ export function applySetChamferKind(
 export function applyAddFilletEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.fillet) {
-    console.warn(`applyAddFilletEdge: feature ${featureId} has no fillet`)
+    warn(`applyAddFilletEdge: feature ${featureId} has no fillet`)
     return
   }
   const idx = feature.fillet.edges.indexOf(edgeQuery)
@@ -903,7 +905,7 @@ export function applyAddFilletEdge(doc: PartDoc, featureId: string, edgeQuery: s
 export function applyRemoveFilletEdge(doc: PartDoc, featureId: string, index: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.fillet) {
-    console.warn(`applyRemoveFilletEdge: feature ${featureId} has no fillet`)
+    warn(`applyRemoveFilletEdge: feature ${featureId} has no fillet`)
     return
   }
   feature.fillet.edges.splice(index, 1)
@@ -912,7 +914,7 @@ export function applyRemoveFilletEdge(doc: PartDoc, featureId: string, index: nu
 export function applyAddChamferEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.chamfer) {
-    console.warn(`applyAddChamferEdge: feature ${featureId} has no chamfer`)
+    warn(`applyAddChamferEdge: feature ${featureId} has no chamfer`)
     return
   }
   const idx = feature.chamfer.edges.indexOf(edgeQuery)
@@ -926,7 +928,7 @@ export function applyAddChamferEdge(doc: PartDoc, featureId: string, edgeQuery: 
 export function applyRemoveChamferEdge(doc: PartDoc, featureId: string, index: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.chamfer) {
-    console.warn(`applyRemoveChamferEdge: feature ${featureId} has no chamfer`)
+    warn(`applyRemoveChamferEdge: feature ${featureId} has no chamfer`)
     return
   }
   feature.chamfer.edges.splice(index, 1)
@@ -950,7 +952,7 @@ export function applySetBooleanOperation(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.boolean) {
-    console.warn(`applySetBooleanOperation: feature ${featureId} has no boolean`)
+    warn(`applySetBooleanOperation: feature ${featureId} has no boolean`)
     return
   }
   feature.boolean.operation = operation
@@ -959,7 +961,7 @@ export function applySetBooleanOperation(
 export function applySetBooleanTarget(doc: PartDoc, featureId: string, target: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.boolean) {
-    console.warn(`applySetBooleanTarget: feature ${featureId} has no boolean`)
+    warn(`applySetBooleanTarget: feature ${featureId} has no boolean`)
     return
   }
   feature.boolean.target = target
@@ -968,7 +970,7 @@ export function applySetBooleanTarget(doc: PartDoc, featureId: string, target: s
 export function applyAddBooleanTool(doc: PartDoc, featureId: string, tool: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.boolean) {
-    console.warn(`applyAddBooleanTool: feature ${featureId} has no boolean`)
+    warn(`applyAddBooleanTool: feature ${featureId} has no boolean`)
     return
   }
   const idx = feature.boolean.tools.indexOf(tool)
@@ -982,7 +984,7 @@ export function applyAddBooleanTool(doc: PartDoc, featureId: string, tool: strin
 export function applyRemoveBooleanTool(doc: PartDoc, featureId: string, tool: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.boolean) {
-    console.warn(`applyRemoveBooleanTool: feature ${featureId} has no boolean`)
+    warn(`applyRemoveBooleanTool: feature ${featureId} has no boolean`)
     return
   }
   feature.boolean.tools = feature.boolean.tools.filter(t => t !== tool)
@@ -991,7 +993,7 @@ export function applyRemoveBooleanTool(doc: PartDoc, featureId: string, tool: st
 export function applySetBooleanKeepTools(doc: PartDoc, featureId: string, keepTools: boolean): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.boolean) {
-    console.warn(`applySetBooleanKeepTools: feature ${featureId} has no boolean`)
+    warn(`applySetBooleanKeepTools: feature ${featureId} has no boolean`)
     return
   }
   feature.boolean.keep_tools = keepTools
@@ -1022,7 +1024,7 @@ export function applySetArrayMode(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayMode: feature ${featureId} has no array`)
+    warn(`applySetArrayMode: feature ${featureId} has no array`)
     return
   }
   feature.array.mode = mode
@@ -1054,7 +1056,7 @@ export function applySetArrayMode(
 export function applySetArraySourceBody(doc: PartDoc, featureId: string, sourceBody: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArraySourceBody: feature ${featureId} has no array`)
+    warn(`applySetArraySourceBody: feature ${featureId} has no array`)
     return
   }
   feature.array.source_body = sourceBody
@@ -1063,7 +1065,7 @@ export function applySetArraySourceBody(doc: PartDoc, featureId: string, sourceB
 export function applySetArrayOperation(doc: PartDoc, featureId: string, operation: 'add' | 'new'): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayOperation: feature ${featureId} has no array`)
+    warn(`applySetArrayOperation: feature ${featureId} has no array`)
     return
   }
   feature.array.operation = operation
@@ -1072,7 +1074,7 @@ export function applySetArrayOperation(doc: PartDoc, featureId: string, operatio
 export function applySetArrayIncludeSource(doc: PartDoc, featureId: string, includeSource: boolean): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayIncludeSource: feature ${featureId} has no array`)
+    warn(`applySetArrayIncludeSource: feature ${featureId} has no array`)
     return
   }
   feature.array.include_source = includeSource
@@ -1081,7 +1083,7 @@ export function applySetArrayIncludeSource(doc: PartDoc, featureId: string, incl
 export function applySetArrayCountX(doc: PartDoc, featureId: string, count: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayCountX: feature ${featureId} has no array`)
+    warn(`applySetArrayCountX: feature ${featureId} has no array`)
     return
   }
   feature.array.count_x = count
@@ -1090,7 +1092,7 @@ export function applySetArrayCountX(doc: PartDoc, featureId: string, count: numb
 export function applySetArrayPitchX(doc: PartDoc, featureId: string, pitch: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayPitchX: feature ${featureId} has no array`)
+    warn(`applySetArrayPitchX: feature ${featureId} has no array`)
     return
   }
   feature.array.pitch_x = pitch
@@ -1099,7 +1101,7 @@ export function applySetArrayPitchX(doc: PartDoc, featureId: string, pitch: numb
 export function applySetArrayDirectionXQuery(doc: PartDoc, featureId: string, query: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayDirectionXQuery: feature ${featureId} has no array`)
+    warn(`applySetArrayDirectionXQuery: feature ${featureId} has no array`)
     return
   }
   feature.array.direction_x_query = query
@@ -1108,7 +1110,7 @@ export function applySetArrayDirectionXQuery(doc: PartDoc, featureId: string, qu
 export function applySetArrayCountY(doc: PartDoc, featureId: string, count: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayCountY: feature ${featureId} has no array`)
+    warn(`applySetArrayCountY: feature ${featureId} has no array`)
     return
   }
   feature.array.count_y = count
@@ -1117,7 +1119,7 @@ export function applySetArrayCountY(doc: PartDoc, featureId: string, count: numb
 export function applySetArrayPitchY(doc: PartDoc, featureId: string, pitch: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayPitchY: feature ${featureId} has no array`)
+    warn(`applySetArrayPitchY: feature ${featureId} has no array`)
     return
   }
   feature.array.pitch_y = pitch
@@ -1126,7 +1128,7 @@ export function applySetArrayPitchY(doc: PartDoc, featureId: string, pitch: numb
 export function applySetArrayDirectionYQuery(doc: PartDoc, featureId: string, query: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayDirectionYQuery: feature ${featureId} has no array`)
+    warn(`applySetArrayDirectionYQuery: feature ${featureId} has no array`)
     return
   }
   feature.array.direction_y_query = query
@@ -1135,7 +1137,7 @@ export function applySetArrayDirectionYQuery(doc: PartDoc, featureId: string, qu
 export function applySetArrayCount(doc: PartDoc, featureId: string, count: number): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayCount: feature ${featureId} has no array`)
+    warn(`applySetArrayCount: feature ${featureId} has no array`)
     return
   }
   feature.array.count = count
@@ -1144,7 +1146,7 @@ export function applySetArrayCount(doc: PartDoc, featureId: string, count: numbe
 export function applySetArrayStepAngle(doc: PartDoc, featureId: string, stepAngle: number | null): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayStepAngle: feature ${featureId} has no array`)
+    warn(`applySetArrayStepAngle: feature ${featureId} has no array`)
     return
   }
   feature.array.step_angle = stepAngle
@@ -1153,7 +1155,7 @@ export function applySetArrayStepAngle(doc: PartDoc, featureId: string, stepAngl
 export function applySetArrayAxis(doc: PartDoc, featureId: string, axis: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayAxis: feature ${featureId} has no array`)
+    warn(`applySetArrayAxis: feature ${featureId} has no array`)
     return
   }
   feature.array.axis = axis
@@ -1162,7 +1164,7 @@ export function applySetArrayAxis(doc: PartDoc, featureId: string, axis: string)
 export function applySetArrayDirectionX(doc: PartDoc, featureId: string, direction_x: [number, number, number]): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayDirectionX: feature ${featureId} has no array`)
+    warn(`applySetArrayDirectionX: feature ${featureId} has no array`)
     return
   }
   feature.array.direction_x = direction_x
@@ -1171,7 +1173,7 @@ export function applySetArrayDirectionX(doc: PartDoc, featureId: string, directi
 export function applySetArrayDirectionY(doc: PartDoc, featureId: string, direction_y: [number, number, number]): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
-    console.warn(`applySetArrayDirectionY: feature ${featureId} has no array`)
+    warn(`applySetArrayDirectionY: feature ${featureId} has no array`)
     return
   }
   feature.array.direction_y = direction_y
@@ -1360,7 +1362,7 @@ export function applySetMirrorField(
 ): void {
   const feat = doc.features?.find(f => f.id === featureId)
   if (!feat?.mirror) {
-    console.warn(`applySetMirrorField: feature ${featureId} has no mirror`)
+    warn(`applySetMirrorField: feature ${featureId} has no mirror`)
     return
   }
   ;(feat.mirror as unknown as Record<string, unknown>)[field] = value

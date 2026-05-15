@@ -50,21 +50,21 @@ export function buildBodyGeometry(mesh: Mesh3D): {
   return { positions, indices }
 }
 
-export function _getFaceIndices(faces: Mesh3D['faces'], i: number): [number, number, number] {
+export function getFaceIndices(faces: Mesh3D['faces'], i: number): [number, number, number] {
   if (faces instanceof Uint32Array) {
     return [faces[i * 3], faces[i * 3 + 1], faces[i * 3 + 2]]
   }
   return faces[i]
 }
 
-export function _getVertex(vertices: Mesh3D['vertices'], vi: number): [number, number, number] {
+export function getVertex(vertices: Mesh3D['vertices'], vi: number): [number, number, number] {
   if (vertices instanceof Float32Array) {
     return [vertices[vi * 3], vertices[vi * 3 + 1], vertices[vi * 3 + 2]]
   }
   return vertices[vi]
 }
 
-export function _faceCount(faces: Mesh3D['faces']): number {
+export function faceCount(faces: Mesh3D['faces']): number {
   if (faces instanceof Uint32Array) return faces.length / 3
   return faces.length
 }
@@ -79,10 +79,10 @@ export function buildFaceBoundarySegments(mesh: Mesh3D, brepFaceIndex: number): 
   const edgeCount = new Map<string, number>()
   const edgeVerts = new Map<string, [number, number]>()
 
-  const numFaces = _faceCount(faces)
+  const numFaces = faceCount(faces)
   for (let i = 0; i < numFaces; i++) {
     if (triangle_to_face[i] !== brepFaceIndex) continue
-    const [a, b, c] = _getFaceIndices(faces, i)
+    const [a, b, c] = getFaceIndices(faces, i)
     for (const [v1, v2] of [[a, b], [b, c], [c, a]] as [number, number][]) {
       const key = v1 < v2 ? `${v1}:${v2}` : `${v2}:${v1}`
       edgeCount.set(key, (edgeCount.get(key) ?? 0) + 1)
@@ -94,7 +94,7 @@ export function buildFaceBoundarySegments(mesh: Mesh3D, brepFaceIndex: number): 
   for (const [key, count] of edgeCount) {
     if (count === 1) {
       const [v1, v2] = edgeVerts.get(key)!
-      pts.push(..._getVertex(vertices, v1), ..._getVertex(vertices, v2))
+      pts.push(...getVertex(vertices, v1), ...getVertex(vertices, v2))
     }
   }
   return new Float32Array(pts)
@@ -108,13 +108,13 @@ export function extractFaceGeometry(mesh: Mesh3D, brepFaceIndex: number): { vert
   const seen = new Set<number>()
   const faceVerts: [number, number, number][] = []
 
-  const numFaces = _faceCount(faces)
+  const numFaces = faceCount(faces)
   for (let i = 0; i < numFaces; i++) {
     if (triangle_to_face[i] !== brepFaceIndex) continue
-    for (const vi of _getFaceIndices(faces, i)) {
+    for (const vi of getFaceIndices(faces, i)) {
       if (!seen.has(vi)) {
         seen.add(vi)
-        faceVerts.push(_getVertex(vertices, vi))
+        faceVerts.push(getVertex(vertices, vi))
       }
     }
   }

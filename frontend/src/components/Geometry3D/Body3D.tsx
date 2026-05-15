@@ -21,7 +21,7 @@ import {
   calculateFaceProperties,
   buildEdgeSegments,
   getEdgeSegmentCounts,
-  _faceCount,
+  faceCount,
 } from './bodyGeometry'
 
 // 2D point-to-segment distance in pixels for screen-space edge proximity.
@@ -132,7 +132,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     indexed.dispose()
     // Pre-fill color attribute so vertexColors=true doesn't flash black on first render.
     const { r, g, b } = new THREE.Color(COLOR_BODY_DEFAULT)
-    const numTris = _faceCount(mesh.faces)
+    const numTris = faceCount(mesh.faces)
     const initialColors = new Float32Array(numTris * 9)
     for (let i = 0; i < numTris * 3; i++) {
       initialColors[i * 3] = r; initialColors[i * 3 + 1] = g; initialColors[i * 3 + 2] = b
@@ -192,7 +192,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     if (!triangle_to_face || !face_queries || face_queries.length === 0) return null
 
     const faceCount = face_queries.length
-    const numTris = _faceCount(mesh.faces)
+    const numTris = faceCount(mesh.faces)
     const colors = new Float32Array(numTris * 3 * 3)
     for (let i = 0; i < numTris; i++) {
       const brepFaceIdx = triangle_to_face[i] ?? 0
@@ -320,7 +320,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   // Always compute face colors -- avoids toggling vertexColors on the material which
   // causes shader recompilation and a black-frame artifact.
   const faceColors = useMemo(() => {
-    const numTris = _faceCount(mesh.faces)
+    const numTris = faceCount(mesh.faces)
     const colors = new Float32Array(numTris * 3 * 3)
     const defaultColor = new THREE.Color(bodyColor)
     const selectedColor = new THREE.Color(COLOR_SELECTED)

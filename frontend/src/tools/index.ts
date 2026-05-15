@@ -33,7 +33,7 @@ export function initializeTools(): void {
   toolRegistry.register(createDimensionTool())
   toolRegistry.register(createDragTool())
 
-  if (process.env.NODE_ENV === 'development') {
+  if (import.meta.env.DEV) {
     toolRegistry.validate()
   }
 }
