@@ -67,7 +67,7 @@ export default function Part() {
   const [viewportReset, setViewportReset] = useState(0)
   const viewportRef = useRef<ViewportHandle>(null)
   const handleFirstSolve = useCallback(() => {
-    viewportRef.current?.autoZoomToFit()
+    viewportRef.current?.autoZoomToFit()  // camera-only; intentional no-op when Viewport absent
   }, [])
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
@@ -534,7 +534,7 @@ useEffect(() => {
 
   const handleSave = async () => {
     if (!uuid || !doc) return
-    const success = await saveDoc(uuid, doc, viewportRef.current?.captureScreenshotForSaving)
+    const success = await saveDoc(uuid, doc, viewportRef.current?.captureScreenshotForSaving)  // screenshot is optional; save proceeds without Viewport
     if (success) setError(null)
   }
 
@@ -768,7 +768,7 @@ useEffect(() => {
     const planeId = activeSketch.plane || 'builtin_plane_front'
     const cleanPlaneId = planeId.replace(/^@/, '')
 
-    viewportRef.current?.alignCameraToPlane(cleanPlaneId)
+    viewportRef.current?.alignCameraToPlane(cleanPlaneId)  // camera-only; intentional no-op when Viewport absent
   }, [activeSketchFeatureId, features])
 
   const pendingSketchOnFaceId = useRef<string | null>(null)
@@ -799,7 +799,7 @@ useEffect(() => {
           {
             label: 'Align to Face',
             onClick: () => {
-              viewportRef.current?.alignCameraToFace(hoveredFaceNormal, hoveredFaceCenter)
+              viewportRef.current?.alignCameraToFace(hoveredFaceNormal, hoveredFaceCenter)  // camera-only; intentional no-op when Viewport absent
             },
           },
         ],
