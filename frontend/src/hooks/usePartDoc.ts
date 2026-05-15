@@ -90,9 +90,206 @@ import {
   applySetPartMetalness,
   applyReorderFeatures,
   applyReorderPickField,
+  applyMirrorEntities,
+  applyAddMirror,
+  applySetMirrorField,
 } from '@/utils/yamlMutations'
 
 export { healDoc, BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
+
+type MutationHandlers = {
+  [K in Mutation['type']]: (doc: PartDoc, m: Extract<Mutation, { type: K }>) => void
+}
+
+export const mutationHandlers: MutationHandlers = {
+  move_vertex: (next, m) =>
+    applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to),
+  move_vertex_with_constraint: (next, m) => {
+    applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to)
+    const draggedRef = `vertex:${m.featureId}:${m.entityId}:${m.vertexKey}`
+    const snapRef = m.snapVertexId ?? m.snapEntityRef
+    if (snapRef) {
+      applyAddConstraint(next, m.featureId, m.constraintKind, [draggedRef, snapRef])
+    }
+  },
+  move_entity: (next, m) =>
+    applyMoveEntity(next, m.featureId, m.entityId, m.delta),
+  add_constraint: (next, m) =>
+    applyAddConstraint(next, m.featureId, m.kind, m.targets, m.value),
+  set_constraint_value: (next, m) =>
+    applySetConstraintValue(next, m.featureId, m.constraintId, m.value),
+  set_constraint_pos: (next, m) =>
+    applySetConstraintPos(next, m.featureId, m.constraintId, m.pos),
+  delete: (next, m) =>
+    applyDeleteElements(next, m.targets),
+  add_entity: (next, m) =>
+    applyAddEntity(next, m.featureId, m.kind, m.params, m.entityId),
+  add_entity_with_constraint: (next, m) =>
+    applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId),
+  add_projected_entity: (next, m) =>
+    applyAddProjectedEntity(next, m.featureId, m.kind, m.source),
+  add_rect: (next, m) =>
+    applyAddRect(next, m.featureId, m.p0, m.p1),
+  add_center_rect: (next, m) =>
+    applyAddCenterRect(next, m.featureId, m.center, m.corner),
+  toggle_construction: (next, m) =>
+    applyToggleConstruction(next, m.targets),
+  set_feature_plane: (next, m) =>
+    applySetFeaturePlane(next, m.featureId, m.plane),
+  add_sketch: (next, m) =>
+    applyAddSketch(next, m.featureId, m.label),
+  delete_feature: (next, m) =>
+    applyDeleteFeature(next, m.featureId),
+  set_feature_visibility: (next, m) =>
+    applySetFeatureVisibility(next, m.featureId, m.visible),
+  add_plane: (next, m) =>
+    applyAddPlane(next, m.featureId, m.label, m.definition as Record<string, unknown> | undefined),
+  set_plane_definition_field: (next, m) =>
+    applySetPlaneDefinitionField(next, m.featureId, m.field, m.value),
+  rename_feature: (next, m) =>
+    applyRenameFeature(next, m.featureId, m.label),
+  toggle_sketch_plane_visibility: (next) =>
+    applyToggleSketchPlaneVisibility(next),
+  toggle_plane_visibility: (next) =>
+    applyTogglePlaneVisibility(next),
+  add_extrude: (next, m) =>
+    applyAddExtrude(next, m.featureId, m.label, m.sketchQuery, m.distance),
+  set_extrude_distance: (next, m) =>
+    applySetExtrudeDistance(next, m.featureId, m.distance),
+  set_extrude_direction: (next, m) =>
+    applySetExtrudeDirection(next, m.featureId, m.direction),
+  set_extrude_operation: (next, m) =>
+    applySetExtrudeOperation(next, m.featureId, m.operation),
+  set_extrude_merge_target: (next, m) =>
+    applySetExtrudeMergeTarget(next, m.featureId, m.mergeTarget),
+  add_extrude_profile: (next, m) =>
+    applyAddExtrudeProfile(next, m.featureId, m.sketchQuery),
+  remove_extrude_profile: (next, m) =>
+    applyRemoveExtrudeProfile(next, m.featureId, m.index),
+  add_revolve: (next, m) =>
+    applyAddRevolve(next, m.featureId, m.label, m.sketchQuery, m.angle),
+  set_revolve_angle: (next, m) =>
+    applySetRevolveAngle(next, m.featureId, m.angle),
+  set_revolve_direction: (next, m) =>
+    applySetRevolveDirection(next, m.featureId, m.direction),
+  set_revolve_axis: (next, m) =>
+    applySetRevolveAxis(next, m.featureId, m.axis),
+  set_revolve_operation: (next, m) =>
+    applySetRevolveOperation(next, m.featureId, m.operation),
+  set_revolve_merge_target: (next, m) =>
+    applySetRevolveMergeTarget(next, m.featureId, m.mergeTarget),
+  add_revolve_profile: (next, m) =>
+    applyAddRevolveProfile(next, m.featureId, m.sketchQuery),
+  remove_revolve_profile: (next, m) =>
+    applyRemoveRevolveProfile(next, m.featureId, m.index),
+  add_import_step: (next, m) =>
+    applyAddImportStep(next, m.featureId, m.fileId, m.label),
+  add_fillet: (next, m) =>
+    applyAddFillet(next, m.featureId, m.label),
+  add_chamfer: (next, m) =>
+    applyAddChamfer(next, m.featureId, m.label),
+  set_fillet_radius: (next, m) =>
+    applySetFilletRadius(next, m.featureId, m.radius),
+  set_chamfer_distance: (next, m) =>
+    applySetChamferDistance(next, m.featureId, m.distance),
+  set_chamfer_angle: (next, m) =>
+    applySetChamferAngle(next, m.featureId, m.angle),
+  set_chamfer_kind: (next, m) =>
+    applySetChamferKind(next, m.featureId, m.kind),
+  add_fillet_edge: (next, m) =>
+    applyAddFilletEdge(next, m.featureId, m.edgeQuery),
+  remove_fillet_edge: (next, m) =>
+    applyRemoveFilletEdge(next, m.featureId, m.index),
+  add_chamfer_edge: (next, m) =>
+    applyAddChamferEdge(next, m.featureId, m.edgeQuery),
+  remove_chamfer_edge: (next, m) =>
+    applyRemoveChamferEdge(next, m.featureId, m.index),
+  add_boolean: (next, m) =>
+    applyAddBoolean(next, m.featureId, m.label),
+  set_boolean_operation: (next, m) =>
+    applySetBooleanOperation(next, m.featureId, m.operation),
+  set_boolean_target: (next, m) =>
+    applySetBooleanTarget(next, m.featureId, m.target),
+  add_boolean_tool: (next, m) =>
+    applyAddBooleanTool(next, m.featureId, m.tool),
+  remove_boolean_tool: (next, m) =>
+    applyRemoveBooleanTool(next, m.featureId, m.tool),
+  set_boolean_keep_tools: (next, m) =>
+    applySetBooleanKeepTools(next, m.featureId, m.keepTools),
+  add_array: (next, m) =>
+    applyAddArray(next, m.featureId, m.label),
+  set_array_mode: (next, m) =>
+    applySetArrayMode(next, m.featureId, m.mode),
+  set_array_source_body: (next, m) =>
+    applySetArraySourceBody(next, m.featureId, m.sourceBody),
+  set_array_operation: (next, m) =>
+    applySetArrayOperation(next, m.featureId, m.operation),
+  set_array_include_source: (next, m) =>
+    applySetArrayIncludeSource(next, m.featureId, m.includeSource),
+  set_array_count_x: (next, m) =>
+    applySetArrayCountX(next, m.featureId, m.count),
+  set_array_pitch_x: (next, m) =>
+    applySetArrayPitchX(next, m.featureId, m.pitch),
+  set_array_direction_x_query: (next, m) =>
+    applySetArrayDirectionXQuery(next, m.featureId, m.query),
+  set_array_count_y: (next, m) =>
+    applySetArrayCountY(next, m.featureId, m.count),
+  set_array_pitch_y: (next, m) =>
+    applySetArrayPitchY(next, m.featureId, m.pitch),
+  set_array_direction_y_query: (next, m) =>
+    applySetArrayDirectionYQuery(next, m.featureId, m.query),
+  set_array_count: (next, m) =>
+    applySetArrayCount(next, m.featureId, m.count),
+  set_array_step_angle: (next, m) =>
+    applySetArrayStepAngle(next, m.featureId, m.stepAngle),
+  set_array_axis: (next, m) =>
+    applySetArrayAxis(next, m.featureId, m.axis),
+  set_array_direction_x: (next, m) =>
+    applySetArrayDirectionX(next, m.featureId, m.direction_x),
+  set_array_direction_y: (next, m) =>
+    applySetArrayDirectionY(next, m.featureId, m.direction_y),
+  add_delete_body: (next, m) =>
+    applyAddDeleteBody(next, m.featureId, m.body, m.label),
+  set_delete_body_target: (next, m) =>
+    applySetDeleteBodyTarget(next, m.featureId, m.body),
+  add_hole: (next, m) =>
+    applyAddHole(next, m.featureId, m.label),
+  set_hole_sketch: (next, m) =>
+    applySetHoleSketch(next, m.featureId, m.sketch),
+  set_hole_diameter: (next, m) =>
+    applySetHoleDiameter(next, m.featureId, m.diameter),
+  set_hole_depth: (next, m) =>
+    applySetHoleDepth(next, m.featureId, m.depth),
+  set_hole_depth_mode: (next, m) =>
+    applySetHoleDepthMode(next, m.featureId, m.depthMode),
+  set_hole_direction: (next, m) => {
+    if (m.direction) applySetHoleDirection(next, m.featureId, m.direction)
+  },
+  set_hole_target: (next, m) =>
+    applySetHoleTarget(next, m.featureId, m.target),
+  add_transform: (next, m) =>
+    applyAddTransform(next, m.featureId, m.label),
+  set_transform_field: (next, m) =>
+    applySetTransformField(next, m.featureId, m.field, m.value),
+  rename_part: (next, m) =>
+    applyRenamePart(next, m.bodyId, m.name),
+  set_part_color: (next, m) =>
+    applySetPartColor(next, m.bodyId, m.color),
+  set_part_transparency: (next, m) =>
+    applySetPartTransparency(next, m.bodyId, m.transparency),
+  set_part_metalness: (next, m) =>
+    applySetPartMetalness(next, m.bodyId, m.metalness),
+  mirror_entities: (next, m) =>
+    applyMirrorEntities(next, m.featureId, m.entityIds, m.mirrorLineId),
+  add_mirror: (next, m) =>
+    applyAddMirror(next, m.featureId, m.label),
+  set_mirror_field: (next, m) =>
+    applySetMirrorField(next, m.featureId, m.field, m.value),
+  reorder_features: (next, m) =>
+    applyReorderFeatures(next, m.featureId, m.toIndex),
+  reorder_pick_field: (next, m) =>
+    applyReorderPickField(next, m.featureId, m.field, m.fromIndex, m.toIndex),
+}
 
 export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
   const modeRef = useRef(mode)
@@ -139,276 +336,12 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     if (!suppressUndoRef.current) {
       pushUndo(m, current)
     }
-    switch (m.type) {
-      case 'move_vertex':
-        applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to)
-        break
-      case 'move_vertex_with_constraint': {
-        applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to)
-        const draggedRef = `vertex:${m.featureId}:${m.entityId}:${m.vertexKey}`
-        const snapRef = m.snapVertexId ?? m.snapEntityRef
-        if (snapRef) {
-          applyAddConstraint(next, m.featureId, m.constraintKind, [draggedRef, snapRef])
-        }
-        break
-      }
-      case 'move_entity':
-        applyMoveEntity(next, m.featureId, m.entityId, m.delta)
-        break
-      case 'add_constraint':
-        applyAddConstraint(next, m.featureId, m.kind, m.targets, m.value)
-        break
-      case 'set_constraint_value':
-        applySetConstraintValue(next, m.featureId, m.constraintId, m.value)
-        break
-      case 'set_constraint_pos':
-        applySetConstraintPos(next, m.featureId, m.constraintId, m.pos)
-        break
-      case 'delete':
-        applyDeleteElements(next, m.targets)
-        break
-      case 'add_entity':
-        applyAddEntity(next, m.featureId, m.kind, m.params, m.entityId)
-        break
-      case 'add_entity_with_constraint':
-        applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId)
-        break
-      case 'add_projected_entity':
-        applyAddProjectedEntity(next, m.featureId, m.kind, m.source)
-        break
-      case 'add_rect':
-        applyAddRect(next, m.featureId, m.p0, m.p1)
-        break
-      case 'add_center_rect':
-        applyAddCenterRect(next, m.featureId, m.center, m.corner)
-        break
-      case 'toggle_construction':
-        applyToggleConstruction(next, m.targets)
-        break
-      case 'set_feature_plane':
-        applySetFeaturePlane(next, m.featureId, m.plane)
-        break
-      case 'add_sketch':
-        applyAddSketch(next, m.featureId, m.label)
-        break
-      case 'delete_feature':
-        applyDeleteFeature(next, m.featureId)
-        break
-      case 'set_feature_visibility':
-        applySetFeatureVisibility(next, m.featureId, m.visible)
-        break
-      case 'add_plane':
-        applyAddPlane(next, m.featureId, m.label, m.definition as Record<string, unknown> | undefined)
-        break
-      case 'set_plane_definition_field':
-        applySetPlaneDefinitionField(next, m.featureId, m.field, m.value)
-        break
-      case 'rename_feature':
-        applyRenameFeature(next, m.featureId, m.label)
-        break
-      case 'toggle_sketch_plane_visibility':
-        applyToggleSketchPlaneVisibility(next)
-        break
-      case 'toggle_plane_visibility':
-        applyTogglePlaneVisibility(next)
-        break
-      case 'add_extrude':
-        applyAddExtrude(next, m.featureId, m.label, m.sketchQuery, m.distance)
-        break
-      case 'set_extrude_distance':
-        applySetExtrudeDistance(next, m.featureId, m.distance)
-        break
-      case 'set_extrude_direction':
-        applySetExtrudeDirection(next, m.featureId, m.direction)
-        break
-      case 'set_extrude_operation':
-        applySetExtrudeOperation(next, m.featureId, m.operation)
-        break
-      case 'set_extrude_merge_target':
-        applySetExtrudeMergeTarget(next, m.featureId, m.mergeTarget)
-        break
-      case 'add_extrude_profile':
-        applyAddExtrudeProfile(next, m.featureId, m.sketchQuery)
-        break
-      case 'remove_extrude_profile':
-        applyRemoveExtrudeProfile(next, m.featureId, m.index)
-        break
-      case 'add_revolve':
-        applyAddRevolve(next, m.featureId, m.label, m.sketchQuery, m.angle)
-        break
-      case 'set_revolve_angle':
-        applySetRevolveAngle(next, m.featureId, m.angle)
-        break
-      case 'set_revolve_direction':
-        applySetRevolveDirection(next, m.featureId, m.direction)
-        break
-      case 'set_revolve_axis':
-        applySetRevolveAxis(next, m.featureId, m.axis)
-        break
-      case 'set_revolve_operation':
-        applySetRevolveOperation(next, m.featureId, m.operation)
-        break
-      case 'set_revolve_merge_target':
-        applySetRevolveMergeTarget(next, m.featureId, m.mergeTarget)
-        break
-      case 'add_revolve_profile':
-        applyAddRevolveProfile(next, m.featureId, m.sketchQuery)
-        break
-      case 'remove_revolve_profile':
-        applyRemoveRevolveProfile(next, m.featureId, m.index)
-        break
-      case 'add_import_step':
-        applyAddImportStep(next, m.featureId, m.fileId, m.label)
-        break
-      case 'add_fillet':
-        applyAddFillet(next, m.featureId, m.label)
-        break
-      case 'add_chamfer':
-        applyAddChamfer(next, m.featureId, m.label)
-        break
-      case 'set_fillet_radius':
-        applySetFilletRadius(next, m.featureId, m.radius)
-        break
-      case 'set_chamfer_distance':
-        applySetChamferDistance(next, m.featureId, m.distance)
-        break
-      case 'set_chamfer_angle':
-        applySetChamferAngle(next, m.featureId, m.angle)
-        break
-      case 'set_chamfer_kind':
-        applySetChamferKind(next, m.featureId, m.kind)
-        break
-      case 'add_fillet_edge':
-        applyAddFilletEdge(next, m.featureId, m.edgeQuery)
-        break
-      case 'remove_fillet_edge':
-        applyRemoveFilletEdge(next, m.featureId, m.index)
-        break
-      case 'add_chamfer_edge':
-        applyAddChamferEdge(next, m.featureId, m.edgeQuery)
-        break
-      case 'remove_chamfer_edge':
-        applyRemoveChamferEdge(next, m.featureId, m.index)
-        break
-      case 'add_boolean':
-        applyAddBoolean(next, m.featureId, m.label)
-        break
-      case 'set_boolean_operation':
-        applySetBooleanOperation(next, m.featureId, m.operation)
-        break
-      case 'set_boolean_target':
-        applySetBooleanTarget(next, m.featureId, m.target)
-        break
-      case 'add_boolean_tool':
-        applyAddBooleanTool(next, m.featureId, m.tool)
-        break
-      case 'remove_boolean_tool':
-        applyRemoveBooleanTool(next, m.featureId, m.tool)
-        break
-      case 'set_boolean_keep_tools':
-        applySetBooleanKeepTools(next, m.featureId, m.keepTools)
-        break
-      case 'add_array':
-        applyAddArray(next, m.featureId, m.label)
-        break
-      case 'set_array_mode':
-        applySetArrayMode(next, m.featureId, m.mode)
-        break
-      case 'set_array_source_body':
-        applySetArraySourceBody(next, m.featureId, m.sourceBody)
-        break
-      case 'set_array_operation':
-        applySetArrayOperation(next, m.featureId, m.operation)
-        break
-      case 'set_array_include_source':
-        applySetArrayIncludeSource(next, m.featureId, m.includeSource)
-        break
-      case 'set_array_count_x':
-        applySetArrayCountX(next, m.featureId, m.count)
-        break
-      case 'set_array_pitch_x':
-        applySetArrayPitchX(next, m.featureId, m.pitch)
-        break
-      case 'set_array_direction_x_query':
-        applySetArrayDirectionXQuery(next, m.featureId, m.query)
-        break
-      case 'set_array_count_y':
-        applySetArrayCountY(next, m.featureId, m.count)
-        break
-      case 'set_array_pitch_y':
-        applySetArrayPitchY(next, m.featureId, m.pitch)
-        break
-      case 'set_array_direction_y_query':
-        applySetArrayDirectionYQuery(next, m.featureId, m.query)
-        break
-      case 'set_array_count':
-        applySetArrayCount(next, m.featureId, m.count)
-        break
-      case 'set_array_step_angle':
-        applySetArrayStepAngle(next, m.featureId, m.stepAngle)
-        break
-      case 'set_array_axis':
-        applySetArrayAxis(next, m.featureId, m.axis)
-        break
-      case 'set_array_direction_x':
-        applySetArrayDirectionX(next, m.featureId, m.direction_x)
-        break
-      case 'set_array_direction_y':
-        applySetArrayDirectionY(next, m.featureId, m.direction_y)
-        break
-      case 'add_delete_body':
-        applyAddDeleteBody(next, m.featureId, m.body, m.label)
-        break
-      case 'set_delete_body_target':
-        applySetDeleteBodyTarget(next, m.featureId, m.body)
-        break
-      case 'add_hole':
-        applyAddHole(next, m.featureId, m.label)
-        break
-      case 'set_hole_sketch':
-        applySetHoleSketch(next, m.featureId, m.sketch)
-        break
-      case 'set_hole_diameter':
-        applySetHoleDiameter(next, m.featureId, m.diameter)
-        break
-      case 'set_hole_depth':
-        applySetHoleDepth(next, m.featureId, m.depth)
-        break
-      case 'set_hole_depth_mode':
-        applySetHoleDepthMode(next, m.featureId, m.depthMode)
-        break
-      case 'set_hole_direction':
-        if (m.direction)
-          applySetHoleDirection(next, m.featureId, m.direction)
-        break
-      case 'set_hole_target':
-        applySetHoleTarget(next, m.featureId, m.target)
-        break
-      case 'add_transform':
-        applyAddTransform(next, m.featureId, m.label)
-        break
-      case 'set_transform_field':
-        applySetTransformField(next, m.featureId, m.field, m.value)
-        break
-      case 'rename_part':
-        applyRenamePart(next, m.bodyId, m.name)
-        break
-      case 'set_part_color':
-        applySetPartColor(next, m.bodyId, m.color)
-        break
-      case 'set_part_transparency':
-        applySetPartTransparency(next, m.bodyId, m.transparency)
-        break
-      case 'set_part_metalness':
-        applySetPartMetalness(next, m.bodyId, m.metalness)
-        break
-      case 'reorder_features':
-        applyReorderFeatures(next, m.featureId, m.toIndex)
-        break
-      case 'reorder_pick_field':
-        applyReorderPickField(next, m.featureId, m.field, m.fromIndex, m.toIndex)
-        break
+    type AnyHandler = (doc: PartDoc, m: Mutation) => void
+    const handler = (mutationHandlers as Record<string, AnyHandler | undefined>)[m.type]
+    if (import.meta.env.DEV && !handler) {
+      console.error(`[handleMutation] no handler for mutation type: ${m.type}`)
     }
+    handler?.(next, m)
     docRef.current = next
     setDoc(next)
     reSolve(next)

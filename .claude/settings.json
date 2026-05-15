@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(just backend *)",
+      "Bash(mypy oversolved/ tests/ *)",
+      "Bash(flake8 oversolved/ tests/ *)",
+      "Bash(pytest tests/ *)"
+    ]
+  }
+}
