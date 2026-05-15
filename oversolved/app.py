@@ -249,16 +249,26 @@ def _register_migrations(db: Database) -> None:
 
     db.register_migration(17, "session_created_at", migration_017_session_created_at)
 
+    def migration_018_token_to_token_hash(database: Database):
+        if _column_exists(database, "sessions", "token"):
+            database.execute("ALTER TABLE sessions RENAME COLUMN token TO token_hash")
 
-def _ensure_admin_user(db: Database) -> None:
+    db.register_migration(18, "token_to_token_hash", migration_018_token_to_token_hash)
+
+
+def _ensure_admin_user(db: Database, testing: bool = False) -> None:
     """Create the default admin user if it doesn't exist."""
     admin_password = os.environ.get("OVERSOLVED_ADMIN_PASSWORD")
     if not admin_password:
         admin_password = "admin"
-        logger.warning(
-            "OVERSOLVED_ADMIN_PASSWORD not set. Using default password 'admin'. "
-            "Set OVERSOLVED_ADMIN_PASSWORD in your environment for production."
-        )
+    if admin_password == "admin":
+        is_dev = os.environ.get("FLASK_ENV") == "development"
+        if not is_dev and not testing:
+            raise RuntimeError(
+                "Refusing to start with default admin password. "
+                "Set OVERSOLVED_ADMIN_PASSWORD environment variable."
+            )
+        logger.warning("Using default admin password 'admin' — INSECURE for production")
     user_store = UserStore(db)
     admin = user_store.find_by_username("admin")
     if admin:
@@ -324,7 +334,7 @@ def create_app(config: dict | None = None) -> Flask:
     db = _get_database(db_config)
     _register_migrations(db)
     db.init()
-    _ensure_admin_user(db)
+    _ensure_admin_user(db, testing=app.config.get("TESTING", False))
     db.close()
 
     # Set default config

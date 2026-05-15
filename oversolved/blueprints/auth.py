@@ -4,9 +4,11 @@ import threading
 from datetime import datetime, timezone
 from time import time
 from flask import Blueprint, jsonify, request, make_response, current_app
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 from oversolved.db import UserStore, SessionStore
 from oversolved.blueprints import get_db, require_csrf
+
+DUMMY_HASH = generate_password_hash("dummy")
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -62,7 +64,11 @@ def login():
         user_store.find_by_username(credential)
         or user_store.find_by_email(credential)
     )
-    if user is None or not check_password_hash(user["password_hash"], password):
+    if user is None:
+        check_password_hash(DUMMY_HASH, password)
+        _record_login_failure(client_ip)
+        return jsonify({"error": "Invalid credentials"}), 401
+    if not check_password_hash(user["password_hash"], password):
         _record_login_failure(client_ip)
         return jsonify({"error": "Invalid credentials"}), 401
 

@@ -1,5 +1,6 @@
 """Database abstraction layer supporting SQLite, MariaDB, and PostgreSQL."""
 
+import hashlib
 import sqlite3
 import secrets
 import uuid as uuid_mod
@@ -534,12 +535,13 @@ class SessionStore:
     def create(self, user_id: int) -> str:
         """Create a session, enforce per-user session limit, return the token."""
         token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
         expires_at = (datetime.now(timezone.utc) + self.SESSION_DURATION).isoformat()
         now = datetime.now(timezone.utc).isoformat()
         with self.db.transaction():
             self.db.execute(
-                "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
-                (token, user_id, expires_at, now),
+                "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+                (token_hash, user_id, expires_at, now),
             )
             self._enforce_session_limit(user_id, keep_token=token)
         return token
@@ -549,11 +551,12 @@ class SessionStore:
         Returns number of sessions deleted."""
         if max_sessions is None:
             max_sessions = self.MAX_SESSIONS
+        keep_hash = hashlib.sha256(keep_token.encode()).hexdigest()
         cursor = self.db.execute(
-            """SELECT token, created_at FROM sessions
-               WHERE user_id = ? AND token != ?
-               ORDER BY created_at DESC, token DESC""",
-            (user_id, keep_token),
+            """SELECT token_hash, created_at FROM sessions
+               WHERE user_id = ? AND token_hash != ?
+               ORDER BY created_at DESC, token_hash DESC""",
+            (user_id, keep_hash),
         )
         rows = cursor.fetchall()
         if len(rows) < max_sessions:
@@ -564,7 +567,7 @@ class SessionStore:
             return 0
         placeholders = ", ".join("?" for _ in tokens_to_delete)
         cursor = self.db.execute(
-            f"DELETE FROM sessions WHERE token IN ({placeholders})",
+            f"DELETE FROM sessions WHERE token_hash IN ({placeholders})",
             tuple(tokens_to_delete),
         )
         return cursor.rowcount
@@ -575,9 +578,10 @@ class SessionStore:
         Returns the number of sessions deleted.
         """
         if keep_token:
+            keep_hash = hashlib.sha256(keep_token.encode()).hexdigest()
             cursor = self.db.execute(
-                "DELETE FROM sessions WHERE user_id = ? AND token != ?",
-                (user_id, keep_token),
+                "DELETE FROM sessions WHERE user_id = ? AND token_hash != ?",
+                (user_id, keep_hash),
             )
         else:
             cursor = self.db.execute(
@@ -588,8 +592,9 @@ class SessionStore:
 
     def find(self, token: str) -> dict | None:
         """Find a valid (non-expired) session."""
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
         cursor = self.db.execute(
-            "SELECT token, user_id, expires_at FROM sessions WHERE token = ?", (token,)
+            "SELECT token_hash, user_id, expires_at FROM sessions WHERE token_hash = ?", (token_hash,)
         )
         row = cursor.fetchone()
         if row is None:
@@ -603,8 +608,9 @@ class SessionStore:
 
     def delete(self, token: str) -> None:
         """Delete a session (logout)."""
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
         with self.db.transaction():
-            self.db.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            self.db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
 
     def cleanup_expired(self) -> None:
         """Remove expired sessions."""
