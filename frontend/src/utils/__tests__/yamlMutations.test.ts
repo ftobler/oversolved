@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { PartDoc, PartConstraint } from '@/types/cad'
 import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddPointWithConstraint, applyAddImportStep, applyDeleteFeature } from '@/utils/yamlMutations'
 
@@ -125,6 +125,63 @@ describe('applyAddConstraint', () => {
     expect(added).toBeDefined()
     expect(added!.a).toBe('$line1start')
     expect(added!.b).toBe('@builtin_origin')
+  })
+})
+
+describe('applyAddConstraint midpoint', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+
+  afterEach(() => {
+    warnSpy.mockRestore()
+  })
+
+  it('entity+vertex combo sets line and point', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'midpoint', [
+      'entity:Sketch1:line1',
+      'vertex:Sketch1:pt1:xy',
+    ])
+    const constraints = doc.features![0].constraints!
+    const added = constraints.find(c => c.kind === 'midpoint')
+    expect(added).toBeDefined()
+    expect(added!.line).toBe('$line1')
+    expect(added!.point).toBe('$pt1xy')
+    expect(added!.a).toBeUndefined()
+  })
+
+  it('three-vertex combo sets point_a, point_b, point', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'midpoint', [
+      'vertex:Sketch1:line1:start',
+      'vertex:Sketch1:line1:end',
+      'vertex:Sketch1:pt1:xy',
+    ])
+    const constraints = doc.features![0].constraints!
+    const added = constraints.find(c => c.kind === 'midpoint')
+    expect(added).toBeDefined()
+    expect(added!.point_a).toBe('$line1start')
+    expect(added!.point_b).toBe('$line1end')
+    expect(added!.point).toBe('$pt1xy')
+  })
+
+  it('unrecognized target combo does not add constraint and calls console.warn in dev mode', () => {
+    const doc = makeSampleDoc()
+    const countBefore = doc.features![0].constraints!.length
+    // Two entity targets — not a recognized midpoint pattern
+    applyAddConstraint(doc, 'Sketch1', 'midpoint', [
+      'entity:Sketch1:line1',
+      'entity:Sketch1:circ1',
+    ])
+    expect(doc.features![0].constraints!.length).toBe(countBefore)
+    // warn is called in dev mode (vitest runs with DEV=true via import.meta.env.DEV)
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('midpoint'),
+      expect.anything(),
+    )
   })
 })
 

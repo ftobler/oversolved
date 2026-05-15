@@ -1,7 +1,7 @@
 import type { PartDoc, PartFeature, PartConstraint, PartTarget, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef } from '@/types/cad'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 
-const warn = import.meta.env.DEV ? console.warn.bind(console) : () => undefined
+const warn = import.meta.env.DEV ? (...args: unknown[]) => console.warn(...args) : () => undefined
 
 // ─── Architecture contract ───
 //
@@ -94,6 +94,31 @@ export function applyMoveEntity(
   }
 }
 
+// midpoint needs specific keys depending on selection:
+//   entity + vertex  → line: $entity,  point: $vertex
+//   3 vertices       → point_a: $v1, point_b: $v2, point: $v3
+// Returns false when the target combination is unrecognized.
+function applyMidpointConstraint(
+  c: PartConstraint,
+  targets: string[],
+  pt: (t: string) => PartTarget,
+): boolean {
+  const entityTargets = targets.filter(t => t.startsWith('entity:'))
+  const vertexTargets = targets.filter(t => t.startsWith('vertex:'))
+  if (entityTargets.length === 1 && vertexTargets.length === 1) {
+    c.line = pt(entityTargets[0])
+    c.point = pt(vertexTargets[0])
+    return true
+  }
+  if (entityTargets.length === 0 && vertexTargets.length === 3) {
+    c.point_a = pt(vertexTargets[0])
+    c.point_b = pt(vertexTargets[1])
+    c.point   = pt(vertexTargets[2])
+    return true
+  }
+  return false
+}
+
 export function applyAddConstraint(
   doc: PartDoc,
   featureId: string,
@@ -108,20 +133,8 @@ export function applyAddConstraint(
   const c: PartConstraint = { id: cid, kind }
   const pt = (t: string) => parseTarget(t, featureId)
   if (kind === 'midpoint') {
-    // midpoint needs specific keys depending on selection:
-    //   entity + vertex  → line: $entity,  point: $vertex
-    //   3 vertices       → point_a: $v1, point_b: $v2, point: $v3
-    const entityTargets = targets.filter(t => t.startsWith('entity:'))
-    const vertexTargets = targets.filter(t => t.startsWith('vertex:'))
-    if (entityTargets.length === 1 && vertexTargets.length === 1) {
-      c.line = pt(entityTargets[0])
-      c.point = pt(vertexTargets[0])
-    } else if (vertexTargets.length === 3) {
-      c.point_a = pt(vertexTargets[0])
-      c.point_b = pt(vertexTargets[1])
-      c.point   = pt(vertexTargets[2])
-    } else {
-      // Not enough / wrong selection — skip adding
+    if (!applyMidpointConstraint(c, targets, pt)) {
+      warn('applyAddConstraint: unrecognized midpoint target combination', targets)
       return
     }
   } else if (kind === 'coincident' || targets.length >= 2) {
