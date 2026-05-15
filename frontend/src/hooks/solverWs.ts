@@ -14,6 +14,9 @@ class SolverWs {
   private msgId = 0;
   private pendingMessages: string[] = []
   private connectTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDelay = 1000;
+  private intentionallyClosed = false;
+  private reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   onGeometryUpdate(cb: GeometryListener): () => void {
     this.geometryListeners.add(cb)
@@ -35,7 +38,15 @@ class SolverWs {
     }
   }
 
+  private _clearReconnectTimeout(): void {
+    if (this.reconnectTimeoutId !== null) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+  }
+
   connect(): void {
+    this._clearReconnectTimeout();
     if (this.ws) {
       if (this.ws.readyState === WebSocket.OPEN) return;
       if (this.ws.readyState === WebSocket.CONNECTING) return;
@@ -43,6 +54,7 @@ class SolverWs {
       this.ws = null;
     }
     this._clearConnectTimeout();
+    this.intentionallyClosed = false;
     useSolverStore.getState().setWsStatus('connecting');
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}/api/solver-ws`);
@@ -62,6 +74,7 @@ class SolverWs {
       if (this.ws !== ws) return;
       this._clearConnectTimeout();
       useSolverStore.getState().setWsStatus('open');
+      this.reconnectDelay = 1000;
       for (const msg of this.pendingMessages) {
         ws.send(msg);
       }
@@ -96,7 +109,14 @@ class SolverWs {
       this._clearConnectTimeout();
       this._rejectAll('WebSocket closed');
       this.ws = null;
-      useSolverStore.getState().setWsStatus('closed');
+      useSolverStore.getState().setWsStatus(this.intentionallyClosed ? 'closed' : 'reconnecting');
+      if (!this.intentionallyClosed) {
+        this.reconnectTimeoutId = setTimeout(() => {
+          this.reconnectTimeoutId = null;
+          this.connect();
+        }, this.reconnectDelay);
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30_000);
+      }
     };
   }
 
@@ -134,6 +154,8 @@ class SolverWs {
   }
 
   disconnect(): void {
+    this.intentionallyClosed = true;
+    this._clearReconnectTimeout();
     this._clearConnectTimeout();
     this.ws?.close();
     this.ws = null;

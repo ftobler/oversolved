@@ -208,6 +208,68 @@ describe('SolverWs', () => {
       await expect(p1).rejects.toThrow('WebSocket closed')
       expect(MockWebSocket.instances).toHaveLength(2)
     })
+
+    it('reconnects after unintentional close', () => {
+      vi.useFakeTimers()
+      solverWs.connect()
+      getLastWs().onopen?.(new Event('open'))
+      expect(useSolverStore.getState().wsStatus).toBe('open')
+
+      getLastWs().close()
+
+      expect(useSolverStore.getState().wsStatus).toBe('reconnecting')
+      expect(MockWebSocket.instances).toHaveLength(1)
+
+      vi.advanceTimersByTime(1000)
+
+      expect(MockWebSocket.instances).toHaveLength(2)
+      vi.useRealTimers()
+    })
+
+    it('doubles backoff on consecutive closes', () => {
+      vi.useFakeTimers()
+      solverWs.connect()
+      getLastWs().onopen?.(new Event('open'))
+      getLastWs().close()
+      vi.advanceTimersByTime(1000)
+      expect(MockWebSocket.instances).toHaveLength(2)
+      // Don't call onopen — the new ws never opens, so delay stays at 2000
+      getLastWs().close()
+      vi.advanceTimersByTime(1000)
+      expect(MockWebSocket.instances).toHaveLength(2)
+      vi.advanceTimersByTime(1000)
+      expect(MockWebSocket.instances).toHaveLength(3)
+      vi.useRealTimers()
+    })
+
+    it('resets backoff after successful open', () => {
+      vi.useFakeTimers()
+      solverWs.connect()
+      getLastWs().onopen?.(new Event('open'))
+      getLastWs().close()
+      vi.advanceTimersByTime(1000)
+      expect(MockWebSocket.instances).toHaveLength(2)
+      getLastWs().onopen?.(new Event('open'))
+      getLastWs().close()
+      vi.advanceTimersByTime(2000)
+      expect(MockWebSocket.instances).toHaveLength(3)
+      getLastWs().onopen?.(new Event('open'))
+      getLastWs().close()
+      vi.advanceTimersByTime(1000)
+      expect(MockWebSocket.instances).toHaveLength(4)
+      vi.useRealTimers()
+    })
+
+    it('disconnect() does not schedule reconnect', () => {
+      vi.useFakeTimers()
+      solverWs.connect()
+      getLastWs().onopen?.(new Event('open'))
+      solverWs.disconnect()
+      expect(useSolverStore.getState().wsStatus).toBe('closed')
+      vi.advanceTimersByTime(100_000)
+      expect(MockWebSocket.instances).toHaveLength(1)
+      vi.useRealTimers()
+    })
   })
 
   describe('ping on open', () => {
@@ -264,11 +326,11 @@ describe('SolverWs', () => {
       expect(useSolverStore.getState().wsStatus).toBe('open')
     })
 
-    it('sets status to closed on ws.onclose', () => {
+    it('sets status to reconnecting on unintentional ws.onclose', () => {
       solverWs.connect()
       getLastWs().onopen?.(new Event('open'))
       getLastWs().onclose?.(new Event('close'))
-      expect(useSolverStore.getState().wsStatus).toBe('closed')
+      expect(useSolverStore.getState().wsStatus).toBe('reconnecting')
     })
 
     it('sets status to closed on disconnect()', () => {

@@ -5,12 +5,14 @@ const DOT_COLORS: Record<WsStatus, string> = {
   open: '#4caf50',
   connecting: '#ff9800',
   closed: '#f44336',
+  reconnecting: '#ff9800',
 }
 
 const LABELS: Record<WsStatus, string> = {
   open: 'Connected',
   connecting: 'Connecting...',
   closed: 'Disconnected',
+  reconnecting: 'Reconnecting...',
 }
 
 export default function WsStatusIndicator() {
@@ -22,6 +24,7 @@ export default function WsStatusIndicator() {
     } else if (wsStatus === 'closed') {
       solverWs.connect()
     }
+    // reconnecting: do nothing (auto-reconnect is in progress)
   }
 
   return (
@@ -34,9 +37,9 @@ export default function WsStatusIndicator() {
       <button
         className="ws-status-btn"
         onClick={handleClick}
-        disabled={wsStatus === 'connecting'}
+        disabled={wsStatus === 'connecting' || wsStatus === 'reconnecting'}
       >
-        {wsStatus === 'open' ? 'Disconnect' : wsStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+        {wsStatus === 'open' ? 'Disconnect' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'Connecting...' : 'Connect'}
       </button>
     </div>
   )
