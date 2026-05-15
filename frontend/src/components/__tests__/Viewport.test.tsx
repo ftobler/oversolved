@@ -132,7 +132,10 @@ describe('Viewport body interactive flag', () => {
     })
   })
 
-  it('bodyItems remain interactive while a sketch is active', () => {
+  it('bodyItems are inert (interactive=false) while a sketch is active', () => {
+    // User invariant (solver_arch.user.md §Viewport Layers):
+    //   "Sketch geometry takes precedence in visual AND clicks."
+    // B-rep faces/edges must not intercept clicks while a sketch is being edited.
     usePartEditorStore.setState({
       features: [sketch, extrude],
       bodies: makeBody(),
@@ -140,7 +143,7 @@ describe('Viewport body interactive flag', () => {
     })
     const { container } = render(<Viewport />)
     container.querySelectorAll('[data-testid="body-3d"]').forEach(el => {
-      expect(el.getAttribute('data-interactive')).toBe('true')
+      expect(el.getAttribute('data-interactive')).toBe('false')
     })
   })
 

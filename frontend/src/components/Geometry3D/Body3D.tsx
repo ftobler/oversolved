@@ -85,8 +85,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   const setHovered3DSurface = useSketchEditorStore(s => s.setHovered3DSurface)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
-  const addToNormalSelection = useSketchEditorStore(s => s.addToNormalSelection)
-  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
   const pickChipHighlightItems = useSketchEditorStore(s => s.pickChipHighlightItems)
 
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
@@ -274,6 +272,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   // Promote hover to normal-selection. Click never re-searches -- it confirms whatever
   // is already in hoveredSurfaceId so selection and highlight are always the same element.
   // When plane selection mode is active, commit the face as a plane reference instead.
+  //
+  // User invariant: store what was clicked. The face query alone is sufficient -- ancestry
+  // resolves the owning body when a pick chip or downstream consumer needs it.
   const handleMeshClick = useCallback((e: { stopPropagation: () => void }) => {
     e.stopPropagation()
     // Read hover state from the store at click time to avoid stale closures.
@@ -285,12 +286,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       state.commitPlaneSelection(currentHover)
     } else {
       state.toggleNormalSelection(currentHover)
-      if (!state.pendingPickField) {
-        state.addToNormalSelection('@' + bodyId)
-      }
       if (state.pendingPickField) state.commitFieldPick()
     }
-  }, [bodyId])
+  }, [])
 
   // Handle edge click on line segments
   const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event }) => {
@@ -307,12 +305,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       const query = edgeQueries?.[edgeIndex] ?? `@${featureId}/edge/${edgeIndex}`
       const state = useSketchEditorStore.getState()
       state.toggleNormalSelection(query)
-      if (!state.pendingPickField) {
-        state.addToNormalSelection('@' + bodyId)
-      }
       if (state.pendingPickField) state.commitFieldPick()
     }
-  }, [featureId, bodyId, edgeQueries, segmentToEdgeMap])
+  }, [featureId, edgeQueries, segmentToEdgeMap])
 
   // Always compute face colors -- avoids toggling vertexColors on the material which
   // causes shader recompilation and a black-frame artifact.
@@ -632,9 +627,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
               if (idx !== undefined) {
                 const query = vertexQueries?.[idx] ?? `@${featureId}/vertex/${idx}`
                 toggleNormalSelection(query)
-                if (!pendingPickField) {
-                  addToNormalSelection('@' + bodyId)
-                }
               }
             } : undefined}
           >
