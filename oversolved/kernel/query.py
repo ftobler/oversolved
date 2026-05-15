@@ -136,8 +136,7 @@ def _parse_absolute(s: str) -> AbsoluteQuery:
         return AbsoluteQuery(feature_id=parts[0], eid=parts[1])
     if len(parts) == 3:
         return AbsoluteQuery(feature_id=parts[0], eid=parts[1], sub=parts[2])
-    # Fallback: treat entire body as feature_id (backward compat)
-    return AbsoluteQuery(feature_id=body)
+    raise ValueError(f"Unrecognized absolute query format: {s!r}")
 
 
 def _parse_ancestry_obj(s: str) -> AncestryQuery:

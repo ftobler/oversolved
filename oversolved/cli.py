@@ -257,9 +257,8 @@ def main() -> None:
     elif args.command == "db":
         cmd_db(args)
     else:
-        # Default to run_server for backward compatibility
-        sys.argv = [sys.argv[0], "run_server"] + sys.argv[1:]
-        main()
+        parser.print_usage()
+        parser.exit(2, "error: unrecognized command\n")
 
 
 if __name__ == "__main__":

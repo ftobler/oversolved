@@ -200,9 +200,7 @@ def _repo_from_snapshot(repo_snapshot: dict) -> Repository:
             k: list(v) for k, v in repo_snapshot.get("ancestral", {}).items()
         }
     else:
-        # Backward compatibility for older snapshots that only stored elements.
-        repo.elements = copy.deepcopy(repo_snapshot)
-        repo.ancestral = {}
+        raise ValueError("Snapshot missing 'elements' key")
     _dedupe_repo(repo)
     return repo
 

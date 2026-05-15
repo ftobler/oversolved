@@ -4,6 +4,7 @@ These tests do not require VTK.
 """
 
 import copy
+import pytest
 from oversolved.kernel.builder import _repo_from_snapshot
 from oversolved.kernel.query import Repository
 
@@ -76,7 +77,7 @@ def test_empty_snapshot():
 
 
 def test_old_format_backward_compat():
-    """Old-format snapshot (no elements/ancestral keys) still works."""
+    """Old-format snapshot (no elements/ancestral keys) raises ValueError."""
     old_snapshot = {"e1": {"id": "e1", "kind": "point", "params": [1.0, 2.0]}}
-    repo = _repo_from_snapshot(old_snapshot)
-    assert repo.elements["e1"]["kind"] == "point"
+    with pytest.raises(ValueError, match="missing 'elements' key"):
+        _repo_from_snapshot(old_snapshot)

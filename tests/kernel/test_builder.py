@@ -370,10 +370,9 @@ def test_pick_boundary_with_prev_state_uses_restored_checkpoint():
 
 
 def test_repo_from_snapshot_old_format():
-    """Old-format snapshot without elements/ancestral keys should not raise."""
-    repo = _repo_from_snapshot({"some_elem_id": {"payload": "data"}})
-    assert repo.elements == {"some_elem_id": {"payload": "data"}}
-    assert repo.ancestral == {}
+    """Old-format snapshot without elements/ancestral keys raises ValueError."""
+    with pytest.raises(ValueError, match="missing 'elements' key"):
+        _repo_from_snapshot({"some_elem_id": {"payload": "data"}})
 
 
 def test_repo_from_snapshot_empty():
@@ -384,10 +383,9 @@ def test_repo_from_snapshot_empty():
 
 
 def test_repo_from_snapshot_malformed():
-    """Garbage keys without elements/ancestral treated as old-format data, no exception."""
-    repo = _repo_from_snapshot({"foo": "bar"})
-    assert repo.elements == {"foo": "bar"}
-    assert repo.ancestral == {}
+    """Garbage keys without elements/ancestral raises ValueError."""
+    with pytest.raises(ValueError, match="missing 'elements' key"):
+        _repo_from_snapshot({"foo": "bar"})
 
 
 def test_dedupe_repo_collapses_duplicate_payloads():

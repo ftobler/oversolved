@@ -647,3 +647,9 @@ class TestParseAncestryBoundsCheck:
             parsed_ids, parsed_typ = _parse_ancestry(q)
             assert parsed_ids == ids
             assert parsed_typ == typ
+
+
+def test_parse_absolute_rejects_unrecognized_format():
+    from oversolved.kernel.query import _parse_absolute
+    with pytest.raises(ValueError, match="Unrecognized absolute query"):
+        _parse_absolute("@a/b/c/d")
