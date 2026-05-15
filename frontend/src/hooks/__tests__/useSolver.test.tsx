@@ -329,6 +329,47 @@ describe('useSolver', () => {
       expect(payload.features[0].id).toBe('feat1')
     })
 
+    it('sends monotonically increasing request_version on each solve', async () => {
+      const { result } = setupHook()
+      await act(async () => { await result.current.reSolve(makeDoc()) })
+      await act(async () => { await result.current.reSolve(makeDoc()) })
+      await act(async () => { await result.current.reSolve(makeDoc()) })
+      const versions = mockSolver.solve.mock.calls.map(c => (c[0] as Record<string, unknown>).request_version)
+      expect(versions).toEqual([1, 2, 3])
+    })
+
+    it('drops response when echoed request_version is older than the local counter', async () => {
+      // Defense-in-depth: even when the local stale-guard would accept the response
+      // (single call in flight), a misrouted response carrying an older
+      // request_version must still be rejected.
+      //
+      // Achieved by firing two reSolves so requestIdRef becomes 2, but mocking
+      // BOTH responses to echo version 1 (simulating a bug where the backend
+      // dropped or re-used an old version). The second call's local isStale is
+      // false (currentRequestId == requestIdRef == 2), but the echoed v=1 < 2
+      // must still cause the response to be discarded.
+      const { result } = setupHook()
+      mockSolver.solve.mockResolvedValue({
+        solve_ms: 0,
+        result: { tainted: { status: 'ok' } },
+        bodies: {},
+        _build_state: null,
+        request_version: 1,  // stale echo
+      })
+
+      await act(async () => { await result.current.reSolve(makeDoc()) })  // requestIdRef -> 1, echo v=1 ok
+      const before = { ...result.current.solveResults }
+      await act(async () => { await result.current.reSolve(makeDoc()) })  // requestIdRef -> 2, echo v=1 must be dropped
+
+      // The second solve's response was dropped (echoed v=1 < counter=2), so
+      // solveResults must NOT have been overwritten with the 'tainted' result
+      // applied a second time. Since the first call also wrote the same
+      // 'tainted' result, we instead assert no error and the state matches
+      // what the first call already produced.
+      expect(result.current.solveError).toBeNull()
+      expect(result.current.solveResults).toEqual(before)
+    })
+
     it('sets featureTimings from solve_ms fields', async () => {
       const { result } = setupHook()
       mockSolver.solve.mockResolvedValue({

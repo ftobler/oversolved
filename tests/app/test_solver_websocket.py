@@ -237,6 +237,50 @@ class TestSolverWebSocket:
         assert rows[0]["duration_ms"] == 42
         assert rows[0]["feature_count"] == 1
 
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_websocket_solve_echoes_request_version(self, mock_isolator_cls, app, auth_headers):
+        """Solve response echoes the request_version field so the frontend can detect stale responses."""
+        mock_isolator = _make_mock_isolator()
+        mock_isolator_cls.return_value = mock_isolator
+        payload = dict(SOLVE_PAYLOAD, request_version=42)
+        ws = _MockWS()
+        ws.receive_queue = [json.dumps(payload), None]
+        _run_handler(app, ws, auth_headers)
+        solve_results = [m for m in ws.sent if isinstance(m, dict) and m.get("type") == "solve_result"]
+        assert len(solve_results) == 1
+        assert solve_results[0]["request_version"] == 42
+
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_websocket_solve_echoes_request_version_on_error(self, mock_isolator_cls, app, auth_headers):
+        """Error responses also echo request_version."""
+        mock_isolator = _make_mock_isolator({
+            "solve_ms": 0,
+            "result": {"_error": "kernel exploded"},
+            "_geometry_bytes": _pack_empty_geometry(),
+        })
+        mock_isolator_cls.return_value = mock_isolator
+        payload = dict(SOLVE_PAYLOAD, request_version=7)
+        ws = _MockWS()
+        ws.receive_queue = [json.dumps(payload), None]
+        _run_handler(app, ws, auth_headers)
+        solve_results = [m for m in ws.sent if isinstance(m, dict) and m.get("type") == "solve_result"]
+        assert len(solve_results) == 1
+        assert solve_results[0]["error"] == "kernel exploded"
+        assert solve_results[0]["request_version"] == 7
+
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_websocket_solve_omits_request_version_when_absent(self, mock_isolator_cls, app, auth_headers):
+        """If the client omits request_version, the server echoes null (back-compat)."""
+        mock_isolator = _make_mock_isolator()
+        mock_isolator_cls.return_value = mock_isolator
+        # SOLVE_PAYLOAD has no request_version
+        ws = _MockWS()
+        ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
+        _run_handler(app, ws, auth_headers)
+        solve_results = [m for m in ws.sent if isinstance(m, dict) and m.get("type") == "solve_result"]
+        assert len(solve_results) == 1
+        assert solve_results[0]["request_version"] is None
+
     def test_http_solve_returns_405(self, client, auth_headers):
         """HTTP POST /api/solve returns 405: no POST handler, only the SPA GET catch-all."""
         response = client.post(

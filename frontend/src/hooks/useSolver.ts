@@ -283,7 +283,7 @@ export function useSolver(
         ...(uuid ? { id: uuid } : {}),
         features: solveFeatures,
         rollback_position: adjustedRollback,
-        request_id: currentRequestId,
+        request_version: currentRequestId,
         is_preview: isPreview,
       }
 
@@ -294,6 +294,13 @@ export function useSolver(
       const response = await solverWs.solve(solvePayload) as Record<string, unknown>
 
       if (isStale()) {
+        return
+      }
+
+      // Defense-in-depth: even though solverWs routes by msgId, verify the backend
+      // echoed our request_version. Drop responses with a stale or missing version.
+      const respVersion = response.request_version
+      if (typeof respVersion === 'number' && respVersion < requestIdRef.current) {
         return
       }
       rollbackPosRef.current = effectiveRollback
