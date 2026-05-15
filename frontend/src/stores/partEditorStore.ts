@@ -1,18 +1,28 @@
 import { create } from 'zustand'
-import type { BodyResult, PartFeature, PartDoc } from '@/types/cad'
+import type { BodyResult, PartFeature, PartDoc, Sketch, PartStyleEntry, Mutation } from '@/types/cad'
+
+type UndoEntry = { doc: unknown; mutation: Mutation }
 
 interface PartEditorData {
   features: PartFeature[]
   doc: PartDoc | null
   rollbackPosition: number | null
   editingFeatureId: string | null
+  activeSketchFeatureId: string | null
   visibleFeatures: Set<string>
   visibleBodies: Set<string>
   partLabels: Record<string, string>
   solveResults: Record<string, unknown>
   bodies: Record<string, BodyResult>
+  pickBodies: Record<string, BodyResult>
   isRebuilding: boolean
   featureTimings: Record<string, number>
+  ghostMode: boolean
+  otherSketches: Record<string, Sketch>
+  partColors: Record<string, string>
+  partStyle: Record<string, PartStyleEntry>
+  undoStack: UndoEntry[]
+  redoStack: UndoEntry[]
 }
 
 interface PartEditorState extends PartEditorData {
@@ -24,12 +34,20 @@ export const usePartEditorStore = create<PartEditorState>((set) => ({
   doc: null,
   rollbackPosition: null,
   editingFeatureId: null,
+  activeSketchFeatureId: null,
   visibleFeatures: new Set(),
   visibleBodies: new Set(),
   partLabels: {},
   solveResults: {},
   bodies: {},
+  pickBodies: {},
   isRebuilding: false,
   featureTimings: {},
+  ghostMode: false,
+  otherSketches: {},
+  partColors: {},
+  partStyle: {},
+  undoStack: [],
+  redoStack: [],
   sync: (patch) => set(patch),
 }))

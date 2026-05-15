@@ -1,10 +1,7 @@
 import { type ReactNode } from 'react'
 import Viewport, { type ViewportHandle } from '@/components/Viewport'
-import type { Feature, PartFeature, PartStyleEntry, BodyResult, Sketch, Mutation, SketchData } from '@/types/cad'
 import SketchToolbar from '@/components/Toolbar/SketchToolbar'
 import LoadingOverlay from '@/components/LoadingOverlay'
-import PartDebugPanel from '@/pages/PartDebugPanel'
-import type { BugReportAttachments } from '@/components/BugReporter'
 
 import featureExtrudeIcon from '@/assets/icons/feature-extrude.svg'
 import featureRevolveIcon from '@/assets/icons/feature-revolve.svg'
@@ -25,8 +22,6 @@ import toolbarCopyCodeIcon from '@/assets/icons/toolbar-copy-code.svg'
 import toolbarCopyResultIcon from '@/assets/icons/toolbar-copy-result.svg'
 import featureImportIcon from '@/assets/icons/icon-upload.svg'
 import featureExportIcon from '@/assets/icons/icon-download.svg'
-
-type UndoEntry = { doc: unknown; mutation: Mutation }
 
 interface PartEditorPanelProps {
   children: ReactNode
@@ -52,44 +47,8 @@ interface PartEditorPanelProps {
   handleExportStep: () => void
   setViewportReset: React.Dispatch<React.SetStateAction<number>>
   viewportRef: React.RefObject<ViewportHandle | null>
-  features: Feature[]
-  featureDefs: PartFeature[] | undefined
-  rollbackPosition: number | null
-  visibleFeatures: Set<string>
-  effectiveVisibleBodies: Set<string> | undefined
-  solveResults: Record<string, SketchData> | undefined
   viewportReset: number
-  activeSketchFeatureId: string | undefined
   handleRightClick: (pos: [number, number], targetId?: string) => void
-  showDebugHit: boolean
-  otherSketches: Record<string, Sketch>
-  bodies: Record<string, BodyResult>
-  pickBodies: Record<string, BodyResult>
-  partColors: Record<string, string>
-  partStyle: Record<string, PartStyleEntry>
-  ghostMode: boolean
-
-  userIsAdmin: boolean
-  debugOpen: boolean
-  debugTab: 'selection' | 'bug-report' | 'undo-redo' | 'ws'
-  setDebugTab: React.Dispatch<React.SetStateAction<'selection' | 'bug-report' | 'undo-redo' | 'ws'>>
-  hoveredEntityId: string | null
-  hoveredVertexId: string | null
-  hoveredPlaneId: string | null
-  hoveredSurfaceId: string | null
-  hovered3DSurfaceId: string | null
-  dynamicSelection: Set<string>
-  selection: Set<string>
-  bugReportForm: { title: string; description: string }
-  setBugReportForm: React.Dispatch<React.SetStateAction<{ title: string; description: string }>>
-  bugReporting: boolean
-  bugReportError: string | null
-  bugReportAttachments: BugReportAttachments
-  setBugReportAttachments: React.Dispatch<React.SetStateAction<BugReportAttachments>>
-  onSubmitBugReport: () => void
-  editingFeatureId: string | null
-  undoStack: UndoEntry[]
-  redoStack: UndoEntry[]
 }
 
 export default function PartEditorPanel({
@@ -110,30 +69,8 @@ export default function PartEditorPanel({
   handleExportStep,
   setViewportReset,
   viewportRef,
-  features,
-  featureDefs,
-  rollbackPosition,
-  visibleFeatures,
-  effectiveVisibleBodies,
-  solveResults,
   viewportReset,
-  activeSketchFeatureId,
   handleRightClick,
-  showDebugHit,
-  otherSketches,
-  bodies,
-  pickBodies,
-  partColors,
-  partStyle,
-  ghostMode,
-  userIsAdmin,
-  debugOpen, debugTab, setDebugTab,
-  hoveredEntityId, hoveredVertexId, hoveredPlaneId, hoveredSurfaceId, hovered3DSurfaceId,
-  dynamicSelection, selection,
-  bugReportForm, setBugReportForm, bugReporting, bugReportError,
-  bugReportAttachments, setBugReportAttachments, onSubmitBugReport,
-  editingFeatureId,
-  undoStack, redoStack,
 }: PartEditorPanelProps) {
   return (
     <div className="doc-container">
@@ -219,35 +156,11 @@ export default function PartEditorPanel({
         )}
         {mode !== 'code' && (
           <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-            <Viewport ref={viewportRef} features={features} featureDefs={featureDefs} rollbackPosition={rollbackPosition ?? undefined} visibleFeatures={visibleFeatures} visibleBodies={effectiveVisibleBodies} solveResults={solveResults} resetTrigger={viewportReset} activeFeatureId={activeSketchFeatureId} onRightClick={(pos) => handleRightClick(pos)} showDebugHit={showDebugHit} otherSketches={otherSketches} bodies={bodies} pickBodies={pickBodies} partColors={partColors} partStyle={partStyle} ghostMode={ghostMode} />
+            <Viewport ref={viewportRef} resetTrigger={viewportReset} onRightClick={(pos) => handleRightClick(pos)} />
             <LoadingOverlay isDocumentLoading={loading} />
           </div>
         )}
       </div>
-
-      <PartDebugPanel
-        debugOpen={debugOpen && userIsAdmin}
-        debugTab={debugTab}
-        setDebugTab={setDebugTab}
-        hoveredEntityId={hoveredEntityId}
-        hoveredVertexId={hoveredVertexId}
-        hoveredPlaneId={hoveredPlaneId}
-        hoveredSurfaceId={hoveredSurfaceId}
-        hovered3DSurfaceId={hovered3DSurfaceId}
-        dynamicSelection={dynamicSelection}
-        selection={selection}
-        bugReportForm={bugReportForm}
-        setBugReportForm={setBugReportForm}
-        bugReporting={bugReporting}
-        bugReportError={bugReportError}
-        bugReportAttachments={bugReportAttachments}
-        setBugReportAttachments={setBugReportAttachments}
-        onSubmitBugReport={onSubmitBugReport}
-        editingFeatureId={editingFeatureId}
-        solveResults={solveResults}
-        undoStack={undoStack}
-        redoStack={redoStack}
-      />
     </div>
   )
 }

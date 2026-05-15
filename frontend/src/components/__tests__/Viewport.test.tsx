@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { Feature, BodyResult } from '@/types/cad'
 import Viewport from '@/components/Viewport'
 
@@ -71,58 +72,75 @@ function makeFeature(id: string, kind: string, overrides?: Partial<Feature>): Fe
   return { id, kind, ...overrides } as Feature
 }
 
+function makeBody(): Record<string, BodyResult> {
+  return {
+    body_ex1: {
+      id: 'body_ex1',
+      created_by: 'ex1',
+      modified_by: [],
+      mesh: { vertices: [], normals: [], faces: [], face_data: [], face_queries: [] },
+    } as unknown as BodyResult,
+  }
+}
+
 beforeEach(() => {
   useSketchEditorStore.setState({
     pendingPickField: null,
     closeContextMenu: () => {},
     clearNormalSelection: () => {},
     setHoveredBodyId: () => {},
+    showDebugHit: false,
+  })
+  usePartEditorStore.setState({
+    features: [],
+    bodies: {},
+    pickBodies: {},
+    ghostMode: false,
+    rollbackPosition: null,
+    visibleFeatures: new Set(),
+    visibleBodies: new Set(),
+    solveResults: {},
+    otherSketches: {},
+    partColors: {},
+    partStyle: {},
+    activeSketchFeatureId: null,
+    doc: null,
   })
 })
 
+const sketch: Feature = makeFeature('sk1', 'sketch')
+const extrude: Feature = makeFeature('ex1', 'extrude')
+
 describe('Viewport body interactive flag', () => {
-  const sketch: Feature = makeFeature('sk1', 'sketch')
-  const extrude: Feature = makeFeature('ex1', 'extrude')
-
-  function makeBody(): Record<string, BodyResult> {
-    return {
-      body_ex1: {
-        id: 'body_ex1',
-        created_by: 'ex1',
-        modified_by: [],
-        mesh: { vertices: [], normals: [], faces: [], face_data: [], face_queries: [] },
-      } as unknown as BodyResult,
-    }
-  }
-
   it('bodyItems are interactive with no active feature', () => {
-    const { container } = render(
-      <Viewport features={[sketch, extrude]} bodies={makeBody()} />
-    )
+    usePartEditorStore.setState({ features: [sketch, extrude], bodies: makeBody() })
+    const { container } = render(<Viewport />)
     container.querySelectorAll('[data-testid="body-3d"]').forEach(el => {
       expect(el.getAttribute('data-interactive')).toBe('true')
     })
   })
 
   it('bodyItems remain interactive while a sketch is active', () => {
-    const { container } = render(
-      <Viewport features={[sketch, extrude]} bodies={makeBody()} activeFeatureId="sk1" />
-    )
+    usePartEditorStore.setState({
+      features: [sketch, extrude],
+      bodies: makeBody(),
+      activeSketchFeatureId: 'sk1',
+    })
+    const { container } = render(<Viewport />)
     container.querySelectorAll('[data-testid="body-3d"]').forEach(el => {
       expect(el.getAttribute('data-interactive')).toBe('true')
     })
   })
 
   it('ghostMode renders pickBodies as normal interactive bodies and shows a preview edge overlay', () => {
-    const { getAllByTestId, getByTestId } = render(
-      <Viewport
-        features={[sketch, extrude]}
-        bodies={makeBody()}
-        pickBodies={makeBody()}
-        ghostMode={true}
-        rollbackPosition={1}
-      />
-    )
+    usePartEditorStore.setState({
+      features: [sketch, extrude],
+      bodies: makeBody(),
+      pickBodies: makeBody(),
+      ghostMode: true,
+      rollbackPosition: 1,
+    })
+    const { getAllByTestId, getByTestId } = render(<Viewport />)
     // Only pickBodyItems rendered as Body3D, no duplicate for preview
     const items = getAllByTestId('body-3d')
     expect(items.length).toBe(1)

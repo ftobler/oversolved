@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { ViewportHandle } from '@/components/Viewport'
-import type { Feature, PartDoc, PartFeature, Mutation, Sketch } from '@/types/cad'
+import type { PartDoc, PartFeature, Mutation, Sketch } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { usePartDoc } from '@/hooks/usePartDoc'
@@ -25,6 +25,7 @@ import '@/pages/Part.css'
 
 import PartToolbar from '@/pages/PartToolbar'
 import PartEditorPanel from '@/pages/PartEditorPanel'
+import PartDebugPanel from '@/pages/PartDebugPanel'
 import PartColorPopover from '@/pages/PartColorPopover'
 import PartExportImport from '@/pages/PartExportImport'
 import { usePartCommands } from '@/pages/PartKeyboardShortcuts'
@@ -104,13 +105,7 @@ export default function Part() {
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
   const setPendingPickField = useSketchEditorStore(s => s.setPendingPickField)
-   const selection = useSketchEditorStore(s => s.normalSelection)
-   const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
-  const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
-  const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
-  const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)
-  const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
-  const hovered3DSurfaceId = useSketchEditorStore(s => s.hovered3DSurfaceId)
+  const selection = useSketchEditorStore(s => s.normalSelection)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
 
   const {
@@ -300,23 +295,34 @@ useEffect(() => {
       doc,
       rollbackPosition,
       editingFeatureId,
+      activeSketchFeatureId: activeSketchFeatureId ?? null,
       visibleFeatures,
       visibleBodies: effectiveVisibleBodies ?? new Set(),
       partLabels,
       solveResults: solveResults ?? {},
       bodies: bodies ?? {},
+      pickBodies: pickBodies ?? {},
       isRebuilding,
       featureTimings: featureTimings ?? {},
+      ghostMode,
+      otherSketches,
+      partColors,
+      partStyle,
+      undoStack,
+      redoStack,
     })
-  }, [features, doc, rollbackPosition, editingFeatureId, visibleFeatures,
-    effectiveVisibleBodies, partLabels, solveResults, bodies, isRebuilding, featureTimings])
+  }, [features, doc, rollbackPosition, editingFeatureId, activeSketchFeatureId, visibleFeatures,
+    effectiveVisibleBodies, partLabels, solveResults, bodies, pickBodies, isRebuilding,
+    featureTimings, ghostMode, otherSketches, partColors, partStyle, undoStack, redoStack])
 
   useEffect(() => {
     return () => {
       usePartEditorStore.setState({
         features: [], doc: null, rollbackPosition: null, editingFeatureId: null,
-        visibleFeatures: new Set(), visibleBodies: new Set(), partLabels: {},
-        solveResults: {}, bodies: {}, isRebuilding: false, featureTimings: {},
+        activeSketchFeatureId: null, visibleFeatures: new Set(), visibleBodies: new Set(),
+        partLabels: {}, solveResults: {}, bodies: {}, pickBodies: {}, isRebuilding: false,
+        featureTimings: {}, ghostMode: false, otherSketches: {}, partColors: {}, partStyle: {},
+        undoStack: [], redoStack: [],
       })
     }
   }, [])
@@ -1020,33 +1026,18 @@ useEffect(() => {
         handleExportStep={handleExportStep}
         setViewportReset={setViewportReset}
         viewportRef={viewportRef}
-        features={features as Feature[]}
-        featureDefs={doc?.features}
-        rollbackPosition={rollbackPosition}
-        visibleFeatures={visibleFeatures}
-        effectiveVisibleBodies={effectiveVisibleBodies}
-        solveResults={solveResults}
         viewportReset={viewportReset}
-        activeSketchFeatureId={activeSketchFeatureId}
         handleRightClick={handleRightClick}
-        showDebugHit={showDebugHit}
-        otherSketches={otherSketches}
-        bodies={bodies}
-        pickBodies={pickBodies}
-        partColors={partColors}
-        partStyle={partStyle}
-        ghostMode={ghostMode}
-        userIsAdmin={!!user?.is_admin}
-        debugOpen={debugOpen}
+      >
+        <PartEditorProvider value={partEditorCallbacks}>
+          <Sidebar />
+        </PartEditorProvider>
+      </PartEditorPanel>
+
+      <PartDebugPanel
+        debugOpen={debugOpen && !!user?.is_admin}
         debugTab={debugTab}
         setDebugTab={setDebugTab}
-        hoveredEntityId={hoveredEntityId}
-        hoveredVertexId={hoveredVertexId}
-        hoveredPlaneId={hoveredPlaneId}
-        hoveredSurfaceId={hoveredSurfaceId}
-        hovered3DSurfaceId={hovered3DSurfaceId}
-        dynamicSelection={dynamicSelection}
-        selection={selection}
         bugReportForm={bugReportForm}
         setBugReportForm={setBugReportForm}
         bugReporting={bugReporting}
@@ -1054,14 +1045,7 @@ useEffect(() => {
         bugReportAttachments={bugReportAttachments}
         setBugReportAttachments={setBugReportAttachments}
         onSubmitBugReport={handleSubmitBugReport}
-        editingFeatureId={editingFeatureId}
-        undoStack={undoStack}
-        redoStack={redoStack}
-      >
-        <PartEditorProvider value={partEditorCallbacks}>
-          <Sidebar />
-        </PartEditorProvider>
-      </PartEditorPanel>
+      />
 
       <footer className="doc-footer">
         <p>Copyright 2026 - Oversolved</p>

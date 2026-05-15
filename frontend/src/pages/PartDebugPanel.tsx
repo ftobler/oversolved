@@ -2,6 +2,8 @@ import * as React from 'react'
 import { BugReporter, type BugReportAttachments } from '@/components/BugReporter'
 import WsReconnect from '@/components/WsReconnect'
 import { describeMutation } from '@/utils/mutationDescriptions'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { Mutation } from '@/types/cad'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
@@ -10,13 +12,6 @@ interface PartDebugPanelProps {
   debugOpen: boolean
   debugTab: 'selection' | 'bug-report' | 'undo-redo' | 'ws'
   setDebugTab: React.Dispatch<React.SetStateAction<'selection' | 'bug-report' | 'undo-redo' | 'ws'>>
-  hoveredEntityId: string | null
-  hoveredVertexId: string | null
-  hoveredPlaneId: string | null
-  hoveredSurfaceId: string | null
-  hovered3DSurfaceId: string | null
-  dynamicSelection: Set<string>
-  selection: Set<string>
   bugReportForm: { title: string; description: string }
   setBugReportForm: React.Dispatch<React.SetStateAction<{ title: string; description: string }>>
   bugReporting: boolean
@@ -24,20 +19,26 @@ interface PartDebugPanelProps {
   bugReportAttachments: BugReportAttachments
   setBugReportAttachments: React.Dispatch<React.SetStateAction<BugReportAttachments>>
   onSubmitBugReport: () => void
-  editingFeatureId: string | null
-  solveResults: Record<string, unknown> | undefined
-  undoStack: UndoEntry[]
-  redoStack: UndoEntry[]
 }
 
 export default function PartDebugPanel({
   debugOpen, debugTab, setDebugTab,
-  hoveredEntityId, hoveredVertexId, hoveredPlaneId, hoveredSurfaceId, hovered3DSurfaceId,
-  dynamicSelection, selection,
   bugReportForm, setBugReportForm, bugReporting, bugReportError,
   bugReportAttachments, setBugReportAttachments, onSubmitBugReport,
-  editingFeatureId, solveResults, undoStack, redoStack,
 }: PartDebugPanelProps) {
+  const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
+  const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
+  const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)
+  const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
+  const hovered3DSurfaceId = useSketchEditorStore(s => s.hovered3DSurfaceId)
+  const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
+  const selection = useSketchEditorStore(s => s.normalSelection)
+
+  const editingFeatureId = usePartEditorStore(s => s.editingFeatureId)
+  const solveResults = usePartEditorStore(s => s.solveResults)
+  const undoStack = usePartEditorStore(s => s.undoStack) as UndoEntry[]
+  const redoStack = usePartEditorStore(s => s.redoStack) as UndoEntry[]
+
   if (!debugOpen) return null
 
   return (

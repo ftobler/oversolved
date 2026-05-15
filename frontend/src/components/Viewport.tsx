@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandl
 import { Canvas } from '@react-three/fiber'
 import { OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
-import type { SketchData, Feature, PartFeature, Sketch, BodyResult, PlaneDef } from '@/types/cad'
+import type { Feature, PartFeature, Sketch, BodyResult, PlaneDef } from '@/types/cad'
 import { unflattenGeometry, deriveConstraints } from '@/utils/geometryMapping'
 import Geometry3D from '@/components/Geometry3D'
 import { CubeGizmoCanvas } from '@/components/CubeGizmo'
 import { type Hit, type Pv } from '@/components/CubeGizmo.utils'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import Body3D from '@/components/Geometry3D/Body3D'
 import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
 import OriginMarker from '@/components/Viewport/OriginMarker'
@@ -21,28 +22,15 @@ import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
 import { getBodiesToRender, getSketchesToRender, getPreviewBodies } from '@/components/Viewport/bodyUtils'
 import { buildBodySnapSketch, builtinPlaneTransform, BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjection'
+import type { SketchData } from '@/types/cad'
 
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 
 const INITIAL_ZOOM = 200
 
-interface ViewportProps {
-  features?: Feature[]
-  featureDefs?: PartFeature[]
-  rollbackPosition?: number
-  visibleFeatures?: Set<string>
-  visibleBodies?: Set<string>
-  solveResults?: Record<string, SketchData>
+export interface ViewportProps {
   resetTrigger?: number
-  activeFeatureId?: string
   onRightClick?: (pos: [number, number]) => void
-  showDebugHit?: boolean
-  otherSketches?: Record<string, Sketch>  // sketches from other features (for project tool)
-  bodies?: Record<string, BodyResult>
-  pickBodies?: Record<string, BodyResult>
-  partColors?: Record<string, string>
-  partStyle?: Record<string, import('@/types/cad').PartStyleEntry>
-  ghostMode?: boolean  // true when editing a non-sketch feature (enables body ghosting)
 }
 
 function isActive(id: string, features: Feature[] | undefined, rollbackPos: number | undefined, visible: Set<string> | undefined): boolean {
@@ -143,7 +131,7 @@ function calculatePlaneSize(
   return FALLBACK_SIZE
 }
 
-function getActiveSketchPlane(activeFeatureId: string | undefined, features: Feature[] | undefined): string | null {
+function getActiveSketchPlane(activeFeatureId: string | null | undefined, features: Feature[] | undefined): string | null {
   if (!activeFeatureId || !features) return null
   const activeFeature = features.find(f => f.id === activeFeatureId)
   if (!activeFeature || activeFeature.kind !== 'sketch') return null
@@ -194,23 +182,26 @@ export interface ViewportHandle {
 }
 
 export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
-  features,
-  featureDefs,
-  rollbackPosition,
-  visibleFeatures,
-  visibleBodies,
-  solveResults,
   resetTrigger,
-  activeFeatureId,
   onRightClick,
-  showDebugHit,
-  otherSketches,
-  bodies,
-  pickBodies,
-  partColors,
-  partStyle,
-  ghostMode,
 }: ViewportProps, ref) {
+  const features = usePartEditorStore(s => s.features) as Feature[]
+  const doc = usePartEditorStore(s => s.doc)
+  const rollbackPosition = usePartEditorStore(s => s.rollbackPosition) ?? undefined
+  const visibleFeatures = usePartEditorStore(s => s.visibleFeatures)
+  const visibleBodies = usePartEditorStore(s => s.visibleBodies)
+  const solveResults = usePartEditorStore(s => s.solveResults) as Record<string, SketchData> | undefined
+  const bodies = usePartEditorStore(s => s.bodies)
+  const pickBodies = usePartEditorStore(s => s.pickBodies)
+  const ghostMode = usePartEditorStore(s => s.ghostMode)
+  const otherSketches = usePartEditorStore(s => s.otherSketches) as Record<string, Sketch>
+  const partColors = usePartEditorStore(s => s.partColors)
+  const partStyle = usePartEditorStore(s => s.partStyle)
+  const activeFeatureId = usePartEditorStore(s => s.activeSketchFeatureId) ?? undefined
+  const showDebugHit = useSketchEditorStore(s => s.showDebugHit)
+
+  const featureDefs = doc?.features as PartFeature[] | undefined
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pvRef = useRef<Pv[]>([])
   const hoverRef = useRef<Hit | null>(null)
@@ -494,7 +485,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     [bodies, features, rollbackPosition, visibleBodies]
   )
 
-  // Show ALL pickBodies regardless of rollbackPosition — these represent the body
+  // Show ALL pickBodies regardless of rollbackPosition -- these represent the body
   // state before entering edit mode, and the user needs to see every prior body to
   // pick faces/edges as references for the feature being edited.
   const pickBodyItems = useMemo(
@@ -609,9 +600,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           const fullFeatureDef = featureDefs?.find(fd => fd.id === f.id) || f
           const sketch = solveResult?.solved ? solveResult.solved : unflattenGeometry(fullFeatureDef.initial || {}, fullFeatureDef.entities)
           const constraints = solveResult?.constraints ? solveResult.constraints : deriveConstraints(fullFeatureDef, sketch)
-          const isActive = f.id === activeFeatureId
+          const isActiveFeature = f.id === activeFeatureId
           return (
-            <Geometry3D key={f.id} featureId={f.id} solved={sketch} entities={fullFeatureDef.entities} constraints={constraints} topology={solveResult?.topology} activeFeatureId={activeFeatureId} plane={fullFeatureDef.plane} planeTransform={solveResult?.plane_transform} solveStatus={solveResult?.status} entityStatus={solveResult?.features} showDebugHit={showDebugHit} otherSketches={isActive ? combinedOtherSketches : undefined} />
+            <Geometry3D key={f.id} featureId={f.id} solved={sketch} entities={fullFeatureDef.entities} constraints={constraints} topology={solveResult?.topology} activeFeatureId={activeFeatureId} plane={fullFeatureDef.plane} planeTransform={solveResult?.plane_transform} solveStatus={solveResult?.status} entityStatus={solveResult?.features} showDebugHit={showDebugHit} otherSketches={isActiveFeature ? combinedOtherSketches : undefined} />
           )
         })}
 
