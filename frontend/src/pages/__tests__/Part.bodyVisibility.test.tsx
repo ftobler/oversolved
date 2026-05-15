@@ -1,34 +1,24 @@
 import { describe, it, expect } from 'vitest'
+import { applySetBodyVisibility } from '@/utils/yamlMutations'
+import type { PartDoc } from '@/types/cad'
 
-function toggleBodyVisibility(prev: Record<string, boolean>, bodyId: string): Record<string, boolean> {
-  const current = prev[bodyId]
-  if (current === undefined) {
-    return { ...prev, [bodyId]: false }
-  }
-  if (current === false) {
-    return { ...prev, [bodyId]: true }
-  }
-  const next = { ...prev }
-  delete next[bodyId]
-  return next
-}
-
-describe('toggleBodyVisibility three-state logic', () => {
-  it('toggles from follow-feature to hidden', () => {
-    expect(toggleBodyVisibility({}, 'b1')).toEqual({ b1: false })
+describe('applySetBodyVisibility', () => {
+  it('sets body visible to false', () => {
+    const doc = { kind: 'part', version: 1, features: [] } as PartDoc
+    applySetBodyVisibility(doc, 'body_1', false)
+    expect(doc.part_style?.body_1?.visible).toBe(false)
   })
 
-  it('toggles from hidden to explicit show', () => {
-    expect(toggleBodyVisibility({ b1: false }, 'b1')).toEqual({ b1: true })
+  it('toggles body visibility back to true', () => {
+    const doc = { kind: 'part', version: 1, features: [] } as PartDoc
+    applySetBodyVisibility(doc, 'body_1', false)
+    applySetBodyVisibility(doc, 'body_1', true)
+    expect(doc.part_style?.body_1?.visible).toBe(true)
   })
 
-  it('toggles from explicit show to follow-feature', () => {
-    expect(toggleBodyVisibility({ b1: true }, 'b1')).toEqual({})
-  })
-
-  it('leaves other body entries unchanged', () => {
-    const prev = { b1: false, b2: true, b3: false }
-    expect(toggleBodyVisibility(prev, 'b1')).toEqual({ b1: true, b2: true, b3: false })
-    expect(toggleBodyVisibility({ b1: false, b2: true }, 'b2')).toEqual({ b1: false })
+  it('does not crash when part_style is undefined', () => {
+    const doc = { kind: 'part', version: 1, features: [] } as PartDoc
+    applySetBodyVisibility(doc, 'body_1', false)
+    expect(doc.part_style?.body_1?.visible).toBe(false)
   })
 })

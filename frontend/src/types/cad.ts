@@ -265,6 +265,7 @@ export type Feature = PartFeature
 export interface PartStyleEntry {
   name?: string
   color?: string
+  visible?: boolean
   transparency?: number  // 0-1 (0 = opaque, 1 = fully transparent)
   metalness?: number     // 0-1 (0 = non-metallic, 1 = fully metallic)
   created_by?: string
@@ -602,4 +603,5 @@ export type Mutation =
   | { type: 'add_mirror'; featureId: string; label?: string }
   | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }
   | { type: 'reorder_features'; featureId: string; toIndex: number }
+  | { type: 'set_body_visibility'; bodyId: string; visible: boolean }
   | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }

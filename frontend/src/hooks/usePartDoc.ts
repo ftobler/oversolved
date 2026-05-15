@@ -93,6 +93,7 @@ import {
   applyMirrorEntities,
   applyAddMirror,
   applySetMirrorField,
+  applySetBodyVisibility,
 } from '@/utils/yamlMutations'
 
 export { healDoc, BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
@@ -248,6 +249,8 @@ export const mutationHandlers: MutationHandlers = {
     applySetArrayDirectionX(next, m.featureId, m.direction_x),
   set_array_direction_y: (next, m) =>
     applySetArrayDirectionY(next, m.featureId, m.direction_y),
+  set_body_visibility: (next, m) =>
+    applySetBodyVisibility(next, m.bodyId, m.visible),
   add_delete_body: (next, m) =>
     applyAddDeleteBody(next, m.featureId, m.body, m.label),
   set_delete_body_target: (next, m) =>

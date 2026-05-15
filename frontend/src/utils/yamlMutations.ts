@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, PartConstraint, PartTarget, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, PartConstraint, PartTarget, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, PartStyleEntry } from '@/types/cad'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 
 const warn = import.meta.env.DEV ? (...args: unknown[]) => console.warn(...args) : () => undefined
@@ -767,6 +767,12 @@ export function applyRenamePart(doc: PartDoc, bodyId: string, name: string): voi
   if (!doc.part_style) doc.part_style = {}
   const current = doc.part_style[bodyId] ?? {}
   doc.part_style[bodyId] = { ...current, name: trimmed }
+}
+
+export function applySetBodyVisibility(doc: PartDoc, bodyId: string, visible: boolean): void {
+  if (!doc.part_style) doc.part_style = {}
+  if (!doc.part_style[bodyId]) doc.part_style[bodyId] = {} as PartStyleEntry
+  doc.part_style[bodyId].visible = visible
 }
 
 export function applySetPartColor(doc: PartDoc, bodyId: string, color: string): void {

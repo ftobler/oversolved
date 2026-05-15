@@ -21,7 +21,6 @@ export function BodyPartsList({ splitPercent }: BodyPartsListProps) {
     onToggleSelect,
     onRightClick,
     onMutation,
-    onToggleBodyVisibility,
   } = usePartEditorCallbacks()
   const onSetPendingPickField = useSketchEditorStore(s => s.setPendingPickField)
 
@@ -69,15 +68,13 @@ export function BodyPartsList({ splitPercent }: BodyPartsListProps) {
               >
                 <img className="part-icon" src={featurePartIcon} alt="" />
                 <span className="part-name">{partLabel}</span>
-                {onToggleBodyVisibility && (
                   <button
                     className="part-visibility-btn"
-                    onClick={(e) => { e.stopPropagation(); onToggleBodyVisibility(bodyId) }}
+                    onClick={(e) => { e.stopPropagation(); onMutation({ type: 'set_body_visibility', bodyId, visible: isHidden }) }}
                     title={isHidden ? 'Show' : 'Hide'}
                   >
                     <img src={isHidden ? iconEyeOffIcon : iconEyeIcon} alt={isHidden ? 'Hidden' : 'Visible'} />
                   </button>
-                )}
                 <button
                   className="part-context-btn"
                   onClick={(e) => { e.stopPropagation(); onRightClick([e.clientX, e.clientY], `body:${bodyId}`) }}

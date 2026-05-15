@@ -63,7 +63,6 @@ export default function Part() {
   const [savedRollbackPosition, setSavedRollbackPosition] = useState<number | null>(null)
   const editEntryRollback = useRef<number | null>(null)
   const [editForcedVisible, setEditForcedVisible] = useState<Set<string>>(new Set())
-  const [bodiesVisibility, setBodiesVisibility] = useState<Record<string, boolean>>({})
   const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
   const viewportRef = useRef<ViewportHandle>(null)
@@ -176,8 +175,8 @@ export default function Part() {
   )
 
   const effectiveVisibleBodies = useMemo(
-    () => computeEffectiveVisibleBodies(bodies, visibleFeatures, bodiesVisibility),
-    [bodies, visibleFeatures, bodiesVisibility],
+    () => computeEffectiveVisibleBodies(bodies, visibleFeatures, partStyle),
+    [bodies, visibleFeatures, partStyle],
   )
 
   useEffect(() => {
@@ -616,21 +615,6 @@ export default function Part() {
     handleMutation({ type: 'rename_feature', featureId, label: trimmed })
   }, [handleMutation])
 
-  const toggleBodyVisibility = useCallback((bodyId: string) => {
-    setBodiesVisibility(prev => {
-      const current = prev[bodyId]
-      if (current === undefined) {
-        return { ...prev, [bodyId]: false }
-      }
-      if (current === false) {
-        return { ...prev, [bodyId]: true }
-      }
-      const next = { ...prev }
-      delete next[bodyId]
-      return next
-    })
-  }, [])
-
   const handleBodyRename = useCallback((bodyId: string, label: string) => {
     const trimmed = label.trim()
     if (!trimmed) return
@@ -828,11 +812,10 @@ export default function Part() {
     onRollbackDragStart: handleRollbackDragStart,
     onMutation: handleMutation,
     onSetRollbackPosition: handleUserRollbackChange,
-    onToggleBodyVisibility: toggleBodyVisibility,
     onRebuild: handleClearCacheAndRebuild,
   }), [toggleNormalSelection, enterEditSketch, exitEditSketch, handleAlignCameraToSketchPlane,
     enterEditFeature, exitEditFeature, toggleVisibility, handleRightClick, handleFeatureRename,
-    handleRollbackDragStart, handleMutation, handleUserRollbackChange, toggleBodyVisibility,
+    handleRollbackDragStart, handleMutation, handleUserRollbackChange,
     handleClearCacheAndRebuild])
 
   return (

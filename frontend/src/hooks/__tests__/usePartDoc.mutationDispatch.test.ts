@@ -73,6 +73,7 @@ const ALL_MUTATION_TYPES: Mutation['type'][] = [
   'set_array_axis',
   'set_array_direction_x',
   'set_array_direction_y',
+  'set_body_visibility',
   'add_delete_body',
   'set_delete_body_target',
   'add_hole',

@@ -14,7 +14,6 @@ export interface PartEditorCallbacks {
   onRollbackDragStart: (e: React.DragEvent) => void
   onMutation: (mutation: Mutation) => void
   onSetRollbackPosition: (pos: number | null) => void
-  onToggleBodyVisibility?: (bodyId: string) => void
   onRebuild?: () => void
 }
 

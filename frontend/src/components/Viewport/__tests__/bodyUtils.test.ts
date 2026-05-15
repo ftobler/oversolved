@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { getBodiesToRender, computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
-import type { Feature, BodyResult } from '@/types/cad'
+import type { Feature, BodyResult, PartStyleEntry } from '@/types/cad'
 
 describe('getBodiesToRender', () => {
   const features: Feature[] = [
@@ -64,6 +64,14 @@ describe('computeEffectiveVisibleBodies', () => {
   }
   const allVisible = new Set(['feat_a', 'feat_b'])
 
+  const partStyle = (overrides: Record<string, Partial<PartStyleEntry>>): Record<string, PartStyleEntry> => {
+    const out: Record<string, PartStyleEntry> = {}
+    for (const [id, override] of Object.entries(overrides)) {
+      out[id] = { ...override }
+    }
+    return out
+  }
+
   it('returns undefined when no bodies (nothing to filter)', () => {
     expect(computeEffectiveVisibleBodies(undefined, allVisible, {})).toBeUndefined()
   })
@@ -75,21 +83,24 @@ describe('computeEffectiveVisibleBodies', () => {
   })
 
   it('excludes one body when it is explicitly hidden', () => {
-    const result = computeEffectiveVisibleBodies(bodies, allVisible, { body_a: false })
+    const result = computeEffectiveVisibleBodies(bodies, allVisible, partStyle({ body_a: { visible: false } }))
     expect(result?.has('body_a')).toBe(false)
     expect(result?.has('body_b')).toBe(true)
   })
 
   it('returns empty set (not undefined) when all bodies are explicitly hidden', () => {
-    // Bug fix: hiding all bodies previously snapped back to "show all"
-    // because visible.size === 0 was treated as undefined (no filter).
-    const result = computeEffectiveVisibleBodies(bodies, allVisible, { body_a: false, body_b: false })
+    const result = computeEffectiveVisibleBodies(bodies, allVisible, partStyle({ body_a: { visible: false }, body_b: { visible: false } }))
     expect(result).toBeInstanceOf(Set)
     expect(result?.size).toBe(0)
   })
 
-  it('keeps body_a visible when explicitly set true even if its feature is hidden', () => {
-    const result = computeEffectiveVisibleBodies(bodies, new Set(), { body_a: true })
+  it('excludes body when visible is true but its feature is hidden (no explicit show override)', () => {
+    const result = computeEffectiveVisibleBodies(bodies, new Set(), partStyle({ body_a: { visible: true } }))
+    expect(result).toBeUndefined()
+  })
+
+  it('treats missing visible as visible', () => {
+    const result = computeEffectiveVisibleBodies(bodies, allVisible, partStyle({ body_a: { name: 'test' } }))
     expect(result?.has('body_a')).toBe(true)
   })
 })
