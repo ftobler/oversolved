@@ -1,4 +1,4 @@
-"""Database abstraction layer supporting SQLite, MariaDB, and PostgreSQL."""
+"""Database abstraction layer supporting SQLite and PostgreSQL."""
 
 import hashlib
 import sqlite3
@@ -53,40 +53,6 @@ class SQLiteConnection(DatabaseConnection):
         cursor = self.conn.execute(query, params)
         assert cursor.lastrowid is not None
         return cursor.lastrowid
-
-    def commit(self) -> None:
-        self.conn.commit()
-
-    def rollback(self) -> None:
-        self.conn.rollback()
-
-    def close(self) -> None:
-        self.conn.close()
-
-
-class MariaDBConnection(DatabaseConnection):
-    """MariaDB connection wrapper using PyMySQL."""
-
-    def __init__(self, host: str, user: str, password: str, database: str):
-        import pymysql
-
-        self.conn = pymysql.connect(
-            host=host,
-            user=user,
-            password=password,
-            database=database,
-            autocommit=False,
-        )
-
-    def execute(self, query: str, params: tuple = ()) -> Any:
-        cursor = self.conn.cursor()
-        cursor.execute(query, params)
-        return cursor
-
-    def insert_returning_id(self, query: str, params: tuple = ()) -> int:
-        cursor = self.conn.cursor()
-        cursor.execute(query + " RETURNING id", params)
-        return cursor.fetchone()[0]
 
     def commit(self) -> None:
         self.conn.commit()
@@ -197,18 +163,6 @@ class Database:
                 return (current >= latest, current, latest)
             finally:
                 self.conn.execute("SELECT pg_advisory_unlock(?)", (_ADVISORY_LOCK_ID,))
-        elif isinstance(self.conn, MariaDBConnection):
-            lock_name = "oversolved_version_check"
-            cursor = self.conn.execute("SELECT GET_LOCK(%s, %s)", (lock_name, int(timeout)))
-            row = cursor.fetchone()
-            if not row or row[0] != 1:
-                raise TimeoutError("Could not acquire database lock for version check")
-            try:
-                current = self.get_current_version()
-                latest = self.get_latest_version()
-                return (current >= latest, current, latest)
-            finally:
-                self.conn.execute("SELECT RELEASE_LOCK(%s)", (lock_name,))
         else:
             deadline = time.monotonic() + timeout
             while True:

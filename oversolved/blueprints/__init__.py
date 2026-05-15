@@ -3,7 +3,7 @@
 from functools import wraps
 from flask import g, jsonify, request, current_app
 from oversolved.db import (
-    Database, DatabaseConnection, SQLiteConnection, MariaDBConnection,
+    Database, DatabaseConnection, SQLiteConnection,
     PostgreSQLConnection, SessionStore, UserStore,
 )
 
@@ -15,13 +15,6 @@ def _get_database(config):
         db_conn = PostgreSQLConnection(config["dsn"])
     elif config["type"] == "sqlite":
         db_conn = SQLiteConnection(config["path"])
-    elif config["type"] == "mariadb":
-        db_conn = MariaDBConnection(
-            host=config["host"],
-            user=config["user"],
-            password=config["password"],
-            database=config["name"],
-        )
     else:
         raise ValueError(f"Unknown database type: {config['type']}")
     return Database(db_conn)

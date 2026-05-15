@@ -22,7 +22,7 @@ def main():
     )
     parser.add_argument(
         '--db-type',
-        choices=['sqlite', 'mariadb'],
+        choices=['sqlite'],
         default='sqlite',
         help='Database type (default: sqlite)'
     )
@@ -30,22 +30,6 @@ def main():
         '--db-path',
         default='oversolved.db',
         help='SQLite database path (default: oversolved.db)'
-    )
-    parser.add_argument(
-        '--db-host',
-        help='MariaDB host'
-    )
-    parser.add_argument(
-        '--db-user',
-        help='MariaDB username'
-    )
-    parser.add_argument(
-        '--db-password',
-        help='MariaDB password'
-    )
-    parser.add_argument(
-        '--db-name',
-        help='MariaDB database name'
     )
     parser.add_argument(
         '--debug',
@@ -62,15 +46,6 @@ def main():
 
     if args.db_type == 'sqlite':
         config['DB_PATH'] = args.db_path
-    elif args.db_type == 'mariadb':
-        if not all([args.db_host, args.db_user, args.db_password, args.db_name]):
-            parser.error('--db-host, --db-user, --db-password, --db-name required for MariaDB')
-        config.update({
-            'DB_HOST': args.db_host,
-            'DB_USER': args.db_user,
-            'DB_PASSWORD': args.db_password,
-            'DB_NAME': args.db_name,
-        })
 
     app = create_app(config)
 
