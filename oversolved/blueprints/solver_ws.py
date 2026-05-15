@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import threading
+from pathlib import Path
 from time import time
 from flask import request, current_app, g
 from flask_sock import Sock
@@ -14,6 +15,10 @@ from oversolved.kernel.build_isolated import BuildIsolator
 from oversolved.kernel.geometry_pack import pack_geometry_update  # noqa: F401 re-export
 
 logger = logging.getLogger(__name__)
+
+
+PING_INTERVAL = 30  # seconds — max time between any message from client
+MAX_MESSAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 # ─── Rate limiting for WS auth failures ───
@@ -99,8 +104,17 @@ def solver_websocket(ws):
     try:
         msg_count = 0
         while ws.connected:
-            message = ws.receive()
+            try:
+                message = ws.receive(timeout=PING_INTERVAL)
+            except Exception:
+                logger.warning("Connection idle timeout, closing solver WebSocket")
+                break
             if message is None:
+                break
+
+            if isinstance(message, str) and len(message.encode('utf-8')) > MAX_MESSAGE_SIZE:
+                logger.warning("Rejected oversized message: %d bytes", len(message.encode('utf-8')))
+                ws.close(1009, "Message too large")
                 break
 
             msg_count += 1
@@ -142,7 +156,7 @@ def _resolve_import_files(data):
     The solver must never read from the filesystem, so the Flask app layer
     reads each uploaded STEP file and inlines its content into the feature.
     """
-    upload_dir = current_app.config["UPLOAD_DIR"]
+    upload_dir = Path(current_app.config["UPLOAD_DIR"]).resolve()
     features = data.get("features", []) or []
     for feature in features:
         if feature.get("kind") != "import_step":
@@ -150,12 +164,13 @@ def _resolve_import_files(data):
         file_id = feature.get("file_id", "")
         if not file_id:
             continue
-        if os.sep in file_id or "/" in file_id or ".." in file_id:
+        file_path = (upload_dir / file_id).resolve()
+        if not str(file_path).startswith(str(upload_dir)):
+            logger.warning("Path traversal attempt: %r", file_id)
             raise ValueError(f"invalid file_id: {file_id!r}")
-        filepath = os.path.join(upload_dir, file_id)
-        if not os.path.isfile(filepath):
+        if not file_path.is_file():
             raise ValueError(f"file not found: {file_id!r}")
-        with open(filepath, "rb") as f:
+        with open(file_path, "rb") as f:
             feature["file_data"] = base64.b64encode(f.read()).decode("ascii")
         del feature["file_id"]
 
