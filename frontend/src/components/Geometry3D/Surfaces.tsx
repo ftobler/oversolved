@@ -113,6 +113,8 @@ function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
   const setHoveredEdge = useSketchEditorStore(s => s.setHoveredEdge)
+  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
+  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
 
   const id = edgeSelectionId(featureId, edge.query)
   const isSelected = normalSelection.has(id)
@@ -151,11 +153,16 @@ function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
       const points = curve.getPoints(32)
       const arcGeometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, 0)))
 
+      const handleEdgeClick = isInactive ? undefined : (e: { stopPropagation: () => void }) => {
+        e.stopPropagation()
+        toggleNormalSelection(id)
+        if (pendingPickField) commitFieldPick()
+      }
       return (
         <line
           onPointerOver={isInactive ? undefined : (e) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredEdge(id) }}
           onPointerOut={isInactive ? undefined : () => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }}
-          onClick={isInactive ? undefined : (e) => { e.stopPropagation(); toggleNormalSelection(id) }}
+          onClick={handleEdgeClick}
         >
           <primitive object={arcGeometry} attach="geometry" />
           <lineBasicMaterial color={color} linewidth={2} />
@@ -164,11 +171,17 @@ function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
     }
   }
 
+  const handleEdgeClick = isInactive ? undefined : (e: { stopPropagation: () => void }) => {
+    e.stopPropagation()
+    toggleNormalSelection(id)
+    if (pendingPickField) commitFieldPick()
+  }
+
   return (
     <line
       onPointerOver={isInactive ? undefined : (e) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredEdge(id) }}
       onPointerOut={isInactive ? undefined : () => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }}
-      onClick={isInactive ? undefined : (e) => { e.stopPropagation(); toggleNormalSelection(id) }}
+      onClick={handleEdgeClick}
     >
       <primitive object={lineGeometry} attach="geometry" />
       <lineBasicMaterial color={color} linewidth={2} />

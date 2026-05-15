@@ -478,7 +478,11 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     if (pendingPickField.field === 'axis') {
       const axisQuery = selectionId.startsWith('face:')
         ? selectionId.split(':').slice(2).join(':')
-        : selectionId
+        : selectionId.startsWith('entity:')
+          ? '@' + selectionId.split(':').slice(1).join('/')
+          : selectionId.startsWith('edge:')
+            ? selectionId.split(':').slice(2).join(':')
+            : selectionId
       onMutation({ type: 'set_revolve_axis', featureId: pendingPickField.featureId, axis: axisQuery })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
       return

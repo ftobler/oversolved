@@ -9,6 +9,7 @@ from oversolved.kernel.solver_features_shared import (
     _apply_body_operation, _collect_extrude_loops,
     _resolve_direction,
 )
+from oversolved.kernel.solver_registry import _sketch_to_world_2d
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,26 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
                 else:
                     axis_origin = list(start)
                     axis_direction = computed
+        elif axis_data and "external_params" in axis_data and axis_data.get("kind") == "line":
+            sketch_id = axis_data.get("sketch_id", "")
+            plane = global_repo.elements.get("_pt_" + sketch_id) if sketch_id else None
+            if plane:
+                params = axis_data["external_params"]
+                start = _sketch_to_world_2d(params[0:2], plane)
+                end = _sketch_to_world_2d(params[2:4], plane)
+                dx = end[0] - start[0]
+                dy = end[1] - start[1]
+                dz = end[2] - start[2]
+                length = math.sqrt(dx * dx + dy * dy + dz * dz)
+                if length > 1e-12:
+                    computed = [dx / length, dy / length, dz / length]
+                    dot = sum(computed[i] * stored_direction[i] for i in range(3))
+                    if dot < 0:
+                        axis_origin = list(end)
+                        axis_direction = [-computed[0], -computed[1], -computed[2]]
+                    else:
+                        axis_origin = list(start)
+                        axis_direction = computed
     body_id = "body_" + feature_id
     result: dict = {"status": "ok", "body_id": body_id}
 
