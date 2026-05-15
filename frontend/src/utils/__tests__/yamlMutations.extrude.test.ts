@@ -16,7 +16,7 @@ const baseDoc: PartDoc = { features: [] }
 
 describe('add_extrude', () => {
   it('adds an extrude feature with sketch as an array', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10)
     expect(doc.features).toHaveLength(1)
     expect(doc.features![0].kind).toBe('extrude')
@@ -27,25 +27,25 @@ describe('add_extrude', () => {
   })
 
   it('stores empty array when sketchQuery is empty string', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     applyAddExtrude(doc, 'ex1', undefined, '', 10)
     expect(doc.features![0].extrude!.sketch).toEqual([])
   })
 
   it('uses label when provided', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     applyAddExtrude(doc, 'ex1', 'My Extrude', '$sk1', 10)
     expect(doc.features![0].label).toBe('My Extrude')
   })
 
   it('defaults label to "Extrude" when not provided', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10)
     expect(doc.features![0].label).toBe('Extrude')
   })
 
   it('defaults direction to normal', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10)
     expect(doc.features![0].extrude!.direction).toBe('normal')
   })
@@ -195,7 +195,7 @@ describe('set_extrude_distance', () => {
   })
 
   it('does nothing for unknown feature', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     expect(() => applySetExtrudeDistance(doc, 'nonexistent', 20)).not.toThrow()
   })
 })
@@ -304,21 +304,21 @@ describe('set_extrude_operation', () => {
 
 describe('mutation does not mutate original doc', () => {
   it('add_extrude does not mutate original', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10)
     expect(baseDoc.features).toEqual([])
   })
 
   it('set_extrude_distance does not mutate original', () => {
     const original = { features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 5 } }] }
-    const doc = JSON.parse(JSON.stringify(original))
+    const doc = structuredClone(original)
     applySetExtrudeDistance(doc, 'ex1', 20)
     expect(original.features![0].extrude!.distance).toBe(5)
   })
 
   it('set_extrude_direction does not mutate original', () => {
     const original = { features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 10, direction: 'normal' } }] }
-    const doc = JSON.parse(JSON.stringify(original))
+    const doc = structuredClone(original) as PartDoc
     applySetExtrudeDirection(doc, 'ex1', 'symmetric')
     expect(original.features![0].extrude!.direction).toBe('normal')
   })

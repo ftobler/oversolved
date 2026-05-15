@@ -476,11 +476,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       return prev
     })
 
-    const next: PartDoc = JSON.parse(JSON.stringify(current))
+    const next: PartDoc = structuredClone(current)
     if (!suppressUndoRef.current) {
       setUndoStack(prev => {
         const next = [...prev, { doc: current, mutation: m }]
-        if (next.length > 200) next.shift()
+        if (next.length > 50) next.shift()
         return next
       })
       setRedoStack([])
@@ -867,7 +867,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   }, [])
 
   const startPreviewMode = useCallback((originalDoc: PartDoc) => {
-    previewOriginalDoc.current = JSON.parse(JSON.stringify(originalDoc))
+    previewOriginalDoc.current = structuredClone(originalDoc)
     suppressUndoRef.current = true
   }, [])
 

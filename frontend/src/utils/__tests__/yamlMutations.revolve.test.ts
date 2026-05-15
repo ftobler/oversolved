@@ -16,7 +16,7 @@ const baseDoc: PartDoc = { features: [] }
 
 describe('add_revolve', () => {
   it('adds a revolve feature with sketch as an array', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
     expect(doc.features).toHaveLength(1)
     expect(doc.features![0].kind).toBe('revolve')
@@ -27,25 +27,25 @@ describe('add_revolve', () => {
   })
 
   it('stores empty array when sketchQuery is empty string', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     applyAddRevolve(doc, 'rev1', undefined, '', 360)
     expect(doc.features![0].revolve!.sketch).toEqual([])
   })
 
   it('uses label when provided', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     applyAddRevolve(doc, 'rev1', 'My Revolve', '$sk1', 360)
     expect(doc.features![0].label).toBe('My Revolve')
   })
 
   it('defaults label to "Revolve" when not provided', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
     expect(doc.features![0].label).toBe('Revolve')
   })
 
   it('defaults axis_origin and axis_direction', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
     expect(doc.features![0].revolve!.axis_origin).toEqual([0, 0, 0])
     expect(doc.features![0].revolve!.axis_direction).toEqual([0, 0, 1])
@@ -347,14 +347,14 @@ describe('set_revolve_merge_target', () => {
 
 describe('mutation does not mutate original doc', () => {
   it('add_revolve does not mutate original', () => {
-    const doc: PartDoc = JSON.parse(JSON.stringify(baseDoc))
+    const doc: PartDoc = structuredClone(baseDoc)
     applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
     expect(baseDoc.features).toEqual([])
   })
 
   it('set_revolve_angle does not mutate original', () => {
     const original = { features: [{ id: 'rev1', kind: 'revolve', revolve: { sketch: '$sk1', angle: 90 } }] }
-    const doc = JSON.parse(JSON.stringify(original))
+    const doc = structuredClone(original)
     applySetRevolveAngle(doc, 'rev1', 180)
     expect(original.features![0].revolve!.angle).toBe(90)
   })

@@ -7,7 +7,7 @@ import {
 
 const baseDoc: PartDoc = { features: [] }
 
-const makeDoc = (): PartDoc => JSON.parse(JSON.stringify(baseDoc))
+const makeDoc = (): PartDoc => structuredClone(baseDoc)
 
 describe('Transform mutations', () => {
   describe('applyAddTransform', () => {

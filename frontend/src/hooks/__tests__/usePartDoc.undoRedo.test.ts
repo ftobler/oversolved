@@ -129,10 +129,10 @@ describe('undo/redo stack integrity', () => {
     for (let i = 0; i < 210; i++) {
       entries.push({ doc: { value: `doc${i}` }, mutation: { type: 'add_sketch' } })
     }
-    const maxSize = 200
+    const maxSize = 50
     const trimmed = entries.length > maxSize ? entries.slice(entries.length - maxSize) : entries
-    expect(trimmed).toHaveLength(200)
-    expect(trimmed[0].doc.value).toBe('doc10')
+    expect(trimmed).toHaveLength(50)
+    expect(trimmed[0].doc.value).toBe('doc160')
   })
 
   it('undo on empty stack is no-op', () => {
