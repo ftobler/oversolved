@@ -373,6 +373,13 @@ export default function Documents() {
                             <span className="doc-tile-name" title={`${doc.owner_username}/${doc.name}`}>
                               {doc.owner_username}/{doc.name}
                             </span>
+                          </div>
+                          <div className="doc-tile-meta">
+                            <span className="doc-tile-date">
+                              Deleted: {formatDate(doc.deleted_at)}
+                              {days <= 5 && <span className="trash-warning"> ({days} days left)</span>}
+                              {days > 5 && <span> ({days} days left)</span>}
+                            </span>
                             <div className="doc-tile-actions">
                               <button
                                 className="btn btn-tile-action"
@@ -389,13 +396,6 @@ export default function Documents() {
                                 <span className="material-icons">delete_forever</span>
                               </button>
                             </div>
-                          </div>
-                          <div className="doc-tile-meta">
-                            <span className="doc-tile-date">
-                              Deleted: {formatDate(doc.deleted_at)}
-                              {days <= 5 && <span className="trash-warning"> ({days} days left)</span>}
-                              {days > 5 && <span> ({days} days left)</span>}
-                            </span>
                           </div>
                         </div>
                       </div>

@@ -52,8 +52,9 @@ class TestSecurityHeaders:
 
     def test_websocket_101_skips_security_headers(self, app):
         from flask import Response
-        resp = Response(status=101)
-        processed = app.process_response(resp)
-        for header in REQUIRED_HEADERS:
-            assert header not in processed.headers, f"Header {header} must not appear on 101"
-        assert 'Content-Security-Policy' not in processed.headers
+        with app.test_request_context():
+            resp = Response(status=101)
+            processed = app.process_response(resp)
+            for header in REQUIRED_HEADERS:
+                assert header not in processed.headers, f"Header {header} must not appear on 101"
+            assert 'Content-Security-Policy' not in processed.headers
