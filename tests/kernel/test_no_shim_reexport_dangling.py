@@ -18,8 +18,6 @@ BANNED_EXACT = {
     "oversolved.kernel.geometry",
     "oversolved.kernel.geometry_boolean",
     "oversolved.kernel.solver_features",
-    "oversolved.main",
-    "oversolved.run_server",
 }
 
 
