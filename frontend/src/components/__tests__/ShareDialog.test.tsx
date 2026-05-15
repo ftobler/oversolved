@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import ShareDialog from '@/components/ShareDialog'
 
 describe('ShareDialog', () => {
@@ -7,7 +7,7 @@ describe('ShareDialog', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders with correct title', () => {
+  it('renders with correct title', async () => {
     render(
       <ShareDialog
         isOpen
@@ -18,10 +18,11 @@ describe('ShareDialog', () => {
         onClose={vi.fn()}
       />
     )
+    await act(async () => {})
     expect(screen.getByText('Share "TestUser/TestDoc"')).toBeInTheDocument()
   })
 
-  it('shows non-owner message when isOwner is false', () => {
+  it('shows non-owner message when isOwner is false', async () => {
     render(
       <ShareDialog
         isOpen
@@ -32,6 +33,7 @@ describe('ShareDialog', () => {
         onClose={vi.fn()}
       />
     )
+    await act(async () => {})
     expect(screen.getByText('Only the owner can manage shares.')).toBeInTheDocument()
   })
 

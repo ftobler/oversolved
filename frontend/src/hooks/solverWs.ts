@@ -14,7 +14,6 @@ class SolverWs {
   private msgId = 0;
   private pendingMessages: string[] = []
   private connectTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  private intentionallyClosed = false;
 
   onGeometryUpdate(cb: GeometryListener): () => void {
     this.geometryListeners.add(cb)
@@ -44,7 +43,6 @@ class SolverWs {
       this.ws = null;
     }
     this._clearConnectTimeout();
-    this.intentionallyClosed = false;
     useSolverStore.getState().setWsStatus('connecting');
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}/api/solver-ws`);
@@ -136,7 +134,6 @@ class SolverWs {
   }
 
   disconnect(): void {
-    this.intentionallyClosed = true;
     this._clearConnectTimeout();
     this.ws?.close();
     this.ws = null;

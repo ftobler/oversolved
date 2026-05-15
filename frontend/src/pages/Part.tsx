@@ -695,6 +695,7 @@ export default function Part() {
   }, [features, rollbackPosition, setPickBoundary, setPickBodies, setRollbackFromHandler])
 
   const exitEditFeature = useCallback(() => {
+    const targetRollback = savedRollbackPosition !== null ? savedRollbackPosition : rollbackPosition
     if (savedRollbackPosition !== null) {
       if (rollbackPosition === editEntryRollback.current || rollbackPosition === null) {
         setRollbackFromHandler(savedRollbackPosition)
@@ -706,8 +707,9 @@ export default function Part() {
     setEditingFeatureId(null)
     setPendingPickField(null)
     setPickBoundary(null)
-    handleRebuildRef.current?.()
-  }, [savedRollbackPosition, rollbackPosition, setPendingPickField, setPickBoundary, handleRebuildRef, setRollbackFromHandler])
+    if (docRef.current) reSolve(docRef.current, targetRollback)  // avoid stale handleRebuild closure
+  }, [savedRollbackPosition, rollbackPosition, setPendingPickField, setPickBoundary,
+      setRollbackFromHandler, docRef, reSolve])
 
   const enterEditSketch = useCallback((featureId: string) => {
     enterEditFeature(featureId)

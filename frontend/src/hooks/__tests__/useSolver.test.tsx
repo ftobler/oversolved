@@ -244,8 +244,9 @@ describe('useSolver', () => {
       let cacheResolve: (v: unknown) => void
       const cachePromise = new Promise<unknown>(r => { cacheResolve = r })
       mockCache.getCachedBuildResponse.mockReturnValue(cachePromise)
-      const p1 = result.current.reSolve(makeDoc())
-      const p2 = result.current.reSolve(makeDoc())
+      let p1: Promise<void>, p2: Promise<void>
+      act(() => { p1 = result.current.reSolve(makeDoc()) })
+      act(() => { p2 = result.current.reSolve(makeDoc()) })
       await act(async () => { cacheResolve!(null) })
       await act(async () => { await Promise.all([p1, p2]) })
       expect(mockSolver.solve).toHaveBeenCalledTimes(1)
@@ -473,7 +474,7 @@ describe('useSolver', () => {
 
     it('clears pickBodies when pickBoundary set to null', () => {
       const { result } = setupHook()
-      result.current.setPickBoundary(null)
+      act(() => { result.current.setPickBoundary(null) })
       expect(result.current.pickBodies).toEqual({})
     })
   })

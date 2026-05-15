@@ -189,6 +189,7 @@ def _handle_solve(data, isolator, db, ws):
     doc_id = data.get("id")
     rollback_position = data.get("rollback_position")
     pick_boundary = data.get("pick_boundary")
+    request_version = data.get("request_version")  # echoed back for client-side staleness check
 
     build_result = isolator.build(
         data,
@@ -220,6 +221,7 @@ def _handle_solve(data, isolator, db, ws):
             "msgId": msg_id,
             "solve_ms": build_result.get("solve_ms", 0),
             "error": error_msg,
+            "request_version": request_version,
         }))
         return
 
@@ -228,6 +230,7 @@ def _handle_solve(data, isolator, db, ws):
         "msgId": msg_id,
         "solve_ms": build_result.get("solve_ms"),
         "result": result,
+        "request_version": request_version,
     }))
 
     if geometry_bytes:

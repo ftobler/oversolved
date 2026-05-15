@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-  <rect x="3" y="4" width="8" height="16" fill="none" stroke="currentColor" stroke-width="1.5"/>
-  <rect x="13" y="4" width="8" height="16" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5"/>
-  <line x1="11" y1="4" x2="13" y2="4" stroke="currentColor" stroke-width="1" stroke-dasharray="2,2"/>
-  <line x1="11" y1="20" x2="13" y2="20" stroke="currentColor" stroke-width="1" stroke-dasharray="2,2"/>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">
+<path fill="none" stroke-width="0.0625" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.5 0.150065 L 0.150065 0.5 L 0.5 0.849935 Z M 0.5 0.150065 " transform="matrix(24, 0, 0, 24, 0, 0)"/>
+<path fill="none" stroke-width="0.0833333" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.5 0.150065 L 0.849935 0.5 L 0.5 0.849935 Z M 0.5 0.150065 " transform="matrix(24, 0, 0, 24, 0, 0)"/>
+<path fill="none" stroke-width="0.0625" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.5 0.119954 L 0.5 0.246745 M 0.5 0.373372 L 0.5 0.5 M 0.5 0.626628 L 0.5 0.753255 " transform="matrix(24, 0, 0, 24, 0, 0)"/>
 </svg>
