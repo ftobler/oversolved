@@ -1,6 +1,5 @@
 import { Routes, Route, Link, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
-import Visualizer from '@/pages/Visualizer'
 import Documentation from '@/pages/Documentation'
 import Documents from '@/pages/Documents'
 import Part from '@/pages/Part'
@@ -47,7 +46,6 @@ function App() {
         <Route path="/docs" element={<ProtectedRoute><Documentation /></ProtectedRoute>} />
         <Route path="/docs/:doc" element={<ProtectedRoute><Documentation /></ProtectedRoute>} />
         <Route path="/registry" element={<ProtectedRoute><Registry /></ProtectedRoute>} />
-        <Route path="/visualizer" element={<ProtectedRoute><Visualizer /></ProtectedRoute>} />
         <Route path="/profile" element={<Navigate to="/settings/profile" replace />} />
         <Route path="/admin/users" element={<Navigate to="/settings/admin" replace />} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>}>

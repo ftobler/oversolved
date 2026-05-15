@@ -463,32 +463,32 @@ def toolbar_help(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/toolbar-visualizer.svg")
-def toolbar_visualizer(ctx):
-    # Bug icon
-    # Head (circle)
-    ctx.arc(0.5, 0.3, 0.1, 0, 2 * math.pi)
-    stroke(ctx, 1.5)
+# @icon("frontend/src/assets/icons/toolbar-visualizer.svg")
+# def toolbar_visualizer(ctx):
+#     # Bug icon
+#     # Head (circle)
+#     ctx.arc(0.5, 0.3, 0.1, 0, 2 * math.pi)
+#     stroke(ctx, 1.5)
 
-    # Body
-    ctx.move_to(0.5, 0.4)
-    ctx.line_to(0.5, 0.7)
-    stroke(ctx, 1.5)
+#     # Body
+#     ctx.move_to(0.5, 0.4)
+#     ctx.line_to(0.5, 0.7)
+#     stroke(ctx, 1.5)
 
-    # Antennae
-    ctx.move_to(0.45, 0.25)
-    ctx.line_to(0.35, 0.1)
-    ctx.move_to(0.55, 0.25)
-    ctx.line_to(0.65, 0.1)
-    stroke(ctx, 1.5)
+#     # Antennae
+#     ctx.move_to(0.45, 0.25)
+#     ctx.line_to(0.35, 0.1)
+#     ctx.move_to(0.55, 0.25)
+#     ctx.line_to(0.65, 0.1)
+#     stroke(ctx, 1.5)
 
-    # Legs
-    for x_offset in [-0.15, 0.15]:
-        ctx.move_to(0.5 + x_offset, 0.5)
-        ctx.line_to(0.5 + x_offset * 1.5, 0.65)
-        ctx.move_to(0.5 + x_offset, 0.6)
-        ctx.line_to(0.5 + x_offset * 1.5, 0.75)
-    stroke(ctx, 1.5)
+#     # Legs
+#     for x_offset in [-0.15, 0.15]:
+#         ctx.move_to(0.5 + x_offset, 0.5)
+#         ctx.line_to(0.5 + x_offset * 1.5, 0.65)
+#         ctx.move_to(0.5 + x_offset, 0.6)
+#         ctx.line_to(0.5 + x_offset * 1.5, 0.75)
+#     stroke(ctx, 1.5)
 
 
 @icon("frontend/src/assets/icons/feature-extrude.svg")

@@ -296,15 +296,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event }) => {
     e.stopPropagation()
 
-    // R3F ThreeEvent spreads THREE.Intersection directly: e.index is the vertex index
-    // in the LineSegments buffer. Divide by 2 to get segment index.
     const rawIndex = (e as unknown as { index?: number }).index
-    let edgeIndex: number | undefined
-    if (rawIndex !== undefined) {
-      edgeIndex = segmentToEdgeMap[Math.floor(rawIndex / 2)]
-    } else {
-      edgeIndex = hoveredEdgeIndexRef.current ?? undefined
-    }
+    // When the click comes from the mesh (via the onClick handler below), e.index
+    // is a face index, not a line vertex index. Prefer the ref which was set by
+    // screen-space proximity detection during hover.
+    const edgeIndex = hoveredEdgeIndexRef.current ??
+      (rawIndex !== undefined ? segmentToEdgeMap[Math.floor(rawIndex / 2)] : undefined)
 
     if (edgeIndex !== undefined) {
       const query = edgeQueries?.[edgeIndex] ?? `@${featureId}/edge/${edgeIndex}`
