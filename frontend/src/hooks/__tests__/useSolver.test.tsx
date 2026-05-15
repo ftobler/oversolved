@@ -329,6 +329,52 @@ describe('useSolver', () => {
       expect(payload.features[0].id).toBe('feat1')
     })
 
+    it('passes _validate=true in payload when reSolve is called with validate option', async () => {
+      const { result } = setupHook()
+      await act(async () => { await result.current.reSolve(makeDoc(), undefined, { validate: true }) })
+      const payload = mockSolver.solve.mock.calls[0][0] as Record<string, unknown>
+      expect(payload._validate).toBe(true)
+    })
+
+    it('does not pass _validate when reSolve is called without the validate option', async () => {
+      const { result } = setupHook()
+      await act(async () => { await result.current.reSolve(makeDoc()) })
+      const payload = mockSolver.solve.mock.calls[0][0] as Record<string, unknown>
+      expect(payload._validate).toBeUndefined()
+    })
+
+    it('exposes validation state from the response and is cleared by clearValidation', async () => {
+      const { result } = setupHook()
+      mockSolver.solve.mockResolvedValueOnce({
+        solve_ms: 0, result: {}, bodies: {}, _build_state: null,
+        validation: { level: 2, passed: false, fp_only: true, diffs: {} },
+      })
+      await act(async () => { await result.current.reSolve(makeDoc(), undefined, { validate: true }) })
+      expect(result.current.validation).toEqual({ level: 2, passed: false, fp_only: true, diffs: {} })
+      act(() => { result.current.clearValidation() })
+      expect(result.current.validation).toBeNull()
+    })
+
+    it('does not write cache when validation reports a structural failure', async () => {
+      const { result } = setupHook()
+      mockSolver.solve.mockResolvedValueOnce({
+        solve_ms: 0, result: {}, bodies: {}, _build_state: null,
+        validation: { level: 3, passed: false, diffs: { repo_ancestral: {} } },
+      })
+      await act(async () => { await result.current.reSolve(makeDoc(), undefined, { validate: true }) })
+      expect(mockCache.cacheBuildResponse).not.toHaveBeenCalled()
+    })
+
+    it('writes cache when validation passes', async () => {
+      const { result } = setupHook()
+      mockSolver.solve.mockResolvedValueOnce({
+        solve_ms: 0, result: {}, bodies: {}, _build_state: null,
+        validation: { level: 3, passed: true, diffs: {} },
+      })
+      await act(async () => { await result.current.reSolve(makeDoc(), undefined, { validate: true }) })
+      expect(mockCache.cacheBuildResponse).toHaveBeenCalledTimes(1)
+    })
+
     it('sends monotonically increasing request_version on each solve', async () => {
       const { result } = setupHook()
       await act(async () => { await result.current.reSolve(makeDoc()) })

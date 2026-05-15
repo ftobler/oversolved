@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { BodyResult, PartFeature, PartDoc, Sketch, PartStyleEntry, Mutation } from '@/types/cad'
+import type { BodyResult, PartFeature, PartDoc, Sketch, PartStyleEntry, Mutation, RebuildValidation } from '@/types/cad'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
 
@@ -17,6 +17,7 @@ interface PartEditorData {
   pickBodies: Record<string, BodyResult>
   isRebuilding: boolean
   featureTimings: Record<string, number>
+  validation: RebuildValidation | null
   ghostMode: boolean
   otherSketches: Record<string, Sketch>
   partColors: Record<string, string>
@@ -43,6 +44,7 @@ export const usePartEditorStore = create<PartEditorState>((set) => ({
   pickBodies: {},
   isRebuilding: false,
   featureTimings: {},
+  validation: null,
   ghostMode: false,
   otherSketches: {},
   partColors: {},

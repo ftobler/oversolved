@@ -1,4 +1,4 @@
-import type { PartFeature } from '@/types/cad'
+import type { PartFeature, RebuildValidation } from '@/types/cad'
 
 interface RebuildTimingPopoverProps {
   featureTimings: Record<string, number>
@@ -6,9 +6,20 @@ interface RebuildTimingPopoverProps {
   isVisible: boolean
   onMouseEnter?: () => void
   onMouseLeave?: () => void
+  validation?: RebuildValidation | null
 }
 
-export function RebuildTimingPopover({ featureTimings, features, isVisible, onMouseEnter, onMouseLeave }: RebuildTimingPopoverProps) {
+function validationBadge(v: RebuildValidation) {
+  if (v.passed) {
+    return { color: '#2e7d32', symbol: '✓', label: 'rebuild matches', kind: 'green' as const }
+  }
+  if (v.fp_only) {
+    return { color: '#f9a825', symbol: '⚠', label: `L${v.level} FP drift only`, kind: 'yellow' as const }
+  }
+  return { color: '#c62828', symbol: '✕', label: `L${v.level} structural mismatch`, kind: 'red' as const }
+}
+
+export function RebuildTimingPopover({ featureTimings, features, isVisible, onMouseEnter, onMouseLeave, validation }: RebuildTimingPopoverProps) {
   if (!isVisible) return null
 
   const formatMs = (ms: number) => {
@@ -22,12 +33,25 @@ export function RebuildTimingPopover({ featureTimings, features, isVisible, onMo
 
   const totalMs = Object.values(featureTimings).reduce((sum, ms) => sum + ms, 0)
 
-  if (entries.length === 0) return null
+  if (entries.length === 0 && !validation) return null
+
+  const badge = validation ? validationBadge(validation) : null
 
   return (
     <div className="rebuild-timing-popover" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       <div className="popover-header">
         <strong>Rebuild Times</strong>
+        {badge && (
+          <span
+            className={`rebuild-validation-badge rebuild-validation-${badge.kind}`}
+            data-testid="rebuild-validation-badge"
+            data-validation-kind={badge.kind}
+            title={badge.label}
+            style={{ color: badge.color, marginLeft: 8, fontWeight: 'bold' }}
+          >
+            {badge.symbol} {badge.label}
+          </span>
+        )}
       </div>
       <div className="popover-stats">
         {entries.map(e => (

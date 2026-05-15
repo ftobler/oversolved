@@ -310,6 +310,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     solveResults, setSolveResults, bodies, pickBodies, setPickBodies,
     solving, solveTime, solveError, setSolveError, solveResult, setSolveRawResult,
     featureTimings, reSolve, setRollbackPos, setPickBoundary,
+    validation, clearValidation,
   } = useSolver(uuid, setCodeText, modeRef, { onFirstSolve }, docRef, setDoc)
 
   useEffect(() => { reSolveRef.current = reSolve }, [reSolve])
@@ -396,6 +397,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     undoStack,
     redoStack,
     reSolve,
+    validation,
+    clearValidation,
     handleMutation,
     handleUndo,
     handleRedo,

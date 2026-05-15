@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import logging
 import time
@@ -27,6 +28,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "build",
+    "_validate_incremental",
+    "_hash_checkpoint_spec",
+    "_hash_result_dict",
     "_repo_from_snapshot",
     "_copy_shape",
 ]
@@ -111,6 +115,142 @@ def _find_first_dirty(features: list[dict], prev_state: BuildState | None) -> in
         if prev_checkpoint is None or _normalize_spec(prev_checkpoint.spec) != _normalize_spec(feature):
             return i
     return len(features)
+
+
+# ─── Rebuild assertion: three-layer comparison helpers ───
+
+
+def _round_floats(obj: Any, ndigits: int) -> Any:
+    if isinstance(obj, float):
+        r = round(obj, ndigits)
+        return r + 0.0  # canonicalize -0.0 -> 0.0 so JSON serialization is stable
+
+    if isinstance(obj, list):
+        return [_round_floats(v, ndigits) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(_round_floats(v, ndigits) for v in obj)
+    if isinstance(obj, dict):
+        return {k: _round_floats(v, ndigits) for k, v in obj.items()}
+    return obj
+
+
+def _stable_json(obj: Any) -> str:
+    return json.dumps(obj, sort_keys=True, default=repr)
+
+
+# Result-dict keys that capture wall-clock or non-geometric metadata.
+# Stripped before hashing so timing jitter doesn't trigger false-positive diffs.
+_RESULT_NON_GEOMETRIC_KEYS = frozenset({"solve_ms"})
+
+
+def _strip_non_geometric(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {
+            k: _strip_non_geometric(v)
+            for k, v in obj.items()
+            if k not in _RESULT_NON_GEOMETRIC_KEYS
+        }
+    if isinstance(obj, list):
+        return [_strip_non_geometric(v) for v in obj]
+    return obj
+
+
+def _hash_checkpoint_spec(cp: FeatureCheckpoint) -> str:
+    return hashlib.sha256(_stable_json(cp.spec).encode()).hexdigest()
+
+
+def _hash_result_dict(result: dict, *, fp_round: int | None = None) -> str:
+    payload = _strip_non_geometric(result)
+    if fp_round is not None:
+        payload = _round_floats(payload, fp_round)
+    return hashlib.sha256(_stable_json(payload).encode()).hexdigest()
+
+
+def _diff_repo_snapshot(
+    a: BuildState, b: BuildState, *, feature_idx: int | None = None,
+) -> dict[str, Any]:
+    """Return a structural diff between two BuildStates, or {} if equivalent."""
+    diff: dict[str, Any] = {}
+    if a.feature_order != b.feature_order:
+        diff["feature_order"] = {"a": a.feature_order, "b": b.feature_order}
+
+    fids = a.feature_order if feature_idx is None else [a.feature_order[feature_idx]]
+    for fid in fids:
+        cp_a = a.checkpoints.get(fid)
+        cp_b = b.checkpoints.get(fid)
+        if cp_a is None or cp_b is None:
+            diff.setdefault("missing_checkpoints", []).append(fid)
+            continue
+        # Body store comparison: ids, created_by, modified_by.
+        a_bodies = {
+            bid: {"created_by": body.created_by, "modified_by": list(body.modified_by)}
+            for bid, body in cp_a.body_store_snapshot.items()
+        }
+        b_bodies = {
+            bid: {"created_by": body.created_by, "modified_by": list(body.modified_by)}
+            for bid, body in cp_b.body_store_snapshot.items()
+        }
+        if a_bodies != b_bodies:
+            diff.setdefault("body_store", {})[fid] = {"a": a_bodies, "b": b_bodies}
+
+        # Repo snapshot: compare ancestral keys + element payloads.
+        a_repo = cp_a.repo_snapshot
+        b_repo = cp_b.repo_snapshot
+        a_keys = set(map(_stable_json, a_repo.get("ancestral", {}).keys()))
+        b_keys = set(map(_stable_json, b_repo.get("ancestral", {}).keys()))
+        added = sorted(b_keys - a_keys)
+        removed = sorted(a_keys - b_keys)
+        if added or removed:
+            diff.setdefault("repo_ancestral", {})[fid] = {
+                "added": added[:20], "removed": removed[:20],
+                "added_total": len(added), "removed_total": len(removed),
+            }
+    return diff
+
+
+def _validate_incremental(
+    incremental_state: BuildState,
+    incremental_result: dict[str, Any],
+    doc: dict,
+) -> dict[str, Any]:
+    """Compare the incremental build result against a fresh-from-scratch full rebuild.
+
+    Returns dict with keys: level (1|2|3), passed (bool), fp_only (bool, optional), diffs (dict).
+    Level meanings: 1 = spec-hash, 2 = result-dict, 3 = repo/body-store.
+    Inner build() call MUST NOT set _validate to avoid recursion.
+    """
+    doc_for_full = {k: v for k, v in doc.items() if k != "_validate"}
+    fresh = build(doc_for_full, prev_state=None)
+    fresh_state: BuildState = fresh["_build_state"]
+    fresh_result: dict = fresh.get("result", {})
+
+    # L1: spec hash per feature.
+    for fid in incremental_state.feature_order:
+        cp_a = incremental_state.checkpoints.get(fid)
+        cp_b = fresh_state.checkpoints.get(fid)
+        if cp_a is None or cp_b is None:
+            return {"level": 1, "passed": False, "diffs": {"missing_checkpoint": fid}}
+        if _hash_checkpoint_spec(cp_a) != _hash_checkpoint_spec(cp_b):
+            return {"level": 1, "passed": False, "diffs": {"feature_id": fid}}
+
+    # L2: result dict, strict then FP-tolerant.
+    inc_r = {fid: incremental_result.get(fid) for fid in incremental_state.feature_order}
+    fresh_r = {fid: fresh_result.get(fid) for fid in fresh_state.feature_order}
+    if _hash_result_dict(inc_r) != _hash_result_dict(fresh_r):
+        if _hash_result_dict(inc_r, fp_round=4) == _hash_result_dict(fresh_r, fp_round=4):
+            return {"level": 2, "passed": False, "fp_only": True,
+                    "diffs": {"reason": "floating-point drift within 4dp tolerance"}}
+        # Structural L2 diff -> escalate to L3 for actionable info.
+        return {
+            "level": 3, "passed": False,
+            "diffs": _diff_repo_snapshot(incremental_state, fresh_state),
+        }
+
+    # L3 final guard.
+    l3 = _diff_repo_snapshot(incremental_state, fresh_state)
+    if l3:
+        return {"level": 3, "passed": False, "diffs": l3}
+    return {"level": 3, "passed": True, "diffs": {}}
 
 
 def _register_brep_face_ancestry(global_repo, body: Body, mesh: MeshDict) -> None:
@@ -506,7 +646,7 @@ def build(
         if pick_checkpoint is not None:
             pick_bodies_out = _tessellate_bodies(pick_checkpoint.body_store_snapshot, None)
 
-    return {
+    response = {
         "solve_ms": build_ms,
         "result": result,
         "bodies": bodies_out,
@@ -514,3 +654,12 @@ def build(
         "_body_shapes": body_shapes,
         **({"pick_bodies": pick_bodies_out} if pick_bodies_out is not None else {}),
     }
+
+    # Opt-in three-layer comparison vs. a fresh full rebuild. Used by the
+    # frontend Rebuild button to detect silent desyncs (stale checkpoints,
+    # ancestry drift after reorder). Doubles solve time so it stays opt-in.
+    # TODO: flip default-on once perf cost is measured in production.
+    if spec.get("_validate"):
+        response["_validation"] = _validate_incremental(new_state, result, spec)
+
+    return response

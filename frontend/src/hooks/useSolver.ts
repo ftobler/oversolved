@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { stringify as stringifyYaml } from 'yaml'
-import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, PartStyleEntry } from '@/types/cad'
+import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, PartStyleEntry, RebuildValidation } from '@/types/cad'
 import { solverWs } from '@/hooks/solverWs'
 import { useSolverStore } from '@/stores/solverStore'
 import { unflattenGeometry } from '@/utils/geometryMapping'
@@ -71,6 +71,7 @@ export function useSolver(
   const [solveTime, setSolveTime] = useState<number | null>(null)
   const [solveError, setSolveError] = useState<string | null>(null)
   const [solveResult, setSolveRawResult] = useState<string>('')
+  const [validation, setValidation] = useState<RebuildValidation | null>(null)
   const firstSolveDone = useRef(false)
   const rollbackPosRef = useRef<number | null>(null)
   const pickBoundaryRef = useRef<number | null>(null)
@@ -231,7 +232,11 @@ export function useSolver(
     }
   }, [applySolveResult])
 
-  const reSolve = useCallback(async (d: PartDoc, rollbackPosition?: number | null) => {
+  const reSolve = useCallback(async (
+    d: PartDoc,
+    rollbackPosition?: number | null,
+    opts?: { validate?: boolean },
+  ) => {
     setSolving(true)
     setSolveTime(null)
     const startTime = performance.now()
@@ -291,6 +296,10 @@ export function useSolver(
         solvePayload.pick_boundary = pickBoundary
       }
 
+      if (opts?.validate) {
+        solvePayload._validate = true
+      }
+
       const response = await solverWs.solve(solvePayload) as Record<string, unknown>
 
       if (isStale()) {
@@ -316,8 +325,20 @@ export function useSolver(
         setSolveRawResult(String(response.error))
       } else {
         const buildResponse = response as unknown as BuildResponse
+        if (buildResponse.validation !== undefined) {
+          setValidation(buildResponse.validation)
+        } else if (opts?.validate) {
+          // Validation was requested but the server did not echo one back.
+          setValidation(null)
+        }
         if (uuid) {
-          await cacheBuildResponse(d, effectiveRollback, pickBoundary, buildResponse)
+          // Don't update cache if validation failed structurally -- the bad
+          // state stays available for debugging until the user retries.
+          const v = buildResponse.validation
+          const okToCache = !v || v.passed || v.fp_only === true
+          if (okToCache) {
+            await cacheBuildResponse(d, effectiveRollback, pickBoundary, buildResponse)
+          }
           if (isStale()) return
         }
         applySolveResult(d, buildResponse, solveTimeMs)
@@ -378,5 +399,7 @@ export function useSolver(
     resetSolver,
     setRollbackPos,
     setPickBoundary,
+    validation,
+    clearValidation: () => setValidation(null),
   }
 }

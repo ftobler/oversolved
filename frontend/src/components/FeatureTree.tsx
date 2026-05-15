@@ -73,6 +73,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
   const bodies = usePartEditorStore(s => s.bodies)
   const isRebuilding = usePartEditorStore(s => s.isRebuilding)
   const featureTimings = usePartEditorStore(s => s.featureTimings)
+  const validation = usePartEditorStore(s => s.validation)
 
   const selection = useSketchEditorStore(s => s.normalSelection)
   const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
@@ -133,7 +134,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
       <div className="sidebar-header">
         <span>Features</span>
         {onRebuild && (
-          <RebuildButton featureTimings={featureTimings} features={features} onClick={onRebuild} isLoading={isRebuilding} />
+          <RebuildButton featureTimings={featureTimings} features={features} onClick={onRebuild} isLoading={isRebuilding} validation={validation} />
         )}
       </div>
       <ul

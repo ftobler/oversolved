@@ -124,6 +124,7 @@ export default function Part() {
     undoStack,
     redoStack,
     reSolve,
+    validation,
     handleMutation,
     handleUndo,
     handleRedo,
@@ -270,7 +271,9 @@ export default function Part() {
     setIsRebuilding(true)
     try {
       await invalidateDocCache(uuid)
-      await reSolve(docRef.current, rollbackPosition ?? features.length)
+      // Opt into validation: the kernel will do a parallel fresh full rebuild
+      // and surface a diff in `validation` so the popover can render the badge.
+      await reSolve(docRef.current, rollbackPosition ?? features.length, { validate: true })
     } catch (e) {
       console.error('Rebuild failed:', e)
     } finally {
@@ -293,6 +296,7 @@ export default function Part() {
       pickBodies: pickBodies ?? {},
       isRebuilding,
       featureTimings: featureTimings ?? {},
+      validation: validation ?? null,
       ghostMode,
       otherSketches,
       partColors,
@@ -302,7 +306,7 @@ export default function Part() {
     })
   }, [features, doc, rollbackPosition, editingFeatureId, activeSketchFeatureId, visibleFeatures,
     effectiveVisibleBodies, partLabels, solveResults, bodies, pickBodies, isRebuilding,
-    featureTimings, ghostMode, otherSketches, partColors, partStyle, undoStack, redoStack])
+    featureTimings, validation, ghostMode, otherSketches, partColors, partStyle, undoStack, redoStack])
 
   useEffect(() => {
     return () => {

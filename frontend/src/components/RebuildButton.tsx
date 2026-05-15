@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import rebuildIcon from '@/assets/icons/context-rebuild.svg'
 import { RebuildTimingPopover } from '@/components/RebuildTimingPopover'
-import type { PartFeature } from '@/types/cad'
+import type { PartFeature, RebuildValidation } from '@/types/cad'
 
 interface RebuildButtonProps {
   featureTimings: Record<string, number>
@@ -9,9 +9,10 @@ interface RebuildButtonProps {
   onClick: () => void
   isLoading?: boolean
   disabled?: boolean
+  validation?: RebuildValidation | null
 }
 
-export function RebuildButton({ featureTimings, features, onClick, isLoading, disabled }: RebuildButtonProps) {
+export function RebuildButton({ featureTimings, features, onClick, isLoading, disabled, validation }: RebuildButtonProps) {
   const [isButtonHovered, setIsButtonHovered] = useState(false)
   const [isPopoverHovered, setIsPopoverHovered] = useState(false)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -67,6 +68,7 @@ export function RebuildButton({ featureTimings, features, onClick, isLoading, di
         featureTimings={featureTimings}
         features={features}
         isVisible={isVisible}
+        validation={validation}
         onMouseEnter={() => {
           cancelHide()
           setIsPopoverHovered(true)

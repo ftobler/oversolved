@@ -269,6 +269,35 @@ class TestSolverWebSocket:
         assert solve_results[0]["request_version"] == 7
 
     @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_websocket_solve_forwards_validation_in_response(self, mock_isolator_cls, app, auth_headers):
+        """When build() returns a _validation dict, the WS handler echoes it as `validation`."""
+        mock_isolator = _make_mock_isolator({
+            "solve_ms": 5,
+            "result": {"sk1": {"status": "underconstrained"}},
+            "_geometry_bytes": _pack_empty_geometry(),
+            "_validation": {"level": 3, "passed": True, "diffs": {}},
+        })
+        mock_isolator_cls.return_value = mock_isolator
+        ws = _MockWS()
+        ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
+        _run_handler(app, ws, auth_headers)
+        solve_results = [m for m in ws.sent if isinstance(m, dict) and m.get("type") == "solve_result"]
+        assert len(solve_results) == 1
+        assert solve_results[0]["validation"] == {"level": 3, "passed": True, "diffs": {}}
+
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
+    def test_websocket_solve_omits_validation_when_absent(self, mock_isolator_cls, app, auth_headers):
+        """No validation key when build() did not produce one."""
+        mock_isolator = _make_mock_isolator()
+        mock_isolator_cls.return_value = mock_isolator
+        ws = _MockWS()
+        ws.receive_queue = [json.dumps(SOLVE_PAYLOAD), None]
+        _run_handler(app, ws, auth_headers)
+        solve_results = [m for m in ws.sent if isinstance(m, dict) and m.get("type") == "solve_result"]
+        assert len(solve_results) == 1
+        assert "validation" not in solve_results[0]
+
+    @patch("oversolved.blueprints.solver_ws.BuildIsolator")
     def test_websocket_solve_omits_request_version_when_absent(self, mock_isolator_cls, app, auth_headers):
         """If the client omits request_version, the server echoes null (back-compat)."""
         mock_isolator = _make_mock_isolator()

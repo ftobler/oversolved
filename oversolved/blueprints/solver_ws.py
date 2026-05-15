@@ -225,13 +225,17 @@ def _handle_solve(data, isolator, db, ws):
         }))
         return
 
-    ws.send(json.dumps({
+    validation = build_result.get("_validation")
+    payload = {
         "type": "solve_result",
         "msgId": msg_id,
         "solve_ms": build_result.get("solve_ms"),
         "result": result,
         "request_version": request_version,
-    }))
+    }
+    if validation is not None:
+        payload["validation"] = validation
+    ws.send(json.dumps(payload))
 
     if geometry_bytes:
         ws.send(geometry_bytes)

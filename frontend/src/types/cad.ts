@@ -155,12 +155,20 @@ export interface BodyResult {
   vertex_queries?: string[]
 }
 
+export interface RebuildValidation {
+  level: 1 | 2 | 3
+  passed: boolean
+  fp_only?: boolean
+  diffs: Record<string, unknown>
+}
+
 export interface BuildResponse {
   solve_ms: number
   result: Record<string, unknown>
   bodies: Record<string, BodyResult>
   pick_bodies?: Record<string, BodyResult>
   _build_state?: unknown
+  validation?: RebuildValidation
 }
 
 export interface BodyFeatureResult {
