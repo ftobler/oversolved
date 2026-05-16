@@ -471,13 +471,38 @@ class Repository:
                 if self.elements.get(eid, {}).get("classifier") == classifier
             ]
 
-        # Tier 2: if ambiguous and a hash is present, narrow by by_geom_hash.
+        # Hash narrowing: if ambiguous and a hash is present, narrow by by_geom_hash.
         if len(candidate_ids) > 1 and hash_ids:
             geom_hash_str = hash_ids[0][1:]  # strip leading '@'
             hash_set = {eid for eid in self.by_geom_hash.get(geom_hash_str, []) if eid in self.elements}
             narrowed = [eid for eid in candidate_ids if eid in hash_set]
             if narrowed:
                 candidate_ids = narrowed
+
+        # Tier 2: partial ancestral (reverse direction) -- only if unique.
+        # After a feature rename or upstream edit, the query may carry ancestors
+        # that were never registered.  When tier 1 (query <= key) finds nothing,
+        # try the complement direction (key <= query): a registered key that is a
+        # subset of the query means the core ancestors still match.
+        if not candidate_ids and non_hash_ids:
+            partial_candidates: list[str] = []
+            for key, element_ids in self.ancestral.items():
+                if key <= query_set:
+                    partial_candidates.extend(element_ids)
+            partial_candidates = list(dict.fromkeys(partial_candidates))
+            if type_restriction is not None:
+                partial_candidates = [
+                    eid for eid in partial_candidates
+                    if _obj_type(self.elements.get(eid)) == type_restriction
+                ]
+            if classifier is not None:
+                partial_candidates = [
+                    eid for eid in partial_candidates
+                    if self.elements.get(eid, {}).get("classifier") == classifier
+                ]
+            # Only accept if exactly one unique candidate; ambiguity falls through to hash.
+            if len(partial_candidates) == 1:
+                return self.elements.get(partial_candidates[0])
 
         # Tier 3: hash fallback -- when ancestral yields nothing, consult by_geom_hash directly.
         if not candidate_ids and hash_ids:
