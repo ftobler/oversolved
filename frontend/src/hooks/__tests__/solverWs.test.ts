@@ -172,14 +172,20 @@ describe('SolverWs', () => {
   })
 
   describe('WebSocket close', () => {
-    it('rejects all pending promises', async () => {
-      const p1 = solverWs.solve({ a: 1 })
-      const p2 = solverWs.solve({ b: 2 })
+    it('unexpected close with pending requests triggers reconnecting, not rejection', () => {
+      vi.useFakeTimers()
+      let p1Rejected = false
+      let p2Rejected = false
+      const p1 = solverWs.solve({ a: 1 }).catch(() => { p1Rejected = true })
+      const p2 = solverWs.solve({ b: 2 }).catch(() => { p2Rejected = true })
+      void p1; void p2
 
       getLastWs().close()
 
-      await expect(p1).rejects.toThrow('WebSocket closed')
-      await expect(p2).rejects.toThrow('WebSocket closed')
+      expect(useSolverStore.getState().wsStatus).toBe('reconnecting')
+      // promises are kept alive for retry, not rejected synchronously
+      expect(p1Rejected).toBe(false)
+      expect(p2Rejected).toBe(false)
     })
 
     it('After disconnect, next solve() triggers reconnect', () => {
@@ -233,7 +239,7 @@ describe('SolverWs', () => {
   })
 
   describe('connection timeout', () => {
-    it('rejects pending promises when timeout fires', async () => {
+    it('triggers reconnecting when timeout fires with pending requests', () => {
       const ws = new MockWebSocket('ws://test/')
       ws.readyState = WebSocket.CONNECTING
       const wsCtor = vi.fn(() => ws) as any
@@ -243,12 +249,29 @@ describe('SolverWs', () => {
       vi.stubGlobal('WebSocket', wsCtor)
       vi.useFakeTimers()
 
-      const promise = solverWs.solve({ a: 1 })
+      solverWs.solve({ a: 1 }).catch(() => {})
 
       vi.advanceTimersByTime(15_000)
 
-      await expect(promise).rejects.toThrow('WebSocket connection timed out')
+      expect(useSolverStore.getState().wsStatus).toBe('reconnecting')
       expect(ws.readyState).toBe(WebSocket.CLOSED)
+    })
+
+    it('rejects pending promises when timeout fires with no reconnect deadline left', async () => {
+      const ws = new MockWebSocket('ws://test/')
+      ws.readyState = WebSocket.CONNECTING
+      const wsCtor = vi.fn(() => ws) as any
+      wsCtor.CONNECTING = 0
+      wsCtor.OPEN = 1
+      wsCtor.CLOSED = 3
+      vi.stubGlobal('WebSocket', wsCtor)
+      vi.useFakeTimers()
+
+      // disconnect() resets the reconnectDeadline, so promise rejects on explicit close
+      const promise = solverWs.solve({ a: 1 })
+      solverWs.disconnect()
+
+      await expect(promise).rejects.toThrow('WebSocket closed')
     })
   })
 

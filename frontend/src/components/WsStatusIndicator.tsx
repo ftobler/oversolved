@@ -4,12 +4,14 @@ import { solverWs } from '@/hooks/solverWs'
 const DOT_COLORS: Record<WsStatus, string> = {
   open: '#4caf50',
   connecting: '#ff9800',
+  reconnecting: '#ff9800',
   closed: '#f44336',
 }
 
 const LABELS: Record<WsStatus, string> = {
   open: 'Connected',
   connecting: 'Connecting...',
+  reconnecting: 'Reconnecting...',
   closed: 'Disconnected',
 }
 
@@ -24,6 +26,8 @@ export default function WsStatusIndicator() {
     }
   }
 
+  const busy = wsStatus === 'connecting' || wsStatus === 'reconnecting'
+
   return (
     <div className="ws-status">
       <span
@@ -34,9 +38,9 @@ export default function WsStatusIndicator() {
       <button
         className="ws-status-btn"
         onClick={handleClick}
-        disabled={wsStatus === 'connecting'}
+        disabled={busy}
       >
-        {wsStatus === 'open' ? 'Disconnect' : wsStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+        {wsStatus === 'open' ? 'Disconnect' : busy ? LABELS[wsStatus] : 'Connect'}
       </button>
     </div>
   )
