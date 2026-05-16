@@ -10,10 +10,10 @@ function makeDoc(): PartDoc {
       {
         id: 'sk1',
         kind: 'sketch',
-        entities: { line1: { kind: 'line', start: [0, 0], end: [1, 1] } },
+        entities: [{ id: 'line1', kind: 'line' }],
         constraints: [
-          { id: 'c1', kind: 'horizontal', targets: ['vertex:sk1:line1:start'] },
-          { id: 'c2', kind: 'vertical', targets: ['vertex:sk1:line1:end'] },
+          { id: 'c1', kind: 'horizontal' },
+          { id: 'c2', kind: 'vertical' },
         ],
       },
       {
