@@ -46,10 +46,10 @@ class TestOversolvedConfig:
         with pytest.raises(ValueError, match="SOLVER_DAEMON_PORT"):
             OversolvedConfig.from_env()
 
-    def test_config_exposed_on_app(self, monkeypatch):
+    def test_config_exposed_on_app(self, pg_dsn, monkeypatch):
         """create_app stores OversolvedConfig under app.config['OVERSOLVED']."""
         monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
         from oversolved.app import create_app
-        app = create_app({"TESTING": True})
+        app = create_app({"DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn})
         assert "OVERSOLVED" in app.config
         assert isinstance(app.config["OVERSOLVED"], OversolvedConfig)
