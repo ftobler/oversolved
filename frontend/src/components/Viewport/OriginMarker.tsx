@@ -56,7 +56,7 @@ export default function OriginMarker() {
       onPointerOut={handlePointerOut}
       onClick={onClick}
     >
-      <Dot x={0} y={0} px={hovered ? 6 : 4} color={color} billboard />
+      <Dot x={0} y={0} px={hovered ? 6 : 4} color={color} billboard renderOrder={999} depthTest={false} />
       {(hovered || selected) && <VertexHighlight x={0} y={0} px={POINT_HIT_PIXELS * 0.3} color={color} />}
       <mesh ref={hitRef}>
         <sphereGeometry args={[1, 8, 8]} />

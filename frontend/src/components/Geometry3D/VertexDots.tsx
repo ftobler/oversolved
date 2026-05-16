@@ -17,8 +17,11 @@ function determineSnapKind(): SnapKind {
 }
 
 /** 10-gon dot with constant pixel radius regardless of zoom.
- *  If billboard=true the dot always faces the camera. */
-export function Dot({ x, y, px, color, billboard = false }: { x: number; y: number; px: number; color: string; billboard?: boolean }) {
+ *  If billboard=true the dot always faces the camera.
+ *  renderOrder and depthTest control z-ordering (use for always-on-top elements). */
+export function Dot({ x, y, px, color, billboard = false, renderOrder = 0, depthTest = true }: {
+  x: number; y: number; px: number; color: string; billboard?: boolean; renderOrder?: number; depthTest?: boolean
+}) {
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
   useFrame(() => {
@@ -32,9 +35,9 @@ export function Dot({ x, y, px, color, billboard = false }: { x: number; y: numb
     }
   })
   return (
-    <mesh ref={meshRef} position={[x, y, 0]}>
+    <mesh ref={meshRef} position={[x, y, 0]} renderOrder={renderOrder}>
       <circleGeometry args={[1, 10]} />
-      <meshBasicMaterial color={color} side={THREE.DoubleSide} />
+      <meshBasicMaterial color={color} side={THREE.DoubleSide} depthTest={depthTest} transparent={!depthTest} />
     </mesh>
   )
 }
