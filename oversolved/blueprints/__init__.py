@@ -5,8 +5,9 @@ from typing import Literal
 from flask import g, jsonify, request, current_app
 from oversolved.db import (
     Database, DatabaseConnection, SQLiteConnection,
-    PostgreSQLConnection, SessionStore, UserStore, DocumentStore,
+    PostgreSQLConnection, DocumentStore,
 )
+from oversolved.auth import authenticate_token, AuthOk
 
 
 def _get_database(config):
@@ -64,21 +65,15 @@ def require_csrf(f):
 
 
 def require_auth(f):
-    """Decorator that requires a valid session cookie."""
+    """Decorator that requires a valid, active session cookie."""
 
     @wraps(f)
     def decorated(*args, **kwargs):
         token = request.cookies.get("session_token")
-        if not token:
-            return jsonify({"error": "Not authenticated"}), 401
-        db = get_db()
-        session = SessionStore(db).find(token)
-        if session is None:
-            return jsonify({"error": "Invalid or expired session"}), 401
-        user = UserStore(db).find_by_id(session["user_id"])
-        if user is None:
-            return jsonify({"error": "User not found"}), 401
-        g.current_user = user
+        result = authenticate_token(get_db(), token)
+        if not isinstance(result, AuthOk):
+            return jsonify({"error": result.message}), 401
+        g.current_user = result.user
         return f(*args, **kwargs)
 
     return decorated

@@ -10,7 +10,7 @@ from time import time
 from flask import request, current_app, g
 from flask_sock import Sock
 from oversolved.blueprints import get_db
-from oversolved.db import SessionStore, UserStore
+from oversolved.auth import authenticate_token, AuthOk
 from oversolved.kernel.build_isolated import BuildIsolator
 from oversolved.kernel.geometry_pack import pack_geometry_update  # noqa: F401 re-export
 
@@ -52,32 +52,13 @@ def _record_auth_failure(ip: str):
 def _check_auth(ws) -> bool:
     """Check authentication on WS connect/re-validate. Returns True if authenticated."""
     client_ip = request.remote_addr or "unknown"
-
     token = request.cookies.get("session_token")
-    if not token:
-        logger.warning("WS auth failed: no session token (client: %s)", client_ip)
-        ws.close(4001, "Not authenticated")
+    result = authenticate_token(get_db(), token)
+    if not isinstance(result, AuthOk):
+        logger.warning("WS auth failed: %s (client: %s)", result.code, client_ip)
+        ws.close(4001, result.message)
         return False
-
-    db = get_db()
-    session = SessionStore(db).find(token)
-    if session is None:
-        logger.warning("WS auth failed: invalid/expired session (client: %s)", client_ip)
-        ws.close(4001, "Invalid or expired session")
-        return False
-
-    user = UserStore(db).find_by_id(session["user_id"])
-    if user is None:
-        logger.warning("WS auth failed: user not found (client: %s)", client_ip)
-        ws.close(4001, "User not found")
-        return False
-
-    if not user.get("is_active", True):
-        logger.warning("WS auth failed: account deactivated (user_id=%s)", session.get("user_id"))
-        ws.close(4001, "Account deactivated")
-        return False
-
-    g.current_user = user
+    g.current_user = result.user
     return True
 
 
