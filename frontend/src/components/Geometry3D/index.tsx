@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus } from '@/types/cad'
+import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, PartFeature } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 // Vertex/point rendering
@@ -18,7 +18,9 @@ import { TopologySurfaces, TopologyEdges } from '@/components/Geometry3D/Surface
 
 // Dragging
 import { DragPlane, DragSnapIndicator, DragAlignmentIndicator } from '@/components/Geometry3D/Dragging'
-import { applyDragPreview } from '@/components/Geometry3D/dragLogic'
+
+// Soft solve: frontend-only drag preview honoring coincidence constraints
+import { softSolve } from '@/utils/softSolve'
 
 // Drawing tools
 import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'
@@ -42,17 +44,22 @@ export interface Geometry3DProps {
   entityStatus?: EntityStatus
   showDebugHit?: boolean
   otherSketches?: Record<string, Sketch>
+  /** Full feature definition; used by soft solve to honour coincidence constraints during drag. */
+  featureDef?: PartFeature
 }
 
-export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, solveStatus, entityStatus, showDebugHit, otherSketches }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, solveStatus, entityStatus, showDebugHit, otherSketches, featureDef }: Geometry3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const drag = useSketchEditorStore(s => s.drag)
 
-  // During drag on this feature, show optimistic preview
+  // During drag on this feature, show soft-solve preview (honours coincidence constraints,
+  // other constraints relax silently). Hard solve fires on pointer-up via onMutation.
   const displaySketch = useMemo(() => {
-    if (drag && drag.featureId === featureId) return applyDragPreview(solved, drag)
+    if (drag && drag.featureId === featureId) {
+      return softSolve({ sketch: solved, drag, feature: featureDef })
+    }
     return solved
-  }, [solved, drag, featureId])
+  }, [solved, drag, featureId, featureDef])
 
   const extent = useMemo(() => sketchExtent(displaySketch), [displaySketch])
   const rot = planeTransform ? planeRotationFromTransform(planeTransform) : planeRotation(plane)
