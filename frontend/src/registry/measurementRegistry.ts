@@ -291,17 +291,17 @@ export function measurePointToPlane(point: PointEntity, plane: Plane3D): string[
 function findBodyElement(
   id: string,
   bodies: Record<string, BodyResult>
-): { body: BodyResult; kind: 'edge' | 'face'; index: number } | null {
-  // Simple slash format: @featureId/edge/N or @featureId/face/N
+): { body: BodyResult; kind: 'edge' | 'face' | 'vertex'; index: number } | null {
+  // Simple slash format: @featureId/edge/N, @featureId/face/N, or @featureId/vertex/N
   if (id.startsWith('@') && id.includes('/')) {
     const slash1 = id.indexOf('/', 1)
     const slash2 = id.indexOf('/', slash1 + 1)
     if (slash1 > 0 && slash2 > 0) {
       const featureId = id.slice(1, slash1)
-      const kind = id.slice(slash1 + 1, slash2) as 'edge' | 'face'
+      const kind = id.slice(slash1 + 1, slash2) as 'edge' | 'face' | 'vertex'
       const index = parseInt(id.slice(slash2 + 1), 10)
       const body = bodies[featureId]
-      if (body && (kind === 'edge' || kind === 'face') && !isNaN(index)) {
+      if (body && (kind === 'edge' || kind === 'face' || kind === 'vertex') && !isNaN(index)) {
         return { body, kind, index }
       }
     }
@@ -315,6 +315,10 @@ function findBodyElement(
     if (body.mesh?.face_queries) {
       const idx = body.mesh.face_queries.indexOf(id)
       if (idx >= 0) return { body, kind: 'face', index: idx }
+    }
+    if (body.vertex_queries) {
+      const idx = body.vertex_queries.indexOf(id)
+      if (idx >= 0) return { body, kind: 'vertex', index: idx }
     }
   }
   return null
@@ -372,6 +376,52 @@ export function measure3dSelection(
     const foundA = findBodyElement(idA, bodies)
     const foundB = findBodyElement(idB, bodies)
     if (!foundA || !foundB) return []
+
+    // ─── Face + Face: parallel plane distance ───
+    if (foundA.kind === 'face' && foundB.kind === 'face') {
+      const fA = foundA.body.mesh?.face_data?.[foundA.index]
+      const fB = foundB.body.mesh?.face_data?.[foundB.index]
+      if (!fA || !fB) return []
+      const dot = Math.abs(fA.normal[0] * fB.normal[0] + fA.normal[1] * fB.normal[1] + fA.normal[2] * fB.normal[2])
+      if (Math.abs(dot - 1) > 1e-6) return []
+      const dx = fB.centroid[0] - fA.centroid[0], dy = fB.centroid[1] - fA.centroid[1], dz = fB.centroid[2] - fA.centroid[2]
+      const dist = Math.abs(dx * fA.normal[0] + dy * fA.normal[1] + dz * fA.normal[2])
+      return [`plane distance: ${dist.toFixed(2)} mm`]
+    }
+
+    // ─── Face + Vertex: perpendicular distance ───
+    if ((foundA.kind === 'face' && foundB.kind === 'vertex') || (foundA.kind === 'vertex' && foundB.kind === 'face')) {
+      const faceFound = foundA.kind === 'face' ? foundA : foundB
+      const vertFound = foundA.kind === 'vertex' ? foundA : foundB
+      const fd = faceFound.body.mesh?.face_data?.[faceFound.index]
+      const v = vertFound.body.vertices?.[vertFound.index]
+      if (!fd || !v) return []
+      const dx = v[0] - fd.centroid[0], dy = v[1] - fd.centroid[1], dz = v[2] - fd.centroid[2]
+      const dist = Math.abs(dx * fd.normal[0] + dy * fd.normal[1] + dz * fd.normal[2])
+      return [`plane distance: ${dist.toFixed(2)} mm`]
+    }
+
+    // ─── Face + Edge: perpendicular distance from edge midpoint ───
+    if ((foundA.kind === 'face' && foundB.kind === 'edge') || (foundA.kind === 'edge' && foundB.kind === 'face')) {
+      const faceFound = foundA.kind === 'face' ? foundA : foundB
+      const edgeFound = foundA.kind === 'edge' ? foundA : foundB
+      const fd = faceFound.body.mesh?.face_data?.[faceFound.index]
+      const edge = edgeFound.body.edges?.[edgeFound.index]
+      if (!fd || !edge || edge.kind !== 'line') return []
+      const mx = (edge.start[0] + edge.end[0]) / 2
+      const my = (edge.start[1] + edge.end[1]) / 2
+      const mz = (edge.start[2] + edge.end[2]) / 2
+      const dx = mx - fd.centroid[0], dy = my - fd.centroid[1], dz = mz - fd.centroid[2]
+      const dist = Math.abs(dx * fd.normal[0] + dy * fd.normal[1] + dz * fd.normal[2])
+      return [`plane distance: ${dist.toFixed(2)} mm`]
+    }
+
+    // ─── Face + anything else: no match ───
+    if (foundA.kind === 'face' || foundB.kind === 'face') return []
+
+    // ─── Vertex + anything else: no match ───
+    if (foundA.kind === 'vertex' || foundB.kind === 'vertex') return []
+
     if (foundA.kind !== 'edge' || foundB.kind !== 'edge') return []
 
     const edgeA = foundA.body.edges?.[foundA.index]

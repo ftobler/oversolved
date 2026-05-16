@@ -399,4 +399,85 @@ describe('Measurement Selection and Evaluation', () => {
       expect(r).toEqual([])
     })
   })
+
+  describe('20. 3D body face+face parallel distance', () => {
+    const bodyResult: BodyResult = {
+      id: 'body_ex1', created_by: 'ex1', modified_by: [],
+      edges: [],
+      mesh: {
+        vertices: [], faces: [], normals: [],
+        face_data: [
+          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 10 },
+          { centroid: [0, 0, 5], normal: [0, 0, 1], area: 10 },
+        ],
+        face_queries: ['face0', 'face1'],
+      },
+    }
+    const bodies = { ex1: bodyResult }
+
+    it('measures distance between two parallel faces', () => {
+      const r = computeMeasurements(new Set(['@ex1/face/0', '@ex1/face/1']), sketch, undefined, bodies)
+      expect(r).toEqual(['plane distance: 5.00 mm'])
+    })
+
+    it('returns empty for non-parallel faces', () => {
+      const bodyNonParallel: BodyResult = {
+        ...bodyResult,
+        mesh: {
+          ...bodyResult.mesh!,
+          face_data: [
+            { centroid: [0, 0, 0], normal: [0, 0, 1], area: 10 },
+            { centroid: [0, 0, 0], normal: [1, 0, 0], area: 10 },
+          ],
+        },
+      }
+      const r = computeMeasurements(new Set(['@ex1/face/0', '@ex1/face/1']), sketch, undefined, { ex1: bodyNonParallel })
+      expect(r).toEqual([])
+    })
+  })
+
+  describe('21. 3D body face+vertex perpendicular distance', () => {
+    const bodyResult: BodyResult = {
+      id: 'body_ex1', created_by: 'ex1', modified_by: [],
+      edges: [],
+      vertices: [[0, 0, 10] as [number, number, number]],
+      vertex_queries: ['vert0'],
+      mesh: {
+        vertices: [], faces: [], normals: [],
+        face_data: [
+          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 10 },
+        ],
+        face_queries: ['face0'],
+      },
+    }
+    const bodies = { ex1: bodyResult }
+
+    it('measures perpendicular distance from vertex to face plane', () => {
+      const r = computeMeasurements(new Set(['@ex1/face/0', '@ex1/vertex/0']), sketch, undefined, bodies)
+      expect(r).toEqual(['plane distance: 10.00 mm'])
+    })
+  })
+
+  describe('22. 3D body face+edge perpendicular distance', () => {
+    const bodyResult: BodyResult = {
+      id: 'body_ex1', created_by: 'ex1', modified_by: [],
+      edges: [
+        { kind: 'line', start: [0, 0, 10], end: [4, 0, 10] },
+      ],
+      edge_queries: ['edge0'],
+      mesh: {
+        vertices: [], faces: [], normals: [],
+        face_data: [
+          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 10 },
+        ],
+        face_queries: ['face0'],
+      },
+    }
+    const bodies = { ex1: bodyResult }
+
+    it('measures perpendicular distance from edge midpoint to face plane', () => {
+      const r = computeMeasurements(new Set(['@ex1/face/0', '@ex1/edge/0']), sketch, undefined, bodies)
+      expect(r).toEqual(['plane distance: 10.00 mm'])
+    })
+  })
 })
