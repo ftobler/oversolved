@@ -1,3 +1,13 @@
+/**
+ * selectionId.ts -- stable selection identity contract
+ *
+ * All entries written into `normalSelection` are ancestral query strings or
+ * `entity:`/`vertex:` IDs convertible to ancestral queries via `parseTarget`
+ * (in yamlMutations/helpers.ts).  Raw topological indices (e.g. `/face/0`,
+ * `/edge/3`) only appear here as a last-resort fallback when the backend has
+ * not yet provided named face/edge queries; the consumer (parseTarget) treats
+ * them correctly regardless.  No handler may store a bare integer index.
+ */
 import type { SelectionId, EntitySelectionId, VertexSelectionId, FaceSelectionId, EdgeSelectionId, PlaneSelectionId, ConstraintSelId } from "@/types/query"
 import { parseQuery } from "@/utils/query"
 import type { Query } from "@/types/query"
