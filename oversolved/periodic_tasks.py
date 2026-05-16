@@ -2,6 +2,7 @@
 
 import logging
 from datetime import datetime, timedelta, timezone
+from croniter import croniter, CroniterBadCronError
 
 logger = logging.getLogger(__name__)
 
@@ -31,56 +32,28 @@ class PeriodicTask:
 def _cron_next(cron_expr: str, from_time: datetime) -> datetime:
     """Compute the next scheduled run time after from_time for a cron expression.
 
-    Supports simple expressions like:
+    Supports the full cron syntax via croniter, including:
     - "0 2 * * *" (daily at 2:00 AM)
     - "0 */6 * * *" (every 6 hours)
     - "0 0 * * 0" (weekly on Sunday)
+    - "*/30 * * * *" (every 30 minutes)
+    - "0,30 * * * *" (at :00 and :30 each hour)
     """
     parts = cron_expr.strip().split()
     if len(parts) != 5:
-        raise ValueError(f"Invalid cron expression: {cron_expr}")
+        raise ValueError(f"Invalid cron expression: {cron_expr!r}")
 
-    minute_str, hour_str, day_str, month_str, dow_str = parts
-    minute = int(minute_str)
+    try:
+        # strip tzinfo for croniter; restore it afterwards
+        naive = from_time.replace(tzinfo=None) if from_time.tzinfo else from_time
+        it = croniter(cron_expr, naive)
+        next_dt: datetime = it.get_next(datetime)
+    except (CroniterBadCronError, ValueError) as exc:
+        raise ValueError(f"Invalid cron expression: {cron_expr!r}") from exc
 
-    # Handle daily/weekly with fixed minute/hour
-    if day_str == "*" and month_str == "*":
-        # Weekly on specific day of week
-        if dow_str != "*":
-            cron_dow = int(dow_str) % 7
-            target_dow = (cron_dow + 6) % 7  # Convert cron DOW (Sun=0) to Python (Mon=0)
-            days_ahead = (target_dow - from_time.weekday()) % 7
-            if days_ahead == 0 and not hour_str.startswith("*/"):
-                hour = int(hour_str)
-                target = from_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
-                if target > from_time:
-                    return target
-                days_ahead = 7
-            target = from_time + timedelta(days=days_ahead)
-            hour = int(hour_str)
-            return target.replace(hour=hour, minute=minute, second=0, microsecond=0)
-
-        # Daily at specific time
-        if not hour_str.startswith("*/"):
-            hour = int(hour_str)
-            target = from_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            if target <= from_time:
-                target += timedelta(days=1)
-            return target
-
-        # Every N hours starting from next interval
-        interval = int(hour_str[2:])
-        next_hour = ((from_time.hour // interval) + 1) * interval
-        if next_hour >= 24:
-            next_hour = 0
-            target = from_time + timedelta(days=1)
-        else:
-            target = from_time
-        return target.replace(hour=next_hour, minute=minute, second=0, microsecond=0)
-
-    # Fallback: next day at midnight
-    logger.warning("unhandled cron expression %r, defaulting to tomorrow midnight", cron_expr)
-    return (from_time + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if from_time.tzinfo is not None:
+        next_dt = next_dt.replace(tzinfo=from_time.tzinfo)
+    return next_dt
 
 
 def _parse_cron(cron_expr: str) -> datetime:

@@ -2,6 +2,37 @@
 
 from oversolved.db.migrations import Database
 
+# Columns returned by auth lookup methods (no provider_data, no created_at,
+# no document_sort_preference — password_hash is included for credential check).
+_AUTH_COLUMNS = (
+    "id", "username", "password_hash", "email", "external_id", "provider",
+    "must_change_password", "is_admin", "is_active", "last_login_at", "updated_at",
+)
+
+# Full column set returned by find_by_id (no password_hash; includes extras).
+_FULL_COLUMNS = (
+    "id", "username", "email", "external_id", "provider",
+    "provider_data", "must_change_password", "is_admin",
+    "is_active", "created_at", "last_login_at", "updated_at",
+    "document_sort_preference",
+)
+
+# Columns that are stored as integers but should be surfaced as booleans.
+_BOOL_COLUMNS = {"must_change_password", "is_admin", "is_active"}
+
+
+def _row_to_user(row, columns: tuple) -> dict:
+    """Map a DB row tuple to a user dict, coercing boolean columns."""
+    result: dict = {}
+    for col, val in zip(columns, row):
+        if col in _BOOL_COLUMNS:
+            result[col] = bool(val)
+        elif col == "document_sort_preference" and val is None:
+            result[col] = "alphabetical"
+        else:
+            result[col] = val
+    return result
+
 
 class AccountStore:
     """Unified accounts table for user namespace tracking."""
@@ -85,107 +116,43 @@ class UserStore:
 
     def find_by_username(self, username: str) -> dict | None:
         """Find a user by username."""
+        cols = ", ".join(_AUTH_COLUMNS)
         cursor = self.db.execute(
-            """SELECT id, username, password_hash, email, external_id, provider,
-                      must_change_password, is_admin, is_active, last_login_at, updated_at
-               FROM users WHERE username = ?""",
+            f"SELECT {cols} FROM users WHERE username = ?",
             (username,),
         )
         row = cursor.fetchone()
-        if row is None:
-            return None
-        return {
-            "id": row[0],
-            "username": row[1],
-            "password_hash": row[2],
-            "email": row[3],
-            "external_id": row[4],
-            "provider": row[5],
-            "must_change_password": bool(row[6]),
-            "is_admin": bool(row[7]),
-            "is_active": bool(row[8]),
-            "last_login_at": row[9],
-            "updated_at": row[10],
-        }
+        return _row_to_user(row, _AUTH_COLUMNS) if row is not None else None
 
     def find_by_email(self, email: str) -> dict | None:
         """Find a user by email (case-insensitive)."""
+        cols = ", ".join(_AUTH_COLUMNS)
         cursor = self.db.execute(
-            """SELECT id, username, password_hash, email, external_id, provider,
-                      must_change_password, is_admin, is_active, last_login_at, updated_at
-               FROM users WHERE LOWER(email) = LOWER(?)""",
+            f"SELECT {cols} FROM users WHERE LOWER(email) = LOWER(?)",
             (email,),
         )
         row = cursor.fetchone()
-        if row is None:
-            return None
-        return {
-            "id": row[0],
-            "username": row[1],
-            "password_hash": row[2],
-            "email": row[3],
-            "external_id": row[4],
-            "provider": row[5],
-            "must_change_password": bool(row[6]),
-            "is_admin": bool(row[7]),
-            "is_active": bool(row[8]),
-            "last_login_at": row[9],
-            "updated_at": row[10],
-        }
+        return _row_to_user(row, _AUTH_COLUMNS) if row is not None else None
 
     def find_by_external_id(self, external_id: str, provider: str) -> dict | None:
         """Find a user by OAuth external_id and provider."""
+        cols = ", ".join(_AUTH_COLUMNS)
         cursor = self.db.execute(
-            """SELECT id, username, password_hash, email, external_id, provider,
-                      must_change_password, is_admin, is_active, last_login_at, updated_at
-               FROM users WHERE external_id = ? AND provider = ?""",
+            f"SELECT {cols} FROM users WHERE external_id = ? AND provider = ?",
             (external_id, provider),
         )
         row = cursor.fetchone()
-        if row is None:
-            return None
-        return {
-            "id": row[0],
-            "username": row[1],
-            "password_hash": row[2],
-            "email": row[3],
-            "external_id": row[4],
-            "provider": row[5],
-            "must_change_password": bool(row[6]),
-            "is_admin": bool(row[7]),
-            "is_active": bool(row[8]),
-            "last_login_at": row[9],
-            "updated_at": row[10],
-        }
+        return _row_to_user(row, _AUTH_COLUMNS) if row is not None else None
 
     def find_by_id(self, user_id: int) -> dict | None:
         """Find a user by id."""
+        cols = ", ".join(_FULL_COLUMNS)
         cursor = self.db.execute(
-            """SELECT id, username, email, external_id, provider,
-                      provider_data, must_change_password, is_admin,
-                      is_active, created_at, last_login_at, updated_at,
-                      document_sort_preference
-               FROM users WHERE id = ?""",
+            f"SELECT {cols} FROM users WHERE id = ?",
             (user_id,),
         )
         row = cursor.fetchone()
-        if row is None:
-            return None
-        return {
-            "id": row[0],
-            "username": row[1],
-            "email": row[2],
-            "external_id": row[3],
-            "provider": row[4],
-            "provider_data": row[5],
-            "must_change_password": bool(row[6]),
-            "is_admin": bool(row[7]),
-            "is_active": bool(row[8]),
-            "created_at": row[9],
-            "last_login_at": row[10],
-            "updated_at": row[11],
-            "document_sort_preference": row[12] or "alphabetical",
-        }
+        return _row_to_user(row, _FULL_COLUMNS) if row is not None else None
 
     def update(self, user_id: int, **fields) -> bool:
         """Update user fields. Returns True if user was found and updated."""

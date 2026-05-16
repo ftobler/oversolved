@@ -1,3 +1,11 @@
+"""Public solver facade.
+
+This module is the single stable import surface for the CAD solver.
+All callers should import from ``oversolved.kernel.solver``; the submodules
+(solver_plane, solver_registry, solver_features_*, etc.) are implementation
+details and may change without notice.
+"""
+
 import logging
 import math
 import threading

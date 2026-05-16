@@ -4,13 +4,13 @@ import base64
 import json
 import logging
 import os
-import threading
 from pathlib import Path
-from time import time
 from flask import request, current_app, g
 from flask_sock import Sock
 from oversolved.blueprints import get_db
 from oversolved.auth import authenticate_token, AuthOk
+from oversolved.db import RebuildTimeStore
+from oversolved.rate_limit import RateLimiter
 from oversolved.kernel.build_isolated import BuildIsolator
 from oversolved.kernel.geometry_pack import pack_geometry_update  # noqa: F401 re-export
 
@@ -23,30 +23,20 @@ MAX_MESSAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 # ─── Rate limiting for WS auth failures ───
 
-_auth_failures: dict[str, list[float]] = {}
-_auth_failures_lock = threading.Lock()
+_ws_auth_limiter = RateLimiter(window_s=60, max_events=11)  # blocks on the 11th failure
+
+# Expose internal state for tests that inspect it directly.
+_auth_failures = _ws_auth_limiter._events
 
 
 def _rate_limit_exceeded(ip: str) -> bool:
     """Check if an IP has exceeded the auth failure threshold."""
-    now = time()
-    with _auth_failures_lock:
-        failures = _auth_failures.get(ip, [])
-        failures[:] = [t for t in failures if now - t < 60]
-        if not failures:
-            _auth_failures.pop(ip, None)
-        return len(failures) > 10
+    return _ws_auth_limiter.is_exceeded(ip)
 
 
-def _record_auth_failure(ip: str):
+def _record_auth_failure(ip: str) -> None:
     """Record an auth failure for an IP."""
-    now = time()
-    with _auth_failures_lock:
-        failures = _auth_failures.get(ip)
-        if failures is None:
-            _auth_failures[ip] = [now]
-        else:
-            failures.append(now)
+    _ws_auth_limiter.record(ip)
 
 
 def _check_auth(ws) -> bool:
@@ -183,14 +173,9 @@ def _handle_solve(data, isolator, db, ws):
     if duration_ms is not None and duration_ms > 0 and doc_id:
         feature_count = len(features) if features else 0
         try:
-            db.execute(
-                """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
-                   VALUES (?, ?, ?)""",
-                (doc_id, round(duration_ms), feature_count),
-            )
-            db.commit()
+            RebuildTimeStore(db).record(doc_id, round(duration_ms), feature_count)
         except Exception:
-            db.rollback()
+            pass
 
     geometry_bytes = build_result.pop("_geometry_bytes", None)
 

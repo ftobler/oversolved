@@ -5,7 +5,7 @@ from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request, Response
 from PIL import Image
-from oversolved.db import DocumentStore, UserStore
+from oversolved.db import DocumentStore, UserStore, RebuildTimeStore
 from flask import g
 from oversolved.blueprints import get_db, require_auth, require_csrf, require_doc_permission
 
@@ -294,66 +294,8 @@ def get_thumbnail(uuid):
 @require_csrf
 @require_doc_permission("view", url_var="doc_id")
 def rebuild_stats(doc_id):
-    db = get_db()
-
-    cursor = db.execute(
-        """SELECT duration_ms FROM rebuild_times
-           WHERE document_uuid = ?
-           ORDER BY id DESC""",
-        (doc_id,),
-    )
-    rows = cursor.fetchall()
-    if not rows:
-        return jsonify({
-            "rebuild_count": 0,
-            "last_duration_ms": None,
-            "average_ms": None,
-            "median_ms": None,
-            "min_ms": None,
-            "max_ms": None,
-            "trend": None,
-            "history": [],
-        })
-
-    all_durations = [r[0] for r in rows]
-    count = len(all_durations)
-    last_ms = all_durations[0]
-    avg_ms = sum(all_durations) / count
-    sorted_d = sorted(all_durations)
-    n = count
-    if n % 2 == 1:
-        median_ms = float(sorted_d[n // 2])
-    else:
-        median_ms = (sorted_d[n // 2 - 1] + sorted_d[n // 2]) / 2.0
-    min_ms = sorted_d[0]
-    max_ms = sorted_d[-1]
-
-    if count >= 2:
-        recent = all_durations[:5]
-        older = all_durations[-5:] if count >= 5 else all_durations[1:]
-        recent_avg = sum(recent) / len(recent)
-        older_avg = sum(older) / len(older)
-        if recent_avg < older_avg * 0.9:
-            trend = "faster"
-        elif recent_avg > older_avg * 1.1:
-            trend = "slower"
-        else:
-            trend = "stable"
-    else:
-        trend = None
-
-    history = all_durations[:20]
-
-    return jsonify({
-        "rebuild_count": count,
-        "last_duration_ms": last_ms,
-        "average_ms": avg_ms,
-        "median_ms": median_ms,
-        "min_ms": min_ms,
-        "max_ms": max_ms,
-        "trend": trend,
-        "history": history,
-    })
+    stats = RebuildTimeStore(get_db()).compute_stats(doc_id)
+    return jsonify(stats)
 
 
 @documents_bp.route("/import", methods=["POST"])

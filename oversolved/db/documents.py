@@ -309,35 +309,63 @@ class DocumentStore:
         row = cursor.fetchone()
         return row[0] if row else None
 
-    def list_owned_and_shared(self, user_id: int, sort: str = "name", include_shared: bool = True) -> list[dict]:
-        """List documents owned by or shared with a user."""
+    def _documents_query(
+        self, filter_type: str, search: str, sort: str, user_id: int
+    ) -> tuple[str, tuple]:
+        """Build (sql, params) for a document listing query.
+
+        filter_type: "all" | "owned" | "shared" | "public"
+        search: optional LIKE filter on name (empty = no filter)
+        sort: key from _SORT_ORDERS, defaults to name
+        user_id: caller's user id (unused for "public" filter)
+        """
         order = self._SORT_ORDERS.get(sort, "name")
+        like = f"%{search}%" if search else None
 
-        if include_shared:
-            cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image,
-                            d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
-                    FROM documents d
-                    JOIN users u ON d.owner_id = u.id
-                    WHERE d.deleted_at IS NULL
-                      AND (d.owner_id = ?
-                         OR EXISTS (SELECT 1 FROM document_shares
-                                     WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
-                         OR d.is_public = 1)
-                    ORDER BY {order}""",
-                (user_id, user_id),
-            )
-        else:
-            cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image,
-                            d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
-                    FROM documents d
-                    JOIN users u ON d.owner_id = u.id
-                    WHERE d.deleted_at IS NULL AND d.owner_id = ?
-                    ORDER BY {order}""",
-                (user_id,),
-            )
+        select = (
+            "SELECT d.uuid, d.name, d.preview_image, "
+            "d.created_at, d.updated_at, d.owner_id, u.username, d.is_public "
+            "FROM documents d JOIN users u ON d.owner_id = u.id "
+        )
 
+        if filter_type == "owned":
+            where = "WHERE d.deleted_at IS NULL AND d.owner_id = ?"
+            params: tuple = (user_id,)
+        elif filter_type == "shared":
+            select = (
+                "SELECT DISTINCT d.uuid, d.name, d.preview_image, "
+                "d.created_at, d.updated_at, d.owner_id, u.username, d.is_public "
+                "FROM documents d JOIN users u ON d.owner_id = u.id "
+                "JOIN document_shares ds ON d.uuid = ds.document_uuid "
+            )
+            where = "WHERE d.deleted_at IS NULL AND ds.shared_with_user_id = ? AND d.owner_id != ?"
+            params = (user_id, user_id)
+        elif filter_type == "public":
+            where = "WHERE d.deleted_at IS NULL AND d.is_public = 1"
+            params = ()
+        else:  # all
+            where = (
+                "WHERE d.deleted_at IS NULL "
+                "AND (d.owner_id = ? "
+                "OR EXISTS (SELECT 1 FROM document_shares "
+                "WHERE document_uuid = d.uuid AND shared_with_user_id = ?) "
+                "OR d.is_public = 1)"
+            )
+            params = (user_id, user_id)
+
+        if like is not None:
+            where += " AND LOWER(d.name) LIKE LOWER(?)"
+            params = params + (like,)
+
+        sql = f"{select}{where} ORDER BY {order}"
+        return sql, params
+
+    def _execute_documents_query(
+        self, filter_type: str, search: str, sort: str, user_id: int
+    ) -> list[dict]:
+        """Execute a documents listing query and map rows to dicts."""
+        sql, params = self._documents_query(filter_type, search, sort, user_id)
+        cursor = self.db.execute(sql, params)
         return [
             {
                 "uuid": row[0],
@@ -352,139 +380,28 @@ class DocumentStore:
             for row in cursor.fetchall()
         ]
 
+    def list_owned_and_shared(self, user_id: int, sort: str = "name", include_shared: bool = True) -> list[dict]:
+        """List documents owned by or shared with a user."""
+        filter_type = "all" if include_shared else "owned"
+        return self._execute_documents_query(filter_type, "", sort, user_id)
+
     def list_public(self, sort: str = "name") -> list[dict]:
         """List all public documents with owner username."""
-        order = self._SORT_ORDERS.get(sort, "name")
-        cursor = self.db.execute(
-            f"""SELECT d.uuid, d.name, d.preview_image,
-                        d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
-                FROM documents d
-                JOIN users u ON d.owner_id = u.id
-                WHERE d.deleted_at IS NULL AND d.is_public = 1
-                ORDER BY {order}""",
-        )
-        return [
-            {
-                "uuid": row[0],
-                "name": row[1],
-                "preview_image": _to_bytes(row[2]),
-                "created_at": row[3],
-                "updated_at": row[4],
-                "is_owner": False,
-                "owner_username": row[6],
-                "is_public": bool(row[7]),
-            }
-            for row in cursor.fetchall()
-        ]
+        return self._execute_documents_query("public", "", sort, 0)
 
     def list_shared_with(self, user_id: int, sort: str = "name") -> list[dict]:
         """List documents explicitly shared with this user (excluding owned and public-only)."""
-        order = self._SORT_ORDERS.get(sort, "name")
-        cursor = self.db.execute(
-            f"""SELECT DISTINCT d.uuid, d.name, d.preview_image,
-                        d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
-                FROM documents d
-                JOIN users u ON d.owner_id = u.id
-                JOIN document_shares ds ON d.uuid = ds.document_uuid
-                WHERE d.deleted_at IS NULL AND ds.shared_with_user_id = ? AND d.owner_id != ?
-                ORDER BY {order}""",
-            (user_id, user_id),
-        )
-        return [
-            {
-                "uuid": row[0],
-                "name": row[1],
-                "preview_image": _to_bytes(row[2]),
-                "created_at": row[3],
-                "updated_at": row[4],
-                "is_owner": False,
-                "owner_username": row[6],
-                "is_public": bool(row[7]),
-            }
-            for row in cursor.fetchall()
-        ]
+        return self._execute_documents_query("shared", "", sort, user_id)
 
     def search_by_name(self, user_id: int, search_query: str,
                        filter_type: str = "all", sort: str = "name") -> list[dict]:
         """Server-side case-insensitive search across documents visible to the user."""
-        order = self._SORT_ORDERS.get(sort, "name")
-
-        like = f"%{search_query}%"
-
-        if filter_type == "owned":
-            cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image,
-                            d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
-                FROM documents d
-                    JOIN users u ON d.owner_id = u.id
-                    WHERE d.deleted_at IS NULL AND d.owner_id = ? AND LOWER(d.name) LIKE LOWER(?)
-                    ORDER BY {order}""",
-                (user_id, like),
-            )
-        elif filter_type == "shared":
-            cursor = self.db.execute(
-                f"""SELECT DISTINCT d.uuid, d.name, d.preview_image,
-                            d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
-                FROM documents d
-                    JOIN users u ON d.owner_id = u.id
-                    JOIN document_shares ds ON d.uuid = ds.document_uuid
-                    WHERE d.deleted_at IS NULL AND ds.shared_with_user_id = ? AND d.owner_id != ?
-                      AND LOWER(d.name) LIKE LOWER(?)
-                    ORDER BY {order}""",
-                (user_id, user_id, like),
-            )
-        elif filter_type == "public":
-            cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image,
-                            d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
-                FROM documents d
-                    JOIN users u ON d.owner_id = u.id
-                    WHERE d.deleted_at IS NULL AND d.is_public = 1 AND LOWER(d.name) LIKE LOWER(?)
-                    ORDER BY {order}""",
-                (like,),
-            )
-        else:  # all
-            cursor = self.db.execute(
-                f"""SELECT d.uuid, d.name, d.preview_image,
-                            d.created_at, d.updated_at, d.owner_id, u.username, d.is_public
-                FROM documents d
-                    JOIN users u ON d.owner_id = u.id
-                    WHERE d.deleted_at IS NULL AND (d.owner_id = ?
-                       OR EXISTS (SELECT 1 FROM document_shares
-                                   WHERE document_uuid = d.uuid AND shared_with_user_id = ?)
-                       OR d.is_public = 1)
-                    AND LOWER(d.name) LIKE LOWER(?)
-                    ORDER BY {order}""",
-                (user_id, user_id, like),
-            )
-
-        return [
-            {
-                "uuid": row[0],
-                "name": row[1],
-                "preview_image": _to_bytes(row[2]),
-                "created_at": row[3],
-                "updated_at": row[4],
-                "is_owner": row[5] == user_id,
-                "owner_username": row[6],
-                "is_public": bool(row[7]),
-            }
-            for row in cursor.fetchall()
-        ]
+        return self._execute_documents_query(filter_type, search_query, sort, user_id)
 
     def list_by_filter(self, user_id: int, filter_type: str = "owned",
                        sort: str = "name", search: str = "") -> list[dict]:
         """Unified method: list documents by filter type with optional search."""
-        if search:
-            return self.search_by_name(user_id, search, filter_type, sort)
-        if filter_type == "public":
-            return self.list_public(sort)
-        if filter_type == "shared":
-            return self.list_shared_with(user_id, sort)
-        if filter_type == "all":
-            return self.list_owned_and_shared(user_id, sort, include_shared=True)
-        # owned
-        return self.list_owned_and_shared(user_id, sort, include_shared=False)
+        return self._execute_documents_query(filter_type, search, sort, user_id)
 
     def list_by_owner(self, owner_id: int, sort: str = "name") -> list[dict]:
         """List all documents for an owner."""

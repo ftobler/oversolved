@@ -16,13 +16,14 @@ class TestCronNext:
             _cron_next("@monthly", from_time)
 
     def test_cron_next_day_of_month(self):
-        """0 0 15 * * (15th day of month) is unhandled, falls to tomorrow midnight."""
+        """0 0 15 * * (15th day of month) returns the 15th of the current or next month."""
         from_time = datetime(2025, 6, 10, 10, 30, 0)
         result = _cron_next("0 0 15 * *", from_time)
-        expected = (from_time + timedelta(days=1)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        assert result == expected
+        # croniter correctly computes the next 15th at midnight
+        assert result.day == 15
+        assert result.hour == 0
+        assert result.minute == 0
+        assert result > from_time
 
     def test_cron_next_invalid_expression(self):
         """Invalid cron expressions should raise ValueError."""
@@ -52,6 +53,26 @@ class TestCronNext:
             hour=0, minute=0, second=0, microsecond=0
         )
         assert result == expected
+
+    def test_cron_supports_step_minute(self):
+        """*/30 * * * * fires every 30 minutes."""
+        from_time = datetime(2025, 6, 15, 10, 5, 0)
+        result = _cron_next("*/30 * * * *", from_time)
+        assert result == datetime(2025, 6, 15, 10, 30, 0)
+
+        from_time2 = datetime(2025, 6, 15, 10, 30, 0)
+        result2 = _cron_next("*/30 * * * *", from_time2)
+        assert result2 == datetime(2025, 6, 15, 11, 0, 0)
+
+    def test_cron_supports_lists(self):
+        """0,30 * * * * fires at minute 0 and minute 30."""
+        from_time = datetime(2025, 6, 15, 10, 1, 0)
+        result = _cron_next("0,30 * * * *", from_time)
+        assert result == datetime(2025, 6, 15, 10, 30, 0)
+
+        from_time2 = datetime(2025, 6, 15, 10, 30, 0)
+        result2 = _cron_next("0,30 * * * *", from_time2)
+        assert result2 == datetime(2025, 6, 15, 11, 0, 0)
 
 
 class TestEmptyTrashTask:

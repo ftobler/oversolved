@@ -1,12 +1,11 @@
 """Authentication routes."""
 
-import threading
 from datetime import datetime, timezone
-from time import time
 from flask import Blueprint, jsonify, request, make_response, current_app
 from werkzeug.security import check_password_hash, generate_password_hash
 from oversolved.db import UserStore, SessionStore
 from oversolved.blueprints import get_db, require_csrf
+from oversolved.rate_limit import RateLimiter
 
 DUMMY_HASH = generate_password_hash("dummy")
 
@@ -14,35 +13,26 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 # ─── Rate limiting for login ───
 
-_login_failures: dict[str, list[float]] = {}
-_login_failures_lock = threading.Lock()
 _LOGIN_RATE_LIMIT = 10
 _LOGIN_RATE_WINDOW = 60
 
+_login_limiter = RateLimiter(window_s=_LOGIN_RATE_WINDOW, max_events=_LOGIN_RATE_LIMIT)
+
+# Expose internals for tests that inspect state directly.
+_login_failures = _login_limiter._events
+_login_failures_lock = _login_limiter._lock
+
 
 def _login_rate_limit_exceeded(ip: str) -> bool:
-    now = time()
-    with _login_failures_lock:
-        failures = _login_failures.get(ip, [])
-        failures[:] = [t for t in failures if now - t < _LOGIN_RATE_WINDOW]
-        if not failures:
-            _login_failures.pop(ip, None)
-        return len(failures) >= _LOGIN_RATE_LIMIT
+    return _login_limiter.is_exceeded(ip)
 
 
-def _record_login_failure(ip: str):
-    now = time()
-    with _login_failures_lock:
-        failures = _login_failures.get(ip)
-        if failures is None:
-            _login_failures[ip] = [now]
-        else:
-            failures.append(now)
+def _record_login_failure(ip: str) -> None:
+    _login_limiter.record(ip)
 
 
-def _clear_login_failures(ip: str):
-    with _login_failures_lock:
-        _login_failures.pop(ip, None)
+def _clear_login_failures(ip: str) -> None:
+    _login_limiter.clear(ip)
 
 
 @auth_bp.route("/login", methods=["POST"])

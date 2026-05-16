@@ -79,7 +79,7 @@ class TestLoginRateLimit:
 
     def test_window_expiry(self, client, monkeypatch):
         fake_time = [1000.0]
-        monkeypatch.setattr("oversolved.blueprints.auth.time", lambda: fake_time[0])
+        monkeypatch.setattr("oversolved.rate_limit.time", lambda: fake_time[0])
 
         for _ in range(_LOGIN_RATE_LIMIT):
             resp = _bad_login(client)

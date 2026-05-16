@@ -7,6 +7,7 @@ from flask import Flask, send_from_directory, g
 from werkzeug.security import generate_password_hash
 from oversolved.db import Database, UserStore
 from oversolved.blueprints import _get_database
+from oversolved.config import OversolvedConfig
 from oversolved.blueprints.auth import auth_bp
 from oversolved.blueprints.users import users_bp
 from oversolved.blueprints.documents import documents_bp
@@ -123,18 +124,14 @@ def create_app(config: dict | None = None) -> Flask:
     _ensure_admin_user(db, testing=app.config.get("TESTING", False))
     db.close()
 
-    # Set default config
-    app.config.setdefault(
-        "UPLOAD_DIR",
-        os.environ.get(
-            "OVERSOLVED_UPLOAD_DIR",
-            os.path.join(app.instance_path, "uploads"),
-        ),
-    )
-    app.config.setdefault("SOLVER_WS_CACHE_MAX_SIZE", 10)
-    app.config.setdefault("WS_AUTH_CHECK_INTERVAL", 50)
-    app.config.setdefault("SOLVER_DAEMON_HOST", os.environ.get("SOLVER_DAEMON_HOST", "127.0.0.1"))
-    app.config.setdefault("SOLVER_DAEMON_PORT", int(os.environ.get("SOLVER_DAEMON_PORT", "9100")))
+    # Build and store structured config; also mirror keys for legacy consumers.
+    oversolved_cfg = OversolvedConfig.from_env(instance_path=app.instance_path)
+    app.config["OVERSOLVED"] = oversolved_cfg
+    app.config.setdefault("UPLOAD_DIR", oversolved_cfg.upload_dir)
+    app.config.setdefault("SOLVER_WS_CACHE_MAX_SIZE", oversolved_cfg.solver_ws_cache_max_size)
+    app.config.setdefault("WS_AUTH_CHECK_INTERVAL", oversolved_cfg.ws_auth_check_interval)
+    app.config.setdefault("SOLVER_DAEMON_HOST", oversolved_cfg.solver_daemon_host)
+    app.config.setdefault("SOLVER_DAEMON_PORT", oversolved_cfg.solver_daemon_port)
 
     # Register blueprints
     app.register_blueprint(auth_bp)
