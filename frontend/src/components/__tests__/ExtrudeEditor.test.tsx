@@ -123,9 +123,10 @@ describe('distance input', () => {
     fireEvent.change(input, { target: { value: '25' } })
     fireEvent.blur(input)
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
-      type: 'set_extrude_distance',
+      type: 'set_extrude_field',
       featureId: 'ex1',
-      distance: 25,
+      field: 'distance',
+      value: 25,
     })
   })
 
@@ -139,7 +140,7 @@ describe('distance input', () => {
     const input = screen.getByRole('spinbutton') as HTMLInputElement
     fireEvent.change(input, { target: { value: '-5' } })
     fireEvent.blur(input)
-    expect(onMutation).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'set_extrude_distance' }))
+    expect(onMutation).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'set_extrude_field' }))
   })
 
   it('dispatches on Enter key (keyDown then blur)', () => {
@@ -156,9 +157,10 @@ describe('distance input', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
     fireEvent.blur(input)
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
-      type: 'set_extrude_distance',
+      type: 'set_extrude_field',
       featureId: 'ex1',
-      distance: 30,
+      field: 'distance',
+      value: 30,
     })
   })
 })
@@ -174,9 +176,10 @@ describe('direction select', () => {
     }, { onMutation })
     fireEvent.change(screen.getByRole('combobox', { name: 'Direction' }), { target: { value: 'symmetric' } })
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
-      type: 'set_extrude_direction',
+      type: 'set_extrude_field',
       featureId: 'ex1',
-      direction: 'symmetric',
+      field: 'direction',
+      value: 'symmetric',
     })
   })
 
@@ -189,9 +192,10 @@ describe('direction select', () => {
     }, { onMutation })
     fireEvent.change(screen.getByRole('combobox', { name: 'Direction' }), { target: { value: 'reverse' } })
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
-      type: 'set_extrude_direction',
+      type: 'set_extrude_field',
       featureId: 'ex1',
-      direction: 'reverse',
+      field: 'direction',
+      value: 'reverse',
     })
   })
 })
@@ -207,9 +211,10 @@ describe('operation select', () => {
     }, { onMutation })
     fireEvent.change(screen.getByRole('combobox', { name: 'Operation' }), { target: { value: 'cut' } })
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
-      type: 'set_extrude_operation',
+      type: 'set_extrude_field',
       featureId: 'ex1',
-      operation: 'cut',
+      field: 'operation',
+      value: 'cut',
     })
   })
 
@@ -227,9 +232,10 @@ describe('operation select', () => {
     }, { onMutation })
     fireEvent.change(screen.getByRole('combobox', { name: 'Operation' }), { target: { value: 'add' } })
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
-      type: 'set_extrude_operation',
+      type: 'set_extrude_field',
       featureId: 'ex1',
-      operation: 'add',
+      field: 'operation',
+      value: 'add',
     })
   })
 })

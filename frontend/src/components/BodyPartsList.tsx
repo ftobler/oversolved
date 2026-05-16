@@ -26,13 +26,14 @@ export function BodyPartsList({ splitPercent }: BodyPartsListProps) {
 
   const handleClick = (bodyId: string) => {
     if (pendingPickField?.field === 'merge_target') {
-      const mutationType = pendingPickField.hostKind === 'revolve'
-        ? 'set_revolve_merge_target'
-        : 'set_extrude_merge_target'
-      onMutation({ type: mutationType, featureId: pendingPickField.featureId, mergeTarget: '@' + bodyId })
+      if (pendingPickField.hostKind === 'revolve') {
+        onMutation({ type: 'set_revolve_field', featureId: pendingPickField.featureId, field: 'merge_target', value: '@' + bodyId })
+      } else {
+        onMutation({ type: 'set_extrude_field', featureId: pendingPickField.featureId, field: 'merge_target', value: '@' + bodyId })
+      }
       onSetPendingPickField(null)
     } else if (pendingPickField?.field === 'boolean_target') {
-      onMutation({ type: 'set_boolean_target', featureId: pendingPickField.featureId, target: '@' + bodyId })
+      onMutation({ type: 'set_boolean_field', featureId: pendingPickField.featureId, field: 'target', value: '@' + bodyId })
       onSetPendingPickField(null)
     } else if (pendingPickField?.field === 'boolean_tool') {
       onMutation({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: '@' + bodyId })
@@ -43,7 +44,7 @@ export function BodyPartsList({ splitPercent }: BodyPartsListProps) {
       onMutation({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'body', value: '@' + bodyId })
       onSetPendingPickField(null)
     } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'delete_body') {
-      onMutation({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: '@' + bodyId })
+      onMutation({ type: 'set_delete_body_field', featureId: pendingPickField.featureId, field: 'body', value: '@' + bodyId })
       onSetPendingPickField(null)
     } else {
       onToggleSelect(`@${bodyId}`)

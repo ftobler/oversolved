@@ -1,4 +1,4 @@
-import type { PartFeature, Mutation, PendingPickField, BooleanFeatureDef } from '@/types/cad'
+import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 
 interface BooleanEditorProps {
@@ -26,7 +26,7 @@ export function BooleanEditor({ feature, onMutation, pendingPickField, setPendin
           value={bool.operation}
           onChange={(e) => {
             e.stopPropagation()
-            onMutation({ type: 'set_boolean_operation', featureId: fid, operation: e.target.value as BooleanFeatureDef['operation'] })
+            onMutation({ type: 'set_boolean_field', featureId: fid, field: 'operation', value: e.target.value })
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -44,7 +44,7 @@ export function BooleanEditor({ feature, onMutation, pendingPickField, setPendin
             if (isPickingTarget) setPendingPickField(null)
             else setPendingPickField({ featureId: fid, field: 'boolean_target' })
           }}
-          onRemove={() => onMutation({ type: 'set_boolean_target', featureId: fid, target: '' })}
+          onRemove={() => onMutation({ type: 'set_boolean_field', featureId: fid, field: 'target', value: '' })}
           emptyText="(pick target)"
           features={features}
           partLabels={partLabels}
@@ -71,7 +71,7 @@ export function BooleanEditor({ feature, onMutation, pendingPickField, setPendin
           checked={bool.keep_tools ?? false}
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => {
-            onMutation({ type: 'set_boolean_keep_tools', featureId: fid, keepTools: e.target.checked })
+            onMutation({ type: 'set_boolean_field', featureId: fid, field: 'keep_tools', value: e.target.checked })
           }}
         />
       </div>

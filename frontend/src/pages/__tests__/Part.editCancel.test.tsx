@@ -81,7 +81,6 @@ const extrudeFeature: PartFeature = {
 const sketchFeature: PartFeature = {
   id: 'sk1',
   kind: 'sketch',
-  sketch: { entities: [], constraints: [] },
 }
 
 describe('edit commit / cancel buttons', () => {

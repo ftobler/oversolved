@@ -2,11 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import {
   applyAddRevolve,
-  applySetRevolveAngle,
-  applySetRevolveDirection,
-  applySetRevolveAxis,
-  applySetRevolveOperation,
-  applySetRevolveMergeTarget,
+  applySetRevolveField,
   applyAddRevolveProfile,
   applyRemoveRevolveProfile,
   normalizeRevolveSketch,
@@ -183,7 +179,7 @@ describe('set_revolve_angle', () => {
         },
       ],
     }
-    applySetRevolveAngle(doc, 'rev1', 180)
+    applySetRevolveField(doc, 'rev1', 'angle', 180)
     expect(doc.features![0].revolve!.angle).toBe(180)
   })
 
@@ -191,7 +187,7 @@ describe('set_revolve_angle', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() => applySetRevolveAngle(doc, 'rev1', 180)).not.toThrow()
+    expect(() =>     applySetRevolveField(doc, 'rev1', 'angle', 180)).not.toThrow()
     expect(doc.features![0]).not.toHaveProperty('revolve')
   })
 })
@@ -207,7 +203,7 @@ describe('set_revolve_direction', () => {
         },
       ],
     }
-    applySetRevolveDirection(doc, 'rev1', 'reverse')
+    applySetRevolveField(doc, 'rev1', 'direction', 'reverse')
     expect(doc.features![0].revolve!.direction).toBe('reverse')
   })
 
@@ -221,7 +217,7 @@ describe('set_revolve_direction', () => {
         },
       ],
     }
-    applySetRevolveDirection(doc, 'rev1', 'symmetric')
+    applySetRevolveField(doc, 'rev1', 'direction', 'symmetric')
     expect(doc.features![0].revolve!.direction).toBe('symmetric')
   })
 
@@ -229,7 +225,7 @@ describe('set_revolve_direction', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() => applySetRevolveDirection(doc, 'rev1', 'reverse')).not.toThrow()
+    expect(() => applySetRevolveField(doc, 'rev1', 'direction', 'reverse')).not.toThrow()
     expect(doc.features![0]).not.toHaveProperty('revolve')
   })
 })
@@ -245,7 +241,7 @@ describe('set_revolve_axis', () => {
         },
       ],
     }
-    applySetRevolveAxis(doc, 'rev1', '?sk1/line1:start@sk1:straightedge')
+    applySetRevolveField(doc, 'rev1', 'axis', '?sk1/line1:start@sk1:straightedge')
     expect(doc.features![0].revolve!.axis).toBe('?sk1/line1:start@sk1:straightedge')
   })
 
@@ -253,7 +249,7 @@ describe('set_revolve_axis', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() => applySetRevolveAxis(doc, 'rev1', '?some:edge')).not.toThrow()
+    expect(() => applySetRevolveField(doc, 'rev1', 'axis', '?some:edge')).not.toThrow()
   })
 })
 
@@ -268,7 +264,7 @@ describe('set_revolve_operation', () => {
         },
       ],
     }
-    applySetRevolveOperation(doc, 'rev1', 'cut')
+    applySetRevolveField(doc, 'rev1', 'operation', 'cut')
     expect(doc.features![0].revolve!.operation).toBe('cut')
   })
 
@@ -282,7 +278,7 @@ describe('set_revolve_operation', () => {
         },
       ],
     }
-    applySetRevolveOperation(doc, 'rev1', 'new')
+    applySetRevolveField(doc, 'rev1', 'operation', 'new')
     expect(doc.features![0].revolve!.operation).toBe('new')
   })
 
@@ -290,7 +286,7 @@ describe('set_revolve_operation', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() => applySetRevolveOperation(doc, 'rev1', 'cut')).not.toThrow()
+    expect(() => applySetRevolveField(doc, 'rev1', 'operation', 'cut')).not.toThrow()
   })
 })
 
@@ -305,7 +301,7 @@ describe('set_revolve_merge_target', () => {
         },
       ],
     }
-    applySetRevolveMergeTarget(doc, 'rev1', '@body_ex0')
+    applySetRevolveField(doc, 'rev1', 'merge_target', '@body_ex0')
     expect(doc.features![0].revolve!.merge_target).toBe('@body_ex0')
   })
 
@@ -319,7 +315,7 @@ describe('set_revolve_merge_target', () => {
         },
       ],
     }
-    applySetRevolveMergeTarget(doc, 'rev1', undefined)
+    applySetRevolveField(doc, 'rev1', 'merge_target', undefined)
     expect(doc.features![0].revolve!).not.toHaveProperty('merge_target')
   })
 
@@ -333,7 +329,7 @@ describe('set_revolve_merge_target', () => {
         },
       ],
     }
-    applySetRevolveMergeTarget(doc, 'rev1', '')
+    applySetRevolveField(doc, 'rev1', 'merge_target', '')
     expect(doc.features![0].revolve!).not.toHaveProperty('merge_target')
   })
 
@@ -341,7 +337,7 @@ describe('set_revolve_merge_target', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() => applySetRevolveMergeTarget(doc, 'rev1', '@body_ex0')).not.toThrow()
+    expect(() => applySetRevolveField(doc, 'rev1', 'merge_target', '@body_ex0')).not.toThrow()
   })
 })
 
@@ -355,7 +351,7 @@ describe('mutation does not mutate original doc', () => {
   it('set_revolve_angle does not mutate original', () => {
     const original = { features: [{ id: 'rev1', kind: 'revolve', revolve: { sketch: '$sk1', angle: 90 } }] }
     const doc = structuredClone(original)
-    applySetRevolveAngle(doc, 'rev1', 180)
+    applySetRevolveField(doc, 'rev1', 'angle', 180)
     expect(original.features![0].revolve!.angle).toBe(90)
   })
 })

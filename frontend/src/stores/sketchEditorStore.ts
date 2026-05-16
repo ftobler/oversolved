@@ -488,7 +488,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         ? selectionId.split(':').slice(2).join(':')  // face pick: pass ancestry query through unchanged
         : selectionId  // raw selection id
       if (pendingPickField.hostKind === 'hole') {
-        onMutation({ type: 'set_hole_sketch', featureId: pendingPickField.featureId, sketch: sketchQuery })
+        onMutation({ type: 'set_hole_field', featureId: pendingPickField.featureId, field: 'sketch', value: sketchQuery })
         set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
         return
       }
@@ -514,22 +514,23 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
           : selectionId.startsWith('edge:')
             ? selectionId.split(':').slice(2).join(':')
             : selectionId
-      onMutation({ type: 'set_revolve_axis', featureId: pendingPickField.featureId, axis: axisQuery })
+      onMutation({ type: 'set_revolve_field', featureId: pendingPickField.featureId, field: 'axis', value: axisQuery })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
       return
     }
     if (pendingPickField.field === 'merge_target') {
       const bodyRef = _resolveBodyRef(selectionId)
-      const mutationType = pendingPickField.hostKind === 'revolve'
-        ? 'set_revolve_merge_target'
-        : 'set_extrude_merge_target'
-      onMutation({ type: mutationType, featureId: pendingPickField.featureId, mergeTarget: bodyRef })
+      if (pendingPickField.hostKind === 'revolve') {
+        onMutation({ type: 'set_revolve_field', featureId: pendingPickField.featureId, field: 'merge_target', value: bodyRef })
+      } else {
+        onMutation({ type: 'set_extrude_field', featureId: pendingPickField.featureId, field: 'merge_target', value: bodyRef })
+      }
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
       return
     }
     if (pendingPickField.field === 'boolean_target') {
       const bodyRef = _resolveBodyRef(selectionId)
-      onMutation({ type: 'set_boolean_target', featureId: pendingPickField.featureId, target: bodyRef })
+      onMutation({ type: 'set_boolean_field', featureId: pendingPickField.featureId, field: 'target', value: bodyRef })
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
       return
     }
@@ -546,7 +547,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       } else if (pendingPickField.hostKind === 'mirror') {
         onMutation({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
       } else {
-        onMutation({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: bodyRef })
+        onMutation({ type: 'set_delete_body_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
       }
       set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
       return

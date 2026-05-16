@@ -49,7 +49,7 @@ export function RevolveEditor({
           onBlur={(e) => {
             const v = parseFloat(e.target.value)
             if (!isNaN(v) && v > 0)
-              onMutation({ type: 'set_revolve_angle', featureId: fid, angle: v })
+              onMutation({ type: 'set_revolve_field', featureId: fid, field: 'angle', value: v })
           }}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
         />
@@ -63,9 +63,10 @@ export function RevolveEditor({
           onChange={(e) => {
             e.stopPropagation()
             onMutation({
-              type: 'set_revolve_direction',
+              type: 'set_revolve_field',
               featureId: fid,
-              direction: e.target.value as 'normal' | 'reverse' | 'symmetric',
+              field: 'direction',
+              value: e.target.value,
             })
           }}
           onClick={(e) => e.stopPropagation()}
@@ -84,9 +85,10 @@ export function RevolveEditor({
           onChange={(e) => {
             e.stopPropagation()
             onMutation({
-              type: 'set_revolve_operation',
+              type: 'set_revolve_field',
               featureId: fid,
-              operation: e.target.value as 'add' | 'cut' | 'new',
+              field: 'operation',
+              value: e.target.value,
             })
           }}
           onClick={(e) => e.stopPropagation()}
@@ -106,7 +108,7 @@ export function RevolveEditor({
               if (isPickingMergeTarget) setPendingPickField(null)
               else setPendingPickField({ featureId: fid, field: 'merge_target', hostKind: 'revolve' })
             }}
-            onRemove={() => onMutation({ type: 'set_revolve_merge_target', featureId: fid })}
+            onRemove={() => onMutation({ type: 'set_revolve_field', featureId: fid, field: 'merge_target', value: undefined })}
             emptyText="(all bodies)"
             features={features}
             partLabels={partLabels}
@@ -122,12 +124,12 @@ export function RevolveEditor({
             if (isPickingAxis) {
               setPendingPickField(null)
             } else if (selectionQuery) {
-              onMutation({ type: 'set_revolve_axis', featureId: fid, axis: selectionQuery })
+              onMutation({ type: 'set_revolve_field', featureId: fid, field: 'axis', value: selectionQuery })
             } else {
               setPendingPickField({ featureId: fid, field: 'axis' })
             }
           }}
-          onRemove={() => onMutation({ type: 'set_revolve_axis', featureId: fid, axis: '' })}
+          onRemove={() => onMutation({ type: 'set_revolve_field', featureId: fid, field: 'axis', value: '' })}
           features={features}
           partLabels={partLabels}
         />

@@ -57,6 +57,6 @@ describe('DeleteBodyEditor', () => {
     render(<DeleteBodyEditor feature={feature} onMutation={onMutation} pendingPickField={null} setPendingPickField={vi.fn()} />)
     const removeBtn = document.querySelector('.feature-pick-chip-item-remove')!
     fireEvent.click(removeBtn)
-    expect(onMutation).toHaveBeenCalledWith({ type: 'set_delete_body_target', featureId: 'db1', body: '' })
+    expect(onMutation).toHaveBeenCalledWith({ type: 'set_delete_body_field', featureId: 'db1', field: 'body', value: '' })
   })
 })

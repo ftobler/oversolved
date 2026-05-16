@@ -20,7 +20,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
           value={mode}
           onChange={(e) => {
             e.stopPropagation()
-            onMutation({ type: 'set_array_mode', featureId: fid, mode: e.target.value as 'linear' | 'rectangular' | 'rotational' })
+            onMutation({ type: 'set_array_field', featureId: fid, field: 'mode', value: e.target.value })
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -37,7 +37,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
           value={array.operation ?? 'add'}
           onChange={(e) => {
             e.stopPropagation()
-            onMutation({ type: 'set_array_operation', featureId: fid, operation: e.target.value as 'add' | 'new' })
+            onMutation({ type: 'set_array_field', featureId: fid, field: 'operation', value: e.target.value })
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -52,7 +52,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
           checked={array.include_source ?? true}
           onChange={(e) => {
             e.stopPropagation()
-            onMutation({ type: 'set_array_include_source', featureId: fid, includeSource: e.target.checked })
+            onMutation({ type: 'set_array_field', featureId: fid, field: 'include_source', value: e.target.checked })
           }}
         />
       </div>
@@ -71,7 +71,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
               onBlur={(e) => {
                 const parts = e.target.value.split(',').map(s => parseFloat(s.trim()))
                 if (parts.length === 3 && parts.every(p => !isNaN(p))) {
-                  onMutation({ type: 'set_array_direction_x', featureId: fid, direction_x: parts as [number, number, number] })
+                  onMutation({ type: 'set_array_field', featureId: fid, field: 'direction_x', value: parts })
                 }
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
@@ -88,7 +88,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
               onBlur={(e) => {
                 const v = parseInt(e.target.value)
                 if (!isNaN(v) && v > 0)
-                  onMutation({ type: 'set_array_count_x', featureId: fid, count: v })
+                  onMutation({ type: 'set_array_field', featureId: fid, field: 'count_x', value: v })
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
             />
@@ -104,7 +104,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
               onBlur={(e) => {
                 const v = parseFloat(e.target.value)
                 if (!isNaN(v) && v >= 0)
-                  onMutation({ type: 'set_array_pitch_x', featureId: fid, pitch: v })
+                  onMutation({ type: 'set_array_field', featureId: fid, field: 'pitch_x', value: v })
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
             />
@@ -123,7 +123,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
               onBlur={(e) => {
                 const parts = e.target.value.split(',').map(s => parseFloat(s.trim()))
                 if (parts.length === 3 && parts.every(p => !isNaN(p))) {
-                  onMutation({ type: 'set_array_direction_y', featureId: fid, direction_y: parts as [number, number, number] })
+                  onMutation({ type: 'set_array_field', featureId: fid, field: 'direction_y', value: parts })
                 }
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
@@ -140,7 +140,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
               onBlur={(e) => {
                 const v = parseInt(e.target.value)
                 if (!isNaN(v) && v > 0)
-                  onMutation({ type: 'set_array_count_y', featureId: fid, count: v })
+                  onMutation({ type: 'set_array_field', featureId: fid, field: 'count_y', value: v })
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
             />
@@ -156,7 +156,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
               onBlur={(e) => {
                 const v = parseFloat(e.target.value)
                 if (!isNaN(v) && v >= 0)
-                  onMutation({ type: 'set_array_pitch_y', featureId: fid, pitch: v })
+                  onMutation({ type: 'set_array_field', featureId: fid, field: 'pitch_y', value: v })
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
             />
@@ -176,7 +176,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
               onBlur={(e) => {
                 const v = parseInt(e.target.value)
                 if (!isNaN(v) && v > 0)
-                  onMutation({ type: 'set_array_count', featureId: fid, count: v })
+                  onMutation({ type: 'set_array_field', featureId: fid, field: 'count', value: v })
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
             />
@@ -188,7 +188,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
               checked={array.step_angle == null}
               onChange={(e) => {
                 e.stopPropagation()
-                onMutation({ type: 'set_array_step_angle', featureId: fid, stepAngle: e.target.checked ? null : 360 / (array.count ?? 4) })
+                onMutation({ type: 'set_array_field', featureId: fid, field: 'step_angle', value: e.target.checked ? null : (360 / (array.count ?? 4)) })
               }}
             />
           </div>
@@ -203,7 +203,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
                 onBlur={(e) => {
                   const v = parseFloat(e.target.value)
                   if (!isNaN(v))
-                    onMutation({ type: 'set_array_step_angle', featureId: fid, stepAngle: v })
+                    onMutation({ type: 'set_array_field', featureId: fid, field: 'step_angle', value: v })
                 }}
                 onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
               />
@@ -218,7 +218,7 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
               placeholder="@sk1/axisLine"
               onClick={(e) => e.stopPropagation()}
               onBlur={(e) => {
-                onMutation({ type: 'set_array_axis', featureId: fid, axis: e.target.value })
+                onMutation({ type: 'set_array_field', featureId: fid, field: 'axis', value: e.target.value })
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
             />

@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, DeleteBodyFeatureDef, HoleFeatureDef } from '@/types/cad'
 import { ALL_COORD_INDICES } from '@/registry'
 import { warn, round, findFeature, randomId, normalizeExtrudeSketch, normalizeRevolveSketch } from './helpers'
 
@@ -28,6 +28,90 @@ function autoHideIfNotOverridden(doc: PartDoc, sketchId: string, consumingFeatur
   if (sketch.auto_hidden_by) return  // user overrode — skip auto-hide
   sketch.visible = false
   sketch.auto_hidden_by = consumingFeatureId
+}
+
+// ─── Set Feature Field (generic) ───
+
+export function applySetExtrudeField(doc: PartDoc, featureId: string, field: keyof ExtrudeFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.extrude) {
+    warn(`applySetExtrudeField: feature ${featureId} has no extrude`)
+    return
+  }
+  setFeatureField(feature.extrude as unknown as Record<string, unknown>, field, value)
+}
+
+export function applySetRevolveField(doc: PartDoc, featureId: string, field: keyof RevolveFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.revolve) {
+    warn(`applySetRevolveField: feature ${featureId} has no revolve`)
+    return
+  }
+  setFeatureField(feature.revolve as unknown as Record<string, unknown>, field, value)
+}
+
+export function applySetFilletField(doc: PartDoc, featureId: string, field: keyof FilletFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.fillet) {
+    warn(`applySetFilletField: feature ${featureId} has no fillet`)
+    return
+  }
+  setFeatureField(feature.fillet as unknown as Record<string, unknown>, field, value)
+}
+
+export function applySetChamferField(doc: PartDoc, featureId: string, field: keyof ChamferFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.chamfer) {
+    warn(`applySetChamferField: feature ${featureId} has no chamfer`)
+    return
+  }
+  setFeatureField(feature.chamfer as unknown as Record<string, unknown>, field, value)
+}
+
+export function applySetBooleanField(doc: PartDoc, featureId: string, field: keyof BooleanFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.boolean) {
+    warn(`applySetBooleanField: feature ${featureId} has no boolean`)
+    return
+  }
+  setFeatureField(feature.boolean as unknown as Record<string, unknown>, field, value)
+}
+
+export function applySetArrayField(doc: PartDoc, featureId: string, field: keyof ArrayFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.array) {
+    warn(`applySetArrayField: feature ${featureId} has no array`)
+    return
+  }
+  if (field === 'mode' && typeof value === 'string') {
+    applySetArrayMode(doc, featureId, value as 'linear' | 'rectangular' | 'rotational')
+    return
+  }
+  setFeatureField(feature.array as unknown as Record<string, unknown>, field, value)
+}
+
+export function applySetDeleteBodyField(doc: PartDoc, featureId: string, field: keyof DeleteBodyFeatureDef, value: unknown): void {
+  const feat = doc.features?.find(f => f.id === featureId)
+  if (!feat?.delete_body) return
+  setFeatureField(feat.delete_body as unknown as Record<string, unknown>, field, value)
+}
+
+export function applySetHoleField(doc: PartDoc, featureId: string, field: keyof HoleFeatureDef, value: unknown): void {
+  const f = doc.features?.find(feat => feat.id === featureId)
+  if (!f?.hole) return
+  if (field === 'sketch' && typeof value === 'string') {
+    applySetHoleSketch(doc, featureId, value)
+    return
+  }
+  setFeatureField(f.hole as unknown as Record<string, unknown>, field, value)
+}
+
+function setFeatureField(obj: Record<string, unknown>, field: string, value: unknown): void {
+  if (value === undefined || value === null || value === '') {
+    delete obj[field]
+  } else {
+    obj[field] = value
+  }
 }
 
 // ─── Extrude ───
@@ -81,56 +165,6 @@ export function applyRemoveExtrudeProfile(doc: PartDoc, featureId: string, index
   const current = normalizeExtrudeSketch(feature.extrude.sketch)
   current.splice(index, 1)
   feature.extrude.sketch = current
-}
-
-export function applySetExtrudeDistance(doc: PartDoc, featureId: string, distance: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.extrude) {
-    warn(`applySetExtrudeDistance: feature ${featureId} has no extrude`)
-    return
-  }
-  feature.extrude.distance = distance
-}
-
-export function applySetExtrudeDirection(
-  doc: PartDoc,
-  featureId: string,
-  direction: 'normal' | 'reverse' | 'symmetric',
-): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.extrude) {
-    warn(`applySetExtrudeDirection: feature ${featureId} has no extrude`)
-    return
-  }
-  feature.extrude.direction = direction
-}
-
-export function applySetExtrudeOperation(
-  doc: PartDoc,
-  featureId: string,
-  operation: 'add' | 'cut' | 'new',
-): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.extrude) {
-    warn(`applySetExtrudeOperation: feature ${featureId} has no extrude`)
-    return
-  }
-  feature.extrude.operation = operation
-}
-
-export function applySetExtrudeMergeTarget(
-  doc: PartDoc, featureId: string, mergeTarget?: string,
-): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.extrude) {
-    warn(`applySetExtrudeMergeTarget: feature ${featureId} has no extrude`)
-    return
-  }
-  if (mergeTarget) {
-    feature.extrude.merge_target = mergeTarget
-  } else {
-    delete feature.extrude.merge_target
-  }
 }
 
 // ─── Revolve ───
@@ -187,65 +221,6 @@ export function applyRemoveRevolveProfile(doc: PartDoc, featureId: string, index
   feature.revolve.sketch = current
 }
 
-export function applySetRevolveAngle(doc: PartDoc, featureId: string, angle: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.revolve) {
-    warn(`applySetRevolveAngle: feature ${featureId} has no revolve`)
-    return
-  }
-  feature.revolve.angle = angle
-}
-
-export function applySetRevolveDirection(
-  doc: PartDoc,
-  featureId: string,
-  direction: 'normal' | 'reverse' | 'symmetric',
-): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.revolve) {
-    warn(`applySetRevolveDirection: feature ${featureId} has no revolve`)
-    return
-  }
-  feature.revolve.direction = direction
-}
-
-export function applySetRevolveAxis(doc: PartDoc, featureId: string, axis: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.revolve) {
-    warn(`applySetRevolveAxis: feature ${featureId} has no revolve`)
-    return
-  }
-  feature.revolve.axis = axis
-}
-
-export function applySetRevolveOperation(
-  doc: PartDoc,
-  featureId: string,
-  operation: 'add' | 'cut' | 'new',
-): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.revolve) {
-    warn(`applySetRevolveOperation: feature ${featureId} has no revolve`)
-    return
-  }
-  feature.revolve.operation = operation
-}
-
-export function applySetRevolveMergeTarget(
-  doc: PartDoc, featureId: string, mergeTarget?: string,
-): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.revolve) {
-    warn(`applySetRevolveMergeTarget: feature ${featureId} has no revolve`)
-    return
-  }
-  if (mergeTarget) {
-    feature.revolve.merge_target = mergeTarget
-  } else {
-    delete feature.revolve.merge_target
-  }
-}
-
 // ─── Import Step ───
 
 export function applyAddImportStep(
@@ -290,46 +265,6 @@ export function applyAddChamfer(
     chamfer: { edges: [], distance: 1, kind: 'distance', angle: 45 },
   }
   doc.features.push(feature)
-}
-
-export function applySetFilletRadius(doc: PartDoc, featureId: string, radius: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.fillet) {
-    warn(`applySetFilletRadius: feature ${featureId} has no fillet`)
-    return
-  }
-  feature.fillet.radius = radius
-}
-
-export function applySetChamferDistance(doc: PartDoc, featureId: string, distance: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.chamfer) {
-    warn(`applySetChamferDistance: feature ${featureId} has no chamfer`)
-    return
-  }
-  feature.chamfer.distance = distance
-}
-
-export function applySetChamferAngle(doc: PartDoc, featureId: string, angle: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.chamfer) {
-    warn(`applySetChamferAngle: feature ${featureId} has no chamfer`)
-    return
-  }
-  feature.chamfer.angle = angle
-}
-
-export function applySetChamferKind(
-  doc: PartDoc,
-  featureId: string,
-  kind: 'distance' | 'angle_distance',
-): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.chamfer) {
-    warn(`applySetChamferKind: feature ${featureId} has no chamfer`)
-    return
-  }
-  feature.chamfer.kind = kind
 }
 
 export function applyAddFilletEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
@@ -391,28 +326,6 @@ export function applyAddBoolean(doc: PartDoc, featureId: string, label?: string)
   doc.features.push(feature)
 }
 
-export function applySetBooleanOperation(
-  doc: PartDoc,
-  featureId: string,
-  operation: BooleanFeatureDef['operation'],
-): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.boolean) {
-    warn(`applySetBooleanOperation: feature ${featureId} has no boolean`)
-    return
-  }
-  feature.boolean.operation = operation
-}
-
-export function applySetBooleanTarget(doc: PartDoc, featureId: string, target: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.boolean) {
-    warn(`applySetBooleanTarget: feature ${featureId} has no boolean`)
-    return
-  }
-  feature.boolean.target = target
-}
-
 export function applyAddBooleanTool(doc: PartDoc, featureId: string, tool: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.boolean) {
@@ -434,15 +347,6 @@ export function applyRemoveBooleanTool(doc: PartDoc, featureId: string, tool: st
     return
   }
   feature.boolean.tools = feature.boolean.tools.filter(t => t !== tool)
-}
-
-export function applySetBooleanKeepTools(doc: PartDoc, featureId: string, keepTools: boolean): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.boolean) {
-    warn(`applySetBooleanKeepTools: feature ${featureId} has no boolean`)
-    return
-  }
-  feature.boolean.keep_tools = keepTools
 }
 
 // ─── Array ───
@@ -501,6 +405,8 @@ export function applySetArrayMode(
   }
 }
 
+// ─── Delete Body ───
+
 export function applySetArraySourceBody(doc: PartDoc, featureId: string, sourceBody: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
@@ -510,124 +416,11 @@ export function applySetArraySourceBody(doc: PartDoc, featureId: string, sourceB
   feature.array.source_body = sourceBody
 }
 
-export function applySetArrayOperation(doc: PartDoc, featureId: string, operation: 'add' | 'new'): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayOperation: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.operation = operation
+export function applySetDeleteBodyTarget(doc: PartDoc, featureId: string, target: string): void {
+  const feat = doc.features?.find(f => f.id === featureId)
+  if (!feat?.delete_body) return
+  feat.delete_body.body = target
 }
-
-export function applySetArrayIncludeSource(doc: PartDoc, featureId: string, includeSource: boolean): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayIncludeSource: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.include_source = includeSource
-}
-
-export function applySetArrayCountX(doc: PartDoc, featureId: string, count: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayCountX: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.count_x = count
-}
-
-export function applySetArrayPitchX(doc: PartDoc, featureId: string, pitch: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayPitchX: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.pitch_x = pitch
-}
-
-export function applySetArrayDirectionXQuery(doc: PartDoc, featureId: string, query: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayDirectionXQuery: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.direction_x_query = query
-}
-
-export function applySetArrayCountY(doc: PartDoc, featureId: string, count: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayCountY: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.count_y = count
-}
-
-export function applySetArrayPitchY(doc: PartDoc, featureId: string, pitch: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayPitchY: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.pitch_y = pitch
-}
-
-export function applySetArrayDirectionYQuery(doc: PartDoc, featureId: string, query: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayDirectionYQuery: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.direction_y_query = query
-}
-
-export function applySetArrayCount(doc: PartDoc, featureId: string, count: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayCount: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.count = count
-}
-
-export function applySetArrayStepAngle(doc: PartDoc, featureId: string, stepAngle: number | null): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayStepAngle: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.step_angle = stepAngle
-}
-
-export function applySetArrayAxis(doc: PartDoc, featureId: string, axis: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayAxis: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.axis = axis
-}
-
-export function applySetArrayDirectionX(doc: PartDoc, featureId: string, direction_x: [number, number, number]): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayDirectionX: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.direction_x = direction_x
-}
-
-export function applySetArrayDirectionY(doc: PartDoc, featureId: string, direction_y: [number, number, number]): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArrayDirectionY: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.direction_y = direction_y
-}
-
-// ─── Delete Body ───
 
 export function applyAddDeleteBody(
   doc: PartDoc,
@@ -643,18 +436,6 @@ export function applyAddDeleteBody(
     delete_body: { body },
   })
 }
-
-export function applySetDeleteBodyTarget(
-  doc: PartDoc,
-  featureId: string,
-  body: string,
-): void {
-  const feat = doc.features?.find(f => f.id === featureId)
-  if (!feat?.delete_body) return
-  feat.delete_body.body = body
-}
-
-// ─── Hole ───
 
 export function applyAddHole(doc: PartDoc, featureId: string, label?: string): void {
   if (!doc.features) doc.features = []
@@ -673,44 +454,6 @@ export function applySetHoleSketch(doc: PartDoc, featureId: string, sketch: stri
   // Auto-hide consumed sketch (feature 223)
   const sourceSketchId = findSketchFeatureIdFromQuery(doc, sketch)
   if (sourceSketchId) autoHideIfNotOverridden(doc, sourceSketchId, featureId)
-}
-
-export function applySetHoleDiameter(doc: PartDoc, featureId: string, diameter: number): void {
-  const f = doc.features?.find(feat => feat.id === featureId)
-  if (!f?.hole) return
-  f.hole.diameter = diameter
-}
-
-export function applySetHoleDepth(doc: PartDoc, featureId: string, depth: number): void {
-  const f = doc.features?.find(feat => feat.id === featureId)
-  if (!f?.hole) return
-  f.hole.depth = depth
-}
-
-export function applySetHoleDepthMode(
-  doc: PartDoc,
-  featureId: string,
-  depthMode: 'blind' | 'through_all',
-): void {
-  const f = doc.features?.find(feat => feat.id === featureId)
-  if (!f?.hole) return
-  f.hole.depth_mode = depthMode
-}
-
-export function applySetHoleDirection(
-  doc: PartDoc,
-  featureId: string,
-  direction: 'normal' | 'reverse',
-): void {
-  const f = doc.features?.find(feat => feat.id === featureId)
-  if (!f?.hole) return
-  f.hole.direction = direction
-}
-
-export function applySetHoleTarget(doc: PartDoc, featureId: string, target: string): void {
-  const f = doc.features?.find(feat => feat.id === featureId)
-  if (!f?.hole) return
-  f.hole.target = target
 }
 
 // ─── Transform ───

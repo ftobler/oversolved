@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyAddDeleteBody, applySetDeleteBodyTarget } from '@/utils/yamlMutations'
+import { applyAddDeleteBody, applySetDeleteBodyField } from '@/utils/yamlMutations'
 import type { PartDoc } from '@/types/cad'
 
 function emptyDoc(): PartDoc { return { features: [] } }
@@ -26,16 +26,16 @@ describe('applyAddDeleteBody', () => {
   })
 })
 
-describe('applySetDeleteBodyTarget', () => {
+describe('applySetDeleteBodyField', () => {
   it('updates the body query', () => {
     const doc = emptyDoc()
     applyAddDeleteBody(doc, 'db1')
-    applySetDeleteBodyTarget(doc, 'db1', '@body_ex2')
+    applySetDeleteBodyField(doc, 'db1', 'body', '@body_ex2')
     expect(doc.features![0].delete_body?.body).toBe('@body_ex2')
   })
 
   it('ignores unknown featureId', () => {
     const doc = emptyDoc()
-    expect(() => applySetDeleteBodyTarget(doc, 'nope', '@body_ex1')).not.toThrow()
+    expect(() => applySetDeleteBodyField(doc, 'nope', 'body', '@body_ex1')).not.toThrow()
   })
 })

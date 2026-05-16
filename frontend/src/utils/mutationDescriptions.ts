@@ -48,26 +48,16 @@ export function describeMutation(m: Mutation): string {
       return 'toggle plane visibility'
     case 'add_extrude':
       return `add extrude ${m.label ?? m.featureId}`
-    case 'set_extrude_distance':
-      return `set extrude distance to ${m.distance}`
-    case 'set_extrude_direction':
-      return `set extrude direction to ${m.direction}`
-    case 'set_extrude_operation':
-      return `set extrude operation to ${m.operation}`
+    case 'set_extrude_field':
+      return `set extrude ${m.field} to ${m.value}`
     case 'add_extrude_profile':
       return `add extrude profile ${m.sketchQuery}`
     case 'remove_extrude_profile':
       return `remove extrude profile at index ${m.index}`
     case 'add_revolve':
       return `add revolve ${m.label ?? m.featureId}`
-    case 'set_revolve_angle':
-      return `set revolve angle to ${m.angle}`
-    case 'set_revolve_axis':
-      return `set revolve axis to ${m.axis}`
-    case 'set_revolve_operation':
-      return `set revolve operation to ${m.operation}`
-    case 'set_revolve_merge_target':
-      return `set revolve merge target to ${m.mergeTarget}`
+    case 'set_revolve_field':
+      return `set revolve ${m.field} to ${m.value}`
     case 'add_revolve_profile':
       return `add revolve profile ${m.sketchQuery}`
     case 'remove_revolve_profile':
@@ -78,14 +68,10 @@ export function describeMutation(m: Mutation): string {
       return `add fillet ${m.label ?? m.featureId}`
     case 'add_chamfer':
       return `add chamfer ${m.label ?? m.featureId}`
-    case 'set_fillet_radius':
-      return `set fillet radius to ${m.radius}`
-    case 'set_chamfer_distance':
-      return `set chamfer distance to ${m.distance}`
-    case 'set_chamfer_angle':
-      return `set chamfer angle to ${m.angle}`
-    case 'set_chamfer_kind':
-      return `set chamfer kind to ${m.kind}`
+    case 'set_fillet_field':
+      return `set fillet ${m.field} to ${m.value}`
+    case 'set_chamfer_field':
+      return `set chamfer ${m.field} to ${m.value}`
     case 'add_fillet_edge':
       return `add fillet edge ${m.edgeQuery}`
     case 'remove_fillet_edge':
@@ -94,56 +80,26 @@ export function describeMutation(m: Mutation): string {
       return `add chamfer edge ${m.edgeQuery}`
     case 'remove_chamfer_edge':
       return `remove chamfer edge at index ${m.index}`
+    case 'add_boolean':
+      return `add boolean ${m.label ?? m.featureId}`
+    case 'set_boolean_field':
+      return `set boolean ${m.field} to ${m.value}`
+    case 'add_boolean_tool':
+      return `add boolean tool ${m.tool}`
+    case 'remove_boolean_tool':
+      return `remove boolean tool ${m.tool}`
     case 'add_array':
       return `add array ${m.label ?? m.featureId}`
-    case 'set_array_mode':
-      return `set array mode to ${m.mode}`
-    case 'set_array_source_body':
-      return `set array source body to ${m.sourceBody}`
-    case 'set_array_operation':
-      return `set array operation to ${m.operation}`
-    case 'set_array_include_source':
-      return `set array include source to ${m.includeSource}`
-    case 'set_array_count_x':
-      return `set array count_x to ${m.count}`
-    case 'set_array_pitch_x':
-      return `set array pitch_x to ${m.pitch}`
-    case 'set_array_direction_x_query':
-      return `set array direction_x query to ${m.query}`
-    case 'set_array_count_y':
-      return `set array count_y to ${m.count}`
-    case 'set_array_pitch_y':
-      return `set array pitch_y to ${m.pitch}`
-    case 'set_array_direction_y_query':
-      return `set array direction_y query to ${m.query}`
-    case 'set_array_count':
-      return `set array count to ${m.count}`
-    case 'set_array_step_angle':
-      return `set array step angle to ${m.stepAngle}`
-    case 'set_array_axis':
-      return `set array axis to ${m.axis}`
-    case 'set_array_direction_x':
-      return `set array direction_x to ${m.direction_x}`
-    case 'set_array_direction_y':
-      return `set array direction_y to ${m.direction_y}`
+    case 'set_array_field':
+      return `set array ${m.field} to ${m.value}`
     case 'add_delete_body':
       return `add delete body ${m.label ?? m.featureId}`
-    case 'set_delete_body_target':
-      return `set delete body target to ${m.body}`
+    case 'set_delete_body_field':
+      return `set delete body ${m.field} to ${m.value}`
     case 'add_hole':
       return `add hole ${m.label ?? m.featureId}`
-    case 'set_hole_sketch':
-      return `set hole sketch to ${m.sketch}`
-    case 'set_hole_diameter':
-      return `set hole diameter to ${m.diameter}`
-    case 'set_hole_depth':
-      return `set hole depth to ${m.depth}`
-    case 'set_hole_depth_mode':
-      return `set hole depth mode to ${m.depthMode}`
-    case 'set_hole_direction':
-      return `set hole direction to ${m.direction}`
-    case 'set_hole_target':
-      return `set hole target to ${m.target}`
+    case 'set_hole_field':
+      return `set hole ${m.field} to ${m.value}`
     case 'add_transform':
       return `add transform ${m.label ?? m.featureId}`
     case 'set_transform_field':
@@ -152,6 +108,26 @@ export function describeMutation(m: Mutation): string {
       return `rename ${m.bodyId} to ${m.name}`
     case 'set_part_color':
       return `set ${m.bodyId} color to ${m.color}`
+    case 'set_part_transparency':
+      return `set ${m.bodyId} transparency to ${m.transparency}`
+    case 'set_part_metalness':
+      return `set ${m.bodyId} metalness to ${m.metalness}`
+    case 'add_mirror':
+      return `add mirror ${m.label ?? m.featureId}`
+    case 'set_mirror_field':
+      return `set mirror ${m.field} to ${m.value}`
+    case 'mirror_entities':
+      return `mirror ${m.entityIds.length} entities in ${m.featureId}`
+    case 'reorder_features':
+      return `reorder ${m.featureId} to index ${m.toIndex}`
+    case 'set_body_visibility':
+      return `${m.visible ? 'show' : 'hide'} body ${m.bodyId}`
+    case 'reorder_pick_field':
+      return `reorder pick field ${m.field} in ${m.featureId}`
+    case 'set_feature_suppression':
+      return `${m.suppressed ? 'suppress' : 'unsuppress'} ${m.featureId}`
+    case 'edit_session':
+      return `edit session on ${m.featureId}`
     default:
       return 'unknown mutation'
   }

@@ -48,7 +48,7 @@ describe('HoleEditor', () => {
     const input = screen.getByDisplayValue('10')
     fireEvent.change(input, { target: { value: '15' } })
     fireEvent.blur(input)
-    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_diameter', featureId: 'h1', diameter: 15 })
+    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'diameter', value: 15 })
   })
 
   it('depth mode toggle emits set_hole_depth_mode', () => {
@@ -57,7 +57,7 @@ describe('HoleEditor', () => {
     render(<HoleEditor feature={feature} onMutation={onMutation} pendingPickField={null} setPendingPickField={vi.fn()} />)
     const select = screen.getByDisplayValue('Blind')
     fireEvent.change(select, { target: { value: 'through_all' } })
-    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_depth_mode', featureId: 'h1', depthMode: 'through_all' })
+    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'depth_mode', value: 'through_all' })
   })
 
   it('hides depth input when depth_mode is through_all', () => {
@@ -73,7 +73,7 @@ describe('HoleEditor', () => {
     const input = screen.getByDisplayValue('20')
     fireEvent.change(input, { target: { value: '30' } })
     fireEvent.blur(input)
-    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_depth', featureId: 'h1', depth: 30 })
+    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'depth', value: 30 })
   })
 
   it('direction toggle emits set_hole_direction', () => {
@@ -82,6 +82,6 @@ describe('HoleEditor', () => {
     render(<HoleEditor feature={feature} onMutation={onMutation} pendingPickField={null} setPendingPickField={vi.fn()} />)
     const select = screen.getByDisplayValue('Normal')
     fireEvent.change(select, { target: { value: 'reverse' } })
-    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_direction', featureId: 'h1', direction: 'reverse' })
+    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'direction', value: 'reverse' })
   })
 })

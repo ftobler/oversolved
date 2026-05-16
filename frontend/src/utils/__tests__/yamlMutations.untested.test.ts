@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { applyMoveEntity, applySetConstraintValue, applyAddEntity, applyAddProjectedEntity } from '@/utils/yamlMutations/sketch'
 import { applyRenamePart, applySetPartColor, applySetPartTransparency, applySetPartMetalness, applyReorderPickField } from '@/utils/yamlMutations/partStyle'
-import { applyAddFillet, applyAddChamfer, applySetFilletRadius, applySetChamferDistance, applySetChamferAngle, applySetChamferKind } from '@/utils/yamlMutations/featureDefs'
-import { applyAddBoolean, applySetBooleanOperation, applySetBooleanTarget, applySetBooleanKeepTools } from '@/utils/yamlMutations/featureDefs'
-import { applySetArrayDirectionXQuery, applySetArrayDirectionYQuery, applySetArrayDirectionX, applySetArrayDirectionY } from '@/utils/yamlMutations/featureDefs'
+import { applyAddFillet, applyAddChamfer, applySetFilletField, applySetChamferField } from '@/utils/yamlMutations/featureDefs'
+import { applyAddBoolean, applySetBooleanField } from '@/utils/yamlMutations/featureDefs'
+import { applySetArrayField } from '@/utils/yamlMutations/featureDefs'
 import { randomId } from '@/utils/yamlMutations/helpers'
 
 function makeSketchDoc(): PartDoc {
@@ -284,46 +284,46 @@ describe('applyAddChamfer', () => {
   })
 })
 
-describe('applySetFilletRadius', () => {
+describe('applySetFilletField', () => {
   it('sets fillet radius', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'fillet1', kind: 'fillet', fillet: { edges: [], radius: 1 } }] }
-    applySetFilletRadius(doc, 'fillet1', 5)
+    applySetFilletField(doc, 'fillet1', 'radius', 5)
     expect(doc.features![0].fillet!.radius).toBe(5)
   })
 
   it('no-ops for feature without fillet', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ext1', kind: 'extrude', extrude: { sketch: ['s1'], distance: 10, direction: 'normal' } }] }
-    applySetFilletRadius(doc, 'ext1', 5)
+    applySetFilletField(doc, 'ext1', 'radius', 5)
     expect(doc.features![0].extrude!.distance).toBe(10)
   })
 })
 
-describe('applySetChamferDistance', () => {
+describe('applySetChamferField', () => {
   it('sets chamfer distance', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'chamfer1', kind: 'chamfer', chamfer: { edges: [], distance: 1, kind: 'distance', angle: 45 } }] }
-    applySetChamferDistance(doc, 'chamfer1', 3)
+    applySetChamferField(doc, 'chamfer1', 'distance', 3)
     expect(doc.features![0].chamfer!.distance).toBe(3)
   })
 
   it('no-ops for feature without chamfer', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [] }
-    applySetChamferDistance(doc, 'nonexistent', 3)
+    applySetChamferField(doc, 'nonexistent', 'distance', 3)
     expect(doc.features).toHaveLength(0)
   })
 })
 
-describe('applySetChamferAngle', () => {
+describe('applySetChamferField angle', () => {
   it('sets chamfer angle', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'chamfer1', kind: 'chamfer', chamfer: { edges: [], distance: 1, kind: 'distance', angle: 45 } }] }
-    applySetChamferAngle(doc, 'chamfer1', 60)
+    applySetChamferField(doc, 'chamfer1', 'angle', 60)
     expect(doc.features![0].chamfer!.angle).toBe(60)
   })
 })
 
-describe('applySetChamferKind', () => {
+describe('applySetChamferField kind', () => {
   it('sets chamfer kind to angle_distance', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'chamfer1', kind: 'chamfer', chamfer: { edges: [], distance: 1, kind: 'distance', angle: 45 } }] }
-    applySetChamferKind(doc, 'chamfer1', 'angle_distance')
+    applySetChamferField(doc, 'chamfer1', 'kind', 'angle_distance')
     expect(doc.features![0].chamfer!.kind).toBe('angle_distance')
   })
 })
@@ -349,76 +349,76 @@ describe('applyAddBoolean', () => {
   })
 })
 
-describe('applySetBooleanOperation', () => {
+describe('applySetBooleanField operation', () => {
   it('sets boolean operation', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'bool1', kind: 'boolean', boolean: { operation: 'union', target: '', tools: [] } }] }
-    applySetBooleanOperation(doc, 'bool1', 'subtract')
+    applySetBooleanField(doc, 'bool1', 'operation', 'subtract')
     expect(doc.features![0].boolean!.operation).toBe('subtract')
   })
 
   it('no-ops for feature without boolean', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ext1', kind: 'extrude', extrude: { sketch: ['s1'], distance: 10, direction: 'normal' } }] }
-    applySetBooleanOperation(doc, 'ext1', 'intersect')
+    applySetBooleanField(doc, 'ext1', 'operation', 'intersect')
     expect(doc.features![0].extrude!.distance).toBe(10)
   })
 })
 
-describe('applySetBooleanTarget', () => {
+describe('applySetBooleanField target', () => {
   it('sets boolean target', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'bool1', kind: 'boolean', boolean: { operation: 'union', target: '', tools: [] } }] }
-    applySetBooleanTarget(doc, 'bool1', '@body_ex1')
+    applySetBooleanField(doc, 'bool1', 'target', '@body_ex1')
     expect(doc.features![0].boolean!.target).toBe('@body_ex1')
   })
 })
 
-describe('applySetBooleanKeepTools', () => {
+describe('applySetBooleanField keep_tools', () => {
   it('sets boolean keep_tools', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'bool1', kind: 'boolean', boolean: { operation: 'union', target: '', tools: [] } }] }
-    applySetBooleanKeepTools(doc, 'bool1', true)
+    applySetBooleanField(doc, 'bool1', 'keep_tools', true)
     expect(doc.features![0].boolean!.keep_tools).toBe(true)
   })
 
   it('can set keep_tools to false', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'bool1', kind: 'boolean', boolean: { operation: 'union', target: '', tools: [] } }] }
-    applySetBooleanKeepTools(doc, 'bool1', false)
+    applySetBooleanField(doc, 'bool1', 'keep_tools', false)
     expect(doc.features![0].boolean!.keep_tools).toBe(false)
   })
 })
 
-describe('applySetArrayDirectionXQuery', () => {
+describe('applySetArrayField direction_x_query', () => {
   it('sets direction_x_query on array feature', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'arr1', kind: 'array', array: { mode: 'linear', count_x: 2, pitch_x: 20, direction_x: [1, 0, 0], operation: 'add', include_source: true } }] }
-    applySetArrayDirectionXQuery(doc, 'arr1', '@body_ex1/edge/0')
+    applySetArrayField(doc, 'arr1', 'direction_x_query', '@body_ex1/edge/0')
     expect(doc.features![0].array!.direction_x_query).toBe('@body_ex1/edge/0')
   })
 
   it('no-ops for feature without array', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ext1', kind: 'extrude', extrude: { sketch: ['s1'], distance: 10, direction: 'normal' } }] }
-    applySetArrayDirectionXQuery(doc, 'ext1', '@body_ex1/edge/0')
+    applySetArrayField(doc, 'ext1', 'direction_x_query', '@body_ex1/edge/0')
     expect(doc.features![0].extrude!.distance).toBe(10)
   })
 })
 
-describe('applySetArrayDirectionYQuery', () => {
+describe('applySetArrayField direction_y_query', () => {
   it('sets direction_y_query on array feature', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'arr1', kind: 'array', array: { mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20, direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add', include_source: true } }] }
-    applySetArrayDirectionYQuery(doc, 'arr1', '@body_ex1/edge/1')
+    applySetArrayField(doc, 'arr1', 'direction_y_query', '@body_ex1/edge/1')
     expect(doc.features![0].array!.direction_y_query).toBe('@body_ex1/edge/1')
   })
 })
 
-describe('applySetArrayDirectionX', () => {
+describe('applySetArrayField direction_x', () => {
   it('sets direction_x on array feature', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'arr1', kind: 'array', array: { mode: 'linear', count_x: 2, pitch_x: 20, direction_x: [1, 0, 0], operation: 'add', include_source: true } }] }
-    applySetArrayDirectionX(doc, 'arr1', [0, 1, 0])
+    applySetArrayField(doc, 'arr1', 'direction_x', [0, 1, 0])
     expect(doc.features![0].array!.direction_x).toEqual([0, 1, 0])
   })
 })
 
-describe('applySetArrayDirectionY', () => {
+describe('applySetArrayField direction_y', () => {
   it('sets direction_y on array feature', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'arr1', kind: 'array', array: { mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20, direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add', include_source: true } }] }
-    applySetArrayDirectionY(doc, 'arr1', [1, 0, 0])
+    applySetArrayField(doc, 'arr1', 'direction_y', [1, 0, 0])
     expect(doc.features![0].array!.direction_y).toEqual([1, 0, 0])
   })
 })

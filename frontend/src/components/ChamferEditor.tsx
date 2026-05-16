@@ -40,7 +40,7 @@ export function ChamferEditor({ feature, onMutation, pendingPickField, setPendin
           value={chamfer.kind ?? 'distance'}
           onChange={(e) => {
             e.stopPropagation()
-            onMutation({ type: 'set_chamfer_kind', featureId: fid, kind: e.target.value as 'distance' | 'angle_distance' })
+            onMutation({ type: 'set_chamfer_field', featureId: fid, field: 'kind', value: e.target.value })
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -58,7 +58,7 @@ export function ChamferEditor({ feature, onMutation, pendingPickField, setPendin
           onBlur={(e) => {
             const v = parseFloat(e.target.value)
             if (!isNaN(v) && v > 0)
-              onMutation({ type: 'set_chamfer_distance', featureId: fid, distance: v })
+              onMutation({ type: 'set_chamfer_field', featureId: fid, field: 'distance', value: v })
           }}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
         />
@@ -74,7 +74,7 @@ export function ChamferEditor({ feature, onMutation, pendingPickField, setPendin
             onBlur={(e) => {
               const v = parseFloat(e.target.value)
               if (!isNaN(v) && v > 0)
-                onMutation({ type: 'set_chamfer_angle', featureId: fid, angle: v })
+                onMutation({ type: 'set_chamfer_field', featureId: fid, field: 'angle', value: v })
             }}
             onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
           />

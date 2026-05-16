@@ -547,62 +547,32 @@ export type Mutation =
   | { type: 'toggle_sketch_plane_visibility' }
   | { type: 'toggle_plane_visibility' }
   | { type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number }
-  | { type: 'set_extrude_distance'; featureId: string; distance: number }
-  | { type: 'set_extrude_direction'; featureId: string; direction: ExtrudeDirection }
-  | { type: 'set_extrude_operation'; featureId: string; operation: ExtrudeOperation }
-  | { type: 'set_extrude_merge_target'; featureId: string; mergeTarget?: string }
+  | { type: 'set_extrude_field'; featureId: string; field: keyof ExtrudeFeatureDef; value: unknown }
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
   | { type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number }
-  | { type: 'set_revolve_angle'; featureId: string; angle: number }
-  | { type: 'set_revolve_direction'; featureId: string; direction: RevolveDirection }
-  | { type: 'set_revolve_axis'; featureId: string; axis: string }
-  | { type: 'set_revolve_operation'; featureId: string; operation: 'add' | 'cut' | 'new' }
-  | { type: 'set_revolve_merge_target'; featureId: string; mergeTarget?: string }
+  | { type: 'set_revolve_field'; featureId: string; field: keyof RevolveFeatureDef; value: unknown }
   | { type: 'add_revolve_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_revolve_profile'; featureId: string; index: number }
   | { type: 'add_import_step'; featureId: string; fileId: string; label?: string }
   | { type: 'add_fillet'; featureId: string; label?: string }
   | { type: 'add_chamfer'; featureId: string; label?: string }
-  | { type: 'set_fillet_radius'; featureId: string; radius: number }
-  | { type: 'set_chamfer_distance'; featureId: string; distance: number }
-  | { type: 'set_chamfer_angle'; featureId: string; angle: number }
-  | { type: 'set_chamfer_kind'; featureId: string; kind: 'distance' | 'angle_distance' }
+  | { type: 'set_fillet_field'; featureId: string; field: keyof FilletFeatureDef; value: unknown }
+  | { type: 'set_chamfer_field'; featureId: string; field: keyof ChamferFeatureDef; value: unknown }
   | { type: 'add_fillet_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_fillet_edge'; featureId: string; index: number }
   | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_chamfer_edge'; featureId: string; index: number }
   | { type: 'add_boolean'; featureId: string; label?: string }
-  | { type: 'set_boolean_operation'; featureId: string; operation: BooleanFeatureDef['operation'] }
-  | { type: 'set_boolean_target'; featureId: string; target: string }
+  | { type: 'set_boolean_field'; featureId: string; field: keyof BooleanFeatureDef; value: unknown }
   | { type: 'add_boolean_tool'; featureId: string; tool: string }
   | { type: 'remove_boolean_tool'; featureId: string; tool: string }
-  | { type: 'set_boolean_keep_tools'; featureId: string; keepTools: boolean }
   | { type: 'add_array'; featureId: string; label?: string }
-  | { type: 'set_array_mode'; featureId: string; mode: 'linear' | 'rectangular' | 'rotational' }
-  | { type: 'set_array_source_body'; featureId: string; sourceBody: string }
-  | { type: 'set_array_operation'; featureId: string; operation: 'add' | 'new' }
-  | { type: 'set_array_include_source'; featureId: string; includeSource: boolean }
-  | { type: 'set_array_count_x'; featureId: string; count: number }
-  | { type: 'set_array_pitch_x'; featureId: string; pitch: number }
-  | { type: 'set_array_direction_x_query'; featureId: string; query: string }
-  | { type: 'set_array_count_y'; featureId: string; count: number }
-  | { type: 'set_array_pitch_y'; featureId: string; pitch: number }
-  | { type: 'set_array_direction_y_query'; featureId: string; query: string }
-  | { type: 'set_array_count'; featureId: string; count: number }
-  | { type: 'set_array_step_angle'; featureId: string; stepAngle: number | null }
-  | { type: 'set_array_axis'; featureId: string; axis: string }
-  | { type: 'set_array_direction_x'; featureId: string; direction_x: [number, number, number] }
-  | { type: 'set_array_direction_y'; featureId: string; direction_y: [number, number, number] }
+  | { type: 'set_array_field'; featureId: string; field: keyof ArrayFeatureDef; value: unknown }
   | { type: 'add_delete_body'; featureId: string; body?: string; label?: string }
-  | { type: 'set_delete_body_target'; featureId: string; body: string }
+  | { type: 'set_delete_body_field'; featureId: string; field: keyof DeleteBodyFeatureDef; value: unknown }
   | { type: 'add_hole'; featureId: string; label?: string }
-  | { type: 'set_hole_sketch'; featureId: string; sketch: string }
-  | { type: 'set_hole_diameter'; featureId: string; diameter: number }
-  | { type: 'set_hole_depth'; featureId: string; depth: number }
-  | { type: 'set_hole_depth_mode'; featureId: string; depthMode: HoleFeatureDef['depth_mode'] }
-  | { type: 'set_hole_direction'; featureId: string; direction: HoleFeatureDef['direction'] }
-  | { type: 'set_hole_target'; featureId: string; target: string }
+  | { type: 'set_hole_field'; featureId: string; field: keyof HoleFeatureDef; value: unknown }
   | { type: 'add_transform'; featureId: string; label?: string }
   | { type: 'set_transform_field'; featureId: string; field: keyof TransformFeatureDef; value: unknown }
   | { type: 'rename_part'; bodyId: string; name: string }

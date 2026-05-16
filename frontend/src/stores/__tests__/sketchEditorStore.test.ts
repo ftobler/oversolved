@@ -773,9 +773,10 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('body:body_ex1')
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_delete_body_target',
+        type: 'set_delete_body_field',
         featureId: 'db1',
-        body: '@body_ex1',
+        field: 'body',
+        value: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -790,9 +791,10 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection(faceQuery)
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_delete_body_target',
+        type: 'set_delete_body_field',
         featureId: 'db1',
-        body: '@body_ex1',
+        field: 'body',
+        value: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -806,9 +808,10 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_delete_body_target',
+        type: 'set_delete_body_field',
         featureId: 'db1',
-        body: '@body_ex1',
+        field: 'body',
+        value: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -822,9 +825,10 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_delete_body_target',
+        type: 'set_delete_body_field',
         featureId: 'db1',
-        body: '@body_ex1',
+        field: 'body',
+        value: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -838,9 +842,10 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_boolean_target',
+        type: 'set_boolean_field',
         featureId: 'b1',
-        target: '@body_ex1',
+        field: 'target',
+        value: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -871,9 +876,10 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_boolean_target',
+        type: 'set_boolean_field',
         featureId: 'b1',
-        target: '@body_ex1',
+        field: 'target',
+        value: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -904,9 +910,10 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_extrude_merge_target',
+        type: 'set_extrude_field',
         featureId: 'ex2',
-        mergeTarget: '@body_ex1',
+        field: 'merge_target',
+        value: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -920,9 +927,10 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_extrude_merge_target',
+        type: 'set_extrude_field',
         featureId: 'ex2',
-        mergeTarget: '@body_ex1',
+        field: 'merge_target',
+        value: '@body_ex1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -948,9 +956,10 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('@rev0/face/0')
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_revolve_merge_target',
+        type: 'set_revolve_field',
         featureId: 'rev1',
-        mergeTarget: '@body_rev0',
+        field: 'merge_target',
+        value: '@body_rev0',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -964,9 +973,10 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('@body_rev0')
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_revolve_merge_target',
+        type: 'set_revolve_field',
         featureId: 'rev1',
-        mergeTarget: '@body_rev0',
+        field: 'merge_target',
+        value: '@body_rev0',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })
@@ -980,9 +990,10 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('sk1')
       useSketchEditorStore.getState().commitFieldPick()
       expect(handler).toHaveBeenCalledWith({
-        type: 'set_hole_sketch',
+        type: 'set_hole_field',
         featureId: 'h1',
-        sketch: 'sk1',
+        field: 'sketch',
+        value: 'sk1',
       })
       expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
     })

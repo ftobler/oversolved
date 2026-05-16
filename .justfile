@@ -73,8 +73,10 @@ run_solver:
     oversolved-solver --debug
 
 
+set shell := ["bash", "-cu"]
 run:
-    just run_front &
-    just run_back &
-    just run_solver &
+    trap 'kill 0' EXIT; \
+    just run_front & \
+    just run_back & \
+    just run_solver & \
     wait

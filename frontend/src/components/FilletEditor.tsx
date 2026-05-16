@@ -42,7 +42,7 @@ export function FilletEditor({ feature, onMutation, pendingPickField, setPending
           onBlur={(e) => {
             const v = parseFloat(e.target.value)
             if (!isNaN(v) && v > 0)
-              onMutation({ type: 'set_fillet_radius', featureId: fid, radius: v })
+              onMutation({ type: 'set_fillet_field', featureId: fid, field: 'radius', value: v })
           }}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
         />

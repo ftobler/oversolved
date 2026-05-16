@@ -1,4 +1,4 @@
-import type { PartFeature, Mutation, PendingPickField, ExtrudeDirection, ExtrudeOperation } from '@/types/cad'
+import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 import { normalizeExtrudeSketch } from '@/utils/yamlMutations'
 
@@ -47,7 +47,7 @@ export function ExtrudeEditor({
           onBlur={(e) => {
             const v = parseFloat(e.target.value)
             if (!isNaN(v) && v > 0)
-              onMutation({ type: 'set_extrude_distance', featureId: fid, distance: v })
+              onMutation({ type: 'set_extrude_field', featureId: fid, field: 'distance', value: v })
           }}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
         />
@@ -61,9 +61,10 @@ export function ExtrudeEditor({
           onChange={(e) => {
             e.stopPropagation()
             onMutation({
-              type: 'set_extrude_operation',
+              type: 'set_extrude_field',
               featureId: fid,
-              operation: e.target.value as ExtrudeOperation,
+              field: 'operation',
+              value: e.target.value,
             })
           }}
           onClick={(e) => e.stopPropagation()}
@@ -83,7 +84,7 @@ export function ExtrudeEditor({
               if (isPickingMergeTarget) setPendingPickField(null)
               else setPendingPickField({ featureId: fid, field: 'merge_target' })
             }}
-            onRemove={() => onMutation({ type: 'set_extrude_merge_target', featureId: fid })}
+            onRemove={() => onMutation({ type: 'set_extrude_field', featureId: fid, field: 'merge_target', value: undefined })}
             emptyText="(all bodies)"
             features={features}
             partLabels={partLabels}
@@ -99,9 +100,10 @@ export function ExtrudeEditor({
           onChange={(e) => {
             e.stopPropagation()
             onMutation({
-              type: 'set_extrude_direction',
+              type: 'set_extrude_field',
               featureId: fid,
-              direction: e.target.value as ExtrudeDirection,
+              field: 'direction',
+              value: e.target.value,
             })
           }}
           onClick={(e) => e.stopPropagation()}

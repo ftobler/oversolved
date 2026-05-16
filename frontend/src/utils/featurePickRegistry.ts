@@ -3,15 +3,15 @@ import { parseQuery } from '@/utils/query'
 import {
   applyAddExtrudeProfile,
   applyAddRevolveProfile,
-  applySetHoleSketch,
+  applySetHoleField,
   applyAddFilletEdge,
   applyAddChamferEdge,
-  applySetBooleanTarget,
+  applySetBooleanField,
   applyAddBooleanTool,
-  applySetDeleteBodyTarget,
+  applySetDeleteBodyField,
   applySetTransformField,
   applySetMirrorField,
-  applySetArraySourceBody,
+  applySetArrayField,
 } from '@/utils/yamlMutations'
 
 export interface PrimaryPickInfo {
@@ -75,7 +75,7 @@ export function applyCompatibleSelection(
 ): void {
   if (field === 'sketch') {
     if (hostKind === 'hole') {
-      applySetHoleSketch(doc, featureId, selectionId)
+      applySetHoleField(doc, featureId, 'sketch', selectionId)
     } else if (hostKind === 'revolve') {
       applyAddRevolveProfile(doc, featureId, selectionId)
     } else {
@@ -89,7 +89,7 @@ export function applyCompatibleSelection(
     }
   } else if (field === 'boolean_target') {
     const bodyRef = resolveBodyRef(selectionId)
-    applySetBooleanTarget(doc, featureId, bodyRef)
+    applySetBooleanField(doc, featureId, 'target', bodyRef)
   } else if (field === 'boolean_tool') {
     const bodyRef = resolveBodyRef(selectionId)
     applyAddBooleanTool(doc, featureId, bodyRef)
@@ -100,9 +100,9 @@ export function applyCompatibleSelection(
     } else if (hostKind === 'mirror') {
       applySetMirrorField(doc, featureId, 'body', bodyRef)
     } else if (hostKind === 'array') {
-      applySetArraySourceBody(doc, featureId, bodyRef)
+      applySetArrayField(doc, featureId, 'source_body', bodyRef)
     } else {
-      applySetDeleteBodyTarget(doc, featureId, bodyRef)
+      applySetDeleteBodyField(doc, featureId, 'body', bodyRef)
     }
   }
 }

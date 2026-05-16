@@ -290,16 +290,17 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 } else if (pendingPickField?.field === 'merge_target' && solveResults?.[feature.id] && isBodyFeatureResult(solveResults[feature.id])) {
                   const bodyResult = solveResults[feature.id] as { body_id?: string }
                   const bodyRef = bodyResult.body_id ? '@' + bodyResult.body_id : '@' + feature.id
-                  const mutationType = pendingPickField.hostKind === 'revolve'
-                    ? 'set_revolve_merge_target'
-                    : 'set_extrude_merge_target'
-                  onMutation({ type: mutationType, featureId: pendingPickField.featureId, mergeTarget: bodyRef })
+                  if (pendingPickField.hostKind === 'revolve') {
+                    onMutation({ type: 'set_revolve_field', featureId: pendingPickField.featureId, field: 'merge_target', value: bodyRef })
+                  } else {
+                    onMutation({ type: 'set_extrude_field', featureId: pendingPickField.featureId, field: 'merge_target', value: bodyRef })
+                  }
                   onSetPendingPickField(null)
                 } else if ((pendingPickField?.field === 'boolean_target' || pendingPickField?.field === 'boolean_tool') && solveResults?.[feature.id] && isBodyFeatureResult(solveResults[feature.id])) {
                   const bodyResult = solveResults[feature.id] as { body_id?: string }
                   const bodyRef = bodyResult.body_id ? '@' + bodyResult.body_id : '@' + feature.id
                   if (pendingPickField.field === 'boolean_target') {
-                    onMutation({ type: 'set_boolean_target', featureId: pendingPickField.featureId, target: bodyRef })
+                    onMutation({ type: 'set_boolean_field', featureId: pendingPickField.featureId, field: 'target', value: bodyRef })
                     onSetPendingPickField(null)
                   } else {
                     onMutation({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: bodyRef })
@@ -312,7 +313,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'delete_body' && solveResults?.[feature.id] && isBodyFeatureResult(solveResults[feature.id])) {
                   const bodyResult = solveResults[feature.id] as { body_id?: string }
                   const bodyRef = bodyResult.body_id ? '@' + bodyResult.body_id : '@' + feature.id
-                  onMutation({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: bodyRef })
+                  onMutation({ type: 'set_delete_body_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
                   onSetPendingPickField(null)
                 } else {
                   onToggleSelect(`@${feature.id}`)

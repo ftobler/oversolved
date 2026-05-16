@@ -26,7 +26,7 @@ export function HoleEditor({ feature, onMutation, pendingPickField, setPendingPi
             if (isPickingSketch) setPendingPickField(null)
             else setPendingPickField({ featureId: fid, field: 'sketch', hostKind: 'hole' })
           }}
-          onRemove={() => onMutation({ type: 'set_hole_sketch', featureId: fid, sketch: '' })}
+          onRemove={() => onMutation({ type: 'set_hole_field', featureId: fid, field: 'sketch', value: '' })}
           features={features}
           partLabels={partLabels}
         />
@@ -41,7 +41,7 @@ export function HoleEditor({ feature, onMutation, pendingPickField, setPendingPi
           onBlur={(e) => {
             const v = parseFloat(e.target.value)
             if (!isNaN(v) && v > 0)
-              onMutation({ type: 'set_hole_diameter', featureId: fid, diameter: v })
+              onMutation({ type: 'set_hole_field', featureId: fid, field: 'diameter', value: v })
           }}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
         />
@@ -53,7 +53,7 @@ export function HoleEditor({ feature, onMutation, pendingPickField, setPendingPi
           className="feature-field-select"
           value={hole.depth_mode}
           onClick={(e) => e.stopPropagation()}
-          onChange={(e) => onMutation({ type: 'set_hole_depth_mode', featureId: fid, depthMode: e.target.value as 'blind' | 'through_all' })}
+          onChange={(e) => onMutation({ type: 'set_hole_field', featureId: fid, field: 'depth_mode', value: e.target.value })}
         >
           <option value="blind">Blind</option>
           <option value="through_all">Through All</option>
@@ -70,7 +70,7 @@ export function HoleEditor({ feature, onMutation, pendingPickField, setPendingPi
             onBlur={(e) => {
               const v = parseFloat(e.target.value)
               if (!isNaN(v) && v > 0)
-                onMutation({ type: 'set_hole_depth', featureId: fid, depth: v })
+                onMutation({ type: 'set_hole_field', featureId: fid, field: 'depth', value: v })
             }}
             onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
           />
@@ -83,7 +83,7 @@ export function HoleEditor({ feature, onMutation, pendingPickField, setPendingPi
           className="feature-field-select"
           value={hole.direction}
           onClick={(e) => e.stopPropagation()}
-          onChange={(e) => onMutation({ type: 'set_hole_direction', featureId: fid, direction: e.target.value as 'normal' | 'reverse' })}
+          onChange={(e) => onMutation({ type: 'set_hole_field', featureId: fid, field: 'direction', value: e.target.value })}
         >
           <option value="normal">Normal</option>
           <option value="reverse">Reverse</option>

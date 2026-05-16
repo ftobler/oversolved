@@ -29,7 +29,7 @@ export function DeleteBodyEditor({
             if (isPicking('body')) setPendingPickField(null)
             else setPendingPickField({ featureId: fid, field: 'body', hostKind: 'delete_body' })
           }}
-          onRemove={() => onMutation({ type: 'set_delete_body_target', featureId: fid, body: '' })}
+          onRemove={() => onMutation({ type: 'set_delete_body_field', featureId: fid, field: 'body', value: '' })}
           features={features}
           partLabels={partLabels}
         />

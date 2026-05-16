@@ -28,62 +28,32 @@ import {
   applyTogglePlaneVisibility,
   applyToggleSketchPlaneVisibility,
   applyAddExtrude,
-  applySetExtrudeDistance,
-  applySetExtrudeDirection,
-  applySetExtrudeOperation,
-  applySetExtrudeMergeTarget,
+  applySetExtrudeField,
   applyAddExtrudeProfile,
   applyRemoveExtrudeProfile,
   applyAddRevolve,
-  applySetRevolveAngle,
-  applySetRevolveDirection,
-  applySetRevolveAxis,
-  applySetRevolveOperation,
-  applySetRevolveMergeTarget,
+  applySetRevolveField,
   applyAddRevolveProfile,
   applyRemoveRevolveProfile,
   applyAddImportStep,
   applyAddFillet,
   applyAddChamfer,
-  applySetFilletRadius,
-  applySetChamferDistance,
-  applySetChamferAngle,
-  applySetChamferKind,
+  applySetFilletField,
+  applySetChamferField,
   applyAddFilletEdge,
   applyRemoveFilletEdge,
   applyAddChamferEdge,
   applyRemoveChamferEdge,
   applyAddBoolean,
-  applySetBooleanOperation,
-  applySetBooleanTarget,
+  applySetBooleanField,
   applyAddBooleanTool,
   applyRemoveBooleanTool,
-  applySetBooleanKeepTools,
   applyAddArray,
-  applySetArrayMode,
-  applySetArraySourceBody,
-  applySetArrayOperation,
-  applySetArrayIncludeSource,
-  applySetArrayCountX,
-  applySetArrayPitchX,
-  applySetArrayDirectionXQuery,
-  applySetArrayCountY,
-  applySetArrayPitchY,
-  applySetArrayDirectionYQuery,
-  applySetArrayCount,
-  applySetArrayStepAngle,
-  applySetArrayAxis,
-  applySetArrayDirectionX,
-  applySetArrayDirectionY,
+  applySetArrayField,
   applyAddDeleteBody,
-  applySetDeleteBodyTarget,
+  applySetDeleteBodyField,
   applyAddHole,
-  applySetHoleSketch,
-  applySetHoleDiameter,
-  applySetHoleDepth,
-  applySetHoleDepthMode,
-  applySetHoleDirection,
-  applySetHoleTarget,
+  applySetHoleField,
   applyAddTransform,
   applySetTransformField,
   applyRenamePart,
@@ -158,30 +128,16 @@ export const mutationHandlers: MutationHandlers = {
     applyTogglePlaneVisibility(next),
   add_extrude: (next, m) =>
     applyAddExtrude(next, m.featureId, m.label, m.sketchQuery, m.distance),
-  set_extrude_distance: (next, m) =>
-    applySetExtrudeDistance(next, m.featureId, m.distance),
-  set_extrude_direction: (next, m) =>
-    applySetExtrudeDirection(next, m.featureId, m.direction),
-  set_extrude_operation: (next, m) =>
-    applySetExtrudeOperation(next, m.featureId, m.operation),
-  set_extrude_merge_target: (next, m) =>
-    applySetExtrudeMergeTarget(next, m.featureId, m.mergeTarget),
+  set_extrude_field: (next, m) =>
+    applySetExtrudeField(next, m.featureId, m.field, m.value),
   add_extrude_profile: (next, m) =>
     applyAddExtrudeProfile(next, m.featureId, m.sketchQuery),
   remove_extrude_profile: (next, m) =>
     applyRemoveExtrudeProfile(next, m.featureId, m.index),
   add_revolve: (next, m) =>
     applyAddRevolve(next, m.featureId, m.label, m.sketchQuery, m.angle),
-  set_revolve_angle: (next, m) =>
-    applySetRevolveAngle(next, m.featureId, m.angle),
-  set_revolve_direction: (next, m) =>
-    applySetRevolveDirection(next, m.featureId, m.direction),
-  set_revolve_axis: (next, m) =>
-    applySetRevolveAxis(next, m.featureId, m.axis),
-  set_revolve_operation: (next, m) =>
-    applySetRevolveOperation(next, m.featureId, m.operation),
-  set_revolve_merge_target: (next, m) =>
-    applySetRevolveMergeTarget(next, m.featureId, m.mergeTarget),
+  set_revolve_field: (next, m) =>
+    applySetRevolveField(next, m.featureId, m.field, m.value),
   add_revolve_profile: (next, m) =>
     applyAddRevolveProfile(next, m.featureId, m.sketchQuery),
   remove_revolve_profile: (next, m) =>
@@ -192,14 +148,10 @@ export const mutationHandlers: MutationHandlers = {
     applyAddFillet(next, m.featureId, m.label),
   add_chamfer: (next, m) =>
     applyAddChamfer(next, m.featureId, m.label),
-  set_fillet_radius: (next, m) =>
-    applySetFilletRadius(next, m.featureId, m.radius),
-  set_chamfer_distance: (next, m) =>
-    applySetChamferDistance(next, m.featureId, m.distance),
-  set_chamfer_angle: (next, m) =>
-    applySetChamferAngle(next, m.featureId, m.angle),
-  set_chamfer_kind: (next, m) =>
-    applySetChamferKind(next, m.featureId, m.kind),
+  set_fillet_field: (next, m) =>
+    applySetFilletField(next, m.featureId, m.field, m.value),
+  set_chamfer_field: (next, m) =>
+    applySetChamferField(next, m.featureId, m.field, m.value),
   add_fillet_edge: (next, m) =>
     applyAddFilletEdge(next, m.featureId, m.edgeQuery),
   remove_fillet_edge: (next, m) =>
@@ -210,69 +162,26 @@ export const mutationHandlers: MutationHandlers = {
     applyRemoveChamferEdge(next, m.featureId, m.index),
   add_boolean: (next, m) =>
     applyAddBoolean(next, m.featureId, m.label),
-  set_boolean_operation: (next, m) =>
-    applySetBooleanOperation(next, m.featureId, m.operation),
-  set_boolean_target: (next, m) =>
-    applySetBooleanTarget(next, m.featureId, m.target),
+  set_boolean_field: (next, m) =>
+    applySetBooleanField(next, m.featureId, m.field, m.value),
   add_boolean_tool: (next, m) =>
     applyAddBooleanTool(next, m.featureId, m.tool),
   remove_boolean_tool: (next, m) =>
     applyRemoveBooleanTool(next, m.featureId, m.tool),
-  set_boolean_keep_tools: (next, m) =>
-    applySetBooleanKeepTools(next, m.featureId, m.keepTools),
   add_array: (next, m) =>
     applyAddArray(next, m.featureId, m.label),
-  set_array_mode: (next, m) =>
-    applySetArrayMode(next, m.featureId, m.mode),
-  set_array_source_body: (next, m) =>
-    applySetArraySourceBody(next, m.featureId, m.sourceBody),
-  set_array_operation: (next, m) =>
-    applySetArrayOperation(next, m.featureId, m.operation),
-  set_array_include_source: (next, m) =>
-    applySetArrayIncludeSource(next, m.featureId, m.includeSource),
-  set_array_count_x: (next, m) =>
-    applySetArrayCountX(next, m.featureId, m.count),
-  set_array_pitch_x: (next, m) =>
-    applySetArrayPitchX(next, m.featureId, m.pitch),
-  set_array_direction_x_query: (next, m) =>
-    applySetArrayDirectionXQuery(next, m.featureId, m.query),
-  set_array_count_y: (next, m) =>
-    applySetArrayCountY(next, m.featureId, m.count),
-  set_array_pitch_y: (next, m) =>
-    applySetArrayPitchY(next, m.featureId, m.pitch),
-  set_array_direction_y_query: (next, m) =>
-    applySetArrayDirectionYQuery(next, m.featureId, m.query),
-  set_array_count: (next, m) =>
-    applySetArrayCount(next, m.featureId, m.count),
-  set_array_step_angle: (next, m) =>
-    applySetArrayStepAngle(next, m.featureId, m.stepAngle),
-  set_array_axis: (next, m) =>
-    applySetArrayAxis(next, m.featureId, m.axis),
-  set_array_direction_x: (next, m) =>
-    applySetArrayDirectionX(next, m.featureId, m.direction_x),
-  set_array_direction_y: (next, m) =>
-    applySetArrayDirectionY(next, m.featureId, m.direction_y),
+  set_array_field: (next, m) =>
+    applySetArrayField(next, m.featureId, m.field, m.value),
   set_body_visibility: (next, m) =>
     applySetBodyVisibility(next, m.bodyId, m.visible),
   add_delete_body: (next, m) =>
     applyAddDeleteBody(next, m.featureId, m.body, m.label),
-  set_delete_body_target: (next, m) =>
-    applySetDeleteBodyTarget(next, m.featureId, m.body),
+  set_delete_body_field: (next, m) =>
+    applySetDeleteBodyField(next, m.featureId, m.field, m.value),
   add_hole: (next, m) =>
     applyAddHole(next, m.featureId, m.label),
-  set_hole_sketch: (next, m) =>
-    applySetHoleSketch(next, m.featureId, m.sketch),
-  set_hole_diameter: (next, m) =>
-    applySetHoleDiameter(next, m.featureId, m.diameter),
-  set_hole_depth: (next, m) =>
-    applySetHoleDepth(next, m.featureId, m.depth),
-  set_hole_depth_mode: (next, m) =>
-    applySetHoleDepthMode(next, m.featureId, m.depthMode),
-  set_hole_direction: (next, m) => {
-    if (m.direction) applySetHoleDirection(next, m.featureId, m.direction)
-  },
-  set_hole_target: (next, m) =>
-    applySetHoleTarget(next, m.featureId, m.target),
+  set_hole_field: (next, m) =>
+    applySetHoleField(next, m.featureId, m.field, m.value),
   add_transform: (next, m) =>
     applyAddTransform(next, m.featureId, m.label),
   set_transform_field: (next, m) =>
