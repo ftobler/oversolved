@@ -37,5 +37,11 @@ def pg_dsn():
     conn = psycopg2.connect(admin)
     conn.autocommit = True
     with conn.cursor() as cur:
+        # Terminate any remaining connections so DROP DATABASE succeeds.
+        cur.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname = %s AND pid <> pg_backend_pid()",
+            (test_db,),
+        )
         cur.execute(f"DROP DATABASE {test_db}")
     conn.close()

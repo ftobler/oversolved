@@ -75,6 +75,15 @@ class PostgreSQLConnection(DatabaseConnection):
         import psycopg2
         self.conn = psycopg2.connect(dsn)
         self.conn.autocommit = False
+        self._is_pool_conn = False
+
+    @classmethod
+    def from_pool(cls, raw_conn: Any) -> "PostgreSQLConnection":
+        """Wrap an already-open borrowed pool connection."""
+        instance = cls.__new__(cls)
+        instance.conn = raw_conn
+        instance._is_pool_conn = True
+        return instance
 
     def _translate(self, query: str) -> str:
         return query.replace("?", "%s")
@@ -98,16 +107,17 @@ class PostgreSQLConnection(DatabaseConnection):
         self.conn.rollback()
 
     def close(self) -> None:
+        if self._is_pool_conn:
+            return  # pool manages connection lifetime; caller returns it via putconn
         self.conn.close()
 
 
 class Database:
     """Database manager with migrations support."""
 
-    def __init__(self, connection: DatabaseConnection):
+    def __init__(self, connection: DatabaseConnection, migrations: list | None = None):
         self.conn = connection
-        self._migrations: list[tuple[int, str, Callable]] = []
-        self._migrations_registered = False
+        self._migrations: list[tuple[int, str, Callable]] = list(migrations) if migrations is not None else []
         self._version = 0
 
     def register_migration(self, version: int, name: str, func: Callable) -> None:

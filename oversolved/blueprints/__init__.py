@@ -23,8 +23,17 @@ def _get_database(config):
 def get_db():
     """Get or create database connection for this request."""
     if "db" not in g:
-        g.db = _get_database(current_app.config["_DB_CONFIG"])
-        g.db.init()
+        pool = current_app.config.get("_DB_POOL")
+        if pool is not None:
+            raw_conn = pool.getconn()
+            raw_conn.autocommit = False
+            g._pool_conn = (pool, raw_conn)
+            db_conn = PostgreSQLConnection.from_pool(raw_conn)
+            g.db = Database(db_conn)
+            # Migrations already ran at startup; skip init()
+        else:
+            g.db = _get_database(current_app.config["_DB_CONFIG"])
+            g.db.init()
     return g.db
 
 

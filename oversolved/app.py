@@ -3,6 +3,7 @@
 import logging
 import os
 from pathlib import Path
+from typing import Callable
 from flask import Flask, send_from_directory, g
 from werkzeug.security import generate_password_hash
 from oversolved.db import Database, UserStore
@@ -18,12 +19,27 @@ from oversolved.blueprints.solver_ws import register_solver_ws
 
 logger = logging.getLogger(__name__)
 
+_MIGRATIONS: list[tuple[int, str, Callable]] = []
 
-def _register_migrations(db: Database) -> None:
-    """Register all database migrations. Idempotent - only registers once per Database instance."""
-    if db._migrations_registered:
+
+def _column_exists(database: Database, table: str, column: str) -> bool:
+    """Check whether a column exists in the given table."""
+    from oversolved.db import PostgreSQLConnection
+    if isinstance(database.conn, PostgreSQLConnection):
+        cursor = database.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = ? AND column_name = ? AND table_schema = 'public'",
+            (table, column),
+        )
+        return cursor.fetchone() is not None
+    cursor = database.execute(f"PRAGMA table_info({table})")
+    return any(row[1] == column for row in cursor.fetchall())
+
+
+def _register_migrations_once() -> None:
+    """Populate _MIGRATIONS exactly once (idempotent)."""
+    if _MIGRATIONS:
         return
-    db._migrations_registered = True
 
     def migration_001_initial_schema(database: Database):
         database.execute("""
@@ -55,12 +71,12 @@ def _register_migrations(db: Database) -> None:
             )
         """)
 
-    db.register_migration(1, "initial_schema", migration_001_initial_schema)
+    _MIGRATIONS.append((1, "initial_schema", migration_001_initial_schema))
 
     def migration_002_add_preview_image(database: Database):
         database.execute("ALTER TABLE documents ADD COLUMN preview_image BYTEA")
 
-    db.register_migration(2, "add_preview_image", migration_002_add_preview_image)
+    _MIGRATIONS.append((2, "add_preview_image", migration_002_add_preview_image))
 
     def migration_003_add_shares(database: Database):
         database.execute("""
@@ -77,30 +93,18 @@ def _register_migrations(db: Database) -> None:
         """)
         database.execute("ALTER TABLE documents ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0")
 
-    db.register_migration(3, "add_shares", migration_003_add_shares)
+    _MIGRATIONS.append((3, "add_shares", migration_003_add_shares))
 
     def migration_004_add_user_management_fields(database: Database):
         database.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
         database.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
 
-    db.register_migration(4, "add_user_management_fields", migration_004_add_user_management_fields)
+    _MIGRATIONS.append((4, "add_user_management_fields", migration_004_add_user_management_fields))
 
     def migration_005_add_last_login(database: Database):
         database.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT")
 
-    db.register_migration(5, "add_last_login", migration_005_add_last_login)
-
-    def _column_exists(database: Database, table: str, column: str) -> bool:
-        from oversolved.db import PostgreSQLConnection
-        if isinstance(database.conn, PostgreSQLConnection):
-            cursor = database.execute(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name = ? AND column_name = ? AND table_schema = 'public'",
-                (table, column),
-            )
-            return cursor.fetchone() is not None
-        cursor = database.execute(f"PRAGMA table_info({table})")
-        return any(row[1] == column for row in cursor.fetchall())
+    _MIGRATIONS.append((5, "add_last_login", migration_005_add_last_login))
 
     def migration_006_user_oauth_prep(database: Database):
         if not _column_exists(database, "users", "email"):
@@ -132,7 +136,7 @@ def _register_migrations(db: Database) -> None:
             "idx_users_external_id_provider ON users(external_id, provider)"
         )
 
-    db.register_migration(6, "user_oauth_prep", migration_006_user_oauth_prep)
+    _MIGRATIONS.append((6, "user_oauth_prep", migration_006_user_oauth_prep))
 
     def migration_007_user_sort_preference(database: Database):
         if not _column_exists(database, "users", "document_sort_preference"):
@@ -140,24 +144,24 @@ def _register_migrations(db: Database) -> None:
                 "ALTER TABLE users ADD COLUMN document_sort_preference TEXT DEFAULT 'alphabetical'"
             )
 
-    db.register_migration(7, "user_sort_preference", migration_007_user_sort_preference)
+    _MIGRATIONS.append((7, "user_sort_preference", migration_007_user_sort_preference))
 
     def migration_008_organizations(_database: Database):
         pass
 
-    db.register_migration(8, "organizations", migration_008_organizations)
+    _MIGRATIONS.append((8, "organizations", migration_008_organizations))
 
     def migration_009_documents_org_id(_database: Database):
         pass
 
-    db.register_migration(9, "documents_org_id", migration_009_documents_org_id)
+    _MIGRATIONS.append((9, "documents_org_id", migration_009_documents_org_id))
 
     def migration_010_document_trash(database: Database):
         if not _column_exists(database, "documents", "deleted_at"):
             database.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT")
         database.execute("CREATE INDEX IF NOT EXISTS idx_documents_deleted_at ON documents(deleted_at)")
 
-    db.register_migration(10, "document_trash", migration_010_document_trash)
+    _MIGRATIONS.append((10, "document_trash", migration_010_document_trash))
 
     def migration_011_periodic_tasks(database: Database):
         database.execute("""
@@ -169,7 +173,7 @@ def _register_migrations(db: Database) -> None:
             )
         """)
 
-    db.register_migration(11, "periodic_tasks", migration_011_periodic_tasks)
+    _MIGRATIONS.append((11, "periodic_tasks", migration_011_periodic_tasks))
 
     def migration_012_accounts_table(database: Database):
         database.execute("""
@@ -197,14 +201,14 @@ def _register_migrations(db: Database) -> None:
                 (username, "user", uid),
             )
 
-    db.register_migration(12, "accounts_table", migration_012_accounts_table)
+    _MIGRATIONS.append((12, "accounts_table", migration_012_accounts_table))
 
     def migration_013_remove_nickname(database: Database):
         if _column_exists(database, "users", "nickname"):
             database.execute("DROP INDEX IF EXISTS idx_users_nickname")
             database.execute("ALTER TABLE users DROP COLUMN nickname")
 
-    db.register_migration(13, "remove_nickname", migration_013_remove_nickname)
+    _MIGRATIONS.append((13, "remove_nickname", migration_013_remove_nickname))
 
     def migration_014_remove_organizations(database: Database):
         database.execute("DROP TABLE IF EXISTS organization_members")
@@ -212,7 +216,7 @@ def _register_migrations(db: Database) -> None:
         if _column_exists(database, "documents", "org_id"):
             database.execute("ALTER TABLE documents DROP COLUMN org_id")
 
-    db.register_migration(14, "remove_organizations", migration_014_remove_organizations)
+    _MIGRATIONS.append((14, "remove_organizations", migration_014_remove_organizations))
 
     def migration_015_rebuild_times(database: Database):
         database.execute("""
@@ -230,14 +234,14 @@ def _register_migrations(db: Database) -> None:
             ON rebuild_times(document_uuid)
         """)
 
-    db.register_migration(15, "rebuild_times", migration_015_rebuild_times)
+    _MIGRATIONS.append((15, "rebuild_times", migration_015_rebuild_times))
 
     def migration_016_sessions_user_id_index(database: Database):
         database.execute(
             "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)"
         )
 
-    db.register_migration(16, "sessions_user_id_index", migration_016_sessions_user_id_index)
+    _MIGRATIONS.append((16, "sessions_user_id_index", migration_016_sessions_user_id_index))
 
     def migration_017_session_created_at(database: Database):
         database.execute(
@@ -247,13 +251,19 @@ def _register_migrations(db: Database) -> None:
             "UPDATE sessions SET created_at = NOW()::text WHERE created_at IS NULL"
         )
 
-    db.register_migration(17, "session_created_at", migration_017_session_created_at)
+    _MIGRATIONS.append((17, "session_created_at", migration_017_session_created_at))
 
     def migration_018_token_to_token_hash(database: Database):
         if _column_exists(database, "sessions", "token"):
             database.execute("ALTER TABLE sessions RENAME COLUMN token TO token_hash")
 
-    db.register_migration(18, "token_to_token_hash", migration_018_token_to_token_hash)
+    _MIGRATIONS.append((18, "token_to_token_hash", migration_018_token_to_token_hash))
+
+
+def _register_migrations(db: Database) -> None:
+    """Register all database migrations on a Database instance (backward compat)."""
+    _register_migrations_once()
+    db._migrations = list(_MIGRATIONS)
 
 
 def _ensure_admin_user(db: Database, testing: bool = False) -> None:
@@ -330,9 +340,27 @@ def create_app(config: dict | None = None) -> Flask:
     # Make db_config accessible to blueprints via get_db()
     app.config["_DB_CONFIG"] = db_config
 
-    # Register and run all pending migrations on startup
+    if db_config["type"] == "postgres":
+        import psycopg2.pool
+        pool_min = int(os.environ.get("OVERSOLVED_DB_POOL_MIN", "1"))
+        default_pool_max = "1" if app.config.get("TESTING") else "10"
+        pool_max = int(os.environ.get("OVERSOLVED_DB_POOL_MAX", default_pool_max))
+        _pool = psycopg2.pool.ThreadedConnectionPool(pool_min, pool_max, db_config["dsn"])
+        app.config["_DB_POOL"] = _pool
+
+        def _close_pool_safe():
+            try:
+                _pool.closeall()
+            except Exception:
+                pass
+
+        import atexit
+        atexit.register(_close_pool_safe)
+
+    # Run all pending migrations on startup
+    _register_migrations_once()
     db = _get_database(db_config)
-    _register_migrations(db)
+    db._migrations = list(_MIGRATIONS)
     db.init()
     _ensure_admin_user(db, testing=app.config.get("TESTING", False))
     db.close()
@@ -407,8 +435,13 @@ def create_app(config: dict | None = None) -> Flask:
 
     @app.teardown_appcontext
     def close_db(error):
+        pool_info = g.pop("_pool_conn", None)
         db = g.pop("db", None)
-        if db is not None:
+        if pool_info is not None:
+            _pool, raw_conn = pool_info
+            raw_conn.rollback()
+            _pool.putconn(raw_conn)
+        elif db is not None:
             db.close()
 
     return app

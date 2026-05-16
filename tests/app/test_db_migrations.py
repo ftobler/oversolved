@@ -108,36 +108,43 @@ class TestUpgradeCLI:
         database2.close()
 
     def test_migrations_not_registered_on_every_request(self, pg_dsn, monkeypatch):
-        """_register_migrations should only be called at startup, not per-request."""
+        """Migrations are registered once at startup, not per request."""
         import oversolved.app as app_mod
         registry_calls = []
 
-        orig_register = app_mod._register_migrations
+        orig_register = app_mod._register_migrations_once
 
-        def tracking_register(db):
+        def tracking_register():
             registry_calls.append(1)
-            return orig_register(db)
+            return orig_register()
 
-        monkeypatch.setattr(app_mod, "_register_migrations", tracking_register)
+        monkeypatch.setattr(app_mod, "_register_migrations_once", tracking_register)
         monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
 
-        app = app_mod.create_app({
-            "DB_TYPE": "postgres",
-            "TESTING": True,
-            "DB_DSN": pg_dsn,
-        })
-        client = app.test_client()
-        client.post(
-            "/api/auth/login",
-            data=json.dumps({"username": "admin", "password": "admin"}),
-            content_type="application/json",
-        )
+        # Reset migrations so create_app triggers a real registration
+        saved = list(app_mod._MIGRATIONS)
+        app_mod._MIGRATIONS.clear()
+        try:
+            app = app_mod.create_app({
+                "DB_TYPE": "postgres",
+                "TESTING": True,
+                "DB_DSN": pg_dsn,
+            })
+            client = app.test_client()
+            client.post(
+                "/api/auth/login",
+                data=json.dumps({"username": "admin", "password": "admin"}),
+                content_type="application/json",
+            )
 
-        for _ in range(3):
-            resp = client.get("/api/documents")
-            assert resp.status_code == 200
+            for _ in range(3):
+                resp = client.get("/api/documents")
+                assert resp.status_code == 200
 
-        assert len(registry_calls) == 1
+            assert len(registry_calls) == 1
+        finally:
+            app_mod._MIGRATIONS.clear()
+            app_mod._MIGRATIONS.extend(saved)
 
     def test_upgrade_twice_is_noop(self, pg_dsn):
         from oversolved.cli import build_parser, cmd_db
