@@ -1,6 +1,7 @@
 import logging
 import math
 from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query, _evict_ancestry_and_register
+from oversolved.kernel.profile_loops import match_area_reid, _surface_ancestor_key
 from oversolved.kernel.types3d import Frame3D
 
 __all__ = [
@@ -32,25 +33,79 @@ def _clear_feature_geometry_registrations(
 ) -> None:
     """Remove all geometry registrations previously made for a feature.
     This prevents ghost references when entities are deleted and the
-    feature is re-solved."""
-    # Clear ancestral entries first (elements must still exist for lookup).
-    # Removes ALL matching elements per key to prevent orphaned entries from
-    # accumulated re-solves.
-    keys_to_remove = []
+    feature is re-solved.
+
+    Clears two classes of entries:
+    1. Ancestry entries whose payload carries sketch_id == feature_id (entity params).
+    2. All ancestry entries whose frozenset key contains the bare @feature_id tag.
+       This covers topology surfaces, edges, and vertices registered by detect_topology.
+    """
+    feature_tag = f"@{feature_id}"
+    eids_to_remove: set[str] = set()
+    keys_to_remove: list[frozenset] = []
+
     for key, element_ids in list(global_repo.ancestral.items()):
-        to_remove = []
+        # Topology/surface/vertex entries: key contains the bare @feature_id tag.
+        if feature_tag in key:
+            keys_to_remove.append(key)
+            eids_to_remove.update(element_ids)
+            continue
+
+        # Entity-param entries: payload carries sketch_id == feature_id.
         for eid in element_ids:
             payload = global_repo.elements.get(eid)
             if payload and isinstance(payload, dict) and payload.get("sketch_id") == feature_id:
-                to_remove.append(eid)
-        if to_remove:
-            keys_to_remove.append(key)
-            for eid in to_remove:
-                global_repo.elements.pop(eid, None)
+                eids_to_remove.add(eid)
+                keys_to_remove.append(key)
+                break
+
+    for eid in eids_to_remove:
+        global_repo.elements.pop(eid, None)
     for key in keys_to_remove:
-        del global_repo.ancestral[key]
+        global_repo.ancestral.pop(key, None)
+
     # Clear any remaining direct elements registered via register() with this sketch_id.
     global_repo.clear_by_sketch_id(feature_id)
+
+
+def _apply_area_reid(
+    global_repo: Repository,
+    reid_map: dict[frozenset, list[frozenset]],
+    new_surfaces: list[dict],
+    plane_obj: "Frame3D | dict",
+) -> None:
+    """Register new surfaces under old ancestry keys produced by the re-id heuristic.
+
+    For each old_key → [new_key, ...] entry in reid_map, look up the already-
+    registered payload for each new_key and add it under old_key as well.  This
+    lets downstream ancestry queries that reference entity IDs from the previous
+    solve still resolve after a topology-changing edit (e.g. line replaced by arc).
+    """
+    # Build a lookup from new_key frozenset → registered payload.
+    new_key_to_payload: dict[frozenset, dict] = {}
+    for surface in new_surfaces:
+        key = _surface_ancestor_key(surface)
+        if not key:
+            continue
+        candidate_ids = global_repo.ancestral.get(key, [])
+        if candidate_ids:
+            payload = global_repo.elements.get(candidate_ids[0])
+            if payload is not None:
+                new_key_to_payload[key] = payload
+
+    for old_key, new_keys in reid_map.items():
+        # Skip if the old key is already live (no topology change happened).
+        if old_key in global_repo.ancestral:
+            continue
+        for new_key in new_keys:
+            payload = new_key_to_payload.get(new_key)
+            if payload is None:
+                continue
+            existing = global_repo.ancestral.get(old_key, [])
+            # Avoid double-registration of the same payload under this old key.
+            if any(global_repo.elements.get(eid) == payload for eid in existing):
+                continue
+            global_repo.register_ancestor(list(old_key), payload)
 
 
 def _post_register(
@@ -62,6 +117,12 @@ def _post_register(
     """Register solved state from feature_result into global_repo for downstream use."""
     if feature_result.get("status") == "exception":
         return
+
+    # Snapshot previous topology surfaces before clearing, so the area re-id
+    # heuristic can map old surface ancestry keys to new ones.
+    prev_topo = global_repo.elements.get("_topo_" + feature_id)
+    prev_surfaces: list[dict] = prev_topo.get("surfaces", []) if isinstance(prev_topo, dict) else []
+
     _clear_feature_geometry_registrations(global_repo, feature_id)
     if "geometry" in feature_result:
         _register_solved_geometry_slash(
@@ -86,6 +147,7 @@ def _post_register(
                 y_axis=frame.y_axis,
                 normal=frame.normal,
             )
+            new_surfaces = feature_result["topology"].get("surfaces", [])
             _register_topology_surfaces(
                 global_repo, feature_result["topology"], plane_obj
             )
@@ -93,6 +155,11 @@ def _post_register(
             _register_topology_vertices(
                 global_repo, feature_result["topology"], plane_obj, feature_id
             )
+            # Apply area re-id: register new surfaces also under old ancestry keys
+            # so downstream area picks survive topology changes (line → arc, etc.).
+            if prev_surfaces and new_surfaces:
+                reid_map = match_area_reid(prev_surfaces, new_surfaces)
+                _apply_area_reid(global_repo, reid_map, new_surfaces, plane_obj)
         _register_sketch_feature(global_repo, feature_id, feature_result)
 
 
