@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import type { Mutation } from '@/types/cad'
-import { mutationHandlers } from '@/hooks/usePartDoc'
+import { mutationHandlers } from '@/hooks/mutationDispatch'
 
-const ALL_MUTATION_TYPES: Mutation['type'][] = [
+const ALL_MUTATION_TYPES = [
   'move_vertex',
   'move_vertex_with_constraint',
   'move_entity',
@@ -68,12 +67,16 @@ const ALL_MUTATION_TYPES: Mutation['type'][] = [
   'edit_session',
 ]
 
-describe('mutationHandlers dispatch table', () => {
-  it('covers every Mutation type variant', () => {
+describe('mutationDispatch', () => {
+  it('handler table covers every Mutation type variant', () => {
     expect(Object.keys(mutationHandlers).sort()).toEqual(ALL_MUTATION_TYPES.slice().sort())
   })
 
-  it('returns undefined for unknown mutation type (dev guard would fire)', () => {
+  it('handler table is not empty', () => {
+    expect(Object.keys(mutationHandlers).length).toBeGreaterThan(0)
+  })
+
+  it('returns undefined for unknown mutation type', () => {
     const handlers = mutationHandlers as Record<string, unknown>
     expect(handlers['__unknown_type__']).toBeUndefined()
   })
