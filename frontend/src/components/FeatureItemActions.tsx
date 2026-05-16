@@ -2,7 +2,6 @@ import contextEditIcon from '@/assets/icons/context-edit.svg'
 import iconDotsIcon from '@/assets/icons/dots.svg'
 import iconEyeIcon from '@/assets/icons/icon-eye.svg'
 import iconEyeOffIcon from '@/assets/icons/icon-eye-off.svg'
-import exitSketchIcon from '@/assets/icons/exit-sketch.svg'
 
 interface FeatureItemActionsProps {
   featureKind: string | undefined
@@ -16,6 +15,8 @@ interface FeatureItemActionsProps {
   onExitEditSketch: () => void
   onEnterEditFeature: (id: string) => void
   onExitEditFeature: () => void
+  onEditCommit: () => void
+  onEditCancel: () => void
   onToggleVisibility: (id: string) => void
   onRightClick: (pos: [number, number], id: string) => void
 }
@@ -29,9 +30,11 @@ export function FeatureItemActions({
   isVisible,
   hasVisibility,
   onEnterEditSketch,
-  onExitEditSketch,
+  onExitEditSketch: _onExitEditSketch,
   onEnterEditFeature,
-  onExitEditFeature,
+  onExitEditFeature: _onExitEditFeature,
+  onEditCommit,
+  onEditCancel,
   onToggleVisibility,
   onRightClick,
 }: FeatureItemActionsProps) {
@@ -63,9 +66,14 @@ export function FeatureItemActions({
         </button>
       )}
       {kind === 'revolve' && showExitBtn && (
-        <button className="exit-feature-btn" onClick={(e) => { e.stopPropagation(); onExitEditFeature() }} title="Exit revolve editor">
-          <span className="material-icons-outlined">close</span>
-        </button>
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <span className="material-icons-outlined">check</span>
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <span className="material-icons-outlined">close</span>
+          </button>
+        </>
       )}
       {kind === 'fillet' && showEditBtn && (
         <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit fillet">
@@ -73,9 +81,14 @@ export function FeatureItemActions({
         </button>
       )}
       {kind === 'fillet' && showExitBtn && (
-        <button className="exit-feature-btn" onClick={(e) => { e.stopPropagation(); onExitEditFeature() }} title="Exit fillet editor">
-          <span className="material-icons-outlined">close</span>
-        </button>
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <span className="material-icons-outlined">check</span>
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <span className="material-icons-outlined">close</span>
+          </button>
+        </>
       )}
       {kind === 'chamfer' && showEditBtn && (
         <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit chamfer">
@@ -83,9 +96,14 @@ export function FeatureItemActions({
         </button>
       )}
       {kind === 'chamfer' && showExitBtn && (
-        <button className="exit-feature-btn" onClick={(e) => { e.stopPropagation(); onExitEditFeature() }} title="Exit chamfer editor">
-          <span className="material-icons-outlined">close</span>
-        </button>
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <span className="material-icons-outlined">check</span>
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <span className="material-icons-outlined">close</span>
+          </button>
+        </>
       )}
       {kind === 'boolean' && showEditBtn && (
         <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit boolean">
@@ -93,9 +111,14 @@ export function FeatureItemActions({
         </button>
       )}
       {kind === 'boolean' && showExitBtn && (
-        <button className="exit-feature-btn" onClick={(e) => { e.stopPropagation(); onExitEditFeature() }} title="Exit boolean editor">
-          <span className="material-icons-outlined">close</span>
-        </button>
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <span className="material-icons-outlined">check</span>
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <span className="material-icons-outlined">close</span>
+          </button>
+        </>
       )}
       {kind === 'array' && showEditBtn && (
         <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit array">
@@ -103,9 +126,14 @@ export function FeatureItemActions({
         </button>
       )}
       {kind === 'array' && showExitBtn && (
-        <button className="exit-feature-btn" onClick={(e) => { e.stopPropagation(); onExitEditFeature() }} title="Exit array editor">
-          <span className="material-icons-outlined">close</span>
-        </button>
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <span className="material-icons-outlined">check</span>
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <span className="material-icons-outlined">close</span>
+          </button>
+        </>
       )}
       {kind === 'delete_body' && showEditBtn && (
         <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit delete body">
@@ -113,9 +141,14 @@ export function FeatureItemActions({
         </button>
       )}
       {kind === 'delete_body' && showExitBtn && (
-        <button className="exit-feature-btn" onClick={(e) => { e.stopPropagation(); onExitEditFeature() }} title="Exit delete body editor">
-          <span className="material-icons-outlined">close</span>
-        </button>
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <span className="material-icons-outlined">check</span>
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <span className="material-icons-outlined">close</span>
+          </button>
+        </>
       )}
       {kind === 'hole' && showEditBtn && (
         <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit hole">
@@ -123,9 +156,14 @@ export function FeatureItemActions({
         </button>
       )}
       {kind === 'hole' && showExitBtn && (
-        <button className="exit-feature-btn" onClick={(e) => { e.stopPropagation(); onExitEditFeature() }} title="Exit hole editor">
-          <span className="material-icons-outlined">close</span>
-        </button>
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <span className="material-icons-outlined">check</span>
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <span className="material-icons-outlined">close</span>
+          </button>
+        </>
       )}
       {kind === 'hole' && isEditing && (
         <span className="feature-visibility-placeholder" />
@@ -136,9 +174,14 @@ export function FeatureItemActions({
         </button>
       )}
       {kind === 'transform' && showExitBtn && (
-        <button className="exit-feature-btn" onClick={(e) => { e.stopPropagation(); onExitEditFeature() }} title="Exit transform editor">
-          <span className="material-icons-outlined">close</span>
-        </button>
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <span className="material-icons-outlined">check</span>
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <span className="material-icons-outlined">close</span>
+          </button>
+        </>
       )}
       {kind === 'transform' && isEditing && (
         <span className="feature-visibility-placeholder" />
@@ -149,27 +192,47 @@ export function FeatureItemActions({
         </button>
       )}
       {kind === 'mirror' && showExitBtn && (
-        <button className="exit-feature-btn" onClick={(e) => { e.stopPropagation(); onExitEditFeature() }} title="Exit mirror editor">
-          <span className="material-icons-outlined">close</span>
-        </button>
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <span className="material-icons-outlined">check</span>
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <span className="material-icons-outlined">close</span>
+          </button>
+        </>
       )}
       {kind === 'mirror' && isEditing && (
         <span className="feature-visibility-placeholder" />
       )}
       {kind === 'extrude' && showExitBtn && (
-        <button className="exit-feature-btn" onClick={(e) => { e.stopPropagation(); onExitEditFeature() }} title="Exit extrude editor">
-          <span className="material-icons-outlined">close</span>
-        </button>
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <span className="material-icons-outlined">check</span>
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <span className="material-icons-outlined">close</span>
+          </button>
+        </>
       )}
       {kind === 'sketch' && showExitBtn && (
-        <button className="exit-feature-btn" onClick={(e) => { e.stopPropagation(); onExitEditSketch() }} title="Exit sketch">
-          <img src={exitSketchIcon} alt="Exit" />
-        </button>
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <span className="material-icons-outlined">check</span>
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <span className="material-icons-outlined">close</span>
+          </button>
+        </>
       )}
       {kind === 'plane' && !isBuiltIn && showExitBtn && (
-        <button className="exit-feature-btn" onClick={(e) => { e.stopPropagation(); onExitEditFeature() }} title="Exit plane editor">
-          <span className="material-icons-outlined">close</span>
-        </button>
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <span className="material-icons-outlined">check</span>
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <span className="material-icons-outlined">close</span>
+          </button>
+        </>
       )}
       {kind === 'plane' && !isBuiltIn && isEditing && (
         <span className="feature-visibility-placeholder" />

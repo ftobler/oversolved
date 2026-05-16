@@ -121,7 +121,7 @@ describe('feature edit rollback restore', () => {
     })
 
     // Exit edit mode on Fillet 1
-    fireEvent.click(screen.getByTitle('Exit fillet editor'))
+    fireEvent.click(screen.getByTitle('OK'))
 
     // Fillet 2 must no longer be rolled back -- rollback is restored to full stack
     await waitFor(() => {
@@ -157,7 +157,7 @@ describe('feature edit rollback restore', () => {
     })
 
     // Exit
-    fireEvent.click(screen.getByTitle('Exit fillet editor'))
+    fireEvent.click(screen.getByTitle('OK'))
 
     // Everything still visible and not rolled back
     await waitFor(() => {

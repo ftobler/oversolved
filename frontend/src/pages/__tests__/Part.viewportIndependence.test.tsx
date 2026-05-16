@@ -16,6 +16,8 @@ function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditor
     onExitEditSketch: vi.fn(),
     onEnterEditFeature: vi.fn(),
     onExitEditFeature: vi.fn(),
+    onEditCommit: vi.fn(),
+    onEditCancel: vi.fn(),
     onToggleVisibility: vi.fn(),
     onRightClick: vi.fn(),
     onRollbackDragStart: vi.fn(),
@@ -96,20 +98,20 @@ describe('sketch enter without viewport', () => {
 })
 
 describe('sketch exit without viewport', () => {
-  it('calls onExitEditSketch when the exit button is clicked', () => {
-    const onExitEditSketch = vi.fn()
-    renderSidebar([sketchFeature], 'sk1', { onExitEditSketch })
-    fireEvent.click(screen.getByTitle('Exit sketch'))
-    expect(onExitEditSketch).toHaveBeenCalled()
+  it('calls onEditCommit when the exit button is clicked', () => {
+    const onEditCommit = vi.fn()
+    renderSidebar([sketchFeature], 'sk1', { onEditCommit })
+    fireEvent.click(screen.getByTitle('OK'))
+    expect(onEditCommit).toHaveBeenCalled()
   })
 
   it('partEditorStore editingFeatureId is cleared after sketch exit', () => {
-    const onExitEditSketch = vi.fn(() => {
+    const onEditCommit = vi.fn(() => {
       // Simulate what Part.tsx does when exitEditSketch fires
       usePartEditorStore.getState().sync({ editingFeatureId: null })
     })
-    renderSidebar([sketchFeature], 'sk1', { onExitEditSketch })
-    fireEvent.click(screen.getByTitle('Exit sketch'))
+    renderSidebar([sketchFeature], 'sk1', { onEditCommit })
+    fireEvent.click(screen.getByTitle('OK'))
     expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
   })
 })

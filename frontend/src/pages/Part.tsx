@@ -130,18 +130,21 @@ export default function Part() {
     handleRedo,
     saveDoc,
     renameDoc,
-      docName,
-      ownerUsername,
-      bodies,
-      pickBodies,
-      setPickBodies,
-      setPickBoundary,
-      setRollbackPos,
-      permission,
-      startPreviewMode,
-      commitPreview,
-      cancelPreview,
-    } = usePartDoc(uuid, mode, setCodeText, { onFirstSolve: handleFirstSolve })
+    docName,
+    ownerUsername,
+    bodies,
+    pickBodies,
+    setPickBodies,
+    setPickBoundary,
+    setRollbackPos,
+    permission,
+    startPreviewMode,
+    commitPreview,
+    cancelPreview,
+    startEditSession,
+    commitEditSession,
+    cancelEditSession,
+  } = usePartDoc(uuid, mode, setCodeText, { onFirstSolve: handleFirstSolve })
 
   const readOnly = permission === 'view'
 
@@ -691,9 +694,10 @@ export default function Part() {
     })
   }, [partColorPopover, partStyle, docRef, startPreviewMode])
 
-  const enterEditFeature = useCallback((featureId: string) => {
+  const enterEditFeature = useCallback((featureId: string, suppressUndo = true) => {
     const idx = features.findIndex(f => f.id === featureId)
     if (idx < 0) return
+    startEditSession(suppressUndo)
     setSavedRollbackPosition(rollbackPosition ?? features.length)
     editEntryRollback.current = idx + 1
     setRollbackFromHandler(idx + 1)
@@ -701,9 +705,10 @@ export default function Part() {
     setEditingFeatureId(featureId)
     setPickBoundary(null)
     setPickBodies({})
-  }, [features, rollbackPosition, setPickBoundary, setPickBodies, setRollbackFromHandler])
+  }, [features, rollbackPosition, setPickBoundary, setPickBodies, setRollbackFromHandler,
+      startEditSession])
 
-  const exitEditFeature = useCallback(() => {
+  const _exitEditCleanup = useCallback(() => {
     const targetRollback = savedRollbackPosition !== null ? savedRollbackPosition : rollbackPosition
     if (savedRollbackPosition !== null) {
       if (rollbackPosition === editEntryRollback.current || rollbackPosition === null) {
@@ -716,18 +721,32 @@ export default function Part() {
     setEditingFeatureId(null)
     setPendingPickField(null)
     setPickBoundary(null)
-    if (docRef.current) reSolve(docRef.current, targetRollback)  // avoid stale handleRebuild closure
+    if (docRef.current) reSolve(docRef.current, targetRollback)
   }, [savedRollbackPosition, rollbackPosition, setPendingPickField, setPickBoundary,
       setRollbackFromHandler, docRef, reSolve])
 
+  const commitEditFeature = useCallback(() => {
+    commitEditSession()
+    _exitEditCleanup()
+  }, [commitEditSession, _exitEditCleanup])
+
+  const cancelEditFeature = useCallback(() => {
+    cancelEditSession()
+    _exitEditCleanup()
+  }, [cancelEditSession, _exitEditCleanup])
+
+  const exitEditFeature = useCallback(() => {
+    commitEditFeature()
+  }, [commitEditFeature])
+
   const enterEditSketch = useCallback((featureId: string) => {
-    enterEditFeature(featureId)
+    enterEditFeature(featureId, false)  // sketch: don't suppress undo
     setMode('sketch')
   }, [enterEditFeature, setMode])
 
   const exitEditSketch = useCallback(() => {
-    exitEditFeature()
-  }, [exitEditFeature])
+    commitEditFeature()  // sketch exits always commit
+  }, [commitEditFeature])
 
   const handleAlignCameraToSketchPlane = useCallback(() => {
     if (!activeSketchFeatureId || !features) return
@@ -818,6 +837,8 @@ export default function Part() {
     onAlignCameraToSketchPlane: handleAlignCameraToSketchPlane,
     onEnterEditFeature: enterEditFeature,
     onExitEditFeature: exitEditFeature,
+    onEditCommit: commitEditFeature,
+    onEditCancel: cancelEditFeature,
     onToggleVisibility: toggleVisibility,
     onRightClick: handleRightClick,
     onRename: handleFeatureRename,
@@ -826,7 +847,8 @@ export default function Part() {
     onSetRollbackPosition: handleUserRollbackChange,
     onRebuild: handleClearCacheAndRebuild,
   }), [toggleNormalSelection, enterEditSketch, exitEditSketch, handleAlignCameraToSketchPlane,
-    enterEditFeature, exitEditFeature, toggleVisibility, handleRightClick, handleFeatureRename,
+    enterEditFeature, exitEditFeature, commitEditFeature, cancelEditFeature,
+    toggleVisibility, handleRightClick, handleFeatureRename,
     handleRollbackDragStart, handleMutation, handleUserRollbackChange,
     handleClearCacheAndRebuild])
 

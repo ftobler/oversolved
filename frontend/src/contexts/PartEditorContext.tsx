@@ -8,6 +8,8 @@ export interface PartEditorCallbacks {
   onAlignCameraToSketchPlane?: () => void
   onEnterEditFeature: (featureId: string) => void
   onExitEditFeature: () => void
+  onEditCommit: () => void
+  onEditCancel: () => void
   onToggleVisibility: (featureId: string) => void
   onRightClick: (pos: [number, number], targetId?: string) => void
   onRename?: (featureId: string, label: string) => void

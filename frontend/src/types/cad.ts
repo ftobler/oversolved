@@ -616,3 +616,4 @@ export type Mutation =
   | { type: 'set_body_visibility'; bodyId: string; visible: boolean }
   | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }
   | { type: 'set_feature_suppression'; featureId: string; suppressed: boolean }
+  | { type: 'edit_session'; featureId: string; description?: string }

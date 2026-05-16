@@ -11,6 +11,7 @@ export function useUndoRedo(
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [redoStack, setRedoStack] = useState<UndoEntry[]>([])
   const suppressUndoRef = useRef(false)
+  const stackSnapshotRef = useRef<{ undo: UndoEntry[]; redo: UndoEntry[] } | null>(null)
 
   const pushUndo = useCallback((mutation: Mutation, currentDoc: PartDoc) => {
     setUndoStack(prev => {
@@ -49,6 +50,25 @@ export function useUndoRedo(
     })
   }, [docRef, setDoc, reSolve])
 
+  const saveUndoStackSnapshot = useCallback(() => {
+    stackSnapshotRef.current = {
+      undo: [...undoStack],
+      redo: [...redoStack],
+    }
+  }, [undoStack, redoStack])
+
+  const restoreUndoStackSnapshot = useCallback(() => {
+    const snap = stackSnapshotRef.current
+    if (!snap) return
+    setUndoStack(snap.undo)
+    setRedoStack(snap.redo)
+    stackSnapshotRef.current = null
+  }, [])
+
+  const clearUndoStackSnapshot = useCallback(() => {
+    stackSnapshotRef.current = null
+  }, [])
+
   return {
     undoStack,
     setUndoStack,
@@ -58,5 +78,8 @@ export function useUndoRedo(
     pushUndo,
     handleUndo,
     handleRedo,
+    saveUndoStackSnapshot,
+    restoreUndoStackSnapshot,
+    clearUndoStackSnapshot,
   }
 }

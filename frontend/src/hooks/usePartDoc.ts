@@ -297,6 +297,7 @@ export const mutationHandlers: MutationHandlers = {
     applyReorderPickField(next, m.featureId, m.field, m.fromIndex, m.toIndex),
   set_feature_suppression: (next, m) =>
     applySetFeatureSuppression(next, m.featureId, m.suppressed),
+  edit_session: () => {},  // undo-only marker; no doc mutation needed
 }
 
 export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
@@ -322,6 +323,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
   const {
     undoStack, redoStack, suppressUndoRef, pushUndo, handleUndo, handleRedo,
+    saveUndoStackSnapshot, restoreUndoStackSnapshot, clearUndoStackSnapshot,
   } = useUndoRedo(docRef, setDoc, reSolve)
 
   const handleMutation = useCallback((m: Mutation) => {
@@ -396,6 +398,41 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     return original
   }, [suppressUndoRef])
 
+  const editSnapshotRef = useRef<PartDoc | null>(null)
+
+  const startEditSession = useCallback((suppressUndo: boolean) => {
+    if (!docRef.current) return
+    editSnapshotRef.current = structuredClone(docRef.current)
+    saveUndoStackSnapshot()
+    if (suppressUndo) {
+      suppressUndoRef.current = true
+    }
+  }, [docRef, saveUndoStackSnapshot, suppressUndoRef])
+
+  const commitEditSession = useCallback(() => {
+    const snapshot = editSnapshotRef.current
+    editSnapshotRef.current = null
+    suppressUndoRef.current = false
+    if (snapshot && docRef.current) {
+      pushUndo(
+        { type: 'edit_session', featureId: '' },
+        snapshot,
+      )
+    }
+    clearUndoStackSnapshot()
+  }, [suppressUndoRef, pushUndo, clearUndoStackSnapshot, docRef])
+
+  const cancelEditSession = useCallback(() => {
+    suppressUndoRef.current = false
+    const snapshot = editSnapshotRef.current
+    editSnapshotRef.current = null
+    if (snapshot) {
+      docRef.current = snapshot
+      setDoc(snapshot)
+    }
+    restoreUndoStackSnapshot()
+  }, [suppressUndoRef, docRef, setDoc, restoreUndoStackSnapshot])
+
   return {
     doc,
     setDoc,
@@ -435,5 +472,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     startPreviewMode,
     commitPreview,
     cancelPreview,
+    startEditSession,
+    commitEditSession,
+    cancelEditSession,
   }
 }

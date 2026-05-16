@@ -135,7 +135,7 @@ describe('edit exit reSolve', () => {
     const callsBeforeExit = solveMock.mock.calls.length
 
     // Exit edit
-    await act(async () => { fireEvent.click(screen.getByTitle('Exit fillet editor')) })
+    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
 
     // Give pending microtasks (cache lookup, reSolve dispatch) a chance to flush.
     await new Promise(r => setTimeout(r, 50))

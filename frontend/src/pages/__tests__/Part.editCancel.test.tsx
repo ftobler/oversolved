@@ -78,64 +78,83 @@ const extrudeFeature: PartFeature = {
   extrude: { sketch: '$sk1', distance: 10, direction: 'normal' },
 }
 
-const planeFeature: PartFeature = { id: 'pl1', kind: 'plane' }
+const sketchFeature: PartFeature = {
+  id: 'sk1',
+  kind: 'sketch',
+  sketch: { entities: [], constraints: [] },
+}
 
-describe('extrude edit button', () => {
-  it('calls onEnterEditFeature with the feature id', () => {
-    const onEnterEditFeature = vi.fn()
-    renderSidebar([extrudeFeature], null, { onEnterEditFeature })
-    fireEvent.click(screen.getByTitle('Edit extrude'))
-    expect(onEnterEditFeature).toHaveBeenCalledWith('ex1')
+describe('edit commit / cancel buttons', () => {
+  it('shows OK and Cancel buttons when editing a feature', () => {
+    renderSidebar([extrudeFeature], 'ex1')
+    expect(screen.getByTitle('OK')).toBeDefined()
+    expect(screen.getByTitle('Cancel')).toBeDefined()
   })
 
-  it('does not call onSetRollbackPosition directly', () => {
-    const onSetRollbackPosition = vi.fn()
-    renderSidebar([extrudeFeature], null, { onSetRollbackPosition })
-    fireEvent.click(screen.getByTitle('Edit extrude'))
-    expect(onSetRollbackPosition).not.toHaveBeenCalled()
+  it('shows OK and Cancel buttons when editing a sketch', () => {
+    renderSidebar([sketchFeature], 'sk1')
+    expect(screen.getByTitle('OK')).toBeDefined()
+    expect(screen.getByTitle('Cancel')).toBeDefined()
   })
-})
 
-describe('extrude exit button', () => {
-  it('calls onEditCommit when closing extrude editor', () => {
+  it('shows no exit button when not editing', () => {
+    renderSidebar([extrudeFeature], null)
+    expect(screen.queryByTitle('OK')).toBeNull()
+    expect(screen.queryByTitle('Cancel')).toBeNull()
+  })
+
+  it('calls onEditCommit when OK is clicked on extrude', () => {
     const onEditCommit = vi.fn()
     renderSidebar([extrudeFeature], 'ex1', { onEditCommit })
     fireEvent.click(screen.getByTitle('OK'))
     expect(onEditCommit).toHaveBeenCalled()
   })
 
-  it('does not call onSetPendingPickField directly on exit', () => {
-    // setPendingPickField is now from sketchEditorStore directly, not a callback.
-    // Clicking exit should not call the store's setPendingPickField on its own.
-    const setPendingPickFieldSpy = vi.spyOn(useSketchEditorStore.getState(), 'setPendingPickField')
-    renderSidebar([extrudeFeature], 'ex1')
-    fireEvent.click(screen.getByTitle('OK'))
-    expect(setPendingPickFieldSpy).not.toHaveBeenCalled()
-    setPendingPickFieldSpy.mockRestore()
-  })
-})
-
-describe('plane edit button', () => {
-  it('calls onEnterEditFeature with the feature id', () => {
-    const onEnterEditFeature = vi.fn()
-    renderSidebar([planeFeature], null, { onEnterEditFeature })
-    fireEvent.click(screen.getByTitle('Edit plane'))
-    expect(onEnterEditFeature).toHaveBeenCalledWith('pl1')
+  it('calls onEditCancel when Cancel is clicked on extrude', () => {
+    const onEditCancel = vi.fn()
+    renderSidebar([extrudeFeature], 'ex1', { onEditCancel })
+    fireEvent.click(screen.getByTitle('Cancel'))
+    expect(onEditCancel).toHaveBeenCalled()
   })
 
-  it('does not call onSetRollbackPosition directly', () => {
-    const onSetRollbackPosition = vi.fn()
-    renderSidebar([planeFeature], null, { onSetRollbackPosition })
-    fireEvent.click(screen.getByTitle('Edit plane'))
-    expect(onSetRollbackPosition).not.toHaveBeenCalled()
-  })
-})
-
-describe('plane exit button', () => {
-  it('calls onEditCommit when closing plane editor', () => {
+  it('calls onEditCommit when OK is clicked on sketch', () => {
     const onEditCommit = vi.fn()
-    renderSidebar([planeFeature], 'pl1', { onEditCommit })
+    renderSidebar([sketchFeature], 'sk1', { onEditCommit })
     fireEvent.click(screen.getByTitle('OK'))
     expect(onEditCommit).toHaveBeenCalled()
+  })
+
+  it('calls onEditCancel when Cancel is clicked on sketch', () => {
+    const onEditCancel = vi.fn()
+    renderSidebar([sketchFeature], 'sk1', { onEditCancel })
+    fireEvent.click(screen.getByTitle('Cancel'))
+    expect(onEditCancel).toHaveBeenCalled()
+  })
+
+  it('Cancel does not call onEditCommit', () => {
+    const onEditCommit = vi.fn()
+    const onEditCancel = vi.fn()
+    renderSidebar([extrudeFeature], 'ex1', { onEditCommit, onEditCancel })
+    fireEvent.click(screen.getByTitle('Cancel'))
+    expect(onEditCommit).not.toHaveBeenCalled()
+    expect(onEditCancel).toHaveBeenCalled()
+  })
+
+  it('OK does not call onEditCancel', () => {
+    const onEditCommit = vi.fn()
+    const onEditCancel = vi.fn()
+    renderSidebar([extrudeFeature], 'ex1', { onEditCommit, onEditCancel })
+    fireEvent.click(screen.getByTitle('OK'))
+    expect(onEditCancel).not.toHaveBeenCalled()
+    expect(onEditCommit).toHaveBeenCalled()
+  })
+})
+
+describe('commit does not call cancel', () => {
+  it('commit does not call onEditCancel', () => {
+    const onEditCancel = vi.fn()
+    renderSidebar([extrudeFeature], 'ex1', { onEditCancel })
+    fireEvent.click(screen.getByTitle('OK'))
+    expect(onEditCancel).not.toHaveBeenCalled()
   })
 })

@@ -87,6 +87,8 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
     onExitEditSketch,
     onEnterEditFeature,
     onExitEditFeature,
+    onEditCommit,
+    onEditCancel,
     onToggleVisibility,
     onRightClick,
     onRollbackDragStart,
@@ -360,6 +362,8 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                   onExitEditSketch={onExitEditSketch}
                   onEnterEditFeature={onEnterEditFeature}
                   onExitEditFeature={onExitEditFeature}
+                  onEditCommit={onEditCommit}
+                  onEditCancel={onEditCancel}
                   onToggleVisibility={onToggleVisibility}
                   onRightClick={onRightClick}
                 />

@@ -95,6 +95,7 @@ const ALL_MUTATION_TYPES: Mutation['type'][] = [
   'reorder_features',
   'reorder_pick_field',
   'set_feature_suppression',
+  'edit_session',
 ]
 
 describe('mutationHandlers dispatch table', () => {
