@@ -1188,10 +1188,11 @@
   gap: 6px;
   font-family: 'Roboto Mono', monospace;
   font-size: 10px;
-  color: #4fc3f7;
+  color: #cccccc;
   flex-shrink: 0;
   max-width: 50%;
   overflow: hidden;
+  margin-left: auto;
 }
 
 .measurement-item {
@@ -1204,7 +1205,7 @@
 .measurement-icon {
   width: 12px;
   height: 12px;
-  filter: invert(1) sepia(1) saturate(10) hue-rotate(190deg);
+  filter: brightness(0) invert(0.8);
 }
 
 .debug-drawer {
