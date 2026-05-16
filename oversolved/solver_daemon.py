@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import multiprocessing as mp
+import os
 import time
 import traceback
 import uuid
@@ -28,8 +29,11 @@ def _build_worker(input_queue: Any, output_queue: Any) -> None:
     subprocess, keeping the solver daemon free of native code.
     """
     from oversolved.kernel.builder import build  # noqa: PLC0415
+    from oversolved.cache import TtlCache  # noqa: PLC0415
 
-    prev_states: dict[str, Any] = {}
+    ttl = float(os.environ.get("OVERSOLVED_SOLVER_STATE_TTL", "1800"))
+    max_size = int(os.environ.get("OVERSOLVED_SOLVER_STATE_MAX_SIZE", "32"))
+    prev_states: TtlCache[Any] = TtlCache(ttl_seconds=ttl, max_size=max_size)
 
     while True:
         try:
@@ -46,7 +50,7 @@ def _build_worker(input_queue: Any, output_queue: Any) -> None:
         if isinstance(msg, (list, tuple)) and len(msg) >= 2 and msg[0] == "__clear_cache__":
             doc_id = msg[1]
             if doc_id:
-                prev_states.pop(doc_id, None)
+                prev_states.delete(doc_id)
             else:
                 prev_states.clear()
             continue
@@ -72,7 +76,7 @@ def _build_worker(input_queue: Any, output_queue: Any) -> None:
             result.pop("_body_shapes", None)
 
             if doc_id and new_state is not None:
-                prev_states[doc_id] = new_state
+                prev_states.set(doc_id, new_state)
 
             output_queue.put((request_id, "ok", result))
         except Exception as exc:
@@ -230,26 +234,123 @@ def _error_result(message: str) -> dict:
 
 
 class WorkerPool:
-    """Manages OCP worker subprocesses.
+    """Manages OCP worker subprocesses with a bounded pool.
 
-    Each WebSocket connection gets a dedicated worker.  If a worker crashes
-    (SIGSEGV), it is restarted on the next request.
+    At most max_workers subprocesses run concurrently.  When the pool is
+    full, the LRU idle worker is evicted to make room.  If all workers are
+    in-flight (busy), the caller waits up to queue_timeout seconds before
+    receiving a "solver busy" error.  An idle-reaper coroutine evicts
+    workers that have been idle longer than idle_timeout.
     """
 
-    def __init__(self, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        timeout: float = 30.0,
+        max_workers: int | None = None,
+        queue_timeout: float = 60.0,
+        idle_timeout: float = 600.0,
+    ) -> None:
         self._timeout = timeout
+        self._max_workers = max_workers if max_workers is not None else (os.cpu_count() or 4)
+        self._queue_timeout = queue_timeout
+        self._idle_timeout = idle_timeout
         self._workers: dict[str, _Worker] = {}
+        self._last_used: dict[str, float] = {}
+        self._in_flight: dict[str, int] = {}
+        self._condition: asyncio.Condition | None = None
 
-    def acquire(self, connection_id: str) -> _Worker:
-        """Get or create a worker for this connection."""
-        if connection_id not in self._workers:
-            self._workers[connection_id] = _Worker(self._timeout)
-        return self._workers[connection_id]
+    @property
+    def _cond(self) -> asyncio.Condition:
+        if self._condition is None:
+            self._condition = asyncio.Condition()
+        return self._condition
 
-    def release(self, connection_id: str) -> None:
-        worker = self._workers.pop(connection_id, None)
-        if worker:
-            worker.shutdown()
+    async def acquire(self, cid: str) -> _Worker:
+        """Get or create a worker for this connection.
+
+        Evicts the LRU idle worker if the pool is full.  Waits up to
+        queue_timeout if all workers are busy, then raises TimeoutError.
+        """
+        cond = self._cond
+        evict_target: _Worker | None = None
+        async with cond:
+            if cid in self._workers:
+                self._last_used[cid] = time.monotonic()
+                return self._workers[cid]
+
+            while len(self._workers) >= self._max_workers:
+                idle = [c for c in self._workers if not self._in_flight.get(c, 0)]
+                if idle:
+                    lru = min(idle, key=lambda c: self._last_used.get(c, 0.0))
+                    evict_target = self._workers.pop(lru)
+                    self._last_used.pop(lru, None)
+                    self._in_flight.pop(lru, None)
+                    break
+                # All workers busy — wait for a slot.
+                try:
+                    await asyncio.wait_for(cond.wait(), timeout=self._queue_timeout)
+                except asyncio.TimeoutError:
+                    raise asyncio.TimeoutError("solver busy: all workers in use")
+
+            worker = _Worker(self._timeout)
+            self._workers[cid] = worker
+            self._last_used[cid] = time.monotonic()
+            self._in_flight[cid] = 0
+
+        if evict_target is not None:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, evict_target.shutdown)
+        return worker
+
+    def mark_in_flight(self, cid: str) -> None:
+        """Increment in-flight count when a build starts."""
+        self._in_flight[cid] = self._in_flight.get(cid, 0) + 1
+        self._last_used[cid] = time.monotonic()
+
+    async def mark_done(self, cid: str) -> None:
+        """Decrement in-flight count and notify any waiting acquirers."""
+        cond = self._cond
+        async with cond:
+            self._in_flight[cid] = max(0, self._in_flight.get(cid, 0) - 1)
+            self._last_used[cid] = time.monotonic()
+            cond.notify_all()
+
+    async def release(self, cid: str) -> None:
+        """Remove the worker for this connection and notify waiters."""
+        cond = self._cond
+        worker: _Worker | None = None
+        async with cond:
+            worker = self._workers.pop(cid, None)
+            self._last_used.pop(cid, None)
+            self._in_flight.pop(cid, None)
+            cond.notify_all()
+        if worker is not None:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, worker.shutdown)
+
+    async def idle_reaper(self) -> None:
+        """Background coroutine: evict workers idle longer than idle_timeout."""
+        interval = min(60.0, max(0.01, self._idle_timeout / 10))
+        while True:
+            await asyncio.sleep(interval)
+            cond = self._cond
+            to_evict: list[_Worker] = []
+            async with cond:
+                now = time.monotonic()
+                for c in list(self._workers):
+                    if self._in_flight.get(c, 0):
+                        continue
+                    idle_secs = now - self._last_used.get(c, now)
+                    if idle_secs > self._idle_timeout:
+                        to_evict.append(self._workers.pop(c))
+                        self._last_used.pop(c, None)
+                        self._in_flight.pop(c, None)
+                if to_evict:
+                    cond.notify_all()
+            if to_evict:
+                loop = asyncio.get_running_loop()
+                for w in to_evict:
+                    await loop.run_in_executor(None, w.shutdown)
 
 
 async def handler(websocket: Any, pool: WorkerPool) -> None:
@@ -261,7 +362,12 @@ async def handler(websocket: Any, pool: WorkerPool) -> None:
     blocking mp.Queue calls that would stall the asyncio event loop.
     """
     cid = str(uuid.uuid4())
-    worker = pool.acquire(cid)
+    try:
+        worker = await pool.acquire(cid)
+    except asyncio.TimeoutError:
+        logger.warning("WS handler: solver busy, closing connection %s", cid)
+        return
+
     loop = asyncio.get_running_loop()
     try:
         async for raw in websocket:
@@ -270,6 +376,7 @@ async def handler(websocket: Any, pool: WorkerPool) -> None:
             msg_type = request.get("type")
 
             if msg_type == "solve":
+                pool.mark_in_flight(cid)
                 try:
                     result = await loop.run_in_executor(
                         None,
@@ -279,26 +386,21 @@ async def handler(websocket: Any, pool: WorkerPool) -> None:
                         request.get("pick_boundary"),
                         request.get("rollback_position"),
                     )
-                    bodies = result.pop("bodies", {})
-                    pick_bodies = result.pop("pick_bodies", None)
-                    msg_id = request.get("spec", {}).get("msgId")
-                    await websocket.send(json.dumps({
-                        "request_id": request_id,
-                        "status": "ok",
-                        "has_geometry": True,
-                        "payload": result,
-                    }))
-                    geometry = pack_geometry_update(
-                        msg_id, bodies, pick_bodies, request_id=request_id
-                    )
-                    await websocket.send(geometry)
-                except Exception as exc:
-                    logger.exception("Solver error for request %s", request_id)
-                    await websocket.send(json.dumps({
-                        "request_id": request_id,
-                        "status": "error",
-                        "payload": {"exception": str(exc)},
-                    }))
+                finally:
+                    await pool.mark_done(cid)
+                bodies = result.pop("bodies", {})
+                pick_bodies = result.pop("pick_bodies", None)
+                msg_id = request.get("spec", {}).get("msgId")
+                await websocket.send(json.dumps({
+                    "request_id": request_id,
+                    "status": "ok",
+                    "has_geometry": True,
+                    "payload": result,
+                }))
+                geometry = pack_geometry_update(
+                    msg_id, bodies, pick_bodies, request_id=request_id
+                )
+                await websocket.send(geometry)
 
             elif msg_type == "clear_cache":
                 try:
@@ -320,15 +422,23 @@ async def handler(websocket: Any, pool: WorkerPool) -> None:
                     "status": "error",
                     "payload": {"exception": f"unknown message type: {msg_type}"},
                 }))
+    except Exception:
+        logger.exception("WS handler error for connection %s", cid)
     finally:
-        pool.release(cid)
+        await pool.release(cid)
 
 
 async def main_async(address: str, port: int, timeout: float) -> None:
     """Run the solver daemon until cancelled."""
-    pool = WorkerPool(timeout=timeout)
-    async with serve(lambda ws: handler(ws, pool), address, port, max_size=None):
-        await asyncio.get_running_loop().create_future()
+    max_workers = int(os.environ.get("OVERSOLVED_SOLVER_MAX_WORKERS", str(os.cpu_count() or 4)))
+    idle_timeout = float(os.environ.get("OVERSOLVED_SOLVER_IDLE_TIMEOUT", "600"))
+    pool = WorkerPool(timeout=timeout, max_workers=max_workers, idle_timeout=idle_timeout)
+    reaper = asyncio.create_task(pool.idle_reaper())
+    try:
+        async with serve(lambda ws: handler(ws, pool), address, port, max_size=None):
+            await asyncio.get_running_loop().create_future()
+    finally:
+        reaper.cancel()
 
 
 def main() -> None:
