@@ -7,8 +7,10 @@ import type { SnapKind } from '@/registry'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { parseQuery } from '@/utils/query'
 
-// Callbacks registered by the editor page, stored outside Zustand state so
-// function references don't pollute serializable store snapshots.
+// Callbacks dispatched from pure-layer store actions back into React state.
+// Registered by Part.tsx on mount via setSketchCallback(); torn down on unmount.
+// Stored outside Zustand so function references don't pollute serializable snapshots.
+// Invariant: all three slots must be non-null while a sketch editing session is active.
 const _sketchCbs: {
   onMutation: ((m: Mutation) => void) | null
   onRebuild: (() => void) | null
@@ -26,13 +28,19 @@ export function getSketchCallback<K extends keyof typeof _sketchCbs>(key: K): (t
 }
 
 const devOnly = import.meta.env.DEV
+const testMode = import.meta.env.MODE === 'test'
 
 function guard<T extends (...args: never[]) => unknown>(
   fn: T | null | undefined,
   label: string,
 ): T {
-  if (devOnly && !fn) {
-    console.warn(`[sketchEditorStore] ${label}: callback not registered — action will be ignored. Ensure setSketchCallback() was called before this action.`)
+  if (!fn) {
+    if (testMode) {
+      throw new Error(`[sketchEditorStore] ${label}: callback not registered. Call setSketchCallback() before invoking this action.`)
+    }
+    if (devOnly) {
+      console.warn(`[sketchEditorStore] ${label}: callback not registered — action will be ignored. Ensure setSketchCallback() was called before this action.`)
+    }
   }
   return (fn ?? (() => {})) as unknown as T
 }
