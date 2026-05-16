@@ -7,7 +7,7 @@ from flask import Blueprint, jsonify, request, Response
 from PIL import Image
 from oversolved.db import DocumentStore, UserStore
 from flask import g
-from oversolved.blueprints import get_db, require_auth, require_csrf
+from oversolved.blueprints import get_db, require_auth, require_csrf, require_doc_permission
 
 documents_bp = Blueprint("documents", __name__, url_prefix="/api/documents")
 
@@ -52,22 +52,16 @@ def create_document():
 @documents_bp.route("/<uuid>", methods=["GET"])
 @require_auth
 @require_csrf
+@require_doc_permission("view")
 def get_document(uuid):
-    doc_store = DocumentStore(get_db())
-    doc = doc_store.retrieve(uuid)
-    if doc is None:
-        return jsonify({"error": "Document not found"}), 404
-    permission = doc_store.get_permission(uuid, g.current_user["id"])
-    if permission is None:
-        return jsonify({"error": "Forbidden"}), 403
-    user_store = UserStore(get_db())
-    owner = user_store.find_by_id(doc["owner_id"])
+    doc = g.document
+    owner = UserStore(get_db()).find_by_id(doc["owner_id"])
     owner_username = owner["username"] if owner else "Unknown"
     response = {
         "uuid": doc["uuid"],
         "name": doc["name"],
         "content": doc["content"],
-        "permission": permission,
+        "permission": g.document_permission,
         "owner_username": owner_username,
         "is_public": doc["is_public"],
     }
@@ -115,6 +109,7 @@ def update_document(uuid):
 @documents_bp.route("/<uuid>", methods=["PATCH"])
 @require_auth
 @require_csrf
+@require_doc_permission("owner")
 def rename_document(uuid):
     if not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 400
@@ -122,32 +117,17 @@ def rename_document(uuid):
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "Document name required"}), 400
-    db = get_db()
-    doc_store = DocumentStore(db)
-    doc = doc_store.retrieve(uuid)
-    if doc is None:
-        return jsonify({"error": "Document not found"}), 404
-    permission = doc_store.get_permission(uuid, g.current_user["id"])
-    if permission != "owner":
-        return jsonify({"error": "Forbidden"}), 403
-    doc_store.rename(uuid, name)
+    DocumentStore(get_db()).rename(uuid, name)
     return jsonify({"uuid": uuid, "name": name})
 
 
 @documents_bp.route("/<uuid>", methods=["DELETE"])
 @require_auth
 @require_csrf
+@require_doc_permission("owner")
 def delete_document(uuid):
-    db = get_db()
-    doc_store = DocumentStore(db)
-    doc = doc_store.retrieve(uuid)
-    if doc is None:
-        return jsonify({"error": "Document not found"}), 404
-    permission = doc_store.get_permission(uuid, g.current_user["id"])
-    if permission != "owner":
-        return jsonify({"error": "Forbidden"}), 403
     deleted_at = datetime.now(timezone.utc).isoformat()
-    doc_store.update(uuid, deleted_at=deleted_at)
+    DocumentStore(get_db()).update(uuid, deleted_at=deleted_at)
     return jsonify({
         "uuid": uuid,
         "status": "moved_to_trash",
@@ -167,15 +147,9 @@ def list_trash():
 @documents_bp.route("/<uuid>/recover", methods=["POST"])
 @require_auth
 @require_csrf
+@require_doc_permission("owner")
 def recover_document(uuid):
-    doc_store = DocumentStore(get_db())
-    doc = doc_store.retrieve(uuid)
-
-    if doc is None:
-        return jsonify({"error": "Document not found"}), 404
-
-    if doc["owner_id"] != g.current_user["id"]:
-        return jsonify({"error": "Forbidden"}), 403
+    doc = g.document
 
     if doc["deleted_at"] is None:
         return jsonify({"error": "Document is not in trash"}), 400
@@ -186,60 +160,39 @@ def recover_document(uuid):
     if datetime.now(timezone.utc) - deleted_time > timedelta(days=30):
         return jsonify({"error": "Document has expired and cannot be recovered"}), 410
 
-    doc_store.update(uuid, deleted_at=None)
+    DocumentStore(get_db()).update(uuid, deleted_at=None)
     return jsonify({"uuid": uuid, "status": "recovered", "deleted_at": None})
 
 
 @documents_bp.route("/<uuid>/trash", methods=["DELETE"])
 @require_auth
 @require_csrf
+@require_doc_permission("owner")
 def permanently_delete_from_trash(uuid):
-    doc_store = DocumentStore(get_db())
-    doc = doc_store.retrieve(uuid)
-
-    if doc is None:
-        return jsonify({"error": "Document not found"}), 404
-
-    if doc["owner_id"] != g.current_user["id"]:
-        return jsonify({"error": "Forbidden"}), 403
-
-    if doc["deleted_at"] is None:
+    if g.document["deleted_at"] is None:
         return jsonify({"error": "Document is not in trash"}), 400
 
-    doc_store.permanently_delete(uuid)
+    DocumentStore(get_db()).permanently_delete(uuid)
     return jsonify({"uuid": uuid, "status": "permanently_deleted"})
 
 
 @documents_bp.route("/<uuid>/duplicate", methods=["POST"])
 @require_auth
 @require_csrf
+@require_doc_permission("owner")
 def duplicate_document(uuid):
-    db = get_db()
-    doc_store = DocumentStore(db)
-    doc = doc_store.retrieve(uuid)
-    if doc is None:
-        return jsonify({"error": "Document not found"}), 404
-    permission = doc_store.get_permission(uuid, g.current_user["id"])
-    if permission != "owner":
-        return jsonify({"error": "Forbidden"}), 403
-    new_name = f"{doc['name']} (Copy)"
-    new_uuid = doc_store.duplicate(uuid, new_name)
+    new_name = f"{g.document['name']} (Copy)"
+    new_uuid = DocumentStore(get_db()).duplicate(uuid, new_name)
     return jsonify({"uuid": new_uuid, "name": new_name}), 201
 
 
 @documents_bp.route("/<uuid>/clone", methods=["POST"])
 @require_auth
 @require_csrf
+@require_doc_permission("view")
 def clone_document(uuid):
-    db = get_db()
-    doc_store = DocumentStore(db)
-    doc = doc_store.retrieve(uuid)
-    if doc is None:
-        return jsonify({"error": "Document not found"}), 404
-
-    if not doc_store.has_permission(uuid, g.current_user["id"], "view"):
-        return jsonify({"error": "Forbidden"}), 403
-
+    doc = g.document
+    doc_store = DocumentStore(get_db())
     new_name = f"{doc['name']} (Clone)"
     existing = doc_store.list_by_owner(g.current_user["id"])
     existing_names = {d["name"] for d in existing}
@@ -255,17 +208,13 @@ def clone_document(uuid):
 @documents_bp.route("/<uuid>/share", methods=["POST"])
 @require_auth
 @require_csrf
+@require_doc_permission("owner")
 def create_share(uuid):
     if not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 400
     data = request.get_json()
     db = get_db()
     doc_store = DocumentStore(db)
-    doc = doc_store.retrieve(uuid)
-    if doc is None:
-        return jsonify({"error": "Document not found"}), 404
-    if doc["owner_id"] != g.current_user["id"]:
-        return jsonify({"error": "Forbidden"}), 403
 
     username = data.get("username")
     permission = data.get("permission", "view")
@@ -286,13 +235,13 @@ def create_share(uuid):
 @documents_bp.route("/<uuid>/share", methods=["DELETE"])
 @require_auth
 @require_csrf
+@require_doc_permission("view")
 def remove_share(uuid):
+    # Self-unshare is allowed at "view" level; owner ops guarded per-branch below.
     data = request.get_json(silent=True) or {}
     db = get_db()
     doc_store = DocumentStore(db)
-    doc = doc_store.retrieve(uuid)
-    if doc is None:
-        return jsonify({"error": "Document not found"}), 404
+    doc = g.document
 
     username = data.get("username")
     if username:
@@ -314,41 +263,27 @@ def remove_share(uuid):
 @documents_bp.route("/<uuid>/shares", methods=["GET"])
 @require_auth
 @require_csrf
+@require_doc_permission("owner")
 def list_shares(uuid):
-    db = get_db()
-    doc_store = DocumentStore(db)
-    doc = doc_store.retrieve(uuid)
-    if doc is None:
-        return jsonify({"error": "Document not found"}), 404
-    if doc["owner_id"] != g.current_user["id"]:
-        return jsonify({"error": "Forbidden"}), 403
-    shares = doc_store.get_shares(uuid)
+    shares = DocumentStore(get_db()).get_shares(uuid)
     return jsonify({"shares": shares})
 
 
 @documents_bp.route("/<uuid>/export", methods=["GET"])
 @require_auth
 @require_csrf
+@require_doc_permission("view")
 def export_document(uuid):
-    doc_store = DocumentStore(get_db())
-    doc = doc_store.retrieve(uuid)
-    if doc is None:
-        return jsonify({"error": "Document not found"}), 404
-    if not doc_store.has_permission(uuid, g.current_user["id"], "view"):
-        return jsonify({"error": "Forbidden"}), 403
+    doc = g.document
     return jsonify({"name": doc["name"], "content": doc["content"]})
 
 
 @documents_bp.route("/<uuid>/thumbnail", methods=["GET"])
 @require_auth
 @require_csrf
+@require_doc_permission("view")
 def get_thumbnail(uuid):
-    doc_store = DocumentStore(get_db())
-    doc = doc_store.retrieve(uuid)
-    if doc is None:
-        return jsonify({"error": "Document not found"}), 404
-    if not doc_store.has_permission(uuid, g.current_user["id"], "view"):
-        return jsonify({"error": "Forbidden"}), 403
+    doc = g.document
     if not doc["preview_image"]:
         return "", 404
     return Response(doc["preview_image"], mimetype="image/png")
@@ -357,12 +292,9 @@ def get_thumbnail(uuid):
 @documents_bp.route("/<doc_id>/rebuild-stats", methods=["GET"])
 @require_auth
 @require_csrf
+@require_doc_permission("view", url_var="doc_id")
 def rebuild_stats(doc_id):
     db = get_db()
-
-    cursor = db.execute("SELECT uuid FROM documents WHERE uuid = ?", (doc_id,))
-    if cursor.fetchone() is None:
-        return jsonify({"error": "Document not found"}), 404
 
     cursor = db.execute(
         """SELECT duration_ms FROM rebuild_times

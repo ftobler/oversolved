@@ -1,10 +1,11 @@
 """Shared utilities for Flask blueprints."""
 
 from functools import wraps
+from typing import Literal
 from flask import g, jsonify, request, current_app
 from oversolved.db import (
     Database, DatabaseConnection, SQLiteConnection,
-    PostgreSQLConnection, SessionStore, UserStore,
+    PostgreSQLConnection, SessionStore, UserStore, DocumentStore,
 )
 
 
@@ -93,6 +94,45 @@ def require_admin(f):
         return f(*args, **kwargs)
 
     return decorated_function
+
+
+_PERMISSION_LEVELS = {"view": 0, "edit": 1, "owner": 2}
+
+
+def _permission_at_least(actual: str | None, required: str) -> bool:
+    """Return True if actual permission meets or exceeds required level."""
+    if actual is None:
+        return False
+    return _PERMISSION_LEVELS.get(actual, -1) >= _PERMISSION_LEVELS[required]
+
+
+def require_doc_permission(
+    level: Literal["view", "edit", "owner"],
+    url_var: str = "uuid",
+):
+    """Decorator that loads a document and enforces a minimum permission level.
+
+    Sets g.document and g.document_permission for the decorated view.
+    Returns 404 if the document is missing, 403 if permission is insufficient.
+    Must be applied after @require_auth.
+    """
+    def decorator(f):  # type: ignore[misc]
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            doc_uuid = kwargs.get(url_var)
+            db = get_db()
+            doc_store = DocumentStore(db)
+            doc = doc_store.retrieve(doc_uuid)
+            if doc is None:
+                return jsonify({"error": "Document not found"}), 404
+            actual = doc_store.get_permission(doc_uuid, g.current_user["id"])
+            if not _permission_at_least(actual, level):
+                return jsonify({"error": "Forbidden"}), 403
+            g.document = doc
+            g.document_permission = actual
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
 
 
 def validate_password_strength(password: str) -> str | None:
