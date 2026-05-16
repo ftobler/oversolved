@@ -430,6 +430,54 @@
   font-size: 11px;
 }
 
+.feature-ok-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a3a1a;
+  border: none;
+  cursor: pointer;
+  color: #4caf50;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.feature-ok-btn img {
+  width: 16px;
+  height: 16px;
+  filter: invert(0.8);
+}
+
+.feature-ok-btn:hover {
+  background: #1e4a1e;
+}
+
+.feature-cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #3a1a1a;
+  border: none;
+  cursor: pointer;
+  color: #f44336;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.feature-cancel-btn img {
+  width: 16px;
+  height: 16px;
+  filter: invert(0.8);
+}
+
+.feature-cancel-btn:hover {
+  background: #4a1e1e;
+}
+
 .feature-item.editing {
   background: #1a0f1a;
   color: #e060b0;

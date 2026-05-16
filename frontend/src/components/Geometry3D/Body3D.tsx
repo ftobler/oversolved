@@ -610,6 +610,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
             ref={vertexMeshRef}
             args={[undefined, undefined, vertices.length]}
             raycast={interactive ? undefined : noRaycast}
+            frustumCulled={false}
             onPointerOver={interactive ? (e) => {
               e.stopPropagation()
               const idx = e.instanceId
@@ -625,6 +626,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
               if (idx !== undefined) {
                 const query = vertexQueries?.[idx] ?? `@${featureId}/vertex/${idx}`
                 toggleNormalSelection(query)
+                if (useSketchEditorStore.getState().pendingPickField) {
+                  useSketchEditorStore.getState().commitFieldPick()
+                }
               }
             } : undefined}
           >
@@ -642,6 +646,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
             ref={vertexDotRef}
             args={[undefined, undefined, vertices.length]}
             visible={false}
+            frustumCulled={false}
             renderOrder={RENDER_ORDER_HIGHLIGHT}
           >
             <sphereGeometry args={[1, 6, 6]} />
