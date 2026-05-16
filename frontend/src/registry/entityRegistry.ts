@@ -144,7 +144,7 @@ export const ENTITIES: readonly EntityDef[] = [
     activeTool: 'project',
     shortcut: 'j',
     toolbarIcon: 'toolbar-project',
-    showInToolbar: true,
+    showInToolbar: false,  // Dedicated ProjectTool component handles toolbar rendering.
   },
 ] as const
 

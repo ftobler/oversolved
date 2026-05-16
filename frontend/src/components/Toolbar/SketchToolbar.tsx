@@ -8,6 +8,7 @@ import {
   ConstructionToggleTool,
   ConstraintTools,
   MirrorTool,
+  ProjectTool,
 } from '@/components/Toolbar/tools'
 
 interface SketchToolbarProps {
@@ -34,6 +35,7 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
 
       <ConstructionToggleTool />
       <MirrorTool />
+      <ProjectTool />
 
       <div className="toolbar-separator" />
 

@@ -60,6 +60,7 @@ __all__ = [
     "_try_solve_feature",
     "_init_global_repo",
     "_post_register",
+    "_resolve_projections",
 ]
 
 
@@ -377,6 +378,22 @@ def _get_or_build_repo(feature_id: str, entities: dict) -> Repository:
     with _last_repo_structure_lock:
         _last_repo_structure = (key, repo)
     return repo
+
+
+def _resolve_projections(
+    feature: dict,
+    global_repo: Repository | None,
+    initial: dict,
+    constraints: list,
+) -> set[str]:
+    """Resolve projected entity coordinates from their source queries.
+
+    Called before the constraint residual build so projected entities have
+    fixed coordinates that are pinned inputs to the solver.
+
+    Returns the set of projected entity IDs.
+    """
+    return _process_projected_entities(feature, global_repo, initial, constraints)
 
 
 def _process_projected_entities(

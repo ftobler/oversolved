@@ -8,6 +8,7 @@ export { default as ConstructionToggleTool } from '@/components/Toolbar/tools/Co
 export { default as ConstraintTools } from '@/components/Toolbar/tools/ConstraintTools'
 export { default as DragTool } from '@/components/Toolbar/tools/DragTool'
 export { default as MirrorTool } from '@/components/Toolbar/tools/MirrorTool'
+export { default as ProjectTool } from '@/components/Toolbar/tools/ProjectTool'
 
 // Export utilities
 export { iconUrl, shortcutHint } from '@/components/Toolbar/tools/toolUtils'
