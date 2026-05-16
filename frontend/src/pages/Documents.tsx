@@ -36,6 +36,7 @@ export default function Documents() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [newDocName, setNewDocName] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
+  const [newDocPublic, setNewDocPublic] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [shareDoc, setShareDoc] = useState<DocumentMeta | null>(null)
@@ -87,7 +88,7 @@ export default function Documents() {
     }
 
     try {
-      await http.postJson<{ uuid: string }>('/api/documents', { name: newDocName.trim() })
+      await http.postJson<{ uuid: string }>('/api/documents', { name: newDocName.trim(), is_public: newDocPublic })
       setNewDocName('')
       setShowAddForm(false)
       setAddError(null)
@@ -216,6 +217,13 @@ export default function Documents() {
   const formatDate = (isoString: string) => {
     if (!isoString) return ''
     const date = new Date(isoString)
+    const diffMs = Date.now() - date.getTime()
+    const diffSec = Math.floor(diffMs / 1000)
+    if (diffSec < 60) return `${diffSec}s ago`
+    const diffMin = Math.floor(diffSec / 60)
+    if (diffMin < 60) return `${diffMin}min ago`
+    const diffH = Math.floor(diffMin / 60)
+    if (diffH < 24) return `${diffH}h ago`
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
@@ -265,7 +273,7 @@ export default function Documents() {
               {sortBy === 'alphabetical' ? 'sort_by_alpha' : sortBy === 'date_newest_first' ? 'update' : 'history'}
             </span>
           </button>
-          <button className="toolbar-btn" onClick={() => setShowAddForm(!showAddForm)} title="Add document">
+          <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocPublic(activeFilter === 'public') }} title="Add document">
             <span className="material-icons">add</span>
           </button>
           <label className="toolbar-btn btn-import" title="Import YAML">
@@ -321,6 +329,14 @@ export default function Documents() {
               }}
               autoFocus
             />
+            <label className="dialog-checkbox">
+              <input
+                type="checkbox"
+                checked={newDocPublic}
+                onChange={e => setNewDocPublic(e.target.checked)}
+              />
+              Public document
+            </label>
             {addError && <p className="error-text">{addError}</p>}
           </Dialog>
 
@@ -454,7 +470,7 @@ export default function Documents() {
                                       .catch(() => undefined)
                                   }
                                 }}
-                                title="Remove shared document"
+                                title="Unshare document"
                               >
                                 <span className="material-icons">link_off</span>
                               </button>

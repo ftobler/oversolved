@@ -7,7 +7,7 @@ export interface UserPreferences {
   document_sort: DocumentSort
 }
 
-const DEFAULT_PREFS: UserPreferences = { document_sort: 'alphabetical' }
+const DEFAULT_PREFS: UserPreferences = { document_sort: 'date_newest_first' }
 
 export function useUserPreferences() {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFS)
@@ -15,7 +15,7 @@ export function useUserPreferences() {
 
   useEffect(() => {
     http.getJson<{ document_sort?: DocumentSort }>('/api/users/me/preferences')
-      .then(data => setPreferences({ document_sort: data.document_sort ?? 'alphabetical' }))
+      .then(data => setPreferences({ document_sort: data.document_sort ?? 'date_newest_first' }))
       .catch(() => { /* fall back to defaults */ })
       .finally(() => setLoading(false))
   }, [])

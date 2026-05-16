@@ -593,13 +593,13 @@ class DocumentStore:
     def __init__(self, db: Database):
         self.db = db
 
-    def create(self, name: str, owner_id: int) -> str:
+    def create(self, name: str, owner_id: int, is_public: bool = False) -> str:
         """Create a new document and return its UUID."""
         uuid = uuid_mod.uuid4().hex
         with self.db.transaction():
             self.db.execute(
-                "INSERT INTO documents (uuid, name, content, owner_id) VALUES (?, ?, ?, ?)",
-                (uuid, name, "", owner_id),
+                "INSERT INTO documents (uuid, name, content, owner_id, is_public) VALUES (?, ?, ?, ?, ?)",
+                (uuid, name, "", owner_id, 1 if is_public else 0),
             )
         return uuid
 
@@ -740,10 +740,11 @@ class DocumentStore:
         if doc is None:
             return None
         new_uuid = uuid_mod.uuid4().hex
+        now = datetime.now(timezone.utc).isoformat()
         with self.db.transaction():
             self.db.execute(
-                "INSERT INTO documents (uuid, name, content, owner_id, preview_image) VALUES (?, ?, ?, ?, ?)",
-                (new_uuid, new_name, doc["content"], doc["owner_id"], doc["preview_image"]),
+                "INSERT INTO documents (uuid, name, content, owner_id, preview_image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (new_uuid, new_name, doc["content"], doc["owner_id"], doc["preview_image"], now, now),
             )
         return new_uuid
 
@@ -753,10 +754,11 @@ class DocumentStore:
         if doc is None:
             return None
         new_uuid = uuid_mod.uuid4().hex
+        now = datetime.now(timezone.utc).isoformat()
         with self.db.transaction():
             self.db.execute(
-                "INSERT INTO documents (uuid, name, content, owner_id, preview_image) VALUES (?, ?, ?, ?, ?)",
-                (new_uuid, new_name, doc["content"], new_owner_id, doc["preview_image"]),
+                "INSERT INTO documents (uuid, name, content, owner_id, preview_image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (new_uuid, new_name, doc["content"], new_owner_id, doc["preview_image"], now, now),
             )
         return new_uuid
 

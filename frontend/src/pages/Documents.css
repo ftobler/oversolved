@@ -178,7 +178,7 @@
 .dialog-component-title {
   font-size: 14px;
   font-weight: 600;
-  color: #aaa;
+  color: #f3f4f6;
   text-align: center;
 }
 
@@ -205,6 +205,22 @@
   outline: none;
   border-color: #4fc3f7;
   box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
+}
+
+.dialog-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #f3f4f6;
+  cursor: pointer;
+  align-self: flex-end;
+}
+
+.dialog-checkbox input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  margin: 0;
 }
 
 .dialog-component .error-text {
@@ -459,7 +475,7 @@
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #aaa;
+  color: #f3f4f6;
 }
 
 .share-dialog-body {

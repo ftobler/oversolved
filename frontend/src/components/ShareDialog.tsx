@@ -112,12 +112,13 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
           {isOwner && (
             <>
               <div className="share-dialog-row" style={{ justifyContent: 'space-between' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+<label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#f3f4f6' }}>
                   <input
                     type="checkbox"
-                    checked={linkSharing}
                     style={{ marginLeft: '12px' }}
-                    onChange={async e => {
+                    checked={linkSharing}
+                    disabled={loading}
+                    onChange={async (e) => {
                       const checked = e.target.checked
                       setLinkSharing(checked)
                       setLoading(true)

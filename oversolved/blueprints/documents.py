@@ -43,8 +43,9 @@ def create_document():
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "Document name required"}), 400
+    is_public = bool(data.get("is_public", False))
     db = get_db()
-    doc_uuid = DocumentStore(db).create(name, g.current_user["id"])
+    doc_uuid = DocumentStore(db).create(name, g.current_user["id"], is_public)
     return jsonify({"uuid": doc_uuid, "name": name}), 201
 
 
@@ -286,9 +287,7 @@ def create_share(uuid):
 @require_auth
 @require_csrf
 def remove_share(uuid):
-    if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     db = get_db()
     doc_store = DocumentStore(db)
     doc = doc_store.retrieve(uuid)

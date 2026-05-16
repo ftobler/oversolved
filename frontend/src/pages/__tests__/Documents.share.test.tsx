@@ -20,7 +20,7 @@ describe('Documents share', () => {
       if (url === '/api/users/me/preferences') {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ document_sort: 'alphabetical' }),
+          json: () => Promise.resolve({ document_sort: 'date_newest_first' }),
         } as Response)
       }
       if (url.startsWith('/api/documents')) {

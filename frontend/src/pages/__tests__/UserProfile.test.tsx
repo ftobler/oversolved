@@ -21,7 +21,7 @@ const makeUserResponse = (overrides = {}) => ({
 
 const prefsResponse = {
   ok: true,
-  json: () => Promise.resolve({ document_sort: 'alphabetical' }),
+  json: () => Promise.resolve({ document_sort: 'date_newest_first' }),
 } as Response
 
 describe('UserProfile', () => {
@@ -173,7 +173,7 @@ describe('UserProfile', () => {
     expect(screen.getByText('Date (Newest first)')).toBeInTheDocument()
     expect(screen.getByText('Date (Oldest first)')).toBeInTheDocument()
 
-    const alphabeticalRadio = screen.getByDisplayValue('alphabetical') as HTMLInputElement
-    expect(alphabeticalRadio.checked).toBe(true)
+    const newestFirstRadio = screen.getByDisplayValue('date_newest_first') as HTMLInputElement
+    expect(newestFirstRadio.checked).toBe(true)
   })
 })

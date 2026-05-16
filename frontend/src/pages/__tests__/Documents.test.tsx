@@ -12,7 +12,7 @@ const authOk = {
 
 const prefsOk = {
   ok: true,
-  json: () => Promise.resolve({ document_sort: 'alphabetical' }),
+  json: () => Promise.resolve({ document_sort: 'date_newest_first' }),
 } as Response
 
 describe('Documents sidebar', () => {
