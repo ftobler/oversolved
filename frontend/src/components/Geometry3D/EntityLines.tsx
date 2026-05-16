@@ -88,8 +88,8 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
               onClick={onClick} onPointerDown={onPointerDown} onPointerOver={onOver} onPointerOut={onOut} />
           )}
           {construction
-            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={isEditing ? false : undefined} renderOrder={isEditing ? RENDER_ORDER_EDITING : undefined} />
-            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} renderOrder={isEditing ? RENDER_ORDER_EDITING : undefined} />}
+            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
         </group>
         <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start"  isEditing={isEditing} showDebugHit={showDebugHit} />
         <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end"  isEditing={isEditing} showDebugHit={showDebugHit} />
@@ -110,8 +110,8 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
               onClick={onClick} onPointerDown={onPointerDown} onPointerOver={onOver} onPointerOut={onOut} />
           )}
           {construction
-            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={isEditing ? false : undefined} renderOrder={isEditing ? RENDER_ORDER_EDITING : undefined} />
-            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} renderOrder={isEditing ? RENDER_ORDER_EDITING : undefined} />}
+            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
         </group>
         <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start"  isEditing={isEditing} showDebugHit={showDebugHit} />
         <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end"  isEditing={isEditing} showDebugHit={showDebugHit} />
@@ -133,8 +133,8 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
               onClick={onClick} onPointerDown={onPointerDown} onPointerOver={onOver} onPointerOut={onOut} />
           )}
           {construction
-            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={isEditing ? false : undefined} renderOrder={isEditing ? RENDER_ORDER_EDITING : undefined} />
-            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} renderOrder={isEditing ? RENDER_ORDER_EDITING : undefined} />}
+            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
         </group>
         <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center"  isEditing={isEditing} showDebugHit={showDebugHit} />
       </>

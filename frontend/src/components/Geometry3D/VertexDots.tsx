@@ -5,7 +5,7 @@ import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w } from '@/components/sketch_helpers'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS } from '@/components/Geometry3D/constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
 import type { SnapKind } from '@/registry'
 import { useHoverAndDynamicSelection } from '@/components/Geometry3D/useHoverAndDynamicSelection'
 import { useToolClickDispatch } from '@/components/Geometry3D/useToolClickDispatch'
@@ -177,7 +177,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
       onClick={onClick}
       onPointerDown={onPointerDown}
     >
-      <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard />
+      <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard renderOrder={selected ? RENDER_ORDER_EDITING : 0} depthTest={!selected} />
       {(hovered || selected || constraintHovered) && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
       {!isInactiveSketch && !isDraggedVertex && (
         <mesh ref={hitRef} position={[x, y, 0]}>
