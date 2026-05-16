@@ -16,7 +16,14 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "_solve_extrude",
     "_solve_revolve",
+    "ALL_KEYS",
 ]
+
+ALL_KEYS: frozenset[str] = frozenset({
+    "extrude", "revolve",
+    "sketch", "distance", "depth", "direction", "operation", "merge_target",
+    "angle", "axis", "axis_origin", "axis_direction",
+})
 
 
 def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:

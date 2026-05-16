@@ -19,7 +19,17 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "_build_array_transforms",
     "_solve_array",
+    "ALL_KEYS",
 ]
+
+ALL_KEYS: frozenset[str] = frozenset({
+    "array", "source_body", "mode", "operation",
+    "count", "count_x", "count_y",
+    "pitch_x", "pitch_y",
+    "direction_x", "direction_x_query", "direction_y", "direction_y_query",
+    "step_angle", "include_source",
+    "axis", "axis_origin", "axis_direction",
+})
 
 
 def _build_array_transforms(

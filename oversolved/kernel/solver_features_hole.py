@@ -12,7 +12,12 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "_solve_hole",
+    "ALL_KEYS",
 ]
+
+ALL_KEYS: frozenset[str] = frozenset({
+    "hole", "sketch", "diameter", "depth_mode", "depth", "direction", "target",
+})
 
 
 def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict]) -> dict:

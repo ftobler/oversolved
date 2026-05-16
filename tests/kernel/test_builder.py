@@ -750,3 +750,53 @@ def test_feature_cmp_keys_all_present_in_current_set():
         f"If they are UI-only keys, add them to _UI_FEATURE_KEYS.\n"
         f"If they are stale, remove them from builder._FEATURE_CMP_KEYS."
     )
+
+
+# ─── Feature module ALL_KEYS registry tests (245) ───
+
+def test_each_feature_module_exports_all_keys():
+    """Every solver_features_* module must export ALL_KEYS as a frozenset[str]."""
+    from oversolved.kernel.builder import _FEATURE_MODULES
+    for mod in _FEATURE_MODULES:
+        assert hasattr(mod, "ALL_KEYS"), (
+            f"{mod.__name__} is missing ALL_KEYS"
+        )
+        keys = mod.ALL_KEYS
+        assert isinstance(keys, frozenset), (
+            f"{mod.__name__}.ALL_KEYS must be a frozenset, got {type(keys)}"
+        )
+        assert all(isinstance(k, str) for k in keys), (
+            f"{mod.__name__}.ALL_KEYS must contain only strings"
+        )
+
+
+def test_feature_cmp_keys_union_matches_legacy():
+    """The union-built _FEATURE_CMP_KEYS must equal the expected key set exactly."""
+    from oversolved.kernel.builder import _FEATURE_CMP_KEYS
+    expected = _SOLVER_FEATURE_KEYS | _UI_FEATURE_KEYS
+    assert _FEATURE_CMP_KEYS == expected, (
+        f"Union mismatch.\n"
+        f"  Extra in union: {sorted(_FEATURE_CMP_KEYS - expected)}\n"
+        f"  Missing from union: {sorted(expected - _FEATURE_CMP_KEYS)}"
+    )
+
+
+def test_extract_all_keys_raises_on_missing():
+    """_extract_all_keys raises ImportError when a module lacks ALL_KEYS."""
+    import types
+    from oversolved.kernel.builder import _extract_all_keys
+
+    bad_mod = types.ModuleType("fake_feature_module")
+    with pytest.raises(ImportError, match="ALL_KEYS"):
+        _extract_all_keys(bad_mod)
+
+
+def test_extract_all_keys_raises_on_wrong_type():
+    """_extract_all_keys raises ImportError when ALL_KEYS is not a frozenset."""
+    import types
+    from oversolved.kernel.builder import _extract_all_keys
+
+    bad_mod = types.ModuleType("fake_feature_module")
+    bad_mod.ALL_KEYS = {"not", "a", "frozenset"}  # type: ignore[attr-defined]
+    with pytest.raises(ImportError, match="ALL_KEYS"):
+        _extract_all_keys(bad_mod)

@@ -18,6 +18,16 @@ from oversolved.kernel.types3d import Body, FeatureCheckpoint, BuildState
 from oversolved.kernel.solver import _init_global_repo, _try_solve_feature
 from oversolved.kernel.solver_constants import _BUILTIN_PLANE_RESULTS
 from oversolved.kernel.solver_registry import _post_register
+from oversolved.kernel import (
+    solver_features_brep,
+    solver_features_array,
+    solver_features_boolean,
+    solver_features_delete,
+    solver_features_fillet_chamfer,
+    solver_features_hole,
+    solver_features_import,
+    solver_features_transform_mirror,
+)
 
 try:
     import oversolved.kernel.geometry_tessellation  # noqa: F401  # pre-warm to avoid concurrent-import race
@@ -52,47 +62,45 @@ def _copy_shape(shape: TopoDS_Shape | None) -> TopoDS_Shape | None:
         return None
 
 
-# Canonical keys that define a feature's identity for dirty detection.
-# Add new keys here when new feature kinds are introduced.
-# Transient/UI-only keys sent by the frontend are ignored during comparison.
-# See test_feature_cmp_keys_* in tests/kernel/test_builder.py — the validation
-# test enforces that every solver-accessed key is present in this set.
-_FEATURE_CMP_KEYS = frozenset({
-    "id", "kind", "plane", "entities", "constraints", "initial",
-    "extrude", "revolve", "fillet", "chamfer", "boolean", "hole",
-    "transform", "array", "hide", "label",
-    "sketch", "distance", "direction", "operation", "angle",
-    "radius", "edges", "file_id", "scale",
+def _extract_all_keys(mod: Any) -> frozenset[str]:
+    """Return mod.ALL_KEYS; raise ImportError if the attribute is absent or wrong type."""
+    keys = getattr(mod, "ALL_KEYS", None)
+    if not isinstance(keys, frozenset):
+        raise ImportError(
+            f"{getattr(mod, '__name__', repr(mod))} must export ALL_KEYS: frozenset[str]"
+        )
+    return keys
+
+
+# Modules whose ALL_KEYS participate in dirty detection.
+_FEATURE_MODULES = (
+    solver_features_brep,
+    solver_features_array,
+    solver_features_boolean,
+    solver_features_delete,
+    solver_features_fillet_chamfer,
+    solver_features_hole,
+    solver_features_import,
+    solver_features_transform_mirror,
+)
+
+# Keys shared across all feature kinds: sketch-level, plane, and UI attributes.
+_COMMON_FEATURE_KEYS: frozenset[str] = frozenset({
+    "id", "kind",
+    # sketch feature
+    "plane", "entities", "constraints", "initial",
+    # plane definition (used by solver_plane)
     "definition",
-    "delete_body",
-    "mirror",
-    # extrude / revolve
-    "depth", "merge_target",
-    # revolve / array / transform
-    "axis", "axis_origin", "axis_direction",
-    # array
-    "source_body", "mode",
-    "count", "count_x", "count_y",
-    "pitch_x", "pitch_y",
-    "direction_x", "direction_x_query", "direction_y", "direction_y_query",
-    "step_angle", "include_source",
-    # boolean
-    "tools", "keep_tools",
-    # delete_body / transform / mirror
-    "body",
-    # hole
-    "diameter", "depth_mode", "target",
-    # import_step
-    "file_data",
-    # transform
-    "translation", "translation_from", "translation_to",
-    "rotation_angle", "rotation_axis", "rotation_axis_origin", "rotation_axis_direction",
-    "scale_center", "scale_center_from",
-    # mirror
-    "keep_original", "merge",
-    # suppression
-    "suppressed",
+    # UI-only: do not trigger re-solve, but must track for dirty detection
+    "hide", "label", "suppressed", "file_id",
 })
+
+# _FEATURE_CMP_KEYS is built by union so adding a new solver_features_* module
+# automatically extends dirty detection — no manual edit needed here.
+_FEATURE_CMP_KEYS: frozenset[str] = frozenset().union(
+    _COMMON_FEATURE_KEYS,
+    *(_extract_all_keys(mod) for mod in _FEATURE_MODULES),
+)
 
 
 def _normalize_spec(spec: dict) -> dict:

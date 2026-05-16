@@ -10,7 +10,12 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "_solve_import_step",
+    "ALL_KEYS",
 ]
+
+ALL_KEYS: frozenset[str] = frozenset({
+    "file_data", "scale",
+})
 
 
 def _solve_import_step(

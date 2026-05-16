@@ -12,7 +12,16 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "_solve_mirror",
     "_solve_transform",
+    "ALL_KEYS",
 ]
+
+ALL_KEYS: frozenset[str] = frozenset({
+    "transform", "mirror", "body", "operation", "scale",
+    "translation", "translation_from", "translation_to",
+    "rotation_angle", "rotation_axis", "rotation_axis_origin", "rotation_axis_direction",
+    "scale_center", "scale_center_from",
+    "keep_original", "merge",
+})
 
 
 def _solve_transform(

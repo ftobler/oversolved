@@ -10,7 +10,12 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "_solve_delete_body",
+    "ALL_KEYS",
 ]
+
+ALL_KEYS: frozenset[str] = frozenset({
+    "delete_body", "body",
+})
 
 
 def _solve_delete_body(feature: dict, global_repo: Repository, body_store: dict) -> dict:

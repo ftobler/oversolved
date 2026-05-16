@@ -10,7 +10,12 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "_solve_boolean",
+    "ALL_KEYS",
 ]
+
+ALL_KEYS: frozenset[str] = frozenset({
+    "boolean", "tools", "keep_tools", "operation", "target",
+})
 
 
 def _solve_boolean(

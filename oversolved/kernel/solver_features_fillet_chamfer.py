@@ -19,7 +19,12 @@ __all__ = [
     "_resolve_fillet_edges",
     "_solve_chamfer",
     "_solve_fillet",
+    "ALL_KEYS",
 ]
+
+ALL_KEYS: frozenset[str] = frozenset({
+    "fillet", "chamfer", "edges", "radius", "distance", "source_body",
+})
 
 
 def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Shape]:
