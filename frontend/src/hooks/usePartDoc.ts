@@ -96,6 +96,7 @@ import {
   applyAddMirror,
   applySetMirrorField,
   applySetBodyVisibility,
+  applySetFeatureSuppression,
 } from '@/utils/yamlMutations'
 
 export { healDoc, BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
@@ -294,6 +295,8 @@ export const mutationHandlers: MutationHandlers = {
     applyReorderFeatures(next, m.featureId, m.toIndex),
   reorder_pick_field: (next, m) =>
     applyReorderPickField(next, m.featureId, m.field, m.fromIndex, m.toIndex),
+  set_feature_suppression: (next, m) =>
+    applySetFeatureSuppression(next, m.featureId, m.suppressed),
 }
 
 export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {

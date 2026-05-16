@@ -336,7 +336,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                     ?? ''
                   return (
                     <span
-                      className={`feature-name${isError ? ' feature-name-error' : ''}`}
+                      className={`feature-name${isError ? ' feature-name-error' : ''}${feature.suppressed ? ' feature-name-suppressed' : ''}`}
                       title={errMsg}
                     >
                       {feature.label || feature.id}

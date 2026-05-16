@@ -28,6 +28,7 @@ export interface BuildContextMenuInput {
 export interface BuildContextMenuCallbacks {
   onRebuild: () => void
   onToggleVisibility: (featureId: string) => void
+  onToggleSuppression: (featureId: string, suppressed: boolean) => void
   onEnterEditSketch: (featureId: string) => void
   onExitSketch: () => void
   onDeleteFeature: (featureId: string) => void
@@ -182,6 +183,11 @@ export function buildContextMenu(
     }
     if (!builtInIds.has(featureId)) {
       const target = features.find(f => f.id === featureId)
+      items.push({
+        label: target?.suppressed ? 'Unsuppress' : 'Suppress',
+        icon: contextHideIcon,
+        onClick: () => callbacks.onToggleSuppression(featureId, !target?.suppressed),
+      })
       items.push({
         label: 'Rename',
         icon: iconRenameIcon,

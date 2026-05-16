@@ -250,6 +250,7 @@ export interface PartFeature {
   kind: string
   label?: string
   visible?: boolean  // absent means visible; false means hidden
+  suppressed?: boolean  // absent or false = active; true = backend skips this feature
   auto_hidden_by?: string  // transient frontend-only: feature ID that auto-hid this sketch
   plane?: string  // query string, e.g. "@builtin_plane_front"
   entities?: PartEntityDef[]
@@ -614,3 +615,4 @@ export type Mutation =
   | { type: 'reorder_features'; featureId: string; toIndex: number }
   | { type: 'set_body_visibility'; bodyId: string; visible: boolean }
   | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }
+  | { type: 'set_feature_suppression'; featureId: string; suppressed: boolean }

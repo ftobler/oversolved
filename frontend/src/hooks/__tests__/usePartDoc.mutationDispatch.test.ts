@@ -94,6 +94,7 @@ const ALL_MUTATION_TYPES: Mutation['type'][] = [
   'set_mirror_field',
   'reorder_features',
   'reorder_pick_field',
+  'set_feature_suppression',
 ]
 
 describe('mutationHandlers dispatch table', () => {

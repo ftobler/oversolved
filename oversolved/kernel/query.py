@@ -20,6 +20,7 @@ __all__ = [
     "_parse_ancestry",
     "_init_global_repo",
     "_evict_ancestry_and_register",
+    "_is_geom_hash_id",
 ]
 
 QueryType: TypeAlias = "LocalQuery | AbsoluteQuery | AncestryQuery"
@@ -315,21 +316,35 @@ def _coerce_type(
     return None
 
 
+def _is_geom_hash_id(id_str: str) -> bool:
+    """Return True if id_str is a wire-format geom_hash reference (@gface_*, @gedge_*, @gvertex_*)."""
+    return (
+        id_str.startswith("@gface_")
+        or id_str.startswith("@gedge_")
+        or id_str.startswith("@gvertex_")
+    )
+
+
 class Repository:
     def __init__(self) -> None:
         self.elements: dict[str, Any] = {}
         # frozenset of ancestor ids -> list of element ids
         # (multiple elements can share the same ancestor set, e.g. two circle intersections)
         self.ancestral: dict[frozenset, list[str]] = {}
+        # secondary hash index: geom_hash string (without "@") -> list of element ids
+        # consulted only when ancestral resolution is ambiguous or empty
+        self.by_geom_hash: dict[str, list[str]] = {}
 
     def register(self, element_id: str, obj: Any):
         self.elements[element_id] = obj
 
-    def register_ancestor(self, ancestors: list[str], obj: Any) -> str:
+    def register_ancestor(self, ancestors: list[str], obj: Any, geom_hash: str | None = None) -> str:
         id = secrets.token_urlsafe(9)
         key = frozenset(ancestors)
         self.ancestral.setdefault(key, []).append(id)
         self.elements[id] = obj
+        if geom_hash is not None:
+            self.by_geom_hash.setdefault(geom_hash, []).append(id)
         return id
 
     def clear_by_sketch_id(self, sketch_id: str) -> None:
@@ -356,6 +371,10 @@ class Repository:
         for key in stale_keys:
             for eid in self.ancestral.pop(key):
                 self.elements.pop(eid, None)
+        # Prune by_geom_hash entries whose element IDs are all evicted.
+        stale_hashes = [h for h, eids in self.by_geom_hash.items() if not any(eid in self.elements for eid in eids)]
+        for h in stale_hashes:
+            del self.by_geom_hash[h]
 
     def query(
         self,
@@ -415,22 +434,21 @@ class Repository:
         classifier: str | None,
         body_store: dict[str, Any] | None = None,
     ) -> Any:
-        query_set = frozenset(ids)
+        # Separate geom_hash IDs from structural ancestor IDs.
+        # Ancestral index is keyed only by structural IDs; hash is a secondary fallback.
+        hash_ids = [i for i in ids if _is_geom_hash_id(i)]
+        non_hash_ids = [i for i in ids if not _is_geom_hash_id(i)]
 
-        # Collect all registered elements whose tag set is a superset of the query set.
-        # Exact match is included (the query set is a subset of itself).
-        # This enables partial resolve: a query with fewer tags still resolves
-        # if the element has been re-registered with additional tags (e.g. a hash tag).
+        # Tier 1: ancestral resolution with structural (non-hash) IDs.
         candidate_ids: list[str] = []
-        for registered_key, element_ids in self.ancestral.items():
-            if query_set <= registered_key:
-                candidate_ids.extend(element_ids)
+        if non_hash_ids:
+            query_set = frozenset(non_hash_ids)
+            for registered_key, element_ids in self.ancestral.items():
+                if query_set <= registered_key:
+                    candidate_ids.extend(element_ids)
 
-        if not candidate_ids:
-            return None
-
-        # Filter by type restriction if given.
-        if type_restriction is not None:
+        # Apply type restriction filter.
+        if type_restriction is not None and candidate_ids:
             exact_matches = [
                 eid for eid in candidate_ids
                 if _obj_type(self.elements.get(eid)) == type_restriction
@@ -438,24 +456,40 @@ class Repository:
             if exact_matches:
                 candidate_ids = exact_matches
             else:
-                # Coercion: no exact match, try to resolve from candidates.
+                # Coercion: no exact type match, try to resolve from candidates.
                 for eid in candidate_ids:
                     element = self.elements.get(eid)
                     coerced = _coerce_type(element, type_restriction, body_store, self.elements)
                     if coerced is not None:
                         return coerced
-                return None
+                candidate_ids = []
 
-        # Filter by classifier if given.
-        if classifier is not None:
+        # Apply classifier filter.
+        if classifier is not None and candidate_ids:
             candidate_ids = [
                 eid for eid in candidate_ids
                 if self.elements.get(eid, {}).get("classifier") == classifier
             ]
-            if not candidate_ids:
-                return None
 
-        if len(candidate_ids) == 0:
+        # Tier 2: if ambiguous and a hash is present, narrow by by_geom_hash.
+        if len(candidate_ids) > 1 and hash_ids:
+            geom_hash_str = hash_ids[0][1:]  # strip leading '@'
+            hash_set = {eid for eid in self.by_geom_hash.get(geom_hash_str, []) if eid in self.elements}
+            narrowed = [eid for eid in candidate_ids if eid in hash_set]
+            if narrowed:
+                candidate_ids = narrowed
+
+        # Tier 3: hash fallback -- when ancestral yields nothing, consult by_geom_hash directly.
+        if not candidate_ids and hash_ids:
+            geom_hash_str = hash_ids[0][1:]
+            fallback_ids = [eid for eid in self.by_geom_hash.get(geom_hash_str, []) if eid in self.elements]
+            if type_restriction is not None:
+                fallback_ids = [eid for eid in fallback_ids if _obj_type(self.elements.get(eid)) == type_restriction]
+            if classifier is not None:
+                fallback_ids = [eid for eid in fallback_ids if self.elements.get(eid, {}).get("classifier") == classifier]
+            candidate_ids = fallback_ids
+
+        if not candidate_ids:
             return None
         if len(candidate_ids) > 1:
             raise AmbiguousQueryError(
@@ -523,12 +557,15 @@ def _evict_ancestry_and_register(
     ancestor_ids: list[str],
     payload: dict,
     index_tag: str | None = None,
+    geom_hash: str | None = None,
 ) -> str:
     """Evict stale ancestry entries and register a new one.
 
     If index_tag is provided, all ancestry keys containing that tag but
-    different from the new key are evicted (stale geometry-hash entries).
+    different from the new key are evicted (stale position-based entries).
     The exact-key entry (if any) is always evicted before re-registering.
+    geom_hash, if given, is registered into Repository.by_geom_hash as a
+    fallback index (not included in the ancestral key frozenset).
     """
     key = frozenset(ancestor_ids)
 
@@ -541,4 +578,13 @@ def _evict_ancestry_and_register(
     for old_id in repo.ancestral.pop(key, []):
         repo.elements.pop(old_id, None)
 
-    return repo.register_ancestor(ancestor_ids, payload)
+    # Prune by_geom_hash entries whose element IDs were just evicted.
+    if repo.by_geom_hash:
+        stale_hashes = [
+            h for h, eids in repo.by_geom_hash.items()
+            if not any(eid in repo.elements for eid in eids)
+        ]
+        for h in stale_hashes:
+            del repo.by_geom_hash[h]
+
+    return repo.register_ancestor(ancestor_ids, payload, geom_hash=geom_hash)

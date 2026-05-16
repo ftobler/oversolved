@@ -656,3 +656,92 @@ def ocp_compose_diff_through_clean(
     # Silence the "raw_shape unused" lint -- accepted for future provenance hooks.
     _ = raw_shape
     return new_diff
+
+
+def ocp_brep_diff_new_edge_data(diff) -> list[dict]:
+    """Extract geometry data from brep_diff.new_edges as plain dicts.
+
+    Each dict has:
+      - type: "line" | "circle" | "arc"
+      Line: start, end (each [x, y, z])
+      Circle/arc: center ([x,y,z]), radius (float), angle_start, angle_end
+
+    Returns [] if OCP imports fail or diff is empty.
+    """
+    if diff is None or not diff.new_edges:
+        return []
+    try:
+        from OCP.BRepAdaptor import BRepAdaptor_Curve  # noqa: PLC0415
+        from OCP.GeomAbs import GeomAbs_Line, GeomAbs_Circle  # noqa: PLC0415
+        from OCP.gp import gp_Pnt  # noqa: PLC0415
+        from OCP.TopoDS import TopoDS  # noqa: PLC0415
+    except ImportError:
+        return []
+    _TWO_PI = 6.283185307179586
+    results: list[dict] = []
+    for topo_shape in diff.new_edges:
+        try:
+            topo_edge = TopoDS.Edge_s(topo_shape)
+            adapt = BRepAdaptor_Curve(topo_edge)
+            atype = adapt.GetType()
+            u0, u1 = adapt.FirstParameter(), adapt.LastParameter()
+            if atype == GeomAbs_Line:
+                p0, p1 = gp_Pnt(), gp_Pnt()
+                adapt.D0(u0, p0)
+                adapt.D0(u1, p1)
+                results.append({
+                    "type": "line",
+                    "start": [p0.X(), p0.Y(), p0.Z()],
+                    "end": [p1.X(), p1.Y(), p1.Z()],
+                })
+            elif atype == GeomAbs_Circle:
+                circ = adapt.Circle()
+                c = circ.Location()
+                is_full = abs(abs(u1 - u0) - _TWO_PI) < 1e-4 or abs(u1 - u0) < 1e-4
+                results.append({
+                    "type": "circle" if is_full else "arc",
+                    "center": [c.X(), c.Y(), c.Z()],
+                    "radius": circ.Radius(),
+                    "angle_start": u0,
+                    "angle_end": u1,
+                })
+        except Exception:
+            continue
+    return results
+
+
+def ocp_brep_diff_vertex_endpoints(diff) -> tuple[set[tuple[float, float, float]], set[tuple[float, float, float]]]:
+    """Extract vertex endpoints from brep_diff new/inherited edges.
+
+    Returns (new_vertex_points, inherited_vertex_points) where each is
+    a set of (x, y, z) tuples.  Used to identify purely-new vertices
+    (endpoints of new_edges that do NOT appear in inherited_edges).
+    Returns ({}, {}) if OCP imports fail.
+    """
+    if diff is None or (not diff.new_edges and not diff.inherited_edges):
+        return set(), set()
+    try:
+        from OCP.BRepAdaptor import BRepAdaptor_Curve  # noqa: PLC0415
+        from OCP.gp import gp_Pnt  # noqa: PLC0415
+        from OCP.TopoDS import TopoDS  # noqa: PLC0415
+    except ImportError:
+        return set(), set()
+
+    def _extract(edge_list) -> set[tuple[float, float, float]]:
+        points: set[tuple[float, float, float]] = set()
+        for topo_shape in edge_list:
+            try:
+                topo_edge = TopoDS.Edge_s(topo_shape)
+                adapt = BRepAdaptor_Curve(topo_edge)
+                p0, p1 = gp_Pnt(), gp_Pnt()
+                adapt.D0(adapt.FirstParameter(), p0)
+                adapt.D0(adapt.LastParameter(), p1)
+                points.add((p0.X(), p0.Y(), p0.Z()))
+                points.add((p1.X(), p1.Y(), p1.Z()))
+            except Exception:
+                continue
+        return points
+
+    new_verts = _extract(diff.new_edges or [])
+    inherited_verts = _extract(diff.inherited_edges or [])
+    return new_verts, inherited_verts

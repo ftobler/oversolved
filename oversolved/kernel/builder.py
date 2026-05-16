@@ -90,6 +90,8 @@ _FEATURE_CMP_KEYS = frozenset({
     "scale_center", "scale_center_from",
     # mirror
     "keep_original", "merge",
+    # suppression
+    "suppressed",
 })
 
 
@@ -253,6 +255,57 @@ def _validate_incremental(
     return {"level": 3, "passed": True, "diffs": {}}
 
 
+def _brep_diff_new_edge_hashes(body: Body) -> set[str]:
+    """Compute geom_hashes for TopoDS_Edges in body.brep_diff.new_edges.
+
+    Mirrors _brep_diff_new_face_hashes for the edge case. Only line, arc, and
+    circle edges are hashed; splines are skipped (no stable hash available).
+    """
+    diff = getattr(body, "brep_diff", None)
+    if diff is None or not diff.new_edges:
+        return set()
+    try:
+        from oversolved.kernel.ocp_ops import ocp_brep_diff_new_edge_data  # noqa: PLC0415
+    except ImportError:
+        return set()
+    edge_data_list = ocp_brep_diff_new_edge_data(diff)
+    hashes: set[str] = set()
+    for ed in edge_data_list:
+        try:
+            if ed["type"] == "line":
+                for s, e in [
+                    (ed["start"], ed["end"]),
+                    (ed["end"], ed["start"]),
+                ]:
+                    hashes.add(edge_geometry_hash({"kind": "line", "start": s, "end": e}))
+            elif ed["type"] in ("circle", "arc"):
+                hashes.add(edge_geometry_hash(ed))
+        except Exception as exc:
+            logger.debug("brep_diff edge hash skip: %s", exc)
+    return hashes
+
+
+def _brep_diff_new_vertex_hashes(body: Body) -> set[str]:
+    """Return vertex_geometry_hash strings for vertices that are purely new.
+
+    A vertex is "purely new" if it appears as an endpoint of at least one
+    new_edge but NOT as an endpoint of any inherited_edge. This catches corners
+    of a cut window (all adjacent edges are new) while correctly falling back
+    for vertices shared between new and inherited edges.
+    """
+    diff = getattr(body, "brep_diff", None)
+    if diff is None or not diff.new_edges:
+        return set()
+    try:
+        from oversolved.kernel.ocp_ops import ocp_brep_diff_vertex_endpoints  # noqa: PLC0415
+    except ImportError:
+        return set()
+    new_verts_pts, inherited_verts_pts = ocp_brep_diff_vertex_endpoints(diff)
+    new_hashes = {vertex_geometry_hash(list(pt)) for pt in new_verts_pts}
+    inherited_hashes = {vertex_geometry_hash(list(pt)) for pt in inherited_verts_pts}
+    return new_hashes - inherited_hashes
+
+
 def _brep_diff_new_face_hashes(body: Body) -> set[str]:
     """Compute geom_hashes for TopoDS_Faces in body.brep_diff.new_faces.
 
@@ -314,7 +367,6 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: MeshDict) -> Non
             emit_wire(absolute(body.id, f"face{face_idx}")),
             emit_wire(absolute(face_created_by)),
             emit_wire(absolute(body.id)),
-            emit_wire(absolute(geom_hash)),
         ]
         x_axis, y_axis = _normal_to_frame(normal)
         payload = {
@@ -333,7 +385,7 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: MeshDict) -> Non
         if any(global_repo.elements.get(eid) == payload for eid in existing_ids):
             continue  # already registered with identical payload
         index_tag = emit_wire(absolute(body.id, f"face{face_idx}"))
-        _evict_ancestry_and_register(global_repo, ancestor_ids, payload, index_tag)
+        _evict_ancestry_and_register(global_repo, ancestor_ids, payload, index_tag, geom_hash=geom_hash)
 
 
 def _register_solid_ancestry(global_repo, body: Body) -> None:
@@ -385,6 +437,9 @@ def _repo_from_snapshot(repo_snapshot: dict) -> Repository:
         repo.ancestral = {
             k: list(v) for k, v in repo_snapshot.get("ancestral", {}).items()
         }
+        repo.by_geom_hash = {
+            k: list(v) for k, v in repo_snapshot.get("by_geom_hash", {}).items()
+        }
     else:
         raise ValueError("Snapshot missing 'elements' key")
     _dedupe_repo(repo)
@@ -420,58 +475,76 @@ def _snapshot_with_brep_geometry(
             _register_extrusion_feature(repo, body.created_by, body.sketch_id)
 
     return {
+        "version": 2,
         "elements": repo.elements,
         "ancestral": repo.ancestral,
+        "by_geom_hash": repo.by_geom_hash,
     }
 
 
 def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_queries: list) -> None:
-    """Register B-rep edge ancestry objects in the global query repository."""
+    """Register B-rep edge ancestry objects in the global query repository.
+
+    New edges from a boolean op (identified via brep_diff.new_edges) are tagged
+    with body.modified_by[-1] rather than body.created_by, mirroring the face rule.
+    """
     if global_repo is None or not body.created_by or not edge_queries:
         return
+    new_edge_hashes = _brep_diff_new_edge_hashes(body)
     for idx, (edge, query) in enumerate(zip(edges, edge_queries)):
         geom_hash = edge_geometry_hash(edge)
+        edge_created_by = body.created_by
+        if new_edge_hashes and geom_hash in new_edge_hashes and body.modified_by:
+            edge_created_by = body.modified_by[-1]
         ancestor_ids = [
             emit_wire(absolute(body.id, f"edge{idx}")),
-            emit_wire(absolute(body.created_by)),
+            emit_wire(absolute(edge_created_by)),
             emit_wire(absolute(body.id)),
-            emit_wire(absolute(geom_hash)),
         ]
         edge_type = "straightedge" if edge.get("kind") == "line" else "edge"
         payload: dict[str, Any] = {
             "type": edge_type,
             "body_id": body.id,
-            "created_by": body.created_by,
+            "created_by": edge_created_by,
             "edge_index": idx,
             "kind": edge.get("kind"),
             "start": edge.get("start"),
             "end": edge.get("end"),
         }
         index_tag = emit_wire(absolute(body.id, f"edge{idx}"))
-        _evict_ancestry_and_register(global_repo, ancestor_ids, payload, index_tag)
+        _evict_ancestry_and_register(global_repo, ancestor_ids, payload, index_tag, geom_hash=geom_hash)
 
 
 def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vertex_queries: list) -> None:
-    """Register B-rep vertex ancestry objects in the global query repository."""
+    """Register B-rep vertex ancestry objects in the global query repository.
+
+    Vertices that are purely new (endpoints of new_edges but not of any
+    inherited_edge) are tagged with body.modified_by[-1], mirroring the edge rule.
+    Mixed-adjacency vertices (touching both new and inherited edges) fall back
+    to body.created_by.
+    """
     if global_repo is None or not body.created_by or not vertex_queries:
         return
+    new_vertex_hashes = _brep_diff_new_vertex_hashes(body)
     for idx, (pt, query) in enumerate(zip(vertices, vertex_queries)):
         geom_hash = vertex_geometry_hash(pt)
+        vertex_created_by = body.created_by
+        if new_vertex_hashes and geom_hash in new_vertex_hashes and body.modified_by:
+            vertex_created_by = body.modified_by[-1]
         ancestor_ids = [
             emit_wire(absolute(body.id, f"vertex{idx}")),
-            emit_wire(absolute(body.created_by)),
+            emit_wire(absolute(vertex_created_by)),
             emit_wire(absolute(body.id)),
-            emit_wire(absolute(geom_hash)),
         ]
         payload: dict[str, Any] = {
             "type": "vertex",
             "body_id": body.id,
-            "created_by": body.created_by,
+            "created_by": vertex_created_by,
             "vertex_index": idx,
             "origin": pt,
         }
         index_tag = emit_wire(absolute(body.id, f"vertex{idx}"))
-        _evict_ancestry_and_register(global_repo, ancestor_ids, payload, index_tag)
+        _evict_ancestry_and_register(global_repo, ancestor_ids, payload, index_tag, geom_hash=geom_hash)
 
 
 def _tessellate_body_geometry(body: Body) -> dict[str, Any]:
@@ -599,6 +672,32 @@ def build(
     for feature in features[first_dirty:]:
         fid = feature.get("id", "")
 
+        if feature.get("suppressed"):
+            # No geometry, no body mutation, no post_register for suppressed features.
+            # Store a sentinel so dirty detection can still compare specs correctly.
+            new_checkpoints[fid] = FeatureCheckpoint(
+                spec=copy.deepcopy(feature),
+                result={"status": "suppressed"},
+                repo_snapshot={
+                    "elements": dict(global_repo.elements),
+                    "ancestral": {k: list(v) for k, v in global_repo.ancestral.items()},
+                    "by_geom_hash": {k: list(v) for k, v in global_repo.by_geom_hash.items()},
+                },
+                body_store_snapshot={
+                    bid: Body(
+                        id=body.id,
+                        created_by=body.created_by,
+                        modified_by=list(body.modified_by),
+                        shape=_copy_shape(body.shape),
+                        sketch_id=body.sketch_id,
+                        brep_diff=body.brep_diff,
+                    )
+                    for bid, body in body_store.items()
+                },
+            )
+            result[fid] = {"status": "suppressed"}
+            continue
+
         # Snapshot modified_by lengths so we can detect which bodies this feature changes.
         modified_by_len_before = {bid: len(body.modified_by) for bid, body in body_store.items()}
 
@@ -624,6 +723,7 @@ def build(
             repo_snapshot={
                 "elements": dict(global_repo.elements),
                 "ancestral": {k: list(v) for k, v in global_repo.ancestral.items()},
+                "by_geom_hash": {k: list(v) for k, v in global_repo.by_geom_hash.items()},
             },
             body_store_snapshot={
                 bid: Body(

@@ -29,6 +29,7 @@ function defaultCallbacks(): BuildContextMenuCallbacks {
   return {
     onRebuild: () => {},
     onToggleVisibility: () => {},
+    onToggleSuppression: () => {},
     onEnterEditSketch: () => {},
     onExitSketch: () => {},
     onDeleteFeature: () => {},

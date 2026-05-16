@@ -357,6 +357,17 @@ def test_no_ocp_imports_outside_ocp_ops():
                         lines.add(child.lineno)
         return lines
 
+    def _function_body_import_lines(tree: ast.AST) -> set[int]:
+        """Return line numbers of imports that live inside function bodies (lazy-loaded)."""
+        lines: set[int] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for child in ast.walk(node):
+                if isinstance(child, (ast.Import, ast.ImportFrom)):
+                    lines.add(child.lineno)
+        return lines
+
     violations = []
     for fname in os.listdir(kernel_dir):
         if not fname.endswith(".py"):
@@ -370,7 +381,7 @@ def test_no_ocp_imports_outside_ocp_ops():
             tree = ast.parse(source, filename=fpath)
         except SyntaxError:
             continue
-        guarded = _type_checking_import_lines(tree)
+        guarded = _type_checking_import_lines(tree) | _function_body_import_lines(tree)
         for node in ast.walk(tree):
             if not isinstance(node, (ast.Import, ast.ImportFrom)):
                 continue

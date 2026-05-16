@@ -93,6 +93,7 @@ export {
   applyAddSketch,
   applyDeleteFeature,
   applyReorderFeatures,
+  applySetFeatureSuppression,
   applySetFeatureVisibility,
   applyRenameFeature,
   applyToggleSketchPlaneVisibility,

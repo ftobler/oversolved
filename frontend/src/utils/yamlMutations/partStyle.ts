@@ -73,6 +73,17 @@ export function applyReorderFeatures(doc: PartDoc, featureId: string, toIndex: n
   doc.features.splice(insertIndex, 0, feature)
 }
 
+export function applySetFeatureSuppression(doc: PartDoc, featureId: string, suppressed: boolean): void {
+  if (BUILTIN_FEATURE_IDS.has(featureId)) return
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  if (suppressed) {
+    feature.suppressed = true
+  } else {
+    delete feature.suppressed
+  }
+}
+
 export function applySetFeatureVisibility(doc: PartDoc, featureId: string, visible: boolean): void {
   const feature = findFeature(doc, featureId)
   if (!feature) return

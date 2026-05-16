@@ -698,7 +698,7 @@ _TRANSIENT_KEYS = frozenset({
 # Keys that are in _FEATURE_CMP_KEYS but NOT accessed by any solver.
 # These affect dirty detection for UI-level feature attributes (hide-toggle, label, file reference).
 _UI_FEATURE_KEYS = frozenset({
-    "hide", "label", "file_id",
+    "hide", "label", "file_id", "suppressed",
 })
 
 

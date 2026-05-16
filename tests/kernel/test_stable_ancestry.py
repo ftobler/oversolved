@@ -13,10 +13,19 @@ pytestmark = [
 ]
 
 
-def _find_hash_in_ancestral(ancestral, prefix: str) -> set[str]:
-    """Extract hash wire tags from repo ancestral keys."""
+def _find_hash_in_ancestral(ancestral_or_snapshot, prefix: str) -> set[str]:
+    """Extract hash wire tags from by_geom_hash (or legacy ancestral search).
+
+    Accepts either an ancestral dict or a full repo snapshot dict. Hashes moved
+    from ancestral keys to by_geom_hash in the geom_hash_fallback_only feature.
+    """
+    # New format: search by_geom_hash
+    if isinstance(ancestral_or_snapshot, dict) and "by_geom_hash" in ancestral_or_snapshot:
+        by_geom_hash = ancestral_or_snapshot.get("by_geom_hash", {})
+        return {"@" + h for h in by_geom_hash if h.startswith(prefix)}
+    # Legacy: search ancestral keys for hash wire tags
     hashes: set[str] = set()
-    for key in ancestral:
+    for key in ancestral_or_snapshot:
         for w in key:
             if isinstance(w, str) and w.startswith("@" + prefix):
                 hashes.add(w)
@@ -24,11 +33,15 @@ def _find_hash_in_ancestral(ancestral, prefix: str) -> set[str]:
 
 
 def _get_face_registration_keys(ancestral):
-    """Return list of frozenset keys from ancestral that contain face registrations."""
+    """Return list of frozenset keys from ancestral that contain @body_id/face<n> registrations.
+
+    Hashes are now in by_geom_hash, not in ancestral keys. Face keys are identified
+    by the @<body_id>/face<n> positional tag.
+    """
     result = []
     for key in ancestral:
         for w in key:
-            if isinstance(w, str) and w.startswith("@gface_"):
+            if isinstance(w, str) and "/face" in w and w.startswith("@"):
                 result.append(key)
                 break
     return result
@@ -49,6 +62,7 @@ class TestHashTagInRegistration:
     """Verify that geometry hash tags appear in registrations."""
 
     def test_face_registration_has_hash_tag(self):
+        """Face hashes appear in by_geom_hash (not in ancestral keys) since geom_hash_fallback_only."""
         from oversolved.kernel.builder import build
         from solver_helpers import full_rect_extrude_spec
 
@@ -57,14 +71,14 @@ class TestHashTagInRegistration:
 
         ckp = _get_last_checkpoint(r)
         assert ckp is not None
+        by_geom_hash = ckp.repo_snapshot.get("by_geom_hash", {})
+        face_hashes = {h for h in by_geom_hash if h.startswith("gface_")}
+        assert len(face_hashes) > 0, "No gface_ entries in by_geom_hash"
+        # No gface_ tags appear in ancestral keys anymore
         ancestral = ckp.repo_snapshot.get("ancestral", {})
-        face_keys = _get_face_registration_keys(ancestral)
-        assert len(face_keys) > 0, "No face registrations found"
-        for key in face_keys:
-            wires = list(key)
-            assert len(wires) == 4, f"Expected 4 tags, got {len(wires)}: {wires}"
-            hash_wires = [w for w in wires if w.startswith("@gface_")]
-            assert len(hash_wires) == 1, f"Expected 1 gface_ tag in {wires}"
+        for key in ancestral:
+            for w in key:
+                assert not w.startswith("@gface_"), f"geom_hash leaked into ancestral key: {w}"
 
     def test_edge_registration_has_hash_tag(self):
         from oversolved.kernel.builder import build
@@ -75,8 +89,7 @@ class TestHashTagInRegistration:
 
         ckp = _get_last_checkpoint(r)
         assert ckp is not None
-        ancestral = ckp.repo_snapshot.get("ancestral", {})
-        edge_hashes = _find_hash_in_ancestral(ancestral, "gedge_")
+        edge_hashes = _find_hash_in_ancestral(ckp.repo_snapshot, "gedge_")
         assert len(edge_hashes) > 0, "No edge hash registrations found"
 
     def test_vetex_registration_has_gvertex_tag(self):
@@ -88,13 +101,12 @@ class TestHashTagInRegistration:
 
         ckp = _get_last_checkpoint(r)
         assert ckp is not None
-        ancestral = ckp.repo_snapshot.get("ancestral", {})
-        vertex_hashes = _find_hash_in_ancestral(ancestral, "gvertex_")
+        vertex_hashes = _find_hash_in_ancestral(ckp.repo_snapshot, "gvertex_")
         assert len(vertex_hashes) > 0, "No vertex hash registrations found"
 
 
 class TestHashCount:
-    """Face registrations have 4 tags (index, feature, body, hash)."""
+    """Face registrations have 3 structural tags (index, feature, body); hash is in by_geom_hash."""
 
     def test_face_registration_has_4_tags(self):
         from oversolved.kernel.builder import build
@@ -109,7 +121,7 @@ class TestHashCount:
         face_keys = _get_face_registration_keys(ancestral)
         assert len(face_keys) > 0
         for key in face_keys:
-            assert len(key) == 4
+            assert len(key) == 3, f"Expected 3 structural tags (index/feature/body), got {len(key)}: {sorted(key)}"
 
 
 class TestBackwardCompatibility:
@@ -132,6 +144,7 @@ class TestBackwardCompatibility:
         repo = Repository()
         repo.elements = dict(snapshot.get("elements", {}))
         repo.ancestral = {k: list(v) for k, v in snapshot.get("ancestral", {}).items()}
+        repo.by_geom_hash = {k: list(v) for k, v in snapshot.get("by_geom_hash", {}).items()}
 
         for idx, fq in enumerate(face_queries):
             old_3tag = make_ancestry_query(
@@ -175,8 +188,8 @@ class TestHashStability:
         ckp2 = _get_last_checkpoint(r2)
         assert ckp1 is not None and ckp2 is not None
 
-        h1 = _find_hash_in_ancestral(ckp1.repo_snapshot.get("ancestral", {}), "gface_")
-        h2 = _find_hash_in_ancestral(ckp2.repo_snapshot.get("ancestral", {}), "gface_")
+        h1 = _find_hash_in_ancestral(ckp1.repo_snapshot, "gface_")
+        h2 = _find_hash_in_ancestral(ckp2.repo_snapshot, "gface_")
         assert h1 and h2
         assert h1 == h2, "Face hashes differ between identical builds"
 
@@ -189,9 +202,7 @@ class TestHashStability:
         r_before = build(spec)
         ckp_before = _get_last_checkpoint(r_before)
         assert ckp_before is not None
-        hashes_before = _find_hash_in_ancestral(
-            ckp_before.repo_snapshot.get("ancestral", {}), "gface_"
-        )
+        hashes_before = _find_hash_in_ancestral(ckp_before.repo_snapshot, "gface_")
 
         spec["features"].append({
             "id": "fillet1", "kind": "fillet", "edges": ["?body_ex1:edge:0"], "radius": 1.0,
@@ -199,9 +210,7 @@ class TestHashStability:
         r_after = build(spec)
         ckp_after = _get_last_checkpoint(r_after)
         assert ckp_after is not None
-        hashes_after = _find_hash_in_ancestral(
-            ckp_after.repo_snapshot.get("ancestral", {}), "gface_"
-        )
+        hashes_after = _find_hash_in_ancestral(ckp_after.repo_snapshot, "gface_")
 
         assert hashes_before and hashes_after
         shared = hashes_before & hashes_after
@@ -216,9 +225,7 @@ class TestHashStability:
         r_before = build(spec)
         ckp_before = _get_last_checkpoint(r_before)
         assert ckp_before is not None
-        hashes_before = _find_hash_in_ancestral(
-            ckp_before.repo_snapshot.get("ancestral", {}), "gface_"
-        )
+        hashes_before = _find_hash_in_ancestral(ckp_before.repo_snapshot, "gface_")
 
         spec["features"].append({
             "id": "fillet1", "kind": "fillet", "edges": ["?body_ex1:edge:0"], "radius": 3.0,
@@ -226,9 +233,7 @@ class TestHashStability:
         r_after = build(spec)
         ckp_after = _get_last_checkpoint(r_after)
         assert ckp_after is not None
-        hashes_after = _find_hash_in_ancestral(
-            ckp_after.repo_snapshot.get("ancestral", {}), "gface_"
-        )
+        hashes_after = _find_hash_in_ancestral(ckp_after.repo_snapshot, "gface_")
 
         assert hashes_before and hashes_after
         new_hashes = hashes_after - hashes_before
@@ -243,9 +248,7 @@ class TestHashStability:
         r_before = build(spec)
         ckp_before = _get_last_checkpoint(r_before)
         assert ckp_before is not None
-        before_count = len(_find_hash_in_ancestral(
-            ckp_before.repo_snapshot.get("ancestral", {}), "gface_"
-        ))
+        before_count = len(_find_hash_in_ancestral(ckp_before.repo_snapshot, "gface_"))
 
         spec["features"].append({
             "id": "fillet1", "kind": "fillet", "edges": ["?body_ex1:edge:0"], "radius": 3.0,
@@ -253,9 +256,7 @@ class TestHashStability:
         r_after = build(spec)
         ckp_after = _get_last_checkpoint(r_after)
         assert ckp_after is not None
-        after_count = len(_find_hash_in_ancestral(
-            ckp_after.repo_snapshot.get("ancestral", {}), "gface_"
-        ))
+        after_count = len(_find_hash_in_ancestral(ckp_after.repo_snapshot, "gface_"))
 
         assert after_count > before_count, (
             f"Expected more faces after fillet ({after_count} <= {before_count})"
@@ -277,8 +278,8 @@ class TestEdgeHashStability:
         ckp2 = _get_last_checkpoint(r2)
         assert ckp1 is not None and ckp2 is not None
 
-        h1 = _find_hash_in_ancestral(ckp1.repo_snapshot.get("ancestral", {}), "gedge_")
-        h2 = _find_hash_in_ancestral(ckp2.repo_snapshot.get("ancestral", {}), "gedge_")
+        h1 = _find_hash_in_ancestral(ckp1.repo_snapshot, "gedge_")
+        h2 = _find_hash_in_ancestral(ckp2.repo_snapshot, "gedge_")
         assert h1 and h2
         assert h1 == h2, "Edge hashes differ between identical builds"
 
@@ -290,9 +291,7 @@ class TestEdgeHashStability:
         r_before = build(spec)
         ckp_before = _get_last_checkpoint(r_before)
         assert ckp_before is not None
-        hashes_before = _find_hash_in_ancestral(
-            ckp_before.repo_snapshot.get("ancestral", {}), "gedge_"
-        )
+        hashes_before = _find_hash_in_ancestral(ckp_before.repo_snapshot, "gedge_")
 
         spec["features"].append({
             "id": "fillet1", "kind": "fillet", "edges": ["?body_ex1:edge:0"], "radius": 1.0,
@@ -300,9 +299,7 @@ class TestEdgeHashStability:
         r_after = build(spec)
         ckp_after = _get_last_checkpoint(r_after)
         assert ckp_after is not None
-        hashes_after = _find_hash_in_ancestral(
-            ckp_after.repo_snapshot.get("ancestral", {}), "gedge_"
-        )
+        hashes_after = _find_hash_in_ancestral(ckp_after.repo_snapshot, "gedge_")
 
         assert hashes_before and hashes_after
         shared = hashes_before & hashes_after
@@ -326,6 +323,7 @@ class TestFacePayloadHasAncestry:
         repo = Repository()
         repo.elements = dict(snapshot.get("elements", {}))
         repo.ancestral = {k: list(v) for k, v in snapshot.get("ancestral", {}).items()}
+        repo.by_geom_hash = {k: list(v) for k, v in snapshot.get("by_geom_hash", {}).items()}
 
         face_keys = _get_face_registration_keys(snapshot.get("ancestral", {}))
         assert len(face_keys) > 0, "No face registrations found"

@@ -613,6 +613,11 @@ export default function Part() {
     setContextMenu(null)
   }, [handleMutation, visibleFeatures])
 
+  const toggleSuppression = useCallback((featureId: string, suppressed: boolean) => {
+    handleMutation({ type: 'set_feature_suppression', featureId, suppressed })
+    setContextMenu(null)
+  }, [handleMutation])
+
   const handleFeatureRename = useCallback((featureId: string, label: string) => {
     const trimmed = label.trim()
     if (!trimmed) return
@@ -769,6 +774,7 @@ export default function Part() {
     const callbacks: BuildContextMenuCallbacks = {
       onRebuild: handleRebuild,
       onToggleVisibility: toggleVisibility,
+      onToggleSuppression: toggleSuppression,
       onEnterEditSketch: enterEditSketch,
       onExitSketch: handleExitSketch,
       onDeleteFeature: handleDeleteFeature,
@@ -785,7 +791,7 @@ export default function Part() {
     }
     const { items } = buildContextMenu(input, callbacks)
     setContextMenu({ position: pos, targetId, items })
-  }, [handleRebuild, toggleVisibility, enterEditSketch, handleExitSketch, handleDeleteFeature,
+  }, [handleRebuild, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
     handleFeatureRename, handleBodyRename, handleAlignCameraToSketchPlane,
     features, visibleFeatures, activeSketchFeatureId, partLabels, partColors,
     viewportRef, setPartColorDraft, setPartColorPopover, setExportTargetBodyId,

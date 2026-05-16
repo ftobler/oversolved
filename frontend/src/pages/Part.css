@@ -377,6 +377,11 @@
   color: #f44336;
 }
 
+.feature-name.feature-name-suppressed {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
 .feature-name-input {
   overflow: hidden;
   text-overflow: ellipsis;
