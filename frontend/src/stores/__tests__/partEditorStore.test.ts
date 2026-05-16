@@ -1,31 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { usePartEditorStore } from '@/stores/partEditorStore'
-
-const defaultState: Record<string, unknown> = {
-  features: [],
-  rollbackPosition: null,
-  visibleFeatures: new Set(),
-  editingFeatureId: null,
-  doc: null,
-  visibleBodies: new Set(),
-  partLabels: {},
-  solveResults: {},
-  bodies: {},
-  isRebuilding: false,
-  featureTimings: {},
-  pickBodies: {},
-  activeSketchFeatureId: null,
-  ghostMode: false,
-  otherSketches: {},
-  partColors: {},
-  partStyle: {},
-  undoStack: [],
-  redoStack: [],
-}
+import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
 
 describe('partEditorStore', () => {
   beforeEach(() => {
-    usePartEditorStore.setState(defaultState as unknown as Parameters<typeof usePartEditorStore.setState>[0])
+    usePartEditorStore.getState().setSnapshot(DEFAULT_PART_EDITOR_DATA)
   })
 
   it('default state has empty features and null doc', () => {
@@ -36,28 +14,15 @@ describe('partEditorStore', () => {
     expect(state.editingFeatureId).toBeNull()
   })
 
-  it('sync updates all fields at once', () => {
+  it('setSnapshot replaces all fields at once', () => {
     const { getState } = usePartEditorStore
-    getState().sync({
+    getState().setSnapshot({
+      ...DEFAULT_PART_EDITOR_DATA,
       features: [{ id: 'f1', kind: 'extrude' }],
       doc: { version: 1, kind: 'part', features: [] },
       rollbackPosition: 1,
       editingFeatureId: 'f1',
-      activeSketchFeatureId: null,
       visibleFeatures: new Set(['f1']),
-      visibleBodies: new Set(),
-      partLabels: {},
-      solveResults: {},
-      bodies: {},
-      pickBodies: {},
-      isRebuilding: false,
-      featureTimings: {},
-      ghostMode: false,
-      otherSketches: {},
-      partColors: {},
-      partStyle: {},
-      undoStack: [],
-      redoStack: [],
     })
     expect(getState().features).toHaveLength(1)
     expect(getState().features[0].id).toBe('f1')
@@ -116,13 +81,5 @@ describe('partEditorStore', () => {
   it('sets featureTimings via setState', () => {
     usePartEditorStore.setState({ featureTimings: { ex1: 42 } })
     expect(usePartEditorStore.getState().featureTimings.ex1).toBe(42)
-  })
-
-  it('sync merges partial update without affecting other fields', () => {
-    usePartEditorStore.setState({ features: [{ id: 'existing', kind: 'sketch' }] })
-    usePartEditorStore.getState().sync({ rollbackPosition: 5 })
-    const state = usePartEditorStore.getState()
-    expect(state.features).toHaveLength(1)
-    expect(state.rollbackPosition).toBe(5)
   })
 })

@@ -14,7 +14,7 @@ import type { ContextMenuItem } from '@/components/RightClickMenu'
 import { Sidebar } from '@/components/Sidebar'
 import FooterMeasurementDisplay from '@/components/FooterMeasurementDisplay'
 import WsStatusIndicator from '@/components/WsStatusIndicator'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useSyncPartEditorStore } from '@/hooks/useSyncPartEditorStore'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 
 import { useSolverStore } from '@/stores/solverStore'
@@ -284,44 +284,28 @@ export default function Part() {
     }
   }, [uuid, reSolve, rollbackPosition, features, docRef])
 
-  useEffect(() => {
-    usePartEditorStore.getState().sync({
-      features,
-      doc,
-      rollbackPosition,
-      editingFeatureId,
-      activeSketchFeatureId: activeSketchFeatureId ?? null,
-      visibleFeatures,
-      visibleBodies: effectiveVisibleBodies ?? new Set(),
-      partLabels,
-      solveResults: solveResults ?? {},
-      bodies: bodies ?? {},
-      pickBodies: pickBodies ?? {},
-      isRebuilding,
-      featureTimings: featureTimings ?? {},
-      validation: validation ?? null,
-      ghostMode,
-      otherSketches,
-      partColors,
-      partStyle,
-      undoStack,
-      redoStack,
-    })
-  }, [features, doc, rollbackPosition, editingFeatureId, activeSketchFeatureId, visibleFeatures,
-    effectiveVisibleBodies, partLabels, solveResults, bodies, pickBodies, isRebuilding,
-    featureTimings, validation, ghostMode, otherSketches, partColors, partStyle, undoStack, redoStack])
-
-  useEffect(() => {
-    return () => {
-      usePartEditorStore.setState({
-        features: [], doc: null, rollbackPosition: null, editingFeatureId: null,
-        activeSketchFeatureId: null, visibleFeatures: new Set(), visibleBodies: new Set(),
-        partLabels: {}, solveResults: {}, bodies: {}, pickBodies: {}, isRebuilding: false,
-        featureTimings: {}, ghostMode: false, otherSketches: {}, partColors: {}, partStyle: {},
-        undoStack: [], redoStack: [],
-      })
-    }
-  }, [])
+  useSyncPartEditorStore({
+    features,
+    doc,
+    rollbackPosition,
+    editingFeatureId,
+    activeSketchFeatureId: activeSketchFeatureId ?? null,
+    visibleFeatures,
+    visibleBodies: effectiveVisibleBodies ?? new Set(),
+    partLabels,
+    solveResults: solveResults ?? {},
+    bodies: bodies ?? {},
+    pickBodies: pickBodies ?? {},
+    isRebuilding,
+    featureTimings: featureTimings ?? {},
+    validation: validation ?? null,
+    ghostMode,
+    otherSketches,
+    partColors,
+    partStyle,
+    undoStack,
+    redoStack,
+  })
 
   const handleRebuildRef = useRef(handleRebuild)
   handleRebuildRef.current = handleRebuild

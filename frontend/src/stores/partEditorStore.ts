@@ -3,7 +3,7 @@ import type { BodyResult, PartFeature, PartDoc, Sketch, PartStyleEntry, Mutation
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
 
-interface PartEditorData {
+export interface PartEditorData {
   features: PartFeature[]
   doc: PartDoc | null
   rollbackPosition: number | null
@@ -26,11 +26,7 @@ interface PartEditorData {
   redoStack: UndoEntry[]
 }
 
-interface PartEditorState extends PartEditorData {
-  sync: (patch: Partial<PartEditorData>) => void
-}
-
-export const usePartEditorStore = create<PartEditorState>((set) => ({
+export const DEFAULT_PART_EDITOR_DATA: PartEditorData = {
   features: [],
   doc: null,
   rollbackPosition: null,
@@ -51,5 +47,13 @@ export const usePartEditorStore = create<PartEditorState>((set) => ({
   partStyle: {},
   undoStack: [],
   redoStack: [],
-  sync: (patch) => set(patch),
+}
+
+interface PartEditorState extends PartEditorData {
+  setSnapshot: (data: PartEditorData) => void
+}
+
+export const usePartEditorStore = create<PartEditorState>((set) => ({
+  ...DEFAULT_PART_EDITOR_DATA,
+  setSnapshot: (data) => set(data),
 }))
