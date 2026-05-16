@@ -201,8 +201,9 @@ interface SketchEditorState {
   contextMenu: [number, number] | null
   planeSelectionFeatureId: string | null
   pendingPickField: PendingPickField | null
-  pickChipHighlightItems: string[]
-  setPickChipHighlightItems: (items: string[]) => void
+  chipOwnedSelection: Set<string>
+  syncChipSelection: (values: string[]) => void
+  clearChipSelection: () => void
   setActiveTool: (tool: ActiveTool) => void
   setActiveFeatureId: (id: string | null) => void
   setShowDebugHit: (enabled: boolean) => void
@@ -261,7 +262,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   contextMenu: null,
   planeSelectionFeatureId: null,
   pendingPickField: null,
-  pickChipHighlightItems: [],
+  chipOwnedSelection: new Set(),
 
   setInternalHoverSelection: (id) => set(s => {
     if (s.internalHoverSelection === id) return s
@@ -419,12 +420,42 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setPlaneSelectionFeatureId: (id) => set({ planeSelectionFeatureId: id }),
 
-  setPendingPickField: (state) => set({
-    pendingPickField: state,
-    pickChipHighlightItems: state ? get().pickChipHighlightItems : [],
-  }),
+  setPendingPickField: (state) => {
+    if (state) {
+      set({ pendingPickField: state })
+      return
+    }
+    // Field cleared — also drop any chip-owned highlights so they don't leak into normalSelection.
+    const s = get()
+    const next = new Set(s.normalSelection)
+    for (const v of s.chipOwnedSelection) next.delete(v)
+    set({ pendingPickField: null, normalSelection: next, chipOwnedSelection: new Set() })
+  },
 
-  setPickChipHighlightItems: (items) => set({ pickChipHighlightItems: items }),
+  syncChipSelection: (values) => {
+    const s = get()
+    const nextOwned = new Set(values)
+    // Bail if the set hasn't changed to avoid infinite re-render loops
+    // when callers pass a fresh array reference each render.
+    if (s.chipOwnedSelection.size === nextOwned.size
+        && [...s.chipOwnedSelection].every(v => nextOwned.has(v))) {
+      return
+    }
+    const next = new Set(s.normalSelection)
+    for (const v of s.chipOwnedSelection) {
+      if (!nextOwned.has(v)) next.delete(v)
+    }
+    for (const v of nextOwned) next.add(v)
+    set({ normalSelection: next, chipOwnedSelection: nextOwned })
+  },
+
+  clearChipSelection: () => {
+    const s = get()
+    if (s.chipOwnedSelection.size === 0) return
+    const next = new Set(s.normalSelection)
+    for (const v of s.chipOwnedSelection) next.delete(v)
+    set({ normalSelection: next, chipOwnedSelection: new Set() })
+  },
 
   commitFieldPick: () => {
     const { pendingPickField, normalSelection } = get()
@@ -458,12 +489,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         : selectionId  // raw selection id
       if (pendingPickField.hostKind === 'hole') {
         onMutation({ type: 'set_hole_sketch', featureId: pendingPickField.featureId, sketch: sketchQuery })
-        set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
+        set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
         return
       }
       const mutationType = pendingPickField.hostKind === 'revolve' ? 'add_revolve_profile' : 'add_extrude_profile'
       onMutation({ type: mutationType, featureId: pendingPickField.featureId, sketchQuery })
-      set({ normalSelection: new Set() })  // clear selection but keep pick mode open
+      set({ normalSelection: new Set(), chipOwnedSelection: new Set() })  // clear selection but keep pick mode open; chip's sync effect repopulates from values
       return
     }
     if (pendingPickField.field === 'edges') {
@@ -472,7 +503,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         : selectionId
       const mutationType = pendingPickField.hostKind === 'chamfer' ? 'add_chamfer_edge' : 'add_fillet_edge'
       onMutation({ type: mutationType, featureId: pendingPickField.featureId, edgeQuery })
-      set({ normalSelection: new Set() })  // clear selection but keep pick mode open
+      set({ normalSelection: new Set(), chipOwnedSelection: new Set() })  // clear selection but keep pick mode open; chip's sync effect repopulates from values
       return
     }
     if (pendingPickField.field === 'axis') {
@@ -484,7 +515,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
             ? selectionId.split(':').slice(2).join(':')
             : selectionId
       onMutation({ type: 'set_revolve_axis', featureId: pendingPickField.featureId, axis: axisQuery })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
       return
     }
     if (pendingPickField.field === 'merge_target') {
@@ -493,19 +524,19 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         ? 'set_revolve_merge_target'
         : 'set_extrude_merge_target'
       onMutation({ type: mutationType, featureId: pendingPickField.featureId, mergeTarget: bodyRef })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
       return
     }
     if (pendingPickField.field === 'boolean_target') {
       const bodyRef = _resolveBodyRef(selectionId)
       onMutation({ type: 'set_boolean_target', featureId: pendingPickField.featureId, target: bodyRef })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
       return
     }
     if (pendingPickField.field === 'boolean_tool') {
       const bodyRef = _resolveBodyRef(selectionId)
       onMutation({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: bodyRef })
-      set({ normalSelection: new Set() })  // keep pick mode open for multiple tools
+      set({ normalSelection: new Set(), chipOwnedSelection: new Set() })  // keep pick mode open; chip's sync effect repopulates from values
       return
     }
     if (pendingPickField.field === 'body') {
@@ -517,7 +548,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       } else {
         onMutation({ type: 'set_delete_body_target', featureId: pendingPickField.featureId, body: bodyRef })
       }
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
       return
     }
     if (pendingPickField.field === 'plane' && pendingPickField.hostKind === 'mirror') {
@@ -525,7 +556,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         ? selectionId.split(':').slice(2).join(':')
         : selectionId
       onMutation({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'plane', value })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
       return
     }
     let value: string
@@ -534,7 +565,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         ? selectionId.split(':').slice(2).join(':')
         : selectionId
       onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'rotation_axis', value })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
       return
     }
     if (pendingPickField.field === 'scale_center_from' && pendingPickField.hostKind === 'transform') {
@@ -542,7 +573,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         ? selectionId.split(':').slice(2).join(':')
         : selectionId
       onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'scale_center_from', value })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
+      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
       return
     }
     if (selectionId.startsWith('face:')) {
@@ -559,7 +590,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       value = selectionId
     }
     onMutation({ type: 'set_plane_definition_field', featureId: pendingPickField.featureId, field: pendingPickField.field, value })
-    set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', pickChipHighlightItems: [] })
+    set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
   },
 
   commitPlaneSelection: (selectionId) => {
@@ -570,7 +601,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
     onMutation({ type: 'set_feature_plane', featureId: planeSelectionFeatureId, plane })
-    set({ planeSelectionFeatureId: null, pickChipHighlightItems: [] })
+    const s = get()
+    const next = new Set(s.normalSelection)
+    for (const v of s.chipOwnedSelection) next.delete(v)
+    set({ planeSelectionFeatureId: null, normalSelection: next, chipOwnedSelection: new Set() })
   },
 
 }))

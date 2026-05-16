@@ -34,11 +34,8 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
   const drag = useSketchEditorStore(s => s.drag)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
-  const pickChipHighlightItems = useSketchEditorStore(s => s.pickChipHighlightItems)
-  // Highlight pathway: a sketch entity is "selected-looking" if it is in normalSelection
-  // OR currently held by an active pick chip. User invariant (§Pick Chips):
-  //   "Everything the pick chip contains must be highlighted."
-  const selected = normalSelection.has(entId) || pickChipHighlightItems.includes(entId)
+  // normalSelection is the single source of truth — active pick chips merge their values in via syncChipSelection.
+  const selected = normalSelection.has(entId)
 
   // REGRESSION PROTECTION: Hide collision geometry during entity drag.
   // Must check both entityId and featureId to handle multiple sketches.

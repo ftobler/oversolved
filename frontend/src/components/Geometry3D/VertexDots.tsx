@@ -131,11 +131,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   // Also hide hit geometry from non-active sketches to prevent raycasting interference.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
   const drag = useSketchEditorStore(s => s.drag)
-  const pickChipHighlightItems = useSketchEditorStore(s => s.pickChipHighlightItems)
-  const selected = useSketchEditorStore(s => vertId
-    ? s.normalSelection.has(vertId) || pickChipHighlightItems.includes(vertId)
-    : false,
-  )
+  const selected = useSketchEditorStore(s => vertId ? s.normalSelection.has(vertId) : false)
   const isInactiveSketch = featureId && activeFeatureId && featureId !== activeFeatureId
   const isDraggedVertex = drag && drag.type === 'vertex' && drag.entityId === entityId && drag.featureId === featureId
 
@@ -198,10 +194,7 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number;
   const { camera } = useThree()
   const entId = `entity:${featureId}:${entityId}`
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
-  const pickChipHighlightItems2 = useSketchEditorStore(s => s.pickChipHighlightItems)
-  const selected = useSketchEditorStore(s =>
-    s.normalSelection.has(entId) || pickChipHighlightItems2.includes(entId),
-  )
+  const selected = useSketchEditorStore(s => s.normalSelection.has(entId))
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
   const setInternalHoverSelection = useSketchEditorStore(s => s.setInternalHoverSelection)
 

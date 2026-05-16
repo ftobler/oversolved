@@ -24,13 +24,23 @@ export function PickChip({
   features,
   partLabels,
 }: PickChipProps) {
-  const setPickChipHighlightItems = useSketchEditorStore(s => s.setPickChipHighlightItems)
+  const syncChipSelection = useSketchEditorStore(s => s.syncChipSelection)
+  const clearChipSelection = useSketchEditorStore(s => s.clearChipSelection)
   const isEmpty = values.length === 0
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
 
+  // Two effects so a values-only change does not flicker through clear→re-add.
+  // Activate/deactivate: cleanup fires only on isPicking flipping false or unmount.
   useEffect(() => {
-    setPickChipHighlightItems(isPicking ? values : [])
-  }, [isPicking, values, setPickChipHighlightItems])
+    if (!isPicking) return
+    return () => { clearChipSelection() }
+  }, [isPicking, clearChipSelection])
+
+  // Sync: runs on every values change while picking; no cleanup.
+  useEffect(() => {
+    if (!isPicking) return
+    syncChipSelection(values)
+  }, [isPicking, values, syncChipSelection])
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
   const [dropSide, setDropSide] = useState<'left' | 'right' | null>(null)
 

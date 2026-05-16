@@ -85,7 +85,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   const setHovered3DSurface = useSketchEditorStore(s => s.setHovered3DSurface)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
-  const pickChipHighlightItems = useSketchEditorStore(s => s.pickChipHighlightItems)
 
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
   const hoveredEdgeIndexRef = useRef<number | null>(null)
@@ -110,13 +109,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
 
   const noRaycast = useCallback(() => {}, [])
 
-  const isBodySelected = normalSelection.has('@' + bodyId) || pickChipHighlightItems.includes('@' + bodyId)
+  const isBodySelected = normalSelection.has('@' + bodyId)
 
-  // Check if a specific edge is selected or in the active pick chip, using stable query when available
   const getIsEdgeSelected = useCallback((edgeIndex: number): boolean => {
     const query = edgeQueries?.[edgeIndex] ?? `@${featureId}/edge/${edgeIndex}`
-    return normalSelection.has(query) || pickChipHighlightItems.includes(query)
-  }, [normalSelection, featureId, edgeQueries, pickChipHighlightItems])
+    return normalSelection.has(query)
+  }, [normalSelection, featureId, edgeQueries])
 
   const geometry = useMemo(() => {
     const indexed = new THREE.BufferGeometry()
@@ -322,7 +320,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       let color = defaultColor
       if (interactive) {
         const query = resolveFaceQuery(i)
-        if (normalSelection.has(query) || pickChipHighlightItems.includes(query)) {
+        if (normalSelection.has(query)) {
           color = selectedColor
         } else if (query === hovered3DSurfaceId) {
           color = hoverColor
@@ -337,7 +335,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       }
     }
     return colors
-  }, [mesh.faces, normalSelection, hovered3DSurfaceId, bodyColor, resolveFaceQuery, interactive, pickChipHighlightItems])
+  }, [mesh.faces, normalSelection, hovered3DSurfaceId, bodyColor, resolveFaceQuery, interactive])
 
   // Build edge colors array for selected/hovered edges
   const edgeColors = useMemo(() => {
@@ -660,7 +658,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           </lineSegments>
         ) : null
       })()}
-      {interactive && edgeBoundaryGeos && [...new Set([...normalSelection, ...pickChipHighlightItems])].map(query => {
+      {interactive && edgeBoundaryGeos && [...normalSelection].map(query => {
         const geo = edgeBoundaryGeos.get(query)
         if (!geo) return null
         return (
@@ -674,7 +672,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
         </lineSegments>
       )}
-      {interactive && faceBoundaryGeos && [...new Set([...normalSelection, ...pickChipHighlightItems])].map(query => {
+      {interactive && faceBoundaryGeos && [...normalSelection].map(query => {
         const geo = faceBoundaryGeos.get(query)
         if (!geo) return null
         return (

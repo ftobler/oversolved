@@ -4,7 +4,10 @@ import { PickChip } from '@/components/PickChip'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 beforeEach(() => {
-  useSketchEditorStore.setState({ pickChipHighlightItems: [] })
+  useSketchEditorStore.setState({
+    chipOwnedSelection: new Set(),
+    normalSelection: new Set(),
+  })
 })
 
 describe('PickChip', () => {
@@ -250,8 +253,8 @@ describe('PickChip', () => {
     expect(onReorder).not.toHaveBeenCalled()
   })
 
-  describe('pickChipHighlightItems sync', () => {
-    it('sets highlight items when isPicking is true', () => {
+  describe('chipOwnedSelection sync', () => {
+    it('merges values into normalSelection while picking', () => {
       render(
         <PickChip
           values={['@edge_0', '@edge_1']}
@@ -260,10 +263,13 @@ describe('PickChip', () => {
           onRemove={vi.fn()}
         />
       )
-      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@edge_0', '@edge_1'])
+      const s = useSketchEditorStore.getState()
+      expect([...s.chipOwnedSelection].sort()).toEqual(['@edge_0', '@edge_1'])
+      expect(s.normalSelection.has('@edge_0')).toBe(true)
+      expect(s.normalSelection.has('@edge_1')).toBe(true)
     })
 
-    it('clears highlight items when isPicking becomes false', () => {
+    it('clears chip-owned entries when isPicking becomes false', () => {
       const { rerender } = render(
         <PickChip
           values={['@edge_0']}
@@ -272,7 +278,7 @@ describe('PickChip', () => {
           onRemove={vi.fn()}
         />
       )
-      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@edge_0'])
+      expect(useSketchEditorStore.getState().normalSelection.has('@edge_0')).toBe(true)
 
       rerender(
         <PickChip
@@ -282,10 +288,12 @@ describe('PickChip', () => {
           onRemove={vi.fn()}
         />
       )
-      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual([])
+      const s = useSketchEditorStore.getState()
+      expect(s.chipOwnedSelection.size).toBe(0)
+      expect(s.normalSelection.has('@edge_0')).toBe(false)
     })
 
-    it('updates highlight items when values change while picking', () => {
+    it('reconciles diff when values change while picking (no flicker)', () => {
       const { rerender } = render(
         <PickChip
           values={['@edge_0']}
@@ -294,7 +302,7 @@ describe('PickChip', () => {
           onRemove={vi.fn()}
         />
       )
-      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@edge_0'])
+      expect([...useSketchEditorStore.getState().chipOwnedSelection]).toEqual(['@edge_0'])
 
       rerender(
         <PickChip
@@ -304,10 +312,11 @@ describe('PickChip', () => {
           onRemove={vi.fn()}
         />
       )
-      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual(['@edge_0', '@edge_1'])
+      const s = useSketchEditorStore.getState()
+      expect([...s.chipOwnedSelection].sort()).toEqual(['@edge_0', '@edge_1'])
     })
 
-    it('does not set items when not picking even with values', () => {
+    it('does not sync when not picking even with values', () => {
       render(
         <PickChip
           values={['@body_1']}
@@ -316,7 +325,9 @@ describe('PickChip', () => {
           onRemove={vi.fn()}
         />
       )
-      expect(useSketchEditorStore.getState().pickChipHighlightItems).toEqual([])
+      const s = useSketchEditorStore.getState()
+      expect(s.chipOwnedSelection.size).toBe(0)
+      expect(s.normalSelection.has('@body_1')).toBe(false)
     })
   })
 })

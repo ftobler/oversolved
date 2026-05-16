@@ -7,7 +7,7 @@ beforeEach(() => {
     hoveredSurfaceId: null,
     hovered3DSurfaceId: null,
     normalSelection: new Set(),
-    pickChipHighlightItems: [],
+    chipOwnedSelection: new Set(),
   })
 })
 
@@ -391,75 +391,37 @@ describe('Body3D selection - vertex queries', () => {
   })
 })
 
-describe('Body3D selection - pickChipHighlightItems', () => {
-  it('isBodySelected returns true when body ref is in pickChipHighlightItems', () => {
-    useSketchEditorStore.setState({ pickChipHighlightItems: ['@body_ex1'] })
-    const bodyId = 'body_ex1'
-    const isSelected = useSketchEditorStore.getState().pickChipHighlightItems.includes('@' + bodyId)
-    expect(isSelected).toBe(true)
+describe('Body3D selection - chip highlights ride normalSelection', () => {
+  it('syncChipSelection puts body ref into normalSelection so isBodySelected is true', () => {
+    useSketchEditorStore.getState().syncChipSelection(['@body_ex1'])
+    expect(useSketchEditorStore.getState().normalSelection.has('@body_ex1')).toBe(true)
   })
 
-  it('isBodySelected returns false when body ref is not in pickChipHighlightItems', () => {
-    useSketchEditorStore.setState({ pickChipHighlightItems: ['@body_ex2'] })
-    const bodyId = 'body_ex1'
-    const isSelected = useSketchEditorStore.getState().pickChipHighlightItems.includes('@' + bodyId)
-    expect(isSelected).toBe(false)
+  it('a body ref not in chip values is not selected', () => {
+    useSketchEditorStore.getState().syncChipSelection(['@body_ex2'])
+    expect(useSketchEditorStore.getState().normalSelection.has('@body_ex1')).toBe(false)
   })
 
-  it('edge query in pickChipHighlightItems matches getIsEdgeSelected logic', () => {
-    useSketchEditorStore.setState({ pickChipHighlightItems: ['@ex1/edge/0', '@ex1/edge/2'] })
-    const edgeQueries = ['@ex1/edge/0', '@ex1/edge/1', '@ex1/edge/2']
-
-    const selectedEdges = edgeQueries.filter(q =>
-      useSketchEditorStore.getState().pickChipHighlightItems.includes(q)
-    )
-
-    expect(selectedEdges).toEqual(['@ex1/edge/0', '@ex1/edge/2'])
+  it('edge queries synced through chip match getIsEdgeSelected predicate', () => {
+    useSketchEditorStore.getState().syncChipSelection(['@ex1/edge/0', '@ex1/edge/2'])
+    const sel = useSketchEditorStore.getState().normalSelection
+    expect(['@ex1/edge/0', '@ex1/edge/1', '@ex1/edge/2'].filter(q => sel.has(q))).toEqual(['@ex1/edge/0', '@ex1/edge/2'])
   })
 
-  it('edge query in pickChipHighlightItems uses fallback when edgeQueries is undefined', () => {
-    useSketchEditorStore.setState({ pickChipHighlightItems: ['@ex1/edge/1'] })
-    const featureId = 'ex1'
-    const edgeIndex = 1
-
-    const query = `@${featureId}/edge/${edgeIndex}`
-    const isHighlighted = useSketchEditorStore.getState().pickChipHighlightItems.includes(query)
-
-    expect(isHighlighted).toBe(true)
+  it('face queries synced through chip match face overlay predicate', () => {
+    useSketchEditorStore.getState().syncChipSelection(['?body_ex1/face/0', '?body_ex1/face/2'])
+    const sel = useSketchEditorStore.getState().normalSelection
+    expect(['?body_ex1/face/0', '?body_ex1/face/1', '?body_ex1/face/2'].filter(q => sel.has(q))).toEqual(['?body_ex1/face/0', '?body_ex1/face/2'])
   })
 
-  it('face query in pickChipHighlightItems matches resolveFaceQuery output', () => {
-    useSketchEditorStore.setState({ pickChipHighlightItems: ['?body_ex1/face/0', '?body_ex1/face/2'] })
-    const faceQueries = ['?body_ex1/face/0', '?body_ex1/face/1', '?body_ex1/face/2']
-
-    const selectedFaces = faceQueries.filter(q =>
-      useSketchEditorStore.getState().pickChipHighlightItems.includes(q)
-    )
-
-    expect(selectedFaces).toEqual(['?body_ex1/face/0', '?body_ex1/face/2'])
-  })
-
-  it('face boundary overlay renders for chip-highlighted face queries', () => {
-    useSketchEditorStore.setState({ pickChipHighlightItems: ['?f0'] })
-    const faceBoundaryKeys = ['?f0', '?f1', '?f2', '?f3', '?f4', '?f5']
-
-    const matchingQueries = [...new Set([...useSketchEditorStore.getState().normalSelection, ...useSketchEditorStore.getState().pickChipHighlightItems])]
-      .filter(q => faceBoundaryKeys.includes(q))
-
-    expect(matchingQueries).toEqual(['?f0'])
-  })
-
-  it('mixed normalSelection and pickChipHighlightItems deduplicates correctly', () => {
-    useSketchEditorStore.setState({
-      normalSelection: new Set(['@body_ex1', '@ex1/edge/0']),
-      pickChipHighlightItems: ['@ex1/edge/0', '@ex1/edge/1'],
-    })
-
-    const combined = new Set([...useSketchEditorStore.getState().normalSelection, ...useSketchEditorStore.getState().pickChipHighlightItems])
-    expect(combined.has('@body_ex1')).toBe(true)
-    expect(combined.has('@ex1/edge/0')).toBe(true)
-    expect(combined.has('@ex1/edge/1')).toBe(true)
-    expect(combined.size).toBe(3)
+  it('pre-existing normalSelection survives a chip sync that does not overlap', () => {
+    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1']) })
+    useSketchEditorStore.getState().syncChipSelection(['@ex1/edge/0', '@ex1/edge/1'])
+    const sel = useSketchEditorStore.getState().normalSelection
+    expect(sel.has('@body_ex1')).toBe(true)
+    expect(sel.has('@ex1/edge/0')).toBe(true)
+    expect(sel.has('@ex1/edge/1')).toBe(true)
+    expect(sel.size).toBe(3)
   })
 })
 
