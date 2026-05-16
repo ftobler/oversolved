@@ -33,6 +33,31 @@ function distToSegment2D(px: number, py: number, ax: number, ay: number, bx: num
   return Math.hypot(px - ax - t * dx, py - ay - t * dy)
 }
 
+// Project vertex positions to screen space and return the nearest vertex index within POINT_HIT_PIXELS.
+// Same screen-space approach as nearestEdgeScreenSpace — catches vertices occluded by the face mesh.
+function nearestVertexScreenSpace(
+  clientX: number, clientY: number,
+  verts: readonly (readonly [number, number, number])[] | undefined,
+  camera: THREE.Camera,
+  rect: DOMRect,
+): number | null {
+  if (!verts || verts.length === 0) return null
+  const w = rect.width, h = rect.height
+  let minDist = POINT_HIT_PIXELS
+  let best = -1
+  const p = new THREE.Vector3()
+  for (let i = 0; i < verts.length; i++) {
+    const [x, y, z] = verts[i]
+    p.set(x, y, z).project(camera)
+    if (p.z > 1) continue  // behind camera
+    const sx = (p.x + 1) / 2 * w + rect.left
+    const sy = (-p.y + 1) / 2 * h + rect.top
+    const d = Math.hypot(clientX - sx, clientY - sy)
+    if (d < minDist) { minDist = d; best = i }
+  }
+  return best >= 0 ? best : null
+}
+
 // Project edge segments to screen space and return the nearest edge index within HIT_PIXELS.
 // Handles concave (inside corner) edges that are occluded by the face mesh from the raycaster.
 function nearestEdgeScreenSpace(
@@ -90,6 +115,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   const hoveredEdgeIndexRef = useRef<number | null>(null)
   useEffect(() => { hoveredEdgeIndexRef.current = hoveredEdgeIndex }, [hoveredEdgeIndex])
   const [hoveredVertexIndex, setHoveredVertexIndex] = useState<number | null>(null)
+  const hoveredVertexIndexRef = useRef<number | null>(null)
+  useEffect(() => { hoveredVertexIndexRef.current = hoveredVertexIndex }, [hoveredVertexIndex])
 
   const lastHoveredFaceRef = useRef<string | null>(null)
   const faceColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
@@ -486,9 +513,17 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           e.stopPropagation()
           if (isRotating) return
           setHoveredBodyId(featureId)
-          // Screen-space edge check: catches concave/inside-corner edges occluded by the mesh.
           const me = e.nativeEvent as MouseEvent
           const rect = gl.domElement.getBoundingClientRect()
+          // Screen-space vertex check: catches vertices occluded by the face mesh.
+          const nearVertex = nearestVertexScreenSpace(me.clientX, me.clientY, vertices, camera, rect)
+          if (nearVertex !== null) {
+            setHoveredVertexIndex(nearVertex)
+            setHoveredEdgeIndex(null)
+            setHovered3DSurface(null)
+            return
+          }
+          // Screen-space edge check: catches concave/inside-corner edges occluded by the mesh.
           const nearEdge = nearestEdgeScreenSpace(me.clientX, me.clientY, edgeSegmentPts, segmentToEdgeMap, camera, rect)
           if (nearEdge !== null) {
             setHoveredEdgeIndex(nearEdge)
@@ -511,9 +546,17 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         onPointerMove={interactive ? (e) => {
           e.stopPropagation()
           if (isRotating) return
-          // Screen-space edge check: catches concave/inside-corner edges occluded by the mesh.
           const me = e.nativeEvent as MouseEvent
           const rect = gl.domElement.getBoundingClientRect()
+          // Screen-space vertex check: catches vertices occluded by the face mesh.
+          const nearVertex = nearestVertexScreenSpace(me.clientX, me.clientY, vertices, camera, rect)
+          if (nearVertex !== null) {
+            setHoveredVertexIndex(nearVertex)
+            setHoveredEdgeIndex(null)
+            setHovered3DSurface(null)
+            return
+          }
+          // Screen-space edge check: catches concave/inside-corner edges occluded by the mesh.
           const nearEdge = nearestEdgeScreenSpace(me.clientX, me.clientY, edgeSegmentPts, segmentToEdgeMap, camera, rect)
           if (nearEdge !== null) {
             setHoveredEdgeIndex(nearEdge)
@@ -538,12 +581,21 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           setHoveredBodyId(current => current === featureId ? null : current)
           setHovered3DSurface(null)
           setHoveredEdgeIndex(null)
+          setHoveredVertexIndex(null)
           lastHoveredFaceRef.current = null
           setHoveredFaceGeometry(null, null)
         } : undefined}
         onClick={interactive ? (e) => {
-          // When screen-space edge proximity detected an edge hover, treat click as edge click.
-          if (hoveredEdgeIndexRef.current !== null) {
+          // When screen-space vertex proximity detected a vertex hover, treat click as vertex click.
+          if (hoveredVertexIndexRef.current !== null) {
+            e.stopPropagation()
+            const idx = hoveredVertexIndexRef.current
+            const query = vertexQueries?.[idx] ?? `@${featureId}/vertex/${idx}`
+            toggleNormalSelection(query)
+            if (useSketchEditorStore.getState().pendingPickField) {
+              useSketchEditorStore.getState().commitFieldPick()
+            }
+          } else if (hoveredEdgeIndexRef.current !== null) {
             handleEdgeClick(e)
           } else {
             handleMeshClick(e)

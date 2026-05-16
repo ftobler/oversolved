@@ -2,6 +2,8 @@ import contextEditIcon from '@/assets/icons/context-edit.svg'
 import iconDotsIcon from '@/assets/icons/dots.svg'
 import iconEyeIcon from '@/assets/icons/icon-eye.svg'
 import iconEyeOffIcon from '@/assets/icons/icon-eye-off.svg'
+import okIcon from '@/assets/icons/dialog-ok.svg'
+import cancelIcon from '@/assets/icons/dialog-cancel.svg'
 
 interface FeatureItemActionsProps {
   featureKind: string | undefined
@@ -68,10 +70,10 @@ export function FeatureItemActions({
       {kind === 'revolve' && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <span className="material-icons-outlined">check</span>
+            <img src={okIcon} alt="OK" />
           </button>
           <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <span className="material-icons-outlined">close</span>
+            <img src={cancelIcon} alt="Cancel" />
           </button>
         </>
       )}
@@ -83,10 +85,10 @@ export function FeatureItemActions({
       {kind === 'fillet' && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <span className="material-icons-outlined">check</span>
+            <img src={okIcon} alt="OK" />
           </button>
           <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <span className="material-icons-outlined">close</span>
+            <img src={cancelIcon} alt="Cancel" />
           </button>
         </>
       )}
@@ -98,10 +100,10 @@ export function FeatureItemActions({
       {kind === 'chamfer' && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <span className="material-icons-outlined">check</span>
+            <img src={okIcon} alt="OK" />
           </button>
           <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <span className="material-icons-outlined">close</span>
+            <img src={cancelIcon} alt="Cancel" />
           </button>
         </>
       )}
@@ -113,10 +115,10 @@ export function FeatureItemActions({
       {kind === 'boolean' && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <span className="material-icons-outlined">check</span>
+            <img src={okIcon} alt="OK" />
           </button>
           <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <span className="material-icons-outlined">close</span>
+            <img src={cancelIcon} alt="Cancel" />
           </button>
         </>
       )}
@@ -128,10 +130,10 @@ export function FeatureItemActions({
       {kind === 'array' && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <span className="material-icons-outlined">check</span>
+            <img src={okIcon} alt="OK" />
           </button>
           <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <span className="material-icons-outlined">close</span>
+            <img src={cancelIcon} alt="Cancel" />
           </button>
         </>
       )}
@@ -143,10 +145,10 @@ export function FeatureItemActions({
       {kind === 'delete_body' && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <span className="material-icons-outlined">check</span>
+            <img src={okIcon} alt="OK" />
           </button>
           <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <span className="material-icons-outlined">close</span>
+            <img src={cancelIcon} alt="Cancel" />
           </button>
         </>
       )}
@@ -158,15 +160,12 @@ export function FeatureItemActions({
       {kind === 'hole' && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <span className="material-icons-outlined">check</span>
+            <img src={okIcon} alt="OK" />
           </button>
           <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <span className="material-icons-outlined">close</span>
+            <img src={cancelIcon} alt="Cancel" />
           </button>
         </>
-      )}
-      {kind === 'hole' && isEditing && (
-        <span className="feature-visibility-placeholder" />
       )}
       {kind === 'transform' && showEditBtn && (
         <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit transform">
@@ -176,15 +175,12 @@ export function FeatureItemActions({
       {kind === 'transform' && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <span className="material-icons-outlined">check</span>
+            <img src={okIcon} alt="OK" />
           </button>
           <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <span className="material-icons-outlined">close</span>
+            <img src={cancelIcon} alt="Cancel" />
           </button>
         </>
-      )}
-      {kind === 'transform' && isEditing && (
-        <span className="feature-visibility-placeholder" />
       )}
       {kind === 'mirror' && showEditBtn && (
         <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit mirror">
@@ -194,48 +190,42 @@ export function FeatureItemActions({
       {kind === 'mirror' && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <span className="material-icons-outlined">check</span>
+            <img src={okIcon} alt="OK" />
           </button>
           <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <span className="material-icons-outlined">close</span>
+            <img src={cancelIcon} alt="Cancel" />
           </button>
         </>
-      )}
-      {kind === 'mirror' && isEditing && (
-        <span className="feature-visibility-placeholder" />
       )}
       {kind === 'extrude' && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <span className="material-icons-outlined">check</span>
+            <img src={okIcon} alt="OK" />
           </button>
           <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <span className="material-icons-outlined">close</span>
+            <img src={cancelIcon} alt="Cancel" />
           </button>
         </>
       )}
       {kind === 'sketch' && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <span className="material-icons-outlined">check</span>
+            <img src={okIcon} alt="OK" />
           </button>
           <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <span className="material-icons-outlined">close</span>
+            <img src={cancelIcon} alt="Cancel" />
           </button>
         </>
       )}
       {kind === 'plane' && !isBuiltIn && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <span className="material-icons-outlined">check</span>
+            <img src={okIcon} alt="OK" />
           </button>
           <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <span className="material-icons-outlined">close</span>
+            <img src={cancelIcon} alt="Cancel" />
           </button>
         </>
-      )}
-      {kind === 'plane' && !isBuiltIn && isEditing && (
-        <span className="feature-visibility-placeholder" />
       )}
       {hasVisibility && showVisBtn && (
         <button
