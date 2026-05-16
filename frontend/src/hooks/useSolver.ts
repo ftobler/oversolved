@@ -4,6 +4,7 @@ import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, Part
 import { solverWs } from '@/hooks/solverWs'
 import { useSolverStore } from '@/stores/solverStore'
 import { unflattenGeometry } from '@/utils/geometryMapping'
+import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
 import { useGeometryCache } from '@/hooks/useGeometryCache'
 import { PART_COLOR_PALETTE, normalizeHexColor } from '@/utils/partColors'
 import { unpackBodies, unpackPickBodies } from '@/utils/geometryUnpack'
@@ -95,23 +96,15 @@ export function useSolver(
       solve_ms?: number
     }>
 
+    const cloned: PartDoc = structuredClone(d)
     const results: Record<string, SketchData> = {}
     for (const [id, feature] of Object.entries(result)) {
-      const featureDef = (d.features ?? []).find(f => f.id === id)
+      const featureDef = (cloned.features ?? []).find(f => f.id === id)
       if (feature.geometry) {
-        if (featureDef) {
-          featureDef.initial = feature.geometry
-          if (feature.constraints && featureDef.constraints) {
-            const superfluousIds = new Set(
-              Object.entries(feature.constraints)
-                .filter(([, c]) => c.superfluous)
-                .map(([cid]) => cid)
-            )
-            if (superfluousIds.size > 0) {
-              featureDef.constraints = featureDef.constraints.filter(c => !superfluousIds.has(c.id))
-            }
-          }
-        }
+        const superfluousIds = feature.constraints
+          ? new Set(Object.entries(feature.constraints).filter(([, c]) => c.superfluous).map(([cid]) => cid))
+          : new Set<string>()
+        applyGeometryToFeature(cloned, id, feature.geometry, superfluousIds)
         const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
         const astPosById = new Map(
           (featureDef?.constraints ?? [])
@@ -181,11 +174,10 @@ export function useSolver(
     }
     setFeatureTimings(timings)
     setSolveRawResult(stringifyYaml(data.result))
-    const updatedDoc = { ...d }
-    setDoc(updatedDoc)
-    docRef.current = updatedDoc
+    setDoc(cloned)
+    docRef.current = cloned
     if (modeRef.current === 'code') {
-      setCodeText(stringifyYaml(d))
+      setCodeText(stringifyYaml(cloned))
     }
     setSolveError(null)
     if (solveTimeMs !== undefined) {
