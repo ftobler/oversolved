@@ -4,28 +4,18 @@ import WsReconnect from '@/components/WsReconnect'
 import { describeMutation } from '@/utils/mutationDescriptions'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useNotify } from '@/contexts/ToastContext'
+import { http } from '@/utils/httpClient'
 import type { Mutation } from '@/types/cad'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
 
 interface PartDebugPanelProps {
   debugOpen: boolean
-  debugTab: 'selection' | 'bug-report' | 'undo-redo' | 'ws'
-  setDebugTab: React.Dispatch<React.SetStateAction<'selection' | 'bug-report' | 'undo-redo' | 'ws'>>
-  bugReportForm: { title: string; description: string }
-  setBugReportForm: React.Dispatch<React.SetStateAction<{ title: string; description: string }>>
-  bugReporting: boolean
-  bugReportError: string | null
-  bugReportAttachments: BugReportAttachments
-  setBugReportAttachments: React.Dispatch<React.SetStateAction<BugReportAttachments>>
-  onSubmitBugReport: () => void
+  mode: string
 }
 
-export default function PartDebugPanel({
-  debugOpen, debugTab, setDebugTab,
-  bugReportForm, setBugReportForm, bugReporting, bugReportError,
-  bugReportAttachments, setBugReportAttachments, onSubmitBugReport,
-}: PartDebugPanelProps) {
+export default function PartDebugPanel({ debugOpen, mode }: PartDebugPanelProps) {
   const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)
@@ -35,9 +25,70 @@ export default function PartDebugPanel({
   const selection = useSketchEditorStore(s => s.normalSelection)
 
   const editingFeatureId = usePartEditorStore(s => s.editingFeatureId)
+  const activeSketchFeatureId = usePartEditorStore(s => s.activeSketchFeatureId)
   const solveResults = usePartEditorStore(s => s.solveResults)
   const undoStack = usePartEditorStore(s => s.undoStack) as UndoEntry[]
   const redoStack = usePartEditorStore(s => s.redoStack) as UndoEntry[]
+  const doc = usePartEditorStore(s => s.doc)
+
+  const notify = useNotify()
+
+  const [debugTab, setDebugTab] = React.useState<'selection' | 'bug-report' | 'undo-redo' | 'ws'>('selection')
+  const [bugReportForm, setBugReportForm] = React.useState({ title: '', description: '' })
+  const [bugReporting, setBugReporting] = React.useState(false)
+  const [bugReportError, setBugReportError] = React.useState<string | null>(null)
+  const [bugReportAttachments, setBugReportAttachments] = React.useState<BugReportAttachments>({
+    ast: true,
+    selection: true,
+    solveResults: true,
+    internalState: true,
+    history: true,
+    historyCount: 5,
+  })
+
+  const handleSubmitBugReport = async () => {
+    if (!bugReportForm.title.trim() || !bugReportForm.description.trim()) {
+      setBugReportError('Title and description are required')
+      return
+    }
+    setBugReporting(true)
+    setBugReportError(null)
+    try {
+      const activeTool = useSketchEditorStore.getState().activeTool
+      const report: Record<string, unknown> = {
+        title: bugReportForm.title,
+        description: bugReportForm.description,
+      }
+      if (bugReportAttachments.ast) report.ast = doc
+      if (bugReportAttachments.selection) report.selection = [...selection]
+      if (bugReportAttachments.solveResults) {
+        report.solveResults = editingFeatureId && solveResults?.[editingFeatureId] ? solveResults[editingFeatureId] : null
+      }
+      if (bugReportAttachments.internalState) {
+        report.internalState = {
+          mode,
+          activeTool,
+          editingFeatureId,
+          activeSketchFeatureId,
+        }
+      }
+      if (bugReportAttachments.history) {
+        const historyItems = undoStack.slice(-bugReportAttachments.historyCount).map(entry => ({
+          mutation: entry.mutation,
+          label: describeMutation(entry.mutation),
+        }))
+        report.history = historyItems
+      }
+      await http.postJson('/api/bug-report', report)
+      setBugReportForm({ title: '', description: '' })
+      notify('Bug report submitted successfully!', 'success')
+      setDebugTab('selection')
+    } catch (e) {
+      setBugReportError(`Failed to submit: ${e}`)
+    } finally {
+      setBugReporting(false)
+    }
+  }
 
   if (!debugOpen) return null
 
@@ -80,7 +131,7 @@ export default function PartDebugPanel({
           bugReportError={bugReportError}
           bugReportAttachments={bugReportAttachments}
           setBugReportAttachments={setBugReportAttachments}
-          onSubmit={onSubmitBugReport}
+          onSubmit={handleSubmitBugReport}
           selectionCount={selection.size}
           hasSolveResults={!!(editingFeatureId && solveResults?.[editingFeatureId])}
           undoStackCount={undoStack.length}

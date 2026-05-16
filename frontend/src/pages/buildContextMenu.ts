@@ -21,7 +21,6 @@ export interface BuildContextMenuInput {
   visibleFeatures: Set<string>
   activeSketchFeatureId: string | undefined
   partLabels: Record<string, string>
-  partColors: Record<string, string>
   builtInIds: Set<string>
 }
 
@@ -36,11 +35,8 @@ export interface BuildContextMenuCallbacks {
   onBodyRename: (bodyId: string, label: string) => void
   onAlignToFace: (normal: [number, number, number], center: [number, number, number]) => void
   onAlignCameraToSketchPlane: () => void
-  onSetPartColorDraft: (color: string) => void
   onSetPartColorPopover: (opts: { bodyId: string; position: [number, number] } | null) => void
-  onSetExportTargetBodyId: (bodyId: string) => void
-  onSetExportDefaultName: (name: string) => void
-  onSetExportDialogOpen: (open: boolean) => void
+  onExportBody: (bodyId: string, name: string) => void
   onShowContextMenu: (items: ContextMenuItem[], targetId?: string) => void
 }
 
@@ -62,7 +58,6 @@ export function buildContextMenu(
     visibleFeatures,
     activeSketchFeatureId,
     partLabels,
-    partColors,
     builtInIds,
   } = input
 
@@ -94,19 +89,12 @@ export function buildContextMenu(
         {
           label: 'Color',
           icon: contextColorIcon,
-          onClick: () => {
-            callbacks.onSetPartColorDraft(partColors[bodyId] || '#6AB59B')
-            callbacks.onSetPartColorPopover({ bodyId, position: pos })
-          },
+          onClick: () => callbacks.onSetPartColorPopover({ bodyId, position: pos }),
         },
         {
           label: 'Export',
           icon: featureExportIcon,
-          onClick: () => {
-            callbacks.onSetExportTargetBodyId(bodyId)
-            callbacks.onSetExportDefaultName(partLabels[bodyId] || bodyId)
-            callbacks.onSetExportDialogOpen(true)
-          },
+          onClick: () => callbacks.onExportBody(bodyId, partLabels[bodyId] || bodyId),
         },
       ],
     }

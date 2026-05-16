@@ -1,49 +1,52 @@
+import { useState } from 'react'
 import type { Mutation } from '@/types/cad'
 import { executeCommand } from '@/stores/commandRegistry'
 import { describeMutation } from '@/utils/mutationDescriptions'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import AppHeader from '@/components/AppHeader'
 
 type StackEntry = { mutation: Mutation }
 
 interface PartToolbarProps {
-  undoStack: StackEntry[]
-  redoStack: StackEntry[]
-  undoHover: boolean
-  setUndoHover: (v: boolean) => void
-  redoHover: boolean
-  setRedoHover: (v: boolean) => void
   readOnly: boolean
   permission: string | null
   docName: string | null
-  isEditing: boolean
-  editName: string
-  setIsEditing: (v: boolean) => void
-  setEditName: (v: string) => void
-  handleRename: () => void
+  onRename: (name: string) => Promise<boolean>
   handleSave: () => void
   handleClone: () => void
-  setShareDocOpen: (v: boolean) => void
+  onShare: () => void
 }
 
 export default function PartToolbar({
-  undoStack,
-  redoStack,
-  undoHover,
-  setUndoHover,
-  redoHover,
-  setRedoHover,
   readOnly,
   permission,
   docName,
-  isEditing,
-  editName,
-  setIsEditing,
-  setEditName,
-  handleRename,
+  onRename,
   handleSave,
   handleClone,
-  setShareDocOpen,
+  onShare,
 }: PartToolbarProps) {
+  const undoStack = usePartEditorStore(s => s.undoStack) as StackEntry[]
+  const redoStack = usePartEditorStore(s => s.redoStack) as StackEntry[]
+  const [undoHover, setUndoHover] = useState(false)
+  const [redoHover, setRedoHover] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState(docName ?? '')
+
+  const handleRename = async () => {
+    const trimmed = editName.trim()
+    if (!trimmed || trimmed === docName) {
+      setIsEditing(false)
+      return
+    }
+    const success = await onRename(trimmed)
+    if (success) {
+      setIsEditing(false)
+    } else {
+      setEditName(docName ?? '')
+    }
+  }
+
   return (
     <AppHeader>
       <div className="undo-redo-btn-group">
@@ -99,7 +102,7 @@ export default function PartToolbar({
           className="toolbar-btn"
           aria-label="Share document"
           title="Share document"
-          onClick={() => setShareDocOpen(true)}
+          onClick={onShare}
           disabled={readOnly}
         >
           <span className="material-icons-outlined">share</span>
@@ -123,7 +126,10 @@ export default function PartToolbar({
           autoFocus
         />
       ) : (
-        <button className="doc-name" aria-label="Edit document name" onClick={() => setIsEditing(true)}>
+        <button className="doc-name" aria-label="Edit document name" onClick={() => {
+          setEditName(docName ?? '')
+          setIsEditing(true)
+        }}>
           {docName}
         </button>
       )}

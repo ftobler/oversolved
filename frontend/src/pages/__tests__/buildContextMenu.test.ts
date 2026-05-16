@@ -19,7 +19,6 @@ function defaultInput(overrides?: Partial<BuildContextMenuInput>): BuildContextM
     visibleFeatures: new Set(),
     activeSketchFeatureId: undefined,
     partLabels: {},
-    partColors: {},
     builtInIds: new Set(),
     ...overrides,
   }
@@ -37,11 +36,8 @@ function defaultCallbacks(): BuildContextMenuCallbacks {
     onBodyRename: () => {},
     onAlignToFace: () => {},
     onAlignCameraToSketchPlane: () => {},
-    onSetPartColorDraft: () => {},
     onSetPartColorPopover: () => {},
-    onSetExportTargetBodyId: () => {},
-    onSetExportDefaultName: () => {},
-    onSetExportDialogOpen: () => {},
+    onExportBody: () => {},
     onShowContextMenu: () => {},
   }
 }
@@ -94,7 +90,6 @@ describe('buildContextMenu', () => {
       defaultInput({
         targetId: 'body:abc123',
         partLabels: { abc123: 'MyBody' },
-        partColors: { abc123: '#ff0000' },
       }),
       defaultCallbacks(),
     )

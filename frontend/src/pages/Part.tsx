@@ -7,8 +7,6 @@ import { randomId } from '@/utils/yamlMutations'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { useAuth } from '@/contexts/AuthContext'
-import { useNotify } from '@/contexts/ToastContext'
-import type { ExportFormat } from '@/components/ExportDialog'
 import RightClickMenu from '@/components/RightClickMenu'
 import type { ContextMenuItem } from '@/components/RightClickMenu'
 import { Sidebar } from '@/components/Sidebar'
@@ -19,7 +17,6 @@ import { PartEditorProvider } from '@/contexts/PartEditorContext'
 
 import { useSolverStore } from '@/stores/solverStore'
 import { invalidateDocCache } from '@/utils/buildCache'
-import { describeMutation } from '@/utils/mutationDescriptions'
 import { http, HttpError } from '@/utils/httpClient'
 import '@/pages/Part.css'
 
@@ -27,8 +24,9 @@ import PartToolbar from '@/pages/PartToolbar'
 import PartEditorPanel from '@/pages/PartEditorPanel'
 import PartDebugPanel from '@/pages/PartDebugPanel'
 import PartColorPopover from '@/pages/PartColorPopover'
-import PartExportImport from '@/pages/PartExportImport'
+import PartExportImport, { type PartExportImportHandle } from '@/pages/PartExportImport'
 import { usePartCommands } from '@/pages/PartKeyboardShortcuts'
+import { useEditFeature } from '@/pages/useEditFeature'
 
 import measurementIcon from '@/assets/icons/measurement.svg'
 
@@ -51,8 +49,6 @@ export default function Part() {
   const { uuid } = useParams<{ uuid: string }>()
   const navigate = useNavigate()
   const [codeText, setCodeText] = useState('')
-  const [isEditing, setIsEditing] = useState(false)
-  const [editName, setEditName] = useState('')
   const [mode, setModeRaw] = useState<'sketch' | 'feature' | 'code'>('sketch')
   const [rollbackState, setRollbackState] = useState<RollbackState>({ position: null, source: null })
   const rollbackPosition = rollbackState.position
@@ -60,50 +56,24 @@ export default function Part() {
     setRollbackState({ position: pos, source: 'user' }), [])
   const setRollbackFromHandler = useCallback((pos: number | null) =>
     setRollbackState({ position: pos, source: 'handler' }), [])
-  const [savedRollbackPosition, setSavedRollbackPosition] = useState<number | null>(null)
-  const editEntryRollback = useRef<number | null>(null)
-  const [editForcedVisible, setEditForcedVisible] = useState<Set<string>>(new Set())
   const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
   const viewportRef = useRef<ViewportHandle>(null)
+  const exportImportRef = useRef<PartExportImportHandle>(null)
   const handleFirstSolve = useCallback(() => {
     viewportRef.current?.autoZoomToFit()  // camera-only; intentional no-op when Viewport absent
   }, [])
-  const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
-  const [partColorPopover, setPartColorPopover] = useState<{ bodyId: string; position: [number, number] } | null>(null)
-  const [partColorDraft, setPartColorDraft] = useState<string>('#6AB59B')
-  const [partTransparencyDraft, setPartTransparencyDraft] = useState(0)
-  const [partMetalnessDraft, setPartMetalnessDraft] = useState(0.3)
-  const partColorPopoverRef = useRef<HTMLDivElement>(null)
+  const [partColorPopover, setPartColorPopover] = useState<{ bodyId: string; position: [number, number]; session: number } | null>(null)
+  const colorPopoverSession = useRef(0)
   const { user } = useAuth()
-  const notify = useNotify()
 
   const [debugOpen, setDebugOpen] = useState(false)
-  const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo' | 'ws'>('selection')
   const showDebugHit = useSketchEditorStore(s => s.showDebugHit)
   const setShowDebugHit = useSketchEditorStore(s => s.setShowDebugHit)
-  const [bugReportForm, setBugReportForm] = useState({ title: '', description: '' })
-  const [bugReporting, setBugReporting] = useState(false)
-  const [bugReportError, setBugReportError] = useState<string | null>(null)
-  const [exportDialogOpen, setExportDialogOpen] = useState(false)
-  const [undoHover, setUndoHover] = useState(false)
-  const [redoHover, setRedoHover] = useState(false)
-  const [exportTargetBodyId, setExportTargetBodyId] = useState<string | null>(null)
-  const [shareDocOpen, setShareDocOpen] = useState(false)
-  const [exportDefaultName, setExportDefaultName] = useState<string>('export')
-  const [bugReportAttachments, setBugReportAttachments] = useState({
-    ast: true,
-    selection: true,
-    solveResults: true,
-    internalState: true,
-    history: true,
-    historyCount: 5,
-  })
 
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
-  const setPendingPickField = useSketchEditorStore(s => s.setPendingPickField)
   const selection = useSketchEditorStore(s => s.normalSelection)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
 
@@ -148,10 +118,6 @@ export default function Part() {
 
   const readOnly = permission === 'view'
 
-  useEffect(() => {
-    if (docName) setEditName(docName)
-  }, [docName])
-
   const features = useMemo(() => extractFeatures(doc), [doc])
   const partStyle = useMemo(() => doc?.part_style ?? {}, [doc])
   const partLabels = useMemo(() => {
@@ -170,18 +136,6 @@ export default function Part() {
     return colors
   }, [partStyle])
 
-  const visibleFeatures = useMemo(
-    () => new Set([
-      ...features.filter(f => f.visible !== false).map(f => f.id),
-      ...editForcedVisible,
-    ]),
-    [features, editForcedVisible]
-  )
-
-  const effectiveVisibleBodies = useMemo(
-    () => computeEffectiveVisibleBodies(bodies, visibleFeatures, partStyle),
-    [bodies, visibleFeatures, partStyle],
-  )
 
   useEffect(() => {
     if (doc && !rollbackInitialized.current) {
@@ -202,49 +156,6 @@ export default function Part() {
     setPickBoundary(null)
     if (docRef.current) reSolve(docRef.current, rollbackState.position ?? features.length)
   }, [rollbackState, docRef, reSolve, setPickBoundary, features.length])
-
-  const activeSketchFeatureId = useMemo(() => {
-    if (!editingFeatureId) return undefined
-    const feature = features.find(f => f.id === editingFeatureId)
-    if (!feature || feature.kind !== 'sketch') return undefined
-    const limit = rollbackPosition ?? features.length
-    const sketches = features.slice(0, limit).filter(f => f.kind === 'sketch' && visibleFeatures.has(f.id))
-    return sketches.some(f => f.id === editingFeatureId) ? editingFeatureId : undefined
-  }, [features, rollbackPosition, visibleFeatures, editingFeatureId])
-
-  const measurementSketch = useMemo(() => {
-    if (activeSketchFeatureId && solveResults?.[activeSketchFeatureId]?.solved) {
-      return solveResults[activeSketchFeatureId].solved
-    }
-    const sketch: Sketch = {}
-    for (const feature of features) {
-      const solveResult = solveResults?.[feature.id]
-      if (solveResult && solveResult.solved) {
-        Object.assign(sketch, solveResult.solved)
-      }
-    }
-    return sketch
-  }, [activeSketchFeatureId, features, solveResults])
-
-  const otherSketches = useMemo(() => {
-    const result: Record<string, Sketch> = {}
-    for (const feature of features) {
-      if (feature.kind !== 'sketch') continue
-      if (!visibleFeatures.has(feature.id)) continue
-      if (feature.id === activeSketchFeatureId) continue
-      const solveResult = solveResults?.[feature.id]
-      if (solveResult?.solved) {
-        result[feature.id] = solveResult.solved
-      }
-    }
-    return result
-  }, [features, visibleFeatures, activeSketchFeatureId, solveResults])
-
-  const ghostMode = useMemo(() => {
-    if (!editingFeatureId) return false
-    const feature = features.find(f => f.id === editingFeatureId)
-    return !!feature && feature.kind !== 'sketch' && feature.kind !== 'plane'
-  }, [features, editingFeatureId])
 
   const setMode = useCallback((newMode: 'sketch' | 'feature' | 'code') => {
     setModeRaw(prev => {
@@ -284,13 +195,101 @@ export default function Part() {
     }
   }, [uuid, reSolve, rollbackPosition, features, docRef])
 
+  // Stable ref so useEditFeature can call the current handleRebuild without closure staleness
+  const handleRebuildRef = useRef(handleRebuild)
+  handleRebuildRef.current = handleRebuild
+  const getHandleRebuild = useCallback(() => handleRebuildRef.current, [])
+  const clearPickBodies = useCallback(() => setPickBodies({}), [setPickBodies])
+
+  const {
+    editingFeatureId,
+    editForcedVisible,
+    enterEditFeature,
+    commitEditFeature,
+    cancelEditFeature,
+    exitEditFeature,
+    enterEditSketch,
+    exitEditSketch,
+    clearEditingFeature,
+  } = useEditFeature({
+    features,
+    rollbackPosition,
+    builtInIds: BUILT_IN_IDS,
+    setRollbackFromHandler,
+    setPickBoundary,
+    clearPickBodies,
+    startEditSession,
+    commitEditSession,
+    cancelEditSession,
+    docRef,
+    reSolve,
+    setMode,
+    getHandleRebuild,
+  })
+
+  const visibleFeaturesWithEdit = useMemo(
+    () => new Set([
+      ...features.filter(f => f.visible !== false).map(f => f.id),
+      ...editForcedVisible,
+    ]),
+    [features, editForcedVisible]
+  )
+
+  const effectiveVisibleBodies = useMemo(
+    () => computeEffectiveVisibleBodies(bodies, visibleFeaturesWithEdit, partStyle),
+    [bodies, visibleFeaturesWithEdit, partStyle],
+  )
+
+  const activeSketchFeatureId = useMemo(() => {
+    if (!editingFeatureId) return undefined
+    const feature = features.find(f => f.id === editingFeatureId)
+    if (!feature || feature.kind !== 'sketch') return undefined
+    const limit = rollbackPosition ?? features.length
+    const sketches = features.slice(0, limit).filter(f => f.kind === 'sketch' && visibleFeaturesWithEdit.has(f.id))
+    return sketches.some(f => f.id === editingFeatureId) ? editingFeatureId : undefined
+  }, [features, rollbackPosition, visibleFeaturesWithEdit, editingFeatureId])
+
+  const ghostMode = useMemo(() => {
+    if (!editingFeatureId) return false
+    const feature = features.find(f => f.id === editingFeatureId)
+    return !!feature && feature.kind !== 'sketch' && feature.kind !== 'plane'
+  }, [features, editingFeatureId])
+
+  const measurementSketch = useMemo(() => {
+    if (activeSketchFeatureId && solveResults?.[activeSketchFeatureId]?.solved) {
+      return solveResults[activeSketchFeatureId].solved
+    }
+    const sketch: Sketch = {}
+    for (const feature of features) {
+      const solveResult = solveResults?.[feature.id]
+      if (solveResult && solveResult.solved) {
+        Object.assign(sketch, solveResult.solved)
+      }
+    }
+    return sketch
+  }, [activeSketchFeatureId, features, solveResults])
+
+  const otherSketches = useMemo(() => {
+    const result: Record<string, Sketch> = {}
+    for (const feature of features) {
+      if (feature.kind !== 'sketch') continue
+      if (!visibleFeaturesWithEdit.has(feature.id)) continue
+      if (feature.id === activeSketchFeatureId) continue
+      const solveResult = solveResults?.[feature.id]
+      if (solveResult?.solved) {
+        result[feature.id] = solveResult.solved
+      }
+    }
+    return result
+  }, [features, visibleFeaturesWithEdit, activeSketchFeatureId, solveResults])
+
   useSyncPartEditorStore({
     features,
     doc,
     rollbackPosition,
     editingFeatureId,
     activeSketchFeatureId: activeSketchFeatureId ?? null,
-    visibleFeatures,
+    visibleFeatures: visibleFeaturesWithEdit,
     visibleBodies: effectiveVisibleBodies ?? new Set(),
     partLabels,
     solveResults: solveResults ?? {},
@@ -307,45 +306,17 @@ export default function Part() {
     redoStack,
   })
 
-  const handleRebuildRef = useRef(handleRebuild)
-  handleRebuildRef.current = handleRebuild
-
-  const prevEditingIdRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!docRef.current) return
-    const prev = prevEditingIdRef.current
-    prevEditingIdRef.current = editingFeatureId
-    if (prev === editingFeatureId) return
-
-    const feature = features.find(f => f.id === editingFeatureId)
-    let nextBoundary: number | null = null
-    if (feature && feature.kind !== 'sketch' && feature.kind !== 'plane') {
-      const nonBuiltInFeatures = features.filter(f => !BUILT_IN_IDS.has(f.id))
-      const index = nonBuiltInFeatures.findIndex(f => f.id === editingFeatureId)
-      if (index >= 0) nextBoundary = index
-    }
-    setPickBoundary(nextBoundary)
-    if (nextBoundary !== null) {
-      handleRebuildRef.current()
-    }
-  }, [editingFeatureId, features, setPickBoundary, docRef])
-
   const handleExitSketch = useCallback(() => {
-    setEditingFeatureId(null)
+    clearEditingFeature()
     setContextMenu(null)
-  }, [])
+  }, [clearEditingFeature])
 
   const handleDeleteFeature = useCallback((featureId: string) => {
     if (BUILT_IN_IDS.has(featureId)) return
-    if (featureId === editingFeatureId) {
-      setEditingFeatureId(null)
-      setPendingPickField(null)
-    }
     handleMutation({ type: 'delete_feature', featureId })
     useSketchEditorStore.getState().clearNormalSelection()
     setContextMenu(null)
-  }, [editingFeatureId, handleMutation, setPendingPickField])
+  }, [handleMutation])
 
   const handleDeleteSelectedFeatures = useCallback(() => {
     const sel = useSketchEditorStore.getState().normalSelection
@@ -354,14 +325,10 @@ export default function Part() {
       .map(id => id.slice(1))
       .filter(id => !BUILT_IN_IDS.has(id))
     for (const featureId of featureIds) {
-      if (featureId === editingFeatureId) {
-        setEditingFeatureId(null)
-        setPendingPickField(null)
-      }
       handleMutation({ type: 'delete_feature', featureId })
     }
     if (featureIds.length > 0) useSketchEditorStore.getState().clearNormalSelection()
-  }, [editingFeatureId, handleMutation, setPendingPickField])
+  }, [handleMutation])
 
   const handleAddFeature = useCallback((kind: string, extra?: Record<string, unknown>) => {
     if (!doc) return
@@ -371,8 +338,8 @@ export default function Part() {
     setRollbackPos(features.length + 1)
     handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
     setRollbackFromHandler(features.length + 1)
-    setEditingFeatureId(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos, setRollbackFromHandler])
+    enterEditFeature(fid)
+  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos, setRollbackFromHandler, enterEditFeature])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
@@ -384,21 +351,22 @@ export default function Part() {
     setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_plane', featureId, label, definition })
     setRollbackFromHandler(features.length + 1)
-    setEditingFeatureId(featureId)
-  }, [doc, features.length, handleMutation, selection, setRollbackPos, setRollbackFromHandler])
+    enterEditFeature(featureId)
+  }, [doc, features.length, handleMutation, selection, setRollbackPos, setRollbackFromHandler, enterEditFeature])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
     const featureId = randomId(18)
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const label = `sketch ${sketchCount + 1}`
+    const { setPendingPickField } = useSketchEditorStore.getState()
     setPendingPickField(null)
     setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_sketch', featureId, label })
     setRollbackFromHandler(features.length + 1)
     setPlaneSelectionFeatureId(featureId)
-    setEditingFeatureId(featureId)
-  }, [doc, features.length, handleMutation, setPendingPickField, setPlaneSelectionFeatureId, setRollbackPos, setRollbackFromHandler])
+    enterEditFeature(featureId)
+  }, [doc, features.length, handleMutation, setPlaneSelectionFeatureId, setRollbackPos, setRollbackFromHandler, enterEditFeature])
 
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')
@@ -419,49 +387,9 @@ export default function Part() {
     input.click()
   }, [handleMutation, features.length, setRollbackPos])
 
-  const handleExportStep = useCallback(async () => {
-    setExportTargetBodyId(null)
-    setExportDefaultName(docName || 'export')
-    setExportDialogOpen(true)
+  const handleExportStep = useCallback(() => {
+    exportImportRef.current?.openExport(null, docName || 'export')
   }, [docName])
-
-  const handleExportDownload = useCallback(async (format: ExportFormat, tessellation: number) => {
-    if (!doc?.features) return
-    const endpoint = format === 'step' ? '/api/export/step' : '/api/export/stl'
-    const body: Record<string, unknown> = { features: doc.features }
-    if (exportTargetBodyId) body.body_id = exportTargetBodyId
-    if (format === 'stl') {
-      body.deflection = tessellation * 2
-      body.angular_deflection = tessellation * 0.6
-    }
-    try {
-      const blob = await http.postBlob(endpoint, body)
-      const filename = format === 'step' ? `${exportDefaultName}.step` : `${exportDefaultName}.stl`
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    } catch (e) {
-      if (e instanceof HttpError) {
-        console.error('Export failed:', e.status, e.body)
-        notify(`Export failed: ${e.body}`, 'error')
-      } else {
-        console.error('Export error:', e)
-        notify(`Export error: ${e}`, 'error')
-      }
-    }
-    setExportTargetBodyId(null)
-    setExportDialogOpen(false)
-  }, [doc, exportTargetBodyId, exportDefaultName, notify])
-
-  const handleExportCancel = useCallback(() => {
-    setExportTargetBodyId(null)
-    setExportDialogOpen(false)
-  }, [])
 
   const handleToggleSketchPlaneVisibility = useCallback(() => {
     handleMutation({ type: 'toggle_sketch_plane_visibility' })
@@ -498,19 +426,6 @@ export default function Part() {
     handleAddFeature,
   )
 
-  const handleRename = async () => {
-    if (!editName.trim() || editName === docName) {
-      setIsEditing(false)
-      return
-    }
-    const success = await renameDoc(uuid!, editName)
-    if (success) {
-      setIsEditing(false)
-    } else {
-      setEditName(docName)
-    }
-  }
-
   const handleSave = async () => {
     if (!uuid || !doc) return
     const success = await saveDoc(uuid, doc, viewportRef.current?.captureScreenshotForSaving)  // screenshot is optional; save proceeds without Viewport
@@ -543,50 +458,6 @@ export default function Part() {
     }
   }
 
-  const handleSubmitBugReport = async () => {
-    if (!bugReportForm.title.trim() || !bugReportForm.description.trim()) {
-      setBugReportError('Title and description are required')
-      return
-    }
-    setBugReporting(true)
-    setBugReportError(null)
-    try {
-      const activeTool = useSketchEditorStore.getState().activeTool
-      const report: Record<string, unknown> = {
-        title: bugReportForm.title,
-        description: bugReportForm.description,
-      }
-      if (bugReportAttachments.ast) report.ast = doc
-      if (bugReportAttachments.selection) report.selection = [...selection]
-      if (bugReportAttachments.solveResults) {
-        report.solveResults = editingFeatureId && solveResults?.[editingFeatureId] ? solveResults[editingFeatureId] : null
-      }
-      if (bugReportAttachments.internalState) {
-        report.internalState = {
-          mode,
-          activeTool,
-          editingFeatureId,
-          activeSketchFeatureId,
-        }
-      }
-      if (bugReportAttachments.history) {
-        const historyItems = undoStack.slice(-bugReportAttachments.historyCount).map(entry => ({
-          mutation: entry.mutation,
-          label: describeMutation(entry.mutation),
-        }))
-        report.history = historyItems
-      }
-      await http.postJson('/api/bug-report', report)
-      setBugReportForm({ title: '', description: '' })
-      notify('Bug report submitted successfully!', 'success')
-      setDebugTab('selection')
-    } catch (e) {
-      setBugReportError(`Failed to submit: ${e}`)
-    } finally {
-      setBugReporting(false)
-    }
-  }
-
   const handleRollbackDragStart = useCallback((e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'move'
   }, [])
@@ -596,9 +467,9 @@ export default function Part() {
   }, [setRollbackFromUser])
 
   const toggleVisibility = useCallback((featureId: string) => {
-    handleMutation({ type: 'set_feature_visibility', featureId, visible: !visibleFeatures.has(featureId) })
+    handleMutation({ type: 'set_feature_visibility', featureId, visible: !visibleFeaturesWithEdit.has(featureId) })
     setContextMenu(null)
-  }, [handleMutation, visibleFeatures])
+  }, [handleMutation, visibleFeaturesWithEdit])
 
   const toggleSuppression = useCallback((featureId: string, suppressed: boolean) => {
     handleMutation({ type: 'set_feature_suppression', featureId, suppressed })
@@ -644,93 +515,10 @@ export default function Part() {
     setPartColorPopover(null)
   }, [partColorPopover, cancelPreview, docRef, setDoc, reSolve])
 
-  useEffect(() => {
-    if (!partColorPopover) return
-    const close = (e: MouseEvent) => {
-      if (partColorPopoverRef.current && !partColorPopoverRef.current.contains(e.target as Node)) {
-        handleColorCancel()
-      }
-    }
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && partColorPopover) {
-        handleColorCancel()
-      }
-    }
-    window.addEventListener('mousedown', close, { capture: true })
-    window.addEventListener('keydown', handleEscape)
-    return () => {
-      window.removeEventListener('mousedown', close, { capture: true })
-      window.removeEventListener('keydown', handleEscape)
-    }
-  }, [partColorPopover, handleColorCancel])
-
-  useEffect(() => {
-    if (!partColorPopover) return
-    const style = partStyle[partColorPopover.bodyId]
-    setPartTransparencyDraft(style?.transparency ?? 0)
-    setPartMetalnessDraft(style?.metalness ?? 0.3)
-    if (docRef.current) {
-      startPreviewMode(docRef.current)
-    }
-    requestAnimationFrame(() => {
-      const firstInput = partColorPopoverRef.current?.querySelector('input, button') as HTMLElement | null
-      firstInput?.focus()
-    })
-  }, [partColorPopover, partStyle, docRef, startPreviewMode])
-
-  const enterEditFeature = useCallback((featureId: string, suppressUndo = true) => {
-    const idx = features.findIndex(f => f.id === featureId)
-    if (idx < 0) return
-    startEditSession(suppressUndo)
-    setSavedRollbackPosition(rollbackPosition ?? features.length)
-    editEntryRollback.current = idx + 1
-    setRollbackFromHandler(idx + 1)
-    setEditForcedVisible(new Set([featureId]))
-    setEditingFeatureId(featureId)
-    setPickBoundary(null)
-    setPickBodies({})
-  }, [features, rollbackPosition, setPickBoundary, setPickBodies, setRollbackFromHandler,
-      startEditSession])
-
-  const _exitEditCleanup = useCallback(() => {
-    const targetRollback = savedRollbackPosition !== null ? savedRollbackPosition : rollbackPosition
-    if (savedRollbackPosition !== null) {
-      if (rollbackPosition === editEntryRollback.current || rollbackPosition === null) {
-        setRollbackFromHandler(savedRollbackPosition)
-      }
-      editEntryRollback.current = null
-      setSavedRollbackPosition(null)
-    }
-    setEditForcedVisible(new Set())
-    setEditingFeatureId(null)
-    setPendingPickField(null)
-    setPickBoundary(null)
-    if (docRef.current) reSolve(docRef.current, targetRollback)
-  }, [savedRollbackPosition, rollbackPosition, setPendingPickField, setPickBoundary,
-      setRollbackFromHandler, docRef, reSolve])
-
-  const commitEditFeature = useCallback(() => {
-    commitEditSession()
-    _exitEditCleanup()
-  }, [commitEditSession, _exitEditCleanup])
-
-  const cancelEditFeature = useCallback(() => {
-    cancelEditSession()
-    _exitEditCleanup()
-  }, [cancelEditSession, _exitEditCleanup])
-
-  const exitEditFeature = useCallback(() => {
-    commitEditFeature()
-  }, [commitEditFeature])
-
-  const enterEditSketch = useCallback((featureId: string) => {
-    enterEditFeature(featureId, false)  // sketch: don't suppress undo
-    setMode('sketch')
-  }, [enterEditFeature, setMode])
-
-  const exitEditSketch = useCallback(() => {
-    commitEditFeature()  // sketch exits always commit
-  }, [commitEditFeature])
+  const handleColorApply = useCallback((mutation: Mutation) => {
+    commitPreview(mutation)
+    setPartColorPopover(null)
+  }, [commitPreview])
 
   const handleAlignCameraToSketchPlane = useCallback(() => {
     if (!activeSketchFeatureId || !features) return
@@ -768,10 +556,9 @@ export default function Part() {
       hoveredFaceNormal: store.hoveredFaceNormal,
       hoveredFaceCenter: store.hoveredFaceCenter,
       features,
-      visibleFeatures,
+      visibleFeatures: visibleFeaturesWithEdit,
       activeSketchFeatureId: activeSketchFeatureId ?? undefined,
       partLabels,
-      partColors,
       builtInIds: BUILT_IN_IDS,
     }
     const callbacks: BuildContextMenuCallbacks = {
@@ -785,20 +572,24 @@ export default function Part() {
       onBodyRename: handleBodyRename,
       onAlignToFace: (normal, center) => viewportRef.current?.alignCameraToFace(normal, center),
       onAlignCameraToSketchPlane: handleAlignCameraToSketchPlane,
-      onSetPartColorDraft: setPartColorDraft,
-      onSetPartColorPopover: setPartColorPopover,
-      onSetExportTargetBodyId: setExportTargetBodyId,
-      onSetExportDefaultName: setExportDefaultName,
-      onSetExportDialogOpen: setExportDialogOpen,
+      onSetPartColorPopover: (opts) => {
+        if (opts && docRef.current) {
+          startPreviewMode(docRef.current)
+          colorPopoverSession.current++
+          setPartColorPopover({ ...opts, session: colorPopoverSession.current })
+        } else {
+          setPartColorPopover(null)
+        }
+      },
+      onExportBody: (bodyId, name) => exportImportRef.current?.openExport(bodyId, name),
       onShowContextMenu: (items, tid) => setContextMenu({ position: pos, targetId: tid, items }),
     }
     const { items } = buildContextMenu(input, callbacks)
     setContextMenu({ position: pos, targetId, items })
   }, [handleRebuild, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
     handleFeatureRename, handleBodyRename, handleAlignCameraToSketchPlane,
-    features, visibleFeatures, activeSketchFeatureId, partLabels, partColors,
-    viewportRef, setPartColorDraft, setPartColorPopover, setExportTargetBodyId,
-    setExportDefaultName, setExportDialogOpen, setContextMenu])
+    features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels,
+    viewportRef, docRef, startPreviewMode])
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -839,23 +630,13 @@ export default function Part() {
   return (
     <div className="document-viewer">
       <PartToolbar
-        undoStack={undoStack}
-        redoStack={redoStack}
-        undoHover={undoHover}
-        setUndoHover={setUndoHover}
-        redoHover={redoHover}
-        setRedoHover={setRedoHover}
         readOnly={readOnly}
         permission={permission}
         docName={docName}
-        isEditing={isEditing}
-        editName={editName}
-        setIsEditing={setIsEditing}
-        setEditName={setEditName}
-        handleRename={handleRename}
+        onRename={(name) => renameDoc(uuid!, name)}
         handleSave={handleSave}
         handleClone={handleClone}
-        setShareDocOpen={setShareDocOpen}
+        onShare={() => exportImportRef.current?.openShare()}
       />
 
       <PartEditorPanel
@@ -886,15 +667,7 @@ export default function Part() {
         rightPanel={
           <PartDebugPanel
             debugOpen={debugOpen && !!user?.is_admin}
-            debugTab={debugTab}
-            setDebugTab={setDebugTab}
-            bugReportForm={bugReportForm}
-            setBugReportForm={setBugReportForm}
-            bugReporting={bugReporting}
-            bugReportError={bugReportError}
-            bugReportAttachments={bugReportAttachments}
-            setBugReportAttachments={setBugReportAttachments}
-            onSubmitBugReport={handleSubmitBugReport}
+            mode={mode}
           />
         }
       >
@@ -939,29 +712,14 @@ export default function Part() {
       )}
       <PartColorPopover
         popover={partColorPopover}
-        popoverRef={partColorPopoverRef}
-        colorDraft={partColorDraft}
-        onColorDraftChange={setPartColorDraft}
-        transparencyDraft={partTransparencyDraft}
-        onTransparencyDraftChange={setPartTransparencyDraft}
-        metalnessDraft={partMetalnessDraft}
-        onMetalnessDraftChange={setPartMetalnessDraft}
         onColorSet={handleBodyColor}
         onTransparencySet={handleBodyTransparency}
         onMetalnessSet={handleBodyMetalness}
         onCancel={handleColorCancel}
-        onApply={(mutation) => {
-          commitPreview(mutation)
-          setPartColorPopover(null)
-        }}
+        onApply={handleColorApply}
       />
       <PartExportImport
-        exportDialogOpen={exportDialogOpen}
-        exportDefaultName={exportDefaultName}
-        handleExportDownload={handleExportDownload}
-        handleExportCancel={handleExportCancel}
-        shareDocOpen={shareDocOpen}
-        setShareDocOpen={setShareDocOpen}
+        ref={exportImportRef}
         uuid={uuid!}
         docName={docName}
         ownerUsername={ownerUsername}

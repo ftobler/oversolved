@@ -1,16 +1,11 @@
+import { useRef, useState, useEffect } from 'react'
 import type { Mutation } from '@/types/cad'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import { normalizeHexColor } from '@/utils/partColors'
 import { PART_COLOR_PALETTE } from '@/utils/partColors'
 
 interface PartColorPopoverProps {
-  popover: { bodyId: string; position: [number, number] } | null
-  popoverRef: React.RefObject<HTMLDivElement | null>
-  colorDraft: string
-  onColorDraftChange: (v: string) => void
-  transparencyDraft: number
-  onTransparencyDraftChange: (v: number) => void
-  metalnessDraft: number
-  onMetalnessDraftChange: (v: number) => void
+  popover: { bodyId: string; position: [number, number]; session?: number } | null
   onColorSet: (bodyId: string, color: string) => void
   onTransparencySet: (bodyId: string, t: number) => void
   onMetalnessSet: (bodyId: string, m: number) => void
@@ -18,22 +13,52 @@ interface PartColorPopoverProps {
   onApply: (mutation: Mutation) => void
 }
 
-export default function PartColorPopover({
+interface InnerProps extends PartColorPopoverProps {
+  popover: { bodyId: string; position: [number, number] }
+}
+
+// Separate inner component so `key={bodyId}` re-mounts with fresh draft state
+function PartColorPopoverInner({
   popover,
-  popoverRef,
-  colorDraft,
-  onColorDraftChange,
-  transparencyDraft,
-  onTransparencyDraftChange,
-  metalnessDraft,
-  onMetalnessDraftChange,
   onColorSet,
   onTransparencySet,
   onMetalnessSet,
   onCancel,
   onApply,
-}: PartColorPopoverProps) {
-  if (!popover) return null
+}: InnerProps) {
+  const partStyle = usePartEditorStore(s => s.partStyle)
+  const style = partStyle[popover.bodyId]
+
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const [colorDraft, setColorDraft] = useState(() => normalizeHexColor(style?.color) || '#6AB59B')
+  const [transparencyDraft, setTransparencyDraft] = useState(style?.transparency ?? 0)
+  const [metalnessDraft, setMetalnessDraft] = useState(style?.metalness ?? 0.3)
+
+  // Focus first focusable element on mount
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      const firstInput = popoverRef.current?.querySelector('input, button') as HTMLElement | null
+      firstInput?.focus()
+    })
+  }, [])
+
+  // Close on outside click or Escape
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        onCancel()
+      }
+    }
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    window.addEventListener('mousedown', close, { capture: true })
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      window.removeEventListener('mousedown', close, { capture: true })
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [onCancel])
 
   return (
     <div
@@ -82,7 +107,7 @@ export default function PartColorPopover({
           value={colorDraft}
           onChange={(e) => {
             const val = e.target.value.toUpperCase()
-            onColorDraftChange(val)
+            setColorDraft(val)
             const normalized = normalizeHexColor(val)
             if (normalized) {
               onColorSet(popover.bodyId, normalized)
@@ -109,7 +134,7 @@ export default function PartColorPopover({
           value={transparencyDraft}
           onChange={(e) => {
             const val = parseFloat(e.target.value)
-            onTransparencyDraftChange(val)
+            setTransparencyDraft(val)
             onTransparencySet(popover.bodyId, val)
           }}
           className="part-slider"
@@ -126,7 +151,7 @@ export default function PartColorPopover({
           value={metalnessDraft}
           onChange={(e) => {
             const val = parseFloat(e.target.value)
-            onMetalnessDraftChange(val)
+            setMetalnessDraft(val)
             onMetalnessSet(popover.bodyId, val)
           }}
           className="part-slider"
@@ -141,7 +166,7 @@ export default function PartColorPopover({
             style={{ background: c }}
             title={c}
             onClick={() => {
-              onColorDraftChange(c)
+              setColorDraft(c)
               onColorSet(popover.bodyId, c)
             }}
           />
@@ -165,4 +190,11 @@ export default function PartColorPopover({
       </div>
     </div>
   )
+}
+
+export default function PartColorPopover(props: PartColorPopoverProps) {
+  if (!props.popover) return null
+  // Include session so re-opening the same body always re-mounts with fresh draft state
+  const key = `${props.popover.bodyId}-${props.popover.session ?? 0}`
+  return <PartColorPopoverInner key={key} {...props} popover={props.popover} />
 }
