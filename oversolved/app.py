@@ -3,7 +3,6 @@
 import logging
 import os
 from pathlib import Path
-from typing import Callable
 from flask import Flask, send_from_directory, g
 from werkzeug.security import generate_password_hash
 from oversolved.db import Database, UserStore
@@ -16,254 +15,14 @@ from oversolved.blueprints.admin import admin_bp
 from oversolved.blueprints.docs import docs_bp
 from flask_sock import Sock
 from oversolved.blueprints.solver_ws import register_solver_ws
+from oversolved.migrations import discover_and_register
 
 logger = logging.getLogger(__name__)
 
-_MIGRATIONS: list[tuple[int, str, Callable]] = []
-
-
-def _column_exists(database: Database, table: str, column: str) -> bool:
-    """Check whether a column exists in the given table."""
-    from oversolved.db import PostgreSQLConnection
-    if isinstance(database.conn, PostgreSQLConnection):
-        cursor = database.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = ? AND column_name = ? AND table_schema = 'public'",
-            (table, column),
-        )
-        return cursor.fetchone() is not None
-    cursor = database.execute(f"PRAGMA table_info({table})")
-    return any(row[1] == column for row in cursor.fetchall())
-
-
-def _register_migrations_once() -> None:
-    """Populate _MIGRATIONS exactly once (idempotent)."""
-    if _MIGRATIONS:
-        return
-
-    def migration_001_initial_schema(database: Database):
-        database.execute("""
-            CREATE TABLE users (
-                id SERIAL PRIMARY KEY,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                must_change_password INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT (NOW()::text)
-            )
-        """)
-        database.execute("""
-            CREATE TABLE sessions (
-                token TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                expires_at TEXT NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
-        database.execute("""
-            CREATE TABLE documents (
-                uuid TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                content TEXT NOT NULL,
-                owner_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (NOW()::text),
-                updated_at TEXT NOT NULL DEFAULT (NOW()::text),
-                FOREIGN KEY (owner_id) REFERENCES users(id)
-            )
-        """)
-
-    _MIGRATIONS.append((1, "initial_schema", migration_001_initial_schema))
-
-    def migration_002_add_preview_image(database: Database):
-        database.execute("ALTER TABLE documents ADD COLUMN preview_image BYTEA")
-
-    _MIGRATIONS.append((2, "add_preview_image", migration_002_add_preview_image))
-
-    def migration_003_add_shares(database: Database):
-        database.execute("""
-            CREATE TABLE document_shares (
-                id SERIAL PRIMARY KEY,
-                document_uuid TEXT NOT NULL,
-                shared_with_user_id INTEGER NULL,
-                permission TEXT NOT NULL DEFAULT 'view',
-                created_at TEXT NOT NULL DEFAULT (NOW()::text),
-                FOREIGN KEY (document_uuid) REFERENCES documents(uuid) ON DELETE CASCADE,
-                FOREIGN KEY (shared_with_user_id) REFERENCES users(id) ON DELETE CASCADE,
-                UNIQUE(document_uuid, shared_with_user_id)
-            )
-        """)
-        database.execute("ALTER TABLE documents ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0")
-
-    _MIGRATIONS.append((3, "add_shares", migration_003_add_shares))
-
-    def migration_004_add_user_management_fields(database: Database):
-        database.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
-        database.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
-
-    _MIGRATIONS.append((4, "add_user_management_fields", migration_004_add_user_management_fields))
-
-    def migration_005_add_last_login(database: Database):
-        database.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT")
-
-    _MIGRATIONS.append((5, "add_last_login", migration_005_add_last_login))
-
-    def migration_006_user_oauth_prep(database: Database):
-        if not _column_exists(database, "users", "email"):
-            database.execute("ALTER TABLE users ADD COLUMN email TEXT")
-        if not _column_exists(database, "users", "nickname"):
-            database.execute("ALTER TABLE users ADD COLUMN nickname TEXT")
-        if not _column_exists(database, "users", "external_id"):
-            database.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
-        if not _column_exists(database, "users", "provider"):
-            database.execute("ALTER TABLE users ADD COLUMN provider TEXT")
-        if not _column_exists(database, "users", "provider_data"):
-            database.execute("ALTER TABLE users ADD COLUMN provider_data TEXT")
-        if not _column_exists(database, "users", "updated_at"):
-            database.execute("ALTER TABLE users ADD COLUMN updated_at TEXT")
-        database.execute(
-            "UPDATE users SET updated_at = NOW()::text WHERE updated_at IS NULL"
-        )
-        database.execute(
-            "UPDATE users SET email = username || '@local.oversolved' WHERE email IS NULL"
-        )
-        database.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)"
-        )
-        database.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nickname ON users(nickname)"
-        )
-        database.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS "
-            "idx_users_external_id_provider ON users(external_id, provider)"
-        )
-
-    _MIGRATIONS.append((6, "user_oauth_prep", migration_006_user_oauth_prep))
-
-    def migration_007_user_sort_preference(database: Database):
-        if not _column_exists(database, "users", "document_sort_preference"):
-            database.execute(
-                "ALTER TABLE users ADD COLUMN document_sort_preference TEXT DEFAULT 'alphabetical'"
-            )
-
-    _MIGRATIONS.append((7, "user_sort_preference", migration_007_user_sort_preference))
-
-    def migration_008_organizations(_database: Database):
-        pass
-
-    _MIGRATIONS.append((8, "organizations", migration_008_organizations))
-
-    def migration_009_documents_org_id(_database: Database):
-        pass
-
-    _MIGRATIONS.append((9, "documents_org_id", migration_009_documents_org_id))
-
-    def migration_010_document_trash(database: Database):
-        if not _column_exists(database, "documents", "deleted_at"):
-            database.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT")
-        database.execute("CREATE INDEX IF NOT EXISTS idx_documents_deleted_at ON documents(deleted_at)")
-
-    _MIGRATIONS.append((10, "document_trash", migration_010_document_trash))
-
-    def migration_011_periodic_tasks(database: Database):
-        database.execute("""
-            CREATE TABLE IF NOT EXISTS periodic_tasks (
-                id SERIAL PRIMARY KEY,
-                task_key TEXT UNIQUE NOT NULL,
-                last_run_at TEXT,
-                last_run_status TEXT
-            )
-        """)
-
-    _MIGRATIONS.append((11, "periodic_tasks", migration_011_periodic_tasks))
-
-    def migration_012_accounts_table(database: Database):
-        database.execute("""
-            CREATE TABLE IF NOT EXISTS accounts (
-                id SERIAL PRIMARY KEY,
-                handle TEXT UNIQUE NOT NULL,
-                owner_type TEXT NOT NULL,
-                owner_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (NOW()::text)
-            )
-        """)
-        database.execute("""
-            CREATE INDEX IF NOT EXISTS idx_accounts_handle ON accounts(handle)
-        """)
-        database.execute("""
-            CREATE INDEX IF NOT EXISTS idx_accounts_owner ON accounts(owner_type, owner_id)
-        """)
-
-        cursor = database.execute("SELECT id, username FROM users WHERE username IS NOT NULL")
-        for row in cursor.fetchall():
-            uid, username = row[0], row[1]
-            database.execute(
-                """INSERT INTO accounts (handle, owner_type, owner_id)
-                   VALUES (?, ?, ?) ON CONFLICT DO NOTHING""",
-                (username, "user", uid),
-            )
-
-    _MIGRATIONS.append((12, "accounts_table", migration_012_accounts_table))
-
-    def migration_013_remove_nickname(database: Database):
-        if _column_exists(database, "users", "nickname"):
-            database.execute("DROP INDEX IF EXISTS idx_users_nickname")
-            database.execute("ALTER TABLE users DROP COLUMN nickname")
-
-    _MIGRATIONS.append((13, "remove_nickname", migration_013_remove_nickname))
-
-    def migration_014_remove_organizations(database: Database):
-        database.execute("DROP TABLE IF EXISTS organization_members")
-        database.execute("DROP TABLE IF EXISTS organizations")
-        if _column_exists(database, "documents", "org_id"):
-            database.execute("ALTER TABLE documents DROP COLUMN org_id")
-
-    _MIGRATIONS.append((14, "remove_organizations", migration_014_remove_organizations))
-
-    def migration_015_rebuild_times(database: Database):
-        database.execute("""
-            CREATE TABLE IF NOT EXISTS rebuild_times (
-                id SERIAL PRIMARY KEY,
-                document_uuid TEXT NOT NULL,
-                duration_ms INTEGER NOT NULL,
-                feature_count INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (NOW()::text),
-                FOREIGN KEY (document_uuid) REFERENCES documents(uuid) ON DELETE CASCADE
-            )
-        """)
-        database.execute("""
-            CREATE INDEX IF NOT EXISTS idx_rebuild_times_doc
-            ON rebuild_times(document_uuid)
-        """)
-
-    _MIGRATIONS.append((15, "rebuild_times", migration_015_rebuild_times))
-
-    def migration_016_sessions_user_id_index(database: Database):
-        database.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)"
-        )
-
-    _MIGRATIONS.append((16, "sessions_user_id_index", migration_016_sessions_user_id_index))
-
-    def migration_017_session_created_at(database: Database):
-        database.execute(
-            "ALTER TABLE sessions ADD COLUMN created_at TEXT"
-        )
-        database.execute(
-            "UPDATE sessions SET created_at = NOW()::text WHERE created_at IS NULL"
-        )
-
-    _MIGRATIONS.append((17, "session_created_at", migration_017_session_created_at))
-
-    def migration_018_token_to_token_hash(database: Database):
-        if _column_exists(database, "sessions", "token"):
-            database.execute("ALTER TABLE sessions RENAME COLUMN token TO token_hash")
-
-    _MIGRATIONS.append((18, "token_to_token_hash", migration_018_token_to_token_hash))
-
 
 def _register_migrations(db: Database) -> None:
-    """Register all database migrations on a Database instance (backward compat)."""
-    _register_migrations_once()
-    db._migrations = list(_MIGRATIONS)
+    """Register all migrations on a Database instance (backward compat for tests)."""
+    discover_and_register(db)
 
 
 def _ensure_admin_user(db: Database, testing: bool = False) -> None:
@@ -358,9 +117,8 @@ def create_app(config: dict | None = None) -> Flask:
         atexit.register(_close_pool_safe)
 
     # Run all pending migrations on startup
-    _register_migrations_once()
     db = _get_database(db_config)
-    db._migrations = list(_MIGRATIONS)
+    discover_and_register(db)
     db.init()
     _ensure_admin_user(db, testing=app.config.get("TESTING", False))
     db.close()

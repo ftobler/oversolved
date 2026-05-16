@@ -128,35 +128,30 @@ def test_get_db_does_not_call_psycopg2_connect_per_request(pg_dsn, monkeypatch):
 
 
 def test_migrations_registered_once(pg_dsn, monkeypatch):
-    """_register_migrations_once is idempotent; calling it twice gives no duplicates."""
+    """discover_and_register loads all migrations; create_app applies each exactly once."""
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
 
-    # Reset module-level state so the test is independent
-    import oversolved.app as app_module
-    original = list(app_module._MIGRATIONS)
-    app_module._MIGRATIONS.clear()
+    from oversolved.migrations import _load_migrations
 
-    pool = None
+    first = _load_migrations()
+    second = _load_migrations()
+    assert len(first) > 0
+    assert [v for v, _, _ in first] == [v for v, _, _ in second], (
+        "Migration list must be stable across calls"
+    )
+
+    from oversolved.app import create_app
+    app = create_app({"DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn})
+    pool = app.config.get("_DB_POOL")
     try:
-        app_module._register_migrations_once()
-        count_first = len(app_module._MIGRATIONS)
-        assert count_first > 0
-
-        app_module._register_migrations_once()
-        count_second = len(app_module._MIGRATIONS)
-        assert count_second == count_first, "Second call must not add duplicate migrations"
-
-        # create_app should not cause additional registrations
-        from oversolved.app import create_app
-        app = create_app({
-            "DB_TYPE": "postgres",
-            "TESTING": True,
-            "DB_DSN": pg_dsn,
-        })
-        pool = app.config.get("_DB_POOL")
-        assert len(app_module._MIGRATIONS) == count_first
+        import psycopg2
+        conn = psycopg2.connect(pg_dsn)
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(DISTINCT version) FROM schema_version")
+            distinct = cur.fetchone()[0]
+        conn.close()
+        assert distinct == len(first), "schema_version must have one row per migration"
     finally:
         if pool is not None:
             pool.closeall()
-        app_module._MIGRATIONS.clear()
-        app_module._MIGRATIONS.extend(original)
