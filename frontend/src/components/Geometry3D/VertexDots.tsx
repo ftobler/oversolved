@@ -1,20 +1,10 @@
-import { useRef, useMemo, useCallback } from 'react'
-import { useDragInitiation } from '@/components/Geometry3D/useDragInitiation'
+import { useRef, useMemo } from 'react'
 import { Line } from '@react-three/drei'
-import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
+import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w } from '@/components/sketch_helpers'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
-import type { SnapKind } from '@/registry'
-import { useHoverAndDynamicSelection } from '@/components/Geometry3D/useHoverAndDynamicSelection'
-import { useToolClickDispatch } from '@/components/Geometry3D/useToolClickDispatch'
-
-/** Derive snap kind from the hover target. All point handles (line endpoints,
- *  circle centers, point xy) are broadly categorized as 'vertex'. */
-function determineSnapKind(): SnapKind {
-  return 'vertex'
-}
 
 /** 10-gon dot with constant pixel radius regardless of zoom.
  *  If billboard=true the dot always faces the camera.
@@ -43,18 +33,14 @@ export function Dot({ x, y, px, color, billboard = false, renderOrder = 0, depth
 }
 
 /** One invisible cylinder per segment. Radius scales to HIT_PIXELS each frame so
- *  coverage is gapless at any zoom. Placed at z=-0.001 so vertex spheres (z=0,
- *  extending to z=+R) always win the raycast at endpoint positions. */
-type PointerHandler = (e: ThreeEvent<MouseEvent> | ThreeEvent<PointerEvent>) => void
-
-export function HitPolyline({ pts, showDebugCollision, showDebugHit, onClick, onPointerDown, onPointerOver, onPointerOut }: {
+ *  coverage is gapless at any zoom. Placed at z=-0.001.
+ *
+ *  As of 267.5 this component is visual-only — the ID buffer dispatcher
+ *  handles all picking. No R3F event props are accepted. */
+export function HitPolyline({ pts, showDebugCollision, showDebugHit }: {
   pts: [number, number, number][]
   showDebugCollision?: boolean
   showDebugHit?: boolean
-  onClick?: PointerHandler
-  onPointerDown?: PointerHandler
-  onPointerOver?: PointerHandler
-  onPointerOut?: PointerHandler
 }) {
   const segRefs = useRef<(THREE.Mesh | null)[]>([])
   const { camera } = useThree()
@@ -78,10 +64,6 @@ export function HitPolyline({ pts, showDebugCollision, showDebugHit, onClick, on
       {segs.map((s, i) => s.len > 0 && (
         <mesh key={i} ref={el => { segRefs.current[i] = el }}
           position={[s.cx, s.cy, -0.001]} rotation={[0, 0, s.angle]}
-          onClick={onClick}
-          onPointerDown={onPointerDown}
-          onPointerOver={onPointerOver}
-          onPointerOut={onPointerOut}
         >
           <cylinderGeometry args={[1, 1, 1, 8, 1]} />
           <meshBasicMaterial transparent opacity={(showDebugCollision ?? showDebugHit) ? 0.25 : 0} color="#ff6600" depthWrite={false} side={THREE.DoubleSide} visible={true} />
@@ -113,8 +95,11 @@ export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px:
 }
 
 /** Vertex dot with its own independent hover state. Placed as a sibling (not child)
- *  of the edge group so hover does not bubble up and highlight the whole entity. */
-export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, isEditing = false, showDebugHit }: {
+ *  of the edge group so hover does not bubble up and highlight the whole entity.
+ *
+ *  As of 267.5 the ID buffer dispatcher handles all picking; this component
+ *  is visual-only — no R3F event props. */
+export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, showDebugHit }: {
   x: number; y: number; px: number; baseColor: string
   featureId?: string; entityId?: string; vertexKey?: string
   isEditing?: boolean; showDebugHit?: boolean
@@ -124,44 +109,18 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const vertId = featureId && entityId && vertexKey ? `vertex:${featureId}:${entityId}:${vertexKey}` : undefined
 
   // Store reads for display and collision hiding.
-  const setHoveredVertex = useSketchEditorStore(s => s.setHoveredVertex)
   const constraintHovered = useSketchEditorStore(s =>
     entityId && vertexKey ? s.hoveredConstraintEntityIds.has(`${entityId}:${vertexKey}`) : false
   )
+  const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
-  // REGRESSION PROTECTION: Hide collision geometry during vertex drag.
-  // Must check featureId, entityId, AND vertexKey to handle all cases.
-  // Also hide hit geometry from non-active sketches to prevent raycasting interference.
-  // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
   const drag = useSketchEditorStore(s => s.drag)
   const selected = useSketchEditorStore(s => vertId ? s.normalSelection.has(vertId) : false)
   const isInactiveSketch = featureId && activeFeatureId && featureId !== activeFeatureId
   const isDraggedVertex = drag && drag.type === 'vertex' && drag.entityId === entityId && drag.featureId === featureId
 
-  const snapKind = determineSnapKind()
-
-  // Layer 3B: hover state and dynamic selection accumulation.
-  const { hovered, onOver, onOut, markAsClicked } = useHoverAndDynamicSelection({
-    id: vertId ?? '',
-    hoverPayload: () => { if (vertId) setHoveredVertex(vertId, [x, y], snapKind) },
-    clearHoverPayload: () => setHoveredVertex(null, null, null),
-  })
-
-  // Layer 4 — Tool Layer: dimension / fieldPick / select dispatch on click.
-  // Guard: vertId/featureId may be absent for purely decorative vertex dots.
-  const onClick = useToolClickDispatch({
-    id: vertId ?? '', isEditing: isEditing && !!vertId && !!featureId,
-  })
-
-  // Layer 4 — Tool Layer: vertex drag initiation via DragPlane.
-  // startWorld is the vertex center [x, y], not the hit point, so snap offsets are computed correctly.
-  // sanitizePointerEvent is not used here -- x, y are already sketch-local coordinates from props.
-  // See: dragging.test.ts REGRESSION 4 and feature/feature_headless_viewport.md Step 5.
-  const { initDrag } = useDragInitiation()
-  const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
-    if (!vertId || !featureId || !entityId || !vertexKey) return
-    initDrag(e, { type: 'vertex', id: vertId, featureId, entityId, vertexKey, startWorld: [x, y], isEditing, markAsClicked })
-  }, [vertId, featureId, entityId, vertexKey, isEditing, x, y, markAsClicked, initDrag])
+  // Hover state is now driven by the ID-buffer dispatcher (267.5).
+  const hovered = vertId ? hoveredVertexId === vertId : false
 
   useFrame(() => {
     if (!hitRef.current) return
@@ -171,12 +130,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
 
   return (
-    <group
-      onPointerOver={onOver}
-      onPointerOut={onOut}
-      onClick={onClick}
-      onPointerDown={onPointerDown}
-    >
+    <group>
       <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard renderOrder={selected ? RENDER_ORDER_EDITING : 0} depthTest={!selected} />
       {(hovered || selected || constraintHovered) && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
       {!isInactiveSketch && !isDraggedVertex && (
@@ -190,29 +144,20 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
 }
 
 /** Cross/plus marker at constant pixel size for a projected reference point.
- *  Clickable with the dimension tool; not draggable. */
+ *
+ *  As of 267.5 the ID buffer dispatcher handles all picking; this component
+ *  is visual-only — no R3F event props. */
 export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number; y: number; featureId: string; entityId: string }) {
   const groupRef = useRef<THREE.Group>(null)
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
   const entId = `entity:${featureId}:${entityId}`
-  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
   const selected = useSketchEditorStore(s => s.normalSelection.has(entId))
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
-  const setInternalHoverSelection = useSketchEditorStore(s => s.setInternalHoverSelection)
+  const internalHoverSelection = useSketchEditorStore(s => s.internalHoverSelection)
 
-  // Layer 3B: hover state (no dynamic selection — projected points are not draggable).
-  const { hovered, onOver, onOut } = useHoverAndDynamicSelection({
-    id: entId,
-    hoverPayload: () => setInternalHoverSelection(entId),
-    clearHoverPayload: () => setInternalHoverSelection(null),
-  })
-
-  // Layer 4: dimension tool only for the active sketch's projected points.
-  const isEditing = activeFeatureId === featureId
-  const onClick = useToolClickDispatch({
-    id: entId, isEditing, entityKind: 'point',
-  })
+  // Hover state is now driven by the ID-buffer dispatcher (267.5).
+  const hovered = internalHoverSelection === entId
 
   useFrame(() => {
     const scale = 7 * p2w(camera)
@@ -222,11 +167,7 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number;
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : COLOR_PROJECTED
   return (
-    <group ref={groupRef} position={[x, y, 0]}
-      onPointerOver={onOver}
-      onPointerOut={onOut}
-      onClick={onClick}
-    >
+    <group ref={groupRef} position={[x, y, 0]}>
       {/* '+' cross: vertical bar */}
       <Line points={[[0, -1, 0], [0, 1, 0]]} color={color} lineWidth={hovered ? 2 : 1} />
       {/* '+' cross: horizontal bar */}

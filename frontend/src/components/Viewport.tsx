@@ -18,7 +18,7 @@ import CameraLight from '@/components/Viewport/CameraLight'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
 import ContextMenuDialog from '@/components/ContextMenuDialog'
-import { IdPickingDriver, DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking'
+import { IdPickingDriver, DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME, PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME } from '@/picking'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
 import type { IdPipeline } from '@/picking'
 import { useIdBufferPointerDispatch, wasLastClickConsumedByIdDispatch } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
@@ -219,10 +219,12 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const idPipelineRef = useRef<IdPipeline | null>(null)
   const onIdPipelineReady = useCallback((p: IdPipeline) => { idPipelineRef.current = p }, [])
 
-  // 267.2/267.4: canvas-level pointer dispatcher backed by the ID buffer.
-  // Consumes dimensionLabel (267.2-3) and B-rep face/edge/vertex (267.4).
+  // 267.2/267.4/267.5: canvas-level pointer dispatcher backed by the ID buffer.
+  // Consumes dimensionLabel, B-rep face/edge/vertex, sketch, plane, and origin layers.
   const consumedLayers = useMemo(() => new Set([
-    DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+    DIMENSION_LABEL_LAYER_NAME,
+    FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+    PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
   ]), [])
   useIdBufferPointerDispatch({ glRef, consumedLayers })
 

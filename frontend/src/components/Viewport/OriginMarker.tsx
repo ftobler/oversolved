@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useRef } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -6,23 +6,17 @@ import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { Dot, VertexHighlight } from '@/components/Geometry3D/VertexDots'
 import { p2w } from '@/components/sketch_helpers'
-import { useToolClickDispatch } from '@/components/Geometry3D/useToolClickDispatch'
 import { useOriginMarkerIdRegistration } from '@/picking'
 
 export default function OriginMarker() {
-  const [hovered, setHovered] = useState(false)
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
-  const setHoveredEntity = useSketchEditorStore(s => s.setHoveredEntity)
-  const setHoveredVertex = useSketchEditorStore(s => s.setHoveredVertex)
   const selId = builtinSelectionId('Origin')
   const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
-  const activeTool = useSketchEditorStore(s => s.activeTool)
-  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
-  const isRotating = useSketchEditorStore(s => s.isRotating)
-  const isEditing = !!activeFeatureId
+  const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
 
-  const onClick = useToolClickDispatch({ id: selId, isEditing })
+  // Hover state is now driven by the ID-buffer dispatcher (267.5).
+  const hovered = hoveredEntityId === selId
 
   useOriginMarkerIdRegistration({ selectionId: selId })
 
@@ -36,29 +30,9 @@ export default function OriginMarker() {
   })
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_INACTIVE
-  const isDrawingTool = (activeTool ?? 'drag') !== 'select' && (activeTool ?? 'drag') !== 'dimension'
-
-  const handlePointerOver = useCallback((e: { stopPropagation: () => void }) => {
-    if (isRotating) return
-    if (!isDrawingTool) e.stopPropagation()
-    setHovered(true)
-    setHoveredEntity(selId)
-    setHoveredVertex(selId, [0, 0], 'vertex')
-  }, [isRotating, isDrawingTool, selId, setHoveredEntity, setHoveredVertex])
-
-  const handlePointerOut = useCallback(() => {
-    if (isRotating) return
-    setHovered(false)
-    setHoveredEntity(null)
-    setHoveredVertex(null, null, null)
-  }, [isRotating, setHoveredEntity, setHoveredVertex])
 
   return (
-    <group
-      onPointerOver={handlePointerOver}
-      onPointerOut={handlePointerOut}
-      onClick={onClick}
-    >
+    <group>
       <Dot x={0} y={0} px={hovered ? 6 : 4} color={color} billboard renderOrder={999} depthTest={false} />
       {(hovered || selected) && <VertexHighlight x={0} y={0} px={POINT_HIT_PIXELS * 0.3} color={color} />}
       <mesh ref={hitRef}>

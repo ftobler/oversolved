@@ -1,6 +1,4 @@
-import { useCallback } from 'react'
 import { Line } from '@react-three/drei'
-import * as THREE from 'three'
 import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity } from '@/types/cad'
 import { isProjectedEntity } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -8,66 +6,39 @@ import { sampleArc, sampleArcCCW, pointTo3D, allFinite } from '@/components/sket
 import { DashedLine } from '@/components/sketch_dimensions'
 import { VertexDot, HitPolyline, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
-import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
-import { useHoverAndDynamicSelection } from '@/components/Geometry3D/useHoverAndDynamicSelection'
-import { useToolClickDispatch } from '@/components/Geometry3D/useToolClickDispatch'
-import { useDragInitiation } from '@/components/Geometry3D/useDragInitiation'
 
 interface EntityItemProps {
   entity: Entity
   entityId: string
-  entityKind: string
+  entityKind?: string
   featureId: string
   baseColor: string
   lineWidth?: number
   isEditing?: boolean
-  planeGroupRef?: React.RefObject<THREE.Group | null>
   showDebugHit?: boolean
 }
 
-export function EntityItem({ entity, entityId, entityKind, featureId, baseColor, lineWidth = 1, isEditing = false, planeGroupRef, showDebugHit }: EntityItemProps) {
+export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1, isEditing = false, showDebugHit }: EntityItemProps) {
   const entId = `entity:${featureId}:${entityId}`
 
-  // Store reads for selection display and collision hiding.
+  // Store reads for selection display, hover, and collision hiding.
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
-  const setInternalHoverSelection = useSketchEditorStore(s => s.setInternalHoverSelection)
+  const internalHoverSelection = useSketchEditorStore(s => s.internalHoverSelection)
   const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
   const drag = useSketchEditorStore(s => s.drag)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
-  // normalSelection is the single source of truth — active pick chips merge their values in via syncChipSelection.
   const selected = normalSelection.has(entId)
 
   // REGRESSION PROTECTION: Hide collision geometry during entity drag.
   // Must check both entityId and featureId to handle multiple sketches.
-  // Also hide hit geometry from non-active sketches to prevent raycasting interference.
   // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
   const isInactiveSketch = activeFeatureId && featureId !== activeFeatureId
   const isDraggedEntity = drag && drag.type === 'edge' && drag.entityId === entityId && drag.featureId === featureId
   const isDraggedVertex = drag && drag.type === 'vertex' && drag.entityId === entityId && drag.featureId === featureId
 
-  // Layer 3B: hover state and dynamic selection accumulation.
-  const { hovered, onOver, onOut, markAsClicked } = useHoverAndDynamicSelection({
-    id: entId,
-    hoverPayload: () => setInternalHoverSelection(entId),
-    clearHoverPayload: () => setInternalHoverSelection(null),
-  })
-
-  // Layer 4 — Tool Layer: dimension / fieldPick / select dispatch on click.
-  const onClick = useToolClickDispatch({
-    id: entId, isEditing, entityKind,
-  })
-
-  // Layer 4 — Tool Layer: edge drag initiation via DragPlane.
-  // startWorld is the sanitized local hit point on the edge (not the entity origin).
-  // startClient is screen pixels for click-vs-drag disambiguation. See: dragging.test.ts REGRESSION 4
-  // We defer drag initiation to Dragging.tsx which checks if movement exceeds CLICK_THRESHOLD_PX.
-  // Also sets isPointerDown=true to enable dynamic selection accumulation during mouse-down + hover.
-  const { initDrag } = useDragInitiation()
-  const onPointerDown = useCallback((ev: { stopPropagation: () => void; point: THREE.Vector3; clientX: number; clientY: number }) => {
-    const sanitized = planeGroupRef ? sanitizePointerEvent(ev, planeGroupRef) : null
-    const [sx, sy] = sanitized?.localPoint ?? [ev.point.x, ev.point.y]
-    initDrag(ev, { type: 'edge', id: entId, featureId, entityId, vertexKey: 'edge', startWorld: [sx, sy], isEditing, markAsClicked })
-  }, [isEditing, entId, featureId, entityId, planeGroupRef, markAsClicked, initDrag])
+  // Hover state is now driven by the ID-buffer dispatcher (267.5).
+  // The dispatcher writes internalHoverSelection → we derive local hover flag.
+  const hovered = internalHoverSelection === entId
 
   const e = entity
   const construction = 'construction' in e && e.construction
@@ -85,7 +56,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
         <group>
           {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && (
             <HitPolyline pts={pts} showDebugHit={showDebugHit}
-              onClick={onClick} onPointerDown={onPointerDown} onPointerOver={onOver} onPointerOut={onOut} />
+               />
           )}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
@@ -107,7 +78,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
         <group>
           {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && (
             <HitPolyline pts={pts} showDebugHit={showDebugHit}
-              onClick={onClick} onPointerDown={onPointerDown} onPointerOver={onOver} onPointerOut={onOut} />
+               />
           )}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
@@ -130,7 +101,7 @@ export function EntityItem({ entity, entityId, entityKind, featureId, baseColor,
         <group>
           {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && (
             <HitPolyline pts={pts} showDebugHit={showDebugHit}
-              onClick={onClick} onPointerDown={onPointerDown} onPointerOver={onOver} onPointerOut={onOut} />
+               />
           )}
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
@@ -149,18 +120,17 @@ interface EntityLinesProps {
   kindMap: Record<string, string>
   lineWidth?: number
   isEditing?: boolean
-  planeGroupRef?: React.RefObject<THREE.Group | null>
   showDebugHit?: boolean
 }
 
-export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, isEditing = false, planeGroupRef, showDebugHit }: EntityLinesProps) {
+export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, isEditing = false, showDebugHit }: EntityLinesProps) {
   const getColor = typeof color === 'function' ? color : () => color
   return (
     <>
       {Object.entries(sketch)
         .filter(([, entity]) => !(entity as PointEntity).projected)
         .map(([id, entity]) => (
-          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line'} featureId={featureId} baseColor={getColor(id)} lineWidth={lineWidth} isEditing={isEditing} planeGroupRef={planeGroupRef} showDebugHit={showDebugHit} />
+          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line'} featureId={featureId} baseColor={getColor(id)} lineWidth={lineWidth} isEditing={isEditing} showDebugHit={showDebugHit} />
         ))}
     </>
   )

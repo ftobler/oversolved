@@ -5,8 +5,15 @@ import type { ResolvedHit } from '@/picking'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { dimensionLabelAdapter } from './dimensionLabelAdapter'
 import { brepFaceAdapter, brepEdgeAdapter, brepVertexAdapter, clearBrepHover } from './brepAdapters'
+import { sketchEntityAdapter, clearSketchEntityHover } from './sketchEntityAdapter'
+import { sketchVertexAdapter, clearSketchVertexHover } from './sketchVertexAdapter'
+import { planeAdapter, clearPlaneHover } from './planeAdapter'
+import { originAdapter, clearOriginHover } from './originAdapter'
 import { getToolAllowedLayers } from './toolAllowedLayers'
-import { DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking'
+import {
+  DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+  PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
+} from '@/picking'
 
 /**
  * Records whether the most recent left-click was consumed by the id-buffer
@@ -56,6 +63,7 @@ function intersect(a: ReadonlySet<string>, b: ReadonlySet<string> | null): Reado
  * `dimensionLabel` only; dimension-label R3F handlers come off in 267.3.
  */
 const BREP_LAYER_NAMES = new Set([FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME])
+const SKETCH_HOVER_LAYERS = new Set([SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, PLANE_LAYER_NAME, ORIGIN_LAYER_NAME])
 
 export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }: DispatchParams): void {
   useEffect(() => {
@@ -85,6 +93,11 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         dimensionLabelAdapter.onOut(lastHoverEntity)
       } else if (lastHoverLayer !== null && BREP_LAYER_NAMES.has(lastHoverLayer)) {
         clearBrepHover()
+      } else if (lastHoverLayer !== null && SKETCH_HOVER_LAYERS.has(lastHoverLayer)) {
+        clearSketchEntityHover()
+        clearSketchVertexHover()
+        clearPlaneHover()
+        clearOriginHover()
       }
       // Apply the new hover.
       if (layer === DIMENSION_LABEL_LAYER_NAME && entityKey !== null) {
@@ -98,6 +111,16 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       } else if (layer === VERTEX_LAYER_NAME && entityKey !== null) {
         clearBrepHover()
         brepVertexAdapter.onHover(entityKey)
+      } else if (layer === SKETCH_ENTITY_LAYER_NAME && entityKey !== null) {
+        clearSketchVertexHover()
+        sketchEntityAdapter.onHover(entityKey)
+      } else if (layer === SKETCH_VERTEX_LAYER_NAME && entityKey !== null) {
+        clearSketchEntityHover()
+        sketchVertexAdapter.onHover(entityKey)
+      } else if (layer === PLANE_LAYER_NAME && entityKey !== null) {
+        planeAdapter.onHover(entityKey)
+      } else if (layer === ORIGIN_LAYER_NAME && entityKey !== null) {
+        originAdapter.onHover(entityKey)
       }
       lastHoverLayer = layer
       lastHoverEntity = entityKey
@@ -136,6 +159,18 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       } else if (hit.layer === VERTEX_LAYER_NAME) {
         brepVertexAdapter.onClick(hit.entityKey)
         setLastClickIdHit(true)
+      } else if (hit.layer === SKETCH_ENTITY_LAYER_NAME) {
+        sketchEntityAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
+        setLastClickIdHit(true)
+      } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME) {
+        sketchVertexAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
+        setLastClickIdHit(true)
+      } else if (hit.layer === PLANE_LAYER_NAME) {
+        planeAdapter.onClick(hit.entityKey)
+        setLastClickIdHit(true)
+      } else if (hit.layer === ORIGIN_LAYER_NAME) {
+        originAdapter.onClick(hit.entityKey)
+        setLastClickIdHit(true)
       }
     }
 
@@ -145,6 +180,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       if (!hit) return
       if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
         dimensionLabelAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
+      } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME) {
+        sketchVertexAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
       }
     }
 
@@ -179,6 +216,11 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         dimensionLabelAdapter.onOut(lastHoverEntity)
       } else if (lastHoverLayer !== null && BREP_LAYER_NAMES.has(lastHoverLayer)) {
         clearBrepHover()
+      } else if (lastHoverLayer !== null && SKETCH_HOVER_LAYERS.has(lastHoverLayer)) {
+        clearSketchEntityHover()
+        clearSketchVertexHover()
+        clearPlaneHover()
+        clearOriginHover()
       }
       lastHoverLayer = null
       lastHoverEntity = null
