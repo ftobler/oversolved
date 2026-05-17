@@ -32,7 +32,7 @@ import type { SketchData } from '@/types/cad'
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 
 const INITIAL_ZOOM = 200
-const ENABLE_ID_BUFFER_PICKING = false
+const ENABLE_ID_BUFFER_PICKING = true
 
 export interface ViewportProps {
   resetTrigger?: number

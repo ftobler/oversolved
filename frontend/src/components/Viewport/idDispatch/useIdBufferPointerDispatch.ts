@@ -44,7 +44,12 @@ interface DispatchParams {
 
 function cursorFromEvent(e: PointerEvent | MouseEvent, canvas: HTMLCanvasElement): { x: number; y: number } {
   const rect = canvas.getBoundingClientRect()
-  return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  const xCss = e.clientX - rect.left
+  const yCss = e.clientY - rect.top
+  // Event coords are CSS pixels; id-buffer resolves in render-target pixels.
+  const scaleX = canvas.width > 0 && rect.width > 0 ? canvas.width / rect.width : 1
+  const scaleY = canvas.height > 0 && rect.height > 0 ? canvas.height / rect.height : 1
+  return { x: xCss * scaleX, y: yCss * scaleY }
 }
 
 function intersect(a: ReadonlySet<string>, b: ReadonlySet<string> | null): ReadonlySet<string> {

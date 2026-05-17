@@ -112,10 +112,15 @@ export function useRubberBandSelect(
     const h = pipeline.target.getHeight()
 
     // Canvas-coord to render-target coord: y is flipped.
-    const x0 = Math.max(0, Math.round(currentRect.x))
-    const y0 = Math.max(0, Math.round(currentRect.y))
-    const rw = Math.min(w - x0, Math.ceil(currentRect.w))
-    const rh = Math.min(h - y0, Math.ceil(currentRect.h))
+    const canvas = canvasRef.current
+    const canvasCssW = canvas ? canvas.clientWidth : w
+    const canvasCssH = canvas ? canvas.clientHeight : h
+    const sx = canvasCssW > 0 ? w / canvasCssW : 1
+    const sy = canvasCssH > 0 ? h / canvasCssH : 1
+    const x0 = Math.max(0, Math.round(currentRect.x * sx))
+    const y0 = Math.max(0, Math.round(currentRect.y * sy))
+    const rw = Math.min(w - x0, Math.ceil(currentRect.w * sx))
+    const rh = Math.min(h - y0, Math.ceil(currentRect.h * sy))
     if (rw <= 0 || rh <= 0) {
       startRef.current = null
       setRect(null)

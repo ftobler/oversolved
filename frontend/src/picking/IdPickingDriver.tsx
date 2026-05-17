@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
+import * as THREE from 'three'
 import { IdPipeline } from './IdPipeline'
 import { setLivePipeline } from './IdPipelineContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -8,6 +9,17 @@ import { subscribePipelineToPartEditor } from './dirtyInvalidation'
 interface IdPickingDriverProps {
   /** External handle so non-Canvas code (Viewport pointer dispatch) can call resolveSync. */
   onReady?: (pipeline: IdPipeline) => void
+}
+
+function getRenderSize(gl: THREE.WebGLRenderer, cssWidth: number, cssHeight: number): { width: number; height: number } {
+  if (typeof gl.getDrawingBufferSize === 'function') {
+    const db = gl.getDrawingBufferSize(new THREE.Vector2())
+    return { width: Math.max(1, Math.floor(db.x)), height: Math.max(1, Math.floor(db.y)) }
+  }
+  return {
+    width: Math.max(1, Math.floor(cssWidth || 1)),
+    height: Math.max(1, Math.floor(cssHeight || 1)),
+  }
 }
 
 /**
@@ -27,16 +39,18 @@ interface IdPickingDriverProps {
 export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
   const three = useThree()
   const gl = three.gl
-  // `size` may be undefined in tests that stub useThree; treat as 1x1.
   const sizeWidth = three.size?.width ?? 1
   const sizeHeight = three.size?.height ?? 1
 
   // Pipeline is created once via useState lazy initializer. Subsequent size
   // changes flow through resize() below, not by reconstructing the pipeline.
-  const [pipeline] = useState<IdPipeline>(() => new IdPipeline({
-    width: Math.max(1, Math.floor(sizeWidth)),
-    height: Math.max(1, Math.floor(sizeHeight)),
-  }))
+  const [pipeline] = useState<IdPipeline>(() => {
+    const db = getRenderSize(gl, sizeWidth, sizeHeight)
+    return new IdPipeline({
+      width: db.width,
+      height: db.height,
+    })
+  })
 
   const onReadyRef = useRef(onReady)
   useEffect(() => { onReadyRef.current = onReady }, [onReady])
@@ -54,9 +68,10 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
     }
   }, [pipeline])
 
-  useEffect(() => {
-    pipeline.resize(Math.max(1, Math.floor(sizeWidth)), Math.max(1, Math.floor(sizeHeight)))
-  }, [pipeline, sizeWidth, sizeHeight])
+  useFrame(() => {
+    const db = getRenderSize(gl, sizeWidth, sizeHeight)
+    pipeline.resize(db.width, db.height)
+  })
 
   // Mirror the visible-pass `interactive={!activeFeatureId}` rule from
   // Body3D: while a sketch is being edited, B-rep layers go inert in the
@@ -116,7 +131,7 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
       renderFailed.current = true
       console.warn('ID pipeline render failed; disabling id-buffer picking for this session', err)
     }
-  }, 1)  // priority > 0 -> runs after default render
+  })  // default priority: do not take over the render loop
 
   return null
 }

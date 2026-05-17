@@ -184,6 +184,16 @@ export class IdPipeline {
     const prevClearColor = new THREE.Color()
     renderer.getClearColor(prevClearColor)
     const prevClearAlpha = renderer.getClearAlpha()
+    const prevViewport = new THREE.Vector4()
+    const prevScissor = new THREE.Vector4()
+    const hasViewportApi = typeof renderer.getViewport === 'function' && typeof renderer.setViewport === 'function'
+    const hasScissorApi = typeof renderer.getScissor === 'function'
+      && typeof renderer.setScissor === 'function'
+      && typeof renderer.getScissorTest === 'function'
+      && typeof renderer.setScissorTest === 'function'
+    if (hasViewportApi) renderer.getViewport(prevViewport)
+    if (hasScissorApi) renderer.getScissor(prevScissor)
+    const prevScissorTest = hasScissorApi ? renderer.getScissorTest() : false
     let completed = false
     try {
       renderer.setRenderTarget(this.target.target)
@@ -232,6 +242,11 @@ export class IdPipeline {
       renderer.setRenderTarget(prevTarget)
       renderer.autoClear = prevAutoClear
       renderer.setClearColor(prevClearColor, prevClearAlpha)
+      if (hasViewportApi) renderer.setViewport(prevViewport)
+      if (hasScissorApi) {
+        renderer.setScissor(prevScissor)
+        renderer.setScissorTest(prevScissorTest)
+      }
     }
 
     if (completed) {

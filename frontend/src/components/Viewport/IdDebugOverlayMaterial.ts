@@ -22,8 +22,10 @@ export function buildOverlayMaterial(): THREE.ShaderMaterial {
       opacity: { value: 0.6 },
     },
     vertexShader: `
+      out vec2 vUv;
       void main() {
         gl_Position = vec4(position.xy, 0.0, 1.0);
+        vUv = gl_Position.xy * 0.5 + 0.5;
       }
     `,
     fragmentShader: `
@@ -31,6 +33,7 @@ export function buildOverlayMaterial(): THREE.ShaderMaterial {
       precision highp int;
       uniform sampler2D tId;
       uniform float opacity;
+      in vec2 vUv;
       out vec4 fragColor;
 
       uint reverse24(uint v) {
@@ -49,8 +52,7 @@ export function buildOverlayMaterial(): THREE.ShaderMaterial {
       }
 
       void main() {
-        vec2 uv = gl_FragCoord.xy / vec2(textureSize(tId, 0));
-        vec4 raw = texture(tId, uv);
+        vec4 raw = texture(tId, vUv);
         if (raw.a < 0.5) discard;
 
         uint r = uint(raw.r * 255.0 + 0.5);
