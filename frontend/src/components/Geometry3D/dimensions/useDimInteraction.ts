@@ -57,12 +57,11 @@ export function useDimInteraction(cid: string, value: number, interaction: DimIn
   // Called at the start of each pointer-down so a fresh drag begins with the flag clear.
   const resetDragMoved = reset
 
-  // REGRESSION PROTECTION: Hide hit mesh during dim_label drag
-  // BUG: When dragging a dimension label, the label's own circle hit mesh at z=0.001
-  //      blocks raycasts to the DragPlane at z=-0.001, causing choppy/stalled dragging.
-  // FIX: Check if this constraint is currently being dragged. If so, skip rendering
-  //      the hit mesh so raycasts reach the DragPlane smoothly.
-  // See: EntityLines.tsx and VertexDots.tsx for the same fix on entities/vertices.
+  // Hide the hit mesh while this constraint is being dragged. Historically
+  // this guarded against the (now-retired) DragPlane mesh raycast being
+  // occluded by the label's hit circle (#266 migrated drag to a math-only
+  // THREE.Plane, so occlusion is no longer possible). Kept because it
+  // doubles as a UX nicety -- the hit halo stays visually quiet mid-drag.
   const isDragged = drag?.type === 'dim_label' && drag.constraintId === cid
 
   const color = hovered ? '#ffffff' : COLOR_CONSTRAINT

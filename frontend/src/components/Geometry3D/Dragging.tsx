@@ -13,6 +13,7 @@ import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstraction
 import { computeDragMove, shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
 import type { DragToolContext } from '@/tools/DragTool'
 import { sketchToVertexCandidates, sketchToEntityCandidates } from '@/components/Geometry3D/snapDetection'
+import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlane'
 
 export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: {
   featureId: string
@@ -20,7 +21,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
   sketchGroupRef?: React.RefObject<THREE.Group | null>
   otherSketches?: Record<string, Sketch>
 }) {
-  const meshRef = useRef<THREE.Mesh>(null)
   const prevNearbyRef = useRef<Set<string>>(new Set())
   const drag = useSketchEditorStore(s => s.drag)
   const dragPending = useSketchEditorStore(s => s.dragPending)
@@ -37,33 +37,15 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
   // Build map of dynamic selection positions for alignment detection
   const dynamicSelectionPositions = useDynamicSelectionPositions(sketch, dynamicSelection)
 
-  // Resolve the sketch group ref: prefer explicit prop, fall back to mesh parent.
-  const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? {
-    get current() { return meshRef.current?.parent ?? null },
-  }
-
-  // Fallback: if pointer is released outside the canvas the Three.js onPointerUp
-  // never fires, leaving orbitEnabled=false permanently. Listen on window instead.
-  useEffect(() => {
-    if (!drag && !dragPending) return
-    const cancel = () => {
-      setDrag(null)
-      setDragPending(null)
-      setDragStartClient(null)
-      setDragSnap(null)
-      setOrbitEnabled(true)
-    }
-    window.addEventListener('pointerup', cancel)
-    return () => window.removeEventListener('pointerup', cancel)
-  }, [drag, dragPending, setDrag, setDragPending, setDragStartClient, setDragSnap, setOrbitEnabled])
+  const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? { current: null }
 
   // Window-level pointermove: bypasses R3F event bubbling so scene geometry (Body3D, Surfaces)
   // can never block drag events. The handler ref is updated every render so the closure always
   // captures fresh props/derived values without listing them as useEffect dependencies.
   const handleMoveRef = useRef<((e: PointerEvent) => void) | null>(null)
-  handleMoveRef.current = (e: PointerEvent) => {
-    const mesh = meshRef.current
-    if (!mesh) return
+  const moveImpl = (e: PointerEvent) => {
+    const group = resolvedGroupRef.current
+    if (!group) return
 
     // Read from store imperatively to see the latest drag state, including any update
     // that setDrag() makes mid-handler (lazy drag initiation below).
@@ -78,14 +60,11 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
     const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
     const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1
 
-    // Raycast against this mesh only -- equivalent to the former onPointerMove path
-    // but immune to other scene geometry intercepting the event.
-    const raycaster = new THREE.Raycaster()
-    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera)
-    const hits = raycaster.intersectObject(mesh, false)
-    if (hits.length === 0) return
-
-    const worldPt = hits[0].point
+    // Math-plane projection -- no scene mesh involved, so no other geometry
+    // can block the raycast. Replaces the former DragPlane mesh at z=-0.001
+    // (#266 audit).
+    const worldPt = projectCursorToSketchPlane(camera, group, { x: ndcX, y: ndcY })
+    if (!worldPt) return
     const sanitized = sanitizePointerEvent({ point: worldPt, clientX: e.clientX, clientY: e.clientY }, resolvedGroupRef)
     if (!sanitized) return
     const localPoint = sanitized.localPoint
@@ -184,6 +163,8 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
     }
   }
 
+  useEffect(() => { handleMoveRef.current = moveImpl })
+
   useEffect(() => {
     if (!drag && !dragPending) return
     const handler = (e: PointerEvent) => handleMoveRef.current?.(e)
@@ -191,79 +172,86 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
     return () => window.removeEventListener('pointermove', handler)
   }, [drag, dragPending])
 
-  // Render DragPlane when drag is active OR when there's a pending drag (waiting for movement threshold)
-  const shouldRender = drag !== null || dragPending !== null
-  if (!shouldRender) return null
+  // Window-level pointerup commit. Fires for any pointer release while a
+  // drag/dragPending exists for this featureId; the body filters by
+  // featureId so unrelated DragPlane instances stay no-ops. Replaces the
+  // former mesh-level R3F onPointerUp (#266 audit), which is no longer
+  // needed now that no mesh exists.
+  const handleUpRef = useRef<((e: PointerEvent) => void) | null>(null)
+  const upImpl = (e: PointerEvent) => {
+    useSketchEditorStore.getState().setIsPointerDown(false)
+    useSketchEditorStore.setState({ dynamicSelection: new Set() })
+    prevNearbyRef.current = new Set()
 
-  return (
-    <mesh
-      ref={meshRef}
-      position={[0, 0, 0]}
-      onPointerUp={(e) => {
-        e.stopPropagation()
-        useSketchEditorStore.getState().setIsPointerDown(false)
-        useSketchEditorStore.setState({ dynamicSelection: new Set() })
-        prevNearbyRef.current = new Set()
+    const { drag: currentDrag, dragPending } = useSketchEditorStore.getState()
 
-        const { drag: currentDrag, dragPending } = useSketchEditorStore.getState()
+    if (!currentDrag && dragPending && dragPending.featureId === featureId) {
+      setDragPending(null)
+      setDragStartClient(null)
+      setOrbitEnabled(true)
+      return
+    }
 
-        if (!currentDrag && dragPending && dragPending.featureId === featureId) {
-          setDragPending(null)
-          setDragStartClient(null)
-          setOrbitEnabled(true)
-          return
+    if (!currentDrag || currentDrag.featureId !== featureId) {
+      // Either no drag for us, or another sketch's DragPlane owns it.
+      return
+    }
+
+    if (currentDrag.type === 'dim_label') {
+      if (onMutation) {
+        const pos: [number, number] = [
+          currentDrag.currentWorld[0] - currentDrag.anchorWorld[0],
+          currentDrag.currentWorld[1] - currentDrag.anchorWorld[1],
+        ]
+        const distance = Math.hypot(pos[0], pos[1])
+        if (distance >= 0.0001) {
+          onMutation({ type: 'set_constraint_pos', featureId: currentDrag.featureId, constraintId: currentDrag.constraintId, pos })
         }
+      }
+      setDrag(null); setDragSnap(null); setOrbitEnabled(true)
+      return
+    }
 
-        if (!currentDrag || currentDrag.featureId !== featureId) {
-          setDrag(null); setDragSnap(null); setOrbitEnabled(true); return
-        }
+    const dragTool = toolRegistry.get('drag')
+    if (!dragTool) {
+      setDrag(null); setDragSnap(null); setOrbitEnabled(true)
+      return
+    }
+    const state = useSketchEditorStore.getState()
+    const context: DragToolContext = {
+      normalSelection: state.normalSelection,
+      internalHoverSelection: state.internalHoverSelection,
+      dynamicSelection: state.dynamicSelection,
+      isPointerDown: state.isPointerDown,
+      activeFeatureId: state.activeFeatureId,
+      hoveredVertexId: state.hoveredVertexId,
+      hoveredVertexPosition: state.hoveredVertexPosition,
+      hoveredSnapKind: state.hoveredSnapKind,
+      onMutation,
+      drag: currentDrag,
+      dragPending: state.dragPending as DragToolContext['dragPending'],
+      dragSnap: state.dragSnap,
+      setDrag,
+      setDragPending,
+      setDragSnap,
+      startClient: state.dragStartClient,
+      setOrbitEnabled,
+    }
+    dragTool.handlers.onPointerUp?.(e, currentDrag.currentWorld, null, context)
+  }
 
-        if (currentDrag.type === 'dim_label') {
-          if (onMutation) {
-            const pos: [number, number] = [
-              currentDrag.currentWorld[0] - currentDrag.anchorWorld[0],
-              currentDrag.currentWorld[1] - currentDrag.anchorWorld[1],
-            ]
-            const distance = Math.hypot(pos[0], pos[1])
-            if (distance >= 0.0001) {
-              onMutation({ type: 'set_constraint_pos', featureId: currentDrag.featureId, constraintId: currentDrag.constraintId, pos })
-            }
-          }
-          setDrag(null); setDragSnap(null); setOrbitEnabled(true)
-        } else {
-          const dragTool = toolRegistry.get('drag')
-          if (dragTool) {
-            const state = useSketchEditorStore.getState()
-            const context: DragToolContext = {
-              normalSelection: state.normalSelection,
-              internalHoverSelection: state.internalHoverSelection,
-              dynamicSelection: state.dynamicSelection,
-              isPointerDown: state.isPointerDown,
-              activeFeatureId: state.activeFeatureId,
-              hoveredVertexId: state.hoveredVertexId,
-              hoveredVertexPosition: state.hoveredVertexPosition,
-              hoveredSnapKind: state.hoveredSnapKind,
-              onMutation,
-              drag: currentDrag,
-              dragPending: state.dragPending as DragToolContext['dragPending'],
-              dragSnap: state.dragSnap,
-              setDrag,
-              setDragPending,
-              setDragSnap,
-              startClient: state.dragStartClient,
-              setOrbitEnabled,
-            }
-            dragTool.handlers.onPointerUp?.(e.nativeEvent, currentDrag.currentWorld, null, context)
-          } else {
-            setDrag(null); setDragSnap(null); setOrbitEnabled(true)
-          }
-        }
-      }}
-    >
-      <planeGeometry args={[10000, 10000]} />
-      <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
-    </mesh>
-  )
+  useEffect(() => { handleUpRef.current = upImpl })
+
+  useEffect(() => {
+    if (!drag && !dragPending) return
+    const handler = (e: PointerEvent) => handleUpRef.current?.(e)
+    window.addEventListener('pointerup', handler)
+    return () => window.removeEventListener('pointerup', handler)
+  }, [drag, dragPending])
+
+  // Math-plane drag (#266): no scene-graph mesh required. The window-level
+  // pointer listeners above own all move/up handling.
+  return null
 }
 
 /** Visual indicator shown at the snap target position while dragging. */
