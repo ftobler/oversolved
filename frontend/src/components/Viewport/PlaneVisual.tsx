@@ -54,7 +54,6 @@ interface PlaneSurfaceProps {
   /** @internal */ borderWidth?: never
   /** @internal */ borderOpacity?: never
   hideMesh?: boolean
-  noRaycast?: boolean
   onPointerOver?: (e: ThreeEvent<PointerEvent>) => void
   onPointerOut?: () => void
   onClick?: (e: ThreeEvent<PointerEvent>) => void
@@ -63,14 +62,14 @@ interface PlaneSurfaceProps {
 const BORDER_WIDTH = 1
 const BORDER_OPACITY = 0.5
 
-export function PlaneSurface({ size, state = 'default', hideMesh, noRaycast, onPointerOver, onPointerOut, onClick }: PlaneSurfaceProps) {
+export function PlaneSurface({ size, state = 'default', hideMesh, onPointerOver, onPointerOut, onClick }: PlaneSurfaceProps) {
   const points = planeBorderPoints(size)
   const { fillColor, fillOpacity, borderColor } = STATE_STYLES[state]
 
   return (
     <>
       {!hideMesh && (
-        <mesh raycast={noRaycast ? () => null : undefined} onPointerOver={onPointerOver} onPointerOut={onPointerOut} onClick={onClick}>
+        <mesh onPointerOver={onPointerOver} onPointerOut={onPointerOut} onClick={onClick}>
           <planeGeometry args={[size, size]} />
           <meshBasicMaterial color={fillColor} transparent opacity={fillOpacity} side={THREE.DoubleSide} depthWrite={false} wireframe={false} />
         </mesh>

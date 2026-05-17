@@ -1,10 +1,10 @@
-import { useRef, useMemo } from 'react'
+import { useRef } from 'react'
 import { Line } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w } from '@/components/sketch_helpers'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, HIT_PIXELS, POINT_HIT_PIXELS, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, POINT_HIT_PIXELS, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
 
 /** 10-gon dot with constant pixel radius regardless of zoom.
  *  If billboard=true the dot always faces the camera.
@@ -29,47 +29,6 @@ export function Dot({ x, y, px, color, billboard = false, renderOrder = 0, depth
       <circleGeometry args={[1, 10]} />
       <meshBasicMaterial color={color} side={THREE.DoubleSide} depthTest={depthTest} transparent={!depthTest} />
     </mesh>
-  )
-}
-
-/** One invisible cylinder per segment. Radius scales to HIT_PIXELS each frame so
- *  coverage is gapless at any zoom. Placed at z=-0.001.
- *
- *  As of 267.5 this component is visual-only — the ID buffer dispatcher
- *  handles all picking. No R3F event props are accepted. */
-export function HitPolyline({ pts, showDebugCollision, showDebugHit }: {
-  pts: [number, number, number][]
-  showDebugCollision?: boolean
-  showDebugHit?: boolean
-}) {
-  const segRefs = useRef<(THREE.Mesh | null)[]>([])
-  const { camera } = useThree()
-
-  // cylinder default axis is Y; rotate so Y aligns with segment direction
-  const segs = useMemo(() => pts.slice(0, -1).map((p1, i) => {
-    const p2 = pts[i + 1]
-    const cx = (p1[0] + p2[0]) / 2, cy = (p1[1] + p2[1]) / 2
-    const len = Math.hypot(p2[0] - p1[0], p2[1] - p1[1])
-    const angle = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) - Math.PI / 2
-    return { cx, cy, len, angle }
-  }), [pts])
-
-  useFrame(() => {
-    const r = HIT_PIXELS * p2w(camera)
-    segRefs.current.forEach((ref, i) => { if (ref) ref.scale.set(r, segs[i].len, r) })
-  })
-
-  return (
-    <>
-      {segs.map((s, i) => s.len > 0 && (
-        <mesh key={i} ref={el => { segRefs.current[i] = el }}
-          position={[s.cx, s.cy, -0.001]} rotation={[0, 0, s.angle]}
-        >
-          <cylinderGeometry args={[1, 1, 1, 8, 1]} />
-          <meshBasicMaterial transparent opacity={(showDebugCollision ?? showDebugHit) ? 0.25 : 0} color="#ff6600" depthWrite={false} side={THREE.DoubleSide} visible={true} />
-        </mesh>
-      ))}
-    </>
   )
 }
 

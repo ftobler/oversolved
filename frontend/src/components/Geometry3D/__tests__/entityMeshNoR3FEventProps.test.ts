@@ -49,13 +49,8 @@ describe('EntityLines.tsx has no R3F event props', () => {
   it('<group> has no event props', () => {
     assertNoForbiddenProps(src, 'group', 'EntityLines')
   })
-  it('HitPolyline usage has no event props', () => {
-    // HitPolyline calls appear as <HitPolyline ... />; check that they don't
-    // pass forbidden props.
-    for (const prop of FORBIDDEN) {
-      expect(src, `EntityLines.tsx: HitPolyline should not receive ${prop}`)
-        .not.toMatch(new RegExp(`HitPolyline[^>]*\\b${prop}=`))
-    }
+  it('does not import or use HitPolyline (removed 267.6)', () => {
+    expect(src).not.toContain('HitPolyline')
   })
 })
 

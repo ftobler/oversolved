@@ -4,7 +4,7 @@ import { isProjectedEntity } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { sampleArc, sampleArcCCW, pointTo3D, allFinite } from '@/components/sketch_helpers'
 import { DashedLine } from '@/components/sketch_dimensions'
-import { VertexDot, HitPolyline, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
+import { VertexDot, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
 
 interface EntityItemProps {
@@ -21,20 +21,11 @@ interface EntityItemProps {
 export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1, isEditing = false, showDebugHit }: EntityItemProps) {
   const entId = `entity:${featureId}:${entityId}`
 
-  // Store reads for selection display, hover, and collision hiding.
+  // Store reads for selection display and hover.
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
   const internalHoverSelection = useSketchEditorStore(s => s.internalHoverSelection)
-  const activeFeatureId = useSketchEditorStore(s => s.activeFeatureId)
-  const drag = useSketchEditorStore(s => s.drag)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const selected = normalSelection.has(entId)
-
-  // REGRESSION PROTECTION: Hide collision geometry during entity drag.
-  // Must check both entityId and featureId to handle multiple sketches.
-  // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
-  const isInactiveSketch = activeFeatureId && featureId !== activeFeatureId
-  const isDraggedEntity = drag && drag.type === 'edge' && drag.entityId === entityId && drag.featureId === featureId
-  const isDraggedVertex = drag && drag.type === 'vertex' && drag.entityId === entityId && drag.featureId === featureId
 
   // Hover state is now driven by the ID-buffer dispatcher (267.5).
   // The dispatcher writes internalHoverSelection → we derive local hover flag.
@@ -51,14 +42,9 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
     const pts = sampleArcCCW(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
     return (
       <>
-        {/* Collision volume must be the click/hover target — never use the thin visual line (Line/DashedLine)
-         * for pointer events, as it provides inconsistent hit detection compared to hover. */}
-        <group>
-          {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && (
-            <HitPolyline pts={pts} showDebugHit={showDebugHit}
-               />
-          )}
-          {construction
+      {/* Picking is handled by the ID buffer (267.5). */}
+      <group>
+        {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
             : <Line points={pts} color={color} lineWidth={lw} depthTest={false} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
         </group>
@@ -76,10 +62,7 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
     return (
       <>
         <group>
-          {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && (
-            <HitPolyline pts={pts} showDebugHit={showDebugHit}
-               />
-          )}
+
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
             : <Line points={pts} color={color} lineWidth={lw} depthTest={false} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
@@ -99,10 +82,7 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
     return (
       <>
         <group>
-          {!isInactiveSketch && !isDraggedEntity && !isDraggedVertex && (
-            <HitPolyline pts={pts} showDebugHit={showDebugHit}
-               />
-          )}
+
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
             : <Line points={pts} color={color} lineWidth={lw} depthTest={false} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}

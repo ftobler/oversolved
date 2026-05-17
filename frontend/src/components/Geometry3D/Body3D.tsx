@@ -420,7 +420,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           >
             {/* Radius 1 — scaled to POINT_HIT_PIXELS screen px by useFrame */}
             <sphereGeometry args={[1, 8, 8]} />
-            {/* Invisible normally (opacity 0), orange 25% in debug — matches HitPolyline. */}
+            {/* Invisible normally (opacity 0), orange 25% in debug. */}
             <meshBasicMaterial
               color="#ff6600"
               transparent

@@ -8,10 +8,6 @@ import { surfaceSelectionId, edgeSelectionId } from '@/components/Geometry3D/uti
 
 type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string }
 
-// Exported for tests: a raycast no-op that prevents the mesh from intercepting any pointer events.
-// eslint-disable-next-line react-refresh/only-export-components
-export function noOpRaycast(): void {}
-
 // eslint-disable-next-line react-refresh/only-export-components
 export function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
   return topology.surfaces.flatMap((surface: TopologySurface) => {
@@ -86,7 +82,6 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
   return (
     <mesh
       position={[0, 0, 0.003]}
-      raycast={isEditing ? noOpRaycast : undefined}
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}
       onClick={handleClick}

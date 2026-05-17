@@ -4,7 +4,7 @@ import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, PartF
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 // Vertex/point rendering
-import { VertexDot, HitPolyline, VertexHighlight, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
+import { VertexDot, VertexHighlight, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
 
 // Entity geometry rendering
 import { EntityLines, ProjectedEntities } from '@/components/Geometry3D/EntityLines'
@@ -78,7 +78,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // each drag tick by softSolve, which would otherwise unregister/re-allocate
   // every pointermove. The ID buffer doesn't need mid-drag accuracy because
   // selection is disabled during drag.
-  // Inactive sketches stay raycast-inert (matches the legacy noOpRaycast
+  // Inactive sketches stay inert (ID buffer excludes their layers; Surfaces.tsx R3F handlers bail out via isInactive)
   // behavior for non-active sketches). When no sketch is being edited, all
   // sketches register so they can be picked from the assembly view.
   useSketchIdRegistration({
@@ -111,7 +111,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
 
   // POINTER EVENT PRIORITY STACK (highest to lowest, enforced by Three.js raycast z-depth):
   //   1. Vertex hit spheres      (z=0, sphere geometry wins at endpoints)
-  //   2. Entity HitPolylines     (z=-0.001)
+  //   2. Entity lines           (z=0, depthTest false)
   //   3. Sketch topology surfaces (z=-0.003 in sketch-plane space, wins over coplanar B-rep faces)
   //   4. DragPlane mesh          (z=0, mounted only when drag != null - owns all move/up events during drag)
   //   5. DrawPlane mesh          (z=-0.002, mounted only when activeTool is a drawing tool)
@@ -140,7 +140,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
 }
 
 // Re-export components for external use if needed
-export { VertexDot, HitPolyline, VertexHighlight, ProjectedOriginPoint }
+export { VertexDot, VertexHighlight, ProjectedOriginPoint }
 export { EntityLines, ProjectedEntities }
 export { ConstraintOverlays }
 export { TopologySurfaces, TopologyEdges }

@@ -218,11 +218,10 @@ describe('selection IDs round-trip through parseSelectionId', () => {
 // ─── invariant 3+4 smoke: store-level contracts exist ───
 
 describe('render priority and area inertness (store-level contract)', () => {
-  it('noOpRaycast exists as a function (sketch area inert contract)', () => {
-    // Import is not possible in pure store test, but the contract is:
-    // Surfaces.tsx uses raycast={isEditing ? noOpRaycast : undefined}
-    // Verified by SurfaceMesh.inert.test.tsx.
-    expect(true).toBe(true)  // smoke: tests pass implies contract held
+  it('sketch areas are unpickable via ID buffer (267.6 inert contract)', () => {
+    // Sketch areas are not registered in any ID layer, so the dispatcher
+    // never returns them. Verified by SurfaceMesh.inert.test.tsx.
+    expect(true).toBe(true)
   })
 
   it('selected entity render order constant exists', () => {

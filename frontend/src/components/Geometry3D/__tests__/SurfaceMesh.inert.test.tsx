@@ -1,54 +1,28 @@
 /**
- * Tests for sketch area mesh raycast transparency.
+ * Tests for sketch area mesh inertness (pick-avoidance).
  *
  * User invariant (solver_arch.agent.md §Priority stack):
  *   Sketch areas are decoration only and MUST NOT intercept pointer events
  *   while the sketch is being edited. Sketch geometry (lines, vertices) must
  *   receive drag and hover events even when they lie inside a filled area.
+ *
+ * As of 267.6 the `noOpRaycast` raycaster-level shim is removed. Area
+ * inertness is now guaranteed by the ID buffer: sketch areas are never
+ * registered in any ID layer, so the dispatcher never returns them as
+ * picked. The SurfaceMesh component continues to have R3F event handlers
+ * for hover/click but these are only enabled for non-editing sketches.
  */
 import { describe, it, expect } from 'vitest'
 
-describe('SurfaceMesh raycast transparency', () => {
-  it('noOpRaycast is a function that returns nothing', async () => {
-    // The mesh prop `raycast={noOpRaycast}` suppresses Three.js hit detection.
-    // Three.js calls raycast(raycaster, intersects) and expects push() calls
-    // on intersects for hits. noOpRaycast must not push anything.
-    const { noOpRaycast } = await import('@/components/Geometry3D/Surfaces')
-    expect(typeof noOpRaycast).toBe('function')
-    expect(noOpRaycast()).toBeUndefined()
-  })
-
-  it('noOpRaycast does not push intersections so raycaster finds geometry behind the area', async () => {
-    // Calling noOpRaycast with a fake raycaster and intersects array must not
-    // push any intersection -- the area becomes invisible to the raycaster,
-    // allowing sketch lines and vertices behind it to receive drag events.
-    const { noOpRaycast } = await import('@/components/Geometry3D/Surfaces')
-    const intersects: unknown[] = []
-    noOpRaycast()
-    expect(intersects).toHaveLength(0)
+describe('SurfaceMesh inertness (post-267.6)', () => {
+  it('Surfaces.tsx no longer exports noOpRaycast', async () => {
+    const mod = await import('@/components/Geometry3D/Surfaces')
+    expect('noOpRaycast' in mod).toBe(false)
   })
 
   it('sketch geometry renderOrder exceeds area mesh renderOrder while editing', async () => {
-    // RENDER_ORDER_EDITING is applied to active sketch lines via EntityLines.
-    // SurfaceMesh has no explicit renderOrder (defaults to 0 in Three.js).
-    // This ensures areas render visually behind sketch geometry on the same plane.
     const { RENDER_ORDER_EDITING } = await import('@/utils/partColors')
     const AREA_MESH_RENDER_ORDER = 0
     expect(RENDER_ORDER_EDITING).toBeGreaterThan(AREA_MESH_RENDER_ORDER)
-  })
-
-  it('raycast prop is noOpRaycast when isEditing, undefined otherwise', async () => {
-    // Pure prop selection logic -- verified without rendering.
-    // The component uses: raycast={isEditing ? noOpRaycast : undefined}
-    // We confirm the two branches behave correctly:
-    const { noOpRaycast } = await import('@/components/Geometry3D/Surfaces')
-
-    const isEditing = true
-    const rayCastWhenEditing = isEditing ? noOpRaycast : undefined
-    expect(rayCastWhenEditing).toBe(noOpRaycast)
-
-    const notEditing = false
-    const rayCastWhenNotEditing = notEditing ? noOpRaycast : undefined
-    expect(rayCastWhenNotEditing).toBeUndefined()
   })
 })

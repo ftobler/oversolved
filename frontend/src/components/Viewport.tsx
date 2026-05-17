@@ -166,7 +166,6 @@ export function SketchPlaneDisplay({ planeQuery, size, sketchLabel }: SketchPlan
     <group rotation={rotation}>
       <PlaneSurface
         size={size}
-        noRaycast
       />
       {sketchLabel && (
         <PlaneLabel x={-size/2} y={size/2}>
