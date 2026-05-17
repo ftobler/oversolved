@@ -290,7 +290,7 @@ export default function Part() {
     editingFeatureId,
     activeSketchFeatureId: activeSketchFeatureId ?? null,
     visibleFeatures: visibleFeaturesWithEdit,
-    visibleBodies: effectiveVisibleBodies ?? new Set(),
+    visibleBodies: effectiveVisibleBodies,
     partLabels,
     solveResults: solveResults ?? {},
     bodies: bodies ?? {},

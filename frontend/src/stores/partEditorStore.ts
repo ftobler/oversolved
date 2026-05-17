@@ -10,7 +10,7 @@ export interface PartEditorData {
   editingFeatureId: string | null
   activeSketchFeatureId: string | null
   visibleFeatures: Set<string>
-  visibleBodies: Set<string>
+  visibleBodies: Set<string> | undefined
   partLabels: Record<string, string>
   solveResults: Record<string, unknown>
   bodies: Record<string, BodyResult>
@@ -33,7 +33,7 @@ export const DEFAULT_PART_EDITOR_DATA: PartEditorData = {
   editingFeatureId: null,
   activeSketchFeatureId: null,
   visibleFeatures: new Set(),
-  visibleBodies: new Set(),
+  visibleBodies: undefined,
   partLabels: {},
   solveResults: {},
   bodies: {},

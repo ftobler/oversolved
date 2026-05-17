@@ -52,6 +52,33 @@ describe('getBodiesToRender', () => {
     const items = getBodiesToRender(bodies, features, undefined, undefined)
     expect(items).toHaveLength(1)
   })
+
+  it('keeps rendering when created_by does not match any feature', () => {
+    const orphanBodies: Record<string, BodyResult> = {
+      body_orphan: {
+        id: 'body_orphan',
+        created_by: 'missing_feature',
+        modified_by: [],
+        mesh: { vertices: [], normals: [], faces: [], face_data: [], face_queries: [] },
+      } as unknown as BodyResult,
+    }
+    const items = getBodiesToRender(orphanBodies, features, undefined, undefined)
+    expect(items).toHaveLength(1)
+    expect(items[0].featureId).toBe('missing_feature')
+  })
+
+  it('falls back featureId to bodyId when created_by is missing', () => {
+    const noCreatorBodies: Record<string, BodyResult> = {
+      body_no_creator: {
+        id: 'body_no_creator',
+        modified_by: [],
+        mesh: { vertices: [], normals: [], faces: [], face_data: [], face_queries: [] },
+      } as unknown as BodyResult,
+    }
+    const items = getBodiesToRender(noCreatorBodies, features, undefined, undefined)
+    expect(items).toHaveLength(1)
+    expect(items[0].featureId).toBe('body_no_creator')
+  })
 })
 
 describe('computeEffectiveVisibleBodies', () => {

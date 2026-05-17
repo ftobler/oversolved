@@ -22,6 +22,7 @@ import { IdPickingDriver, DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYE
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
 import type { IdPipeline } from '@/picking'
 import { useIdBufferPointerDispatch, wasLastClickConsumedByIdDispatch } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
+import { useRubberBandSelect } from '@/components/Viewport/useRubberBandSelect'
 import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
 import { getBodiesToRender, getSketchesToRender, getPreviewBodies } from '@/components/Viewport/bodyUtils'
@@ -460,6 +461,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // Layer 3B: clear isPointerDown and dynamicSelection on any pointer-up (including off-canvas releases).
   useSelectionPointerUpCleanup()
 
+  // 268: rubber-band drag-box selection on empty canvas space.
+  const rubberBand = useRubberBandSelect(canvasRef, glRef)
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)
     pointerDownButton.current = e.button
@@ -467,7 +471,23 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       pointerDownPos.current = [e.clientX, e.clientY]
     }
     if (e.button !== 2) closeContextMenu()
-  }, [closeContextMenu])
+
+    // 268: attempt rubber-band on left-click in empty space.
+    if (e.button === 0) {
+      const s = useSketchEditorStore.getState()
+      const hasHover = s.hovered3DSurfaceId
+        || s.hoveredVertexId
+        || s.hoveredEntityId
+        || s.hoveredPlaneId
+        || s.hoveredEdgeId
+        || s.hoveredConstraintEntityIds.size > 0
+      if (!hasHover && !s.activeFeatureId) {
+        const started = rubberBand.onPointerDown(e, false)
+        // If started (no hit), don't prevent default — let pointer-up determine click vs drag.
+        void started
+      }
+    }
+  }, [closeContextMenu, rubberBand])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)
@@ -482,12 +502,18 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     wasPointerDrag.current = wasDrag
     pointerDownPos.current = null
 
+    // 268: commit rubber-band selection on drag.
+    if (wasDrag && rubberBand.state.dragging) {
+      rubberBand.onPointerUp()
+      return
+    }
+
     if (wasDrag) return
 
     if (e.button === 2 && onRightClick) {
       onRightClick([e.clientX, e.clientY])
     }
-  }, [onRightClick])
+  }, [onRightClick, rubberBand])
 
   const showOrigin = isActive('Origin', features, rollbackPosition, visibleFeatures)
   const showFront  = isActive('Front',  features, rollbackPosition, visibleFeatures)
@@ -561,6 +587,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       style={{ position: 'relative', width: '100%', height: '100%', touchAction: 'none' }}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
+      onPointerMove={rubberBand.onPointerMove}
       onContextMenu={e => { e.preventDefault(); }}
     >
       <Canvas
@@ -641,8 +668,22 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         )}
       </Canvas>
 
+      {/* 268: rubber-band drag-box selection overlay */}
+      {rubberBand.state.dragging && rubberBand.state.rect && (
+        <div style={{
+          position: 'absolute',
+          left: rubberBand.state.rect.x,
+          top: rubberBand.state.rect.y,
+          width: rubberBand.state.rect.w,
+          height: rubberBand.state.rect.h,
+          border: '1px solid #ff9800',
+          backgroundColor: 'rgba(255, 152, 0, 0.1)',
+          pointerEvents: 'none',
+          zIndex: 10,
+        }} />
+      )}
 
-<CubeGizmoCanvas canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
+      <CubeGizmoCanvas canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
       <ContextMenuDialog />
     </div>
   )

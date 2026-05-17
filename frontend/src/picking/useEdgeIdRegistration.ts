@@ -40,8 +40,14 @@ export function useEdgeIdRegistration(params: {
     }
 
     const bodyKey = `${featureId}/${bodyId}`
-    pipeline.edgeLayer.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries })
-    pipeline.markDirty()
+    try {
+      pipeline.edgeLayer.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries })
+      pipeline.markDirty()
+    } catch (err) {
+      // Picking must never break visible rendering.
+      console.warn('Edge ID registration failed; continuing without edge picking for this body', { bodyKey, err })
+      return
+    }
 
     return () => {
       pipeline.edgeLayer.unregisterBody(bodyKey)

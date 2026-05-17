@@ -85,8 +85,10 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
   const lastCamMatrix = useRef<Float32Array>(new Float32Array(16))
   const lastCamMatrixValid = useRef(false)
   const cameraMovedThisFrame = useRef(false)
+  const renderFailed = useRef(false)
 
   useFrame(({ camera }) => {
+    if (renderFailed.current) return
     const m = camera.matrixWorld.elements
     let changed = false
     if (!lastCamMatrixValid.current) {
@@ -107,7 +109,13 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
     } else {
       cameraMovedThisFrame.current = false
     }
-    pipeline.renderIfDirty(gl, camera)
+    try {
+      pipeline.renderIfDirty(gl, camera)
+    } catch (err) {
+      // Never let id-buffer failures take down visible rendering.
+      renderFailed.current = true
+      console.warn('ID pipeline render failed; disabling id-buffer picking for this session', err)
+    }
   }, 1)  // priority > 0 -> runs after default render
 
   return null

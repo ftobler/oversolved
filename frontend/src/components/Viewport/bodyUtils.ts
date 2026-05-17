@@ -57,7 +57,10 @@ export interface BodyRenderItem {
 function isInActiveRange(id: string, features: Feature[] | undefined, rollbackPos: number | undefined): boolean {
   if (!features || features.length === 0) return true
   const idx = features.findIndex(f => f.id === id)
-  if (idx < 0) return false
+  // Keep rendering bodies even when `created_by` can't be resolved
+  // (e.g. imported/legacy payloads). Hiding unknown creators can blank
+  // the viewport despite valid body meshes.
+  if (idx < 0) return true
   return rollbackPos === undefined || idx < rollbackPos
 }
 
@@ -74,10 +77,11 @@ export function getBodiesToRender(
     const createdBy = body.created_by
     if (!isInActiveRange(createdBy, features, rollbackPosition)) continue
     if (!body.mesh) continue
+    const featureId = createdBy || bodyId
 
     items.push({
       key: bodyId,
-      featureId: createdBy,
+      featureId,
       bodyId,
       mesh: body.mesh,
       edges: body.edges ?? [],
@@ -107,13 +111,15 @@ export function getPreviewBodies(
 
   for (const [bodyId, body] of Object.entries(bodies)) {
     const createdBy = body.created_by
+    const featureId = createdBy || bodyId
     const idx = features?.findIndex(f => f.id === createdBy) ?? -1
-    if (idx < 0 || idx < previewFrom) continue
+    // Unknown creator ids are treated as non-preview so bodies remain visible.
+    if (idx >= 0 && idx < previewFrom) continue
     if (!body.mesh) continue
 
     items.push({
       key: bodyId,
-      featureId: createdBy,
+      featureId,
       bodyId,
       mesh: body.mesh,
       edges: body.edges ?? [],

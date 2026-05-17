@@ -44,13 +44,19 @@ export function useFaceIdRegistration(params: {
       ? triangle_to_face
       : Uint32Array.from(triangle_to_face)
 
-    pipeline.faceLayer.registerBody({
-      bodyKey,
-      positions: nonIndexed,
-      triangleToFace: tri2face,
-      faceQueries: face_queries,
-    })
-    pipeline.markDirty()
+    try {
+      pipeline.faceLayer.registerBody({
+        bodyKey,
+        positions: nonIndexed,
+        triangleToFace: tri2face,
+        faceQueries: face_queries,
+      })
+      pipeline.markDirty()
+    } catch (err) {
+      // Picking must never break visible rendering.
+      console.warn('Face ID registration failed; continuing without face picking for this body', { bodyKey, err })
+      return
+    }
 
     return () => {
       pipeline.faceLayer.unregisterBody(bodyKey)

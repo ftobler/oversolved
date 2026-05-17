@@ -22,8 +22,14 @@ export function useVertexIdRegistration(params: {
     if (!vertexQueries || vertexQueries.length === 0) return
 
     const bodyKey = `${featureId}/${bodyId}`
-    pipeline.vertexLayer.registerBody({ bodyKey, vertices, vertexQueries })
-    pipeline.markDirty()
+    try {
+      pipeline.vertexLayer.registerBody({ bodyKey, vertices, vertexQueries })
+      pipeline.markDirty()
+    } catch (err) {
+      // Picking must never break visible rendering.
+      console.warn('Vertex ID registration failed; continuing without vertex picking for this body', { bodyKey, err })
+      return
+    }
 
     return () => {
       pipeline.vertexLayer.unregisterBody(bodyKey)
