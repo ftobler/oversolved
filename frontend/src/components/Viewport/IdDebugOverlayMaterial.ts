@@ -19,7 +19,7 @@ export function buildOverlayMaterial(): THREE.ShaderMaterial {
     depthWrite: false,
     uniforms: {
       tId: { value: null as THREE.Texture | null },
-      opacity: { value: 0.6 },
+      opacity: { value: 1.0 },
     },
     vertexShader: `
       out vec2 vUv;

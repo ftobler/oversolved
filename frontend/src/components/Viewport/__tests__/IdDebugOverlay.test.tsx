@@ -46,7 +46,7 @@ describe('IdDebugOverlay', () => {
     expect(mat.fragmentShader).toContain('hsv2rgb')
     expect(mat.fragmentShader).toContain('discard')
     expect(mat.uniforms.tId.value).toBeNull()
-    expect(mat.uniforms.opacity.value).toBeCloseTo(0.6)
+    expect(mat.uniforms.opacity.value).toBeCloseTo(1.0)
     mat.dispose()
   })
 

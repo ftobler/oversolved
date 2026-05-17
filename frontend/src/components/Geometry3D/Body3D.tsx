@@ -42,7 +42,7 @@ interface Body3DProps {
   interactive?: boolean
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, transparency = 0, metalness = 0.3, interactive = true }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit: _showDebugHit = false, color, transparency = 0, metalness = 0.3, interactive = true }: Body3DProps) {
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
@@ -420,11 +420,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           >
             {/* Radius 1 — scaled to POINT_HIT_PIXELS screen px by useFrame */}
             <sphereGeometry args={[1, 8, 8]} />
-            {/* Invisible normally (opacity 0), orange 25% in debug. */}
             <meshBasicMaterial
-              color="#ff6600"
               transparent
-              opacity={showDebugHit ? 0.25 : 0}
+              opacity={0}
               depthWrite={false}
             />
           </instancedMesh>
@@ -472,12 +470,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           </lineSegments>
         )
       })}
-      {/* Debug: show all edge hit zones as orange lines with depthTest=false so occluded edges are visible. */}
-      {showDebugHit && edges.length > 0 && (
-        <lineSegments geometry={edgeGeometry} renderOrder={RENDER_ORDER_HIGHLIGHT + 1}>
-          <lineBasicMaterial color="#ff6600" transparent opacity={0.6} depthTest={false} />
-        </lineSegments>
-      )}
     </group>
   )
 }

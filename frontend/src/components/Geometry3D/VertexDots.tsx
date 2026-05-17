@@ -58,10 +58,10 @@ export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px:
  *
  *  As of 267.5 the ID buffer dispatcher handles all picking; this component
  *  is visual-only — no R3F event props. */
-export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, showDebugHit }: {
+export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
   x: number; y: number; px: number; baseColor: string
   featureId?: string; entityId?: string; vertexKey?: string
-  isEditing?: boolean; showDebugHit?: boolean
+  isEditing?: boolean
 }) {
   const hitRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
@@ -95,7 +95,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
       {!isInactiveSketch && !isDraggedVertex && (
         <mesh ref={hitRef} position={[x, y, 0]}>
           <sphereGeometry args={[1, 8, 8]} />
-          <meshBasicMaterial transparent opacity={showDebugHit ? 0.35 : 0} color="#00aaff" depthWrite={false} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       )}
     </group>
