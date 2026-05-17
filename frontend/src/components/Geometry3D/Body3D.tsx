@@ -23,7 +23,7 @@ import {
   getEdgeSegmentCounts,
   faceCount,
 } from '@/components/Geometry3D/bodyGeometry'
-import { useFaceIdRegistration } from '@/picking'
+import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
 
 // 2D point-to-segment distance in pixels for screen-space edge proximity.
 function distToSegment2D(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
@@ -105,6 +105,8 @@ interface Body3DProps {
 export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, transparency = 0, metalness = 0.3, interactive = true }: Body3DProps) {
   const { camera, gl } = useThree()
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible })
+  useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
+  useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
   const hovered3DSurfaceId = useSketchEditorStore(s => s.hovered3DSurfaceId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)

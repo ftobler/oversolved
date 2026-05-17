@@ -23,6 +23,12 @@ export interface IdLayer {
   readonly scene: THREE.Scene
   /** True when the active tool excludes this layer entirely. */
   inertWhen?: () => boolean
+  /**
+   * Optional pre-render hook. The pipeline calls this with the current
+   * render-target dimensions so the layer can update viewport-dependent
+   * shader uniforms (screen-space fattening, depth bias).
+   */
+  onBeforeRender?(width: number, height: number): void
   /** Dispose all GPU resources owned by the layer. */
   dispose(): void
 }

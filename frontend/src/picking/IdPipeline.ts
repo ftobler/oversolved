@@ -3,6 +3,8 @@ import { IdRegistry } from './IdRegistry'
 import { IdRenderTarget } from './IdRenderTarget'
 import { IdResolver, type ResolveOptions, type ResolvedHit } from './IdResolver'
 import { FaceIdLayer } from './FaceIdLayer'
+import { EdgeIdLayer } from './EdgeIdLayer'
+import { VertexIdLayer } from './VertexIdLayer'
 import type { IdLayer } from './IdLayer'
 
 export const DEFAULT_WINDOW_SIZE = 17
@@ -28,6 +30,8 @@ export class IdPipeline {
   readonly target: IdRenderTarget
   readonly resolver: IdResolver
   readonly faceLayer: FaceIdLayer
+  readonly edgeLayer: EdgeIdLayer
+  readonly vertexLayer: VertexIdLayer
   private layers: IdLayer[]
   private windowSize: number
 
@@ -36,8 +40,12 @@ export class IdPipeline {
     this.target = new IdRenderTarget(opts.width, opts.height)
     this.resolver = new IdResolver(this.registry)
     this.faceLayer = new FaceIdLayer(this.registry)
+    this.edgeLayer = new EdgeIdLayer(this.registry)
+    this.vertexLayer = new VertexIdLayer(this.registry)
     this.layers = []
     this.addLayer(this.faceLayer)
+    this.addLayer(this.edgeLayer)
+    this.addLayer(this.vertexLayer)
     this.windowSize = opts.windowSize ?? DEFAULT_WINDOW_SIZE
   }
 
@@ -83,21 +91,36 @@ export class IdPipeline {
     renderer.setClearColor(0x000000, 0)  // alpha=0 -> empty
     renderer.clear(true, true, false)
 
+    const w = this.target.getWidth()
+    const h = this.target.getHeight()
+    let firstLayer = true
+
     for (const layer of this.layers) {
       if (layer.inertWhen?.()) continue
       if (layer.scene.children.length === 0) continue
 
+      layer.onBeforeRender?.(w, h)
+
       switch (layer.zPolicy) {
         case 'clear-then-fresh':
-          renderer.clearDepth()
+          // Buffer-level clear at the top of render() already provides a
+          // fresh depth attachment for the first layer; clear again only
+          // when a later layer requests a fresh depth window.
+          if (!firstLayer) renderer.clearDepth()
           break
         case 'no-depth':
+          // Vertex-style layers run with depthTest disabled at the material
+          // level, but we still clear depth so any future variant that does
+          // want depth gets a fresh slate.
           renderer.clearDepth()
           break
         case 'depth-test-against-prev':
+          // Reuse the previous layer's depth -- this is how edges get
+          // culled by faces. No clear.
           break
       }
       renderer.render(layer.scene, camera)
+      firstLayer = false
     }
 
     renderer.setRenderTarget(prevTarget)
@@ -179,7 +202,7 @@ export class IdPipeline {
   }
 
   dispose(): void {
-    this.faceLayer.dispose()
+    for (const layer of this.layers) layer.dispose()
     this.target.dispose()
     this.registry.clear()
   }
