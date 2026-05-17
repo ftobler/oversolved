@@ -7,6 +7,7 @@ import { p2w } from '@/components/sketch_helpers'
 import { Arrowhead, ArrowTail } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import type { DimInteraction } from './useDimInteraction'
+import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 
 export function RadiusDimension({ cid, dim, interaction }: {
   cid: string
@@ -70,6 +71,12 @@ export function RadiusDimension({ cid, dim, interaction }: {
   const isInside = labelDist <= r
 
   const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
+
+  useDimensionLabelIdRegistration({
+    constraintId: cid,
+    position: [labelX, labelY, 0.001],
+    enabled: !isDragged,
+  })
 
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return
@@ -175,6 +182,12 @@ export function DiameterDimension({ cid, dim, interaction }: {
   const udirY = diamLen > 0 ? (ep2y - ep1y) / diamLen : 0
 
   const label = `Ø${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
+
+  useDimensionLabelIdRegistration({
+    constraintId: cid,
+    position: [labelX, labelY, 0.001],
+    enabled: !isDragged,
+  })
 
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return

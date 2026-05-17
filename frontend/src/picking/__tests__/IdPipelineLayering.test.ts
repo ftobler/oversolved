@@ -10,7 +10,7 @@ describe('IdPipeline layering', () => {
     const layers = p.getLayers()
     expect(layers.map(l => l.name)).toEqual([
       FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
-      'planeFace', 'sketchEntity', 'sketchVertex', 'originMarker',
+      'planeFace', 'sketchEntity', 'sketchVertex', 'originMarker', 'dimensionLabel',
     ])
     p.dispose()
   })
@@ -25,12 +25,13 @@ describe('IdPipeline layering', () => {
     expect(layers[4].zPolicy).toBe('clear-then-fresh')          // sketchEntity
     expect(layers[5].zPolicy).toBe('no-depth')                  // sketchVertex
     expect(layers[6].zPolicy).toBe('no-depth')                  // originMarker
+    expect(layers[7].zPolicy).toBe('no-depth')                  // dimensionLabel
     p.dispose()
   })
 
   it('addLayer keeps the array sorted by priority', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
-    expect(p.getLayers().map(l => l.priority)).toEqual([0, 10, 20, 30, 40, 50, 60])
+    expect(p.getLayers().map(l => l.priority)).toEqual([0, 10, 20, 30, 40, 50, 60, 70])
     p.dispose()
   })
 
@@ -44,5 +45,6 @@ describe('IdPipeline layering', () => {
     expect(p.sketchEntityLayer.bodyCount()).toBe(0)
     expect(p.sketchVertexLayer.bodyCount()).toBe(0)
     expect(p.originLayer.bodyCount()).toBe(0)
+    expect(p.dimensionLabelLayer.bodyCount()).toBe(0)
   })
 })

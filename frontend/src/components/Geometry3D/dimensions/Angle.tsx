@@ -7,6 +7,7 @@ import { p2w, sampleArc } from '@/components/sketch_helpers'
 import { Arrowhead, ArrowTail } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import type { DimInteraction } from './useDimInteraction'
+import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 
 export function AngleDimension({ cid, dim, interaction }: {
   cid: string
@@ -126,6 +127,12 @@ export function AngleDimension({ cid, dim, interaction }: {
   const tanEndInX   =  Math.sin(a1r) * arcSign, tanEndInY   = -Math.cos(a1r) * arcSign
 
   const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
+
+  useDimensionLabelIdRegistration({
+    constraintId: cid,
+    position: [labelX, labelY, 0.001],
+    enabled: !isDragged,
+  })
 
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return

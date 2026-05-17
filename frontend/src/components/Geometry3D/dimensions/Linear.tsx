@@ -7,6 +7,7 @@ import { p2w } from '@/components/sketch_helpers'
 import { Arrowhead, ArrowTail } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import type { DimInteraction } from './useDimInteraction'
+import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 
 export function LinearDimension({ cid, dim, dimOffset, interaction }: {
   cid: string
@@ -75,6 +76,12 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
   const isInside = tLabel >= 0 && tLabel <= dimLen
 
   const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
+
+  useDimensionLabelIdRegistration({
+    constraintId: cid,
+    position: [labelX, labelY, 0.001],
+    enabled: !isDragged,
+  })
 
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return

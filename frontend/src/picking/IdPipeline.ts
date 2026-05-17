@@ -13,9 +13,13 @@ export const PLANE_LAYER_NAME = 'planeFace'
 export const SKETCH_ENTITY_LAYER_NAME = 'sketchEntity'
 export const SKETCH_VERTEX_LAYER_NAME = 'sketchVertex'
 export const ORIGIN_LAYER_NAME = 'originMarker'
+export const DIMENSION_LABEL_LAYER_NAME = 'dimensionLabel'
 export const SKETCH_ENTITY_FAT_PIXELS = 8
 export const SKETCH_VERTEX_FAT_PIXELS = 12
 export const ORIGIN_FAT_PIXELS = 14
+// Matches the visible-pass hit radius after Linear.tsx's per-frame
+// `30 * p2w(camera)` scale on the unit circleGeometry hit mesh.
+export const DIMENSION_LABEL_FAT_PIXELS = 18
 
 export const DEFAULT_WINDOW_SIZE = 17
 
@@ -59,6 +63,7 @@ export class IdPipeline {
   readonly sketchEntityLayer: EdgeIdLayer
   readonly sketchVertexLayer: VertexIdLayer
   readonly originLayer: VertexIdLayer
+  readonly dimensionLabelLayer: VertexIdLayer
   private layers: IdLayer[]
   private windowSize: number
   private renderCount = 0
@@ -94,6 +99,10 @@ export class IdPipeline {
       name: ORIGIN_LAYER_NAME, priority: 60, zPolicy: 'no-depth',
       fatPixels: ORIGIN_FAT_PIXELS,
     })
+    this.dimensionLabelLayer = new VertexIdLayer(this.registry, {
+      name: DIMENSION_LABEL_LAYER_NAME, priority: 70, zPolicy: 'no-depth',
+      fatPixels: DIMENSION_LABEL_FAT_PIXELS,
+    })
 
     this.layers = []
     this.addLayer(this.faceLayer)
@@ -103,6 +112,7 @@ export class IdPipeline {
     this.addLayer(this.sketchEntityLayer)
     this.addLayer(this.sketchVertexLayer)
     this.addLayer(this.originLayer)
+    this.addLayer(this.dimensionLabelLayer)
 
     this.windowSize = opts.windowSize ?? DEFAULT_WINDOW_SIZE
     this.pickDuringCameraMotion = opts.pickDuringCameraMotion ?? false
