@@ -8,6 +8,7 @@ import { Arrowhead, ArrowTail } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
+import { useDimDispatchRegistration } from './useDimDispatchRegistration'
 
 export function RadiusDimension({ cid, dim, interaction }: {
   cid: string
@@ -77,6 +78,7 @@ export function RadiusDimension({ cid, dim, interaction }: {
     position: [labelX, labelY, 0.001],
     enabled: !isDragged,
   })
+  useDimDispatchRegistration(cid, { onOver, onOut, onClick })
 
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return
@@ -188,6 +190,7 @@ export function DiameterDimension({ cid, dim, interaction }: {
     position: [labelX, labelY, 0.001],
     enabled: !isDragged,
   })
+  useDimDispatchRegistration(cid, { onOver, onOut, onClick })
 
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return

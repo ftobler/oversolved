@@ -18,9 +18,10 @@ import CameraLight from '@/components/Viewport/CameraLight'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
 import ContextMenuDialog from '@/components/ContextMenuDialog'
-import { IdPickingDriver } from '@/picking'
+import { IdPickingDriver, DIMENSION_LABEL_LAYER_NAME } from '@/picking'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
 import type { IdPipeline } from '@/picking'
+import { useIdBufferPointerDispatch } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
 import { getBodiesToRender, getSketchesToRender, getPreviewBodies } from '@/components/Viewport/bodyUtils'
@@ -217,6 +218,12 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   bodiesRef.current = bodies
   const idPipelineRef = useRef<IdPipeline | null>(null)
   const onIdPipelineReady = useCallback((p: IdPipeline) => { idPipelineRef.current = p }, [])
+
+  // 267.2: canvas-level pointer dispatcher backed by the ID buffer. Slice
+  // scope consumes `dimensionLabel` only; per-mesh R3F handlers on every
+  // other layer stay live. Dimension label R3F handlers come off in 267.3.
+  const consumedLayers = useMemo(() => new Set([DIMENSION_LABEL_LAYER_NAME]), [])
+  useIdBufferPointerDispatch({ glRef, consumedLayers })
 
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
     glRef.current = state.gl
