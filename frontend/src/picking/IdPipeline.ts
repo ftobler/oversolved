@@ -184,51 +184,61 @@ export class IdPipeline {
     const prevClearColor = new THREE.Color()
     renderer.getClearColor(prevClearColor)
     const prevClearAlpha = renderer.getClearAlpha()
+    let completed = false
+    try {
+      renderer.setRenderTarget(this.target.target)
+      renderer.autoClear = false
+      renderer.setClearColor(0x000000, 0)  // alpha=0 -> empty
+      renderer.clear(true, true, false)
 
-    renderer.setRenderTarget(this.target.target)
-    renderer.autoClear = false
-    renderer.setClearColor(0x000000, 0)  // alpha=0 -> empty
-    renderer.clear(true, true, false)
+      const w = this.target.getWidth()
+      const h = this.target.getHeight()
+      let firstLayer = true
 
-    const w = this.target.getWidth()
-    const h = this.target.getHeight()
-    let firstLayer = true
+      for (const layer of this.layers) {
+        if (layer.inertWhen?.()) continue
+        if (layer.scene.children.length === 0) continue
+        try {
+          layer.onBeforeRender?.(w, h)
 
-    for (const layer of this.layers) {
-      if (layer.inertWhen?.()) continue
-      if (layer.scene.children.length === 0) continue
-
-      layer.onBeforeRender?.(w, h)
-
-      switch (layer.zPolicy) {
-        case 'clear-then-fresh':
-          // Buffer-level clear at the top of render() already provides a
-          // fresh depth attachment for the first layer; clear again only
-          // when a later layer requests a fresh depth window.
-          if (!firstLayer) renderer.clearDepth()
-          break
-        case 'no-depth':
-          // Vertex-style layers run with depthTest disabled at the material
-          // level, but we still clear depth so any future variant that does
-          // want depth gets a fresh slate.
-          renderer.clearDepth()
-          break
-        case 'depth-test-against-prev':
-          // Reuse the previous layer's depth -- this is how edges get
-          // culled by faces. No clear.
-          break
+          switch (layer.zPolicy) {
+            case 'clear-then-fresh':
+              // Buffer-level clear at the top of render() already provides a
+              // fresh depth attachment for the first layer; clear again only
+              // when a later layer requests a fresh depth window.
+              if (!firstLayer) renderer.clearDepth()
+              break
+            case 'no-depth':
+              // Vertex-style layers run with depthTest disabled at the material
+              // level, but we still clear depth so any future variant that does
+              // want depth gets a fresh slate.
+              renderer.clearDepth()
+              break
+            case 'depth-test-against-prev':
+              // Reuse the previous layer's depth -- this is how edges get
+              // culled by faces. No clear.
+              break
+          }
+          renderer.render(layer.scene, camera)
+          firstLayer = false
+        } catch (err) {
+          // Skip only the failing layer; keep the pipeline alive.
+          console.warn(`ID layer render failed: ${layer.name}`, err)
+        }
       }
-      renderer.render(layer.scene, camera)
-      firstLayer = false
+
+      completed = true
+    } finally {
+      renderer.setRenderTarget(prevTarget)
+      renderer.autoClear = prevAutoClear
+      renderer.setClearColor(prevClearColor, prevClearAlpha)
     }
 
-    renderer.setRenderTarget(prevTarget)
-    renderer.autoClear = prevAutoClear
-    renderer.setClearColor(prevClearColor, prevClearAlpha)
-
-    this.target.markClean()
-    this.registry.bumpCycle()
-    this.renderCount++
+    if (completed) {
+      this.target.markClean()
+      this.registry.bumpCycle()
+      this.renderCount++
+    }
   }
 
   renderIfDirty(renderer: THREE.WebGLRenderer, camera: THREE.Camera): boolean {

@@ -32,6 +32,7 @@ import type { SketchData } from '@/types/cad'
 const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 
 const INITIAL_ZOOM = 200
+const ENABLE_ID_BUFFER_PICKING = false
 
 export interface ViewportProps {
   resetTrigger?: number
@@ -221,11 +222,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   // 267.2/267.4/267.5: canvas-level pointer dispatcher backed by the ID buffer.
   // Consumes dimensionLabel, B-rep face/edge/vertex, sketch, plane, and origin layers.
-  const consumedLayers = useMemo(() => new Set([
-    DIMENSION_LABEL_LAYER_NAME,
-    FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
-    PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
-  ]), [])
+  const consumedLayers = useMemo(() => (ENABLE_ID_BUFFER_PICKING
+    ? new Set([
+      DIMENSION_LABEL_LAYER_NAME,
+      FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+      PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
+    ])
+    : new Set<string>()), [])
   useIdBufferPointerDispatch({ glRef, consumedLayers })
 
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
@@ -609,7 +612,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={-10} far={1000} /* clipping planes */ />
         <SceneController resetTrigger={resetTrigger} canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
 
-        <IdPickingDriver onReady={onIdPipelineReady} />
+        {ENABLE_ID_BUFFER_PICKING && <IdPickingDriver onReady={onIdPipelineReady} />}
         {showDebugHit && <IdDebugOverlay />}
 
         <CameraLight />
