@@ -18,4 +18,15 @@ describe('getToolAllowedLayers', () => {
       expect(allowed!.has(DIMENSION_LABEL_LAYER_NAME)).toBe(false)
     }
   })
+
+  it('permits B-rep / sketch / plane picks under drawing tools', () => {
+    const allowed = getToolAllowedLayers('line')!
+    expect(allowed.has('face')).toBe(true)
+    expect(allowed.has('edge')).toBe(true)
+    expect(allowed.has('vertex')).toBe(true)
+    expect(allowed.has('planeFace')).toBe(true)
+    expect(allowed.has('sketchEntity')).toBe(true)
+    expect(allowed.has('sketchVertex')).toBe(true)
+    expect(allowed.has('originMarker')).toBe(true)
+  })
 })

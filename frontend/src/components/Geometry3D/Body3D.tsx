@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react'
-import { useFrame, useThree } from '@react-three/fiber'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Mesh3D, EdgeData } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -10,7 +10,7 @@ import {
   COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL,
   COLOR_SELECTED, COLOR_HOVER,
   blendWhite,
-  HIT_PIXELS, POINT_HIT_PIXELS, POINT_VIS_PIXELS,
+  POINT_HIT_PIXELS, POINT_VIS_PIXELS,
   RENDER_ORDER_DEFAULT,
   RENDER_ORDER_HIGHLIGHT,
 } from '@/components/Geometry3D/constants'
@@ -24,67 +24,7 @@ import {
   faceCount,
 } from '@/components/Geometry3D/bodyGeometry'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
-
-// 2D point-to-segment distance in pixels for screen-space edge proximity.
-function distToSegment2D(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-  const dx = bx - ax, dy = by - ay
-  const lenSq = dx * dx + dy * dy
-  if (lenSq === 0) return Math.hypot(px - ax, py - ay)
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq))
-  return Math.hypot(px - ax - t * dx, py - ay - t * dy)
-}
-
-// Project vertex positions to screen space and return the nearest vertex index within POINT_HIT_PIXELS.
-// Same screen-space approach as nearestEdgeScreenSpace — catches vertices occluded by the face mesh.
-function nearestVertexScreenSpace(
-  clientX: number, clientY: number,
-  verts: readonly (readonly [number, number, number])[] | undefined,
-  camera: THREE.Camera,
-  rect: DOMRect,
-): number | null {
-  if (!verts || verts.length === 0) return null
-  const w = rect.width, h = rect.height
-  let minDist = POINT_HIT_PIXELS
-  let best = -1
-  const p = new THREE.Vector3()
-  for (let i = 0; i < verts.length; i++) {
-    const [x, y, z] = verts[i]
-    p.set(x, y, z).project(camera)
-    if (p.z > 1) continue  // behind camera
-    const sx = (p.x + 1) / 2 * w + rect.left
-    const sy = (-p.y + 1) / 2 * h + rect.top
-    const d = Math.hypot(clientX - sx, clientY - sy)
-    if (d < minDist) { minDist = d; best = i }
-  }
-  return best >= 0 ? best : null
-}
-
-// Project edge segments to screen space and return the nearest edge index within HIT_PIXELS.
-// Handles concave (inside corner) edges that are occluded by the face mesh from the raycaster.
-function nearestEdgeScreenSpace(
-  clientX: number, clientY: number,
-  pts: Float32Array,
-  segToEdge: number[],
-  camera: THREE.Camera,
-  rect: DOMRect,
-): number | null {
-  const w = rect.width, h = rect.height
-  let minDist = HIT_PIXELS
-  let best = -1
-  const p1 = new THREE.Vector3(), p2 = new THREE.Vector3()
-  for (let i = 0; i < pts.length; i += 6) {
-    p1.set(pts[i], pts[i + 1], pts[i + 2]).project(camera)
-    p2.set(pts[i + 3], pts[i + 4], pts[i + 5]).project(camera)
-    if (p1.z > 1 && p2.z > 1) continue  // both behind camera
-    const x1 = (p1.x + 1) / 2 * w + rect.left
-    const y1 = (-p1.y + 1) / 2 * h + rect.top
-    const x2 = (p2.x + 1) / 2 * w + rect.left
-    const y2 = (-p2.y + 1) / 2 * h + rect.top
-    const d = distToSegment2D(clientX, clientY, x1, y1, x2, y2)
-    if (d < minDist) { minDist = d; best = segToEdge[i / 6] ?? -1 }
-  }
-  return best >= 0 ? best : null
-}
+import { registerBodyCallbacks } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 
 interface Body3DProps {
   featureId: string
@@ -103,34 +43,24 @@ interface Body3DProps {
 }
 
 export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit = false, color, transparency = 0, metalness = 0.3, interactive = true }: Body3DProps) {
-  const { camera, gl } = useThree()
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
   const hovered3DSurfaceId = useSketchEditorStore(s => s.hovered3DSurfaceId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
-  const isRotating = useSketchEditorStore(s => s.isRotating)
-  const setHoveredBodyId = useSketchEditorStore(s => s.setHoveredBodyId)
-  const setHovered3DSurface = useSketchEditorStore(s => s.setHovered3DSurface)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
-  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
 
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
-  const hoveredEdgeIndexRef = useRef<number | null>(null)
-  useEffect(() => { hoveredEdgeIndexRef.current = hoveredEdgeIndex }, [hoveredEdgeIndex])
   const [hoveredVertexIndex, setHoveredVertexIndex] = useState<number | null>(null)
-  const hoveredVertexIndexRef = useRef<number | null>(null)
-  useEffect(() => { hoveredVertexIndexRef.current = hoveredVertexIndex }, [hoveredVertexIndex])
 
-  const lastHoveredFaceRef = useRef<string | null>(null)
   const faceColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
   const edgeColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
 
-  const updateFaceGeometry = useCallback((faceIndex: number) => {
-    const { triangle_to_face, face_queries } = mesh
-    const brepFaceIndex = triangle_to_face?.[faceIndex]
-    if (brepFaceIndex === undefined || !face_queries) return
-
+  const updateFaceGeometryForQuery = useCallback((faceQuery: string) => {
+    const { face_queries } = mesh
+    if (!face_queries) return
+    const brepFaceIndex = face_queries.indexOf(faceQuery)
+    if (brepFaceIndex < 0) return
     const faceGeo = extractFaceGeometry(mesh, brepFaceIndex)
     if (!faceGeo) return
     const props = calculateFaceProperties(faceGeo)
@@ -138,7 +68,32 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     setHoveredFaceGeometry(props.normal, props.center)
   }, [mesh, setHoveredFaceGeometry])
 
-  const noRaycast = useCallback(() => {}, [])
+  const clearFaceGeometry = useCallback(() => {
+    setHoveredFaceGeometry(null, null)
+  }, [setHoveredFaceGeometry])
+
+  // Register the per-body dispatch hooks consumed by the id-buffer
+  // pointer dispatcher (267.4 cutover). The dispatcher resolves a
+  // (layer, entityKey) hit and routes the per-body parts of the
+  // hover write (local edge/vertex index, face geometry computation)
+  // through this registry. The store-wide writes
+  // (hovered3DSurfaceId, hoveredBodyId, toggleNormalSelection) are
+  // performed by the dispatcher directly.
+  useEffect(() => {
+    if (!interactive || !visible) return
+    const bodyKey = `${featureId}/${bodyId}`
+    return registerBodyCallbacks(bodyKey, {
+      featureId,
+      bodyId,
+      mesh,
+      edgeQueries,
+      vertexQueries,
+      setHoveredEdgeIndex,
+      setHoveredVertexIndex,
+      updateFaceGeometryForQuery,
+      clearFaceGeometry,
+    })
+  }, [interactive, visible, featureId, bodyId, mesh, edgeQueries, vertexQueries, updateFaceGeometryForQuery, clearFaceGeometry])
 
   const isBodySelected = normalSelection.has('@' + bodyId)
 
@@ -189,9 +144,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   useEffect(() => {
     return () => { edgeGeometry.dispose() }
   }, [edgeGeometry])
-
-  // Raw segment data kept separately for screen-space edge proximity (nearestEdgeScreenSpace).
-  const edgeSegmentPts = useMemo(() => buildEdgeSegments(edges), [edges])
 
   // Precompute segment counts for edge index mapping
   const edgeSegmentCounts = useMemo(() => getEdgeSegmentCounts(edges), [edges])
@@ -263,46 +215,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     }
     return `@${featureId}/face/${triangleIndex}`
   }, [mesh, featureId])
-
-  // Promote hover to normal-selection. Click never re-searches -- it confirms whatever
-  // is already in hoveredSurfaceId so selection and highlight are always the same element.
-  // When plane selection mode is active, commit the face as a plane reference instead.
-  //
-  // User invariant: store what was clicked. The face query alone is sufficient -- ancestry
-  // resolves the owning body when a pick chip or downstream consumer needs it.
-  const handleMeshClick = useCallback((e: { stopPropagation: () => void }) => {
-    e.stopPropagation()
-    // Read hover state from the store at click time to avoid stale closures.
-    // React may not have re-rendered Body3D between onPointerOver and onClick.
-    const state = useSketchEditorStore.getState()
-    const currentHover = state.hovered3DSurfaceId
-    if (!currentHover) return
-    if (state.planeSelectionFeatureId) {
-      state.commitPlaneSelection(currentHover)
-    } else {
-      state.toggleNormalSelection(currentHover)
-      if (state.pendingPickField) state.commitFieldPick()
-    }
-  }, [])
-
-  // Handle edge click on line segments
-  const handleEdgeClick = useCallback((e: { stopPropagation: () => void; nativeEvent?: Event }) => {
-    e.stopPropagation()
-
-    const rawIndex = (e as unknown as { index?: number }).index
-    // When the click comes from the mesh (via the onClick handler below), e.index
-    // is a face index, not a line vertex index. Prefer the ref which was set by
-    // screen-space proximity detection during hover.
-    const edgeIndex = hoveredEdgeIndexRef.current ??
-      (rawIndex !== undefined ? segmentToEdgeMap[Math.floor(rawIndex / 2)] : undefined)
-
-    if (edgeIndex !== undefined) {
-      const query = edgeQueries?.[edgeIndex] ?? `@${featureId}/edge/${edgeIndex}`
-      const state = useSketchEditorStore.getState()
-      state.toggleNormalSelection(query)
-      if (state.pendingPickField) state.commitFieldPick()
-    }
-  }, [featureId, edgeQueries, segmentToEdgeMap])
 
   // Always compute face colors -- avoids toggling vertexColors on the material which
   // causes shader recompilation and a black-frame artifact.
@@ -405,12 +317,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   const _vtxMatrix = useMemo(() => new THREE.Matrix4(), [])
   const _dotScale = useMemo(() => new THREE.Vector3(), [])
 
-  useFrame(({ camera, raycaster }) => {
-    // Scale Line raycaster threshold to match HIT_PIXELS in screen space.
-    // Without this, LineSegments hit detection uses a fixed world-unit threshold
-    // that doesn't track camera zoom.
-    raycaster.params.Line = { threshold: HIT_PIXELS * p2w(camera) }
-
+  useFrame(({ camera }) => {
     const vmesh = vertexMeshRef.current
     if (!vmesh || !vertices?.length) return
 
@@ -475,99 +382,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     <group visible={visible} userData={{ featureId }}>
       <mesh
         geometry={geometry}
-        raycast={interactive ? undefined : noRaycast}
-        onPointerOver={interactive ? (e) => {
-          e.stopPropagation()
-          if (isRotating) return
-          setHoveredBodyId(featureId)
-          const me = e.nativeEvent as MouseEvent
-          const rect = gl.domElement.getBoundingClientRect()
-          // Screen-space vertex check: catches vertices occluded by the face mesh.
-          const nearVertex = nearestVertexScreenSpace(me.clientX, me.clientY, vertices, camera, rect)
-          if (nearVertex !== null) {
-            setHoveredVertexIndex(nearVertex)
-            setHoveredEdgeIndex(null)
-            setHovered3DSurface(null)
-            return
-          }
-          // Screen-space edge check: catches concave/inside-corner edges occluded by the mesh.
-          const nearEdge = nearestEdgeScreenSpace(me.clientX, me.clientY, edgeSegmentPts, segmentToEdgeMap, camera, rect)
-          if (nearEdge !== null) {
-            setHoveredEdgeIndex(nearEdge)
-            setHovered3DSurface(null)
-            return
-          }
-          setHoveredEdgeIndex(null)
-          const rawFaceIndex = (e as unknown as { faceIndex?: number }).faceIndex
-          const rawIndex = (e as unknown as { index?: number }).index
-          const faceIndex = rawFaceIndex !== undefined ? rawFaceIndex : (rawIndex !== undefined ? Math.floor(rawIndex / 3) : undefined)
-          if (faceIndex !== undefined) {
-            const query = resolveFaceQuery(faceIndex)
-            setHovered3DSurface(query)
-            if (query !== lastHoveredFaceRef.current) {
-              lastHoveredFaceRef.current = query
-              updateFaceGeometry(faceIndex)
-            }
-          }
-        } : undefined}
-        onPointerMove={interactive ? (e) => {
-          e.stopPropagation()
-          if (isRotating) return
-          const me = e.nativeEvent as MouseEvent
-          const rect = gl.domElement.getBoundingClientRect()
-          // Screen-space vertex check: catches vertices occluded by the face mesh.
-          const nearVertex = nearestVertexScreenSpace(me.clientX, me.clientY, vertices, camera, rect)
-          if (nearVertex !== null) {
-            setHoveredVertexIndex(nearVertex)
-            setHoveredEdgeIndex(null)
-            setHovered3DSurface(null)
-            return
-          }
-          // Screen-space edge check: catches concave/inside-corner edges occluded by the mesh.
-          const nearEdge = nearestEdgeScreenSpace(me.clientX, me.clientY, edgeSegmentPts, segmentToEdgeMap, camera, rect)
-          if (nearEdge !== null) {
-            setHoveredEdgeIndex(nearEdge)
-            setHovered3DSurface(null)
-            return
-          }
-          setHoveredEdgeIndex(null)
-          const rawFaceIndex = (e as unknown as { faceIndex?: number }).faceIndex
-          const rawIndex = (e as unknown as { index?: number }).index
-          const faceIndex = rawFaceIndex !== undefined ? rawFaceIndex : (rawIndex !== undefined ? Math.floor(rawIndex / 3) : undefined)
-          if (faceIndex !== undefined) {
-            const query = resolveFaceQuery(faceIndex)
-            setHovered3DSurface(query)
-            if (query !== lastHoveredFaceRef.current) {
-              lastHoveredFaceRef.current = query
-              updateFaceGeometry(faceIndex)
-            }
-          }
-        } : undefined}
-        onPointerOut={interactive ? (e) => {
-          e.stopPropagation()
-          setHoveredBodyId(current => current === featureId ? null : current)
-          setHovered3DSurface(null)
-          setHoveredEdgeIndex(null)
-          setHoveredVertexIndex(null)
-          lastHoveredFaceRef.current = null
-          setHoveredFaceGeometry(null, null)
-        } : undefined}
-        onClick={interactive ? (e) => {
-          // When screen-space vertex proximity detected a vertex hover, treat click as vertex click.
-          if (hoveredVertexIndexRef.current !== null) {
-            e.stopPropagation()
-            const idx = hoveredVertexIndexRef.current
-            const query = vertexQueries?.[idx] ?? `@${featureId}/vertex/${idx}`
-            toggleNormalSelection(query)
-            if (useSketchEditorStore.getState().pendingPickField) {
-              useSketchEditorStore.getState().commitFieldPick()
-            }
-          } else if (hoveredEdgeIndexRef.current !== null) {
-            handleEdgeClick(e)
-          } else {
-            handleMeshClick(e)
-          }
-        } : undefined}
       >
         <meshStandardMaterial
           color="white"
@@ -590,32 +404,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         <lineSegments
           geometry={edgeGeometry}
           renderOrder={RENDER_ORDER_DEFAULT}
-          raycast={interactive ? undefined : noRaycast}
-          onPointerOver={interactive ? (e) => {
-            e.stopPropagation()
-            const index = (e as unknown as { index?: number }).index
-            if (index !== undefined && index >= 0) {
-              const edgeIndex = segmentToEdgeMap[Math.floor(index / 2)]
-              if (edgeIndex !== undefined) {
-                setHoveredEdgeIndex(edgeIndex)
-              }
-            }
-          } : undefined}
-          onPointerMove={interactive ? (e) => {
-            e.stopPropagation()
-            const index = (e as unknown as { index?: number }).index
-            if (index !== undefined && index >= 0) {
-              const edgeIndex = segmentToEdgeMap[Math.floor(index / 2)]
-              if (edgeIndex !== undefined) {
-                setHoveredEdgeIndex(edgeIndex)
-              }
-            }
-          } : undefined}
-          onPointerOut={interactive ? (e) => {
-            e.stopPropagation()
-            setHoveredEdgeIndex(null)
-          } : undefined}
-          onClick={interactive ? handleEdgeClick : undefined}
         >
           <lineBasicMaterial
             color="white"
@@ -628,28 +416,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           <instancedMesh
             ref={vertexMeshRef}
             args={[undefined, undefined, vertices.length]}
-            raycast={interactive ? undefined : noRaycast}
             frustumCulled={false}
-            onPointerOver={interactive ? (e) => {
-              e.stopPropagation()
-              const idx = e.instanceId
-              if (idx !== undefined) setHoveredVertexIndex(idx)
-            } : undefined}
-            onPointerOut={interactive ? (e) => {
-              e.stopPropagation()
-              setHoveredVertexIndex(null)
-            } : undefined}
-            onClick={interactive ? (e) => {
-              e.stopPropagation()
-              const idx = e.instanceId
-              if (idx !== undefined) {
-                const query = vertexQueries?.[idx] ?? `@${featureId}/vertex/${idx}`
-                toggleNormalSelection(query)
-                if (useSketchEditorStore.getState().pendingPickField) {
-                  useSketchEditorStore.getState().commitFieldPick()
-                }
-              }
-            } : undefined}
           >
             {/* Radius 1 — scaled to POINT_HIT_PIXELS screen px by useFrame */}
             <sphereGeometry args={[1, 8, 8]} />
@@ -707,7 +474,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       })}
       {/* Debug: show all edge hit zones as orange lines with depthTest=false so occluded edges are visible. */}
       {showDebugHit && edges.length > 0 && (
-        <lineSegments geometry={edgeGeometry} renderOrder={RENDER_ORDER_HIGHLIGHT + 1} raycast={noRaycast}>
+        <lineSegments geometry={edgeGeometry} renderOrder={RENDER_ORDER_HIGHLIGHT + 1}>
           <lineBasicMaterial color="#ff6600" transparent opacity={0.6} depthTest={false} />
         </lineSegments>
       )}

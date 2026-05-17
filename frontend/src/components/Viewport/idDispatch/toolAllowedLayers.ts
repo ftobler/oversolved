@@ -1,13 +1,16 @@
 import type { ActiveTool } from '@/types/cad'
+import {
+  FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+  PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME,
+  ORIGIN_LAYER_NAME,
+} from '@/picking'
 
 /**
  * Per-tool allow-list of ID layers the pointer dispatcher will route from.
  *
- * Slice scope: only `dimensionLabel` is consumed by the dispatcher in
- * 267.2. Tools that should not route dimension label clicks (e.g. the
- * drawing tools that begin a stroke under the cursor) return a set that
- * omits it. `null` means "all layers" (kept for forward compatibility
- * when later slices wire more layers through the dispatcher).
+ * `null` means "all layers" (no filter). Drawing tools return a subset
+ * that permits B-rep / plane / sketch / origin picks but excludes
+ * dimensionLabel so dimension labels don't intercept drawing strokes.
  */
 export function getToolAllowedLayers(tool: ActiveTool): ReadonlySet<string> | null {
   switch (tool) {
@@ -15,7 +18,7 @@ export function getToolAllowedLayers(tool: ActiveTool): ReadonlySet<string> | nu
     case 'select':
     case 'dimension':
     case 'drag':
-      return null  // allow all layers, including dimensionLabel
+      return null
     case 'line':
     case 'rect':
     case 'center_rect':
@@ -24,9 +27,11 @@ export function getToolAllowedLayers(tool: ActiveTool): ReadonlySet<string> | nu
     case 'point':
     case 'project':
     case 'mirror':
-      // Drawing tools: keep clicks on dimension labels from interrupting a
-      // stroke. The dispatcher excludes dimensionLabel for these.
-      return new Set<string>()
+      return new Set([
+        FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+        PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME,
+        ORIGIN_LAYER_NAME,
+      ])
     default:
       return null
   }

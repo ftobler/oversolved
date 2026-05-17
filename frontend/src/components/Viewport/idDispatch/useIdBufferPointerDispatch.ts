@@ -4,8 +4,9 @@ import { getLivePipeline } from '@/picking'
 import type { ResolvedHit } from '@/picking'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { dimensionLabelAdapter } from './dimensionLabelAdapter'
+import { brepFaceAdapter, brepEdgeAdapter, brepVertexAdapter, clearBrepHover } from './brepAdapters'
 import { getToolAllowedLayers } from './toolAllowedLayers'
-import { DIMENSION_LABEL_LAYER_NAME } from '@/picking'
+import { DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking'
 
 /**
  * Records whether the most recent left-click was consumed by the id-buffer
@@ -54,9 +55,12 @@ function intersect(a: ReadonlySet<string>, b: ReadonlySet<string> | null): Reado
  * active tool's allow-list. Slice scope (267.2): dispatcher consumes
  * `dimensionLabel` only; dimension-label R3F handlers come off in 267.3.
  */
+const BREP_LAYER_NAMES = new Set([FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME])
+
 export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }: DispatchParams): void {
   useEffect(() => {
     let lastHoverEntity: string | null = null
+    let lastHoverLayer: string | null = null
     let attached: HTMLCanvasElement | null = null
     let raf = 0
 
@@ -74,26 +78,44 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       return pipeline.resolveSync(gl, cursorFromEvent(e, canvas), { allowedLayers: allowed })
     }
 
+    const applyHoverHit = (layer: string | null, entityKey: string | null) => {
+      if (layer === lastHoverLayer && entityKey === lastHoverEntity) return
+      // Tear down the previous hover.
+      if (lastHoverLayer === DIMENSION_LABEL_LAYER_NAME && lastHoverEntity !== null) {
+        dimensionLabelAdapter.onOut(lastHoverEntity)
+      } else if (lastHoverLayer !== null && BREP_LAYER_NAMES.has(lastHoverLayer)) {
+        clearBrepHover()
+      }
+      // Apply the new hover.
+      if (layer === DIMENSION_LABEL_LAYER_NAME && entityKey !== null) {
+        dimensionLabelAdapter.onOver(entityKey)
+      } else if (layer === FACE_LAYER_NAME && entityKey !== null) {
+        clearBrepHover()
+        brepFaceAdapter.onHover(entityKey)
+      } else if (layer === EDGE_LAYER_NAME && entityKey !== null) {
+        clearBrepHover()
+        brepEdgeAdapter.onHover(entityKey)
+      } else if (layer === VERTEX_LAYER_NAME && entityKey !== null) {
+        clearBrepHover()
+        brepVertexAdapter.onHover(entityKey)
+      }
+      lastHoverLayer = layer
+      lastHoverEntity = entityKey
+    }
+
     const onPointerMove = (e: MouseEvent) => {
       const pipeline = getLivePipeline()
       const gl = glRef.current
       if (!pipeline || !gl || !attached) return
       const allowed = computeAllowed()
       if (allowed.size === 0) {
-        if (lastHoverEntity !== null) {
-          dimensionLabelAdapter.onOut(lastHoverEntity)
-          lastHoverEntity = null
-        }
+        applyHoverHit(null, null)
         return
       }
       void pipeline
         .resolveAsync(gl, cursorFromEvent(e, attached), { allowedLayers: allowed })
         .then(hit => {
-          const nextKey = hit?.layer === DIMENSION_LABEL_LAYER_NAME ? hit.entityKey : null
-          if (nextKey === lastHoverEntity) return
-          if (lastHoverEntity !== null) dimensionLabelAdapter.onOut(lastHoverEntity)
-          if (nextKey !== null) dimensionLabelAdapter.onOver(nextKey)
-          lastHoverEntity = nextKey
+          applyHoverHit(hit?.layer ?? null, hit?.entityKey ?? null)
         })
     }
 
@@ -104,6 +126,15 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       if (!hit) return
       if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
         dimensionLabelAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
+        setLastClickIdHit(true)
+      } else if (hit.layer === FACE_LAYER_NAME) {
+        brepFaceAdapter.onClick(hit.entityKey)
+        setLastClickIdHit(true)
+      } else if (hit.layer === EDGE_LAYER_NAME) {
+        brepEdgeAdapter.onClick(hit.entityKey)
+        setLastClickIdHit(true)
+      } else if (hit.layer === VERTEX_LAYER_NAME) {
+        brepVertexAdapter.onClick(hit.entityKey)
         setLastClickIdHit(true)
       }
     }
@@ -144,10 +175,13 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         attached.removeEventListener('click', onClick)
         attached = null
       }
-      if (lastHoverEntity !== null) {
+      if (lastHoverLayer === DIMENSION_LABEL_LAYER_NAME && lastHoverEntity !== null) {
         dimensionLabelAdapter.onOut(lastHoverEntity)
-        lastHoverEntity = null
+      } else if (lastHoverLayer !== null && BREP_LAYER_NAMES.has(lastHoverLayer)) {
+        clearBrepHover()
       }
+      lastHoverLayer = null
+      lastHoverEntity = null
     }
   }, [canvasRef, glRef, consumedLayers])
 }
