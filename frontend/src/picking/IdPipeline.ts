@@ -24,6 +24,19 @@ export interface IdPipelineOptions {
   height: number
   /** Pixel window size for hover/click resolves. Default 17. */
   windowSize?: number
+  /**
+   * When true, the pipeline re-renders the ID buffer every frame while
+   * the camera is in motion. Default false (matches "suppress hover during
+   * camera motion" stance in the architecture).
+   */
+  pickDuringCameraMotion?: boolean
+}
+
+interface PendingAsyncQuery {
+  cursorPx: { x: number; y: number }
+  opts: ResolveOptions | undefined
+  /** Every caller waiting for the result of this (or any superseding) read. */
+  subscribers: ((hit: ResolvedHit | null) => void)[]
 }
 
 /**
@@ -48,6 +61,11 @@ export class IdPipeline {
   readonly originLayer: VertexIdLayer
   private layers: IdLayer[]
   private windowSize: number
+  private renderCount = 0
+  private lastDirtyReason: string | null = null
+  pickDuringCameraMotion: boolean
+  private nextAsync: PendingAsyncQuery | null = null
+  private inFlightAsync: PendingAsyncQuery | null = null
 
   constructor(opts: IdPipelineOptions) {
     this.registry = new IdRegistry()
@@ -87,6 +105,7 @@ export class IdPipeline {
     this.addLayer(this.originLayer)
 
     this.windowSize = opts.windowSize ?? DEFAULT_WINDOW_SIZE
+    this.pickDuringCameraMotion = opts.pickDuringCameraMotion ?? false
   }
 
   /**
@@ -121,8 +140,23 @@ export class IdPipeline {
     return this.layers
   }
 
-  markDirty(): void {
+  markDirty(reason?: string): void {
     this.target.markDirty()
+    if (reason) this.lastDirtyReason = reason
+  }
+
+  /** Test/debug accessor for the most recent reason passed to markDirty(). */
+  getLastDirtyReason(): string | null {
+    return this.lastDirtyReason
+  }
+
+  /** Test accessor: total number of times render() has executed. */
+  getRenderCount(): number {
+    return this.renderCount
+  }
+
+  isDirty(): boolean {
+    return this.target.isDirty()
   }
 
   resize(width: number, height: number): void {
@@ -184,6 +218,7 @@ export class IdPipeline {
 
     this.target.markClean()
     this.registry.bumpCycle()
+    this.renderCount++
   }
 
   renderIfDirty(renderer: THREE.WebGLRenderer, camera: THREE.Camera): boolean {
@@ -254,6 +289,133 @@ export class IdPipeline {
     }
 
     return this.resolver.decode(scratch, windowSize, opts)
+  }
+
+  /**
+   * Asynchronously resolve the entity under the cursor. Latest-wins
+   * coalescing: if a new query arrives while one is in flight, the older
+   * promise resolves with the newer cursor's result, so callers can safely
+   * fire one query per pointermove without queueing up reads.
+   *
+   * Uses `readRenderTargetPixelsAsync` when available (three.js r150+);
+   * falls back to the synchronous read otherwise. The fallback still
+   * preserves the latest-wins semantics so call sites can be uniform.
+   */
+  resolveAsync(
+    renderer: THREE.WebGLRenderer,
+    cursorPx: { x: number; y: number },
+    opts?: ResolveOptions,
+  ): Promise<ResolvedHit | null> {
+    return new Promise<ResolvedHit | null>((resolve) => {
+      // If a read is currently in flight, the caller will receive whatever
+      // the NEXT scheduled read returns — i.e. the latest cursor wins.
+      // Multiple synchronous calls before any microtask runs all coalesce
+      // into a single queued read at the latest cursor.
+      if (this.inFlightAsync) {
+        if (this.nextAsync) {
+          this.nextAsync.cursorPx = cursorPx
+          this.nextAsync.opts = opts
+          this.nextAsync.subscribers.push(resolve)
+        } else {
+          this.nextAsync = { cursorPx, opts, subscribers: [resolve] }
+        }
+        return
+      }
+      if (this.nextAsync) {
+        // Coalesce with the not-yet-started query.
+        this.nextAsync.cursorPx = cursorPx
+        this.nextAsync.opts = opts
+        this.nextAsync.subscribers.push(resolve)
+        return
+      }
+      const query: PendingAsyncQuery = { cursorPx, opts, subscribers: [resolve] }
+      this.inFlightAsync = query
+      // Defer the actual read to a microtask so any further synchronous
+      // resolveAsync calls in this turn get folded into nextAsync and
+      // supersede this read.
+      Promise.resolve().then(() => {
+        const head = this.inFlightAsync
+        if (!head) return
+        // If a newer cursor arrived synchronously, promote it before reading.
+        if (this.nextAsync) {
+          for (const s of head.subscribers) this.nextAsync.subscribers.push(s)
+          this.inFlightAsync = this.nextAsync
+          this.nextAsync = null
+        }
+        this.runAsync(renderer, this.inFlightAsync!)
+      })
+    })
+  }
+
+  private runAsync(renderer: THREE.WebGLRenderer, query: PendingAsyncQuery): void {
+    const readAsync = (renderer as unknown as {
+      readRenderTargetPixelsAsync?: (
+        target: THREE.WebGLRenderTarget,
+        x: number, y: number, w: number, h: number,
+        buffer: ArrayBufferView,
+      ) => Promise<ArrayBufferView>
+    }).readRenderTargetPixelsAsync
+
+    const done = (hit: ResolvedHit | null) => {
+      for (const s of query.subscribers) s(hit)
+      if (this.nextAsync) {
+        const next = this.nextAsync
+        this.nextAsync = null
+        this.inFlightAsync = next
+        this.runAsync(renderer, next)
+      } else {
+        this.inFlightAsync = null
+      }
+    }
+
+    if (!readAsync) {
+      // Fallback path: sync read. Still go through a microtask so callers
+      // observe consistent "always async" semantics.
+      Promise.resolve().then(() => {
+        const hit = this.resolveSync(renderer, query.cursorPx, query.opts)
+        done(hit)
+      })
+      return
+    }
+
+    const w = this.target.getWidth()
+    const h = this.target.getHeight()
+    const windowSize = query.opts?.windowSize ?? this.windowSize
+    const cx = Math.round(query.cursorPx.x)
+    const cy = Math.round(query.cursorPx.y)
+    if (cx < 0 || cy < 0 || cx >= w || cy >= h) { done(null); return }
+
+    const half = Math.floor(windowSize / 2)
+    const readY = h - cy - 1
+    const x0 = cx - half
+    const y0 = readY - half
+    const readW = windowSize
+    const readH = windowSize
+    if (x0 + readW <= 0 || y0 + readH <= 0 || x0 >= w || y0 >= h) { done(null); return }
+
+    const clampX = Math.max(0, x0)
+    const clampY = Math.max(0, y0)
+    const clampW = Math.min(w - clampX, readW - (clampX - x0))
+    const clampH = Math.min(h - clampY, readH - (clampY - y0))
+    if (clampW <= 0 || clampH <= 0) { done(null); return }
+
+    const scratch = this.resolver.getScratchBuffer(windowSize)
+    scratch.fill(0)
+    const sub = new Uint8Array(clampW * clampH * 4)
+    readAsync.call(renderer, this.target.target, clampX, clampY, clampW, clampH, sub)
+      .then(() => {
+        const offsetX = clampX - x0
+        const offsetY = clampY - y0
+        for (let row = 0; row < clampH; row++) {
+          const dstRow = (readH - 1) - (offsetY + row)
+          if (dstRow < 0 || dstRow >= readH) continue
+          const srcBase = row * clampW * 4
+          const dstBase = (dstRow * readW + offsetX) * 4
+          scratch.set(sub.subarray(srcBase, srcBase + clampW * 4), dstBase)
+        }
+        done(this.resolver.decode(scratch, windowSize, query.opts))
+      })
+      .catch(() => done(null))
   }
 
   dispose(): void {

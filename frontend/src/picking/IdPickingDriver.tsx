@@ -3,6 +3,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import { IdPipeline } from './IdPipeline'
 import { setLivePipeline } from './IdPipelineContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { subscribePipelineToPartEditor } from './dirtyInvalidation'
 
 interface IdPickingDriverProps {
   /** External handle so non-Canvas code (Viewport pointer dispatch) can call resolveSync. */
@@ -74,7 +75,38 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
     }
   }, [pipeline])
 
+  useEffect(() => subscribePipelineToPartEditor(pipeline), [pipeline])
+
+  // Camera-change detection. Compare the camera's world matrix every frame
+  // against the snapshot from the previous frame. A change marks the
+  // pipeline dirty; when `pickDuringCameraMotion` is false (default) we
+  // additionally suppress the actual render while the camera is moving,
+  // so the ID buffer settles once after the camera stops.
+  const lastCamMatrix = useRef<Float32Array>(new Float32Array(16))
+  const lastCamMatrixValid = useRef(false)
+  const cameraMovedThisFrame = useRef(false)
+
   useFrame(({ camera }) => {
+    const m = camera.matrixWorld.elements
+    let changed = false
+    if (!lastCamMatrixValid.current) {
+      lastCamMatrixValid.current = true
+    } else {
+      for (let i = 0; i < 16; i++) {
+        if (lastCamMatrix.current[i] !== m[i]) { changed = true; break }
+      }
+    }
+    lastCamMatrix.current.set(m)
+
+    if (changed) {
+      pipeline.markDirty('camera')
+      cameraMovedThisFrame.current = true
+      if (!pipeline.pickDuringCameraMotion) {
+        return  // defer render until the camera settles
+      }
+    } else {
+      cameraMovedThisFrame.current = false
+    }
     pipeline.renderIfDirty(gl, camera)
   }, 1)  // priority > 0 -> runs after default render
 
