@@ -1,0 +1,23 @@
+import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+/**
+ * The legacy per-face rainbow debug coloring + wireframe overlay path in
+ * Body3D was retired when the GPU-ID debug overlay (#265) shipped. Pin
+ * that removal so a future "let's bring back the rainbow" can't slip in
+ * silently and override face colors on the visible mesh.
+ */
+describe('Body3D legacy debug-hit path', () => {
+  it('has no debugFaceColors / WireframeGeometry usage', () => {
+    const src = readFileSync(
+      join(__dirname, '..', 'Body3D.tsx'),
+      'utf8',
+    )
+    expect(src).not.toMatch(/\bdebugFaceColors\b/)
+    expect(src).not.toMatch(/\bWireframeGeometry\b/)
+    // The face-color attribute writes faceColors directly now, not an
+    // "activeColors" fallback chain.
+    expect(src).not.toMatch(/\bactiveColors\b/)
+  })
+})

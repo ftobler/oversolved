@@ -211,40 +211,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
 
   const edgeColor = isBodySelected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE
 
-  // Debug: rainbow color per B-rep face -- makes face boundaries immediately visible.
-  // Replaces normal face colors when showDebugHit is true.
-  const debugFaceColors = useMemo(() => {
-    if (!showDebugHit) return null
-    const { triangle_to_face, face_queries } = mesh
-    if (!triangle_to_face || !face_queries || face_queries.length === 0) return null
-
-    const numFaces = face_queries.length
-    const numTris = faceCount(mesh.faces)
-    const colors = new Float32Array(numTris * 3 * 3)
-    for (let i = 0; i < numTris; i++) {
-      const brepFaceIdx = triangle_to_face[i] ?? 0
-      const color = new THREE.Color().setHSL(brepFaceIdx / numFaces, 0.9, 0.55)
-      const baseIdx = i * 9
-      for (let v = 0; v < 9; v += 3) {
-        colors[baseIdx + v] = color.r
-        colors[baseIdx + v + 1] = color.g
-        colors[baseIdx + v + 2] = color.b
-      }
-    }
-    return colors
-  }, [showDebugHit, mesh])
-
-  //Debug: wireframe overlay showing every tessellation triangle edge.
-  const wireframeGeometry = useMemo(() => {
-    if (!showDebugHit) return null
-    return new THREE.WireframeGeometry(geometry)
-  }, [showDebugHit, geometry])
-
-  useEffect(() => {
-    return () => { wireframeGeometry?.dispose() }
-  }, [wireframeGeometry])
-
-
   // Build segment geometries for every B-rep edge, keyed by edge query.
   // Used to render the overlay of a hovered or selected edge.
   const edgeBoundaryGeos = useMemo(() => {
@@ -405,19 +371,16 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     return colors
   }, [segmentToEdgeMap, getIsEdgeSelected, hoveredEdgeIndex, edgeColor, interactive])
 
-  // debugFaceColors takes precedence when showDebugHit is on.
-  const activeColors = debugFaceColors ?? faceColors
-
   // Always update the color attribute -- faceColors is always non-null so vertexColors
   // stays permanently enabled, avoiding shader recompilation on selection change.
   // Dispose the previous attribute to avoid leaking GPU memory on each hover/selection change.
   useEffect(() => {
     const oldAttr = faceColorAttrRef.current
-    const attr = new THREE.BufferAttribute(activeColors, 3)
+    const attr = new THREE.BufferAttribute(faceColors, 3)
     geometry.setAttribute('color', attr)
     faceColorAttrRef.current = attr
     oldAttr?.dispose?.()
-  }, [geometry, activeColors])
+  }, [geometry, faceColors])
 
   // Always update the color attribute -- edgeColors is always non-null so vertexColors
   // stays permanently enabled, avoiding shader recompilation on selection change.

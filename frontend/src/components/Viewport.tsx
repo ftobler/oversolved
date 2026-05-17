@@ -19,6 +19,7 @@ import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
 import ContextMenuDialog from '@/components/ContextMenuDialog'
 import { IdPickingDriver } from '@/picking'
+import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
 import type { IdPipeline } from '@/picking'
 import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
@@ -569,6 +570,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         <SceneController resetTrigger={resetTrigger} canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
 
         <IdPickingDriver onReady={onIdPipelineReady} />
+        {showDebugHit && <IdDebugOverlay />}
 
         <CameraLight />
 
