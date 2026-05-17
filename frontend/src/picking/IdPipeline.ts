@@ -383,14 +383,6 @@ export class IdPipeline {
   }
 
   private runAsync(renderer: THREE.WebGLRenderer, query: PendingAsyncQuery): void {
-    const readAsync = (renderer as unknown as {
-      readRenderTargetPixelsAsync?: (
-        target: THREE.WebGLRenderTarget,
-        x: number, y: number, w: number, h: number,
-        buffer: ArrayBufferView,
-      ) => Promise<ArrayBufferView>
-    }).readRenderTargetPixelsAsync
-
     const done = (hit: ResolvedHit | null) => {
       for (const s of query.subscribers) s(hit)
       if (this.nextAsync) {
@@ -403,54 +395,14 @@ export class IdPipeline {
       }
     }
 
-    if (!readAsync) {
-      // Fallback path: sync read. Still go through a microtask so callers
-      // observe consistent "always async" semantics.
-      Promise.resolve().then(() => {
-        const hit = this.resolveSync(renderer, query.cursorPx, query.opts)
-        done(hit)
-      })
-      return
-    }
-
-    const w = this.target.getWidth()
-    const h = this.target.getHeight()
-    const windowSize = query.opts?.windowSize ?? this.windowSize
-    const cx = Math.round(query.cursorPx.x)
-    const cy = Math.round(query.cursorPx.y)
-    if (cx < 0 || cy < 0 || cx >= w || cy >= h) { done(null); return }
-
-    const half = Math.floor(windowSize / 2)
-    const readY = h - cy - 1
-    const x0 = cx - half
-    const y0 = readY - half
-    const readW = windowSize
-    const readH = windowSize
-    if (x0 + readW <= 0 || y0 + readH <= 0 || x0 >= w || y0 >= h) { done(null); return }
-
-    const clampX = Math.max(0, x0)
-    const clampY = Math.max(0, y0)
-    const clampW = Math.min(w - clampX, readW - (clampX - x0))
-    const clampH = Math.min(h - clampY, readH - (clampY - y0))
-    if (clampW <= 0 || clampH <= 0) { done(null); return }
-
-    const scratch = this.resolver.getScratchBuffer(windowSize)
-    scratch.fill(0)
-    const sub = new Uint8Array(clampW * clampH * 4)
-    readAsync.call(renderer, this.target.target, clampX, clampY, clampW, clampH, sub)
-      .then(() => {
-        const offsetX = clampX - x0
-        const offsetY = clampY - y0
-        for (let row = 0; row < clampH; row++) {
-          const dstRow = (readH - 1) - (offsetY + row)
-          if (dstRow < 0 || dstRow >= readH) continue
-          const srcBase = row * clampW * 4
-          const dstBase = (dstRow * readW + offsetX) * 4
-          scratch.set(sub.subarray(srcBase, srcBase + clampW * 4), dstBase)
-        }
-        done(this.resolver.decode(scratch, windowSize, query.opts))
-      })
-      .catch(() => done(null))
+    // Reliability over throughput: use sync read path even for hover coalescing.
+    // Some browser/driver combos report:
+    //   "INVALID_OPERATION: readPixels: PIXEL_PACK buffer should not be bound"
+    // when async and sync reads interleave. resolveSync avoids that path.
+    Promise.resolve().then(() => {
+      const hit = this.resolveSync(renderer, query.cursorPx, query.opts)
+      done(hit)
+    })
   }
 
   dispose(): void {
