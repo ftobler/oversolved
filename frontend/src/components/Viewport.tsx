@@ -18,6 +18,8 @@ import CameraLight from '@/components/Viewport/CameraLight'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
 import ContextMenuDialog from '@/components/ContextMenuDialog'
+import { IdPickingDriver } from '@/picking'
+import type { IdPipeline } from '@/picking'
 import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
 import { getBodiesToRender, getSketchesToRender, getPreviewBodies } from '@/components/Viewport/bodyUtils'
@@ -212,6 +214,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const bodiesRef = useRef<Record<string, BodyResult> | undefined>(undefined)
   // eslint-disable-next-line react-hooks/refs
   bodiesRef.current = bodies
+  const idPipelineRef = useRef<IdPipeline | null>(null)
+  const onIdPipelineReady = useCallback((p: IdPipeline) => { idPipelineRef.current = p }, [])
 
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
     glRef.current = state.gl
@@ -563,6 +567,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       >
         <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={-10} far={1000} /* clipping planes */ />
         <SceneController resetTrigger={resetTrigger} canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
+
+        <IdPickingDriver onReady={onIdPipelineReady} />
 
         <CameraLight />
 
