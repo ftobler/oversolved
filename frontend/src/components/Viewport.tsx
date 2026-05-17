@@ -21,7 +21,7 @@ import ContextMenuDialog from '@/components/ContextMenuDialog'
 import { IdPickingDriver, DIMENSION_LABEL_LAYER_NAME } from '@/picking'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
 import type { IdPipeline } from '@/picking'
-import { useIdBufferPointerDispatch } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
+import { useIdBufferPointerDispatch, wasLastClickConsumedByIdDispatch } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
 import { getBodiesToRender, getSketchesToRender, getPreviewBodies } from '@/components/Viewport/bodyUtils'
@@ -566,7 +566,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         gl={{ antialias: true, logarithmicDepthBuffer: true }}
         onCreated={onCreated}
         onPointerMissed={() => {
-          // Only clear selection if this was a left-click on empty space, not a camera drag
+          // Only clear selection if this was a left-click on empty space, not a camera drag.
+          // Skip when the id-buffer dispatcher already consumed the click (e.g. dim label):
+          // R3F sees no R3F handler on the dim label mesh post-267.3 and would otherwise
+          // treat every label click as a miss.
+          if (wasLastClickConsumedByIdDispatch()) return
           if (!wasPointerDrag.current && pointerDownButton.current === 0) {
             useSketchEditorStore.getState().clearNormalSelection()
             useSketchEditorStore.getState().setHoveredBodyId(null)

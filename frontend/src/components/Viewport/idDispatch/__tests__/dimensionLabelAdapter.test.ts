@@ -26,7 +26,7 @@ describe('parseDimensionLabelKey', () => {
 describe('dimensionLabelAdapter', () => {
   it('routes onClick to the registered callback for the cid', () => {
     const onClick = vi.fn()
-    registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick })
+    registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick, onPointerDown: () => {} })
     expect(dimensionLabelAdapter.onClick('dim:c1', 10, 20)).toBe(true)
     expect(onClick).toHaveBeenCalledTimes(1)
     expect(onClick).toHaveBeenCalledWith(10, 20)
@@ -34,7 +34,7 @@ describe('dimensionLabelAdapter', () => {
 
   it('routes both subkeys of the same cid to the same callback', () => {
     const onClick = vi.fn()
-    registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick })
+    registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick, onPointerDown: () => {} })
     dimensionLabelAdapter.onClick('dim:c1:value-1', 0, 0)
     dimensionLabelAdapter.onClick('dim:c1:value-2', 0, 0)
     expect(onClick).toHaveBeenCalledTimes(2)
@@ -46,7 +46,7 @@ describe('dimensionLabelAdapter', () => {
 
   it('unregister stops further routing', () => {
     const onClick = vi.fn()
-    const unregister = registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick })
+    const unregister = registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick, onPointerDown: () => {} })
     unregister()
     expect(dimensionLabelAdapter.onClick('dim:c1', 0, 0)).toBe(false)
     expect(onClick).not.toHaveBeenCalled()
@@ -55,7 +55,7 @@ describe('dimensionLabelAdapter', () => {
   it('hover routing fires onOver / onOut', () => {
     const onOver = vi.fn()
     const onOut = vi.fn()
-    registerDimCallbacks('c1', { onOver, onOut, onClick: () => {} })
+    registerDimCallbacks('c1', { onOver, onOut, onClick: () => {}, onPointerDown: () => {} })
     dimensionLabelAdapter.onOver('dim:c1')
     dimensionLabelAdapter.onOut('dim:c1')
     expect(onOver).toHaveBeenCalledTimes(1)

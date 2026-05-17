@@ -83,7 +83,6 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
     position: [labelX, labelY, 0.001],
     enabled: !isDragged,
   })
-  useDimDispatchRegistration(cid, { onOver, onOut, onClick })
 
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return
@@ -100,6 +99,8 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
       startWorld: [labelX, labelY],
     })
   }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
+
+  useDimDispatchRegistration(cid, { onOver, onOut, onClick, onPointerDown })
 
   return (
     <group key={cid}>
@@ -136,7 +137,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
         </>
       )}
       {!isDragged && (
-        <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
+        <mesh ref={meshRef} position={[labelX, labelY, 0.001]}>
           <circleGeometry args={[1, 8]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>

@@ -7,6 +7,18 @@ import { dimensionLabelAdapter } from './dimensionLabelAdapter'
 import { getToolAllowedLayers } from './toolAllowedLayers'
 import { DIMENSION_LABEL_LAYER_NAME } from '@/picking'
 
+/**
+ * Records whether the most recent left-click was consumed by the id-buffer
+ * dispatcher (e.g. hit a dimension label). R3F's `onPointerMissed` fires
+ * AFTER our native click listener; the Viewport reads this flag to decide
+ * whether to clear selection on a "missed" click — without it, removing
+ * R3F handlers from the dim label mesh would cause every label click to
+ * also clear the current selection.
+ */
+let lastClickIdHit = false
+function setLastClickIdHit(v: boolean): void { lastClickIdHit = v }
+export function wasLastClickConsumedByIdDispatch(): boolean { return lastClickIdHit }
+
 interface DispatchParams {
   /**
    * Optional explicit ref to the R3F canvas DOM element. When omitted, the
@@ -86,17 +98,29 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     }
 
     const onClick = (e: MouseEvent) => {
+      setLastClickIdHit(false)
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
       if (!hit) return
       if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
         dimensionLabelAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
+        setLastClickIdHit(true)
+      }
+    }
+
+    const onPointerDown = (e: MouseEvent) => {
+      if (e.button !== 0 || !attached) return
+      const hit = resolveSync(e, attached)
+      if (!hit) return
+      if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
+        dimensionLabelAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
       }
     }
 
     const attach = (c: HTMLCanvasElement) => {
       attached = c
       c.addEventListener('pointermove', onPointerMove)
+      c.addEventListener('pointerdown', onPointerDown)
       c.addEventListener('click', onClick)
     }
 
@@ -116,6 +140,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       if (raf) cancelAnimationFrame(raf)
       if (attached) {
         attached.removeEventListener('pointermove', onPointerMove)
+        attached.removeEventListener('pointerdown', onPointerDown)
         attached.removeEventListener('click', onClick)
         attached = null
       }

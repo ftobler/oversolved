@@ -5,13 +5,16 @@ interface DispatchTarget {
   onOver: (ev: { stopPropagation: () => void }) => void
   onOut: () => void
   onClick: (ev: { stopPropagation: () => void; clientX: number; clientY: number }) => void
+  onPointerDown: (ev: { stopPropagation: () => void; clientX: number; clientY: number }) => void
 }
 
 /**
- * Mirrors the visible-pass R3F handlers into the id-buffer dispatch
- * registry under the constraint id, so 267.2's canvas-level pointer
- * dispatcher can drive the same callbacks via the dimensionLabel ID
- * layer. Parallel-installed: the existing R3F handlers stay live.
+ * Mirrors the dimension component's hover / click / drag-start handlers
+ * into the id-buffer dispatch registry under the constraint id, so the
+ * canvas-level pointer dispatcher (267.2) can drive the same callbacks
+ * via the dimensionLabel ID layer. As of 267.3, this is the *only*
+ * pick path for dimension labels -- the R3F event props on the label
+ * hit meshes have been removed.
  */
 export function useDimDispatchRegistration(cid: string, target: DispatchTarget): void {
   const targetRef = useRef(target)
@@ -23,6 +26,8 @@ export function useDimDispatchRegistration(cid: string, target: DispatchTarget):
       onOut:  () => targetRef.current.onOut(),
       onClick: (clientX, clientY) =>
         targetRef.current.onClick({ stopPropagation: () => { }, clientX, clientY }),
+      onPointerDown: (clientX, clientY) =>
+        targetRef.current.onPointerDown({ stopPropagation: () => { }, clientX, clientY }),
     })
   }, [cid])
 }

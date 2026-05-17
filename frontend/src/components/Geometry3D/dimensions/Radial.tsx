@@ -78,8 +78,6 @@ export function RadiusDimension({ cid, dim, interaction }: {
     position: [labelX, labelY, 0.001],
     enabled: !isDragged,
   })
-  useDimDispatchRegistration(cid, { onOver, onOut, onClick })
-
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return
     e.stopPropagation()
@@ -96,6 +94,8 @@ export function RadiusDimension({ cid, dim, interaction }: {
     })
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   }, [interaction, cid, cx, cy, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
+
+  useDimDispatchRegistration(cid, { onOver, onOut, onClick, onPointerDown })
 
   return (
     <group key={cid}>
@@ -115,7 +115,7 @@ export function RadiusDimension({ cid, dim, interaction }: {
         </>
       )}
       {!isDragged && (
-        <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
+        <mesh ref={meshRef} position={[labelX, labelY, 0.001]}>
           <circleGeometry args={[1, 8]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
@@ -190,8 +190,6 @@ export function DiameterDimension({ cid, dim, interaction }: {
     position: [labelX, labelY, 0.001],
     enabled: !isDragged,
   })
-  useDimDispatchRegistration(cid, { onOver, onOut, onClick })
-
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return
     e.stopPropagation()
@@ -207,6 +205,8 @@ export function DiameterDimension({ cid, dim, interaction }: {
       startWorld: [labelX, labelY],
     })
   }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
+
+  useDimDispatchRegistration(cid, { onOver, onOut, onClick, onPointerDown })
 
   return (
     <group key={cid}>
@@ -230,7 +230,7 @@ export function DiameterDimension({ cid, dim, interaction }: {
         </>
       )}
       {!isDragged && (
-        <mesh ref={meshRef} position={[labelX, labelY, 0.001]} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} onPointerDown={onPointerDown}>
+        <mesh ref={meshRef} position={[labelX, labelY, 0.001]}>
           <circleGeometry args={[1, 8]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>

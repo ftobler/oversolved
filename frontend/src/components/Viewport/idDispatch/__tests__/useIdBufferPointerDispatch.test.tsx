@@ -41,7 +41,7 @@ describe('useIdBufferPointerDispatch', () => {
 
   it('fires registered onClick when the resolver returns a dimension label hit', async () => {
     const onClick = vi.fn()
-    registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick })
+    registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick, onPointerDown: () => {} })
 
     // Stub resolveSync to return a dimensionLabel hit regardless of cursor.
     pipeline.resolveSync = vi.fn().mockReturnValue({
@@ -63,7 +63,7 @@ describe('useIdBufferPointerDispatch', () => {
 
   it('does not fire when the active tool excludes the dimensionLabel layer', async () => {
     const onClick = vi.fn()
-    registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick })
+    registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick, onPointerDown: () => {} })
 
     // Switch to a drawing tool that excludes dimensionLabel.
     useSketchEditorStore.setState({ activeTool: 'line' })
@@ -89,7 +89,7 @@ describe('useIdBufferPointerDispatch', () => {
   it('hover stream calls onOver then onOut as the resolved key changes', async () => {
     const onOver = vi.fn()
     const onOut = vi.fn()
-    registerDimCallbacks('c1', { onOver, onOut, onClick: () => {} })
+    registerDimCallbacks('c1', { onOver, onOut, onClick: () => {}, onPointerDown: () => {} })
 
     let nextHit: { layer: string; entityKey: string } | null = {
       layer: DIMENSION_LABEL_LAYER_NAME, entityKey: 'dim:c1',

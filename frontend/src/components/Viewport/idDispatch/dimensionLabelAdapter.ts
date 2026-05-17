@@ -45,4 +45,12 @@ export const dimensionLabelAdapter = {
     cb.onClick(clientX, clientY)
     return true
   },
+  onPointerDown(entityKey: string, clientX: number, clientY: number): boolean {
+    const parsed = parseDimensionLabelKey(entityKey)
+    if (!parsed) return false
+    const cb = getDimCallbacks(parsed.cid)
+    if (!cb) return false
+    cb.onPointerDown(clientX, clientY)
+    return true
+  },
 }
