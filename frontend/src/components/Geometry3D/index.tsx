@@ -31,6 +31,9 @@ import { planeRotation, planeRotationFromTransform } from '@/components/Geometry
 // Colors
 import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
 
+// ID-buffer registration
+import { useSketchIdRegistration } from '@/picking'
+
 export interface Geometry3DProps {
   featureId: string
   solved: Sketch
@@ -70,6 +73,20 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   )
 
   const isEditing = featureId === activeFeatureId
+
+  // Register the SOLVED sketch (not displaySketch). displaySketch is replaced
+  // each drag tick by softSolve, which would otherwise unregister/re-allocate
+  // every pointermove. The ID buffer doesn't need mid-drag accuracy because
+  // selection is disabled during drag.
+  // Inactive sketches stay raycast-inert (matches the legacy noOpRaycast
+  // behavior for non-active sketches). When no sketch is being edited, all
+  // sketches register so they can be picked from the assembly view.
+  useSketchIdRegistration({
+    featureId,
+    sketch: solved,
+    planeTransform,
+    enabled: !activeFeatureId || isEditing,
+  })
 
   const getEntityColor = (entityId: string): string => {
     if (!isEditing) return COLOR_INACTIVE

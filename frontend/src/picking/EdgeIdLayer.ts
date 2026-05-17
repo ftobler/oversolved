@@ -23,6 +23,16 @@ export const EDGE_LAYER_NAME = 'edge'
 export const EDGE_FAT_PIXELS = 8
 export const EDGE_DEPTH_BIAS = -1e-4
 
+export interface EdgeIdLayerConfig {
+  name?: string
+  priority?: number
+  zPolicy?: LayerZPolicy
+  fatPixels?: number
+  depthBias?: number
+  depthTest?: boolean
+  depthWrite?: boolean
+}
+
 export interface EdgeBodyRegistration {
   /** Stable key, e.g. `${featureId}/${bodyId}`. */
   bodyKey: string
@@ -86,18 +96,18 @@ const FRAG_SHADER = `
   }
 `
 
-function buildEdgeIdMaterial(): THREE.ShaderMaterial {
+function buildEdgeIdMaterial(opts?: { fatPixels?: number; depthBias?: number; depthTest?: boolean; depthWrite?: boolean }): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: VERT_SHADER,
     fragmentShader: FRAG_SHADER,
     uniforms: {
       uViewport:  { value: new THREE.Vector2(1, 1) },
-      uFatPixels: { value: EDGE_FAT_PIXELS },
-      uDepthBias: { value: EDGE_DEPTH_BIAS },
+      uFatPixels: { value: opts?.fatPixels ?? EDGE_FAT_PIXELS },
+      uDepthBias: { value: opts?.depthBias ?? EDGE_DEPTH_BIAS },
     },
     side: THREE.DoubleSide,
-    depthTest: true,
-    depthWrite: false,
+    depthTest: opts?.depthTest ?? true,
+    depthWrite: opts?.depthWrite ?? false,
   })
 }
 
@@ -112,20 +122,30 @@ function buildXrayMaterialFrom(base: THREE.ShaderMaterial): THREE.ShaderMaterial
 }
 
 export class EdgeIdLayer extends IdLayerBase {
-  readonly name = EDGE_LAYER_NAME
-  readonly priority = 10
-  readonly zPolicy: LayerZPolicy = 'depth-test-against-prev'
+  readonly name: string
+  readonly priority: number
+  readonly zPolicy: LayerZPolicy
   inertWhen?: () => boolean
 
   private bodies = new Map<string, BodyRecord>()
-  private material = buildEdgeIdMaterial()
-  private xrayMaterial = buildXrayMaterialFrom(this.material)
+  private material: THREE.ShaderMaterial
+  private xrayMaterial: THREE.ShaderMaterial
   private xrayEnabled = false
   private lastWidth = 0
   private lastHeight = 0
 
-  constructor(registry: IdRegistry) {
+  constructor(registry: IdRegistry, config?: EdgeIdLayerConfig) {
     super(registry)
+    this.name = config?.name ?? EDGE_LAYER_NAME
+    this.priority = config?.priority ?? 10
+    this.zPolicy = config?.zPolicy ?? 'depth-test-against-prev'
+    this.material = buildEdgeIdMaterial({
+      fatPixels: config?.fatPixels,
+      depthBias: config?.depthBias,
+      depthTest: config?.depthTest,
+      depthWrite: config?.depthWrite,
+    })
+    this.xrayMaterial = buildXrayMaterialFrom(this.material)
   }
 
   /** Toggle x-ray mode: when true, edges hidden behind faces are still pickable. */

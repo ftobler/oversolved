@@ -7,6 +7,16 @@ import { EdgeIdLayer } from './EdgeIdLayer'
 import { VertexIdLayer } from './VertexIdLayer'
 import type { IdLayer } from './IdLayer'
 
+// Layer name constants for the helper / sketch / origin layers. The B-rep
+// layer names live in their respective modules (FACE/EDGE/VERTEX_LAYER_NAME).
+export const PLANE_LAYER_NAME = 'planeFace'
+export const SKETCH_ENTITY_LAYER_NAME = 'sketchEntity'
+export const SKETCH_VERTEX_LAYER_NAME = 'sketchVertex'
+export const ORIGIN_LAYER_NAME = 'originMarker'
+export const SKETCH_ENTITY_FAT_PIXELS = 8
+export const SKETCH_VERTEX_FAT_PIXELS = 12
+export const ORIGIN_FAT_PIXELS = 14
+
 export const DEFAULT_WINDOW_SIZE = 17
 
 export interface IdPipelineOptions {
@@ -32,6 +42,10 @@ export class IdPipeline {
   readonly faceLayer: FaceIdLayer
   readonly edgeLayer: EdgeIdLayer
   readonly vertexLayer: VertexIdLayer
+  readonly planeLayer: FaceIdLayer
+  readonly sketchEntityLayer: EdgeIdLayer
+  readonly sketchVertexLayer: VertexIdLayer
+  readonly originLayer: VertexIdLayer
   private layers: IdLayer[]
   private windowSize: number
 
@@ -39,14 +53,55 @@ export class IdPipeline {
     this.registry = new IdRegistry()
     this.target = new IdRenderTarget(opts.width, opts.height)
     this.resolver = new IdResolver(this.registry)
+    // B-rep layers (face/edge/vertex) at priorities 0/10/20.
     this.faceLayer = new FaceIdLayer(this.registry)
     this.edgeLayer = new EdgeIdLayer(this.registry)
     this.vertexLayer = new VertexIdLayer(this.registry)
+
+    // Helper layers above B-rep. Each clears depth before rendering so it
+    // sits above the B-rep stack regardless of world-space depth.
+    // Order: planeFace (30) -> sketchEntity (40) -> sketchVertex (50) -> originMarker (60).
+    this.planeLayer = new FaceIdLayer(this.registry, {
+      name: PLANE_LAYER_NAME, priority: 30, zPolicy: 'clear-then-fresh',
+    })
+    this.sketchEntityLayer = new EdgeIdLayer(this.registry, {
+      name: SKETCH_ENTITY_LAYER_NAME, priority: 40, zPolicy: 'clear-then-fresh',
+      fatPixels: SKETCH_ENTITY_FAT_PIXELS, depthTest: false, depthWrite: false,
+    })
+    this.sketchVertexLayer = new VertexIdLayer(this.registry, {
+      name: SKETCH_VERTEX_LAYER_NAME, priority: 50, zPolicy: 'no-depth',
+      fatPixels: SKETCH_VERTEX_FAT_PIXELS,
+    })
+    this.originLayer = new VertexIdLayer(this.registry, {
+      name: ORIGIN_LAYER_NAME, priority: 60, zPolicy: 'no-depth',
+      fatPixels: ORIGIN_FAT_PIXELS,
+    })
+
     this.layers = []
     this.addLayer(this.faceLayer)
     this.addLayer(this.edgeLayer)
     this.addLayer(this.vertexLayer)
+    this.addLayer(this.planeLayer)
+    this.addLayer(this.sketchEntityLayer)
+    this.addLayer(this.sketchVertexLayer)
+    this.addLayer(this.originLayer)
+
     this.windowSize = opts.windowSize ?? DEFAULT_WINDOW_SIZE
+  }
+
+  /**
+   * Mark the three B-rep layers (face/edge/vertex) inert based on a
+   * caller-supplied predicate. Used to silence B-rep picking while a
+   * sketch is being edited (matches Body3D's `interactive={!activeFeatureId}`
+   * visible-pass rule from #221). When `predicate` returns true the
+   * layers are simply not rendered into the ID buffer, so the resolver
+   * cannot return a B-rep entity.
+   */
+  setBrepInertPredicate(predicate: (() => boolean) | null): void {
+    const inertWhen = predicate ?? undefined
+    this.faceLayer.inertWhen = inertWhen
+    this.edgeLayer.inertWhen = inertWhen
+    this.vertexLayer.inertWhen = inertWhen
   }
 
   /**

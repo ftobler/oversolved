@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import { IdPipeline } from './IdPipeline'
 import { setLivePipeline } from './IdPipelineContext'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 interface IdPickingDriverProps {
   /** External handle so non-Canvas code (Viewport pointer dispatch) can call resolveSync. */
@@ -55,6 +56,23 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
   useEffect(() => {
     pipeline.resize(Math.max(1, Math.floor(sizeWidth)), Math.max(1, Math.floor(sizeHeight)))
   }, [pipeline, sizeWidth, sizeHeight])
+
+  // Mirror the visible-pass `interactive={!activeFeatureId}` rule from
+  // Body3D: while a sketch is being edited, B-rep layers go inert in the
+  // ID buffer so the resolver never returns a B-rep entity.
+  useEffect(() => {
+    pipeline.setBrepInertPredicate(() => {
+      return useSketchEditorStore.getState().activeFeatureId !== null
+    })
+    // Re-render whenever the edit flag flips.
+    const unsub = useSketchEditorStore.subscribe((state, prev) => {
+      if (state.activeFeatureId !== prev.activeFeatureId) pipeline.markDirty()
+    })
+    return () => {
+      pipeline.setBrepInertPredicate(null)
+      unsub()
+    }
+  }, [pipeline])
 
   useFrame(({ camera }) => {
     pipeline.renderIfDirty(gl, camera)

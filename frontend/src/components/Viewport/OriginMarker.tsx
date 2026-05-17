@@ -7,6 +7,7 @@ import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, POINT_HIT_PIXELS, POINT_HI
 import { Dot, VertexHighlight } from '@/components/Geometry3D/VertexDots'
 import { p2w } from '@/components/sketch_helpers'
 import { useToolClickDispatch } from '@/components/Geometry3D/useToolClickDispatch'
+import { useOriginMarkerIdRegistration } from '@/picking'
 
 export default function OriginMarker() {
   const [hovered, setHovered] = useState(false)
@@ -22,6 +23,8 @@ export default function OriginMarker() {
   const isEditing = !!activeFeatureId
 
   const onClick = useToolClickDispatch({ id: selId, isEditing })
+
+  useOriginMarkerIdRegistration({ selectionId: selId })
 
   useFrame(() => {
     if (!hitRef.current) return

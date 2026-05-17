@@ -4,6 +4,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { planeRotationFromTransform } from '@/components/Geometry3D/utils'
 import { useHoverAndDynamicSelection } from '@/components/Geometry3D/useHoverAndDynamicSelection'
 import { PlaneLabel, PlaneSurface, type PlaneState } from '@/components/Viewport/PlaneVisual'
+import { usePlaneIdRegistration } from '@/picking'
 
 /** Encapsulates click routing for plane elements:
  *  1. plane selection mode active  -> commitPlaneSelection
@@ -59,6 +60,8 @@ export default function UserDefinedPlane({
   const rot = planeRotationFromTransform(planeTransform)
   const [ox, oy, oz] = planeTransform.origin
   const ph = size / 2
+
+  usePlaneIdRegistration({ selectionId: selId, size, rotation: rot, origin: [ox, oy, oz] })
 
   return (
     <group position={[ox, oy, oz]} rotation={rot}>

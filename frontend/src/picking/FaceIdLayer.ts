@@ -18,6 +18,12 @@ import { idToRGBNormalized } from './idEncoding'
  */
 export const FACE_LAYER_NAME = 'face'
 
+export interface FaceIdLayerConfig {
+  name?: string
+  priority?: number
+  zPolicy?: LayerZPolicy
+}
+
 export interface FaceBodyRegistration {
   /** Stable key for the registered body (e.g. `${featureId}/${bodyId}`). */
   bodyKey: string
@@ -60,16 +66,19 @@ function buildFaceIdMaterial(): THREE.ShaderMaterial {
 }
 
 export class FaceIdLayer extends IdLayerBase {
-  readonly name = FACE_LAYER_NAME
-  readonly priority = 0
-  readonly zPolicy: LayerZPolicy = 'clear-then-fresh'
+  readonly name: string
+  readonly priority: number
+  readonly zPolicy: LayerZPolicy
   inertWhen?: () => boolean
 
   private bodies = new Map<string, BodyRecord>()
   private material = buildFaceIdMaterial()
 
-  constructor(registry: IdRegistry) {
+  constructor(registry: IdRegistry, config?: FaceIdLayerConfig) {
     super(registry)
+    this.name = config?.name ?? FACE_LAYER_NAME
+    this.priority = config?.priority ?? 0
+    this.zPolicy = config?.zPolicy ?? 'clear-then-fresh'
   }
 
   registerBody(reg: FaceBodyRegistration): void {

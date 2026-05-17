@@ -19,6 +19,13 @@ import { idToRGBNormalized } from './idEncoding'
 export const VERTEX_LAYER_NAME = 'vertex'
 export const VERTEX_FAT_PIXELS = 16
 
+export interface VertexIdLayerConfig {
+  name?: string
+  priority?: number
+  zPolicy?: LayerZPolicy
+  fatPixels?: number
+}
+
 export interface VertexBodyRegistration {
   bodyKey: string
   vertices: ReadonlyArray<[number, number, number]>
@@ -60,17 +67,17 @@ const FRAG_SHADER = `
   }
 `
 
-function buildVertexIdMaterial(): THREE.ShaderMaterial {
-  // depthTest:false is the load-bearing setting here -- combined with
-  // priority=20 it means a vertex pixel always wins over any face/edge
-  // pixel under it, which is the "vertex beats edge beats face" rule
-  // expressed geometrically rather than in a resolver priority sort.
+function buildVertexIdMaterial(fatPixels: number): THREE.ShaderMaterial {
+  // depthTest:false is the load-bearing setting here -- combined with the
+  // layer's priority it means a vertex pixel always wins over any face or
+  // edge pixel under it. The "vertex beats edge beats face" rule is
+  // expressed geometrically rather than via a resolver priority sort.
   return new THREE.ShaderMaterial({
     vertexShader: VERT_SHADER,
     fragmentShader: FRAG_SHADER,
     uniforms: {
       uViewport:  { value: new THREE.Vector2(1, 1) },
-      uFatPixels: { value: VERTEX_FAT_PIXELS },
+      uFatPixels: { value: fatPixels },
     },
     side: THREE.DoubleSide,
     depthTest: false,
@@ -94,18 +101,22 @@ function buildUnitQuadGeometry(): THREE.BufferGeometry {
 }
 
 export class VertexIdLayer extends IdLayerBase {
-  readonly name = VERTEX_LAYER_NAME
-  readonly priority = 20
-  readonly zPolicy: LayerZPolicy = 'no-depth'
+  readonly name: string
+  readonly priority: number
+  readonly zPolicy: LayerZPolicy
   inertWhen?: () => boolean
 
   private bodies = new Map<string, BodyRecord>()
-  private material = buildVertexIdMaterial()
+  private material: THREE.ShaderMaterial
   private lastWidth = 0
   private lastHeight = 0
 
-  constructor(registry: IdRegistry) {
+  constructor(registry: IdRegistry, config?: VertexIdLayerConfig) {
     super(registry)
+    this.name = config?.name ?? VERTEX_LAYER_NAME
+    this.priority = config?.priority ?? 20
+    this.zPolicy = config?.zPolicy ?? 'no-depth'
+    this.material = buildVertexIdMaterial(config?.fatPixels ?? VERTEX_FAT_PIXELS)
   }
 
   registerBody(reg: VertexBodyRegistration): void {
