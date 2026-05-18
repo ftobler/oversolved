@@ -169,13 +169,18 @@ export class EdgeIdLayer extends IdLayerBase {
     if (numSegments === 0) return
 
     // Two triangles per segment, 6 vertices per ribbon.
+    // The shader computes the tangent as (aOther - position) and offsets
+    // perpendicularly by (aSide * fatPixels). For start vertices (position=s)
+    // the tangent points s->e (correct). For end vertices (position=e) the
+    // tangent points e->s = -(s->e), which flips the perpendicular direction.
+    // We compensate by swapping aSide on end vertices.
     // Vertex layout (s = segment start, e = segment end):
-    //   v0 = s, side=-1, other=e
-    //   v1 = s, side=+1, other=e
-    //   v2 = e, side=-1, other=s
-    //   v3 = s, side=+1, other=e
-    //   v4 = e, side=+1, other=s
-    //   v5 = e, side=-1, other=s
+    //   v0 = s, side=-1, other=e   -- start, left
+    //   v1 = s, side=+1, other=e   -- start, right
+    //   v2 = e, side=+1, other=s   -- end, left (side swapped vs start)
+    //   v3 = s, side=+1, other=e   -- start, right (duplicate of v1)
+    //   v4 = e, side=-1, other=s   -- end, right (side swapped vs start)
+    //   v5 = e, side=+1, other=s   -- end, left (duplicate of v2)
     const positions = new Float32Array(numSegments * 6 * 3)
     const others    = new Float32Array(numSegments * 6 * 3)
     const sides     = new Float32Array(numSegments * 6)
@@ -223,14 +228,14 @@ export class EdgeIdLayer extends IdLayerBase {
         colors[(base6 + i) * 3 + 2] = b
       }
 
-      // Triangle 1: (s,-1), (s,+1), (e,-1)
+      // Triangle 1: (s,-1), (s,+1), (e,+1)  -- end side swapped for flipped tangent
       setPos(0, sx, sy, sz); setOther(0, ex, ey, ez); setSide(0, -1)
       setPos(1, sx, sy, sz); setOther(1, ex, ey, ez); setSide(1, +1)
-      setPos(2, ex, ey, ez); setOther(2, sx, sy, sz); setSide(2, -1)
-      // Triangle 2: (s,+1), (e,+1), (e,-1)
+      setPos(2, ex, ey, ez); setOther(2, sx, sy, sz); setSide(2, +1)
+      // Triangle 2: (s,+1), (e,-1), (e,+1)  -- end sides swapped
       setPos(3, sx, sy, sz); setOther(3, ex, ey, ez); setSide(3, +1)
-      setPos(4, ex, ey, ez); setOther(4, sx, sy, sz); setSide(4, +1)
-      setPos(5, ex, ey, ez); setOther(5, sx, sy, sz); setSide(5, -1)
+      setPos(4, ex, ey, ez); setOther(4, sx, sy, sz); setSide(4, -1)
+      setPos(5, ex, ey, ez); setOther(5, sx, sy, sz); setSide(5, +1)
 
       for (let i = 0; i < 6; i++) setColor(i, rgb[0], rgb[1], rgb[2])
     }
