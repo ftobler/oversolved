@@ -23,7 +23,7 @@ describe('dimensionLabel ID layer', () => {
     })
     const pts = p.dimensionLabelLayer.scene.children[0] as import('three').Points
     expect(pts.geometry.getAttribute('position').count).toBe(1)
-    expect(pts.material.depthTest).toBe(false)
+    expect((pts.material as import('three').Material).depthTest).toBe(false)
     p.dispose()
   })
 

@@ -96,19 +96,16 @@ export class IdPipeline {
     })
     this.sketchEntityLayer = new EdgeIdLayer(this.registry, {
       name: SKETCH_ENTITY_LAYER_NAME, priority: 40, zPolicy: 'clear-then-fresh',
-      fatPixels: SKETCH_ENTITY_FAT_PIXELS, depthTest: false, depthWrite: false,
+      depthTest: false, depthWrite: false,
     })
     this.sketchVertexLayer = new VertexIdLayer(this.registry, {
       name: SKETCH_VERTEX_LAYER_NAME, priority: 50, zPolicy: 'no-depth',
-      fatPixels: SKETCH_VERTEX_FAT_PIXELS,
     })
     this.originLayer = new VertexIdLayer(this.registry, {
       name: ORIGIN_LAYER_NAME, priority: 60, zPolicy: 'no-depth',
-      fatPixels: ORIGIN_FAT_PIXELS,
     })
     this.dimensionLabelLayer = new VertexIdLayer(this.registry, {
       name: DIMENSION_LABEL_LAYER_NAME, priority: 70, zPolicy: 'no-depth',
-      fatPixels: DIMENSION_LABEL_FAT_PIXELS,
     })
 
     this.layers = []

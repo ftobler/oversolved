@@ -514,11 +514,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     wasPointerDrag.current = wasDrag
     pointerDownPos.current = null
 
-    // 268: commit rubber-band selection on drag.
-    if (wasDrag && rubberBand.state.dragging) {
-      rubberBand.onPointerUp()
-      return
-    }
+    // Always commit or cancel the rubber-band so it never stays sticky after release.
+    rubberBand.onPointerUp()
 
     if (wasDrag) return
 
