@@ -320,13 +320,17 @@ def _brep_diff_new_face_hashes(body: Body) -> set[str]:
     Used to identify which face_data entries are "new" (introduced by the
     boolean op) so their `@created_by` can be tagged with the cutting feature
     rather than the body's original creator.
+
+    Area is computed by tessellating each new face and summing triangle areas
+    (same method as solid_to_mesh) so the resulting hash matches the hash
+    computed from the tessellated mesh.
     """
     diff = getattr(body, "brep_diff", None)
     if diff is None or not diff.new_faces:
         return set()
     try:
-        from oversolved.kernel.cadquery_ops import _compute_face_centroid, _compute_face_normal
-        from oversolved.kernel.ocp_ops import ocp_face_area
+        from oversolved.kernel.cadquery_ops import _compute_face_centroid, _compute_face_normal, _triangle_area
+        from oversolved.kernel.ocp_ops import ocp_mesh_shape
         import cadquery.occ_impl.shapes as cq_shapes  # noqa: PLC0415
     except ImportError:
         return set()
@@ -336,7 +340,13 @@ def _brep_diff_new_face_hashes(body: Body) -> set[str]:
             cq_face = cq_shapes.Shape.cast(topo_face)
             centroid = _compute_face_centroid(cq_face)
             normal = _compute_face_normal(cq_face)
-            area = ocp_face_area(topo_face)
+            ocp_mesh_shape(topo_face, 0.1, 0.1)
+            verts, idxs = cq_face.tessellate(0.1)
+            flat_verts = [list(v.toTuple()) for v in verts]
+            area = sum(
+                _triangle_area(flat_verts[tri[0]], flat_verts[tri[1]], flat_verts[tri[2]])
+                for tri in idxs
+            )
             hashes.add(face_geometry_hash(centroid, normal, area))
         except Exception as exc:  # narrow OCP errors aren't easy to type
             logger.debug("brep_diff hash skip: %s", exc)
@@ -555,8 +565,27 @@ def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vert
         _evict_ancestry_and_register(global_repo, ancestor_ids, payload, index_tag, geom_hash=geom_hash)
 
 
+def _rewrite_created_by(query_str: str, new_created_by: str) -> str:
+    """Rewrite the @created_by tag in an ancestry query string.
+
+    Tessellation queries use a 3-tag format: [@geom_hash, @created_by, @body_id].
+    The @created_by tag is always at index 1.
+    """
+    from oversolved.kernel.query import _parse_ancestry, make_ancestry_query
+    ids, type_restriction = _parse_ancestry(query_str)
+    if len(ids) >= 2:
+        ids[1] = "@" + new_created_by
+        return make_ancestry_query(ids, type_restriction)
+    return query_str
+
+
 def _tessellate_body_geometry(body: Body) -> dict[str, Any]:
-    """Tessellate a single body without registering ancestry."""
+    """Tessellate a single body without registering ancestry.
+
+    After tessellation, rewrites query strings for boolean-new elements
+    (faces, edges, vertices) to use body.modified_by[-1] instead of
+    body.created_by, matching the created_by used by _register_brep_*_ancestry.
+    """
     entry: dict[str, Any] = {
         "id": body.id,
         "created_by": body.created_by,
@@ -576,6 +605,38 @@ def _tessellate_body_geometry(body: Body) -> dict[str, Any]:
     except Exception as exc:
         entry["mesh_error"] = str(exc)
         return entry
+
+    # Rewrite query strings for boolean-new elements so the @created_by tag
+    # matches what _register_brep_*_ancestry registers (body.modified_by[-1]
+    # for new elements instead of body.created_by).
+    if body.brep_diff is not None and body.modified_by:
+        modifier = body.modified_by[-1]
+        if modifier != body.created_by:
+            new_face_hashes = _brep_diff_new_face_hashes(body)
+            if new_face_hashes:
+                for i, fd in enumerate(mesh.get("face_data", [])):
+                    gh = face_geometry_hash(fd["centroid"], fd["normal"], fd["area"])
+                    if gh in new_face_hashes:
+                        mesh["face_queries"][i] = _rewrite_created_by(mesh["face_queries"][i], modifier)
+
+            new_edge_hashes = _brep_diff_new_edge_hashes(body)
+            if new_edge_hashes:
+                for i, edge in enumerate(edges_result.get("edges", [])):
+                    gh = edge_geometry_hash(edge)
+                    if gh in new_edge_hashes:
+                        edges_result["edge_queries"][i] = _rewrite_created_by(
+                            edges_result["edge_queries"][i], modifier
+                        )
+
+            new_vertex_hashes = _brep_diff_new_vertex_hashes(body)
+            if new_vertex_hashes:
+                for i, pt in enumerate(verts_result.get("vertices", [])):
+                    gh = vertex_geometry_hash(pt)
+                    if gh in new_vertex_hashes:
+                        verts_result["vertex_queries"][i] = _rewrite_created_by(
+                            verts_result["vertex_queries"][i], modifier
+                        )
+
     entry["mesh"] = mesh
     entry["edges"] = edges_result["edges"]
     entry["edge_queries"] = edges_result["edge_queries"]

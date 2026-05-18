@@ -315,3 +315,106 @@ def test_brep_diff_absent_no_regression():
             cb = el.get("created_by")
             if cb:
                 assert cb == "ex1", f"fresh extrude should only have ex1 ancestry, got {cb}"
+
+
+def test_mesh_face_queries_have_correct_created_by_after_cut():
+    """Mesh face_queries must use @ex2 for new cut-hole walls, @ex1 for inherited."""
+    pytest.importorskip("OCP.gp")
+    from oversolved.kernel.builder import build
+    from oversolved.kernel.query import _parse_ancestry
+
+    r = build(_cut_fixture())
+    if r["result"]["ex2"]["status"] != "ok":
+        pytest.skip(f"cut failed: {r['result']['ex2']}")
+
+    face_queries = r["bodies"]["body_ex1"]["mesh"]["face_queries"]
+    created_by_set: set[str] = set()
+    for fq in face_queries:
+        ids, _ = _parse_ancestry(fq)
+        if len(ids) >= 2:
+            created_by_set.add(ids[1][1:])  # strip @ prefix
+
+    assert "ex1" in created_by_set, f"expected ex1 in face_queries, got {created_by_set}"
+    assert "ex2" in created_by_set, f"expected ex2 in face_queries, got {created_by_set}"
+
+
+def test_mesh_edge_queries_have_correct_created_by_after_cut():
+    """Mesh edge_queries must use @ex2 for new cut perimeter edges, @ex1 for inherited."""
+    pytest.importorskip("OCP.gp")
+    from oversolved.kernel.builder import build
+    from oversolved.kernel.query import _parse_ancestry
+
+    r = build(_cut_fixture())
+    if r["result"]["ex2"]["status"] != "ok":
+        pytest.skip(f"cut failed: {r['result']['ex2']}")
+
+    edge_queries = r["bodies"]["body_ex1"]["edge_queries"]
+    created_by_set: set[str] = set()
+    for eq in edge_queries:
+        ids, _ = _parse_ancestry(eq)
+        if len(ids) >= 2:
+            created_by_set.add(ids[1][1:])
+
+    assert "ex1" in created_by_set, f"expected ex1 in edge_queries, got {created_by_set}"
+    assert "ex2" in created_by_set, f"expected ex2 in edge_queries, got {created_by_set}"
+
+
+def test_mesh_vertex_queries_have_correct_created_by_after_cut():
+    """Mesh vertex_queries must use @ex2 for new hole-corner vertices, @ex1 for inherited."""
+    pytest.importorskip("OCP.gp")
+    from oversolved.kernel.builder import build
+    from oversolved.kernel.query import _parse_ancestry
+
+    r = build(_cut_fixture())
+    if r["result"]["ex2"]["status"] != "ok":
+        pytest.skip(f"cut failed: {r['result']['ex2']}")
+
+    vertex_queries = r["bodies"]["body_ex1"]["vertex_queries"]
+    created_by_set: set[str] = set()
+    for vq in vertex_queries:
+        ids, _ = _parse_ancestry(vq)
+        if len(ids) >= 2:
+            created_by_set.add(ids[1][1:])
+
+    assert "ex1" in created_by_set, f"expected ex1 in vertex_queries, got {created_by_set}"
+    assert "ex2" in created_by_set, f"expected ex2 in vertex_queries, got {created_by_set}"
+
+
+def test_tessellation_query_resolves_after_cut():
+    """Every face_query from a cut body resolves against the repo.
+
+    The full query (geom_hash + @created_by + @body_id) must resolve to a
+    unique face element via tier 1 + hash narrowing, not just hash fallback.
+    """
+    pytest.importorskip("OCP.gp")
+    from oversolved.kernel.builder import build
+
+    r = build(_cut_fixture())
+    if r["result"]["ex2"]["status"] != "ok":
+        pytest.skip(f"cut failed: {r['result']['ex2']}")
+
+    state = r["_build_state"]
+    repo_snap = state.checkpoints["ex2"].repo_snapshot
+    from oversolved.kernel.builder import _repo_from_snapshot
+    repo = _repo_from_snapshot(repo_snap)
+
+    face_queries = r["bodies"]["body_ex1"]["mesh"]["face_queries"]
+    for fq in face_queries:
+        resolved = repo.query(fq)
+        assert resolved is not None, f"face query failed to resolve: {fq}"
+        assert isinstance(resolved, dict)
+        assert resolved.get("body_id") == "body_ex1", f"wrong body in {fq}"
+
+    edge_queries = r["bodies"]["body_ex1"]["edge_queries"]
+    for eq in edge_queries:
+        resolved = repo.query(eq)
+        assert resolved is not None, f"edge query failed to resolve: {eq}"
+        assert isinstance(resolved, dict)
+        assert resolved.get("body_id") == "body_ex1"
+
+    vertex_queries = r["bodies"]["body_ex1"]["vertex_queries"]
+    for vq in vertex_queries:
+        resolved = repo.query(vq)
+        assert resolved is not None, f"vertex query failed to resolve: {vq}"
+        assert isinstance(resolved, dict)
+        assert resolved.get("body_id") == "body_ex1"
