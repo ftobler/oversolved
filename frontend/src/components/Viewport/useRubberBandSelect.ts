@@ -126,16 +126,8 @@ export function useRubberBandSelect(
       return
     }
 
-    // Cap rect size to avoid OOM / GPU timeout.
-    const MAX_PIXELS = 500 * 500
-    let readW = rw
-    let readH = rh
-    if (readW * readH > MAX_PIXELS) {
-      const scale = Math.sqrt(MAX_PIXELS / (readW * readH))
-      readW = Math.max(1, Math.floor(readW * scale))
-      readH = Math.max(1, Math.floor(readH * scale))
-    }
-
+    const readW = rw
+    const readH = rh
     const buf = new Uint8Array(readW * readH * 4)
     // readRenderTargetPixels expects bottom-left origin.
     const readY = h - y0 - readH
