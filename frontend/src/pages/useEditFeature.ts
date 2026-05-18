@@ -8,6 +8,7 @@ interface UseEditFeatureInput {
   features: PartFeature[]
   rollbackPosition: number | null
   builtInIds: Set<string>
+  setRollbackPos: (pos: number | null) => void
   setRollbackFromHandler: (pos: number | null) => void
   setPickBoundary: (b: number | null) => void
   clearPickBodies: () => void
@@ -36,6 +37,7 @@ export function useEditFeature({
   features,
   rollbackPosition,
   builtInIds,
+  setRollbackPos,
   setRollbackFromHandler,
   setPickBoundary,
   clearPickBodies,
@@ -98,13 +100,14 @@ export function useEditFeature({
     startEditSession(suppressUndo)
     setSavedRollbackPosition(rollbackPosition ?? features.length)
     editEntryRollback.current = idx + 1
+    setRollbackPos(idx + 1)
     setRollbackFromHandler(idx + 1)
     setEditForcedVisible(new Set([featureId]))
     setEditingFeatureId(featureId)
     setPickBoundary(null)
     clearPickBodies()
-  }, [features, rollbackPosition, setPickBoundary, clearPickBodies, setRollbackFromHandler,
-      startEditSession])
+  }, [features, rollbackPosition, setPickBoundary, clearPickBodies, setRollbackPos,
+      setRollbackFromHandler, startEditSession])
 
   const commitEditFeature = useCallback(() => {
     commitEditSession()

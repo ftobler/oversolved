@@ -215,6 +215,7 @@ export default function Part() {
     features,
     rollbackPosition,
     builtInIds: BUILT_IN_IDS,
+    setRollbackPos,
     setRollbackFromHandler,
     setPickBoundary,
     clearPickBodies,
