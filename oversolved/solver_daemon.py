@@ -17,7 +17,6 @@ from queue import Empty as _QueueEmpty
 from typing import Any
 
 from websockets.asyncio.server import serve
-from oversolved.kernel.geometry_pack import pack_geometry_update
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +28,7 @@ def _build_worker(input_queue: Any, output_queue: Any) -> None:
     subprocess, keeping the solver daemon free of native code.
     """
     from oversolved.kernel.builder import build  # noqa: PLC0415
+    from oversolved.kernel.geometry_pack import pack_geometry_update  # noqa: PLC0415
     from oversolved.cache import TtlCache  # noqa: PLC0415
 
     ttl = float(os.environ.get("OVERSOLVED_SOLVER_STATE_TTL", "1800"))
@@ -56,7 +56,7 @@ def _build_worker(input_queue: Any, output_queue: Any) -> None:
             continue
 
         try:
-            request_id, doc_id, spec, pick_boundary, rollback_position = msg
+            request_id, doc_id, spec, pick_boundary, rollback_position, isolator_request_id = msg
         except (TypeError, ValueError):
             logger.error("Worker received malformed message: %r", msg)
             continue
@@ -78,26 +78,42 @@ def _build_worker(input_queue: Any, output_queue: Any) -> None:
             if doc_id and new_state is not None:
                 prev_states.set(doc_id, new_state)
 
-            output_queue.put((request_id, "ok", result))
+            status = "ok"
         except Exception as exc:
             tb = traceback.format_exc()
             logger.warning("Build worker exception: %s\n%s", exc, tb)
             duration_ms = round((time.perf_counter() - t0) * 1000, 1)
-            error_result: dict[str, Any] = {
+            error_exc = str(exc)
+            error_tb = tb
+            result = {
                 "solve_ms": duration_ms,
                 "result": {},
                 "bodies": {},
             }
+            status = "error"
+
+        # Pre-pack geometry in the worker so only compact bytes traverse
+        # the mp.Queue instead of heavy Python mesh object graphs (~20MB).
+        bodies = result.pop("bodies", {})
+        pick_bodies = result.pop("pick_bodies", None)
+        result["_geometry_bytes"] = pack_geometry_update(
+            spec.get("msgId", ""), bodies, pick_bodies,
+            request_id=isolator_request_id or request_id,
+        )
+
+        if status == "error":
             try:
                 output_queue.put(
                     (request_id, "error", {
-                        "exception": str(exc),
-                        "traceback": tb,
-                        "result_so_far": error_result,
+                        "exception": error_exc,
+                        "traceback": error_tb,
+                        "result_so_far": result,
                     })
                 )
             except Exception:
                 logger.exception("Worker output queue error")
+        else:
+            output_queue.put((request_id, "ok", result))
 
 
 class _Worker:
@@ -152,6 +168,7 @@ class _Worker:
         doc_id: str | None = None,
         pick_boundary: int | None = None,
         rollback_position: int | None = None,
+        isolator_request_id: str | None = None,
     ) -> dict:
         """Run build() in the subprocess.  Returns the result dict."""
         if self._worker is None or not self._worker.is_alive():
@@ -165,7 +182,7 @@ class _Worker:
 
         try:
             self._input_queue.put(
-                (request_id, doc_id, spec, pick_boundary, rollback_position)
+                (request_id, doc_id, spec, pick_boundary, rollback_position, isolator_request_id)
             )
         except (BrokenPipeError, EOFError, OSError):
             self._restart()
@@ -385,22 +402,20 @@ async def handler(websocket: Any, pool: WorkerPool) -> None:
                         request.get("doc_id"),
                         request.get("pick_boundary"),
                         request.get("rollback_position"),
+                        request_id,
                     )
                 finally:
                     await pool.mark_done(cid)
-                bodies = result.pop("bodies", {})
-                pick_bodies = result.pop("pick_bodies", None)
-                msg_id = request.get("spec", {}).get("msgId")
+                geometry_bytes = result.pop("_geometry_bytes", None)
+                has_geometry = bool(geometry_bytes and len(geometry_bytes) > 4)
                 await websocket.send(json.dumps({
                     "request_id": request_id,
                     "status": "ok",
-                    "has_geometry": True,
+                    "has_geometry": has_geometry,
                     "payload": result,
                 }))
-                geometry = pack_geometry_update(
-                    msg_id, bodies, pick_bodies, request_id=request_id
-                )
-                await websocket.send(geometry)
+                if has_geometry:
+                    await websocket.send(geometry_bytes)
 
             elif msg_type == "clear_cache":
                 try:
