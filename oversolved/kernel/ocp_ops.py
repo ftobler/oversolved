@@ -186,11 +186,54 @@ def ocp_make_arc_edge(circle: gp_Circ, angle_start: float, angle_end: float) -> 
 
 def ocp_revolve(topo_face: TopoDS_Shape, axis_origin: list[float],
                 axis_direction: list[float], angle_rad: float) -> TopoDS_Shape:
-    """Revolve *topo_face* around an axis and return the resulting TopoDS_Shape."""
+    """Revolve *topo_face* around an axis and return the resulting TopoDS_Shape.
+
+    Copy=True prevents MakeRevol from modifying the input face in-place.
+    """
     from OCP.gp import gp_Ax1, gp_Pnt, gp_Dir  # noqa: PLC0415
     from OCP.BRepPrimAPI import BRepPrimAPI_MakeRevol  # noqa: PLC0415
     ax = gp_Ax1(gp_Pnt(*axis_origin), gp_Dir(*axis_direction))
-    return BRepPrimAPI_MakeRevol(topo_face, ax, angle_rad).Shape()
+    return BRepPrimAPI_MakeRevol(topo_face, ax, angle_rad, True).Shape()
+
+
+def ocp_make_face_from_wire(outer_wire: TopoDS_Shape, hole_wires: list) -> TopoDS_Shape:
+    """Build a planar face directly from OCC wires without running ShapeFix on inputs.
+
+    Applies only ShapeFix_Face.FixOrientation() after building — no ShapeFix_Shape
+    on the outer wire, which CadQuery's Face.makeFromWires does and which can silently
+    alter wire topology before the face is even constructed.
+    """
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace  # noqa: PLC0415
+    from OCP.ShapeFix import ShapeFix_Face  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS  # noqa: PLC0415
+    builder = BRepBuilderAPI_MakeFace(TopoDS.Wire_s(outer_wire), True)
+    for hw in hole_wires:
+        builder.Add(TopoDS.Wire_s(hw))
+    builder.Build()
+    if not builder.IsDone():
+        raise ValueError(f"BRepBuilderAPI_MakeFace failed: {builder.Error()}")
+    face = builder.Face()
+    fixer = ShapeFix_Face(face)
+    fixer.FixOrientation()
+    fixer.Perform()
+    return fixer.Face()
+
+
+def ocp_make_prism(face: TopoDS_Shape, scaled_vec: list[float]) -> TopoDS_Shape:
+    """Linear extrusion: sweep *face* along *scaled_vec* (direction * distance).
+
+    Copy=True prevents MakePrism from modifying the input face in-place.
+    Returns raw TopoDS_Shape with no ShapeUpgrade applied — callers do that
+    after the boolean, not here.
+    """
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism  # noqa: PLC0415
+    from OCP.gp import gp_Vec  # noqa: PLC0415
+    vec = gp_Vec(*scaled_vec)
+    builder = BRepPrimAPI_MakePrism(face, vec, True)  # Copy=True
+    builder.Build()
+    if not builder.IsDone():
+        raise ValueError("BRepPrimAPI_MakePrism failed")
+    return builder.Shape()
 
 
 def ocp_make_cylinder(center: list[float], axis: list[float], radius: float, height: float) -> TopoDS_Shape:

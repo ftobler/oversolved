@@ -37,7 +37,9 @@ from oversolved.kernel.ocp_ops import (
     ocp_make_circle,
     ocp_make_cylinder,
     ocp_make_edge_from_circle,
+    ocp_make_face_from_wire,
     ocp_make_mirror_trsf,
+    ocp_make_prism,
     ocp_revolve,
     ocp_identity_trsf,
     ocp_make_scale_trsf,
@@ -156,18 +158,25 @@ def make_wire(edges: list[cq_shapes.Edge]) -> cq_shapes.Wire:
 
 
 def make_face_from_wires(outer_wire: cq_shapes.Wire, inner_wires: list[cq_shapes.Wire] | None = None) -> cq_shapes.Face:
-    """Create a face from an outer wire and optional hole wires."""
-    if inner_wires:
-        return cq_shapes.Face.makeFromWires(outer_wire, inner_wires)
-    return cq_shapes.Face.makeFromWires(outer_wire)
+    """Create a face from an outer wire and optional hole wires.
+
+    Uses ocp_make_face_from_wire instead of Face.makeFromWires to avoid the hidden
+    ShapeFix_Shape pass that CadQuery applies to the outer wire before building the face.
+    """
+    hole_occs = [w.wrapped for w in (inner_wires or [])]
+    return cq_shapes.Face(ocp_make_face_from_wire(outer_wire.wrapped, hole_occs))
 
 
 def extrude_face(face: cq_shapes.Face, direction_vec: list[float], distance: float) -> cq_shapes.Solid:
-    """Extrude a face along a direction vector."""
+    """Extrude a face along a direction vector.
+
+    Uses ocp_make_prism directly so no ShapeUpgrade is applied to the tool solid.
+    The single ShapeUpgrade call happens later in _boolean_with_diff after the boolean.
+    """
     if distance == 0:
         raise ValueError("extrude distance must be non-zero")
-    vec = CQVector(*direction_vec) * distance
-    return cq_shapes.Solid.extrudeLinear(face, vec)
+    scaled = [v * distance for v in direction_vec]
+    return cq_shapes.Solid(ocp_make_prism(_ensure_occ(face), scaled))
 
 
 def revolve_face(face: cq_shapes.Face, axis_origin: list[float],
