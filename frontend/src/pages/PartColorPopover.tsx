@@ -32,7 +32,7 @@ function PartColorPopoverInner({
   const popoverRef = useRef<HTMLDivElement>(null)
   const [colorDraft, setColorDraft] = useState(() => normalizeHexColor(style?.color) || '#6AB59B')
   const [transparencyDraft, setTransparencyDraft] = useState(style?.transparency ?? 0)
-  const [metalnessDraft, setMetalnessDraft] = useState(style?.metalness ?? 0.3)
+  const [metalnessDraft, setMetalnessDraft] = useState(style?.metalness ?? 0)
 
   // Focus first focusable element on mount
   useEffect(() => {

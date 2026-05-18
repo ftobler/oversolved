@@ -71,7 +71,7 @@ interface Body3DProps {
   interactive?: boolean
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit: _showDebugHit = false, color, transparency = 0, metalness = 0.3, interactive = true }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit: _showDebugHit = false, color, transparency = 0, metalness = 0, interactive = true }: Body3DProps) {
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
