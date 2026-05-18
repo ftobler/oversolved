@@ -24,7 +24,35 @@ import {
   faceCount,
 } from '@/components/Geometry3D/bodyGeometry'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
+import { EDGE_DEPTH_BIAS } from '@/picking/EdgeIdLayer'
 import { registerBodyCallbacks } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+
+const EDGE_VERT_SHADER = `
+  varying vec3 vColor;
+  uniform float uDepthBias;
+  void main() {
+    vec4 clip = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    clip.z += uDepthBias * clip.w;
+    vColor = color;
+    gl_Position = clip;
+  }
+`
+
+const EDGE_FRAG_SHADER = `
+  varying vec3 vColor;
+  void main() {
+    gl_FragColor = vec4(vColor, 1.0);
+  }
+`
+
+function buildEdgeMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    vertexShader: EDGE_VERT_SHADER,
+    fragmentShader: EDGE_FRAG_SHADER,
+    uniforms: { uDepthBias: { value: EDGE_DEPTH_BIAS } },
+    vertexColors: true,
+  })
+}
 
 interface Body3DProps {
   featureId: string
@@ -144,6 +172,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   useEffect(() => {
     return () => { edgeGeometry.dispose() }
   }, [edgeGeometry])
+
+  const edgeMaterial = useMemo(() => buildEdgeMaterial(), [])
+  useEffect(() => {
+    return () => { edgeMaterial.dispose() }
+  }, [edgeMaterial])
 
   // Precompute segment counts for edge index mapping
   const edgeSegmentCounts = useMemo(() => getEdgeSegmentCounts(edges), [edges])
@@ -403,13 +436,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       {edges.length > 0 && (
         <lineSegments
           geometry={edgeGeometry}
+          material={edgeMaterial}
           renderOrder={RENDER_ORDER_DEFAULT}
-        >
-          <lineBasicMaterial
-            color="white"
-            vertexColors={true}
-          />
-        </lineSegments>
+        />
       )}
       {vertices && vertices.length > 0 && (
         <>
