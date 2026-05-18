@@ -51,7 +51,6 @@ function _unpackBodySection(
     mesh: {
       vertices,
       faces,
-      normals: [],
       face_data: meta.face_data,
       triangle_to_face: triangleToFace,
       face_queries: meta.face_queries,

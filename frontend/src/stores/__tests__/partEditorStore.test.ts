@@ -68,7 +68,7 @@ describe('partEditorStore', () => {
   })
 
   it('sets bodies via setState', () => {
-    const bodies = { body1: { id: 'body1', created_by: 'ex1', modified_by: [], mesh: { vertices: new Float32Array(), faces: new Uint32Array(), normals: [], face_data: [], triangle_to_face: undefined, face_queries: [] }, edges: [], edge_queries: [], vertices: [], vertex_queries: [] } }
+    const bodies = { body1: { id: 'body1', created_by: 'ex1', modified_by: [], mesh: { vertices: new Float32Array(), faces: new Uint32Array(), face_data: [], triangle_to_face: undefined, face_queries: [] }, edges: [], edge_queries: [], vertices: [], vertex_queries: [] } }
     usePartEditorStore.setState({ bodies })
     expect(usePartEditorStore.getState().bodies.body1.id).toBe('body1')
   })

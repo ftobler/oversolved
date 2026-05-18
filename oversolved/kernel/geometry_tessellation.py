@@ -15,7 +15,6 @@ try:
 except ImportError:
     cq_shapes = None  # type: ignore
 
-from oversolved.kernel.solver_constants import TOL_MESH_NORMAL
 from oversolved.kernel.cadquery_ops import (
     _compute_face_centroid,
     _compute_face_normal,
@@ -42,7 +41,6 @@ logger = logging.getLogger(__name__)
 class MeshDict(TypedDict):
     vertices: list[list[float]]
     faces: list[list[int]]
-    normals: list[list[float]]
     face_data: list[dict]
     triangle_to_face: list[int]
     face_queries: list[str]
@@ -60,13 +58,12 @@ class VertexDict(TypedDict):
 
 
 def _validate_mesh(mesh: MeshDict) -> None:
-    """Validate mesh data: no NaN/inf vertices, valid face indices, unit normals.
+    """Validate mesh data: no NaN/inf vertices, valid face indices.
 
     Raises ValueError with descriptive message if mesh is invalid.
     """
     verts = mesh["vertices"]
     faces = mesh["faces"]
-    normals = mesh.get("normals", [])
     triangle_to_face = mesh.get("triangle_to_face", [])
     face_queries = mesh.get("face_queries", [])
     face_data = mesh.get("face_data", [])
@@ -87,14 +84,6 @@ def _validate_mesh(mesh: MeshDict) -> None:
                 raise ValueError(f"face {i} index {j} is not an int: {idx!r}")
             if idx < 0 or idx >= n:
                 raise ValueError(f"face {i} index {j}={idx} out of range [0, {n})")
-
-    if len(normals) != len(faces):
-        raise ValueError(f"normals count {len(normals)} != faces count {len(faces)}")
-
-    for i, normal in enumerate(normals):
-        mag = math.sqrt(sum(x * x for x in normal))
-        if abs(mag - 1.0) > TOL_MESH_NORMAL:
-            raise ValueError(f"normal {i} not unit length: mag={mag}")
 
     if triangle_to_face:
         if len(triangle_to_face) != len(faces):
@@ -219,7 +208,6 @@ def classify_surface_cardinal(
 # {
 #   'vertices': [[x, y, z], ...],
 #   'faces':    [[i, j, k], ...],
-#   'normals':  [[nx, ny, nz], ...],  per-face unit normals
 # }
 
 
@@ -356,7 +344,6 @@ def _sort_shape_faces(
 def _append_face_triangles(
     all_vertices: list[list[float]],
     all_faces: list[list[int]],
-    all_normals: list[list[float]],
     triangle_to_face: list[int],
     face_idx: int,
     verts: list,
@@ -382,16 +369,6 @@ def _append_face_triangles(
         p0 = all_vertices[i0]
         p1 = all_vertices[i1]
         p2 = all_vertices[i2]
-        v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]]
-        v2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]]
-        nx = v1[1] * v2[2] - v1[2] * v2[1]
-        ny = v1[2] * v2[0] - v1[0] * v2[2]
-        nz = v1[0] * v2[1] - v1[1] * v2[0]
-        mag = math.sqrt(nx * nx + ny * ny + nz * nz)
-        if mag > 0:
-            all_normals.append([nx / mag, ny / mag, nz / mag])
-        else:
-            all_normals.append([0.0, 0.0, 1.0])
         triangle_to_face.append(face_idx)
         face_area += _triangle_area(p0, p1, p2)
 
@@ -445,14 +422,6 @@ def _unit_cube_mesh() -> MeshDict:
             [2, 6, 7], [2, 7, 3],
             [3, 7, 4], [3, 4, 0],
         ],
-        "normals": [
-            [0, 0, -1], [0, 0, -1],
-            [0, 0, 1], [0, 0, 1],
-            [-1, 0, 0], [-1, 0, 0],
-            [1, 0, 0], [1, 0, 0],
-            [0, 1, 0], [0, 1, 0],
-            [0, -1, 0], [0, -1, 0],
-        ],
         "face_data": [],
         "triangle_to_face": [],
         "face_queries": [],
@@ -483,16 +452,14 @@ def _init_mesh_accumulators() -> tuple[
     list[str],
     list[list[float]],
     list[list[int]],
-    list[list[float]],
 ]:
-    """Return six empty accumulator lists for mesh assembly."""
+    """Return five empty accumulator lists for mesh assembly."""
     face_data: list[dict] = []
     triangle_to_face: list[int] = []
     face_queries: list[str] = []
     all_vertices: list[list[float]] = []
     all_faces: list[list[int]] = []
-    all_normals: list[list[float]] = []
-    return face_data, triangle_to_face, face_queries, all_vertices, all_faces, all_normals
+    return face_data, triangle_to_face, face_queries, all_vertices, all_faces
 
 
 def _tessellate_and_assemble_faces(
@@ -505,21 +472,20 @@ def _tessellate_and_assemble_faces(
     list[str],
     list[list[float]],
     list[list[int]],
-    list[list[float]],
 ]:
     """Iterate faces of solid and assemble mesh accumulators.
 
-    Returns (face_data, triangle_to_face, face_queries, vertices, faces, normals).
-    On exception all six lists are returned empty so the caller can detect failure.
+    Returns (face_data, triangle_to_face, face_queries, vertices, faces).
+    On exception all five lists are returned empty so the caller can detect failure.
     """
-    face_data, triangle_to_face, face_queries, all_vertices, all_faces, all_normals = (
+    face_data, triangle_to_face, face_queries, all_vertices, all_faces = (
         _init_mesh_accumulators()
     )
     try:
         raw_faces = _sort_shape_faces(solid)
         for face_idx, (face, verts, idxs, centroid, normal, surface_type) in enumerate(raw_faces):
             face_area, triangle_count = _append_face_triangles(
-                all_vertices, all_faces, all_normals,
+                all_vertices, all_faces,
                 triangle_to_face, face_idx, verts, idxs,
             )
             if triangle_count > 0:
@@ -532,7 +498,7 @@ def _tessellate_and_assemble_faces(
     except Exception as exc:
         logger.warning("solid_to_mesh tessellation failed, falling back to unit cube: %s", exc)
         return _init_mesh_accumulators()
-    return face_data, triangle_to_face, face_queries, all_vertices, all_faces, all_normals
+    return face_data, triangle_to_face, face_queries, all_vertices, all_faces
 
 
 def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body_id: str | None = None) -> MeshDict:
@@ -557,7 +523,7 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
     except Exception as exc:
         logger.warning("solid_to_mesh: BRepMesh_IncrementalMesh failed: %s", exc)
 
-    fd, t2f, fq, verts, faces, normals = _tessellate_and_assemble_faces(solid, created_by, body_id)
+    fd, t2f, fq, verts, faces = _tessellate_and_assemble_faces(solid, created_by, body_id)
     if not verts:
         logger.warning("solid_to_mesh produced no vertices; returning unit cube fallback")
         return _unit_cube_mesh()
@@ -565,7 +531,6 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
     mesh: MeshDict = {
         "vertices": verts,
         "faces": faces,
-        "normals": normals,
         "face_data": fd,
         "triangle_to_face": t2f,
         "face_queries": fq,

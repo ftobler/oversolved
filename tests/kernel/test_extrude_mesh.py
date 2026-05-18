@@ -64,19 +64,6 @@ def test_all_face_indices_valid():
         assert all(0 <= idx < n for idx in face), f"invalid face: {face}, n={n}"
 
 
-def test_normals_unit_length():
-    import math
-    from oversolved.kernel.builder import build
-    from solver_helpers import full_rect_extrude_spec
-
-    spec = full_rect_extrude_spec()
-    r = build(spec)
-    mesh = r["bodies"]["body_ex1"]["mesh"]
-    for i, nv in enumerate(mesh["normals"]):
-        mag = math.sqrt(sum(x * x for x in nv))
-        assert abs(mag - 1.0) < 1e-5, f"normal[{i}] not unit length: {nv}"
-
-
 def test_no_degenerate_faces():
     from oversolved.kernel.builder import build
     from solver_helpers import full_rect_extrude_spec

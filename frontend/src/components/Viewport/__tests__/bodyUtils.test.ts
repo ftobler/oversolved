@@ -15,7 +15,6 @@ describe('getBodiesToRender', () => {
       modified_by: [],
       mesh: {
         vertices: [],
-        normals: [],
         faces: [],
         face_data: [],
         face_queries: [],
@@ -59,7 +58,7 @@ describe('getBodiesToRender', () => {
         id: 'body_orphan',
         created_by: 'missing_feature',
         modified_by: [],
-        mesh: { vertices: [], normals: [], faces: [], face_data: [], face_queries: [] },
+        mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
       } as unknown as BodyResult,
     }
     const items = getBodiesToRender(orphanBodies, features, undefined, undefined)
@@ -72,7 +71,7 @@ describe('getBodiesToRender', () => {
       body_no_creator: {
         id: 'body_no_creator',
         modified_by: [],
-        mesh: { vertices: [], normals: [], faces: [], face_data: [], face_queries: [] },
+        mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
       } as unknown as BodyResult,
     }
     const items = getBodiesToRender(noCreatorBodies, features, undefined, undefined)
@@ -83,7 +82,7 @@ describe('getBodiesToRender', () => {
 
 describe('computeEffectiveVisibleBodies', () => {
   const twoBodyResult = (id: string, createdBy: string): BodyResult =>
-    ({ id, created_by: createdBy, modified_by: [], mesh: { vertices: [], normals: [], faces: [] } } as unknown as BodyResult)
+    ({ id, created_by: createdBy, modified_by: [], mesh: { vertices: [], faces: [] } } as unknown as BodyResult)
 
   const bodies: Record<string, BodyResult> = {
     body_a: twoBodyResult('body_a', 'feat_a'),

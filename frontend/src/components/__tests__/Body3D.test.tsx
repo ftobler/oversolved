@@ -17,7 +17,6 @@ const CUBE_MESH: Mesh3D = {
     [2,6,7],[2,7,3],
     [3,7,4],[3,4,0],
   ],
-  normals: [],
 }
 
 // Same cube with triangle_to_face mapping: 2 triangles per face, 6 faces.
@@ -63,7 +62,7 @@ describe('buildBodyGeometry', () => {
   })
 
   it('empty mesh does not crash', () => {
-    const empty: Mesh3D = { vertices: [], faces: [], normals: [] }
+    const empty: Mesh3D = { vertices: [], faces: [] }
     expect(() => buildBodyGeometry(empty)).not.toThrow()
     const { positions, indices } = buildBodyGeometry(empty)
     expect(positions.length).toBe(0)
@@ -81,7 +80,6 @@ describe('buildBodyGeometry', () => {
     const badMesh: Mesh3D = {
       vertices: [[0, 0, 0], [1, NaN, 0], [1, 1, 0]],
       faces: [[0, 1, 2]],
-      normals: [[0, 0, 1]],
     }
     expect(() => buildBodyGeometry(badMesh)).toThrow('invalid coordinate')
   })
@@ -90,7 +88,6 @@ describe('buildBodyGeometry', () => {
     const badMesh: Mesh3D = {
       vertices: [[0, 0, 0], [1, 0, 0], [1, 1, 0]],
       faces: [[0, 1, 99]],
-      normals: [[0, 0, 1]],
     }
     expect(() => buildBodyGeometry(badMesh)).toThrow('invalid index')
   })
@@ -99,7 +96,6 @@ describe('buildBodyGeometry', () => {
     const badMesh: Mesh3D = {
       vertices: [[0, 0] as unknown as [number, number, number], [1, 0, 0], [1, 1, 0]],
       faces: [[0, 1, 2]],
-      normals: [[0, 0, 1]],
     }
     expect(() => buildBodyGeometry(badMesh)).toThrow('not a 3-element array')
   })

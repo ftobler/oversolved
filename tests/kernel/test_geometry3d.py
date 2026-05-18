@@ -103,17 +103,6 @@ def test_top_plane_extrude():
         assert 0 <= y <= 1, f"y={y} should be in [0,1]"
 
 
-def test_normals_are_unit_length():
-    """4. normals are unit length"""
-    loops = [pts_to_edge_loop([[0, 0], [1, 0], [1, 1], [0, 1]])]
-    solid = extrude_profile(loops, FRONT_PLANE, [0, 0, 1], 1.0)
-    mesh = solid_to_mesh(solid)
-    assert_mesh_valid(mesh)
-    for normal in mesh["normals"]:
-        mag = math.sqrt(sum(x * x for x in normal))
-        assert abs(mag - 1.0) < 1e-6
-
-
 def test_hole_in_profile():
     """5. hole in profile - outer [[0,0],[4,0],[4,4],[0,4]], hole [[1,1],[3,1],[3,3],[1,3]]"""
     outer = pts_to_edge_loop([[0, 0], [4, 0], [4, 4], [0, 4]])
@@ -225,7 +214,6 @@ def test_solid_to_mesh_on_cut_result():
     mesh = solid_to_mesh(cut_result)
     assert "vertices" in mesh
     assert "faces" in mesh
-    assert "normals" in mesh
     assert_mesh_valid(mesh)
 
 
@@ -507,7 +495,6 @@ def test_validate_mesh_rejects_mismatched_triangle_to_face():
     mesh = {
         "vertices": [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
         "faces": [[0, 1, 2]],
-        "normals": [[0, 0, 1]],
         "face_data": [{"centroid": [0.3, 0.3, 0], "normal": [0, 0, 1], "area": 0.5, "surface_type": "flatface"}],
         "triangle_to_face": [0, 0],
         "face_queries": ["?0;@testface0:test"],
@@ -522,7 +509,6 @@ def test_validate_mesh_warns_orphaned_face(caplog):
     mesh = {
         "vertices": [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
         "faces": [[0, 1, 2]],
-        "normals": [[0, 0, 1]],
         "face_data": [
             {"centroid": [0.3, 0.3, 0], "normal": [0, 0, 1], "area": 0.5, "surface_type": "flatface"},
             {"centroid": [0.7, 0.7, 0], "normal": [0, 0, 1], "area": 0.5, "surface_type": "flatface"},
@@ -540,7 +526,6 @@ def test_validate_mesh_rejects_out_of_bounds_triangle_to_face():
     mesh = {
         "vertices": [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
         "faces": [[0, 1, 2]],
-        "normals": [[0, 0, 1]],
         "face_data": [{"centroid": [0.3, 0.3, 0], "normal": [0, 0, 1], "area": 0.5, "surface_type": "flatface"}],
         "triangle_to_face": [2],
         "face_queries": ["?0;@testface0:test"],

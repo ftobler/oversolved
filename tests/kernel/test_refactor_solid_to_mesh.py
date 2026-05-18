@@ -49,9 +49,9 @@ def test_load_shape_from_path_missing_file():
 
 
 def test_init_mesh_accumulators():
-    """_init_mesh_accumulators must return six empty lists."""
+    """_init_mesh_accumulators must return five empty lists."""
     result = _init_mesh_accumulators()
-    assert len(result) == 6
+    assert len(result) == 5
     for item in result:
         assert isinstance(item, list)
         assert len(item) == 0
@@ -60,23 +60,21 @@ def test_init_mesh_accumulators():
 def test_tessellate_and_assemble_faces_box():
     """_tessellate_and_assemble_faces on a real box produces non-empty output."""
     box = _make_box_shape()
-    fd, t2f, fq, verts, faces, normals = _tessellate_and_assemble_faces(box, None, None)
+    fd, t2f, fq, verts, faces = _tessellate_and_assemble_faces(box, None, None)
     assert len(verts) > 0
     assert len(faces) > 0
-    assert len(normals) == len(faces)
 
 
 def test_tessellate_and_assemble_faces_exception():
-    """When _sort_shape_faces raises, all six accumulators must be returned empty."""
+    """When _sort_shape_faces raises, all five accumulators must be returned empty."""
     box = _make_box_shape()
     with patch(
         "oversolved.kernel.geometry_tessellation._sort_shape_faces",
         side_effect=RuntimeError("simulated failure"),
     ):
-        fd, t2f, fq, verts, faces, normals = _tessellate_and_assemble_faces(box, None, None)
+        fd, t2f, fq, verts, faces = _tessellate_and_assemble_faces(box, None, None)
     assert verts == []
     assert faces == []
-    assert normals == []
     assert fd == []
     assert t2f == []
     assert fq == []

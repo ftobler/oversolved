@@ -114,7 +114,6 @@ export interface FaceData {
 export interface Mesh3D {
   vertices: Float32Array | [number, number, number][]
   faces:    Uint32Array | [number, number, number][]
-  normals:  [number, number, number][]
   face_data?: FaceData[]
   triangle_to_face?: number[]
   face_queries?: string[]

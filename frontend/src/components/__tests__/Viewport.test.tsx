@@ -93,7 +93,7 @@ function makeBody(): Record<string, BodyResult> {
       id: 'body_ex1',
       created_by: 'ex1',
       modified_by: [],
-      mesh: { vertices: [], normals: [], faces: [], face_data: [], face_queries: [] },
+      mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
     } as unknown as BodyResult,
   }
 }

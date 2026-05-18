@@ -327,7 +327,6 @@ def test_validate_mesh_rejects_nan_vertex():
     mesh = {
         "vertices": [[0.0, 0.0, 0.0], [float("nan"), 1.0, 0.0], [1.0, 1.0, 0.0]],
         "faces": [[0, 1, 2]],
-        "normals": [[0.0, 0.0, 1.0]],
     }
     with pytest.raises(ValueError, match="nan"):
         _validate_mesh(mesh)
@@ -340,7 +339,6 @@ def test_validate_mesh_rejects_out_of_range_index():
     mesh = {
         "vertices": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
         "faces": [[0, 1, 99]],
-        "normals": [[0.0, 0.0, 1.0]],
     }
     with pytest.raises(ValueError, match="out of range"):
         _validate_mesh(mesh)

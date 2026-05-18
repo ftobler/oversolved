@@ -328,7 +328,6 @@ describe('Measurement Selection and Evaluation', () => {
       mesh: {
         vertices: [],
         faces: [],
-        normals: [],
         face_data: [
           { centroid: [0, 0, 0], normal: [0, 0, 1], area: 12.5 },
           { centroid: [1, 1, 0], normal: [1, 0, 0], area: 0.0 },
@@ -405,7 +404,7 @@ describe('Measurement Selection and Evaluation', () => {
       id: 'body_ex1', created_by: 'ex1', modified_by: [],
       edges: [],
       mesh: {
-        vertices: [], faces: [], normals: [],
+        vertices: [], faces: [],
         face_data: [
           { centroid: [0, 0, 0], normal: [0, 0, 1], area: 10 },
           { centroid: [0, 0, 5], normal: [0, 0, 1], area: 10 },
@@ -443,7 +442,7 @@ describe('Measurement Selection and Evaluation', () => {
       vertices: [[0, 0, 10] as [number, number, number]],
       vertex_queries: ['vert0'],
       mesh: {
-        vertices: [], faces: [], normals: [],
+        vertices: [], faces: [],
         face_data: [
           { centroid: [0, 0, 0], normal: [0, 0, 1], area: 10 },
         ],
@@ -466,7 +465,7 @@ describe('Measurement Selection and Evaluation', () => {
       ],
       edge_queries: ['edge0'],
       mesh: {
-        vertices: [], faces: [], normals: [],
+        vertices: [], faces: [],
         face_data: [
           { centroid: [0, 0, 0], normal: [0, 0, 1], area: 10 },
         ],

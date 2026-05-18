@@ -265,24 +265,16 @@ def assert_mesh_valid(mesh: dict) -> None:
     """Assert structural invariants for any mesh dict."""
     verts = mesh['vertices']
     faces = mesh['faces']
-    normals = mesh['normals']
     n = len(verts)
 
     assert n > 0, "mesh has no vertices"
     assert len(faces) > 0, "mesh has no faces"
-    assert len(normals) == len(faces), (
-        f"normals count {len(normals)} != faces count {len(faces)}"
-    )
 
     for i, (a, b, c) in enumerate(faces):
         assert 0 <= a < n, f"face {i}: index a={a} out of range [0, {n})"
         assert 0 <= b < n, f"face {i}: index b={b} out of range [0, {n})"
         assert 0 <= c < n, f"face {i}: index c={c} out of range [0, {n})"
         assert a != b and b != c and a != c, f"face {i} is degenerate: ({a},{b},{c})"
-
-    for i, n_vec in enumerate(normals):
-        mag = math.sqrt(sum(x*x for x in n_vec))
-        assert abs(mag - 1.0) < 1e-5, f"normal {i} not unit length: mag={mag}"
 
 
 def assert_mesh_bbox(mesh: dict, x_range, y_range, z_range, tol: float = 0.1) -> None:
