@@ -81,11 +81,11 @@ export class IdPipeline {
     this.edgeLayer = new EdgeIdLayer(this.registry)
     this.vertexLayer = new VertexIdLayer(this.registry)
 
-    // Helper layers above B-rep. Each clears depth before rendering so it
-    // sits above the B-rep stack regardless of world-space depth.
-    // Order: planeFace (30) -> sketchEntity (40) -> sketchVertex (50) -> originMarker (60).
+    // Helper layers. The plane renders at a negative priority so it sits
+    // behind the B-rep stack -- bodies occlude the plane in the ID buffer.
+    // Order: planeFace (-10) -> B-rep (0/10/20) -> sketchEntity (40) -> ...
     this.planeLayer = new FaceIdLayer(this.registry, {
-      name: PLANE_LAYER_NAME, priority: 30, zPolicy: 'clear-then-fresh',
+      name: PLANE_LAYER_NAME, priority: -10, zPolicy: 'clear-then-fresh',
     })
     this.sketchEntityLayer = new EdgeIdLayer(this.registry, {
       name: SKETCH_ENTITY_LAYER_NAME, priority: 40, zPolicy: 'clear-then-fresh',
@@ -105,14 +105,14 @@ export class IdPipeline {
     })
 
     this.layers = []
-    this.addLayer(this.faceLayer)
-    this.addLayer(this.edgeLayer)
-    this.addLayer(this.vertexLayer)
-    this.addLayer(this.planeLayer)
-    this.addLayer(this.sketchEntityLayer)
-    this.addLayer(this.sketchVertexLayer)
-    this.addLayer(this.originLayer)
-    this.addLayer(this.dimensionLabelLayer)
+    this.addLayer(this.planeLayer)           // -10  behind everything
+    this.addLayer(this.faceLayer)            //   0
+    this.addLayer(this.edgeLayer)            //  10
+    this.addLayer(this.vertexLayer)          //  20
+    this.addLayer(this.sketchEntityLayer)    //  40
+    this.addLayer(this.sketchVertexLayer)    //  50
+    this.addLayer(this.originLayer)          //  60
+    this.addLayer(this.dimensionLabelLayer)  //  70
 
     this.windowSize = opts.windowSize ?? DEFAULT_WINDOW_SIZE
     this.pickDuringCameraMotion = opts.pickDuringCameraMotion ?? false

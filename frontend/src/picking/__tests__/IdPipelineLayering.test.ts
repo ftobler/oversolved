@@ -9,8 +9,9 @@ describe('IdPipeline layering', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
     const layers = p.getLayers()
     expect(layers.map(l => l.name)).toEqual([
+      'planeFace',
       FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
-      'planeFace', 'sketchEntity', 'sketchVertex', 'originMarker', 'dimensionLabel',
+      'sketchEntity', 'sketchVertex', 'originMarker', 'dimensionLabel',
     ])
     p.dispose()
   })
@@ -18,10 +19,10 @@ describe('IdPipeline layering', () => {
   it('declares the documented z-policy on each layer', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
     const layers = p.getLayers()
-    expect(layers[0].zPolicy).toBe('clear-then-fresh')         // face
-    expect(layers[1].zPolicy).toBe('depth-test-against-prev')  // edge: reuse face depth
-    expect(layers[2].zPolicy).toBe('no-depth')                  // vertex
-    expect(layers[3].zPolicy).toBe('clear-then-fresh')          // planeFace
+    expect(layers[0].zPolicy).toBe('clear-then-fresh')          // planeFace (behind)
+    expect(layers[1].zPolicy).toBe('clear-then-fresh')         // face
+    expect(layers[2].zPolicy).toBe('depth-test-against-prev')  // edge: reuse face depth
+    expect(layers[3].zPolicy).toBe('no-depth')                  // vertex
     expect(layers[4].zPolicy).toBe('clear-then-fresh')          // sketchEntity
     expect(layers[5].zPolicy).toBe('no-depth')                  // sketchVertex
     expect(layers[6].zPolicy).toBe('no-depth')                  // originMarker
@@ -31,7 +32,7 @@ describe('IdPipeline layering', () => {
 
   it('addLayer keeps the array sorted by priority', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
-    expect(p.getLayers().map(l => l.priority)).toEqual([0, 10, 20, 30, 40, 50, 60, 70])
+    expect(p.getLayers().map(l => l.priority)).toEqual([-10, 0, 10, 20, 40, 50, 60, 70])
     p.dispose()
   })
 

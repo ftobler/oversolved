@@ -3,8 +3,9 @@ import { IdPipeline, PLANE_LAYER_NAME } from '../IdPipeline'
 
 /**
  * The plane layer is a FaceIdLayer instance configured with name='planeFace',
- * priority=30, zPolicy='clear-then-fresh'. This test exercises it via the
- * pipeline so we also pin the layer-config wiring.
+ * priority=-10, zPolicy='clear-then-fresh'. It renders behind the B-rep
+ * stack so bodies occlude the plane in the ID buffer.
+ * This test exercises it via the pipeline so we also pin the layer-config wiring.
  */
 
 describe('PlaneIdLayer (via pipeline)', () => {
@@ -33,12 +34,12 @@ describe('PlaneIdLayer (via pipeline)', () => {
     p.dispose()
   })
 
-  it('plane layer renders after B-rep (priority=30 > face=0)', () => {
+  it('plane layer renders before B-rep (priority=-10 < face=0)', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
     const layers = p.getLayers()
     const planeIdx = layers.findIndex(l => l.name === PLANE_LAYER_NAME)
     const faceIdx = layers.findIndex(l => l.name === 'face')
-    expect(planeIdx).toBeGreaterThan(faceIdx)
+    expect(planeIdx).toBeLessThan(faceIdx)
     p.dispose()
   })
 })
