@@ -667,13 +667,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         {ghostMode ? (
           <>
             {pickBodyItems.map(b => (
-              <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0} interactive={!activeFeatureId} />
+              <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} roughness={partStyle?.[b.key]?.roughness ?? 0.35} metalness={partStyle?.[b.key]?.metalness ?? 0} transmission={partStyle?.[b.key]?.transmission ?? 0} interactive={!activeFeatureId} />
             ))}
             <PreviewEdgeOverlay items={previewBodyItems} pickItems={pickBodyItems} />
           </>
         ) : (
           bodyItems.map(b => (
-            <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} metalness={partStyle?.[b.key]?.metalness ?? 0} interactive={!activeFeatureId} />
+            <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} roughness={partStyle?.[b.key]?.roughness ?? 0.35} metalness={partStyle?.[b.key]?.metalness ?? 0} transmission={partStyle?.[b.key]?.transmission ?? 0} interactive={!activeFeatureId} />
           ))
         )}
       </Canvas>

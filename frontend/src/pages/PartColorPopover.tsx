@@ -9,6 +9,8 @@ interface PartColorPopoverProps {
   onColorSet: (bodyId: string, color: string) => void
   onTransparencySet: (bodyId: string, t: number) => void
   onMetalnessSet: (bodyId: string, m: number) => void
+  onRoughnessSet: (bodyId: string, r: number) => void
+  onTransmissionSet: (bodyId: string, t: number) => void
   onCancel: () => void
   onApply: (mutation: Mutation) => void
 }
@@ -23,6 +25,8 @@ function PartColorPopoverInner({
   onColorSet,
   onTransparencySet,
   onMetalnessSet,
+  onRoughnessSet,
+  onTransmissionSet,
   onCancel,
   onApply,
 }: InnerProps) {
@@ -33,6 +37,8 @@ function PartColorPopoverInner({
   const [colorDraft, setColorDraft] = useState(() => normalizeHexColor(style?.color) || '#6AB59B')
   const [transparencyDraft, setTransparencyDraft] = useState(style?.transparency ?? 0)
   const [metalnessDraft, setMetalnessDraft] = useState(style?.metalness ?? 0)
+  const [roughnessDraft, setRoughnessDraft] = useState(style?.roughness ?? 0.35)
+  const [transmissionDraft, setTransmissionDraft] = useState(style?.transmission ?? 0)
 
   // Focus first focusable element on mount
   useEffect(() => {
@@ -125,7 +131,7 @@ function PartColorPopoverInner({
         />
       </div>
       <div className="part-color-popover-row">
-        <span className="part-color-popover-label">Transparency</span>
+        <span className="part-color-popover-label">Opacity</span>
         <input
           type="range"
           min="0"
@@ -139,7 +145,7 @@ function PartColorPopoverInner({
           }}
           className="part-slider"
         />
-        <span className="part-slider-value">{(transparencyDraft * 100).toFixed(0)}%</span>
+        <span className="part-slider-value">{((1 - transparencyDraft) * 100).toFixed(0)}%</span>
       </div>
       <div className="part-color-popover-row">
         <span className="part-color-popover-label">Metalness</span>
@@ -157,6 +163,40 @@ function PartColorPopoverInner({
           className="part-slider"
         />
         <span className="part-slider-value">{(metalnessDraft * 100).toFixed(0)}%</span>
+      </div>
+      <div className="part-color-popover-row">
+        <span className="part-color-popover-label">Roughness</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={roughnessDraft}
+          onChange={(e) => {
+            const val = parseFloat(e.target.value)
+            setRoughnessDraft(val)
+            onRoughnessSet(popover.bodyId, val)
+          }}
+          className="part-slider"
+        />
+        <span className="part-slider-value">{(roughnessDraft * 100).toFixed(0)}%</span>
+      </div>
+      <div className="part-color-popover-row">
+        <span className="part-color-popover-label">Transmission</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={transmissionDraft}
+          onChange={(e) => {
+            const val = parseFloat(e.target.value)
+            setTransmissionDraft(val)
+            onTransmissionSet(popover.bodyId, val)
+          }}
+          className="part-slider"
+        />
+        <span className="part-slider-value">{(transmissionDraft * 100).toFixed(0)}%</span>
       </div>
       <div className="part-color-swatches">
         {PART_COLOR_PALETTE.map(c => (

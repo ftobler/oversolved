@@ -68,10 +68,12 @@ interface Body3DProps {
   color?: string
   transparency?: number  // 0-1 (0 = opaque, 1 = fully transparent)
   metalness?: number     // 0-1 (0 = non-metallic, 1 = fully metallic)
+  roughness?: number     // 0-1 (0 = smooth, 1 = rough)
+  transmission?: number  // 0-1 (0 = opaque, 1 = fully transmissive / glass-like)
   interactive?: boolean
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit: _showDebugHit = false, color, transparency = 0, metalness = 0, interactive = true }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit: _showDebugHit = false, color, transparency = 0, metalness = 0, roughness = 0.35, transmission = 0, interactive = true }: Body3DProps) {
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
@@ -417,20 +419,21 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       <mesh
         geometry={geometry}
       >
-        <meshStandardMaterial
+        <meshPhysicalMaterial
           color="white"
-          roughness={0.35}
+          roughness={roughness}
           metalness={metalness}
+          transmission={transmission}
           envMapIntensity={ENV_MAP_INTENSITY}
           side={THREE.DoubleSide}
           vertexColors={true}
           polygonOffset={true}
           polygonOffsetFactor={1}
           polygonOffsetUnits={1}
-          transparent={transparency > 0}
-          depthWrite={transparency === 0}
+          transparent={transparency > 0 || transmission > 0}
+          depthWrite={transparency === 0 && transmission === 0}
           opacity={1 - transparency}
-          blending={transparency > 0 ? THREE.CustomBlending : THREE.NormalBlending}
+          blending={transparency > 0 || transmission > 0 ? THREE.CustomBlending : THREE.NormalBlending}
           blendSrc={THREE.SrcAlphaFactor}
           blendDst={THREE.OneMinusSrcAlphaFactor}
         />

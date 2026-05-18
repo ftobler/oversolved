@@ -54,6 +54,8 @@ import {
   applySetPartColor,
   applySetPartTransparency,
   applySetPartMetalness,
+  applySetPartRoughness,
+  applySetPartTransmission,
   applyReorderFeatures,
   applyReorderPickField,
   applyMirrorEntities,
@@ -186,6 +188,10 @@ export const mutationHandlers: MutationHandlers = {
     applySetPartTransparency(next, m.bodyId, m.transparency),
   set_part_metalness: (next, m) =>
     applySetPartMetalness(next, m.bodyId, m.metalness),
+  set_part_roughness: (next, m) =>
+    applySetPartRoughness(next, m.bodyId, m.roughness),
+  set_part_transmission: (next, m) =>
+    applySetPartTransmission(next, m.bodyId, m.transmission),
   mirror_entities: (next, m) =>
     applyMirrorEntities(next, m.featureId, m.entityIds, m.mirrorLineId),
   add_mirror: (next, m) =>

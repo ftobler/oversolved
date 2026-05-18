@@ -58,6 +58,8 @@ const ALL_MUTATION_TYPES = [
   'set_part_color',
   'set_part_transparency',
   'set_part_metalness',
+  'set_part_roughness',
+  'set_part_transmission',
   'mirror_entities',
   'add_mirror',
   'set_mirror_field',

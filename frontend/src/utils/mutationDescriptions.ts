@@ -112,6 +112,10 @@ export function describeMutation(m: Mutation): string {
       return `set ${m.bodyId} transparency to ${m.transparency}`
     case 'set_part_metalness':
       return `set ${m.bodyId} metalness to ${m.metalness}`
+    case 'set_part_roughness':
+      return `set ${m.bodyId} roughness to ${m.roughness}`
+    case 'set_part_transmission':
+      return `set ${m.bodyId} transmission to ${m.transmission}`
     case 'add_mirror':
       return `add mirror ${m.label ?? m.featureId}`
     case 'set_mirror_field':

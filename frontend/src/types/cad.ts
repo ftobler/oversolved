@@ -277,6 +277,8 @@ export interface PartStyleEntry {
   visible?: boolean
   transparency?: number  // 0-1 (0 = opaque, 1 = fully transparent)
   metalness?: number     // 0-1 (0 = non-metallic, 1 = fully metallic)
+  roughness?: number     // 0-1 (0 = smooth, 1 = rough)
+  transmission?: number  // 0-1 (0 = opaque, 1 = fully transmissive / glass-like)
   created_by?: string
 }
 
@@ -578,6 +580,8 @@ export type Mutation =
   | { type: 'set_part_color'; bodyId: string; color: string }
   | { type: 'set_part_transparency'; bodyId: string; transparency: number }
   | { type: 'set_part_metalness'; bodyId: string; metalness: number }
+  | { type: 'set_part_roughness'; bodyId: string; roughness: number }
+  | { type: 'set_part_transmission'; bodyId: string; transmission: number }
   | { type: 'mirror_entities'; featureId: string; entityIds: string[]; mirrorLineId: string }
   | { type: 'add_mirror'; featureId: string; label?: string }
   | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }

@@ -41,6 +41,20 @@ export function applySetPartMetalness(doc: PartDoc, bodyId: string, metalness: n
   doc.part_style[bodyId] = { ...current, metalness: clamped }
 }
 
+export function applySetPartRoughness(doc: PartDoc, bodyId: string, roughness: number): void {
+  const clamped = Math.max(0, Math.min(1, roughness))
+  if (!doc.part_style) doc.part_style = {}
+  const current = doc.part_style[bodyId] ?? {}
+  doc.part_style[bodyId] = { ...current, roughness: clamped }
+}
+
+export function applySetPartTransmission(doc: PartDoc, bodyId: string, transmission: number): void {
+  const clamped = Math.max(0, Math.min(1, transmission))
+  if (!doc.part_style) doc.part_style = {}
+  const current = doc.part_style[bodyId] ?? {}
+  doc.part_style[bodyId] = { ...current, transmission: clamped }
+}
+
 // ─── Sketch admin ───
 
 export function applyAddSketch(doc: PartDoc, featureId: string, label?: string): void {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { applyMoveEntity, applySetConstraintValue, applyAddEntity, applyAddProjectedEntity } from '@/utils/yamlMutations/sketch'
-import { applyRenamePart, applySetPartColor, applySetPartTransparency, applySetPartMetalness, applyReorderPickField } from '@/utils/yamlMutations/partStyle'
+import { applyRenamePart, applySetPartColor, applySetPartTransparency, applySetPartMetalness, applySetPartRoughness, applySetPartTransmission, applyReorderPickField } from '@/utils/yamlMutations/partStyle'
 import { applyAddFillet, applyAddChamfer, applySetFilletField, applySetChamferField } from '@/utils/yamlMutations/featureDefs'
 import { applyAddBoolean, applySetBooleanField } from '@/utils/yamlMutations/featureDefs'
 import { applySetArrayField } from '@/utils/yamlMutations/featureDefs'
@@ -218,6 +218,60 @@ describe('applySetPartTransparency', () => {
     applySetPartTransparency(doc, 'body_ex1', 0.3)
     expect(doc.part_style!.body_ex1.color).toBe('#fff')
     expect(doc.part_style!.body_ex1.transparency).toBe(0.3)
+  })
+})
+
+describe('applySetPartRoughness', () => {
+  it('sets roughness clamped to [0, 1]', () => {
+    const doc: PartDoc = { version: 1, kind: 'part' }
+    applySetPartRoughness(doc, 'body_ex1', 0.8)
+    expect(doc.part_style!.body_ex1.roughness).toBe(0.8)
+  })
+
+  it('clamps values above 1', () => {
+    const doc: PartDoc = { version: 1, kind: 'part' }
+    applySetPartRoughness(doc, 'body_ex1', 2)
+    expect(doc.part_style!.body_ex1.roughness).toBe(1)
+  })
+
+  it('clamps values below 0', () => {
+    const doc: PartDoc = { version: 1, kind: 'part' }
+    applySetPartRoughness(doc, 'body_ex1', -0.5)
+    expect(doc.part_style!.body_ex1.roughness).toBe(0)
+  })
+
+  it('preserves existing part_style fields', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', part_style: { body_ex1: { name: 'Part' } } }
+    applySetPartRoughness(doc, 'body_ex1', 0.5)
+    expect(doc.part_style!.body_ex1.name).toBe('Part')
+    expect(doc.part_style!.body_ex1.roughness).toBe(0.5)
+  })
+})
+
+describe('applySetPartTransmission', () => {
+  it('sets transmission clamped to [0, 1]', () => {
+    const doc: PartDoc = { version: 1, kind: 'part' }
+    applySetPartTransmission(doc, 'body_ex1', 0.8)
+    expect(doc.part_style!.body_ex1.transmission).toBe(0.8)
+  })
+
+  it('clamps values above 1', () => {
+    const doc: PartDoc = { version: 1, kind: 'part' }
+    applySetPartTransmission(doc, 'body_ex1', 2)
+    expect(doc.part_style!.body_ex1.transmission).toBe(1)
+  })
+
+  it('clamps values below 0', () => {
+    const doc: PartDoc = { version: 1, kind: 'part' }
+    applySetPartTransmission(doc, 'body_ex1', -0.5)
+    expect(doc.part_style!.body_ex1.transmission).toBe(0)
+  })
+
+  it('preserves existing part_style fields', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', part_style: { body_ex1: { name: 'Part' } } }
+    applySetPartTransmission(doc, 'body_ex1', 0.5)
+    expect(doc.part_style!.body_ex1.name).toBe('Part')
+    expect(doc.part_style!.body_ex1.transmission).toBe(0.5)
   })
 })
 

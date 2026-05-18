@@ -505,6 +505,16 @@ export default function Part() {
     handleMutation({ type: 'set_part_metalness', bodyId, metalness: clamped })
   }, [handleMutation])
 
+  const handleBodyRoughness = useCallback((bodyId: string, roughness: number) => {
+    const clamped = Math.max(0, Math.min(1, roughness))
+    handleMutation({ type: 'set_part_roughness', bodyId, roughness: clamped })
+  }, [handleMutation])
+
+  const handleBodyTransmission = useCallback((bodyId: string, transmission: number) => {
+    const clamped = Math.max(0, Math.min(1, transmission))
+    handleMutation({ type: 'set_part_transmission', bodyId, transmission: clamped })
+  }, [handleMutation])
+
   const handleColorCancel = useCallback(() => {
     if (!partColorPopover) return
     const originalDoc = cancelPreview()
@@ -716,6 +726,8 @@ export default function Part() {
         onColorSet={handleBodyColor}
         onTransparencySet={handleBodyTransparency}
         onMetalnessSet={handleBodyMetalness}
+        onRoughnessSet={handleBodyRoughness}
+        onTransmissionSet={handleBodyTransmission}
         onCancel={handleColorCancel}
         onApply={handleColorApply}
       />

@@ -60,6 +60,8 @@ export {
   applySetPartColor,
   applySetPartTransparency,
   applySetPartMetalness,
+  applySetPartRoughness,
+  applySetPartTransmission,
   applyAddSketch,
   applyDeleteFeature,
   applyReorderFeatures,

@@ -1,7 +1,7 @@
 // 3D body colors
 export const COLOR_BODY_DEFAULT  = '#6ab59b'
 export const PART_COLOR_PALETTE = ['#6AB59B', '#A8D5FF', '#B8E8C8', '#FFD6A5', '#F7C6C7', '#D4C7FF', '#FEE6A8', '#CDE7F0', '#F6C7A8']
-export const COLOR_BODY_EDGE     = '#d3ede4'
+export const COLOR_BODY_EDGE     = '#ffffff'
 export const COLOR_BODY_HOVER    = '#91ccb7'
 export const COLOR_BODY_SELECTED = '#b5a16a'
 export const COLOR_BODY_EDGE_SEL = '#ffffff'
