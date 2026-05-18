@@ -100,7 +100,6 @@ function makeBody(): Record<string, BodyResult> {
 
 beforeEach(() => {
   useSketchEditorStore.setState({
-    pendingPickField: null,
     closeContextMenu: () => {},
     clearNormalSelection: () => {},
     setHoveredBodyId: () => {},

@@ -2,10 +2,9 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import { create } from 'zustand'
-import type { ActiveTool, Mutation, PendingPickField, SelectionDomain } from '@/types/cad'
+import type { ActiveTool, Mutation, SelectionDomain } from '@/types/cad'
 import type { SnapKind } from '@/registry'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
-import { parseQuery } from '@/utils/query'
 
 // Callbacks dispatched from pure-layer store actions back into React state.
 // Registered by Part.tsx on mount via setSketchCallback(); torn down on unmount.
@@ -208,7 +207,6 @@ interface SketchEditorState {
   pendingProjectTarget: { sourceFeatureId: string; sourceEntityId: string } | null
   contextMenu: [number, number] | null
   planeSelectionFeatureId: string | null
-  pendingPickField: PendingPickField | null
   chipOwnedSelection: Set<string>
   syncChipSelection: (values: string[]) => void
   clearChipSelection: () => void
@@ -226,8 +224,6 @@ interface SketchEditorState {
   setPendingDim: (target: string | null, entityKind: string | null) => void
   setPlaneSelectionFeatureId: (id: string | null) => void
   commitPlaneSelection: (selectionId: string) => void
-  setPendingPickField: (state: PendingPickField | null) => void
-  commitFieldPick: () => void
 }
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
@@ -269,7 +265,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   pendingProjectTarget: null,
   contextMenu: null,
   planeSelectionFeatureId: null,
-  pendingPickField: null,
   chipOwnedSelection: new Set(),
 
   setInternalHoverSelection: (id) => set(s => {
@@ -279,7 +274,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setIsPointerDown: (down: boolean) => set({ isPointerDown: down }),
 
-  clearNormalSelection: () => set({ normalSelection: new Set(), chipOwnedSelection: new Set(), pendingPickField: null, selectionDomain: 'sketch_2d', dynamicSelection: new Set() }),
+  clearNormalSelection: () => set({ normalSelection: new Set(), chipOwnedSelection: new Set(), selectionDomain: 'sketch_2d', dynamicSelection: new Set() }),
 
   clearDynamicSelection: () => set({ dynamicSelection: new Set() }),
 
@@ -428,18 +423,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setPlaneSelectionFeatureId: (id) => set({ planeSelectionFeatureId: id }),
 
-  setPendingPickField: (state) => {
-    if (state) {
-      set({ pendingPickField: state })
-      return
-    }
-    // Field cleared — also drop any chip-owned highlights so they don't leak into normalSelection.
-    const s = get()
-    const next = new Set(s.normalSelection)
-    for (const v of s.chipOwnedSelection) next.delete(v)
-    set({ pendingPickField: null, normalSelection: next, chipOwnedSelection: new Set() })
-  },
-
   syncChipSelection: (values) => {
     const s = get()
     const nextOwned = new Set(values)
@@ -463,143 +446,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const next = new Set(s.normalSelection)
     for (const v of s.chipOwnedSelection) next.delete(v)
     set({ normalSelection: next, chipOwnedSelection: new Set() })
-  },
-
-  commitFieldPick: () => {
-    const { pendingPickField, normalSelection } = get()
-    const onMutation = guard(_sketchCbs.onMutation, 'onMutation (from commitFieldPick)')
-    if (!pendingPickField) return
-    const selectionId = [...normalSelection].pop()
-    if (!selectionId) return
-
-    const _resolveBodyRef = (id: string): string => {
-      let bodyRef = id
-      if (id.startsWith('body:')) {
-        bodyRef = '@' + id.slice(5)
-      } else if (id.startsWith('?')) {
-        const parsed = parseQuery(id)
-        if (parsed.kind === 'ancestry' && parsed.ids.length > 0) {
-          bodyRef = parsed.ids[parsed.ids.length - 1]
-        }
-      } else if (id.startsWith('@') && id.includes('/')) {
-        bodyRef = '@' + id.slice(1).split('/')[0]
-      }
-      // Ensure @body_ prefix so frontend body refs match backend body_store keys.
-      if (bodyRef.startsWith('@') && !bodyRef.startsWith('@body_')) {
-        bodyRef = '@body_' + bodyRef.slice(1)
-      }
-      return bodyRef
-    }
-
-    if (pendingPickField.field === 'sketch') {
-      const sketchQuery = selectionId.startsWith('face:')
-        ? selectionId.split(':').slice(2).join(':')  // face pick: pass ancestry query through unchanged
-        : selectionId  // raw selection id
-      if (pendingPickField.hostKind === 'hole') {
-        onMutation({ type: 'set_hole_field', featureId: pendingPickField.featureId, field: 'sketch', value: sketchQuery })
-        set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
-        return
-      }
-      const mutationType = pendingPickField.hostKind === 'revolve' ? 'add_revolve_profile' : 'add_extrude_profile'
-      onMutation({ type: mutationType, featureId: pendingPickField.featureId, sketchQuery })
-      set({ normalSelection: new Set(), chipOwnedSelection: new Set() })  // clear selection but keep pick mode open; chip's sync effect repopulates from values
-      return
-    }
-    if (pendingPickField.field === 'edges') {
-      const edgeQuery = selectionId.startsWith('face:')
-        ? selectionId.split(':').slice(2).join(':')
-        : selectionId
-      const mutationType = pendingPickField.hostKind === 'chamfer' ? 'add_chamfer_edge' : 'add_fillet_edge'
-      onMutation({ type: mutationType, featureId: pendingPickField.featureId, edgeQuery })
-      set({ normalSelection: new Set(), chipOwnedSelection: new Set() })  // clear selection but keep pick mode open; chip's sync effect repopulates from values
-      return
-    }
-    if (pendingPickField.field === 'axis') {
-      const axisQuery = selectionId.startsWith('face:')
-        ? selectionId.split(':').slice(2).join(':')
-        : selectionId.startsWith('entity:')
-          ? '@' + selectionId.split(':').slice(1).join('/')
-          : selectionId.startsWith('edge:')
-            ? selectionId.split(':').slice(2).join(':')
-            : selectionId
-      onMutation({ type: 'set_revolve_field', featureId: pendingPickField.featureId, field: 'axis', value: axisQuery })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
-      return
-    }
-    if (pendingPickField.field === 'merge_target') {
-      const bodyRef = _resolveBodyRef(selectionId)
-      if (pendingPickField.hostKind === 'revolve') {
-        onMutation({ type: 'set_revolve_field', featureId: pendingPickField.featureId, field: 'merge_target', value: bodyRef })
-      } else {
-        onMutation({ type: 'set_extrude_field', featureId: pendingPickField.featureId, field: 'merge_target', value: bodyRef })
-      }
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
-      return
-    }
-    if (pendingPickField.field === 'boolean_target') {
-      const bodyRef = _resolveBodyRef(selectionId)
-      onMutation({ type: 'set_boolean_field', featureId: pendingPickField.featureId, field: 'target', value: bodyRef })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
-      return
-    }
-    if (pendingPickField.field === 'boolean_tool') {
-      const bodyRef = _resolveBodyRef(selectionId)
-      onMutation({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: bodyRef })
-      set({ normalSelection: new Set(), chipOwnedSelection: new Set() })  // keep pick mode open; chip's sync effect repopulates from values
-      return
-    }
-    if (pendingPickField.field === 'body') {
-      const bodyRef = _resolveBodyRef(selectionId)
-      if (pendingPickField.hostKind === 'transform') {
-        onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
-      } else if (pendingPickField.hostKind === 'mirror') {
-        onMutation({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
-      } else {
-        onMutation({ type: 'set_delete_body_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
-      }
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
-      return
-    }
-    if (pendingPickField.field === 'plane' && pendingPickField.hostKind === 'mirror') {
-      const value = selectionId.startsWith('face:')
-        ? selectionId.split(':').slice(2).join(':')
-        : selectionId
-      onMutation({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'plane', value })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
-      return
-    }
-    let value: string
-    if (pendingPickField.field === 'rotation_axis' && pendingPickField.hostKind === 'transform') {
-      value = selectionId.startsWith('face:')
-        ? selectionId.split(':').slice(2).join(':')
-        : selectionId
-      onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'rotation_axis', value })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
-      return
-    }
-    if (pendingPickField.field === 'scale_center_from' && pendingPickField.hostKind === 'transform') {
-      value = selectionId.startsWith('face:')
-        ? selectionId.split(':').slice(2).join(':')
-        : selectionId
-      onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'scale_center_from', value })
-      set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
-      return
-    }
-    if (selectionId.startsWith('face:')) {
-      value = selectionId.split(':').slice(2).join(':')
-    } else if (selectionId.startsWith('vertex:')) {
-      const parts = selectionId.split(':')
-      const [, featId, eleId, sub] = parts
-      value = '@' + featId + eleId + sub
-    } else if (selectionId.startsWith('entity:')) {
-      const parts = selectionId.split(':')
-      const [, featId, eleId] = parts
-      value = '@' + featId + eleId
-    } else {
-      value = selectionId
-    }
-    onMutation({ type: 'set_plane_definition_field', featureId: pendingPickField.featureId, field: pendingPickField.field, value })
-    set({ pendingPickField: null, normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set() })
   },
 
   commitPlaneSelection: (selectionId) => {

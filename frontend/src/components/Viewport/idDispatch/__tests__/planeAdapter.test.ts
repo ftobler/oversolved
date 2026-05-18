@@ -7,7 +7,6 @@ beforeEach(() => {
     hoveredPlaneId: null,
     normalSelection: new Set(),
     planeSelectionFeatureId: null,
-    pendingPickField: null,
   })
 })
 

@@ -1,19 +1,26 @@
-import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
+import { useState } from 'react'
+import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
+import { useFieldPicking } from '@/hooks/useFieldPicking'
 
 interface ChamferEditorProps {
   feature: PartFeature
   onMutation: (m: Mutation) => void
-  pendingPickField: PendingPickField | null
-  setPendingPickField: (field: PendingPickField | null) => void
   features?: PartFeature[]
   partLabels?: Record<string, string>
 }
 
-export function ChamferEditor({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }: ChamferEditorProps) {
+export function ChamferEditor({ feature, onMutation, features, partLabels }: ChamferEditorProps) {
   const chamfer = feature.chamfer ?? { edges: [], distance: 1, kind: 'distance', angle: 45 }
   const fid = feature.id
-  const isPickingEdges = pendingPickField?.featureId === fid && pendingPickField?.field === 'edges'
+  const [isPickingEdges, setIsPickingEdges] = useState(false)
+
+  useFieldPicking(isPickingEdges, (selectionId) => {
+    const edgeQuery = selectionId.startsWith('face:')
+      ? selectionId.split(':').slice(2).join(':')
+      : selectionId
+    onMutation({ type: 'add_chamfer_edge', featureId: fid, edgeQuery })
+  })
 
   return (
     <div className="plane-editor">
@@ -22,10 +29,7 @@ export function ChamferEditor({ feature, onMutation, pendingPickField, setPendin
         <PickChip
           values={chamfer.edges}
           isPicking={isPickingEdges}
-          onActivate={() => {
-            if (isPickingEdges) setPendingPickField(null)
-            else setPendingPickField({ featureId: fid, field: 'edges', hostKind: 'chamfer' })
-          }}
+          onActivate={() => setIsPickingEdges(!isPickingEdges)}
           onRemove={(index) => onMutation({ type: 'remove_chamfer_edge', featureId: fid, index })}
           onReorder={(from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: 'edges', fromIndex: from, toIndex: to })}
           features={features}

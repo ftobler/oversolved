@@ -12,7 +12,7 @@ import math
 import pytest
 
 pytestmark = pytest.mark.skipif(
-    not importlib.util.find_spec("cadquery"), reason="cadquery not installed"
+    not importlib.util.find_spec("OCP"), reason="OCP not installed"
 )
 
 

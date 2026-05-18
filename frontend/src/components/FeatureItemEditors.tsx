@@ -1,4 +1,4 @@
-import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
+import type { PartFeature, Mutation } from '@/types/cad'
 import { PlaneEditor } from '@/components/PlaneEditor'
 import { PlaneSelector } from '@/components/PlaneSelector'
 import { ExtrudeEditor } from '@/components/ExtrudeEditor'
@@ -17,9 +17,6 @@ interface FeatureItemEditorsProps {
   editingFeatureId: string | null
   doc: { features?: PartFeature[] } | null
   onMutation: (m: Mutation) => void
-  pendingPickField: PendingPickField | null
-  setPendingPickField: (field: PendingPickField | null) => void
-  selectionQuery: string | null
   features: PartFeature[]
   partLabels: Record<string, string>
   planeSelectionFeatureId: string | null
@@ -33,9 +30,6 @@ export function FeatureItemEditors({
   editingFeatureId,
   doc,
   onMutation,
-  pendingPickField,
-  setPendingPickField,
-  selectionQuery,
   features,
   partLabels,
   planeSelectionFeatureId,
@@ -51,9 +45,6 @@ export function FeatureItemEditors({
           feature={feature}
           featureDef={doc?.features?.find(f => f.id === feature.id)}
           onMutation={onMutation}
-          pendingPickField={pendingPickField}
-          setPendingPickField={setPendingPickField}
-          selectionQuery={selectionQuery}
           features={fps}
           partLabels={labels}
         />
@@ -65,7 +56,6 @@ export function FeatureItemEditors({
           onMutation={onMutation}
           planeSelectionFeatureId={planeSelectionFeatureId}
           setPlaneSelectionFeatureId={setPlaneSelectionFeatureId}
-          selectionQuery={selectionQuery}
           features={fps}
           partLabels={labels}
         />
@@ -74,8 +64,6 @@ export function FeatureItemEditors({
         <ExtrudeEditor
           feature={feature}
           onMutation={onMutation}
-          pendingPickField={pendingPickField}
-          setPendingPickField={setPendingPickField}
           features={fps}
           partLabels={labels}
         />
@@ -84,9 +72,6 @@ export function FeatureItemEditors({
         <RevolveEditor
           feature={feature}
           onMutation={onMutation}
-          pendingPickField={pendingPickField}
-          setPendingPickField={setPendingPickField}
-          selectionQuery={selectionQuery}
           features={fps}
           partLabels={labels}
         />
@@ -103,8 +88,6 @@ export function FeatureItemEditors({
         <FilletEditor
           feature={feature}
           onMutation={onMutation}
-          pendingPickField={pendingPickField}
-          setPendingPickField={setPendingPickField}
           features={fps}
           partLabels={labels}
         />
@@ -113,8 +96,6 @@ export function FeatureItemEditors({
         <ChamferEditor
           feature={feature}
           onMutation={onMutation}
-          pendingPickField={pendingPickField}
-          setPendingPickField={setPendingPickField}
           features={fps}
           partLabels={labels}
         />
@@ -123,8 +104,6 @@ export function FeatureItemEditors({
         <BooleanEditor
           feature={feature}
           onMutation={onMutation}
-          pendingPickField={pendingPickField}
-          setPendingPickField={setPendingPickField}
           features={fps}
           partLabels={labels}
         />
@@ -139,8 +118,6 @@ export function FeatureItemEditors({
         <DeleteBodyEditor
           feature={feature}
           onMutation={onMutation}
-          pendingPickField={pendingPickField}
-          setPendingPickField={setPendingPickField}
           features={fps}
           partLabels={labels}
         />
@@ -149,8 +126,6 @@ export function FeatureItemEditors({
         <HoleEditor
           feature={feature}
           onMutation={onMutation}
-          pendingPickField={pendingPickField}
-          setPendingPickField={setPendingPickField}
           features={fps}
           partLabels={labels}
         />
@@ -159,8 +134,6 @@ export function FeatureItemEditors({
         <TransformEditor
           feature={feature}
           onMutation={onMutation}
-          pendingPickField={pendingPickField}
-          setPendingPickField={setPendingPickField}
           features={fps}
           partLabels={labels}
         />
@@ -169,8 +142,6 @@ export function FeatureItemEditors({
         <MirrorEditor
           feature={feature}
           onMutation={onMutation}
-          pendingPickField={pendingPickField}
-          setPendingPickField={setPendingPickField}
           features={fps}
           partLabels={labels}
         />

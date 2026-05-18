@@ -19,12 +19,6 @@ export function dispatchSketchClick(
   const effectiveTool = getEffectiveTool(state.activeTool)
   const tool = toolRegistry.get(effectiveTool)
 
-  if (state.pendingPickField && effectiveTool !== 'dimension') {
-    state.toggleNormalSelection(id)
-    state.commitFieldPick()
-    return
-  }
-
   const context = {
     normalSelection: state.normalSelection,
     internalHoverSelection: state.internalHoverSelection,
@@ -54,7 +48,6 @@ export function dispatchSketchClick(
   }
 
   state.toggleNormalSelection(id)
-  if (state.pendingPickField && effectiveTool !== 'dimension') state.commitFieldPick()
 }
 
 /**

@@ -15,46 +15,32 @@ function makeFeature(body = ''): PartFeature {
 describe('DeleteBodyEditor', () => {
   it('renders empty chip when no body selected', () => {
     const feature = makeFeature()
-    render(<DeleteBodyEditor feature={feature} onMutation={vi.fn()} pendingPickField={null} setPendingPickField={vi.fn()} />)
+    render(<DeleteBodyEditor feature={feature} onMutation={vi.fn()} />)
     expect(document.querySelector('.feature-pick-chip.empty')).toBeTruthy()
   })
 
   it('renders body ref when set', () => {
     const feature = makeFeature('@body_ex1')
-    render(<DeleteBodyEditor feature={feature} onMutation={vi.fn()} pendingPickField={null} setPendingPickField={vi.fn()} />)
+    render(<DeleteBodyEditor feature={feature} onMutation={vi.fn()} />)
     const chip = document.querySelector('.feature-pick-chip-item-text')
     expect(chip?.textContent).toBe('@body_ex1')
   })
 
-  it('clicking chip sets pendingPickField', () => {
+  it('clicking chip toggles picking state', () => {
     const feature = makeFeature()
-    const setPending = vi.fn()
-    render(<DeleteBodyEditor feature={feature} onMutation={vi.fn()} pendingPickField={null} setPendingPickField={setPending} />)
+    render(<DeleteBodyEditor feature={feature} onMutation={vi.fn()} />)
     const chip = document.querySelector('.feature-pick-chip')!
+    expect(chip.classList.contains('picking')).toBe(false)
     fireEvent.click(chip)
-    expect(setPending).toHaveBeenCalledWith({ featureId: 'db1', field: 'body', hostKind: 'delete_body' })
-  })
-
-  it('clicking chip when already picking clears pendingPickField', () => {
-    const feature = makeFeature()
-    const setPending = vi.fn()
-    render(
-      <DeleteBodyEditor
-        feature={feature}
-        onMutation={vi.fn()}
-        pendingPickField={{ featureId: 'db1', field: 'body', hostKind: 'delete_body' }}
-        setPendingPickField={setPending}
-      />
-    )
-    const chip = document.querySelector('.feature-pick-chip')!
+    expect(chip.classList.contains('picking')).toBe(true)
     fireEvent.click(chip)
-    expect(setPending).toHaveBeenCalledWith(null)
+    expect(chip.classList.contains('picking')).toBe(false)
   })
 
   it('remove button emits set_delete_body_target', () => {
     const feature = makeFeature('@body_ex1')
     const onMutation = vi.fn()
-    render(<DeleteBodyEditor feature={feature} onMutation={onMutation} pendingPickField={null} setPendingPickField={vi.fn()} />)
+    render(<DeleteBodyEditor feature={feature} onMutation={onMutation} />)
     const removeBtn = document.querySelector('.feature-pick-chip-item-remove')!
     fireEvent.click(removeBtn)
     expect(onMutation).toHaveBeenCalledWith({ type: 'set_delete_body_field', featureId: 'db1', field: 'body', value: '' })

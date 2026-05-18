@@ -16,7 +16,6 @@ beforeEach(() => {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
     chipOwnedSelection: new Set(),
-    pendingPickField: null,
   })
 })
 

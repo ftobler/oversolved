@@ -41,7 +41,6 @@ function renderSidebar(features: PartFeature[], editingFeatureId: string | null,
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    pendingPickField: null,
     planeSelectionFeatureId: null,
   })
   return render(
@@ -67,7 +66,6 @@ beforeEach(() => {
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    pendingPickField: null,
     planeSelectionFeatureId: null,
   })
 })
@@ -104,15 +102,6 @@ describe('extrude exit button', () => {
     expect(onEditCommit).toHaveBeenCalled()
   })
 
-  it('does not call onSetPendingPickField directly on exit', () => {
-    // setPendingPickField is now from sketchEditorStore directly, not a callback.
-    // Clicking exit should not call the store's setPendingPickField on its own.
-    const setPendingPickFieldSpy = vi.spyOn(useSketchEditorStore.getState(), 'setPendingPickField')
-    renderSidebar([extrudeFeature], 'ex1')
-    fireEvent.click(screen.getByTitle('OK'))
-    expect(setPendingPickFieldSpy).not.toHaveBeenCalled()
-    setPendingPickFieldSpy.mockRestore()
-  })
 })
 
 describe('plane edit button', () => {

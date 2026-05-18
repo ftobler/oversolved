@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature, PartDoc } from '@/types/cad'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
@@ -49,8 +48,6 @@ export function useEditFeature({
   setMode,
   getHandleRebuild,
 }: UseEditFeatureInput): UseEditFeatureReturn {
-  const setPendingPickField = useSketchEditorStore(s => s.setPendingPickField)
-
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
   const [savedRollbackPosition, setSavedRollbackPosition] = useState<number | null>(null)
   const [editForcedVisible, setEditForcedVisible] = useState<Set<string>>(new Set())
@@ -88,10 +85,9 @@ export function useEditFeature({
     }
     setEditForcedVisible(new Set())
     setEditingFeatureId(null)
-    setPendingPickField(null)
     setPickBoundary(null)
     if (docRef.current) reSolve(docRef.current, targetRollback)
-  }, [savedRollbackPosition, rollbackPosition, setPendingPickField, setPickBoundary,
+  }, [savedRollbackPosition, rollbackPosition, setPickBoundary,
       setRollbackFromHandler, docRef, reSolve])
 
   const enterEditFeature = useCallback((featureId: string, suppressUndo = true) => {

@@ -360,8 +360,6 @@ export default function Part() {
     const featureId = randomId(18)
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const label = `sketch ${sketchCount + 1}`
-    const { setPendingPickField } = useSketchEditorStore.getState()
-    setPendingPickField(null)
     setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_sketch', featureId, label })
     setRollbackFromHandler(features.length + 1)

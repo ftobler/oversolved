@@ -56,7 +56,6 @@ function renderSidebar(features: PartFeature[], solveResults?: Record<string, un
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    pendingPickField: null,
     planeSelectionFeatureId: null,
   })
   return render(
@@ -82,7 +81,6 @@ beforeEach(() => {
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    pendingPickField: null,
     planeSelectionFeatureId: null,
   })
 })

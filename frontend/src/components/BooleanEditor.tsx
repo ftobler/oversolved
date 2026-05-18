@@ -1,20 +1,44 @@
-import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
+import { useState } from 'react'
+import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
+import { useFieldPicking } from '@/hooks/useFieldPicking'
+
+function resolveBodyRef(id: string): string {
+  let bodyRef = id
+  if (id.startsWith('body:')) {
+    bodyRef = '@' + id.slice(5)
+  } else if (id.startsWith('?')) {
+    bodyRef = '@body_' + id.slice(1).split('/')[0]
+  } else if (id.startsWith('@') && id.includes('/')) {
+    bodyRef = '@' + id.slice(1).split('/')[0]
+  }
+  if (bodyRef.startsWith('@') && !bodyRef.startsWith('@body_')) {
+    bodyRef = '@body_' + bodyRef.slice(1)
+  }
+  return bodyRef
+}
 
 interface BooleanEditorProps {
   feature: PartFeature
   onMutation: (m: Mutation) => void
-  pendingPickField: PendingPickField | null
-  setPendingPickField: (field: PendingPickField | null) => void
   features?: PartFeature[]
   partLabels?: Record<string, string>
 }
 
-export function BooleanEditor({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }: BooleanEditorProps) {
+export function BooleanEditor({ feature, onMutation, features, partLabels }: BooleanEditorProps) {
   const bool = feature.boolean ?? { operation: 'union', target: '', tools: [] }
   const fid = feature.id
-  const isPickingTarget = pendingPickField?.featureId === fid && pendingPickField?.field === 'boolean_target'
-  const isPickingTool = pendingPickField?.featureId === fid && pendingPickField?.field === 'boolean_tool'
+  const [isPickingTarget, setIsPickingTarget] = useState(false)
+  const [isPickingTool, setIsPickingTool] = useState(false)
+
+  useFieldPicking(isPickingTarget, (selectionId) => {
+    onMutation({ type: 'set_boolean_field', featureId: fid, field: 'target', value: resolveBodyRef(selectionId) })
+    setIsPickingTarget(false)
+  })
+
+  useFieldPicking(isPickingTool, (selectionId) => {
+    onMutation({ type: 'add_boolean_tool', featureId: fid, tool: resolveBodyRef(selectionId) })
+  })
 
   return (
     <div className="plane-editor">
@@ -40,10 +64,7 @@ export function BooleanEditor({ feature, onMutation, pendingPickField, setPendin
         <PickChip
           values={bool.target ? [bool.target] : []}
           isPicking={isPickingTarget}
-          onActivate={() => {
-            if (isPickingTarget) setPendingPickField(null)
-            else setPendingPickField({ featureId: fid, field: 'boolean_target' })
-          }}
+          onActivate={() => setIsPickingTarget(!isPickingTarget)}
           onRemove={() => onMutation({ type: 'set_boolean_field', featureId: fid, field: 'target', value: '' })}
           emptyText="(pick target)"
           features={features}
@@ -55,9 +76,7 @@ export function BooleanEditor({ feature, onMutation, pendingPickField, setPendin
         <PickChip
           values={bool.tools}
           isPicking={isPickingTool}
-          onActivate={() => {
-            setPendingPickField({ featureId: fid, field: 'boolean_tool' })
-          }}
+          onActivate={() => setIsPickingTool(!isPickingTool)}
           onRemove={(index) => onMutation({ type: 'remove_boolean_tool', featureId: fid, tool: bool.tools[index] })}
           onReorder={(from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: 'tools', fromIndex: from, toIndex: to })}
           features={features}

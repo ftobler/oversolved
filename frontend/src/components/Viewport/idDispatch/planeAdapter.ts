@@ -16,7 +16,6 @@ export const planeAdapter = {
       s.commitPlaneSelection(entityKey)
     } else {
       s.toggleNormalSelection(entityKey)
-      if (s.pendingPickField) s.commitFieldPick()
     }
   },
 }

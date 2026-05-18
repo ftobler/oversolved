@@ -76,9 +76,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
   const validation = usePartEditorStore(s => s.validation)
 
   const selection = useSketchEditorStore(s => s.normalSelection)
-  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
-  const onSetPendingPickField = useSketchEditorStore(s => s.setPendingPickField)
   const onSetPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
 
   const {
@@ -100,20 +98,6 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
   const [draggedFeatureId, setDraggedFeatureId] = useState<string | null>(null)
   const [draggedRollback, setDraggedRollback] = useState(false)
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
-
-  const selectionQuery = (() => {
-    for (const id of selection) {
-      if (id.startsWith('?')) return id
-      if (id.startsWith('@') && !id.includes('/')) {
-        const refId = id.slice(1)
-        const refFeature = features.find(f => f.id === refId)
-        if (!refFeature || refFeature.kind === 'plane') return id
-      }
-      if (id.startsWith('face:')) return id.split(':').slice(2).join(':')
-      if (id.startsWith('edge:')) return id.split(':').slice(2).join(':')
-    }
-    return null
-  })()
 
   return (
     <div
@@ -280,44 +264,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 }
               }}
               onClick={() => {
-                if (pendingPickField?.field === 'sketch' && feature.kind === 'sketch') {
-                  const hostFeature = features.find(f => f.id === pendingPickField.featureId)
-                  if (hostFeature?.kind === 'revolve') {
-                    onMutation({ type: 'add_revolve_profile', featureId: pendingPickField.featureId, sketchQuery: '$' + feature.id })
-                  } else {
-                    onMutation({ type: 'add_extrude_profile', featureId: pendingPickField.featureId, sketchQuery: '$' + feature.id })
-                  }
-                } else if (pendingPickField?.field === 'merge_target' && solveResults?.[feature.id] && isBodyFeatureResult(solveResults[feature.id])) {
-                  const bodyResult = solveResults[feature.id] as { body_id?: string }
-                  const bodyRef = bodyResult.body_id ? '@' + bodyResult.body_id : '@' + feature.id
-                  if (pendingPickField.hostKind === 'revolve') {
-                    onMutation({ type: 'set_revolve_field', featureId: pendingPickField.featureId, field: 'merge_target', value: bodyRef })
-                  } else {
-                    onMutation({ type: 'set_extrude_field', featureId: pendingPickField.featureId, field: 'merge_target', value: bodyRef })
-                  }
-                  onSetPendingPickField(null)
-                } else if ((pendingPickField?.field === 'boolean_target' || pendingPickField?.field === 'boolean_tool') && solveResults?.[feature.id] && isBodyFeatureResult(solveResults[feature.id])) {
-                  const bodyResult = solveResults[feature.id] as { body_id?: string }
-                  const bodyRef = bodyResult.body_id ? '@' + bodyResult.body_id : '@' + feature.id
-                  if (pendingPickField.field === 'boolean_target') {
-                    onMutation({ type: 'set_boolean_field', featureId: pendingPickField.featureId, field: 'target', value: bodyRef })
-                    onSetPendingPickField(null)
-                  } else {
-                    onMutation({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: bodyRef })
-                  }
-                } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'transform' && solveResults?.[feature.id] && isBodyFeatureResult(solveResults[feature.id])) {
-                  const bodyResult = solveResults[feature.id] as { body_id?: string }
-                  const bodyRef = bodyResult.body_id ? '@' + bodyResult.body_id : '@' + feature.id
-                  onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
-                  onSetPendingPickField(null)
-                } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'delete_body' && solveResults?.[feature.id] && isBodyFeatureResult(solveResults[feature.id])) {
-                  const bodyResult = solveResults[feature.id] as { body_id?: string }
-                  const bodyRef = bodyResult.body_id ? '@' + bodyResult.body_id : '@' + feature.id
-                  onMutation({ type: 'set_delete_body_field', featureId: pendingPickField.featureId, field: 'body', value: bodyRef })
-                  onSetPendingPickField(null)
-                } else {
-                  onToggleSelect(`@${feature.id}`)
-                }
+                onToggleSelect(`@${feature.id}`)
               }}
               onDoubleClick={() => feature.kind === 'sketch' ? onEnterEditSketch(feature.id) : undefined}
               style={{ flexWrap: 'wrap' }}
@@ -374,9 +321,6 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 editingFeatureId={editingFeatureId}
                 doc={doc}
                 onMutation={onMutation}
-                pendingPickField={pendingPickField}
-                setPendingPickField={onSetPendingPickField}
-                selectionQuery={selectionQuery}
                 features={features}
                 partLabels={partLabels}
                 planeSelectionFeatureId={planeSelectionFeatureId}

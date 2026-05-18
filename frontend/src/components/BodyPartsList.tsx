@@ -15,40 +15,14 @@ export function BodyPartsList({ splitPercent }: BodyPartsListProps) {
   const visibleBodies = usePartEditorStore(s => s.visibleBodies)
   const partLabels = usePartEditorStore(s => s.partLabels)
   const selection = useSketchEditorStore(s => s.normalSelection)
-  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
 
   const {
     onToggleSelect,
     onRightClick,
-    onMutation,
   } = usePartEditorCallbacks()
-  const onSetPendingPickField = useSketchEditorStore(s => s.setPendingPickField)
 
   const handleClick = (bodyId: string) => {
-    if (pendingPickField?.field === 'merge_target') {
-      if (pendingPickField.hostKind === 'revolve') {
-        onMutation({ type: 'set_revolve_field', featureId: pendingPickField.featureId, field: 'merge_target', value: '@' + bodyId })
-      } else {
-        onMutation({ type: 'set_extrude_field', featureId: pendingPickField.featureId, field: 'merge_target', value: '@' + bodyId })
-      }
-      onSetPendingPickField(null)
-    } else if (pendingPickField?.field === 'boolean_target') {
-      onMutation({ type: 'set_boolean_field', featureId: pendingPickField.featureId, field: 'target', value: '@' + bodyId })
-      onSetPendingPickField(null)
-    } else if (pendingPickField?.field === 'boolean_tool') {
-      onMutation({ type: 'add_boolean_tool', featureId: pendingPickField.featureId, tool: '@' + bodyId })
-    } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'transform') {
-      onMutation({ type: 'set_transform_field', featureId: pendingPickField.featureId, field: 'body', value: '@' + bodyId })
-      onSetPendingPickField(null)
-    } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'mirror') {
-      onMutation({ type: 'set_mirror_field', featureId: pendingPickField.featureId, field: 'body', value: '@' + bodyId })
-      onSetPendingPickField(null)
-    } else if (pendingPickField?.field === 'body' && pendingPickField?.hostKind === 'delete_body') {
-      onMutation({ type: 'set_delete_body_field', featureId: pendingPickField.featureId, field: 'body', value: '@' + bodyId })
-      onSetPendingPickField(null)
-    } else {
-      onToggleSelect(`@${bodyId}`)
-    }
+    onToggleSelect(`@${bodyId}`)
   }
 
   return (

@@ -26,7 +26,6 @@ beforeEach(() => {
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
     isPointerDown: false,
-    pendingPickField: null,
     pendingDimTarget: null,
     pendingDimEntityKind: null,
   })
@@ -102,44 +101,5 @@ describe('useToolClickDispatch', () => {
     })
   })
 
-  describe('pendingPickField', () => {
-    it('commits field pick for non-dimension tools', () => {
-      mockGet.mockReturnValue({ handlers: { onClick: vi.fn() } })
-      const commitFieldPick = vi.fn()
-      const toggleNormalSelection = vi.fn()
-      useSketchEditorStore.setState({
-        activeTool: 'select',
-        pendingPickField: { featureId: 'P1', field: 'sketch' },
-      })
-      useSketchEditorStore.getState().commitFieldPick = commitFieldPick
-      useSketchEditorStore.getState().toggleNormalSelection = toggleNormalSelection
 
-      const { result } = renderHook(() =>
-        useToolClickDispatch({ id: 'entity:S1:L1', isEditing: true })
-      )
-      act(() => result.current(makeClickEvent()))
-
-      expect(toggleNormalSelection).toHaveBeenCalled()
-      expect(commitFieldPick).toHaveBeenCalled()
-    })
-
-    it('does not commit field pick when dimension tool is active', () => {
-      const onClick = vi.fn()
-      mockGet.mockReturnValue({ handlers: { onClick } })
-      const commitFieldPick = vi.fn()
-      useSketchEditorStore.setState({
-        activeTool: 'dimension',
-        pendingPickField: { featureId: 'P1', field: 'sketch' },
-      })
-      useSketchEditorStore.getState().commitFieldPick = commitFieldPick
-
-      const { result } = renderHook(() =>
-        useToolClickDispatch({ id: 'entity:S1:L1', isEditing: true })
-      )
-      act(() => result.current(makeClickEvent()))
-
-      expect(commitFieldPick).not.toHaveBeenCalled()
-      expect(onClick).toHaveBeenCalled()
-    })
-  })
 })

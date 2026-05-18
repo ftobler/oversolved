@@ -29,7 +29,6 @@ interface StoreState {
   features?: PartFeature[]
   visibleFeatures?: Set<string>
   editingFeatureId?: string | null
-  pendingPickField?: unknown
   solveResults?: Record<string, unknown>
   bodies?: Record<string, unknown>
 }
@@ -50,7 +49,6 @@ function renderSidebar(storeState: StoreState = {}, callbacks: Partial<PartEdito
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    pendingPickField: (storeState.pendingPickField ?? null) as never,
     planeSelectionFeatureId: null,
   })
   return render(
@@ -76,7 +74,6 @@ beforeEach(() => {
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    pendingPickField: null,
     planeSelectionFeatureId: null,
   })
 })
@@ -292,46 +289,21 @@ describe('merge target PickChip', () => {
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
     })
-    fireEvent.click(screen.getByText('(all bodies)'))
-    expect(useSketchEditorStore.getState().pendingPickField).toEqual({ featureId: 'ex1', field: 'merge_target' })
+    const chip = screen.getByText('(all bodies)').closest('.feature-pick-chip')!
+    fireEvent.click(chip)
+    expect(chip.classList.contains('picking')).toBe(true)
   })
 
   it('deactivates pick mode when chip clicked while already picking', () => {
-    useSketchEditorStore.setState({ pendingPickField: { featureId: 'ex1', field: 'merge_target' } })
     renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
-      pendingPickField: { featureId: 'ex1', field: 'merge_target' } as never,
     })
-    fireEvent.click(screen.getByText('(all bodies)'))
-    expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
-  })
-})
-
-// 6: sketch pick - clicking a sketch row while pendingPickField.field === 'sketch' is active
-describe('sketch pick resolution', () => {
-  it('dispatches set_extrude_sketch and clears pendingPickField when sketch row is clicked', () => {
-    const onMutation = vi.fn()
-    const sketchFeature: PartFeature = { id: 'sk1', kind: 'sketch' }
-    useSketchEditorStore.setState({ pendingPickField: { featureId: 'ex1', field: 'sketch' } })
-    renderSidebar({
-      features: [extrudeFeature, sketchFeature],
-      visibleFeatures: new Set(['ex1', 'sk1']),
-      editingFeatureId: 'ex1',
-      pendingPickField: { featureId: 'ex1', field: 'sketch' } as never,
-    }, { onMutation })
-    // Click the feature row li, not the inner name span (which stops propagation for renaming).
-    const sketchRow = screen.getByText((content, el) =>
-      !!(content === 'sk1' && el?.classList.contains('feature-name'))
-    ).closest('li')!
-    fireEvent.click(sketchRow)
-    expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
-      type: 'add_extrude_profile',
-      featureId: 'ex1',
-      sketchQuery: '$sk1',
-    })
-    // pick mode stays open after each selection
-    expect(useSketchEditorStore.getState().pendingPickField).not.toBeNull()
+    const chip = screen.getByText('(all bodies)').closest('.feature-pick-chip')!
+    fireEvent.click(chip)
+    expect(chip.classList.contains('picking')).toBe(true)
+    fireEvent.click(chip)
+    expect(chip.classList.contains('picking')).toBe(false)
   })
 })

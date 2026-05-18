@@ -9,7 +9,6 @@ beforeEach(() => {
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
     normalSelection: new Set(),
-    pendingPickField: null,
   })
 })
 

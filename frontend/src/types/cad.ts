@@ -183,14 +183,6 @@ export function isBodyFeatureResult(r: unknown): r is BodyFeatureResult {
   return typeof r === 'object' && r !== null && ('body_id' in r || 'body_ids' in r)
 }
 
-// Lightweight marker that a sidebar pick chip is waiting for a viewport selection.
-// Viewport clicks go through normalSelection first, then commitFieldPick() reads from it.
-export interface PendingPickField {
-  featureId: string
-  field: string
-  hostKind?: string
-}
-
 // ── Document AST Types ────
 
 // A query string referencing an entity or sub-element, e.g. "$line1" or "$arc1start".

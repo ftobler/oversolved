@@ -15,7 +15,6 @@ export const originAdapter = {
   onClick(entityKey: string): void {
     const s = useSketchEditorStore.getState()
     s.toggleNormalSelection(entityKey)
-    if (s.pendingPickField) s.commitFieldPick()
   },
 }
 

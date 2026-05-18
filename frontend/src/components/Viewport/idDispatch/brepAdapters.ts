@@ -13,9 +13,9 @@ import {
  *
  * | layer  | hover writes                                   | click writes                                  |
  * |--------|------------------------------------------------|-----------------------------------------------|
- * | face   | hovered3DSurfaceId, hoveredBodyId, face geom   | toggleNormalSelection (+ plane/pick chip)    |
- * | edge   | per-body local hoveredEdgeIndex, hoveredBodyId | toggleNormalSelection (+ pick chip)          |
- * | vertex | per-body local hoveredVertexIndex, hoveredBodyId | toggleNormalSelection (+ pick chip)        |
+ * | face   | hovered3DSurfaceId, hoveredBodyId, face geom   | toggleNormalSelection (+ plane)              |
+ * | edge   | per-body local hoveredEdgeIndex, hoveredBodyId | toggleNormalSelection                        |
+ * | vertex | per-body local hoveredVertexIndex, hoveredBodyId | toggleNormalSelection                      |
  *
  * "Per-body" writes go through the bodyDispatchCallbacks registry
  * because each Body3D keeps the matching highlight state locally.
@@ -57,7 +57,6 @@ export const brepFaceAdapter = {
       return
     }
     s.toggleNormalSelection(entityKey)
-    if (s.pendingPickField) s.commitFieldPick()
   },
 }
 
@@ -77,7 +76,6 @@ export const brepEdgeAdapter = {
   onClick(entityKey: string): void {
     const s = useSketchEditorStore.getState()
     s.toggleNormalSelection(entityKey)
-    if (s.pendingPickField) s.commitFieldPick()
   },
 }
 
@@ -97,7 +95,6 @@ export const brepVertexAdapter = {
   onClick(entityKey: string): void {
     const s = useSketchEditorStore.getState()
     s.toggleNormalSelection(entityKey)
-    if (s.pendingPickField) s.commitFieldPick()
   },
 }
 

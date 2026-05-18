@@ -3,8 +3,6 @@ import type { PartDoc, Mutation } from '@/types/cad'
 import { useDocumentState } from '@/hooks/useDocumentState'
 import { useSolver } from '@/hooks/useSolver'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { PRIMARY_PICK_FIELD, isCompatibleWithField, applyCompatibleSelection } from '@/utils/featurePickRegistry'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 
 export { healDoc, BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
@@ -62,24 +60,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       console.error(`[handleMutation] no handler for mutation type: ${m.type}`)
     }
     handler?.(next, m)
-
-    // Auto-activate primary pick chip on add_feature (feature 223)
-    const pickInfo = PRIMARY_PICK_FIELD[m.type]
-    if (pickInfo) {
-      const featId = (m as unknown as { featureId: string }).featureId
-      const store = useSketchEditorStore.getState()
-      const compatibleIds = [...store.normalSelection].filter(id =>
-        isCompatibleWithField(id, pickInfo.field, pickInfo.hostKind),
-      )
-      for (const id of compatibleIds) {
-        applyCompatibleSelection(next, featId, pickInfo.field, pickInfo.hostKind, id)
-      }
-      store.setPendingPickField({
-        featureId: featId,
-        field: pickInfo.field,
-        hostKind: pickInfo.hostKind,
-      })
-    }
 
     docRef.current = next
     setDoc(next)

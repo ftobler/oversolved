@@ -1,19 +1,27 @@
-import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
+import { useState } from 'react'
+import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
+import { useFieldPicking } from '@/hooks/useFieldPicking'
 
 interface HoleEditorProps {
   feature: PartFeature
   onMutation: (m: Mutation) => void
-  pendingPickField: PendingPickField | null
-  setPendingPickField: (field: PendingPickField | null) => void
   features?: PartFeature[]
   partLabels?: Record<string, string>
 }
 
-export function HoleEditor({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }: HoleEditorProps) {
+export function HoleEditor({ feature, onMutation, features, partLabels }: HoleEditorProps) {
   const hole = feature.hole ?? { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' }
   const fid = feature.id
-  const isPickingSketch = pendingPickField?.featureId === fid && pendingPickField?.field === 'sketch'
+  const [isPickingSketch, setIsPickingSketch] = useState(false)
+
+  useFieldPicking(isPickingSketch, (selectionId) => {
+    const sketchQuery = selectionId.startsWith('face:')
+      ? selectionId.split(':').slice(2).join(':')
+      : selectionId
+    onMutation({ type: 'set_hole_field', featureId: fid, field: 'sketch', value: sketchQuery })
+    setIsPickingSketch(false)
+  })
 
   return (
     <div className="plane-editor">
@@ -22,10 +30,7 @@ export function HoleEditor({ feature, onMutation, pendingPickField, setPendingPi
         <PickChip
           values={hole.sketch ? [hole.sketch] : []}
           isPicking={isPickingSketch}
-          onActivate={() => {
-            if (isPickingSketch) setPendingPickField(null)
-            else setPendingPickField({ featureId: fid, field: 'sketch', hostKind: 'hole' })
-          }}
+          onActivate={() => setIsPickingSketch(!isPickingSketch)}
           onRemove={() => onMutation({ type: 'set_hole_field', featureId: fid, field: 'sketch', value: '' })}
           features={features}
           partLabels={partLabels}

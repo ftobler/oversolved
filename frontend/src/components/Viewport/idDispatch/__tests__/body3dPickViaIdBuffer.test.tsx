@@ -17,7 +17,6 @@ beforeEach(() => {
   setSketchCallback('onMutation', vi.fn())
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    pendingPickField: null,
     planeSelectionFeatureId: null,
     hovered3DSurfaceId: null,
     hoveredBodyId: null,
@@ -114,23 +113,4 @@ describe('body3dPickViaIdBuffer', () => {
     expect(sel.size).toBe(0)
   })
 
-  it('face click with pendingPickField commits field pick', () => {
-    registerBodyCallbacks('feat5/b1', {
-      featureId: 'feat5',
-      bodyId: 'b1',
-      mesh: stubMesh(['@feat5/face/0']),
-      edgeQueries: undefined,
-      vertexQueries: undefined,
-      setHoveredEdgeIndex: () => {},
-      setHoveredVertexIndex: () => {},
-      updateFaceGeometryForQuery: () => {},
-      clearFaceGeometry: () => {},
-    })
-
-    useSketchEditorStore.setState({ pendingPickField: { featureId: 'feat5', field: 'depth' } })
-    brepFaceAdapter.onClick('@feat5/face/0')
-
-    // After commitFieldPick, pendingPickField should be cleared.
-    expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
-  })
 })

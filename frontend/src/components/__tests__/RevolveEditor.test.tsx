@@ -25,7 +25,7 @@ function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditor
   }
 }
 
-function renderSidebar(storeFeatures: PartFeature[], editingFeatureId: string | null, callbacks: Partial<PartEditorCallbacks> = {}, pendingPickField?: unknown) {
+function renderSidebar(storeFeatures: PartFeature[], editingFeatureId: string | null, callbacks: Partial<PartEditorCallbacks> = {}) {
   usePartEditorStore.setState({
     features: storeFeatures,
     visibleFeatures: new Set(storeFeatures.map(f => f.id)),
@@ -41,7 +41,6 @@ function renderSidebar(storeFeatures: PartFeature[], editingFeatureId: string | 
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    pendingPickField: (pendingPickField ?? null) as never,
     planeSelectionFeatureId: null,
   })
   return render(
@@ -67,7 +66,6 @@ beforeEach(() => {
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    pendingPickField: null,
     planeSelectionFeatureId: null,
   })
 })
@@ -107,17 +105,19 @@ describe('merge target PickChip in RevolveEditor', () => {
     expect(screen.getByText('(all bodies)')).toBeInTheDocument()
   })
 
-  it('activates pick mode with hostKind revolve on chip click', () => {
+  it('activates pick mode on chip click', () => {
     renderSidebar([revolveFeature], 'rev1')
-    fireEvent.click(screen.getByText('(all bodies)'))
-    expect(useSketchEditorStore.getState().pendingPickField).toEqual({
-      featureId: 'rev1', field: 'merge_target', hostKind: 'revolve',
-    })
+    const chip = screen.getByText('(all bodies)').closest('.feature-pick-chip')!
+    fireEvent.click(chip)
+    expect(chip.classList.contains('picking')).toBe(true)
   })
 
   it('deactivates pick mode when chip clicked while already picking', () => {
-    renderSidebar([revolveFeature], 'rev1', {}, { featureId: 'rev1', field: 'merge_target', hostKind: 'revolve' })
-    fireEvent.click(screen.getByText('(all bodies)'))
-    expect(useSketchEditorStore.getState().pendingPickField).toBeNull()
+    renderSidebar([revolveFeature], 'rev1')
+    const chip = screen.getByText('(all bodies)').closest('.feature-pick-chip')!
+    fireEvent.click(chip)
+    expect(chip.classList.contains('picking')).toBe(true)
+    fireEvent.click(chip)
+    expect(chip.classList.contains('picking')).toBe(false)
   })
 })

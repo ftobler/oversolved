@@ -31,7 +31,6 @@ function resetStore() {
     internalHoverSelection: null,
     activeFeatureId: null,
     planeSelectionFeatureId: null,
-    pendingPickField: null,
     hovered3DSurfaceId: null,
   })
 }

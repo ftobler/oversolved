@@ -1,19 +1,26 @@
-import type { PartFeature, Mutation, PendingPickField } from '@/types/cad'
+import { useState } from 'react'
+import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
+import { useFieldPicking } from '@/hooks/useFieldPicking'
 
 interface FilletEditorProps {
   feature: PartFeature
   onMutation: (m: Mutation) => void
-  pendingPickField: PendingPickField | null
-  setPendingPickField: (field: PendingPickField | null) => void
   features?: PartFeature[]
   partLabels?: Record<string, string>
 }
 
-export function FilletEditor({ feature, onMutation, pendingPickField, setPendingPickField, features, partLabels }: FilletEditorProps) {
+export function FilletEditor({ feature, onMutation, features, partLabels }: FilletEditorProps) {
   const fillet = feature.fillet ?? { edges: [], radius: 1 }
   const fid = feature.id
-  const isPickingEdges = pendingPickField?.featureId === fid && pendingPickField?.field === 'edges'
+  const [isPickingEdges, setIsPickingEdges] = useState(false)
+
+  useFieldPicking(isPickingEdges, (selectionId) => {
+    const edgeQuery = selectionId.startsWith('face:')
+      ? selectionId.split(':').slice(2).join(':')
+      : selectionId
+    onMutation({ type: 'add_fillet_edge', featureId: fid, edgeQuery })
+  })
 
   return (
     <div className="plane-editor">
@@ -22,10 +29,7 @@ export function FilletEditor({ feature, onMutation, pendingPickField, setPending
         <PickChip
           values={fillet.edges}
           isPicking={isPickingEdges}
-          onActivate={() => {
-            if (isPickingEdges) setPendingPickField(null)
-            else setPendingPickField({ featureId: fid, field: 'edges', hostKind: 'fillet' })
-          }}
+          onActivate={() => setIsPickingEdges(!isPickingEdges)}
           onRemove={(index) => onMutation({ type: 'remove_fillet_edge', featureId: fid, index })}
           onReorder={(from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: 'edges', fromIndex: from, toIndex: to })}
           features={features}

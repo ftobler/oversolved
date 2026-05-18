@@ -28,14 +28,12 @@ function simulateFaceClick(hoverQuery: string) {
     state.commitPlaneSelection(currentHover)
   } else {
     state.toggleNormalSelection(currentHover)
-    if (state.pendingPickField) state.commitFieldPick()
   }
 }
 
 beforeEach(() => {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    pendingPickField: null,
     planeSelectionFeatureId: null,
     hovered3DSurfaceId: null,
   })

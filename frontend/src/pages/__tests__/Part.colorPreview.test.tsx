@@ -165,7 +165,6 @@ describe('Part Color Preview', () => {
       hovered3DSurfaceId: null,
       activeTool: null,
       planeSelectionFeatureId: null,
-      pendingPickField: null,
       showDebugHit: false,
     })
   })

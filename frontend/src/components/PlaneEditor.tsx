@@ -1,39 +1,55 @@
-import type { PartFeature, PlaneDef, Mutation, PendingPickField } from '@/types/cad'
+import { useState } from 'react'
+import type { PartFeature, PlaneDef, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
+import { useFieldPicking } from '@/hooks/useFieldPicking'
 import { planeLabel } from '@/components/Geometry3D/utils'
 
 interface PlaneEditorProps {
   feature: PartFeature
   featureDef?: PartFeature
   onMutation: (m: Mutation) => void
-  pendingPickField: PendingPickField | null
-  setPendingPickField: (field: PendingPickField | null) => void
-  selectionQuery: string | null
   features: PartFeature[]
   partLabels: Record<string, string>
 }
 
 export function PlaneEditor({
-  feature, featureDef, onMutation, pendingPickField, setPendingPickField, selectionQuery, features, partLabels,
+  feature, featureDef, onMutation, features, partLabels,
 }: PlaneEditorProps) {
   const def = (featureDef?.definition as PlaneDef | undefined) ?? { mode: 'offset' }
   const mode = def.mode ?? 'offset'
   const fid = feature.id
-  const isPickingField = (field: string) =>
-    pendingPickField?.featureId === fid && pendingPickField.field === field
+  const [pickingField, setPickingField] = useState<string | null>(null)
+
+  useFieldPicking(pickingField !== null, (selectionId) => {
+    let value: string
+    if (selectionId.startsWith('face:')) {
+      value = selectionId.split(':').slice(2).join(':')
+    } else if (selectionId.startsWith('vertex:')) {
+      const parts = selectionId.split(':')
+      const [, featId, eleId, sub] = parts
+      value = '@' + featId + eleId + sub
+    } else if (selectionId.startsWith('entity:')) {
+      const parts = selectionId.split(':')
+      const [, featId, eleId] = parts
+      value = '@' + featId + eleId
+    } else {
+      value = selectionId
+    }
+    onMutation({ type: 'set_plane_definition_field', featureId: fid, field: pickingField!, value })
+    setPickingField(null)
+  })
+
   const pickChip = (field: string, _kind: 'plane' | 'point' | 'line', value: string | undefined) => {
-    const isPicking = isPickingField(field)
+    const isPicking = pickingField === field
     return (
       <PickChip
         values={value && value !== 'None' ? [value] : []}
         isPicking={isPicking}
         onActivate={() => {
           if (isPicking) {
-            setPendingPickField(null)
-          } else if (selectionQuery) {
-            onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: selectionQuery })
+            setPickingField(null)
           } else {
-            setPendingPickField({ featureId: fid, field })
+            setPickingField(field)
           }
         }}
         onRemove={() => onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: '' })}

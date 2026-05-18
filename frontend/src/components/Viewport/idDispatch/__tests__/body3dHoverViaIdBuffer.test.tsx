@@ -17,7 +17,6 @@ beforeEach(() => {
   resetBodyCallbacksForTest()
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    pendingPickField: null,
     planeSelectionFeatureId: null,
     hovered3DSurfaceId: null,
     hoveredBodyId: null,
