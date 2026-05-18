@@ -135,12 +135,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     const onPointerMove = (e: MouseEvent) => {
       const pipeline = getLivePipeline()
       const gl = glRef.current
-      if (!pipeline || !gl || !attached) {
-        console.log('[collision] NO pipeline or gl')
-        return
-      }
+      if (!pipeline || !gl || !attached) return
       const allowed = computeAllowed()
-      console.log(`[collision] allowedLayers=${[...allowed].join(',') || '(empty)'} layers=${pipeline.getLayers().map(l => `${l.name}[${l.scene.children.length}]`).join(',')} dirty=${pipeline.isDirty()} renders=${pipeline.getRenderCount()}`)
       if (allowed.size === 0) {
         applyHoverHit(null, null)
         return
@@ -148,7 +144,6 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       void pipeline
         .resolveAsync(gl, cursorFromEvent(e, attached), { allowedLayers: allowed })
         .then(hit => {
-          console.log(`[collision] resolve returned layer="${hit?.layer ?? null}" entityKey="${hit?.entityKey ?? null}"`)
           applyHoverHit(hit?.layer ?? null, hit?.entityKey ?? null)
         })
     }

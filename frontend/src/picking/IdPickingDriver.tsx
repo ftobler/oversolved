@@ -111,25 +111,22 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
       lastCamMatrixValid.current = true
     } else {
       for (let i = 0; i < 16; i++) {
-        if (lastCamMatrix.current[i] !== m[i]) { changed = true; break }
+        if (Math.abs(lastCamMatrix.current[i] - m[i]) > 1e-6) { changed = true; break }
       }
     }
     lastCamMatrix.current.set(m)
-    const wasDirty = pipeline.isDirty()
 
     if (changed) {
       pipeline.markDirty('camera')
       cameraMovedThisFrame.current = true
       if (!pipeline.pickDuringCameraMotion) {
-        if (wasDirty) console.log('[id-pipeline] deferring render, camera moving')
         return  // defer render until the camera settles
       }
     } else {
       cameraMovedThisFrame.current = false
     }
     try {
-      const rendered = pipeline.renderIfDirty(gl, camera)
-      if (rendered) console.log(`[id-pipeline] rendered ${pipeline.getRenderCount()}`)
+      pipeline.renderIfDirty(gl, camera)
     } catch (err) {
       // Never let id-buffer failures take down visible rendering.
       renderFailed.current = true
