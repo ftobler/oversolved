@@ -15,7 +15,7 @@ const GOLDEN_RATIO = 0.618033988749895
 export function buildOverlayMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
-    transparent: false,
+    transparent: true,
     depthTest: false,
     depthWrite: false,
     uniforms: {

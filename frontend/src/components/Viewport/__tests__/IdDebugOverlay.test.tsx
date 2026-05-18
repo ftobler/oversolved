@@ -39,7 +39,7 @@ describe('IdDebugOverlay', () => {
   it('builds a ShaderMaterial whose fragment shader decodes RGB ids with golden-ratio hue mapping', () => {
     const mat = buildOverlayMaterial()
     expect(mat.glslVersion).toBe(THREE.GLSL3)
-    expect(mat.transparent).toBe(false)
+    expect(mat.transparent).toBe(true)
     expect(mat.depthTest).toBe(false)
     expect(mat.depthWrite).toBe(false)
     expect(mat.fragmentShader).toContain('hsv2rgb')
