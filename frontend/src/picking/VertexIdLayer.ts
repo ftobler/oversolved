@@ -51,9 +51,9 @@ const VERT_SHADER = `
     // space via 1/half-viewport, so the quad is a true square in pixels
     // even on non-square viewports.
     vec4 clipCenter = projectionMatrix * modelViewMatrix * vec4(aCenter, 1.0);
-    vec2 half = uViewport * 0.5;
+    vec2 halfPx = uViewport * 0.5;
     vec2 offsetPx = position.xy * uFatPixels;
-    vec2 offsetClip = (offsetPx / half) * clipCenter.w;
+    vec2 offsetClip = (offsetPx / halfPx) * clipCenter.w;
     clipCenter.xy += offsetClip;
     vColor = aColor;
     gl_Position = clipCenter;

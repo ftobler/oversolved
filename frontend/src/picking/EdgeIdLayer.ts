@@ -67,18 +67,18 @@ const VERT_SHADER = `
     // on non-square viewports. Without this, scaling the NDC normal by
     // (2/W, 2/H) componentwise distorts the ribbon (wider along the long
     // axis). Convert NDC -> pixels, take perp there, then convert back.
-    vec2 half = uViewport * 0.5;
+    vec2 halfPx = uViewport * 0.5;
     vec2 ndc0 = clip0.xy / max(clip0.w, 1e-6);
     vec2 ndc1 = clip1.xy / max(clip1.w, 1e-6);
-    vec2 px0 = ndc0 * half;
-    vec2 px1 = ndc1 * half;
+    vec2 px0 = ndc0 * halfPx;
+    vec2 px1 = ndc1 * halfPx;
     vec2 dirPx = px1 - px0;
     float lenPx = length(dirPx);
     vec2 tangentPx = lenPx > 1e-6 ? dirPx / lenPx : vec2(1.0, 0.0);
     vec2 normalPx = vec2(-tangentPx.y, tangentPx.x);
     vec2 offsetPx = normalPx * (uFatPixels * aSide);
     // pixels -> clip-space delta (cancel the perspective divide via *w).
-    vec2 offsetClip = (offsetPx / half) * clip0.w;
+    vec2 offsetClip = (offsetPx / halfPx) * clip0.w;
     clip0.xy += offsetClip;
 
     // Negative bias = nudge toward the camera so coplanar face/edge don't z-fight.
