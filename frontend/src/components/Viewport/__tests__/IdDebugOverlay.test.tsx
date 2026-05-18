@@ -10,8 +10,8 @@ import { setLivePipeline } from '@/picking/IdPipelineContext'
 
 /**
  * Acceptance: overlay mounts only when showDebugHit is true; shader
- * decodes packed RGB ids and uses the bit-reverse / HSV recipe; empty
- * pixels (a < 0.5) are discarded.
+ * decodes packed RGB ids and uses golden-ratio hue mapping; empty
+ * pixels (a < 0.5) render as black.
  *
  * The rendered output cannot be inspected in jsdom (no WebGL), so this
  * test exercises the shader source + uniform wiring at the component
@@ -36,17 +36,16 @@ describe('IdDebugOverlay', () => {
     state.setShowDebugHit(false)
   })
 
-  it('builds a ShaderMaterial whose fragment shader decodes RGB ids with bit-reverse + HSV', () => {
+  it('builds a ShaderMaterial whose fragment shader decodes RGB ids with golden-ratio hue mapping', () => {
     const mat = buildOverlayMaterial()
     expect(mat.glslVersion).toBe(THREE.GLSL3)
-    expect(mat.transparent).toBe(true)
+    expect(mat.transparent).toBe(false)
     expect(mat.depthTest).toBe(false)
     expect(mat.depthWrite).toBe(false)
-    expect(mat.fragmentShader).toContain('reverse24')
     expect(mat.fragmentShader).toContain('hsv2rgb')
-    expect(mat.fragmentShader).toContain('discard')
+    expect(mat.fragmentShader).toContain('0.618033988749895')
+    expect(mat.fragmentShader).toContain('fragColor = vec4(0.0, 0.0, 0.0, 1.0)')
     expect(mat.uniforms.tId.value).toBeNull()
-    expect(mat.uniforms.opacity.value).toBeCloseTo(1.0)
     mat.dispose()
   })
 

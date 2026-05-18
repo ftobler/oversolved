@@ -10,13 +10,11 @@ import { buildOverlayMaterial, updateOverlayTexture } from './IdDebugOverlayMate
  * Returns null when no ID pipeline is available (e.g. tests, or before
  * `IdPickingDriver` has finished its first effect).
  *
- * Color recipe matches `bitReverse24.ts` / `id-buffer-debug-overlay.md`:
+ * Color recipe:
  *   1. decode the RGB into a 24-bit integer ID
- *   2. reverse the 24 bits (sequential IDs become maximally separated)
- *   3. take the low 16 bits as a hue, with saturation 0.85 and value 0.95
- *
- * The legacy showDebugHit per-face-color path in `Body3D.tsx` was removed
- * when this overlay shipped (#265); this is the new behaviour of the flag.
+ *   2. map id to hue via golden ratio (fract(id * phi)) for optimal
+ *      visual separation between sequential IDs
+ *   3. empty pixels (alpha < 0.5) render as black
  */
 export default function IdDebugOverlay() {
   const pipeline = useIdPipeline()
