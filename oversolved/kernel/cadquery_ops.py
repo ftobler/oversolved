@@ -167,7 +167,7 @@ def extrude_face(face: cq_shapes.Face, direction_vec: list[float], distance: flo
     if distance == 0:
         raise ValueError("extrude distance must be non-zero")
     vec = CQVector(*direction_vec) * distance
-    return cq_shapes.Solid.extrudeLinear(face, vec).clean()
+    return cq_shapes.Solid.extrudeLinear(face, vec)
 
 
 def revolve_face(face: cq_shapes.Face, axis_origin: list[float],
