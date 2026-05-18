@@ -15,6 +15,7 @@ vi.mock('@react-three/drei', () => ({
   OrthographicCamera: () => <div data-testid="ortho-camera" />,
   Line: () => <div data-testid="line" />,
   Text: () => <div data-testid="text" />,
+  Environment: () => null,
 }))
 
 vi.mock('../Geometry3D', () => ({
