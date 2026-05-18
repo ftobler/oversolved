@@ -32,7 +32,7 @@ import { planeRotation, planeRotationFromTransform } from '@/components/Geometry
 import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
 
 // ID-buffer registration
-import { useSketchIdRegistration } from '@/picking'
+import { useSketchIdRegistration, useSketchSurfaceIdRegistration } from '@/picking'
 
 export interface Geometry3DProps {
   featureId: string
@@ -84,6 +84,13 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   useSketchIdRegistration({
     featureId,
     sketch: solved,
+    planeTransform,
+    enabled: !activeFeatureId || isEditing,
+  })
+
+  useSketchSurfaceIdRegistration({
+    featureId,
+    topology: topology,
     planeTransform,
     enabled: !activeFeatureId || isEditing,
   })

@@ -6,15 +6,14 @@
  *   while the sketch is being edited. Sketch geometry (lines, vertices) must
  *   receive drag and hover events even when they lie inside a filled area.
  *
- * As of 267.6 the `noOpRaycast` raycaster-level shim is removed. Area
- * inertness is now guaranteed by the ID buffer: sketch areas are never
- * registered in any ID layer, so the dispatcher never returns them as
- * picked. The SurfaceMesh component continues to have R3F event handlers
- * for hover/click but these are only enabled for non-editing sketches.
+ * Inertness is guaranteed by the ID buffer layer priority: sketchSurface (30)
+ * renders behind sketchEntity (40) and sketchVertex (50), so entity lines and
+ * vertices always win where they overlap a surface. The SurfaceMesh component
+ * continues to have R3F event handlers for hover/click (not yet cutover).
  */
 import { describe, it, expect } from 'vitest'
 
-describe('SurfaceMesh inertness (post-267.6)', () => {
+describe('SurfaceMesh inertness (post-sketchSurface layer)', () => {
   it('Surfaces.tsx no longer exports noOpRaycast', async () => {
     const mod = await import('@/components/Geometry3D/Surfaces')
     expect('noOpRaycast' in mod).toBe(false)

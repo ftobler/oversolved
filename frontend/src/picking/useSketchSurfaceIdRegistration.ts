@@ -1,0 +1,140 @@
+import { useEffect, useMemo } from 'react'
+import * as THREE from 'three'
+import { useIdPipeline } from './IdPipelineContext'
+import type { Topology, PlaneTransform } from '@/types/cad'
+
+/**
+ * Register a sketch's topology surfaces with the sketchSurface ID layer.
+ *
+ * Each topology surface is triangulated via THREE.ShapeGeometry, then
+ * every triangle is registered with the surface's ancestral query so
+ * the resolver can identify which surface was clicked.
+ *
+ * The plane transform is applied so surface vertices land at the same
+ * world-space positions as the visible SurfaceMesh geometry.
+ */
+
+function buildPlaneMatrix(planeTransform?: PlaneTransform): THREE.Matrix4 {
+  const m = new THREE.Matrix4()
+  if (!planeTransform) return m
+  const [x0, x1, x2, y0, y1, y2, n0, n1, n2] = planeTransform.rotation
+  m.set(
+    x0, y0, n0, 0,
+    x1, y1, n1, 0,
+    x2, y2, n2, 0,
+    0,  0,  0,  1,
+  )
+  const o = planeTransform.origin
+  m.setPosition(o[0] ?? 0, o[1] ?? 0, o[2] ?? 0)
+  return m
+}
+
+function buildSurfaceShapes(topology: Topology): { shape: THREE.Shape; query: string }[] {
+  const results: { shape: THREE.Shape; query: string }[] = []
+  for (const surface of topology.surfaces) {
+    const pts: [number, number][] = []
+    surface.boundary.forEach((edge, ei) => {
+      if (ei === 0) pts.push(edge.start)
+      if (edge.kind === 'line') {
+        pts.push(edge.end)
+      } else {
+        const { center, radius, angle_start_deg, angle_end_deg, ccw } = edge
+        const span = ccw
+          ? ((angle_end_deg - angle_start_deg) + 360) % 360
+          : -(((angle_start_deg - angle_end_deg) + 360) % 360)
+        const steps = Math.max(2, Math.ceil((Math.abs(span) / 360) * 32))
+        for (let i = 1; i <= steps; i++) {
+          const a = (angle_start_deg + (span * i) / steps) * (Math.PI / 180)
+          pts.push([center[0] + radius * Math.cos(a), center[1] + radius * Math.sin(a)])
+        }
+      }
+    })
+    if (pts.length < 3) continue
+    const shape = new THREE.Shape()
+    shape.moveTo(pts[0][0], pts[0][1])
+    for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1])
+    shape.closePath()
+    results.push({ shape, query: surface.query })
+  }
+  return results
+}
+
+export function useSketchSurfaceIdRegistration(params: {
+  featureId: string
+  topology: Topology | undefined
+  planeTransform?: PlaneTransform
+  enabled?: boolean
+}): void {
+  const pipeline = useIdPipeline()
+  const { featureId, topology, planeTransform, enabled = true } = params
+
+  const planeKey = useMemo(() => {
+    if (!planeTransform) return 'identity'
+    return planeTransform.rotation.join(',') + '|' + planeTransform.origin.join(',')
+  }, [planeTransform])
+
+  useEffect(() => {
+    if (!enabled) return
+    if (!pipeline) return
+    if (!topology || topology.surfaces.length === 0) return
+
+    const m = buildPlaneMatrix(planeTransform)
+    const v = new THREE.Vector3()
+    const surfaces = buildSurfaceShapes(topology)
+
+    // Register as one body per surface, each carrying its triangles.
+    for (const { shape, query } of surfaces) {
+      const geo = new THREE.ShapeGeometry(shape)
+      geo.computeVertexNormals()
+      const indexed = geo.getAttribute('position')
+      if (!indexed || indexed.count < 3) {
+        geo.dispose()
+        continue
+      }
+      const indexAttr = geo.index
+      if (!indexAttr) {
+        geo.dispose()
+        continue
+      }
+
+      const numTris = indexAttr.count / 3
+      const positions = new Float32Array(numTris * 9)
+      const tri2face = new Uint32Array(numTris)
+
+      for (let tri = 0; tri < numTris; tri++) {
+        for (let vtx = 0; vtx < 3; vtx++) {
+          const srcIdx = indexAttr.getX(tri * 3 + vtx)
+          v.set(indexed.getX(srcIdx), indexed.getY(srcIdx), 0).applyMatrix4(m)
+          const dst = (tri * 3 + vtx) * 3
+          positions[dst]     = v.x
+          positions[dst + 1] = v.y
+          positions[dst + 2] = v.z
+        }
+        tri2face[tri] = 0  // all triangles map to the single face (this surface)
+      }
+      geo.dispose()
+
+      const bodyKey = `${featureId}/${query}`
+      try {
+        pipeline.sketchSurfaceLayer.registerBody({
+          bodyKey,
+          positions,
+          triangleToFace: tri2face,
+          faceQueries: [query],
+        })
+      } catch (err) {
+        console.warn('Sketch surface ID registration failed', { bodyKey, err })
+      }
+    }
+
+    pipeline.markDirty()
+
+    return () => {
+      for (const { query } of surfaces) {
+        pipeline.sketchSurfaceLayer.unregisterBody(`${featureId}/${query}`)
+      }
+      pipeline.markDirty()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipeline, featureId, topology, planeKey, enabled])
+}

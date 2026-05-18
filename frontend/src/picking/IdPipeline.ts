@@ -10,6 +10,7 @@ import type { IdLayer } from './IdLayer'
 // Layer name constants for the helper / sketch / origin layers. The B-rep
 // layer names live in their respective modules (FACE/EDGE/VERTEX_LAYER_NAME).
 export const PLANE_LAYER_NAME = 'planeFace'
+export const SKETCH_SURFACE_LAYER_NAME = 'sketchSurface'
 export const SKETCH_ENTITY_LAYER_NAME = 'sketchEntity'
 export const SKETCH_VERTEX_LAYER_NAME = 'sketchVertex'
 export const ORIGIN_LAYER_NAME = 'originMarker'
@@ -61,6 +62,7 @@ export class IdPipeline {
   readonly vertexLayer: VertexIdLayer
   readonly planeLayer: FaceIdLayer
   readonly sketchEntityLayer: EdgeIdLayer
+  readonly sketchSurfaceLayer: FaceIdLayer
   readonly sketchVertexLayer: VertexIdLayer
   readonly originLayer: VertexIdLayer
   readonly dimensionLabelLayer: VertexIdLayer
@@ -87,6 +89,9 @@ export class IdPipeline {
     this.planeLayer = new FaceIdLayer(this.registry, {
       name: PLANE_LAYER_NAME, priority: -10, zPolicy: 'clear-then-fresh',
     })
+    this.sketchSurfaceLayer = new FaceIdLayer(this.registry, {
+      name: SKETCH_SURFACE_LAYER_NAME, priority: 30, zPolicy: 'clear-then-fresh',
+    })
     this.sketchEntityLayer = new EdgeIdLayer(this.registry, {
       name: SKETCH_ENTITY_LAYER_NAME, priority: 40, zPolicy: 'clear-then-fresh',
       fatPixels: SKETCH_ENTITY_FAT_PIXELS, depthTest: false, depthWrite: false,
@@ -108,7 +113,8 @@ export class IdPipeline {
     this.addLayer(this.planeLayer)           // -10  behind everything
     this.addLayer(this.faceLayer)            //   0
     this.addLayer(this.edgeLayer)            //  10
-    this.addLayer(this.vertexLayer)          //  20
+    this.addLayer(this.vertexLayer)            //  20
+    this.addLayer(this.sketchSurfaceLayer)    //  30
     this.addLayer(this.sketchEntityLayer)    //  40
     this.addLayer(this.sketchVertexLayer)    //  50
     this.addLayer(this.originLayer)          //  60
