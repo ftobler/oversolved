@@ -680,17 +680,31 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
       {/* 268: rubber-band drag-box selection overlay */}
       {rubberBand.state.dragging && rubberBand.state.rect && (
-        <div style={{
-          position: 'absolute',
-          left: rubberBand.state.rect.x,
-          top: rubberBand.state.rect.y,
-          width: rubberBand.state.rect.w,
-          height: rubberBand.state.rect.h,
-          border: '1px solid #ff9800',
-          backgroundColor: 'rgba(255, 152, 0, 0.1)',
-          pointerEvents: 'none',
-          zIndex: 10,
-        }} />
+        <div style={(() => {
+          const color = rubberBand.state.rect.mode === 'window' ? '#4fc3f7' : '#81c784'
+          const fill  = rubberBand.state.rect.mode === 'window' ? 'rgba(79,195,247,0.08)' : 'rgba(129,199,132,0.08)'
+          // CSS `dashed` has no length control; use background gradients for custom dash size.
+          const dash = `${color} 0, ${color} 5px, transparent 5px, transparent 8px`
+          return {
+            position: 'absolute' as const,
+            left: rubberBand.state.rect.x,
+            top: rubberBand.state.rect.y,
+            width: rubberBand.state.rect.w,
+            height: rubberBand.state.rect.h,
+            backgroundImage: [
+              `repeating-linear-gradient(90deg, ${dash})`,
+              `repeating-linear-gradient(90deg, ${dash})`,
+              `repeating-linear-gradient(0deg,  ${dash})`,
+              `repeating-linear-gradient(0deg,  ${dash})`,
+            ].join(', '),
+            backgroundSize: '8px 1px, 8px 1px, 1px 8px, 1px 8px',
+            backgroundPosition: '0 0, 0 100%, 0 0, 100% 0',
+            backgroundRepeat: 'repeat-x, repeat-x, repeat-y, repeat-y',
+            backgroundColor: fill,
+            pointerEvents: 'none' as const,
+            zIndex: 10,
+          }
+        })()} />
       )}
 
       <CubeGizmoCanvas canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />

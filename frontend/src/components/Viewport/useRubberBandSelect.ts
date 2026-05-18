@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type * as THREE from 'three'
 import { getLivePipeline } from '@/picking'
 import { collectEntitiesFromPixels } from '@/picking/collectEntitiesFromPixels'
+import { rgbToId } from '@/picking/idEncoding'
+import { EMPTY_ID } from '@/picking/idEncoding'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { getToolAllowedLayers } from '@/components/Viewport/idDispatch/toolAllowedLayers'
 
@@ -10,6 +12,8 @@ interface RubberBandRect {
   y: number
   w: number
   h: number
+  /** Left-to-right drag: entity must be fully enclosed. Right-to-left: any pixel touch. */
+  mode: 'window' | 'crossing'
 }
 
 export interface RubberBandState {
@@ -22,14 +26,9 @@ export interface RubberBandState {
 /**
  * Hook for rubber-band (drag-box) selection on empty canvas space.
  *
- * On pointer-down in empty space (no entity hit), starts a box drag.
- * During drag it exposes the current rect so the caller can render an
- * HTML overlay. On pointer-up it reads the pixel rectangle from the
- * ID render target, collects unique entities, and commits them to
- * `normalSelection`.
- *
- * Uses the tool filter from `getToolAllowedLayers` so the active tool
- * (e.g. "select edges only") restricts which layers contribute.
+ * Left-to-right drag = window selection: only entities fully enclosed in the
+ * box are selected. Right-to-left drag = crossing selection: any entity whose
+ * rendered pixels touch the box is selected.
  */
 export function useRubberBandSelect(
   glRef: React.RefObject<THREE.WebGLRenderer | null>,
@@ -80,7 +79,9 @@ export function useRubberBandSelect(
 
     // Don't show a box until the user has dragged at least 4px.
     if (w < 4 && h < 4) return
-    setRect({ x, y, w, h })
+
+    const mode: 'window' | 'crossing' = cx >= startRef.current[0] ? 'window' : 'crossing'
+    setRect({ x, y, w, h, mode })
   }, [glRef])
 
   const onPointerUp = useCallback(() => {
@@ -106,11 +107,9 @@ export function useRubberBandSelect(
     const tool = useSketchEditorStore.getState().activeTool
     const allowed = getToolAllowedLayers(tool)
 
-    // Read pixels from the ID target over the drag rectangle.
     const w = pipeline.target.getWidth()
     const h = pipeline.target.getHeight()
 
-    // Canvas-coord to render-target coord: y is flipped.
     const canvas = glRef.current?.domElement
     const canvasCssW = canvas ? canvas.clientWidth : w
     const canvasCssH = canvas ? canvas.clientHeight : h
@@ -126,25 +125,62 @@ export function useRubberBandSelect(
       return
     }
 
-    const readW = rw
-    const readH = rh
-    const buf = new Uint8Array(readW * readH * 4)
-    // readRenderTargetPixels expects bottom-left origin.
-    const readY = h - y0 - readH
-    gl.readRenderTargetPixels(pipeline.target.target, x0, Math.max(0, readY), readW, readH, buf)
+    let entities: { layer: string; entityKey: string }[]
 
-    // Flip rows: readRenderTargetPixels returns row 0 = bottom,
-    // collectEntitiesFromPixels expects row 0 = top.
-    const flipped = new Uint8Array(readW * readH * 4)
-    for (let row = 0; row < readH; row++) {
-      const srcRow = row
-      const dstRow = readH - 1 - row
-      const srcBase = srcRow * readW * 4
-      const dstBase = dstRow * readW * 4
-      flipped.set(buf.subarray(srcBase, srcBase + readW * 4), dstBase)
+    if (currentRect.mode === 'window') {
+      // Window selection: entity must have ALL pixels within the rect.
+      // Read the full ID buffer and split each entity ID into "seen inside rect"
+      // vs "seen outside rect". Only keep entities with no outside pixels.
+      const fullBuf = new Uint8Array(w * h * 4)
+      gl.readRenderTargetPixels(pipeline.target.target, 0, 0, w, h, fullBuf)
+
+      // Rect bounds in render-target coords (row 0 = bottom, GL convention).
+      const rtColMin = x0
+      const rtColMax = x0 + rw
+      const rtRowMin = h - y0 - rh
+      const rtRowMax = h - y0
+
+      const inRectIds = new Set<number>()
+      const outsideRectIds = new Set<number>()
+
+      for (let row = 0; row < h; row++) {
+        const rowInRect = row >= rtRowMin && row < rtRowMax
+        for (let col = 0; col < w; col++) {
+          const i = (row * w + col) * 4
+          if (fullBuf[i + 3] === 0) continue
+          const id = rgbToId(fullBuf[i], fullBuf[i + 1], fullBuf[i + 2])
+          if (id === EMPTY_ID) continue
+          if (rowInRect && col >= rtColMin && col < rtColMax) {
+            inRectIds.add(id)
+          } else {
+            outsideRectIds.add(id)
+          }
+        }
+      }
+
+      entities = []
+      for (const id of inRectIds) {
+        if (outsideRectIds.has(id)) continue
+        const rec = pipeline.registry.lookup(id)
+        if (rec) entities.push({ layer: rec.layer, entityKey: rec.entityKey })
+      }
+    } else {
+      // Crossing selection: any entity whose pixels touch the rect is selected.
+      const buf = new Uint8Array(rw * rh * 4)
+      const readY = h - y0 - rh
+      gl.readRenderTargetPixels(pipeline.target.target, x0, Math.max(0, readY), rw, rh, buf)
+
+      // Flip rows: readRenderTargetPixels returns row 0 = bottom,
+      // collectEntitiesFromPixels expects row 0 = top.
+      const flipped = new Uint8Array(rw * rh * 4)
+      for (let row = 0; row < rh; row++) {
+        const srcBase = row * rw * 4
+        const dstBase = (rh - 1 - row) * rw * 4
+        flipped.set(buf.subarray(srcBase, srcBase + rw * 4), dstBase)
+      }
+
+      entities = collectEntitiesFromPixels(flipped, rw, rh, pipeline.registry)
     }
-
-    const entities = collectEntitiesFromPixels(flipped, readW, readH, pipeline.registry)
 
     // Apply layer filter.
     const filtered = allowed
