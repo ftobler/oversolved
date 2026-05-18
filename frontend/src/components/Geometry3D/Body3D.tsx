@@ -25,6 +25,7 @@ import {
 } from '@/components/Geometry3D/bodyGeometry'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
 import { EDGE_DEPTH_BIAS } from '@/picking/EdgeIdLayer'
+import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
 import { registerBodyCallbacks } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 
 const EDGE_VERT_SHADER = `
@@ -420,6 +421,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           color="white"
           roughness={0.35}
           metalness={metalness}
+          envMapIntensity={ENV_MAP_INTENSITY}
           side={THREE.DoubleSide}
           vertexColors={true}
           polygonOffset={true}

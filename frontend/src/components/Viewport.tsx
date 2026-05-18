@@ -14,7 +14,7 @@ import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
 import OriginMarker from '@/components/Viewport/OriginMarker'
 import ReferencePlane from '@/components/Viewport/ReferencePlane'
 import SceneController from '@/components/Viewport/SceneController'
-import CameraLight from '@/components/Viewport/CameraLight'
+import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
 import ContextMenuDialog from '@/components/ContextMenuDialog'
@@ -394,9 +394,18 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // Binary geometry for 3D bodies arrives after the JSON solve result, so we
   // must handle the timing gap: try immediately, then re-trigger when bodies
   // prop populates. The ref prevents re-zooming after the first successful fit.
+  // zoomAttempts limits retries so that late-arriving bodies don't re-zoom
+  // the camera during editing transitions.
   const zoomDoneRef = useRef(false)
+  const zoomAttemptsRef = useRef(0)
+  const MAX_ZOOM_ATTEMPTS = 5
   const autoZoomToFit = useCallback(() => {
     if (zoomDoneRef.current) return
+    zoomAttemptsRef.current++
+    if (zoomAttemptsRef.current > MAX_ZOOM_ATTEMPTS) {
+      zoomDoneRef.current = true
+      return
+    }
     if (autoZoomToFitNow()) { zoomDoneRef.current = true; return }
   }, [autoZoomToFitNow])
   // Re-trigger when bodies arrive (binary WS frame processed), unless already done.
@@ -615,8 +624,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         {ENABLE_ID_BUFFER_PICKING && <IdPickingDriver onReady={onIdPipelineReady} />}
         {showDebugHit && <IdDebugOverlay />}
 
-        <Environment files="/env.hdr" background={false} />
-        <CameraLight />
+        <Environment files="/env.hdr" background={false} environmentIntensity={ENV_INTENSITY} />
+        <EnvLight />
 
         {showOrigin && <OriginMarker />}
         {showFront  && <ReferencePlane rotation={[0,0,0]} label="Front" />}

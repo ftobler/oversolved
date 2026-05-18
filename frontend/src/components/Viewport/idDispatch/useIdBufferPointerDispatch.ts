@@ -92,7 +92,6 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     }
 
     const applyHoverHit = (layer: string | null, entityKey: string | null) => {
-      console.log(`[collision] hit layer="${layer}" entityKey="${entityKey}"`)
       if (layer === lastHoverLayer && entityKey === lastHoverEntity) return
       // Tear down the previous hover.
       if (lastHoverLayer === DIMENSION_LABEL_LAYER_NAME && lastHoverEntity !== null) {

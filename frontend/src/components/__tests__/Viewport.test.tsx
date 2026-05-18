@@ -71,8 +71,10 @@ vi.mock('../Viewport/SceneController', () => ({
   __esModule: true,
 }))
 
-vi.mock('../Viewport/CameraLight', () => ({
-  default: () => <div data-testid="camera-light" />,
+vi.mock('../Viewport/EnvLight', () => ({
+  default: () => null,
+  ENV_INTENSITY: 1.0,
+  ENV_MAP_INTENSITY: 1.0,
   __esModule: true,
 }))
 
