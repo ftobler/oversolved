@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { IdRegistry } from '../IdRegistry'
-import { EdgeIdLayer, EDGE_LAYER_NAME, EDGE_FAT_PIXELS } from '../EdgeIdLayer'
+import { EdgeIdLayer, EDGE_LAYER_NAME } from '../EdgeIdLayer'
 import { rgbToId } from '../idEncoding'
 
 function makeReg() {
@@ -23,7 +23,7 @@ describe('EdgeIdLayer', () => {
     layer = new EdgeIdLayer(reg)
   })
 
-  it('registers one mesh per body', () => {
+  it('registers one LineSegments per body', () => {
     layer.registerBody(makeReg())
     expect(layer.bodyCount()).toBe(1)
     expect(layer.scene.children.length).toBe(1)
@@ -36,25 +36,25 @@ describe('EdgeIdLayer', () => {
     expect(reg.lookupKey(EDGE_LAYER_NAME, 'edge@B')).toBeDefined()
   })
 
-  it('each segment expands to 6 ribbon vertices', () => {
+  it('each segment produces 2 vertices', () => {
     layer.registerBody(makeReg())
-    const mesh = layer.scene.children[0] as import('three').Mesh
-    const positionAttr = mesh.geometry.getAttribute('position')
-    // 3 segments * 6 vertices each = 18 vertices.
-    expect(positionAttr.count).toBe(18)
+    const seg = layer.scene.children[0] as import('three').LineSegments
+    const positionAttr = seg.geometry.getAttribute('position')
+    // 3 segments * 2 vertices each = 6 vertices.
+    expect(positionAttr.count).toBe(6)
   })
 
-  it('all 6 ribbon vertices of a segment carry the same edge id color', () => {
+  it('both vertices of a segment carry the same edge id color', () => {
     layer.registerBody(makeReg())
-    const mesh = layer.scene.children[0] as import('three').Mesh
-    const colorAttr = mesh.geometry.getAttribute('aColor')
+    const seg = layer.scene.children[0] as import('three').LineSegments
+    const colorAttr = seg.geometry.getAttribute('aColor')
     const idEdgeA = reg.lookupKey(EDGE_LAYER_NAME, 'edge@A')!
     const idEdgeB = reg.lookupKey(EDGE_LAYER_NAME, 'edge@B')!
     // Segments 0 and 1 -> edge A. Segment 2 -> edge B.
-    for (let seg = 0; seg < 3; seg++) {
-      const expectedId = seg < 2 ? idEdgeA : idEdgeB
-      for (let v = 0; v < 6; v++) {
-        const vi = seg * 6 + v
+    for (let segIdx = 0; segIdx < 3; segIdx++) {
+      const expectedId = segIdx < 2 ? idEdgeA : idEdgeB
+      for (let v = 0; v < 2; v++) {
+        const vi = segIdx * 2 + v
         const r = Math.round(colorAttr.getX(vi) * 255)
         const g = Math.round(colorAttr.getY(vi) * 255)
         const b = Math.round(colorAttr.getZ(vi) * 255)
@@ -63,68 +63,20 @@ describe('EdgeIdLayer', () => {
     }
   })
 
-  it('aSide alternates -1 / +1 across the 6 ribbon vertices', () => {
-    layer.registerBody(makeReg())
-    const mesh = layer.scene.children[0] as import('three').Mesh
-    const sideAttr = mesh.geometry.getAttribute('aSide')
-    // Pattern per segment: -1, +1, -1, +1, +1, -1
-    const expected = [-1, +1, -1, +1, +1, -1]
-    for (let seg = 0; seg < 3; seg++) {
-      for (let v = 0; v < 6; v++) {
-        expect(sideAttr.getX(seg * 6 + v)).toBe(expected[v])
-      }
-    }
-  })
-
-  it('aOther on a ribbon vertex is the OTHER endpoint of its segment', () => {
-    layer.registerBody(makeReg())
-    const mesh = layer.scene.children[0] as import('three').Mesh
-    const positionAttr = mesh.geometry.getAttribute('position')
-    const otherAttr = mesh.geometry.getAttribute('aOther')
-    // Pick segment 0 (s=(0,0,0), e=(1,0,0)).
-    // Vertices 0,1,3 sit at s and must have other = e.
-    // Vertices 2,4,5 sit at e and must have other = s.
-    const atS = [0, 1, 3]
-    const atE = [2, 4, 5]
-    for (const i of atS) {
-      expect([positionAttr.getX(i), positionAttr.getY(i), positionAttr.getZ(i)])
-        .toEqual([0, 0, 0])
-      expect([otherAttr.getX(i), otherAttr.getY(i), otherAttr.getZ(i)])
-        .toEqual([1, 0, 0])
-    }
-    for (const i of atE) {
-      expect([positionAttr.getX(i), positionAttr.getY(i), positionAttr.getZ(i)])
-        .toEqual([1, 0, 0])
-      expect([otherAttr.getX(i), otherAttr.getY(i), otherAttr.getZ(i)])
-        .toEqual([0, 0, 0])
-    }
-  })
-
-  it('onBeforeRender updates the uViewport uniform; ribbon width stays isotropic in pixels', () => {
-    layer.registerBody(makeReg())
-    layer.onBeforeRender!(1920, 1080)
-    const mesh = layer.scene.children[0] as import('three').Mesh
-    const mat = mesh.material as import('three').ShaderMaterial
-    const v = mat.uniforms.uViewport.value as import('three').Vector2
-    expect(v.x).toBe(1920)
-    expect(v.y).toBe(1080)
-    expect(mat.uniforms.uFatPixels.value).toBe(EDGE_FAT_PIXELS)
-  })
-
   it('setXrayEdges swaps to a depthTest:false material on every registered body', () => {
     layer.registerBody(makeReg())
-    const mesh = layer.scene.children[0] as import('three').Mesh
-    const baseMat = mesh.material as import('three').ShaderMaterial
+    const seg = layer.scene.children[0] as import('three').LineSegments
+    const baseMat = seg.material as import('three').ShaderMaterial
     expect(baseMat.depthTest).toBe(true)
     layer.setXrayEdges(true)
-    const xrayMat = mesh.material as import('three').ShaderMaterial
+    const xrayMat = seg.material as import('three').ShaderMaterial
     expect(xrayMat.depthTest).toBe(false)
     expect(layer.isXrayEdges()).toBe(true)
     layer.setXrayEdges(false)
-    expect((mesh.material as import('three').ShaderMaterial).depthTest).toBe(true)
+    expect((seg.material as import('three').ShaderMaterial).depthTest).toBe(true)
   })
 
-  it('unregister removes the mesh and frees its ids next cycle', () => {
+  it('unregister removes the LineSegments and frees its ids next cycle', () => {
     layer.registerBody(makeReg())
     layer.unregisterBody('b')
     expect(layer.bodyCount()).toBe(0)

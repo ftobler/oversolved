@@ -27,13 +27,12 @@ describe('edgeVertexPickParity (structural)', () => {
     const layer = new EdgeIdLayer(reg)
     layer.registerBody({ bodyKey: 'cube', segmentPositions, segmentToEdge, edgeQueries })
 
-    const mesh = layer.scene.children[0] as import('three').Mesh
-    const aColor = mesh.geometry.getAttribute('aColor')
+    const segs = layer.scene.children[0] as import('three').LineSegments
+    const aColor = segs.geometry.getAttribute('aColor')
 
     for (let seg = 0; seg < segmentToEdge.length; seg++) {
       const expectedKey = edgeQueries[segmentToEdge[seg]]
-      // Take vertex 0 of the segment's 6-vertex ribbon.
-      const v0 = seg * 6
+      const v0 = seg * 2
       const r = Math.round(aColor.getX(v0) * 255)
       const g = Math.round(aColor.getY(v0) * 255)
       const b = Math.round(aColor.getZ(v0) * 255)

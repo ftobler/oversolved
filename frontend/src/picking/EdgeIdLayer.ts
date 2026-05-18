@@ -6,9 +6,10 @@ import { idToRGBNormalized } from './idEncoding'
 /**
  * Concrete ID layer for B-rep edges.
  *
- * Each segment of every registered edge is expanded into a screen-space
- * ribbon (two triangles, 6 vertices) by a vertex shader. The fragment
- * shader emits the packed edge ID as RGB, alpha = 1.
+ * Each segment of every registered edge is drawn as a 1-pixel line via
+ * LineSegments. The ID buffer's windowed resolver (default 17px) provides
+ * the snap radius, so fattened ribbons are unnecessary -- a thin line
+ * at the exact geometry edge is plenty wide for picking.
  *
  * Depth policy: the layer's zPolicy is 'depth-test-against-prev' (no
  * clearDepth before render), and the material runs `depthTest = true`
@@ -20,14 +21,12 @@ import { idToRGBNormalized } from './idEncoding'
  * surface don't z-fight with the face into oblivion.
  */
 export const EDGE_LAYER_NAME = 'edge'
-export const EDGE_FAT_PIXELS = 8
 export const EDGE_DEPTH_BIAS = -1e-4
 
 export interface EdgeIdLayerConfig {
   name?: string
   priority?: number
   zPolicy?: LayerZPolicy
-  fatPixels?: number
   depthBias?: number
   depthTest?: boolean
   depthWrite?: boolean
@@ -45,47 +44,21 @@ export interface EdgeBodyRegistration {
 }
 
 interface BodyRecord {
-  mesh: THREE.Mesh
+  mesh: THREE.LineSegments
   geometry: THREE.BufferGeometry
   allocatedIds: number[]
 }
 
 const VERT_SHADER = `
-  attribute vec3 aOther;
-  attribute float aSide;
   attribute vec3 aColor;
-  uniform vec2 uViewport;   // pixels (W, H) of the ID render target
-  uniform float uFatPixels;
   uniform float uDepthBias;
   varying vec3 vColor;
 
   void main() {
-    vec4 clip0 = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    vec4 clip1 = projectionMatrix * modelViewMatrix * vec4(aOther,   1.0);
-
-    // Compute tangent in PIXEL space so the perpendicular stays isotropic
-    // on non-square viewports. Without this, scaling the NDC normal by
-    // (2/W, 2/H) componentwise distorts the ribbon (wider along the long
-    // axis). Convert NDC -> pixels, take perp there, then convert back.
-    vec2 halfPx = uViewport * 0.5;
-    vec2 ndc0 = clip0.xy / max(clip0.w, 1e-6);
-    vec2 ndc1 = clip1.xy / max(clip1.w, 1e-6);
-    vec2 px0 = ndc0 * halfPx;
-    vec2 px1 = ndc1 * halfPx;
-    vec2 dirPx = px1 - px0;
-    float lenPx = length(dirPx);
-    vec2 tangentPx = lenPx > 1e-6 ? dirPx / lenPx : vec2(1.0, 0.0);
-    vec2 normalPx = vec2(-tangentPx.y, tangentPx.x);
-    vec2 offsetPx = normalPx * (uFatPixels * aSide);
-    // pixels -> clip-space delta (cancel the perspective divide via *w).
-    vec2 offsetClip = (offsetPx / halfPx) * clip0.w;
-    clip0.xy += offsetClip;
-
-    // Negative bias = nudge toward the camera so coplanar face/edge don't z-fight.
-    clip0.z += uDepthBias * clip0.w;
-
+    vec4 clip = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    clip.z += uDepthBias * clip.w;
     vColor = aColor;
-    gl_Position = clip0;
+    gl_Position = clip;
   }
 `
 
@@ -96,25 +69,19 @@ const FRAG_SHADER = `
   }
 `
 
-function buildEdgeIdMaterial(opts?: { fatPixels?: number; depthBias?: number; depthTest?: boolean; depthWrite?: boolean }): THREE.ShaderMaterial {
+function buildEdgeIdMaterial(opts?: { depthBias?: number; depthTest?: boolean; depthWrite?: boolean }): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: VERT_SHADER,
     fragmentShader: FRAG_SHADER,
     uniforms: {
-      uViewport:  { value: new THREE.Vector2(1, 1) },
-      uFatPixels: { value: opts?.fatPixels ?? EDGE_FAT_PIXELS },
       uDepthBias: { value: opts?.depthBias ?? EDGE_DEPTH_BIAS },
     },
-    side: THREE.DoubleSide,
     depthTest: opts?.depthTest ?? true,
     depthWrite: opts?.depthWrite ?? false,
   })
 }
 
 function buildXrayMaterialFrom(base: THREE.ShaderMaterial): THREE.ShaderMaterial {
-  // ShaderMaterial.clone() deep-copies uniforms via UniformsUtils.clone().
-  // Reassign so both materials share the live uniform objects -- a single
-  // uViewport update from onBeforeRender propagates to both materials.
   const m = base.clone()
   m.depthTest = false
   m.uniforms = base.uniforms
@@ -131,8 +98,6 @@ export class EdgeIdLayer extends IdLayerBase {
   private material: THREE.ShaderMaterial
   private xrayMaterial: THREE.ShaderMaterial
   private xrayEnabled = false
-  private lastWidth = 0
-  private lastHeight = 0
 
   constructor(registry: IdRegistry, config?: EdgeIdLayerConfig) {
     super(registry)
@@ -140,7 +105,6 @@ export class EdgeIdLayer extends IdLayerBase {
     this.priority = config?.priority ?? 10
     this.zPolicy = config?.zPolicy ?? 'depth-test-against-prev'
     this.material = buildEdgeIdMaterial({
-      fatPixels: config?.fatPixels,
       depthBias: config?.depthBias,
       depthTest: config?.depthTest,
       depthWrite: config?.depthWrite,
@@ -168,36 +132,21 @@ export class EdgeIdLayer extends IdLayerBase {
     const numSegments = segmentPositions.length / 6
     if (numSegments === 0) return
 
-    // Two triangles per segment, 6 vertices per ribbon.
-    // The shader computes the tangent as (aOther - position) and offsets
-    // perpendicularly by (aSide * fatPixels). For start vertices (position=s)
-    // the tangent points s->e (correct). For end vertices (position=e) the
-    // tangent points e->s = -(s->e), which flips the perpendicular direction.
-    // We compensate by swapping aSide on end vertices.
-    // Vertex layout (s = segment start, e = segment end):
-    //   v0 = s, side=-1, other=e   -- start, left
-    //   v1 = s, side=+1, other=e   -- start, right
-    //   v2 = e, side=+1, other=s   -- end, left (side swapped vs start)
-    //   v3 = s, side=+1, other=e   -- start, right (duplicate of v1)
-    //   v4 = e, side=-1, other=s   -- end, right (side swapped vs start)
-    //   v5 = e, side=+1, other=s   -- end, left (duplicate of v2)
-    const positions = new Float32Array(numSegments * 6 * 3)
-    const others    = new Float32Array(numSegments * 6 * 3)
-    const sides     = new Float32Array(numSegments * 6)
-    const colors    = new Float32Array(numSegments * 6 * 3)
+    // 2 vertices per segment (a line), 3 floats per vertex.
+    const positions = new Float32Array(numSegments * 2 * 3)
+    const colors    = new Float32Array(numSegments * 2 * 3)
 
     const allocatedIds: number[] = []
     const edgeColorCache = new Map<number, [number, number, number]>()
 
     for (let seg = 0; seg < numSegments; seg++) {
-      const base6 = seg * 6
-      const baseSegPos = seg * 6
-      const sx = segmentPositions[baseSegPos]
-      const sy = segmentPositions[baseSegPos + 1]
-      const sz = segmentPositions[baseSegPos + 2]
-      const ex = segmentPositions[baseSegPos + 3]
-      const ey = segmentPositions[baseSegPos + 4]
-      const ez = segmentPositions[baseSegPos + 5]
+      const baseSeg = seg * 6
+      const sx = segmentPositions[baseSeg]
+      const sy = segmentPositions[baseSeg + 1]
+      const sz = segmentPositions[baseSeg + 2]
+      const ex = segmentPositions[baseSeg + 3]
+      const ey = segmentPositions[baseSeg + 4]
+      const ez = segmentPositions[baseSeg + 5]
 
       const edgeIdx = segmentToEdge[seg] ?? 0
       const query = edgeQueries[edgeIdx]
@@ -211,43 +160,19 @@ export class EdgeIdLayer extends IdLayerBase {
         edgeColorCache.set(edgeIdx, rgb)
       }
 
-      const setPos = (i: number, x: number, y: number, z: number) => {
-        positions[(base6 + i) * 3]     = x
-        positions[(base6 + i) * 3 + 1] = y
-        positions[(base6 + i) * 3 + 2] = z
-      }
-      const setOther = (i: number, x: number, y: number, z: number) => {
-        others[(base6 + i) * 3]     = x
-        others[(base6 + i) * 3 + 1] = y
-        others[(base6 + i) * 3 + 2] = z
-      }
-      const setSide = (i: number, s: number) => { sides[base6 + i] = s }
-      const setColor = (i: number, r: number, g: number, b: number) => {
-        colors[(base6 + i) * 3]     = r
-        colors[(base6 + i) * 3 + 1] = g
-        colors[(base6 + i) * 3 + 2] = b
-      }
-
-      // Triangle 1: (s,-1), (s,+1), (e,+1)  -- end side swapped for flipped tangent
-      setPos(0, sx, sy, sz); setOther(0, ex, ey, ez); setSide(0, -1)
-      setPos(1, sx, sy, sz); setOther(1, ex, ey, ez); setSide(1, +1)
-      setPos(2, ex, ey, ez); setOther(2, sx, sy, sz); setSide(2, +1)
-      // Triangle 2: (s,+1), (e,-1), (e,+1)  -- end sides swapped
-      setPos(3, sx, sy, sz); setOther(3, ex, ey, ez); setSide(3, +1)
-      setPos(4, ex, ey, ez); setOther(4, sx, sy, sz); setSide(4, -1)
-      setPos(5, ex, ey, ez); setOther(5, sx, sy, sz); setSide(5, +1)
-
-      for (let i = 0; i < 6; i++) setColor(i, rgb[0], rgb[1], rgb[2])
+      const base2 = seg * 6  // 2 vertices * 3 components
+      positions[base2]     = sx; positions[base2 + 1] = sy; positions[base2 + 2] = sz
+      positions[base2 + 3] = ex; positions[base2 + 4] = ey; positions[base2 + 5] = ez
+      colors[base2]     = rgb[0]; colors[base2 + 1] = rgb[1]; colors[base2 + 2] = rgb[2]
+      colors[base2 + 3] = rgb[0]; colors[base2 + 4] = rgb[1]; colors[base2 + 5] = rgb[2]
     }
 
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    geometry.setAttribute('aOther',   new THREE.BufferAttribute(others, 3))
-    geometry.setAttribute('aSide',    new THREE.BufferAttribute(sides, 1))
     geometry.setAttribute('aColor',   new THREE.BufferAttribute(colors, 3))
 
     const mat = this.xrayEnabled ? this.xrayMaterial : this.material
-    const mesh = new THREE.Mesh(geometry, mat)
+    const mesh = new THREE.LineSegments(geometry, mat)
     mesh.frustumCulled = false
     this.scene.add(mesh)
     this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds })
@@ -260,14 +185,6 @@ export class EdgeIdLayer extends IdLayerBase {
     rec.geometry.dispose()
     for (const id of rec.allocatedIds) this.registry.free(id)
     this.bodies.delete(bodyKey)
-  }
-
-  onBeforeRender(width: number, height: number): void {
-    if (width === this.lastWidth && height === this.lastHeight) return
-    this.lastWidth = width
-    this.lastHeight = height
-    const u = this.material.uniforms.uViewport.value as THREE.Vector2
-    u.set(Math.max(1, width), Math.max(1, height))
   }
 
   bodyCount(): number { return this.bodies.size }
