@@ -474,7 +474,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   useSelectionPointerUpCleanup()
 
   // 268: rubber-band drag-box selection on empty canvas space.
-  const rubberBand = useRubberBandSelect(canvasRef, glRef)
+  const rubberBand = useRubberBandSelect(glRef)
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)

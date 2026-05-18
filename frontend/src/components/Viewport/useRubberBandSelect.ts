@@ -32,7 +32,6 @@ export interface RubberBandState {
  * (e.g. "select edges only") restricts which layers contribute.
  */
 export function useRubberBandSelect(
-  canvasRef: React.RefObject<HTMLCanvasElement | null>,
   glRef: React.RefObject<THREE.WebGLRenderer | null>,
 ): {
   state: RubberBandState
@@ -58,17 +57,17 @@ export function useRubberBandSelect(
     const state = useSketchEditorStore.getState()
     if (state.isRotating) return false
 
-    const canvas = canvasRef.current
+    const canvas = glRef.current?.domElement
     if (!canvas) return false
     const rect = canvas.getBoundingClientRect()
     startRef.current = [e.clientX - rect.left, e.clientY - rect.top]
     committedRef.current = false
     return true
-  }, [canvasRef])
+  }, [glRef])
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!startRef.current || committedRef.current) return
-    const canvas = canvasRef.current
+    const canvas = glRef.current?.domElement
     if (!canvas) return
     const canvasRect = canvas.getBoundingClientRect()
     const cx = e.clientX - canvasRect.left
@@ -82,7 +81,7 @@ export function useRubberBandSelect(
     // Don't show a box until the user has dragged at least 4px.
     if (w < 4 && h < 4) return
     setRect({ x, y, w, h })
-  }, [canvasRef])
+  }, [glRef])
 
   const onPointerUp = useCallback(() => {
     if (!startRef.current || committedRef.current) return
@@ -112,7 +111,7 @@ export function useRubberBandSelect(
     const h = pipeline.target.getHeight()
 
     // Canvas-coord to render-target coord: y is flipped.
-    const canvas = canvasRef.current
+    const canvas = glRef.current?.domElement
     const canvasCssW = canvas ? canvas.clientWidth : w
     const canvasCssH = canvas ? canvas.clientHeight : h
     const sx = canvasCssW > 0 ? w / canvasCssW : 1
