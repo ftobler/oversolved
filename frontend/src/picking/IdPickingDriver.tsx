@@ -74,21 +74,12 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
     pipeline.resize(db.width, db.height)
   })
 
-  // Mirror the visible-pass `interactive={!activeFeatureId}` rule from
-  // Body3D: while a sketch is being edited, B-rep layers go inert in the
-  // ID buffer so the resolver never returns a B-rep entity.
+  // Re-render whenever the edit flag flips so the ID buffer stays current.
   useEffect(() => {
-    pipeline.setBrepInertPredicate(() => {
-      return useSketchEditorStore.getState().activeFeatureId !== null
-    })
-    // Re-render whenever the edit flag flips.
     const unsub = useSketchEditorStore.subscribe((state, prev) => {
       if (state.activeFeatureId !== prev.activeFeatureId) pipeline.markDirty()
     })
-    return () => {
-      pipeline.setBrepInertPredicate(null)
-      unsub()
-    }
+    return unsub
   }, [pipeline])
 
   useEffect(() => subscribePipelineToPartEditor(pipeline), [pipeline])

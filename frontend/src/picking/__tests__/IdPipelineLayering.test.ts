@@ -22,8 +22,8 @@ describe('IdPipeline layering', () => {
     expect(layers[0].zPolicy).toBe('clear-then-fresh')          // planeFace (behind)
     expect(layers[1].zPolicy).toBe('clear-then-fresh')         // face
     expect(layers[2].zPolicy).toBe('depth-test-against-prev')  // edge: reuse face depth
-    expect(layers[3].zPolicy).toBe('no-depth')                  // vertex
-    expect(layers[4].zPolicy).toBe('clear-then-fresh')          // sketchSurface
+    expect(layers[3].zPolicy).toBe('depth-test-against-prev')   // vertex: preserves face depth for sketch surface
+    expect(layers[4].zPolicy).toBe('depth-test-against-prev')   // sketchSurface: occluded by real B-rep depth
     expect(layers[5].zPolicy).toBe('clear-then-fresh')          // sketchEntity
     expect(layers[6].zPolicy).toBe('no-depth')                  // sketchVertex
     expect(layers[7].zPolicy).toBe('no-depth')                  // originMarker

@@ -436,6 +436,7 @@
   justify-content: center;
   background: #1a3a1a;
   border: none;
+  border-radius: 4px;
   cursor: pointer;
   color: #4caf50;
   padding: 2px 4px;
@@ -460,6 +461,7 @@
   justify-content: center;
   background: #3a1a1a;
   border: none;
+  border-radius: 4px;
   cursor: pointer;
   color: #f44336;
   padding: 2px 4px;

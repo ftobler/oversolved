@@ -81,7 +81,9 @@ export class IdPipeline {
     // B-rep layers (face/edge/vertex) at priorities 0/10/20.
     this.faceLayer = new FaceIdLayer(this.registry)
     this.edgeLayer = new EdgeIdLayer(this.registry)
-    this.vertexLayer = new VertexIdLayer(this.registry)
+    // depth-test-against-prev keeps B-rep face depth alive for the sketch surface
+    // layer; the material still has depthTest=false so B-rep vertices always win.
+    this.vertexLayer = new VertexIdLayer(this.registry, { zPolicy: 'depth-test-against-prev' })
 
     // Helper layers. The plane renders at a negative priority so it sits
     // behind the B-rep stack -- bodies occlude the plane in the ID buffer.
@@ -90,7 +92,7 @@ export class IdPipeline {
       name: PLANE_LAYER_NAME, priority: -10, zPolicy: 'clear-then-fresh',
     })
     this.sketchSurfaceLayer = new FaceIdLayer(this.registry, {
-      name: SKETCH_SURFACE_LAYER_NAME, priority: 30, zPolicy: 'clear-then-fresh',
+      name: SKETCH_SURFACE_LAYER_NAME, priority: 30, zPolicy: 'depth-test-against-prev',
     })
     this.sketchEntityLayer = new EdgeIdLayer(this.registry, {
       name: SKETCH_ENTITY_LAYER_NAME, priority: 40, zPolicy: 'clear-then-fresh',
