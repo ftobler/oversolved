@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { IdRegistry } from '../IdRegistry'
-import { VertexIdLayer, VERTEX_LAYER_NAME, VERTEX_FAT_PIXELS } from '../VertexIdLayer'
+import { VertexIdLayer, VERTEX_LAYER_NAME } from '../VertexIdLayer'
 import { rgbToId } from '../idEncoding'
 
 function makeReg() {
@@ -21,12 +21,12 @@ describe('VertexIdLayer', () => {
     layer = new VertexIdLayer(reg)
   })
 
-  it('registers one instanced mesh per body', () => {
+  it('registers one Points per body', () => {
     layer.registerBody(makeReg())
     expect(layer.bodyCount()).toBe(1)
     expect(layer.scene.children.length).toBe(1)
-    const im = layer.scene.children[0] as import('three').InstancedMesh
-    expect(im.count).toBe(3)
+    const pts = layer.scene.children[0] as import('three').Points
+    expect(pts.geometry.getAttribute('position').count).toBe(3)
   })
 
   it('allocates one id per vertex query', () => {
@@ -37,10 +37,10 @@ describe('VertexIdLayer', () => {
     }
   })
 
-  it('aColor per instance decodes to the vertex id', () => {
+  it('aColor per vertex decodes to the vertex id', () => {
     layer.registerBody(makeReg())
-    const im = layer.scene.children[0] as import('three').InstancedMesh
-    const aColor = im.geometry.getAttribute('aColor')
+    const pts = layer.scene.children[0] as import('three').Points
+    const aColor = pts.geometry.getAttribute('aColor')
     for (let i = 0; i < 3; i++) {
       const r = Math.round(aColor.getX(i) * 255)
       const g = Math.round(aColor.getY(i) * 255)
@@ -52,32 +52,21 @@ describe('VertexIdLayer', () => {
     }
   })
 
-  it('aCenter per instance is the world-space vertex position', () => {
+  it('position attribute holds the world-space vertex positions', () => {
     layer.registerBody(makeReg())
-    const im = layer.scene.children[0] as import('three').InstancedMesh
-    const aCenter = im.geometry.getAttribute('aCenter')
+    const pts = layer.scene.children[0] as import('three').Points
+    const pos = pts.geometry.getAttribute('position')
     const expected = [[0, 0, 0], [1, 0, 0], [0, 1, 0]]
     for (let i = 0; i < 3; i++) {
-      expect([aCenter.getX(i), aCenter.getY(i), aCenter.getZ(i)]).toEqual(expected[i])
+      expect([pos.getX(i), pos.getY(i), pos.getZ(i)]).toEqual(expected[i])
     }
   })
 
   it('material runs with depthTest=false (vertices always win where drawn)', () => {
     layer.registerBody(makeReg())
-    const im = layer.scene.children[0] as import('three').InstancedMesh
-    const mat = im.material as import('three').ShaderMaterial
+    const pts = layer.scene.children[0] as import('three').Points
+    const mat = pts.material as import('three').ShaderMaterial
     expect(mat.depthTest).toBe(false)
-  })
-
-  it('onBeforeRender updates the uViewport uniform; quad stays a square in pixels', () => {
-    layer.registerBody(makeReg())
-    layer.onBeforeRender!(800, 600)
-    const im = layer.scene.children[0] as import('three').InstancedMesh
-    const mat = im.material as import('three').ShaderMaterial
-    const v = mat.uniforms.uViewport.value as import('three').Vector2
-    expect(v.x).toBe(800)
-    expect(v.y).toBe(600)
-    expect(mat.uniforms.uFatPixels.value).toBe(VERTEX_FAT_PIXELS)
   })
 
   it('skips vertices whose query is missing', () => {
@@ -87,11 +76,11 @@ describe('VertexIdLayer', () => {
       vertexQueries: ['vtx@only'],  // length 1, vertex[1] has no query
     })
     expect(reg.size()).toBe(1)
-    const im = layer.scene.children[0] as import('three').InstancedMesh
-    expect(im.count).toBe(1)
+    const pts = layer.scene.children[0] as import('three').Points
+    expect(pts.geometry.getAttribute('position').count).toBe(1)
   })
 
-  it('unregister removes mesh and frees ids', () => {
+  it('unregister removes Points and frees ids', () => {
     layer.registerBody(makeReg())
     layer.unregisterBody('b')
     expect(layer.bodyCount()).toBe(0)

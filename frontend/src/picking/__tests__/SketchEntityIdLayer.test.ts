@@ -127,10 +127,10 @@ describe('useSketchIdRegistration', () => {
           origin: [10, 20, 30],
         },
       }))
-      const im = p.sketchVertexLayer.scene.children[0] as import('three').InstancedMesh
-      const aCenter = im.geometry.getAttribute('aCenter')
+      const pts = p.sketchVertexLayer.scene.children[0] as import('three').Points
+      const pos = pts.geometry.getAttribute('position')
       // First vertex is line1.start (0,0) -> world (10,20,30).
-      expect([aCenter.getX(0), aCenter.getY(0), aCenter.getZ(0)]).toEqual([10, 20, 30])
+      expect([pos.getX(0), pos.getY(0), pos.getZ(0)]).toEqual([10, 20, 30])
     } finally {
       setLivePipeline(null)
       p.dispose()

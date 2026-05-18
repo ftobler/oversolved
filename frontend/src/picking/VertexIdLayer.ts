@@ -6,10 +6,9 @@ import { idToRGBNormalized } from './idEncoding'
 /**
  * Concrete ID layer for B-rep vertices.
  *
- * Each registered body becomes one instanced mesh: a unit quad expanded
- * in the vertex shader to `VERTEX_FAT_PIXELS` on screen, regardless of
- * camera zoom. Per-instance attributes carry the vertex center (world
- * space) and the packed vertex ID as a normalized RGB color.
+ * Each registered body becomes one THREE.Points with per-vertex ID colors.
+ * The ID buffer's windowed resolver (default 17px) provides the snap radius,
+ * so only 1-pixel points are needed -- no fattened quads required.
  *
  * Depth: `zPolicy = 'no-depth'` (the pipeline clears depth before this
  * layer), and the material itself runs `depthTest = false` so vertices
@@ -17,13 +16,13 @@ import { idToRGBNormalized } from './idEncoding'
  * wins over edge wins over face" priority via geometric layering.
  */
 export const VERTEX_LAYER_NAME = 'vertex'
+/** @deprecated No longer used -- vertices render as 1px points (resolver window provides snap radius). */
 export const VERTEX_FAT_PIXELS = 16
 
 export interface VertexIdLayerConfig {
   name?: string
   priority?: number
   zPolicy?: LayerZPolicy
-  fatPixels?: number
 }
 
 export interface VertexBodyRegistration {
@@ -33,30 +32,18 @@ export interface VertexBodyRegistration {
 }
 
 interface BodyRecord {
-  mesh: THREE.InstancedMesh
+  mesh: THREE.Points
   geometry: THREE.BufferGeometry
   allocatedIds: number[]
 }
 
 const VERT_SHADER = `
-  attribute vec3 aCenter;
   attribute vec3 aColor;
-  uniform vec2 uViewport;   // pixels (W, H)
-  uniform float uFatPixels;
   varying vec3 vColor;
 
   void main() {
-    // 'position' is the unit-quad corner in [-1, 1]. We treat that as a
-    // pixel-space offset (uFatPixels each direction) and convert to clip
-    // space via 1/half-viewport, so the quad is a true square in pixels
-    // even on non-square viewports.
-    vec4 clipCenter = projectionMatrix * modelViewMatrix * vec4(aCenter, 1.0);
-    vec2 halfPx = uViewport * 0.5;
-    vec2 offsetPx = position.xy * uFatPixels;
-    vec2 offsetClip = (offsetPx / halfPx) * clipCenter.w;
-    clipCenter.xy += offsetClip;
     vColor = aColor;
-    gl_Position = clipCenter;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `
 
@@ -67,37 +54,13 @@ const FRAG_SHADER = `
   }
 `
 
-function buildVertexIdMaterial(fatPixels: number): THREE.ShaderMaterial {
-  // depthTest:false is the load-bearing setting here -- combined with the
-  // layer's priority it means a vertex pixel always wins over any face or
-  // edge pixel under it. The "vertex beats edge beats face" rule is
-  // expressed geometrically rather than via a resolver priority sort.
+function buildVertexIdMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: VERT_SHADER,
     fragmentShader: FRAG_SHADER,
-    uniforms: {
-      uViewport:  { value: new THREE.Vector2(1, 1) },
-      uFatPixels: { value: fatPixels },
-    },
-    side: THREE.DoubleSide,
     depthTest: false,
     depthWrite: false,
   })
-}
-
-/** A non-instanced unit quad in [-1,1]^2 lying in z=0, two triangles. */
-function buildUnitQuadGeometry(): THREE.BufferGeometry {
-  const geo = new THREE.BufferGeometry()
-  const pos = new Float32Array([
-    -1, -1, 0,
-     1, -1, 0,
-     1,  1, 0,
-    -1, -1, 0,
-     1,  1, 0,
-    -1,  1, 0,
-  ])
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-  return geo
 }
 
 export class VertexIdLayer extends IdLayerBase {
@@ -107,16 +70,13 @@ export class VertexIdLayer extends IdLayerBase {
   inertWhen?: () => boolean
 
   private bodies = new Map<string, BodyRecord>()
-  private material: THREE.ShaderMaterial
-  private lastWidth = 0
-  private lastHeight = 0
+  private material = buildVertexIdMaterial()
 
-  constructor(registry: IdRegistry, config?: VertexIdLayerConfig) {
+  constructor(registry: IdRegistry, _config?: VertexIdLayerConfig) {
     super(registry)
-    this.name = config?.name ?? VERTEX_LAYER_NAME
-    this.priority = config?.priority ?? 20
-    this.zPolicy = config?.zPolicy ?? 'no-depth'
-    this.material = buildVertexIdMaterial(config?.fatPixels ?? VERTEX_FAT_PIXELS)
+    this.name = _config?.name ?? VERTEX_LAYER_NAME
+    this.priority = _config?.priority ?? 20
+    this.zPolicy = _config?.zPolicy ?? 'no-depth'
   }
 
   registerBody(reg: VertexBodyRegistration): void {
@@ -125,9 +85,8 @@ export class VertexIdLayer extends IdLayerBase {
     const count = vertices.length
     if (count === 0) return
 
-    const geometry = buildUnitQuadGeometry()
-    const centers = new Float32Array(count * 3)
-    const colors  = new Float32Array(count * 3)
+    const positions = new Float32Array(count * 3)
+    const colors    = new Float32Array(count * 3)
     const allocatedIds: number[] = []
 
     let written = 0
@@ -139,28 +98,24 @@ export class VertexIdLayer extends IdLayerBase {
       const [r, g, b] = idToRGBNormalized(id)
       const v = vertices[i]
       const base = written * 3
-      centers[base]     = v[0]
-      centers[base + 1] = v[1]
-      centers[base + 2] = v[2]
+      positions[base]     = v[0]
+      positions[base + 1] = v[1]
+      positions[base + 2] = v[2]
       colors[base]      = r
       colors[base + 1]  = g
       colors[base + 2]  = b
       written++
     }
 
-    if (written === 0) {
-      geometry.dispose()
-      return
-    }
+    if (written === 0) return
 
-    // Slice if some vertices had no query.
-    const finalCenters = written === count ? centers : centers.subarray(0, written * 3)
-    const finalColors  = written === count ? colors  : colors.subarray(0, written * 3)
+    const geometry = new THREE.BufferGeometry()
+    const finalPositions = written === count ? positions : positions.subarray(0, written * 3)
+    const finalColors    = written === count ? colors    : colors.subarray(0, written * 3)
+    geometry.setAttribute('position', new THREE.BufferAttribute(finalPositions, 3))
+    geometry.setAttribute('aColor',   new THREE.BufferAttribute(finalColors,     3))
 
-    geometry.setAttribute('aCenter', new THREE.InstancedBufferAttribute(finalCenters, 3))
-    geometry.setAttribute('aColor',  new THREE.InstancedBufferAttribute(finalColors,  3))
-
-    const mesh = new THREE.InstancedMesh(geometry, this.material, written)
+    const mesh = new THREE.Points(geometry, this.material)
     mesh.frustumCulled = false
     this.scene.add(mesh)
     this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds })
@@ -173,14 +128,6 @@ export class VertexIdLayer extends IdLayerBase {
     rec.geometry.dispose()
     for (const id of rec.allocatedIds) this.registry.free(id)
     this.bodies.delete(bodyKey)
-  }
-
-  onBeforeRender(width: number, height: number): void {
-    if (width === this.lastWidth && height === this.lastHeight) return
-    this.lastWidth = width
-    this.lastHeight = height
-    const u = this.material.uniforms.uViewport.value as THREE.Vector2
-    u.set(Math.max(1, width), Math.max(1, height))
   }
 
   bodyCount(): number { return this.bodies.size }

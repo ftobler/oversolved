@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   IdPipeline,
   DIMENSION_LABEL_LAYER_NAME,
-  DIMENSION_LABEL_FAT_PIXELS,
 } from '../IdPipeline'
 
 describe('dimensionLabel ID layer', () => {
@@ -15,17 +14,16 @@ describe('dimensionLabel ID layer', () => {
     p.dispose()
   })
 
-  it('uses the documented fat-pixel hit radius', () => {
+  it('renders a 1px point for each registered vertex', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
     p.dimensionLabelLayer.registerBody({
       bodyKey: 'dim:c1',
       vertices: [[0, 0, 0]],
       vertexQueries: ['dim:c1'],
     })
-    p.dimensionLabelLayer.onBeforeRender!(800, 600)
-    const im = p.dimensionLabelLayer.scene.children[0] as import('three').InstancedMesh
-    const mat = im.material as import('three').ShaderMaterial
-    expect(mat.uniforms.uFatPixels.value).toBe(DIMENSION_LABEL_FAT_PIXELS)
+    const pts = p.dimensionLabelLayer.scene.children[0] as import('three').Points
+    expect(pts.geometry.getAttribute('position').count).toBe(1)
+    expect(pts.material.depthTest).toBe(false)
     p.dispose()
   })
 
