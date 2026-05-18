@@ -145,9 +145,16 @@ export class IdPipeline {
     this.layers.sort((a, b) => a.priority - b.priority)
   }
 
-  /** Test helper: snapshot of mounted layers in render order. */
+  /** Snapshot of mounted layers in render order. */
   getLayers(): readonly IdLayer[] {
     return this.layers
+  }
+
+  /** Layer name → priority mapping for the resolver. */
+  getLayerPriority(): Readonly<Record<string, number>> {
+    const map: Record<string, number> = {}
+    for (const l of this.layers) map[l.name] = l.priority
+    return map
   }
 
   markDirty(reason?: string): void {
@@ -323,7 +330,7 @@ export class IdPipeline {
       scratch.set(sub.subarray(srcBase, srcBase + clampW * 4), dstBase)
     }
 
-    return this.resolver.decode(scratch, windowSize, opts)
+    return this.resolver.decode(scratch, windowSize, { ...opts, layerPriority: this.getLayerPriority() })
   }
 
   /**

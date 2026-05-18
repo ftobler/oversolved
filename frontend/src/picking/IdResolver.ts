@@ -14,6 +14,13 @@ export interface ResolveOptions {
   windowSize?: number
   /** Optional filter: only return hits in these layers. */
   allowedLayers?: ReadonlySet<string>
+  /**
+   * Layer name → priority mapping. When present the resolver picks the
+   * highest-priority layer first, then the nearest pixel within that layer.
+   * Without it the resolver picks the nearest pixel regardless of layer
+   * (legacy behaviour).
+   */
+  layerPriority?: Readonly<Record<string, number>>
 }
 
 /**
@@ -29,6 +36,7 @@ export function resolvePixelWindow(
   windowSize: number,
   registry: IdRegistry,
   allowedLayers?: ReadonlySet<string>,
+  layerPriority?: Readonly<Record<string, number>>,
 ): ResolvedHit | null {
   if (windowSize <= 0) return null
   if (pixels.length < windowSize * windowSize * 4) {
@@ -36,7 +44,10 @@ export function resolvePixelWindow(
   }
 
   const center = (windowSize - 1) / 2
-  let best: ResolvedHit | null = null
+
+  // Per-priority-level best hit (closest to cursor within that level).
+  const bestPerPrio = new Map<number, ResolvedHit>()
+  let highestPrio = -Infinity
 
   for (let y = 0; y < windowSize; y++) {
     for (let x = 0; x < windowSize; x++) {
@@ -52,13 +63,18 @@ export function resolvePixelWindow(
       const dx = x - center
       const dy = y - center
       const dist = Math.hypot(dx, dy)
-      if (!best || dist < best.distancePx) {
-        best = { id, layer: rec.layer, entityKey: rec.entityKey, distancePx: dist }
+      const prio = layerPriority?.[rec.layer] ?? 0
+      if (prio > highestPrio) highestPrio = prio
+
+      const existing = bestPerPrio.get(prio)
+      if (!existing || dist < existing.distancePx) {
+        bestPerPrio.set(prio, { id, layer: rec.layer, entityKey: rec.entityKey, distancePx: dist })
       }
     }
   }
 
-  return best
+  if (highestPrio === -Infinity) return null
+  return bestPerPrio.get(highestPrio) ?? null
 }
 
 /**
@@ -91,7 +107,7 @@ export class IdResolver {
    * buffer the resolver decodes).
    */
   decode(scratch: Uint8Array, windowSize: number, opts?: ResolveOptions): ResolvedHit | null {
-    return resolvePixelWindow(scratch, windowSize, this.registry, opts?.allowedLayers)
+    return resolvePixelWindow(scratch, windowSize, this.registry, opts?.allowedLayers, opts?.layerPriority)
   }
 
   getScratchBuffer(windowSize: number): Uint8Array {
