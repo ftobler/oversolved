@@ -80,6 +80,17 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().clearNormalSelection()
       expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
     })
+
+    it('clears chipOwnedSelection and pendingPickField', () => {
+      const store = useSketchEditorStore.getState()
+      store.syncChipSelection(['@edge_0'])
+      store.setPendingPickField({ featureId: 'f1', field: 'edges' })
+      store.clearNormalSelection()
+      const s = useSketchEditorStore.getState()
+      expect(s.chipOwnedSelection.size).toBe(0)
+      expect(s.pendingPickField).toBeNull()
+      expect(s.normalSelection.size).toBe(0)
+    })
   })
 
   describe('deleteSelected', () => {

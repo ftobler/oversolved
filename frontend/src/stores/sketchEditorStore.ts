@@ -279,7 +279,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setIsPointerDown: (down: boolean) => set({ isPointerDown: down }),
 
-  clearNormalSelection: () => set({ normalSelection: new Set(), selectionDomain: 'sketch_2d', dynamicSelection: new Set() }),
+  clearNormalSelection: () => set({ normalSelection: new Set(), chipOwnedSelection: new Set(), pendingPickField: null, selectionDomain: 'sketch_2d', dynamicSelection: new Set() }),
 
   clearDynamicSelection: () => set({ dynamicSelection: new Set() }),
 
