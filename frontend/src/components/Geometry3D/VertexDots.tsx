@@ -91,7 +91,6 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey 
   return (
     <group>
       <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard renderOrder={selected ? RENDER_ORDER_EDITING : 0} depthTest={!selected} />
-      {(hovered || selected || constraintHovered) && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
       {!isInactiveSketch && !isDraggedVertex && (
         <mesh ref={hitRef} position={[x, y, 0]}>
           <sphereGeometry args={[1, 8, 8]} />

@@ -75,24 +75,6 @@ function HitPolyline({ pts, onPointerOver, onPointerOut }: {
 
 /** Vertex dot with its own independent hover state. Placed as a sibling (not child)
  *  of the edge group so hover does not bubble up and highlight the whole entity. */
-// Square highlight rendered at z=0.001 so it's always visible above lines.
-function VertexHighlight({ x, y, px, color }: { x: number; y: number; px: number; color: string }) {
-  const groupRef = useRef<THREE.Group>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (!groupRef.current) return
-    groupRef.current.scale.setScalar(px * p2w(camera))
-    groupRef.current.quaternion.copy(camera.quaternion)
-  })
-  const h = 1.4 // half-size of square in local units
-  const pts: [number, number, number][] = [[-h, -h, 0], [h, -h, 0], [h, h, 0], [-h, h, 0], [-h, -h, 0]]
-  return (
-    <group ref={groupRef} position={[x, y, 0]}>
-      <Line points={pts} color={color} lineWidth={2} />
-    </group>
-  )
-}
-
 function VertexDot({ x, y, px, baseColor }: { x: number; y: number; px: number; baseColor: string }) {
   // NOTE: This is the 2D SVG-based sketch view - uses local state only.
   // Different rendering context from the 3D canvas components.
@@ -118,7 +100,6 @@ function VertexDot({ x, y, px, baseColor }: { x: number; y: number; px: number; 
       onPointerOut={() => { if (isRotating) return; setHovered(false) }}
     >
       <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard />
-      {hovered && <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={color} />}
       <mesh ref={hitRef} position={[x, y, 0]}>
         <sphereGeometry args={[1, 8, 8]} />
         <meshBasicMaterial transparent opacity={0} color="#00aaff" depthWrite={false} />

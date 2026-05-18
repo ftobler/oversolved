@@ -236,12 +236,7 @@ export function FeatureItemActions({
           <img src={isVisible ? iconEyeIcon : iconEyeOffIcon} alt={isVisible ? 'Visible' : 'Hidden'} />
         </button>
       )}
-      {kind === 'sketch' && isEditing && (
-        <button className="feature-visibility-btn disabled" title="Visible while editing" disabled>
-          <img src={iconEyeIcon} alt="Visible" />
-        </button>
-      )}
-      {(kind === 'extrude' || kind === 'revolve' || kind === 'fillet' || kind === 'chamfer' || kind === 'boolean' || kind === 'array' || kind === 'delete_body' || kind === 'import_step' || kind === 'mirror') && (
+      {!isEditing && (kind === 'extrude' || kind === 'revolve' || kind === 'fillet' || kind === 'chamfer' || kind === 'boolean' || kind === 'array' || kind === 'delete_body' || kind === 'import_step' || kind === 'mirror') && (
         <span className="feature-visibility-placeholder" />
       )}
       {!isBuiltIn && !isOrigin && (

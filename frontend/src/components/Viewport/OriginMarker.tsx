@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET } from '@/components/Geometry3D/constants'
-import { Dot, VertexHighlight } from '@/components/Geometry3D/VertexDots'
+import { Dot } from '@/components/Geometry3D/VertexDots'
 import { p2w } from '@/components/sketch_helpers'
 import { useOriginMarkerIdRegistration } from '@/picking'
 
@@ -34,7 +34,6 @@ export default function OriginMarker() {
   return (
     <group>
       <Dot x={0} y={0} px={hovered ? 6 : 4} color={color} billboard renderOrder={999} depthTest={false} />
-      {(hovered || selected) && <VertexHighlight x={0} y={0} px={POINT_HIT_PIXELS * 0.3} color={color} />}
       <mesh ref={hitRef}>
         <sphereGeometry args={[1, 8, 8]} />
         <meshBasicMaterial transparent opacity={0} color="#00aaff" depthWrite={false} />
