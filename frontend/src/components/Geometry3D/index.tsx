@@ -27,6 +27,7 @@ import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'
 
 // Utilities
 import { planeRotation, planeRotationFromTransform } from '@/components/Geometry3D/utils'
+import { builtinPlaneTransform } from '@/components/Geometry3D/bodySnapProjection'
 
 // Colors
 import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
@@ -65,8 +66,17 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   }, [solved, drag, featureId, featureDef])
 
   const extent = useMemo(() => sketchExtent(displaySketch), [displaySketch])
-  const rot = planeTransform ? planeRotationFromTransform(planeTransform) : planeRotation(plane)
-  const pos = planeTransform?.origin as [number, number, number] | undefined
+
+  const resolvedPlaneTransform: PlaneTransform | undefined = useMemo(() => {
+    if (planeTransform) return planeTransform
+    if (plane) return builtinPlaneTransform(plane) ?? undefined
+    return undefined
+  }, [planeTransform, plane])
+
+  const rot = resolvedPlaneTransform
+    ? planeRotationFromTransform(resolvedPlaneTransform)
+    : planeRotation(plane)
+  const pos = resolvedPlaneTransform?.origin as [number, number, number] | undefined
   const kindMap = useMemo(() =>
     Object.fromEntries((entities ?? []).map(e => [e.id, e.kind])),
     [entities]
@@ -84,14 +94,14 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   useSketchIdRegistration({
     featureId,
     sketch: solved,
-    planeTransform,
+    planeTransform: resolvedPlaneTransform,
     enabled: !activeFeatureId || isEditing,
   })
 
   useSketchSurfaceIdRegistration({
     featureId,
     topology: topology,
-    planeTransform,
+    planeTransform: resolvedPlaneTransform,
     enabled: !activeFeatureId || isEditing,
   })
 
@@ -136,7 +146,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
       {topology && <TopologyEdges topology={topology} featureId={featureId} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />
-      {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={planeTransform} />}
+      {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} />}
       {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} />}
       {isEditing && <DragSnapIndicator />}
       {isEditing && <DragAlignmentIndicator />}
