@@ -469,9 +469,9 @@ def _resolve_sketch_plane(
     resolve_ref: Callable,
     global_repo: Repository | None,
 ) -> dict:
-    """Resolve plane query to plane transform dict. Fall back to FRONT_PLANE."""
+    """Resolve plane query to plane transform dict."""
     if not plane_query:
-        return _FRONT_PLANE
+        raise ValueError("sketch has no plane assignment")
 
     plane_obj = resolve_ref(plane_query)
     if (

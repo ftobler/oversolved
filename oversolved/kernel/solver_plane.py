@@ -58,7 +58,7 @@ def _resolve_plane_early(
     plane_query: str | None, global_repo: Repository | None
 ) -> dict:
     if not plane_query:
-        return _FRONT_PLANE
+        raise ValueError("sketch has no plane assignment")
     if plane_query in _BARE_ID_MAP:
         return _BUILTIN_PLANES[_BARE_ID_MAP[plane_query]]
     if plane_query.startswith("@"):

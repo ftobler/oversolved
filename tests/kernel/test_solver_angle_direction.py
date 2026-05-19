@@ -461,12 +461,11 @@ def test_solver_plane_transform_top():
     assert t["origin"] == approx([0, 0, 0])
 
 
-def test_solver_plane_transform_defaults_to_front():
-    """5c: solver returns front plane_transform when plane is absent."""
+def test_solver_missing_plane_raises_error():
+    """5c: solver errors with clear message when plane is absent (no silent default)."""
     result = solve(minimal_sketch_yaml(None))["result"]["sketch_1"]
-    assert result.get("status") != "exception", result.get("exception")
-    t = result["plane_transform"]
-    assert t["rotation"] == approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-9)
+    assert result.get("status") == "exception"
+    assert "plane" in result.get("exception", "").lower()
 
 
 def test_solver_unresolvable_plane_defaults_gracefully():

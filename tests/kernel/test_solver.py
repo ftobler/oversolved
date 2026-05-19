@@ -6,8 +6,8 @@ from oversolved.kernel.solver import solve
 from solver_helpers import TOL, length, angle_between, to_geom
 
 
-def test_missing_plane_defaults_to_front():
-    """A sketch without a plane reference defaults to the front plane (no exception)."""
+def test_missing_plane_raises_error():
+    """A sketch without a plane field now errors with a clear message (no silent default)."""
     yaml_str = """
 version: 1
 kind: part
@@ -18,10 +18,8 @@ features:
     constraints: []
 """
     result = solve(yaml_str)["result"]["sketch1"]
-    assert result.get("status") != "exception", result.get("exception")
-    assert "plane_transform" in result
-    t = result["plane_transform"]
-    assert t["rotation"] == approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-9)
+    assert result.get("status") == "exception"
+    assert "plane" in result.get("exception", "").lower()
 
 
 def test_unknown_plane_defaults_gracefully():

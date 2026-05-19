@@ -58,7 +58,7 @@ def test_extrude_add_returns_existing_body_id():
             {
                 "id": "sketch2",
                 "kind": "sketch",
-                "plane": "",
+                "plane": "@builtin_plane_front",
                 "entities": [
                     {"id": "circle1", "kind": "circle"},
                 ],

@@ -535,7 +535,8 @@ export default function Part() {
     const activeSketch = features.find(f => f.id === activeSketchFeatureId)
     if (!activeSketch || activeSketch.kind !== 'sketch') return
 
-    const planeId = activeSketch.plane || 'builtin_plane_front'
+    const planeId = activeSketch.plane
+    if (!planeId) return
     const cleanPlaneId = planeId.replace(/^@/, '')
 
     viewportRef.current?.alignCameraToPlane(cleanPlaneId)  // camera-only; intentional no-op when Viewport absent

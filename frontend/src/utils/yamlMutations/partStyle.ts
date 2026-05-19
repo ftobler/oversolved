@@ -59,7 +59,7 @@ export function applySetPartTransmission(doc: PartDoc, bodyId: string, transmiss
 
 export function applyAddSketch(doc: PartDoc, featureId: string, label?: string): void {
   if (!doc.features) doc.features = []
-  const feature: PartFeature = { id: featureId, kind: 'sketch' }
+  const feature: PartFeature = { id: featureId, kind: 'sketch', plane: '@builtin_plane_front' }
   if (label) feature.label = label
   doc.features.push(feature)
 }

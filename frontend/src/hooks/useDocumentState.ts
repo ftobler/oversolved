@@ -18,11 +18,14 @@ export function healDoc(raw: unknown): PartDoc {
   const userFeatures = Array.isArray(doc.features) ? (doc.features as PartFeature[]) : []
   const existingIds = new Set(userFeatures.map(f => f.id))
   const missingBuiltins = BUILTIN_FEATURE_DEFAULTS.filter(f => !existingIds.has(f.id))
+  const healedFeatures = userFeatures.map(f =>
+    f.kind === 'sketch' && !f.plane ? { ...f, plane: '@builtin_plane_front' } : f,
+  )
   return {
     ...doc,
     version:  (doc.version as number) ?? 1,
     kind:     (doc.kind    as string) ?? 'part',
-    features: [...missingBuiltins, ...userFeatures],
+    features: [...missingBuiltins, ...healedFeatures],
   } as PartDoc
 }
 
