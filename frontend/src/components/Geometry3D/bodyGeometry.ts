@@ -156,6 +156,7 @@ export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
   const parts: number[] = []
 
   for (const edge of edges) {
+    if (edge.seam) continue
     if (edge.kind === 'line') {
       if (_isValidSegment(edge.start) && _isValidSegment(edge.end)) {
         parts.push(...edge.start, ...edge.end)
@@ -211,7 +212,9 @@ export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
 export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
   const counts: number[] = []
   for (const edge of edges) {
-    if (edge.kind === 'line') {
+    if (edge.seam) {
+      counts.push(0)
+    } else if (edge.kind === 'line') {
       counts.push(1)
     } else if (edge.kind === 'circle' || edge.kind === 'arc') {
       const sweep = edge.angle_end - edge.angle_start

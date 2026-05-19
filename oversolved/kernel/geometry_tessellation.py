@@ -542,6 +542,29 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
     return mesh
 
 
+def _build_seam_hashes(occ_solid: Any) -> set[int]:
+    """Return Python hashes of TopoDS_Edge shapes that are seam edges.
+
+    A seam edge has both its adjacent faces being the same face (the periodic
+    surface wraps around). Detected by finding edges with only one unique
+    adjacent face in the edge-to-face adjacency map.
+    """
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE  # noqa: PLC0415
+    from OCP.TopTools import TopTools_IndexedDataMapOfShapeListOfShape  # noqa: PLC0415
+    from OCP.TopExp import TopExp  # noqa: PLC0415
+
+    e2f: TopTools_IndexedDataMapOfShapeListOfShape = TopTools_IndexedDataMapOfShapeListOfShape()
+    TopExp.MapShapesAndAncestors_s(occ_solid, TopAbs_EDGE, TopAbs_FACE, e2f)
+
+    seam_hashes: set[int] = set()
+    for i in range(1, e2f.Size() + 1):
+        face_list = e2f.FindFromIndex(i)
+        unique: set[int] = {hash(face) for face in face_list}
+        if len(unique) == 1:
+            seam_hashes.add(hash(e2f.FindKey(i)))
+    return seam_hashes
+
+
 def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: str | None = None) -> EdgeDict:
     """Extract exact edge geometry from a cadquery solid.
 
@@ -551,11 +574,14 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
 
     body_id: when set, edge queries are scoped to this body for uniqueness.
     """
-    if _ensure_occ(solid).IsNull():
+    occ_solid = _ensure_occ(solid)
+    if occ_solid.IsNull():
         return {"edges": [], "edge_queries": []}
     solid = _ensure_cq(solid)
     TWO_PI = 2.0 * math.pi
     CIRCLE_TOL = 1e-4
+
+    seam_hashes = _build_seam_hashes(occ_solid)
 
     raw_edges: list[tuple] = []
     seen_hashes: set[int] = set()
@@ -567,6 +593,7 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
         seen_hashes.add(h)
 
         gt = edge.geomType()
+        is_seam = h in seam_hashes
 
         if gt == "LINE":
             sp = edge.startPoint()
@@ -618,6 +645,9 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
             ed = {"kind": "spline", "points": points}
             mid = points[n_pts // 2]
             sort_key = (1, "spline", round(mid[0], 6), round(mid[1], 6), round(mid[2], 6), 0.0, 0.0, 0.0)
+
+        if is_seam:
+            ed["seam"] = True  # type: ignore[assignment]
 
         raw_edges.append((ed, sort_key))
 

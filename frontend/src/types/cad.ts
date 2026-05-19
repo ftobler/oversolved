@@ -123,6 +123,7 @@ export interface EdgeDataLine {
   kind: 'line'
   start: [number, number, number]
   end: [number, number, number]
+  seam?: true
 }
 
 export interface EdgeDataCircleArc {
@@ -133,11 +134,13 @@ export interface EdgeDataCircleArc {
   x_axis: [number, number, number]
   angle_start: number
   angle_end: number
+  seam?: true
 }
 
 export interface EdgeDataSpline {
   kind: 'spline'
   points: [number, number, number][]
+  seam?: true
 }
 
 export type EdgeData = EdgeDataLine | EdgeDataCircleArc | EdgeDataSpline
