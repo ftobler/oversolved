@@ -29,10 +29,18 @@ from oversolved.kernel.cadquery_ops import (
     make_face_from_wires,
     make_line_edge,
     make_wire,
+    revolve_face as _revolve_face,
     to_cq_plane,
 )
+from oversolved.kernel.geom_hash import (
+    edge_geometry_hash,
+    face_geometry_hash,
+    vertex_geometry_hash,
+)
+from oversolved.kernel.geometry_io import stl_file_to_shape, step_file_to_shape
 from oversolved.kernel.ocp_ops import ocp_mesh_shape
 from oversolved.kernel.profile_loops import classify_loops
+from oversolved.kernel.query import make_ancestry_query
 from oversolved.kernel.types3d import Frame3D
 
 logger = logging.getLogger(__name__)
@@ -317,7 +325,6 @@ def revolve_face(
     angle_deg: float,
 ) -> cq_shapes.Solid:
     """Revolve a face around an axis."""
-    from oversolved.kernel.cadquery_ops import revolve_face as _revolve_face
     return _revolve_face(face, axis_origin, axis_direction, angle_deg)
 
 
@@ -388,9 +395,6 @@ def _build_face_query(
     """Return ancestry query string for a face, or None if created_by is None."""
     if not created_by:
         return None
-    from oversolved.kernel.geom_hash import face_geometry_hash
-    from oversolved.kernel.query import make_ancestry_query
-
     geom_hash = face_geometry_hash(centroid, normal, face_area)
     if body_id:
         return make_ancestry_query(
@@ -434,8 +438,6 @@ def _load_shape_from_path(filepath: str) -> cq_shapes.Shape:
 
     Raises ValueError for a missing file or unrecognised extension.
     """
-    from oversolved.kernel.geometry_io import stl_file_to_shape, step_file_to_shape
-
     if not os.path.isfile(filepath):
         raise ValueError(f"File not found: {filepath!r}")
     ext = os.path.splitext(filepath)[1].lower()
@@ -628,9 +630,6 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
     for idx, (ed, _) in enumerate(raw_edges):
         edges.append(ed)
         if created_by:
-            from oversolved.kernel.geom_hash import edge_geometry_hash
-            from oversolved.kernel.query import make_ancestry_query
-
             geom_hash = edge_geometry_hash(ed)
             edge_type = "straightedge" if ed["kind"] == "line" else "edge"
             if body_id:
@@ -657,9 +656,6 @@ def solid_to_vertices(solid: TopoDS_Shape, created_by: str | None = None, body_i
         seen_hashes.add(h)
         vertices.append([v.X, v.Y, v.Z])
         if created_by:
-            from oversolved.kernel.geom_hash import vertex_geometry_hash
-            from oversolved.kernel.query import make_ancestry_query
-
             idx = len(vertices) - 1
             geom_hash = vertex_geometry_hash([v.X, v.Y, v.Z])
             if body_id:
