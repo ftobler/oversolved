@@ -4,10 +4,6 @@ import { join } from 'path'
 
 /**
  * 267.6 / 267.7: Verify no `noOpRaycast` shim remains in `frontend/src`.
- *
- * Excludes Sketch3D and Dragging/Drawing which have their own local
- * helper functions (not the dead `noOpRaycast` export from Surfaces).
- * Also excludes test files and comments.
  */
 const SRC = join(__dirname, '../../../../src')
 
@@ -33,7 +29,7 @@ describe('noOpRaycast is fully removed from production source', () => {
     for (const f of files) {
       const rel = f.replace(SRC, '')
       if (rel.includes('__tests__')) continue
-      if (rel.includes('Sketch3D')) continue  // has its own local helpers
+
       const src = readFileSync(f, 'utf8')
       if (/noOpRaycast/.test(src)) {
         offenders.push(rel)

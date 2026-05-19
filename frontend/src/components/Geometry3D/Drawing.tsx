@@ -5,6 +5,7 @@ import { useThree } from '@react-three/fiber'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
+import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlane'
 import { Dot } from '@/components/Geometry3D/VertexDots'
 import { DashedLine } from '@/components/sketch_dimensions'
 import { COLOR_PREVIEW } from '@/components/Geometry3D/constants'
@@ -86,8 +87,8 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   // meshRef is only attached in drawing-tool mode; when null the handler is a no-op.
   const handleDrawMoveRef = useRef<((e: PointerEvent) => void) | null>(null)
   handleDrawMoveRef.current = (e: PointerEvent) => {
-    const mesh = meshRef.current
-    if (!mesh) return
+    const group = resolvedGroupRef.current
+    if (!group) return
     if (e.buttons & 6) { setDrawHover(null); return }
 
     // Live canvas bounds: not cached so sidebar resizes are reflected immediately.
@@ -95,11 +96,9 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
     const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1
 
-    const raycaster = new THREE.Raycaster()
-    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera)
-    const hits = raycaster.intersectObject(mesh, false)
-    const worldPt = hits[0]?.point ?? null
-
+    // Math-plane projection -- no scene mesh involved, so no other geometry
+    // can block the raycast. Replaces the former raycaster.intersectObject(mesh) pattern.
+    const worldPt = projectCursorToSketchPlane(camera, group, { x: ndcX, y: ndcY })
     if (!worldPt) { setDrawHover(null); return }
     const sanitized = sanitizePointerEvent({ point: worldPt, clientX: e.clientX, clientY: e.clientY }, resolvedGroupRef)
     setDrawHover(sanitized?.localPoint ?? null)

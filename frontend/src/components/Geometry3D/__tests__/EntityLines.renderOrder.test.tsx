@@ -19,10 +19,6 @@ vi.mock('@react-three/fiber', () => ({
   useThree: () => ({ camera: {} }),
 }))
 
-vi.mock('@/components/Geometry3D/useDragInitiation', () => ({
-  useDragInitiation: () => ({ initDrag: vi.fn() }),
-}))
-
 vi.mock('@/components/Geometry3D/useHoverAndDynamicSelection', () => ({
   useHoverAndDynamicSelection: () => ({ hovered: false, onOver: vi.fn(), onOut: vi.fn(), markAsClicked: vi.fn() }),
 }))
@@ -33,7 +29,6 @@ vi.mock('@/components/Geometry3D/useToolClickDispatch', () => ({
 
 vi.mock('@/components/Geometry3D/VertexDots', () => ({
   VertexDot: () => null,
-  HitPolyline: () => null,
   ProjectedOriginPoint: () => null,
 }))
 

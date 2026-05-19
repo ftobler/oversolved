@@ -7,8 +7,8 @@ import { join } from 'path'
  * HitPolyline is gone. Vertex picking now lives in the screen-space
  * fattened vertex ID layer.
  *
- * Positive assertion: VertexDots uses only sphere geometry for the
- * vertex hit zone, no cylinder geometry.
+ * 274: All raycaster hit meshes removed from VertexDots. Only visual
+ * circleGeometry remains (the Dot component). No sphereGeometry left.
  */
 
 const VERTEX_DOTS = join(__dirname, '..', 'VertexDots.tsx')
