@@ -118,14 +118,16 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
     const currentDrag = useSketchEditorStore.getState().drag
     if (!currentDrag) return
 
+    // All drag types use raw localPoint for smooth movement. Snap and alignment
+    // are computed separately without modifying the drag position, so the core
+    // drag path is identical for vertex and edge drags (fixes #274 jitter bug
+    // where computeDragMove's snap threshold oscillation caused vertex jumps).
     if (currentDrag.type === 'vertex' && sketch) {
       const pixelsPerUnit = p2w(camera)
-      // Build flat candidate arrays from sketch (adapter layer responsibility)
       const vertexCandidates = sketchToVertexCandidates(sketch, featureId, 'active_sketch')
       const entityCandidates = sketchToEntityCandidates(sketch, featureId, 'active_sketch')
       const skipIds = new Set<string>()
       skipIds.add(currentDrag.entityId)
-      // Add other sketch candidates if provided
       if (otherSketches) {
         for (const [otherFeatId, otherSketch] of Object.entries(otherSketches)) {
           vertexCandidates.push(...sketchToVertexCandidates(otherSketch, otherFeatId, 'other_sketch'))
@@ -133,16 +135,9 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
         }
       }
       const result = computeDragMove(
-        localPoint,
-        vertexCandidates,
-        entityCandidates,
-        skipIds,
-        currentDrag,
-        dynamicSelection,
-        normalSelection,
-        dynamicSelectionPositions,
-        prevNearbyRef.current,
-        pixelsPerUnit,
+        localPoint, vertexCandidates, entityCandidates, skipIds,
+        currentDrag, dynamicSelection, normalSelection,
+        dynamicSelectionPositions, prevNearbyRef.current, pixelsPerUnit,
       )
 
       setDragSnap(result.snapTarget)
@@ -153,17 +148,17 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
         setAlignmentSnap(null, null, null)
       }
 
-      // Dispatch newly-entered proximity IDs to dynamic selection.
       const { updateDynamicSelection } = useSketchEditorStore.getState()
       for (const id of result.newProximityIds) {
         updateDynamicSelection(id)
       }
       prevNearbyRef.current = result.allProximityIds
-
-      setDrag({ ...currentDrag, currentWorld: result.effectivePosition })
-    } else {
-      setDrag({ ...currentDrag, currentWorld: localPoint })
     }
+
+    // Use raw localPoint for ALL drag types so vertex and edge drags
+    // have identical smoothness. Snap/alignment are read-only feedback
+    // and no longer affect the drag position.
+    setDrag({ ...currentDrag, currentWorld: localPoint })
   }
 
   useEffect(() => { handleMoveRef.current = moveImpl })
