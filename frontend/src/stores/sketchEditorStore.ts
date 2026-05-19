@@ -333,7 +333,20 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setShowConstraintTiles: (show) => set({ showConstraintTiles: show }),
 
+  setActiveTool: (tool) => set({ activeTool: tool, drawPoints: [], drawHover: null }),
+  setActiveFeatureId: (id) => set({ activeFeatureId: id }),
+
   setEntityKindMap: (map) => set({ entityKindMap: map }),
+
+  setHoveredEntity: (id) => set({ hoveredEntityId: id }),
+  setHoveredVertex: (id, position, snapKind) => set({ hoveredVertexId: id, hoveredVertexPosition: position, hoveredSnapKind: snapKind ?? null }),
+  setHoveredConstraintEntities: (ids) => set({ hoveredConstraintEntityIds: ids }),
+  setHoveredPlane: (id) => set({ hoveredPlaneId: id }),
+  setHoveredSurface: (id) => set({ hoveredSurfaceId: id }),
+  setHovered3DSurface: (id) => set({ hovered3DSurfaceId: id }),
+  setHoveredEdge: (id) => set({ hoveredEdgeId: id }),
+  setHoveredBodyId: (id) => set(s => ({ hoveredBodyId: typeof id === 'function' ? id(s.hoveredBodyId) : id })),
+  setHoveredFaceGeometry: (normal, center) => set({ hoveredFaceNormal: normal, hoveredFaceCenter: center }),
 
   applyConstraint: (kind) => {
     const { normalSelection: selection, activeFeatureId } = get()

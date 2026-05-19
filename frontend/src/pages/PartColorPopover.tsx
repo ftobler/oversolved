@@ -48,37 +48,15 @@ function PartColorPopoverInner({
     })
   }, [])
 
-  // Close on outside click or Escape
-  useEffect(() => {
-    const close = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        onCancel()
-      }
-    }
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('mousedown', close, { capture: true })
-    window.addEventListener('keydown', handleEscape)
-    return () => {
-      window.removeEventListener('mousedown', close, { capture: true })
-      window.removeEventListener('keydown', handleEscape)
-    }
-  }, [onCancel])
-
   return (
     <div
       ref={popoverRef}
       className="part-color-popover"
       tabIndex={-1}
       style={{ left: popover.position[0], top: popover.position[1] + 6 }}
-      onMouseDown={e => e.stopPropagation()}
-      onPointerDown={e => e.stopPropagation()}
-      onClick={e => e.stopPropagation()}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.preventDefault()
-          e.stopPropagation()  // prevent window-level Escape handler from double-firing
           onCancel()
           return
         }

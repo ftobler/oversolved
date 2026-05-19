@@ -46,8 +46,8 @@ const mockSketch: Sketch = {
 }
 
 const mockConstraints: Constraints = {
-  c1: { kind: 'distance', parameters: {}, targets: [], render: { kind: 'symbol_horizontal', at: [5, 0] } as never },
-  c2: { kind: 'distance', parameters: {}, targets: [], render: { kind: 'symbol_vertical', at: [5, 0] } as never },
+  c1: { render: { kind: 'symbol_horizontal', at: [5, 0] }, residual: 0 } as Constraints[string],
+  c2: { render: { kind: 'symbol_vertical', at: [5, 0] }, residual: 0 } as Constraints[string],
 }
 
 function renderOverlays(constraints: Constraints = mockConstraints) {
@@ -80,7 +80,7 @@ describe('ConstraintTile user-select', () => {
   it('renders dimension overlays regardless of showConstraintTiles', () => {
     useSketchEditorStore.setState({ showConstraintTiles: false })
     const dimConstraints: Constraints = {
-      d1: { kind: 'distance', parameters: {}, targets: [], render: { kind: 'dim_linear', p1: [0, 0], p2: [10, 0], normal: [0, 1], value: 10 } as never },
+      d1: { render: { kind: 'dim_linear', p1: [0, 0], p2: [10, 0], normal: [0, 1], value: 10 }, residual: 0 } as Constraints[string],
     }
     const { container } = renderOverlays(dimConstraints)
     const dims = container.querySelectorAll('[data-testid="linear-dim"]')
