@@ -69,7 +69,7 @@ export function dispatchSketchDrag(
 
   // Only initiate drag in select mode on an actively-edited sketch.
   if (!state.activeFeatureId || state.activeFeatureId !== featureId) return
-  if (effectiveTool !== null && effectiveTool !== 'select') return
+  if (effectiveTool !== null && effectiveTool !== 'select' && effectiveTool !== 'drag') return
 
   state.setOrbitEnabled(false)
   state.setIsPointerDown(true)

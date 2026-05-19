@@ -186,7 +186,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       const tool = useSketchEditorStore.getState().activeTool
       if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
         dimensionLabelAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
-      } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME && tool === 'drag') {
+      } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME && (tool === 'drag' || tool === null)) {
         sketchVertexAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
       }
     }

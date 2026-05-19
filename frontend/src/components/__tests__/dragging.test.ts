@@ -1,8 +1,14 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
 import { makeSanitizedEvent } from '@/components/Geometry3D/pointerAbstraction'
 import { worldToSketchLocalPure } from '@/components/Geometry3D/coordTransform'
 import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
+import { dispatchSketchDrag } from '@/components/Viewport/idDispatch/dispatchSketchClick'
+import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { toolRegistry } from '@/registry/toolRegistry'
+import { createDragTool } from '@/tools/DragTool'
+
+try { toolRegistry.register(createDragTool()) } catch { /* already registered */ }
 
 // REGRESSION TEST DOCUMENTATION: Dragging Coordinate and Collision Bugs
 //
@@ -410,5 +416,54 @@ describe('Window listener vs R3F path -- coordinate equivalence', () => {
 
     const eventPaths = ['window.pointermove (DragPlane)', 'window.pointermove (DrawPlane)']
     expect(eventPaths.every(p => p.startsWith('window'))).toBe(true)
+  })
+})
+
+describe('dispatchSketchDrag integration', () => {
+  beforeEach(() => {
+    useSketchEditorStore.setState({
+      activeTool: null,
+      activeFeatureId: null,
+      drag: null,
+      dragPending: null,
+      dragStartClient: null,
+      orbitEnabled: true,
+      isPointerDown: false,
+      hoveredVertexId: null,
+      hoveredVertexPosition: null,
+      hoveredSnapKind: null,
+      normalSelection: new Set(),
+      internalHoverSelection: null,
+      dynamicSelection: new Set(),
+      dragSnap: null,
+    })
+    setSketchCallback('onMutation', null)
+    setSketchCallback('onRebuild', null)
+    setSketchCallback('onExitSketch', null)
+  })
+
+  it('full drag flow via dispatchSketchDrag with activeTool=null', () => {
+    useSketchEditorStore.setState({
+      activeTool: null,
+      activeFeatureId: 'feat1',
+    })
+
+    dispatchSketchDrag(
+      'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
+      10, 20, 100, 200,
+    )
+
+    const s = useSketchEditorStore.getState()
+    expect(s.isPointerDown).toBe(true)
+    expect(s.orbitEnabled).toBe(false)
+    expect(s.dragStartClient).toEqual([100, 200])
+    expect(s.dragPending).not.toBeNull()
+    expect(s.dragPending!.type).toBe('vertex')
+    if (s.dragPending!.type === 'vertex' || s.dragPending!.type === 'edge') {
+      expect(s.dragPending!.featureId).toBe('feat1')
+      expect(s.dragPending!.entityId).toBe('line1')
+      expect(s.dragPending!.vertexKey).toBe('start')
+      expect(s.dragPending!.startWorld).toEqual([10, 20])
+    }
   })
 })
