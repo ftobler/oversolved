@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useMemo } from 'react'
 import * as THREE from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { Topology, TopologySurface, TopologyEdge, TopologyArcEdge, TopologyEdgeQuery, Point } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { ARC_SEGMENTS, COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
+import { ARC_SEGMENTS, COLOR_SELECTED, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
 import { surfaceSelectionId, edgeSelectionId } from '@/components/Geometry3D/utils'
 
 type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string }
@@ -46,15 +46,10 @@ interface SurfaceMeshProps {
 }
 
 export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureId }: SurfaceMeshProps) {
-  // HOVER PATTERN: Local state for visual feedback (fast), store for logic/debug.
-  // DO NOT use local hovered state alone - must also call setHoveredSurface().
-  const [hovered, setHovered] = useState(false)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
-  const isRotating = useSketchEditorStore(s => s.isRotating)
-  const setHoveredSurface = useSketchEditorStore(s => s.setHoveredSurface)
 
   const id = surfaceSelectionId(featureId, query)
   const isSelected = normalSelection.has(id)
@@ -64,10 +59,7 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
   let opacity = 0.10
   if (isInactive) { color = COLOR_INACTIVE; opacity = 0.10 }
   if (isSelected) { color = COLOR_SELECTED; opacity = 0.30 }
-  if (hovered) { color = COLOR_HOVER; opacity = 0.20 }
 
-  const handlePointerOver = isInactive ? undefined : (e: ThreeEvent<PointerEvent>) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredSurface(id) }
-  const handlePointerOut = isInactive ? undefined : () => { if (isRotating) return; setHovered(false); setHoveredSurface(null) }
   const handleClick = isInactive ? undefined : (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation()
     if (planeSelectionFeatureId) commitPlaneSelection(id)
@@ -76,9 +68,7 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
 
   return (
     <mesh
-      position={[0, 0, 0.003]}
-      onPointerOver={handlePointerOver}
-      onPointerOut={handlePointerOut}
+      position={[0, 0, -0.003]}
       onClick={handleClick}
     >
       <shapeGeometry args={[shape]} />
@@ -103,15 +93,12 @@ interface EdgeMeshProps {
 }
 
 function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
-  const [hovered, setHovered] = useState(false)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
-  const isRotating = useSketchEditorStore(s => s.isRotating)
-  const setHoveredEdge = useSketchEditorStore(s => s.setHoveredEdge)
   const id = edgeSelectionId(featureId, edge.query)
   const isSelected = normalSelection.has(id)
 
-  const color = isSelected ? COLOR_SELECTED : (hovered ? COLOR_HOVER : 'white')
+  const color = isSelected ? COLOR_SELECTED : 'white'
 
   const start = edge.start
   const end = edge.end
@@ -150,11 +137,7 @@ function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
         toggleNormalSelection(id)
       }
       return (
-        <line
-          onPointerOver={isInactive ? undefined : (e) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredEdge(id) }}
-          onPointerOut={isInactive ? undefined : () => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }}
-          onClick={handleEdgeClick}
-        >
+        <line onClick={handleEdgeClick}>
           <primitive object={arcGeometry} attach="geometry" />
           <lineBasicMaterial color={color} linewidth={2} />
         </line>
@@ -168,11 +151,7 @@ function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
   }
 
   return (
-    <line
-      onPointerOver={isInactive ? undefined : (e) => { if (isRotating) return; e.stopPropagation(); setHovered(true); setHoveredEdge(id) }}
-      onPointerOut={isInactive ? undefined : () => { if (isRotating) return; setHovered(false); setHoveredEdge(null) }}
-      onClick={handleEdgeClick}
-    >
+    <line onClick={handleEdgeClick}>
       <primitive object={lineGeometry} attach="geometry" />
       <lineBasicMaterial color={color} linewidth={2} />
     </line>
