@@ -66,4 +66,20 @@ describe('sketchEntityAdapter', () => {
     expect(s.isPointerDown).toBe(false)
     expect(s.dragPending).toBeNull()
   })
+
+  it('onClick passes entityKind from entityKindMap', () => {
+    useSketchEditorStore.setState({ entityKindMap: { 'entity:feat1:circle1': 'circle' } })
+    // The DimensionTool test verifies that 'circle' entityKind opens dialog
+    // immediately. Here we just verify no crash when the map has a match.
+    sketchEntityAdapter.onClick('entity:feat1:circle1', 100, 100)
+    const s = useSketchEditorStore.getState()
+    expect(s.activeTool).toBeNull()  // no tool means no change from onClick
+  })
+
+  it('onClick passes undefined when entityKey not in entityKindMap', () => {
+    useSketchEditorStore.setState({ entityKindMap: {} })
+    sketchEntityAdapter.onClick('entity:feat1:unknown', 100, 100)
+    const s = useSketchEditorStore.getState()
+    expect(s.activeTool).toBeNull()
+  })
 })

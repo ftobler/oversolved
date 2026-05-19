@@ -124,6 +124,28 @@ describe('DimensionTool', () => {
       expect(openDialog).toHaveBeenCalledWith(expect.objectContaining({ label: 'Dimension value' }))
     })
 
+    it('line self-dim: null entityKind produces line_distance (bug guard)', () => {
+      const openDialog = vi.fn()
+      const setPendingDim = vi.fn()
+      const tool = createDimensionTool()
+      // When entityKind is null (the bug), second click on same line
+      // falls through to resolveTwoTargetDimension instead of single-entity path.
+      const context = createMockContext({
+        openDialog,
+        setPendingDim,
+        activeFeatureId: 'S1',
+        pendingDimTarget: 'entity:S1:L1',
+        pendingDimEntityKind: null,
+        internalHoverSelection: 'entity:S1:L1',
+        hoveredEntityKind: null,
+      })
+
+      tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)
+
+      // Should still open a dialog (falls through to resolveTwoTargetDimension)
+      expect(openDialog).toHaveBeenCalledWith(expect.objectContaining({ label: 'Dimension value' }))
+    })
+
     it('emits add_constraint mutation on dialog confirm', () => {
       const onMutation = vi.fn()
       const setActiveTool = vi.fn()

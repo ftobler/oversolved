@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { dispatchDragInitiation } from '../dispatchSketchClick'
+import { dispatchSketchClick, dispatchDragInitiation } from '../dispatchSketchClick'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import { createDragTool } from '@/tools/DragTool'
+import { createDimensionTool } from '@/tools/DimensionTool'
 
-// Ensure DragTool is in the registry for these tests.
+// Ensure DragTool and DimensionTool are in the registry for these tests.
 try { toolRegistry.register(createDragTool()) } catch { /* already registered */ }
+try { toolRegistry.register(createDimensionTool()) } catch { /* already registered */ }
 
 beforeEach(() => {
   useSketchEditorStore.setState({
@@ -137,5 +139,41 @@ describe('dispatchDragInitiation guard logic', () => {
     expect(s.isPointerDown).toBe(false)
     expect(s.orbitEnabled).toBe(true)
     expect(s.dragPending).toBeNull()
+  })
+})
+
+describe('dispatchSketchClick with entityKind', () => {
+  beforeEach(() => {
+    useSketchEditorStore.setState({
+      activeTool: 'dimension',
+      activeFeatureId: 'S1',
+      internalHoverSelection: null,
+      hoveredVertexId: null,
+      pendingDimTarget: null,
+      pendingDimEntityKind: null,
+      pendingDialog: null,
+      normalSelection: new Set(),
+    })
+  })
+
+  it('circle entityKind opens dialog immediately', () => {
+    useSketchEditorStore.setState({
+      internalHoverSelection: 'entity:S1:C1',
+    })
+    dispatchSketchClick('entity:S1:C1', 'circle', 100, 100)
+    const s = useSketchEditorStore.getState()
+    expect(s.pendingDialog).not.toBeNull()
+    expect(s.pendingDialog!.label).toBe('Dimension value')
+  })
+
+  it('line entityKind goes to pending state', () => {
+    useSketchEditorStore.setState({
+      internalHoverSelection: 'entity:S1:L1',
+    })
+    dispatchSketchClick('entity:S1:L1', 'line', 100, 100)
+    const s = useSketchEditorStore.getState()
+    expect(s.pendingDialog).toBeNull()
+    expect(s.pendingDimTarget).toBe('entity:S1:L1')
+    expect(s.pendingDimEntityKind).toBe('line')
   })
 })

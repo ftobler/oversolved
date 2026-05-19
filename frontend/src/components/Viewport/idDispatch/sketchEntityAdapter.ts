@@ -26,7 +26,8 @@ export const sketchEntityAdapter = {
     s.setHoveredEntity(entityKey)
   },
   onClick(entityKey: string, clientX: number, clientY: number): void {
-    dispatchSketchClick(entityKey, undefined, clientX, clientY)
+    const entityKind = useSketchEditorStore.getState().entityKindMap[entityKey]
+    dispatchSketchClick(entityKey, entityKind, clientX, clientY)
   },
   onPointerDown(entityKey: string, clientX: number, clientY: number): void {
     const parsed = parseEntityKey(entityKey)

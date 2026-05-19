@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, PartFeature } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -83,6 +83,17 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   )
 
   const isEditing = featureId === activeFeatureId
+
+  const setEntityKindMap = useSketchEditorStore(s => s.setEntityKindMap)
+  useEffect(() => {
+    if (!isEditing) return
+    const compositeMap: Record<string, string> = {}
+    for (const [eid, kind] of Object.entries(kindMap)) {
+      compositeMap[`entity:${featureId}:${eid}`] = kind
+    }
+    setEntityKindMap(compositeMap)
+    return () => setEntityKindMap({})
+  }, [isEditing, featureId, kindMap, setEntityKindMap])
 
   // Register the SOLVED sketch (not displaySketch). displaySketch is replaced
   // each drag tick by softSolve, which would otherwise unregister/re-allocate

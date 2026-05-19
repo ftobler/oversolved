@@ -202,6 +202,7 @@ interface SketchEditorState {
   activeFeatureId: string | null
   showDebugHit: boolean
   showConstraintTiles: boolean
+  entityKindMap: Record<string, string>
   pendingDimTarget: string | null
   pendingDimEntityKind: string | null
   pendingDialog: DialogState | null
@@ -215,6 +216,7 @@ interface SketchEditorState {
   setActiveFeatureId: (id: string | null) => void
   setShowDebugHit: (enabled: boolean) => void
   setShowConstraintTiles: (show: boolean) => void
+  setEntityKindMap: (map: Record<string, string>) => void
   applyConstraint: (kind: string) => void
   toggleConstruction: () => void
   deleteSelected: () => void
@@ -245,6 +247,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   isRotating: false,
   showDebugHit: false,
   showConstraintTiles: true,
+  entityKindMap: {},
   hoveredConstraintEntityIds: new Set(),
   hoveredEntityId: null,
   hoveredVertexId: null,
@@ -329,6 +332,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setShowDebugHit: (enabled) => set({ showDebugHit: enabled }),
 
   setShowConstraintTiles: (show) => set({ showConstraintTiles: show }),
+
+  setEntityKindMap: (map) => set({ entityKindMap: map }),
 
   applyConstraint: (kind) => {
     const { normalSelection: selection, activeFeatureId } = get()

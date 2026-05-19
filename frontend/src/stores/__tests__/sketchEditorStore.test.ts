@@ -690,4 +690,17 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().showConstraintTiles).toBe(true)
     })
   })
+
+  describe('entityKindMap', () => {
+    it('defaults to empty', () => {
+      expect(useSketchEditorStore.getState().entityKindMap).toEqual({})
+    })
+
+    it('setEntityKindMap stores and replaces the map', () => {
+      useSketchEditorStore.getState().setEntityKindMap({ 'entity:f1:c1': 'circle' })
+      expect(useSketchEditorStore.getState().entityKindMap).toEqual({ 'entity:f1:c1': 'circle' })
+      useSketchEditorStore.getState().setEntityKindMap({})
+      expect(useSketchEditorStore.getState().entityKindMap).toEqual({})
+    })
+  })
 })
