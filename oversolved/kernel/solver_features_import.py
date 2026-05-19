@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import base64
 import logging
 import os
+import tempfile
 
 from oversolved.kernel.query import Repository
 from oversolved.kernel.cadquery_ops import _ensure_occ
+from oversolved.kernel.types3d import Body
+from oversolved.kernel.geometry_io import step_file_to_shape
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +27,6 @@ def _solve_import_step(
     global_repo: Repository,
     body_store: dict,
 ) -> dict:
-    import base64  # noqa: F811
-    import tempfile  # noqa: F811
-    from oversolved.kernel.types3d import Body  # noqa: F811  # noqa: F811
-    from oversolved.kernel.geometry_io import step_file_to_shape  # noqa: F811
-
     feature_id = feature.get("id", "")
     file_data_b64 = feature.get("file_data", "")
     scale = float(feature.get("scale", 1.0))

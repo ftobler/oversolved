@@ -3,8 +3,10 @@ from __future__ import annotations
 import logging
 
 from oversolved.kernel.query import Repository
-from oversolved.kernel.types3d import Frame3D
-from oversolved.kernel.cadquery_ops import _ensure_occ
+from oversolved.kernel.types3d import Frame3D, Body
+from oversolved.kernel.cadquery_ops import _ensure_occ, apply_transform_shape, boolean_union, make_mirror_trsf
+from oversolved.kernel.solver_plane import _get_point_3d, _get_edge_3d
+from oversolved.kernel.geometry_features import transform_copy
 from oversolved.kernel.solver_features_shared import _resolve_body
 
 logger = logging.getLogger(__name__)
@@ -29,10 +31,6 @@ def _solve_transform(
     global_repo: Repository,
     body_store: dict,
 ) -> dict:
-    from oversolved.kernel.cadquery_ops import apply_transform_shape  # noqa: F811
-    from oversolved.kernel.types3d import Body  # noqa: F811
-    from oversolved.kernel.solver_plane import _get_point_3d, _get_edge_3d  # noqa: F811
-
     feature_id = feature.get("id", "")
     sub = feature.get("transform") or {}
     cfg = {**sub, **{k: v for k, v in feature.items() if k not in ("transform",)}}
@@ -110,10 +108,6 @@ def _solve_transform(
 
 
 def _solve_mirror(feature: dict, global_repo: Repository, body_store: dict) -> dict:
-    from oversolved.kernel.types3d import Body  # noqa: F811
-    from oversolved.kernel.geometry_features import transform_copy  # noqa: F811
-    from oversolved.kernel.cadquery_ops import boolean_union, make_mirror_trsf  # noqa: F811
-
     feature_id = feature.get("id", "")
     sub = feature.get("mirror") or {}
     cfg = {**sub, **{k: v for k, v in feature.items() if k not in ("mirror",)}}

@@ -5,7 +5,7 @@ import numpy as np
 
 from oversolved.kernel.query import Repository
 from oversolved.kernel.types3d import Frame3D
-from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ
+from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, make_cylinder, boolean_cut
 from oversolved.kernel.solver_features_shared import _resolve_body
 
 logger = logging.getLogger(__name__)
@@ -21,8 +21,6 @@ ALL_KEYS: frozenset[str] = frozenset({
 
 
 def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict]) -> dict:
-    from oversolved.kernel.cadquery_ops import make_cylinder, boolean_cut  # noqa: F811
-
     sub = feature.get("hole") or {}
     sketch_ref = sub.get("sketch", "").lstrip("@")
     diameter = float(sub.get("diameter", 10.0))

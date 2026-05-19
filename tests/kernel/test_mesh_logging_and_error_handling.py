@@ -61,8 +61,7 @@ def test_extrude_occ_exception_sets_status_exception():
 
     spec = full_rect_extrude_spec(w=10, h=10, d=5)
 
-    # extrude_profile is imported locally inside _solve_extrude; patch at source module.
-    with mock.patch("oversolved.kernel.geometry_tessellation.extrude_profile", side_effect=RuntimeError("occ failure")):
+    with mock.patch("oversolved.kernel.solver_features_brep._ep", side_effect=RuntimeError("occ failure")):
         result = build(spec)
 
     body_result = result.get("result", {}).get("ex1") or {}
@@ -98,8 +97,7 @@ def test_revolve_occ_exception_sets_status_exception():
         ]
     }
 
-    # sketch_loops_to_face is imported locally inside _solve_revolve; patch at source.
-    with mock.patch("oversolved.kernel.geometry_tessellation.sketch_loops_to_face",
+    with mock.patch("oversolved.kernel.solver_features_brep.sketch_loops_to_face",
                     side_effect=RuntimeError("occ failure")):
         result = build(spec)
 

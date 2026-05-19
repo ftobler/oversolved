@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from oversolved.kernel.query import Repository
-from oversolved.kernel.cadquery_ops import _ensure_occ
+from oversolved.kernel.cadquery_ops import _ensure_occ, boolean_cut, boolean_union, boolean_intersection
 from oversolved.kernel.solver_features_shared import _resolve_body
 
 logger = logging.getLogger(__name__)
@@ -23,8 +23,6 @@ def _solve_boolean(
     global_repo: Repository,
     body_store: dict,
 ) -> dict:
-    from oversolved.kernel.cadquery_ops import boolean_cut, boolean_union, boolean_intersection  # noqa: F811
-
     feature_id = feature.get("id", "")
     sub = feature.get("boolean") or {}
     operation = sub.get("operation", "union")

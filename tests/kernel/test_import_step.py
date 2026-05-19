@@ -136,19 +136,19 @@ def test_status_ok_in_result(step_cube_file):
 
 def test_partial_rebuild_reuses_body(step_cube_file, monkeypatch):
     """8. partial rebuild reuses body - build twice with same spec; step_file_to_shape called once."""
-    from oversolved.kernel import geometry_io
+    from oversolved.kernel import solver_features_import
 
     b64 = _step_to_b64(step_cube_file)
 
     call_count = 0
-    original = geometry_io.step_file_to_shape
+    original = solver_features_import.step_file_to_shape
 
     def counting_step_file_to_shape(filepath, scale=1.0):
         nonlocal call_count
         call_count += 1
         return original(filepath, scale)
 
-    monkeypatch.setattr(geometry_io, "step_file_to_shape", counting_step_file_to_shape)
+    monkeypatch.setattr(solver_features_import, "step_file_to_shape", counting_step_file_to_shape)
 
     spec_v1 = {
         "id": "test",

@@ -9,6 +9,9 @@ from oversolved.kernel.solver_features_shared import (
     _apply_body_operation, _collect_extrude_loops,
     _resolve_direction,
 )
+from oversolved.kernel.geometry_tessellation import extrude_profile as _ep
+from oversolved.kernel.cadquery_ops import boolean_union
+from oversolved.kernel.geometry_tessellation import sketch_loops_to_face, revolve_face as _rf
 from oversolved.kernel.solver_registry import _sketch_to_world_2d
 
 logger = logging.getLogger(__name__)
@@ -27,8 +30,6 @@ ALL_KEYS: frozenset[str] = frozenset({
 
 
 def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> dict:
-    from oversolved.kernel.geometry_tessellation import extrude_profile as _ep  # noqa: F811
-
     feature_id = feature.get("id", "")
     sub = feature.get("extrude") or {}
     merge_target = sub.get("merge_target") or feature.get("merge_target")
@@ -89,8 +90,6 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
 
 
 def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> dict:
-    from oversolved.kernel.geometry_tessellation import sketch_loops_to_face, revolve_face as _rf  # noqa: F811
-
     feature_id = feature.get("id", "")
     sub = feature.get("revolve") or {}
     merge_target = sub.get("merge_target") or feature.get("merge_target")
@@ -176,7 +175,6 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
             half_angle = angle / 2.0
             tool_shape_pos = _rf(face, axis_origin, axis_direction, half_angle)
             tool_shape_neg = _rf(face, axis_origin, axis_direction, -half_angle)
-            from oversolved.kernel.cadquery_ops import boolean_union  # noqa: F811
             tool_shape = boolean_union(tool_shape_pos, tool_shape_neg)
         else:
             effective_angle = -angle if direction == "reverse" else angle

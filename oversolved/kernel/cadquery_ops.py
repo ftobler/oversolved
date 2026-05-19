@@ -133,8 +133,6 @@ def make_arc_edge(
     Angles are in radians.  If the span is ~2*pi a full circle is returned.
     The x_axis parameter is honoured so the arc orientation matches the sketch plane.
     """
-    import math
-
     n = CQVector(*normal).normalized()
     x = CQVector(*x_axis).normalized()
     c = CQVector(*center)
@@ -142,7 +140,7 @@ def make_arc_edge(
     span = abs(angle_end - angle_start)
     if span < 1e-6:
         raise ValueError(f"make_arc_edge: degenerate zero-span arc (span={span})")
-    is_full = abs(span - 2 * math.pi) < 1e-6
+    is_full = abs(span - 2 * _math.pi) < 1e-6
 
     circle = ocp_make_circle(c.toTuple(), n.toTuple(), x.toTuple(), radius)
 
@@ -184,8 +182,7 @@ def revolve_face(face: cq_shapes.Face, axis_origin: list[float],
     """Revolve a face around an axis."""
     if angle_deg == 0:
         raise ValueError("revolve angle must be non-zero")
-    import math
-    return cq_shapes.Solid(ocp_revolve(_ensure_occ(face), axis_origin, axis_direction, math.radians(angle_deg)))
+    return cq_shapes.Solid(ocp_revolve(_ensure_occ(face), axis_origin, axis_direction, _math.radians(angle_deg)))
 
 
 def make_cylinder(center: list[float], axis: list[float], radius: float, height: float) -> cq_shapes.Solid:
@@ -328,8 +325,6 @@ def apply_transform_shape(
     to Z-axis [0, 0, 1].
     Returns a new cq Shape (or TopoDS_Shape matching input type).
     """
-    import math
-
     combined = ocp_identity_trsf()
 
     if scale != 1.0:
@@ -341,7 +336,7 @@ def apply_transform_shape(
         rot = ocp_make_rotation_trsf(
             list(rotation_axis_origin or (0, 0, 0)),
             list(axis_direction),
-            math.radians(rotation_angle_deg),
+            _math.radians(rotation_angle_deg),
         )
         combined.Multiply(rot)
 

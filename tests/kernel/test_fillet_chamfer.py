@@ -496,8 +496,8 @@ def test_chamfer_angle_distance_mode():
         "chamfer": {"distance": 1.0, "angle": 30.0, "kind": "angle_distance"},
     })
 
-    with mock.patch("oversolved.kernel.geometry_features.apply_chamfer", wraps=__import__(
-        "oversolved.kernel.geometry_features", fromlist=["apply_chamfer"]
+    with mock.patch("oversolved.kernel.solver_features_fillet_chamfer.apply_chamfer", wraps=__import__(
+        "oversolved.kernel.solver_features_fillet_chamfer", fromlist=["apply_chamfer"]
     ).apply_chamfer) as mock_chamfer:
         r = build(spec)
 

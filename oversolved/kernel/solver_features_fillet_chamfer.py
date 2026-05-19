@@ -10,6 +10,9 @@ from oversolved.kernel.query import Repository
 from oversolved.kernel.types3d import Body
 from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ
 from oversolved.kernel.ocp_ops import ocp_curve_info
+from oversolved.kernel.geom_hash import edge_geometry_hash
+from oversolved.kernel.query import make_ancestry_query, _parse_ancestry
+from oversolved.kernel.geometry_features import apply_fillet, apply_chamfer
 from oversolved.kernel.solver_features_shared import _resolve_body
 
 logger = logging.getLogger(__name__)
@@ -28,9 +31,6 @@ ALL_KEYS: frozenset[str] = frozenset({
 
 
 def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Shape]:
-    from oversolved.kernel.geom_hash import edge_geometry_hash  # noqa: F811
-    from oversolved.kernel.query import make_ancestry_query, _parse_ancestry  # noqa: F811
-
     if body.shape is None or not edge_queries:
         return []
 
@@ -194,8 +194,6 @@ def _solve_fillet(
     global_repo: Repository,
     body_store: dict,
 ) -> dict:
-    from oversolved.kernel.geometry_features import apply_fillet  # noqa: F811
-
     sub = feature.get("fillet") or {}
     feature = {**sub, **feature}
     radius_raw = feature.get("radius")
@@ -210,8 +208,6 @@ def _solve_chamfer(
     global_repo: Repository,
     body_store: dict,
 ) -> dict:
-    from oversolved.kernel.geometry_features import apply_chamfer  # noqa: F811
-
     sub = feature.get("chamfer") or {}
     chamfer_mode = sub.get("kind", "distance")
     feature = {**sub, **feature}

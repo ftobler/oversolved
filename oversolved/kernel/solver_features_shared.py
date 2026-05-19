@@ -8,8 +8,9 @@ import numpy as np
 
 if TYPE_CHECKING:
     from OCP.TopoDS import TopoDS_Shape
-from oversolved.kernel.query import Repository, _parse_ancestry
+from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query
 from oversolved.kernel.types3d import Body, Frame3D
+from oversolved.kernel.geom_hash import face_geometry_hash
 from oversolved.kernel.solver_constants import _ARC_SEGMENTS, TOL_LOOP_CLOSURE
 
 try:
@@ -20,6 +21,7 @@ from oversolved.kernel.cadquery_ops import (
     _compute_face_centroid, _compute_face_normal,
     _ensure_occ,
     _face_sort_key, _triangle_area,
+    boolean_cut_with_diff, boolean_intersection, boolean_union_with_diff,
 )
 from oversolved.kernel.ocp_ops import (
     ocp_count_solids,
@@ -223,8 +225,6 @@ def _resolve_face_index_via_hash(
     Returns None if resolution fails (not a cadquery shape, index out of range,
     tessellation error, or hash not found in repo).
     """
-    from oversolved.kernel.geom_hash import face_geometry_hash  # noqa: F811
-    from oversolved.kernel.query import make_ancestry_query  # noqa: F811
     import cadquery as cq
 
     cq_shape = cq.Shape.cast(shape)
@@ -482,8 +482,6 @@ def _apply_body_operation(
     feature keys win over sub-dict keys. This helper receives already-resolved
     values, so no further merging is needed here.
     """
-    from oversolved.kernel.types3d import Body  # noqa: F811
-
     result: dict = {"status": "ok", "body_id": body_id}
 
     if operation in ("add", "cut"):
@@ -505,7 +503,6 @@ def _apply_body_operation(
         target_ids = []
 
     if operation == "cut":
-        from oversolved.kernel.cadquery_ops import boolean_cut_with_diff, boolean_intersection  # noqa: F811
         cut_anything = False
         cut_body_id = None
         for bid in target_ids:
@@ -545,7 +542,6 @@ def _apply_body_operation(
         result["body_ids"] = body_ids
         result["operation"] = "new"
     else:
-        from oversolved.kernel.cadquery_ops import boolean_union_with_diff  # noqa: F811
         fused = False
         fused_body_id = None
         if not need_new_body:
