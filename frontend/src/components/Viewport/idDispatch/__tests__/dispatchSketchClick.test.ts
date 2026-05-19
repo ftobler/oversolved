@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { dispatchSketchDrag } from '../dispatchSketchClick'
+import { dispatchDragInitiation } from '../dispatchSketchClick'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import { createDragTool } from '@/tools/DragTool'
@@ -29,16 +29,16 @@ beforeEach(() => {
   setSketchCallback('onExitSketch', null)
 })
 
-describe('dispatchSketchDrag guard logic', () => {
-  it('proceeds when activeTool is null (default select/drag mode)', () => {
+describe('dispatchDragInitiation guard logic', () => {
+  it('unified vertex dispatch proceeds when activeTool is null', () => {
     useSketchEditorStore.setState({
       activeTool: null,
       activeFeatureId: 'feat1',
     })
 
-    dispatchSketchDrag(
+    dispatchDragInitiation(
       'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
-      10, 20, 100, 200,
+      100, 200,
     )
 
     const s = useSketchEditorStore.getState()
@@ -52,15 +52,34 @@ describe('dispatchSketchDrag guard logic', () => {
     }
   })
 
+  it('unified edge dispatch passes vertexKey=edge', () => {
+    useSketchEditorStore.setState({
+      activeTool: null,
+      activeFeatureId: 'feat1',
+    })
+
+    dispatchDragInitiation(
+      'entity:feat1:line1', 'feat1', 'line1', 'edge',
+      100, 200,
+    )
+
+    const s = useSketchEditorStore.getState()
+    expect(s.isPointerDown).toBe(true)
+    expect(s.orbitEnabled).toBe(false)
+    expect(s.dragStartClient).toEqual([100, 200])
+    expect(s.dragPending).not.toBeNull()
+    expect(s.dragPending!.type).toBe('edge')
+  })
+
   it('proceeds when activeTool is drag', () => {
     useSketchEditorStore.setState({
       activeTool: 'drag',
       activeFeatureId: 'feat1',
     })
 
-    dispatchSketchDrag(
+    dispatchDragInitiation(
       'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
-      10, 20, 100, 200,
+      100, 200,
     )
 
     const s = useSketchEditorStore.getState()
@@ -75,9 +94,9 @@ describe('dispatchSketchDrag guard logic', () => {
       activeFeatureId: 'feat1',
     })
 
-    dispatchSketchDrag(
+    dispatchDragInitiation(
       'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
-      10, 20, 100, 200,
+      100, 200,
     )
 
     const s = useSketchEditorStore.getState()
@@ -86,15 +105,15 @@ describe('dispatchSketchDrag guard logic', () => {
     expect(s.dragPending).toBeNull()
   })
 
-  it('blocks when activeFeatureId is null (no sketch being edited)', () => {
+  it('blocks when activeFeatureId is null', () => {
     useSketchEditorStore.setState({
       activeTool: null,
       activeFeatureId: null,
     })
 
-    dispatchSketchDrag(
+    dispatchDragInitiation(
       'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
-      10, 20, 100, 200,
+      100, 200,
     )
 
     const s = useSketchEditorStore.getState()
@@ -103,46 +122,20 @@ describe('dispatchSketchDrag guard logic', () => {
     expect(s.dragPending).toBeNull()
   })
 
-  it('blocks when activeFeatureId does not match the featureId param', () => {
+  it('blocks when activeFeatureId does not match featureId param', () => {
     useSketchEditorStore.setState({
       activeTool: null,
       activeFeatureId: 'feat2',
     })
 
-    dispatchSketchDrag(
+    dispatchDragInitiation(
       'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
-      10, 20, 100, 200,
+      100, 200,
     )
 
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(false)
     expect(s.orbitEnabled).toBe(true)
     expect(s.dragPending).toBeNull()
-  })
-
-  it('sets dragPending with correct fields when drag is initiated', () => {
-    useSketchEditorStore.setState({
-      activeTool: null,
-      activeFeatureId: 'feat1',
-      hoveredVertexId: 'vertex:feat1:line1:start',
-      hoveredVertexPosition: [10, 20],
-      hoveredSnapKind: 'vertex',
-    })
-
-    dispatchSketchDrag(
-      'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
-      10, 20, 100, 200,
-    )
-
-    const s = useSketchEditorStore.getState()
-    expect(s.isPointerDown).toBe(true)
-    expect(s.dragPending).toMatchObject({
-      type: 'vertex',
-      vertexId: 'vertex:feat1:line1:start',
-      featureId: 'feat1',
-      entityId: 'line1',
-      vertexKey: 'start',
-      startWorld: [10, 20],
-    })
   })
 })

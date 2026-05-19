@@ -70,7 +70,8 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
     const localPoint = sanitized.localPoint
 
     // Lazy drag initiation: activate when movement exceeds the click threshold.
-    // Dim_label drags are handled inline; vertex/edge drags route through DragTool.
+    // Dim_label drags handled inline; vertex/edge drags delegate to DragTool
+    // so it can resolve startWorld for edge drags.
     if (!drag && dragPending && dragStartClient && isPointerDown) {
       if (shouldActivateDrag(dragStartClient, [e.clientX, e.clientY])) {
         if (dragPending.type === 'dim_label') {
@@ -105,7 +106,9 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
               startClient: dragStartClient,
               setOrbitEnabled,
             }
-            dragTool.handlers.onPointerMove?.(e, dragPending.startWorld, null, ctx)
+            // Pass localPoint (math-plane projected cursor) as worldPt so DragTool
+            // can resolve startWorld for edge drags from the actual cursor position.
+            dragTool.handlers.onPointerMove?.(e, localPoint, null, ctx)
           }
         }
       }

@@ -22,23 +22,32 @@ export interface DragTool extends Tool {
 export function createDragTool(): DragTool {
   const handlers: ToolHandlers<DragToolContext> = {
     onPointerDown: (_e, worldPt, context) => {
-      const vertexId = context.hoveredVertexId
-      if (!vertexId || !context.activeFeatureId) return null
+      const hoveredId = context.hoveredVertexId
+      if (!hoveredId || !context.activeFeatureId) return null
 
-      const parts = vertexId.split(':')
-      const featureId = parts[1]
-      const entityId = parts[2]
-      const vertexKey = parts[3] ?? ''
-
-      const pending: DragToolContext['dragPending'] = {
-        type: 'vertex',
-        vertexId,
-        featureId,
-        entityId,
-        vertexKey,
-        startWorld: worldPt,
+      if (hoveredId.startsWith('vertex:')) {
+        const parts = hoveredId.split(':')
+        const pending: DragToolContext['dragPending'] = {
+          type: 'vertex',
+          vertexId: hoveredId,
+          featureId: parts[1],
+          entityId: parts.slice(2, -1).join(':'),
+          vertexKey: parts[parts.length - 1],
+          startWorld: worldPt,
+        }
+        context.setDragPending(pending)
+      } else if (hoveredId.startsWith('entity:')) {
+        const parts = hoveredId.split(':')
+        const pending: DragToolContext['dragPending'] = {
+          type: 'edge',
+          vertexId: hoveredId,
+          featureId: parts[1],
+          entityId: parts.slice(2).join(':'),
+          vertexKey: '',
+          startWorld: [0, 0],
+        }
+        context.setDragPending(pending)
       }
-      context.setDragPending(pending)
       return null
     },
 
@@ -48,13 +57,19 @@ export function createDragTool(): DragTool {
 
       if (!context.drag && context.startClient) {
         if (!shouldActivateDrag(context.startClient, [_e.clientX, _e.clientY])) return
+
+        // For edge drags: resolve startWorld at activation time. The cursor was
+        // over the entity when pointerdown fired, so worldPt (the cursor position
+        // at activation) is a reasonable reference point for computing deltas.
+        const resolvedStartWorld = pending.type === 'edge' ? worldPt : pending.startWorld
+
         context.setDrag({
           type: pending.type,
           vertexId: pending.vertexId,
           featureId: pending.featureId,
           entityId: pending.entityId,
           vertexKey: pending.vertexKey,
-          startWorld: pending.startWorld,
+          startWorld: resolvedStartWorld,
           currentWorld: worldPt,
           startClient: context.startClient,
         })

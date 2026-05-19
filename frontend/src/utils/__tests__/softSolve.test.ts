@@ -230,3 +230,104 @@ describe('test_soft_solve_does_not_persist', () => {
     expect(result).toBe(sketch)
   })
 })
+
+// ─── test_edge_drag_delta ───
+//
+// Edge (whole-entity) drags apply a uniform delta to all vertices of
+// the dragged entity. The delta is currentWorld - startWorld where
+// startWorld is a real position (cursor at activation time, not [0,0]).
+describe('test_edge_drag_delta', () => {
+  it('moves all line vertices by the delta when edge is dragged', () => {
+    const sketch = makeSketchWithLines()
+    const drag: DragState = {
+      type: 'edge',
+      vertexId: 'entity:S1:L1',
+      featureId: 'S1',
+      entityId: 'L1',
+      vertexKey: '',
+      startWorld: [5, 0],
+      currentWorld: [8, 2],
+      startClient: [100, 100],
+    }
+
+    const result = softSolve({ sketch, drag, feature: undefined })
+
+    // L1 start moved: [0,0] + [3,2] = [3,2]
+    expect((result.L1 as { start: [number, number]; end: [number, number] }).start).toEqual([3, 2])
+    // L1 end moved: [10,0] + [3,2] = [13,2]
+    expect((result.L1 as { start: [number, number]; end: [number, number] }).end).toEqual([13, 2])
+    // L2 (different entity) unchanged
+    expect((result.L2 as { start: [number, number]; end: [number, number] }).start).toEqual([10, 0])
+    expect((result.L2 as { start: [number, number]; end: [number, number] }).end).toEqual([10, 10])
+  })
+
+  it('returns sketch unchanged when edge has not moved', () => {
+    const sketch = makeSketchWithLines()
+    const drag: DragState = {
+      type: 'edge',
+      vertexId: 'entity:S1:L1',
+      featureId: 'S1',
+      entityId: 'L1',
+      vertexKey: '',
+      startWorld: [5, 0],
+      currentWorld: [5, 0],
+      startClient: [100, 100],
+    }
+
+    const result = softSolve({ sketch, drag, feature: undefined })
+
+    // No movement -> returns unchanged (reference equality via early return)
+    expect(result).toBe(sketch)
+  })
+
+  it('moves circle center by the delta', () => {
+    const sketch: Sketch = {
+      C1: { center: [0, 0] as [number, number], radius: 5 },
+    } as unknown as Sketch
+    const drag: DragState = {
+      type: 'edge',
+      vertexId: 'entity:S1:C1',
+      featureId: 'S1',
+      entityId: 'C1',
+      vertexKey: '',
+      startWorld: [0, 0],
+      currentWorld: [3, -2],
+      startClient: [100, 100],
+    }
+
+    const result = softSolve({ sketch, drag, feature: undefined })
+
+    expect((result.C1 as { center: [number, number] }).center).toEqual([3, -2])
+  })
+
+  it('moves arc start/end/center by the delta', () => {
+    const sketch: Sketch = {
+      A1: {
+        center: [5, 5] as [number, number],
+        start: [5, 10] as [number, number],
+        end: [10, 5] as [number, number],
+        radius: 5,
+        angle_start: 90,
+        angle_end: 0,
+      },
+    } as unknown as Sketch
+    const drag: DragState = {
+      type: 'edge',
+      vertexId: 'entity:S1:A1',
+      featureId: 'S1',
+      entityId: 'A1',
+      vertexKey: '',
+      startWorld: [5, 5],
+      currentWorld: [8, 10],
+      startClient: [100, 100],
+    }
+
+    const result = softSolve({ sketch, drag, feature: undefined })
+
+    // Delta = [3, 5]; arc vertices moved by same delta
+    const arc = result.A1 as { center: [number, number]; start: [number, number]; end: [number, number] }
+    expect(arc.center).toEqual([8, 10])
+    expect(arc.start).toEqual([8, 15])
+    expect(arc.end).toEqual([13, 10])
+  })
+})

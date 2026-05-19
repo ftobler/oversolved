@@ -48,9 +48,37 @@ describe('DragTool', () => {
       }))
     })
 
-    it('returns null when no vertex hovered', () => {
+    it('sets drag pending for edge drag when hovering entity', () => {
+      const setDragPending = vi.fn()
+      const tool = createDragTool()
+      const context = createMockContext({
+        setDragPending,
+        activeFeatureId: 'S1',
+        hoveredVertexId: 'entity:S1:L1',
+      })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
+
+      expect(setDragPending).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'edge',
+        vertexId: 'entity:S1:L1',
+        featureId: 'S1',
+        entityId: 'L1',
+      }))
+    })
+
+    it('returns null when no hovered id', () => {
       const tool = createDragTool()
       const context = createMockContext({ hoveredVertexId: null })
+
+      const result = tool.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
+
+      expect(result).toBeNull()
+    })
+
+    it('returns null when no activeFeatureId', () => {
+      const tool = createDragTool()
+      const context = createMockContext({ activeFeatureId: null })
 
       const result = tool.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
 
@@ -59,7 +87,7 @@ describe('DragTool', () => {
   })
 
   describe('onPointerMove', () => {
-    it('initiates drag when threshold exceeded', () => {
+    it('initiates vertex drag when threshold exceeded', () => {
       const setDragPending = vi.fn()
       const setDrag = vi.fn()
       const tool = createDragTool()
@@ -80,6 +108,31 @@ describe('DragTool', () => {
       tool.handlers.onPointerMove!({ clientX: 200, clientY: 200 } as PointerEvent, [10, 10], null, context)
 
       expect(setDrag).toHaveBeenCalled()
+    })
+
+    it('initiates edge drag when threshold exceeded, resolves startWorld', () => {
+      const setDrag = vi.fn()
+      const tool = createDragTool()
+      const context = createMockContext({
+        setDrag,
+        startClient: [100, 100],
+        dragPending: {
+          type: 'edge',
+          vertexId: 'entity:S1:L1',
+          featureId: 'S1',
+          entityId: 'L1',
+          vertexKey: '',
+          startWorld: [0, 0],
+        },
+      })
+
+      tool.handlers.onPointerMove!({ clientX: 200, clientY: 200 } as PointerEvent, [5, 5], null, context)
+
+      expect(setDrag).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'edge',
+        startWorld: [5, 5],  // resolved from worldPt (cursor position at activation)
+        currentWorld: [5, 5],
+      }))
     })
 
     it('does not initiate drag when below threshold', () => {
@@ -141,6 +194,41 @@ describe('DragTool', () => {
         entityId: 'L1',
         vertexKey: 'start',
         to: [10, 10],
+      })
+    })
+
+    it('emits move_entity when edge drag completed', () => {
+      const onMutation = vi.fn()
+      const tool = createDragTool()
+      const context = createMockContext({
+        onMutation,
+        dragPending: {
+          type: 'edge',
+          vertexId: 'entity:S1:L1',
+          featureId: 'S1',
+          entityId: 'L1',
+          vertexKey: '',
+          startWorld: [2, 3],
+        },
+        drag: {
+          type: 'edge',
+          vertexId: 'entity:S1:L1',
+          featureId: 'S1',
+          entityId: 'L1',
+          vertexKey: '',
+          startWorld: [2, 3],
+          currentWorld: [7, 9],
+          startClient: [100, 100],
+        },
+      })
+
+      tool.handlers.onPointerUp!({} as PointerEvent, [7, 9], null, context)
+
+      expect(onMutation).toHaveBeenCalledWith({
+        type: 'move_entity',
+        featureId: 'S1',
+        entityId: 'L1',
+        delta: [5, 6],  // 7-2, 9-3
       })
     })
 

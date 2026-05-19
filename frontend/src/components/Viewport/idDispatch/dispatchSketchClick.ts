@@ -51,23 +51,26 @@ export function dispatchSketchClick(
 }
 
 /**
- * Shared drag-initiation logic. Called by the sketch adapters on pointerdown
- * to begin a sketch-element drag through the DragTool registry handler.
+ * Unified drag-initiation. Called by both sketchVertexAdapter and
+ * sketchEntityAdapter on pointerdown to begin a sketch-element drag
+ * through the DragTool registry handler.
+ *
+ * - Vertex drags: passes the vertex ID as hoveredVertexId, DragTool
+ *   resolves type='vertex' and parses entityId/vertexKey from the ID.
+ * - Entity (edge) drags: passes the entity ID as hoveredVertexId with
+ *   vertexKey='edge', DragTool resolves type='edge'.
  */
-export function dispatchSketchDrag(
+export function dispatchDragInitiation(
   id: string,
   featureId: string,
   _entityId: string,
   _vertexKey: string,
-  startWorldX: number,
-  startWorldY: number,
   clientX: number,
   clientY: number,
 ): void {
   const state = useSketchEditorStore.getState()
   const effectiveTool = getEffectiveTool(state.activeTool)
 
-  // Only initiate drag in select mode on an actively-edited sketch.
   if (!state.activeFeatureId || state.activeFeatureId !== featureId) return
   if (effectiveTool !== null && effectiveTool !== 'select' && effectiveTool !== 'drag') return
 
@@ -85,7 +88,7 @@ export function dispatchSketchDrag(
     isPointerDown: true,
     activeFeatureId: state.activeFeatureId,
     hoveredVertexId: id,
-    hoveredVertexPosition: [startWorldX, startWorldY],
+    hoveredVertexPosition: null,
     hoveredSnapKind: state.hoveredSnapKind,
     onMutation: getSketchCallback('onMutation'),
     drag: null,
@@ -100,7 +103,7 @@ export function dispatchSketchDrag(
 
   dragTool.handlers.onPointerDown?.(
     { clientX, clientY, stopPropagation: () => {} } as PointerEvent,
-    [startWorldX, startWorldY],
+    [0, 0],
     ctx,
   )
 }

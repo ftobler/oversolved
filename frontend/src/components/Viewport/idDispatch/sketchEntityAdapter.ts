@@ -1,5 +1,16 @@
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { dispatchSketchClick } from './dispatchSketchClick'
+import { dispatchSketchClick, dispatchDragInitiation } from './dispatchSketchClick'
+
+/**
+ * Parse a sketch entity key like `entity:feat1:line1`
+ * into { featureId, entityId }.
+ */
+function parseEntityKey(entityKey: string): { featureId: string; entityId: string } | null {
+  if (!entityKey.startsWith('entity:')) return null
+  const parts = entityKey.slice(7).split(':')
+  if (parts.length < 2) return null
+  return { featureId: parts[0], entityId: parts.slice(1).join(':') }
+}
 
 /**
  * Adapter for the `sketchEntity` ID layer. On hover sets the store's
@@ -16,6 +27,11 @@ export const sketchEntityAdapter = {
   },
   onClick(entityKey: string, clientX: number, clientY: number): void {
     dispatchSketchClick(entityKey, undefined, clientX, clientY)
+  },
+  onPointerDown(entityKey: string, clientX: number, clientY: number): void {
+    const parsed = parseEntityKey(entityKey)
+    if (!parsed) return
+    dispatchDragInitiation(entityKey, parsed.featureId, parsed.entityId, 'edge', clientX, clientY)
   },
 }
 

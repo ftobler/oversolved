@@ -3,7 +3,7 @@ import { shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
 import { makeSanitizedEvent } from '@/components/Geometry3D/pointerAbstraction'
 import { worldToSketchLocalPure } from '@/components/Geometry3D/coordTransform'
 import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
-import { dispatchSketchDrag } from '@/components/Viewport/idDispatch/dispatchSketchClick'
+import { dispatchDragInitiation } from '@/components/Viewport/idDispatch/dispatchSketchClick'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import { createDragTool } from '@/tools/DragTool'
@@ -419,7 +419,7 @@ describe('Window listener vs R3F path -- coordinate equivalence', () => {
   })
 })
 
-describe('dispatchSketchDrag integration', () => {
+describe('dispatchDragInitiation integration', () => {
   beforeEach(() => {
     useSketchEditorStore.setState({
       activeTool: null,
@@ -442,15 +442,15 @@ describe('dispatchSketchDrag integration', () => {
     setSketchCallback('onExitSketch', null)
   })
 
-  it('full drag flow via dispatchSketchDrag with activeTool=null', () => {
+  it('full drag flow via dispatchDragInitiation with activeTool=null', () => {
     useSketchEditorStore.setState({
       activeTool: null,
       activeFeatureId: 'feat1',
     })
 
-    dispatchSketchDrag(
+    dispatchDragInitiation(
       'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
-      10, 20, 100, 200,
+      100, 200,
     )
 
     const s = useSketchEditorStore.getState()
@@ -463,7 +463,6 @@ describe('dispatchSketchDrag integration', () => {
       expect(s.dragPending!.featureId).toBe('feat1')
       expect(s.dragPending!.entityId).toBe('line1')
       expect(s.dragPending!.vertexKey).toBe('start')
-      expect(s.dragPending!.startWorld).toEqual([10, 20])
     }
   })
 })

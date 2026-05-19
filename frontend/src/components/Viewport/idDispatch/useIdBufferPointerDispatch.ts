@@ -188,6 +188,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         dimensionLabelAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
       } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME && (tool === 'drag' || tool === null || tool === 'select')) {
         sketchVertexAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
+      } else if (hit.layer === SKETCH_ENTITY_LAYER_NAME && (tool === 'drag' || tool === null || tool === 'select')) {
+        sketchEntityAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
       }
     }
 

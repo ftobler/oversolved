@@ -1,5 +1,5 @@
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { dispatchSketchClick, dispatchSketchDrag } from './dispatchSketchClick'
+import { dispatchSketchClick, dispatchDragInitiation } from './dispatchSketchClick'
 
 /**
  * Parse a sketch vertex entity key like `vertex:feat1:line1:start`
@@ -36,12 +36,9 @@ export const sketchVertexAdapter = {
   onPointerDown(entityKey: string, clientX: number, clientY: number): void {
     const parsed = parseVertexKey(entityKey)
     if (!parsed) return
-    // The vertex world position is needed for drag initiation. It was registered
-    // during sketch ID registration. For the initial cutover we pass [0,0,0];
-    // the drag tool resolves the correct position from the hover state.
-    dispatchSketchDrag(
+    dispatchDragInitiation(
       entityKey, parsed.featureId, parsed.entityId, parsed.vertexKey,
-      0, 0, clientX, clientY,
+      clientX, clientY,
     )
   },
 }
