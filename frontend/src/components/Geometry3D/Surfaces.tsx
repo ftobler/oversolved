@@ -52,8 +52,6 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
-  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
-  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
   const setHoveredSurface = useSketchEditorStore(s => s.setHoveredSurface)
@@ -73,10 +71,7 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
   const handleClick = isInactive ? undefined : (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation()
     if (planeSelectionFeatureId) commitPlaneSelection(id)
-    else {
-      toggleNormalSelection(id)
-      if (pendingPickField) commitFieldPick()
-    }
+    else toggleNormalSelection(id)
   }
 
   return (
@@ -113,9 +108,6 @@ function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isRotating = useSketchEditorStore(s => s.isRotating)
   const setHoveredEdge = useSketchEditorStore(s => s.setHoveredEdge)
-  const pendingPickField = useSketchEditorStore(s => s.pendingPickField)
-  const commitFieldPick = useSketchEditorStore(s => s.commitFieldPick)
-
   const id = edgeSelectionId(featureId, edge.query)
   const isSelected = normalSelection.has(id)
 
@@ -156,7 +148,6 @@ function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
       const handleEdgeClick = isInactive ? undefined : (e: { stopPropagation: () => void }) => {
         e.stopPropagation()
         toggleNormalSelection(id)
-        if (pendingPickField) commitFieldPick()
       }
       return (
         <line
@@ -174,7 +165,6 @@ function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
   const handleEdgeClick = isInactive ? undefined : (e: { stopPropagation: () => void }) => {
     e.stopPropagation()
     toggleNormalSelection(id)
-    if (pendingPickField) commitFieldPick()
   }
 
   return (

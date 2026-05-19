@@ -29,8 +29,6 @@ export function useToolClickDispatch({
   const {
     activeTool,
     toggleNormalSelection,
-    pendingPickField,
-    commitFieldPick,
     normalSelection,
     dynamicSelection,
     isPointerDown,
@@ -47,8 +45,6 @@ export function useToolClickDispatch({
   } = useSketchEditorStore(useShallow(s => ({
     activeTool: s.activeTool,
     toggleNormalSelection: s.toggleNormalSelection,
-    pendingPickField: s.pendingPickField,
-    commitFieldPick: s.commitFieldPick,
     normalSelection: s.normalSelection,
     dynamicSelection: s.dynamicSelection,
     isPointerDown: s.isPointerDown,
@@ -69,15 +65,6 @@ export function useToolClickDispatch({
 
     const effectiveTool = getEffectiveTool(activeTool)
     const tool = toolRegistry.get(effectiveTool)
-
-    // Dimension tool owns its own two-click flow and must not be interrupted by
-    // a pending field pick -- it needs to stay active until the user places the
-    // dimension. All other tools treat any click as the pick confirmation.
-    if (pendingPickField && effectiveTool !== 'dimension') {
-      toggleNormalSelection(id)
-      commitFieldPick()
-      return
-    }
 
     const context = {
       normalSelection,
@@ -115,9 +102,8 @@ export function useToolClickDispatch({
     // Mirror the dimension guard from above so a broken/future tool without onClick
     // cannot accidentally commit a field pick while the dimension flow is running.
     toggleNormalSelection(id)
-    if (pendingPickField && effectiveTool !== 'dimension') commitFieldPick()
   }, [activeTool, isEditing, id, entityKind,
-    pendingPickField, commitFieldPick, toggleNormalSelection,
+    toggleNormalSelection,
     normalSelection, dynamicSelection, isPointerDown, activeFeatureId,
     internalHoverSelection, hoveredVertexId, hoveredVertexPosition, hoveredSnapKind,
     pendingDimTarget, pendingDimEntityKind, setPendingDim, openDialog, setActiveTool])

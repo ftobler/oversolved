@@ -1,5 +1,6 @@
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
+import { useFieldPicking } from '@/hooks/useFieldPicking'
 import { planeLabel } from '@/components/Geometry3D/utils'
 
 interface PlaneSelectorProps {
@@ -8,15 +9,20 @@ interface PlaneSelectorProps {
   onMutation: (m: Mutation) => void
   planeSelectionFeatureId: string | null
   setPlaneSelectionFeatureId: (id: string | null) => void
-  selectionQuery: string | null
   features: PartFeature[]
   partLabels: Record<string, string>
 }
 
 export function PlaneSelector({
-  feature, featureDef, onMutation, planeSelectionFeatureId, setPlaneSelectionFeatureId, selectionQuery, features, partLabels,
+  feature, featureDef, onMutation, planeSelectionFeatureId, setPlaneSelectionFeatureId, features, partLabels,
 }: PlaneSelectorProps) {
   const isPicking = planeSelectionFeatureId === feature.id
+
+  useFieldPicking(isPicking, (selectionId) => {
+    onMutation({ type: 'set_feature_plane', featureId: feature.id, plane: selectionId })
+    setPlaneSelectionFeatureId(null)
+  })
+
   return (
     <div className="plane-editor">
       <div className="feature-field-row feature-field-row--stacked">
@@ -30,8 +36,6 @@ export function PlaneSelector({
           onActivate={() => {
             if (isPicking) {
               setPlaneSelectionFeatureId(null)
-            } else if (selectionQuery) {
-              onMutation({ type: 'set_feature_plane', featureId: feature.id, plane: selectionQuery })
             } else {
               setPlaneSelectionFeatureId(feature.id)
             }

@@ -19,6 +19,7 @@ export function BodyPartsList({ splitPercent }: BodyPartsListProps) {
   const {
     onToggleSelect,
     onRightClick,
+    onMutation,
   } = usePartEditorCallbacks()
 
   const handleClick = (bodyId: string) => {
