@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useIdBufferPointerDispatch } from '../useIdBufferPointerDispatch'
 import { registerDimCallbacks, resetDimCallbacksForTest } from '../dimensionLabelCallbacks'
-import { IdPipeline, DIMENSION_LABEL_LAYER_NAME } from '@/picking'
+import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { sketchVertexAdapter } from '../sketchVertexAdapter'
 
 class StubRenderer {
   domElement: HTMLCanvasElement
@@ -84,6 +85,80 @@ describe('useIdBufferPointerDispatch', () => {
 
     expect(resolveSpy).not.toHaveBeenCalled()
     expect(onClick).not.toHaveBeenCalled()
+  })
+
+  describe('pointerdown on sketch vertex (Guard 1)', () => {
+    const VERTEX_KEY = 'vertex:feat1:line1:start'
+
+    function stubVertexHit() {
+      pipeline.resolveSync = vi.fn().mockReturnValue({
+        id: 2, layer: SKETCH_VERTEX_LAYER_NAME, entityKey: VERTEX_KEY, distancePx: 0,
+      })
+    }
+
+    function firePointerDown(canvas: HTMLCanvasElement) {
+      canvas.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 200, clientY: 200, bubbles: true }))
+    }
+
+    it('calls sketchVertexAdapter.onPointerDown when activeTool is null (default mode)', async () => {
+      stubVertexHit()
+      useSketchEditorStore.setState({ activeTool: null })
+      const spy = vi.spyOn(sketchVertexAdapter, 'onPointerDown')
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+      }))
+
+      await act(async () => { firePointerDown(canvas) })
+      expect(spy).toHaveBeenCalledWith(VERTEX_KEY, 200, 200)
+      spy.mockRestore()
+    })
+
+    it('calls sketchVertexAdapter.onPointerDown when activeTool is drag', async () => {
+      stubVertexHit()
+      useSketchEditorStore.setState({ activeTool: 'drag' })
+      const spy = vi.spyOn(sketchVertexAdapter, 'onPointerDown')
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+      }))
+
+      await act(async () => { firePointerDown(canvas) })
+      expect(spy).toHaveBeenCalledWith(VERTEX_KEY, 200, 200)
+      spy.mockRestore()
+    })
+
+    it('calls sketchVertexAdapter.onPointerDown when activeTool is select', async () => {
+      stubVertexHit()
+      useSketchEditorStore.setState({ activeTool: 'select' })
+      const spy = vi.spyOn(sketchVertexAdapter, 'onPointerDown')
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+      }))
+
+      await act(async () => { firePointerDown(canvas) })
+      expect(spy).toHaveBeenCalledWith(VERTEX_KEY, 200, 200)
+      spy.mockRestore()
+    })
+
+    it('does NOT call sketchVertexAdapter.onPointerDown when a drawing tool is active', async () => {
+      stubVertexHit()
+      useSketchEditorStore.setState({ activeTool: 'line' })
+      const spy = vi.spyOn(sketchVertexAdapter, 'onPointerDown')
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+      }))
+
+      await act(async () => { firePointerDown(canvas) })
+      expect(spy).not.toHaveBeenCalled()
+      spy.mockRestore()
+    })
   })
 
   it('hover stream calls onOver then onOut as the resolved key changes', async () => {
