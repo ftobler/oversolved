@@ -124,6 +124,30 @@ def solve_features(spec: dict) -> dict:
     return {"features": results}
 
 
+def _maybe_add_plane_transform(result: dict, feature: dict, global_repo: Repository) -> None:
+    """Best-effort: resolve sketch plane and add plane_transform to the error result.
+    Never raises -- the original error is the one the caller needs to see."""
+    if not isinstance(feature, dict) or feature.get("kind") != "sketch":
+        return
+    try:
+        feature_id = feature.get("id", "")
+        entities = {e["id"]: e for e in feature.get("entities", [])}
+        repo = _get_or_build_repo(feature_id, entities)
+
+        def resolve_ref(val: object) -> object:
+            if isinstance(val, str):
+                r = repo.query(val, context=feature_id)
+                if r is None and global_repo is not None:
+                    r = global_repo.query(val, context=feature_id)
+                return r
+            return val
+
+        plane_obj = _resolve_sketch_plane(feature.get("plane"), resolve_ref, global_repo)
+        result["plane_transform"] = _plane_transform(plane_obj)
+    except Exception:
+        pass
+
+
 def _try_solve_feature(feature: dict, global_repo: Repository, body_store: dict,
                        features_by_id: dict[str, dict] | None = None) -> dict:
     t0 = time.perf_counter()
@@ -134,11 +158,13 @@ def _try_solve_feature(feature: dict, global_repo: Repository, body_store: dict,
     except Exception as e:
         feature_id = feature.get("id", "?") if isinstance(feature, dict) else "?"
         logger.warning("Exception solving feature %s: %s\n%s", feature_id, e, traceback.format_exc())
-        return {
+        result = {
             "solve_ms": round((time.perf_counter() - t0) * 1000, 1),
             "status": "exception",
             "exception": str(e),
         }
+        _maybe_add_plane_transform(result, feature, global_repo)
+        return result
 
 
 def _dispatch_sketch(feature: dict, global_repo: Repository, body_store: dict, features_by_id: dict[str, dict]) -> dict:

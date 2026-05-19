@@ -162,6 +162,7 @@ export function useSolver(
           status: feature.status ?? 'exception',
           ...(feature.body_id !== undefined && { body_id: feature.body_id }),
           ...(feature.exception !== undefined && { exception: feature.exception }),
+          ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
         }
       }
     }
