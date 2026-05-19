@@ -201,6 +201,7 @@ interface SketchEditorState {
   activeTool: ActiveTool
   activeFeatureId: string | null
   showDebugHit: boolean
+  showConstraintTiles: boolean
   pendingDimTarget: string | null
   pendingDimEntityKind: string | null
   pendingDialog: DialogState | null
@@ -213,6 +214,7 @@ interface SketchEditorState {
   setActiveTool: (tool: ActiveTool) => void
   setActiveFeatureId: (id: string | null) => void
   setShowDebugHit: (enabled: boolean) => void
+  setShowConstraintTiles: (show: boolean) => void
   applyConstraint: (kind: string) => void
   toggleConstruction: () => void
   deleteSelected: () => void
@@ -242,6 +244,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   orbitEnabled: true,
   isRotating: false,
   showDebugHit: false,
+  showConstraintTiles: true,
   hoveredConstraintEntityIds: new Set(),
   hoveredEntityId: null,
   hoveredVertexId: null,
@@ -325,31 +328,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setShowDebugHit: (enabled) => set({ showDebugHit: enabled }),
 
-  setActiveFeatureId: (id) => set({ activeFeatureId: id }),
-
-  setHoveredConstraintEntities: (ids) => set({ hoveredConstraintEntityIds: ids }),
-
-  setHoveredEntity: (id) => set({ hoveredEntityId: id }),
-
-  setHoveredVertex: (id, position, snapKind) => set({ hoveredVertexId: id, hoveredVertexPosition: position, hoveredSnapKind: snapKind ?? null }),
-
-  setHoveredPlane: (id) => set({ hoveredPlaneId: id }),
-
-  setHoveredSurface: (id) => set({ hoveredSurfaceId: id }),
-
-  setHovered3DSurface: (id) => set({ hovered3DSurfaceId: id }),
-
-  setHoveredEdge: (id) => set({ hoveredEdgeId: id }),
-
-  setHoveredBodyId: (id) => set(s => ({
-    hoveredBodyId: typeof id === 'function' ? id(s.hoveredBodyId) : id,
-  })),
-
-  setHoveredFaceGeometry: (normal, center) => set({ hoveredFaceNormal: normal, hoveredFaceCenter: center }),
-
-  setActiveTool: (tool) => {
-    set({ activeTool: tool, drawPoints: [], drawHover: null })
-  },
+  setShowConstraintTiles: (show) => set({ showConstraintTiles: show }),
 
   applyConstraint: (kind) => {
     const { normalSelection: selection, activeFeatureId } = get()

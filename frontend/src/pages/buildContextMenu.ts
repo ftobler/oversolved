@@ -10,6 +10,7 @@ import contextDeleteIcon from '@/assets/icons/context-delete.svg'
 import contextColorIcon from '@/assets/icons/context-color.svg'
 import iconRenameIcon from '@/assets/icons/rename.svg'
 import featureExportIcon from '@/assets/icons/icon-download.svg'
+import constraintTileIcon from '@/assets/icons/constraint-coincident.svg'
 
 export interface BuildContextMenuInput {
   pos: [number, number]
@@ -20,6 +21,7 @@ export interface BuildContextMenuInput {
   features: PartFeature[]
   visibleFeatures: Set<string>
   activeSketchFeatureId: string | undefined
+  showConstraintTiles: boolean
   partLabels: Record<string, string>
   builtInIds: Set<string>
 }
@@ -35,6 +37,7 @@ export interface BuildContextMenuCallbacks {
   onBodyRename: (bodyId: string, label: string) => void
   onAlignToFace: (normal: [number, number, number], center: [number, number, number]) => void
   onAlignCameraToSketchPlane: () => void
+  onToggleConstraintTiles: () => void
   onSetPartColorPopover: (opts: { bodyId: string; position: [number, number] } | null) => void
   onExportBody: (bodyId: string, name: string) => void
   onShowContextMenu: (items: ContextMenuItem[], targetId?: string) => void
@@ -57,6 +60,7 @@ export function buildContextMenu(
     features,
     visibleFeatures,
     activeSketchFeatureId,
+    showConstraintTiles,
     partLabels,
     builtInIds,
   } = input
@@ -136,6 +140,11 @@ export function buildContextMenu(
         onClick: callbacks.onAlignCameraToSketchPlane,
       })
     }
+    items.push({
+      label: showConstraintTiles ? 'Hide Constraints' : 'Show Constraints',
+      icon: constraintTileIcon,
+      onClick: callbacks.onToggleConstraintTiles,
+    })
   }
 
   if (featureId && featureId !== activeSketchFeatureId) {

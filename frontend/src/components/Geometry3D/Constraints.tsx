@@ -33,6 +33,8 @@ function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url
         justifyContent: 'center',
         flexShrink: 0,
         cursor: 'pointer',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
         ...(superfluous && { outline: '1px solid #b37400' }),
       }}
     >
@@ -57,6 +59,7 @@ interface ConstraintOverlaysProps {
 export function ConstraintOverlays({ constraints, sketch, extent, featureId, planeTransform }: ConstraintOverlaysProps) {
   const drag = useSketchEditorStore(s => s.drag)
   const isDragging = drag !== null
+  const showConstraintTiles = useSketchEditorStore(s => s.showConstraintTiles)
   const dimOffset = extent * 0.1
 
   const byEntity: Record<string, [string, Constraints[string]][]> = {}
@@ -80,7 +83,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
     for (const [cid, c] of clist) {
       const r = c.render as { kind: string; at?: [number, number]; point?: string; entities?: string[]; [key: string]: unknown }
 
-      if (!isDragging && r.kind.startsWith('symbol_')) {
+      if (showConstraintTiles && !isDragging && r.kind.startsWith('symbol_')) {
         const url = getIconUrl(r.kind)
         if (!url) continue
         if (!r.at && !entity) continue  // no position available

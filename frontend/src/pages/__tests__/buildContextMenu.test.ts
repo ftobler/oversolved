@@ -18,6 +18,7 @@ function defaultInput(overrides?: Partial<BuildContextMenuInput>): BuildContextM
     features: [],
     visibleFeatures: new Set(),
     activeSketchFeatureId: undefined,
+    showConstraintTiles: true,
     partLabels: {},
     builtInIds: new Set(),
     ...overrides,
@@ -37,6 +38,7 @@ function defaultCallbacks(): BuildContextMenuCallbacks {
     onAlignToFace: () => {},
     onAlignCameraToSketchPlane: () => {},
     onSetPartColorPopover: () => {},
+    onToggleConstraintTiles: () => {},
     onExportBody: () => {},
     onShowContextMenu: () => {},
   }
@@ -245,6 +247,57 @@ describe('buildContextMenu', () => {
     callbacks.onRebuild = () => { called = true }
     const result = buildContextMenu(defaultInput(), callbacks)
     findLabel(result.items, 'Rebuild')!.onClick()
+    expect(called).toBe(true)
+  })
+
+  it('contains Hide Constraints toggle during sketch edit', () => {
+    const result = buildContextMenu(
+      defaultInput({
+        activeSketchFeatureId: 'sketch1',
+        showConstraintTiles: true,
+      }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(result.items, 'Hide Constraints')).toBeTruthy()
+    expect(findLabel(result.items, 'Show Constraints')).toBeUndefined()
+  })
+
+  it('shows Show Constraints when showConstraintTiles is false', () => {
+    const result = buildContextMenu(
+      defaultInput({
+        activeSketchFeatureId: 'sketch1',
+        showConstraintTiles: false,
+      }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(result.items, 'Show Constraints')).toBeTruthy()
+    expect(findLabel(result.items, 'Hide Constraints')).toBeUndefined()
+  })
+
+  it('does not include constraint toggle outside sketch edit', () => {
+    const result = buildContextMenu(
+      defaultInput({
+        activeSketchFeatureId: undefined,
+        showConstraintTiles: true,
+      }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(result.items, 'Hide Constraints')).toBeUndefined()
+    expect(findLabel(result.items, 'Show Constraints')).toBeUndefined()
+  })
+
+  it('calls onToggleConstraintTiles when Hide Constraints is clicked', () => {
+    let called = false
+    const callbacks = defaultCallbacks()
+    callbacks.onToggleConstraintTiles = () => { called = true }
+    const result = buildContextMenu(
+      defaultInput({
+        activeSketchFeatureId: 'sketch1',
+        showConstraintTiles: true,
+      }),
+      callbacks,
+    )
+    findLabel(result.items, 'Hide Constraints')!.onClick()
     expect(called).toBe(true)
   })
 })

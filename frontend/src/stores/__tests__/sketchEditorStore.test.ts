@@ -677,4 +677,17 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().chipOwnedSelection.size).toBe(0)
     })
   })
+
+  describe('showConstraintTiles', () => {
+    it('defaults to true', () => {
+      expect(useSketchEditorStore.getState().showConstraintTiles).toBe(true)
+    })
+
+    it('setShowConstraintTiles flips the flag', () => {
+      useSketchEditorStore.getState().setShowConstraintTiles(false)
+      expect(useSketchEditorStore.getState().showConstraintTiles).toBe(false)
+      useSketchEditorStore.getState().setShowConstraintTiles(true)
+      expect(useSketchEditorStore.getState().showConstraintTiles).toBe(true)
+    })
+  })
 })

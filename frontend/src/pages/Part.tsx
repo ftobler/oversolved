@@ -568,6 +568,7 @@ export default function Part() {
       features,
       visibleFeatures: visibleFeaturesWithEdit,
       activeSketchFeatureId: activeSketchFeatureId ?? undefined,
+      showConstraintTiles: useSketchEditorStore.getState().showConstraintTiles,
       partLabels,
       builtInIds: BUILT_IN_IDS,
     }
@@ -582,6 +583,10 @@ export default function Part() {
       onBodyRename: handleBodyRename,
       onAlignToFace: (normal, center) => viewportRef.current?.alignCameraToFace(normal, center),
       onAlignCameraToSketchPlane: handleAlignCameraToSketchPlane,
+      onToggleConstraintTiles: () => {
+        const s = useSketchEditorStore.getState()
+        s.setShowConstraintTiles(!s.showConstraintTiles)
+      },
       onSetPartColorPopover: (opts) => {
         if (opts && docRef.current) {
           startPreviewMode(docRef.current)
