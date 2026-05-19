@@ -43,6 +43,7 @@ export function useDimInteraction(cid: string, value: number, interaction: DimIn
     if (consumeClick()) return
     if (!interaction) return
     ev.stopPropagation()
+    useSketchEditorStore.getState().toggleNormalSelection(`constraint:${interaction.featureId}:${cid}`)
     useSketchEditorStore.getState().openDialog({
       position: [ev.clientX, ev.clientY],
       label: interaction.promptLabel,

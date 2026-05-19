@@ -703,4 +703,38 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().entityKindMap).toEqual({})
     })
   })
+
+  describe('dimension constraint deletion', () => {
+    it('deleteSelected removes dimension constraint when selected', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.setState({
+        activeFeatureId: 'S1',
+        normalSelection: new Set(['constraint:S1:c_dim_linear_abc']),
+      })
+
+      useSketchEditorStore.getState().deleteSelected()
+
+      expect(handler).toHaveBeenCalledOnce()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'delete',
+        targets: ['constraint:S1:c_dim_linear_abc'],
+      })
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    })
+
+    it('deleteSelected does not clear non-matching selection', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.setState({
+        activeFeatureId: 'S1',
+        normalSelection: new Set(['entity:S1:L1', 'constraint:S1:C1']),
+      })
+      useSketchEditorStore.getState().deleteSelected()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'delete',
+        targets: ['entity:S1:L1', 'constraint:S1:C1'],
+      })
+    })
+  })
 })
