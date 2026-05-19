@@ -132,14 +132,12 @@ def _try_solve_feature(feature: dict, global_repo: Repository, body_store: dict,
         result["solve_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         return result
     except Exception as e:
-        tb = traceback.format_exc()
         feature_id = feature.get("id", "?") if isinstance(feature, dict) else "?"
-        logger.warning("Exception solving feature %s: %s\n%s", feature_id, e, tb)
+        logger.warning("Exception solving feature %s: %s\n%s", feature_id, e, traceback.format_exc())
         return {
             "solve_ms": round((time.perf_counter() - t0) * 1000, 1),
             "status": "exception",
             "exception": str(e),
-            "traceback": tb,
         }
 
 

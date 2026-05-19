@@ -138,8 +138,8 @@ def test_partial_rebuild_after_hole():
     assert_mesh_valid(r2["bodies"]["body_ex1"]["mesh"])
 
 
-def test_feature_exception_includes_traceback():
-    """Unhandled feature exception includes traceback in result."""
+def test_feature_exception_does_not_include_traceback():
+    """Unhandled feature exception must not send traceback to browser."""
     doc = {
         "features": [
             {"id": "bad", "kind": "nonexistent"},
@@ -147,8 +147,8 @@ def test_feature_exception_includes_traceback():
     }
     r = build(doc)
     assert r["result"]["bad"]["status"] == "exception"
-    assert "traceback" in r["result"]["bad"], (
-        f"Exception result should include traceback, got keys: {list(r['result']['bad'].keys())}"
+    assert "traceback" not in r["result"]["bad"], (
+        f"Exception result should not include traceback, got keys: {list(r['result']['bad'].keys())}"
     )
 
 

@@ -80,11 +80,9 @@ def _build_worker(input_queue: Any, output_queue: Any) -> None:
 
             status = "ok"
         except Exception as exc:
-            tb = traceback.format_exc()
-            logger.warning("Build worker exception: %s\n%s", exc, tb)
+            logger.warning("Build worker exception: %s\n%s", exc, traceback.format_exc())
             duration_ms = round((time.perf_counter() - t0) * 1000, 1)
             error_exc = str(exc)
-            error_tb = tb
             result = {
                 "solve_ms": duration_ms,
                 "result": {},
@@ -106,7 +104,6 @@ def _build_worker(input_queue: Any, output_queue: Any) -> None:
                 output_queue.put(
                     (request_id, "error", {
                         "exception": error_exc,
-                        "traceback": error_tb,
                         "result_so_far": result,
                     })
                 )
