@@ -9,12 +9,14 @@ import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'
+import type { PlaneTransform } from '@/types/cad'
 
-export function LinearDimension({ cid, dim, dimOffset, interaction }: {
+export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransform }: {
   cid: string
   dim: { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number] }
   dimOffset: number
   interaction?: DimInteraction
+  planeTransform?: PlaneTransform
 }) {
   const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
@@ -82,6 +84,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
     constraintId: cid,
     position: [labelX, labelY, 0.001],
     enabled: !isDragged,
+    planeTransform,
   })
 
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
@@ -104,9 +107,9 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
 
   return (
     <group key={cid}>
-      <Line points={[[x1, y1, 0], [d1x, d1y, 0]]} color={color} lineWidth={1} />
-      <Line points={[[x2, y2, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} />
-      <Line points={[[d1x, d1y, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} />
+      <Line points={[[x1, y1, 0], [d1x, d1y, 0]]} color={color} lineWidth={1} depthTest={false} />
+      <Line points={[[x2, y2, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} depthTest={false} />
+      <Line points={[[d1x, d1y, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} depthTest={false} />
       {isInside ? (
         // Inside: arrows at boundaries pointing outward.
         // |<---X--->|
@@ -122,7 +125,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
           <ArrowTail origin={[d1x, d1y]} dir={[-udirX, -udirY]} color={color} />
           <Arrowhead tip={[d2x, d2y]} from={[d2x + udirX, d2y + udirY]} color={color} />
           <ArrowTail origin={[d2x, d2y]} dir={[udirX, udirY]} color={color} />
-          <Line points={[[d1x, d1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
+          <Line points={[[d1x, d1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} depthTest={false} />
         </>
       ) : (
         // Outside near d2: both arrows point inward (into the dimension line), leader from d2 to label.
@@ -133,7 +136,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction }: {
           <ArrowTail origin={[d1x, d1y]} dir={[-udirX, -udirY]} color={color} />
           <Arrowhead tip={[d2x, d2y]} from={[d2x + udirX, d2y + udirY]} color={color} />
           <ArrowTail origin={[d2x, d2y]} dir={[udirX, udirY]} color={color} />
-          <Line points={[[d2x, d2y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
+          <Line points={[[d2x, d2y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} depthTest={false} />
         </>
       )}
       {!isDragged && (

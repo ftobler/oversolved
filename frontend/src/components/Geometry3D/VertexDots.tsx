@@ -58,7 +58,7 @@ export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px:
  *
  *  As of 267.5 the ID buffer dispatcher handles all picking; this component
  *  is visual-only — no R3F event props. */
-export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey }: {
+export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, isEditing }: {
   x: number; y: number; px: number; baseColor: string
   featureId?: string; entityId?: string; vertexKey?: string
   isEditing?: boolean
@@ -77,7 +77,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
 
   return (
-    <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard renderOrder={selected ? RENDER_ORDER_EDITING : 0} depthTest={!selected} />
+    <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard renderOrder={selected || isEditing ? RENDER_ORDER_EDITING : 0} depthTest={!(selected || isEditing)} />
   )
 }
 

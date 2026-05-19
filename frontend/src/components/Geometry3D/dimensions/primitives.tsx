@@ -19,7 +19,7 @@ export function Arrowhead({ tip, from, color }: { tip: [number, number]; from: [
   return (
     <mesh ref={meshRef} position={[tip[0], tip[1], 0]} rotation={[0, 0, angle]}>
       <shapeGeometry args={[ARROW_SHAPE]} />
-      <meshBasicMaterial color={color} side={THREE.DoubleSide} />
+      <meshBasicMaterial color={color} side={THREE.DoubleSide} depthTest={false} />
     </mesh>
   )
 }
@@ -40,7 +40,7 @@ export function ArrowTail({ origin, dir, color }: { origin: [number, number]; di
   })
   const len = 25 * p2w(camera)
   return (
-    <Line ref={lineRef} points={[[origin[0], origin[1], 0], [origin[0] + dir[0] * len, origin[1] + dir[1] * len, 0]]} color={color} lineWidth={1} />
+    <Line ref={lineRef} points={[[origin[0], origin[1], 0], [origin[0] + dir[0] * len, origin[1] + dir[1] * len, 0]]} color={color} lineWidth={1} depthTest={false} />
   )
 }
 

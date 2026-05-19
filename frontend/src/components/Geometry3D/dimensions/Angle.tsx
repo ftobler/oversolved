@@ -9,11 +9,13 @@ import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'
+import type { PlaneTransform } from '@/types/cad'
 
-export function AngleDimension({ cid, dim, interaction }: {
+export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   cid: string
   dim: { kind: string; p1: [number, number]; p2: [number, number]; p3: [number, number]; p4: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
+  planeTransform?: PlaneTransform
 }) {
   const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, false)
   const activeDragPos = useActiveLabelDrag(cid)
@@ -133,6 +135,7 @@ export function AngleDimension({ cid, dim, interaction }: {
     constraintId: cid,
     position: [labelX, labelY, 0.001],
     enabled: !isDragged,
+    planeTransform,
   })
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return
@@ -155,7 +158,7 @@ export function AngleDimension({ cid, dim, interaction }: {
   return (
     <group key={cid}>
       {/* Arc spanning the angle */}
-      <Line points={arcPts} color={color} lineWidth={1} />
+      <Line points={arcPts} color={color} lineWidth={1} depthTest={false} />
 
       {isInside ? (
         // Inside: arrows tangent to arc at endpoints, pointing OUTWARD (away from span)
@@ -170,7 +173,7 @@ export function AngleDimension({ cid, dim, interaction }: {
         // X---arc extension---|---arc---|
         <>
           {extArcPts && extArcPts.length >= 2 && (
-            <Line points={extArcPts} color={color} lineWidth={1} />
+            <Line points={extArcPts} color={color} lineWidth={1} depthTest={false} />
           )}
           <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[arcStartPt[0] - tanStartInX, arcStartPt[1] - tanStartInY]} color={color} />
           <ArrowTail origin={[arcStartPt[0], arcStartPt[1]]} dir={[-tanStartInX, -tanStartInY]} color={color} />

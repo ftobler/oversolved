@@ -4,11 +4,11 @@ import { useThree } from '@react-three/fiber'
 import type { Sketch } from '@/types/cad'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
-import { Dot, VertexHighlight } from '@/components/Geometry3D/VertexDots'
+import { Dot } from '@/components/Geometry3D/VertexDots'
 import { DashedLine } from '@/components/sketch_dimensions'
 import { p2w } from '@/components/sketch_helpers'
 import { useDynamicSelectionPositions } from '@/components/interaction/snapHooks'
-import { COLOR_SNAP, COLOR_PREVIEW, POINT_HIT_PIXELS } from '@/components/Geometry3D/constants'
+import { COLOR_SNAP, COLOR_PREVIEW } from '@/components/Geometry3D/constants'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
 import { computeDragMove, shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
 import type { DragToolContext } from '@/tools/DragTool'
@@ -258,10 +258,7 @@ export function DragSnapIndicator() {
   if (!dragSnap) return null
   const [x, y] = dragSnap.position
   return (
-    <>
-      <Dot x={x} y={y} px={6} color={COLOR_SNAP} billboard />
-      <VertexHighlight x={x} y={y} px={POINT_HIT_PIXELS * 0.3} color={COLOR_SNAP} />
-    </>
+    <Dot x={x} y={y} px={6} color={COLOR_SNAP} billboard />
   )
 }
 

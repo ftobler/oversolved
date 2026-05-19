@@ -9,11 +9,13 @@ import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'
+import type { PlaneTransform } from '@/types/cad'
 
-export function RadiusDimension({ cid, dim, interaction }: {
+export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
   cid: string
   dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
+  planeTransform?: PlaneTransform
 }) {
   const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
@@ -77,6 +79,7 @@ export function RadiusDimension({ cid, dim, interaction }: {
     constraintId: cid,
     position: [labelX, labelY, 0.001],
     enabled: !isDragged,
+    planeTransform,
   })
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return
@@ -102,14 +105,14 @@ export function RadiusDimension({ cid, dim, interaction }: {
       {isInside ? (
         // Inside: line from center to edge, arrow at edge pointing outward.
         <>
-          <Line points={[[cx, cy, 0], [tipX, tipY, 0]]} color={color} lineWidth={1} />
+          <Line points={[[cx, cy, 0], [tipX, tipY, 0]]} color={color} lineWidth={1} depthTest={false} />
           <Arrowhead tip={[tipX, tipY]} from={[cx, cy]} color={color} />
         </>
       ) : (
         // Outside: line extends from center through edge all the way to label,
         // arrow at edge is inverted (points inward toward center).
         <>
-          <Line points={[[cx, cy, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
+          <Line points={[[cx, cy, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} depthTest={false} />
           <Arrowhead tip={[tipX, tipY]} from={[labelX, labelY]} color={color} />
           {(() => { const td = Math.hypot(tipX - cx, tipY - cy) || 1; return <ArrowTail origin={[tipX, tipY]} dir={[(tipX - cx) / td, (tipY - cy) / td]} color={color} /> })()}
         </>
@@ -129,10 +132,11 @@ export function RadiusDimension({ cid, dim, interaction }: {
   )
 }
 
-export function DiameterDimension({ cid, dim, interaction }: {
+export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
   cid: string
   dim: { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
   interaction?: DimInteraction
+  planeTransform?: PlaneTransform
 }) {
   const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
@@ -189,6 +193,7 @@ export function DiameterDimension({ cid, dim, interaction }: {
     constraintId: cid,
     position: [labelX, labelY, 0.001],
     enabled: !isDragged,
+    planeTransform,
   })
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (!interaction) return
@@ -210,7 +215,7 @@ export function DiameterDimension({ cid, dim, interaction }: {
 
   return (
     <group key={cid}>
-      <Line points={[[ep1x, ep1y, 0], [ep2x, ep2y, 0]]} color={color} lineWidth={1} />
+      <Line points={[[ep1x, ep1y, 0], [ep2x, ep2y, 0]]} color={color} lineWidth={1} depthTest={false} />
       {isInside ? (
         // Inside circle: arrows at endpoints pointing outward.
         // |<--X--o---->|
@@ -226,7 +231,7 @@ export function DiameterDimension({ cid, dim, interaction }: {
           <ArrowTail origin={[ep1x, ep1y]} dir={[-udirX, -udirY]} color={color} />
           <Arrowhead tip={[ep2x, ep2y]} from={[ep2x + udirX, ep2y + udirY]} color={color} />
           <ArrowTail origin={[ep2x, ep2y]} dir={[udirX, udirY]} color={color} />
-          <Line points={[[ep1x, ep1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} />
+          <Line points={[[ep1x, ep1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} depthTest={false} />
         </>
       )}
       {!isDragged && (

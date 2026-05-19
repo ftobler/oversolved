@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Html } from '@react-three/drei'
-import type { Sketch, Constraints, Entity } from '@/types/cad'
+import type { Sketch, Constraints, Entity, PlaneTransform } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl } from '@/components/sketch_helpers'
 import { LinearDimension, RadiusDimension, DiameterDimension, AngleDimension } from '@/components/sketch_dimensions'
@@ -51,9 +51,10 @@ interface ConstraintOverlaysProps {
   sketch: Sketch
   extent: number
   featureId: string
+  planeTransform?: PlaneTransform
 }
 
-export function ConstraintOverlays({ constraints, sketch, extent, featureId }: ConstraintOverlaysProps) {
+export function ConstraintOverlays({ constraints, sketch, extent, featureId, planeTransform }: ConstraintOverlaysProps) {
   const drag = useSketchEditorStore(s => s.drag)
   const isDragging = drag !== null
   const dimOffset = extent * 0.1
@@ -106,20 +107,20 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId }: C
 
       } else if (r.kind === 'dim_linear') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number] }
-        dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'dimension' }}  />)
+        dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'dimension' }} planeTransform={planeTransform} />)
 
       } else if (r.kind === 'dim_radius') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
-        dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'radius' }}  />)
+        dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'radius' }} planeTransform={planeTransform} />)
 
       } else if (r.kind === 'dim_diameter') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
-        dimElements.push(<DiameterDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'diameter' }}  />)
+        dimElements.push(<DiameterDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'diameter' }} planeTransform={planeTransform} />)
 
       } else if (r.kind === 'dim_angle') {
         const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3: [number, number]; p4: [number, number]; value: number; pos?: [number, number] }
         if (!dim.p3 || !dim.p4) continue
-        dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'angle in degrees' }}  />)
+        dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} interaction={{ featureId, entityId: eid, constraintId: cid, promptLabel: 'angle in degrees' }} planeTransform={planeTransform} />)
       }
     }
 

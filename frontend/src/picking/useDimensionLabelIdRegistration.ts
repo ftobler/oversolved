@@ -1,5 +1,22 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
+import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
+import type { PlaneTransform } from '@/types/cad'
+
+function buildPlaneMatrix(planeTransform?: PlaneTransform): THREE.Matrix4 {
+  const m = new THREE.Matrix4()
+  if (!planeTransform) return m
+  const [x0, x1, x2, y0, y1, y2, n0, n1, n2] = planeTransform.rotation
+  m.set(
+    x0, y0, n0, 0,
+    x1, y1, n1, 0,
+    x2, y2, n2, 0,
+    0,  0,  0,  1,
+  )
+  const o = planeTransform.origin
+  m.setPosition(o[0] ?? 0, o[1] ?? 0, o[2] ?? 0)
+  return m
+}
 
 /**
  * Register a dimension label hit circle into the dimensionLabel ID layer.
@@ -11,16 +28,23 @@ import { useIdPipeline } from './IdPipelineContext'
  * The layer is priority=70 with depthTest=false, so a label pixel wins
  * over every other layer where it draws -- matching the visible-pass
  * always-on-top placement of the label Html (z=0.001) + opaque hit mesh.
+ *
+ * `position` is in local sketch 2D coordinates. If `planeTransform` is
+ * provided the position is transformed to world space before registration,
+ * so the hit area matches the visual label on non-XY-plane sketches.
  */
 export function useDimensionLabelIdRegistration(params: {
   constraintId: string
   position: [number, number, number]
   sub?: string
   enabled?: boolean
+  planeTransform?: PlaneTransform
 }): void {
   const pipeline = useIdPipeline()
-  const { constraintId, position, sub, enabled = true } = params
+  const { constraintId, position, sub, enabled = true, planeTransform } = params
   const [px, py, pz] = position
+
+  const matrix = useMemo(() => buildPlaneMatrix(planeTransform), [planeTransform])
 
   useEffect(() => {
     if (!enabled) return
@@ -29,9 +53,12 @@ export function useDimensionLabelIdRegistration(params: {
       ? `dim:${constraintId}:${sub}`
       : `dim:${constraintId}`
     const bodyKey = entityKey
+
+    const v = new THREE.Vector3(px, py, pz).applyMatrix4(matrix)
+
     pipeline.dimensionLabelLayer.registerBody({
       bodyKey,
-      vertices: [[px, py, pz]],
+      vertices: [[v.x, v.y, v.z]],
       vertexQueries: [entityKey],
     })
     pipeline.markDirty()
@@ -39,5 +66,5 @@ export function useDimensionLabelIdRegistration(params: {
       pipeline.dimensionLabelLayer.unregisterBody(bodyKey)
       pipeline.markDirty()
     }
-  }, [pipeline, constraintId, sub, px, py, pz, enabled])
+  }, [pipeline, constraintId, sub, px, py, pz, enabled, matrix])
 }
