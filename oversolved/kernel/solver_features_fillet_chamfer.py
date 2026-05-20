@@ -8,9 +8,9 @@ if TYPE_CHECKING:
     from OCP.TopoDS import TopoDS_Shape
 from oversolved.kernel.query import Repository
 from oversolved.kernel.types3d import Body
-from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ
+from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, _compute_face_centroid, _compute_face_normal, _triangle_area
 from oversolved.kernel.ocp_ops import ocp_curve_info
-from oversolved.kernel.geom_hash import edge_geometry_hash
+from oversolved.kernel.geom_hash import edge_geometry_hash, face_geometry_hash
 from oversolved.kernel.query import make_ancestry_query, _parse_ancestry
 from oversolved.kernel.geometry_features import apply_fillet, apply_chamfer
 from oversolved.kernel.solver_features_shared import _resolve_body
@@ -130,6 +130,16 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
             except Exception as exc:
                 logger.debug("fillet edge body-scoped fallback failed for query %s: %s", q, exc)
                 fallback_failed += 1
+        # Face query: resolve to all edges of that face
+        if edge is None and 'gface_' in q:
+            try:
+                face_edges = _resolve_face_to_edges(q, body)
+                result.extend(face_edges)
+                if face_edges:
+                    logger.debug("fillet: resolved face query %s to %d edges", q, len(face_edges))
+            except Exception as exc:
+                logger.debug("fillet face-to-edges resolution failed for query %s: %s", q, exc)
+
         if edge is not None:
             result.append(edge)
 
@@ -140,6 +150,45 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
     if fallback_failed > 0:
         logger.warning("fillet: %d edge queries failed body-scoped fallback", fallback_failed)
     return result
+
+
+def _resolve_face_to_edges(q: str, body: Body) -> list[TopoDS_Shape]:
+    """Resolve a face ancestry query to all OCC edges of the matching face."""
+    ids, type_restriction = _parse_ancestry(q)
+    target_hash = None
+    for id_str in ids:
+        if id_str.startswith("@gface_"):
+            target_hash = id_str
+            break
+    if not target_hash:
+        return []
+
+    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
+    from OCP.TopAbs import TopAbs_EDGE  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS  # noqa: PLC0415
+
+    cq_body = _ensure_cq(body.shape)
+
+    for cq_face in cq_body.Faces():
+        verts, idxs = cq_face.tessellate(0.1)
+        verts_list = [list(v.toTuple()) for v in verts]
+        centroid = _compute_face_centroid(cq_face)
+        normal = _compute_face_normal(cq_face)
+        area = sum(_triangle_area(verts_list[t[0]], verts_list[t[1]], verts_list[t[2]]) for t in idxs)
+        gh = face_geometry_hash(centroid, normal, area)
+        aq = make_ancestry_query(
+            [f"@{gh}", f"@{body.created_by}", f"@{body.id}"], type_restriction
+        )
+        if aq == q:
+            occ_face = _ensure_occ(cq_face)
+            exp = TopExp_Explorer(occ_face, TopAbs_EDGE)
+            face_edges = []
+            while exp.More():
+                face_edges.append(TopoDS.Edge_s(exp.Current()))
+                exp.Next()
+            return face_edges
+
+    return []
 
 
 def _apply_edge_feature(
