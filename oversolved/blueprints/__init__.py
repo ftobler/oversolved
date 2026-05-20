@@ -57,9 +57,9 @@ def require_csrf(f):
         referer = request.headers.get("Referer")
         host = request.host_url.rstrip("/")
         if origin and origin != host:
-            return jsonify({"error": "Invalid CSRF token"}), 403
+            return jsonify({"error": "Request blocked for security reasons. Please reload the page."}), 403
         if referer and not referer.startswith(host):
-            return jsonify({"error": "Invalid CSRF token"}), 403
+            return jsonify({"error": "Request blocked for security reasons. Please reload the page."}), 403
         return f(*args, **kwargs)
     return decorated
 
