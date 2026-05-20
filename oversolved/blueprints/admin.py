@@ -368,8 +368,8 @@ def submit_bug_report():
         return jsonify({"error": "Empty request body"}), 400
     title = (data.get("title") or "").strip()
     description = (data.get("description") or "").strip()
-    if not title or not description:
-        return jsonify({"error": "Title and description are required"}), 400
+    if not title:
+        return jsonify({"error": "Title is required"}), 400
 
     bugreports_dir = Path(__file__).parent.parent.parent / "bugreports"
     bugreports_dir.mkdir(exist_ok=True)
