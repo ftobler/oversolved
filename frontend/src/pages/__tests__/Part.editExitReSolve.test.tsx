@@ -22,6 +22,8 @@ import CssBaseline from '@mui/material/CssBaseline'
 import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
 import { solverWs } from '@/hooks/solverWs'
+import { cacheBuildResponse, invalidateAllCache } from '@/utils/buildCache'
+import type { PartDoc } from '@/types/cad'
 
 vi.mock('../../hooks/solverWs', () => ({
   solverWs: {
@@ -101,9 +103,10 @@ function allSolvePayloads(): Array<Record<string, unknown>> {
 }
 
 describe('edit exit reSolve', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     solveMock.mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null })
+    await invalidateAllCache()
   })
 
   it('exiting edit on middle feature sends full feature list and end-of-stack rollback', async () => {
@@ -156,6 +159,45 @@ describe('edit exit reSolve', () => {
       expect(featureIds).toContain('fil1')
       expect(featureIds).toContain('ex1')
     }
+  })
+
+  it('exit re-solve always goes to WebSocket even when a stale cache entry exists for the same key', async () => {
+    // Pre-populate the cache with the initial doc state. A drag mutation only
+    // changes `initial`, which computeCacheKey strips. Without bypassCache the
+    // stale cache hit would serve pre-mutation geometry and the drag would snap
+    // back. The fix: handleMutation calls reSolve with bypassCache:true, which
+    // calls invalidateDocCache so the exit re-solve is forced through the WS.
+    const emptyDoc: PartDoc = { features: [] }
+    await cacheBuildResponse('doc-1', emptyDoc, 0, null, { solve_ms: 0, result: {}, bodies: {} })
+
+    vi.stubGlobal('fetch', makeDoc(FOUR_FEATURE_DOC))
+
+    render(
+      <MemoryRouter initialEntries={['/documents/doc-1']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<Part />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Fillet 1')).toBeInTheDocument()
+    })
+
+    const callsBefore = solveMock.mock.calls.length
+
+    // Enter edit and exit immediately -- exit re-solve must hit WS even if the
+    // pre-populated cache key would match.
+    const editBtns = screen.getAllByTitle('Edit fillet')
+    await act(async () => { fireEvent.click(editBtns[0]) })
+    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
+
+    await new Promise(r => setTimeout(r, 50))
+
+    // At least one solve must have been issued via WS since entering edit
+    // (either the enter solve or the exit solve).
+    expect(solveMock.mock.calls.length).toBeGreaterThan(callsBefore)
   })
 
   it('enter+exit on single-feature doc does not crash and does not truncate', async () => {

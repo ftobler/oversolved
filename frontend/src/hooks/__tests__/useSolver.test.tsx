@@ -28,6 +28,10 @@ const { mockUnflattenGeometry } = vi.hoisted(() => ({
   mockUnflattenGeometry: vi.fn().mockReturnValue({}),
 }))
 
+const { mockInvalidateDocCache } = vi.hoisted(() => ({
+  mockInvalidateDocCache: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('@/hooks/solverWs', () => ({ solverWs: mockSolver }))
 vi.mock('@/hooks/useGeometryCache', () => ({
   useGeometryCache: vi.fn(() => mockCache),
@@ -36,6 +40,9 @@ vi.mock('@/utils/geometryMapping', () => ({ unflattenGeometry: mockUnflattenGeom
 vi.mock('@/utils/geometryUnpack', () => mockUnpack)
 vi.mock('@/stores/solverStore', () => ({
   useSolverStore: { getState: () => ({ setIsSolving: vi.fn() }) },
+}))
+vi.mock('@/utils/buildCache', () => ({
+  invalidateDocCache: mockInvalidateDocCache,
 }))
 
 import { pickPartColor, reconcilePartStyle, useSolver } from '@/hooks/useSolver'
@@ -145,6 +152,7 @@ describe('useSolver', () => {
     mockCache.getCachedBuildResponse.mockResolvedValue(null)
     mockCache.cacheBuildResponse.mockResolvedValue(undefined)
     mockCache.cacheGeometry.mockResolvedValue(undefined)
+    mockInvalidateDocCache.mockResolvedValue(undefined)
     mockSolver.solve.mockResolvedValue({
       solve_ms: 0,
       result: {},
@@ -414,6 +422,59 @@ describe('useSolver', () => {
       // what the first call already produced.
       expect(result.current.solveError).toBeNull()
       expect(result.current.solveResults).toEqual(before)
+    })
+
+    it('bypassCache: true flushes doc cache and skips cache lookup', async () => {
+      const { result } = setupHook()
+      // Cache is populated but should be ignored when bypassCache is true
+      mockCache.getCachedBuildResponse.mockResolvedValue({
+        isFresh: true,
+        entry: {
+          buildResponse: { solve_ms: 0, result: {}, bodies: {}, _build_state: null },
+          cache_key: 'k', doc_id: 'test-uuid', feature_spec_hash: 'h',
+          timestamp: Date.now(), rollback_position: 0, pick_boundary: null,
+        },
+      })
+      await act(async () => { await result.current.reSolve(makeDoc(), undefined, { bypassCache: true }) })
+      expect(mockInvalidateDocCache).toHaveBeenCalledWith('test-uuid')
+      expect(mockCache.getCachedBuildResponse).not.toHaveBeenCalled()
+      expect(mockSolver.solve).toHaveBeenCalledTimes(1)
+    })
+
+    it('bypassCache: true goes to WebSocket even when cache would be a fresh hit', async () => {
+      const { result } = setupHook()
+      // First solve without bypass -- populates the cache path
+      await act(async () => { await result.current.reSolve(makeDoc()) })
+      expect(mockSolver.solve).toHaveBeenCalledTimes(1)
+
+      // Now simulate a fresh cache hit on the second call
+      mockCache.getCachedBuildResponse.mockResolvedValue({
+        isFresh: true,
+        entry: {
+          buildResponse: { solve_ms: 0, result: {}, bodies: {}, _build_state: null },
+          cache_key: 'k', doc_id: 'test-uuid', feature_spec_hash: 'h',
+          timestamp: Date.now(), rollback_position: 0, pick_boundary: null,
+        },
+      })
+      await act(async () => { await result.current.reSolve(makeDoc(), undefined, { bypassCache: true }) })
+      // WS must be called a second time despite the fresh cache entry
+      expect(mockSolver.solve).toHaveBeenCalledTimes(2)
+      expect(mockInvalidateDocCache).toHaveBeenCalledTimes(1)
+    })
+
+    it('bypassCache: false uses cache on fresh hit (normal path unaffected)', async () => {
+      const { result } = setupHook()
+      mockCache.getCachedBuildResponse.mockResolvedValue({
+        isFresh: true,
+        entry: {
+          buildResponse: { solve_ms: 0, result: {}, bodies: {}, _build_state: null },
+          cache_key: 'k', doc_id: 'test-uuid', feature_spec_hash: 'h',
+          timestamp: Date.now(), rollback_position: 0, pick_boundary: null,
+        },
+      })
+      await act(async () => { await result.current.reSolve(makeDoc()) })
+      expect(mockInvalidateDocCache).not.toHaveBeenCalled()
+      expect(mockSolver.solve).not.toHaveBeenCalled()
     })
 
     it('sets featureTimings from solve_ms fields', async () => {

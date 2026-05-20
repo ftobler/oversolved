@@ -116,6 +116,19 @@ describe('computeCacheKey', () => {
     const key2 = await computeCacheKey('doc1', f2 as PartFeature[], 1, null)
     expect(key1).toBe(key2)
   })
+
+  it('drag mutations (initial-only diff) produce the same key, requiring bypassCache for correctness', async () => {
+    // Drag commits write solver output back into feature.initial. Because
+    // computeCacheKey strips `initial`, the pre-drag and post-drag docs map to
+    // the same cache key. Without bypassCache + invalidateDocCache the stale
+    // pre-drag geometry would be returned from cache on the next solve, making
+    // the drag appear to snap back.
+    const preDrag: PartFeature = { id: 'sk1', kind: 'sketch' }
+    const postDrag: PartFeature = { id: 'sk1', kind: 'sketch', initial: { e1: [10, 20, 30, 40] } } as never
+    const key1 = await computeCacheKey('doc1', [preDrag], 1, null)
+    const key2 = await computeCacheKey('doc1', [postDrag], 1, null)
+    expect(key1).toBe(key2)
+  })
 })
 
 describe('cacheBuildResponse / getCachedBuildResponse', () => {
