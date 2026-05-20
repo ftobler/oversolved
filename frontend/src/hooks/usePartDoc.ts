@@ -4,6 +4,7 @@ import { useDocumentState } from '@/hooks/useDocumentState'
 import { useSolver } from '@/hooks/useSolver'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
+import { failLoud } from '@/stores/stateInvariants'
 
 export { healDoc, BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
@@ -69,18 +70,28 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const previewOriginalDoc = useRef<PartDoc | null>(null)
 
   const startPreviewMode = useCallback((originalDoc: PartDoc) => {
+    if (previewOriginalDoc.current !== null) {
+      failLoud('[usePartDoc] startPreviewMode called while a preview is already active (nested preview not supported)')
+    }
     previewOriginalDoc.current = structuredClone(originalDoc)
     suppressUndoRef.current = true
   }, [suppressUndoRef])
 
   const commitPreview = useCallback((mutation: Mutation) => {
-    if (!previewOriginalDoc.current) return
+    if (!previewOriginalDoc.current) {
+      failLoud('[usePartDoc] commitPreview called with no active preview')
+      return
+    }
     pushUndo(mutation, previewOriginalDoc.current)
     suppressUndoRef.current = false
     previewOriginalDoc.current = null
   }, [suppressUndoRef, pushUndo])
 
   const cancelPreview = useCallback(() => {
+    if (!previewOriginalDoc.current) {
+      failLoud('[usePartDoc] cancelPreview called with no active preview')
+      return null
+    }
     suppressUndoRef.current = false
     const original = previewOriginalDoc.current
     previewOriginalDoc.current = null
@@ -91,6 +102,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
   const startEditSession = useCallback((suppressUndo: boolean) => {
     if (!docRef.current) return
+    if (editSnapshotRef.current !== null) {
+      failLoud('[usePartDoc] startEditSession called while an edit session is already active (nested edit session not supported)')
+    }
     editSnapshotRef.current = structuredClone(docRef.current)
     saveUndoStackSnapshot()
     if (suppressUndo) {
@@ -99,6 +113,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   }, [docRef, saveUndoStackSnapshot, suppressUndoRef])
 
   const commitEditSession = useCallback(() => {
+    if (editSnapshotRef.current === null) {
+      failLoud('[usePartDoc] commitEditSession called with no active edit session')
+      return
+    }
     const snapshot = editSnapshotRef.current
     editSnapshotRef.current = null
     suppressUndoRef.current = false
@@ -112,6 +130,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   }, [suppressUndoRef, pushUndo, clearUndoStackSnapshot, docRef])
 
   const cancelEditSession = useCallback(() => {
+    if (editSnapshotRef.current === null) {
+      failLoud('[usePartDoc] cancelEditSession called with no active edit session')
+      return
+    }
     suppressUndoRef.current = false
     const snapshot = editSnapshotRef.current
     editSnapshotRef.current = null

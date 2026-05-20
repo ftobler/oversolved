@@ -99,6 +99,8 @@ export function dispatchDragInitiation(
     setDragSnap: state.setDragSnap,
     startClient: [clientX, clientY],
     setOrbitEnabled: state.setOrbitEnabled,
+    pushMode: () => {},
+    popMode: () => {},
   }
 
   dragTool.handlers.onPointerDown?.(

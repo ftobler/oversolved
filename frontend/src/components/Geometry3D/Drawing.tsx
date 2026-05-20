@@ -162,6 +162,8 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           setActiveTool: (tool: string | null) => { useSketchEditorStore.getState().setActiveTool(tool as import('@/types/cad').ActiveTool) },
           sketch: sketch as Record<string, import('@/types/cad').Entity> | undefined,
           otherSketches: otherSketches as Record<string, Record<string, import('@/types/cad').Entity>> | undefined,
+          pushMode: () => {},
+          popMode: () => {},
         }
         tool.handlers.onPointerDown(e.nativeEvent, [x, y], context)
       }}

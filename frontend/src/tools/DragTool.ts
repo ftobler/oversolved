@@ -111,11 +111,9 @@ export function createDragTool(): DragTool {
     dragModes: ['vertex', 'edge', 'dim_label'],
     showInToolbar: true,
 
-    activate: () => {
-    },
+    activate: (context) => { context.pushMode('tool:drag') },
 
-    deactivate: () => {
-    },
+    deactivate: (context) => { context.popMode('tool:drag') },
 
     handlers,
   }

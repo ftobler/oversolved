@@ -5,6 +5,9 @@ import { create } from 'zustand'
 import type { ActiveTool, Mutation, SelectionDomain } from '@/types/cad'
 import type { SnapKind } from '@/registry'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
+import { validateSketchEditorState, failLoud } from './stateInvariants'
+import { toolRegistry } from '@/registry/toolRegistry'
+import type { ToolId } from '@/registry/toolRegistry'
 
 // Callbacks dispatched from pure-layer store actions back into React state.
 // Registered by Part.tsx on mount via setSketchCallback(); torn down on unmount.
@@ -197,6 +200,11 @@ interface SketchEditorState {
   setOrbitEnabled: (enabled: boolean) => void
   setIsRotating: (rotating: boolean) => void
 
+  // MODE STACK — tracks nested editor modes; must be empty when returning to "main"
+  modeStack: string[]
+  pushMode: (kind: string) => void
+  popMode: (expectedKind?: string) => void
+
   // TOOL / SESSION STATE
   activeTool: ActiveTool
   activeFeatureId: string | null
@@ -270,8 +278,31 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   pendingDialog: null,
   pendingProjectTarget: null,
   contextMenu: null,
+  modeStack: [],
   planeSelectionFeatureId: null,
   chipOwnedSelection: new Set(),
+
+  pushMode: (kind: string) => set(s => ({
+    modeStack: [...s.modeStack, kind],
+  })),
+
+  popMode: (expectedKind?: string) => {
+    const state = get()
+    if (state.modeStack.length === 0) {
+      failLoud(`[popMode] stack is empty${expectedKind ? ` (expected '${expectedKind}')` : ''}`)
+      return
+    }
+    const top = state.modeStack[state.modeStack.length - 1]
+    if (expectedKind !== undefined && top !== expectedKind) {
+      failLoud(`[popMode] expected '${expectedKind}' but top is '${top}'`)
+    }
+    const next = state.modeStack.slice(0, -1)
+    set({ modeStack: next })
+    // When stack becomes empty, validate all transient state is clean
+    if (next.length === 0 && (devOnly || testMode)) {
+      validateSketchEditorState(get())
+    }
+  },
 
   setInternalHoverSelection: (id) => set(s => {
     if (s.internalHoverSelection === id) return s
@@ -333,7 +364,75 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setShowConstraintTiles: (show) => set({ showConstraintTiles: show }),
 
-  setActiveTool: (tool) => set({ activeTool: tool, drawPoints: [], drawHover: null }),
+  setActiveTool: (tool) => {
+    const prevTool = get().activeTool
+
+    // Deactivate previous tool (lifecycle hook)
+    if (prevTool) {
+      const prev = toolRegistry.get(prevTool as ToolId)
+      if (prev) {
+        const s = get()
+        prev.deactivate({
+          normalSelection: s.normalSelection,
+          internalHoverSelection: s.internalHoverSelection,
+          dynamicSelection: s.dynamicSelection,
+          isPointerDown: s.isPointerDown,
+          activeFeatureId: s.activeFeatureId,
+          hoveredVertexId: s.hoveredVertexId,
+          hoveredVertexPosition: s.hoveredVertexPosition,
+          hoveredSnapKind: s.hoveredSnapKind,
+          onMutation: _sketchCbs.onMutation,
+          pushMode: (kind: string) => get().pushMode(kind),
+          popMode: (expectedKind?: string) => get().popMode(expectedKind),
+        })
+      }
+    }
+
+    set(state => {
+      const updates: Record<string, unknown> = {
+        activeTool: tool,
+        drawPoints: [],
+        drawHover: null,
+        drawSnapVertexId: null,
+      }
+      // Clear stale pending dimension state when not in dimension tool
+      if (tool !== 'dimension') {
+        updates.pendingDimTarget = null
+        updates.pendingDimEntityKind = null
+      }
+      // Clear stale plane selection state when entering any tool
+      if (tool !== null && state.planeSelectionFeatureId !== null) {
+        updates.planeSelectionFeatureId = null
+      }
+      return updates
+    })
+
+    // Activate new tool (lifecycle hook)
+    if (tool) {
+      const next = toolRegistry.get(tool as ToolId)
+      if (next) {
+        const s = get()
+        next.activate({
+          normalSelection: s.normalSelection,
+          internalHoverSelection: s.internalHoverSelection,
+          dynamicSelection: s.dynamicSelection,
+          isPointerDown: s.isPointerDown,
+          activeFeatureId: s.activeFeatureId,
+          hoveredVertexId: s.hoveredVertexId,
+          hoveredVertexPosition: s.hoveredVertexPosition,
+          hoveredSnapKind: s.hoveredSnapKind,
+          onMutation: _sketchCbs.onMutation,
+          pushMode: (kind: string) => get().pushMode(kind),
+          popMode: (expectedKind?: string) => get().popMode(expectedKind),
+        })
+      }
+    }
+
+    if (devOnly || testMode) {
+      validateSketchEditorState(get())
+    }
+  },
+
   setActiveFeatureId: (id) => set(state => {
     if (state.activeFeatureId !== null && id === null) {
       return { activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapVertexId: null }
@@ -413,7 +512,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),
   setDrawHover: (pt) => set({ drawHover: pt }),
   setDrawSnap: (vertexId) => set({ drawSnapVertexId: vertexId }),
-  clearDraw: () => set({ drawPoints: [], drawHover: null, drawSnapVertexId: null }),
+  clearDraw: () => {
+    set({ drawPoints: [], drawHover: null, drawSnapVertexId: null })
+    if (devOnly || testMode) {
+      validateSketchEditorState(get())
+    }
+  },
 
   openDialog: (opts) => set({ pendingDialog: opts }),
   closeDialog: () => set({ pendingDialog: null }),
@@ -421,9 +525,68 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   openContextMenu: (pos) => set({ contextMenu: pos }),
   closeContextMenu: () => set({ contextMenu: null }),
 
-  setPendingDim: (target, entityKind) => set({ pendingDimTarget: target, pendingDimEntityKind: entityKind }),
+  setPendingDim: (target, entityKind) => {
+    set({ pendingDimTarget: target, pendingDimEntityKind: entityKind })
+    if (devOnly || testMode) {
+      validateSketchEditorState(get())
+    }
+  },
 
-  setPlaneSelectionFeatureId: (id) => set({ planeSelectionFeatureId: id }),
+  setPlaneSelectionFeatureId: (id) => {
+    // When entering plane selection, deactivate any active tool first.
+    // Guard: only deactivate if the mode stack has the tool at the top.
+    // This handles the case where state was set directly (e.g., test setup via setState)
+    // and no tool mode was ever pushed onto the stack.
+    if (id !== null) {
+      const prevTool = get().activeTool
+      const stack = get().modeStack
+      if (prevTool && stack.length > 0) {
+        const top = stack[stack.length - 1]
+        if (top === `tool:${prevTool}`) {
+          const prev = toolRegistry.get(prevTool as ToolId)
+          if (prev) {
+            const s = get()
+            prev.deactivate({
+              normalSelection: s.normalSelection,
+              internalHoverSelection: s.internalHoverSelection,
+              dynamicSelection: s.dynamicSelection,
+              isPointerDown: s.isPointerDown,
+              activeFeatureId: s.activeFeatureId,
+              hoveredVertexId: s.hoveredVertexId,
+              hoveredVertexPosition: s.hoveredVertexPosition,
+              hoveredSnapKind: s.hoveredSnapKind,
+              onMutation: _sketchCbs.onMutation,
+              pushMode: (kind: string) => get().pushMode(kind),
+              popMode: (expectedKind?: string) => get().popMode(expectedKind),
+            })
+          }
+        }
+      }
+    }
+
+    // Then clear all draw state before updating plane selection state.
+    // This ensures invariant validation in popMode (triggered by deactivate above)
+    // sees clean draw state even if previous tests left drawPoints dirty.
+    if (id !== null) {
+      set({
+        planeSelectionFeatureId: id,
+        activeTool: null,
+        drawPoints: [],
+        drawHover: null,
+        drawSnapVertexId: null,
+      })
+    } else {
+      set({ planeSelectionFeatureId: id })
+    }
+
+    if (id !== null) {
+      get().pushMode('plane_selection')
+    }
+
+    if (devOnly || testMode) {
+      validateSketchEditorState(get())
+    }
+  },
 
   syncChipSelection: (values) => {
     const s = get()
@@ -462,6 +625,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const next = new Set(s.normalSelection)
     for (const v of s.chipOwnedSelection) next.delete(v)
     set({ planeSelectionFeatureId: null, normalSelection: next, chipOwnedSelection: new Set() })
+    get().popMode('plane_selection')
+    if (devOnly || testMode) {
+      validateSketchEditorState(get())
+    }
   },
 
 }))

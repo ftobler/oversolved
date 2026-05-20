@@ -39,11 +39,9 @@ export function createSelectionTool(): SelectionTool {
     supportsDynamic: true,
     showInToolbar: true,
 
-    activate: () => {
-    },
+    activate: (context) => { context.pushMode('tool:select') },
 
-    deactivate: () => {
-    },
+    deactivate: (context) => { context.popMode('tool:select') },
 
     handlers,
   }

@@ -13,6 +13,8 @@ function createMockContext(overrides: Partial<SelectionToolContext> = {}): Selec
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
     onMutation: null,
+    pushMode: vi.fn(),
+    popMode: vi.fn(),
     setInternalHoverSelection: vi.fn(),
     clearNormalSelection: vi.fn(),
     clearDynamicSelection: vi.fn(),

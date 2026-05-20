@@ -1,5 +1,16 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { initializeTools } from '@/tools'
+
+// Lazy-init the tool registry once so tool lifecycle tests can verify activate/deactivate wiring.
+let toolsInitialized = false
+
+beforeAll(() => {
+  if (!toolsInitialized) {
+    initializeTools()
+    toolsInitialized = true
+  }
+})
 
 function reset() {
   useSketchEditorStore.setState({
@@ -9,7 +20,7 @@ function reset() {
     isPointerDown: false,
     drag: null,
     orbitEnabled: true,
-    activeTool: 'dimension',
+    activeTool: null,
     activeFeatureId: null,
     pendingDimTarget: null,
     pendingDimEntityKind: null,
@@ -20,6 +31,7 @@ function reset() {
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
     hoveredConstraintEntityIds: new Set(),
+    modeStack: [],
   })
   setSketchCallback('onMutation', null)
 }
@@ -694,8 +706,8 @@ describe('sketchEditorStore', () => {
     })
 
     it('commitPlaneSelection clears chipOwnedSelection', () => {
+      useSketchEditorStore.getState().setPlaneSelectionFeatureId('sk1')
       useSketchEditorStore.setState({
-        planeSelectionFeatureId: 'sk1',
         chipOwnedSelection: new Set(['?body_ex1/face/0']),
         normalSelection: new Set(['?body_ex1/face/0']),
       })
@@ -728,6 +740,136 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().entityKindMap).toEqual({ 'entity:f1:c1': 'circle' })
       useSketchEditorStore.getState().setEntityKindMap({})
       expect(useSketchEditorStore.getState().entityKindMap).toEqual({})
+    })
+  })
+
+  describe('self-cleaning state transitions', () => {
+    describe('setActiveTool', () => {
+      it('clears pendingDimTarget when switching from dimension to another tool', () => {
+        useSketchEditorStore.setState({ pendingDimTarget: 'entity:S1:L1', pendingDimEntityKind: 'line' })
+        useSketchEditorStore.getState().setActiveTool('line')
+        const s = useSketchEditorStore.getState()
+        expect(s.pendingDimTarget).toBeNull()
+        expect(s.pendingDimEntityKind).toBeNull()
+      })
+
+      it('preserves pendingDimTarget when staying in dimension tool', () => {
+        useSketchEditorStore.setState({ pendingDimTarget: 'entity:S1:L1', pendingDimEntityKind: 'line' })
+        useSketchEditorStore.getState().setActiveTool('dimension')
+        const s = useSketchEditorStore.getState()
+        expect(s.pendingDimTarget).toBe('entity:S1:L1')
+        expect(s.pendingDimEntityKind).toBe('line')
+      })
+
+      it('clears planeSelectionFeatureId when entering a tool', () => {
+        useSketchEditorStore.setState({ planeSelectionFeatureId: 'Sketch1', activeTool: null })
+        useSketchEditorStore.getState().setActiveTool('select')
+        expect(useSketchEditorStore.getState().planeSelectionFeatureId).toBeNull()
+      })
+
+      it('does not clear planeSelectionFeatureId when setting tool to null', () => {
+        useSketchEditorStore.setState({ planeSelectionFeatureId: 'Sketch1', activeTool: null })
+        useSketchEditorStore.getState().setActiveTool(null)
+        // tool=null means we are NOT entering a tool mode, so plane selection persists
+        expect(useSketchEditorStore.getState().planeSelectionFeatureId).toBe('Sketch1')
+      })
+
+      it('clears drawSnapVertexId when switching tool', () => {
+        useSketchEditorStore.getState().setDrawSnap('vertex:S1:L1:start')
+        useSketchEditorStore.getState().setActiveTool('circle')
+        expect(useSketchEditorStore.getState().drawSnapVertexId).toBeNull()
+      })
+    })
+
+    describe('setPlaneSelectionFeatureId', () => {
+      it('clears activeTool and draw state when entering plane selection', () => {
+        useSketchEditorStore.getState().setActiveTool('select')
+        useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
+        const s = useSketchEditorStore.getState()
+        expect(s.planeSelectionFeatureId).toBe('Sketch1')
+        expect(s.activeTool).toBeNull()
+        expect(s.drawPoints).toEqual([])
+        expect(s.drawHover).toBeNull()
+        expect(s.drawSnapVertexId).toBeNull()
+      })
+
+      it('does not clear tool state when clearing plane selection', () => {
+        useSketchEditorStore.getState().setActiveTool('select')
+        useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
+        useSketchEditorStore.getState().setPlaneSelectionFeatureId(null)
+        expect(useSketchEditorStore.getState().activeTool).toBeNull()  // tool was already cleared when entering plane mode
+      })
+    })
+  })
+
+  describe('tool lifecycle → mode stack integration', () => {
+    it('setActiveTool pushes mode via activate', () => {
+      useSketchEditorStore.getState().setActiveTool('select')
+      expect(useSketchEditorStore.getState().modeStack).toContain('tool:select')
+    })
+
+    it('switching tools pops old mode and pushes new', () => {
+      useSketchEditorStore.getState().setActiveTool('select')
+      useSketchEditorStore.getState().setActiveTool('line')
+      const stack = useSketchEditorStore.getState().modeStack
+      expect(stack).not.toContain('tool:select')
+      expect(stack).toContain('tool:line')
+    })
+
+    it('setting tool to null pops mode', () => {
+      useSketchEditorStore.getState().setActiveTool('select')
+      useSketchEditorStore.getState().setActiveTool(null)
+      expect(useSketchEditorStore.getState().modeStack).toEqual([])
+    })
+
+    it('plane selection pushes mode after deactivating tool', () => {
+      useSketchEditorStore.getState().setActiveTool('select')
+      useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
+      const stack = useSketchEditorStore.getState().modeStack
+      expect(stack).not.toContain('tool:select')
+      expect(stack).toContain('plane_selection')
+    })
+
+    it('commitPlaneSelection pops plane_selection mode', () => {
+      setSketchCallback('onMutation', vi.fn())
+      useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
+      useSketchEditorStore.getState().commitPlaneSelection('@builtin_plane_top')
+      expect(useSketchEditorStore.getState().modeStack).toEqual([])
+    })
+  })
+
+  describe('mode stack', () => {
+    it('starts empty', () => {
+      expect(useSketchEditorStore.getState().modeStack).toEqual([])
+    })
+
+    it('pushMode adds to stack', () => {
+      useSketchEditorStore.getState().pushMode('tool:select')
+      expect(useSketchEditorStore.getState().modeStack).toEqual(['tool:select'])
+    })
+
+    it('popMode removes from stack', () => {
+      useSketchEditorStore.getState().pushMode('tool:select')
+      useSketchEditorStore.getState().pushMode('dimension:pending')
+      useSketchEditorStore.getState().popMode('dimension:pending')
+      expect(useSketchEditorStore.getState().modeStack).toEqual(['tool:select'])
+    })
+
+    it('popMode validates expected kind', () => {
+      useSketchEditorStore.getState().pushMode('tool:select')
+      expect(() => useSketchEditorStore.getState().popMode('tool:line')).toThrow('[popMode]')
+    })
+
+    it('popMode on empty stack throws', () => {
+      expect(() => useSketchEditorStore.getState().popMode()).toThrow('[popMode]')
+    })
+
+    it('nested push and pop returns to empty', () => {
+      useSketchEditorStore.getState().pushMode('outer')
+      useSketchEditorStore.getState().pushMode('inner')
+      useSketchEditorStore.getState().popMode('inner')
+      useSketchEditorStore.getState().popMode('outer')
+      expect(useSketchEditorStore.getState().modeStack).toEqual([])
     })
   })
 

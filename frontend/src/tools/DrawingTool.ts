@@ -98,11 +98,9 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
     paramCount,
     showInToolbar: entityDef?.showInToolbar ?? true,
 
-    activate: () => {
-    },
+    activate: (context) => { context.pushMode('tool:' + config.entityKind) },
 
-    deactivate: () => {
-    },
+    deactivate: (context) => { context.popMode('tool:' + config.entityKind) },
 
     handlers,
   }

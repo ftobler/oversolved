@@ -1,0 +1,104 @@
+import { describe, it, expect, vi } from 'vitest'
+import { renderHook } from '@testing-library/react'
+import { usePartDoc } from '@/hooks/usePartDoc'
+
+// Mock the heavy dependencies
+vi.mock('@/hooks/useDocumentState', () => ({
+  useDocumentState: () => ({
+    doc: null,
+    setDoc: vi.fn(),
+    docRef: { current: { features: [] } },
+    docName: 'test',
+    setDocName: vi.fn(),
+    ownerUsername: null,
+    loading: false,
+    error: null,
+    setError: vi.fn(),
+    saveDoc: vi.fn(),
+    renameDoc: vi.fn(),
+  }),
+  healDoc: vi.fn(),
+  BUILTIN_FEATURE_DEFAULTS: {},
+  BUILTIN_FEATURE_IDS: new Set<string>(),
+}))
+
+vi.mock('@/hooks/useSolver', () => ({
+  useSolver: () => ({
+    solveResults: {},
+    setSolveResults: vi.fn(),
+    bodies: {},
+    pickBodies: {},
+    setPickBodies: vi.fn(),
+    solving: false,
+    solveTime: 0,
+    solveError: null,
+    setSolveError: vi.fn(),
+    solveResult: null,
+    setSolveRawResult: vi.fn(),
+    featureTimings: {},
+    reSolve: vi.fn(),
+    setRollbackPos: vi.fn(),
+    setPickBoundary: vi.fn(),
+    validation: null,
+    clearValidation: vi.fn(),
+  }),
+}))
+
+vi.mock('@/hooks/useUndoRedo', () => ({
+  useUndoRedo: () => ({
+    undoStack: [],
+    redoStack: [],
+    suppressUndoRef: { current: false },
+    pushUndo: vi.fn(),
+    handleUndo: vi.fn(),
+    handleRedo: vi.fn(),
+    saveUndoStackSnapshot: vi.fn(),
+    restoreUndoStackSnapshot: vi.fn(),
+    clearUndoStackSnapshot: vi.fn(),
+  }),
+}))
+
+vi.mock('@/hooks/mutationDispatch', () => ({
+  mutationHandlers: {},
+}))
+
+describe('usePartDoc edit session guards', () => {
+  it('throws on nested startEditSession', () => {
+    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    result.current.startEditSession(true)
+    expect(() => result.current.startEditSession(true)).toThrow('[usePartDoc] startEditSession called while an edit session is already active')
+  })
+
+  it('throws on commitEditSession without start', () => {
+    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    expect(() => result.current.commitEditSession()).toThrow('[usePartDoc] commitEditSession called with no active edit session')
+  })
+
+  it('throws on cancelEditSession without start', () => {
+    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    expect(() => result.current.cancelEditSession()).toThrow('[usePartDoc] cancelEditSession called with no active edit session')
+  })
+
+  it('throws on nested startPreviewMode', () => {
+    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    result.current.startPreviewMode({ features: [] } as never)
+    expect(() => result.current.startPreviewMode({ features: [] } as never)).toThrow('[usePartDoc] startPreviewMode called while a preview is already active')
+  })
+
+  it('throws on commitPreview without start', () => {
+    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    expect(() => result.current.commitPreview({ type: 'test' } as never)).toThrow('[usePartDoc] commitPreview called with no active preview')
+  })
+
+  it('does not throw on start+commit sequence', () => {
+    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    result.current.startEditSession(true)
+    expect(() => result.current.commitEditSession()).not.toThrow()
+  })
+
+  it('does not throw on start+cancel sequence', () => {
+    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    result.current.startEditSession(true)
+    expect(() => result.current.cancelEditSession()).not.toThrow()
+  })
+})

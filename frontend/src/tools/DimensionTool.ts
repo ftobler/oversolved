@@ -107,9 +107,9 @@ export function createDimensionTool(): DimensionTool {
     category: 'dimension' as const,
     showInToolbar: true,
 
-    activate: () => {},
+    activate: (context) => { context.pushMode('tool:dimension') },
 
-    deactivate: () => {},
+    deactivate: (context) => { context.popMode('tool:dimension') },
 
     handlers,
   }

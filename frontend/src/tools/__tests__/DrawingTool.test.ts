@@ -13,6 +13,8 @@ function createMockContext(overrides: Partial<DrawingToolContext> = {}): Drawing
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
     onMutation: null,
+    pushMode: vi.fn(),
+    popMode: vi.fn(),
     drawPoints: [],
     drawSnapVertexId: null,
     setDrawHover: vi.fn(),

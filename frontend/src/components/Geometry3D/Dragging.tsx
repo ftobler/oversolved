@@ -105,6 +105,8 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
               setDragSnap,
               startClient: dragStartClient,
               setOrbitEnabled,
+              pushMode: () => {},
+              popMode: () => {},
             }
             // Pass localPoint (math-plane projected cursor) as worldPt so DragTool
             // can resolve startWorld for edge drags from the actual cursor position.
@@ -234,6 +236,8 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
       setDragSnap,
       startClient: state.dragStartClient,
       setOrbitEnabled,
+      pushMode: () => {},
+      popMode: () => {},
     }
     dragTool.handlers.onPointerUp?.(e, currentDrag.currentWorld, null, context)
   }

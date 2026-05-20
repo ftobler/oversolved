@@ -7,9 +7,10 @@ beforeEach(() => {
   setSketchCallback('onExitSketch', null)
   useSketchEditorStore.setState({
     normalSelection: new Set(['@builtin_plane_top']),
-    planeSelectionFeatureId: 'sk1',
     hovered3DSurfaceId: null,
   })
+  // Push 'plane_selection' mode so commitPlaneSelection can pop it
+  useSketchEditorStore.getState().setPlaneSelectionFeatureId('sk1')
 })
 
 describe('_sketchCbs guard throws in test mode when callback is unregistered', () => {

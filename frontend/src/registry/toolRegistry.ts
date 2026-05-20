@@ -33,6 +33,8 @@ export interface ToolContext {
   hoveredVertexPosition: Point | null
   hoveredSnapKind: string | null
   onMutation: ((m: Mutation) => void) | null
+  pushMode: (kind: string) => void
+  popMode: (expectedKind?: string) => void
 }
 
 // Drag initiation state

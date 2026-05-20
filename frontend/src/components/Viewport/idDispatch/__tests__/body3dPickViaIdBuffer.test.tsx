@@ -105,7 +105,7 @@ describe('body3dPickViaIdBuffer', () => {
       clearFaceGeometry: () => {},
     })
 
-    useSketchEditorStore.setState({ planeSelectionFeatureId: 'feat4' })
+    useSketchEditorStore.getState().setPlaneSelectionFeatureId('feat4')
     brepFaceAdapter.onClick('@feat4/face/0')
 
     // The click should not toggle normalSelection when in plane mode.

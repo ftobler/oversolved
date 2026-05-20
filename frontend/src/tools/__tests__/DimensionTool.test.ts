@@ -13,6 +13,8 @@ function createMockContext(overrides: Partial<DimensionToolContext> = {}): Dimen
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
     onMutation: null,
+    pushMode: vi.fn(),
+    popMode: vi.fn(),
     pendingDimTarget: null,
     pendingDimEntityKind: null,
     hoveredEntityKind: null,

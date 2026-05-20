@@ -53,11 +53,9 @@ export function createConstraintTool(config: ConstraintToolConfig): ConstraintTo
     requiresSelection: config.requiresSelection,
     showInToolbar: constraintDef?.showInToolbar ?? false,
 
-    activate: () => {
-    },
+    activate: (context) => { context.pushMode('tool:' + config.constraintKind) },
 
-    deactivate: () => {
-    },
+    deactivate: (context) => { context.popMode('tool:' + config.constraintKind) },
 
     handlers,
   }

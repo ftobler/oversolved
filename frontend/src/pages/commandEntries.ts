@@ -44,7 +44,10 @@ export function buildCommandEntries(
         getState().setActiveTool(null)
         getState().setPlaneSelectionFeatureId(null)
     }},
-    { name: 'cancel_plane_selection', fn: () => getState().setPlaneSelectionFeatureId(null) },
+    { name: 'cancel_plane_selection', fn: () => {
+      getState().popMode('plane_selection')
+      getState().setPlaneSelectionFeatureId(null)
+    }},
     { name: 'add_extrude', fn: handleAddExtrude },
     { name: 'add_hole', fn: handleAddHole },
     { name: 'add_transform', fn: handleAddTransform },
