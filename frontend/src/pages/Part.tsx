@@ -450,7 +450,7 @@ export default function Part() {
       const parsed = parseYaml(codeText) as PartDoc
       docRef.current = parsed
       setDoc(parsed)
-      reSolve(parsed)
+      reSolve(parsed, undefined, { bypassCache: true })
     } catch (e) {
       setSolveError(`Parse error: ${e}`)
     }

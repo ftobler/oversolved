@@ -6,6 +6,7 @@ import { useSolverStore } from '@/stores/solverStore'
 import { unflattenGeometry } from '@/utils/geometryMapping'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
 import { useGeometryCache } from '@/hooks/useGeometryCache'
+import { invalidateDocCache } from '@/utils/buildCache'
 import { PART_COLOR_PALETTE, normalizeHexColor } from '@/utils/partColors'
 import { unpackBodies, unpackPickBodies } from '@/utils/geometryUnpack'
 import type { GeometryHeader } from '@/utils/geometryUnpack'
@@ -250,6 +251,9 @@ export function useSolver(
       const isPreview = rollbackPosition !== undefined || pickBoundaryRef.current !== null
       const pickBoundary = pickBoundaryRef.current
 
+      if (uuid && opts?.bypassCache) {
+        await invalidateDocCache(uuid)
+      }
       if (uuid && !opts?.bypassCache) {
         const cached = await getCachedBuildResponse(d, effectiveRollback, pickBoundary)
         if (cached && cached.isFresh) {
