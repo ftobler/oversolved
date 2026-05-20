@@ -54,6 +54,12 @@ export const FEATURE_KEYMAP: Record<string, string> = {
   'e': 'add_extrude',
 }
 
+// Keys that are only active inside sketch-edit mode.
+// These take precedence over KEYMAP entries when a sketch is being edited.
+export const SKETCH_KEYMAP: Record<string, string> = {
+  'p': 'toggle_plane_visibility',
+}
+
 // ── Registration ────
 
 export function registerCommand(name: string, fn: () => void): void {
@@ -101,7 +107,7 @@ export function dispatchKey(e: KeyboardEvent): boolean {
   if (tag === 'INPUT' || tag === 'TEXTAREA') return false
   const key = buildKeyString(e)
   const inSketchEdit = !!useSketchEditorStore.getState().activeFeatureId
-  const cmd = (!inSketchEdit && FEATURE_KEYMAP[key]) || KEYMAP[key]
+  const cmd = (inSketchEdit && SKETCH_KEYMAP[key]) || (!inSketchEdit && FEATURE_KEYMAP[key]) || KEYMAP[key]
   if (!cmd) return false
   e.preventDefault()
   executeCommand(cmd)

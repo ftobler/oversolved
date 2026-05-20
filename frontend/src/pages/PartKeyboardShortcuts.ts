@@ -8,15 +8,16 @@ export function usePartCommands(
   handleRedo: () => void,
   handleDeleteSelectedFeatures: () => void,
   handleToggleSketchPlaneVisibility: () => void,
+  handleTogglePlaneVisibility: () => void,
   handleAddFeature: (kind: string, extra?: Record<string, unknown>) => void,
 ) {
   const commands = useMemo(
-    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility,
+    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleTogglePlaneVisibility,
       () => handleAddFeature('extrude', { sketchQuery: '', distance: 10 }),
       () => handleAddFeature('hole'),
       () => handleAddFeature('transform'),
     ),
-    [handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleAddFeature],
+    [handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleTogglePlaneVisibility, handleAddFeature],
   )
   useCommandRegistration(commands)
   return { executeCommand }

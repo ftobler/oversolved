@@ -393,6 +393,10 @@ export default function Part() {
     handleMutation({ type: 'toggle_sketch_plane_visibility' })
   }, [handleMutation])
 
+  const handleTogglePlaneVisibility = useCallback(() => {
+    handleMutation({ type: 'toggle_plane_visibility' })
+  }, [handleMutation])
+
   useEffect(() => {
     setSketchCallback('onMutation', handleMutation)
     return () => setSketchCallback('onMutation', null)
@@ -421,6 +425,7 @@ export default function Part() {
     handleRedo,
     handleDeleteSelectedFeatures,
     handleToggleSketchPlaneVisibility,
+    handleTogglePlaneVisibility,
     handleAddFeature,
   )
 

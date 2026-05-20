@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { buildCommandEntries } from '@/pages/commandEntries'
-import { KEYMAP, FEATURE_KEYMAP, clearAllHandlers } from '@/stores/commandRegistry'
+import { KEYMAP, FEATURE_KEYMAP, SKETCH_KEYMAP, clearAllHandlers } from '@/stores/commandRegistry'
 
 // Ensure clean state before each test
 beforeEach(() => { clearAllHandlers() })
@@ -18,7 +18,7 @@ const PROGRAMMATIC_ONLY = new Set([
 ])
 
 describe('buildCommandEntries', () => {
-  const entries = buildCommandEntries(vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn())
+  const entries = buildCommandEntries(vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn())
 
   it('every entry has a non-empty name', () => {
     for (const e of entries) {
@@ -31,8 +31,8 @@ describe('buildCommandEntries', () => {
     expect(new Set(names).size).toBe(names.length)
   })
 
-  it('every name is in KEYMAP/FEATURE_KEYMAP values or is a known programmatic-only command', () => {
-    const keymapValues = new Set([...Object.values(KEYMAP), ...Object.values(FEATURE_KEYMAP)])
+  it('every name is in KEYMAP/FEATURE_KEYMAP/SKETCH_KEYMAP values or is a known programmatic-only command', () => {
+    const keymapValues = new Set([...Object.values(KEYMAP), ...Object.values(FEATURE_KEYMAP), ...Object.values(SKETCH_KEYMAP)])
     for (const { name } of entries) {
       const ok = keymapValues.has(name) || PROGRAMMATIC_ONLY.has(name)
       expect(ok, `"${name}" not in KEYMAP/FEATURE_KEYMAP and not in PROGRAMMATIC_ONLY`).toBe(true)
