@@ -445,6 +445,115 @@ def test_multiple_fillet_features():
     assert_mesh_valid(mesh)
 
 
+#  ── Face query as fillet edge (regression: gface queries from UI) ──
+
+
+def test_fillet_resolves_face_query_on_cylinder():
+    """Fillet edge given as a gface_ query (face reference) must resolve all
+    edges of that face and fillet them.
+
+    This simulates the scenario from bugreports/filled_from_face_1_20260520_192546.md
+    and filled_from_face_2_20260520_192600.md where the UI stored a face query
+    instead of an edge query in the fillet feature.
+    """
+    from oversolved.kernel.builder import build
+    from solver_helpers import assert_mesh_valid
+
+    # Cylinder: circle r=10 extrude d=10 on Top plane (matches bugreport geometry)
+    spec = {
+        "features": [
+            {
+                "id": "sk1",
+                "kind": "sketch",
+                "plane": "Top",
+                "entities": [{"id": "c1", "kind": "circle"}],
+                "initial": {"c1": [0, 0, 10]},
+                "constraints": [
+                    {"id": "co1", "kind": "coincident",
+                     "a": "$sk1/c1center", "b": "@builtin_origin"},
+                    {"id": "d1", "kind": "diameter", "target": "$sk1/c1", "value": 20},
+                ],
+            },
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": "$sk1",
+                "distance": 10,
+                "direction": "normal",
+            },
+        ]
+    }
+    r0 = build(spec)
+    assert r0["result"]["ex1"]["status"] == "ok", r0["result"]["ex1"]
+    face_queries = r0["bodies"]["body_ex1"]["mesh"].get("face_queries", [])
+    assert len(face_queries) > 0, "build should produce face_queries"
+
+    spec["features"].append({
+        "id": "fillet1",
+        "kind": "fillet",
+        "label": "Fillet",
+        "edges": [face_queries[0]],
+        "radius": 1.0,
+    })
+    r = build(spec)
+    assert r["result"]["fillet1"]["status"] == "ok", (
+        f"fillet with face query failed: {r['result']['fillet1'].get('exception')}"
+    )
+    assert_mesh_valid(r["bodies"]["body_ex1"]["mesh"])
+
+
+def test_fillet_resolves_second_face_query_on_cylinder():
+    """Same as test_fillet_resolves_face_query_on_cylinder but uses a different
+    face (e.g. the other flat face of the cylinder).
+
+    Covers the second scenario from the bugreports where a different face hash
+    was used.
+    """
+    from oversolved.kernel.builder import build
+    from solver_helpers import assert_mesh_valid
+
+    spec = {
+        "features": [
+            {
+                "id": "sk1",
+                "kind": "sketch",
+                "plane": "Top",
+                "entities": [{"id": "c1", "kind": "circle"}],
+                "initial": {"c1": [0, 0, 10]},
+                "constraints": [
+                    {"id": "co1", "kind": "coincident",
+                     "a": "$sk1/c1center", "b": "@builtin_origin"},
+                    {"id": "d1", "kind": "diameter", "target": "$sk1/c1", "value": 20},
+                ],
+            },
+            {
+                "id": "ex1",
+                "kind": "extrude",
+                "sketch": "$sk1",
+                "distance": 10,
+                "direction": "normal",
+            },
+        ]
+    }
+    r0 = build(spec)
+    assert r0["result"]["ex1"]["status"] == "ok", r0["result"]["ex1"]
+    face_queries = r0["bodies"]["body_ex1"]["mesh"].get("face_queries", [])
+    assert len(face_queries) >= 2, "cylinder should have at least 2 flat faces"
+
+    spec["features"].append({
+        "id": "fillet1",
+        "kind": "fillet",
+        "label": "Fillet",
+        "edges": [face_queries[1]],
+        "radius": 1.0,
+    })
+    r = build(spec)
+    assert r["result"]["fillet1"]["status"] == "ok", (
+        f"fillet with second face query failed: {r['result']['fillet1'].get('exception')}"
+    )
+    assert_mesh_valid(r["bodies"]["body_ex1"]["mesh"])
+
+
 # ─── fix-143: _solve_transform module ownership ───
 
 def test_solve_transform_not_in_fillet_module():
