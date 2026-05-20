@@ -210,7 +210,6 @@ export default function Part() {
     exitEditFeature,
     enterEditSketch,
     exitEditSketch,
-    clearEditingFeature,
   } = useEditFeature({
     features,
     rollbackPosition,
@@ -308,9 +307,9 @@ export default function Part() {
   })
 
   const handleExitSketch = useCallback(() => {
-    clearEditingFeature()
+    exitEditSketch()
     setContextMenu(null)
-  }, [clearEditingFeature])
+  }, [exitEditSketch])
 
   const handleDeleteFeature = useCallback((featureId: string) => {
     if (BUILT_IN_IDS.has(featureId)) return

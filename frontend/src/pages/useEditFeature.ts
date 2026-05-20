@@ -102,8 +102,9 @@ export function useEditFeature({
     setEditingFeatureId(featureId)
     setPickBoundary(null)
     clearPickBodies()
+    if (docRef.current) reSolve(docRef.current, idx + 1)
   }, [features, rollbackPosition, setPickBoundary, clearPickBodies, setRollbackPos,
-      setRollbackFromHandler, startEditSession])
+      setRollbackFromHandler, startEditSession, docRef, reSolve])
 
   const commitEditFeature = useCallback(() => {
     commitEditSession()

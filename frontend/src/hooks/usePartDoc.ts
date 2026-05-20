@@ -63,7 +63,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
     docRef.current = next
     setDoc(next)
-    reSolve(next)
+    reSolve(next, undefined, { bypassCache: true })
   }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo])
 
   const previewOriginalDoc = useRef<PartDoc | null>(null)

@@ -228,7 +228,7 @@ export function useSolver(
   const reSolve = useCallback(async (
     d: PartDoc,
     rollbackPosition?: number | null,
-    opts?: { validate?: boolean },
+    opts?: { validate?: boolean; bypassCache?: boolean },
   ) => {
     setSolving(true)
     setSolveTime(null)
@@ -250,7 +250,7 @@ export function useSolver(
       const isPreview = rollbackPosition !== undefined || pickBoundaryRef.current !== null
       const pickBoundary = pickBoundaryRef.current
 
-      if (uuid) {
+      if (uuid && !opts?.bypassCache) {
         const cached = await getCachedBuildResponse(d, effectiveRollback, pickBoundary)
         if (cached && cached.isFresh) {
           if (isStale()) {
