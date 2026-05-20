@@ -2,21 +2,7 @@ import { useState } from 'react'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 import { useFieldPicking } from '@/hooks/useFieldPicking'
-
-function resolveBodyRef(id: string): string {
-  let bodyRef = id
-  if (id.startsWith('body:')) {
-    bodyRef = '@' + id.slice(5)
-  } else if (id.startsWith('?')) {
-    bodyRef = '@body_' + id.slice(1).split('/')[0]
-  } else if (id.startsWith('@') && id.includes('/')) {
-    bodyRef = '@' + id.slice(1).split('/')[0]
-  }
-  if (bodyRef.startsWith('@') && !bodyRef.startsWith('@body_')) {
-    bodyRef = '@body_' + bodyRef.slice(1)
-  }
-  return bodyRef
-}
+import { resolveBodyPickRef } from '@/utils/resolveBodyPickRef'
 
 interface BooleanEditorProps {
   feature: PartFeature
@@ -32,12 +18,12 @@ export function BooleanEditor({ feature, onMutation, features, partLabels }: Boo
   const [isPickingTool, setIsPickingTool] = useState(false)
 
   useFieldPicking(isPickingTarget, (selectionId) => {
-    onMutation({ type: 'set_boolean_field', featureId: fid, field: 'target', value: resolveBodyRef(selectionId) })
+    onMutation({ type: 'set_boolean_field', featureId: fid, field: 'target', value: resolveBodyPickRef(selectionId) })
     setIsPickingTarget(false)
   })
 
   useFieldPicking(isPickingTool, (selectionId) => {
-    onMutation({ type: 'add_boolean_tool', featureId: fid, tool: resolveBodyRef(selectionId) })
+    onMutation({ type: 'add_boolean_tool', featureId: fid, tool: resolveBodyPickRef(selectionId) })
   })
 
   return (

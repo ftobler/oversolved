@@ -2,27 +2,13 @@ import { useState } from 'react'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 import { useFieldPicking } from '@/hooks/useFieldPicking'
+import { resolveBodyPickRef } from '@/utils/resolveBodyPickRef'
 
 interface DeleteBodyEditorProps {
   feature: PartFeature
   onMutation: (m: Mutation) => void
   features?: PartFeature[]
   partLabels?: Record<string, string>
-}
-
-function resolveDeleteBodyRef(id: string): string {
-  let bodyRef = id
-  if (id.startsWith('body:')) {
-    bodyRef = '@' + id.slice(5)
-  } else if (id.startsWith('?')) {
-    bodyRef = '@body_' + id.slice(1).split('/')[0]
-  } else if (id.startsWith('@') && id.includes('/')) {
-    bodyRef = '@' + id.slice(1).split('/')[0]
-  }
-  if (bodyRef.startsWith('@') && !bodyRef.startsWith('@body_')) {
-    bodyRef = '@body_' + bodyRef.slice(1)
-  }
-  return bodyRef
 }
 
 export function DeleteBodyEditor({
@@ -33,7 +19,7 @@ export function DeleteBodyEditor({
   const [isPickingBody, setIsPickingBody] = useState(false)
 
   useFieldPicking(isPickingBody, (selectionId) => {
-    onMutation({ type: 'set_delete_body_field', featureId: fid, field: 'body', value: resolveDeleteBodyRef(selectionId) })
+    onMutation({ type: 'set_delete_body_field', featureId: fid, field: 'body', value: resolveBodyPickRef(selectionId) })
     setIsPickingBody(false)
   })
 
