@@ -1,5 +1,6 @@
 """Tests for the _apply_body_operation shared helper."""
 import importlib
+from unittest.mock import patch
 import pytest
 
 pytestmark = pytest.mark.skipif(
@@ -164,3 +165,54 @@ def test_add_operation_mutates_existing_body():
     _call_helper(tool, body_store, operation="add")
     # Shape should have been replaced (union)
     assert body_store["body_b0"].shape is not original_shape
+
+
+# ─── solver_warning for empty brep_diff ───
+
+
+def test_cut_with_empty_brep_diff_emits_solver_warning():
+    import cadquery as cq
+    from oversolved.kernel.types3d import BrepDiff
+    existing = cq.Workplane("XY").box(5, 5, 5).val()
+    tool = cq.Workplane("XY").box(2, 2, 6).val()
+    body_store = _make_body_store(existing)
+    empty_diff = BrepDiff()
+    with patch(
+        "oversolved.kernel.solver_features_shared.boolean_cut_with_diff",
+        return_value=(existing, empty_diff),
+    ):
+        result = _call_helper(tool, body_store, operation="cut", op_name="extrude")
+    assert "solver_warning" in result
+    assert "no geometry change" in result["solver_warning"]
+
+
+def test_add_with_empty_brep_diff_emits_solver_warning():
+    import cadquery as cq
+    from oversolved.kernel.types3d import BrepDiff
+    existing = cq.Workplane("XY").box(5, 5, 5).val()
+    tool = cq.Workplane("XY").transformed(offset=(5, 0, 0)).box(5, 5, 5).val()
+    body_store = _make_body_store(existing, body_id="body_b0")
+    empty_diff = BrepDiff()
+    with patch(
+        "oversolved.kernel.solver_features_shared.boolean_union_with_diff",
+        return_value=(existing, empty_diff),
+    ):
+        result = _call_helper(tool, body_store, operation="add", op_name="extrude")
+    assert "solver_warning" in result
+    assert "no geometry change" in result["solver_warning"]
+
+
+def test_cut_with_nonempty_brep_diff_no_warning():
+    import cadquery as cq
+    existing = cq.Workplane("XY").box(5, 5, 5).val()
+    tool = cq.Workplane("XY").box(2, 2, 6).val()
+    body_store = _make_body_store(existing)
+    result = _call_helper(tool, body_store, operation="cut")
+    assert "solver_warning" not in result
+
+
+def test_new_operation_never_emits_solver_warning():
+    tool = _make_box_shape()
+    body_store: dict = {}
+    result = _call_helper(tool, body_store, operation="new")
+    assert "solver_warning" not in result

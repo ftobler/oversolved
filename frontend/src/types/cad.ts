@@ -179,6 +179,7 @@ export interface BodyFeatureResult {
   body_ids?: string[]
   exception?: string
   mesh_warning?: string
+  solver_warning?: string
   solve_ms?: number
 }
 

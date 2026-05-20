@@ -459,6 +459,20 @@ def _resolve_merge_targets(merge_target: str | None, body_store: dict) -> list[s
     raise ValueError(f"extrude: body not found for merge_target '{merge_target}'")
 
 
+def _brep_diff_is_empty(diff: "Any") -> bool:
+    """Return True if a BrepDiff has no geometry changes (no new, deleted, or modified shapes)."""
+    if diff is None:
+        return False
+    return (
+        not diff.new_faces
+        and not diff.deleted_input_faces
+        and not diff.modified_input_faces
+        and not diff.new_edges
+        and not diff.deleted_input_edges
+        and not diff.modified_input_edges
+    )
+
+
 def _apply_body_operation(
     tool_shape: "Any",
     body_store: dict,
@@ -529,6 +543,9 @@ def _apply_body_operation(
             )
         result["body_id"] = cut_body_id
         result["operation"] = "cut"
+        cut_body = body_store.get(cut_body_id)
+        if cut_body is not None and _brep_diff_is_empty(cut_body.brep_diff):
+            result["solver_warning"] = f"{op_name}: operation produced no geometry change"
     elif operation == "new":
         solids = _split_compound(tool_shape)
         body_ids = []
@@ -569,6 +586,9 @@ def _apply_body_operation(
             result["body_id"] = fused_body_id
             result["body_ids"] = [fused_body_id]
             result["operation"] = "add"
+            fused_body = body_store.get(fused_body_id)
+            if fused_body is not None and _brep_diff_is_empty(fused_body.brep_diff):
+                result["solver_warning"] = f"{op_name}: operation produced no geometry change"
         elif not need_new_body:
             raise ValueError(f"{op_name}: add could not fuse with any target body")
         else:
