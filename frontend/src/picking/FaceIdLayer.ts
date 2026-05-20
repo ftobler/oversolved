@@ -62,6 +62,9 @@ function buildFaceIdMaterial(): THREE.ShaderMaterial {
     fragmentShader: FRAG_SHADER,
     vertexColors: true,
     side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1,
   })
 }
 

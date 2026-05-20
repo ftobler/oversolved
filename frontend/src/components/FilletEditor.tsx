@@ -16,6 +16,8 @@ export function FilletEditor({ feature, onMutation, features, partLabels }: Fill
   const [isPickingEdges, setIsPickingEdges] = useState(false)
 
   useFieldPicking(isPickingEdges, (selectionId) => {
+    // Prevent self-pick (selecting the fillet feature's own ID)
+    if (!selectionId.startsWith('?')) return
     const edgeQuery = selectionId.startsWith('face:')
       ? selectionId.split(':').slice(2).join(':')
       : selectionId

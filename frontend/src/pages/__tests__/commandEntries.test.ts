@@ -48,7 +48,7 @@ describe('buildCommandEntries', () => {
   it('handleUndo and handleRedo are wired to the undo and redo entries', () => {
     const handleUndo = vi.fn()
     const handleRedo = vi.fn()
-    const entries = buildCommandEntries(handleUndo, handleRedo, vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn())
+    const entries = buildCommandEntries(handleUndo, handleRedo, vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn())
     entries.find(e => e.name === 'undo')!.fn()
     expect(handleUndo).toHaveBeenCalledOnce()
     entries.find(e => e.name === 'redo')!.fn()

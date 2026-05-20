@@ -347,6 +347,33 @@ describe('sketchEditorStore', () => {
     })
   })
 
+  describe('setActiveFeatureId', () => {
+    it('clears tool and draw state on transition to null', () => {
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().setActiveTool('line')
+      useSketchEditorStore.getState().addDrawPoint([1, 2])
+      useSketchEditorStore.getState().setDrawHover([3, 4])
+      useSketchEditorStore.getState().setActiveFeatureId(null)
+      expect(useSketchEditorStore.getState().activeFeatureId).toBeNull()
+      expect(useSketchEditorStore.getState().activeTool).toBeNull()
+      expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+      expect(useSketchEditorStore.getState().drawHover).toBeNull()
+      expect(useSketchEditorStore.getState().drawSnapVertexId).toBeNull()
+    })
+
+    it('does not reset tool when setting same null', () => {
+      useSketchEditorStore.getState().setActiveTool('line')
+      useSketchEditorStore.getState().setActiveFeatureId(null)
+      expect(useSketchEditorStore.getState().activeTool).toBe('line')
+    })
+
+    it('does not reset tool when transitioning to non-null', () => {
+      useSketchEditorStore.getState().setActiveTool('line')
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      expect(useSketchEditorStore.getState().activeTool).toBe('line')
+    })
+  })
+
   describe('draw tool state', () => {
     it('addDrawPoint accumulates points', () => {
       useSketchEditorStore.getState().addDrawPoint([1, 2])

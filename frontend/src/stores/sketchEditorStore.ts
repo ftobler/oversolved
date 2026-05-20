@@ -334,7 +334,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setShowConstraintTiles: (show) => set({ showConstraintTiles: show }),
 
   setActiveTool: (tool) => set({ activeTool: tool, drawPoints: [], drawHover: null }),
-  setActiveFeatureId: (id) => set({ activeFeatureId: id }),
+  setActiveFeatureId: (id) => set(state => {
+    if (state.activeFeatureId !== null && id === null) {
+      return { activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapVertexId: null }
+    }
+    return { activeFeatureId: id }
+  }),
 
   setEntityKindMap: (map) => set({ entityKindMap: map }),
 

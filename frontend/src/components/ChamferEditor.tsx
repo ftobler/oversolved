@@ -16,6 +16,8 @@ export function ChamferEditor({ feature, onMutation, features, partLabels }: Cha
   const [isPickingEdges, setIsPickingEdges] = useState(false)
 
   useFieldPicking(isPickingEdges, (selectionId) => {
+    // Prevent self-pick (selecting the chamfer feature's own ID)
+    if (!selectionId.startsWith('?')) return
     const edgeQuery = selectionId.startsWith('face:')
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
