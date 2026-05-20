@@ -100,4 +100,93 @@ describe('EdgeIdLayer', () => {
     expect(layer.bodyCount()).toBe(0)
     expect(reg.size()).toBe(0)
   })
+
+  // ─── Ghost mode transition tests ───
+
+  it('replaces edge registration on same bodyKey (simulates React in-place update across ternary branches)', () => {
+    // Ghost mode: register pickBodies edges
+    layer.registerBody({
+      bodyKey: 'body_ex1',
+      segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
+      segmentToEdge: new Uint32Array([0]),
+      edgeQueries: ['?old_pick_edge:edge'],
+    })
+    expect(layer.bodyCount()).toBe(1)
+    const oldId = reg.lookupKey(EDGE_LAYER_NAME, '?old_pick_edge:edge')
+    expect(oldId).toBeDefined()
+
+    // React updates Body3D in place: cleanup unregisters, setup re-registers
+    layer.unregisterBody('body_ex1')
+    layer.registerBody({
+      bodyKey: 'body_ex1',
+      segmentPositions: new Float32Array([0, 0, 0, 1, 1, 0]),
+      segmentToEdge: new Uint32Array([0]),
+      edgeQueries: ['?new_fillet_edge:edge'],
+    })
+
+    expect(layer.bodyCount()).toBe(1)
+    // Old edge query must be gone from the registry
+    expect(reg.lookupKey(EDGE_LAYER_NAME, '?old_pick_edge:edge')).toBeUndefined()
+    // New edge query must be registered
+    const newId = reg.lookupKey(EDGE_LAYER_NAME, '?new_fillet_edge:edge')
+    expect(newId).toBeDefined()
+    // Must be a different ID (old was freed, new allocated)
+    expect(newId).not.toBe(oldId)
+  })
+
+  it('replaces edge registration on different bodyKey (simulates React unmount/remount across ternary branches)', () => {
+    // Ghost mode: pickBodies uses bodyKey 'extrude1/body_ex1'
+    layer.registerBody({
+      bodyKey: 'extrude1/body_ex1',
+      segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
+      segmentToEdge: new Uint32Array([0]),
+      edgeQueries: ['?pick_edge:edge'],
+    })
+    expect(layer.bodyCount()).toBe(1)
+
+    // Accept: pickBodyItems Body3D unmounts
+    layer.unregisterBody('extrude1/body_ex1')
+    expect(layer.bodyCount()).toBe(0)
+
+    // bodyItems Body3D mounts with different bodyKey
+    layer.registerBody({
+      bodyKey: 'fillet1/body_ex1',
+      segmentPositions: new Float32Array([0, 0, 0, 1, 1, 0]),
+      segmentToEdge: new Uint32Array([0]),
+      edgeQueries: ['?fillet_edge:edge'],
+    })
+
+    expect(layer.bodyCount()).toBe(1)
+    // Old pick edge must be freed
+    expect(reg.lookupKey(EDGE_LAYER_NAME, '?pick_edge:edge')).toBeUndefined()
+    // New fillet edge must be registered
+    expect(reg.lookupKey(EDGE_LAYER_NAME, '?fillet_edge:edge')).toBeDefined()
+  })
+
+  it('registerBody internally unregisters before registering (defense against missing cleanup)', () => {
+    // Even if the old cleanup effect fails to run, registerBody's own
+    // unregisterBody handles the replacement.
+    layer.registerBody({
+      bodyKey: 'body_ex1',
+      segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
+      segmentToEdge: new Uint32Array([0]),
+      edgeQueries: ['?old_edge:edge'],
+    })
+    expect(layer.bodyCount()).toBe(1)
+
+    // Call registerBody directly with the same bodyKey (no explicit unregister)
+    layer.registerBody({
+      bodyKey: 'body_ex1',
+      segmentPositions: new Float32Array([0, 0, 0, 1, 1, 0]),
+      segmentToEdge: new Uint32Array([0]),
+      edgeQueries: ['?new_edge:edge'],
+    })
+
+    // The old registration must be replaced, not duplicated
+    expect(layer.bodyCount()).toBe(1)
+    expect(reg.lookupKey(EDGE_LAYER_NAME, '?old_edge:edge')).toBeUndefined()
+    expect(reg.lookupKey(EDGE_LAYER_NAME, '?new_edge:edge')).toBeDefined()
+    // Scene must have exactly 1 mesh (not 2)
+    expect(layer.scene.children.length).toBe(1)
+  })
 })

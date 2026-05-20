@@ -105,9 +105,15 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
     lastCamMatrix.current.set(m)
 
     if (changed) {
+      // Capture whether the pipeline was already dirty from a geometry
+      // change (registration hooks) BEFORE we add the camera-change mark.
+      // When geometry is stale we must NOT defer — the ID buffer needs
+      // fresh pixel data so clicks resolve correctly. Only defer when
+      // the sole reason for dirtiness is this frame's camera motion.
+      const hadGeometryDirty = pipeline.isDirty()
       pipeline.markDirty('camera')
       cameraMovedThisFrame.current = true
-      if (!pipeline.pickDuringCameraMotion) {
+      if (!pipeline.pickDuringCameraMotion && !hadGeometryDirty) {
         return  // defer render until the camera settles
       }
     } else {
