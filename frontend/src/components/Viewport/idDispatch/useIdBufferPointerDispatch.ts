@@ -24,8 +24,18 @@ import {
  * also clear the current selection.
  */
 let lastClickIdHit = false
+let lastClickWasStale = false
+
 function setLastClickIdHit(v: boolean): void { lastClickIdHit = v }
 export function wasLastClickConsumedByIdDispatch(): boolean { return lastClickIdHit }
+
+/**
+ * When true, the most recent resolve returned null because the pipeline was
+ * dirty (pending re-render after geometry change), not because the cursor
+ * was over empty space. The Viewport's `onPointerMissed` should NOT clear
+ * selection in this case.
+ */
+export function wasLastClickStaleResolve(): boolean { return lastClickWasStale }
 
 interface DispatchParams {
   /**
@@ -88,7 +98,14 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       if (!pipeline || !gl) return null
       const allowed = computeAllowed()
       if (allowed.size === 0) return null
-      return pipeline.resolveSync(gl, cursorFromEvent(e, canvas), { allowedLayers: allowed })
+      const hit = pipeline.resolveSync(gl, cursorFromEvent(e, canvas), { allowedLayers: allowed })
+      // Track whether a null result was due to a stale (dirty) pipeline.
+      // This lets the caller distinguish "no entity under cursor" from
+      // "ID buffer is being re-rendered, try again next frame".
+      if (hit === null && pipeline.isDirty()) {
+        lastClickWasStale = true
+      }
+      return hit
     }
 
     const applyHoverHit = (layer: string | null, entityKey: string | null) => {
@@ -149,6 +166,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
 
     const onClick = (e: MouseEvent) => {
       setLastClickIdHit(false)
+      lastClickWasStale = false
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
       if (!hit) return

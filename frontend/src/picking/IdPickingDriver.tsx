@@ -3,7 +3,6 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { IdPipeline } from './IdPipeline'
 import { setLivePipeline } from './IdPipelineContext'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { subscribePipelineToPartEditor } from './dirtyInvalidation'
 
 interface IdPickingDriverProps {
@@ -74,14 +73,12 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
     pipeline.resize(db.width, db.height)
   })
 
-  // Re-render whenever the edit flag flips so the ID buffer stays current.
-  useEffect(() => {
-    const unsub = useSketchEditorStore.subscribe((state, prev) => {
-      if (state.activeFeatureId !== prev.activeFeatureId) pipeline.markDirty()
-    })
-    return unsub
-  }, [pipeline])
-
+  // The B-rep inert-predicate and the sketch-entity / sketch-surface /
+  // plane / origin ID layers are all registered from per-component hooks
+  // (useFaceIdRegistration, useSketchIdRegistration, etc.) that call
+  // pipeline.markDirty() in their setup and cleanup effects. No additional
+  // store-level dirty marks are needed — they would fire before React has
+  // committed the new geometry layers.
   useEffect(() => subscribePipelineToPartEditor(pipeline), [pipeline])
 
   // Camera-change detection. Compare the camera's world matrix every frame

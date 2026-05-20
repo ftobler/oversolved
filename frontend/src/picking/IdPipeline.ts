@@ -281,12 +281,22 @@ export class IdPipeline {
    * read origin internally.
    *
    * Returns null when the window is empty or the cursor is off-screen.
+   *
+   * When the pipeline is dirty (pending re-render after geometry change),
+   * the render target has stale pixel data. Resolving against stale data
+   * can return wrong entityKeys (freed IDs recycled for different entities)
+   * or null (freed IDs removed from the registry). This guard returns null
+   * to skip stale resolves, at the cost of one frame of missed picks during
+   * scene transitions. The caller's `onPointerMissed` handler should be
+   * aware that a null return can be a transient transition state, not
+   * necessarily empty space.
    */
   resolveSync(
     renderer: THREE.WebGLRenderer,
     cursorPx: { x: number; y: number },
     opts?: ResolveOptions,
   ): ResolvedHit | null {
+    if (this.target.isDirty()) return null  // render target is stale
     const w = this.target.getWidth()
     const h = this.target.getHeight()
     const windowSize = opts?.windowSize ?? this.windowSize

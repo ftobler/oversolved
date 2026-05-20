@@ -83,19 +83,23 @@ describe('partEditorStore scene-slice invalidation', () => {
     expect(sceneSliceChanged(c, d)).toBe(true)
   })
 
-  it('subscribePipelineToPartEditor dirties on solve replacement, not on irrelevant updates', () => {
+  it('subscribePipelineToPartEditor does NOT dirty on solve replacement — Body3D registration hooks handle that', () => {
     const p = new IdPipeline({ width: 16, height: 16 })
     p['target'].markClean()
     const unsub = subscribePipelineToPartEditor(p)
 
-    // Irrelevant field: should NOT dirty.
+    // Irrelevant field: should NOT dirty (same as before — no change).
     usePartEditorStore.setState({ isRebuilding: true })
     expect(p.isDirty()).toBe(false)
 
-    // Replacing bodies (post-solve snapshot) -> dirty.
+    // Replacing bodies (post-solve snapshot): the subscription no longer
+    // calls markDirty here because the Body3D registration hooks
+    // (useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration)
+    // handle that AFTER React re-renders and commits the new geometry.
+    // Marking dirty here would be too early — the layers still have old
+    // geometry, and the pipeline would render stale pixel data.
     usePartEditorStore.setState({ bodies: { 'a': {} as never } })
-    expect(p.isDirty()).toBe(true)
-    expect(p.getLastDirtyReason()).toBe('partEditorStore')
+    expect(p.isDirty()).toBe(false)  // subscription no longer dirties
 
     unsub()
     p.dispose()

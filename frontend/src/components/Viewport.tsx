@@ -21,7 +21,7 @@ import ContextMenuDialog from '@/components/ContextMenuDialog'
 import { IdPickingDriver, DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME, PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME } from '@/picking'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
 import type { IdPipeline } from '@/picking'
-import { useIdBufferPointerDispatch, wasLastClickConsumedByIdDispatch } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
+import { useIdBufferPointerDispatch, wasLastClickConsumedByIdDispatch, wasLastClickStaleResolve } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { useRubberBandSelect } from '@/components/Viewport/useRubberBandSelect'
 import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
@@ -609,6 +609,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           // R3F sees no R3F handler on the dim label mesh post-267.3 and would otherwise
           // treat every label click as a miss.
           if (wasLastClickConsumedByIdDispatch()) return
+          // Skip selection clear when the ID buffer was stale (pending
+          // re-render after geometry change). A null resolve in that case
+          // is a transient transition state, not empty space.
+          if (wasLastClickStaleResolve()) return
           if (!wasPointerDrag.current && pointerDownButton.current === 0) {
             useSketchEditorStore.getState().clearNormalSelection()
             useSketchEditorStore.getState().setHoveredBodyId(null)
