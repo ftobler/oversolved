@@ -1,10 +1,8 @@
 import * as React from 'react'
 import { BugReporter, type BugReportAttachments } from '@/components/BugReporter'
-import WsReconnect from '@/components/WsReconnect'
 import { describeMutation } from '@/utils/mutationDescriptions'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useNotify } from '@/contexts/ToastContext'
 import { http } from '@/utils/httpClient'
 import type { Mutation } from '@/types/cad'
 
@@ -31,9 +29,7 @@ export default function PartDebugPanel({ debugOpen, mode }: PartDebugPanelProps)
   const redoStack = usePartEditorStore(s => s.redoStack) as UndoEntry[]
   const doc = usePartEditorStore(s => s.doc)
 
-  const notify = useNotify()
-
-  const [debugTab, setDebugTab] = React.useState<'selection' | 'bug-report' | 'undo-redo' | 'ws'>('selection')
+  const [debugTab, setDebugTab] = React.useState<'selection' | 'bug-report' | 'undo-redo'>('selection')
   const [bugReportForm, setBugReportForm] = React.useState({ title: '', description: '' })
   const [bugReporting, setBugReporting] = React.useState(false)
   const [bugReportError, setBugReportError] = React.useState<string | null>(null)
@@ -47,8 +43,8 @@ export default function PartDebugPanel({ debugOpen, mode }: PartDebugPanelProps)
   })
 
   const handleSubmitBugReport = async () => {
-    if (!bugReportForm.title.trim() || !bugReportForm.description.trim()) {
-      setBugReportError('Title and description are required')
+    if (!bugReportForm.title.trim()) {
+      setBugReportError('Title is required')
       return
     }
     setBugReporting(true)
@@ -81,7 +77,7 @@ export default function PartDebugPanel({ debugOpen, mode }: PartDebugPanelProps)
       }
       await http.postJson('/api/bug-report', report)
       setBugReportForm({ title: '', description: '' })
-      notify('Bug report submitted successfully!', 'success')
+      alert('Bug report submitted successfully!')
       setDebugTab('selection')
     } catch (e) {
       setBugReportError(`Failed to submit: ${e}`)
@@ -98,7 +94,6 @@ export default function PartDebugPanel({ debugOpen, mode }: PartDebugPanelProps)
         <button className={`debug-tab ${debugTab === 'selection' ? 'active' : ''}`} onClick={() => setDebugTab('selection')}>Selection</button>
         <button className={`debug-tab ${debugTab === 'bug-report' ? 'active' : ''}`} onClick={() => setDebugTab('bug-report')}>Bug Report</button>
         <button className={`debug-tab ${debugTab === 'undo-redo' ? 'active' : ''}`} onClick={() => setDebugTab('undo-redo')}>Undo</button>
-        <button className={`debug-tab ${debugTab === 'ws' ? 'active' : ''}`} onClick={() => setDebugTab('ws')}>WS</button>
       </div>
       {debugTab === 'selection' && (
         <div className="debug-content">
@@ -165,7 +160,6 @@ export default function PartDebugPanel({ debugOpen, mode }: PartDebugPanelProps)
           </div>
         </div>
       )}
-      {debugTab === 'ws' && <WsReconnect />}
     </aside>
   )
 }
