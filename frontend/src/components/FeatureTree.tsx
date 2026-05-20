@@ -234,9 +234,9 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
               }}
               onDragOver={(e) => {
                 if (draggedFeatureId) {
+                  if (isBuiltIn) return
                   e.preventDefault()
                   e.stopPropagation()
-                  if (isBuiltIn) return
                   const rect = e.currentTarget.getBoundingClientRect()
                   const midY = rect.top + rect.height / 2
                   const targetIndex = e.clientY < midY ? index : index + 1
