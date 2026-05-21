@@ -156,7 +156,7 @@ export class EdgeIdLayer extends IdLayerBase {
 
       let rgb = edgeColorCache.get(edgeIdx)
       if (!rgb) {
-        if (process.env.NODE_ENV !== 'production') {
+        if (import.meta.env.MODE !== 'production') {
           const dedupKey = `${this.name}\x00${query}`
           if (this.registry.lookupKey(this.name, query) !== undefined && edgeColorCache.size > 0 && !_warnedDuplicates.has(dedupKey)) {
             _warnedDuplicates.add(dedupKey)

@@ -107,7 +107,7 @@ export class FaceIdLayer extends IdLayerBase {
 
       let rgb = faceIdCache.get(faceIdx)
       if (!rgb) {
-        if (process.env.NODE_ENV !== 'production') {
+        if (import.meta.env.MODE !== 'production') {
           const dedupKey = `${this.name}\x00${query}`
           if (this.registry.lookupKey(this.name, query) !== undefined && faceIdCache.size > 0 && !_warnedDuplicates.has(dedupKey)) {
             _warnedDuplicates.add(dedupKey)

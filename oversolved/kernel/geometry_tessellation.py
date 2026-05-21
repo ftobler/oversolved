@@ -274,7 +274,38 @@ def sketch_loops_to_face(loops: list[list[dict]], plane: Frame3D | dict) -> cq_s
 
         return make_arc_edge(center_3d, radius, normal, x_axis, u0, u1)
 
+    def full_circle_of(loop: list[dict]) -> dict | None:
+        """If every edge of the loop is an arc on one shared circle, return a
+        single full-circle edge dict for it, else None.
+
+        The sketch layer represents a standalone circle as two 180 degree arcs
+        (see topology._circle_arcs). Handed to OCC as two edges, that yields two
+        half-cylinder faces on extrude. Emitting one closed circle edge instead
+        makes OCC build a single cylindrical face with a proper periodic seam.
+        """
+        if len(loop) < 2 or any(e.get("kind") != "arc" for e in loop):
+            return None
+        c0 = loop[0].get("center")
+        r0 = loop[0].get("radius")
+        if c0 is None or r0 is None:
+            return None
+        for e in loop:
+            c = e.get("center")
+            r = e.get("radius")
+            if c is None or r is None:
+                return None
+            if abs(r - r0) > 1e-9 or abs(c[0] - c0[0]) > 1e-9 or abs(c[1] - c0[1]) > 1e-9:
+                return None
+        return {
+            "kind": "arc", "center": list(c0), "radius": r0,
+            "angle_start_deg": 0.0, "angle_end_deg": 360.0, "ccw": True,
+            "start": [c0[0] + r0, c0[1]], "end": [c0[0] + r0, c0[1]],
+        }
+
     def build_wire(loop: list[dict]) -> cq_shapes.Wire:
+        circle = full_circle_of(loop)
+        if circle is not None:
+            return make_wire([build_arc_edge(circle)])
         edges: list[cq_shapes.Edge] = []
         for edge in loop:
             kind = edge.get("kind", "line")
