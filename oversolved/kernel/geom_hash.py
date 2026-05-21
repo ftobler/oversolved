@@ -60,6 +60,12 @@ def edge_geometry_hash(edge: dict) -> str:
         if kind == "arc":
             items.append(str(round(_arc_angle_deg(edge, start=True), 4)))
             items.append(str(round(_arc_angle_deg(edge, start=False), 4)))
+            # Orientation pins which half of the circle the arc covers. OCC may
+            # split a full circle into two arcs with identical center/radius and
+            # angle span [0, pi] that differ only in axis/x_axis direction;
+            # without these, the two halves collide to the same hash.
+            items.extend(str(round(v, 4)) for v in edge.get("axis", [0, 0, 1]))
+            items.extend(str(round(v, 4)) for v in edge.get("x_axis", [1, 0, 0]))
     else:
         items.extend(str(round(v, 4)) for pt in edge.get("points", [[0, 0, 0]]) for v in pt)
     digest = hashlib.sha256("|".join(items).encode()).hexdigest()[:16]

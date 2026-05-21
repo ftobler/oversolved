@@ -3,6 +3,8 @@ import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
 import { idToRGBNormalized } from './idEncoding'
 
+const _warnedDuplicates = new Set<string>()
+
 /**
  * Concrete ID layer for B-rep edges.
  *
@@ -154,6 +156,16 @@ export class EdgeIdLayer extends IdLayerBase {
 
       let rgb = edgeColorCache.get(edgeIdx)
       if (!rgb) {
+        if (process.env.NODE_ENV !== 'production') {
+          const dedupKey = `${this.name}\x00${query}`
+          if (this.registry.lookupKey(this.name, query) !== undefined && edgeColorCache.size > 0 && !_warnedDuplicates.has(dedupKey)) {
+            _warnedDuplicates.add(dedupKey)
+            console.warn(
+              `[EdgeIdLayer] Two edges share the same query string in ${reg.bodyKey}. ` +
+              `query="${query}". Selection IDs will not be unique.`
+            )
+          }
+        }
         const id = this.registry.allocate(this.name, query)
         allocatedIds.push(id)
         rgb = idToRGBNormalized(id)

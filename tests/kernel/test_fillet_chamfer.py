@@ -616,3 +616,128 @@ def test_chamfer_angle_distance_mode():
     assert kwargs.get("kind") == "angle_distance", (
         f"apply_chamfer was called with kind={kwargs.get('kind')!r}, expected 'angle_distance'"
     )
+
+
+def test_fillet_duplicate_edge_and_face_query():
+    """Fillet with both an edge query AND a face query that resolve to
+    the same OCC edge must not produce duplicate geometry.
+
+    When _resolve_fillet_edges returns the same edge twice (once from the
+    edge query, once from the face query), BRepFilletAPI_MakeFillet applies
+    the fillet twice on the same edge, creating duplicate faces/edges with
+    identical geometry hashes. The dedup fix in _resolve_fillet_edges
+    prevents this.
+    """
+    from oversolved.kernel.builder import build
+    from solver_helpers import full_rect_extrude_spec, assert_mesh_valid
+
+    spec = full_rect_extrude_spec(w=10, h=10, d=5)
+    r0 = build(spec)
+    assert r0["result"]["ex1"]["status"] == "ok"
+
+    body = r0["bodies"]["body_ex1"]
+    edge_q = body.get("edge_queries", [])
+    face_q = body.get("mesh", {}).get("face_queries", [])
+
+    # Build a fillet with BOTH an edge query AND a face query
+    # Pick edge 0 and the face at index 0 whose face-edge is edge 0
+    spec["features"].append({
+        "id": "fillet1",
+        "kind": "fillet",
+        "label": "Fillet",
+        "edges": [edge_q[0], face_q[0]],
+        "radius": 1.0,
+    })
+    r = build(spec)
+    assert r["result"]["fillet1"]["status"] == "ok", (
+        f"fillet with edge+face query failed: {r['result']['fillet1'].get('exception')}"
+    )
+
+    body_final = r["bodies"]["body_ex1"]
+    mesh = body_final["mesh"]
+    final_fq = mesh.get("face_queries", [])
+    final_eq = body_final.get("edge_queries", [])
+    assert len(final_fq) == len(set(final_fq)), (
+        f"Duplicate face queries after fillet: {len(final_fq)} faces, "
+        f"{len(final_fq) - len(set(final_fq))} duplicates"
+    )
+    assert len(final_eq) == len(set(final_eq)), (
+        f"Duplicate edge queries after fillet: {len(final_eq)} edges, "
+        f"{len(final_eq) - len(set(final_eq))} duplicates"
+    )
+    assert_mesh_valid(mesh)
+
+
+def _circle_extrude_spec(radius: float = 10.0, distance: float = 10.0) -> dict:
+    """Spec: a single circle sketch on the top plane extruded into a cylinder."""
+    sketch = {
+        "id": "sk_cyl",
+        "kind": "sketch",
+        "label": "circle",
+        "plane": "@builtin_plane_top",
+        "entities": [{"id": "circ", "kind": "circle"}],
+        "initial": {"circ": [0, 0, radius]},
+        "constraints": [
+            {"id": "cc", "kind": "coincident",
+             "a": "$circcenter", "b": "@builtin_origin"},
+            {"id": "cd", "kind": "diameter",
+             "target": "$circ", "value": 2 * radius, "pos": [0, 0]},
+        ],
+    }
+    extrude = {
+        "id": "ex_cyl",
+        "kind": "extrude",
+        "label": "extrude",
+        "sketch": "$sk_cyl",
+        "distance": distance,
+        "direction": "normal",
+    }
+    return {"features": [sketch, extrude]}
+
+
+def test_fillet_cylinder_edge_queries_unique():
+    """Regression: filleting a cylinder's circular edge must yield unique
+    edge queries.
+
+    OCC represents each circular B-rep edge as two semicircle arcs with the
+    same center/radius and an identical [0, pi] span, differing only in
+    x_axis direction. The edge geometry hash previously ignored orientation,
+    so the two halves produced identical edge queries -- the frontend then
+    allocated one selection id for two distinct edges, breaking picking
+    ("Two edges share the same query string"). The arc hash now includes
+    axis/x_axis so the halves stay distinct.
+    """
+    from oversolved.kernel.builder import build
+
+    spec = _circle_extrude_spec(radius=10.0, distance=10.0)
+    r0 = build(spec)
+    assert r0["result"]["ex_cyl"]["status"] == "ok", (
+        f"cylinder build failed: {r0['result']['ex_cyl'].get('exception')}"
+    )
+
+    body = r0["bodies"]["body_ex_cyl"]
+    face_q = body.get("mesh", {}).get("face_queries", [])
+    # Fillet the circular rim by selecting a flat (top/bottom) face, mirroring
+    # the user-reported document. This rounds the circular edge and forces OCC
+    # to emit the split-arc geometry that triggered the collision.
+    flat = [q for q in face_q if "flatface" in q] or face_q
+    assert flat, "cylinder produced no face queries"
+
+    spec["features"].append({
+        "id": "fillet_cyl",
+        "kind": "fillet",
+        "label": "Fillet",
+        "edges": [flat[0]],
+        "radius": 1.0,
+    })
+    r = build(spec)
+    assert r["result"]["fillet_cyl"]["status"] == "ok", (
+        f"fillet failed: {r['result']['fillet_cyl'].get('exception')}"
+    )
+
+    final_eq = r["bodies"]["body_ex_cyl"].get("edge_queries", [])
+    dup = len(final_eq) - len(set(final_eq))
+    assert dup == 0, (
+        f"Duplicate edge queries after filleting cylinder: {dup} duplicate(s) "
+        f"out of {len(final_eq)} edges"
+    )

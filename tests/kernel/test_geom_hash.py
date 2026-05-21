@@ -103,6 +103,34 @@ class TestEdgeGeometryHash:
         })
         assert h1 == h2
 
+    def test_arc_same_span_different_x_axis_different_hash(self):
+        """Two semicircle arcs covering opposite halves of one circle share
+        center/radius/axis and an identical [0, pi] angle span, differing only
+        in x_axis direction. OCC produces exactly this when it splits a full
+        circular edge into two halves; without orientation in the hash they
+        collide and break selection-id uniqueness.
+        """
+        h1 = edge_geometry_hash({
+            "kind": "arc", "center": [0, 0, 0], "radius": 9.0,
+            "axis": [0, 1, 0], "x_axis": [1, 0, 0],
+            "angle_start": 0.0, "angle_end": math.pi,
+        })
+        h2 = edge_geometry_hash({
+            "kind": "arc", "center": [0, 0, 0], "radius": 9.0,
+            "axis": [0, 1, 0], "x_axis": [-1, 0, 0],
+            "angle_start": 0.0, "angle_end": math.pi,
+        })
+        assert h1 != h2
+
+    def test_arc_same_orientation_same_hash(self):
+        """Identical arcs including orientation must still hash equally."""
+        edge = {
+            "kind": "arc", "center": [0, 0, 0], "radius": 9.0,
+            "axis": [0, 1, 0], "x_axis": [1, 0, 0],
+            "angle_start": 0.0, "angle_end": math.pi,
+        }
+        assert edge_geometry_hash(dict(edge)) == edge_geometry_hash(dict(edge))
+
     def test_arc_missing_angle_keys_no_crash(self):
         """Edge dict without angle keys should not raise; defaults to 0.0."""
         h = edge_geometry_hash({"kind": "arc", "center": [0, 0, 0], "radius": 1.0})

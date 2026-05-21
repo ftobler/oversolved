@@ -605,8 +605,8 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
             }
             # type_order=0 keeps straight edges before curved so fillet arcs
             # don't shift line edge indices.
-            sort_key = (0, "line", round(sp.x, 6), round(sp.y, 6), round(sp.z, 6),
-                        round(ep.x, 6), round(ep.y, 6), round(ep.z, 6))
+            sort_key: tuple[Any, ...] = (0, "line", round(sp.x, 6), round(sp.y, 6), round(sp.z, 6),
+                                         round(ep.x, 6), round(ep.y, 6), round(ep.z, 6))
 
         elif gt == "CIRCLE":
             curve = edge._geomAdaptor()
@@ -629,8 +629,12 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
                 "angle_start": u0,
                 "angle_end": u1,
             }
+            # x_axis breaks the tie between the two semicircle halves OCC
+            # produces for a full circle (same center/radius/span); without it
+            # their relative index would depend on OCC iteration order.
             sort_key = (1, edge_kind, round(center.X(), 6), round(center.Y(), 6),
-                        round(center.Z(), 6), round(radius, 6), round(u0, 6), round(u1, 6))
+                        round(center.Z(), 6), round(radius, 6), round(u0, 6), round(u1, 6),
+                        round(xdir.X(), 6), round(xdir.Y(), 6), round(xdir.Z(), 6))
 
         else:
             n_pts = 16

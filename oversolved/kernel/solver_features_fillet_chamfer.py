@@ -88,9 +88,17 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
         query_to_edge[f"?{body.id}:edge:{idx}"] = te
 
     result: list[TopoDS_Shape] = []
+    seen_edge_hashes: set[int] = set()
     resolve_failed = 0
     fallback_used = 0
     fallback_failed = 0
+
+    def _add_edge_unique(e: TopoDS_Shape) -> None:
+        h = hash(e)
+        if h not in seen_edge_hashes:
+            seen_edge_hashes.add(h)
+            result.append(e)
+
     for q in edge_queries:
         edge = query_to_edge.get(q)  # type: ignore[assignment]
         if edge is None and q.startswith("?"):
@@ -134,14 +142,15 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
         if edge is None and 'gface_' in q:
             try:
                 face_edges = _resolve_face_to_edges(q, body)
-                result.extend(face_edges)
+                for fe in face_edges:
+                    _add_edge_unique(fe)
                 if face_edges:
                     logger.debug("fillet: resolved face query %s to %d edges", q, len(face_edges))
             except Exception as exc:
                 logger.debug("fillet face-to-edges resolution failed for query %s: %s", q, exc)
 
         if edge is not None:
-            result.append(edge)
+            _add_edge_unique(edge)
 
     if resolve_failed > 0:
         logger.warning("fillet: %d edge queries failed index resolution", resolve_failed)
