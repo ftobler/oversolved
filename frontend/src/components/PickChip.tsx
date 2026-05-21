@@ -26,7 +26,6 @@ export function PickChip({
 }: PickChipProps) {
   const syncChipSelection = useSketchEditorStore(s => s.syncChipSelection)
   const clearChipSelection = useSketchEditorStore(s => s.clearChipSelection)
-  const chipOwnedSelection = useSketchEditorStore(s => s.chipOwnedSelection)
   const isEmpty = values.length === 0
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
 
@@ -37,12 +36,13 @@ export function PickChip({
     return () => { clearChipSelection() }
   }, [isPicking, clearChipSelection])
 
-  // Sync: runs on chipOwnedSelection change (e.g. clearNormalSelection from
-  // empty-space click cleared it) or values change.  No cleanup.
+  // Sync when picking starts or values change.  chipOwnedSelection is
+  // deliberately omitted from deps to avoid an infinite loop: syncChipSelection
+  // writes chipOwnedSelection which would re-trigger this effect.
   useEffect(() => {
     if (!isPicking) return
     syncChipSelection(values)
-  }, [isPicking, values, syncChipSelection, chipOwnedSelection])
+  }, [isPicking, values, syncChipSelection])
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
   const [dropSide, setDropSide] = useState<'left' | 'right' | null>(null)
 
