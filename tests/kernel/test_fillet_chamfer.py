@@ -801,3 +801,92 @@ def test_fillet_targets_the_picked_rim_not_the_opposite_one():
         "still sits at y=distance -- the fillet landed on the wrong rim"
     )
     assert bottom_sharp, "bottom rim should stay sharp (unfilleted)"
+
+
+def _two_circle_extrude_spec() -> dict:
+    """Two disjoint circles in one sketch extruded into two separate bodies."""
+    sketch = {
+        "id": "sk2", "kind": "sketch", "label": "two circles",
+        "plane": "@builtin_plane_top",
+        "entities": [
+            {"id": "c1", "kind": "circle"},
+            {"id": "c2", "kind": "circle"},
+        ],
+        "initial": {"c1": [0, 0, 10], "c2": [40, 0, 5]},
+        "constraints": [
+            {"id": "cc", "kind": "coincident", "a": "$c1center", "b": "@builtin_origin"},
+            {"id": "cd", "kind": "diameter", "target": "$c1", "value": 20, "pos": [0, 0]},
+        ],
+    }
+    extrude = {
+        "id": "ex2", "kind": "extrude", "label": "extrude",
+        "sketch": "$sk2", "distance": 10, "direction": "normal",
+    }
+    return {"features": [sketch, extrude]}
+
+
+def _circle_rim_queries(body: dict) -> list:
+    return [
+        q for ed, q in zip(body["edges"], body["edge_queries"])
+        if ed["kind"] == "circle"
+    ]
+
+
+def _is_filleted(body: dict) -> bool:
+    # A plain cylinder body has 3 edges (1 seam + 2 rims); filleting adds more.
+    return len(body["edges"]) > 3
+
+
+def test_fillet_applies_to_the_second_body():
+    """Regression: one extrude can yield two disjoint bodies (two circles ->
+    two cylinders). A fillet selecting edges on the SECOND body must fillet
+    that body, not silently pick the first body (or fail to resolve).
+
+    Bug: _apply_edge_feature used the first body in the store and ignored the
+    @body_<id> the edge queries referenced.
+    """
+    from oversolved.kernel.builder import build
+
+    spec = _two_circle_extrude_spec()
+    r0 = build(spec)
+    assert r0["result"]["ex2"]["status"] == "ok"
+    assert "body_ex2" in r0["bodies"] and "body_ex2_1" in r0["bodies"], (
+        f"expected two bodies, got {list(r0['bodies'])}"
+    )
+
+    second = r0["bodies"]["body_ex2_1"]
+    spec["features"].append({
+        "id": "fil2", "kind": "fillet", "label": "Fillet",
+        "edges": _circle_rim_queries(second), "radius": 1.0,
+    })
+    r = build(spec)
+    assert r["result"]["fil2"]["status"] == "ok", (
+        f"fillet failed: {r['result']['fil2'].get('exception')}"
+    )
+
+    assert _is_filleted(r["bodies"]["body_ex2_1"]), "second body was not filleted"
+    assert not _is_filleted(r["bodies"]["body_ex2"]), (
+        "first body must stay untouched when only the second body's edges are selected"
+    )
+
+
+def test_fillet_applies_across_both_bodies():
+    """A fillet selecting edges from both bodies fillets each body."""
+    from oversolved.kernel.builder import build
+
+    spec = _two_circle_extrude_spec()
+    r0 = build(spec)
+    edges = (
+        _circle_rim_queries(r0["bodies"]["body_ex2"])[:1]
+        + _circle_rim_queries(r0["bodies"]["body_ex2_1"])[:1]
+    )
+    spec["features"].append({
+        "id": "fil2", "kind": "fillet", "label": "Fillet",
+        "edges": edges, "radius": 1.0,
+    })
+    r = build(spec)
+    assert r["result"]["fil2"]["status"] == "ok", (
+        f"fillet failed: {r['result']['fil2'].get('exception')}"
+    )
+    assert _is_filleted(r["bodies"]["body_ex2"]), "first body not filleted"
+    assert _is_filleted(r["bodies"]["body_ex2_1"]), "second body not filleted"

@@ -193,6 +193,28 @@ def _resolve_face_to_edges(q: str, body: Body) -> list[TopoDS_Shape]:
     return []
 
 
+_BODY_AT_RE = re.compile(r"@(body_[^@:;,]+)")
+_BODY_IDX_RE = re.compile(r"^\?(body_[^:;,]+):edge:")
+
+
+def _body_id_from_edge_query(q: str, body_store: dict) -> str | None:
+    """Return the body id (`body_...`) an edge query refers to, or None.
+
+    Handles the ancestry form (`...@body_x:edge`) and the index form
+    (`?body_x:edge:N`). The 3-ID ancestry form carries two `@body_` tokens --
+    an element id like `@body_ex1edge0` and the real body `@body_ex1` -- so a
+    candidate that actually exists in the store is preferred.
+    """
+    candidates = _BODY_AT_RE.findall(q)
+    idx = _BODY_IDX_RE.match(q)
+    if idx:
+        candidates.append(idx.group(1))
+    for c in candidates:
+        if c in body_store:
+            return c
+    return candidates[0] if candidates else None
+
+
 def _apply_edge_feature(
     feature: dict,
     body_store: dict,
@@ -208,36 +230,61 @@ def _apply_edge_feature(
     edges: list[str] = feature.get("edges", [])
     if not edges:
         raise ValueError(f"{feature_kind} requires at least one edge")
+    if not body_store:
+        raise ValueError(f"no body found for {feature_kind}")
 
     source_body = feature.get("source_body", "")
-    if source_body:
-        body = _resolve_body(source_body, body_store)
-    else:
-        if not body_store:
-            raise ValueError(f"no body found for {feature_kind}")
-        body = next(iter(body_store.values()))
-    body_id = body.id
 
-    if body.shape is None:
-        raise ValueError(f"body {body_id} has no shape")
+    # Route each edge query to the body it actually references. One feature can
+    # extrude two disjoint profiles into two bodies (e.g. two circles -> two
+    # cylinders); a fillet must then apply to whichever body each edge belongs
+    # to, not just the first body in the store. An explicit source_body
+    # overrides routing for every edge.
+    default_body_id = next(iter(body_store)) if len(body_store) == 1 else None
+    groups: dict[str, list[str]] = {}
+    for q in edges:
+        bid = source_body or _body_id_from_edge_query(q, body_store) or default_body_id
+        if bid is None:
+            logger.warning(
+                "%s: edge query has no resolvable body and the store holds %d "
+                "bodies; skipping query %s", feature_kind, len(body_store), q,
+            )
+            continue
+        groups.setdefault(bid, []).append(q)
 
-    # Validate the shape before passing to OCC; a corrupted shape
-    # can cause SIGSEGV inside the fillet/chamfer kernel.
-    try:
-        if _ensure_occ(body.shape).IsNull():
-            raise ValueError(f"body {body_id} shape is null")
-    except Exception:
-        raise ValueError(f"body {body_id} shape is invalid")
+    applied: list[str] = []
+    for bid, qlist in groups.items():
+        try:
+            body = _resolve_body(bid, body_store)
+        except ValueError as exc:
+            logger.warning("%s: %s", feature_kind, exc)
+            continue
+        if body.shape is None:
+            logger.warning("%s: body %s has no shape", feature_kind, body.id)
+            continue
+        # Validate the shape before passing to OCC; a corrupted shape
+        # can cause SIGSEGV inside the fillet/chamfer kernel.
+        try:
+            if _ensure_occ(body.shape).IsNull():
+                logger.warning("%s: body %s shape is null", feature_kind, body.id)
+                continue
+        except Exception:
+            logger.warning("%s: body %s shape is invalid", feature_kind, body.id)
+            continue
 
-    topo_edges = _resolve_fillet_edges(body, edges)
-    if not topo_edges:
+        topo_edges = _resolve_fillet_edges(body, qlist)
+        if not topo_edges:
+            logger.warning("%s: no edges resolved on body %s", feature_kind, body.id)
+            continue
+
+        body.shape = geometry_fn(body.shape, edges=topo_edges, **geometry_kwargs)
+        body.modified_by.append(feature_id)
+        applied.append(body.id)
+
+    if not applied:
         raise ValueError(f"no edges resolved for {feature_kind}")
 
-    new_shape = geometry_fn(body.shape, edges=topo_edges, **geometry_kwargs)
-    body.shape = new_shape
-    body.modified_by.append(feature_id)
-
-    return {"status": "ok", "body_id": body_id}
+    return {"status": "ok", "body_id": applied[0], "body_ids": applied}
 
 
 def _solve_fillet(
