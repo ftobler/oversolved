@@ -54,6 +54,7 @@ const CUBE_EDGES: [number, number][] = [
 
 const BEVEL_INSET = 0.20
 const EXTRA_INSET = 0.05
+const CHAMFER = 0.1
 
 // ── Types ────
 
@@ -103,14 +104,22 @@ function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
 
   const polys: GizmoPoly[] = []
 
-  // Faces
+  // Faces (chamfered — each corner cut to form an octagon)
   CUBE_FACES.forEach((f, fi) => {
     const center = f.normal.clone()
-    const pts = faceInsetPoints[fi].map(p => {
-      // Apply EXTRA_INSET to the points, moving them toward the face center
-      const p2 = p.clone().add(center.clone().sub(p).multiplyScalar(EXTRA_INSET))
-      return project(p2, q, cx, cy, s)
+    const raw = faceInsetPoints[fi].map(p => {
+      return p.clone().add(center.clone().sub(p).multiplyScalar(EXTRA_INSET))
     })
+    // Build 8-point polygon: on each edge place two points inset from the ends
+    const chamfered: THREE.Vector3[] = []
+    const n = raw.length
+    for (let i = 0; i < n; i++) {
+      const a = raw[i]
+      const b = raw[(i + 1) % n]
+      chamfered.push(a.clone().lerp(b, CHAMFER))
+      chamfered.push(b.clone().lerp(a, CHAMFER))
+    }
+    const pts = chamfered.map(p => project(p, q, cx, cy, s))
     const nz = f.normal.clone().applyQuaternion(q).z
     polys.push({
       type: 'face',
@@ -136,11 +145,16 @@ function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
     const p1_v2 = faceInsetPoints[f1][CUBE_FACES[f1].verts.indexOf(v2)]
     const p1_v1 = faceInsetPoints[f1][CUBE_FACES[f1].verts.indexOf(v1)]
 
-    const pts3d = [p0_v1, p0_v2, p1_v2, p1_v1]
-    const edgeCenter = pts3d[0].clone().add(pts3d[1]).add(pts3d[2]).add(pts3d[3]).multiplyScalar(0.25)
+    // Trim to chamfer boundary so edge meets the face octagon exactly
+    const chamfered = [
+      p0_v1.clone().lerp(p0_v2, CHAMFER),
+      p0_v2.clone().lerp(p0_v1, CHAMFER),
+      p1_v2.clone().lerp(p1_v1, CHAMFER),
+      p1_v1.clone().lerp(p1_v2, CHAMFER),
+    ]
+    const edgeCenter = chamfered[0].clone().add(chamfered[1]).add(chamfered[2]).add(chamfered[3]).multiplyScalar(0.25)
 
-    const pts = pts3d.map(p => {
-      // Move towards edge center using EXTRA_INSET to shorten it
+    const pts = chamfered.map(p => {
       const p2 = p.clone().add(edgeCenter.clone().sub(p).multiplyScalar(EXTRA_INSET))
       return project(p2, q, cx, cy, s)
     })
@@ -158,13 +172,32 @@ function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
     })
   })
 
-  // Vertices
+  // Vertices (hexagon meeting chamfered face corners)
   CV.forEach((v, vi) => {
     const adjFaces = CUBE_FACES.map((f, i) => ({ f, i })).filter(x => x.f.verts.includes(vi))
-    // We want to order them so they form a proper polygon.
-    // For a cube vertex, 3 faces meet. The order doesn't strictly matter for a triangle as long as it's convex.
-    const pts3d = adjFaces.map(x => faceInsetPoints[x.i][CUBE_FACES[x.i].verts.indexOf(vi)])
-    const pts = pts3d.map(p => project(p, q, cx, cy, s))
+
+    const faceData = adjFaces.map(face => {
+      const idx = face.f.verts.indexOf(vi)
+      const p_vi = faceInsetPoints[face.i][idx]
+      const vPrev = face.f.verts[(idx - 1 + 4) % 4]
+      const vNext = face.f.verts[(idx + 1) % 4]
+      return {
+        cpPrev: p_vi.clone().lerp(faceInsetPoints[face.i][(idx - 1 + 4) % 4], CHAMFER),
+        cpNext: p_vi.clone().lerp(faceInsetPoints[face.i][(idx + 1) % 4], CHAMFER),
+        vPrev, vNext
+      }
+    })
+
+    // Order as a hexagon: for each adjacent-face pair, connect their chamfer points on the shared edge
+    const hexPts: THREE.Vector3[] = []
+    for (let i = 0; i < faceData.length; i++) {
+      const d0 = faceData[i]
+      const d1 = faceData[(i + 1) % faceData.length]
+      const sharedV = d0.vPrev === d1.vPrev || d0.vPrev === d1.vNext ? d0.vPrev : d0.vNext
+      hexPts.push(d0.vPrev === sharedV ? d0.cpPrev : d0.cpNext)
+      hexPts.push(d1.vPrev === sharedV ? d1.cpPrev : d1.cpNext)
+    }
+    const pts = hexPts.map(p => project(p, q, cx, cy, s))
     const normal = v.clone().normalize()
     const nz = normal.clone().applyQuaternion(q).z
 
