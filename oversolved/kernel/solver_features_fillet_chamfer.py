@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 from oversolved.kernel.query import Repository
 from oversolved.kernel.types3d import Body
 from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, _compute_face_centroid, _compute_face_normal, _triangle_area
-from oversolved.kernel.ocp_ops import ocp_curve_info
+from oversolved.kernel.geometry_tessellation import edge_to_geom_dict
 from oversolved.kernel.geom_hash import edge_geometry_hash, face_geometry_hash
 from oversolved.kernel.query import make_ancestry_query, _parse_ancestry
 from oversolved.kernel.geometry_features import apply_fillet, apply_chamfer
@@ -44,28 +44,11 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
             continue
         seen_edges.append(wrapped)
         topo_edges.append(wrapped)
-        gt = edge.geomType()
-        edge_types.append("straightedge" if gt == "LINE" else "edge")
 
-        curve = ocp_curve_info(wrapped)
-        ed: dict = {"kind": gt.lower()}
-        if curve["type"] == "line":
-            sp = edge.startPoint()  # type: ignore[attr-defined]
-            ep = edge.endPoint()  # type: ignore[attr-defined]
-            ed["start"] = [sp.x, sp.y, sp.z]
-            ed["end"] = [ep.x, ep.y, ep.z]
-        elif curve["type"] == "circle":
-            ed["center"] = curve["center"]
-            ed["radius"] = curve["radius"]
-            ed["angle_start"] = curve["angle_start"]
-            ed["angle_end"] = curve["angle_end"]
-        else:
-            n_pts = 16
-            pts = []
-            for i in range(n_pts + 1):
-                pt = edge.positionAt(i / n_pts)  # type: ignore[attr-defined]
-                pts.append([pt.x, pt.y, pt.z])
-            ed["points"] = pts
+        # Use the same geometry extraction as solid_to_edges so the geom hash
+        # computed here matches the one baked into the incoming edge query.
+        ed, _ = edge_to_geom_dict(edge)
+        edge_types.append("straightedge" if ed["kind"] == "line" else "edge")
         edge_dicts.append(ed)
 
     query_to_edge = {}
@@ -128,6 +111,16 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
                         if type_restriction is None or et == type_restriction
                     ]
                     if matched:
+                        # Last-resort guess used only when the geometry hash no
+                        # longer matches (e.g. the edge was moved/shortened by an
+                        # upstream op). This picks matched[0] in OCC iteration
+                        # order, which is NOT stable -- it can fillet the wrong
+                        # edge. The geometry-hash exact match above is the
+                        # reliable path; for geometrically stable edges (the
+                        # reported cylinder case) it resolves before reaching
+                        # here. A hash-only query carries no coordinates, so a
+                        # location-based disambiguation is impossible without
+                        # enriching the query.
                         edge = matched[0]
                         logger.debug(
                             "fillet edge resolved via body-scoped type fallback: "

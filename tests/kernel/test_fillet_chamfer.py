@@ -741,3 +741,63 @@ def test_fillet_cylinder_edge_queries_unique():
         f"Duplicate edge queries after filleting cylinder: {dup} duplicate(s) "
         f"out of {len(final_eq)} edges"
     )
+
+
+def _rim_radius_edges(edges, rim_y, radius=10.0, tol=1e-6):
+    """Full-radius circular edges sitting at a given rim height (axis = Y)."""
+    return [
+        ed for ed in edges
+        if ed.get("center")
+        and abs(ed["center"][1] - rim_y) < tol
+        and abs(ed.get("radius", 0.0) - radius) < tol
+    ]
+
+
+def test_fillet_targets_the_picked_rim_not_the_opposite_one():
+    """Regression for 'wrong edge gets the fillet'.
+
+    A cylinder (axis = Y) has two circular rims: bottom at y=0, top at
+    y=distance. Selecting the TOP rim's edge query and filleting it must
+    round the TOP rim and leave the bottom rim sharp. The reported bug rounds
+    the opposite rim because the resolver ignores the query's geometry hash
+    and picks the first OCC edge instead.
+    """
+    from oversolved.kernel.builder import build
+
+    distance = 10.0
+    spec = _circle_extrude_spec(radius=10.0, distance=distance)
+    r0 = build(spec)
+    assert r0["result"]["ex_cyl"]["status"] == "ok"
+
+    body = r0["bodies"]["body_ex_cyl"]
+    edges = body["edges"]
+    queries = body["edge_queries"]
+
+    top_q = next(
+        q for ed, q in zip(edges, queries)
+        if ed.get("center")
+        and abs(ed["center"][1] - distance) < 1e-6
+        and abs(ed.get("radius", 0.0) - 10.0) < 1e-6
+    )
+
+    spec["features"].append({
+        "id": "fillet_cyl",
+        "kind": "fillet",
+        "label": "Fillet",
+        "edges": [top_q],
+        "radius": 1.0,
+    })
+    r = build(spec)
+    assert r["result"]["fillet_cyl"]["status"] == "ok", (
+        f"fillet failed: {r['result']['fillet_cyl'].get('exception')}"
+    )
+
+    final_edges = r["bodies"]["body_ex_cyl"]["edges"]
+    top_sharp = _rim_radius_edges(final_edges, rim_y=distance)
+    bottom_sharp = _rim_radius_edges(final_edges, rim_y=0.0)
+
+    assert not top_sharp, (
+        "picked TOP rim should have been filleted, but a sharp radius-10 edge "
+        "still sits at y=distance -- the fillet landed on the wrong rim"
+    )
+    assert bottom_sharp, "bottom rim should stay sharp (unfilleted)"

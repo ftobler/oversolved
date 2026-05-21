@@ -565,6 +565,76 @@ def _build_seam_hashes(occ_solid: Any) -> set[int]:
     return seam_hashes
 
 
+def edge_to_geom_dict(edge: Any) -> tuple[dict, tuple]:
+    """Return (geometry dict, sort key) for a cadquery edge.
+
+    Shared by solid_to_edges and the fillet edge resolver so both compute the
+    exact same edge_geometry_hash. The sort key gives deterministic edge
+    indices independent of OCC iteration order. The dict omits the "seam" flag
+    (callers add it when relevant); "seam" is not part of the geometry hash.
+    """
+    TWO_PI = 2.0 * math.pi
+    CIRCLE_TOL = 1e-4
+    gt = edge.geomType()
+
+    if gt == "LINE":
+        sp = edge.startPoint()
+        ep = edge.endPoint()
+        ed = {
+            "kind": "line",
+            "start": [sp.x, sp.y, sp.z],
+            "end": [ep.x, ep.y, ep.z],
+        }
+        # type_order=0 keeps straight edges before curved so fillet arcs
+        # don't shift line edge indices.
+        sort_key: tuple[Any, ...] = (0, "line", round(sp.x, 6), round(sp.y, 6), round(sp.z, 6),
+                                     round(ep.x, 6), round(ep.y, 6), round(ep.z, 6))
+
+    elif gt == "CIRCLE":
+        curve = edge._geomAdaptor()
+        circ = curve.Circle()
+        center = circ.Location()
+        ax = circ.Axis().Direction()
+        xdir = circ.XAxis().Direction()
+        radius = circ.Radius()
+        u0 = curve.FirstParameter()
+        u1 = curve.LastParameter()
+        span = u1 - u0
+        is_full = abs(abs(span) - TWO_PI) < CIRCLE_TOL or abs(span) < CIRCLE_TOL
+        edge_kind = "circle" if is_full else "arc"
+        ed = {
+            "kind": edge_kind,
+            "center": [center.X(), center.Y(), center.Z()],
+            "radius": radius,
+            "axis": [ax.X(), ax.Y(), ax.Z()],
+            "x_axis": [xdir.X(), xdir.Y(), xdir.Z()],
+            "angle_start": u0,
+            "angle_end": u1,
+        }
+        # x_axis breaks the tie between the two semicircle halves OCC
+        # produces for a full circle (same center/radius/span); without it
+        # their relative index would depend on OCC iteration order.
+        sort_key = (1, edge_kind, round(center.X(), 6), round(center.Y(), 6),
+                    round(center.Z(), 6), round(radius, 6), round(u0, 6), round(u1, 6),
+                    round(xdir.X(), 6), round(xdir.Y(), 6), round(xdir.Z(), 6))
+
+    else:
+        n_pts = 16
+        curve = edge._geomAdaptor()
+        u0 = curve.FirstParameter()
+        u1 = curve.LastParameter()
+        points = []
+        for i in range(n_pts + 1):
+            t = u0 + (u1 - u0) * i / n_pts
+            pt = edge.positionAt(t, mode="parameter")
+            points.append([pt.x, pt.y, pt.z])
+        ed = {"kind": "spline", "points": points}
+        mid = points[n_pts // 2]
+        sort_key = (1, "spline", round(mid[0], 6), round(mid[1], 6), round(mid[2], 6), 0.0, 0.0, 0.0)
+
+    return ed, sort_key
+
+
 def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: str | None = None) -> EdgeDict:
     """Extract exact edge geometry from a cadquery solid.
 
@@ -578,8 +648,6 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
     if occ_solid.IsNull():
         return {"edges": [], "edge_queries": []}
     solid = _ensure_cq(solid)
-    TWO_PI = 2.0 * math.pi
-    CIRCLE_TOL = 1e-4
 
     seam_hashes = _build_seam_hashes(occ_solid)
 
@@ -592,65 +660,8 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
             continue
         seen_hashes.add(h)
 
-        gt = edge.geomType()
-        is_seam = h in seam_hashes
-
-        if gt == "LINE":
-            sp = edge.startPoint()
-            ep = edge.endPoint()
-            ed = {
-                "kind": "line",
-                "start": [sp.x, sp.y, sp.z],
-                "end": [ep.x, ep.y, ep.z],
-            }
-            # type_order=0 keeps straight edges before curved so fillet arcs
-            # don't shift line edge indices.
-            sort_key: tuple[Any, ...] = (0, "line", round(sp.x, 6), round(sp.y, 6), round(sp.z, 6),
-                                         round(ep.x, 6), round(ep.y, 6), round(ep.z, 6))
-
-        elif gt == "CIRCLE":
-            curve = edge._geomAdaptor()
-            circ = curve.Circle()
-            center = circ.Location()
-            ax = circ.Axis().Direction()
-            xdir = circ.XAxis().Direction()
-            radius = circ.Radius()
-            u0 = curve.FirstParameter()
-            u1 = curve.LastParameter()
-            span = u1 - u0
-            is_full = abs(abs(span) - TWO_PI) < CIRCLE_TOL or abs(span) < CIRCLE_TOL
-            edge_kind = "circle" if is_full else "arc"
-            ed = {
-                "kind": edge_kind,
-                "center": [center.X(), center.Y(), center.Z()],
-                "radius": radius,
-                "axis": [ax.X(), ax.Y(), ax.Z()],
-                "x_axis": [xdir.X(), xdir.Y(), xdir.Z()],
-                "angle_start": u0,
-                "angle_end": u1,
-            }
-            # x_axis breaks the tie between the two semicircle halves OCC
-            # produces for a full circle (same center/radius/span); without it
-            # their relative index would depend on OCC iteration order.
-            sort_key = (1, edge_kind, round(center.X(), 6), round(center.Y(), 6),
-                        round(center.Z(), 6), round(radius, 6), round(u0, 6), round(u1, 6),
-                        round(xdir.X(), 6), round(xdir.Y(), 6), round(xdir.Z(), 6))
-
-        else:
-            n_pts = 16
-            curve = edge._geomAdaptor()
-            u0 = curve.FirstParameter()
-            u1 = curve.LastParameter()
-            points = []
-            for i in range(n_pts + 1):
-                t = u0 + (u1 - u0) * i / n_pts
-                pt = edge.positionAt(t, mode="parameter")
-                points.append([pt.x, pt.y, pt.z])
-            ed = {"kind": "spline", "points": points}
-            mid = points[n_pts // 2]
-            sort_key = (1, "spline", round(mid[0], 6), round(mid[1], 6), round(mid[2], 6), 0.0, 0.0, 0.0)
-
-        if is_seam:
+        ed, sort_key = edge_to_geom_dict(edge)
+        if h in seam_hashes:
             ed["seam"] = True  # type: ignore[assignment]
 
         raw_edges.append((ed, sort_key))
