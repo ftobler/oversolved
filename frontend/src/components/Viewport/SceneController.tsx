@@ -15,6 +15,12 @@ const MOUSE_BUTTONS = {
   RIGHT: THREE.MOUSE.ROTATE,
 }
 
+function rightButtonMapping(e: MouseEvent | PointerEvent): THREE.MOUSE {
+  if (e.shiftKey) return THREE.MOUSE.DOLLY
+  if (e.ctrlKey || e.metaKey) return THREE.MOUSE.PAN
+  return THREE.MOUSE.ROTATE
+}
+
 interface SceneControllerProps {
   resetTrigger?: number
   canvasRef: React.RefObject<HTMLCanvasElement | null>
@@ -44,24 +50,15 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
   }, [resetTrigger, camera])
 
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!ctrlRef.current) return
-      if (e.key === 'Control' || e.key === 'Meta') {
-        ctrlRef.current.mouseButtons.RIGHT = THREE.MOUSE.PAN
-      } else if (e.key === 'Shift') {
-        ctrlRef.current.mouseButtons.RIGHT = THREE.MOUSE.DOLLY
-      }
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 2 || !ctrlRef.current) return
+      ctrlRef.current.mouseButtons.RIGHT = rightButtonMapping(e)
     }
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (!ctrlRef.current) return
-      if (e.key === 'Control' || e.key === 'Meta' || e.key === 'Shift') {
-        ctrlRef.current.mouseButtons.RIGHT = THREE.MOUSE.ROTATE
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup', onKeyUp)
-    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp) }
-  }, [])
+    canvas.addEventListener('pointerdown', onPointerDown, { capture: true })
+    return () => canvas.removeEventListener('pointerdown', onPointerDown, { capture: true })
+  }, [canvasRef])
 
   useFrame(() => {
     if (snapRef.current) {
