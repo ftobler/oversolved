@@ -30,7 +30,6 @@ export function useToolClickDispatch({
     activeTool,
     toggleNormalSelection,
     normalSelection,
-    dynamicSelection,
     isPointerDown,
     activeFeatureId,
     internalHoverSelection,
@@ -46,7 +45,6 @@ export function useToolClickDispatch({
     activeTool: s.activeTool,
     toggleNormalSelection: s.toggleNormalSelection,
     normalSelection: s.normalSelection,
-    dynamicSelection: s.dynamicSelection,
     isPointerDown: s.isPointerDown,
     activeFeatureId: s.activeFeatureId,
     internalHoverSelection: s.internalHoverSelection,
@@ -69,7 +67,6 @@ export function useToolClickDispatch({
     const context = {
       normalSelection,
       internalHoverSelection,
-      dynamicSelection,
       isPointerDown,
       activeFeatureId,
       hoveredVertexId,
@@ -104,7 +101,7 @@ export function useToolClickDispatch({
     toggleNormalSelection(id)
   }, [activeTool, isEditing, id, entityKind,
     toggleNormalSelection,
-    normalSelection, dynamicSelection, isPointerDown, activeFeatureId,
+    normalSelection, isPointerDown, activeFeatureId,
     internalHoverSelection, hoveredVertexId, hoveredVertexPosition, hoveredSnapKind,
     pendingDimTarget, pendingDimEntityKind, setPendingDim, openDialog, setActiveTool])
 }

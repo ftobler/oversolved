@@ -19,7 +19,6 @@ export default function PartDebugPanel({ debugOpen, mode }: PartDebugPanelProps)
   const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)
   const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
   const hovered3DSurfaceId = useSketchEditorStore(s => s.hovered3DSurfaceId)
-  const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
   const selection = useSketchEditorStore(s => s.normalSelection)
 
   const editingFeatureId = usePartEditorStore(s => s.editingFeatureId)
@@ -105,11 +104,6 @@ export default function PartDebugPanel({ debugOpen, mode }: PartDebugPanelProps)
               : hoveredSurfaceId ? <div className="debug-value">{hoveredSurfaceId}</div>
               : hovered3DSurfaceId ? <div className="debug-value">{hovered3DSurfaceId}</div>
               : <div className="debug-empty">none</div>}
-          </div>
-          <div className="debug-section">
-            <div className="debug-section-title">Dynamic ({dynamicSelection.size})</div>
-            {dynamicSelection.size === 0 ? <div className="debug-empty">none</div>
-              : [...dynamicSelection].map(id => <div key={id} className="debug-value">{id}</div>)}
           </div>
           <div className="debug-section">
             <div className="debug-section-title">Normal ({selection.size})</div>

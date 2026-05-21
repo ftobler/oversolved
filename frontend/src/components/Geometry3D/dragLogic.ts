@@ -5,19 +5,13 @@ import type { Mutation } from '@/types/cad'
 import type { VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 import type { SnapTarget, SnapCandidate, EntityCandidate } from '@/components/Geometry3D/snapDetection'
 import { findSnapTarget, collectVertexTargetsFlat, collectEntityCandidatesFlat } from '@/components/Geometry3D/snapDetection'
-import { detectAlignmentSnap } from '@/registry'
 import { isPureClick, CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
 import { DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX } from '@/components/Geometry3D/constants'
 import { BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjection'
 
 export interface DragMoveResult {
   snapTarget: SnapTarget | null
-  alignmentSnap: { point: [number, number]; kind: 'kinda_horizontal' | 'kinda_vertical'; vertexId: string } | null
-  /** Vertex IDs that entered proximity range this frame (for dynamic selection toggle). */
-  newProximityIds: Set<string>
-  /** Full set of vertex IDs currently in proximity range (for diffing on next frame). */
-  allProximityIds: Set<string>
-  /** Effective position for this frame (alignment snap > regular snap > raw cursor). */
+  /** Effective position for this frame (snap > raw cursor). */
   effectivePosition: [number, number]
 }
 
@@ -30,54 +24,26 @@ export function shouldActivateDrag(
   return Math.hypot(currentClient[0] - startClient[0], currentClient[1] - startClient[1]) >= CLICK_THRESHOLD_PX
 }
 
-/** Simulate a single updateDynamicSelection toggle.
- *  Mirrors the store's updateDynamicSelection logic without any store dependency. */
-function simulateDynamicToggle(
-  current: ReadonlySet<string>,
-  normalSelection: ReadonlySet<string>,
-  id: string,
-): Set<string> {
-  const next = new Set(current)
-  const inNormal = normalSelection.has(id)
-  const inDynamic = next.has(id)
-  if (inNormal) {
-    if (inDynamic) next.delete(id)
-  } else {
-    if (!inDynamic) next.add(id)
-  }
-  return next
-}
-
-/** Compute snap target, alignment snap, and proximity changes for the current drag position.
+/** Compute snap target and effective position for the current drag.
  *  pixelsPerUnit = p2w(camera) -- the caller extracts this from Three.js and passes it in as
  *  a plain number so this function has zero Three.js dependencies.
  *
  *  vertexCandidates and entityCandidates are the pre-built flat arrays from the adapter layer.
- *  skipIds identifies entities to exclude from snapping (e.g., the dragged entity).
- *
- *  currentDynamicSelection and normalSelection are needed to simulate the store toggle so
- *  alignment snap can be detected in the same frame. */
+ *  skipIds identifies entities to exclude from snapping (e.g., the dragged entity). */
 export function computeDragMove(
   localPoint: readonly [number, number],
   vertexCandidates: SnapCandidate[],
   entityCandidates: EntityCandidate[],
   skipIds: ReadonlySet<string>,
   drag: VertexOrEdgeDrag,
-  currentDynamicSelection: ReadonlySet<string>,
-  normalSelection: ReadonlySet<string>,
-  dynamicSelectionPositions: ReadonlyMap<string, [number, number]>,
-  prevProximityIds: ReadonlySet<string>,
   pixelsPerUnit: number,
 ): DragMoveResult {
   const [x, y] = localPoint
 
   if (drag.type !== 'vertex') {
-    // Edge drag: no snap, no proximity scan
+    // Edge drag: no snap
     return {
       snapTarget: null,
-      alignmentSnap: null,
-      newProximityIds: new Set(),
-      allProximityIds: new Set(),
       effectivePosition: [x, y],
     }
   }
@@ -93,45 +59,10 @@ export function computeDragMove(
     DRAG_SNAP_VERTEX_RADIUS_PX * pixelsPerUnit,
     DRAG_SNAP_ENTITY_RADIUS_PX * pixelsPerUnit,
   )
-  let snapPosition: [number, number] | null = snapTarget?.position ?? null
+  const snapPosition: [number, number] | null = snapTarget?.position ?? null
 
-  // Proximity scan for dynamic selection accumulation (alignment snap reference points).
-  // Use 3x the vertex snap radius so alignment references accumulate well before snap fires.
-  const scanRadius = DRAG_SNAP_VERTEX_RADIUS_PX * pixelsPerUnit * 3
-  const nearbyTargets = filteredVertices
-    .filter(t => Math.hypot(t.position[0] - x, t.position[1] - y) <= scanRadius)
-  const allProximityIds = new Set(nearbyTargets.map(t => t.id))
-  const newProximityIds = new Set([...allProximityIds].filter(id => !prevProximityIds.has(id)))
-
-  // Simulate dynamic selection update to detect alignment snap in the same frame.
-  let simulatedDynamic: Set<string> = new Set(currentDynamicSelection)
-  for (const id of newProximityIds) {
-    simulatedDynamic = simulateDynamicToggle(simulatedDynamic, normalSelection, id)
-  }
-
-  // Build a complete positions map: existing dynamic positions + newly-discovered proximity positions
-  const allPositions = new Map(dynamicSelectionPositions)
-  for (const t of nearbyTargets) {
-    if (!allPositions.has(t.id)) {
-      allPositions.set(t.id, t.position)
-    }
-  }
-
-  // Alignment snap detection
-  let alignmentSnap: DragMoveResult['alignmentSnap'] = null
-  if (simulatedDynamic.size > 0) {
-    const alignment = detectAlignmentSnap(simulatedDynamic, snapPosition ?? [x, y], allPositions)
-    if (alignment) {
-      alignmentSnap = { point: alignment.point, kind: alignment.kind, vertexId: alignment.vertexId }
-      snapPosition = alignment.point
-    }
-  }
-
-   return {
+  return {
     snapTarget,
-    alignmentSnap,
-    newProximityIds,
-    allProximityIds,
     effectivePosition: snapPosition ?? [x, y],
   }
 }

@@ -6,7 +6,6 @@ function createMockContext(overrides: Partial<SelectionToolContext> = {}): Selec
   return {
     normalSelection: new Set<string>(),
     internalHoverSelection: null,
-    dynamicSelection: new Set<string>(),
     isPointerDown: false,
     activeFeatureId: 'S1',
     hoveredVertexId: null,
@@ -17,9 +16,7 @@ function createMockContext(overrides: Partial<SelectionToolContext> = {}): Selec
     popMode: vi.fn(),
     setInternalHoverSelection: vi.fn(),
     clearNormalSelection: vi.fn(),
-    clearDynamicSelection: vi.fn(),
     toggleNormalSelection: vi.fn(),
-    updateDynamicSelection: vi.fn(),
     ...overrides,
   }
 }
@@ -62,21 +59,6 @@ describe('SelectionTool', () => {
 
       expect(clearNormalSelection).toHaveBeenCalled()
     })
-
-    it('single click does not conflict with dynamic selection', () => {
-      const tool = createSelectionTool()
-      const toggleNormalSelection = vi.fn()
-      const context = createMockContext({
-        internalHoverSelection: 'entity:S1:L1',
-        toggleNormalSelection,
-        dynamicSelection: new Set(),  // empty dynamic selection
-      })
-
-      tool.handlers.onClick!({} as PointerEvent, [0, 0], context)
-
-      expect(toggleNormalSelection).toHaveBeenCalledTimes(1)
-      expect(toggleNormalSelection).toHaveBeenCalledWith('entity:S1:L1')
-    })
   })
 
   describe('tool properties', () => {
@@ -93,11 +75,6 @@ describe('SelectionTool', () => {
     it('supports multi-select', () => {
       const tool = createSelectionTool()
       expect(tool.supportsMulti).toBe(true)
-    })
-
-    it('supports dynamic selection', () => {
-      const tool = createSelectionTool()
-      expect(tool.supportsDynamic).toBe(true)
     })
 
     it('shows in toolbar', () => {

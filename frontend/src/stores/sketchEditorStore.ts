@@ -134,17 +134,12 @@ interface SketchEditorState {
    normalSelection: Set<string>
    // Derived domain of the current normal selection.
    selectionDomain: SelectionDomain
-   // Dynamic selection — elements being added/removed during drag selection.
-   dynamicSelection: Set<string>
-   // Tracks if pointer is currently down for dynamic selection accumulation.
   isPointerDown: boolean
   setInternalHoverSelection: (id: string | null) => void
   setIsPointerDown: (down: boolean) => void
   clearNormalSelection: () => void
-  clearDynamicSelection: () => void
   toggleNormalSelection: (id: string) => void
   addToNormalSelection: (id: string) => void
-  updateDynamicSelection: (hoverId: string | null) => void
 
   // HOVER STATE
   // Written by hit geometry (EntityLines, VertexDots, planes, surfaces);
@@ -242,7 +237,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   normalSelection: new Set(),
   selectionDomain: 'sketch_2d',
   internalHoverSelection: null,
-  dynamicSelection: new Set(),
   isPointerDown: false,
   alignmentSnapPoint: null,
   alignmentSnapKind: null,
@@ -311,9 +305,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setIsPointerDown: (down: boolean) => set({ isPointerDown: down }),
 
-  clearNormalSelection: () => set({ normalSelection: new Set(), chipOwnedSelection: new Set(), selectionDomain: 'sketch_2d', dynamicSelection: new Set() }),
-
-  clearDynamicSelection: () => set({ dynamicSelection: new Set() }),
+  clearNormalSelection: () => set({ normalSelection: new Set(), chipOwnedSelection: new Set(), selectionDomain: 'sketch_2d' }),
 
   toggleNormalSelection: (id) =>
     set(s => {
@@ -330,24 +322,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       next.add(id)
       return { normalSelection: next, selectionDomain: deriveSelectionDomain(next) }
     }),
-
-  updateDynamicSelection: (hoverId) => set(s => {
-    if (!hoverId) return { dynamicSelection: new Set() }
-
-    if (hoverId === s.internalHoverSelection && s.internalHoverSelection !== null) {
-      return s
-    }
-
-    const isInNormal = s.normalSelection.has(hoverId)
-    const isInDynamic = s.dynamicSelection.has(hoverId)
-    const next = new Set(s.dynamicSelection)
-    if (isInNormal) {
-      if (isInDynamic) next.delete(hoverId)
-    } else {
-      if (!isInDynamic) next.add(hoverId)
-    }
-    return { dynamicSelection: next }
-  }),
 
   setAlignmentSnap: (point, kind, vertexId) => set({ alignmentSnapPoint: point, alignmentSnapKind: kind, alignmentSnapVertexId: vertexId }),
 
@@ -375,7 +349,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         prev.deactivate({
           normalSelection: s.normalSelection,
           internalHoverSelection: s.internalHoverSelection,
-          dynamicSelection: s.dynamicSelection,
           isPointerDown: s.isPointerDown,
           activeFeatureId: s.activeFeatureId,
           hoveredVertexId: s.hoveredVertexId,
@@ -415,7 +388,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         next.activate({
           normalSelection: s.normalSelection,
           internalHoverSelection: s.internalHoverSelection,
-          dynamicSelection: s.dynamicSelection,
           isPointerDown: s.isPointerDown,
           activeFeatureId: s.activeFeatureId,
           hoveredVertexId: s.hoveredVertexId,
@@ -549,7 +521,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
             prev.deactivate({
               normalSelection: s.normalSelection,
               internalHoverSelection: s.internalHoverSelection,
-              dynamicSelection: s.dynamicSelection,
               isPointerDown: s.isPointerDown,
               activeFeatureId: s.activeFeatureId,
               hoveredVertexId: s.hoveredVertexId,

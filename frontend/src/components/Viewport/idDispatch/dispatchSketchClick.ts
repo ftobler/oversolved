@@ -22,7 +22,6 @@ export function dispatchSketchClick(
   const context = {
     normalSelection: state.normalSelection,
     internalHoverSelection: state.internalHoverSelection,
-    dynamicSelection: state.dynamicSelection,
     isPointerDown: state.isPointerDown,
     activeFeatureId: state.activeFeatureId,
     hoveredVertexId: state.hoveredVertexId,
@@ -84,7 +83,6 @@ export function dispatchDragInitiation(
   const ctx: DragToolContext = {
     normalSelection: state.normalSelection,
     internalHoverSelection: state.internalHoverSelection,
-    dynamicSelection: state.dynamicSelection,
     isPointerDown: true,
     activeFeatureId: state.activeFeatureId,
     hoveredVertexId: id,

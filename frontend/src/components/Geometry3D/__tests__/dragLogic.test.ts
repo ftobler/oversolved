@@ -42,10 +42,6 @@ describe('shouldActivateDrag', () => {
 })
 
 describe('computeDragMove', () => {
-  const emptyDynamic = new Set<string>()
-  const emptyNormal = new Set<string>()
-  const emptyPositions = new Map<string, [number, number]>()
-  const emptyProximity = new Set<string>()
   const pixPerUnit = 0.01  // 100 pixels per unit
 
   const buildCandidates = (sketch: Sketch, featureId: string, skipEntityId?: string) => {
@@ -59,11 +55,9 @@ describe('computeDragMove', () => {
   it('returns null snap when cursor is far from all entities', () => {
     const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
-      [50, 50], vertexCandidates, entityCandidates, skipIds, makeDrag(),
-      emptyDynamic, emptyNormal, emptyPositions, emptyProximity, pixPerUnit,
+      [50, 50], vertexCandidates, entityCandidates, skipIds, makeDrag(), pixPerUnit,
     )
     expect(result.snapTarget).toBeNull()
-    expect(result.alignmentSnap).toBeNull()
     expect(result.effectivePosition).toEqual([50, 50])
   })
 
@@ -73,7 +67,6 @@ describe('computeDragMove', () => {
     const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
       [10.01, 0], vertexCandidates, entityCandidates, skipIds, drag,
-      emptyDynamic, emptyNormal, emptyPositions, emptyProximity,
       1,  // 1 unit per pixel = large radius
     )
     expect(result.snapTarget?.kind).toBe('vertex')
@@ -88,7 +81,6 @@ describe('computeDragMove', () => {
     const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, '__none__')
     const result = computeDragMove(
       [5, 0.05], vertexCandidates, entityCandidates, skipIds, drag,
-      emptyDynamic, emptyNormal, emptyPositions, emptyProximity,
       0.01,
     )
     expect(result.snapTarget?.kind).toBe('entity')
@@ -100,7 +92,6 @@ describe('computeDragMove', () => {
     const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
       [10.01, 0.01], vertexCandidates, entityCandidates, skipIds, drag,
-      emptyDynamic, emptyNormal, emptyPositions, emptyProximity,
       1,
     )
     if (result.snapTarget) {
@@ -112,24 +103,10 @@ describe('computeDragMove', () => {
     const drag = makeDrag({ type: 'edge', entityId: 'L1' })
     const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
-      [5, 5], vertexCandidates, entityCandidates, skipIds, drag,
-      emptyDynamic, emptyNormal, emptyPositions, emptyProximity, pixPerUnit,
+      [5, 5], vertexCandidates, entityCandidates, skipIds, drag, pixPerUnit,
     )
     expect(result.snapTarget).toBeNull()
-    expect(result.alignmentSnap).toBeNull()
     expect(result.effectivePosition).toEqual([5, 5])
-  })
-
-  it('tracks new proximity IDs vs previous frame', () => {
-    const drag = makeDrag({ entityId: 'L1' })
-    const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
-    const result = computeDragMove(
-      [10, 0], vertexCandidates, entityCandidates, skipIds, drag,
-      emptyDynamic, emptyNormal, emptyPositions, emptyProximity,
-      1,  // 1 unit per pixel = 60px radius, very large
-    )
-    // L2 start [10,0] is at cursor -- should enter proximity
-    expect(result.allProximityIds.size).toBeGreaterThan(0)
   })
 })
 

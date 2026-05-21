@@ -9,7 +9,6 @@ function reset() {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
     internalHoverSelection: null,
-    dynamicSelection: new Set(),
     isPointerDown: false,
     planeSelectionFeatureId: null,
   })

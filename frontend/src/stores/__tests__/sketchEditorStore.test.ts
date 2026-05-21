@@ -16,7 +16,6 @@ function reset() {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
     internalHoverSelection: null,
-    dynamicSelection: new Set(),
     isPointerDown: false,
     drag: null,
     orbitEnabled: true,
@@ -417,26 +416,6 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().drawPoints).toEqual([])
       expect(useSketchEditorStore.getState().drawHover).toBeNull()
       expect(useSketchEditorStore.getState().drawSnapVertexId).toBeNull()
-    })
-  })
-
-  describe('updateDynamicSelection', () => {
-    it('adds a new id to dynamicSelection', () => {
-      useSketchEditorStore.getState().updateDynamicSelection('entity:S1:L1')
-      expect(useSketchEditorStore.getState().dynamicSelection.has('entity:S1:L1')).toBe(true)
-    })
-
-    it('clears dynamicSelection when called with null', () => {
-      useSketchEditorStore.getState().updateDynamicSelection('entity:S1:L1')
-      useSketchEditorStore.getState().updateDynamicSelection(null)
-      expect(useSketchEditorStore.getState().dynamicSelection.size).toBe(0)
-    })
-
-    it('marks id for removal when id is already in normalSelection', () => {
-      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
-      useSketchEditorStore.getState().updateDynamicSelection('entity:S1:L1')
-      // items in normal selection are not added to dynamic (they would be toggled off)
-      expect(useSketchEditorStore.getState().dynamicSelection.has('entity:S1:L1')).toBe(false)
     })
   })
 

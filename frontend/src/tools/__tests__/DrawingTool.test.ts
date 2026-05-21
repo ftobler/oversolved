@@ -6,7 +6,6 @@ function createMockContext(overrides: Partial<DrawingToolContext> = {}): Drawing
   return {
     normalSelection: new Set<string>(),
     internalHoverSelection: null,
-    dynamicSelection: new Set<string>(),
     isPointerDown: false,
     activeFeatureId: 'S1',
     hoveredVertexId: null,

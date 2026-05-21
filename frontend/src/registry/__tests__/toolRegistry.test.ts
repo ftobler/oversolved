@@ -84,7 +84,6 @@ describe('ToolRegistry', () => {
       const context: ToolContext = {
         normalSelection: new Set(),
         internalHoverSelection: null,
-        dynamicSelection: new Set(),
         isPointerDown: false,
         activeFeatureId: null,
         hoveredVertexId: null,
@@ -213,7 +212,6 @@ describe('ToolRegistry', () => {
       const context = {
         normalSelection: new Set<string>(),
         internalHoverSelection: null,
-        dynamicSelection: new Set<string>(),
         isPointerDown: false,
         activeFeatureId: 'S1',
         hoveredVertexId: 'vertex:S1:L1:start',
@@ -248,7 +246,6 @@ describe('ToolRegistry', () => {
       const context = {
         normalSelection: new Set<string>(),
         internalHoverSelection: null,
-        dynamicSelection: new Set<string>(),
         isPointerDown: false,
         activeFeatureId: 'S1',
         hoveredVertexId: null,
@@ -282,7 +279,6 @@ describe('ToolRegistry', () => {
       const context = {
         normalSelection: new Set<string>(),
         internalHoverSelection: null,
-        dynamicSelection: new Set<string>(),
         isPointerDown: false,
         activeFeatureId: 'S1',
         hoveredVertexId: null,
@@ -317,7 +313,6 @@ describe('ToolRegistry', () => {
       const context = {
         normalSelection: new Set<string>(),
         internalHoverSelection: null,
-        dynamicSelection: new Set<string>(),
         isPointerDown: false,
         activeFeatureId: 'S1',
         hoveredVertexId: null,
@@ -356,7 +351,6 @@ describe('ToolRegistry', () => {
       const context = {
         normalSelection: new Set<string>(),
         internalHoverSelection: null,
-        dynamicSelection: new Set<string>(),
         isPointerDown: false,
         activeFeatureId: 'S1',
         hoveredVertexId: null,

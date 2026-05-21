@@ -27,10 +27,9 @@ export {
   SNAP_KINDS,
   canSnapTo,
   suggestConstraint,
-  detectAlignmentSnap,
   ALIGNMENT_TOLERANCE_DEG,
 } from '@/registry/snapRegistry'
-export type { SnapKind, DraggedElementType, AlignmentSnapResult } from '@/registry/snapRegistry'
+export type { SnapKind, DraggedElementType } from '@/registry/snapRegistry'
 
 export {
   toolRegistry,

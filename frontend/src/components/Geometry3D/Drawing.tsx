@@ -74,7 +74,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const { camera, gl } = useThree()
 
   const drawLastPoint = drawPoints.length > 0 ? drawPoints[drawPoints.length - 1] : null
-  useAlignmentSnapEffect(sketch, drawHover, drawLastPoint)
+  useAlignmentSnapEffect(drawHover, drawLastPoint)
 
   // Resolve the sketch group ref: prefer explicit prop, fall back to mesh parent.
   const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? {
@@ -143,7 +143,6 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
         const context: DrawingToolContext = {
           normalSelection: state.normalSelection,
           internalHoverSelection: state.internalHoverSelection,
-          dynamicSelection: state.dynamicSelection,
           isPointerDown: state.isPointerDown,
           activeFeatureId: state.activeFeatureId,
           hoveredVertexId,

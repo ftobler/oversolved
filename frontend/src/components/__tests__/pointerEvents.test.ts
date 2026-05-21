@@ -5,7 +5,6 @@ import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
 beforeEach(() => {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    dynamicSelection: new Set(),
     isPointerDown: false,
     hoveredSurfaceId: null,
     hovered3DSurfaceId: null,
@@ -37,7 +36,7 @@ describe('PointerEvent contract', () => {
 
 describe('Touch selection behavior (simulated via PointerEvent)', () => {
   it('simulates primary pointer down setting selection state', () => {
-    // Simulate what useHoverAndDynamicSelection does on pointer over + down
+
     useSketchEditorStore.getState().setIsPointerDown(true)
     useSketchEditorStore.getState().toggleNormalSelection('entity:F1:L1')
     expect(useSketchEditorStore.getState().normalSelection.has('entity:F1:L1')).toBe(true)

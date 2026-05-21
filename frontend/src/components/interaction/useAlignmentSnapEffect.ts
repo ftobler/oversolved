@@ -1,8 +1,6 @@
 import { useEffect } from 'react'
-import type { Sketch } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { detectAlignmentSnap, ALIGNMENT_TOLERANCE_DEG } from '@/registry'
-import { useDynamicSelectionPositions } from '@/components/interaction/snapHooks'
+import { ALIGNMENT_TOLERANCE_DEG } from '@/registry'
 
 export interface DrawAlignmentResult {
   kind: 'kinda_horizontal' | 'kinda_vertical'
@@ -33,64 +31,27 @@ export function detectDrawAlignment(
 }
 
 /**
- * Layer 3B — Selection Subsystem: reactive alignment snap detection.
- *
- * When dynamicSelection is non-empty and the cursor is within
- * ALIGNMENT_TOLERANCE_DEG of horizontal or vertical alignment with a
- * dynamically-selected point, writes the alignment snap to the store.
- * Both the preview indicator (DragAlignmentIndicator) and constraint
- * insertion read from there.
- *
- * This is the *reactive* (useEffect-based) variant. It is correct for tools
- * that expose their current position as React state (e.g. the draw tool
- * stores the cursor as drawHover in the store).
- *
- * The drag tool uses an *imperative* equivalent inside onPointerMove because
- * it must compute the alignment-snapped position synchronously in order to
- * set currentWorld in the same pointer-move event — a one-render delay would
- * produce visible stutter in the drag preview.
- *
- * Implements the alignment snap feature from feature_entity_snap.md:
- * - kinda_horizontal/kinda_vertical snapping for constraint inference
- * - Uses dynamicSelection as reference points for alignment detection
- * - Visual feedback via dashed lines when cursor is aligned
- * - Applies horizontal/vertical constraints on tool completion
- *
- * For the draw tool, alignment detection uses the last draw point as the
- * reference (via the drawLastPoint parameter) since dynamicSelection is
- * typically empty during drawing.
+ * Reactive alignment snap detection for the draw tool.
+ * Uses the last draw point as the reference point for detecting
+ * kinda_horizontal/kinda_vertical alignment.
  */
 export function useAlignmentSnapEffect(
-  sketch: Sketch | undefined,
   currentPosition: [number, number] | null,
   drawLastPoint?: [number, number] | null,
 ) {
-  const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
   const setAlignmentSnap = useSketchEditorStore(s => s.setAlignmentSnap)
-  const dynamicSelectionPositions = useDynamicSelectionPositions(sketch, dynamicSelection)
 
   useEffect(() => {
-    if (!currentPosition) {
+    if (!currentPosition || !drawLastPoint) {
       setAlignmentSnap(null, null, null)
       return
     }
 
-    if (dynamicSelection.size === 0) {
-      if (!drawLastPoint) {
-        setAlignmentSnap(null, null, null)
-        return
-      }
-      const alignment = detectDrawAlignment(currentPosition, drawLastPoint)
-      if (alignment) {
-        setAlignmentSnap(alignment.point, alignment.kind, alignment.vertexId)
-      } else {
-        setAlignmentSnap(null, null, null)
-      }
-      return
+    const alignment = detectDrawAlignment(currentPosition, drawLastPoint)
+    if (alignment) {
+      setAlignmentSnap(alignment.point, alignment.kind, alignment.vertexId)
+    } else {
+      setAlignmentSnap(null, null, null)
     }
-
-    const alignment = detectAlignmentSnap(dynamicSelection, currentPosition, dynamicSelectionPositions)
-    if (alignment) setAlignmentSnap(alignment.point, alignment.kind, alignment.vertexId)
-    else setAlignmentSnap(null, null, null)
-  }, [currentPosition, dynamicSelection, dynamicSelectionPositions, setAlignmentSnap, drawLastPoint])
+  }, [currentPosition, drawLastPoint, setAlignmentSnap])
 }

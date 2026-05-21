@@ -20,7 +20,6 @@ beforeEach(() => {
     activeTool: null,
     activeFeatureId: 'S1',
     normalSelection: new Set(),
-    dynamicSelection: new Set(),
     internalHoverSelection: 'entity:S1:L1',
     hoveredVertexId: null,
     hoveredVertexPosition: null,

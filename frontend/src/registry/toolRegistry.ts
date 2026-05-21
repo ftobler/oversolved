@@ -26,7 +26,6 @@ export type ToolCategory = 'navigation' | 'drawing' | 'constraint' | 'selection'
 export interface ToolContext {
   normalSelection: Set<string>
   internalHoverSelection: string | null
-  dynamicSelection: Set<string>
   isPointerDown: boolean
   activeFeatureId: string | null
   hoveredVertexId: string | null

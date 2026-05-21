@@ -27,7 +27,6 @@ function resetStore() {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
     chipOwnedSelection: new Set(),
-    dynamicSelection: new Set(),
     internalHoverSelection: null,
     activeFeatureId: null,
     planeSelectionFeatureId: null,

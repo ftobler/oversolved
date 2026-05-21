@@ -7,7 +7,6 @@ import { toolRegistry } from '@/registry/toolRegistry'
 import { Dot } from '@/components/Geometry3D/VertexDots'
 import { DashedLine } from '@/components/sketch_dimensions'
 import { p2w } from '@/components/sketch_helpers'
-import { useDynamicSelectionPositions } from '@/components/interaction/snapHooks'
 import { COLOR_SNAP, COLOR_PREVIEW } from '@/components/Geometry3D/constants'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
 import { computeDragMove, shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
@@ -21,7 +20,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
   sketchGroupRef?: React.RefObject<THREE.Group | null>
   otherSketches?: Record<string, Sketch>
 }) {
-  const prevNearbyRef = useRef<Set<string>>(new Set())
   const drag = useSketchEditorStore(s => s.drag)
   const dragPending = useSketchEditorStore(s => s.dragPending)
   const setDrag = useSketchEditorStore(s => s.setDrag)
@@ -31,11 +29,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
   const setAlignmentSnap = useSketchEditorStore(s => s.setAlignmentSnap)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const onMutation = getSketchCallback('onMutation')
-  const dynamicSelection = useSketchEditorStore(s => s.dynamicSelection)
   const { camera, gl } = useThree()
-
-  // Build map of dynamic selection positions for alignment detection
-  const dynamicSelectionPositions = useDynamicSelectionPositions(sketch, dynamicSelection)
 
   const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? { current: null }
 
@@ -49,7 +43,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
 
     // Read from store imperatively to see the latest drag state, including any update
     // that setDrag() makes mid-handler (lazy drag initiation below).
-    const { drag, dragPending, dragStartClient, isPointerDown, dynamicSelection, normalSelection } = useSketchEditorStore.getState()
+    const { drag, dragPending, dragStartClient, isPointerDown } = useSketchEditorStore.getState()
     if (!drag && !dragPending) return
     // Only the DragPlane whose featureId matches the active drag processes this event.
     if (drag && drag.featureId !== featureId) return
@@ -90,7 +84,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
             const ctx: DragToolContext = {
               normalSelection: state.normalSelection,
               internalHoverSelection: state.internalHoverSelection,
-              dynamicSelection: state.dynamicSelection,
               isPointerDown: state.isPointerDown,
               activeFeatureId: state.activeFeatureId,
               hoveredVertexId: dragPending.vertexId,
@@ -138,23 +131,11 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
       }
       const result = computeDragMove(
         localPoint, vertexCandidates, entityCandidates, skipIds,
-        currentDrag, dynamicSelection, normalSelection,
-        dynamicSelectionPositions, prevNearbyRef.current, pixelsPerUnit,
+        currentDrag, pixelsPerUnit,
       )
 
       setDragSnap(result.snapTarget)
-
-      if (result.alignmentSnap) {
-        setAlignmentSnap(result.alignmentSnap.point, result.alignmentSnap.kind, result.alignmentSnap.vertexId)
-      } else {
-        setAlignmentSnap(null, null, null)
-      }
-
-      const { updateDynamicSelection } = useSketchEditorStore.getState()
-      for (const id of result.newProximityIds) {
-        updateDynamicSelection(id)
-      }
-      prevNearbyRef.current = result.allProximityIds
+      setAlignmentSnap(null, null, null)
     }
 
     // Use raw localPoint for ALL drag types so vertex and edge drags
@@ -180,8 +161,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
   const handleUpRef = useRef<((e: PointerEvent) => void) | null>(null)
   const upImpl = (e: PointerEvent) => {
     useSketchEditorStore.getState().setIsPointerDown(false)
-    useSketchEditorStore.setState({ dynamicSelection: new Set() })
-    prevNearbyRef.current = new Set()
 
     const { drag: currentDrag, dragPending } = useSketchEditorStore.getState()
 
@@ -221,7 +200,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
     const context: DragToolContext = {
       normalSelection: state.normalSelection,
       internalHoverSelection: state.internalHoverSelection,
-      dynamicSelection: state.dynamicSelection,
       isPointerDown: state.isPointerDown,
       activeFeatureId: state.activeFeatureId,
       hoveredVertexId: state.hoveredVertexId,

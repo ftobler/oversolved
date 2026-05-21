@@ -19,10 +19,6 @@ vi.mock('@react-three/fiber', () => ({
   useThree: () => ({ camera: {} }),
 }))
 
-vi.mock('@/components/Geometry3D/useHoverAndDynamicSelection', () => ({
-  useHoverAndDynamicSelection: () => ({ hovered: false, onOver: vi.fn(), onOut: vi.fn(), markAsClicked: vi.fn() }),
-}))
-
 vi.mock('@/components/Geometry3D/useToolClickDispatch', () => ({
   useToolClickDispatch: () => vi.fn(),
 }))
@@ -104,7 +100,7 @@ describe('EntityItem selected-entity render order', () => {
   })
 
   it('hovered-only (not selected) entity outside edit mode does not get high renderOrder', async () => {
-    // hovered is provided by useHoverAndDynamicSelection mock (hovered=false above)
+      // hovered is always false for this test
     // nothing in normalSelection → selected=false
     const { EntityItem } = await import('@/components/Geometry3D/EntityLines')
     resetStore({ normalSelection: new Set() })

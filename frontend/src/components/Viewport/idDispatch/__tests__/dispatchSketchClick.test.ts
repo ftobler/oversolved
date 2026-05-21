@@ -23,7 +23,6 @@ beforeEach(() => {
     hoveredSnapKind: null,
     normalSelection: new Set(),
     internalHoverSelection: null,
-    dynamicSelection: new Set(),
     dragSnap: null,
   })
   setSketchCallback('onMutation', null)

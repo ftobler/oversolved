@@ -5,14 +5,11 @@ export interface SelectionToolContext extends ToolContext {
   normalSelection: Set<string>
   setInternalHoverSelection: (id: string | null) => void
   clearNormalSelection: () => void
-  clearDynamicSelection: () => void
   toggleNormalSelection: (id: string) => void
-  updateDynamicSelection: (hoverId: string | null) => void
 }
 
 export interface SelectionTool extends Tool {
   readonly supportsMulti: boolean
-  readonly supportsDynamic: boolean
 }
 
 export function createSelectionTool(): SelectionTool {
@@ -36,7 +33,6 @@ export function createSelectionTool(): SelectionTool {
     label: 'Select',
     category: 'selection' as ToolCategory,
     supportsMulti: true,
-    supportsDynamic: true,
     showInToolbar: true,
 
     activate: (context) => { context.pushMode('tool:select') },

@@ -470,7 +470,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const pointerDownButton = useRef<number | null>(null)
   const wasPointerDrag = useRef(false)
 
-  // Layer 3B: clear isPointerDown and dynamicSelection on any pointer-up (including off-canvas releases).
+  // Layer 3B: clear isPointerDown on any pointer-up (including off-canvas releases).
   useSelectionPointerUpCleanup()
 
   // 268: rubber-band drag-box selection on empty canvas space.
