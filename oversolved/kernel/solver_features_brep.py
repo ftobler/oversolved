@@ -10,7 +10,7 @@ from oversolved.kernel.solver_features_shared import (
     _resolve_direction,
 )
 from oversolved.kernel.geometry_tessellation import extrude_profile as _ep
-from oversolved.kernel.cadquery_ops import boolean_union
+from oversolved.kernel.cadquery_ops import boolean_union, extrude_face, _compute_face_normal
 from oversolved.kernel.geometry_tessellation import sketch_loops_to_face, revolve_face as _rf
 from oversolved.kernel.solver_registry import _sketch_to_world_2d
 
@@ -48,43 +48,67 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
         raise ValueError("extrude requires at least one profile reference")
 
     all_loops: list = []
+    cq_faces: list = []
     first_pt: Frame3D | dict = {}
     first_sketch_id = ""
     for sketch_ref in sketch_refs:
-        loops, pt, sketch_id = _collect_extrude_loops(
+        loops, pt, sketch_id, cq_face = _collect_extrude_loops(
             sketch_ref, feature_id, feature, distance, global_repo, body_store
         )
-        all_loops.extend(loops)
+        if cq_face is not None:
+            cq_faces.append(cq_face)
+        else:
+            all_loops.extend(loops)
         if not first_pt:
             first_pt = pt
             first_sketch_id = sketch_id
 
-    if isinstance(first_pt, Frame3D):
-        normal = first_pt.normal
-    elif isinstance(first_pt, dict):
-        normal = first_pt.get("normal", [0, 0, 1])
-    else:
-        normal = [0, 0, 1]
     body_id = "body_" + feature_id
     result: dict = {"status": "ok", "body_id": body_id}
-
     operation = feature.get("operation", "add")
+    direction = feature.get("direction", "normal")
 
-    if not all_loops:
+    if not cq_faces and not all_loops:
         result["mesh_warning"] = "no closed profile found; body has no shape"
+    elif cq_faces and not all_loops:
+        face_normal = _compute_face_normal(cq_faces[0])
+        reverse_vec = [-n for n in face_normal]
+        if direction == "symmetric":
+            half_dist = distance / 2.0
+            part_pos = extrude_face(cq_faces[0], face_normal, half_dist)
+            part_neg = extrude_face(cq_faces[0], reverse_vec, half_dist)
+            tool_shape = boolean_union(part_pos, part_neg)
+            for cq_face in cq_faces[1:]:
+                pos = extrude_face(cq_face, face_normal, half_dist)
+                neg = extrude_face(cq_face, reverse_vec, half_dist)
+                tool_shape = boolean_union(tool_shape, boolean_union(pos, neg))
+        elif direction == "reverse":
+            tool_shape = extrude_face(cq_faces[0], reverse_vec, distance)
+            for cq_face in cq_faces[1:]:
+                tool_shape = boolean_union(tool_shape, extrude_face(cq_face, reverse_vec, distance))  # type: ignore[assignment]
+        else:
+            tool_shape = extrude_face(cq_faces[0], face_normal, distance)
+            for cq_face in cq_faces[1:]:
+                tool_shape = boolean_union(tool_shape, extrude_face(cq_face, face_normal, distance))  # type: ignore[assignment]
     else:
-        direction = feature.get("direction", "normal")
+        if isinstance(first_pt, Frame3D):
+            normal = first_pt.normal
+        elif isinstance(first_pt, dict):
+            normal = first_pt.get("normal", [0, 0, 1])
+        else:
+            normal = [0, 0, 1]
         direction_vec, effective_distance, effective_plane = _resolve_direction(
             normal, first_pt, direction, distance
         )
         tool_shape = _ep(
             all_loops, effective_plane, direction_vec, effective_distance
         )
-        op_result = _apply_body_operation(
-            tool_shape, body_store, operation, merge_target,
-            body_id, feature_id, first_sketch_id, op_name="extrude",
-        )
-        result.update(op_result)
+
+    op_result = _apply_body_operation(
+        tool_shape, body_store, operation, merge_target,
+        body_id, feature_id, first_sketch_id, op_name="extrude",
+    )
+    result.update(op_result)
 
     return result
 
@@ -108,13 +132,17 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
         raise ValueError("revolve requires at least one profile reference")
 
     all_loops: list = []
+    cq_faces: list = []
     first_pt: Frame3D | dict = {}
     first_sketch_id = ""
     for sketch_ref in sketch_refs:
-        loops, pt, sketch_id = _collect_extrude_loops(
+        loops, pt, sketch_id, cq_face = _collect_extrude_loops(
             sketch_ref, feature_id, feature, 0.0, global_repo, body_store
         )
-        all_loops.extend(loops)
+        if cq_face is not None:
+            cq_faces.append(cq_face)
+        else:
+            all_loops.extend(loops)
         if not first_pt:
             first_pt = pt
             first_sketch_id = sketch_id
@@ -163,14 +191,30 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
                         axis_direction = computed
     body_id = "body_" + feature_id
     result: dict = {"status": "ok", "body_id": body_id}
-
     operation = feature.get("operation", "add")
+    direction = feature.get("direction", "normal")
 
-    if not all_loops:
+    if not cq_faces and not all_loops:
         result["mesh_warning"] = "no closed profile found; body has no shape"
+    elif cq_faces and not all_loops:
+        if direction == "symmetric":
+            half_angle = angle / 2.0
+            part_pos = _rf(cq_faces[0], axis_origin, axis_direction, half_angle)
+            part_neg = _rf(cq_faces[0], axis_origin, axis_direction, -half_angle)
+            tool_shape = boolean_union(part_pos, part_neg)
+            for cq_face in cq_faces[1:]:
+                pos = _rf(cq_face, axis_origin, axis_direction, half_angle)
+                neg = _rf(cq_face, axis_origin, axis_direction, -half_angle)
+                tool_shape = boolean_union(tool_shape, boolean_union(pos, neg))
+        else:
+            effective_angle = -angle if direction == "reverse" else angle
+            tool_shape = _rf(cq_faces[0], axis_origin, axis_direction, effective_angle)
+            for cq_face in cq_faces[1:]:
+                tool_shape = boolean_union(  # type: ignore[assignment]
+                    tool_shape, _rf(cq_face, axis_origin, axis_direction, effective_angle)
+                )
     else:
         face = sketch_loops_to_face(all_loops, first_pt)
-        direction = feature.get("direction", "normal")
         if direction == "symmetric":
             half_angle = angle / 2.0
             tool_shape_pos = _rf(face, axis_origin, axis_direction, half_angle)
@@ -180,10 +224,10 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
             effective_angle = -angle if direction == "reverse" else angle
             tool_shape = _rf(face, axis_origin, axis_direction, effective_angle)
 
-        op_result = _apply_body_operation(
-            tool_shape, body_store, operation, merge_target,
-            body_id, feature_id, first_sketch_id, op_name="revolve",
-        )
-        result.update(op_result)
+    op_result = _apply_body_operation(
+        tool_shape, body_store, operation, merge_target,
+        body_id, feature_id, first_sketch_id, op_name="revolve",
+    )
+    result.update(op_result)
 
     return result

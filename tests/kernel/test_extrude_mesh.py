@@ -1179,7 +1179,7 @@ def test_revolve_from_fillet_face_propagates_arcs():
     arc_face_index = None
     for fi in range(30):
         try:
-            loops, _ = _extract_loops_from_occ_face(body, fi)
+            loops, *_ = _extract_loops_from_occ_face(body, fi)
             if any(e.get('kind') == 'arc' for loop in loops for e in loop):
                 arc_face_index = fi
                 break
@@ -1219,10 +1219,152 @@ def test_extract_occ_face_returns_arcs_after_fillet():
     arc_found = False
     for fi in range(20):
         try:
-            loops, _ = _extract_loops_from_occ_face(filleted, fi)
+            loops, *_ = _extract_loops_from_occ_face(filleted, fi)
             if any(e.get('kind') == 'arc' for loop in loops for e in loop):
                 arc_found = True
                 break
         except Exception:
             continue
     assert arc_found, "no arc edges found in any face boundary after fillet"
+
+
+# ── Face-profile regression tests (skip 2D round-trip for B-rep faces) ──
+
+
+def test_extract_loops_from_occ_face_returns_cq_face():
+    """_extract_loops_from_occ_face must return a cq Face as third element.
+
+    This enables the face-profile fast path in _solve_extrude / _solve_revolve
+    that skips the 2D loop round-trip and uses the OCC face directly.
+    """
+    from solver_helpers import rect_sketch_spec, full_rect_extrude_spec
+    from oversolved.kernel.builder import build
+    from oversolved.kernel.solver_features_shared import _extract_loops_from_occ_face
+
+    spec = full_rect_extrude_spec(w=10, h=10, d=5)
+    r = build(spec)
+    body = r["_body_shapes"]["body_ex1"]
+    loops, frame, cq_face = _extract_loops_from_occ_face(body, 0)
+    assert len(loops) > 0, "expected at least one loop"
+    assert cq_face is not None, "expected a cq Face"
+    assert hasattr(cq_face, "wrapped"), "expected a cadquery Face with .wrapped"
+
+
+def test_extrude_face_profile_goes_outward():
+    """Extrude from each flat B-rep face of a box must go outward, not inward.
+
+    Regression: _compute_face_plane was ignoring face orientation (TopAbs_REVERSED),
+    so for reversed faces the rebuilt profile ended up mirrored across the face
+    plane.  The fix uses the OCC face directly via extrude_face(), bypassing the
+    sketch_loops_to_face round-trip entirely.
+    """
+    import cadquery as cq
+    from oversolved.kernel.builder import build
+    from oversolved.kernel.cadquery_ops import _compute_face_normal, _face_sort_key
+    from solver_helpers import rect_sketch_spec, assert_mesh_valid
+
+    w, h, d = 10, 10, 5
+    spec = {
+        "features": [
+            rect_sketch_spec(w=w, h=h, sketch_id="sk1"),
+            {"id": "ex1", "kind": "extrude", "sketch": "$sk1",
+             "distance": d, "direction": "normal"},
+        ],
+    }
+    r = build(spec)
+    assert r["result"]["ex1"]["status"] == "ok"
+
+    body_shape = r["_body_shapes"]["body_ex1"]
+    cq_shape = cq.Shape.cast(body_shape)
+    faces = sorted(list(cq_shape.Faces()), key=_face_sort_key)
+
+    tested = 0
+    ext_distance = 3.0
+    for fi, face in enumerate(faces):
+        if face.geomType() != "PLANE":
+            continue
+        centroid = face.Center()
+        fn = _compute_face_normal(face)
+
+        spec2 = {
+            "features": [
+                *spec["features"],
+                {"id": "ex2", "kind": "extrude",
+                 "sketch": f"@ex1/face/{fi}",
+                 "distance": ext_distance, "direction": "normal",
+                 "operation": "new"},
+            ],
+        }
+        r2 = build(spec2)
+        assert r2["result"]["ex2"]["status"] == "ok", (
+            f"face {fi}: extrude failed: {r2['result']['ex2']}"
+        )
+        mesh2 = r2["bodies"]["body_ex2"]["mesh"]
+        assert_mesh_valid(mesh2)
+
+        found_outward = False
+        for vert in mesh2["vertices"]:
+            to_vert = [vert[i] - list(centroid.toTuple())[i] for i in range(3)]
+            dot = sum(to_vert[i] * fn[i] for i in range(3))
+            if dot > ext_distance * 0.5:
+                found_outward = True
+                break
+        assert found_outward, (
+            f"face {fi}: extrude did not go outward "
+            f"(normal={[round(n, 3) for n in fn]}, "
+            f"centroid={[round(c, 2) for c in centroid.toTuple()]})"
+        )
+        tested += 1
+
+    assert tested >= 2, f"expected at least 2 flat faces, found {tested}"
+
+
+def test_revolve_face_profile_not_mirrored():
+    """Revolve from a flat B-rep face must not be mirrored across the face plane.
+
+    Regression: the same _compute_face_plane bug affected both extrude and revolve
+    since they share _resolve_face_profile.  The fix uses the OCC face directly.
+    """
+    from oversolved.kernel.builder import build
+    from solver_helpers import rect_sketch_spec, assert_mesh_valid
+
+    w, h, d = 10, 10, 5
+    spec = {
+        "features": [
+            rect_sketch_spec(w=w, h=h, sketch_id="sk1"),
+            {"id": "ex1", "kind": "extrude", "sketch": "$sk1",
+             "distance": d, "direction": "normal"},
+        ],
+    }
+    r = build(spec)
+    assert r["result"]["ex1"]["status"] == "ok"
+
+    body = r["_body_shapes"]["body_ex1"]
+    import cadquery as cq
+    from oversolved.kernel.cadquery_ops import _face_sort_key
+    cq_shape = cq.Shape.cast(body)
+    faces = sorted(list(cq_shape.Faces()), key=_face_sort_key)
+
+    flat_face_fi = None
+    for fi, face in enumerate(faces):
+        if face.geomType() == "PLANE":
+            flat_face_fi = fi
+            break
+    assert flat_face_fi is not None, "no flat face found"
+
+    spec2 = {
+        "features": [
+            *spec["features"],
+            {"id": "rev2", "kind": "revolve",
+             "sketch": f"@ex1/face/{flat_face_fi}",
+             "angle": 90.0,
+             "axis_origin": [0, 0, 0], "axis_direction": [0, 0, 1],
+             "operation": "new"},
+        ],
+    }
+    r2 = build(spec2)
+    assert r2["result"]["rev2"]["status"] == "ok", (
+        f"revolve failed: {r2['result']['rev2']}"
+    )
+    assert "body_rev2" in r2["bodies"]
+    assert_mesh_valid(r2["bodies"]["body_rev2"]["mesh"])

@@ -42,8 +42,8 @@ def test_ancestry_order_matters() -> None:
     repo_ab = _make_repo_with_surfaces([surface_ab, surface_ba], ancestor_ids=["@sk1", "@B"])
     repo_ba = _make_repo_with_surfaces([surface_ab, surface_ba], ancestor_ids=["@B", "@sk1"])
 
-    matched_ab, _ = _resolve_face_profile(q_ab, repo_ab, {})
-    matched_ba, _ = _resolve_face_profile(q_ba, repo_ba, {})
+    matched_ab, *_ = _resolve_face_profile(q_ab, repo_ab, {})
+    matched_ba, *_ = _resolve_face_profile(q_ba, repo_ba, {})
 
     assert matched_ab == surface_ab["loops"]
     assert matched_ba == surface_ba["loops"]
@@ -55,7 +55,7 @@ def test_ancestry_order_single_id_unaffected() -> None:
     surface = _surface(q)
     repo = _make_repo_with_surfaces([surface], ancestor_ids=["@sk1"])
 
-    matched, _ = _resolve_face_profile(q, repo, {})
+    matched, *_ = _resolve_face_profile(q, repo, {})
     assert matched == surface["loops"]
 
 
@@ -70,10 +70,10 @@ def test_ancestry_order_three_ids() -> None:
     repo_abc = _make_repo_with_surfaces([surface_abc, surface_acb], ancestor_ids=["@sk1", "@B", "@C"])
     repo_acb = _make_repo_with_surfaces([surface_abc, surface_acb], ancestor_ids=["@sk1", "@C", "@B"])
 
-    matched, _ = _resolve_face_profile(q_abc, repo_abc, {})
+    matched, *_ = _resolve_face_profile(q_abc, repo_abc, {})
     assert matched == surface_abc["loops"]
 
-    matched, _ = _resolve_face_profile(q_acb, repo_acb, {})
+    matched, *_ = _resolve_face_profile(q_acb, repo_acb, {})
     assert matched == surface_acb["loops"]
 
 

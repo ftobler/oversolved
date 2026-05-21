@@ -207,14 +207,16 @@ def _register_top_face(
 
 def _extract_loops_from_occ_face(
     shape: TopoDS_Shape, face_index: int
-) -> tuple[list[list[dict]], Frame3D]:
+) -> tuple[list[list[dict]], Frame3D, Any]:
     occ_shape = _ensure_occ(shape)
     if occ_shape.IsNull():
         raise ValueError("_extract_loops_from_occ_face received a null shape")
     import cadquery as cq
     cq_shape = cq.Shape.cast(occ_shape)
     cq_faces_sorted = sorted(list(cq_shape.Faces()), key=_face_sort_key)
-    return ocp_extract_face_loops(occ_shape, cq_faces_sorted, face_index)
+    cq_face = cq_faces_sorted[face_index]
+    loops, frame = ocp_extract_face_loops(occ_shape, cq_faces_sorted, face_index)
+    return loops, frame, cq_face
 
 
 def _resolve_face_index_via_hash(
@@ -264,7 +266,7 @@ def _resolve_face_index_via_hash(
 
 def _resolve_face_profile(
     sketch_ref: str, global_repo: Repository, body_store: dict
-) -> tuple[list[list[dict]], Frame3D | dict]:
+) -> tuple[list[list[dict]], Frame3D | dict, Any]:
 
     def _find_body_for_feature(feat_id: str):
         body = body_store.get("body_" + feat_id)
@@ -290,7 +292,8 @@ def _resolve_face_profile(
         )
         if resolved_face_index is not None:
             face_index = resolved_face_index
-        return _extract_loops_from_occ_face(body.shape, face_index)
+        loops, frame, cq_face = _extract_loops_from_occ_face(body.shape, face_index)
+        return loops, frame, cq_face
 
     face_entry = global_repo.query(sketch_ref, body_store=body_store)
     if face_entry is None:
@@ -302,7 +305,8 @@ def _resolve_face_profile(
         body = body_store.get(body_id)
         if body is None or body.shape is None:
             raise ValueError(f"Body {body_id!r} not found or has no shape")
-        return _extract_loops_from_occ_face(body.shape, face_index)
+        loops, frame, cq_face = _extract_loops_from_occ_face(body.shape, face_index)
+        return loops, frame, cq_face
 
     if sketch_ref.startswith("@"):
         feat_id = sketch_ref[1:].split("/")[0]
@@ -318,7 +322,7 @@ def _resolve_face_profile(
             "normal": face_entry.get("normal", [0, 0, 1]),
         }
         loops = _extract_profile_loops(surfaces)
-        return loops, effective_plane
+        return loops, effective_plane, None
 
     if sketch_ref.startswith("?"):
         target_ids, _ = _parse_ancestry(sketch_ref)
@@ -346,7 +350,7 @@ def _resolve_face_profile(
             and _parse_ancestry(s["query"])[0] == target_ids
         ]
         loops = _extract_profile_loops(matched or all_surfaces)
-        return loops, surface_pt
+        return loops, surface_pt, None
 
     raise ValueError(f"Cannot resolve profile from: {sketch_ref!r}")
 
@@ -399,11 +403,11 @@ def _collect_extrude_loops(
     distance: float,
     global_repo: Repository,
     body_store: dict,
-) -> tuple[list, Frame3D | dict, str]:
+) -> tuple[list, Frame3D | dict, str, Any]:
     pt: Frame3D | dict
     if sketch_ref.startswith("?") or sketch_ref.startswith("@"):
-        loops, pt = _resolve_face_profile(sketch_ref, global_repo, body_store)
-        return loops, pt, ""
+        loops, pt, cq_face = _resolve_face_profile(sketch_ref, global_repo, body_store)
+        return loops, pt, "", cq_face
     sketch_id = sketch_ref.lstrip("$")
     pt_raw = global_repo.elements.get("_pt_" + sketch_id)
     if pt_raw is None:
@@ -412,7 +416,7 @@ def _collect_extrude_loops(
     topo = global_repo.elements.get("_topo_" + sketch_id, {})
     surfaces = topo.get("surfaces", []) if topo else []
     _register_top_face(global_repo, feature_id, pt, surfaces, distance)
-    return _extract_profile_loops(surfaces), pt, sketch_id
+    return _extract_profile_loops(surfaces), pt, sketch_id, None
 
 
 def _split_compound(shape: TopoDS_Shape) -> list[TopoDS_Shape]:
