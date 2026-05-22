@@ -39,6 +39,7 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
 
   useEffect(() => {
     if (!mounted.current) { mounted.current = true; return }
+    console.trace('[DEBUG] SceneController resetTrigger effect fired, resetTrigger:', resetTrigger)
     camera.position.set(...INITIAL_POSITION)
     if ('zoom' in camera) {
       // eslint-disable-next-line react-hooks/immutability
@@ -47,7 +48,7 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
     }
     ctrlRef.current?.target.set(0, 0, 0)
     ctrlRef.current?.update()
-  }, [resetTrigger, camera])
+  }, [resetTrigger])
 
   useEffect(() => {
     const canvas = canvasRef.current

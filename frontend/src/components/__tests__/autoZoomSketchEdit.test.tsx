@@ -152,4 +152,28 @@ describe('auto-zoom does not fire while editing a sketch', () => {
 
     expect(testCamera.zoom).toBe(999)
   })
+
+  it('does not zoom via imperative handle if activeSketchFeatureId is set (onFirstSolve race)', async () => {
+    const ref = createRef<ViewportHandle>()
+    render(<Viewport ref={ref} />)
+
+    testCamera.zoom = 999
+    testCamera.updateProjectionMatrix()
+
+    // Set both activeFeatureId and bodies in one update, simulating user entering
+    // sketch edit before onFirstSolve's setTimeout fires.
+    await act(async () => {
+      usePartEditorStore.setState({ activeSketchFeatureId: 'sk1', bodies: makeBodyWithVertices() })
+    })
+
+    // The deferred onFirstSolve fires directly — zoomDoneRef is still false because
+    // the effect skipped its autoZoomToFit call (activeFeatureId guard).
+    act(() => {
+      ref.current?.autoZoomToFit()
+    })
+
+    // Camera must NOT have zoomed — autoZoomToFit should check
+    // activeSketchFeatureId internally.
+    expect(testCamera.zoom).toBe(999)
+  })
 })

@@ -15,6 +15,7 @@ import WsStatusIndicator from '@/components/WsStatusIndicator'
 import { useSyncPartEditorStore } from '@/hooks/useSyncPartEditorStore'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
 import { invalidateDocCache } from '@/utils/buildCache'
 import { http, HttpError } from '@/utils/httpClient'
@@ -61,6 +62,10 @@ export default function Part() {
   const viewportRef = useRef<ViewportHandle>(null)
   const exportImportRef = useRef<PartExportImportHandle>(null)
   const handleFirstSolve = useCallback(() => {
+    // Don't auto-zoom if user already entered sketch edit mode. The
+    // onFirstSolve callback fires via setTimeout(0) after the solve
+    // completes, which may race with sketch edit entry.
+    if (usePartEditorStore.getState().activeSketchFeatureId) return
     viewportRef.current?.autoZoomToFit()  // camera-only; intentional no-op when Viewport absent
   }, [])
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)

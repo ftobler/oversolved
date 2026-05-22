@@ -401,6 +401,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const MAX_ZOOM_ATTEMPTS = 5
   const autoZoomToFit = useCallback(() => {
     if (zoomDoneRef.current) return
+    // Never zoom while the user is editing a sketch — rollback-driven body
+    // changes should not reposition the camera, and the deferred onFirstSolve
+    // timeout must not zoom after the user has already entered edit mode.
+    if (usePartEditorStore.getState().activeSketchFeatureId) return
     zoomAttemptsRef.current++
     if (zoomAttemptsRef.current > MAX_ZOOM_ATTEMPTS) {
       zoomDoneRef.current = true
