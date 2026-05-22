@@ -30,6 +30,37 @@ ALL_KEYS: frozenset[str] = frozenset({
 })
 
 
+def _brep_diff_new_edge_hashes(body: Body) -> set[str]:
+    """Compute geom_hashes for TopoDS_Edges in body.brep_diff.new_edges.
+
+    Mirrors the same logic in builder.py so the hashes match those computed
+    during tessellation. Only line, arc, and circle edges are hashed; splines
+    are skipped (no stable hash available).
+    """
+    diff = getattr(body, "brep_diff", None)
+    if diff is None or not diff.new_edges:
+        return set()
+    try:
+        from oversolved.kernel.ocp_ops import ocp_brep_diff_new_edge_data  # noqa: PLC0415
+    except ImportError:
+        return set()
+    edge_data_list = ocp_brep_diff_new_edge_data(diff)
+    hashes: set[str] = set()
+    for ed in edge_data_list:
+        try:
+            if ed["type"] == "line":
+                for s, e in [
+                    (ed["start"], ed["end"]),
+                    (ed["end"], ed["start"]),
+                ]:
+                    hashes.add(edge_geometry_hash({"kind": "line", "start": s, "end": e}))
+            elif ed["type"] in ("circle", "arc"):
+                hashes.add(edge_geometry_hash(ed))
+        except Exception as exc:
+            logger.debug("brep_diff edge hash skip: %s", exc)
+    return hashes
+
+
 def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Shape]:
     if body.shape is None or not edge_queries:
         return []
@@ -51,12 +82,22 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
         edge_types.append("straightedge" if ed["kind"] == "line" else "edge")
         edge_dicts.append(ed)
 
+    # Determine which edges are "new" (created by the last modifier feature).
+    # Mirrors the rewrite logic in builder.py:612-629.
+    new_edge_hashes: set[str] = set()
+    has_modifier = body.brep_diff is not None and body.modified_by and body.modified_by[-1] != body.created_by
+    if has_modifier:
+        new_edge_hashes = _brep_diff_new_edge_hashes(body)
+
     query_to_edge = {}
     for idx, (te, et, ed) in enumerate(zip(topo_edges, edge_types, edge_dicts)):
         if body.created_by:
             geom_hash = edge_geometry_hash(ed)
+            edge_created_by = body.created_by
+            if geom_hash in new_edge_hashes:
+                edge_created_by = body.modified_by[-1]
             aq_hash = make_ancestry_query(
-                [f"@{geom_hash}", f"@{body.created_by}", f"@{body.id}"], et
+                [f"@{geom_hash}", f"@{edge_created_by}", f"@{body.id}"], et
             )
             query_to_edge[aq_hash] = te
 

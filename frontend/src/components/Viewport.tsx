@@ -618,6 +618,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           // re-render after geometry change). A null resolve in that case
           // is a transient transition state, not empty space.
           if (wasLastClickStaleResolve()) return
+          // Skip selection clear during an active rubber-band drag.
+          // onPointerMissed fires (synchronously from R3F's internal handler)
+          // before handlePointerUp on the parent div, so the rubber band is
+          // still in its dragging state.
+          if (rubberBand.state.dragging) return
           if (!wasPointerDrag.current && pointerDownButton.current === 0) {
             useSketchEditorStore.getState().clearNormalSelection()
             useSketchEditorStore.getState().setHoveredBodyId(null)

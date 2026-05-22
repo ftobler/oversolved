@@ -46,6 +46,7 @@ export function useRubberBandSelect(
 
   const startRef = useRef<[number, number] | null>(null)
   const committedRef = useRef(false)
+  const rectRef = useRef<RubberBandRect | null>(null)
 
   const onPointerDown = useCallback((e: React.PointerEvent, idBufferHitExists: boolean): boolean => {
     // Only left-click on empty space starts a box drag.
@@ -58,9 +59,10 @@ export function useRubberBandSelect(
 
     const canvas = glRef.current?.domElement
     if (!canvas) return false
-    const rect = canvas.getBoundingClientRect()
-    startRef.current = [e.clientX - rect.left, e.clientY - rect.top]
+    const canvasRect = canvas.getBoundingClientRect()
+    startRef.current = [e.clientX - canvasRect.left, e.clientY - canvasRect.top]
     committedRef.current = false
+    rectRef.current = null
     return true
   }, [glRef])
 
@@ -81,16 +83,19 @@ export function useRubberBandSelect(
     if (w < 4 && h < 4) return
 
     const mode: 'window' | 'crossing' = cx >= startRef.current[0] ? 'window' : 'crossing'
-    setRect({ x, y, w, h, mode })
+    const nextRect = { x, y, w, h, mode }
+    rectRef.current = nextRect
+    setRect(nextRect)
   }, [glRef])
 
   const onPointerUp = useCallback(() => {
     if (!startRef.current || committedRef.current) return
     committedRef.current = true
 
-    const currentRect = rect
+    const currentRect = rectRef.current
     if (!currentRect || (currentRect.w < 4 && currentRect.h < 4)) {
       startRef.current = null
+      rectRef.current = null
       setRect(null)
       return
     }
@@ -99,6 +104,14 @@ export function useRubberBandSelect(
     const gl = glRef.current
     if (!pipeline || !gl) {
       startRef.current = null
+      rectRef.current = null
+      setRect(null)
+      return
+    }
+
+    if (pipeline.isDirty()) {
+      startRef.current = null
+      rectRef.current = null
       setRect(null)
       return
     }
@@ -121,6 +134,7 @@ export function useRubberBandSelect(
     const rh = Math.min(h - y0, Math.ceil(currentRect.h * sy))
     if (rw <= 0 || rh <= 0) {
       startRef.current = null
+      rectRef.current = null
       setRect(null)
       return
     }
@@ -195,14 +209,16 @@ export function useRubberBandSelect(
     }
 
     startRef.current = null
+    rectRef.current = null
     setRect(null)
-  }, [rect, glRef])
+  }, [glRef])
 
   // Clear drag on Escape.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && startRef.current) {
         startRef.current = null
+        rectRef.current = null
         setRect(null)
       }
     }

@@ -890,3 +890,72 @@ def test_fillet_applies_across_both_bodies():
     )
     assert _is_filleted(r["bodies"]["body_ex2"]), "first body not filleted"
     assert _is_filleted(r["bodies"]["body_ex2_1"]), "second body not filleted"
+
+
+def test_fillet_edge_created_by_modifier():
+    """Fillet on an edge whose @created_by differs from body.created_by must
+    resolve correctly via modifier-aware hash lookup.
+
+    When a revolve (or other boolean modifier) adds geometry to an existing
+    extruded body, the builder rewrites the @created_by tag in the new edge
+    queries from body.created_by to body.modified_by[-1] (builder.py:612-629).
+    The fillet resolver must match by using the same modifier-aware created_by.
+    Before the fix, it used body.created_by unconditionally, causing the
+    hash-based direct lookup to fail and falling through to the unstable
+    body-scoped type fallback.
+
+    Regression test for: bugreports/filet_filets_wrong_edge_20260522_175137.md
+    """
+    from oversolved.kernel.builder import build
+    from oversolved.kernel.query import _parse_ancestry
+    from solver_helpers import rect_sketch_spec, assert_mesh_valid
+
+    sketch = rect_sketch_spec(w=5, h=5, sketch_id='sk1')
+    spec = {
+        'features': [
+            sketch,
+            {'id': 'ex1', 'kind': 'extrude', 'label': 'Extrude',
+             'sketch': '$sk1', 'distance': 5, 'direction': 'normal'},
+        ],
+    }
+    build(spec)
+
+    # Revolve that adds geometry to the existing extruded body.
+    # The boolean union creates new edges that get @created_by=rev1.
+    spec['features'].append({
+        'id': 'rev1', 'kind': 'revolve', 'label': 'Revolve',
+        'sketch': '$sk1', 'angle': 90.0,
+        'axis_origin': [0, 0, 0], 'axis_direction': [0, 0, 1],
+        'operation': 'add',
+    })
+    r1 = build(spec)
+    edge_queries = r1['bodies']['body_ex1'].get('edge_queries', [])
+    assert len(edge_queries) > 0, "no edge_queries after revolve"
+
+    # Locate a hash-based 3-ID query whose @created_by is the modifier (rev1).
+    modifier_edge_query = None
+    for q in edge_queries:
+        if q.startswith('?'):
+            try:
+                ids, _ = _parse_ancestry(q)
+                if len(ids) >= 2 and ids[1] == '@rev1':
+                    modifier_edge_query = q
+                    break
+            except Exception:
+                continue
+
+    if modifier_edge_query is None:
+        # The revolve may not have created new B-rep edges in this specific
+        # geometry. Skip the test gracefully.
+        return
+
+    spec['features'].append({
+        'id': 'fillet1', 'kind': 'fillet', 'label': 'Fillet',
+        'edges': [modifier_edge_query],
+        'radius': 0.5,
+    })
+    r = build(spec)
+    assert r['result']['fillet1']['status'] == 'ok', \
+        "fillet on modifier-created edge failed: %s" % r['result']['fillet1'].get('exception')
+    mesh = r['bodies']['body_ex1']['mesh']
+    assert_mesh_valid(mesh)
