@@ -409,7 +409,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     if (autoZoomToFitNow()) { zoomDoneRef.current = true; return }
   }, [autoZoomToFitNow])
   // Re-trigger when bodies arrive (binary WS frame processed), unless already done.
-  useEffect(() => { if (!zoomDoneRef.current) autoZoomToFit() }, [bodies, autoZoomToFit])
+  // Skip while editing a sketch: rollback-driven body changes should not reposition the camera.
+  useEffect(() => { if (!zoomDoneRef.current && !activeFeatureId) autoZoomToFit() }, [bodies, autoZoomToFit, activeFeatureId])
 
   const alignCameraToPlane = useCallback((planeId: string) => {
     const camera = cameraRef.current as THREE.OrthographicCamera | null
