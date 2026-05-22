@@ -894,19 +894,19 @@ def test_extrude_two_profiles_drop_one_still_builds_other():
 
 
 def test_extrude_partial_downstream_fillets_reorder_invariant():
-    """A deleted profile fails only its own fillet, regardless of fillet order.
+    """A deleted body fails only its own fillet, regardless of fillet order.
 
-    bugreports/no_partial_rebuild: "reordering filet 1 and filet 2 is not to
-    change build outcome". Uses two independent extrudes so body ids are
-    deterministic (body_exA / body_exB).
+    bugreports/assymetric_inconsistent_rebuild: two independent extrudes
+    with operation 'new' create deterministic body ids (body_exA / body_exB).
+    Deleting the extrude for one body must fail only that body's fillet.
     """
     pytest.importorskip("cadquery")
     pytest.importorskip("vtkmodules")
 
     skA = _offset_rect_sketch('skA', 0, 0)
     skB = _offset_rect_sketch('skB', 30, 0)
-    exA = extrude_spec('skA', 'exA', 5)
-    exB = extrude_spec('skB', 'exB', 5)
+    exA = extrude_spec('skA', 'exA', 5, operation='new')
+    exB = extrude_spec('skB', 'exB', 5, operation='new')
 
     r0 = build({'features': [skA, skB, exA, exB]})
     qA = r0['bodies']['body_exA']['edge_queries'][0]
@@ -918,11 +918,140 @@ def test_extrude_partial_downstream_fillets_reorder_invariant():
             'edges': [qB], 'radius': 1.0}
 
     # exB deleted -> body_exB gone -> filB must fail, filA must succeed.
+    # fillet order must not change which fillets succeed.
     statuses = []
     for fillets in ([filA, filB], [filB, filA]):
         r = build({'features': [skA, exA, *fillets]})
         statuses.append(
             (r['result']['filA']['status'], r['result']['filB']['status'])
         )
-    assert statuses[0] == ('ok', 'exception')
+    assert statuses[0] == ('ok', 'exception'), statuses[0]
     assert statuses[0] == statuses[1], "fillet order must not change outcome"
+
+
+# ─── Bug report coverage: multi-profile extrude + fillet reorder ───
+
+
+def test_partial_extrude_downstream_fillets_reorder_invariant():
+    """Bug 1, case 4: multi-profile extrude with fillets, reorder-invariant.
+
+    One extrude with two disjoint profiles creates two bodies. Two fillets
+    (one per body). Deleting one profile makes the extrude partial; only
+    the fillet on the surviving body succeeds. Outcome is invariant under
+    fillet reorder.
+    """
+    pytest.importorskip("cadquery")
+    pytest.importorskip("vtkmodules")
+
+    skA = _offset_rect_sketch('skA', 0, 0)
+    skB = _offset_rect_sketch('skB', 30, 0)
+    ex = _multi_profile_extrude('ex', ['skA', 'skB'])
+
+    r_full = build({'features': [skA, skB, ex]})
+    assert r_full['result']['ex']['status'] == 'ok'
+    assert _ex_bodies(r_full, 'ex') == {'body_ex', 'body_ex_1'}
+
+    q0 = r_full['bodies']['body_ex']['edge_queries'][0]
+    q1 = r_full['bodies']['body_ex_1']['edge_queries'][0]
+
+    filA = {'id': 'filA', 'kind': 'fillet', 'label': 'Fillet body 0',
+            'edges': [q0], 'radius': 1.0}
+    filB = {'id': 'filB', 'kind': 'fillet', 'label': 'Fillet body 1',
+            'edges': [q1], 'radius': 1.0}
+
+    statuses = []
+    for fillets in ([filA, filB], [filB, filA]):
+        r = build({'features': [skA, ex, *fillets]})
+        statuses.append(
+            (r['result']['filA']['status'], r['result']['filB']['status'])
+        )
+    assert statuses[0] == ('ok', 'exception'), statuses[0]
+    assert statuses[1] == statuses[0], (
+        f"fillet order must not change outcome: {statuses}"
+    )
+    assert statuses[0] == statuses[1]
+
+
+# ─── Bug report coverage: delete sketch cascades to extrude + fillet ───
+
+
+def test_delete_sketch_cascades_to_extrude_and_fillet():
+    """Bug 2, cases 3/4: deleting a sketch must fail its own extrude+fillet.
+
+    Two independent sketches + extrudes + fillets. Deleting skB must fail
+    exB (can't resolve profile) and filB (body gone), while skA+exA+filA
+    continue to work. Deleting skA must symmetrically fail exA+filA.
+    """
+    pytest.importorskip("cadquery")
+    pytest.importorskip("vtkmodules")
+
+    skA = _offset_rect_sketch('skA', 0, 0)
+    skB = _offset_rect_sketch('skB', 30, 0)
+    exA = extrude_spec('skA', 'exA', 5, operation='new')
+    exB = extrude_spec('skB', 'exB', 5, operation='new')
+
+    r0 = build({'features': [skA, skB, exA, exB]})
+    qA = r0['bodies']['body_exA']['edge_queries'][0]
+    qB = r0['bodies']['body_exB']['edge_queries'][0]
+
+    filA = {'id': 'filA', 'kind': 'fillet', 'label': 'Fillet A',
+            'edges': [qA], 'radius': 1.0}
+    filB = {'id': 'filB', 'kind': 'fillet', 'label': 'Fillet B',
+            'edges': [qB], 'radius': 1.0}
+
+    # Delete skB: exB can't resolve $skB -> exception, filB can't resolve -> exception
+    r_del_b = build({'features': [skA, exA, exB, filA, filB]})
+    assert r_del_b['result']['exA']['status'] == 'ok'
+    assert r_del_b['result']['exB']['status'] == 'exception', (
+        "exB must fail when its sketch is deleted"
+    )
+    assert r_del_b['result']['filA']['status'] == 'ok', (
+        "filA must succeed when exA survives"
+    )
+    assert r_del_b['result']['filB']['status'] == 'exception', (
+        "filB must fail when its body's sketch is deleted"
+    )
+
+    # Delete skA: exA can't resolve $skA -> exception, filA can't resolve -> exception
+    r_del_a = build({'features': [skB, exA, exB, filA, filB]})
+    assert r_del_a['result']['exB']['status'] == 'ok'
+    assert r_del_a['result']['exA']['status'] == 'exception', (
+        "exA must fail when its sketch is deleted"
+    )
+    assert r_del_a['result']['filB']['status'] == 'ok', (
+        "filB must succeed when exB survives"
+    )
+    assert r_del_a['result']['filA']['status'] == 'exception', (
+        "filA must fail when its body's sketch is deleted"
+    )
+
+
+# ─── Bug report coverage: fillet before its body's extrude ───
+
+
+def test_fillet_before_its_extrude_must_fail():
+    """Bug 2, case 5: a fillet placed before its body's extrude must fail.
+
+    When fillet appears before the extrude that creates its target body, the
+    body doesn't exist yet. The fillet must hard-fail (no edges resolved).
+    """
+    pytest.importorskip("cadquery")
+    pytest.importorskip("vtkmodules")
+
+    skB = _offset_rect_sketch('skB', 0, 0)
+    exB = extrude_spec('skB', 'exB', 5, operation='new')
+
+    r0 = build({'features': [skB, exB]})
+    qB = r0['bodies']['body_exB']['edge_queries'][0]
+
+    filB = {'id': 'filB', 'kind': 'fillet', 'label': 'Fillet B',
+            'edges': [qB], 'radius': 1.0}
+
+    # fillet before its extrude: body_exB doesn't exist -> must fail
+    r = build({'features': [skB, filB, exB]})
+    assert r['result']['filB']['status'] == 'exception', (
+        "fillet before its extrude must fail: body doesn't exist yet"
+    )
+    assert 'no body found' in r['result']['filB'].get('exception', ''), (
+        r['result']['filB']
+    )

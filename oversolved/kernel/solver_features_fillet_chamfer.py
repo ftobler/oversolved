@@ -363,8 +363,15 @@ def _apply_edge_feature(
     groups: dict[str, list[str]] = {}
     unresolved: list[str] = []
     if source_body:
-        # Explicit override: route every edge to the requested body.
-        groups[source_body] = list(edges)
+        # source_body may be a feature id like 'ex1' or a body id like 'body_ex1'.
+        # Resolve to an actual body_store key.
+        resolved_src = source_body
+        if source_body not in body_store:
+            for bid, body in body_store.items():
+                if body.created_by == source_body:
+                    resolved_src = bid
+                    break
+        groups[resolved_src] = list(edges)
     else:
         for q in edges:
             named = _body_id_from_edge_query(q, body_store) or default_body_id
