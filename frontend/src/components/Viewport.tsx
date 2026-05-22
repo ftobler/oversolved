@@ -621,8 +621,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           // Skip selection clear during an active rubber-band drag.
           // onPointerMissed fires (synchronously from R3F's internal handler)
           // before handlePointerUp on the parent div, so the rubber band is
-          // still in its dragging state.
-          if (rubberBand.state.dragging) return
+          // still in its dragging state. Use the ref-backed flag so the guard
+          // works even if React state hasn't committed between pointermove and
+          // the R3F pointerup handler.
+          if (rubberBand.state.isDraggingRef.current) return
           if (!wasPointerDrag.current && pointerDownButton.current === 0) {
             useSketchEditorStore.getState().clearNormalSelection()
             useSketchEditorStore.getState().setHoveredBodyId(null)

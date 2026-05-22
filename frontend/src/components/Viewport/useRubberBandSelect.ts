@@ -21,6 +21,9 @@ export interface RubberBandState {
   dragging: boolean
   /** The rectangle in viewport-relative pixels (e.g. left/top relative to the canvas). */
   rect: RubberBandRect | null
+  /** Ref-backed flag, true while a rubberband drag is active. Use in event handlers
+   *  where React state may not yet be committed. */
+  isDraggingRef: { readonly current: boolean }
 }
 
 /**
@@ -47,6 +50,7 @@ export function useRubberBandSelect(
   const startRef = useRef<[number, number] | null>(null)
   const committedRef = useRef(false)
   const rectRef = useRef<RubberBandRect | null>(null)
+  const draggingRef = useRef(false)
 
   const onPointerDown = useCallback((e: React.PointerEvent, idBufferHitExists: boolean): boolean => {
     // Only left-click on empty space starts a box drag.
@@ -63,6 +67,7 @@ export function useRubberBandSelect(
     startRef.current = [e.clientX - canvasRect.left, e.clientY - canvasRect.top]
     committedRef.current = false
     rectRef.current = null
+    draggingRef.current = true
     return true
   }, [glRef])
 
@@ -90,12 +95,12 @@ export function useRubberBandSelect(
 
   const onPointerUp = useCallback(() => {
     if (!startRef.current || committedRef.current) return
-    committedRef.current = true
 
     const currentRect = rectRef.current
     if (!currentRect || (currentRect.w < 4 && currentRect.h < 4)) {
       startRef.current = null
       rectRef.current = null
+      draggingRef.current = false
       setRect(null)
       return
     }
@@ -105,16 +110,12 @@ export function useRubberBandSelect(
     if (!pipeline || !gl) {
       startRef.current = null
       rectRef.current = null
+      draggingRef.current = false
       setRect(null)
       return
     }
 
-    if (pipeline.isDirty()) {
-      startRef.current = null
-      rectRef.current = null
-      setRect(null)
-      return
-    }
+    committedRef.current = true
 
     // Determine tool-based layer filter.
     const tool = useSketchEditorStore.getState().activeTool
@@ -210,6 +211,7 @@ export function useRubberBandSelect(
 
     startRef.current = null
     rectRef.current = null
+    draggingRef.current = false
     setRect(null)
   }, [glRef])
 
@@ -219,6 +221,7 @@ export function useRubberBandSelect(
       if (e.key === 'Escape' && startRef.current) {
         startRef.current = null
         rectRef.current = null
+        draggingRef.current = false
         setRect(null)
       }
     }
@@ -227,7 +230,7 @@ export function useRubberBandSelect(
   }, [])
 
   return {
-    state: { dragging, rect },
+    state: { dragging, rect, isDraggingRef: draggingRef },
     onPointerDown,
     onPointerMove,
     onPointerUp,
