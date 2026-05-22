@@ -51,10 +51,16 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
     cq_faces: list = []
     first_pt: Frame3D | dict = {}
     first_sketch_id = ""
+    profile_errors: list[str] = []
     for sketch_ref in sketch_refs:
-        loops, pt, sketch_id, cq_face = _collect_extrude_loops(
-            sketch_ref, feature_id, feature, distance, global_repo, body_store
-        )
+        try:
+            loops, pt, sketch_id, cq_face = _collect_extrude_loops(
+                sketch_ref, feature_id, feature, distance, global_repo, body_store
+            )
+        except ValueError as exc:
+            # Soft fail one profile so the others still build (partial rebuild).
+            profile_errors.append(str(exc))
+            continue
         if cq_face is not None:
             cq_faces.append(cq_face)
         else:
@@ -62,6 +68,9 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
         if not first_pt:
             first_pt = pt
             first_sketch_id = sketch_id
+
+    if profile_errors and not cq_faces and not all_loops:
+        raise ValueError("; ".join(profile_errors))
 
     body_id = "body_" + feature_id
     result: dict = {"status": "ok", "body_id": body_id}
@@ -110,6 +119,10 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
     )
     result.update(op_result)
 
+    if profile_errors:
+        result["status"] = "partial"
+        result["exception"] = "; ".join(profile_errors)
+
     return result
 
 
@@ -135,10 +148,16 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
     cq_faces: list = []
     first_pt: Frame3D | dict = {}
     first_sketch_id = ""
+    profile_errors: list[str] = []
     for sketch_ref in sketch_refs:
-        loops, pt, sketch_id, cq_face = _collect_extrude_loops(
-            sketch_ref, feature_id, feature, 0.0, global_repo, body_store
-        )
+        try:
+            loops, pt, sketch_id, cq_face = _collect_extrude_loops(
+                sketch_ref, feature_id, feature, 0.0, global_repo, body_store
+            )
+        except ValueError as exc:
+            # Soft fail one profile so the others still build (partial rebuild).
+            profile_errors.append(str(exc))
+            continue
         if cq_face is not None:
             cq_faces.append(cq_face)
         else:
@@ -146,6 +165,9 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
         if not first_pt:
             first_pt = pt
             first_sketch_id = sketch_id
+
+    if profile_errors and not cq_faces and not all_loops:
+        raise ValueError("; ".join(profile_errors))
 
     axis_origin = feature.get("axis_origin", [0, 0, 0])
     axis_direction = feature.get("axis_direction", [0, 0, 1])
@@ -229,5 +251,9 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
         body_id, feature_id, first_sketch_id, op_name="revolve",
     )
     result.update(op_result)
+
+    if profile_errors:
+        result["status"] = "partial"
+        result["exception"] = "; ".join(profile_errors)
 
     return result

@@ -61,26 +61,46 @@ def _brep_diff_new_edge_hashes(body: Body) -> set[str]:
     return hashes
 
 
-def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Shape]:
-    if body.shape is None or not edge_queries:
-        return []
+class _EdgeIndex:
+    """Per-body lookup tables for resolving edge queries.
 
+    Enumerating a body's edges and hashing them is expensive, so this is built
+    once per body and reused for both body routing and the final fillet.
+    """
+
+    __slots__ = ("query_to_edge", "hash_to_edge", "topo_edges", "edge_types")
+
+    def __init__(
+        self,
+        query_to_edge: dict,
+        hash_to_edge: dict,
+        topo_edges: list,
+        edge_types: list,
+    ) -> None:
+        self.query_to_edge = query_to_edge
+        self.hash_to_edge = hash_to_edge
+        self.topo_edges = topo_edges
+        self.edge_types = edge_types
+
+
+def _build_edge_index(body: Body) -> _EdgeIndex:
     seen_edges: list[TopoDS_Shape] = []
     topo_edges = []
     edge_types = []
     edge_dicts = []
-    for edge in _ensure_cq(body.shape).Edges():
-        wrapped = edge.wrapped
-        if any(wrapped.IsEqual(s) for s in seen_edges):
-            continue
-        seen_edges.append(wrapped)
-        topo_edges.append(wrapped)
+    if body.shape is not None:
+        for edge in _ensure_cq(body.shape).Edges():
+            wrapped = edge.wrapped
+            if any(wrapped.IsEqual(s) for s in seen_edges):
+                continue
+            seen_edges.append(wrapped)
+            topo_edges.append(wrapped)
 
-        # Use the same geometry extraction as solid_to_edges so the geom hash
-        # computed here matches the one baked into the incoming edge query.
-        ed, _ = edge_to_geom_dict(edge)
-        edge_types.append("straightedge" if ed["kind"] == "line" else "edge")
-        edge_dicts.append(ed)
+            # Use the same geometry extraction as solid_to_edges so the geom
+            # hash computed here matches the one baked into the edge query.
+            ed, _ = edge_to_geom_dict(edge)
+            edge_types.append("straightedge" if ed["kind"] == "line" else "edge")
+            edge_dicts.append(ed)
 
     # Determine which edges are "new" (created by the last modifier feature).
     # Mirrors the rewrite logic in builder.py:612-629.
@@ -89,10 +109,15 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
     if has_modifier:
         new_edge_hashes = _brep_diff_new_edge_hashes(body)
 
-    query_to_edge = {}
+    query_to_edge: dict = {}
+    hash_to_edge: dict = {}
     for idx, (te, et, ed) in enumerate(zip(topo_edges, edge_types, edge_dicts)):
+        geom_hash = edge_geometry_hash(ed)
+        # Body-agnostic geometry index: a stale @body_<id> token in a query
+        # must still resolve to whichever body now owns this edge. The geom
+        # hash encodes location/orientation, so it is unique per physical edge.
+        hash_to_edge.setdefault(geom_hash, te)
         if body.created_by:
-            geom_hash = edge_geometry_hash(ed)
             edge_created_by = body.created_by
             if geom_hash in new_edge_hashes:
                 edge_created_by = body.modified_by[-1]
@@ -111,6 +136,25 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
             query_to_edge[aq3] = te
         query_to_edge[f"?{body.id}:edge:{idx}"] = te
 
+    return _EdgeIndex(query_to_edge, hash_to_edge, topo_edges, edge_types)
+
+
+def _resolve_edges_with_index(
+    body: Body, index: _EdgeIndex, edge_queries: list[str], strict: bool = False
+) -> list[TopoDS_Shape]:
+    """Resolve edge queries against a body's prebuilt index.
+
+    With strict=True only geometrically-stable matches count (exact query, geom
+    hash, face). This is used to decide which body owns an edge during routing,
+    where the unstable OCC-order fallbacks must not claim a false match. With
+    strict=False (the default, used for the final fillet) the legacy index and
+    body-scoped fallbacks also fire, preserving the moved-geometry edit flows.
+    """
+    query_to_edge = index.query_to_edge
+    hash_to_edge = index.hash_to_edge
+    topo_edges = index.topo_edges
+    edge_types = index.edge_types
+
     result: list[TopoDS_Shape] = []
     seen_edge_hashes: set[int] = set()
     resolve_failed = 0
@@ -125,7 +169,7 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
 
     for q in edge_queries:
         edge = query_to_edge.get(q)  # type: ignore[assignment]
-        if edge is None and q.startswith("?"):
+        if edge is None and not strict and q.startswith("?"):
             try:
                 ids, _ = _parse_ancestry(q)
                 for id_str in ids:
@@ -138,7 +182,19 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
             except Exception as exc:
                 logger.debug("fillet edge index resolution failed for query %s: %s", q, exc)
                 resolve_failed += 1
+        # Geometry-hash match, ignoring the (possibly stale) @body_<id> token.
+        # Reliable because the gedge hash is geometric, not OCC-order based.
         if edge is None and q.startswith("?"):
+            try:
+                ids, _ = _parse_ancestry(q)
+                for id_str in ids:
+                    if id_str.startswith("@gedge_"):
+                        edge = hash_to_edge.get(id_str[1:])
+                        if edge is not None:
+                            break
+            except Exception as exc:
+                logger.debug("fillet edge geom-hash resolution failed for query %s: %s", q, exc)
+        if edge is None and not strict and q.startswith("?"):
             try:
                 ids, type_restriction = _parse_ancestry(q)
                 body_id_from_query = None
@@ -193,6 +249,12 @@ def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Sh
     if fallback_failed > 0:
         logger.warning("fillet: %d edge queries failed body-scoped fallback", fallback_failed)
     return result
+
+
+def _resolve_fillet_edges(body: Body, edge_queries: list[str]) -> list[TopoDS_Shape]:
+    if body.shape is None or not edge_queries:
+        return []
+    return _resolve_edges_with_index(body, _build_edge_index(body), edge_queries)
 
 
 def _resolve_face_to_edges(q: str, body: Body) -> list[TopoDS_Shape]:
@@ -276,22 +338,54 @@ def _apply_edge_feature(
 
     source_body = feature.get("source_body", "")
 
-    # Route each edge query to the body it actually references. One feature can
-    # extrude two disjoint profiles into two bodies (e.g. two circles -> two
-    # cylinders); a fillet must then apply to whichever body each edge belongs
-    # to, not just the first body in the store. An explicit source_body
-    # overrides routing for every edge.
+    # Edge enumeration + hashing is expensive, so build each body's index at
+    # most once and reuse it for routing and the final fillet.
+    index_cache: dict[str, _EdgeIndex] = {}
+
+    def _index_for(bid: str) -> _EdgeIndex:
+        idx = index_cache.get(bid)
+        if idx is None:
+            idx = _build_edge_index(body_store[bid])
+            index_cache[bid] = idx
+        return idx
+
+    def _contains(bid: str, q: str) -> bool:
+        body = body_store.get(bid)
+        if body is None or body.shape is None:
+            return False
+        return bool(_resolve_edges_with_index(body, _index_for(bid), [q], strict=True))
+
+    # Route each edge query to the body that actually owns it. The @body_<id>
+    # token baked into a query goes stale when upstream geometry is restructured
+    # (e.g. an extrude split in two), so it is only a hint: prefer the body whose
+    # geometry actually matches the query, and fall back to the token last.
     default_body_id = next(iter(body_store)) if len(body_store) == 1 else None
     groups: dict[str, list[str]] = {}
-    for q in edges:
-        bid = source_body or _body_id_from_edge_query(q, body_store) or default_body_id
-        if bid is None:
-            logger.warning(
-                "%s: edge query has no resolvable body and the store holds %d "
-                "bodies; skipping query %s", feature_kind, len(body_store), q,
-            )
-            continue
-        groups.setdefault(bid, []).append(q)
+    unresolved: list[str] = []
+    if source_body:
+        # Explicit override: route every edge to the requested body.
+        groups[source_body] = list(edges)
+    else:
+        for q in edges:
+            named = _body_id_from_edge_query(q, body_store) or default_body_id
+            target: str | None = None
+            if named and named in body_store and _contains(named, q):
+                target = named  # the token is correct
+            else:
+                for bid in body_store:  # follow the geometry
+                    if bid != named and _contains(bid, q):
+                        target = bid
+                        break
+            if target is None and named in body_store:
+                target = named  # last resort: trust the token (moved geometry)
+            if target is None:
+                logger.warning(
+                    "%s: edge query resolves to no body; skipping query %s",
+                    feature_kind, q,
+                )
+                unresolved.append(q)
+                continue
+            groups.setdefault(target, []).append(q)
 
     applied: list[str] = []
     for bid, qlist in groups.items():
@@ -299,23 +393,28 @@ def _apply_edge_feature(
             body = _resolve_body(bid, body_store)
         except ValueError as exc:
             logger.warning("%s: %s", feature_kind, exc)
+            unresolved.extend(qlist)
             continue
         if body.shape is None:
             logger.warning("%s: body %s has no shape", feature_kind, body.id)
+            unresolved.extend(qlist)
             continue
         # Validate the shape before passing to OCC; a corrupted shape
         # can cause SIGSEGV inside the fillet/chamfer kernel.
         try:
             if _ensure_occ(body.shape).IsNull():
                 logger.warning("%s: body %s shape is null", feature_kind, body.id)
+                unresolved.extend(qlist)
                 continue
         except Exception:
             logger.warning("%s: body %s shape is invalid", feature_kind, body.id)
+            unresolved.extend(qlist)
             continue
 
-        topo_edges = _resolve_fillet_edges(body, qlist)
+        topo_edges = _resolve_edges_with_index(body, _index_for(bid), qlist)
         if not topo_edges:
             logger.warning("%s: no edges resolved on body %s", feature_kind, body.id)
+            unresolved.extend(qlist)
             continue
 
         body.shape = geometry_fn(body.shape, edges=topo_edges, **geometry_kwargs)
@@ -324,6 +423,16 @@ def _apply_edge_feature(
 
     if not applied:
         raise ValueError(f"no edges resolved for {feature_kind}")
+
+    if unresolved:
+        return {
+            "status": "partial",
+            "body_id": applied[0],
+            "body_ids": applied,
+            "exception": (
+                f"{feature_kind}: {len(unresolved)} edge(s) could not be resolved"
+            ),
+        }
 
     return {"status": "ok", "body_id": applied[0], "body_ids": applied}
 

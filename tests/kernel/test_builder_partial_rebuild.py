@@ -840,3 +840,89 @@ def test_builder_gc_after_feature_remove():
         for k in sk1_snap.get('ancestral', {})
     )
     assert not has_sk2_after, "sk2 ancestry entries must be absent after rebuild without sk2"
+
+
+def _offset_rect_sketch(sketch_id, dx, dy, w=10.0, h=10.0):
+    """Rect sketch translated by (dx, dy) so two of them are disjoint."""
+    sk = rect_sketch_spec(w=w, h=h, sketch_id=sketch_id, plane='@builtin_plane_top')
+    sk['initial'] = {
+        eid: [c[0] + dx, c[1] + dy, c[2] + dx, c[3] + dy]
+        for eid, c in sk['initial'].items()
+    }
+    return sk
+
+
+def _multi_profile_extrude(extrude_id, sketch_ids, distance=5.0):
+    return {
+        'id': extrude_id, 'kind': 'extrude', 'label': 'Extrude',
+        'sketch': ['$' + s for s in sketch_ids],
+        'distance': distance, 'direction': 'normal', 'operation': 'add',
+    }
+
+
+def _ex_bodies(r, extrude_id):
+    return {
+        bid for bid, b in r['bodies'].items()
+        if b.get('created_by') == extrude_id
+    }
+
+
+def test_extrude_two_profiles_drop_one_still_builds_other():
+    """Deleting one profile soft-fails the extrude but still builds the other.
+
+    Repro of bugreports/no_partial_rebuild: one extrude over two disjoint
+    circles must keep producing the surviving body, marking a partial error,
+    instead of aborting wholesale.
+    """
+    pytest.importorskip("cadquery")
+    pytest.importorskip("vtkmodules")
+
+    skA = _offset_rect_sketch('skA', 0, 0)
+    skB = _offset_rect_sketch('skB', 30, 0)
+    ex = _multi_profile_extrude('ex', ['skA', 'skB'])
+
+    r_full = build({'features': [skA, skB, ex]})
+    assert r_full['result']['ex']['status'] == 'ok'
+    assert _ex_bodies(r_full, 'ex') == {'body_ex', 'body_ex_1'}
+
+    # Drop profile B by removing the sketch; the extrude still references $skB.
+    r = build({'features': [skA, ex]})
+    assert r['result']['ex']['status'] == 'partial'
+    assert r['result']['ex'].get('exception')
+    assert 'body_ex' in r['bodies']
+    assert 'body_ex_1' not in r['bodies']
+
+
+def test_extrude_partial_downstream_fillets_reorder_invariant():
+    """A deleted profile fails only its own fillet, regardless of fillet order.
+
+    bugreports/no_partial_rebuild: "reordering filet 1 and filet 2 is not to
+    change build outcome". Uses two independent extrudes so body ids are
+    deterministic (body_exA / body_exB).
+    """
+    pytest.importorskip("cadquery")
+    pytest.importorskip("vtkmodules")
+
+    skA = _offset_rect_sketch('skA', 0, 0)
+    skB = _offset_rect_sketch('skB', 30, 0)
+    exA = extrude_spec('skA', 'exA', 5)
+    exB = extrude_spec('skB', 'exB', 5)
+
+    r0 = build({'features': [skA, skB, exA, exB]})
+    qA = r0['bodies']['body_exA']['edge_queries'][0]
+    qB = r0['bodies']['body_exB']['edge_queries'][0]
+
+    filA = {'id': 'filA', 'kind': 'fillet', 'label': 'A',
+            'edges': [qA], 'radius': 1.0}
+    filB = {'id': 'filB', 'kind': 'fillet', 'label': 'B',
+            'edges': [qB], 'radius': 1.0}
+
+    # exB deleted -> body_exB gone -> filB must fail, filA must succeed.
+    statuses = []
+    for fillets in ([filA, filB], [filB, filA]):
+        r = build({'features': [skA, exA, *fillets]})
+        statuses.append(
+            (r['result']['filA']['status'], r['result']['filB']['status'])
+        )
+    assert statuses[0] == ('ok', 'exception')
+    assert statuses[0] == statuses[1], "fillet order must not change outcome"

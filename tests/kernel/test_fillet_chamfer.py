@@ -959,3 +959,118 @@ def test_fillet_edge_created_by_modifier():
         "fillet on modifier-created edge failed: %s" % r['result']['fillet1'].get('exception')
     mesh = r['bodies']['body_ex1']['mesh']
     assert_mesh_valid(mesh)
+
+
+#  ── Geometry-aware routing & partial-failure tests ──
+
+
+def _two_box_spec():
+    """Two disjoint boxes from two independent extrudes -> body_exA, body_exB."""
+    from solver_helpers import rect_sketch_spec, extrude_spec
+
+    skA = rect_sketch_spec(w=10, h=10, sketch_id='skA', plane='@builtin_plane_top')
+    skB = rect_sketch_spec(w=10, h=10, sketch_id='skB', plane='@builtin_plane_top')
+    skB['initial'] = {
+        eid: [c[0] + 30, c[1], c[2] + 30, c[3]]
+        for eid, c in skB['initial'].items()
+    }
+    exA = extrude_spec('skA', 'exA', 5, operation='new')
+    exB = extrude_spec('skB', 'exB', 5, operation='new')
+    return {'features': [skA, skB, exA, exB]}
+
+
+def test_fillet_follows_geometry_when_body_token_stale():
+    """A stale @body_<id> token must not misroute the fillet.
+
+    Repro of bugreports/assymetric_inconsistent_rebuild: an edge query whose
+    body token names the wrong body must still fillet whichever body actually
+    owns the matching edge geometry (matched by gedge hash).
+    """
+    from oversolved.kernel.builder import build
+
+    spec = _two_box_spec()
+    r0 = build(spec)
+    qB = r0['bodies']['body_exB']['edge_queries'][0]
+    assert '@body_exB' in qB
+    # Swap the body token to the wrong body; keep the gedge hash intact.
+    stale_q = qB.replace('@body_exB', '@body_exA')
+    assert '@body_exA' in stale_q and '@body_exB' not in stale_q
+
+    spec['features'].append({
+        'id': 'fil', 'kind': 'fillet', 'label': 'F',
+        'edges': [stale_q], 'radius': 1.0,
+    })
+    r = build(spec)
+    assert r['result']['fil']['status'] == 'ok', r['result']['fil'].get('exception')
+    assert r['result']['fil']['body_ids'] == ['body_exB'], \
+        "fillet must follow geometry to body_exB, not the stale token's body_exA"
+
+
+def test_fillet_asymmetry_delete_upstream_extrude():
+    """Deleting an unrelated body must not break a fillet; deleting its own must.
+
+    Symmetry property from bugreports/assymetric_inconsistent_rebuild.
+    """
+    from oversolved.kernel.builder import build
+
+    spec = _two_box_spec()
+    r0 = build(spec)
+    qB = r0['bodies']['body_exB']['edge_queries'][0]
+    filB = {'id': 'filB', 'kind': 'fillet', 'label': 'B',
+            'edges': [qB], 'radius': 1.0}
+
+    from solver_helpers import rect_sketch_spec, extrude_spec
+    skB = rect_sketch_spec(w=10, h=10, sketch_id='skB', plane='@builtin_plane_top')
+    skB['initial'] = {
+        eid: [c[0] + 30, c[1], c[2] + 30, c[3]]
+        for eid, c in skB['initial'].items()
+    }
+    exB = extrude_spec('skB', 'exB', 5, operation='new')
+    skA = rect_sketch_spec(w=10, h=10, sketch_id='skA', plane='@builtin_plane_top')
+    exA = extrude_spec('skA', 'exA', 5, operation='new')
+
+    # Delete exA (unrelated): filB still succeeds.
+    r_del_a = build({'features': [skB, exB, filB]})
+    assert r_del_a['result']['filB']['status'] == 'ok', \
+        r_del_a['result']['filB'].get('exception')
+
+    # Delete exB (its own body): filB fails, but the build still completes.
+    r_del_b = build({'features': [skA, exA, filB]})
+    assert r_del_b['result']['filB']['status'] == 'exception'
+    assert r_del_b['result']['exA']['status'] == 'ok'
+
+
+def test_fillet_partial_when_some_edges_unresolvable():
+    """One resolvable + one missing edge -> partial: body filleted, feature red."""
+    from oversolved.kernel.builder import build
+    from solver_helpers import full_rect_extrude_spec
+
+    spec = full_rect_extrude_spec(w=10, h=10, d=5)
+    r0 = build(spec)
+    valid_q = r0['bodies']['body_ex1']['edge_queries'][0]
+
+    spec['features'].append({
+        'id': 'fil', 'kind': 'fillet', 'label': 'F',
+        'edges': [valid_q, '?body_nonexistent:edge:0'], 'radius': 1.0,
+    })
+    r = build(spec)
+    assert r['result']['fil']['status'] == 'partial'
+    assert r['result']['fil']['body_ids'] == ['body_ex1']
+    assert 'could not be resolved' in r['result']['fil'].get('exception', '')
+    # Partial status must not block downstream registration of the body.
+    assert r['bodies']['body_ex1'].get('edge_queries')
+
+
+def test_fillet_all_edges_missing_is_hard_exception():
+    """If nothing resolves, the fillet hard-fails."""
+    from oversolved.kernel.builder import build
+    from solver_helpers import full_rect_extrude_spec
+
+    spec = full_rect_extrude_spec(w=10, h=10, d=5)
+    spec['features'].append({
+        'id': 'fil', 'kind': 'fillet', 'label': 'F',
+        'edges': ['?body_nonexistent:edge:0'], 'radius': 1.0,
+    })
+    r = build(spec)
+    assert r['result']['fil']['status'] == 'exception'
+    assert 'no edges resolved' in r['result']['fil'].get('exception', '')

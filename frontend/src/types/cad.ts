@@ -174,7 +174,7 @@ export interface BuildResponse {
 }
 
 export interface BodyFeatureResult {
-  status: 'ok' | 'exception'
+  status: 'ok' | 'exception' | 'partial'
   body_id?: string
   body_ids?: string[]
   exception?: string
