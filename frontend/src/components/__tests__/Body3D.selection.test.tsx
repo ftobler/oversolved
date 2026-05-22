@@ -3,26 +3,24 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 beforeEach(() => {
   useSketchEditorStore.setState({
-    hoveredBodyId: null,
-    hoveredSurfaceId: null,
-    hovered3DSurfaceId: null,
+    hoveredSelectionId: null,
     normalSelection: new Set(),
     chipOwnedSelection: new Set(),
   })
 })
 
 describe('Body3D selection - store behavior', () => {
-  it('setHoveredBodyId updates store', () => {
-    useSketchEditorStore.getState().setHoveredBodyId('ex1')
-    expect(useSketchEditorStore.getState().hoveredBodyId).toBe('ex1')
+  it('setHoveredSelectionId updates store', () => {
+    useSketchEditorStore.getState().setHoveredSelectionId('ex1')
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('ex1')
   })
 
-  it('imperative getState reads current hovered3DSurfaceId without stale closure', () => {
-    // Regression: handleMeshClick used a closed-over hovered3DSurfaceId value
+  it('imperative getState reads current hoveredSelectionId without stale closure', () => {
+    // Regression: handleMeshClick used a closed-over hoveredSelectionId value
     // that could be stale if React had not re-rendered Body3D between
     // onPointerOver and onClick. Fix: read from store imperatively.
-    useSketchEditorStore.getState().setHovered3DSurface('?d,d;@extrude1face0:face')
-    const currentHover = useSketchEditorStore.getState().hovered3DSurfaceId
+    useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
+    const currentHover = useSketchEditorStore.getState().hoveredSelectionId
     expect(currentHover).toBe('?d,d;@extrude1face0:face')
   })
 
@@ -44,10 +42,10 @@ describe('Body3D selection - store behavior', () => {
     expect(isSelected).toBe(true)
   })
 
-  it('isHovered derived correctly from hoveredBodyId', () => {
-    useSketchEditorStore.setState({ hoveredBodyId: 'ex1' })
+  it('isHovered derived correctly from hoveredSelectionId', () => {
+    useSketchEditorStore.setState({ hoveredSelectionId: 'ex1' })
     const featureId = 'ex1'
-    const isHovered = useSketchEditorStore.getState().hoveredBodyId === featureId
+    const isHovered = useSketchEditorStore.getState().hoveredSelectionId === featureId
     expect(isHovered).toBe(true)
   })
 })
@@ -115,69 +113,69 @@ describe('Body3D selection - edge queries', () => {
 describe('Body3D click-promotes-hover contract', () => {
   it('toggling normalSelection with the hovered query promotes hover to selection', () => {
     const query = '?d,d;@extrude1face0:face'
-    useSketchEditorStore.getState().setHoveredSurface(query)
-    const { hoveredSurfaceId } = useSketchEditorStore.getState()
-    if (hoveredSurfaceId) {
-      useSketchEditorStore.getState().toggleNormalSelection(hoveredSurfaceId)
+    useSketchEditorStore.getState().setHoveredSelectionId(query)
+    const { hoveredSelectionId } = useSketchEditorStore.getState()
+    if (hoveredSelectionId) {
+      useSketchEditorStore.getState().toggleNormalSelection(hoveredSelectionId)
     }
     expect(useSketchEditorStore.getState().normalSelection.has(query)).toBe(true)
   })
 
   it('no hover means click does nothing to normalSelection', () => {
-    // hoveredSurfaceId is null (cleared in beforeEach)
-    const { hoveredSurfaceId } = useSketchEditorStore.getState()
-    if (hoveredSurfaceId) {
-      useSketchEditorStore.getState().toggleNormalSelection(hoveredSurfaceId)
+    // hoveredSelectionId is null (cleared in beforeEach)
+    const { hoveredSelectionId } = useSketchEditorStore.getState()
+    if (hoveredSelectionId) {
+      useSketchEditorStore.getState().toggleNormalSelection(hoveredSelectionId)
     }
     expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
   })
 })
 
 describe('Body3D hover surface - store behavior', () => {
-  it('setHoveredSurface sets hoveredSurfaceId', () => {
-    useSketchEditorStore.getState().setHoveredSurface('?d,d;@extrude1face0:face')
-    expect(useSketchEditorStore.getState().hoveredSurfaceId).toBe('?d,d;@extrude1face0:face')
+  it('setHoveredSelectionId sets hoveredSelectionId', () => {
+    useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('?d,d;@extrude1face0:face')
   })
 
-  it('setHoveredSurface(null) clears hoveredSurfaceId', () => {
-    useSketchEditorStore.getState().setHoveredSurface('?d,d;@extrude1face0:face')
-    useSketchEditorStore.getState().setHoveredSurface(null)
-    expect(useSketchEditorStore.getState().hoveredSurfaceId).toBeNull()
+  it('setHoveredSelectionId(null) clears hoveredSelectionId', () => {
+    useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
+    useSketchEditorStore.getState().setHoveredSelectionId(null)
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
   })
 
-  it('hoveredSurfaceId is independent from normalSelection', () => {
-    useSketchEditorStore.getState().setHoveredSurface('?d,d;@extrude1face0:face')
+  it('hoveredSelectionId is independent from normalSelection', () => {
+    useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
     useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
-    expect(useSketchEditorStore.getState().hoveredSurfaceId).toBe('?d,d;@extrude1face0:face')
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('?d,d;@extrude1face0:face')
     expect(useSketchEditorStore.getState().normalSelection.has('@ex1/face/0')).toBe(true)
   })
 })
 
 describe('Body3D hover 3D surface - store behavior', () => {
-  it('setHovered3DSurface sets hovered3DSurfaceId', () => {
-    useSketchEditorStore.getState().setHovered3DSurface('?d,d;@extrude1face0:face')
-    expect(useSketchEditorStore.getState().hovered3DSurfaceId).toBe('?d,d;@extrude1face0:face')
+  it('setHoveredSelectionId sets hoveredSelectionId (3D surface)', () => {
+    useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('?d,d;@extrude1face0:face')
   })
 
-  it('setHovered3DSurface(null) clears hovered3DSurfaceId', () => {
-    useSketchEditorStore.getState().setHovered3DSurface('?d,d;@extrude1face0:face')
-    useSketchEditorStore.getState().setHovered3DSurface(null)
-    expect(useSketchEditorStore.getState().hovered3DSurfaceId).toBeNull()
+  it('setHoveredSelectionId(null) clears hoveredSelectionId', () => {
+    useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
+    useSketchEditorStore.getState().setHoveredSelectionId(null)
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
   })
 
-  it('hovered3DSurfaceId is independent from hoveredSurfaceId', () => {
-    useSketchEditorStore.getState().setHoveredSurface('face:sketch1:?3;@sketch1abc')
-    useSketchEditorStore.getState().setHovered3DSurface('?d,d;@extrude1face0:face')
-    expect(useSketchEditorStore.getState().hoveredSurfaceId).toBe('face:sketch1:?3;@sketch1abc')
-    expect(useSketchEditorStore.getState().hovered3DSurfaceId).toBe('?d,d;@extrude1face0:face')
+  it('hoveredSelectionId is independent from normalSelection', () => {
+    useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
+    useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('?d,d;@extrude1face0:face')
+    expect(useSketchEditorStore.getState().normalSelection.has('@ex1/face/0')).toBe(true)
   })
 
-  it('click-promotes-hover uses hovered3DSurfaceId for 3D faces', () => {
+  it('click-promotes-hover uses hoveredSelectionId for 3D faces', () => {
     const query = '?d,d;@extrude1face0:face'
-    useSketchEditorStore.getState().setHovered3DSurface(query)
-    const { hovered3DSurfaceId } = useSketchEditorStore.getState()
-    if (hovered3DSurfaceId) {
-      useSketchEditorStore.getState().toggleNormalSelection(hovered3DSurfaceId)
+    useSketchEditorStore.getState().setHoveredSelectionId(query)
+    const { hoveredSelectionId } = useSketchEditorStore.getState()
+    if (hoveredSelectionId) {
+      useSketchEditorStore.getState().toggleNormalSelection(hoveredSelectionId)
     }
     expect(useSketchEditorStore.getState().normalSelection.has(query)).toBe(true)
   })

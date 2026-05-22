@@ -5,7 +5,7 @@ import type { DragToolContext } from '@/tools/DragTool'
 function createMockContext(overrides: Partial<DragToolContext> = {}): DragToolContext {
   return {
     normalSelection: new Set<string>(),
-    internalHoverSelection: null,
+    hoveredSelectionId: null,
     isPointerDown: false,
     activeFeatureId: 'S1',
     hoveredVertexId: 'vertex:S1:L1:start',

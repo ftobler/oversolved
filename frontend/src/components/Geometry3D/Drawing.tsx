@@ -69,7 +69,6 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
-  const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
   const drawHover = useSketchEditorStore(s => s.drawHover)
   const { camera, gl } = useThree()
 
@@ -142,7 +141,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
         const state = useSketchEditorStore.getState()
         const context: DrawingToolContext = {
           normalSelection: state.normalSelection,
-          internalHoverSelection: state.internalHoverSelection,
+          hoveredSelectionId: state.hoveredSelectionId,
           isPointerDown: state.isPointerDown,
           activeFeatureId: state.activeFeatureId,
           hoveredVertexId,
@@ -153,7 +152,6 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           drawSnapVertexId: state.drawSnapVertexId,
           setDrawHover,
           clearDraw,
-          hoveredEntityId,
           alignmentSnapPoint: state.alignmentSnapPoint,
           alignmentSnapKind: state.alignmentSnapKind,
           alignmentSnapVertexId: state.alignmentSnapVertexId,

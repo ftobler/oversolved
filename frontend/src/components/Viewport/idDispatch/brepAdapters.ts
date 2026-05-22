@@ -1,39 +1,19 @@
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import {
   findBodyForFaceQuery,
-  findBodyForEdgeQuery,
-  findBodyForVertexQuery,
   clearAllBodyHover,
 } from './bodyDispatchCallbacks'
 
 /**
- * Hover & click adapters for the three B-rep ID layers. These translate
- * `(layer, entityKey)` resolver hits into the same store mutations the
- * pre-267.4 R3F handlers performed:
+ * Hover & click adapters for the three B-rep ID layers.
  *
- * | layer  | hover writes                                   | click writes                                  |
- * |--------|------------------------------------------------|-----------------------------------------------|
- * | face   | hovered3DSurfaceId, hoveredBodyId, face geom   | toggleNormalSelection (+ plane)              |
- * | edge   | per-body local hoveredEdgeIndex, hoveredBodyId | toggleNormalSelection                        |
- * | vertex | per-body local hoveredVertexIndex, hoveredBodyId | toggleNormalSelection                      |
+ * Hover writes a single `hoveredSelectionId` plus per-body face-geometry.
+ * The caller (applyHoverHit) clears all hover state first, so each adapter
+ * only sets the fields it cares about.
  *
- * "Per-body" writes go through the bodyDispatchCallbacks registry
- * because each Body3D keeps the matching highlight state locally.
+ * Click always toggles normalSelection (or commits a plane pick when
+ * planeSelectionFeatureId is active).
  */
-
-const _bodyHovered = new Set<string>()
-
-function setBodyId(bodyIds: string[]): void {
-  // Clear body id hover on any previously-hovered bodies not in the new set.
-  for (const id of _bodyHovered) {
-    if (!bodyIds.includes(id)) {
-      const s = useSketchEditorStore.getState()
-      if (s.hoveredBodyId === id) s.setHoveredBodyId(null)
-    }
-  }
-  _bodyHovered.clear()
-  for (const id of bodyIds) _bodyHovered.add(id)
-}
 
 export const brepFaceAdapter = {
   onHover(entityKey: string): void {
@@ -41,13 +21,9 @@ export const brepFaceAdapter = {
     const found = findBodyForFaceQuery(entityKey)
     if (!found) {
       clearAllBodyHover()
-      s.setHovered3DSurface(null)
       return
     }
-    clearAllBodyHover()
-    s.setHovered3DSurface(entityKey)
-    s.setHoveredBodyId(found.body.featureId)
-    setBodyId([found.body.featureId])
+    s.setHoveredSelectionId(entityKey)
     found.body.updateFaceGeometryForQuery(entityKey)
   },
   onClick(entityKey: string): void {
@@ -63,15 +39,7 @@ export const brepFaceAdapter = {
 export const brepEdgeAdapter = {
   onHover(entityKey: string): void {
     const s = useSketchEditorStore.getState()
-    const found = findBodyForEdgeQuery(entityKey)
-    if (!found) {
-      clearAllBodyHover()
-      return
-    }
-    clearAllBodyHover()
-    found.body.setHoveredEdgeIndex(found.index)
-    s.setHoveredBodyId(found.body.featureId)
-    setBodyId([found.body.featureId])
+    s.setHoveredSelectionId(entityKey)
   },
   onClick(entityKey: string): void {
     const s = useSketchEditorStore.getState()
@@ -82,15 +50,7 @@ export const brepEdgeAdapter = {
 export const brepVertexAdapter = {
   onHover(entityKey: string): void {
     const s = useSketchEditorStore.getState()
-    const found = findBodyForVertexQuery(entityKey)
-    if (!found) {
-      clearAllBodyHover()
-      return
-    }
-    clearAllBodyHover()
-    found.body.setHoveredVertexIndex(found.index)
-    s.setHoveredBodyId(found.body.featureId)
-    setBodyId([found.body.featureId])
+    s.setHoveredSelectionId(entityKey)
   },
   onClick(entityKey: string): void {
     const s = useSketchEditorStore.getState()
@@ -99,14 +59,13 @@ export const brepVertexAdapter = {
 }
 
 /**
- * Called when the cursor leaves every consumed B-rep layer (or hits
- * empty space). Mirrors the union of the old onPointerOut writes.
+ * Clear ALL hover state from every domain (B-rep, sketch, plane, origin).
+ * Single teardown function used by the dispatcher's applyHoverHit.
  */
-export function clearBrepHover(): void {
+export function clearAllHover(): void {
   const s = useSketchEditorStore.getState()
-  s.setHovered3DSurface(null)
-  s.setHoveredBodyId(null)
+  s.setHoveredSelectionId(null)
+  s.setHoveredVertex(null, null, null)
   s.setHoveredFaceGeometry(null, null)
-  _bodyHovered.clear()
   clearAllBodyHover()
 }

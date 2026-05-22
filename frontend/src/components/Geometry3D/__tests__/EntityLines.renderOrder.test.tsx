@@ -19,10 +19,6 @@ vi.mock('@react-three/fiber', () => ({
   useThree: () => ({ camera: {} }),
 }))
 
-vi.mock('@/components/Geometry3D/useToolClickDispatch', () => ({
-  useToolClickDispatch: () => vi.fn(),
-}))
-
 vi.mock('@/components/Geometry3D/VertexDots', () => ({
   VertexDot: () => null,
   ProjectedOriginPoint: () => null,

@@ -4,11 +4,11 @@ import { getLivePipeline } from '@/picking'
 import type { ResolvedHit } from '@/picking'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { dimensionLabelAdapter } from './dimensionLabelAdapter'
-import { brepFaceAdapter, brepEdgeAdapter, brepVertexAdapter, clearBrepHover } from './brepAdapters'
-import { sketchEntityAdapter, clearSketchEntityHover } from './sketchEntityAdapter'
-import { sketchVertexAdapter, clearSketchVertexHover } from './sketchVertexAdapter'
-import { planeAdapter, clearPlaneHover } from './planeAdapter'
-import { originAdapter, clearOriginHover } from './originAdapter'
+import { brepFaceAdapter, brepEdgeAdapter, brepVertexAdapter, clearAllHover } from './brepAdapters'
+import { sketchEntityAdapter } from './sketchEntityAdapter'
+import { sketchVertexAdapter } from './sketchVertexAdapter'
+import { planeAdapter } from './planeAdapter'
+import { originAdapter } from './originAdapter'
 import { getToolAllowedLayers } from './toolAllowedLayers'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
@@ -17,11 +17,8 @@ import {
 
 /**
  * Records whether the most recent left-click was consumed by the id-buffer
- * dispatcher (e.g. hit a dimension label). R3F's `onPointerMissed` fires
- * AFTER our native click listener; the Viewport reads this flag to decide
- * whether to clear selection on a "missed" click — without it, removing
- * R3F handlers from the dim label mesh would cause every label click to
- * also clear the current selection.
+ * dispatcher. R3F's `onPointerMissed` fires AFTER our native click listener;
+ * the Viewport reads this flag to decide whether to clear selection.
  */
 let lastClickIdHit = false
 let lastClickWasStale = false
@@ -29,26 +26,11 @@ let lastClickWasStale = false
 function setLastClickIdHit(v: boolean): void { lastClickIdHit = v }
 export function wasLastClickConsumedByIdDispatch(): boolean { return lastClickIdHit }
 
-/**
- * When true, the most recent resolve returned null because the pipeline was
- * dirty (pending re-render after geometry change), not because the cursor
- * was over empty space. The Viewport's `onPointerMissed` should NOT clear
- * selection in this case.
- */
 export function wasLastClickStaleResolve(): boolean { return lastClickWasStale }
 
 interface DispatchParams {
-  /**
-   * Optional explicit ref to the R3F canvas DOM element. When omitted, the
-   * dispatcher uses `glRef.current.domElement`.
-   */
   canvasRef?: RefObject<HTMLCanvasElement | null>
   glRef: RefObject<THREE.WebGLRenderer | null>
-  /**
-   * Set of layer names the dispatcher owns. Layers outside this set are
-   * filtered out before any handler is invoked, so existing R3F handlers
-   * on those meshes remain the only consumer.
-   */
   consumedLayers: ReadonlySet<string>
 }
 
@@ -56,7 +38,6 @@ function cursorFromEvent(e: PointerEvent | MouseEvent, canvas: HTMLCanvasElement
   const rect = canvas.getBoundingClientRect()
   const xCss = e.clientX - rect.left
   const yCss = e.clientY - rect.top
-  // Event coords are CSS pixels; id-buffer resolves in render-target pixels.
   const scaleX = canvas.width > 0 && rect.width > 0 ? canvas.width / rect.width : 1
   const scaleY = canvas.height > 0 && rect.height > 0 ? canvas.height / rect.height : 1
   return { x: xCss * scaleX, y: yCss * scaleY }
@@ -69,16 +50,17 @@ function intersect(a: ReadonlySet<string>, b: ReadonlySet<string> | null): Reado
   return out
 }
 
-/**
- * Canvas-level pointer dispatcher backed by the ID buffer.
- *
- * Parallel-installed: per-mesh R3F handlers stay live. The dispatcher only
- * routes events whose resolved layer is in `consumedLayers` AND in the
- * active tool's allow-list. Slice scope (267.2): dispatcher consumes
- * `dimensionLabel` only; dimension-label R3F handlers come off in 267.3.
- */
-const BREP_LAYER_NAMES = new Set([FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME])
-const SKETCH_HOVER_LAYERS = new Set([SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, PLANE_LAYER_NAME, ORIGIN_LAYER_NAME])
+// Map layer name → hover adapter.
+const hoverAdapters: Record<string, ((entityKey: string) => void) | undefined> = {
+  [FACE_LAYER_NAME]: brepFaceAdapter.onHover,
+  [EDGE_LAYER_NAME]: brepEdgeAdapter.onHover,
+  [VERTEX_LAYER_NAME]: brepVertexAdapter.onHover,
+  [SKETCH_ENTITY_LAYER_NAME]: sketchEntityAdapter.onHover,
+  [SKETCH_VERTEX_LAYER_NAME]: sketchVertexAdapter.onHover,
+  [PLANE_LAYER_NAME]: planeAdapter.onHover,
+  [ORIGIN_LAYER_NAME]: originAdapter.onHover,
+  [DIMENSION_LABEL_LAYER_NAME]: undefined,  // handled separately
+}
 
 export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }: DispatchParams): void {
   useEffect(() => {
@@ -99,9 +81,6 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       const allowed = computeAllowed()
       if (allowed.size === 0) return null
       const hit = pipeline.resolveSync(gl, cursorFromEvent(e, canvas), { allowedLayers: allowed })
-      // Track whether a null result was due to a stale (dirty) pipeline.
-      // This lets the caller distinguish "no entity under cursor" from
-      // "ID buffer is being re-rendered, try again next frame".
       if (hit === null && pipeline.isDirty()) {
         lastClickWasStale = true
       }
@@ -110,39 +89,18 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
 
     const applyHoverHit = (layer: string | null, entityKey: string | null) => {
       if (layer === lastHoverLayer && entityKey === lastHoverEntity) return
-      // Tear down the previous hover.
+      // Tear down old state (clearAllHover covers all store hover fields;
+      // dim-label is handled separately via its own callback).
       if (lastHoverLayer === DIMENSION_LABEL_LAYER_NAME && lastHoverEntity !== null) {
         dimensionLabelAdapter.onOut(lastHoverEntity)
-      } else if (lastHoverLayer !== null && BREP_LAYER_NAMES.has(lastHoverLayer)) {
-        clearBrepHover()
-      } else if (lastHoverLayer !== null && SKETCH_HOVER_LAYERS.has(lastHoverLayer)) {
-        clearSketchEntityHover()
-        clearSketchVertexHover()
-        clearPlaneHover()
-        clearOriginHover()
+      } else if (lastHoverLayer !== null) {
+        clearAllHover()
       }
-      // Apply the new hover.
+      // Apply new state.  Non-dim layers already had store cleared above.
       if (layer === DIMENSION_LABEL_LAYER_NAME && entityKey !== null) {
         dimensionLabelAdapter.onOver(entityKey)
-      } else if (layer === FACE_LAYER_NAME && entityKey !== null) {
-        clearBrepHover()
-        brepFaceAdapter.onHover(entityKey)
-      } else if (layer === EDGE_LAYER_NAME && entityKey !== null) {
-        clearBrepHover()
-        brepEdgeAdapter.onHover(entityKey)
-      } else if (layer === VERTEX_LAYER_NAME && entityKey !== null) {
-        clearBrepHover()
-        brepVertexAdapter.onHover(entityKey)
-      } else if (layer === SKETCH_ENTITY_LAYER_NAME && entityKey !== null) {
-        clearSketchVertexHover()
-        sketchEntityAdapter.onHover(entityKey)
-      } else if (layer === SKETCH_VERTEX_LAYER_NAME && entityKey !== null) {
-        clearSketchEntityHover()
-        sketchVertexAdapter.onHover(entityKey)
-      } else if (layer === PLANE_LAYER_NAME && entityKey !== null) {
-        planeAdapter.onHover(entityKey)
-      } else if (layer === ORIGIN_LAYER_NAME && entityKey !== null) {
-        originAdapter.onHover(entityKey)
+      } else if (layer !== null && entityKey !== null) {
+        hoverAdapters[layer]?.(entityKey)
       }
       lastHoverLayer = layer
       lastHoverEntity = entityKey
@@ -162,6 +120,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         .then(hit => {
           applyHoverHit(hit?.layer ?? null, hit?.entityKey ?? null)
         })
+        .catch(() => {})
     }
 
     const onClick = (e: MouseEvent) => {
@@ -240,13 +199,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       }
       if (lastHoverLayer === DIMENSION_LABEL_LAYER_NAME && lastHoverEntity !== null) {
         dimensionLabelAdapter.onOut(lastHoverEntity)
-      } else if (lastHoverLayer !== null && BREP_LAYER_NAMES.has(lastHoverLayer)) {
-        clearBrepHover()
-      } else if (lastHoverLayer !== null && SKETCH_HOVER_LAYERS.has(lastHoverLayer)) {
-        clearSketchEntityHover()
-        clearSketchVertexHover()
-        clearPlaneHover()
-        clearOriginHover()
+      } else if (lastHoverLayer !== null) {
+        clearAllHover()
       }
       lastHoverLayer = null
       lastHoverEntity = null

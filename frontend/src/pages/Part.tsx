@@ -571,7 +571,7 @@ export default function Part() {
     const input: BuildContextMenuInput = {
       pos,
       targetId,
-      hoveredSurfaceId: store.hoveredSurfaceId ?? store.hovered3DSurfaceId,
+      hoveredSelectionId: store.hoveredSelectionId,
       hoveredFaceNormal: store.hoveredFaceNormal,
       hoveredFaceCenter: store.hoveredFaceCenter,
       features,

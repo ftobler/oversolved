@@ -492,11 +492,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     // 268: attempt rubber-band on left-click in empty space.
     if (e.button === 0) {
       const s = useSketchEditorStore.getState()
-      const hasHover = s.hovered3DSurfaceId
+      const hasHover = s.hoveredSelectionId
         || s.hoveredVertexId
-        || s.hoveredEntityId
-        || s.hoveredPlaneId
-        || s.hoveredEdgeId
         || s.hoveredConstraintEntityIds.size > 0
       if (!hasHover) {
         const currentTool = s.activeTool
@@ -631,7 +628,6 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           if (rubberBand.state.isDraggingRef.current) return
           if (!wasPointerDrag.current && pointerDownButton.current === 0) {
             useSketchEditorStore.getState().clearNormalSelection()
-            useSketchEditorStore.getState().setHoveredBodyId(null)
           }
         }}
       >

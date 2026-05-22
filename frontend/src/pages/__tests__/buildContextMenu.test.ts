@@ -12,7 +12,7 @@ function defaultInput(overrides?: Partial<BuildContextMenuInput>): BuildContextM
   return {
     pos: [0, 0] as [number, number],
     targetId: undefined,
-    hoveredSurfaceId: null,
+    hoveredSelectionId: null,
     hoveredFaceNormal: null,
     hoveredFaceCenter: null,
     features: [],
@@ -135,7 +135,7 @@ describe('buildContextMenu', () => {
   it('contains Align to Face when hovered surface is present', () => {
     const result = buildContextMenu(
       defaultInput({
-        hoveredSurfaceId: 'face:xyz',
+        hoveredSelectionId: 'face:xyz',
         hoveredFaceNormal: [0, 0, 1],
         hoveredFaceCenter: [1, 2, 3],
       }),
@@ -216,7 +216,7 @@ describe('buildContextMenu', () => {
     callbacks.onAlignToFace = () => { called = true }
     const result = buildContextMenu(
       defaultInput({
-        hoveredSurfaceId: 'face:xyz',
+        hoveredSelectionId: 'face:xyz',
         hoveredFaceNormal: [0, 0, 1],
         hoveredFaceCenter: [1, 2, 3],
       }),

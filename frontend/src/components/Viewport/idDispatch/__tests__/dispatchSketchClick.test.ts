@@ -22,7 +22,7 @@ beforeEach(() => {
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
     normalSelection: new Set(),
-    internalHoverSelection: null,
+    hoveredSelectionId: null,
     dragSnap: null,
   })
   setSketchCallback('onMutation', null)
@@ -146,7 +146,7 @@ describe('dispatchSketchClick with entityKind', () => {
     useSketchEditorStore.setState({
       activeTool: 'dimension',
       activeFeatureId: 'S1',
-      internalHoverSelection: null,
+      hoveredSelectionId: null,
       hoveredVertexId: null,
       pendingDimTarget: null,
       pendingDimEntityKind: null,
@@ -157,7 +157,7 @@ describe('dispatchSketchClick with entityKind', () => {
 
   it('circle entityKind opens dialog immediately', () => {
     useSketchEditorStore.setState({
-      internalHoverSelection: 'entity:S1:C1',
+      hoveredSelectionId: 'entity:S1:C1',
     })
     dispatchSketchClick('entity:S1:C1', 'circle', 100, 100)
     const s = useSketchEditorStore.getState()
@@ -167,7 +167,7 @@ describe('dispatchSketchClick with entityKind', () => {
 
   it('line entityKind goes to pending state', () => {
     useSketchEditorStore.setState({
-      internalHoverSelection: 'entity:S1:L1',
+      hoveredSelectionId: 'entity:S1:L1',
     })
     dispatchSketchClick('entity:S1:L1', 'line', 100, 100)
     const s = useSketchEditorStore.getState()

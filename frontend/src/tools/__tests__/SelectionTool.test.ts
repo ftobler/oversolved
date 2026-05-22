@@ -5,7 +5,7 @@ import type { SelectionToolContext } from '@/tools/SelectionTool'
 function createMockContext(overrides: Partial<SelectionToolContext> = {}): SelectionToolContext {
   return {
     normalSelection: new Set<string>(),
-    internalHoverSelection: null,
+    hoveredSelectionId: null,
     isPointerDown: false,
     activeFeatureId: 'S1',
     hoveredVertexId: null,
@@ -14,7 +14,7 @@ function createMockContext(overrides: Partial<SelectionToolContext> = {}): Selec
     onMutation: null,
     pushMode: vi.fn(),
     popMode: vi.fn(),
-    setInternalHoverSelection: vi.fn(),
+    setHoveredSelectionId: vi.fn(),
     clearNormalSelection: vi.fn(),
     toggleNormalSelection: vi.fn(),
     ...overrides,
@@ -38,7 +38,7 @@ describe('SelectionTool', () => {
       const tool = createSelectionTool()
       const toggleNormalSelection = vi.fn()
       const context = createMockContext({
-        internalHoverSelection: 'entity:S1:L1',
+        hoveredSelectionId: 'entity:S1:L1',
         toggleNormalSelection,
       })
 
@@ -51,7 +51,7 @@ describe('SelectionTool', () => {
       const tool = createSelectionTool()
       const clearNormalSelection = vi.fn()
       const context = createMockContext({
-        internalHoverSelection: null,
+        hoveredSelectionId: null,
         clearNormalSelection,
       })
 

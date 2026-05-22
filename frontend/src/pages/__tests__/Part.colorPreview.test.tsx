@@ -157,11 +157,8 @@ describe('Part Color Preview', () => {
     vi.clearAllMocks()
     useSketchEditorStore.setState({
       normalSelection: new Set(),
-      hoveredEntityId: null,
+      hoveredSelectionId: null,
       hoveredVertexId: null,
-      hoveredPlaneId: null,
-      hoveredSurfaceId: null,
-      hovered3DSurfaceId: null,
       activeTool: null,
       planeSelectionFeatureId: null,
       showDebugHit: false,

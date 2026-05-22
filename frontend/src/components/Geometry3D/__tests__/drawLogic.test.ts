@@ -10,7 +10,7 @@ const emptySnap = (): DrawSnapState => ({
   hoveredVertexId: null,
   hoveredVertexPosition: null,
   hoveredSnapKind: null,
-  hoveredEntityId: null,
+  hoveredSelectionId: null,
   drawSnapVertexId: null,
   alignmentSnapPoint: null,
   alignmentSnapKind: null,
@@ -219,14 +219,14 @@ describe('computeDrawClick - project tool', () => {
 
   it('returns nothing when hovered entity is in same feature', () => {
     const snap = emptySnap()
-    snap.hoveredEntityId = `entity:${FEATURE}:L1`
+    snap.hoveredSelectionId = `entity:${FEATURE}:L1`
     const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
     expect(result.mutations).toHaveLength(0)
   })
 
   it('emits add_projected_entity for entity from another feature', () => {
     const snap = emptySnap()
-    snap.hoveredEntityId = 'entity:S2:L1'
+    snap.hoveredSelectionId = 'entity:S2:L1'
     const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
     expect(result.mutations[0].type).toBe('add_projected_entity')

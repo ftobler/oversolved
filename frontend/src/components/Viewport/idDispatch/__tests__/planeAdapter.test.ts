@@ -1,25 +1,25 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { planeAdapter, clearPlaneHover } from '../planeAdapter'
+import { planeAdapter } from '../planeAdapter'
 
 beforeEach(() => {
   useSketchEditorStore.setState({
-    hoveredPlaneId: null,
+    hoveredSelectionId: null,
     normalSelection: new Set(),
     planeSelectionFeatureId: null,
   })
 })
 
 describe('planeAdapter', () => {
-  it('onHover sets hoveredPlaneId', () => {
+  it('onHover sets hoveredSelectionId', () => {
     planeAdapter.onHover('@builtin_plane_top')
-    expect(useSketchEditorStore.getState().hoveredPlaneId).toBe('@builtin_plane_top')
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('@builtin_plane_top')
   })
 
-  it('clearPlaneHover clears hoveredPlaneId', () => {
+  it('setHoveredSelectionId(null) clears hoveredSelectionId', () => {
     planeAdapter.onHover('@builtin_plane_front')
-    clearPlaneHover()
-    expect(useSketchEditorStore.getState().hoveredPlaneId).toBeNull()
+    useSketchEditorStore.getState().setHoveredSelectionId(null)
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
   })
 
   it('onClick toggles normalSelection', () => {

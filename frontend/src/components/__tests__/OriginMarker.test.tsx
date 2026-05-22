@@ -14,10 +14,6 @@ vi.mock('@react-three/fiber', () => ({
   useThree: () => ({ camera: {} }),
 }))
 
-vi.mock('@/components/Geometry3D/useToolClickDispatch', () => ({
-  useToolClickDispatch: () => vi.fn(),
-}))
-
 vi.mock('@/components/sketch_helpers', () => ({
   p2w: () => 1,
 }))
@@ -29,7 +25,7 @@ beforeEach(() => {
     activeFeatureId: null,
     activeTool: null,
     isRotating: false,
-    setHoveredEntity: vi.fn(),
+    setHoveredSelectionId: vi.fn(),
     setHoveredVertex: vi.fn(),
   } as never)
 })

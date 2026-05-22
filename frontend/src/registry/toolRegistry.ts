@@ -25,7 +25,7 @@ export type ToolCategory = 'navigation' | 'drawing' | 'constraint' | 'selection'
 // What the tool system provides to each tool
 export interface ToolContext {
   normalSelection: Set<string>
-  internalHoverSelection: string | null
+  hoveredSelectionId: string | null
   isPointerDown: boolean
   activeFeatureId: string | null
   hoveredVertexId: string | null
@@ -52,8 +52,7 @@ export interface ToolDragInit {
  *
  * Every tool (select, drag, dimension, drawing, constraint) provides these
  * handlers through the ToolRegistry. The view layer (DragPlane, DrawPlane,
- * useToolClickDispatch) calls these handlers instead of calling logic
- * functions directly. See tools/ for implementations.
+ * dispatchSketchClick) calls these handlers. See tools/ for implementations.
  */
 export interface ToolHandlers<T extends ToolContext = ToolContext> {
   onPointerDown?(e: PointerEvent, worldPt: Point, context: T): ToolDragInit | null

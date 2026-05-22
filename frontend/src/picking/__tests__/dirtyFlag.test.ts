@@ -114,9 +114,9 @@ describe('sketchEditorStore selection/hover do not dirty', () => {
 
     // Simulate a hover change. The pipeline isn't subscribed to
     // sketchEditorStore hover fields, so no dirty.
-    useSketchEditorStore.setState({ hoveredEntityId: 'e1' })
+    useSketchEditorStore.setState({ hoveredSelectionId: 'e1' })
     expect(p.isDirty()).toBe(false)
-    useSketchEditorStore.setState({ hoveredEntityId: null })
+    useSketchEditorStore.setState({ hoveredSelectionId: null })
     expect(p.isDirty()).toBe(false)
 
     // Simulate a selection change. Same: must not dirty.

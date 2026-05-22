@@ -5,7 +5,7 @@ import type { DimensionToolContext } from '@/tools/DimensionTool'
 function createMockContext(overrides: Partial<DimensionToolContext> = {}): DimensionToolContext {
   return {
     normalSelection: new Set<string>(),
-    internalHoverSelection: null,
+    hoveredSelectionId: null,
     isPointerDown: false,
     activeFeatureId: 'S1',
     hoveredVertexId: null,
@@ -32,7 +32,7 @@ describe('DimensionTool', () => {
       const context = createMockContext({
         setPendingDim,
         activeFeatureId: 'S1',
-        internalHoverSelection: 'entity:S1:L1',
+        hoveredSelectionId: 'entity:S1:L1',
         hoveredEntityKind: 'line',
       })
 
@@ -62,7 +62,7 @@ describe('DimensionTool', () => {
       const context = createMockContext({
         openDialog,
         activeFeatureId: 'S1',
-        internalHoverSelection: 'entity:S1:C1',
+        hoveredSelectionId: 'entity:S1:C1',
         hoveredEntityKind: 'circle',
       })
 
@@ -79,7 +79,7 @@ describe('DimensionTool', () => {
         openDialog,
         setPendingDim,
         activeFeatureId: 'S1',
-        internalHoverSelection: 'entity:S1:L1',
+        hoveredSelectionId: 'entity:S1:L1',
         hoveredEntityKind: 'line',
       })
 
@@ -116,7 +116,7 @@ describe('DimensionTool', () => {
         activeFeatureId: 'S1',
         pendingDimTarget: 'entity:S1:L1',
         pendingDimEntityKind: 'line',
-        internalHoverSelection: 'entity:S1:L1',
+        hoveredSelectionId: 'entity:S1:L1',
         hoveredEntityKind: 'line',
       })
 
@@ -137,7 +137,7 @@ describe('DimensionTool', () => {
         activeFeatureId: 'S1',
         pendingDimTarget: 'entity:S1:L1',
         pendingDimEntityKind: null,
-        internalHoverSelection: 'entity:S1:L1',
+        hoveredSelectionId: 'entity:S1:L1',
         hoveredEntityKind: null,
       })
 
@@ -156,7 +156,7 @@ describe('DimensionTool', () => {
         onMutation,
         setActiveTool,
         activeFeatureId: 'S1',
-        internalHoverSelection: 'entity:S1:C1',
+        hoveredSelectionId: 'entity:S1:C1',
         hoveredEntityKind: 'circle',
         openDialog: vi.fn((opts) => { confirmCb = opts.onConfirm }),
       })

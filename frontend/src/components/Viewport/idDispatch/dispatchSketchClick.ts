@@ -5,9 +5,9 @@ import type { DragToolContext } from '@/tools/DragTool'
 import type { Point } from '@/types/cad'
 
 /**
- * Shared tool-click dispatch logic extracted from useToolClickDispatch.
- * Called by the id-buffer adapters so sketch entity / vertex clicks go
- * through the tool registry identically to the pre-267.5 R3F handlers.
+ * Shared tool-click dispatch logic called by the id-buffer adapters.
+ * Routes sketch entity / vertex clicks through the tool registry,
+ * providing the synchronously-resolved ID as `hoveredSelectionId`.
  */
 export function dispatchSketchClick(
   id: string,
@@ -21,12 +21,14 @@ export function dispatchSketchClick(
 
   const context = {
     normalSelection: state.normalSelection,
-    internalHoverSelection: state.internalHoverSelection,
+    hoveredSelectionId: id,
     isPointerDown: state.isPointerDown,
     activeFeatureId: state.activeFeatureId,
     hoveredVertexId: state.hoveredVertexId,
     hoveredVertexPosition: state.hoveredVertexPosition,
     hoveredSnapKind: state.hoveredSnapKind,
+    toggleNormalSelection: state.toggleNormalSelection,
+    clearNormalSelection: state.clearNormalSelection,
     onMutation: getSketchCallback('onMutation'),
     pendingDimTarget: state.pendingDimTarget,
     pendingDimEntityKind: state.pendingDimEntityKind,
@@ -34,20 +36,12 @@ export function dispatchSketchClick(
     setPendingDim: state.setPendingDim,
     openDialog: state.openDialog,
     setActiveTool: state.setActiveTool,
+    pushMode: () => {},
+    popMode: () => {},
   }
 
   if (tool?.handlers.onClick) {
     if (effectiveTool === 'dimension' && !state.activeFeatureId) return
-    // For the select tool, toggle the entity directly under the cursor at
-    // click time (resolved synchronously from the ID buffer) instead of
-    // relying on `internalHoverSelection` which may be stale (set by the
-    // async hover path from the last pointermove). This ensures clicking
-    // an entity always toggles the correct entity regardless of cursor
-    // distance or hover timing.
-    if (effectiveTool === 'select') {
-      state.toggleNormalSelection(id)
-      return
-    }
     tool.handlers.onClick(
       { clientX, clientY } as PointerEvent,
       [0, 0] as Point,
@@ -63,11 +57,6 @@ export function dispatchSketchClick(
  * Unified drag-initiation. Called by both sketchVertexAdapter and
  * sketchEntityAdapter on pointerdown to begin a sketch-element drag
  * through the DragTool registry handler.
- *
- * - Vertex drags: passes the vertex ID as hoveredVertexId, DragTool
- *   resolves type='vertex' and parses entityId/vertexKey from the ID.
- * - Entity (edge) drags: passes the entity ID as hoveredVertexId with
- *   vertexKey='edge', DragTool resolves type='edge'.
  */
 export function dispatchDragInitiation(
   id: string,
@@ -92,7 +81,7 @@ export function dispatchDragInitiation(
 
   const ctx: DragToolContext = {
     normalSelection: state.normalSelection,
-    internalHoverSelection: state.internalHoverSelection,
+    hoveredSelectionId: id,
     isPointerDown: true,
     activeFeatureId: state.activeFeatureId,
     hoveredVertexId: id,

@@ -15,7 +15,7 @@ import constraintTileIcon from '@/assets/icons/constraint-coincident.svg'
 export interface BuildContextMenuInput {
   pos: [number, number]
   targetId: string | undefined
-  hoveredSurfaceId: string | null
+  hoveredSelectionId: string | null
   hoveredFaceNormal: [number, number, number] | null
   hoveredFaceCenter: [number, number, number] | null
   features: PartFeature[]
@@ -54,7 +54,7 @@ export function buildContextMenu(
   const {
     pos,
     targetId,
-    hoveredSurfaceId,
+    hoveredSelectionId,
     hoveredFaceNormal,
     hoveredFaceCenter,
     features,
@@ -65,7 +65,7 @@ export function buildContextMenu(
     builtInIds,
   } = input
 
-  if (hoveredSurfaceId && hoveredFaceNormal && hoveredFaceCenter) {
+  if (hoveredSelectionId && hoveredFaceNormal && hoveredFaceCenter) {
     return {
       items: [
         {

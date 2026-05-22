@@ -83,7 +83,7 @@ describe('ToolRegistry', () => {
       const deactivate = vi.fn()
       const context: ToolContext = {
         normalSelection: new Set(),
-        internalHoverSelection: null,
+        hoveredSelectionId: null,
         isPointerDown: false,
         activeFeatureId: null,
         hoveredVertexId: null,
@@ -211,7 +211,7 @@ describe('ToolRegistry', () => {
 
       const context = {
         normalSelection: new Set<string>(),
-        internalHoverSelection: null,
+        hoveredSelectionId: null,
         isPointerDown: false,
         activeFeatureId: 'S1',
         hoveredVertexId: 'vertex:S1:L1:start',
@@ -245,7 +245,7 @@ describe('ToolRegistry', () => {
       const setOrbitEnabled = vi.fn()
       const context = {
         normalSelection: new Set<string>(),
-        internalHoverSelection: null,
+        hoveredSelectionId: null,
         isPointerDown: false,
         activeFeatureId: 'S1',
         hoveredVertexId: null,
@@ -278,7 +278,7 @@ describe('ToolRegistry', () => {
       const clearDraw = vi.fn()
       const context = {
         normalSelection: new Set<string>(),
-        internalHoverSelection: null,
+        hoveredSelectionId: null,
         isPointerDown: false,
         activeFeatureId: 'S1',
         hoveredVertexId: null,
@@ -292,7 +292,7 @@ describe('ToolRegistry', () => {
         setDrawHover: vi.fn(),
         clearDraw,
         setActiveTool: vi.fn(),
-        hoveredEntityId: null,
+        hoveredSelectionId: null,
         alignmentSnapPoint: null,
         alignmentSnapKind: null,
         alignmentSnapVertexId: null,
@@ -312,7 +312,7 @@ describe('ToolRegistry', () => {
       const drawPoints: [number, number][] = [[1, 2]]
       const context = {
         normalSelection: new Set<string>(),
-        internalHoverSelection: null,
+        hoveredSelectionId: null,
         isPointerDown: false,
         activeFeatureId: 'S1',
         hoveredVertexId: null,
@@ -326,7 +326,7 @@ describe('ToolRegistry', () => {
         setDrawHover: vi.fn(),
         clearDraw: vi.fn(),
         setActiveTool: vi.fn(),
-        hoveredEntityId: null,
+        hoveredSelectionId: null,
         alignmentSnapPoint: null as [number, number] | null,
         alignmentSnapKind: null,
         alignmentSnapVertexId: null,
@@ -350,7 +350,7 @@ describe('ToolRegistry', () => {
       const drawPoints: [number, number][] = [[0, 0]]
       const context = {
         normalSelection: new Set<string>(),
-        internalHoverSelection: null,
+        hoveredSelectionId: null,
         isPointerDown: false,
         activeFeatureId: 'S1',
         hoveredVertexId: null,
@@ -364,7 +364,7 @@ describe('ToolRegistry', () => {
         setDrawHover: vi.fn(),
         clearDraw: vi.fn(),
         setActiveTool: vi.fn(),
-        hoveredEntityId: null,
+        hoveredSelectionId: null,
         alignmentSnapPoint: null as [number, number] | null,
         alignmentSnapKind: null,
         alignmentSnapVertexId: null,

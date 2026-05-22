@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState, useCallback, useRef } from 'react'
+import { useMemo, useEffect, useCallback, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Mesh3D, EdgeData } from '@/types/cad'
@@ -77,12 +77,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
-  const hovered3DSurfaceId = useSketchEditorStore(s => s.hovered3DSurfaceId)
+  const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
-
-  const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null)
-  const [hoveredVertexIndex, setHoveredVertexIndex] = useState<number | null>(null)
 
   const faceColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
   const edgeColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
@@ -108,7 +105,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   // (layer, entityKey) hit and routes the per-body parts of the
   // hover write (local edge/vertex index, face geometry computation)
   // through this registry. The store-wide writes
-  // (hovered3DSurfaceId, hoveredBodyId, toggleNormalSelection) are
+  // (hoveredSelectionId, toggleNormalSelection) are
   // performed by the dispatcher directly.
   useEffect(() => {
     if (!interactive || !visible) return
@@ -119,8 +116,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       mesh,
       edgeQueries,
       vertexQueries,
-      setHoveredEdgeIndex,
-      setHoveredVertexIndex,
       updateFaceGeometryForQuery,
       clearFaceGeometry,
     })
@@ -267,7 +262,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         const query = resolveFaceQuery(i)
         if (normalSelection.has(query)) {
           color = selectedColor
-        } else if (query === hovered3DSurfaceId) {
+        } else if (query === hoveredSelectionId) {
           color = hoverColor
         }
       }
@@ -280,7 +275,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       }
     }
     return colors
-  }, [mesh.faces, normalSelection, hovered3DSurfaceId, bodyColor, resolveFaceQuery, interactive])
+  }, [mesh.faces, normalSelection, hoveredSelectionId, bodyColor, resolveFaceQuery, interactive])
 
   // Build edge colors array for selected/hovered edges
   const edgeColors = useMemo(() => {
@@ -294,11 +289,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
 
     for (let segIdx = 0; segIdx < totalSegments; segIdx++) {
       const edgeIdx = segmentToEdgeMap[segIdx]
+      const edgeQuery = edgeQueries?.[edgeIdx] ?? `@${featureId}/edge/${edgeIdx}`
       let color: THREE.Color
       if (interactive) {
         if (getIsEdgeSelected(edgeIdx)) {
           color = selectedColor
-        } else if (edgeIdx === hoveredEdgeIndex) {
+        } else if (edgeQuery === hoveredSelectionId) {
           color = hoverColor
         } else {
           color = defaultColor
@@ -317,7 +313,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       colors[baseIdx + 5] = color.b
     }
     return colors
-  }, [segmentToEdgeMap, getIsEdgeSelected, hoveredEdgeIndex, edgeColor, interactive])
+  }, [segmentToEdgeMap, getIsEdgeSelected, hoveredSelectionId, edgeColor, interactive, edgeQueries, featureId])
 
   // Always update the color attribute -- faceColors is always non-null so vertexColors
   // stays permanently enabled, avoiding shader recompilation on selection change.
@@ -372,7 +368,10 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const dmesh = vertexDotRef.current
     if (dmesh && vertices?.length) {
       // Only show visual dots when vertex is hovered or selected
-      const hasHover = hoveredVertexIndex !== null
+      const hasHover = hoveredSelectionId !== null && vertices.some((_, i) => {
+        const query = vertexQueries?.[i] ?? `@${featureId}/vertex/${i}`
+        return query === hoveredSelectionId
+      })
       const hasSelection = vertices.some((_, i) => {
         const query = vertexQueries?.[i] ?? `@${featureId}/vertex/${i}`
         return normalSelection.has(query)
@@ -397,7 +396,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           let color: THREE.Color
           if (normalSelection.has(query)) {
             color = selectedColorObj
-          } else if (i === hoveredVertexIndex) {
+          } else if (query === hoveredSelectionId) {
             color = hoverColorObj
           } else {
             // Hide non-hovered, non-selected vertices by scaling to 0
@@ -472,15 +471,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           </instancedMesh>
         </>
       )}
-      {interactive && edgeBoundaryGeos && hoveredEdgeIndex !== null && (() => {
-        const query = edgeQueries?.[hoveredEdgeIndex] ?? `@${featureId}/edge/${hoveredEdgeIndex}`
-        const geo = edgeBoundaryGeos.get(query)
-        return geo ? (
-          <lineSegments geometry={geo}>
-            <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
-          </lineSegments>
-        ) : null
-      })()}
+      {interactive && edgeBoundaryGeos && hoveredSelectionId && edgeBoundaryGeos.has(hoveredSelectionId) && (
+        <lineSegments geometry={edgeBoundaryGeos.get(hoveredSelectionId)}>
+          <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
+        </lineSegments>
+      )}
       {interactive && edgeBoundaryGeos && [...normalSelection].map(query => {
         const geo = edgeBoundaryGeos.get(query)
         if (!geo) return null
@@ -490,8 +485,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           </lineSegments>
         )
       })}
-      {interactive && faceBoundaryGeos && hovered3DSurfaceId && faceBoundaryGeos.has(hovered3DSurfaceId) && (
-        <lineSegments geometry={faceBoundaryGeos.get(hovered3DSurfaceId)}>
+      {interactive && faceBoundaryGeos && hoveredSelectionId && faceBoundaryGeos.has(hoveredSelectionId) && (
+        <lineSegments geometry={faceBoundaryGeos.get(hoveredSelectionId)}>
           <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
         </lineSegments>
       )}

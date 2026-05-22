@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import { createDragTool } from '@/tools/DragTool'
-import { sketchEntityAdapter, clearSketchEntityHover } from '../sketchEntityAdapter'
+import { sketchEntityAdapter } from '../sketchEntityAdapter'
 
 try { toolRegistry.register(createDragTool()) } catch { /* already registered */ }
 
@@ -10,8 +10,7 @@ beforeEach(() => {
   useSketchEditorStore.setState({
     activeTool: null,
     activeFeatureId: null,
-    internalHoverSelection: null,
-    hoveredEntityId: null,
+    hoveredSelectionId: null,
     isPointerDown: false,
     orbitEnabled: true,
     dragPending: null,
@@ -21,19 +20,17 @@ beforeEach(() => {
 })
 
 describe('sketchEntityAdapter', () => {
-  it('onHover sets internalHoverSelection and hoveredEntityId', () => {
+  it('onHover sets hoveredSelectionId', () => {
     sketchEntityAdapter.onHover('entity:feat1:line1')
     const s = useSketchEditorStore.getState()
-    expect(s.internalHoverSelection).toBe('entity:feat1:line1')
-    expect(s.hoveredEntityId).toBe('entity:feat1:line1')
+    expect(s.hoveredSelectionId).toBe('entity:feat1:line1')
   })
 
-  it('clearSketchEntityHover clears both fields', () => {
+  it('setHoveredSelectionId(null) clears hoveredSelectionId', () => {
     sketchEntityAdapter.onHover('entity:feat1:arc1')
-    clearSketchEntityHover()
+    useSketchEditorStore.getState().setHoveredSelectionId(null)
     const s = useSketchEditorStore.getState()
-    expect(s.internalHoverSelection).toBeNull()
-    expect(s.hoveredEntityId).toBeNull()
+    expect(s.hoveredSelectionId).toBeNull()
   })
 
   it('onPointerDown starts entity drag for valid entity key', () => {

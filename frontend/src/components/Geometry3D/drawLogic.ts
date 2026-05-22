@@ -12,7 +12,7 @@ export interface DrawSnapState {
   hoveredVertexPosition: [number, number] | null
   hoveredSnapKind: SnapKind | null
   /** Composite ID: "entity:featureId:entityId" or null */
-  hoveredEntityId: string | null
+  hoveredSelectionId: string | null
   drawSnapVertexId: string | null
   alignmentSnapPoint: [number, number] | null
   alignmentSnapKind: string | null
@@ -194,7 +194,7 @@ export function computeDrawClick(
   }
 
   if (t === 'project') {
-    const hid = snap.hoveredEntityId
+    const hid = snap.hoveredSelectionId
     if (!hid || !hid.startsWith('entity:')) return nothing
     const parts = hid.split(':')
     if (parts.length < 3) return nothing

@@ -4,7 +4,7 @@ import { originAdapter, clearOriginHover } from '../originAdapter'
 
 beforeEach(() => {
   useSketchEditorStore.setState({
-    hoveredEntityId: null,
+    hoveredSelectionId: null,
     hoveredVertexId: null,
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
@@ -13,10 +13,10 @@ beforeEach(() => {
 })
 
 describe('originAdapter', () => {
-  it('onHover sets hoveredEntityId and hoveredVertexId', () => {
+  it('onHover sets hoveredSelectionId and hoveredVertexId', () => {
     originAdapter.onHover('@builtin_origin')
     const s = useSketchEditorStore.getState()
-    expect(s.hoveredEntityId).toBe('@builtin_origin')
+    expect(s.hoveredSelectionId).toBe('@builtin_origin')
     expect(s.hoveredVertexId).toBe('@builtin_origin')
     expect(s.hoveredSnapKind).toBe('vertex')
   })
@@ -25,7 +25,7 @@ describe('originAdapter', () => {
     originAdapter.onHover('@builtin_origin')
     clearOriginHover()
     const s = useSketchEditorStore.getState()
-    expect(s.hoveredEntityId).toBeNull()
+    expect(s.hoveredSelectionId).toBeNull()
     expect(s.hoveredVertexId).toBeNull()
   })
 

@@ -128,42 +128,31 @@ export type DragPendingState = EdgeVertexDragPending | DimLabelDragPending
 
 interface SketchEditorState {
    // SELECTION SUBSYSTEM
-   // Internal hover selection — always reflects what's directly under cursor.
-   internalHoverSelection: string | null
-   // Normal selection — traditional selection, persists until explicitly changed.
-   normalSelection: Set<string>
-   // Derived domain of the current normal selection.
-   selectionDomain: SelectionDomain
+  // Hovered selection — always reflects what entity/face/plane is directly under cursor.
+  hoveredSelectionId: string | null
+  // Normal selection — traditional selection, persists until explicitly changed.
+  normalSelection: Set<string>
+  // Derived domain of the current normal selection.
+  selectionDomain: SelectionDomain
   isPointerDown: boolean
-  setInternalHoverSelection: (id: string | null) => void
+  setHoveredSelectionId: (id: string | null) => void
   setIsPointerDown: (down: boolean) => void
   clearNormalSelection: () => void
   toggleNormalSelection: (id: string) => void
   addToNormalSelection: (id: string) => void
 
   // HOVER STATE
-  // Written by hit geometry (EntityLines, VertexDots, planes, surfaces);
-  // read by tools (drawing snap, constraint highlighting, debug overlay).
-  hoveredEntityId: string | null
+  // Vertex-specific hover data (for snap / visual highlight).
   hoveredVertexId: string | null
   hoveredVertexPosition: [number, number] | null
   hoveredSnapKind: SnapKind | null
+  // Constraint tile hover — highlights related entities/vertices.
   hoveredConstraintEntityIds: Set<string>
-  hoveredPlaneId: string | null
-  hoveredSurfaceId: string | null
-  hovered3DSurfaceId: string | null
-  hoveredEdgeId: string | null
-  hoveredBodyId: string | null
+  // Face geometry for "Align to Face" context menu.
   hoveredFaceNormal: [number, number, number] | null
   hoveredFaceCenter: [number, number, number] | null
-  setHoveredEntity: (id: string | null) => void
   setHoveredVertex: (id: string | null, position: [number, number] | null, snapKind?: SnapKind | null) => void
   setHoveredConstraintEntities: (ids: Set<string>) => void
-  setHoveredPlane: (id: string | null) => void
-  setHoveredSurface: (id: string | null) => void
-  setHovered3DSurface: (id: string | null) => void
-  setHoveredEdge: (id: string | null) => void
-  setHoveredBodyId: (id: string | null | ((current: string | null) => string | null)) => void
   setHoveredFaceGeometry: (normal: [number, number, number] | null, center: [number, number, number] | null) => void
 
   // DRAG TOOL STATE
@@ -236,7 +225,7 @@ interface SketchEditorState {
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   normalSelection: new Set(),
   selectionDomain: 'sketch_2d',
-  internalHoverSelection: null,
+  hoveredSelectionId: null,
   isPointerDown: false,
   alignmentSnapPoint: null,
   alignmentSnapKind: null,
@@ -251,13 +240,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   showConstraintTiles: true,
   entityKindMap: {},
   hoveredConstraintEntityIds: new Set(),
-  hoveredEntityId: null,
   hoveredVertexId: null,
-  hoveredPlaneId: null,
-  hoveredSurfaceId: null,
-  hovered3DSurfaceId: null,
-  hoveredEdgeId: null,
-  hoveredBodyId: null,
   hoveredFaceNormal: null,
   hoveredFaceCenter: null,
   hoveredVertexPosition: null,
@@ -298,9 +281,9 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     }
   },
 
-  setInternalHoverSelection: (id) => set(s => {
-    if (s.internalHoverSelection === id) return s
-    return { internalHoverSelection: id }
+  setHoveredSelectionId: (id) => set(s => {
+    if (s.hoveredSelectionId === id) return s
+    return { hoveredSelectionId: id }
   }),
 
   setIsPointerDown: (down: boolean) => set({ isPointerDown: down }),
@@ -348,7 +331,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         const s = get()
         prev.deactivate({
           normalSelection: s.normalSelection,
-          internalHoverSelection: s.internalHoverSelection,
+          hoveredSelectionId: s.hoveredSelectionId,
           isPointerDown: s.isPointerDown,
           activeFeatureId: s.activeFeatureId,
           hoveredVertexId: s.hoveredVertexId,
@@ -387,7 +370,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         const s = get()
         next.activate({
           normalSelection: s.normalSelection,
-          internalHoverSelection: s.internalHoverSelection,
+          hoveredSelectionId: s.hoveredSelectionId,
           isPointerDown: s.isPointerDown,
           activeFeatureId: s.activeFeatureId,
           hoveredVertexId: s.hoveredVertexId,
@@ -414,14 +397,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setEntityKindMap: (map) => set({ entityKindMap: map }),
 
-  setHoveredEntity: (id) => set({ hoveredEntityId: id }),
   setHoveredVertex: (id, position, snapKind) => set({ hoveredVertexId: id, hoveredVertexPosition: position, hoveredSnapKind: snapKind ?? null }),
   setHoveredConstraintEntities: (ids) => set({ hoveredConstraintEntityIds: ids }),
-  setHoveredPlane: (id) => set({ hoveredPlaneId: id }),
-  setHoveredSurface: (id) => set({ hoveredSurfaceId: id }),
-  setHovered3DSurface: (id) => set({ hovered3DSurfaceId: id }),
-  setHoveredEdge: (id) => set({ hoveredEdgeId: id }),
-  setHoveredBodyId: (id) => set(s => ({ hoveredBodyId: typeof id === 'function' ? id(s.hoveredBodyId) : id })),
   setHoveredFaceGeometry: (normal, center) => set({ hoveredFaceNormal: normal, hoveredFaceCenter: center }),
 
   applyConstraint: (kind) => {
@@ -520,7 +497,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
             const s = get()
             prev.deactivate({
               normalSelection: s.normalSelection,
-              internalHoverSelection: s.internalHoverSelection,
+              hoveredSelectionId: s.hoveredSelectionId,
               isPointerDown: s.isPointerDown,
               activeFeatureId: s.activeFeatureId,
               hoveredVertexId: s.hoveredVertexId,

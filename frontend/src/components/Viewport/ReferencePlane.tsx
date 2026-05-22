@@ -12,15 +12,14 @@ interface ReferencePlaneProps {
 }
 
 export default function ReferencePlane({ rotation, label }: ReferencePlaneProps) {
-  // Hover state is now driven by the ID-buffer dispatcher (267.5).
-  const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)
+  const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
   const drag = useSketchEditorStore(s => s.drag)
   const selId = builtinSelectionId(label)
   const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
 
   usePlaneIdRegistration({ selectionId: selId, size: PLANE_SIZE, rotation })
 
-  const hovered = hoveredPlaneId === selId
+  const hovered = hoveredSelectionId === selId
   const planeState: PlaneState = hovered ? 'hovered' : selected ? 'selected' : 'default'
   const isDragging = drag !== null
 

@@ -5,7 +5,7 @@ import type { DrawingToolContext } from '@/tools/DrawingTool'
 function createMockContext(overrides: Partial<DrawingToolContext> = {}): DrawingToolContext {
   return {
     normalSelection: new Set<string>(),
-    internalHoverSelection: null,
+    hoveredSelectionId: null,
     isPointerDown: false,
     activeFeatureId: 'S1',
     hoveredVertexId: null,
@@ -19,7 +19,7 @@ function createMockContext(overrides: Partial<DrawingToolContext> = {}): Drawing
     setDrawHover: vi.fn(),
     clearDraw: vi.fn(),
     setActiveTool: vi.fn(),
-    hoveredEntityId: null,
+    hoveredSelectionId: null,
     alignmentSnapPoint: null,
     alignmentSnapKind: null,
     alignmentSnapVertexId: null,

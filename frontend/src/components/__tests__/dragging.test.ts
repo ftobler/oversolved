@@ -433,7 +433,7 @@ describe('dispatchDragInitiation integration', () => {
       hoveredVertexPosition: null,
       hoveredSnapKind: null,
       normalSelection: new Set(),
-    internalHoverSelection: null,
+    hoveredSelectionId: null,
     dragSnap: null,
     })
     setSketchCallback('onMutation', null)

@@ -15,9 +15,7 @@ beforeEach(() => {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
     chipOwnedSelection: new Set(),
-    hoveredBodyId: null,
-    hoveredSurfaceId: null,
-    hovered3DSurfaceId: null,
+    hoveredSelectionId: null,
   })
 })
 

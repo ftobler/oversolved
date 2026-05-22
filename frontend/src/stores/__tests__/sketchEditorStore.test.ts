@@ -15,7 +15,7 @@ beforeAll(() => {
 function reset() {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    internalHoverSelection: null,
+    hoveredSelectionId: null,
     isPointerDown: false,
     drag: null,
     orbitEnabled: true,
@@ -25,7 +25,6 @@ function reset() {
     pendingDimEntityKind: null,
     pendingDialog: null,
     planeSelectionFeatureId: null,
-    hoveredEntityId: null,
     hoveredVertexId: null,
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
@@ -462,15 +461,15 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().hoveredSnapKind).toBe('midpoint')
     })
 
-    it('setHoveredEntity updates hovered entity', () => {
-      useSketchEditorStore.getState().setHoveredEntity('entity:S1:L1')
-      expect(useSketchEditorStore.getState().hoveredEntityId).toBe('entity:S1:L1')
+    it('setHoveredSelectionId updates hoveredSelectionId', () => {
+      useSketchEditorStore.getState().setHoveredSelectionId('entity:S1:L1')
+      expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('entity:S1:L1')
     })
 
-    it('setHoveredEntity clears on null', () => {
-      useSketchEditorStore.getState().setHoveredEntity('entity:S1:L1')
-      useSketchEditorStore.getState().setHoveredEntity(null)
-      expect(useSketchEditorStore.getState().hoveredEntityId).toBeNull()
+    it('setHoveredSelectionId clears on null', () => {
+      useSketchEditorStore.getState().setHoveredSelectionId('entity:S1:L1')
+      useSketchEditorStore.getState().setHoveredSelectionId(null)
+      expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
     })
 
     it('setHoveredConstraintEntities updates constraint-highlighted entities', () => {
@@ -479,37 +478,37 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(ids)
     })
 
-    it('setHoveredPlane updates hovered plane', () => {
-      useSketchEditorStore.getState().setHoveredPlane('@builtin_plane_front')
-      expect(useSketchEditorStore.getState().hoveredPlaneId).toBe('@builtin_plane_front')
+    it('setHoveredSelectionId updates hoveredSelectionId (plane)', () => {
+      useSketchEditorStore.getState().setHoveredSelectionId('@builtin_plane_front')
+      expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('@builtin_plane_front')
     })
 
-    it('setHoveredPlane clears on null', () => {
-      useSketchEditorStore.getState().setHoveredPlane('@sketch1')
-      useSketchEditorStore.getState().setHoveredPlane(null)
-      expect(useSketchEditorStore.getState().hoveredPlaneId).toBeNull()
+    it('setHoveredSelectionId clears on null (plane)', () => {
+      useSketchEditorStore.getState().setHoveredSelectionId('@sketch1')
+      useSketchEditorStore.getState().setHoveredSelectionId(null)
+      expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
     })
 
-    it('setHoveredSurface updates hovered surface', () => {
-      useSketchEditorStore.getState().setHoveredSurface('face:sketch1:?3;@sketch1abc')
-      expect(useSketchEditorStore.getState().hoveredSurfaceId).toBe('face:sketch1:?3;@sketch1abc')
+    it('setHoveredSelectionId updates hoveredSelectionId (surface)', () => {
+      useSketchEditorStore.getState().setHoveredSelectionId('face:sketch1:?3;@sketch1abc')
+      expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('face:sketch1:?3;@sketch1abc')
     })
 
-    it('setHoveredSurface clears on null', () => {
-      useSketchEditorStore.getState().setHoveredSurface('face:sketch1:?3;@sketch1abc')
-      useSketchEditorStore.getState().setHoveredSurface(null)
-      expect(useSketchEditorStore.getState().hoveredSurfaceId).toBeNull()
+    it('setHoveredSelectionId clears on null (surface)', () => {
+      useSketchEditorStore.getState().setHoveredSelectionId('face:sketch1:?3;@sketch1abc')
+      useSketchEditorStore.getState().setHoveredSelectionId(null)
+      expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
     })
 
-    it('setHovered3DSurface updates hovered 3D surface', () => {
-      useSketchEditorStore.getState().setHovered3DSurface('?d,d;@extrude1face0:face')
-      expect(useSketchEditorStore.getState().hovered3DSurfaceId).toBe('?d,d;@extrude1face0:face')
+    it('setHoveredSelectionId updates hoveredSelectionId (3D surface)', () => {
+      useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
+      expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('?d,d;@extrude1face0:face')
     })
 
-    it('setHovered3DSurface clears on null', () => {
-      useSketchEditorStore.getState().setHovered3DSurface('?d,d;@extrude1face0:face')
-      useSketchEditorStore.getState().setHovered3DSurface(null)
-      expect(useSketchEditorStore.getState().hovered3DSurfaceId).toBeNull()
+    it('setHoveredSelectionId clears on null (3D surface)', () => {
+      useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
+      useSketchEditorStore.getState().setHoveredSelectionId(null)
+      expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
     })
 
     it('hoveredSnapKind can be path', () => {

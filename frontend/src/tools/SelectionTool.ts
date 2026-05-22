@@ -1,9 +1,8 @@
 import type { Tool, ToolCategory, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
 
 export interface SelectionToolContext extends ToolContext {
-  internalHoverSelection: string | null
+  hoveredSelectionId: string | null
   normalSelection: Set<string>
-  setInternalHoverSelection: (id: string | null) => void
   clearNormalSelection: () => void
   toggleNormalSelection: (id: string) => void
 }
@@ -19,7 +18,7 @@ export function createSelectionTool(): SelectionTool {
     },
 
     onClick: (_e, _worldPt, context) => {
-      const hoverId = context.internalHoverSelection
+      const hoverId = context.hoveredSelectionId
       if (hoverId) {
         context.toggleNormalSelection(hoverId)
       } else {

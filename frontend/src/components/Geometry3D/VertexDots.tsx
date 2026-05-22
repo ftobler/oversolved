@@ -91,10 +91,10 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId }: { x: number;
   const entId = `entity:${featureId}:${entityId}`
   const selected = useSketchEditorStore(s => s.normalSelection.has(entId))
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
-  const internalHoverSelection = useSketchEditorStore(s => s.internalHoverSelection)
+  const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
 
-  // Hover state is driven by the ID-buffer dispatcher (267.5).
-  const hovered = internalHoverSelection === entId
+  // Hover state is driven by the ID-buffer dispatcher.
+  const hovered = hoveredSelectionId === entId
 
   useFrame(() => {
     const scale = 7 * p2w(camera)

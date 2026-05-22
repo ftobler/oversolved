@@ -27,10 +27,9 @@ function resetStore() {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
     chipOwnedSelection: new Set(),
-    internalHoverSelection: null,
+    hoveredSelectionId: null,
     activeFeatureId: null,
     planeSelectionFeatureId: null,
-    hovered3DSurfaceId: null,
   })
 }
 

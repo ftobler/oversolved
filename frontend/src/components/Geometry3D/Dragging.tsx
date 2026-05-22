@@ -83,7 +83,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
             const state = useSketchEditorStore.getState()
             const ctx: DragToolContext = {
               normalSelection: state.normalSelection,
-              internalHoverSelection: state.internalHoverSelection,
+              hoveredSelectionId: state.hoveredSelectionId,
               isPointerDown: state.isPointerDown,
               activeFeatureId: state.activeFeatureId,
               hoveredVertexId: dragPending.vertexId,
@@ -199,7 +199,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
     const state = useSketchEditorStore.getState()
     const context: DragToolContext = {
       normalSelection: state.normalSelection,
-      internalHoverSelection: state.internalHoverSelection,
+      hoveredSelectionId: state.hoveredSelectionId,
       isPointerDown: state.isPointerDown,
       activeFeatureId: state.activeFeatureId,
       hoveredVertexId: state.hoveredVertexId,

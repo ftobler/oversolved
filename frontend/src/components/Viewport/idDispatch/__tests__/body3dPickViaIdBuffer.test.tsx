@@ -18,8 +18,7 @@ beforeEach(() => {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
     planeSelectionFeatureId: null,
-    hovered3DSurfaceId: null,
-    hoveredBodyId: null,
+    hoveredSelectionId: null,
     hoveredFaceNormal: null,
     hoveredFaceCenter: null,
   })
@@ -37,8 +36,6 @@ describe('body3dPickViaIdBuffer', () => {
       mesh: stubMesh(['@feat1/face/0', '@feat1/face/1']),
       edgeQueries: undefined,
       vertexQueries: undefined,
-      setHoveredEdgeIndex: () => {},
-      setHoveredVertexIndex: () => {},
       updateFaceGeometryForQuery: () => {},
       clearFaceGeometry: () => {},
     })
@@ -58,8 +55,6 @@ describe('body3dPickViaIdBuffer', () => {
       mesh: stubMesh(),
       edgeQueries: ['@feat2/edge/0', '@feat2/edge/1'],
       vertexQueries: undefined,
-      setHoveredEdgeIndex: () => {},
-      setHoveredVertexIndex: () => {},
       updateFaceGeometryForQuery: () => {},
       clearFaceGeometry: () => {},
     })
@@ -79,8 +74,6 @@ describe('body3dPickViaIdBuffer', () => {
       mesh: stubMesh(),
       edgeQueries: undefined,
       vertexQueries: ['@feat3/vertex/0'],
-      setHoveredEdgeIndex: () => {},
-      setHoveredVertexIndex: () => {},
       updateFaceGeometryForQuery: () => {},
       clearFaceGeometry: () => {},
     })
@@ -99,8 +92,6 @@ describe('body3dPickViaIdBuffer', () => {
       mesh: stubMesh(['@feat4/face/0']),
       edgeQueries: undefined,
       vertexQueries: undefined,
-      setHoveredEdgeIndex: () => {},
-      setHoveredVertexIndex: () => {},
       updateFaceGeometryForQuery: () => {},
       clearFaceGeometry: () => {},
     })

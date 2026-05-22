@@ -22,13 +22,12 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
 
   // Store reads for selection display and hover.
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
-  const internalHoverSelection = useSketchEditorStore(s => s.internalHoverSelection)
+  const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const selected = normalSelection.has(entId)
 
-  // Hover state is now driven by the ID-buffer dispatcher (267.5).
-  // The dispatcher writes internalHoverSelection → we derive local hover flag.
-  const hovered = internalHoverSelection === entId
+  // Hover state is driven by the ID-buffer dispatcher.
+  const hovered = hoveredSelectionId === entId
 
   const e = entity
   const construction = 'construction' in e && e.construction

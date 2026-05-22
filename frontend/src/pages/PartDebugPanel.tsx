@@ -13,11 +13,8 @@ interface PartDebugPanelProps {
 }
 
 export default function PartDebugPanel({ debugOpen }: PartDebugPanelProps) {
-  const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
+  const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
-  const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)
-  const hoveredSurfaceId = useSketchEditorStore(s => s.hoveredSurfaceId)
-  const hovered3DSurfaceId = useSketchEditorStore(s => s.hovered3DSurfaceId)
   const selection = useSketchEditorStore(s => s.normalSelection)
 
   const undoStack = usePartEditorStore(s => s.undoStack) as UndoEntry[]
@@ -79,11 +76,8 @@ export default function PartDebugPanel({ debugOpen }: PartDebugPanelProps) {
         <div className="debug-content">
           <div className="debug-section">
             <div className="debug-section-title">Hover</div>
-            {hoveredEntityId ? <div className="debug-value">{hoveredEntityId}</div>
+            {hoveredSelectionId ? <div className="debug-value">{hoveredSelectionId}</div>
               : hoveredVertexId ? <div className="debug-value">{hoveredVertexId}</div>
-              : hoveredPlaneId ? <div className="debug-value">{hoveredPlaneId}</div>
-              : hoveredSurfaceId ? <div className="debug-value">{hoveredSurfaceId}</div>
-              : hovered3DSurfaceId ? <div className="debug-value">{hovered3DSurfaceId}</div>
               : <div className="debug-empty">none</div>}
           </div>
           <div className="debug-section">

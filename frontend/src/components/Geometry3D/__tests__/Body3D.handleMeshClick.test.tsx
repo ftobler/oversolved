@@ -20,9 +20,9 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 // If Body3D ever re-introduces the @bodyId auto-add, this mirror must NOT be
 // updated to match -- it documents the intended contract for the file.
 function simulateFaceClick(hoverQuery: string) {
-  useSketchEditorStore.getState().setHovered3DSurface(hoverQuery)
+  useSketchEditorStore.getState().setHoveredSelectionId(hoverQuery)
   const state = useSketchEditorStore.getState()
-  const currentHover = state.hovered3DSurfaceId
+  const currentHover = state.hoveredSelectionId
   if (!currentHover) return
   if (state.planeSelectionFeatureId) {
     state.commitPlaneSelection(currentHover)
@@ -35,7 +35,7 @@ beforeEach(() => {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
     planeSelectionFeatureId: null,
-    hovered3DSurfaceId: null,
+    hoveredSelectionId: null,
   })
 })
 
@@ -65,10 +65,10 @@ describe('Body3D.handleMeshClick contract', () => {
   })
 
   it('clicking without a hover target does nothing', () => {
-    // hovered3DSurfaceId stays null (beforeEach default).
+    // hoveredSelectionId stays null (beforeEach default).
     const state = useSketchEditorStore.getState()
-    if (state.hovered3DSurfaceId) {
-      state.toggleNormalSelection(state.hovered3DSurfaceId)
+    if (state.hoveredSelectionId) {
+      state.toggleNormalSelection(state.hoveredSelectionId)
     }
     expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
   })

@@ -16,13 +16,12 @@ export default function UserDefinedPlane({
   size?: number
 }) {
   const drag = useSketchEditorStore(s => s.drag)
-  const hoveredPlaneId = useSketchEditorStore(s => s.hoveredPlaneId)
+  const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
   const selected = useSketchEditorStore(s => s.normalSelection.has(`@${featureId}`))
   const isDragging = drag !== null
   const selId = `@${featureId}`
 
-  // Hover state is now driven by the ID-buffer dispatcher (267.5).
-  const hovered = hoveredPlaneId === selId
+  const hovered = hoveredSelectionId === selId
   const planeState: PlaneState = hovered ? 'hovered' : selected ? 'selected' : 'default'
   const rot = planeRotationFromTransform(planeTransform)
   const [ox, oy, oz] = planeTransform.origin

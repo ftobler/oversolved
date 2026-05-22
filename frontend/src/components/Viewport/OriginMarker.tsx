@@ -13,10 +13,9 @@ export default function OriginMarker() {
   const { camera } = useThree()
   const selId = builtinSelectionId('Origin')
   const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
-  const hoveredEntityId = useSketchEditorStore(s => s.hoveredEntityId)
+  const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
 
-  // Hover state is now driven by the ID-buffer dispatcher (267.5).
-  const hovered = hoveredEntityId === selId
+  const hovered = hoveredSelectionId === selId
 
   useOriginMarkerIdRegistration({ selectionId: selId })
 

@@ -71,7 +71,7 @@ beforeEach(() => {
   useSketchEditorStore.setState({
     closeContextMenu: () => {},
     clearNormalSelection: () => {},
-    setHoveredBodyId: () => {},
+    setHoveredSelectionId: () => {},
     showDebugHit: false,
   })
   usePartEditorStore.setState({

@@ -7,7 +7,7 @@ beforeEach(() => {
   setSketchCallback('onExitSketch', null)
   useSketchEditorStore.setState({
     normalSelection: new Set(['@builtin_plane_top']),
-    hovered3DSurfaceId: null,
+    hoveredSelectionId: null,
   })
   // Push 'plane_selection' mode so commitPlaneSelection can pop it
   useSketchEditorStore.getState().setPlaneSelectionFeatureId('sk1')
