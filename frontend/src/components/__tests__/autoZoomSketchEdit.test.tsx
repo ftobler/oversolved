@@ -130,4 +130,26 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     // Camera zoom must not have been changed — auto-zoom is suppressed during sketch edit.
     expect(testCamera.zoom).toBe(999)
   })
+
+  it('does not zoom when bodies arrive before activeSketchFeatureId is synced (race condition)', async () => {
+    const ref = createRef<ViewportHandle>()
+    render(<Viewport ref={ref} />)
+
+    await act(async () => {
+      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+    })
+    testCamera.zoom = 999
+    testCamera.updateProjectionMatrix()
+
+    // Simulate the race: bodies update arrives in a separate act before activeSketchFeatureId is set.
+    await act(async () => {
+      usePartEditorStore.setState({ bodies: {} })
+      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+    })
+    await act(async () => {
+      usePartEditorStore.setState({ activeSketchFeatureId: 'sk1' })
+    })
+
+    expect(testCamera.zoom).toBe(999)
+  })
 })

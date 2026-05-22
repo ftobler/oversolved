@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { PartFeature, PartDoc } from '@/types/cad'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
 
@@ -93,6 +94,10 @@ export function useEditFeature({
   const enterEditFeature = useCallback((featureId: string, suppressUndo = true) => {
     const idx = features.findIndex(f => f.id === featureId)
     if (idx < 0) return
+    // Set synchronously so the Viewport zoom guard sees it before any cache-driven bodies update.
+    if (features[idx].kind === 'sketch') {
+      usePartEditorStore.getState().setActiveSketchFeatureId(featureId)
+    }
     startEditSession(suppressUndo)
     setSavedRollbackPosition(rollbackPosition ?? features.length)
     editEntryRollback.current = idx + 1

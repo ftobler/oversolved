@@ -51,9 +51,11 @@ export const DEFAULT_PART_EDITOR_DATA: PartEditorData = {
 
 interface PartEditorState extends PartEditorData {
   setSnapshot: (data: PartEditorData) => void
+  setActiveSketchFeatureId: (id: string | null) => void
 }
 
 export const usePartEditorStore = create<PartEditorState>((set) => ({
   ...DEFAULT_PART_EDITOR_DATA,
   setSnapshot: (data) => set(data),
+  setActiveSketchFeatureId: (id) => set({ activeSketchFeatureId: id }),
 }))

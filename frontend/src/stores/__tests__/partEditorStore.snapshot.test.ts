@@ -36,7 +36,7 @@ describe('partEditorStore snapshot contract', () => {
 
   it('field list in DEFAULT_PART_EDITOR_DATA matches field list after setSnapshot', () => {
     usePartEditorStore.getState().setSnapshot(DEFAULT_PART_EDITOR_DATA)
-    const afterReset = Object.keys(usePartEditorStore.getState()).filter(k => k !== 'setSnapshot').sort()
+    const afterReset = Object.keys(usePartEditorStore.getState()).filter(k => k !== 'setSnapshot' && k !== 'setActiveSketchFeatureId').sort()
     const defaultKeys = Object.keys(DEFAULT_PART_EDITOR_DATA).sort()
     expect(afterReset).toEqual(defaultKeys)
   })
