@@ -247,3 +247,74 @@ def test_area_reid_no_match_means_new_identity():
     new_resolved = repo.query(new_surface_query)
     assert new_resolved is not None, "new surface's own query must resolve"
     assert new_resolved.get("type") == "flatface"
+
+
+def _circle(cx, cy, r):
+    return {"center": [cx, cy], "radius": r}
+
+
+def test_area_reid_after_entity_delete():
+    """Deleting one entity from a sketch must not break area queries for
+    remaining entities when re-solving from prev_state (first_dirty=0).
+
+    Regression test for the incremental rebuild path: _post_register reads
+    prev_topo from the fresh repo, which is empty on a full rebuild. The fix
+    pre-populates _topo_<fid> from prev_state's checkpoints so area RE-ID
+    can still map old surface indices to new ones.
+    """
+    sid = "sk_entity_delete"
+    c1 = "circle_one"
+    c2 = "circle_two"
+
+    # First solve: sketch with two circles.
+    old_geom = {c1: _circle(0, 0, 3), c2: _circle(10, 0, 2)}
+    old_topo = detect_topology(old_geom, feature_id=sid)
+    assert len(old_topo["surfaces"]) == 2, "setup: 2 circles must produce 2 surfaces"
+    c2_old_query = old_topo["surfaces"][1]["query"]  # circle2's surface query
+
+    repo = _init_global_repo()
+    _post_register_topo(
+        repo, sid,
+        [{"id": c1, "kind": "circle"}, {"id": c2, "kind": "circle"}],
+        old_topo,
+    )
+
+    # Simulate the repo snapshot that builder saves in the checkpoint.
+    repo_snapshot = {
+        "elements": dict(repo.elements),
+        "ancestral": {k: list(v) for k, v in repo.ancestral.items()},
+        "by_geom_hash": {k: list(v) for k, v in repo.by_geom_hash.items()},
+    }
+
+    # Second solve: delete circle_one, only circle_two remains.
+    new_geom = {c2: _circle(10, 0, 2)}
+    new_topo = detect_topology(new_geom, feature_id=sid)
+    assert len(new_topo["surfaces"]) == 1, "after delete: must produce 1 surface"
+
+    # Simulate incremental rebuild with prev_state (first_dirty=0).
+    # The fresh repo must be pre-populated with _topo_<sid> from prev_state.
+    fresh_repo = _init_global_repo()
+    prev_topo_entry = repo_snapshot.get("elements", {}).get("_topo_" + sid)
+    if prev_topo_entry is not None:
+        fresh_repo.elements["_topo_" + sid] = prev_topo_entry
+
+    _post_register_topo(
+        fresh_repo, sid,
+        [{"id": c2, "kind": "circle"}],
+        new_topo,
+    )
+
+    # circle2's OLD surface query must still resolve after the re-solve.
+    resolved = fresh_repo.query(c2_old_query)
+    assert resolved is not None, (
+        "area re-id after entity delete: old surface query for remaining "
+        "entity must survive re-solve"
+    )
+    assert resolved.get("type") == "flatface"
+
+    # The old query for circle_one must NOT resolve (entity was deleted).
+    c1_old_query = old_topo["surfaces"][0]["query"]
+    resolved_c1 = fresh_repo.query(c1_old_query)
+    assert resolved_c1 is None, (
+        "area re-id: query for deleted entity's surface must return None"
+    )

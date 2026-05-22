@@ -14,7 +14,6 @@ function createMockContext(overrides: Partial<SelectionToolContext> = {}): Selec
     onMutation: null,
     pushMode: vi.fn(),
     popMode: vi.fn(),
-    setHoveredSelectionId: vi.fn(),
     clearNormalSelection: vi.fn(),
     toggleNormalSelection: vi.fn(),
     ...overrides,

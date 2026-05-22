@@ -19,7 +19,6 @@ function createMockContext(overrides: Partial<DrawingToolContext> = {}): Drawing
     setDrawHover: vi.fn(),
     clearDraw: vi.fn(),
     setActiveTool: vi.fn(),
-    hoveredSelectionId: null,
     alignmentSnapPoint: null,
     alignmentSnapKind: null,
     alignmentSnapVertexId: null,

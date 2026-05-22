@@ -698,6 +698,22 @@ def build(
     result: dict[str, Any] = {}
     new_checkpoints: dict[str, FeatureCheckpoint] = {}
 
+    # When rebuilding from scratch (first_dirty=0) with a prev_state, preserve
+    # the previous topology in the fresh repo so _post_register can apply
+    # area re-ID (match_area_reid) for downstream features that reference old
+    # surface queries. Without this, the new solve loses the old topology and
+    # area re-ID never fires, breaking unrelated extrudes after entity deletion.
+    if prev_state and first_dirty == 0:
+        for feature in features:
+            fid = feature.get("id", "")
+            prev_cp = prev_state.checkpoints.get(fid)
+            if prev_cp is None:
+                continue
+            topo_key = "_topo_" + fid
+            prev_topo = prev_cp.repo_snapshot.get("elements", {}).get(topo_key)
+            if prev_topo is not None:
+                global_repo.elements[topo_key] = prev_topo
+
     t0 = time.perf_counter()
 
     if prev_state and first_dirty > 0:
