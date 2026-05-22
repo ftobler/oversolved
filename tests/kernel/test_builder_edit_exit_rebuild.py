@@ -61,18 +61,24 @@ def _build_stack(distance: float):
     edge_queries = seed["bodies"][body_id]["edge_queries"]
     assert len(edge_queries) >= 2, "need at least two edges on the box"
 
+    # Use index-based queries so the fillet/chamfer resolve correctly even after
+    # the extrude distance changes (hash-based queries become stale when the
+    # geometry changes). Index queries are stable across parameter edits.
+    index_q0 = f"?{body_id}:edge:0"
+    index_q1 = f"?{body_id}:edge:1"
+
     fillet = {
         "id": "fil1",
         "kind": "fillet",
         "label": "Fillet",
-        "edges": [edge_queries[0]],
+        "edges": [index_q0],
         "radius": 0.5,
     }
     chamfer = {
         "id": "ch1",
         "kind": "chamfer",
         "label": "Chamfer",
-        "edges": [edge_queries[1]],
+        "edges": [index_q1],
         "distance": 0.5,
     }
 
@@ -94,15 +100,16 @@ def test_rollback_edit_exit_rebuilds_downstream():
     hash_before = _mesh_hash(r1["bodies"][ch_body_id_1])
 
     # Simulate "user edited ex1 distance to 8.0 inside edit mode".
+    body_id = next(bid for bid in r1["bodies"] if r1["bodies"][bid]["created_by"] == "ex1")
     sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
     ex1_modified = extrude_spec("sk1", "ex1", distance=8.0)
     fillet = {
         "id": "fil1", "kind": "fillet", "label": "Fillet",
-        "edges": [edge_queries[0]], "radius": 0.5,
+        "edges": [f"?{body_id}:edge:0"], "radius": 0.5,
     }
     chamfer = {
         "id": "ch1", "kind": "chamfer", "label": "Chamfer",
-        "edges": [edge_queries[1]], "distance": 0.5,
+        "edges": [f"?{body_id}:edge:1"], "distance": 0.5,
     }
 
     # This is what the frontend should send on edit exit: FULL feature list,
@@ -136,15 +143,16 @@ def test_find_first_dirty_after_param_edit():
     r1, edge_queries = _build_stack(distance=5.0)
     state1 = r1["_build_state"]
 
+    body_id = next(bid for bid in r1["bodies"] if r1["bodies"][bid]["created_by"] == "ex1")
     sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
     ex1_modified = extrude_spec("sk1", "ex1", distance=8.0)
     fillet = {
         "id": "fil1", "kind": "fillet", "label": "Fillet",
-        "edges": [edge_queries[0]], "radius": 0.5,
+        "edges": [f"?{body_id}:edge:0"], "radius": 0.5,
     }
     chamfer = {
         "id": "ch1", "kind": "chamfer", "label": "Chamfer",
-        "edges": [edge_queries[1]], "distance": 0.5,
+        "edges": [f"?{body_id}:edge:1"], "distance": 0.5,
     }
 
     new_features = [sk1, ex1_modified, fillet, chamfer]

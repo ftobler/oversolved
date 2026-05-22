@@ -197,6 +197,15 @@ def _resolve_edges_with_index(
         if edge is None and not strict and q.startswith("?"):
             try:
                 ids, type_restriction = _parse_ancestry(q)
+                # If the query carries a geometry hash and Tier 3 didn't match,
+                # the edge definitively does not exist on this body. The hash
+                # encodes the edge's geometric identity; a non-match means the
+                # edge was removed, not just moved. Skipping the fallback lets
+                # the fillet correctly fail instead of silently rounding the
+                # wrong edge (a false positive).
+                if any(id_str.startswith("@gedge_") for id_str in ids):
+                    fallback_failed += 1
+                    continue
                 body_id_from_query = None
                 for id_str in ids:
                     if id_str.startswith("@body_"):

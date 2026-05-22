@@ -1074,3 +1074,44 @@ def test_fillet_all_edges_missing_is_hard_exception():
     r = build(spec)
     assert r['result']['fil']['status'] == 'exception'
     assert 'no edges resolved' in r['result']['fil'].get('exception', '')
+
+
+def test_fillet_fails_on_stale_gedge_hash():
+    """A hash-only edge query with a stale @gedge_ hash must not silently
+    fillet the wrong edge via the body-scoped type fallback.
+
+    When an upstream extrude that created/modified an edge is removed, the
+    edge no longer exists on the body. The edge query's @gedge_ hash won't
+    match any current edge. Before the fix, Tier 4 of _resolve_edges_with_index
+    would still find the first edge of matching type on the body (false
+    positive). Now the fallback is skipped when the query carries a @gedge_
+    hash that didn't match -- the hash is the authoritative identifier.
+    """
+    from oversolved.kernel.builder import build
+    from solver_helpers import rect_sketch_spec, extrude_spec
+
+    sk1 = rect_sketch_spec(w=10, h=10, sketch_id='sk1')
+    ex1 = extrude_spec('sk1', 'ex1', 5, operation='new')
+    spec = {'features': [sk1, ex1]}
+    r0 = build(spec)
+    body_id = 'body_ex1'
+    q = r0['bodies'][body_id]['edge_queries'][0]
+    assert q.startswith('?')
+
+    # Build a query with the same body/created_by tokens but a bogus gedge hash.
+    from oversolved.kernel.query import _parse_ancestry, make_ancestry_query
+    ids, type_restriction = _parse_ancestry(q)
+    bogus_ids = [
+        '@gedge_deadbeef00000001' if i.startswith('@gedge_') else i
+        for i in ids
+    ]
+    stale_q = make_ancestry_query(bogus_ids, type_restriction)
+
+    spec['features'].append({
+        'id': 'fil', 'kind': 'fillet', 'label': 'F',
+        'edges': [stale_q], 'radius': 0.5,
+    })
+    r = build(spec)
+    assert r['result']['fil']['status'] == 'exception', (
+        "fillet must not resolve a stale gedge hash to a different edge"
+    )
