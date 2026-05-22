@@ -385,30 +385,14 @@ def submit_bug_report():
         else "N/A"
     )
     selection = data.get("selection") or []
-    solve_results = data.get("solveResults")
-    if solve_results:
-        solve_yaml = yaml.dump(solve_results, default_flow_style=False)
-        solve_text = f"```yaml{chr(10)}{solve_yaml}{chr(10)}```"
-    else:
-        solve_text = "*(not available)*"
-    internal_state = data.get("internalState") or {}
     history = data.get("history") or []
     history_section = _format_history(history)
 
     markdown = f"""# Bug Report: {title}
 
-**Timestamp:** {datetime.now(timezone.utc).isoformat()}
-
 ## Description
 
 {description}
-
-## Internal State
-
-- **Mode:** {internal_state.get("mode", "N/A")}
-- **Active Tool:** {internal_state.get("activeTool", "N/A")}
-- **Editing Feature:** {internal_state.get("editingFeatureId", "N/A")}
-- **Active Sketch:** {internal_state.get("activeSketchFeatureId", "N/A")}
 
 ## Selection
 
@@ -423,10 +407,6 @@ def submit_bug_report():
 ```yaml
 {ast_yaml}
 ```
-
-## Solver Result
-
-{solve_text}
 
 ## Edit History
 

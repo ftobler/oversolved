@@ -686,7 +686,6 @@ export default function Part() {
         rightPanel={
           <PartDebugPanel
             debugOpen={debugOpen && !!user?.is_admin}
-            mode={mode}
           />
         }
       >

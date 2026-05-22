@@ -3,8 +3,6 @@ import '@/components/BugReporter.css'
 export interface BugReportAttachments {
   ast: boolean
   selection: boolean
-  solveResults: boolean
-  internalState: boolean
   history: boolean
   historyCount: number
 }
@@ -18,7 +16,6 @@ interface BugReporterProps {
   setBugReportAttachments: (a: (prev: BugReportAttachments) => BugReportAttachments) => void
   onSubmit: () => void
   selectionCount?: number
-  hasSolveResults?: boolean
   undoStackCount?: number
 }
 
@@ -31,7 +28,6 @@ export function BugReporter({
   setBugReportAttachments,
   onSubmit,
   selectionCount = 0,
-  hasSolveResults = false,
   undoStackCount = 0,
 }: BugReporterProps) {
   return (
@@ -85,26 +81,6 @@ export function BugReporter({
                 disabled={bugReporting}
               />
               Selection ({selectionCount} items)
-            </label>
-            {hasSolveResults && (
-              <label className="bug-report-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={bugReportAttachments.solveResults}
-                  onChange={(e) => setBugReportAttachments(a => ({ ...a, solveResults: e.target.checked }))}
-                  disabled={bugReporting}
-                />
-                Solver result
-              </label>
-            )}
-            <label className="bug-report-checkbox-label">
-              <input
-                type="checkbox"
-                checked={bugReportAttachments.internalState}
-                onChange={(e) => setBugReportAttachments(a => ({ ...a, internalState: e.target.checked }))}
-                disabled={bugReporting}
-              />
-              Edit mode & tool state
             </label>
             <label className="bug-report-checkbox-label">
               <input
