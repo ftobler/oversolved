@@ -38,6 +38,16 @@ export function dispatchSketchClick(
 
   if (tool?.handlers.onClick) {
     if (effectiveTool === 'dimension' && !state.activeFeatureId) return
+    // For the select tool, toggle the entity directly under the cursor at
+    // click time (resolved synchronously from the ID buffer) instead of
+    // relying on `internalHoverSelection` which may be stale (set by the
+    // async hover path from the last pointermove). This ensures clicking
+    // an entity always toggles the correct entity regardless of cursor
+    // distance or hover timing.
+    if (effectiveTool === 'select') {
+      state.toggleNormalSelection(id)
+      return
+    }
     tool.handlers.onClick(
       { clientX, clientY } as PointerEvent,
       [0, 0] as Point,

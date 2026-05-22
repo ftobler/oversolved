@@ -87,7 +87,7 @@ export function useRubberBandSelect(
     // Don't show a box until the user has dragged at least 4px.
     if (w < 4 && h < 4) return
 
-    const mode: 'window' | 'crossing' = cx >= startRef.current[0] ? 'window' : 'crossing'
+    const mode: 'window' | 'crossing' = 'crossing'
     const nextRect = { x, y, w, h, mode }
     rectRef.current = nextRect
     setRect(nextRect)
@@ -195,6 +195,7 @@ export function useRubberBandSelect(
       }
 
       entities = collectEntitiesFromPixels(flipped, rw, rh, pipeline.registry)
+
     }
 
     // Apply layer filter.
