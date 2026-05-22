@@ -494,10 +494,14 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         || s.hoveredPlaneId
         || s.hoveredEdgeId
         || s.hoveredConstraintEntityIds.size > 0
-      if (!hasHover && !s.activeFeatureId) {
-        const started = rubberBand.onPointerDown(e, false)
-        // If started (no hit), don't prevent default — let pointer-up determine click vs drag.
-        void started
+      if (!hasHover) {
+        const currentTool = s.activeTool
+        // Only start rubber-band for non-drawing tools (null, select, drag, dimension).
+        if (!currentTool || currentTool === 'select' || currentTool === 'drag' || currentTool === 'dimension') {
+          const started = rubberBand.onPointerDown(e, false)
+          // If started (no hit), don't prevent default — let pointer-up determine click vs drag.
+          void started
+        }
       }
     }
   }, [closeContextMenu, rubberBand])
