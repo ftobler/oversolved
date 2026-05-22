@@ -318,3 +318,62 @@ def test_area_reid_after_entity_delete():
     assert resolved_c1 is None, (
         "area re-id: query for deleted entity's surface must return None"
     )
+
+
+def test_area_reid_symmetric_entity_delete():
+    """Symmetric to test_area_reid_after_entity_delete: deleting circle_two
+    (instead of circle_one) must preserve circle_one's query and break
+    circle_two's -- the same logic works regardless of which entity is deleted.
+    """
+    sid = "sk_sym_del"
+    c1 = "circle_one"
+    c2 = "circle_two"
+
+    old_geom = {c1: _circle(0, 0, 3), c2: _circle(10, 0, 2)}
+    old_topo = detect_topology(old_geom, feature_id=sid)
+    assert len(old_topo["surfaces"]) == 2
+    c1_old_query = old_topo["surfaces"][0]["query"]
+
+    repo = _init_global_repo()
+    _post_register_topo(
+        repo, sid,
+        [{"id": c1, "kind": "circle"}, {"id": c2, "kind": "circle"}],
+        old_topo,
+    )
+
+    repo_snapshot = {
+        "elements": dict(repo.elements),
+        "ancestral": {k: list(v) for k, v in repo.ancestral.items()},
+        "by_geom_hash": {k: list(v) for k, v in repo.by_geom_hash.items()},
+    }
+
+    # Second solve: delete circle_two, only circle_one remains.
+    new_geom = {c1: _circle(0, 0, 3)}
+    new_topo = detect_topology(new_geom, feature_id=sid)
+    assert len(new_topo["surfaces"]) == 1
+
+    fresh_repo = _init_global_repo()
+    prev_topo_entry = repo_snapshot.get("elements", {}).get("_topo_" + sid)
+    if prev_topo_entry is not None:
+        fresh_repo.elements["_topo_" + sid] = prev_topo_entry
+
+    _post_register_topo(
+        fresh_repo, sid,
+        [{"id": c1, "kind": "circle"}],
+        new_topo,
+    )
+
+    # circle_one's OLD surface query must still resolve after the re-solve.
+    resolved = fresh_repo.query(c1_old_query)
+    assert resolved is not None, (
+        "area re-id after deleting circle_two: old surface query for circle_one "
+        "must survive re-solve"
+    )
+    assert resolved.get("type") == "flatface"
+
+    # The old query for circle_two must NOT resolve (entity was deleted).
+    c2_old_query = old_topo["surfaces"][1]["query"]
+    resolved_c2 = fresh_repo.query(c2_old_query)
+    assert resolved_c2 is None, (
+        "area re-id: query for deleted circle_two's surface must return None"
+    )
