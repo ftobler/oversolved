@@ -11,7 +11,7 @@ from oversolved.kernel.types3d import Body
 from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, _compute_face_centroid, _compute_face_normal, _triangle_area
 from oversolved.kernel.geometry_tessellation import edge_to_geom_dict
 from oversolved.kernel.geom_hash import edge_geometry_hash, face_geometry_hash
-from oversolved.kernel.query import make_ancestry_query, _parse_ancestry
+from oversolved.kernel.query import make_ancestry_query, _parse_ancestry, ref, index_ref
 from oversolved.kernel.geometry_features import apply_fillet, apply_chamfer
 from oversolved.kernel.solver_features_shared import _resolve_body
 
@@ -122,16 +122,16 @@ def _build_edge_index(body: Body) -> _EdgeIndex:
             if geom_hash in new_edge_hashes:
                 edge_created_by = body.modified_by[-1]
             aq_hash = make_ancestry_query(
-                [f"@{geom_hash}", f"@{edge_created_by}", f"@{body.id}"], et
+                [ref(geom_hash), ref(edge_created_by), ref(body.id)], et
             )
             query_to_edge[aq_hash] = te
 
             aq = make_ancestry_query(
-                [f"@{body.created_by}edge{idx}", f"@{body.created_by}"], et
+                [index_ref(body.created_by, "edge", idx), ref(body.created_by)], et
             )
             query_to_edge[aq] = te
             aq3 = make_ancestry_query(
-                [f"@{body.id}edge{idx}", f"@{body.created_by}", f"@{body.id}"], et
+                [index_ref(body.id, "edge", idx), ref(body.created_by), ref(body.id)], et
             )
             query_to_edge[aq3] = te
         query_to_edge[f"?{body.id}:edge:{idx}"] = te
@@ -291,7 +291,7 @@ def _resolve_face_to_edges(q: str, body: Body) -> list[TopoDS_Shape]:
         area = sum(_triangle_area(verts_list[t[0]], verts_list[t[1]], verts_list[t[2]]) for t in idxs)
         gh = face_geometry_hash(centroid, normal, area)
         aq = make_ancestry_query(
-            [f"@{gh}", f"@{body.created_by}", f"@{body.id}"], type_restriction
+            [ref(gh), ref(body.created_by), ref(body.id)], type_restriction
         )
         if aq == q:
             occ_face = _ensure_occ(cq_face)

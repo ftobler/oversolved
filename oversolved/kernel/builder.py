@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 from oversolved.kernel.cadquery_ops import _normal_to_frame, _ensure_occ
 from oversolved.kernel.ocp_ops import ocp_copy_shape
 from oversolved.kernel.geom_hash import face_geometry_hash, edge_geometry_hash, vertex_geometry_hash
-from oversolved.kernel.query import Repository, emit_wire, absolute, _evict_ancestry_and_register
+from oversolved.kernel.query import Repository, emit_wire, absolute, _evict_ancestry_and_register, ref
 from oversolved.kernel.geometry_tessellation import MeshDict
 from oversolved.kernel.types3d import Body, FeatureCheckpoint, BuildState
 from oversolved.kernel.solver import _init_global_repo, _try_solve_feature
@@ -411,7 +411,7 @@ def _register_solid_ancestry(global_repo, body: Body) -> None:
     if global_repo is None or not body.created_by:
         return
     global_repo.register_ancestor(
-        [f"@{body.created_by}"],
+        [ref(body.created_by)],
         {"type": "solid", "body_id": body.id, "created_by": body.created_by},
     )
 
@@ -421,7 +421,7 @@ def _register_extrusion_feature(global_repo, feature_id: str, sketch_id: str = "
     if global_repo is None or not feature_id:
         return
     global_repo.register_ancestor(
-        [f"@{feature_id}"],
+        [ref(feature_id)],
         {"type": "extrusion-feature", "feature_id": feature_id, "sketch_id": sketch_id},
     )
 
@@ -571,10 +571,10 @@ def _rewrite_created_by(query_str: str, new_created_by: str) -> str:
     Tessellation queries use a 3-tag format: [@geom_hash, @created_by, @body_id].
     The @created_by tag is always at index 1.
     """
-    from oversolved.kernel.query import _parse_ancestry, make_ancestry_query
+    from oversolved.kernel.query import _parse_ancestry, make_ancestry_query, ref
     ids, type_restriction = _parse_ancestry(query_str)
     if len(ids) >= 2:
-        ids[1] = "@" + new_created_by
+        ids[1] = ref(new_created_by)
         return make_ancestry_query(ids, type_restriction)
     return query_str
 

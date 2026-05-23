@@ -13,6 +13,8 @@ __all__ = [
     "Repository",
     "parse_query",
     "emit_wire",
+    "ref",
+    "index_ref",
     "local",
     "absolute",
     "ancestry",
@@ -150,6 +152,27 @@ def _parse_ancestry_obj(s: str) -> AncestryQuery:
         type_restriction=type_restriction or None,
         classifier=classifier,
     )
+
+
+def ref(element_id: str) -> str:
+    """Mint an ancestor token referencing a feature, body, or geom-hash: '@<id>'.
+
+    The single place the '@'-prefix convention for ancestor tokens lives. Pass the
+    bare id (feature id, body id, or a geom hash already prefixed with
+    gedge_/gface_/gvertex_); the '@' is added here. Consumers must not hand-build
+    '@'-prefixed token strings.
+    """
+    return "@" + element_id
+
+
+def index_ref(owner_id: str, kind: str, idx: int) -> str:
+    """LEGACY ordinal ancestor token: '@<owner><kind><idx>' (concatenated form).
+
+    Positional / OCC-iteration-order identity. Forbidden long-term -- see
+    feature/drop-legacy-edge-queries.md. Isolated here so every emission can be
+    removed in one place once recursive lineage lands. Do NOT add new callers.
+    """
+    return f"@{owner_id}{kind}{idx}"
 
 
 def local(eid: str, sub: str = "") -> LocalQuery:

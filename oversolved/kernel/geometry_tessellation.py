@@ -40,7 +40,7 @@ from oversolved.kernel.geom_hash import (
 from oversolved.kernel.geometry_io import stl_file_to_shape, step_file_to_shape
 from oversolved.kernel.ocp_ops import ocp_mesh_shape
 from oversolved.kernel.profile_loops import classify_loops
-from oversolved.kernel.query import make_ancestry_query
+from oversolved.kernel.query import make_ancestry_query, ref, index_ref
 from oversolved.kernel.types3d import Frame3D
 
 logger = logging.getLogger(__name__)
@@ -429,11 +429,11 @@ def _build_face_query(
     geom_hash = face_geometry_hash(centroid, normal, face_area)
     if body_id:
         return make_ancestry_query(
-            [f"@{geom_hash}", f"@{created_by}", f"@{body_id}"], surface_type
+            [ref(geom_hash), ref(created_by), ref(body_id)], surface_type
         )
     element_id = f"face{face_idx}"
-    abs_id = "@" + created_by + "/" + element_id
-    return make_ancestry_query([abs_id, f"@{created_by}"], surface_type)
+    abs_id = ref(created_by) + "/" + element_id
+    return make_ancestry_query([abs_id, ref(created_by)], surface_type)
 
 
 def _unit_cube_mesh() -> MeshDict:
@@ -709,9 +709,9 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
             geom_hash = edge_geometry_hash(ed)
             edge_type = "straightedge" if ed["kind"] == "line" else "edge"
             if body_id:
-                edge_queries.append(make_ancestry_query([f"@{geom_hash}", f"@{created_by}", f"@{body_id}"], edge_type))
+                edge_queries.append(make_ancestry_query([ref(geom_hash), ref(created_by), ref(body_id)], edge_type))
             else:
-                edge_queries.append(make_ancestry_query([f"@{created_by}edge{idx}", f"@{created_by}"], edge_type))
+                edge_queries.append(make_ancestry_query([index_ref(created_by, "edge", idx), ref(created_by)], edge_type))
 
     return {"edges": edges, "edge_queries": edge_queries}
 
@@ -735,8 +735,8 @@ def solid_to_vertices(solid: TopoDS_Shape, created_by: str | None = None, body_i
             idx = len(vertices) - 1
             geom_hash = vertex_geometry_hash([v.X, v.Y, v.Z])
             if body_id:
-                vertex_queries.append(make_ancestry_query([f"@{geom_hash}", f"@{created_by}", f"@{body_id}"], "vertex"))
+                vertex_queries.append(make_ancestry_query([ref(geom_hash), ref(created_by), ref(body_id)], "vertex"))
             else:
-                vertex_queries.append(make_ancestry_query([f"@{created_by}vertex{idx}", f"@{created_by}"], "vertex"))
+                vertex_queries.append(make_ancestry_query([index_ref(created_by, "vertex", idx), ref(created_by)], "vertex"))
 
     return {"vertices": vertices, "vertex_queries": vertex_queries}

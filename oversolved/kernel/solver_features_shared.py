@@ -8,7 +8,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from OCP.TopoDS import TopoDS_Shape
-from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query
+from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query, ref
 from oversolved.kernel.types3d import Body, Frame3D
 from oversolved.kernel.geom_hash import face_geometry_hash
 from oversolved.kernel.profile_loops import _loop_centroid
@@ -245,7 +245,7 @@ def _resolve_face_index_via_hash(
 
     geom_hash = face_geometry_hash(centroid, normal, area)
     try:
-        query_str = make_ancestry_query([f"@{geom_hash}"], "face")
+        query_str = make_ancestry_query([ref(geom_hash)], "face")
         face_entry = global_repo.query(query_str, body_store={})
         if face_entry and "face_index" in face_entry:
             return face_entry["face_index"]

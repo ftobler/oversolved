@@ -1,6 +1,6 @@
 import logging
 import math
-from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query, _evict_ancestry_and_register
+from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query, _evict_ancestry_and_register, ref
 from oversolved.kernel.profile_loops import match_area_reid, _surface_ancestor_key, _loop_centroid
 from oversolved.kernel.types3d import Frame3D
 
@@ -40,7 +40,7 @@ def _clear_feature_geometry_registrations(
     2. All ancestry entries whose frozenset key contains the bare @feature_id tag.
        This covers topology surfaces, edges, and vertices registered by detect_topology.
     """
-    feature_tag = f"@{feature_id}"
+    feature_tag = ref(feature_id)
     eids_to_remove: set[str] = set()
     keys_to_remove: list[frozenset] = []
 
@@ -422,7 +422,7 @@ def _register_sketch_feature(
     if not feature_id or "topology" not in feature_result:
         return
     global_repo.register_ancestor(
-        [f"@{feature_id}"],
+        [ref(feature_id)],
         {"type": "sketch-feature", "feature_id": feature_id},
     )
 
@@ -440,7 +440,7 @@ def _register_topology_vertices(
 
         ancestor_ids = [vid, "vertex"]
         if feature_id:
-            ancestor_ids.append(f"@{feature_id}")
+            ancestor_ids.append(ref(feature_id))
         query = make_ancestry_query(ancestor_ids, "vertex")
 
         ids, _ = _parse_ancestry(query)
