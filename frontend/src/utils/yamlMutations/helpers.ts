@@ -1,4 +1,6 @@
 import type { PartDoc, PartFeature, PartConstraint, PartTarget } from '@/types/cad'
+import { selectionToQuery, parseSelectionId } from '@/utils/selectionId'
+import { emitWire } from '@/utils/query'
 
 export const warn = import.meta.env.DEV ? (...args: unknown[]) => console.warn(...args) : () => undefined
 
@@ -11,18 +13,16 @@ export function findFeature(doc: PartDoc, featureId: string): PartFeature | unde
 /** Convert a selection ID to a query string.
  *  If the target belongs to a different feature than the host, use `@<featId><eleId>`
  *  (absolute ref). Otherwise use `$<eleId>` (local ref).
- *  For `face:` IDs, returns the raw ancestry query verbatim (already globally scoped). */
+ *  For `face:` IDs, returns the raw ancestry query verbatim (already globally scoped).
+ *
+ *  entity/vertex IDs are serialized through the query engine (selectionToQuery +
+ *  emitWire) rather than hand-built here, so the `@`/`$` wire format lives in one
+ *  place. face passthrough and the lenient `@`/`$` fallbacks are kept as-is. */
 export const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
-  const parts = t.split(':')
-  if (parts[0] === 'entity') {
-    const [, featId, eleId] = parts
-    return featId === hostFeatureId ? '$' + eleId : '@' + featId + eleId
+  if (t.startsWith('entity:') || t.startsWith('vertex:')) {
+    return emitWire(selectionToQuery(parseSelectionId(t), hostFeatureId))
   }
-  if (parts[0] === 'vertex') {
-    const [, featId, eleId, sub] = parts
-    return featId === hostFeatureId ? '$' + eleId + sub : '@' + featId + eleId + sub
-  }
-  if (parts[0] === 'face') return parts.slice(2).join(':')
+  if (t.startsWith('face:')) return t.split(':').slice(2).join(':')
   if (t.startsWith('@')) return t  // builtin/absolute query — pass through as-is
   return '$' + t
 }
