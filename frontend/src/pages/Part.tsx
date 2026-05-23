@@ -555,16 +555,23 @@ export default function Part() {
   useEffect(() => {
     if (planeSelectionFeatureId) {
       pendingSketchOnFaceId.current = planeSelectionFeatureId
+      // Enter edit mode as soon as the sketch appears in the feature list so
+      // the PlaneSelector pick-chip is visible and active immediately.
+      if (editingFeatureId !== planeSelectionFeatureId) {
+        const feature = features.find(f => f.id === planeSelectionFeatureId)
+        if (feature?.kind === 'sketch') {
+          enterEditFeature(planeSelectionFeatureId)
+        }
+      }
     } else if (pendingSketchOnFaceId.current) {
       const fid = pendingSketchOnFaceId.current
       pendingSketchOnFaceId.current = null
       const feature = features.find(f => f.id === fid)
       if (feature?.kind === 'sketch') {
-        enterEditFeature(fid)
         setMode('sketch')
       }
     }
-  }, [planeSelectionFeatureId, features, enterEditFeature, setMode])
+  }, [planeSelectionFeatureId, editingFeatureId, features, enterEditFeature, setMode])
 
   const handleRightClick = useCallback((pos: [number, number], targetId?: string) => {
     const store = useSketchEditorStore.getState()
