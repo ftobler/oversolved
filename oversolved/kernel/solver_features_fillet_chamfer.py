@@ -113,9 +113,14 @@ def _build_edge_index(body: Body) -> _EdgeIndex:
             edge_created_by = body.created_by
             if geom_hash in new_edge_hashes:
                 edge_created_by = body.modified_by[-1]
-            aq_hash = make_ancestry_query(
-                [ref(geom_hash), ref(edge_created_by), ref(body.id)], edge_type
-            )
+            ids = [ref(geom_hash), ref(edge_created_by), ref(body.id)]
+            if body.edge_lineage:
+                tokens = body.edge_lineage.get(str(hash(te)))
+                if tokens:
+                    ids.extend(tokens)
+            elif body.profile_queries:
+                ids.extend(body.profile_queries)
+            aq_hash = make_ancestry_query(ids, edge_type)
             query_to_edge[aq_hash] = te
 
         # Legacy index query for backward compat with stored documents.
