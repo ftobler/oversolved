@@ -13,6 +13,7 @@ import { getToolAllowedLayers } from './toolAllowedLayers'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
+  SKETCH_SURFACE_LAYER_NAME,
 } from '@/picking'
 
 /**
@@ -57,6 +58,9 @@ const hoverAdapters: Record<string, ((entityKey: string) => void) | undefined> =
   [VERTEX_LAYER_NAME]: brepVertexAdapter.onHover,
   [SKETCH_ENTITY_LAYER_NAME]: sketchEntityAdapter.onHover,
   [SKETCH_VERTEX_LAYER_NAME]: sketchVertexAdapter.onHover,
+  [SKETCH_SURFACE_LAYER_NAME]: (entityKey) => {
+    useSketchEditorStore.getState().setHoveredSelectionId(entityKey)
+  },
   [PLANE_LAYER_NAME]: planeAdapter.onHover,
   [ORIGIN_LAYER_NAME]: originAdapter.onHover,
   [DIMENSION_LABEL_LAYER_NAME]: undefined,  // handled separately

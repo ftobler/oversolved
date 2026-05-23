@@ -18,7 +18,7 @@ import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
 import ContextMenuDialog from '@/components/ContextMenuDialog'
-import { IdPickingDriver, DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME, PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME } from '@/picking'
+import { IdPickingDriver, DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME, PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME } from '@/picking'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
 import type { IdPipeline } from '@/picking'
 import { useIdBufferPointerDispatch, wasLastClickConsumedByIdDispatch, wasLastClickStaleResolve } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
@@ -227,6 +227,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       DIMENSION_LABEL_LAYER_NAME,
       FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
       PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
+      SKETCH_SURFACE_LAYER_NAME,
     ])
     : new Set<string>()), [])
   useIdBufferPointerDispatch({ glRef, consumedLayers })

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useIdBufferPointerDispatch } from '../useIdBufferPointerDispatch'
 import { registerDimCallbacks, resetDimCallbacksForTest } from '../dimensionLabelCallbacks'
-import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME } from '@/picking'
+import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { sketchVertexAdapter } from '../sketchVertexAdapter'
@@ -189,5 +189,23 @@ describe('useIdBufferPointerDispatch', () => {
       await Promise.resolve()
     })
     expect(onOut).toHaveBeenCalledTimes(1)
+  })
+
+  it('hover over sketchSurface layer sets hoveredSelectionId', async () => {
+    pipeline.resolveAsync = vi.fn().mockResolvedValue({
+      id: 1, layer: SKETCH_SURFACE_LAYER_NAME, entityKey: 'sk1/surf:face0', distancePx: 0,
+    })
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([SKETCH_SURFACE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+      await Promise.resolve()
+    })
+
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('sk1/surf:face0')
   })
 })
