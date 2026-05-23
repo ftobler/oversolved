@@ -1,6 +1,5 @@
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
-import { useFieldPicking } from '@/hooks/useFieldPicking'
 import { planeLabel } from '@/components/Geometry3D/utils'
 
 interface PlaneSelectorProps {
@@ -17,11 +16,6 @@ export function PlaneSelector({
   feature, featureDef, onMutation, planeSelectionFeatureId, setPlaneSelectionFeatureId, features, partLabels,
 }: PlaneSelectorProps) {
   const isPicking = planeSelectionFeatureId === feature.id
-
-  useFieldPicking(isPicking, (selectionId) => {
-    onMutation({ type: 'set_feature_plane', featureId: feature.id, plane: selectionId })
-    setPlaneSelectionFeatureId(null)
-  })
 
   return (
     <div className="plane-editor">
