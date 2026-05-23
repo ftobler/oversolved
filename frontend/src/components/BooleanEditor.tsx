@@ -1,7 +1,6 @@
-import { useState } from 'react'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
-import { useFieldPicking } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/useFieldPicking'
 import { resolveBodyPickRef } from '@/utils/resolveBodyPickRef'
 
 interface BooleanEditorProps {
@@ -14,17 +13,13 @@ interface BooleanEditorProps {
 export function BooleanEditor({ feature, onMutation, features, partLabels }: BooleanEditorProps) {
   const bool = feature.boolean ?? { operation: 'union', target: '', tools: [] }
   const fid = feature.id
-  const [isPickingTarget, setIsPickingTarget] = useState(false)
-  const [isPickingTool, setIsPickingTool] = useState(false)
-
-  useFieldPicking(isPickingTarget, (selectionId) => {
+  const targetPick = usePickField(fid, 'target', (selectionId) => {
     onMutation({ type: 'set_boolean_field', featureId: fid, field: 'target', value: resolveBodyPickRef(selectionId) })
-    setIsPickingTarget(false)
   })
 
-  useFieldPicking(isPickingTool, (selectionId) => {
+  const toolPick = usePickField(fid, 'tools', (selectionId) => {
     onMutation({ type: 'add_boolean_tool', featureId: fid, tool: resolveBodyPickRef(selectionId) })
-  })
+  }, { multi: true })
 
   return (
     <div className="plane-editor">
@@ -49,8 +44,8 @@ export function BooleanEditor({ feature, onMutation, features, partLabels }: Boo
         <span className="feature-field-label">Target</span>
         <PickChip
           values={bool.target ? [bool.target] : []}
-          isPicking={isPickingTarget}
-          onActivate={() => setIsPickingTarget(!isPickingTarget)}
+          isPicking={targetPick.isPicking}
+          onActivate={targetPick.toggle}
           onRemove={() => onMutation({ type: 'set_boolean_field', featureId: fid, field: 'target', value: '' })}
           emptyText="(pick target)"
           features={features}
@@ -61,8 +56,8 @@ export function BooleanEditor({ feature, onMutation, features, partLabels }: Boo
         <span className="feature-field-label">Tools</span>
         <PickChip
           values={bool.tools}
-          isPicking={isPickingTool}
-          onActivate={() => setIsPickingTool(!isPickingTool)}
+          isPicking={toolPick.isPicking}
+          onActivate={toolPick.toggle}
           onRemove={(index) => onMutation({ type: 'remove_boolean_tool', featureId: fid, tool: bool.tools[index] })}
           onReorder={(from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: 'tools', fromIndex: from, toIndex: to })}
           features={features}

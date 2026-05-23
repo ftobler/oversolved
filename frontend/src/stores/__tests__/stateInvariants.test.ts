@@ -10,7 +10,7 @@ function defaultState(): SketchEditorInvariantState {
     activeTool: null,
     pendingDimTarget: null,
     pendingDimEntityKind: null,
-    planeSelectionFeatureId: null,
+    activePickField: null,
     drawPoints: [],
     drawHover: null,
     pendingDialog: null,
@@ -51,14 +51,14 @@ describe('validateSketchEditorState', () => {
     })
   })
 
-  describe('planeSelectionFeatureId invariant', () => {
-    it('throws when planeSelectionFeatureId is set but activeTool is not null', () => {
-      const state = { ...defaultState(), planeSelectionFeatureId: 'Sketch1', activeTool: 'select' }
-      expect(() => validateSketchEditorState(state)).toThrow('[invariant] planeSelectionFeatureId')
+  describe('activePickField invariant', () => {
+    it('throws when activePickField is set but activeTool is not null', () => {
+      const state = { ...defaultState(), activePickField: { featureId: 'Sketch1', field: 'plane' }, activeTool: 'select' }
+      expect(() => validateSketchEditorState(state)).toThrow('[invariant] activePickField')
     })
 
-    it('passes when planeSelectionFeatureId is set with activeTool null', () => {
-      const state = { ...defaultState(), planeSelectionFeatureId: 'Sketch1', activeTool: null }
+    it('passes when activePickField is set with activeTool null', () => {
+      const state = { ...defaultState(), activePickField: { featureId: 'Sketch1', field: 'plane' }, activeTool: null }
       expect(() => validateSketchEditorState(state)).not.toThrow()
     })
   })
@@ -92,7 +92,7 @@ describe('validateSketchEditorState', () => {
       const state = {
         ...defaultState(),
         pendingDimTarget: 'entity:S1:L1',
-        planeSelectionFeatureId: 'Sketch1',
+        activePickField: { featureId: 'Sketch1', field: 'plane' },
         activeTool: 'select',
       }
       // pendingDimTarget check runs first

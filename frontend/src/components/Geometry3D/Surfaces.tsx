@@ -51,8 +51,7 @@ interface SurfaceMeshProps {
 
 export function SurfaceMesh({ shape, featureId, query, mode }: SurfaceMeshProps) {
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
-  const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
-  const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
+  const activePickField = useSketchEditorStore(s => s.activePickField)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
 
   const id = surfaceSelectionId(featureId, query)
@@ -63,13 +62,14 @@ export function SurfaceMesh({ shape, featureId, query, mode }: SurfaceMeshProps)
   if (mode === 'inactive') { color = COLOR_INACTIVE; opacity = 0.10 }
   if (isSelected) { color = COLOR_SELECTED; opacity = 0.30 }
 
-  // In editing mode the ID buffer owns entity/vertex clicks. stopPropagation
-  // is still required to prevent the background DrawPlane from clearing the
-  // ID-buffer selection. toggleNormalSelection is only allowed in view mode.
+  // Single click outcome: toggle normal selection. A pick chip, if active,
+  // consumes the result downstream (Layer 2). stopPropagation prevents the
+  // background DrawPlane from clearing the selection. In view mode without a
+  // pick field active, areas are still selectable; during editing they are
+  // decoration unless a pick field is consuming.
   const handleClick = mode === 'inactive' ? undefined : (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation()
-    if (planeSelectionFeatureId) commitPlaneSelection(id)
-    else if (mode === 'view') toggleNormalSelection(id)
+    if (mode === 'view' || activePickField) toggleNormalSelection(id)
   }
 
   return (

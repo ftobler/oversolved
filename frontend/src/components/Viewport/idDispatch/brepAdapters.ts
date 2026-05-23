@@ -5,14 +5,14 @@ import {
 } from './bodyDispatchCallbacks'
 
 /**
- * Hover & click adapters for the three B-rep ID layers.
+ * Hover adapters for the three B-rep ID layers.
  *
  * Hover writes a single `hoveredSelectionId` plus per-body face-geometry.
  * The caller (applyHoverHit) clears all hover state first, so each adapter
  * only sets the fields it cares about.
  *
- * Click always toggles normalSelection (or commits a plane pick when
- * planeSelectionFeatureId is active).
+ * Click handling is centralized in the dispatcher: every selectable layer
+ * toggles normalSelection. These adapters carry no onClick.
  */
 
 export const brepFaceAdapter = {
@@ -26,14 +26,6 @@ export const brepFaceAdapter = {
     s.setHoveredSelectionId(entityKey)
     found.body.updateFaceGeometryForQuery(entityKey)
   },
-  onClick(entityKey: string): void {
-    const s = useSketchEditorStore.getState()
-    if (s.planeSelectionFeatureId) {
-      s.commitPlaneSelection(entityKey)
-      return
-    }
-    s.toggleNormalSelection(entityKey)
-  },
 }
 
 export const brepEdgeAdapter = {
@@ -41,20 +33,12 @@ export const brepEdgeAdapter = {
     const s = useSketchEditorStore.getState()
     s.setHoveredSelectionId(entityKey)
   },
-  onClick(entityKey: string): void {
-    const s = useSketchEditorStore.getState()
-    s.toggleNormalSelection(entityKey)
-  },
 }
 
 export const brepVertexAdapter = {
   onHover(entityKey: string): void {
     const s = useSketchEditorStore.getState()
     s.setHoveredSelectionId(entityKey)
-  },
-  onClick(entityKey: string): void {
-    const s = useSketchEditorStore.getState()
-    s.toggleNormalSelection(entityKey)
   },
 }
 

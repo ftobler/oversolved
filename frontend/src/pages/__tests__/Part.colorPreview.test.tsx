@@ -160,7 +160,7 @@ describe('Part Color Preview', () => {
       hoveredSelectionId: null,
       hoveredVertexId: null,
       activeTool: null,
-      planeSelectionFeatureId: null,
+      activePickField: null,
       showDebugHit: false,
     })
   })

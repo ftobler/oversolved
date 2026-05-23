@@ -85,7 +85,7 @@ function setupStore(features: PartFeature[], rollbackPosition: number | null) {
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    planeSelectionFeatureId: null,
+    activePickField: null,
   })
 }
 
@@ -105,7 +105,7 @@ beforeEach(() => {
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    planeSelectionFeatureId: null,
+    activePickField: null,
   })
 })
 

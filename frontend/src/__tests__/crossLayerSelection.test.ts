@@ -29,7 +29,7 @@ function resetStore() {
     chipOwnedSelection: new Set(),
     hoveredSelectionId: null,
     activeFeatureId: null,
-    planeSelectionFeatureId: null,
+    activePickField: null,
   })
 }
 

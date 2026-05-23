@@ -32,21 +32,6 @@ export function getSketchCallback<K extends keyof typeof _sketchCbs>(key: K): (t
 const devOnly = import.meta.env.DEV
 const testMode = import.meta.env.MODE === 'test'
 
-function guard<T extends (...args: never[]) => unknown>(
-  fn: T | null | undefined,
-  label: string,
-): T {
-  if (!fn) {
-    if (testMode) {
-      throw new Error(`[sketchEditorStore] ${label}: callback not registered. Call setSketchCallback() before invoking this action.`)
-    }
-    if (devOnly) {
-      console.warn(`[sketchEditorStore] ${label}: callback not registered — action will be ignored. Ensure setSketchCallback() was called before this action.`)
-    }
-  }
-  return (fn ?? (() => {})) as unknown as T
-}
-
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type { Mutation }
 
@@ -126,6 +111,16 @@ export interface DimLabelDragPending {
 
 export type DragPendingState = EdgeVertexDragPending | DimLabelDragPending
 
+// The single, store-owned pick-field coordinator (Layer 2 of the selection
+// model). When non-null, exactly one feature field is consuming picks. There
+// is no parallel plane-pick path: plane selection is just a field like any
+// other. See feature/selection-unification.md.
+export interface ActivePickField {
+  featureId: string
+  field: string
+  multi?: boolean
+}
+
 interface SketchEditorState {
    // SELECTION SUBSYSTEM
   // Hovered selection — always reflects what entity/face/plane is directly under cursor.
@@ -200,7 +195,7 @@ interface SketchEditorState {
   pendingDialog: DialogState | null
   pendingProjectTarget: { sourceFeatureId: string; sourceEntityId: string } | null
   contextMenu: [number, number] | null
-  planeSelectionFeatureId: string | null
+  activePickField: ActivePickField | null
   chipOwnedSelection: Set<string>
   syncChipSelection: (values: string[]) => void
   clearChipSelection: () => void
@@ -218,8 +213,7 @@ interface SketchEditorState {
   openContextMenu: (pos: [number, number]) => void
   closeContextMenu: () => void
   setPendingDim: (target: string | null, entityKind: string | null) => void
-  setPlaneSelectionFeatureId: (id: string | null) => void
-  commitPlaneSelection: (selectionId: string) => void
+  setActivePickField: (field: ActivePickField | null, opts?: { seed?: boolean }) => void
 }
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
@@ -256,7 +250,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   pendingProjectTarget: null,
   contextMenu: null,
   modeStack: [],
-  planeSelectionFeatureId: null,
+  activePickField: null,
   chipOwnedSelection: new Set(),
 
   pushMode: (kind: string) => set(s => ({
@@ -356,9 +350,16 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         updates.pendingDimTarget = null
         updates.pendingDimEntityKind = null
       }
-      // Clear stale plane selection state when entering any tool
-      if (tool !== null && state.planeSelectionFeatureId !== null) {
-        updates.planeSelectionFeatureId = null
+      // Clear stale pick-field state when entering any tool
+      if (tool !== null && state.activePickField !== null) {
+        updates.activePickField = null
+        updates.chipOwnedSelection = new Set<string>()
+        const nextNormal = new Set(state.normalSelection)
+        for (const v of state.chipOwnedSelection) nextNormal.delete(v)
+        updates.normalSelection = nextNormal
+        if (state.modeStack[state.modeStack.length - 1] === 'pick') {
+          updates.modeStack = state.modeStack.slice(0, -1)
+        }
       }
       return updates
     })
@@ -481,55 +482,62 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     }
   },
 
-  setPlaneSelectionFeatureId: (id) => {
-    // When entering plane selection, deactivate any active tool first.
+  setActivePickField: (field, opts) => {
+    // Leaving any prior pick: drop its mode and chip-owned mirror.
+    const prev = get().activePickField
+    if (prev !== null) {
+      if (get().modeStack[get().modeStack.length - 1] === 'pick') {
+        get().popMode('pick')
+      }
+      get().clearChipSelection()
+    }
+
+    if (field === null) {
+      set({ activePickField: null })
+      if (devOnly || testMode) validateSketchEditorState(get())
+      return
+    }
+
+    // Entering a pick: deactivate any active tool first.
     // Guard: only deactivate if the mode stack has the tool at the top.
     // This handles the case where state was set directly (e.g., test setup via setState)
     // and no tool mode was ever pushed onto the stack.
-    if (id !== null) {
-      const prevTool = get().activeTool
-      const stack = get().modeStack
-      if (prevTool && stack.length > 0) {
-        const top = stack[stack.length - 1]
-        if (top === `tool:${prevTool}`) {
-          const prev = toolRegistry.get(prevTool as ToolId)
-          if (prev) {
-            const s = get()
-            prev.deactivate({
-              normalSelection: s.normalSelection,
-              hoveredSelectionId: s.hoveredSelectionId,
-              isPointerDown: s.isPointerDown,
-              activeFeatureId: s.activeFeatureId,
-              hoveredVertexId: s.hoveredVertexId,
-              hoveredVertexPosition: s.hoveredVertexPosition,
-              hoveredSnapKind: s.hoveredSnapKind,
-              onMutation: _sketchCbs.onMutation,
-              pushMode: (kind: string) => get().pushMode(kind),
-              popMode: (expectedKind?: string) => get().popMode(expectedKind),
-            })
-          }
+    const prevTool = get().activeTool
+    const stack = get().modeStack
+    if (prevTool && stack.length > 0) {
+      const top = stack[stack.length - 1]
+      if (top === `tool:${prevTool}`) {
+        const prev = toolRegistry.get(prevTool as ToolId)
+        if (prev) {
+          const s = get()
+          prev.deactivate({
+            normalSelection: s.normalSelection,
+            hoveredSelectionId: s.hoveredSelectionId,
+            isPointerDown: s.isPointerDown,
+            activeFeatureId: s.activeFeatureId,
+            hoveredVertexId: s.hoveredVertexId,
+            hoveredVertexPosition: s.hoveredVertexPosition,
+            hoveredSnapKind: s.hoveredSnapKind,
+            onMutation: _sketchCbs.onMutation,
+            pushMode: (kind: string) => get().pushMode(kind),
+            popMode: (expectedKind?: string) => get().popMode(expectedKind),
+          })
         }
       }
     }
 
-    // Then clear all draw state before updating plane selection state.
-    // This ensures invariant validation in popMode (triggered by deactivate above)
-    // sees clean draw state even if previous tests left drawPoints dirty.
-    if (id !== null) {
-      set({
-        planeSelectionFeatureId: id,
-        activeTool: null,
-        drawPoints: [],
-        drawHover: null,
-        drawSnapVertexId: null,
-      })
-    } else {
-      set({ planeSelectionFeatureId: id })
-    }
-
-    if (id !== null) {
-      get().pushMode('plane_selection')
-    }
+    // Manual activate clears the existing normal selection so a stray prior
+    // selection is not instantly consumed as a pick. `seed: true` (used by
+    // auto-activate-on-insert) keeps it so it becomes the chip's initial picks.
+    set({
+      activePickField: field,
+      activeTool: null,
+      drawPoints: [],
+      drawHover: null,
+      drawSnapVertexId: null,
+      ...(opts?.seed ? {} : { normalSelection: new Set<string>(), chipOwnedSelection: new Set<string>(), selectionDomain: 'sketch_2d' as SelectionDomain }),
+    })
+    get().pushMode('pick')
 
     if (devOnly || testMode) {
       validateSketchEditorState(get())
@@ -559,24 +567,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const next = new Set(s.normalSelection)
     for (const v of s.chipOwnedSelection) next.delete(v)
     set({ normalSelection: next, chipOwnedSelection: new Set() })
-  },
-
-  commitPlaneSelection: (selectionId) => {
-    const { planeSelectionFeatureId } = get()
-    const onMutation = guard(_sketchCbs.onMutation, 'onMutation (from commitPlaneSelection)')
-    if (!planeSelectionFeatureId) return
-    const plane = selectionId.startsWith('face:')
-      ? selectionId.split(':').slice(2).join(':')
-      : selectionId
-    onMutation({ type: 'set_feature_plane', featureId: planeSelectionFeatureId, plane })
-    const s = get()
-    const next = new Set(s.normalSelection)
-    for (const v of s.chipOwnedSelection) next.delete(v)
-    set({ planeSelectionFeatureId: null, normalSelection: next, chipOwnedSelection: new Set() })
-    get().popMode('plane_selection')
-    if (devOnly || testMode) {
-      validateSketchEditorState(get())
-    }
   },
 
 }))

@@ -52,18 +52,18 @@ beforeEach(() => {
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    planeSelectionFeatureId: null,
+    activePickField: null,
   })
 })
 
 describe('plane pick-chip on new sketch', () => {
-  it('renders pick-chip in picking state when editingFeatureId and planeSelectionFeatureId both match the sketch', () => {
+  it('renders pick-chip in picking state when editingFeatureId and activePickField both match the sketch', () => {
     usePartEditorStore.setState({
       features: [sketchFeature],
       visibleFeatures: new Set(['sk1']),
       editingFeatureId: 'sk1',
     })
-    useSketchEditorStore.setState({ planeSelectionFeatureId: 'sk1' })
+    useSketchEditorStore.setState({ activePickField: { featureId: 'sk1', field: 'plane' } })
 
     render(
       <PartEditorProvider value={makeCallbacks()}>
@@ -76,13 +76,13 @@ describe('plane pick-chip on new sketch', () => {
     expect(chip!.classList.contains('picking')).toBe(true)
   })
 
-  it('pick-chip is NOT in picking state when planeSelectionFeatureId is null', () => {
+  it('pick-chip is NOT in picking state when activePickField is null', () => {
     usePartEditorStore.setState({
       features: [sketchFeature],
       visibleFeatures: new Set(['sk1']),
       editingFeatureId: 'sk1',
     })
-    useSketchEditorStore.setState({ planeSelectionFeatureId: null })
+    useSketchEditorStore.setState({ activePickField: null })
 
     render(
       <PartEditorProvider value={makeCallbacks()}>

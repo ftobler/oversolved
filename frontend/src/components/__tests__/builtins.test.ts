@@ -49,10 +49,10 @@ describe('store toggleNormalSelection with @-prefixed IDs', () => {
   })
 })
 
-describe('builtin click in normal mode (planeSelectionFeatureId=null)', () => {
+describe('builtin click in normal mode (activePickField=null)', () => {
   beforeEach(() => {
     useSketchEditorStore.getState().clearNormalSelection()
-    useSketchEditorStore.setState({ planeSelectionFeatureId: null })
+    useSketchEditorStore.setState({ activePickField: null })
   })
 
   it('toggleNormalSelection emits no mutation when onMutation is null (normal mode)', () => {
@@ -69,10 +69,4 @@ describe('builtin click in normal mode (planeSelectionFeatureId=null)', () => {
     expect(mutations).toHaveLength(0)
   })
 
-  it('commitPlaneSelection is no-op when planeSelectionFeatureId is null', () => {
-    const mutations: unknown[] = []
-    setSketchCallback('onMutation', m => mutations.push(m))
-    useSketchEditorStore.getState().commitPlaneSelection('@builtin_plane_top')
-    expect(mutations).toHaveLength(0)
-  })
 })

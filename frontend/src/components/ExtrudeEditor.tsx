@@ -1,7 +1,6 @@
-import { useState } from 'react'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
-import { useFieldPicking } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/useFieldPicking'
 import { normalizeExtrudeSketch } from '@/utils/yamlMutations'
 import { resolveBodyMergeRef } from '@/utils/resolveBodyPickRef'
 
@@ -17,21 +16,18 @@ export function ExtrudeEditor({
 }: ExtrudeEditorProps) {
   const extrude = feature.extrude ?? { sketch: [], distance: 10, direction: 'normal' }
   const fid = feature.id
-  const [isPickingSketch, setIsPickingSketch] = useState(false)
-  const [isPickingMergeTarget, setIsPickingMergeTarget] = useState(false)
   const profiles = normalizeExtrudeSketch(extrude.sketch)
   const showMergeTarget = extrude.operation !== 'new'
 
-  useFieldPicking(isPickingSketch, (selectionId) => {
+  const sketchPick = usePickField(fid, 'sketch', (selectionId) => {
     const sketchQuery = selectionId.startsWith('face:')
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
     onMutation({ type: 'add_extrude_profile', featureId: fid, sketchQuery })
-  })
+  }, { multi: true })
 
-  useFieldPicking(isPickingMergeTarget, (selectionId) => {
+  const mergePick = usePickField(fid, 'merge_target', (selectionId) => {
     onMutation({ type: 'set_extrude_field', featureId: fid, field: 'merge_target', value: resolveBodyMergeRef(selectionId) })
-    setIsPickingMergeTarget(false)
   })
 
   return (
@@ -40,8 +36,8 @@ export function ExtrudeEditor({
         <span className="feature-field-label">Profile</span>
         <PickChip
           values={profiles}
-          isPicking={isPickingSketch}
-          onActivate={() => setIsPickingSketch(!isPickingSketch)}
+          isPicking={sketchPick.isPicking}
+          onActivate={sketchPick.toggle}
           onRemove={(index) => onMutation({ type: 'remove_extrude_profile', featureId: fid, index })}
           features={features}
           partLabels={partLabels}
@@ -89,8 +85,8 @@ export function ExtrudeEditor({
           <span className="feature-field-label">Merge Target</span>
           <PickChip
             values={extrude.merge_target ? [extrude.merge_target] : []}
-            isPicking={isPickingMergeTarget}
-            onActivate={() => setIsPickingMergeTarget(!isPickingMergeTarget)}
+            isPicking={mergePick.isPicking}
+            onActivate={mergePick.toggle}
             onRemove={() => onMutation({ type: 'set_extrude_field', featureId: fid, field: 'merge_target', value: undefined })}
             emptyText="(all bodies)"
             features={features}

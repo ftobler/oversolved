@@ -28,9 +28,4 @@ describe('originAdapter', () => {
     expect(s.hoveredSelectionId).toBeNull()
     expect(s.hoveredVertexId).toBeNull()
   })
-
-  it('onClick toggles normalSelection', () => {
-    originAdapter.onClick('@builtin_origin')
-    expect(useSketchEditorStore.getState().normalSelection.has('@builtin_origin')).toBe(true)
-  })
 })

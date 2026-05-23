@@ -19,8 +19,6 @@ interface FeatureItemEditorsProps {
   onMutation: (m: Mutation) => void
   features: PartFeature[]
   partLabels: Record<string, string>
-  planeSelectionFeatureId: string | null
-  setPlaneSelectionFeatureId: (id: string | null) => void
 }
 
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
@@ -32,8 +30,6 @@ export function FeatureItemEditors({
   onMutation,
   features,
   partLabels,
-  planeSelectionFeatureId,
-  setPlaneSelectionFeatureId,
 }: FeatureItemEditorsProps) {
   const fps = features
   const labels = partLabels
@@ -54,8 +50,6 @@ export function FeatureItemEditors({
           feature={feature}
           featureDef={doc?.features?.find(f => f.id === feature.id)}
           onMutation={onMutation}
-          planeSelectionFeatureId={planeSelectionFeatureId}
-          setPlaneSelectionFeatureId={setPlaneSelectionFeatureId}
           features={fps}
           partLabels={labels}
         />

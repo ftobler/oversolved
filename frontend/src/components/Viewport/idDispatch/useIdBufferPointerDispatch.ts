@@ -44,6 +44,14 @@ function cursorFromEvent(e: PointerEvent | MouseEvent, canvas: HTMLCanvasElement
   return { x: xCss * scaleX, y: yCss * scaleY }
 }
 
+/**
+ * The one key-derivation function shared by hover and click. Both selection
+ * stores are written with this so they can never disagree about identity.
+ */
+export function hitToSelectionKey(hit: ResolvedHit): string {
+  return hit.entityKey
+}
+
 function intersect(a: ReadonlySet<string>, b: ReadonlySet<string> | null): ReadonlySet<string> {
   if (!b) return a
   const out = new Set<string>()
@@ -133,31 +141,22 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
       if (!hit) return
+      // Single click outcome for every selectable layer: toggle into normal
+      // selection. The only exceptions are active sketch TOOLS (dimension /
+      // entity / vertex drawing), which are not a parallel pick path — they
+      // are the current tool acting. Pick chips are a consumer layer that
+      // observes normalSelection downstream; they never branch the click.
       if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
         dimensionLabelAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
-        setLastClickIdHit(true)
-      } else if (hit.layer === FACE_LAYER_NAME) {
-        brepFaceAdapter.onClick(hit.entityKey)
-        setLastClickIdHit(true)
-      } else if (hit.layer === EDGE_LAYER_NAME) {
-        brepEdgeAdapter.onClick(hit.entityKey)
-        setLastClickIdHit(true)
-      } else if (hit.layer === VERTEX_LAYER_NAME) {
-        brepVertexAdapter.onClick(hit.entityKey)
-        setLastClickIdHit(true)
       } else if (hit.layer === SKETCH_ENTITY_LAYER_NAME) {
         sketchEntityAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
-        setLastClickIdHit(true)
       } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME) {
         sketchVertexAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
-        setLastClickIdHit(true)
-      } else if (hit.layer === PLANE_LAYER_NAME) {
-        planeAdapter.onClick(hit.entityKey)
-        setLastClickIdHit(true)
-      } else if (hit.layer === ORIGIN_LAYER_NAME) {
-        originAdapter.onClick(hit.entityKey)
-        setLastClickIdHit(true)
+      } else {
+        // face / edge / vertex (B-rep) / plane / origin
+        useSketchEditorStore.getState().toggleNormalSelection(hitToSelectionKey(hit))
       }
+      setLastClickIdHit(true)
     }
 
     const onPointerDown = (e: MouseEvent) => {

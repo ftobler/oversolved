@@ -1,7 +1,6 @@
-import { useState } from 'react'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
-import { useFieldPicking } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/useFieldPicking'
 
 interface ChamferEditorProps {
   feature: PartFeature
@@ -13,16 +12,14 @@ interface ChamferEditorProps {
 export function ChamferEditor({ feature, onMutation, features, partLabels }: ChamferEditorProps) {
   const chamfer = feature.chamfer ?? { edges: [], distance: 1, kind: 'distance', angle: 45 }
   const fid = feature.id
-  const [isPickingEdges, setIsPickingEdges] = useState(false)
-
-  useFieldPicking(isPickingEdges, (selectionId) => {
+  const edgesPick = usePickField(fid, 'edges', (selectionId) => {
     // Prevent self-pick (selecting the chamfer feature's own ID)
     if (!selectionId.startsWith('?')) return
     const edgeQuery = selectionId.startsWith('face:')
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
     onMutation({ type: 'add_chamfer_edge', featureId: fid, edgeQuery })
-  })
+  }, { multi: true })
 
   return (
     <div className="plane-editor">
@@ -30,8 +27,8 @@ export function ChamferEditor({ feature, onMutation, features, partLabels }: Cha
         <span className="feature-field-label">Edges</span>
         <PickChip
           values={chamfer.edges}
-          isPicking={isPickingEdges}
-          onActivate={() => setIsPickingEdges(!isPickingEdges)}
+          isPicking={edgesPick.isPicking}
+          onActivate={edgesPick.toggle}
           onRemove={(index) => onMutation({ type: 'remove_chamfer_edge', featureId: fid, index })}
           onReorder={(from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: 'edges', fromIndex: from, toIndex: to })}
           features={features}

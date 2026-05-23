@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { registerBodyCallbacks, resetBodyCallbacksForTest } from '../bodyDispatchCallbacks'
-import { brepFaceAdapter, brepEdgeAdapter, brepVertexAdapter } from '../brepAdapters'
 import type { Mesh3D } from '@/types/cad'
+
+// Click outcome is centralized in the dispatcher: every selectable layer
+// toggles normalSelection with exactly the clicked query (no @bodyId added),
+// regardless of whether a pick field is active (the chip consumes downstream).
+const click = (q: string) => useSketchEditorStore.getState().toggleNormalSelection(q)
 
 function stubMesh(faceQueries?: string[]): Mesh3D {
   return {
@@ -17,7 +21,7 @@ beforeEach(() => {
   setSketchCallback('onMutation', vi.fn())
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    planeSelectionFeatureId: null,
+    activePickField: null,
     hoveredSelectionId: null,
     hoveredFaceNormal: null,
     hoveredFaceCenter: null,
@@ -40,7 +44,7 @@ describe('body3dPickViaIdBuffer', () => {
       clearFaceGeometry: () => {},
     })
 
-    brepFaceAdapter.onClick('@feat1/face/0')
+    click('@feat1/face/0')
 
     const sel = useSketchEditorStore.getState().normalSelection
     expect(sel.has('@feat1/face/0')).toBe(true)
@@ -59,7 +63,7 @@ describe('body3dPickViaIdBuffer', () => {
       clearFaceGeometry: () => {},
     })
 
-    brepEdgeAdapter.onClick('@feat2/edge/1')
+    click('@feat2/edge/1')
 
     const sel = useSketchEditorStore.getState().normalSelection
     expect(sel.has('@feat2/edge/1')).toBe(true)
@@ -78,14 +82,14 @@ describe('body3dPickViaIdBuffer', () => {
       clearFaceGeometry: () => {},
     })
 
-    brepVertexAdapter.onClick('@feat3/vertex/0')
+    click('@feat3/vertex/0')
 
     const sel = useSketchEditorStore.getState().normalSelection
     expect(sel.has('@feat3/vertex/0')).toBe(true)
     expect(sel.size).toBe(1)
   })
 
-  it('face click with planeSelectionFeatureId commits plane selection', () => {
+  it('face click with a pick field active still toggles normalSelection (chip consumes downstream)', () => {
     registerBodyCallbacks('feat4/b1', {
       featureId: 'feat4',
       bodyId: 'b1',
@@ -96,12 +100,12 @@ describe('body3dPickViaIdBuffer', () => {
       clearFaceGeometry: () => {},
     })
 
-    useSketchEditorStore.getState().setPlaneSelectionFeatureId('feat4')
-    brepFaceAdapter.onClick('@feat4/face/0')
+    useSketchEditorStore.getState().setActivePickField({ featureId: 'feat4', field: 'plane' })
+    click('@feat4/face/0')
 
-    // The click should not toggle normalSelection when in plane mode.
+    // No parallel plane-commit path: the click lands in normalSelection and
+    // the active pick field consumes it via usePickField (Layer 2).
     const sel = useSketchEditorStore.getState().normalSelection
-    expect(sel.size).toBe(0)
+    expect(sel.has('@feat4/face/0')).toBe(true)
   })
-
 })

@@ -1,7 +1,6 @@
-import { useState } from 'react'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
-import { useFieldPicking } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/useFieldPicking'
 import { normalizeRevolveSketch } from '@/utils/yamlMutations'
 import { resolveBodyMergeRef, resolveAxisQuery } from '@/utils/resolveBodyPickRef'
 
@@ -17,28 +16,22 @@ export function RevolveEditor({
 }: RevolveEditorProps) {
   const revolve = feature.revolve ?? { sketch: [], angle: 360, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] }
   const fid = feature.id
-  const [isPickingSketch, setIsPickingSketch] = useState(false)
-  const [isPickingAxis, setIsPickingAxis] = useState(false)
-  const [isPickingMergeTarget, setIsPickingMergeTarget] = useState(false)
   const profiles = normalizeRevolveSketch(revolve.sketch)
   const showMergeTarget = revolve.operation !== 'new'
 
-  useFieldPicking(isPickingSketch, (selectionId) => {
+  const sketchPick = usePickField(fid, 'sketch', (selectionId) => {
     const sketchQuery = selectionId.startsWith('face:')
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
-    const mutationType = selectionId.startsWith('entity:') || selectionId.startsWith('face:') ? 'add_revolve_profile' : 'add_revolve_profile'
-    onMutation({ type: mutationType, featureId: fid, sketchQuery })
-  })
+    onMutation({ type: 'add_revolve_profile', featureId: fid, sketchQuery })
+  }, { multi: true })
 
-  useFieldPicking(isPickingMergeTarget, (selectionId) => {
+  const mergePick = usePickField(fid, 'merge_target', (selectionId) => {
     onMutation({ type: 'set_revolve_field', featureId: fid, field: 'merge_target', value: resolveBodyMergeRef(selectionId) })
-    setIsPickingMergeTarget(false)
   })
 
-  useFieldPicking(isPickingAxis, (selectionId) => {
+  const axisPick = usePickField(fid, 'axis', (selectionId) => {
     onMutation({ type: 'set_revolve_field', featureId: fid, field: 'axis', value: resolveAxisQuery(selectionId) })
-    setIsPickingAxis(false)
   })
 
   return (
@@ -47,8 +40,8 @@ export function RevolveEditor({
         <span className="feature-field-label">Profile</span>
         <PickChip
           values={profiles}
-          isPicking={isPickingSketch}
-          onActivate={() => setIsPickingSketch(!isPickingSketch)}
+          isPicking={sketchPick.isPicking}
+          onActivate={sketchPick.toggle}
           onRemove={(index) => onMutation({ type: 'remove_revolve_profile', featureId: fid, index })}
           features={features}
           partLabels={partLabels}
@@ -118,8 +111,8 @@ export function RevolveEditor({
           <span className="feature-field-label">Merge Target</span>
           <PickChip
             values={revolve.merge_target ? [revolve.merge_target] : []}
-            isPicking={isPickingMergeTarget}
-            onActivate={() => setIsPickingMergeTarget(!isPickingMergeTarget)}
+            isPicking={mergePick.isPicking}
+            onActivate={mergePick.toggle}
             onRemove={() => onMutation({ type: 'set_revolve_field', featureId: fid, field: 'merge_target', value: undefined })}
             emptyText="(all bodies)"
             features={features}
@@ -131,8 +124,8 @@ export function RevolveEditor({
         <span className="feature-field-label">Axis</span>
         <PickChip
           values={revolve.axis && revolve.axis !== 'None' ? [revolve.axis] : []}
-          isPicking={isPickingAxis}
-          onActivate={() => setIsPickingAxis(!isPickingAxis)}
+          isPicking={axisPick.isPicking}
+          onActivate={axisPick.toggle}
           onRemove={() => onMutation({ type: 'set_revolve_field', featureId: fid, field: 'axis', value: '' })}
           features={features}
           partLabels={partLabels}

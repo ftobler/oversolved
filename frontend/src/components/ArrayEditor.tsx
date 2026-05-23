@@ -1,7 +1,6 @@
-import { useState } from 'react'
 import type { PartFeature, ArrayFeatureDef, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
-import { useFieldPicking } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/useFieldPicking'
 import { resolveAxisQuery } from '@/utils/resolveBodyPickRef'
 
 interface ArrayEditorProps {
@@ -15,11 +14,8 @@ function ArrayEditor({ feature, onMutation, features, partLabels }: ArrayEditorP
   const array = feature.array as ArrayFeatureDef ?? {}
   const fid = feature.id
   const mode = array.mode ?? 'linear'
-  const [isPickingAxis, setIsPickingAxis] = useState(false)
-
-  useFieldPicking(isPickingAxis, (selectionId) => {
+  const axisPick = usePickField(fid, 'axis', (selectionId) => {
     onMutation({ type: 'set_array_field', featureId: fid, field: 'axis', value: resolveAxisQuery(selectionId) })
-    setIsPickingAxis(false)
   })
 
   return (
@@ -225,8 +221,8 @@ function ArrayEditor({ feature, onMutation, features, partLabels }: ArrayEditorP
             <span className="feature-field-label">Axis</span>
             <PickChip
               values={array.axis && array.axis !== 'None' ? [array.axis] : []}
-              isPicking={isPickingAxis}
-              onActivate={() => setIsPickingAxis(!isPickingAxis)}
+              isPicking={axisPick.isPicking}
+              onActivate={axisPick.toggle}
               onRemove={() => onMutation({ type: 'set_array_field', featureId: fid, field: 'axis', value: '' })}
               features={features}
               partLabels={partLabels}

@@ -42,11 +42,10 @@ export function buildCommandEntries(
     { name: 'cancel_draw', fn: () => {
         getState().clearDraw()
         getState().setActiveTool(null)
-        getState().setPlaneSelectionFeatureId(null)
+        getState().setActivePickField(null)
     }},
-    { name: 'cancel_plane_selection', fn: () => {
-      getState().popMode('plane_selection')
-      getState().setPlaneSelectionFeatureId(null)
+    { name: 'cancel_pick', fn: () => {
+      getState().setActivePickField(null)
     }},
     { name: 'add_extrude', fn: handleAddExtrude },
     { name: 'add_hole', fn: handleAddHole },

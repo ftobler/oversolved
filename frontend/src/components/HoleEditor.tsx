@@ -1,7 +1,6 @@
-import { useState } from 'react'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
-import { useFieldPicking } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/useFieldPicking'
 
 interface HoleEditorProps {
   feature: PartFeature
@@ -13,14 +12,11 @@ interface HoleEditorProps {
 export function HoleEditor({ feature, onMutation, features, partLabels }: HoleEditorProps) {
   const hole = feature.hole ?? { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' }
   const fid = feature.id
-  const [isPickingSketch, setIsPickingSketch] = useState(false)
-
-  useFieldPicking(isPickingSketch, (selectionId) => {
+  const sketchPick = usePickField(fid, 'sketch', (selectionId) => {
     const sketchQuery = selectionId.startsWith('face:')
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
     onMutation({ type: 'set_hole_field', featureId: fid, field: 'sketch', value: sketchQuery })
-    setIsPickingSketch(false)
   })
 
   return (
@@ -29,8 +25,8 @@ export function HoleEditor({ feature, onMutation, features, partLabels }: HoleEd
         <span className="feature-field-label">Sketch</span>
         <PickChip
           values={hole.sketch ? [hole.sketch] : []}
-          isPicking={isPickingSketch}
-          onActivate={() => setIsPickingSketch(!isPickingSketch)}
+          isPicking={sketchPick.isPicking}
+          onActivate={sketchPick.toggle}
           onRemove={() => onMutation({ type: 'set_hole_field', featureId: fid, field: 'sketch', value: '' })}
           features={features}
           partLabels={partLabels}

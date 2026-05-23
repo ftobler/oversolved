@@ -24,17 +24,15 @@ function simulateFaceClick(hoverQuery: string) {
   const state = useSketchEditorStore.getState()
   const currentHover = state.hoveredSelectionId
   if (!currentHover) return
-  if (state.planeSelectionFeatureId) {
-    state.commitPlaneSelection(currentHover)
-  } else {
-    state.toggleNormalSelection(currentHover)
-  }
+  // Single click outcome: toggle normal selection. A pick chip, if active,
+  // consumes the result downstream rather than branching the click.
+  state.toggleNormalSelection(currentHover)
 }
 
 beforeEach(() => {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    planeSelectionFeatureId: null,
+    activePickField: null,
     hoveredSelectionId: null,
   })
 })

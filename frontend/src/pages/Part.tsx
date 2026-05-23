@@ -77,8 +77,8 @@ export default function Part() {
   const showDebugHit = useSketchEditorStore(s => s.showDebugHit)
   const setShowDebugHit = useSketchEditorStore(s => s.setShowDebugHit)
 
-  const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
-  const setPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
+  const activePickField = useSketchEditorStore(s => s.activePickField)
+  const setActivePickField = useSketchEditorStore(s => s.setActivePickField)
   const selection = useSketchEditorStore(s => s.normalSelection)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
 
@@ -124,6 +124,11 @@ export default function Part() {
   const readOnly = permission === 'view'
 
   const features = useMemo(() => extractFeatures(doc), [doc])
+  // The sketch-on-face FSM only cares about a sketch's plane field being picked.
+  const planeSelectionFeatureId = activePickField?.field === 'plane'
+    && features.find(f => f.id === activePickField.featureId)?.kind === 'sketch'
+    ? activePickField.featureId
+    : null
   const partStyle = useMemo(() => doc?.part_style ?? {}, [doc])
   const partLabels = useMemo(() => {
     const labels: Record<string, string> = {}
@@ -207,9 +212,9 @@ export default function Part() {
   const clearPickBodies = useCallback(() => setPickBodies({}), [setPickBodies])
   const pendingSketchOnFaceId = useRef<string | null>(null)
   const clearPlaneSelection = useCallback(() => {
-    setPlaneSelectionFeatureId(null)
+    setActivePickField(null)
     pendingSketchOnFaceId.current = null
-  }, [setPlaneSelectionFeatureId])
+  }, [setActivePickField])
 
   const {
     editingFeatureId,
@@ -373,8 +378,8 @@ export default function Part() {
     setRollbackPos(features.length + 1)
     handleMutation({ type: 'add_sketch', featureId, label })
     setRollbackFromHandler(features.length + 1)
-    setPlaneSelectionFeatureId(featureId)
-  }, [doc, features.length, handleMutation, setPlaneSelectionFeatureId, setRollbackPos, setRollbackFromHandler])
+    setActivePickField({ featureId, field: 'plane' })
+  }, [doc, features.length, handleMutation, setActivePickField, setRollbackPos, setRollbackFromHandler])
 
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')

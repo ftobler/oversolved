@@ -1,7 +1,6 @@
-import { useState } from 'react'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
-import { useFieldPicking } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/useFieldPicking'
 
 interface FilletEditorProps {
   feature: PartFeature
@@ -13,16 +12,14 @@ interface FilletEditorProps {
 export function FilletEditor({ feature, onMutation, features, partLabels }: FilletEditorProps) {
   const fillet = feature.fillet ?? { edges: [], radius: 1 }
   const fid = feature.id
-  const [isPickingEdges, setIsPickingEdges] = useState(false)
-
-  useFieldPicking(isPickingEdges, (selectionId) => {
+  const edgesPick = usePickField(fid, 'edges', (selectionId) => {
     // Prevent self-pick (selecting the fillet feature's own ID)
     if (!selectionId.startsWith('?')) return
     const edgeQuery = selectionId.startsWith('face:')
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
     onMutation({ type: 'add_fillet_edge', featureId: fid, edgeQuery })
-  })
+  }, { multi: true })
 
   return (
     <div className="plane-editor">
@@ -30,8 +27,8 @@ export function FilletEditor({ feature, onMutation, features, partLabels }: Fill
         <span className="feature-field-label">Edges</span>
         <PickChip
           values={fillet.edges}
-          isPicking={isPickingEdges}
-          onActivate={() => setIsPickingEdges(!isPickingEdges)}
+          isPicking={edgesPick.isPicking}
+          onActivate={edgesPick.toggle}
           onRemove={(index) => onMutation({ type: 'remove_fillet_edge', featureId: fid, index })}
           onReorder={(from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: 'edges', fromIndex: from, toIndex: to })}
           features={features}

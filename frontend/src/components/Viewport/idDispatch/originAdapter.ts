@@ -6,10 +6,6 @@ export const originAdapter = {
     s.setHoveredSelectionId(entityKey)
     s.setHoveredVertex(entityKey, [0, 0], 'vertex')
   },
-  onClick(entityKey: string): void {
-    const s = useSketchEditorStore.getState()
-    s.toggleNormalSelection(entityKey)
-  },
 }
 
 /** Clear origin marker hover state. */

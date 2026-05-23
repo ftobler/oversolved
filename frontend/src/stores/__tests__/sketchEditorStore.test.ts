@@ -24,7 +24,7 @@ function reset() {
     pendingDimTarget: null,
     pendingDimEntityKind: null,
     pendingDialog: null,
-    planeSelectionFeatureId: null,
+    activePickField: null,
     hoveredVertexId: null,
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
@@ -517,29 +517,28 @@ describe('sketchEditorStore', () => {
     })
   })
 
-  describe('plane selection', () => {
-    it('setPlaneSelectionFeatureId sets the plane feature being edited', () => {
-      useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
-      expect(useSketchEditorStore.getState().planeSelectionFeatureId).toBe('Sketch1')
+  describe('pick field (activePickField)', () => {
+    it('setActivePickField sets the field being picked', () => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
+      expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'Sketch1', field: 'plane' })
     })
 
-    it('commitPlaneSelection dispatches mutation with face query', () => {
-      const handler = vi.fn()
-      setSketchCallback('onMutation', handler)
-      useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
-      useSketchEditorStore.getState().commitPlaneSelection('face:sketch0:?3;@sketch0abc')
-      expect(handler).toHaveBeenCalledWith({
-        type: 'set_feature_plane',
-        featureId: 'Sketch1',
-        plane: '?3;@sketch0abc',
-      })
+    it('setActivePickField(null) clears the field', () => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
+      useSketchEditorStore.getState().setActivePickField(null)
+      expect(useSketchEditorStore.getState().activePickField).toBeNull()
     })
 
-    it('commitPlaneSelection is no-op when no feature selected', () => {
-      const handler = vi.fn()
-      setSketchCallback('onMutation', handler)
-      useSketchEditorStore.getState().commitPlaneSelection('face:sketch0:?3;@sketch0abc')
-      expect(handler).not.toHaveBeenCalled()
+    it('manual activate clears existing normal selection', () => {
+      useSketchEditorStore.setState({ normalSelection: new Set(['@something']) })
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    })
+
+    it('seed activate keeps existing normal selection', () => {
+      useSketchEditorStore.setState({ normalSelection: new Set(['@something']) })
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' }, { seed: true })
+      expect(useSketchEditorStore.getState().normalSelection.has('@something')).toBe(true)
     })
   })
 
@@ -683,14 +682,13 @@ describe('sketchEditorStore', () => {
       expect(s.normalSelection.size).toBe(0)
     })
 
-    it('commitPlaneSelection clears chipOwnedSelection', () => {
-      useSketchEditorStore.getState().setPlaneSelectionFeatureId('sk1')
+    it('setActivePickField(null) clears chipOwnedSelection', () => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'sk1', field: 'plane' })
       useSketchEditorStore.setState({
         chipOwnedSelection: new Set(['?body_ex1/face/0']),
         normalSelection: new Set(['?body_ex1/face/0']),
       })
-      setSketchCallback('onMutation', vi.fn())
-      useSketchEditorStore.getState().commitPlaneSelection('?body_ex1/face/0')
+      useSketchEditorStore.getState().setActivePickField(null)
       expect(useSketchEditorStore.getState().chipOwnedSelection.size).toBe(0)
     })
   })
@@ -739,17 +737,26 @@ describe('sketchEditorStore', () => {
         expect(s.pendingDimEntityKind).toBe('line')
       })
 
-      it('clears planeSelectionFeatureId when entering a tool', () => {
-        useSketchEditorStore.setState({ planeSelectionFeatureId: 'Sketch1', activeTool: null })
+      it('clears activePickField and chip-owned selection when entering a tool', () => {
+        useSketchEditorStore.setState({
+          activePickField: { featureId: 'Sketch1', field: 'plane' },
+          activeTool: null,
+          chipOwnedSelection: new Set(['?body_ex1/face/0']),
+          normalSelection: new Set(['?body_ex1/face/0', '@other_item']),
+        })
         useSketchEditorStore.getState().setActiveTool('select')
-        expect(useSketchEditorStore.getState().planeSelectionFeatureId).toBeNull()
+        const s = useSketchEditorStore.getState()
+        expect(s.activePickField).toBeNull()
+        expect(s.chipOwnedSelection.size).toBe(0)
+        expect(s.normalSelection.has('?body_ex1/face/0')).toBe(false)
+        expect(s.normalSelection.has('@other_item')).toBe(true)
       })
 
-      it('does not clear planeSelectionFeatureId when setting tool to null', () => {
-        useSketchEditorStore.setState({ planeSelectionFeatureId: 'Sketch1', activeTool: null })
+      it('does not clear activePickField when setting tool to null', () => {
+        useSketchEditorStore.setState({ activePickField: { featureId: 'Sketch1', field: 'plane' }, activeTool: null })
         useSketchEditorStore.getState().setActiveTool(null)
-        // tool=null means we are NOT entering a tool mode, so plane selection persists
-        expect(useSketchEditorStore.getState().planeSelectionFeatureId).toBe('Sketch1')
+        // tool=null means we are NOT entering a tool mode, so the pick field persists
+        expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'Sketch1', field: 'plane' })
       })
 
       it('clears drawSnapVertexId when switching tool', () => {
@@ -759,23 +766,23 @@ describe('sketchEditorStore', () => {
       })
     })
 
-    describe('setPlaneSelectionFeatureId', () => {
-      it('clears activeTool and draw state when entering plane selection', () => {
+    describe('setActivePickField', () => {
+      it('clears activeTool and draw state when entering a pick', () => {
         useSketchEditorStore.getState().setActiveTool('select')
-        useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
+        useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
         const s = useSketchEditorStore.getState()
-        expect(s.planeSelectionFeatureId).toBe('Sketch1')
+        expect(s.activePickField).toEqual({ featureId: 'Sketch1', field: 'plane' })
         expect(s.activeTool).toBeNull()
         expect(s.drawPoints).toEqual([])
         expect(s.drawHover).toBeNull()
         expect(s.drawSnapVertexId).toBeNull()
       })
 
-      it('does not clear tool state when clearing plane selection', () => {
+      it('does not clear tool state when clearing the pick', () => {
         useSketchEditorStore.getState().setActiveTool('select')
-        useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
-        useSketchEditorStore.getState().setPlaneSelectionFeatureId(null)
-        expect(useSketchEditorStore.getState().activeTool).toBeNull()  // tool was already cleared when entering plane mode
+        useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
+        useSketchEditorStore.getState().setActivePickField(null)
+        expect(useSketchEditorStore.getState().activeTool).toBeNull()  // tool was already cleared when entering pick mode
       })
     })
   })
@@ -800,18 +807,17 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().modeStack).toEqual([])
     })
 
-    it('plane selection pushes mode after deactivating tool', () => {
+    it('pick field pushes mode after deactivating tool', () => {
       useSketchEditorStore.getState().setActiveTool('select')
-      useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
       const stack = useSketchEditorStore.getState().modeStack
       expect(stack).not.toContain('tool:select')
-      expect(stack).toContain('plane_selection')
+      expect(stack).toContain('pick')
     })
 
-    it('commitPlaneSelection pops plane_selection mode', () => {
-      setSketchCallback('onMutation', vi.fn())
-      useSketchEditorStore.getState().setPlaneSelectionFeatureId('Sketch1')
-      useSketchEditorStore.getState().commitPlaneSelection('@builtin_plane_top')
+    it('setActivePickField(null) pops pick mode', () => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
+      useSketchEditorStore.getState().setActivePickField(null)
       expect(useSketchEditorStore.getState().modeStack).toEqual([])
     })
   })

@@ -1,21 +1,27 @@
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
+import { usePickField } from '@/hooks/useFieldPicking'
 import { planeLabel } from '@/components/Geometry3D/utils'
 
 interface PlaneSelectorProps {
   feature: PartFeature
   featureDef?: PartFeature
   onMutation: (m: Mutation) => void
-  planeSelectionFeatureId: string | null
-  setPlaneSelectionFeatureId: (id: string | null) => void
   features: PartFeature[]
   partLabels: Record<string, string>
 }
 
 export function PlaneSelector({
-  feature, featureDef, onMutation, planeSelectionFeatureId, setPlaneSelectionFeatureId, features, partLabels,
+  feature, featureDef, onMutation, features, partLabels,
 }: PlaneSelectorProps) {
-  const isPicking = planeSelectionFeatureId === feature.id
+  const fid = feature.id
+
+  const planePick = usePickField(fid, 'plane', (selectionId) => {
+    const plane = selectionId.startsWith('face:')
+      ? selectionId.split(':').slice(2).join(':')
+      : selectionId
+    onMutation({ type: 'set_feature_plane', featureId: fid, plane })
+  })
 
   return (
     <div className="plane-editor">
@@ -26,18 +32,9 @@ export function PlaneSelector({
             const label = planeLabel(featureDef?.plane)
             return label && label !== 'None' ? [label] : []
           })()}
-          isPicking={isPicking}
-          onActivate={() => {
-            if (isPicking) {
-              setPlaneSelectionFeatureId(null)
-            } else {
-              setPlaneSelectionFeatureId(feature.id)
-            }
-          }}
-          onRemove={() => {
-            onMutation({ type: 'set_feature_plane', featureId: feature.id, plane: '' })
-            setPlaneSelectionFeatureId(null)
-          }}
+          isPicking={planePick.isPicking}
+          onActivate={planePick.toggle}
+          onRemove={() => onMutation({ type: 'set_feature_plane', featureId: fid, plane: '' })}
           features={features}
           partLabels={partLabels}
         />

@@ -7,7 +7,7 @@ beforeEach(() => { clearAllHandlers() })
 
 // Commands that intentionally have no keyboard shortcut.
 const PROGRAMMATIC_ONLY = new Set([
-  'cancel_plane_selection',
+  'cancel_pick',
   'set_tool_select',
   'set_tool_drag',
   'set_tool_point',

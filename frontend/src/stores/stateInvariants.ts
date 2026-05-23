@@ -26,7 +26,7 @@ export interface SketchEditorInvariantState {
   activeTool: string | null
   pendingDimTarget: string | null
   pendingDimEntityKind: string | null
-  planeSelectionFeatureId: string | null
+  activePickField: { featureId: string; field: string } | null
   drawPoints: unknown[]
   drawHover: unknown
   pendingDialog: unknown
@@ -47,9 +47,9 @@ export function validateSketchEditorState(state: SketchEditorInvariantState): vo
     )
   }
 
-  if (state.planeSelectionFeatureId !== null && state.activeTool !== null) {
+  if (state.activePickField !== null && state.activeTool !== null) {
     failLoud(
-      `[invariant] planeSelectionFeatureId set ('${state.planeSelectionFeatureId}') `
+      `[invariant] activePickField set ('${state.activePickField.featureId}:${state.activePickField.field}') `
       + `but activeTool is '${state.activeTool}', expected null`,
     )
   }

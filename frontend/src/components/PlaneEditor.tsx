@@ -1,7 +1,7 @@
-import { useState } from 'react'
 import type { PartFeature, PlaneDef, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
-import { useFieldPicking } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/useFieldPicking'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { planeLabel } from '@/components/Geometry3D/utils'
 import { emitAbsoluteSelectionQuery } from '@/utils/selectionId'
 
@@ -19,12 +19,16 @@ export function PlaneEditor({
   const def = (featureDef?.definition as PlaneDef | undefined) ?? { mode: 'offset' }
   const mode = def.mode ?? 'offset'
   const fid = feature.id
-  const [pickingField, setPickingField] = useState<string | null>(null)
+  const activePickField = useSketchEditorStore(s => s.activePickField)
+  const setActivePickField = useSketchEditorStore(s => s.setActivePickField)
+  // This feature renders a variable set of pick chips depending on `mode`, so a
+  // single observer is keyed on the central field and dispatches to whichever
+  // plane-definition field is active (one hook call, stable across renders).
+  const pickingField = activePickField?.featureId === fid ? activePickField.field : null
 
-  useFieldPicking(pickingField !== null, (selectionId) => {
+  usePickField(fid, pickingField ?? '', (selectionId) => {
     const value = emitAbsoluteSelectionQuery(selectionId)
     onMutation({ type: 'set_plane_definition_field', featureId: fid, field: pickingField!, value })
-    setPickingField(null)
   })
 
   const pickChip = (field: string, _kind: 'plane' | 'point' | 'line', value: string | undefined) => {
@@ -33,13 +37,7 @@ export function PlaneEditor({
       <PickChip
         values={value && value !== 'None' ? [value] : []}
         isPicking={isPicking}
-        onActivate={() => {
-          if (isPicking) {
-            setPickingField(null)
-          } else {
-            setPickingField(field)
-          }
-        }}
+        onActivate={() => setActivePickField(isPicking ? null : { featureId: fid, field })}
         onRemove={() => onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: '' })}
         features={features}
         partLabels={partLabels}

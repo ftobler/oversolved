@@ -76,8 +76,6 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
   const validation = usePartEditorStore(s => s.validation)
 
   const selection = useSketchEditorStore(s => s.normalSelection)
-  const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
-  const onSetPlaneSelectionFeatureId = useSketchEditorStore(s => s.setPlaneSelectionFeatureId)
 
   const {
     onToggleSelect,
@@ -323,8 +321,6 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 onMutation={onMutation}
                 features={features}
                 partLabels={partLabels}
-                planeSelectionFeatureId={planeSelectionFeatureId}
-                setPlaneSelectionFeatureId={onSetPlaneSelectionFeatureId}
               />
             </li>
           </div>

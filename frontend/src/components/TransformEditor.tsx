@@ -1,7 +1,6 @@
-import { useState } from 'react'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
-import { useFieldPicking } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/useFieldPicking'
 
 interface TransformEditorProps {
   feature: PartFeature
@@ -19,23 +18,16 @@ function resolveTransformQuery(selectionId: string): string {
 export function TransformEditor({ feature, onMutation, features, partLabels }: TransformEditorProps) {
   const transform = feature.transform ?? { body: '', operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 }
   const fid = feature.id
-  const [isPickingBody, setIsPickingBody] = useState(false)
-  const [isPickingAxis, setIsPickingAxis] = useState(false)
-  const [isPickingOrigin, setIsPickingOrigin] = useState(false)
-
-  useFieldPicking(isPickingBody, (selectionId) => {
+  const bodyPick = usePickField(fid, 'body', (selectionId) => {
     onMutation({ type: 'set_transform_field', featureId: fid, field: 'body', value: resolveTransformQuery(selectionId) })
-    setIsPickingBody(false)
   })
 
-  useFieldPicking(isPickingAxis, (selectionId) => {
+  const axisPick = usePickField(fid, 'rotation_axis', (selectionId) => {
     onMutation({ type: 'set_transform_field', featureId: fid, field: 'rotation_axis', value: resolveTransformQuery(selectionId) })
-    setIsPickingAxis(false)
   })
 
-  useFieldPicking(isPickingOrigin, (selectionId) => {
+  const originPick = usePickField(fid, 'scale_center_from', (selectionId) => {
     onMutation({ type: 'set_transform_field', featureId: fid, field: 'scale_center_from', value: resolveTransformQuery(selectionId) })
-    setIsPickingOrigin(false)
   })
 
   const numField = (label: string, value: number | undefined, onBlur: (v: number) => void) => (
@@ -61,8 +53,8 @@ export function TransformEditor({ feature, onMutation, features, partLabels }: T
         <span className="feature-field-label">Body</span>
         <PickChip
           values={transform.body ? [transform.body] : []}
-          isPicking={isPickingBody}
-          onActivate={() => setIsPickingBody(!isPickingBody)}
+          isPicking={bodyPick.isPicking}
+          onActivate={bodyPick.toggle}
           onRemove={() => onMutation({ type: 'set_transform_field', featureId: fid, field: 'body', value: '' })}
           features={features}
           partLabels={partLabels}
@@ -110,8 +102,8 @@ export function TransformEditor({ feature, onMutation, features, partLabels }: T
         <span className="feature-field-label">Axis</span>
           <PickChip
             values={transform.rotation_axis ? [transform.rotation_axis] : []}
-            isPicking={isPickingAxis}
-            onActivate={() => setIsPickingAxis(!isPickingAxis)}
+            isPicking={axisPick.isPicking}
+            onActivate={axisPick.toggle}
             onRemove={() => onMutation({ type: 'set_transform_field', featureId: fid, field: 'rotation_axis', value: '' })}
             features={features}
             partLabels={partLabels}
@@ -128,8 +120,8 @@ export function TransformEditor({ feature, onMutation, features, partLabels }: T
         <span className="feature-field-label">Origin</span>
         <PickChip
           values={transform.scale_center_from ? [transform.scale_center_from] : []}
-          isPicking={isPickingOrigin}
-          onActivate={() => setIsPickingOrigin(!isPickingOrigin)}
+          isPicking={originPick.isPicking}
+          onActivate={originPick.toggle}
           onRemove={() => onMutation({ type: 'set_transform_field', featureId: fid, field: 'scale_center_from', value: '' })}
           features={features}
           partLabels={partLabels}
