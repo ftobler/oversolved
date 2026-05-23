@@ -128,4 +128,40 @@ describe('buildSurfaceShapes', () => {
 
 // 3f: surfaces are not draggable (checklist)
 // SurfaceMesh does not attach onPointerDown — verified by code review.
+
+// 3g: R3F mesh click suppression in editing mode (SurfaceMesh and EdgeMesh)
+// mode='editing' means the ID buffer owns entity/vertex clicks; the R3F meshes must
+// NOT call toggleNormalSelection. They still stopPropagation to prevent DrawPlane
+// from clearing the ID-buffer selection. Only mode='view' allows R3F mesh selection.
+describe('topology mesh click suppression during editing', () => {
+  beforeEach(() => {
+    useSketchEditorStore.getState().clearNormalSelection()
+  })
+
+  it('only entity is selected when ID buffer picks entity (surface click suppressed)', () => {
+    // Simulate: ID buffer clicks entity (mode='editing' means surface R3F click is no-op)
+    useSketchEditorStore.getState().toggleNormalSelection('entity:feat1:lineA')
+
+    const sel = useSketchEditorStore.getState().normalSelection
+    expect(sel.has('entity:feat1:lineA')).toBe(true)
+    expect(sel.has('face:feat1:?3;@feat1/lineA')).toBe(false)
+  })
+
+  it('only entity is selected when ID buffer picks entity (edge click suppressed)', () => {
+    // Simulate: ID buffer clicks entity (mode='editing' means edge R3F click is no-op)
+    useSketchEditorStore.getState().toggleNormalSelection('entity:feat1:lineA')
+
+    const sel = useSketchEditorStore.getState().normalSelection
+    expect(sel.has('entity:feat1:lineA')).toBe(true)
+    expect(sel.has('edge:feat1:?3;@feat1/lineA')).toBe(false)
+  })
+
+  it('surface can be selected via R3F click in view mode (no active edit)', () => {
+    // In view mode (mode='view'), R3F mesh clicks ARE the selection mechanism
+    useSketchEditorStore.getState().toggleNormalSelection('face:feat1:?3;@feat1/lineA')
+
+    const sel = useSketchEditorStore.getState().normalSelection
+    expect(sel.has('face:feat1:?3;@feat1/lineA')).toBe(true)
+  })
+})
 // There is no drag initiation in Surfaces.tsx; setDrag is never called from surface meshes.

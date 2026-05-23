@@ -37,15 +37,19 @@ export function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
   })
 }
 
+// 'inactive' = another sketch is being edited (this one is dimmed, no events)
+// 'editing'  = this sketch is being edited (ID buffer owns entity/vertex events)
+// 'view'     = no sketch is being edited (R3F mesh events handle selection)
+export type TopologyMode = 'view' | 'editing' | 'inactive'
+
 interface SurfaceMeshProps {
   shape: THREE.Shape
   featureId: string
   query: string
-  isEditing: boolean
-  activeFeatureId?: string
+  mode: TopologyMode
 }
 
-export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureId }: SurfaceMeshProps) {
+export function SurfaceMesh({ shape, featureId, query, mode }: SurfaceMeshProps) {
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const commitPlaneSelection = useSketchEditorStore(s => s.commitPlaneSelection)
   const planeSelectionFeatureId = useSketchEditorStore(s => s.planeSelectionFeatureId)
@@ -53,17 +57,19 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
 
   const id = surfaceSelectionId(featureId, query)
   const isSelected = normalSelection.has(id)
-  const isInactive = activeFeatureId !== undefined && !isEditing
 
   let color: string = 'white'
   let opacity = 0.10
-  if (isInactive) { color = COLOR_INACTIVE; opacity = 0.10 }
+  if (mode === 'inactive') { color = COLOR_INACTIVE; opacity = 0.10 }
   if (isSelected) { color = COLOR_SELECTED; opacity = 0.30 }
 
-  const handleClick = isInactive ? undefined : (e: ThreeEvent<PointerEvent>) => {
+  // In editing mode the ID buffer owns entity/vertex clicks. stopPropagation
+  // is still required to prevent the background DrawPlane from clearing the
+  // ID-buffer selection. toggleNormalSelection is only allowed in view mode.
+  const handleClick = mode === 'inactive' ? undefined : (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation()
     if (planeSelectionFeatureId) commitPlaneSelection(id)
-    else toggleNormalSelection(id)
+    else if (mode === 'view') toggleNormalSelection(id)
   }
 
   return (
@@ -80,19 +86,14 @@ export function SurfaceMesh({ shape, featureId, query, isEditing, activeFeatureI
 interface EdgeMeshProps {
   edge: TopologyEdgeQuery
   featureId: string
+  mode: TopologyMode
 }
 
 function _isValidPoint(p: Point): boolean {
   return Number.isFinite(p[0]) && Number.isFinite(p[1])
 }
 
-interface EdgeMeshProps {
-  edge: TopologyEdgeQuery
-  featureId: string
-  isInactive?: boolean
-}
-
-function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
+function EdgeMesh({ edge, featureId, mode }: EdgeMeshProps) {
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const id = edgeSelectionId(featureId, edge.query)
@@ -120,6 +121,13 @@ function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
     return geo
   }, [start, end])
 
+  // Same rule as SurfaceMesh: stopPropagation always (protects ID-buffer selection
+  // from DrawPlane clear), but toggleNormalSelection only in view mode.
+  const handleEdgeClick = mode === 'inactive' ? undefined : (e: { stopPropagation: () => void }) => {
+    e.stopPropagation()
+    if (mode === 'view') toggleNormalSelection(id)
+  }
+
   if (edge.kind === 'arc' && edge.center && edge.radius !== undefined) {
     const cx = edge.center[0]
     const cy = edge.center[1]
@@ -132,10 +140,6 @@ function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
       const points = curve.getPoints(32)
       const arcGeometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, 0)))
 
-      const handleEdgeClick = isInactive ? undefined : (e: { stopPropagation: () => void }) => {
-        e.stopPropagation()
-        toggleNormalSelection(id)
-      }
       return (
         <line onClick={handleEdgeClick}>
           <primitive object={arcGeometry} attach="geometry" />
@@ -143,11 +147,6 @@ function EdgeMesh({ edge, featureId, isInactive = false }: EdgeMeshProps) {
         </line>
       )
     }
-  }
-
-  const handleEdgeClick = isInactive ? undefined : (e: { stopPropagation: () => void }) => {
-    e.stopPropagation()
-    toggleNormalSelection(id)
   }
 
   return (
@@ -167,11 +166,11 @@ interface TopologyEdgesProps {
 
 export function TopologyEdges({ topology, featureId, isEditing, activeFeatureId }: TopologyEdgesProps) {
   const edges = topology.edges ?? []
-  const isInactive = activeFeatureId !== undefined && !isEditing
+  const mode: TopologyMode = activeFeatureId !== undefined ? (isEditing ? 'editing' : 'inactive') : 'view'
   return (
     <>
       {edges.map((edge, ei) => (
-        <EdgeMesh key={ei} edge={edge} featureId={featureId} isInactive={isInactive} />
+        <EdgeMesh key={ei} edge={edge} featureId={featureId} mode={mode} />
       ))}
     </>
   )
@@ -186,6 +185,7 @@ interface TopologySurfacesProps {
 
 export function TopologySurfaces({ topology, featureId, isEditing, activeFeatureId }: TopologySurfacesProps) {
   const surfaces = useMemo(() => buildSurfaceShapes(topology), [topology])
+  const mode: TopologyMode = activeFeatureId !== undefined ? (isEditing ? 'editing' : 'inactive') : 'view'
   return (
     <>
       {surfaces.map((s, si) => (
@@ -194,8 +194,7 @@ export function TopologySurfaces({ topology, featureId, isEditing, activeFeature
           shape={s.shape}
           featureId={featureId}
           query={s.query}
-          isEditing={isEditing}
-          activeFeatureId={activeFeatureId}
+          mode={mode}
         />
       ))}
     </>
