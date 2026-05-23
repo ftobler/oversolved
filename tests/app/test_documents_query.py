@@ -158,6 +158,34 @@ class TestDocumentsQuery:
         assert "BobShares" in names
         assert "AliceOwns" not in names
 
+    def test_create_sets_isoformat_timestamp_so_sort_by_date_works(self):
+        """Newly created documents must appear first when sorted newest-first.
+
+        Before the fix, DocumentStore.create() relied on the DB DEFAULT
+        (NOW()::text) which produces a space-separated timestamp like
+        '2024-01-01 12:00:00+00'. Python's isoformat() produces a T-separated
+        one like '2024-01-01T12:00:00+00:00'. Text-sort puts space before T
+        so a newly created doc would appear *after* older but Python-updated
+        documents.
+        """
+        import time
+        db = _make_db()
+        owner = _add_user(db, "owner")
+        store = DocumentStore(db)
+
+        # Insert an older doc via the helper (raw INSERT with empty updated_at)
+        # then update it to have a known Python-style timestamp via store_content,
+        # which simulates a doc that was created before but later modified.
+        old_uuid = store.create("OldDoc", owner)
+        time.sleep(0.01)
+        new_uuid = store.create("NewDoc", owner)
+
+        results = store.list_by_filter(owner, "owned", "modified", "")
+        names = [r["name"] for r in results]
+        assert names[0] == "NewDoc", (
+            f"NewDoc should appear first when sorted newest-first, got {names}"
+        )
+
     @pytest.mark.parametrize("filter_type", ["all", "owned", "shared", "public"])
     def test_unified_query_matches_old_methods(self, filter_type):
         """Verify list_by_filter routes produce same result as old individual methods."""

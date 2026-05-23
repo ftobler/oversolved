@@ -20,10 +20,11 @@ class DocumentStore:
     def create(self, name: str, owner_id: int, is_public: bool = False) -> str:
         """Create a new document and return its UUID."""
         uuid = uuid_mod.uuid4().hex
+        now = datetime.now(timezone.utc).isoformat()
         with self.db.transaction():
             self.db.execute(
-                "INSERT INTO documents (uuid, name, content, owner_id, is_public) VALUES (?, ?, ?, ?, ?)",
-                (uuid, name, "", owner_id, 1 if is_public else 0),
+                "INSERT INTO documents (uuid, name, content, owner_id, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (uuid, name, "", owner_id, 1 if is_public else 0, now, now),
             )
         return uuid
 
