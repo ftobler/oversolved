@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query
 from oversolved.kernel.types3d import Body, Frame3D
 from oversolved.kernel.geom_hash import face_geometry_hash
+from oversolved.kernel.profile_loops import _loop_centroid
 from oversolved.kernel.solver_constants import _ARC_SEGMENTS, TOL_LOOP_CLOSURE
 
 try:
@@ -155,19 +156,8 @@ def _register_top_face(
         y_axis = np.array(pt["y_axis"])
         normal = np.array(pt["normal"])
 
-    if surfaces:
-        pts_2d = []
-        for edge in surfaces[0].get("boundary", []):
-            for key in ("start", "end"):
-                if key in edge:
-                    pts_2d.append(edge[key])
-        if pts_2d:
-            u = sum(p[0] for p in pts_2d) / len(pts_2d)
-            v = sum(p[1] for p in pts_2d) / len(pts_2d)
-        else:
-            u, v = 0.0, 0.0
-    else:
-        u, v = 0.0, 0.0
+    boundary = surfaces[0].get("boundary", []) if surfaces else []
+    u, v = _loop_centroid(boundary)
 
     sketch_centroid = origin + u * x_axis + v * y_axis
     top_centroid = sketch_centroid + normal * distance

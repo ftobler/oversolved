@@ -1,7 +1,7 @@
 import logging
 import math
 from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query, _evict_ancestry_and_register
-from oversolved.kernel.profile_loops import match_area_reid, _surface_ancestor_key
+from oversolved.kernel.profile_loops import match_area_reid, _surface_ancestor_key, _loop_centroid
 from oversolved.kernel.types3d import Frame3D
 
 __all__ = [
@@ -350,17 +350,12 @@ def _register_topology_surfaces(
         if not query or not query.startswith("?"):
             continue
 
-        # Compute world-space centroid from the surface boundary's 2D sketch coords.
-        pts_2d = []
-        for edge in surface["boundary"]:
-            if "start" in edge:
-                pts_2d.append(edge["start"])
-            if "end" in edge:
-                pts_2d.append(edge["end"])
-
-        if pts_2d:
-            u = sum(p[0] for p in pts_2d) / len(pts_2d)
-            v = sum(p[1] for p in pts_2d) / len(pts_2d)
+        # Area-weighted centroid of the surface boundary in 2D sketch coords,
+        # then projected to world space. Endpoint averaging was wrong for curved
+        # or asymmetric boundaries (only correct by symmetry for circles/rects).
+        boundary = surface["boundary"]
+        if boundary:
+            u, v = _loop_centroid(boundary)
             world_origin = _sketch_to_world_2d([u, v], plane_obj)
         else:
             world_origin = list(origin)

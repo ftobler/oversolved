@@ -26,18 +26,46 @@ def _arc_midpoint(e: dict) -> list[float] | None:
     return [cx + r * math.cos(am), cy + r * math.sin(am)]
 
 
-def _loop_pts(loop: list[dict]) -> list[list[float]]:
-    """Build a polygon point list from a loop, inserting arc midpoints."""
+# Arc samples per edge when approximating a region's area centroid. One sample
+# (the midpoint) is enough for point-in-loop / signed-area, but the centroid of a
+# curved region needs a finer boundary polygon to converge on OCC's face.Center().
+_CENTROID_ARC_SAMPLES = 64
+
+
+def _arc_sample_points(e: dict, n: int) -> list[list[float]]:
+    """Return n interior points spread along an arc edge (n>=1).
+
+    n=1 yields the arc midpoint, matching _arc_midpoint. Empty if not an arc.
+    """
+    if e.get("kind") != "arc":
+        return []
+    center = e.get("center")
+    if center is None:
+        return []
+    cx, cy = center[0], center[1]
+    r = e.get("radius", 0.0)
+    a0 = math.radians(e.get("angle_start_deg", 0.0))
+    a1 = math.radians(e.get("angle_end_deg", 0.0))
+    if not e.get("ccw", True):
+        a0, a1 = a1, a0
+    if a1 < a0:
+        a1 += 2 * math.pi
+    return [
+        [cx + r * math.cos(a), cy + r * math.sin(a)]
+        for a in (a0 + (a1 - a0) * (k + 1) / (n + 1) for k in range(n))
+    ]
+
+
+def _loop_pts(loop: list[dict], arc_samples: int = 1) -> list[list[float]]:
+    """Build a polygon point list from a loop, inserting arc sample points.
+
+    arc_samples controls how finely arcs are sampled (default 1 = midpoint only).
+    """
     pts: list[list[float]] = []
     for e in loop:
         if "start" in e:
             pts.append(e["start"])
-        mid = _arc_midpoint(e)
-        if mid is not None:
-            pts.append(mid)
-        elif "start" not in e:
-            # OCC-sourced edge without start/end: skip (no geometry to place)
-            pass
+        pts.extend(_arc_sample_points(e, arc_samples))
     return pts
 
 
@@ -78,7 +106,7 @@ def _loop_centroid(loop: list[dict]) -> list[float]:
     Falls back to the first polygon point for near-zero-area loops, or to
     [0.0, 0.0] for loops with fewer than 3 sampled points.
     """
-    pts = _loop_pts(loop)
+    pts = _loop_pts(loop, arc_samples=_CENTROID_ARC_SAMPLES)
     n = len(pts)
     if n < 3:
         return [0.0, 0.0]
