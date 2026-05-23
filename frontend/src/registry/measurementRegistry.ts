@@ -2,6 +2,7 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import type { LineSegment, Arc, Circle, PointEntity, BodyResult, EdgeDataCircleArc } from '@/types/cad'
+import { parseTopoFallbackQuery } from '@/utils/selectionId'
 
 /**
  * Measurement Registry — defines measurement rules in order of specificity.
@@ -293,18 +294,11 @@ function findBodyElement(
   bodies: Record<string, BodyResult>
 ): { body: BodyResult; kind: 'edge' | 'face' | 'vertex'; index: number } | null {
   // Simple slash format: @featureId/edge/N, @featureId/face/N, or @featureId/vertex/N
-  if (id.startsWith('@') && id.includes('/')) {
-    const slash1 = id.indexOf('/', 1)
-    const slash2 = id.indexOf('/', slash1 + 1)
-    if (slash1 > 0 && slash2 > 0) {
-      const featureId = id.slice(1, slash1)
-      const kind = id.slice(slash1 + 1, slash2) as 'edge' | 'face' | 'vertex'
-      const index = parseInt(id.slice(slash2 + 1), 10)
-      const body = bodies[featureId]
-      if (body && (kind === 'edge' || kind === 'face' || kind === 'vertex') && !isNaN(index)) {
-        return { body, kind, index }
-      }
-    }
+  const parsed = parseTopoFallbackQuery(id)
+  if (parsed) {
+    const { featureId, kind, idx: index } = parsed
+    const body = bodies[featureId]
+    if (body) return { body, kind, index }
   }
   // Ancestry / query format: search all bodies for a matching query string
   for (const body of Object.values(bodies)) {

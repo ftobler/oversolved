@@ -9,7 +9,7 @@
  * them correctly regardless.  No handler may store a bare integer index.
  */
 import type { SelectionId, EntitySelectionId, VertexSelectionId, FaceSelectionId, EdgeSelectionId, PlaneSelectionId, ConstraintSelId } from "@/types/query"
-import { parseQuery } from "@/utils/query"
+import { parseQuery, emitWire } from "@/utils/query"
 import type { Query } from "@/types/query"
 
 export const sel = {
@@ -118,4 +118,40 @@ function _splitEdge(s: string): EdgeSelectionId {
 function _splitConstraint(s: string): ConstraintSelId {
   const [, featureId, cid] = s.split(":")
   return { kind: "constraint", featureId, cid }
+}
+
+/**
+ * Emit an always-absolute backend query from a raw selection ID string.
+ *
+ * Used where there is no host concept (e.g. PlaneEditor picking).
+ * Never emits `$` local form. face/edge inner queries are passed through
+ * verbatim rather than re-serialized. The `@` / `$` wire format for entity
+ * and vertex selections is produced by the engine (selectionToQuery + emitWire).
+ */
+export function emitAbsoluteSelectionQuery(selectionId: string): string {
+  if (selectionId.startsWith('face:')) {
+    return selectionId.split(':').slice(2).join(':')
+  }
+  if (selectionId.startsWith('vertex:') || selectionId.startsWith('entity:')) {
+    const sel = parseSelectionId(selectionId)
+    return emitWire(selectionToQuery(sel, ''))
+  }
+  return selectionId
+}
+
+/**
+ * Parse a topo-fallback query string (`@<featureId>/<kind>/<idx>`)
+ * back into its components. The inverse of topoFallbackQuery().
+ * Returns null if the string is not a valid topo-fallback query.
+ */
+export function parseTopoFallbackQuery(query: string): { featureId: string; kind: 'edge' | 'face' | 'vertex'; idx: number } | null {
+  if (!query.startsWith('@')) return null
+  const slash1 = query.indexOf('/', 1)
+  const slash2 = query.indexOf('/', slash1 + 1)
+  if (slash1 < 0 || slash2 < 0) return null
+  const featureId = query.slice(1, slash1)
+  const kind = query.slice(slash1 + 1, slash2)
+  const idx = parseInt(query.slice(slash2 + 1), 10)
+  if ((kind !== 'edge' && kind !== 'face' && kind !== 'vertex') || isNaN(idx)) return null
+  return { featureId, kind: kind as 'edge' | 'face' | 'vertex', idx }
 }

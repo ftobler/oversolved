@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sel, selectionKey, parseSelectionId, selectionToQuery } from '@/utils/selectionId'
+import { sel, selectionKey, parseSelectionId, selectionToQuery, emitAbsoluteSelectionQuery, parseTopoFallbackQuery, topoFallbackQuery } from '@/utils/selectionId'
 import { emitWire } from '@/utils/query'
 import type { LocalQuery, AbsoluteQuery } from '@/types/query'
 
@@ -104,6 +104,100 @@ describe('selectionToQuery', () => {
       it(`"${raw}" with host "${host}" -> "${expected}"`, () => {
         const parsed = parseSelectionId(raw)
         expect(emitWire(selectionToQuery(parsed, host))).toBe(expected)
+      })
+    })
+  })
+})
+
+describe('emitAbsoluteSelectionQuery', () => {
+  it('face passthrough — strips prefix', () => {
+    expect(emitAbsoluteSelectionQuery('face:ex1:?9;@ex1face0:face')).toBe('?9;@ex1face0:face')
+  })
+  it('entity always absolute (cross-feature)', () => {
+    expect(emitAbsoluteSelectionQuery('entity:S1:L1')).toBe('@S1L1')
+  })
+  it('entity always absolute even if host would match', () => {
+    // Host concept is absent — must never emit $ form.
+    expect(emitAbsoluteSelectionQuery('entity:sk1:L1')).toBe('@sk1L1')
+  })
+  it('vertex always absolute with sub', () => {
+    expect(emitAbsoluteSelectionQuery('vertex:S1:L1:start')).toBe('@S1L1start')
+  })
+  it('plane @ ref pass through', () => {
+    expect(emitAbsoluteSelectionQuery('@builtin_plane_front')).toBe('@builtin_plane_front')
+  })
+  it('edge pass through (verbatim)', () => {
+    expect(emitAbsoluteSelectionQuery('edge:ex1:?9;@ex1edge0:edge')).toBe('edge:ex1:?9;@ex1edge0:edge')
+  })
+  it('unknown pass through', () => {
+    expect(emitAbsoluteSelectionQuery('someRawString')).toBe('someRawString')
+  })
+  it('body: pass through', () => {
+    expect(emitAbsoluteSelectionQuery('body:body_ex1')).toBe('body:body_ex1')
+  })
+
+  describe('byte parity with old PlaneEditor inline code', () => {
+    const cases: Array<[string, string]> = [
+      ['face:ex1:?9;@ex1face0:face', '?9;@ex1face0:face'],
+      ['vertex:S1:L1:start', '@S1L1start'],
+      ['vertex:sketch2:arc1:center', '@sketch2arc1center'],
+      ['entity:S1:L1', '@S1L1'],
+      ['entity:sketch2:A1', '@sketch2A1'],
+      ['@builtin_plane_front', '@builtin_plane_front'],
+      ['edge:ex1:?9;@ex1edge0:edge', 'edge:ex1:?9;@ex1edge0:edge'],
+      ['body:body_ex1', 'body:body_ex1'],
+    ]
+    cases.forEach(([input, expected]) => {
+      it(`"${input}" -> "${expected}"`, () => {
+        expect(emitAbsoluteSelectionQuery(input)).toBe(expected)
+      })
+    })
+  })
+})
+
+describe('parseTopoFallbackQuery', () => {
+  it('parses edge query', () => {
+    expect(parseTopoFallbackQuery('@ex1/edge/0')).toEqual({ featureId: 'ex1', kind: 'edge', idx: 0 })
+  })
+  it('parses face query', () => {
+    expect(parseTopoFallbackQuery('@body1/face/3')).toEqual({ featureId: 'body1', kind: 'face', idx: 3 })
+  })
+  it('parses vertex query', () => {
+    expect(parseTopoFallbackQuery('@sk1/vertex/7')).toEqual({ featureId: 'sk1', kind: 'vertex', idx: 7 })
+  })
+  it('multi-digit index', () => {
+    expect(parseTopoFallbackQuery('@ex1/edge/123')).toEqual({ featureId: 'ex1', kind: 'edge', idx: 123 })
+  })
+  it('non-numeric idx returns null', () => {
+    expect(parseTopoFallbackQuery('@ex1/edge/abc')).toBeNull()
+  })
+  it('unknown kind returns null', () => {
+    expect(parseTopoFallbackQuery('@ex1/body/0')).toBeNull()
+  })
+  it('single slash returns null', () => {
+    expect(parseTopoFallbackQuery('@ex1/edge')).toBeNull()
+  })
+  it('no at sign returns null', () => {
+    expect(parseTopoFallbackQuery('ex1/edge/0')).toBeNull()
+  })
+  it('ancestry query returns null', () => {
+    expect(parseTopoFallbackQuery('?9;@ex1edge0:edge')).toBeNull()
+  })
+  it('plane ref returns null', () => {
+    expect(parseTopoFallbackQuery('@builtin_plane_front')).toBeNull()
+  })
+
+  describe('round-trip with topoFallbackQuery', () => {
+    const cases: Array<{ featureId: string; kind: 'edge' | 'face' | 'vertex'; idx: number }> = [
+      { featureId: 'ex1', kind: 'edge', idx: 0 },
+      { featureId: 'body1', kind: 'face', idx: 5 },
+      { featureId: 'sk1', kind: 'vertex', idx: 99 },
+    ]
+    cases.forEach(({ featureId, kind, idx }) => {
+      it(`${kind}/${idx}`, () => {
+        const serialized = topoFallbackQuery(featureId, kind, idx)
+        const parsed = parseTopoFallbackQuery(serialized)
+        expect(parsed).toEqual({ featureId, kind, idx })
       })
     })
   })

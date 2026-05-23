@@ -3,6 +3,7 @@ import type { PartFeature, PlaneDef, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 import { useFieldPicking } from '@/hooks/useFieldPicking'
 import { planeLabel } from '@/components/Geometry3D/utils'
+import { emitAbsoluteSelectionQuery } from '@/utils/selectionId'
 
 interface PlaneEditorProps {
   feature: PartFeature
@@ -21,20 +22,7 @@ export function PlaneEditor({
   const [pickingField, setPickingField] = useState<string | null>(null)
 
   useFieldPicking(pickingField !== null, (selectionId) => {
-    let value: string
-    if (selectionId.startsWith('face:')) {
-      value = selectionId.split(':').slice(2).join(':')
-    } else if (selectionId.startsWith('vertex:')) {
-      const parts = selectionId.split(':')
-      const [, featId, eleId, sub] = parts
-      value = '@' + featId + eleId + sub
-    } else if (selectionId.startsWith('entity:')) {
-      const parts = selectionId.split(':')
-      const [, featId, eleId] = parts
-      value = '@' + featId + eleId
-    } else {
-      value = selectionId
-    }
+    const value = emitAbsoluteSelectionQuery(selectionId)
     onMutation({ type: 'set_plane_definition_field', featureId: fid, field: pickingField!, value })
     setPickingField(null)
   })

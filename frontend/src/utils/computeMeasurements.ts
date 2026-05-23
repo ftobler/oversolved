@@ -1,6 +1,7 @@
 import type { Sketch, LineSegment, Arc, Circle, PointEntity, BodyResult } from '@/types/cad'
 import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, measure3dSelection, type Plane3D } from '@/registry/measurementRegistry'
 import { getEntityKind } from '@/types/cad'
+import { parseTopoFallbackQuery } from '@/utils/selectionId'
 
 /**
  * Compute the best measurement for a set of selected entities.
@@ -35,7 +36,7 @@ export function computeMeasurements(
 
   for (const id of selection) {
     // 3D body element: @featureId/edge/N, @featureId/face/N, or ancestry query (?...)
-    if (id.startsWith('?') || (id.startsWith('@') && id.includes('/'))) {
+    if (id.startsWith('?') || parseTopoFallbackQuery(id) !== null) {
       body3dIds.add(id)
       continue
     }
