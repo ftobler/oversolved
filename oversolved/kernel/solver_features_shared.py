@@ -467,6 +467,132 @@ def _brep_diff_is_empty(diff: "Any") -> bool:
     )
 
 
+def _transfer_boolean_lineage(
+    body: Body,
+    old_target_shape: "Any",
+    tool_shape: "Any",
+    tool_face_lineage: dict[str, list[str]] | None,
+    tool_edge_lineage: dict[str, list[str]] | None,
+) -> None:
+    """Rebuild face_lineage and edge_lineage on body after a boolean op.
+
+    Pre-boolean, the target body (old_target_shape) and tool shape have
+    per-entity lineage tokens in body.face_lineage / tool_face_lineage.
+    After the boolean, OCC shape handles change so those dict keys are stale.
+
+    Strategy:
+    - Build geometric signatures (centroid + normal + area) for all faces
+      in both pre-boolean shapes, together with their lineage tokens.
+    - For each output face classified as inherited in body.brep_diff, find
+      the best geometric match among old_target_shape faces and copy tokens.
+    - For each output face classified as new, do the same against tool faces.
+    - Rebuild edge_lineage from face_lineage via edge→face adjacency.
+    """
+    import cadquery.occ_impl.shapes as cq_shapes  # noqa: PLC0415
+    from OCP.TopExp import TopExp_Explorer, TopExp  # noqa: PLC0415
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE  # noqa: PLC0415
+    from OCP.TopTools import TopTools_IndexedDataMapOfShapeListOfShape  # noqa: PLC0415
+    from oversolved.kernel.ocp_ops import ocp_face_area  # noqa: PLC0415
+
+    diff = body.brep_diff
+    if diff is None:
+        return
+
+    def _face_geometry_list(occ_shape: "Any") -> list:
+        """Return [(topo_face, centroid3, area, normal3), ...] for all faces."""
+        result: list = []
+        exp = TopExp_Explorer(occ_shape, TopAbs_FACE)
+        while exp.More():
+            f = exp.Current()
+            cq_f = cq_shapes.Shape.cast(f)
+            c = list(_compute_face_centroid(cq_f))
+            n = list(_compute_face_normal(cq_f))
+            a = ocp_face_area(f)
+            result.append((f, c, a, n))
+            exp.Next()
+        return result
+
+    target_face_list = _face_geometry_list(old_target_shape)
+    tool_face_list = _face_geometry_list(tool_shape) if tool_shape is not None else []
+
+    def _lineage_tokens(f: "Any", lineage_dict: dict[str, list[str]] | None) -> list[str] | None:
+        if lineage_dict is None:
+            return None
+        return lineage_dict.get(str(hash(f)))
+
+    def _face_geom_key(c: list, a: float, n: list) -> tuple:
+        return (round(c[0], 6), round(c[1], 6), round(c[2], 6),
+                round(a, 6),
+                round(n[0], 6), round(n[1], 6), round(n[2], 6))
+
+    def _find_best_face_match(face: "Any", candidate_list: list) -> "Any | None":
+        """Find closest geometric match to face among candidates."""
+        if not candidate_list:
+            return None
+        cq_f = cq_shapes.Shape.cast(face)
+        fc = list(_compute_face_centroid(cq_f))
+        fn = list(_compute_face_normal(cq_f))
+        fa = ocp_face_area(face)
+        best = None
+        best_score = float("inf")
+        for cf, cc, ca, cn in candidate_list:
+            dc = sum((fc[i] - cc[i]) ** 2 for i in range(3)) ** 0.5
+            ar = abs(fa - ca) / max(fa, ca, 1e-12)
+            dn = 1.0 - abs(sum(fn[i] * cn[i] for i in range(3)))
+            score = dc + 0.01 * ar + 0.001 * dn
+            if score < best_score:
+                best_score = score
+                best = cf
+        # Only return a match if geometry is virtually identical.
+        if best is not None and best_score < 1.0:
+            return best
+        return None
+
+    new_face_lineage: dict[str, list[str]] = {}
+
+    # Inherited faces: match against target body's pre-boolean faces.
+    if diff.inherited_faces and body.face_lineage:
+        for output_face in diff.inherited_faces:
+            src = _find_best_face_match(output_face, target_face_list)
+            if src is not None:
+                tokens = _lineage_tokens(src, body.face_lineage)
+                if tokens:
+                    new_face_lineage[str(hash(output_face))] = tokens
+
+    # New faces: match against tool shape's faces.
+    if diff.new_faces and tool_face_lineage:
+        for output_face in diff.new_faces:
+            src = _find_best_face_match(output_face, tool_face_list)
+            if src is not None:
+                tokens = _lineage_tokens(src, tool_face_lineage)
+                if tokens:
+                    new_face_lineage[str(hash(output_face))] = tokens
+
+    body.face_lineage = new_face_lineage
+
+    # Rebuild edge_lineage from face_lineage via edge→face adjacency.
+    if body.shape is not None:
+        e2f = TopTools_IndexedDataMapOfShapeListOfShape()
+        TopExp.MapShapesAndAncestors_s(body.shape, TopAbs_EDGE, TopAbs_FACE, e2f)
+        new_edge_lineage: dict[str, list[str]] = {}
+        edge_exp = TopExp_Explorer(body.shape, TopAbs_EDGE)
+        while edge_exp.More():
+            se = edge_exp.Current()
+            sh = str(hash(se))
+            eids: list[str] = []
+            seen: set[str] = set()
+            for face in e2f.FindFromKey(se):
+                fh = str(hash(face))
+                for eid in new_face_lineage.get(fh, []):
+                    if eid not in seen:
+                        seen.add(eid)
+                        eids.append(eid)
+            if eids:
+                new_edge_lineage[sh] = eids
+            edge_exp.Next()
+        body.edge_lineage = new_edge_lineage
+
+
 def _apply_body_operation(
     tool_shape: "Any",
     body_store: dict,
@@ -526,10 +652,15 @@ def _apply_body_operation(
                     continue
             except Exception:
                 continue
-            new_shape, brep_diff = boolean_cut_with_diff(existing_body.shape, tool_shape)
+            old_target_shape = _ensure_occ(existing_body.shape)
+            new_shape, brep_diff = boolean_cut_with_diff(old_target_shape, tool_shape)
             existing_body.shape = _ensure_occ(new_shape)
             existing_body.modified_by.append(feature_id)
             existing_body.brep_diff = brep_diff
+            _transfer_boolean_lineage(
+                existing_body, old_target_shape, _ensure_occ(tool_shape),
+                face_lineage, edge_lineage,
+            )
             cut_anything = True
             if cut_body_id is None:
                 cut_body_id = bid
@@ -566,8 +697,9 @@ def _apply_body_operation(
                 existing_body = body_store[bid]
                 if existing_body.shape is None:
                     continue
+                old_target_shape = _ensure_occ(existing_body.shape)
                 try:
-                    new_shape, brep_diff = boolean_union_with_diff(existing_body.shape, tool_shape)
+                    new_shape, brep_diff = boolean_union_with_diff(old_target_shape, tool_shape)
                 except Exception as exc:
                     raise ValueError(f"{op_name}: add operation failed: {exc}")
                 if merge_target:
@@ -579,6 +711,10 @@ def _apply_body_operation(
                 existing_body.shape = _ensure_occ(new_shape)
                 existing_body.modified_by.append(feature_id)
                 existing_body.brep_diff = brep_diff
+                _transfer_boolean_lineage(
+                    existing_body, old_target_shape, _ensure_occ(tool_shape),
+                    face_lineage, edge_lineage,
+                )
                 fused = True
                 fused_body_id = bid
                 break

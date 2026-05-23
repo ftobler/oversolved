@@ -67,38 +67,30 @@ class _EdgeIndex:
     once per body and reused for both body routing and the final fillet.
     """
 
-    __slots__ = ("query_to_edge", "hash_to_edge", "topo_edges", "edge_types")
+    __slots__ = ("query_to_edge", "hash_to_edge")
 
     def __init__(
         self,
         query_to_edge: dict,
         hash_to_edge: dict,
-        topo_edges: list,
-        edge_types: list,
     ) -> None:
         self.query_to_edge = query_to_edge
         self.hash_to_edge = hash_to_edge
-        self.topo_edges = topo_edges
-        self.edge_types = edge_types
 
 
 def _build_edge_index(body: Body) -> _EdgeIndex:
     seen_edges: list[TopoDS_Shape] = []
-    topo_edges = []
-    edge_types = []
-    edge_dicts = []
+    edge_dicts: list[dict] = []
     if body.shape is not None:
         for edge in _ensure_cq(body.shape).Edges():
             wrapped = edge.wrapped
             if any(wrapped.IsEqual(s) for s in seen_edges):
                 continue
             seen_edges.append(wrapped)
-            topo_edges.append(wrapped)
 
             # Use the same geometry extraction as solid_to_edges so the geom
             # hash computed here matches the one baked into the edge query.
             ed, _ = edge_to_geom_dict(edge)
-            edge_types.append("straightedge" if ed["kind"] == "line" else "edge")
             edge_dicts.append(ed)
 
     # Determine which edges are "new" (created by the last modifier feature).
@@ -110,7 +102,8 @@ def _build_edge_index(body: Body) -> _EdgeIndex:
 
     query_to_edge: dict = {}
     hash_to_edge: dict = {}
-    for idx, (te, et, ed) in enumerate(zip(topo_edges, edge_types, edge_dicts)):
+    for idx, (te, ed) in enumerate(zip(seen_edges, edge_dicts)):
+        edge_type = "straightedge" if ed["kind"] == "line" else "edge"
         geom_hash = edge_geometry_hash(ed)
         # Body-agnostic geometry index: a stale @body_<id> token in a query
         # must still resolve to whichever body now owns this edge. The geom
@@ -121,7 +114,7 @@ def _build_edge_index(body: Body) -> _EdgeIndex:
             if geom_hash in new_edge_hashes:
                 edge_created_by = body.modified_by[-1]
             aq_hash = make_ancestry_query(
-                [ref(geom_hash), ref(edge_created_by), ref(body.id)], et
+                [ref(geom_hash), ref(edge_created_by), ref(body.id)], edge_type
             )
             query_to_edge[aq_hash] = te
 
@@ -129,7 +122,7 @@ def _build_edge_index(body: Body) -> _EdgeIndex:
         # No new index queries are emitted; index_ref() has zero callers.
         query_to_edge[f"?{body.id}:edge:{idx}"] = te
 
-    return _EdgeIndex(query_to_edge, hash_to_edge, topo_edges, edge_types)
+    return _EdgeIndex(query_to_edge, hash_to_edge)
 
 
 def _resolve_edges_with_index(
@@ -137,14 +130,10 @@ def _resolve_edges_with_index(
 ) -> list[TopoDS_Shape]:
     """Resolve edge queries against a body's prebuilt index.
 
-    Resolution tiers: exact query match → geometry hash → face query →
-    body-scoped type fallback (last resort, OCC order — only kept for
-    backward compat with legacy stored documents).
+    Resolution tiers: exact query match → geometry hash → face query.
     """
     query_to_edge = index.query_to_edge
     hash_to_edge = index.hash_to_edge
-    topo_edges = index.topo_edges
-    edge_types = index.edge_types
 
     result: list[TopoDS_Shape] = []
     seen_edge_hashes: set[int] = set()
@@ -168,26 +157,6 @@ def _resolve_edges_with_index(
                             break
             except Exception as exc:
                 logger.debug("fillet edge geom-hash resolution failed for query %s: %s", q, exc)
-        # Legacy body-scoped type fallback for stored documents with stale hashes.
-        if edge is None and q.startswith("?"):
-            try:
-                ids, type_restriction = _parse_ancestry(q)
-                if any(id_str.startswith("@gedge_") for id_str in ids):
-                    continue
-                body_id_from_query = None
-                for id_str in ids:
-                    if id_str.startswith("@body_"):
-                        body_id_from_query = id_str[1:]
-                        break
-                if body_id_from_query and body_id_from_query == body.id:
-                    matched = [
-                        te for te, et in zip(topo_edges, edge_types)
-                        if type_restriction is None or et == type_restriction
-                    ]
-                    if matched:
-                        edge = matched[0]
-            except Exception as exc:
-                logger.debug("fillet edge body-scoped fallback failed for query %s: %s", q, exc)
         # Face query: resolve to all edges of that face
         if edge is None and 'gface_' in q:
             try:
