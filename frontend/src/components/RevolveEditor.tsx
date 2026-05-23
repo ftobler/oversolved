@@ -3,40 +3,13 @@ import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 import { useFieldPicking } from '@/hooks/useFieldPicking'
 import { normalizeRevolveSketch } from '@/utils/yamlMutations'
+import { resolveBodyMergeRef, resolveAxisQuery } from '@/utils/resolveBodyPickRef'
 
 interface RevolveEditorProps {
   feature: PartFeature
   onMutation: (m: Mutation) => void
   features?: PartFeature[]
   partLabels?: Record<string, string>
-}
-
-function resolveRevolveMergeRef(id: string): string {
-  let bodyRef = id
-  if (id.startsWith('body:')) {
-    bodyRef = '@' + id.slice(5)
-  } else if (id.startsWith('?')) {
-    bodyRef = '@body_' + id.slice(1).split('/')[0]
-  } else if (id.startsWith('@') && id.includes('/')) {
-    bodyRef = '@' + id.slice(1).split('/')[0]
-  }
-  if (bodyRef.startsWith('@') && !bodyRef.startsWith('@body_')) {
-    bodyRef = '@body_' + bodyRef.slice(1)
-  }
-  return bodyRef
-}
-
-function resolveAxisQuery(selectionId: string): string {
-  if (selectionId.startsWith('face:')) {
-    return selectionId.split(':').slice(2).join(':')
-  }
-  if (selectionId.startsWith('entity:')) {
-    return '@' + selectionId.split(':').slice(1).join('/')
-  }
-  if (selectionId.startsWith('edge:')) {
-    return selectionId.split(':').slice(2).join(':')
-  }
-  return selectionId
 }
 
 export function RevolveEditor({
@@ -59,7 +32,7 @@ export function RevolveEditor({
   })
 
   useFieldPicking(isPickingMergeTarget, (selectionId) => {
-    onMutation({ type: 'set_revolve_field', featureId: fid, field: 'merge_target', value: resolveRevolveMergeRef(selectionId) })
+    onMutation({ type: 'set_revolve_field', featureId: fid, field: 'merge_target', value: resolveBodyMergeRef(selectionId) })
     setIsPickingMergeTarget(false)
   })
 

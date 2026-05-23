@@ -21,3 +21,41 @@ export function resolveBodyPickRef(id: string): string {
   }
   return ref
 }
+
+/**
+ * Convert a viewport selection ID to a body reference for a merge/boolean
+ * target field (extrude/revolve merge_target). Unlike resolveBodyPickRef, a
+ * `?` ancestry query is coerced to `@body_<first-segment>` rather than passed
+ * through. Shared by ExtrudeEditor and RevolveEditor.
+ */
+export function resolveBodyMergeRef(id: string): string {
+  let bodyRef = id
+  if (id.startsWith('body:')) {
+    bodyRef = '@' + id.slice(5)
+  } else if (id.startsWith('?')) {
+    bodyRef = '@body_' + id.slice(1).split('/')[0]
+  } else if (id.startsWith('@') && id.includes('/')) {
+    bodyRef = '@' + id.slice(1).split('/')[0]
+  }
+  if (bodyRef.startsWith('@') && !bodyRef.startsWith('@body_')) {
+    bodyRef = '@body_' + bodyRef.slice(1)
+  }
+  return bodyRef
+}
+
+/**
+ * Convert a viewport selection ID to a revolve axis query. face/edge selections
+ * keep their inner ancestry query; an entity selection becomes an absolute ref.
+ */
+export function resolveAxisQuery(selectionId: string): string {
+  if (selectionId.startsWith('face:')) {
+    return selectionId.split(':').slice(2).join(':')
+  }
+  if (selectionId.startsWith('entity:')) {
+    return '@' + selectionId.split(':').slice(1).join('/')
+  }
+  if (selectionId.startsWith('edge:')) {
+    return selectionId.split(':').slice(2).join(':')
+  }
+  return selectionId
+}
