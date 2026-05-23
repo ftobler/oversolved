@@ -3,8 +3,7 @@
 import math
 from oversolved.kernel.solver_constants import TOL_NEAR_ZERO_AREA
 from oversolved.kernel.query import _parse_ancestry
-
-_REID_OVERLAP_MIN = 0.5  # minimum fraction of old members that must appear in new area
+from oversolved.kernel.query_heuristics import HeuristicConfig, DEFAULT_HEURISTIC_CONFIG, score_overlap
 
 
 def _arc_midpoint(e: dict) -> list[float] | None:
@@ -160,17 +159,14 @@ def _surface_ancestor_key(surface: dict) -> frozenset[str]:
 def match_area_reid(
     old_surfaces: list[dict],
     new_surfaces: list[dict],
+    cfg: HeuristicConfig = DEFAULT_HEURISTIC_CONFIG,
 ) -> dict[frozenset, list[frozenset]]:
     """Match old surface ancestor keys to new surface ancestor keys by heuristic.
 
     For each old surface, finds the new surface(s) that share the most
     constituent entity IDs. Ties are broken by centroid distance. A match
-    requires at least _REID_OVERLAP_MIN fraction of the old entity set to
+    requires at least cfg.overlap_threshold fraction of the old entity set to
     appear in the new entity set.
-
-    Returns a dict mapping old_key (frozenset of ancestor IDs) to a list of
-    new_keys (frozensets) that the old area maps to. The list has more than
-    one entry in the split case (one old area maps to multiple new areas).
     """
     if not old_surfaces or not new_surfaces:
         return {}
@@ -189,7 +185,6 @@ def match_area_reid(
             continue
 
         old_centroid = _loop_centroid(old_surfaces[oi].get("boundary", []))
-        n_old = len(old_set)
 
         best_overlap = 0.0
         best_dist = float("inf")
@@ -198,8 +193,8 @@ def match_area_reid(
         for ni, new_set in enumerate(new_entity_sets):
             if not new_set:
                 continue
-            overlap = len(old_set & new_set) / n_old
-            if overlap < _REID_OVERLAP_MIN:
+            overlap = score_overlap(old_set, new_set)
+            if overlap < cfg.overlap_threshold:
                 continue
 
             nc = new_centroids[ni]
@@ -216,17 +211,13 @@ def match_area_reid(
 
         # Also include any split-off pieces that share the same best overlap
         # and are spatially adjacent (within 2x best_dist).
-        split_candidates = []
         for ni, new_set in enumerate(new_entity_sets):
             if ni in best_ni or not new_set:
                 continue
-            overlap = len(old_set & new_set) / n_old
-            if overlap < _REID_OVERLAP_MIN:
+            overlap = score_overlap(old_set, new_set)
+            if overlap < cfg.overlap_threshold:
                 continue
-            nc = new_centroids[ni]
-            dist = math.hypot(nc[0] - old_centroid[0], nc[1] - old_centroid[1])
             if abs(overlap - best_overlap) < 1e-9:
-                split_candidates.append(ni)
                 best_ni.append(ni)
 
         if best_ni:

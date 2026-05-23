@@ -1,9 +1,12 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, TYPE_CHECKING
 import re
 import secrets
 from oversolved.kernel.solver_constants import _BUILTIN_PLANES
+
+if TYPE_CHECKING:
+    from oversolved.kernel.query_heuristics import HeuristicConfig, Outcome
 
 __all__ = [
     "AmbiguousQueryError",
@@ -85,6 +88,31 @@ class AncestryQuery:
             type_restriction=type_restriction,
             classifier=classifier,
         )
+
+
+@dataclass(eq=True, frozen=True)
+class QueryNode:
+    """Recursive ancestral lineage node.
+
+    Each node represents one ancestor in the lineage chain. The flat
+    frozenset tag-set for the existing Repository.ancestral resolver
+    can be derived via tag_set() so nothing regresses during the
+    transition from flat-bag to recursive queries.
+    """
+    id: str
+    parents: tuple["QueryNode", ...] = ()
+    leaf_geom: dict[str, Any] | None = None
+
+    def tag_set(self) -> frozenset[str]:
+        """Flatten the tree to a flat tag set."""
+        tags = {self.id}
+        for p in self.parents:
+            tags |= p.tag_set()
+        return frozenset(tags)
+
+    def ancestor_ids(self) -> tuple[str, ...]:
+        """Sorted tuple of all ancestor IDs (for flat AncestryQuery compat)."""
+        return tuple(sorted(self.tag_set()))
 
 
 _QUERY_TYPES = (LocalQuery, AbsoluteQuery, AncestryQuery)
@@ -199,6 +227,82 @@ def body_id_of(query_str: str, body_store: dict[str, Any] | None = None) -> str 
             if c in body_store:
                 return c
     return candidates[0] if candidates else None
+
+
+def build_query(element_id: str, parent_map: dict[str, list[str]]) -> QueryNode:
+    """Recursively compose a QueryNode from a parent map.
+
+    parent_map[child_id] = [parent_id, ...] gives the immediate parents.
+    Root nodes (no parents) are terminal QueryNodes.
+    """
+    pid = ref(element_id) if not element_id.startswith("@") else element_id
+    parents = parent_map.get(element_id, [])
+    return QueryNode(
+        id=pid,
+        parents=tuple(build_query(p, parent_map) for p in parents),
+    )
+
+
+def resolve_query(
+    node: QueryNode,
+    repo: "Repository",
+    cfg: HeuristicConfig | None = None,
+) -> tuple[Outcome, Any | None]:
+    """Walk a recursive query tree against a Repository.
+
+    Tier 1: exact ancestor-set match via the flat tag_set derived from the tree.
+    Tier 2: partial-branch heuristic — score each candidate by ancestor-id
+    overlap and pick the best (or mark ambiguous/unresolved).
+    """
+    from oversolved.kernel.query_heuristics import (
+        HeuristicConfig, DEFAULT_HEURISTIC_CONFIG,
+        Outcome, score_overlap, pick_best,
+    )
+    if cfg is None:
+        cfg = DEFAULT_HEURISTIC_CONFIG
+
+    tag_set = node.tag_set()
+    if not tag_set:
+        return Outcome.UNRESOLVED, None
+
+    # Tier 1 — exact match via the existing flat resolver
+    exact_hits: list[str] = []
+    for key, eids in repo.ancestral.items():
+        if tag_set.issubset(key):
+            exact_hits.extend(eids)
+    if exact_hits:
+        # deduplicate while preserving order
+        seen: set[str] = set()
+        unique: list[str] = []
+        for eid in exact_hits:
+            if eid not in seen:
+                seen.add(eid)
+                unique.append(eid)
+        if len(unique) == 1:
+            return Outcome.RESOLVED, repo.elements.get(unique[0])
+        # multiple exact matches — use pick_best to decide
+        scores: list[tuple[str, float]] = []
+        for eid in unique:
+            elem_tags: frozenset[str] = frozenset()
+            for k, elist in repo.ancestral.items():
+                if eid in elist:
+                    elem_tags = k
+                    break
+            overlap = score_overlap(tag_set, elem_tags)
+            scores.append((eid, overlap))
+        outcome, winner = pick_best([(repo.elements.get(eid), s) for (eid, s) in scores], cfg)
+        return outcome, winner
+
+    # Tier 2 — partial branch heuristic
+    all_scores: list[tuple[Any, float]] = []
+    for key, eids in repo.ancestral.items():
+        overlap = score_overlap(tag_set, key)
+        if overlap < cfg.overlap_threshold:
+            continue
+        for eid in eids:
+            all_scores.append((repo.elements.get(eid), overlap))
+
+    return pick_best(all_scores, cfg)
 
 
 def local(eid: str, sub: str = "") -> LocalQuery:
