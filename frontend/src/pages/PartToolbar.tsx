@@ -32,6 +32,13 @@ export default function PartToolbar({
   const [redoHover, setRedoHover] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(docName ?? '')
+  const [saveState, setSaveState] = useState<'idle' | 'success'>('idle')
+
+  const handleSaveClick = () => {
+    handleSave()
+    setSaveState('success')
+    setTimeout(() => setSaveState('idle'), 1500)
+  }
 
   const handleRename = async () => {
     const trimmed = editName.trim()
@@ -91,8 +98,8 @@ export default function PartToolbar({
           </div>
         )}
       </div>
-      <button className="toolbar-btn" aria-label="Save" title="Save" onClick={handleSave} disabled={readOnly}>
-        <span className="material-icons-outlined">save</span>
+      <button className="toolbar-btn" aria-label="Save" title="Save" onClick={handleSaveClick} disabled={readOnly}>
+        <span className="material-icons-outlined">{saveState === 'success' ? 'check' : 'save'}</span>
       </button>
       <button className="toolbar-btn" aria-label="Clone document" title="Clone document" onClick={handleClone}>
         <span className="material-icons-outlined">file_copy</span>
