@@ -9,7 +9,7 @@ from oversolved.kernel.solver_features_shared import (
     _apply_body_operation, _collect_extrude_loops,
     _resolve_direction,
 )
-from oversolved.kernel.geometry_tessellation import extrude_profile as _ep, extrude_profile_with_lineage
+from oversolved.kernel.geometry_tessellation import extrude_profile as _ep, extrude_profile_with_lineage, revolve_profile_with_lineage
 from oversolved.kernel.cadquery_ops import boolean_union, extrude_face, _compute_face_normal
 from oversolved.kernel.geometry_tessellation import sketch_loops_to_face, revolve_face as _rf
 from oversolved.kernel.solver_registry import _sketch_to_world_2d
@@ -167,19 +167,26 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
     first_pt: Frame3D | dict = {}
     first_sketch_id = ""
     profile_errors: list[str] = []
+    profile_queries: list[str] = []
+    face_lineage: dict[str, list[str]] = {}
+    edge_lineage: dict[str, list[str]] = {}
     for sketch_ref in sketch_refs:
         try:
             loops, pt, sketch_id, cq_face = _collect_extrude_loops(
                 sketch_ref, feature_id, feature, 0.0, global_repo, body_store
             )
         except ValueError as exc:
-            # Soft fail one profile so the others still build (partial rebuild).
             profile_errors.append(str(exc))
             continue
         if cq_face is not None:
             cq_faces.append(cq_face)
         else:
             all_loops.extend(loops)
+            # collect profile entity tokens for lineage tagging
+            topo = global_repo.elements.get("_topo_" + sketch_id, {})
+            for surface in topo.get("surfaces", []):
+                eids = _surface_entity_ids(surface)
+                profile_queries.extend(sorted(eids))
         if not first_pt:
             first_pt = pt
             first_sketch_id = sketch_id
@@ -254,19 +261,36 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
                     tool_shape, _rf(cq_face, axis_origin, axis_direction, effective_angle)
                 )
     else:
-        face = sketch_loops_to_face(all_loops, first_pt)
         if direction == "symmetric":
             half_angle = angle / 2.0
-            tool_shape_pos = _rf(face, axis_origin, axis_direction, half_angle)
-            tool_shape_neg = _rf(face, axis_origin, axis_direction, -half_angle)
+            tool_shape_pos, fl_pos, el_pos = revolve_profile_with_lineage(
+                all_loops, first_pt, axis_origin, axis_direction, half_angle,
+                sketch_id=first_sketch_id,
+            )
+            tool_shape_neg, fl_neg, el_neg = revolve_profile_with_lineage(
+                all_loops, first_pt, axis_origin, axis_direction, -half_angle,
+                sketch_id=first_sketch_id,
+            )
             tool_shape = boolean_union(tool_shape_pos, tool_shape_neg)
+            face_lineage.update(fl_pos)
+            face_lineage.update(fl_neg)
+            edge_lineage.update(el_pos)
+            edge_lineage.update(el_neg)
         else:
             effective_angle = -angle if direction == "reverse" else angle
-            tool_shape = _rf(face, axis_origin, axis_direction, effective_angle)
+            tool_shape, faces_l, edges_l = revolve_profile_with_lineage(
+                all_loops, first_pt, axis_origin, axis_direction, effective_angle,
+                sketch_id=first_sketch_id,
+            )
+            face_lineage.update(faces_l)
+            edge_lineage.update(edges_l)
 
     op_result = _apply_body_operation(
         tool_shape, body_store, operation, merge_target,
         body_id, feature_id, first_sketch_id, op_name="revolve",
+        profile_queries=profile_queries,
+        face_lineage=face_lineage,
+        edge_lineage=edge_lineage,
     )
     result.update(op_result)
 

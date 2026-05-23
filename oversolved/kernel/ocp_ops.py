@@ -196,6 +196,23 @@ def ocp_revolve(topo_face: TopoDS_Shape, axis_origin: list[float],
     return BRepPrimAPI_MakeRevol(topo_face, ax, angle_rad, True).Shape()
 
 
+def ocp_make_revol_lineage(
+    topo_face: TopoDS_Shape, axis_origin: list[float],
+    axis_direction: list[float], angle_rad: float,
+) -> tuple[TopoDS_Shape, Any]:
+    """Like ocp_revolve but also returns the builder for
+    Generated()/FirstShape()/LastShape() lineage queries.
+    """
+    from OCP.gp import gp_Ax1, gp_Pnt, gp_Dir  # noqa: PLC0415
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeRevol  # noqa: PLC0415
+    ax = gp_Ax1(gp_Pnt(*axis_origin), gp_Dir(*axis_direction))
+    builder = BRepPrimAPI_MakeRevol(topo_face, ax, angle_rad, True)
+    builder.Build()
+    if not builder.IsDone():
+        raise ValueError("BRepPrimAPI_MakeRevol failed")
+    return builder.Shape(), builder
+
+
 def ocp_make_face_from_wire(outer_wire: TopoDS_Shape, hole_wires: list) -> TopoDS_Shape:
     """Build a planar face directly from OCC wires without running ShapeFix on inputs.
 

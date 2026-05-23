@@ -97,7 +97,7 @@ def test_revolve_occ_exception_sets_status_exception():
         ]
     }
 
-    with mock.patch("oversolved.kernel.solver_features_brep.sketch_loops_to_face",
+    with mock.patch("oversolved.kernel.geometry_tessellation.sketch_loops_to_face",
                     side_effect=RuntimeError("occ failure")):
         result = build(spec)
 
