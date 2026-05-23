@@ -603,8 +603,10 @@ def _tessellate_body_geometry(body: Body) -> dict[str, Any]:
     try:
         from oversolved.kernel.geometry_tessellation import solid_to_mesh, solid_to_edges, solid_to_vertices
         pq = body.profile_queries if body.profile_queries else None
-        mesh = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id, profile_queries=pq)
-        edges_result = solid_to_edges(body.shape, created_by=body.created_by, body_id=body.id, profile_queries=pq)
+        fl = body.face_lineage if body.face_lineage else None
+        el = body.edge_lineage if body.edge_lineage else None
+        mesh = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id, profile_queries=pq, face_lineage=fl)
+        edges_result = solid_to_edges(body.shape, created_by=body.created_by, body_id=body.id, profile_queries=pq, edge_lineage=el)
         verts_result = solid_to_vertices(body.shape, created_by=body.created_by, body_id=body.id, profile_queries=pq)
     except ImportError:
         entry["mesh_error"] = "geometry.solid_to_mesh not available (F2 pending)"

@@ -9,7 +9,7 @@ from oversolved.kernel.solver_features_shared import (
     _apply_body_operation, _collect_extrude_loops,
     _resolve_direction,
 )
-from oversolved.kernel.geometry_tessellation import extrude_profile as _ep
+from oversolved.kernel.geometry_tessellation import extrude_profile as _ep, extrude_profile_with_lineage
 from oversolved.kernel.cadquery_ops import boolean_union, extrude_face, _compute_face_normal
 from oversolved.kernel.geometry_tessellation import sketch_loops_to_face, revolve_face as _rf
 from oversolved.kernel.solver_registry import _sketch_to_world_2d
@@ -54,6 +54,8 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
     first_sketch_id = ""
     profile_errors: list[str] = []
     profile_queries: list[str] = []
+    face_lineage: dict[str, list[str]] = {}
+    edge_lineage: dict[str, list[str]] = {}
     for sketch_ref in sketch_refs:
         try:
             loops, pt, sketch_id, cq_face = _collect_extrude_loops(
@@ -115,14 +117,23 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
         direction_vec, effective_distance, effective_plane = _resolve_direction(
             normal, first_pt, direction, distance
         )
-        tool_shape = _ep(
-            all_loops, effective_plane, direction_vec, effective_distance
+        tool_shape, faces_lineage, edges_lineage = extrude_profile_with_lineage(
+            all_loops, effective_plane, direction_vec, effective_distance,
+            sketch_id=first_sketch_id,
         )
+        if face_lineage is None:
+            face_lineage = {}
+        face_lineage.update(faces_lineage)
+        if edge_lineage is None:
+            edge_lineage = {}
+        edge_lineage.update(edges_lineage)
 
     op_result = _apply_body_operation(
         tool_shape, body_store, operation, merge_target,
         body_id, feature_id, first_sketch_id, op_name="extrude",
         profile_queries=profile_queries,
+        face_lineage=face_lineage,
+        edge_lineage=edge_lineage,
     )
     result.update(op_result)
 

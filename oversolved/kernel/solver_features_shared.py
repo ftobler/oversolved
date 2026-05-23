@@ -477,6 +477,8 @@ def _apply_body_operation(
     sketch_id: str,
     op_name: str = "",
     profile_queries: list[str] | None = None,
+    face_lineage: dict[str, list[str]] | None = None,
+    edge_lineage: dict[str, list[str]] | None = None,
 ) -> dict:
     """Apply a boolean body operation (add / cut / new) using tool_shape.
 
@@ -548,7 +550,9 @@ def _apply_body_operation(
             bid = body_id if i == 0 else f"{body_id}_{i}"
             b = Body(id=bid, created_by=feature_id, shape=_ensure_occ(solid),
                      sketch_id=sketch_id,
-                     profile_queries=list(profile_queries) if profile_queries else [])
+                     profile_queries=list(profile_queries) if profile_queries else [],
+                     face_lineage=dict(face_lineage) if face_lineage else {},
+                     edge_lineage=dict(edge_lineage) if edge_lineage else {})
             body_store[bid] = b
             body_ids.append(bid)
         result["body_id"] = body_ids[0]
@@ -594,7 +598,9 @@ def _apply_body_operation(
                 bid = body_id if i == 0 else f"{body_id}_{i}"
                 b = Body(id=bid, created_by=feature_id, shape=solid,
                          sketch_id=sketch_id,
-                         profile_queries=list(profile_queries) if profile_queries else [])
+                         profile_queries=list(profile_queries) if profile_queries else [],
+                         face_lineage=dict(face_lineage) if face_lineage else {},
+                         edge_lineage=dict(edge_lineage) if edge_lineage else {})
                 body_store[bid] = b
                 body_ids.append(bid)
             result["body_id"] = body_ids[0]

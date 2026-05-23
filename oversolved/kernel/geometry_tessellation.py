@@ -322,6 +322,128 @@ def sketch_loops_to_face(loops: list[list[dict]], plane: Frame3D | dict) -> cq_s
     return make_face_from_wires(outer_wire, inner_wires if inner_wires else None)
 
 
+def _entity_to_occ_edge_map(
+    face: cq_shapes.Face, loops: list[list[dict]], plane: Frame3D | dict,
+) -> dict[int, str]:
+    """Map hash(occ_edge) -> sketch_entity_id by matching endpoint geometry.
+
+    The OCC face edges are matched to sketch edge dicts by comparing their
+    3D start/end points after applying the plane transform. Returns a dict
+    suitable for subsequent MakePrism.Generated() queries.
+    """
+    def _uv_to_3d(uv: list) -> list[float]:
+        origin = plane.get("origin", [0.0, 0.0, 0.0]) if isinstance(plane, dict) else plane.origin
+        x_axis = plane.get("x_axis", [1.0, 0.0, 0.0]) if isinstance(plane, dict) else plane.x_axis
+        y_axis = plane.get("y_axis", [0.0, 1.0, 0.0]) if isinstance(plane, dict) else plane.y_axis
+        return [
+            origin[i] + uv[0] * x_axis[i] + uv[1] * y_axis[i]
+            for i in range(3)
+        ]
+
+    def _points_match(a: list[float], b: Any) -> bool:
+        """Compare 3D list to a point-like object within tolerance."""
+        bx, by, bz = b.x, b.y, b.z
+        return (
+            abs(a[0] - bx) < 1e-6 and abs(a[1] - by) < 1e-6 and abs(a[2] - bz) < 1e-6
+        )
+
+    occ_edges = list(face.Edges())
+    mapping: dict[int, str] = {}
+    for loop in loops:
+        for entity in loop:
+            eid = entity.get("id", "")
+            if not eid:
+                continue
+            start_3d = _uv_to_3d(entity.get("start", [0.0, 0.0]))
+            end_3d = _uv_to_3d(entity.get("end", [0.0, 0.0]))
+            for occ_e in occ_edges:
+                if hash(occ_e) in mapping:
+                    continue
+                sp = occ_e.startPoint()
+                ep = occ_e.endPoint()
+                if (_points_match(start_3d, sp) and _points_match(end_3d, ep)) or \
+                   (_points_match(start_3d, ep) and _points_match(end_3d, sp)):
+                    mapping[hash(occ_e)] = eid
+                    break
+    return mapping
+
+
+def _build_prism_lineage_map(
+    occ_face: Any, prism_builder: Any, entity_map: dict[int, str],
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Use MakePrism.Generated() to map solid subshapes to profile entity IDs.
+
+    Returns (face_lineage, edge_lineage) where each maps solid subshape hash
+    to a list of profile entity tokens.
+    """
+    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
+    from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS  # noqa: PLC0415
+    from OCP.TopTools import (  # noqa: PLC0415
+        TopTools_IndexedDataMapOfShapeListOfShape,
+    )
+
+    solid_shape = prism_builder.Shape()
+
+    # profile edge → solid lateral face via Generated()
+    profile_edge_to_face: dict[int, int] = {}
+    exp = TopExp_Explorer(occ_face, TopAbs_EDGE)
+    while exp.More():
+        occ_e = exp.Current()
+        eh = hash(occ_e)
+        if eh in entity_map:
+            try:
+                generated = prism_builder.Generated(occ_e)
+                if not generated.IsNull():
+                    gen_exp = TopExp_Explorer(generated, TopAbs_FACE)
+                    while gen_exp.More():
+                        profile_edge_to_face[hash(gen_exp.Current())] = eh
+                        gen_exp.Next()
+            except Exception:
+                pass
+        exp.Next()
+
+    # solid face → profile entity tokens
+    face_lineage: dict[str, list[str]] = {}
+    face_exp = TopExp_Explorer(solid_shape, TopAbs_FACE)
+    while face_exp.More():
+        sf = face_exp.Current()
+        sh = hash(sf)
+        entity_ids: list[str] = []
+        peh = profile_edge_to_face.get(sh)
+        if peh is not None:
+            eid = entity_map.get(peh, "")
+            if eid:
+                entity_ids.append(eid)
+        face_lineage[str(sh)] = entity_ids
+        face_exp.Next()
+
+    # solid edge → profile entity tokens (from adjacent faces + vertices)
+    # Build edge→face adjacency map
+    e2f = TopTools_IndexedDataMapOfShapeListOfShape()
+    from OCP.TopExp import TopExp  # noqa: PLC0415
+    TopExp.MapShapesAndAncestors_s(solid_shape, TopAbs_EDGE, TopAbs_FACE, e2f)
+
+    edge_lineage: dict[str, list[str]] = {}
+    edge_exp = TopExp_Explorer(solid_shape, TopAbs_EDGE)
+    while edge_exp.More():
+        se = edge_exp.Current()
+        sh = hash(se)
+        edge_entity_ids: list[str] = []
+        face_list = e2f.FindFromKey(se)
+        seen: set[str] = set()
+        for face in face_list:
+            fh = hash(face)
+            for eid in face_lineage.get(str(fh), []):
+                if eid not in seen:
+                    seen.add(eid)
+                    edge_entity_ids.append(eid)
+        edge_lineage[str(sh)] = edge_entity_ids
+        edge_exp.Next()
+
+    return face_lineage, edge_lineage
+
+
 def extrude_profile(
     loops: list[list[dict]],
     plane: Frame3D | dict,
@@ -347,6 +469,58 @@ def extrude_profile(
         else:
             solid = boolean_union(solid, part)  # type: ignore[assignment]
     return solid  # type: ignore[return-value]
+
+
+def extrude_profile_with_lineage(
+    loops: list[list[dict]],
+    plane: Frame3D | dict,
+    direction_vec: list[float],
+    distance: float,
+    sketch_id: str = "",
+) -> tuple[cq_shapes.Solid, dict[str, list[str]], dict[str, list[str]]]:
+    """Extrude loops and return (solid, face_lineage, edge_lineage).
+
+    Lineage maps solid subshape hash (str) to lists of source profile
+    entity tokens (@sketch_id/entity). These are used by tessellation to
+    attach per-entity ancestry to each face/edge, enabling within-profile
+    disambiguation without relying on geometry hashes.
+    """
+    from oversolved.kernel.ocp_ops import ocp_make_prism_lineage  # noqa: PLC0415
+    scaled_vec = [v * distance for v in direction_vec]
+    groups = classify_loops(loops)
+    if not groups:
+        raise ValueError("no loops to extrude")
+
+    solid = None
+    all_face_lineage: dict[str, list[str]] = {}
+    all_edge_lineage: dict[str, list[str]] = {}
+
+    for outer, holes in groups:
+        face = sketch_loops_to_face([outer] + holes, plane)
+        entity_map = _entity_to_occ_edge_map(face, [outer] + holes, plane)
+        occ_face = _ensure_occ(face)
+        _prism_shape, builder = ocp_make_prism_lineage(occ_face, scaled_vec)
+        lineage = _build_prism_lineage_map(occ_face, builder, entity_map)
+        face_l, edge_l = lineage
+
+        # Prepend sketch_id to entity tokens for full @sketch_id/entity format.
+        token_prefix = f"@{sketch_id}/" if sketch_id else "@"
+        for tokens in face_l.values():
+            tokens[:] = [t if t.startswith("@") else token_prefix + t for t in tokens]
+        for tokens in edge_l.values():
+            tokens[:] = [t if t.startswith("@") else token_prefix + t for t in tokens]
+
+        part = cq_shapes.Solid(_prism_shape)
+
+        all_face_lineage.update(face_l)
+        all_edge_lineage.update(edge_l)
+
+        if solid is None:
+            solid = part
+        else:
+            solid = boolean_union(solid, part)  # type: ignore[assignment]
+
+    return solid, all_face_lineage, all_edge_lineage  # type: ignore[return-value]
 
 
 def revolve_face(
@@ -423,6 +597,7 @@ def _build_face_query(
     face_area: float,
     surface_type: str,
     profile_queries: list[str] | None = None,
+    face_tokens: list[str] | None = None,
 ) -> str | None:
     """Return ancestry query string for a face, or None if created_by is None."""
     if not created_by:
@@ -430,12 +605,35 @@ def _build_face_query(
     geom_hash = face_geometry_hash(centroid, normal, face_area)
     if body_id:
         ids = [ref(geom_hash), ref(created_by), ref(body_id)]
-        if profile_queries:
+        if face_tokens:
+            ids.extend(face_tokens)
+        elif profile_queries:
             ids.extend(profile_queries)
         return make_ancestry_query(ids, surface_type)
     element_id = f"face{face_idx}"
     abs_id = ref(created_by) + "/" + element_id
     return make_ancestry_query([abs_id, ref(created_by)], surface_type)
+
+
+def _face_tokens(face: Any, face_lineage: dict[str, list[str]] | None) -> list[str]:
+    """Get per-face entity tokens from the lineage map, or empty list."""
+    if face_lineage is None:
+        return []
+    try:
+        fh = str(hash(face.wrapped))
+    except Exception:
+        return []
+    return face_lineage.get(fh, [])
+
+
+def _edge_lineage_tokens(ed: dict, edge_lineage: dict[str, list[str]] | None) -> list[str]:
+    """Get per-edge entity tokens from the lineage map, or empty list."""
+    if edge_lineage is None:
+        return []
+    eh = ed.get("_occ_hash", "")
+    if not eh:
+        return []
+    return edge_lineage.get(eh, [])
 
 
 def _unit_cube_mesh() -> MeshDict:
@@ -502,6 +700,7 @@ def _tessellate_and_assemble_faces(
     created_by: str | None,
     body_id: str | None,
     profile_queries: list[str] | None = None,
+    face_lineage: dict[str, list[str]] | None = None,
 ) -> tuple[
     list[dict],
     list[int],
@@ -531,6 +730,7 @@ def _tessellate_and_assemble_faces(
                 query = _build_face_query(
                     created_by, body_id, face_idx, centroid, normal,
                     face_area, surface_type, profile_queries=profile_queries,
+                    face_tokens=_face_tokens(face, face_lineage),
                 )
                 if query:
                     face_queries.append(query)
@@ -540,7 +740,7 @@ def _tessellate_and_assemble_faces(
     return face_data, triangle_to_face, face_queries, all_vertices, all_faces
 
 
-def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body_id: str | None = None, profile_queries: list[str] | None = None) -> MeshDict:
+def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body_id: str | None = None, profile_queries: list[str] | None = None, face_lineage: dict[str, list[str]] | None = None) -> MeshDict:
     """Tessellate a cadquery solid to a mesh dict.
 
     Iterates faces and tessellates each one individually so that face
@@ -564,7 +764,7 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
     except Exception as exc:
         logger.warning("solid_to_mesh: BRepMesh_IncrementalMesh failed: %s", exc)
 
-    fd, t2f, fq, verts, faces = _tessellate_and_assemble_faces(solid, created_by, body_id, profile_queries)
+    fd, t2f, fq, verts, faces = _tessellate_and_assemble_faces(solid, created_by, body_id, profile_queries, face_lineage)
     if not verts:
         logger.warning("solid_to_mesh produced no vertices; returning unit cube fallback")
         return _unit_cube_mesh()
@@ -674,7 +874,7 @@ def edge_to_geom_dict(edge: Any) -> tuple[dict, tuple]:
     return ed, sort_key
 
 
-def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: str | None = None, profile_queries: list[str] | None = None) -> EdgeDict:
+def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: str | None = None, profile_queries: list[str] | None = None, edge_lineage: dict[str, list[str]] | None = None) -> EdgeDict:
     """Extract exact edge geometry from a cadquery solid.
 
     Returns a dict with keys "edges" (list of edge dicts, one per unique edge,
@@ -703,7 +903,7 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
         ed, sort_key = edge_to_geom_dict(edge)
         if h in seam_hashes:
             ed["seam"] = True  # type: ignore[assignment]
-
+        ed["_occ_hash"] = str(h)
         raw_edges.append((ed, sort_key))
 
     # Sort for deterministic edge indices across OCC iteration order variations.
@@ -719,7 +919,11 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
             edge_type = "straightedge" if ed["kind"] == "line" else "edge"
             if body_id:
                 ids = [ref(geom_hash), ref(created_by), ref(body_id)]
-                if profile_queries:
+                e_tokens = _edge_lineage_tokens(ed, edge_lineage)
+                if e_tokens:
+                    ids.extend(e_tokens)
+                elif profile_queries:
+                    ids.extend(profile_queries)
                     ids.extend(profile_queries)
                 edge_queries.append(make_ancestry_query(ids, edge_type))
             else:

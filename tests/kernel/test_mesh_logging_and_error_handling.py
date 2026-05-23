@@ -61,7 +61,7 @@ def test_extrude_occ_exception_sets_status_exception():
 
     spec = full_rect_extrude_spec(w=10, h=10, d=5)
 
-    with mock.patch("oversolved.kernel.solver_features_brep._ep", side_effect=RuntimeError("occ failure")):
+    with mock.patch("oversolved.kernel.solver_features_brep.extrude_profile_with_lineage", side_effect=RuntimeError("occ failure")):
         result = build(spec)
 
     body_result = result.get("result", {}).get("ex1") or {}

@@ -236,6 +236,22 @@ def ocp_make_prism(face: TopoDS_Shape, scaled_vec: list[float]) -> TopoDS_Shape:
     return builder.Shape()
 
 
+def ocp_make_prism_lineage(
+    face: TopoDS_Shape, scaled_vec: list[float]
+) -> tuple[TopoDS_Shape, Any]:
+    """Like ocp_make_prism but also returns the builder for
+    Generated()/FirstShape()/LastShape() lineage queries.
+    """
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism  # noqa: PLC0415
+    from OCP.gp import gp_Vec  # noqa: PLC0415
+    vec = gp_Vec(*scaled_vec)
+    builder = BRepPrimAPI_MakePrism(face, vec, True)
+    builder.Build()
+    if not builder.IsDone():
+        raise ValueError("BRepPrimAPI_MakePrism failed")
+    return builder.Shape(), builder
+
+
 def ocp_make_cylinder(center: list[float], axis: list[float], radius: float, height: float) -> TopoDS_Shape:
     """Return a solid cylinder TopoDS_Shape."""
     from OCP.gp import gp_Ax2, gp_Pnt, gp_Dir  # noqa: PLC0415

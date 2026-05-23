@@ -51,6 +51,10 @@ class Body:
     # Populated by _solve_extrude; used by B-rep registration to attach
     # profile lineage to each face/edge, so queries survive geometry moves.
     profile_queries: list[str] = field(default_factory=list)
+    # per-face lineage: solid face hash → profile entity tokens (for within-profile disambiguation)
+    face_lineage: dict[str, list[str]] = field(default_factory=dict)
+    # per-edge lineage: solid edge hash → profile entity tokens
+    edge_lineage: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass
