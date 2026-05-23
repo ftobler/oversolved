@@ -959,10 +959,10 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
                     ids.extend(e_tokens)
                 elif profile_queries:
                     ids.extend(profile_queries)
-                    ids.extend(profile_queries)
                 edge_queries.append(make_ancestry_query(ids, edge_type))
             else:
-                edge_queries.append(make_ancestry_query([index_ref(created_by, "edge", idx), ref(created_by)], edge_type))
+                # no body_id — geom-hash + created_by, never index-ref
+                edge_queries.append(make_ancestry_query([ref(geom_hash), ref(created_by)], edge_type))
 
     return {"edges": edges, "edge_queries": edge_queries}
 
@@ -983,7 +983,6 @@ def solid_to_vertices(solid: TopoDS_Shape, created_by: str | None = None, body_i
         seen_hashes.add(h)
         vertices.append([v.X, v.Y, v.Z])
         if created_by:
-            idx = len(vertices) - 1
             geom_hash = vertex_geometry_hash([v.X, v.Y, v.Z])
             if body_id:
                 ids = [ref(geom_hash), ref(created_by), ref(body_id)]
@@ -991,6 +990,7 @@ def solid_to_vertices(solid: TopoDS_Shape, created_by: str | None = None, body_i
                     ids.extend(profile_queries)
                 vertex_queries.append(make_ancestry_query(ids, "vertex"))
             else:
-                vertex_queries.append(make_ancestry_query([index_ref(created_by, "vertex", idx), ref(created_by)], "vertex"))
+                # no body_id — geom-hash + created_by, never index-ref
+                vertex_queries.append(make_ancestry_query([ref(geom_hash), ref(created_by)], "vertex"))
 
     return {"vertices": vertices, "vertex_queries": vertex_queries}

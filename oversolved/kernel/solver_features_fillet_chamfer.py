@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -11,7 +10,7 @@ from oversolved.kernel.types3d import Body
 from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, _compute_face_centroid, _compute_face_normal, _triangle_area
 from oversolved.kernel.geometry_tessellation import edge_to_geom_dict
 from oversolved.kernel.geom_hash import edge_geometry_hash, face_geometry_hash
-from oversolved.kernel.query import make_ancestry_query, _parse_ancestry, ref, index_ref, body_id_of
+from oversolved.kernel.query import make_ancestry_query, _parse_ancestry, ref, body_id_of
 from oversolved.kernel.geometry_features import apply_fillet, apply_chamfer
 from oversolved.kernel.solver_features_shared import _resolve_body
 
@@ -126,29 +125,21 @@ def _build_edge_index(body: Body) -> _EdgeIndex:
             )
             query_to_edge[aq_hash] = te
 
-            aq = make_ancestry_query(
-                [index_ref(body.created_by, "edge", idx), ref(body.created_by)], et
-            )
-            query_to_edge[aq] = te
-            aq3 = make_ancestry_query(
-                [index_ref(body.id, "edge", idx), ref(body.created_by), ref(body.id)], et
-            )
-            query_to_edge[aq3] = te
+        # Legacy index query for backward compat with stored documents.
+        # No new index queries are emitted; index_ref() has zero callers.
         query_to_edge[f"?{body.id}:edge:{idx}"] = te
 
     return _EdgeIndex(query_to_edge, hash_to_edge, topo_edges, edge_types)
 
 
 def _resolve_edges_with_index(
-    body: Body, index: _EdgeIndex, edge_queries: list[str], strict: bool = False
+    body: Body, index: _EdgeIndex, edge_queries: list[str],
 ) -> list[TopoDS_Shape]:
     """Resolve edge queries against a body's prebuilt index.
 
-    With strict=True only geometrically-stable matches count (exact query, geom
-    hash, face). This is used to decide which body owns an edge during routing,
-    where the unstable OCC-order fallbacks must not claim a false match. With
-    strict=False (the default, used for the final fillet) the legacy index and
-    body-scoped fallbacks also fire, preserving the moved-geometry edit flows.
+    Resolution tiers: exact query match → geometry hash → face query →
+    body-scoped type fallback (last resort, OCC order — only kept for
+    backward compat with legacy stored documents).
     """
     query_to_edge = index.query_to_edge
     hash_to_edge = index.hash_to_edge
@@ -157,9 +148,6 @@ def _resolve_edges_with_index(
 
     result: list[TopoDS_Shape] = []
     seen_edge_hashes: set[int] = set()
-    resolve_failed = 0
-    fallback_used = 0
-    fallback_failed = 0
 
     def _add_edge_unique(e: TopoDS_Shape) -> None:
         h = hash(e)
@@ -169,21 +157,7 @@ def _resolve_edges_with_index(
 
     for q in edge_queries:
         edge = query_to_edge.get(q)  # type: ignore[assignment]
-        if edge is None and not strict and q.startswith("?"):
-            try:
-                ids, _ = _parse_ancestry(q)
-                for id_str in ids:
-                    m = re.match(r"@([^/]+)/edge(\d+)$", id_str)
-                    if m:
-                        eidx = int(m.group(2))
-                        if 0 <= eidx < len(topo_edges):
-                            edge = topo_edges[eidx]
-                            break
-            except Exception as exc:
-                logger.debug("fillet edge index resolution failed for query %s: %s", q, exc)
-                resolve_failed += 1
         # Geometry-hash match, ignoring the (possibly stale) @body_<id> token.
-        # Reliable because the gedge hash is geometric, not OCC-order based.
         if edge is None and q.startswith("?"):
             try:
                 ids, _ = _parse_ancestry(q)
@@ -194,17 +168,11 @@ def _resolve_edges_with_index(
                             break
             except Exception as exc:
                 logger.debug("fillet edge geom-hash resolution failed for query %s: %s", q, exc)
-        if edge is None and not strict and q.startswith("?"):
+        # Legacy body-scoped type fallback for stored documents with stale hashes.
+        if edge is None and q.startswith("?"):
             try:
                 ids, type_restriction = _parse_ancestry(q)
-                # If the query carries a geometry hash and Tier 3 didn't match,
-                # the edge definitively does not exist on this body. The hash
-                # encodes the edge's geometric identity; a non-match means the
-                # edge was removed, not just moved. Skipping the fallback lets
-                # the fillet correctly fail instead of silently rounding the
-                # wrong edge (a false positive).
                 if any(id_str.startswith("@gedge_") for id_str in ids):
-                    fallback_failed += 1
                     continue
                 body_id_from_query = None
                 for id_str in ids:
@@ -217,26 +185,9 @@ def _resolve_edges_with_index(
                         if type_restriction is None or et == type_restriction
                     ]
                     if matched:
-                        # Last-resort guess used only when the geometry hash no
-                        # longer matches (e.g. the edge was moved/shortened by an
-                        # upstream op). This picks matched[0] in OCC iteration
-                        # order, which is NOT stable -- it can fillet the wrong
-                        # edge. The geometry-hash exact match above is the
-                        # reliable path; for geometrically stable edges (the
-                        # reported cylinder case) it resolves before reaching
-                        # here. A hash-only query carries no coordinates, so a
-                        # location-based disambiguation is impossible without
-                        # enriching the query.
                         edge = matched[0]
-                        logger.debug(
-                            "fillet edge resolved via body-scoped type fallback: "
-                            "query=%s body=%s",
-                            q, body.id,
-                        )
-                        fallback_used += 1
             except Exception as exc:
                 logger.debug("fillet edge body-scoped fallback failed for query %s: %s", q, exc)
-                fallback_failed += 1
         # Face query: resolve to all edges of that face
         if edge is None and 'gface_' in q:
             try:
@@ -251,12 +202,6 @@ def _resolve_edges_with_index(
         if edge is not None:
             _add_edge_unique(edge)
 
-    if resolve_failed > 0:
-        logger.warning("fillet: %d edge queries failed index resolution", resolve_failed)
-    if fallback_used > 0:
-        logger.warning("fillet: %d edge queries resolved via body-scoped type fallback", fallback_used)
-    if fallback_failed > 0:
-        logger.warning("fillet: %d edge queries failed body-scoped fallback", fallback_failed)
     return result
 
 
@@ -337,13 +282,12 @@ def _apply_edge_feature(
         body = body_store.get(bid)
         if body is None or body.shape is None:
             return False
-        return bool(_resolve_edges_with_index(body, _index_for(bid), [q], strict=True))
+        return bool(_resolve_edges_with_index(body, _index_for(bid), [q]))
 
     # Route each edge query to the body that actually owns it. The @body_<id>
     # token baked into a query goes stale when upstream geometry is restructured
     # (e.g. an extrude split in two), so it is only a hint: prefer the body whose
     # geometry actually matches the query, and fall back to the token last.
-    default_body_id = next(iter(body_store)) if len(body_store) == 1 else None
     groups: dict[str, list[str]] = {}
     unresolved: list[str] = []
     if source_body:
@@ -358,7 +302,10 @@ def _apply_edge_feature(
         groups[resolved_src] = list(edges)
     else:
         for q in edges:
-            named = body_id_of(q, body_store) or default_body_id
+            named = body_id_of(q, body_store)
+            is_default = named is None and len(body_store) == 1
+            if is_default:
+                named = next(iter(body_store))
             target: str | None = None
             if named and named in body_store and _contains(named, q):
                 target = named  # the token is correct
@@ -367,8 +314,9 @@ def _apply_edge_feature(
                     if bid != named and _contains(bid, q):
                         target = bid
                         break
-            if target is None and named in body_store:
-                target = named  # last resort: trust the token (moved geometry)
+            # Last resort only when body_id_of found the token (not default).
+            if target is None and named in body_store and not is_default:
+                target = named
             if target is None:
                 logger.warning(
                     "%s: edge query resolves to no body; skipping query %s",
