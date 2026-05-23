@@ -68,11 +68,11 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
             cq_faces.append(cq_face)
         else:
             all_loops.extend(loops)
-            # collect profile entity tokens for lineage tagging
-            topo = global_repo.elements.get("_topo_" + sketch_id, {})
-            for surface in topo.get("surfaces", []):
-                eids = _surface_entity_ids(surface)
-                profile_queries.extend(sorted(eids))
+        # collect profile entity tokens for lineage tagging
+        topo = global_repo.elements.get("_topo_" + sketch_id, {})
+        for surface in topo.get("surfaces", []):
+            eids = _surface_entity_ids(surface)
+            profile_queries.extend(sorted(eids))
         if not first_pt:
             first_pt = pt
             first_sketch_id = sketch_id
@@ -182,11 +182,11 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
             cq_faces.append(cq_face)
         else:
             all_loops.extend(loops)
-            # collect profile entity tokens for lineage tagging
-            topo = global_repo.elements.get("_topo_" + sketch_id, {})
-            for surface in topo.get("surfaces", []):
-                eids = _surface_entity_ids(surface)
-                profile_queries.extend(sorted(eids))
+        # collect profile entity tokens for lineage tagging
+        topo = global_repo.elements.get("_topo_" + sketch_id, {})
+        for surface in topo.get("surfaces", []):
+            eids = _surface_entity_ids(surface)
+            profile_queries.extend(sorted(eids))
         if not first_pt:
             first_pt = pt
             first_sketch_id = sketch_id
