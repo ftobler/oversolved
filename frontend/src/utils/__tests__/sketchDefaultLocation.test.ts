@@ -10,12 +10,12 @@ function emptyDoc(): PartDoc {
   return { version: 1, kind: 'part', features: [] }
 }
 
-describe('applyAddSketch sets default plane', () => {
-  it('new sketch always has plane: @builtin_plane_front', () => {
+describe('applyAddSketch sets no default plane', () => {
+  it('new sketch has no plane — user must pick one', () => {
     const doc = emptyDoc()
     applyAddSketch(doc, 'sk1')
     const sketch = doc.features!.find(f => f.id === 'sk1')!
-    expect(sketch.plane).toBe('@builtin_plane_front')
+    expect(sketch.plane).toBeUndefined()
   })
 
   it('preserves label when provided', () => {
@@ -23,7 +23,7 @@ describe('applyAddSketch sets default plane', () => {
     applyAddSketch(doc, 'sk1', 'my sketch')
     const sketch = doc.features!.find(f => f.id === 'sk1')!
     expect(sketch.label).toBe('my sketch')
-    expect(sketch.plane).toBe('@builtin_plane_front')
+    expect(sketch.plane).toBeUndefined()
   })
 })
 

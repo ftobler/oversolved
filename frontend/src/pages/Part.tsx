@@ -205,6 +205,11 @@ export default function Part() {
   handleRebuildRef.current = handleRebuild
   const getHandleRebuild = useCallback(() => handleRebuildRef.current, [])
   const clearPickBodies = useCallback(() => setPickBodies({}), [setPickBodies])
+  const pendingSketchOnFaceId = useRef<string | null>(null)
+  const clearPlaneSelection = useCallback(() => {
+    setPlaneSelectionFeatureId(null)
+    pendingSketchOnFaceId.current = null
+  }, [setPlaneSelectionFeatureId])
 
   const {
     editingFeatureId,
@@ -223,6 +228,7 @@ export default function Part() {
     setRollbackFromHandler,
     setPickBoundary,
     clearPickBodies,
+    clearPlaneSelection,
     startEditSession,
     commitEditSession,
     cancelEditSession,
@@ -368,8 +374,7 @@ export default function Part() {
     handleMutation({ type: 'add_sketch', featureId, label })
     setRollbackFromHandler(features.length + 1)
     setPlaneSelectionFeatureId(featureId)
-    enterEditFeature(featureId)
-  }, [doc, features.length, handleMutation, setPlaneSelectionFeatureId, setRollbackPos, setRollbackFromHandler, enterEditFeature])
+  }, [doc, features.length, handleMutation, setPlaneSelectionFeatureId, setRollbackPos, setRollbackFromHandler])
 
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')
@@ -551,7 +556,6 @@ export default function Part() {
     viewportRef.current?.alignCameraToPlane(cleanPlaneId)  // camera-only; intentional no-op when Viewport absent
   }, [activeSketchFeatureId, features])
 
-  const pendingSketchOnFaceId = useRef<string | null>(null)
   useEffect(() => {
     if (planeSelectionFeatureId) {
       pendingSketchOnFaceId.current = planeSelectionFeatureId

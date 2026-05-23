@@ -12,6 +12,7 @@ interface UseEditFeatureInput {
   setRollbackFromHandler: (pos: number | null) => void
   setPickBoundary: (b: number | null) => void
   clearPickBodies: () => void
+  clearPlaneSelection: () => void
   startEditSession: (suppressUndo: boolean) => void
   commitEditSession: () => void
   cancelEditSession: () => void
@@ -41,6 +42,7 @@ export function useEditFeature({
   setRollbackFromHandler,
   setPickBoundary,
   clearPickBodies,
+  clearPlaneSelection,
   startEditSession,
   commitEditSession,
   cancelEditSession,
@@ -76,6 +78,7 @@ export function useEditFeature({
   }, [editingFeatureId, features, setPickBoundary, docRef, builtInIds, getHandleRebuild])
 
   const _exitEditCleanup = useCallback(() => {
+    clearPlaneSelection()
     const targetRollback = savedRollbackPosition !== null ? savedRollbackPosition : rollbackPosition
     if (savedRollbackPosition !== null) {
       if (rollbackPosition === editEntryRollback.current || rollbackPosition === null) {
@@ -88,7 +91,7 @@ export function useEditFeature({
     setEditingFeatureId(null)
     setPickBoundary(null)
     if (docRef.current) reSolve(docRef.current, targetRollback)
-  }, [savedRollbackPosition, rollbackPosition, setPickBoundary,
+  }, [clearPlaneSelection, savedRollbackPosition, rollbackPosition, setPickBoundary,
       setRollbackFromHandler, docRef, reSolve])
 
   const enterEditFeature = useCallback((featureId: string, suppressUndo = true) => {
