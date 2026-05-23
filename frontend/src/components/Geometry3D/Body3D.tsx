@@ -24,6 +24,7 @@ import {
   faceCount,
 } from '@/components/Geometry3D/bodyGeometry'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
+import { topoFallbackQuery } from '@/utils/selectionId'
 import { EDGE_DEPTH_BIAS } from '@/picking/EdgeIdLayer'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
 import { registerBodyCallbacks } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
@@ -124,7 +125,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   const isBodySelected = normalSelection.has('@' + bodyId)
 
   const getIsEdgeSelected = useCallback((edgeIndex: number): boolean => {
-    const query = edgeQueries?.[edgeIndex] ?? `@${featureId}/edge/${edgeIndex}`
+    const query = edgeQueries?.[edgeIndex] ?? topoFallbackQuery(featureId, 'edge', edgeIndex)
     return normalSelection.has(query)
   }, [normalSelection, featureId, edgeQueries])
 
@@ -204,7 +205,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       if (pts.length === 0) return
       const geo = new THREE.BufferGeometry()
       geo.setAttribute('position', new THREE.BufferAttribute(pts, 3))
-      const query = edgeQueries?.[i] ?? `@${featureId}/edge/${i}`
+      const query = edgeQueries?.[i] ?? topoFallbackQuery(featureId, 'edge', i)
       geos.set(query, geo)
     })
     return geos
@@ -244,7 +245,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         if (query !== undefined) return query
       }
     }
-    return `@${featureId}/face/${triangleIndex}`
+    return topoFallbackQuery(featureId, 'face', triangleIndex)
   }, [mesh, featureId])
 
   // Always compute face colors -- avoids toggling vertexColors on the material which
@@ -289,7 +290,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
 
     for (let segIdx = 0; segIdx < totalSegments; segIdx++) {
       const edgeIdx = segmentToEdgeMap[segIdx]
-      const edgeQuery = edgeQueries?.[edgeIdx] ?? `@${featureId}/edge/${edgeIdx}`
+      const edgeQuery = edgeQueries?.[edgeIdx] ?? topoFallbackQuery(featureId, 'edge', edgeIdx)
       let color: THREE.Color
       if (interactive) {
         if (getIsEdgeSelected(edgeIdx)) {
@@ -369,11 +370,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     if (dmesh && vertices?.length) {
       // Only show visual dots when vertex is hovered or selected
       const hasHover = hoveredSelectionId !== null && vertices.some((_, i) => {
-        const query = vertexQueries?.[i] ?? `@${featureId}/vertex/${i}`
+        const query = vertexQueries?.[i] ?? topoFallbackQuery(featureId, 'vertex', i)
         return query === hoveredSelectionId
       })
       const hasSelection = vertices.some((_, i) => {
-        const query = vertexQueries?.[i] ?? `@${featureId}/vertex/${i}`
+        const query = vertexQueries?.[i] ?? topoFallbackQuery(featureId, 'vertex', i)
         return normalSelection.has(query)
       })
 
@@ -392,7 +393,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           _vtxMatrix.compose(_vtxPos, _vtxQuat, _dotScale)
           dmesh.setMatrixAt(i, _vtxMatrix)
 
-          const query = vertexQueries?.[i] ?? `@${featureId}/vertex/${i}`
+          const query = vertexQueries?.[i] ?? topoFallbackQuery(featureId, 'vertex', i)
           let color: THREE.Color
           if (normalSelection.has(query)) {
             color = selectedColorObj

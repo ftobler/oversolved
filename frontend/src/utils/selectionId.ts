@@ -80,6 +80,20 @@ export function selectionToQuery(selection: SelectionId, hostFeatureId: string):
   }
 }
 
+/**
+ * Topological fallback query for a B-rep body element, used only when the
+ * backend has not provided a named (ancestral) query. Last-resort identity --
+ * see the module docstring. Centralized here so the `@<feature>/<kind>/<idx>`
+ * wire format lives in one place rather than scattered across render code.
+ */
+export function topoFallbackQuery(
+  featureId: string,
+  kind: "edge" | "face" | "vertex",
+  idx: number,
+): string {
+  return `@${featureId}/${kind}/${idx}`
+}
+
 function _splitEntity(s: string): EntitySelectionId {
   const [, featureId, eid] = s.split(":")
   return { kind: "entity", featureId, eid }
