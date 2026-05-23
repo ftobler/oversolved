@@ -21,6 +21,7 @@ import featureHoleIcon from '@/assets/icons/feature-hole.svg'
 import featureTransformIcon from '@/assets/icons/feature-transform.svg'
 import featureMirrorIcon from '@/assets/icons/feature-mirror.svg'
 import featureImportIcon from '@/assets/icons/icon-upload.svg'
+import { builtinSelectionId } from '@/components/Geometry3D/utils'
 
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
 
@@ -222,7 +223,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
             )}
             <li
               key={feature.id}
-              className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(`@${feature.id}`) ? 'selected' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${dropTargetIndex === index ? 'drop-target-top' : ''} ${dropTargetIndex === index + 1 ? 'drop-target-bottom' : ''}`}
+              className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(isBuiltIn ? builtinSelectionId(feature.id) : `@${feature.id}`) ? 'selected' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${dropTargetIndex === index ? 'drop-target-top' : ''} ${dropTargetIndex === index + 1 ? 'drop-target-bottom' : ''}`}
               draggable={!isBuiltIn && feature.id !== editingFeatureId}
               onDragStart={(e) => {
                 if (isBuiltIn) return
@@ -262,7 +263,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 }
               }}
               onClick={() => {
-                onToggleSelect(`@${feature.id}`)
+                onToggleSelect(isBuiltIn ? builtinSelectionId(feature.id) : `@${feature.id}`)
               }}
               onDoubleClick={() => feature.kind === 'sketch' ? onEnterEditSketch(feature.id) : undefined}
               style={{ flexWrap: 'wrap' }}

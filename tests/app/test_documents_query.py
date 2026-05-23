@@ -176,9 +176,9 @@ class TestDocumentsQuery:
         # Insert an older doc via the helper (raw INSERT with empty updated_at)
         # then update it to have a known Python-style timestamp via store_content,
         # which simulates a doc that was created before but later modified.
-        old_uuid = store.create("OldDoc", owner)
+        store.create("OldDoc", owner)
         time.sleep(0.01)
-        new_uuid = store.create("NewDoc", owner)
+        store.create("NewDoc", owner)
 
         results = store.list_by_filter(owner, "owned", "modified", "")
         names = [r["name"] for r in results]
