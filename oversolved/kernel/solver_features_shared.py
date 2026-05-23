@@ -396,8 +396,19 @@ def _collect_extrude_loops(
 ) -> tuple[list, Frame3D | dict, str, Any]:
     pt: Frame3D | dict
     if sketch_ref.startswith("?") or sketch_ref.startswith("@"):
+        sketch_id = ""
+        if sketch_ref.startswith("?"):
+            target_ids, _ = _parse_ancestry(sketch_ref)
+            for aid in target_ids:
+                if aid.startswith("@") and "/" not in aid:
+                    candidate = aid[1:]
+                    if global_repo.elements.get("_pt_" + candidate) is not None:
+                        sketch_id = candidate
+                        break
+        elif sketch_ref.startswith("@"):
+            sketch_id = sketch_ref[1:].split("/")[0]
         loops, pt, cq_face = _resolve_face_profile(sketch_ref, global_repo, body_store)
-        return loops, pt, "", cq_face
+        return loops, pt, sketch_id, cq_face
     sketch_id = sketch_ref.lstrip("$")
     pt_raw = global_repo.elements.get("_pt_" + sketch_id)
     if pt_raw is None:
