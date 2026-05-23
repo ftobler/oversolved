@@ -11,7 +11,7 @@ from oversolved.kernel.types3d import Body
 from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, _compute_face_centroid, _compute_face_normal, _triangle_area
 from oversolved.kernel.geometry_tessellation import edge_to_geom_dict
 from oversolved.kernel.geom_hash import edge_geometry_hash, face_geometry_hash
-from oversolved.kernel.query import make_ancestry_query, _parse_ancestry, ref, index_ref
+from oversolved.kernel.query import make_ancestry_query, _parse_ancestry, ref, index_ref, body_id_of
 from oversolved.kernel.geometry_features import apply_fillet, apply_chamfer
 from oversolved.kernel.solver_features_shared import _resolve_body
 
@@ -305,28 +305,6 @@ def _resolve_face_to_edges(q: str, body: Body) -> list[TopoDS_Shape]:
     return []
 
 
-_BODY_AT_RE = re.compile(r"@(body_[^@:;,]+)")
-_BODY_IDX_RE = re.compile(r"^\?(body_[^:;,]+):edge:")
-
-
-def _body_id_from_edge_query(q: str, body_store: dict) -> str | None:
-    """Return the body id (`body_...`) an edge query refers to, or None.
-
-    Handles the ancestry form (`...@body_x:edge`) and the index form
-    (`?body_x:edge:N`). The 3-ID ancestry form carries two `@body_` tokens --
-    an element id like `@body_ex1edge0` and the real body `@body_ex1` -- so a
-    candidate that actually exists in the store is preferred.
-    """
-    candidates = _BODY_AT_RE.findall(q)
-    idx = _BODY_IDX_RE.match(q)
-    if idx:
-        candidates.append(idx.group(1))
-    for c in candidates:
-        if c in body_store:
-            return c
-    return candidates[0] if candidates else None
-
-
 def _apply_edge_feature(
     feature: dict,
     body_store: dict,
@@ -383,7 +361,7 @@ def _apply_edge_feature(
         groups[resolved_src] = list(edges)
     else:
         for q in edges:
-            named = _body_id_from_edge_query(q, body_store) or default_body_id
+            named = body_id_of(q, body_store) or default_body_id
             target: str | None = None
             if named and named in body_store and _contains(named, q):
                 target = named  # the token is correct

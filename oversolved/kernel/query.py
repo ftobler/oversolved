@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, TypeAlias
+import re
 import secrets
 from oversolved.kernel.solver_constants import _BUILTIN_PLANES
 
@@ -15,6 +16,7 @@ __all__ = [
     "emit_wire",
     "ref",
     "index_ref",
+    "body_id_of",
     "local",
     "absolute",
     "ancestry",
@@ -173,6 +175,30 @@ def index_ref(owner_id: str, kind: str, idx: int) -> str:
     removed in one place once recursive lineage lands. Do NOT add new callers.
     """
     return f"@{owner_id}{kind}{idx}"
+
+
+_BODY_AT_RE = re.compile(r"@(body_[^@:;,]+)")
+_BODY_IDX_RE = re.compile(r"^\?(body_[^:;,]+):edge:")
+
+
+def body_id_of(query_str: str, body_store: dict[str, Any] | None = None) -> str | None:
+    """Return the body id ('body_...') a query refers to, or None.
+
+    Engine-side introspection so consumers never regex query strings themselves.
+    Handles the ancestry form ('...@body_x...') and the legacy index form
+    ('?body_x:edge:N'). When several '@body_' tokens are present (an element id
+    like '@body_ex1edge0' plus the real body '@body_ex1'), a candidate that
+    exists in body_store is preferred.
+    """
+    candidates = _BODY_AT_RE.findall(query_str)
+    m = _BODY_IDX_RE.match(query_str)
+    if m:
+        candidates.append(m.group(1))
+    if body_store is not None:
+        for c in candidates:
+            if c in body_store:
+                return c
+    return candidates[0] if candidates else None
 
 
 def local(eid: str, sub: str = "") -> LocalQuery:
