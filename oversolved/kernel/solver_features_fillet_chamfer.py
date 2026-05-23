@@ -11,7 +11,7 @@ from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, _compute_fac
 from oversolved.kernel.geometry_tessellation import edge_to_geom_dict
 from oversolved.kernel.geom_hash import edge_geometry_hash, face_geometry_hash
 from oversolved.kernel.query import make_ancestry_query, _parse_ancestry, ref, body_id_of
-from oversolved.kernel.geometry_features import apply_fillet, apply_chamfer
+from oversolved.kernel.geometry_features import apply_fillet, apply_chamfer, apply_fillet_with_lineage, apply_chamfer_with_lineage
 from oversolved.kernel.solver_features_shared import _resolve_body
 
 logger = logging.getLogger(__name__)
@@ -221,6 +221,7 @@ def _apply_edge_feature(
     body_store: dict,
     feature_kind: str,
     geometry_fn: Callable[..., TopoDS_Shape],
+    lineage_fn: Callable[..., tuple[TopoDS_Shape, dict[str, list[str]] | None, dict[str, list[str]] | None]] | None = None,
     **geometry_kwargs: Any,
 ) -> dict:
     """Shared body-resolution and edge-application logic for fillet and chamfer.
@@ -325,7 +326,20 @@ def _apply_edge_feature(
             unresolved.extend(qlist)
             continue
 
-        body.shape = geometry_fn(body.shape, edges=topo_edges, **geometry_kwargs)
+        if lineage_fn is not None and (body.face_lineage or body.edge_lineage):
+            new_shape, new_fl, new_el = lineage_fn(
+                body.shape, topo_edges,
+                body.face_lineage if body.face_lineage else {},
+                body.edge_lineage if body.edge_lineage else {},
+                **geometry_kwargs,
+            )
+            body.shape = new_shape
+            if new_fl is not None:
+                body.face_lineage = new_fl
+            if new_el is not None:
+                body.edge_lineage = new_el
+        else:
+            body.shape = geometry_fn(body.shape, edges=topo_edges, **geometry_kwargs)
         body.modified_by.append(feature_id)
         applied.append(body.id)
 
@@ -345,6 +359,34 @@ def _apply_edge_feature(
     return {"status": "ok", "body_id": applied[0], "body_ids": applied}
 
 
+def _apply_fillet_lineage(
+    shape: TopoDS_Shape,
+    edges: list[TopoDS_Shape],
+    face_lineage: dict[str, list[str]],
+    edge_lineage: dict[str, list[str]],
+    radius: float = 1.0,
+    **__: Any,
+) -> tuple[TopoDS_Shape, dict[str, list[str]] | None, dict[str, list[str]] | None]:
+    """Shim to match _apply_edge_feature's lineage_fn signature."""
+    return apply_fillet_with_lineage(shape, radius, edges, face_lineage, edge_lineage)
+
+
+def _apply_chamfer_lineage(
+    shape: TopoDS_Shape,
+    edges: list[TopoDS_Shape],
+    face_lineage: dict[str, list[str]],
+    edge_lineage: dict[str, list[str]],
+    distance: float = 1.0,
+    kind: str = "distance",
+    angle: float = 45.0,
+    **__: Any,
+) -> tuple[TopoDS_Shape, dict[str, list[str]] | None, dict[str, list[str]] | None]:
+    """Shim to match _apply_edge_feature's lineage_fn signature."""
+    return apply_chamfer_with_lineage(
+        shape, distance, edges, kind, angle, face_lineage, edge_lineage,
+    )
+
+
 def _solve_fillet(
     feature: dict,
     global_repo: Repository,
@@ -356,7 +398,11 @@ def _solve_fillet(
     radius = float(radius_raw if radius_raw is not None else 1.0)
     if radius <= 0:
         raise ValueError("fillet radius must be positive")
-    return _apply_edge_feature(feature, body_store, "fillet", apply_fillet, radius=radius)
+    return _apply_edge_feature(
+        feature, body_store, "fillet", apply_fillet,
+        lineage_fn=_apply_fillet_lineage,
+        radius=radius,
+    )
 
 
 def _solve_chamfer(
@@ -376,5 +422,6 @@ def _solve_chamfer(
         raise ValueError("chamfer distance must be positive")
     return _apply_edge_feature(
         feature, body_store, "chamfer", apply_chamfer,
+        lineage_fn=_apply_chamfer_lineage,
         distance=distance, kind=kind, angle=angle,
     )

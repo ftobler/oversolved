@@ -604,16 +604,17 @@ def test_chamfer_angle_distance_mode():
         "chamfer": {"distance": 1.0, "angle": 30.0, "kind": "angle_distance"},
     })
 
-    with mock.patch("oversolved.kernel.solver_features_fillet_chamfer.apply_chamfer", wraps=__import__(
-        "oversolved.kernel.solver_features_fillet_chamfer", fromlist=["apply_chamfer"]
-    ).apply_chamfer) as mock_chamfer:
+    with mock.patch("oversolved.kernel.solver_features_fillet_chamfer.apply_chamfer_with_lineage", wraps=__import__(
+        "oversolved.kernel.solver_features_fillet_chamfer", fromlist=["apply_chamfer_with_lineage"]
+    ).apply_chamfer_with_lineage) as mock_apply:
         r = build(spec)
 
     assert r["result"]["ch1"]["status"] == "ok", r["result"]["ch1"].get("exception")
-    assert mock_chamfer.called
-    _, kwargs = mock_chamfer.call_args
-    assert kwargs.get("kind") == "angle_distance", (
-        f"apply_chamfer was called with kind={kwargs.get('kind')!r}, expected 'angle_distance'"
+    assert mock_apply.called
+    args, _ = mock_apply.call_args
+    # apply_chamfer_with_lineage(shape, distance, edges, kind, angle, ...)
+    assert len(args) >= 5 and args[3] == "angle_distance", (
+        f"apply_chamfer_with_lineage was called with kind={args[3]!r}, expected 'angle_distance'"
     )
 
 
