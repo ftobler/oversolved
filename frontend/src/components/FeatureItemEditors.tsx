@@ -112,6 +112,8 @@ export function FeatureItemEditors({
         <ArrayEditor
           feature={feature}
           onMutation={onMutation}
+          features={fps}
+          partLabels={labels}
         />
       )}
       {feature.kind === 'delete_body' && editingFeatureId === feature.id && (

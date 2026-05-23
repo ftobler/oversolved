@@ -1,14 +1,26 @@
+import { useState } from 'react'
 import type { PartFeature, ArrayFeatureDef, Mutation } from '@/types/cad'
+import { PickChip } from '@/components/PickChip'
+import { useFieldPicking } from '@/hooks/useFieldPicking'
+import { resolveAxisQuery } from '@/utils/resolveBodyPickRef'
 
 interface ArrayEditorProps {
   feature: PartFeature
   onMutation: (m: Mutation) => void
+  features?: PartFeature[]
+  partLabels?: Record<string, string>
 }
 
-function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
+function ArrayEditor({ feature, onMutation, features, partLabels }: ArrayEditorProps) {
   const array = feature.array as ArrayFeatureDef ?? {}
   const fid = feature.id
   const mode = array.mode ?? 'linear'
+  const [isPickingAxis, setIsPickingAxis] = useState(false)
+
+  useFieldPicking(isPickingAxis, (selectionId) => {
+    onMutation({ type: 'set_array_field', featureId: fid, field: 'axis', value: resolveAxisQuery(selectionId) })
+    setIsPickingAxis(false)
+  })
 
   return (
     <div className="plane-editor">
@@ -209,18 +221,15 @@ function ArrayEditor({ feature, onMutation }: ArrayEditorProps) {
               />
             </div>
           )}
-          <div className="feature-field-row">
+          <div className="feature-field-row feature-field-row--stacked">
             <span className="feature-field-label">Axis</span>
-            <input
-              type="text"
-              className="feature-field-input"
-              defaultValue={array.axis ?? ''}
-              placeholder="@sk1/axisLine"
-              onClick={(e) => e.stopPropagation()}
-              onBlur={(e) => {
-                onMutation({ type: 'set_array_field', featureId: fid, field: 'axis', value: e.target.value })
-              }}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
+            <PickChip
+              values={array.axis && array.axis !== 'None' ? [array.axis] : []}
+              isPicking={isPickingAxis}
+              onActivate={() => setIsPickingAxis(!isPickingAxis)}
+              onRemove={() => onMutation({ type: 'set_array_field', featureId: fid, field: 'axis', value: '' })}
+              features={features}
+              partLabels={partLabels}
             />
           </div>
         </>
