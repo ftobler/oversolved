@@ -109,7 +109,9 @@ def test_build_mesh_includes_brep_face_metadata_and_queries():
     fd0 = mesh["face_data"][0]
     expected_hash = face_geometry_hash(fd0["centroid"], fd0["normal"], fd0["area"])
     assert mesh["face_queries"][0] == make_ancestry_query(
-        [f"@{expected_hash}", "@ex1", "@body_ex1"], "flatface"
+        [f"@{expected_hash}", "@ex1", "@body_ex1",
+         "@sk1/bottom", "@sk1/left", "@sk1/right", "@sk1/top"],
+        "flatface",
     )
 
 

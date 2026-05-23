@@ -13,6 +13,7 @@ from oversolved.kernel.geometry_tessellation import extrude_profile as _ep
 from oversolved.kernel.cadquery_ops import boolean_union, extrude_face, _compute_face_normal
 from oversolved.kernel.geometry_tessellation import sketch_loops_to_face, revolve_face as _rf
 from oversolved.kernel.solver_registry import _sketch_to_world_2d
+from oversolved.kernel.profile_loops import _surface_entity_ids
 
 logger = logging.getLogger(__name__)
 
@@ -52,19 +53,24 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
     first_pt: Frame3D | dict = {}
     first_sketch_id = ""
     profile_errors: list[str] = []
+    profile_queries: list[str] = []
     for sketch_ref in sketch_refs:
         try:
             loops, pt, sketch_id, cq_face = _collect_extrude_loops(
                 sketch_ref, feature_id, feature, distance, global_repo, body_store
             )
         except ValueError as exc:
-            # Soft fail one profile so the others still build (partial rebuild).
             profile_errors.append(str(exc))
             continue
         if cq_face is not None:
             cq_faces.append(cq_face)
         else:
             all_loops.extend(loops)
+            # collect profile entity tokens for lineage tagging
+            topo = global_repo.elements.get("_topo_" + sketch_id, {})
+            for surface in topo.get("surfaces", []):
+                eids = _surface_entity_ids(surface)
+                profile_queries.extend(sorted(eids))
         if not first_pt:
             first_pt = pt
             first_sketch_id = sketch_id
@@ -116,6 +122,7 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
     op_result = _apply_body_operation(
         tool_shape, body_store, operation, merge_target,
         body_id, feature_id, first_sketch_id, op_name="extrude",
+        profile_queries=profile_queries,
     )
     result.update(op_result)
 

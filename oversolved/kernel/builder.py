@@ -386,6 +386,8 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: MeshDict) -> Non
             emit_wire(absolute(face_created_by)),
             emit_wire(absolute(body.id)),
         ]
+        if body.profile_queries:
+            ancestor_ids.extend(body.profile_queries)
         x_axis, y_axis = _normal_to_frame(normal)
         payload = {
             "type": face_info.get("surface_type", "face"),
@@ -519,6 +521,8 @@ def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_quer
             emit_wire(absolute(edge_created_by)),
             emit_wire(absolute(body.id)),
         ]
+        if body.profile_queries:
+            ancestor_ids.extend(body.profile_queries)
         edge_type = "straightedge" if edge.get("kind") == "line" else "edge"
         payload: dict[str, Any] = {
             "type": edge_type,
@@ -554,6 +558,8 @@ def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vert
             emit_wire(absolute(vertex_created_by)),
             emit_wire(absolute(body.id)),
         ]
+        if body.profile_queries:
+            ancestor_ids.extend(body.profile_queries)
         payload: dict[str, Any] = {
             "type": "vertex",
             "body_id": body.id,
@@ -596,9 +602,10 @@ def _tessellate_body_geometry(body: Body) -> dict[str, Any]:
         return entry
     try:
         from oversolved.kernel.geometry_tessellation import solid_to_mesh, solid_to_edges, solid_to_vertices
-        mesh = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id)
-        edges_result = solid_to_edges(body.shape, created_by=body.created_by, body_id=body.id)
-        verts_result = solid_to_vertices(body.shape, created_by=body.created_by, body_id=body.id)
+        pq = body.profile_queries if body.profile_queries else None
+        mesh = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id, profile_queries=pq)
+        edges_result = solid_to_edges(body.shape, created_by=body.created_by, body_id=body.id, profile_queries=pq)
+        verts_result = solid_to_vertices(body.shape, created_by=body.created_by, body_id=body.id, profile_queries=pq)
     except ImportError:
         entry["mesh_error"] = "geometry.solid_to_mesh not available (F2 pending)"
         return entry
@@ -728,6 +735,7 @@ def build(
                 shape=_copy_shape(body.shape),
                 sketch_id=body.sketch_id,
                 brep_diff=body.brep_diff,
+                profile_queries=list(body.profile_queries),
             )
             for bid, body in checkpoint.body_store_snapshot.items()
         }
@@ -776,6 +784,7 @@ def build(
                         shape=_copy_shape(body.shape),
                         sketch_id=body.sketch_id,
                         brep_diff=body.brep_diff,
+                        profile_queries=list(body.profile_queries),
                     )
                     for bid, body in body_store.items()
                 },
@@ -818,6 +827,7 @@ def build(
                     shape=_copy_shape(body.shape),
                     sketch_id=body.sketch_id,
                     brep_diff=body.brep_diff,
+                    profile_queries=list(body.profile_queries),
                 )
                 for bid, body in body_store.items()
             },

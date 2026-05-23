@@ -121,7 +121,7 @@ class TestHashCount:
         face_keys = _get_face_registration_keys(ancestral)
         assert len(face_keys) > 0
         for key in face_keys:
-            assert len(key) == 3, f"Expected 3 structural tags (index/feature/body), got {len(key)}: {sorted(key)}"
+            assert len(key) >= 3, f"Expected >=3 structural tags (index/feature/body[+, profile tokens]), got {len(key)}: {sorted(key)}"
 
 
 class TestBackwardCompatibility:
@@ -169,7 +169,7 @@ class TestBackwardCompatibility:
         assert len(face_queries) > 0
         for fq in face_queries:
             ids, _ = _parse_ancestry(fq)
-            assert len(ids) == 3, f"Expected 3 tags (hash, feature, body), got {len(ids)}: {ids}"
+            assert len(ids) >= 3, f"Expected >=3 tags (hash, feature, body[+, profile tokens]), got {len(ids)}: {ids}"
             assert any(i.startswith("@gface_") for i in ids), f"Missing gface_ tag in {ids}"
 
 

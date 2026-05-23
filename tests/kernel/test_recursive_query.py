@@ -5,6 +5,8 @@ Stage 1 exercises the type/builder/walker against synthetic trees and
 the area re-ID case; producers still emit flat queries during the transition.
 """
 
+import pytest
+
 from oversolved.kernel.query import (
     Repository, QueryNode, build_query, resolve_query, ref,
     make_ancestry_query, _parse_ancestry,
@@ -12,7 +14,7 @@ from oversolved.kernel.query import (
 from oversolved.kernel.query_heuristics import (
     HeuristicConfig, Outcome, score_overlap, pick_best,
 )
-from oversolved.kernel.profile_loops import match_area_reid
+from oversolved.kernel.profile_loops import match_area_reid, _surface_entity_ids
 
 
 def test_builder_composes_parent_chain():
@@ -406,3 +408,109 @@ def test_resolve_query_no_tag_set():
     outcome, result = resolve_query(node, repo)
     assert outcome == Outcome.UNRESOLVED
     assert result is None
+
+
+# ─── Stage 2: profile-layer integration tests ───
+
+
+def test_profile_layer_survives_distance_change():
+    """Profile entity tokens appear in edge/face query strings and repo keys.
+
+    After a distance change, the new query strings include the same profile
+    tokens (sketch didn't change), so Tier 1 resolution still matches.
+    If the query targets a unique face (e.g. a single-profile extrude with
+    only 1 face), it resolves without needing the stale geom-hash.
+    """
+    import importlib
+    if not importlib.util.find_spec("cadquery"):
+        pytest.skip("cadquery not installed")
+    if not importlib.util.find_spec("vtkmodules"):
+        pytest.skip("vtkmodules not installed")
+
+    from oversolved.kernel.builder import build
+    from solver_helpers import rect_sketch_spec
+
+    # first build: extrude 10mm
+    spec1 = {
+        "features": [
+            rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
+            {"id": "ex1", "kind": "extrude", "sketch": "$sk1",
+             "distance": 10.0, "direction": "normal", "operation": "new"},
+        ],
+    }
+    r1 = build(spec1)
+    assert r1["result"]["ex1"]["status"] == "ok"
+    body1 = r1["bodies"]["body_ex1"]
+    face_queries_old = body1["mesh"].get("face_queries", [])
+
+    # sanity: face queries contain profile tokens
+    assert len(face_queries_old) > 0, "extrude must produce faces"
+    profile_in_query = any("@sk1/" in q for q in face_queries_old)
+    assert profile_in_query, "face queries must contain @sk1/entity tokens"
+
+    # second build: same sketch, different distance
+    spec2 = {
+        "features": [
+            rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
+            {"id": "ex1", "kind": "extrude", "sketch": "$sk1",
+             "distance": 25.0, "direction": "normal", "operation": "new"},
+        ],
+    }
+    r2 = build(spec2)
+    assert r2["result"]["ex1"]["status"] == "ok"
+
+    # the new face queries also contain profile tokens
+    body2 = r2["bodies"]["body_ex1"]
+    face_queries_new = body2["mesh"].get("face_queries", [])
+    profile_in_query2 = any("@sk1/" in q for q in face_queries_new)
+    assert profile_in_query2, "face queries in rebuild must contain @sk1/entity tokens"
+
+    # repo from second build has profile tokens in ancestral keys
+    last_cp = list(r2["_build_state"].checkpoints.values())[-1]
+    snap = last_cp.repo_snapshot
+    profile_in_key = False
+    for key in snap.get("ancestral", {}):
+        for tag in key:
+            if tag.startswith("@sk1/") and "surface" not in tag:
+                profile_in_key = True
+                break
+    assert profile_in_key, "repo keys must contain @sk1/entity tokens"
+    # Note: full edge-level disambiguation after distance change requires
+    # Stage 2's MakePrism.Generated() entity-level lineage.
+
+
+def test_profile_layer_entity_ids_attached():
+    """Verify that profile entity tokens (@sketch_id/entity_id) appear in
+    the ancestor sets of B-rep faces/edges after registration."""
+    import importlib
+    if not importlib.util.find_spec("cadquery"):
+        pytest.skip("cadquery not installed")
+    if not importlib.util.find_spec("vtkmodules"):
+        pytest.skip("vtkmodules not installed")
+
+    from oversolved.kernel.builder import build
+    from solver_helpers import rect_sketch_spec
+
+    spec = {
+        "features": [
+            rect_sketch_spec(w=10, h=10, sketch_id="sk1"),
+            {"id": "ex1", "kind": "extrude", "sketch": "$sk1",
+             "distance": 10.0, "direction": "normal", "operation": "new"},
+        ],
+    }
+    r = build(spec)
+    # Verify profile tokens in the last checkpoint's repo snapshot
+    last_cp = list(r["_build_state"].checkpoints.values())[-1]
+    snap = last_cp.repo_snapshot
+    found_profile = False
+    for key in snap.get("ancestral", {}):
+        for tag in key:
+            if tag.startswith("@sk1/") and "surface" not in tag:
+                found_profile = True
+                break
+        if found_profile:
+            break
+    assert found_profile, (
+        "repo.ancestral must contain keys with profile entity tokens "
+        "(@sk1/bottom, @sk1/top, etc.) from _surface_entity_ids"
+    )

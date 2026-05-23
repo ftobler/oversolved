@@ -422,15 +422,17 @@ def _build_face_query(
     normal: list,
     face_area: float,
     surface_type: str,
+    profile_queries: list[str] | None = None,
 ) -> str | None:
     """Return ancestry query string for a face, or None if created_by is None."""
     if not created_by:
         return None
     geom_hash = face_geometry_hash(centroid, normal, face_area)
     if body_id:
-        return make_ancestry_query(
-            [ref(geom_hash), ref(created_by), ref(body_id)], surface_type
-        )
+        ids = [ref(geom_hash), ref(created_by), ref(body_id)]
+        if profile_queries:
+            ids.extend(profile_queries)
+        return make_ancestry_query(ids, surface_type)
     element_id = f"face{face_idx}"
     abs_id = ref(created_by) + "/" + element_id
     return make_ancestry_query([abs_id, ref(created_by)], surface_type)
@@ -499,6 +501,7 @@ def _tessellate_and_assemble_faces(
     solid: cq_shapes.Shape,
     created_by: str | None,
     body_id: str | None,
+    profile_queries: list[str] | None = None,
 ) -> tuple[
     list[dict],
     list[int],
@@ -525,7 +528,10 @@ def _tessellate_and_assemble_faces(
                 face_data.append(
                     {"centroid": centroid, "normal": normal, "area": face_area, "surface_type": surface_type}
                 )
-                query = _build_face_query(created_by, body_id, face_idx, centroid, normal, face_area, surface_type)
+                query = _build_face_query(
+                    created_by, body_id, face_idx, centroid, normal,
+                    face_area, surface_type, profile_queries=profile_queries,
+                )
                 if query:
                     face_queries.append(query)
     except Exception as exc:
@@ -534,7 +540,7 @@ def _tessellate_and_assemble_faces(
     return face_data, triangle_to_face, face_queries, all_vertices, all_faces
 
 
-def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body_id: str | None = None) -> MeshDict:
+def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body_id: str | None = None, profile_queries: list[str] | None = None) -> MeshDict:
     """Tessellate a cadquery solid to a mesh dict.
 
     Iterates faces and tessellates each one individually so that face
@@ -545,6 +551,8 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
         created_by: Optional feature ID for ancestry queries.
         body_id: Optional body ID -- when set, face queries are scoped to this
             body so that multiple bodies from the same feature have unique queries.
+        profile_queries: Optional profile-layer entity tokens to include in
+            ancestry queries, so queries survive geometry changes.
     """
     if isinstance(solid, str):
         solid = _load_shape_from_path(solid)
@@ -556,7 +564,7 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
     except Exception as exc:
         logger.warning("solid_to_mesh: BRepMesh_IncrementalMesh failed: %s", exc)
 
-    fd, t2f, fq, verts, faces = _tessellate_and_assemble_faces(solid, created_by, body_id)
+    fd, t2f, fq, verts, faces = _tessellate_and_assemble_faces(solid, created_by, body_id, profile_queries)
     if not verts:
         logger.warning("solid_to_mesh produced no vertices; returning unit cube fallback")
         return _unit_cube_mesh()
@@ -666,7 +674,7 @@ def edge_to_geom_dict(edge: Any) -> tuple[dict, tuple]:
     return ed, sort_key
 
 
-def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: str | None = None) -> EdgeDict:
+def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: str | None = None, profile_queries: list[str] | None = None) -> EdgeDict:
     """Extract exact edge geometry from a cadquery solid.
 
     Returns a dict with keys "edges" (list of edge dicts, one per unique edge,
@@ -674,6 +682,7 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
     ancestry query strings, populated only when created_by is set).
 
     body_id: when set, edge queries are scoped to this body for uniqueness.
+    profile_queries: when set, included in ancestry queries for stable identity.
     """
     occ_solid = _ensure_occ(solid)
     if occ_solid.IsNull():
@@ -709,14 +718,17 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
             geom_hash = edge_geometry_hash(ed)
             edge_type = "straightedge" if ed["kind"] == "line" else "edge"
             if body_id:
-                edge_queries.append(make_ancestry_query([ref(geom_hash), ref(created_by), ref(body_id)], edge_type))
+                ids = [ref(geom_hash), ref(created_by), ref(body_id)]
+                if profile_queries:
+                    ids.extend(profile_queries)
+                edge_queries.append(make_ancestry_query(ids, edge_type))
             else:
                 edge_queries.append(make_ancestry_query([index_ref(created_by, "edge", idx), ref(created_by)], edge_type))
 
     return {"edges": edges, "edge_queries": edge_queries}
 
 
-def solid_to_vertices(solid: TopoDS_Shape, created_by: str | None = None, body_id: str | None = None) -> VertexDict:
+def solid_to_vertices(solid: TopoDS_Shape, created_by: str | None = None, body_id: str | None = None, profile_queries: list[str] | None = None) -> VertexDict:
     """Extract unique B-rep vertices from a cadquery solid."""
     if _ensure_occ(solid).IsNull():
         return {"vertices": [], "vertex_queries": []}
@@ -735,7 +747,10 @@ def solid_to_vertices(solid: TopoDS_Shape, created_by: str | None = None, body_i
             idx = len(vertices) - 1
             geom_hash = vertex_geometry_hash([v.X, v.Y, v.Z])
             if body_id:
-                vertex_queries.append(make_ancestry_query([ref(geom_hash), ref(created_by), ref(body_id)], "vertex"))
+                ids = [ref(geom_hash), ref(created_by), ref(body_id)]
+                if profile_queries:
+                    ids.extend(profile_queries)
+                vertex_queries.append(make_ancestry_query(ids, "vertex"))
             else:
                 vertex_queries.append(make_ancestry_query([index_ref(created_by, "vertex", idx), ref(created_by)], "vertex"))
 

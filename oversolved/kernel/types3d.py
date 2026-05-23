@@ -43,10 +43,14 @@ class Body:
     modified_by: list[str] = field(default_factory=list)
     shape: TopoDS_Shape | None = None  # canonical internal type: TopoDS_Shape
     sketch_id: str = ""  # sketch feature that was extruded to create this body
-    # Topological history from the most recent boolean op that touched this body.
+    # topological-history from the most recent boolean op that touched this body.
     # None for bodies that haven't been through a boolean op (fresh extrudes, etc.).
     # See solver_arch.user.md §B-rep Operation Tracking.
     brep_diff: BrepDiff | None = None
+    # profile-layer: sketch entity tokens that produced this body's faces.
+    # Populated by _solve_extrude; used by B-rep registration to attach
+    # profile lineage to each face/edge, so queries survive geometry moves.
+    profile_queries: list[str] = field(default_factory=list)
 
 
 @dataclass

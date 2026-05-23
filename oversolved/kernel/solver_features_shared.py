@@ -476,6 +476,7 @@ def _apply_body_operation(
     feature_id: str,
     sketch_id: str,
     op_name: str = "",
+    profile_queries: list[str] | None = None,
 ) -> dict:
     """Apply a boolean body operation (add / cut / new) using tool_shape.
 
@@ -546,7 +547,8 @@ def _apply_body_operation(
         for i, solid in enumerate(solids):
             bid = body_id if i == 0 else f"{body_id}_{i}"
             b = Body(id=bid, created_by=feature_id, shape=_ensure_occ(solid),
-                     sketch_id=sketch_id)
+                     sketch_id=sketch_id,
+                     profile_queries=list(profile_queries) if profile_queries else [])
             body_store[bid] = b
             body_ids.append(bid)
         result["body_id"] = body_ids[0]
@@ -591,7 +593,8 @@ def _apply_body_operation(
             for i, solid in enumerate(solids):
                 bid = body_id if i == 0 else f"{body_id}_{i}"
                 b = Body(id=bid, created_by=feature_id, shape=solid,
-                         sketch_id=sketch_id)
+                         sketch_id=sketch_id,
+                         profile_queries=list(profile_queries) if profile_queries else [])
                 body_store[bid] = b
                 body_ids.append(bid)
             result["body_id"] = body_ids[0]

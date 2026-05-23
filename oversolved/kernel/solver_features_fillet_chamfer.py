@@ -290,10 +290,7 @@ def _resolve_face_to_edges(q: str, body: Body) -> list[TopoDS_Shape]:
         normal = _compute_face_normal(cq_face)
         area = sum(_triangle_area(verts_list[t[0]], verts_list[t[1]], verts_list[t[2]]) for t in idxs)
         gh = face_geometry_hash(centroid, normal, area)
-        aq = make_ancestry_query(
-            [ref(gh), ref(body.created_by), ref(body.id)], type_restriction
-        )
-        if aq == q:
+        if ref(gh) == target_hash:
             occ_face = _ensure_occ(cq_face)
             exp = TopExp_Explorer(occ_face, TopAbs_EDGE)
             face_edges = []
