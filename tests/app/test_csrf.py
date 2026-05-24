@@ -38,7 +38,10 @@ class TestRequireCsrfDecorator:
         with app.test_client() as client:
             resp = client.post("/test", headers={"Origin": "https://evil.com"})
             assert resp.status_code == 403
-            assert resp.get_json() == {"error": "Request blocked for security reasons. Please reload the page."}
+            data = resp.get_json()
+            assert data["ok"] is False
+            assert data["error"] == "Request blocked for security reasons. Please reload the page."
+            assert data["code"] == "CSRF_FAILED"
 
     def test_wrong_referer_rejected(self):
         app = self._make_app()

@@ -7,7 +7,7 @@ from flask import Blueprint, jsonify, request, Response
 from PIL import Image
 from oversolved.db import DocumentStore, UserStore, RebuildTimeStore
 from flask import g
-from oversolved.blueprints import get_db, require_auth, require_csrf, require_doc_permission
+from oversolved.blueprints import get_db, require_auth, require_csrf, require_doc_permission, api_error
 
 documents_bp = Blueprint("documents", __name__, url_prefix="/api/documents")
 
@@ -38,11 +38,11 @@ def list_documents():
 @require_csrf
 def create_document():
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     name = (data.get("name") or "").strip()
     if not name:
-        return jsonify({"error": "Document name required"}), 400
+        return api_error("Document name required", "BAD_REQUEST", 400)
     is_public = bool(data.get("is_public", False))
     db = get_db()
     doc_uuid = DocumentStore(db).create(name, g.current_user["id"], is_public)
@@ -77,13 +77,13 @@ def get_document(uuid):
 @require_csrf
 def update_document(uuid):
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     if "content" not in data:
-        return jsonify({"error": 'Missing "content" field'}), 400
+        return api_error('Missing "content" field', "BAD_REQUEST", 400)
     content = data["content"]
     if not isinstance(content, str):
-        return jsonify({"error": '"content" must be a string'}), 400
+        return api_error('"content" must be a string', "BAD_REQUEST", 400)
     db = get_db()
     doc_store = DocumentStore(db)
     doc = doc_store.retrieve(uuid)
@@ -92,16 +92,16 @@ def update_document(uuid):
     else:
         permission = doc_store.get_permission(uuid, g.current_user["id"])
         if permission not in ("owner", "edit"):
-            return jsonify({"error": "Forbidden"}), 403
+            return api_error("Forbidden", "FORBIDDEN", 403)
     doc_store.store_content(uuid, content)
     if data.get("preview_image"):
         image_data = base64.b64decode(data["preview_image"])
         try:
             img = Image.open(BytesIO(image_data))
             if img.width > 512 or img.height > 512:
-                return jsonify({"error": "Invalid image"}), 400
+                return api_error("Invalid image", "BAD_REQUEST", 400)
         except Exception:
-            return jsonify({"error": "Invalid image data"}), 400
+            return api_error("Invalid image data", "BAD_REQUEST", 400)
         doc_store.store_preview_image(uuid, image_data)
     return jsonify({"uuid": uuid, "status": "stored"}), 200
 
@@ -112,11 +112,11 @@ def update_document(uuid):
 @require_doc_permission("owner")
 def rename_document(uuid):
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     name = (data.get("name") or "").strip()
     if not name:
-        return jsonify({"error": "Document name required"}), 400
+        return api_error("Document name required", "BAD_REQUEST", 400)
     DocumentStore(get_db()).rename(uuid, name)
     return jsonify({"uuid": uuid, "name": name})
 
@@ -152,13 +152,13 @@ def recover_document(uuid):
     doc = g.document
 
     if doc["deleted_at"] is None:
-        return jsonify({"error": "Document is not in trash"}), 400
+        return api_error("Document is not in trash", "BAD_REQUEST", 400)
 
     deleted_time = datetime.fromisoformat(doc["deleted_at"])
     if deleted_time.tzinfo is None:
         deleted_time = deleted_time.replace(tzinfo=timezone.utc)
     if datetime.now(timezone.utc) - deleted_time > timedelta(days=30):
-        return jsonify({"error": "Document has expired and cannot be recovered"}), 410
+        return api_error("Document has expired and cannot be recovered", "GONE", 410)
 
     DocumentStore(get_db()).update(uuid, deleted_at=None)
     return jsonify({"uuid": uuid, "status": "recovered", "deleted_at": None})
@@ -170,7 +170,7 @@ def recover_document(uuid):
 @require_doc_permission("owner")
 def permanently_delete_from_trash(uuid):
     if g.document["deleted_at"] is None:
-        return jsonify({"error": "Document is not in trash"}), 400
+        return api_error("Document is not in trash", "BAD_REQUEST", 400)
 
     DocumentStore(get_db()).permanently_delete(uuid)
     return jsonify({"uuid": uuid, "status": "permanently_deleted"})
@@ -211,7 +211,7 @@ def clone_document(uuid):
 @require_doc_permission("owner")
 def create_share(uuid):
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     db = get_db()
     doc_store = DocumentStore(db)
@@ -219,12 +219,12 @@ def create_share(uuid):
     username = data.get("username")
     permission = data.get("permission", "view")
     if permission not in ("view", "edit"):
-        return jsonify({"error": "Invalid permission"}), 400
+        return api_error("Invalid permission", "BAD_REQUEST", 400)
 
     if username:
         user = UserStore(db).find_by_username(username)
         if user is None:
-            return jsonify({"error": "User not found"}), 404
+            return api_error("User not found", "NOT_FOUND", 404)
         doc_store.share_document(uuid, user["id"], permission)
     else:
         doc_store.set_public(uuid, True)
@@ -247,9 +247,9 @@ def remove_share(uuid):
     if username:
         user = UserStore(db).find_by_username(username)
         if user is None:
-            return jsonify({"error": "User not found"}), 404
+            return api_error("User not found", "NOT_FOUND", 404)
         if doc["owner_id"] != g.current_user["id"] and g.current_user["username"] != username:
-            return jsonify({"error": "Forbidden"}), 403
+            return api_error("Forbidden", "FORBIDDEN", 403)
         doc_store.unshare_document(uuid, user["id"])
     else:
         if doc["owner_id"] == g.current_user["id"]:
@@ -303,12 +303,12 @@ def rebuild_stats(doc_id):
 @require_csrf
 def import_document():
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     name = (data.get("name") or "").strip()
     content = data.get("content") or ""
     if not name:
-        return jsonify({"error": "Document name required"}), 400
+        return api_error("Document name required", "BAD_REQUEST", 400)
     db = get_db()
     doc_store = DocumentStore(db)
     with db.transaction():

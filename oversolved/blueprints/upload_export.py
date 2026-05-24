@@ -5,7 +5,7 @@ import os
 import uuid
 from flask import Blueprint, current_app, jsonify, request, Response
 from werkzeug.utils import secure_filename
-from oversolved.blueprints import require_auth, require_csrf
+from oversolved.blueprints import require_auth, require_csrf, api_error
 
 upload_export_bp = Blueprint("upload_export", __name__)
 
@@ -32,14 +32,14 @@ def upload_file():
     upload_dir = get_upload_dir()
     os.makedirs(upload_dir, exist_ok=True)
     if "file" not in request.files:
-        return jsonify({"error": "no file field"}), 400
+        return api_error("no file field", "BAD_REQUEST", 400)
     f = request.files["file"]
     ext = os.path.splitext(secure_filename(f.filename or ""))[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
-        return jsonify({"error": "Unsupported file type"}), 400
+        return api_error("Unsupported file type", "BAD_REQUEST", 400)
     file_id = str(uuid.uuid4()) + ext
     if "/" in file_id or "\\" in file_id:
-        return jsonify({"error": "Invalid file extension"}), 400
+        return api_error("Invalid file extension", "BAD_REQUEST", 400)
     f.save(os.path.join(upload_dir, file_id))
     return jsonify({"file_id": file_id})
 
@@ -50,10 +50,10 @@ def upload_file():
 def export_step():
     data = request.get_json(silent=True)
     if not data or "features" not in data:
-        return jsonify({"error": "features required"}), 400
+        return api_error("features required", "BAD_REQUEST", 400)
 
     if not importlib.util.find_spec("cadquery"):
-        return jsonify({"error": "solver kernel not available (install oversolved[solver])"}), 503
+        return api_error("solver kernel not available (install oversolved[solver])", "SERVICE_UNAVAILABLE", 503)
 
     from oversolved.kernel.builder import build
     from oversolved.kernel.geometry_io import shape_to_step_file_buffer
@@ -63,14 +63,14 @@ def export_step():
 
     body_shapes = build_result.get("_body_shapes", {})
     if not body_shapes:
-        return jsonify({"error": "no bodies to export"}), 400
+        return api_error("no bodies to export", "BAD_REQUEST", 400)
 
     body_id = (data.get("body_id") or "").strip() if isinstance(data, dict) else ""
 
     if body_id:
         shape = body_shapes.get(body_id)
         if shape is None:
-            return jsonify({"error": f"body {body_id!r} not found"}), 400
+            return api_error(f"body {body_id!r} not found", "NOT_FOUND", 400)
         buffer = shape_to_step_file_buffer(shape)
     elif len(body_shapes) == 1:
         shape = list(body_shapes.values())[0]
@@ -93,10 +93,10 @@ def export_step():
 def export_stl():
     data = request.get_json(silent=True)
     if not data or "features" not in data:
-        return jsonify({"error": "features required"}), 400
+        return api_error("features required", "BAD_REQUEST", 400)
 
     if not importlib.util.find_spec("cadquery"):
-        return jsonify({"error": "solver kernel not available (install oversolved[solver])"}), 503
+        return api_error("solver kernel not available (install oversolved[solver])", "SERVICE_UNAVAILABLE", 503)
 
     from oversolved.kernel.builder import build
 
@@ -104,7 +104,7 @@ def export_stl():
 
     body_shapes = build_result.get("_body_shapes", {})
     if not body_shapes:
-        return jsonify({"error": "no bodies to export"}), 400
+        return api_error("no bodies to export", "BAD_REQUEST", 400)
 
     from oversolved.kernel.geometry_io import shape_to_stl_file_buffer
     from oversolved.kernel.cadquery_ops import fuse_shapes
@@ -116,7 +116,7 @@ def export_stl():
     if body_id:
         shape = body_shapes.get(body_id)
         if shape is None:
-            return jsonify({"error": f"body {body_id!r} not found"}), 400
+            return api_error(f"body {body_id!r} not found", "NOT_FOUND", 400)
         buffer = shape_to_stl_file_buffer(shape, deflection, angular_deflection)
     elif len(body_shapes) == 1:
         shape = list(body_shapes.values())[0]

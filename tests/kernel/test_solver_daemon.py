@@ -12,14 +12,16 @@ class TestErrorResult:
     def test_returns_expected_dict(self):
         result = error_result("something went wrong")
         assert result == {
-            "solve_ms": 0,
-            "result": {"_error": "something went wrong"},
-            "bodies": {},
+            "ok": False,
+            "error": "something went wrong",
+            "code": "SOLVER_ERROR",
         }
 
-    def test_includes_custom_message(self):
-        result = error_result("connection timeout")
-        assert result["result"]["_error"] == "connection timeout"
+    def test_includes_custom_code(self):
+        result = error_result("connection timeout", "TIMEOUT")
+        assert result["ok"] is False
+        assert result["error"] == "connection timeout"
+        assert result["code"] == "TIMEOUT"
 
 
 class TestWorkerPool:

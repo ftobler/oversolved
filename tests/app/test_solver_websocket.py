@@ -157,6 +157,7 @@ class TestSolverWebSocket:
         _run_handler(app, ws, auth_headers)
         assert len(ws.sent) == 1
         assert ws.sent[0]["type"] == "error"
+        assert ws.sent[0]["ok"] is False
         assert "Unknown message type" in ws.sent[0]["error"]
 
     def test_websocket_malformed_json(self, app, auth_headers):
@@ -165,7 +166,10 @@ class TestSolverWebSocket:
         ws.receive_queue = ["not json", None]
         _run_handler(app, ws, auth_headers)
         assert len(ws.sent) == 1
-        assert ws.sent[0] == {"type": "error", "error": "Invalid JSON"}
+        assert ws.sent[0]["type"] == "error"
+        assert ws.sent[0]["ok"] is False
+        assert ws.sent[0]["error"] == "Invalid JSON"
+        assert ws.sent[0]["code"] == "INVALID_JSON"
 
     def test_websocket_solve_missing_features(self, app, auth_headers):
         """Solve without features key returns an error."""
@@ -174,7 +178,9 @@ class TestSolverWebSocket:
         _run_handler(app, ws, auth_headers)
         assert len(ws.sent) == 1
         assert ws.sent[0]["type"] == "solve_result"
+        assert ws.sent[0]["ok"] is False
         assert ws.sent[0]["error"] == "features required"
+        assert ws.sent[0]["code"] == "FEATURES_REQUIRED"
 
     @patch("oversolved.blueprints.solver_ws.BuildIsolator")
     def test_websocket_cache_clear(self, mock_isolator_cls, app, auth_headers):
@@ -265,7 +271,9 @@ class TestSolverWebSocket:
         _run_handler(app, ws, auth_headers)
         solve_results = [m for m in ws.sent if isinstance(m, dict) and m.get("type") == "solve_result"]
         assert len(solve_results) == 1
+        assert solve_results[0]["ok"] is False
         assert solve_results[0]["error"] == "kernel exploded"
+        assert solve_results[0]["code"] == "SOLVER_ERROR"
         assert solve_results[0]["request_version"] == 7
 
     @patch("oversolved.blueprints.solver_ws.BuildIsolator")

@@ -6,7 +6,7 @@ from pathlib import Path
 from flask import Flask, send_from_directory, g
 from werkzeug.security import generate_password_hash
 from oversolved.db import Database, UserStore
-from oversolved.blueprints import _get_database
+from oversolved.blueprints import _get_database, api_error
 from oversolved.config import OversolvedConfig
 from oversolved.blueprints.auth import auth_bp
 from oversolved.blueprints.users import users_bp
@@ -147,9 +147,14 @@ def create_app(config: dict | None = None) -> Flask:
 
     # ── JSON error handlers ────────────────────────────────────────────────────
 
-    def _json_error(status: int, message: str) -> tuple:
-        from flask import jsonify
-        return jsonify({"error": message}), status
+    def _json_error(status: int, message: str, code: str = "") -> tuple:
+        code_map = {
+            400: "BAD_REQUEST",
+            404: "NOT_FOUND",
+            405: "METHOD_NOT_ALLOWED",
+            500: "INTERNAL_SERVER_ERROR",
+        }
+        return api_error(message, code or code_map.get(status, "ERROR"), status)
 
     @app.errorhandler(400)
     def _bad_request(e):

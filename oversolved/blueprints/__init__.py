@@ -10,6 +10,11 @@ from oversolved.db import (
 from oversolved.auth import authenticate_token, AuthOk
 
 
+def api_error(message: str, code: str, status: int = 400):
+    """Return a (jsonify(response), status) tuple with the unified error shape."""
+    return jsonify({"ok": False, "error": message, "code": code}), status
+
+
 def _get_database(config):
     """Create a database connection based on config."""
     db_conn: DatabaseConnection
@@ -57,9 +62,9 @@ def require_csrf(f):
         referer = request.headers.get("Referer")
         host = request.host_url.rstrip("/")
         if origin and origin != host:
-            return jsonify({"error": "Request blocked for security reasons. Please reload the page."}), 403
+            return api_error("Request blocked for security reasons. Please reload the page.", "CSRF_FAILED", 403)
         if referer and not referer.startswith(host):
-            return jsonify({"error": "Request blocked for security reasons. Please reload the page."}), 403
+            return api_error("Request blocked for security reasons. Please reload the page.", "CSRF_FAILED", 403)
         return f(*args, **kwargs)
     return decorated
 
@@ -72,7 +77,7 @@ def require_auth(f):
         token = request.cookies.get("session_token")
         result = authenticate_token(get_db(), token)
         if not isinstance(result, AuthOk):
-            return jsonify({"error": result.message}), 401
+            return api_error(result.message, "UNAUTHORIZED", 401)
         g.current_user = result.user
         return f(*args, **kwargs)
 
@@ -85,7 +90,7 @@ def require_admin(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not g.current_user.get("is_admin"):
-            return jsonify({"error": "Admin access required"}), 403
+            return api_error("Admin access required", "FORBIDDEN", 403)
         return f(*args, **kwargs)
 
     return decorated_function
@@ -119,10 +124,10 @@ def require_doc_permission(
             doc_store = DocumentStore(db)
             doc = doc_store.retrieve(doc_uuid)
             if doc is None:
-                return jsonify({"error": "Document not found"}), 404
+                return api_error("Document not found", "NOT_FOUND", 404)
             actual = doc_store.get_permission(doc_uuid, g.current_user["id"])
             if not _permission_at_least(actual, level):
-                return jsonify({"error": "Forbidden"}), 403
+                return api_error("Forbidden", "FORBIDDEN", 403)
             g.document = doc
             g.document_permission = actual
             return f(*args, **kwargs)

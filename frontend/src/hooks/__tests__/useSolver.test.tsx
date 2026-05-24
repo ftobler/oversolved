@@ -294,7 +294,7 @@ describe('useSolver', () => {
 
     it('sets solveError on error response', async () => {
       const { result } = setupHook()
-      mockSolver.solve.mockResolvedValue({ error: 'solver failed' })
+      mockSolver.solve.mockResolvedValue({ ok: false, error: 'solver failed' })
       await act(async () => { await result.current.reSolve(makeDoc()) })
       expect(result.current.solveError).toBe('solver failed')
     })

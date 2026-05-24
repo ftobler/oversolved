@@ -63,7 +63,10 @@ class TestPasswordStrength:
     def test_create_user_too_short(self, client, admin_headers):
         resp = self._create_user(client, admin_headers, password="a")
         assert resp.status_code == 400
-        assert resp.get_json() == {"error": "Password must be at least 8 characters long"}
+        data = resp.get_json()
+        assert data["ok"] is False
+        assert data["error"] == "Password must be at least 8 characters long"
+        assert data["code"] == "VALIDATION_ERROR"
 
     def test_create_user_exactly_8_accepted(self, client, admin_headers):
         resp = self._create_user(client, admin_headers, password="12345678")
@@ -76,7 +79,10 @@ class TestPasswordStrength:
     def test_reset_password_too_short(self, client, admin_headers):
         resp = self._reset_password(client, admin_headers, password="short")
         assert resp.status_code == 400
-        assert resp.get_json() == {"error": "Password must be at least 8 characters long"}
+        data = resp.get_json()
+        assert data["ok"] is False
+        assert data["error"] == "Password must be at least 8 characters long"
+        assert data["code"] == "VALIDATION_ERROR"
 
     def test_reset_password_exactly_8_accepted(self, client, admin_headers):
         resp = self._reset_password(client, admin_headers, password="12345678")
@@ -85,7 +91,10 @@ class TestPasswordStrength:
     def test_change_password_too_short(self, client, admin_headers):
         resp = self._change_password(client, admin_headers, new_password="short")
         assert resp.status_code == 400
-        assert resp.get_json() == {"error": "Password must be at least 8 characters long"}
+        data = resp.get_json()
+        assert data["ok"] is False
+        assert data["error"] == "Password must be at least 8 characters long"
+        assert data["code"] == "VALIDATION_ERROR"
 
     def test_change_password_exactly_8_accepted(self, client, admin_headers):
         resp = self._change_password(client, admin_headers, new_password="12345678")

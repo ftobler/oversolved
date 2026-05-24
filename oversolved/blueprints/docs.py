@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from flask import Blueprint, jsonify
+from oversolved.blueprints import api_error
 
 docs_bp = Blueprint("docs", __name__)
 
@@ -23,13 +24,13 @@ def get_doc(doc_name):
         file_path = file_path.resolve()
         docs_path = docs_path.resolve()
         if not str(file_path).startswith(str(docs_path)):
-            return jsonify({"error": "Invalid doc name"}), 400
+            return api_error("Invalid doc name", "BAD_REQUEST", 400)
     except (OSError, ValueError):
-        return jsonify({"error": "Invalid doc name"}), 400
+        return api_error("Invalid doc name", "BAD_REQUEST", 400)
     if not file_path.exists():
-        return jsonify({"error": "Documentation not found"}), 404
+        return api_error("Documentation not found", "NOT_FOUND", 404)
     try:
         content = file_path.read_text(encoding="utf-8")
         return jsonify({"name": doc_name, "content": content})
     except OSError:
-        return jsonify({"error": "Failed to read documentation"}), 500
+        return api_error("Failed to read documentation", "INTERNAL_SERVER_ERROR", 500)

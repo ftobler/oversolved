@@ -214,6 +214,9 @@ class _Worker:
             exc_msg = payload.get("exception", "unknown error") if isinstance(payload, dict) else str(payload)
             result_so_far = payload.get("result_so_far", {}) if isinstance(payload, dict) else {}
             if result_so_far:
+                result_so_far["ok"] = False
+                result_so_far["error"] = exc_msg
+                result_so_far["code"] = "SOLVER_EXCEPTION"
                 return result_so_far
             return error_result(str(exc_msg))
 
@@ -397,36 +400,46 @@ async def handler(websocket: Any, pool: WorkerPool) -> None:
                     )
                 finally:
                     await pool.mark_done(cid)
-                geometry_bytes = result.pop("_geometry_bytes", None)
-                has_geometry = bool(geometry_bytes and len(geometry_bytes) > 4)
-                await websocket.send(json.dumps({
-                    "request_id": request_id,
-                    "status": "ok",
-                    "has_geometry": has_geometry,
-                    "payload": result,
-                }))
-                if has_geometry:
-                    await websocket.send(geometry_bytes)
+                if result.get("ok") is False:
+                    await websocket.send(json.dumps({
+                        "request_id": request_id,
+                        "ok": False,
+                        "error": result.get("error", "unknown error"),
+                        "code": result.get("code", "SOLVER_ERROR"),
+                    }))
+                else:
+                    geometry_bytes = result.pop("_geometry_bytes", None)
+                    has_geometry = bool(geometry_bytes and len(geometry_bytes) > 4)
+                    await websocket.send(json.dumps({
+                        "request_id": request_id,
+                        "ok": True,
+                        "has_geometry": has_geometry,
+                        "payload": result,
+                    }))
+                    if has_geometry:
+                        await websocket.send(geometry_bytes)
 
             elif msg_type == "clear_cache":
                 try:
                     await loop.run_in_executor(None, worker.clear_cache, request.get("doc_id"))
                     await websocket.send(json.dumps({
                         "request_id": request_id,
-                        "status": "ok",
+                        "ok": True,
                     }))
                 except Exception as exc:
                     await websocket.send(json.dumps({
                         "request_id": request_id,
-                        "status": "error",
-                        "payload": {"exception": str(exc)},
+                        "ok": False,
+                        "error": str(exc),
+                        "code": "CACHE_CLEAR_FAILED",
                     }))
 
             else:
                 await websocket.send(json.dumps({
                     "request_id": request_id,
-                    "status": "error",
-                    "payload": {"exception": f"unknown message type: {msg_type}"},
+                    "ok": False,
+                    "error": f"unknown message type: {msg_type}",
+                    "code": "UNKNOWN_MSG_TYPE",
                 }))
     except Exception:
         logger.exception("WS handler error for connection %s", cid)

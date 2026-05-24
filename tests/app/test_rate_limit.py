@@ -54,7 +54,10 @@ class TestLoginRateLimit:
             assert resp.status_code == 401
         resp = _bad_login(client)
         assert resp.status_code == 429
-        assert resp.get_json() == {"error": "Too many login attempts"}
+        data = resp.get_json()
+        assert data["ok"] is False
+        assert data["error"] == "Too many login attempts"
+        assert data["code"] == "RATE_LIMITED"
 
     def test_different_ips_independent(self, client):
         for _ in range(_LOGIN_RATE_LIMIT):

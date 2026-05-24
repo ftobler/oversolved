@@ -114,11 +114,10 @@ class BuildIsolator:
                 if request_id:
                     logger.warning("Received text frame for unknown request_id %r", request_id)
                 return
-            status = response.get("status", "ok")
-            if status == "error":
-                payload = response.get("payload", {})
+            if response.get("ok") is False:
                 entry["result"] = error_result(
-                    payload.get("exception", "solver error")
+                    response.get("error", "solver error"),
+                    response.get("code", "SOLVER_ERROR"),
                 )
                 entry["json_done"] = True
                 entry["expects_geometry"] = False

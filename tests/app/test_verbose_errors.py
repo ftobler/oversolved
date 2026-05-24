@@ -120,7 +120,9 @@ class TestVerboseUploadErrors:
         data = {"file": (BytesIO(b"test"), "malware.exe")}
         resp = authed_client.post("/api/upload", data=data)
         assert resp.status_code == 400
-        assert resp.get_json() == {"error": "Unsupported file type"}
+        data_resp = resp.get_json()
+        assert data_resp["ok"] is False
+        assert data_resp["error"] == "Unsupported file type"
 
 
 class TestVerbosePreviewErrors:
@@ -136,4 +138,6 @@ class TestVerbosePreviewErrors:
             content_type="application/json",
         )
         assert resp.status_code == 400
-        assert resp.get_json() == {"error": "Invalid image"}
+        data_resp = resp.get_json()
+        assert data_resp["ok"] is False
+        assert data_resp["error"] == "Invalid image"

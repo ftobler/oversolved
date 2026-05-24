@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
 from oversolved.db import DocumentStore, UserStore, PeriodicTaskStore
 from flask import g
-from oversolved.blueprints import require_auth, require_admin, require_csrf, get_db, validate_password_strength
+from oversolved.blueprints import require_auth, require_admin, require_csrf, get_db, validate_password_strength, api_error
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def list_users():
 @require_admin
 def create_user_admin():
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     username = (data.get("username") or "").strip()
     email = (data.get("email") or "").strip()
@@ -57,20 +57,20 @@ def create_user_admin():
     is_admin = bool(data.get("is_admin", False))
 
     if not username or not password:
-        return jsonify({"error": "Username and password required"}), 400
+        return api_error("Username and password required", "BAD_REQUEST", 400)
     if not email:
-        return jsonify({"error": "Email required"}), 400
+        return api_error("Email required", "BAD_REQUEST", 400)
 
     pw_error = validate_password_strength(password)
     if pw_error:
-        return jsonify({"error": pw_error}), 400
+        return api_error(pw_error, "VALIDATION_ERROR", 400)
 
     db = get_db()
     user_store = UserStore(db)
     if user_store.find_by_username(username):
-        return jsonify({"error": "Username already exists"}), 409
+        return api_error("Username already exists", "CONFLICT", 409)
     if user_store.find_by_email(email):
-        return jsonify({"error": "Email already exists"}), 409
+        return api_error("Email already exists", "CONFLICT", 409)
 
     uid = user_store.create(
         username, generate_password_hash(password),
@@ -86,13 +86,13 @@ def create_user_admin():
 @require_admin
 def admin_update_user(user_id):
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
 
     if user_id == g.current_user["id"] and data.get("is_active") is False:
-        return jsonify({"error": "Cannot deactivate yourself"}), 403
+        return api_error("Cannot deactivate yourself", "FORBIDDEN", 403)
     if user_id == g.current_user["id"] and data.get("is_admin") is False:
-        return jsonify({"error": "Cannot remove your own admin privileges"}), 403
+        return api_error("Cannot remove your own admin privileges", "FORBIDDEN", 403)
 
     db = get_db()
     user_store = UserStore(db)
@@ -108,11 +108,11 @@ def admin_update_user(user_id):
         updates["is_admin"] = 1 if data["is_admin"] else 0
 
     if not updates:
-        return jsonify({"error": "No fields to update"}), 400
+        return api_error("No fields to update", "BAD_REQUEST", 400)
 
     success = user_store.update(user_id, **updates)
     if not success:
-        return jsonify({"error": "User not found"}), 404
+        return api_error("User not found", "NOT_FOUND", 404)
 
     return jsonify({"status": "updated"})
 
@@ -123,13 +123,13 @@ def admin_update_user(user_id):
 @require_admin
 def admin_delete_user(user_id):
     if user_id == g.current_user["id"]:
-        return jsonify({"error": "Cannot delete yourself"}), 403
+        return api_error("Cannot delete yourself", "FORBIDDEN", 403)
 
     db = get_db()
     user_store = UserStore(db)
     success = user_store.delete(user_id)
     if not success:
-        return jsonify({"error": "User not found"}), 404
+        return api_error("User not found", "NOT_FOUND", 404)
     return jsonify({"status": "deleted"})
 
 
@@ -139,21 +139,21 @@ def admin_delete_user(user_id):
 @require_admin
 def admin_reset_password(user_id):
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     new_password = data.get("password") or ""
     if not new_password:
-        return jsonify({"error": "Password required"}), 400
+        return api_error("Password required", "BAD_REQUEST", 400)
 
     pw_error = validate_password_strength(new_password)
     if pw_error:
-        return jsonify({"error": pw_error}), 400
+        return api_error(pw_error, "VALIDATION_ERROR", 400)
 
     db = get_db()
     user_store = UserStore(db)
     success = user_store.change_password(user_id, generate_password_hash(new_password))
     if not success:
-        return jsonify({"error": "User not found"}), 404
+        return api_error("User not found", "NOT_FOUND", 404)
     return jsonify({"status": "reset"})
 
 
@@ -257,16 +257,16 @@ def backup_all_documents():
 @require_admin
 def import_backup():
     if "file" not in request.files:
-        return jsonify({"error": "No file provided"}), 400
+        return api_error("No file provided", "BAD_REQUEST", 400)
 
     file = request.files["file"]
     if not file.filename or not file.filename.endswith('.zip'):
-        return jsonify({"error": "File must be a zip file"}), 400
+        return api_error("File must be a zip file", "BAD_REQUEST", 400)
 
     MAX_IMPORT_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
     content_length = request.content_length
     if content_length and content_length > MAX_IMPORT_FILE_SIZE:
-        return jsonify({"error": "File too large"}), 413
+        return api_error("File too large", "CONTENT_TOO_LARGE", 413)
 
     try:
         MAX_ZIP_ENTRIES = 10000
@@ -274,12 +274,12 @@ def import_backup():
 
         with zipfile.ZipFile(file.stream, 'r') as bomb_check:
             if len(bomb_check.filelist) > MAX_ZIP_ENTRIES:
-                return jsonify({"error": "Archive contains too many files"}), 400
+                return api_error("Archive contains too many files", "BAD_REQUEST", 400)
             total_decompressed = 0
             for file_info in bomb_check.filelist:
                 total_decompressed += file_info.file_size
                 if total_decompressed > MAX_ZIP_DECOMPRESSED:
-                    return jsonify({"error": "Archive too large when decompressed"}), 400
+                    return api_error("Archive too large when decompressed", "BAD_REQUEST", 400)
         file.stream.seek(0)
 
         db = get_db()
@@ -345,11 +345,11 @@ def import_backup():
         }), 200
 
     except OSError:
-        return jsonify({"error": "Failed to read uploaded file"}), 400
+        return api_error("Failed to read uploaded file", "BAD_REQUEST", 400)
     except zipfile.BadZipFile:
-        return jsonify({"error": "Invalid zip file"}), 400
+        return api_error("Invalid zip file", "BAD_REQUEST", 400)
     except Exception as e:
-        return jsonify({"error": f"Import failed: {str(e)}"}), 500
+        return api_error(f"Import failed: {str(e)}", "INTERNAL_SERVER_ERROR", 500)
 
 
 # ── Bug Report ─────────────────────────────────────────────────────────────
@@ -362,14 +362,14 @@ def import_backup():
 def submit_bug_report():
     content_type = request.content_type or ""
     if "application/json" not in content_type:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     if not data:
-        return jsonify({"error": "Empty request body"}), 400
+        return api_error("Empty request body", "BAD_REQUEST", 400)
     title = (data.get("title") or "").strip()
     description = (data.get("description") or "").strip()
     if not title:
-        return jsonify({"error": "Title is required"}), 400
+        return api_error("Title is required", "BAD_REQUEST", 400)
 
     bugreports_dir = Path(__file__).parent.parent.parent / "bugreports"
     bugreports_dir.mkdir(exist_ok=True)
@@ -421,4 +421,4 @@ def submit_bug_report():
         filepath.write_text(markdown, encoding="utf-8")
         return jsonify({"status": "saved", "filename": filename}), 201
     except Exception as e:
-        return jsonify({"error": f"Failed to save report: {e}"}), 500
+        return api_error(f"Failed to save report: {e}", "INTERNAL_SERVER_ERROR", 500)

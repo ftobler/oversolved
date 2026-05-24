@@ -96,7 +96,7 @@ def solver_websocket(ws):
             try:
                 data = json.loads(message)
             except json.JSONDecodeError:
-                ws.send(json.dumps({"type": "error", "error": "Invalid JSON"}))
+                ws.send(json.dumps({"type": "error", "ok": False, "error": "Invalid JSON", "code": "INVALID_JSON"}))
                 continue
 
             msg_type = data.get("type")
@@ -112,7 +112,7 @@ def solver_websocket(ws):
                 ws.send(json.dumps({"type": "pong"}))
 
             else:
-                ws.send(json.dumps({"type": "error", "error": "Unknown message type"}))
+                ws.send(json.dumps({"type": "error", "ok": False, "error": "Unknown message type", "code": "UNKNOWN_MSG_TYPE"}))
 
     except Exception:
         logger.exception("WebSocket error")
@@ -152,7 +152,7 @@ def _handle_solve(data, isolator, db, ws):
     msg_id = data.get("msgId")
 
     if features is None:
-        ws.send(json.dumps({"type": "solve_result", "msgId": msg_id, "error": "features required"}))
+        ws.send(json.dumps({"type": "solve_result", "msgId": msg_id, "ok": False, "error": "features required", "code": "FEATURES_REQUIRED"}))
         return
 
     _resolve_import_files(data)
@@ -180,13 +180,29 @@ def _handle_solve(data, isolator, db, ws):
     geometry_bytes = build_result.pop("_geometry_bytes", None)
 
     result = build_result.get("result", {})
+    # Check unified error shape first (from error_result())
+    if build_result.get("ok") is False:
+        ws.send(json.dumps({
+            "type": "solve_result",
+            "msgId": msg_id,
+            "ok": False,
+            "solve_ms": build_result.get("solve_ms", 0),
+            "error": build_result.get("error", "unknown error"),
+            "code": build_result.get("code", "SOLVER_ERROR"),
+            "request_version": request_version,
+        }))
+        return
+
+    # Legacy fallback: check for _error in result dict
     error_msg = result.get("_error") if isinstance(result, dict) else None
     if error_msg:
         ws.send(json.dumps({
             "type": "solve_result",
             "msgId": msg_id,
+            "ok": False,
             "solve_ms": build_result.get("solve_ms", 0),
             "error": error_msg,
+            "code": "SOLVER_ERROR",
             "request_version": request_version,
         }))
         return

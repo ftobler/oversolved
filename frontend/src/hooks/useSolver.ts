@@ -337,7 +337,7 @@ export function useSolver(
       const endTime = performance.now()
       const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
 
-      if (response.error) {
+      if (response.ok === false) {
         setSolveError(String(response.error))
         setSolveRawResult(String(response.error))
       } else {
