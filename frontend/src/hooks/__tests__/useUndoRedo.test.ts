@@ -42,7 +42,9 @@ describe('useUndoRedo', () => {
     })
 
     expect(setDoc).toHaveBeenCalledWith(docA)
-    expect(reSolve).toHaveBeenCalledWith(docA, 1)
+    // reSolve reads rollback from the store; the test patches the store before
+    // calling so verifying just doc-arg is sufficient.
+    expect(reSolve).toHaveBeenCalledWith(docA)
     expect(result.current.undoStack).toHaveLength(0)
     expect(result.current.redoStack).toHaveLength(1)
     expect(result.current.redoStack[0].doc).toBe(docB)

@@ -3,6 +3,7 @@ import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, PartStyleEntry, RebuildValidation } from '@/types/cad'
 import { solverWs } from '@/hooks/solverWs'
 import { useSolverStore } from '@/stores/solverStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import { unflattenGeometry } from '@/utils/geometryMapping'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
 import { useGeometryCache } from '@/hooks/useGeometryCache'
@@ -11,6 +12,9 @@ import { PART_COLOR_PALETTE, normalizeHexColor } from '@/utils/partColors'
 import { unpackBodies, unpackPickBodies } from '@/utils/geometryUnpack'
 import type { GeometryHeader } from '@/utils/geometryUnpack'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
+import { failLoud } from '@/stores/stateInvariants'
+
+const SKETCH_KINDS = new Set(['sketch', 'plane'])
 
 export function pickPartColor(partNumber: number): string {
   return PART_COLOR_PALETTE[(partNumber - 1) % PART_COLOR_PALETTE.length]
@@ -75,8 +79,11 @@ export function useSolver(
   const [solveResult, setSolveRawResult] = useState<string>('')
   const [validation, setValidation] = useState<RebuildValidation | null>(null)
   const firstSolveDone = useRef(false)
-  const rollbackPosRef = useRef<number | null>(null)
-  const pickBoundaryRef = useRef<number | null>(null)
+  // Internal "last sent" tracking. Updated only inside reSolve / applyGeometryUpdate
+  // so the async geometry-update handler can write to the right cache key.
+  // Never settable from outside the hook — store is the source of truth.
+  const lastSentRollbackRef = useRef<number | null>(null)
+  const lastSentPickBoundaryRef = useRef<number | null>(null)
   const requestIdRef = useRef(0)
   const lastValidMsgIdRef = useRef<number | null>(null)
   const cancelledRef = useRef(false)
@@ -202,8 +209,8 @@ export function useSolver(
         setPickBodies({})
       }
       if (uuid && d) {
-        const rollback = rollbackPosRef.current ?? (d.features?.length ?? 0)
-        const pickBoundary = pickBoundaryRef.current
+        const rollback = lastSentRollbackRef.current ?? (d.features?.length ?? 0)
+        const pickBoundary = lastSentPickBoundaryRef.current
         cacheGeometry(d, rollback, pickBoundary, { header, buffer, jsonHeaderLen })
       }
     } catch (e) {
@@ -228,7 +235,6 @@ export function useSolver(
 
   const reSolve = useCallback(async (
     d: PartDoc,
-    rollbackPosition?: number | null,
     opts?: { validate?: boolean; bypassCache?: boolean },
   ) => {
     setSolving(true)
@@ -240,16 +246,18 @@ export function useSolver(
     const isCurrent = () => currentRequestId === requestIdRef.current && !cancelledRef.current
     try {
       const allFeatures = d.features ?? []
-      const effectiveRollback = rollbackPosition !== undefined
-        ? (rollbackPosition ?? allFeatures.length)
-        : ((rollbackPosRef.current ?? allFeatures.length) || allFeatures.length)
+
+      const store = usePartEditorStore.getState()
+      const storeRollback = store.rollbackPosition
+      const pickBoundary = store.pickBoundary
+      const editingFeatureId = store.editingFeatureId
+      const effectiveRollback = storeRollback ?? allFeatures.length
 
       const solveFeatures = allFeatures.slice(0, effectiveRollback).filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
-
       const adjustedRollback = solveFeatures.length
+      const isPreview = storeRollback !== null || pickBoundary !== null
 
-      const isPreview = rollbackPosition !== undefined || pickBoundaryRef.current !== null
-      const pickBoundary = pickBoundaryRef.current
+      assertEditingInvariant(editingFeatureId, allFeatures, effectiveRollback, pickBoundary)
 
       if (uuid && opts?.bypassCache) {
         await invalidateDocCache(uuid)
@@ -260,7 +268,8 @@ export function useSolver(
           if (isStale()) {
             return
           }
-          rollbackPosRef.current = effectiveRollback
+          lastSentRollbackRef.current = effectiveRollback
+          lastSentPickBoundaryRef.current = pickBoundary
           applyBuildResponse(d, cached.entry.buildResponse)
           if (cached.entry.geometry) {
             const { header, buffer, jsonHeaderLen } = cached.entry.geometry
@@ -309,7 +318,8 @@ export function useSolver(
       if (typeof respVersion === 'number' && respVersion < requestIdRef.current) {
         return
       }
-      rollbackPosRef.current = effectiveRollback
+      lastSentRollbackRef.current = effectiveRollback
+      lastSentPickBoundaryRef.current = pickBoundary
       if (response.msgId != null) {
         lastValidMsgIdRef.current = response.msgId as number
       }
@@ -356,7 +366,8 @@ export function useSolver(
   }, [onFirstSolve, uuid, applyBuildResponse, applySolveResult, applyGeometryUpdate, getCachedBuildResponse, cacheBuildResponse])
 
   const resetSolver = useCallback(() => {
-    rollbackPosRef.current = null
+    lastSentRollbackRef.current = null
+    lastSentPickBoundaryRef.current = null
     firstSolveDone.current = false
   }, [])
 
@@ -372,11 +383,14 @@ export function useSolver(
     }
   }, [])
 
-  const setRollbackPos = useCallback((pos: number | null) => { rollbackPosRef.current = pos }, [])
-
-  const setPickBoundary = useCallback((pos: number | null) => {
-    pickBoundaryRef.current = pos
-    if (pos === null) setPickBodies({})
+  // Subscribe to pickBoundary cleared -> drop pickBodies so the viewport
+  // doesn't keep rendering them after an exit/cancel.
+  useEffect(() => {
+    return usePartEditorStore.subscribe((state, prev) => {
+      if (prev.pickBoundary !== null && state.pickBoundary === null) {
+        setPickBodies({})
+      }
+    })
   }, [setPickBodies])
 
   return {
@@ -394,9 +408,38 @@ export function useSolver(
     featureTimings,
     reSolve,
     resetSolver,
-    setRollbackPos,
-    setPickBoundary,
     validation,
     clearValidation: () => setValidation(null),
+  }
+}
+
+function assertEditingInvariant(
+  editingFeatureId: string | null,
+  allFeatures: PartDoc['features'],
+  rollback: number,
+  pickBoundary: number | null,
+): void {
+  if (editingFeatureId === null) return
+  const features = allFeatures ?? []
+  const idx = features.findIndex(f => f.id === editingFeatureId)
+  if (idx < 0) return  // edit FSM hasn't synced to doc yet (e.g. add+enter)
+  const feature = features[idx]
+  if (SKETCH_KINDS.has(feature.kind)) return  // sketches/planes don't use pick_boundary
+
+  const expectedRollback = idx + 1
+  const nonBuiltIns = features.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
+  const expectedPickBoundary = nonBuiltIns.findIndex(f => f.id === editingFeatureId)
+
+  if (rollback !== expectedRollback) {
+    failLoud(
+      `[invariant] editingFeatureId='${editingFeatureId}' (idx=${idx}, kind=${feature.kind}) `
+      + `expected rollback=${expectedRollback}, got ${rollback}`,
+    )
+  }
+  if (pickBoundary !== expectedPickBoundary) {
+    failLoud(
+      `[invariant] editingFeatureId='${editingFeatureId}' (idx=${idx}, kind=${feature.kind}) `
+      + `expected pick_boundary=${expectedPickBoundary}, got ${pickBoundary}`,
+    )
   }
 }

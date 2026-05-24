@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import type { PartFeature, PartDoc } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 
@@ -6,20 +6,16 @@ const SKETCH_KINDS = new Set(['sketch', 'plane'])
 
 interface UseEditFeatureInput {
   features: PartFeature[]
-  rollbackPosition: number | null
   builtInIds: Set<string>
-  setRollbackPos: (pos: number | null) => void
-  setRollbackFromHandler: (pos: number | null) => void
-  setPickBoundary: (b: number | null) => void
-  clearPickBodies: () => void
-  clearPlaneSelection: () => void
   startEditSession: (suppressUndo: boolean) => void
   commitEditSession: () => void
   cancelEditSession: () => void
   docRef: React.MutableRefObject<PartDoc | null>
-  reSolve: (doc: PartDoc, limit?: number | null) => void
+  reSolve: (doc: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean }) => void | Promise<void>
   setMode: (mode: 'sketch' | 'feature' | 'code') => void
-  getHandleRebuild: () => () => void
+  // Called on edit exit to drop the sketch-on-face FSM state. Optional so
+  // tests / future call sites that don't use plane picking can omit it.
+  clearPlaneSelection?: () => void
 }
 
 export interface UseEditFeatureReturn {
@@ -34,85 +30,69 @@ export interface UseEditFeatureReturn {
   clearEditingFeature: () => void
 }
 
+/**
+ * Compute pick_boundary for the feature being edited. Sketches/planes don't
+ * use a pick boundary (their picks resolve against the full body state). For
+ * solid-modifying features (extrude, fillet, etc.) the boundary is the
+ * non-builtin index of the feature -- picks resolve against the body
+ * checkpoint frozen just before that feature ran.
+ */
+function computePickBoundary(
+  features: PartFeature[],
+  featureId: string,
+  builtInIds: Set<string>,
+): number | null {
+  const feature = features.find(f => f.id === featureId)
+  if (!feature || SKETCH_KINDS.has(feature.kind)) return null
+  const nonBuiltIns = features.filter(f => !builtInIds.has(f.id))
+  const idx = nonBuiltIns.findIndex(f => f.id === featureId)
+  return idx >= 0 ? idx : null
+}
+
 export function useEditFeature({
   features,
-  rollbackPosition,
   builtInIds,
-  setRollbackPos,
-  setRollbackFromHandler,
-  setPickBoundary,
-  clearPickBodies,
-  clearPlaneSelection,
   startEditSession,
   commitEditSession,
   cancelEditSession,
   docRef,
   reSolve,
   setMode,
-  getHandleRebuild,
+  clearPlaneSelection,
 }: UseEditFeatureInput): UseEditFeatureReturn {
-  const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null)
+  const editingFeatureId = usePartEditorStore(s => s.editingFeatureId)
   const [savedRollbackPosition, setSavedRollbackPosition] = useState<number | null>(null)
   const [editForcedVisible, setEditForcedVisible] = useState<Set<string>>(new Set())
-  const editEntryRollback = useRef<number | null>(null)
-  const prevEditingIdRef = useRef<string | null>(null)
-
-  // Set pick boundary when editing feature changes
-  useEffect(() => {
-    if (!docRef.current) return
-    const prev = prevEditingIdRef.current
-    prevEditingIdRef.current = editingFeatureId
-    if (prev === editingFeatureId) return
-
-    const feature = features.find(f => f.id === editingFeatureId)
-    let nextBoundary: number | null = null
-    if (feature && !SKETCH_KINDS.has(feature.kind)) {
-      const nonBuiltInFeatures = features.filter(f => !builtInIds.has(f.id))
-      const index = nonBuiltInFeatures.findIndex(f => f.id === editingFeatureId)
-      if (index >= 0) nextBoundary = index
-    }
-    setPickBoundary(nextBoundary)
-    if (nextBoundary !== null) {
-      getHandleRebuild()()
-    }
-  }, [editingFeatureId, features, setPickBoundary, docRef, builtInIds, getHandleRebuild])
-
-  const _exitEditCleanup = useCallback(() => {
-    clearPlaneSelection()
-    const targetRollback = savedRollbackPosition !== null ? savedRollbackPosition : rollbackPosition
-    if (savedRollbackPosition !== null) {
-      if (rollbackPosition === editEntryRollback.current || rollbackPosition === null) {
-        setRollbackFromHandler(savedRollbackPosition)
-      }
-      editEntryRollback.current = null
-      setSavedRollbackPosition(null)
-    }
-    setEditForcedVisible(new Set())
-    setEditingFeatureId(null)
-    setPickBoundary(null)
-    if (docRef.current) reSolve(docRef.current, targetRollback)
-  }, [clearPlaneSelection, savedRollbackPosition, rollbackPosition, setPickBoundary,
-      setRollbackFromHandler, docRef, reSolve])
 
   const enterEditFeature = useCallback((featureId: string, suppressUndo = true) => {
     const idx = features.findIndex(f => f.id === featureId)
     if (idx < 0) return
-    // Set synchronously so the Viewport zoom guard sees it before any cache-driven bodies update.
-    if (features[idx].kind === 'sketch') {
-      usePartEditorStore.getState().setActiveSketchFeatureId(featureId)
-    }
+    const feature = features[idx]
     startEditSession(suppressUndo)
-    setSavedRollbackPosition(rollbackPosition ?? features.length)
-    editEntryRollback.current = idx + 1
-    setRollbackPos(idx + 1)
-    setRollbackFromHandler(idx + 1)
+    const store = usePartEditorStore.getState()
+    setSavedRollbackPosition(store.rollbackPosition ?? features.length)
+    const pickBoundary = computePickBoundary(features, featureId, builtInIds)
+    if (feature.kind === 'sketch') {
+      store.setActiveSketchFeatureId(featureId)
+    }
+    store.setRollbackPosition(idx + 1)
+    store.setPickBoundary(pickBoundary)
+    store.setEditingFeatureId(featureId)
     setEditForcedVisible(new Set([featureId]))
-    setEditingFeatureId(featureId)
-    setPickBoundary(null)
-    clearPickBodies()
-    if (docRef.current) reSolve(docRef.current, idx + 1)
-  }, [features, rollbackPosition, setPickBoundary, clearPickBodies, setRollbackPos,
-      setRollbackFromHandler, startEditSession, docRef, reSolve])
+    if (docRef.current) reSolve(docRef.current)
+  }, [features, builtInIds, startEditSession, docRef, reSolve])
+
+  const _exitEditCleanup = useCallback(() => {
+    if (clearPlaneSelection) clearPlaneSelection()
+    const store = usePartEditorStore.getState()
+    const targetRollback = savedRollbackPosition
+    setSavedRollbackPosition(null)
+    setEditForcedVisible(new Set())
+    store.setEditingFeatureId(null)
+    store.setPickBoundary(null)
+    store.setRollbackPosition(targetRollback)
+    if (docRef.current) reSolve(docRef.current)
+  }, [savedRollbackPosition, docRef, reSolve, clearPlaneSelection])
 
   const commitEditFeature = useCallback(() => {
     commitEditSession()
@@ -138,7 +118,7 @@ export function useEditFeature({
   }, [commitEditFeature])
 
   const clearEditingFeature = useCallback(() => {
-    setEditingFeatureId(null)
+    usePartEditorStore.getState().setEditingFeatureId(null)
   }, [])
 
   return {

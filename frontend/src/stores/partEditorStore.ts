@@ -7,6 +7,7 @@ export interface PartEditorData {
   features: PartFeature[]
   doc: PartDoc | null
   rollbackPosition: number | null
+  pickBoundary: number | null
   editingFeatureId: string | null
   activeSketchFeatureId: string | null
   visibleFeatures: Set<string>
@@ -30,6 +31,7 @@ export const DEFAULT_PART_EDITOR_DATA: PartEditorData = {
   features: [],
   doc: null,
   rollbackPosition: null,
+  pickBoundary: null,
   editingFeatureId: null,
   activeSketchFeatureId: null,
   visibleFeatures: new Set(),
@@ -49,13 +51,33 @@ export const DEFAULT_PART_EDITOR_DATA: PartEditorData = {
   redoStack: [],
 }
 
+// Fields owned exclusively by the store (not overwritten by setSnapshot).
+// These are the source of truth for the rollback/edit FSM and are mutated
+// only through their dedicated setters.
+const STORE_OWNED_FIELDS = ['rollbackPosition', 'pickBoundary', 'editingFeatureId'] as const
+
 interface PartEditorState extends PartEditorData {
   setSnapshot: (data: PartEditorData) => void
   setActiveSketchFeatureId: (id: string | null) => void
+  setRollbackPosition: (pos: number | null) => void
+  setPickBoundary: (pos: number | null) => void
+  setEditingFeatureId: (id: string | null) => void
 }
 
 export const usePartEditorStore = create<PartEditorState>((set) => ({
   ...DEFAULT_PART_EDITOR_DATA,
-  setSnapshot: (data) => set(data),
+  setSnapshot: (data) => set((prev) => {
+    // Preserve store-owned fields; setSnapshot is for React-mirrored state only.
+    // Callers write owned fields via their dedicated setters.
+    const prevRec = prev as unknown as Record<string, unknown>
+    const merged = { ...data } as unknown as Record<string, unknown>
+    for (const field of STORE_OWNED_FIELDS) {
+      merged[field] = prevRec[field]
+    }
+    return merged as unknown as PartEditorData
+  }),
   setActiveSketchFeatureId: (id) => set({ activeSketchFeatureId: id }),
+  setRollbackPosition: (pos) => set({ rollbackPosition: pos }),
+  setPickBoundary: (pos) => set({ pickBoundary: pos }),
+  setEditingFeatureId: (id) => set({ editingFeatureId: id }),
 }))

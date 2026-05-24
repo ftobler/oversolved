@@ -8,11 +8,13 @@ import { failLoud } from '@/stores/stateInvariants'
 
 export { healDoc, BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
+export type ReSolveFn = (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean }) => Promise<void> | void
+
 export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
   const modeRef = useRef(mode)
   useEffect(() => { modeRef.current = mode }, [mode])
 
-  const reSolveRef = useRef<((d: PartDoc) => void) | null>(null)
+  const reSolveRef = useRef<ReSolveFn | null>(null)
 
   const {
     doc, setDoc, docRef, docName, setDocName, ownerUsername,
@@ -23,7 +25,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const {
     solveResults, setSolveResults, bodies, pickBodies, setPickBodies,
     solving, solveTime, solveError, setSolveError, solveResult, setSolveRawResult,
-    featureTimings, reSolve, setRollbackPos, setPickBoundary,
+    featureTimings, reSolve,
     validation, clearValidation,
   } = useSolver(uuid, setCodeText, modeRef, { onFirstSolve }, docRef, setDoc)
 
@@ -64,7 +66,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
     docRef.current = next
     setDoc(next)
-    reSolve(next, undefined, { bypassCache: true })
+    reSolve(next, { bypassCache: true })
   }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo])
 
   const previewOriginalDoc = useRef<PartDoc | null>(null)
@@ -178,8 +180,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     renameDoc,
     permission,
     isPublic,
-    setRollbackPos,
-    setPickBoundary,
     startPreviewMode,
     commitPreview,
     cancelPreview,

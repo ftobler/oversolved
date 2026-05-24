@@ -63,7 +63,15 @@ describe('IdPipeline dirty flag', () => {
 
 describe('partEditorStore scene-slice invalidation', () => {
   beforeEach(() => {
-    usePartEditorStore.setState({ ...DEFAULT_PART_EDITOR_DATA, setSnapshot: usePartEditorStore.getState().setSnapshot, setActiveSketchFeatureId: usePartEditorStore.getState().setActiveSketchFeatureId }, true)
+    const s = usePartEditorStore.getState()
+    usePartEditorStore.setState({
+      ...DEFAULT_PART_EDITOR_DATA,
+      setSnapshot: s.setSnapshot,
+      setActiveSketchFeatureId: s.setActiveSketchFeatureId,
+      setRollbackPosition: s.setRollbackPosition,
+      setPickBoundary: s.setPickBoundary,
+      setEditingFeatureId: s.setEditingFeatureId,
+    }, true)
   })
 
   it('detects scene-shape changes only on relevant fields', () => {

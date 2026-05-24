@@ -47,6 +47,7 @@ vi.mock('@/utils/buildCache', () => ({
 
 import { pickPartColor, reconcilePartStyle, useSolver } from '@/hooks/useSolver'
 import { PART_COLOR_PALETTE } from '@/utils/partColors'
+import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
 import type { PartDoc, BodyResult } from '@/types/cad'
 import type { GeometryHeader } from '@/utils/geometryUnpack'
 
@@ -162,6 +163,12 @@ describe('useSolver', () => {
     mockUnflattenGeometry.mockReturnValue({})
     mockUnpack.unpackBodies.mockReturnValue({})
     mockUnpack.unpackPickBodies.mockReturnValue({})
+    // Reset the store's owned fields between tests so rollback/pickBoundary
+    // from a previous test don't leak into the next.
+    const store = usePartEditorStore.getState()
+    store.setRollbackPosition(DEFAULT_PART_EDITOR_DATA.rollbackPosition)
+    store.setPickBoundary(DEFAULT_PART_EDITOR_DATA.pickBoundary)
+    store.setEditingFeatureId(DEFAULT_PART_EDITOR_DATA.editingFeatureId)
   })
 
   function setupHook(opts?: { onFirstSolve?: () => void }) {
@@ -306,7 +313,8 @@ describe('useSolver', () => {
           { id: 'feat2', kind: 'extrude' },
         ],
       })
-      await act(async () => { await result.current.reSolve(doc, 1) })
+      usePartEditorStore.getState().setRollbackPosition(1)
+      await act(async () => { await result.current.reSolve(doc) })
       const payload = mockSolver.solve.mock.calls[0][0]
       expect(payload.rollback_position).toBe(1)
       expect(payload.features).toHaveLength(1)
@@ -315,7 +323,7 @@ describe('useSolver', () => {
 
     it('handles pickBoundary for preview solves', async () => {
       const { result } = setupHook()
-      result.current.setPickBoundary(5)
+      usePartEditorStore.getState().setPickBoundary(5)
       await act(async () => { await result.current.reSolve(makeDoc()) })
       const payload = mockSolver.solve.mock.calls[0][0]
       expect(payload.is_preview).toBe(true)
@@ -339,7 +347,7 @@ describe('useSolver', () => {
 
     it('passes _validate=true in payload when reSolve is called with validate option', async () => {
       const { result } = setupHook()
-      await act(async () => { await result.current.reSolve(makeDoc(), undefined, { validate: true }) })
+      await act(async () => { await result.current.reSolve(makeDoc(), { validate: true }) })
       const payload = mockSolver.solve.mock.calls[0][0] as Record<string, unknown>
       expect(payload._validate).toBe(true)
     })
@@ -357,7 +365,7 @@ describe('useSolver', () => {
         solve_ms: 0, result: {}, bodies: {}, _build_state: null,
         validation: { level: 2, passed: false, fp_only: true, diffs: {} },
       })
-      await act(async () => { await result.current.reSolve(makeDoc(), undefined, { validate: true }) })
+      await act(async () => { await result.current.reSolve(makeDoc(), { validate: true }) })
       expect(result.current.validation).toEqual({ level: 2, passed: false, fp_only: true, diffs: {} })
       act(() => { result.current.clearValidation() })
       expect(result.current.validation).toBeNull()
@@ -369,7 +377,7 @@ describe('useSolver', () => {
         solve_ms: 0, result: {}, bodies: {}, _build_state: null,
         validation: { level: 3, passed: false, diffs: { repo_ancestral: {} } },
       })
-      await act(async () => { await result.current.reSolve(makeDoc(), undefined, { validate: true }) })
+      await act(async () => { await result.current.reSolve(makeDoc(), { validate: true }) })
       expect(mockCache.cacheBuildResponse).not.toHaveBeenCalled()
     })
 
@@ -379,7 +387,7 @@ describe('useSolver', () => {
         solve_ms: 0, result: {}, bodies: {}, _build_state: null,
         validation: { level: 3, passed: true, diffs: {} },
       })
-      await act(async () => { await result.current.reSolve(makeDoc(), undefined, { validate: true }) })
+      await act(async () => { await result.current.reSolve(makeDoc(), { validate: true }) })
       expect(mockCache.cacheBuildResponse).toHaveBeenCalledTimes(1)
     })
 
@@ -435,7 +443,7 @@ describe('useSolver', () => {
           timestamp: Date.now(), rollback_position: 0, pick_boundary: null,
         },
       })
-      await act(async () => { await result.current.reSolve(makeDoc(), undefined, { bypassCache: true }) })
+      await act(async () => { await result.current.reSolve(makeDoc(), { bypassCache: true }) })
       expect(mockInvalidateDocCache).toHaveBeenCalledWith('test-uuid')
       expect(mockCache.getCachedBuildResponse).not.toHaveBeenCalled()
       expect(mockSolver.solve).toHaveBeenCalledTimes(1)
@@ -456,7 +464,7 @@ describe('useSolver', () => {
           timestamp: Date.now(), rollback_position: 0, pick_boundary: null,
         },
       })
-      await act(async () => { await result.current.reSolve(makeDoc(), undefined, { bypassCache: true }) })
+      await act(async () => { await result.current.reSolve(makeDoc(), { bypassCache: true }) })
       // WS must be called a second time despite the fresh cache entry
       expect(mockSolver.solve).toHaveBeenCalledTimes(2)
       expect(mockInvalidateDocCache).toHaveBeenCalledTimes(1)
@@ -607,22 +615,25 @@ describe('useSolver', () => {
       vi.useRealTimers()
     })
 
-    it('updates rollbackPosRef via setRollbackPos', async () => {
+    it('reads rollbackPosition from the partEditorStore on each solve', async () => {
       const { result } = setupHook()
       mockCache.getCachedBuildResponse.mockResolvedValue(null)
       const features = Array.from({ length: 15 }, (_, i) => ({ id: `f${i}`, kind: 'sketch' as const }))
       const doc = makeDoc({ features })
       await act(async () => { await result.current.reSolve(doc) })
       expect(mockSolver.solve.mock.calls[0][0].features).toHaveLength(15)
-      result.current.setRollbackPos(10)
+      usePartEditorStore.getState().setRollbackPosition(10)
       mockSolver.solve.mockClear()
       await act(async () => { await result.current.reSolve(doc) })
       expect(mockSolver.solve.mock.calls[0][0].features).toHaveLength(10)
     })
 
-    it('clears pickBodies when pickBoundary set to null', () => {
+    it('clears pickBodies on pickBoundary non-null -> null transition (store subscription)', () => {
       const { result } = setupHook()
-      act(() => { result.current.setPickBoundary(null) })
+      // Move pickBoundary to non-null, then back to null. The subscription
+      // inside useSolver wipes pickBodies on the falling edge.
+      act(() => { usePartEditorStore.getState().setPickBoundary(5) })
+      act(() => { usePartEditorStore.getState().setPickBoundary(null) })
       expect(result.current.pickBodies).toEqual({})
     })
   })

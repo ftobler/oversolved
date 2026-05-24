@@ -1,12 +1,13 @@
 import { useState, useCallback, useRef } from 'react'
 import type { PartDoc, Mutation } from '@/types/cad'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
 
 export function useUndoRedo(
   docRef: React.MutableRefObject<PartDoc | null>,
   setDoc: React.Dispatch<React.SetStateAction<PartDoc | null>>,
-  reSolve: (d: PartDoc, rollbackPosition?: number | null) => void,
+  reSolve: (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean }) => void | Promise<void>,
 ) {
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [redoStack, setRedoStack] = useState<UndoEntry[]>([])
@@ -31,7 +32,13 @@ export function useUndoRedo(
       if (preUndoDoc) setRedoStack(r => [...r, { doc: preUndoDoc, mutation: entry.mutation }])
       docRef.current = entry.doc
       setDoc(entry.doc)
-      reSolve(entry.doc, entry.doc.features?.length ?? 0)
+      // Undo/redo always exits any edit and snaps rollback to the end of the
+      // restored doc — there is no meaningful in-edit state to preserve.
+      const store = usePartEditorStore.getState()
+      store.setEditingFeatureId(null)
+      store.setPickBoundary(null)
+      store.setRollbackPosition(entry.doc.features?.length ?? 0)
+      reSolve(entry.doc)
       return next
     })
   }, [docRef, setDoc, reSolve])
@@ -45,7 +52,11 @@ export function useUndoRedo(
       if (preRedoDoc) setUndoStack(u => [...u, { doc: preRedoDoc, mutation: entry.mutation }])
       docRef.current = entry.doc
       setDoc(entry.doc)
-      reSolve(entry.doc, entry.doc.features?.length ?? 0)
+      const store = usePartEditorStore.getState()
+      store.setEditingFeatureId(null)
+      store.setPickBoundary(null)
+      store.setRollbackPosition(entry.doc.features?.length ?? 0)
+      reSolve(entry.doc)
       return next
     })
   }, [docRef, setDoc, reSolve])

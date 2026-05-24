@@ -40,8 +40,6 @@ import { BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
 
 const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 
-type RollbackState = { position: number | null; source: 'user' | 'handler' | null }
-
 function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
 }
@@ -51,12 +49,9 @@ export default function Part() {
   const navigate = useNavigate()
   const [codeText, setCodeText] = useState('')
   const [mode, setModeRaw] = useState<'sketch' | 'feature' | 'code'>('sketch')
-  const [rollbackState, setRollbackState] = useState<RollbackState>({ position: null, source: null })
-  const rollbackPosition = rollbackState.position
-  const setRollbackFromUser = useCallback((pos: number | null) =>
-    setRollbackState({ position: pos, source: 'user' }), [])
-  const setRollbackFromHandler = useCallback((pos: number | null) =>
-    setRollbackState({ position: pos, source: 'handler' }), [])
+  // rollbackPosition is owned by partEditorStore (single source of truth).
+  // Read here for memos / props; mutate via store setters.
+  const rollbackPosition = usePartEditorStore(s => s.rollbackPosition)
   const rollbackInitialized = useRef(false)
   const [viewportReset, setViewportReset] = useState(0)
   const viewportRef = useRef<ViewportHandle>(null)
@@ -109,9 +104,6 @@ export default function Part() {
     ownerUsername,
     bodies,
     pickBodies,
-    setPickBodies,
-    setPickBoundary,
-    setRollbackPos,
     permission,
     startPreviewMode,
     commitPreview,
@@ -150,22 +142,16 @@ export default function Part() {
   useEffect(() => {
     if (doc && !rollbackInitialized.current) {
       rollbackInitialized.current = true
-      setRollbackFromHandler(extractFeatures(doc).length)
+      usePartEditorStore.getState().setRollbackPosition(extractFeatures(doc).length)
     }
-  }, [doc, setRollbackFromHandler])
+  }, [doc])
 
   useEffect(() => {
     if (rollbackPosition !== null && rollbackPosition > features.length) {
-      setRollbackFromHandler(features.length)
+      usePartEditorStore.getState().setRollbackPosition(features.length)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [features.length])
-
-  useEffect(() => {
-    if (rollbackState.source !== 'user') return
-    setPickBoundary(null)
-    if (docRef.current) reSolve(docRef.current, rollbackState.position ?? features.length)
-  }, [rollbackState, docRef, reSolve, setPickBoundary, features.length])
 
   const setMode = useCallback((newMode: 'sketch' | 'feature' | 'code') => {
     setModeRaw(prev => {
@@ -184,9 +170,9 @@ export default function Part() {
   }, [codeText, docRef, setDoc, setCodeText])
 
   const handleRebuild = useCallback(() => {
-    if (docRef.current) reSolve(docRef.current, rollbackPosition ?? features.length)
+    if (docRef.current) reSolve(docRef.current)
     setContextMenu(null)
-  }, [docRef, reSolve, rollbackPosition, features])
+  }, [docRef, reSolve])
 
   const [isRebuilding, setIsRebuilding] = useState(false)
 
@@ -197,19 +183,14 @@ export default function Part() {
       await invalidateDocCache(uuid)
       // Opt into validation: the kernel will do a parallel fresh full rebuild
       // and surface a diff in `validation` so the popover can render the badge.
-      await reSolve(docRef.current, rollbackPosition ?? features.length, { validate: true })
+      await reSolve(docRef.current, { validate: true })
     } catch (e) {
       console.error('Rebuild failed:', e)
     } finally {
       setIsRebuilding(false)
     }
-  }, [uuid, reSolve, rollbackPosition, features, docRef])
+  }, [uuid, reSolve, docRef])
 
-  // Stable ref so useEditFeature can call the current handleRebuild without closure staleness
-  const handleRebuildRef = useRef(handleRebuild)
-  handleRebuildRef.current = handleRebuild
-  const getHandleRebuild = useCallback(() => handleRebuildRef.current, [])
-  const clearPickBodies = useCallback(() => setPickBodies({}), [setPickBodies])
   const pendingSketchOnFaceId = useRef<string | null>(null)
   const clearPlaneSelection = useCallback(() => {
     setActivePickField(null)
@@ -227,20 +208,14 @@ export default function Part() {
     exitEditSketch,
   } = useEditFeature({
     features,
-    rollbackPosition,
     builtInIds: BUILT_IN_IDS,
-    setRollbackPos,
-    setRollbackFromHandler,
-    setPickBoundary,
-    clearPickBodies,
-    clearPlaneSelection,
     startEditSession,
     commitEditSession,
     cancelEditSession,
     docRef,
     reSolve,
     setMode,
-    getHandleRebuild,
+    clearPlaneSelection,
   })
 
   const visibleFeaturesWithEdit = useMemo(
@@ -302,8 +277,6 @@ export default function Part() {
   useSyncPartEditorStore({
     features,
     doc,
-    rollbackPosition,
-    editingFeatureId,
     activeSketchFeatureId: activeSketchFeatureId ?? null,
     visibleFeatures: visibleFeaturesWithEdit,
     visibleBodies: effectiveVisibleBodies,
@@ -350,12 +323,18 @@ export default function Part() {
     if (!doc) return
     const fid = randomId(18)
     const label = `${kind} ${Object.keys(bodies).length + 1}`
-    setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    setRollbackPos(features.length + 1)
+    const store = usePartEditorStore.getState()
+    // Extend rollback so the mutation-triggered reSolve includes the new
+    // feature, and pre-stage pick_boundary as if the new feature were the
+    // edit target. The new feature will land at non-builtin index
+    // = current non-builtin count, so the solve is cached under that key.
+    // When the user later clicks Edit on the new feature, enterEditFeature
+    // recomputes the same pick_boundary and the cache hit is free.
+    store.setRollbackPosition(features.length + 1)
+    store.setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
-    setRollbackFromHandler(features.length + 1)
     enterEditFeature(fid)
-  }, [doc, features, handleMutation, bodies, setPickBoundary, setRollbackPos, setRollbackFromHandler, enterEditFeature])
+  }, [doc, features, handleMutation, bodies, enterEditFeature])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
@@ -364,22 +343,20 @@ export default function Part() {
     const label = `plane ${planeCount + 1}`
     const faceQuery = [...selection].find(id => id.startsWith('?') && id.includes(':face'))
     const definition = faceQuery ? { mode: 'on_face', face: faceQuery } as const : undefined
-    setRollbackPos(features.length + 1)
+    usePartEditorStore.getState().setRollbackPosition(features.length + 1)
     handleMutation({ type: 'add_plane', featureId, label, definition })
-    setRollbackFromHandler(features.length + 1)
     enterEditFeature(featureId)
-  }, [doc, features.length, handleMutation, selection, setRollbackPos, setRollbackFromHandler, enterEditFeature])
+  }, [doc, features.length, handleMutation, selection, enterEditFeature])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
     const featureId = randomId(18)
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const label = `sketch ${sketchCount + 1}`
-    setRollbackPos(features.length + 1)
+    usePartEditorStore.getState().setRollbackPosition(features.length + 1)
     handleMutation({ type: 'add_sketch', featureId, label })
-    setRollbackFromHandler(features.length + 1)
     setActivePickField({ featureId, field: 'plane' })
-  }, [doc, features.length, handleMutation, setActivePickField, setRollbackPos, setRollbackFromHandler])
+  }, [doc, features.length, handleMutation, setActivePickField])
 
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')
@@ -394,11 +371,11 @@ export default function Part() {
       if (!data?.file_id) return
       const featureId = randomId(18)
       const label = file.name.replace(/\.(step|stp)$/i, '')
-      setRollbackPos(features.length + 1)
+      usePartEditorStore.getState().setRollbackPosition(features.length + 1)
       handleMutation({ type: 'add_import_step', featureId, fileId: data.file_id, label })
     }
     input.click()
-  }, [handleMutation, features.length, setRollbackPos])
+  }, [handleMutation, features.length])
 
   const handleExportStep = useCallback(() => {
     exportImportRef.current?.openExport(null, docName || 'export')
@@ -470,7 +447,7 @@ export default function Part() {
       const parsed = parseYaml(codeText) as PartDoc
       docRef.current = parsed
       setDoc(parsed)
-      reSolve(parsed, undefined, { bypassCache: true })
+      reSolve(parsed, { bypassCache: true })
     } catch (e) {
       setSolveError(`Parse error: ${e}`)
     }
@@ -480,9 +457,15 @@ export default function Part() {
     e.dataTransfer.effectAllowed = 'move'
   }, [])
 
+  // User-initiated rollback drag: update the store and re-solve. The previous
+  // "source: user|handler" tag is gone — instead we update the store and call
+  // reSolve directly. No effect indirection needed.
   const handleUserRollbackChange = useCallback((pos: number | null) => {
-    setRollbackFromUser(pos)
-  }, [setRollbackFromUser])
+    const store = usePartEditorStore.getState()
+    store.setRollbackPosition(pos)
+    store.setPickBoundary(null)
+    if (docRef.current) reSolve(docRef.current)
+  }, [docRef, reSolve])
 
   const toggleVisibility = useCallback((featureId: string) => {
     handleMutation({ type: 'set_feature_visibility', featureId, visible: !visibleFeaturesWithEdit.has(featureId) })

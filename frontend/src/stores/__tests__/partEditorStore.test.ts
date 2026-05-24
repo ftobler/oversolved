@@ -14,8 +14,10 @@ describe('partEditorStore', () => {
     expect(state.editingFeatureId).toBeNull()
   })
 
-  it('setSnapshot replaces all fields at once', () => {
+  it('setSnapshot replaces mirrored fields but preserves owned fields', () => {
     const { getState } = usePartEditorStore
+    getState().setRollbackPosition(99)
+    getState().setEditingFeatureId('owned')
     getState().setSnapshot({
       ...DEFAULT_PART_EDITOR_DATA,
       features: [{ id: 'f1', kind: 'extrude' }],
@@ -26,8 +28,9 @@ describe('partEditorStore', () => {
     })
     expect(getState().features).toHaveLength(1)
     expect(getState().features[0].id).toBe('f1')
-    expect(getState().rollbackPosition).toBe(1)
-    expect(getState().editingFeatureId).toBe('f1')
+    // Owned fields preserved from setter-applied values.
+    expect(getState().rollbackPosition).toBe(99)
+    expect(getState().editingFeatureId).toBe('owned')
     expect(getState().visibleFeatures.has('f1')).toBe(true)
   })
 
@@ -51,13 +54,13 @@ describe('partEditorStore', () => {
     expect(usePartEditorStore.getState().doc).toBe(doc)
   })
 
-  it('sets rollbackPosition via setState', () => {
-    usePartEditorStore.setState({ rollbackPosition: 3 })
+  it('sets rollbackPosition via setRollbackPosition', () => {
+    usePartEditorStore.getState().setRollbackPosition(3)
     expect(usePartEditorStore.getState().rollbackPosition).toBe(3)
   })
 
-  it('sets editingFeatureId via setState', () => {
-    usePartEditorStore.setState({ editingFeatureId: 'f2' })
+  it('sets editingFeatureId via setEditingFeatureId', () => {
+    usePartEditorStore.getState().setEditingFeatureId('f2')
     expect(usePartEditorStore.getState().editingFeatureId).toBe('f2')
   })
 
