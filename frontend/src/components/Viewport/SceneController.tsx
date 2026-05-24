@@ -28,9 +28,10 @@ interface SceneControllerProps {
   hoverRef: React.MutableRefObject<Hit | null>
   snapRef: React.MutableRefObject<THREE.Vector3 | null>
   cameraRef: React.MutableRefObject<THREE.Camera | null>
+  controlsRef: React.MutableRefObject<OrbitControlsImpl | null>
 }
 
-export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverRef, snapRef, cameraRef }: SceneControllerProps) {
+export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef }: SceneControllerProps) {
   const { camera } = useThree()
   const ctrlRef = useRef<OrbitControlsImpl | null>(null)
   const mounted = useRef(false)
@@ -80,7 +81,10 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
 
   return (
     <OrbitControls
-      ref={ctrlRef}
+      ref={(ctrl) => {
+        ctrlRef.current = ctrl
+        controlsRef.current = ctrl
+      }}
       enabled={orbitEnabled}
       mouseButtons={MOUSE_BUTTONS}
       enableRotate

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandl
 import { Canvas } from '@react-three/fiber'
 import { OrthographicCamera, Environment } from '@react-three/drei'
 import * as THREE from 'three'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { Feature, PartFeature, Sketch, BodyResult, PlaneDef } from '@/types/cad'
 import { unflattenGeometry, deriveConstraints } from '@/utils/geometryMapping'
 import Geometry3D from '@/components/Geometry3D'
@@ -215,6 +216,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const hoverRef = useRef<Hit | null>(null)
   const snapRef = useRef<THREE.Vector3 | null>(null)
   const cameraRef = useRef<THREE.Camera | null>(null)
+  const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const glRef = useRef<THREE.WebGLRenderer | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   const bodiesRef = useRef<Record<string, BodyResult> | undefined>(undefined)
@@ -391,6 +393,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       .addScaledVector(camRight, camRight.dot(centerWorld) - camRight.dot(camera.position))
       .addScaledVector(camUp, camUp.dot(centerWorld) - camUp.dot(camera.position))
     camera.position.copy(newPos)
+    controlsRef.current?.target.set(cx, cy, cz)
+    controlsRef.current?.update()
     camera.updateProjectionMatrix()
     return true
   }, [])
@@ -446,6 +450,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     )
 
     camera.lookAt(0, 0, 0)
+    controlsRef.current?.target.set(0, 0, 0)
+    controlsRef.current?.update()
     camera.updateProjectionMatrix()
   }, [cameraRef])
 
@@ -468,6 +474,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       faceCenter[2] + ndz * distance
     )
     camera.lookAt(faceCenter[0], faceCenter[1], faceCenter[2])
+    controlsRef.current?.target.set(faceCenter[0], faceCenter[1], faceCenter[2])
+    controlsRef.current?.update()
     camera.updateProjectionMatrix()
   }, [cameraRef])
 
@@ -636,7 +644,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         }}
       >
         <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={-10} far={1000} /* clipping planes */ />
-        <SceneController resetTrigger={resetTrigger} canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
+        <SceneController resetTrigger={resetTrigger} canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} controlsRef={controlsRef} />
 
         {ENABLE_ID_BUFFER_PICKING && <IdPickingDriver onReady={onIdPipelineReady} />}
         {showDebugHit && <IdDebugOverlay />}
