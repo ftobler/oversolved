@@ -5,7 +5,7 @@ import numpy as np
 
 from oversolved.kernel.query import Repository
 from oversolved.kernel.types3d import Frame3D
-from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, make_cylinder, boolean_cut
+from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, make_cylinder, boolean_cut_with_diff
 from oversolved.kernel.solver_features_shared import _resolve_body
 
 logger = logging.getLogger(__name__)
@@ -90,7 +90,12 @@ def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, featur
             h = depth
 
         cyl = make_cylinder(list(start_3d), list(axis), radius, h)
-        target_body.shape = _ensure_occ(boolean_cut(target_body.shape, cyl))
+        new_shape, brep_diff = boolean_cut_with_diff(target_body.shape, cyl)
+        target_body.shape = _ensure_occ(new_shape)
+        # Single-op history: brep_diff holds only the last cut. With multiple
+        # points, earlier walls become inputs to later cuts so only the final
+        # point's walls carry the @hole tag (known limitation, see plan Stage 2).
+        target_body.brep_diff = brep_diff
 
     target_body.modified_by.append(feature["id"])
     return {

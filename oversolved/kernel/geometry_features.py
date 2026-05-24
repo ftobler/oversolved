@@ -38,6 +38,10 @@ class EdgeModifierResult:
     # Populated when the caller supplies line_age_source.
     face_lineage: dict[str, list[str]] | None = None
     edge_lineage: dict[str, list[str]] | None = None
+    # B-rep diff classifying output sub-shapes (new vs inherited) so the
+    # @created_by rewrite can tag fillet/chamfer surfaces to the modifier.
+    # Empty BrepDiff on failure; None only before a build is attempted.
+    brep_diff: Any | None = None
 
 
 def _check_null_shape(topo_shape: TopoDS_Shape) -> bool:
@@ -105,10 +109,12 @@ def _apply_edge_modifier(
     topo_shape = _ensure_occ(shape)
 
     def _fail(reason: str) -> EdgeModifierResult:
+        from oversolved.kernel.types3d import BrepDiff  # noqa: PLC0415
         return EdgeModifierResult(
             shape=shape, success=False, reason=reason,
             successful_count=0, failed_count=0, skipped_count=0,
             failed_indices=[], skipped_indices=[],
+            brep_diff=BrepDiff(),
         )
 
     if _check_null_shape(topo_shape):
@@ -175,6 +181,14 @@ def _apply_edge_modifier(
             maker, topo_shape, built, applied_edges, lineage_source,
         )
 
+    from oversolved.kernel.ocp_ops import ocp_edge_modifier_diff  # noqa: PLC0415
+    try:
+        brep_diff = ocp_edge_modifier_diff(maker, topo_shape, built)
+    except Exception as exc:
+        from oversolved.kernel.types3d import BrepDiff  # noqa: PLC0415
+        logger.warning("_apply_edge_modifier: brep_diff extraction failed: %s", exc)
+        brep_diff = BrepDiff()
+
     return EdgeModifierResult(
         shape=built,
         success=True,
@@ -186,6 +200,7 @@ def _apply_edge_modifier(
         skipped_indices=skipped_indices,
         face_lineage=new_face_lineage,
         edge_lineage=new_edge_lineage,
+        brep_diff=brep_diff,
     )
 
 
@@ -330,14 +345,26 @@ def apply_fillet(shape: TopoDS_Shape, radius: float, edges: list[TopoDS_Shape] |
     ).shape
 
 
+def apply_fillet_with_diff(
+    shape: TopoDS_Shape, radius: float, edges: list[TopoDS_Shape] | None = None,
+) -> tuple[TopoDS_Shape, Any]:
+    """Apply a fillet and return (shape, BrepDiff)."""
+    result = _apply_edge_modifier(
+        shape, edges,
+        maker_factory=ocp_fillet_factory,
+        add_edge_fn=lambda maker, e: maker.Add(radius, e),
+    )
+    return result.shape, result.brep_diff
+
+
 def apply_fillet_with_lineage(
     shape: TopoDS_Shape, radius: float, edges: list[TopoDS_Shape],
     body_face_lineage: dict[str, list[str]] | None = None,
     body_edge_lineage: dict[str, list[str]] | None = None,
-) -> tuple[TopoDS_Shape, dict[str, list[str]] | None, dict[str, list[str]] | None]:
+) -> tuple[TopoDS_Shape, dict[str, list[str]] | None, dict[str, list[str]] | None, Any]:
     """Apply a fillet and track per-entity lineage through the operation.
 
-    Returns (filleted_shape, new_face_lineage, new_edge_lineage).
+    Returns (filleted_shape, new_face_lineage, new_edge_lineage, brep_diff).
     """
     result = _apply_edge_modifier(
         shape, edges,
@@ -349,7 +376,7 @@ def apply_fillet_with_lineage(
             "filleted_edges": edges,
         },
     )
-    return result.shape, result.face_lineage, result.edge_lineage
+    return result.shape, result.face_lineage, result.edge_lineage, result.brep_diff
 
 
 def apply_chamfer(shape: TopoDS_Shape, distance: float, kind: str = "distance",
@@ -368,15 +395,30 @@ def apply_chamfer(shape: TopoDS_Shape, distance: float, kind: str = "distance",
     return _apply_edge_modifier(shape, edges, maker_factory=ocp_chamfer_factory, add_edge_fn=_add).shape
 
 
+def apply_chamfer_with_diff(
+    shape: TopoDS_Shape, distance: float, kind: str = "distance",
+    angle: float = 45.0, edges: list[TopoDS_Shape] | None = None,
+) -> tuple[TopoDS_Shape, Any]:
+    """Apply a chamfer and return (shape, BrepDiff)."""
+    def _add(maker: Any, edge: TopoDS_Shape) -> None:
+        if kind == "angle_distance":
+            maker.AddDA(distance, angle, edge)
+        else:
+            maker.Add(distance, edge)
+
+    result = _apply_edge_modifier(shape, edges, maker_factory=ocp_chamfer_factory, add_edge_fn=_add)
+    return result.shape, result.brep_diff
+
+
 def apply_chamfer_with_lineage(
     shape: TopoDS_Shape, distance: float, edges: list[TopoDS_Shape],
     kind: str = "distance", angle: float = 45.0,
     body_face_lineage: dict[str, list[str]] | None = None,
     body_edge_lineage: dict[str, list[str]] | None = None,
-) -> tuple[TopoDS_Shape, dict[str, list[str]] | None, dict[str, list[str]] | None]:
+) -> tuple[TopoDS_Shape, dict[str, list[str]] | None, dict[str, list[str]] | None, Any]:
     """Apply a chamfer and track per-entity lineage through the operation.
 
-    Returns (chamfered_shape, new_face_lineage, new_edge_lineage).
+    Returns (chamfered_shape, new_face_lineage, new_edge_lineage, brep_diff).
     """
     def _add(maker: Any, edge: TopoDS_Shape) -> None:
         if kind == "angle_distance":
@@ -394,7 +436,7 @@ def apply_chamfer_with_lineage(
             "filleted_edges": edges,
         },
     )
-    return result.shape, result.face_lineage, result.edge_lineage
+    return result.shape, result.face_lineage, result.edge_lineage, result.brep_diff
 
 
 def transform_copy(shape: TopoDS_Shape, trsf: gp_Trsf) -> TopoDS_Shape:

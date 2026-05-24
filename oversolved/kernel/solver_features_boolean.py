@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 
 from oversolved.kernel.query import Repository
-from oversolved.kernel.cadquery_ops import _ensure_occ, boolean_cut, boolean_union, boolean_intersection
+from oversolved.kernel.cadquery_ops import (
+    _ensure_occ, boolean_cut_with_diff, boolean_union_with_diff, boolean_intersection_with_diff,
+)
 from oversolved.kernel.solver_features_shared import _resolve_body
 
 logger = logging.getLogger(__name__)
@@ -39,15 +41,16 @@ def _solve_boolean(
 
     result_shape = target_body.shape
     consumed_keys: list[str] = []
+    last_diff = None
 
     for tool_ref in tool_refs:
         tool_body = _resolve_body(tool_ref, body_store)
         if operation == "union":
-            result_shape = boolean_union(result_shape, tool_body.shape)
+            result_shape, last_diff = boolean_union_with_diff(result_shape, tool_body.shape)
         elif operation == "subtract":
-            result_shape = boolean_cut(result_shape, tool_body.shape)
+            result_shape, last_diff = boolean_cut_with_diff(result_shape, tool_body.shape)
         elif operation == "intersect":
-            result_shape = boolean_intersection(result_shape, tool_body.shape)
+            result_shape, last_diff = boolean_intersection_with_diff(result_shape, tool_body.shape)
         else:
             raise ValueError(f"boolean: unknown operation '{operation}'")
         if not keep_tools:
@@ -55,6 +58,8 @@ def _solve_boolean(
 
     target_body.shape = _ensure_occ(result_shape)
     target_body.modified_by.append(feature_id)
+    # Single-op history: only the last tool's diff is retained (see plan Stage 3).
+    target_body.brep_diff = last_diff
 
     for key in consumed_keys:
         body_store.pop(key, None)

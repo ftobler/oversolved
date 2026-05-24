@@ -197,6 +197,66 @@ def test_boolean_cut_new_edge_attributed_to_cutter():
     )
 
 
+def _faces_of(shape):
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopAbs import TopAbs_FACE
+    out = []
+    exp = TopExp_Explorer(shape, TopAbs_FACE)
+    while exp.More():
+        out.append(exp.Current())
+        exp.Next()
+    return out
+
+
+def test_compose_through_clean_drops_unified_shapes():
+    """Fuse two abutting boxes -> coplanar side faces unify; composed diff must
+    only reference faces that survive in the cleaned shape (no stale handles)."""
+    pytest.importorskip("OCP.BRepAlgoAPI")
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    from OCP.gp import gp_Pnt
+    from oversolved.kernel.ocp_ops import (
+        ocp_boolean_with_history, ocp_clean_with_history, ocp_compose_diff_through_clean,
+    )
+
+    a = BRepPrimAPI_MakeBox(10, 10, 10).Solid()
+    b = BRepPrimAPI_MakeBox(gp_Pnt(10, 0, 0), 10, 10, 10).Solid()  # abuts a at x=10
+    raw_result, raw_diff = ocp_boolean_with_history(a, b, "fuse")
+    cleaned, clean_hist = ocp_clean_with_history(raw_result)
+    composed = ocp_compose_diff_through_clean(raw_diff, clean_hist, raw_result, cleaned)
+
+    cleaned_faces = _faces_of(cleaned)
+
+    def _present(f):
+        return any(f.IsSame(cf) for cf in cleaned_faces)
+
+    for f in composed.new_faces + composed.inherited_faces:
+        assert _present(f), "composed diff references a face absent from the cleaned shape"
+    # Unification collapses the box pair to fewer faces than the raw fuse output.
+    assert len(cleaned_faces) <= len(_faces_of(raw_result))
+
+
+def test_compose_through_clean_passthrough_when_no_modifier():
+    """A face untouched by the upgrade maps to an IsSame counterpart in cleaned."""
+    pytest.importorskip("OCP.BRepAlgoAPI")
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    from OCP.gp import gp_Pnt
+    from oversolved.kernel.ocp_ops import (
+        ocp_boolean_with_history, ocp_clean_with_history, ocp_compose_diff_through_clean,
+    )
+
+    a = BRepPrimAPI_MakeBox(10, 10, 10).Solid()
+    cutter = BRepPrimAPI_MakeBox(gp_Pnt(2, 2, -1), 5, 5, 12).Solid()
+    raw_result, raw_diff = ocp_boolean_with_history(a, cutter, "cut")
+    cleaned, clean_hist = ocp_clean_with_history(raw_result)
+    composed = ocp_compose_diff_through_clean(raw_diff, clean_hist, raw_result, cleaned)
+
+    cleaned_faces = _faces_of(cleaned)
+    # Every inherited face in the composed diff is a real face of the cleaned shape.
+    assert composed.inherited_faces
+    for f in composed.inherited_faces:
+        assert any(f.IsSame(cf) for cf in cleaned_faces)
+
+
 def test_boolean_cut_inherited_edge_keeps_original_creator():
     """Original cube edges (outer faces) stay attributed to ex1 after cut."""
     pytest.importorskip("OCP.gp")

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from OCP.gp import gp_Trsf
 from oversolved.kernel.query import Repository
-from oversolved.kernel.cadquery_ops import _ensure_occ, fuse_shapes
+from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, boolean_union_with_diff, fuse_shapes
 from oversolved.kernel.types3d import Body
 from oversolved.kernel.geometry_features import make_translation_trsf, make_rotation_trsf, transform_copy
 from oversolved.kernel.solver_features_shared import (
@@ -142,10 +142,9 @@ def _solve_array(
     if not instances:
         raise ValueError("array produced no instances")
 
-    tool_shape = fuse_shapes(instances)
-
     result_body_id = "body_" + feature_id
     if operation == "new":
+        tool_shape = fuse_shapes(instances)
         new_body = Body(
             id=result_body_id,
             created_by=feature_id,
@@ -155,6 +154,19 @@ def _solve_array(
         body_store[result_body_id] = new_body
         return {"status": "ok", "body_id": result_body_id, "operation": "new"}
     else:
-        body.shape = _ensure_occ(tool_shape)
+        # Fuse incrementally so the final union's BrepDiff is captured. The seam
+        # faces where copies meet are attributed to this array feature via the
+        # @created_by rewrite. Single-op history: only the last union's diff is
+        # retained (N-1 unions for N copies; see plan Stage 4).
+        if len(instances) == 1:
+            fused: object = _ensure_cq(instances[0])
+            last_diff = None
+        else:
+            fused = instances[0]
+            last_diff = None
+            for inst in instances[1:]:
+                fused, last_diff = boolean_union_with_diff(fused, inst)
+        body.shape = _ensure_occ(fused)
         body.modified_by.append(feature_id)
+        body.brep_diff = last_diff
         return {"status": "ok", "body_id": source_body_id, "operation": "add"}

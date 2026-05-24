@@ -113,6 +113,85 @@ def ocp_chamfer_factory(topo: TopoDS_Shape) -> Any:
     return BRepFilletAPI_MakeChamfer(topo)
 
 
+def ocp_edge_modifier_diff(
+    maker: Any,
+    old_shape: TopoDS_Shape,
+    new_shape: TopoDS_Shape,
+) -> Any:
+    """Derive a BrepDiff from a built BRepFilletAPI_Make{Fillet,Chamfer} maker.
+
+    Mirrors ocp_boolean_with_history's target-side classification, but uses the
+    fillet/chamfer history API (IsDeleted / Modified / Generated) instead of the
+    BRepAlgoAPI history. The fillet/chamfer surfaces generated from the modified
+    edges land in new_faces (no input-face preimage), so the @created_by rewrite
+    in builder.py attributes them to the modifying feature.
+
+    Returns BrepDiff in new_shape handle space. There is no ShapeUpgrade.clean
+    after fillet/chamfer, so no compose-through-clean step is needed here.
+    """
+    from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE  # noqa: PLC0415
+    from oversolved.kernel.types3d import BrepDiff  # noqa: PLC0415
+
+    diff = BrepDiff()
+
+    def _classify_inputs(kind):
+        modified_inputs: list[Any] = []
+        deleted_inputs: list[Any] = []
+        preimages_in_output: list[Any] = []
+        exp = TopExp_Explorer(old_shape, kind)
+        while exp.More():
+            s = exp.Current()
+            deleted = False
+            try:
+                deleted = bool(maker.IsDeleted(s))
+            except Exception:
+                deleted = False
+            if deleted:
+                deleted_inputs.append(s)
+            else:
+                mods = maker.Modified(s)
+                if mods.Size() > 0:
+                    modified_inputs.append(s)
+                    for m in mods:
+                        preimages_in_output.append(m)
+                else:
+                    # Untouched sub-shape: same handle appears in the output.
+                    preimages_in_output.append(s)
+            exp.Next()
+        return modified_inputs, deleted_inputs, preimages_in_output
+
+    mod_f, del_f, inherited_out_faces = _classify_inputs(TopAbs_FACE)
+    mod_e, del_e, inherited_out_edges = _classify_inputs(TopAbs_EDGE)
+
+    diff.modified_input_faces = mod_f
+    diff.deleted_input_faces = del_f
+    diff.modified_input_edges = mod_e
+    diff.deleted_input_edges = del_e
+
+    def _walk_outputs(kind, inherited_pool):
+        new_list: list[Any] = []
+        inherited_list: list[Any] = []
+        exp = TopExp_Explorer(new_shape, kind)
+        while exp.More():
+            s = exp.Current()
+            if any(s.IsSame(p) for p in inherited_pool):
+                inherited_list.append(s)
+            else:
+                new_list.append(s)
+            exp.Next()
+        return new_list, inherited_list
+
+    new_faces, inh_faces = _walk_outputs(TopAbs_FACE, inherited_out_faces)
+    new_edges, inh_edges = _walk_outputs(TopAbs_EDGE, inherited_out_edges)
+    diff.new_faces = new_faces
+    diff.inherited_faces = inh_faces
+    diff.new_edges = new_edges
+    diff.inherited_edges = inh_edges
+
+    return diff
+
+
 def ocp_transform_copy(topo: TopoDS_Shape, trsf: gp_Trsf) -> TopoDS_Shape:
     """Apply *trsf* to *topo* and return a new TopoDS_Shape (copy=True)."""
     from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform  # noqa: PLC0415
@@ -676,6 +755,18 @@ def ocp_compose_diff_through_clean(
     `raw_shape`. This walks `clean_history` to translate each entry to its
     counterpart in `cleaned_shape`, dropping entries removed by the upgrade.
     Returns a NEW BrepDiff.
+
+    Edge cases:
+    - Shapes that ShapeUpgrade fully removes (IsRemoved) are dropped from the
+      composed diff. A new face that the unifier merges away simply disappears
+      from new_faces.
+    - When the upgrade history reports no modifier for a shape (Modified Size()
+      == 0), the shape is assumed pass-through and kept as-is (matched via IsSame
+      against the cleaned pool, falling back to the raw handle). This is the
+      conservative branch; an upgrade that internally replaced a shape without
+      recording it would surface here as a stale handle.
+    - `raw_shape` is currently unused; it is retained as a provenance hook for a
+      future cross-check that mapped handles actually originate from raw_shape.
     """
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
     from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE  # noqa: PLC0415

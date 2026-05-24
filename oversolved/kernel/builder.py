@@ -327,23 +327,31 @@ def _brep_diff_new_face_hashes(body: Body) -> set[str]:
     Area is computed by tessellating each new face and summing triangle areas
     (same method as solid_to_mesh) so the resulting hash matches the hash
     computed from the tessellated mesh.
+
+    The new_faces handles are sub-shapes of body.shape, so the whole solid is
+    meshed once and each face's triangulation is read back from that shared mesh.
+    Meshing faces in isolation gives a different triangulation for curved faces
+    (hole walls, fillet surfaces) and would not match the final mesh's area hash.
     """
     diff = getattr(body, "brep_diff", None)
-    if diff is None or not diff.new_faces:
+    if diff is None or not diff.new_faces or body.shape is None:
         return set()
     try:
-        from oversolved.kernel.cadquery_ops import _compute_face_centroid, _compute_face_normal, _triangle_area
+        from oversolved.kernel.cadquery_ops import _compute_face_centroid, _compute_face_normal, _triangle_area, _ensure_occ
         from oversolved.kernel.ocp_ops import ocp_mesh_shape
         import cadquery.occ_impl.shapes as cq_shapes  # noqa: PLC0415
     except ImportError:
         return set()
+    try:
+        ocp_mesh_shape(_ensure_occ(body.shape), 0.1, 0.1)
+    except Exception as exc:
+        logger.debug("brep_diff solid mesh skip: %s", exc)
     hashes: set[str] = set()
     for topo_face in diff.new_faces:
         try:
             cq_face = cq_shapes.Shape.cast(topo_face)
             centroid = _compute_face_centroid(cq_face)
             normal = _compute_face_normal(cq_face)
-            ocp_mesh_shape(topo_face, 0.1, 0.1)
             verts, idxs = cq_face.tessellate(0.1)
             flat_verts = [list(v.toTuple()) for v in verts]
             area = sum(

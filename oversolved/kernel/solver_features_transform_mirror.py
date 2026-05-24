@@ -4,7 +4,7 @@ import logging
 
 from oversolved.kernel.query import Repository
 from oversolved.kernel.types3d import Frame3D, Body
-from oversolved.kernel.cadquery_ops import _ensure_occ, apply_transform_shape, boolean_union, make_mirror_trsf
+from oversolved.kernel.cadquery_ops import _ensure_occ, apply_transform_shape, boolean_union_with_diff, make_mirror_trsf
 from oversolved.kernel.solver_plane import _get_point_3d, _get_edge_3d
 from oversolved.kernel.geometry_features import transform_copy
 from oversolved.kernel.solver_features_shared import _resolve_body
@@ -147,9 +147,10 @@ def _solve_mirror(feature: dict, global_repo: Repository, body_store: dict) -> d
         return {"status": "ok", "body_id": source_body.id, "operation": "replace"}
 
     if merge:
-        new_shape = boolean_union(source_body.shape, mirrored_shape)
+        new_shape, brep_diff = boolean_union_with_diff(source_body.shape, mirrored_shape)
         source_body.shape = _ensure_occ(new_shape)
         source_body.modified_by.append(feature_id)
+        source_body.brep_diff = brep_diff
         return {"status": "ok", "body_id": source_body.id, "operation": "merge"}
 
     new_body_id = "body_" + feature_id
