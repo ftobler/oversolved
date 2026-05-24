@@ -8,6 +8,7 @@ import Geometry3D from '@/components/Geometry3D'
 import { CubeGizmoCanvas } from '@/components/CubeGizmo'
 import { type Hit, type Pv } from '@/components/CubeGizmo.utils'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { arePickBodiesInteractive } from '@/components/Viewport/bodyInteractivity'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Body3D from '@/components/Geometry3D/Body3D'
 import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
@@ -203,6 +204,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const partColors = usePartEditorStore(s => s.partColors)
   const partStyle = usePartEditorStore(s => s.partStyle)
   const activeFeatureId = usePartEditorStore(s => s.activeSketchFeatureId) ?? undefined
+  const activePickField = useSketchEditorStore(s => s.activePickField)
+  const pickBodiesInteractive = arePickBodiesInteractive(activeFeatureId, activePickField)
   const showDebugHit = useSketchEditorStore(s => s.showDebugHit)
 
   const featureDefs = doc?.features as PartFeature[] | undefined
@@ -684,13 +687,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         {ghostMode ? (
           <>
             {pickBodyItems.map(b => (
-              <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} roughness={partStyle?.[b.key]?.roughness ?? 0.35} metalness={partStyle?.[b.key]?.metalness ?? 0} transmission={partStyle?.[b.key]?.transmission ?? 0} interactive={!activeFeatureId} />
+              <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} roughness={partStyle?.[b.key]?.roughness ?? 0.35} metalness={partStyle?.[b.key]?.metalness ?? 0} transmission={partStyle?.[b.key]?.transmission ?? 0} interactive={pickBodiesInteractive} />
             ))}
             <PreviewEdgeOverlay items={previewBodyItems} pickItems={pickBodyItems} />
           </>
         ) : (
           bodyItems.map(b => (
-            <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} roughness={partStyle?.[b.key]?.roughness ?? 0.35} metalness={partStyle?.[b.key]?.metalness ?? 0} transmission={partStyle?.[b.key]?.transmission ?? 0} interactive={!activeFeatureId} />
+            <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} roughness={partStyle?.[b.key]?.roughness ?? 0.35} metalness={partStyle?.[b.key]?.metalness ?? 0} transmission={partStyle?.[b.key]?.transmission ?? 0} interactive={pickBodiesInteractive} />
           ))
         )}
       </Canvas>
