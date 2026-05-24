@@ -32,7 +32,7 @@ def _solve_import_step(
     scale = float(feature.get("scale", 1.0))
 
     if not file_data_b64:
-        raise ValueError("import_step requires 'file_data'")
+        raise ValueError("import_step: requires 'file_data'")
 
     raw = base64.b64decode(file_data_b64)
 

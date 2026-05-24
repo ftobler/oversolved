@@ -1052,6 +1052,6 @@ def test_fillet_before_its_extrude_must_fail():
     assert r['result']['filB']['status'] == 'exception', (
         "fillet before its extrude must fail: body doesn't exist yet"
     )
-    assert 'no body found' in r['result']['filB'].get('exception', ''), (
+    assert 'no bodies' in r['result']['filB'].get('exception', ''), (
         r['result']['filB']
     )

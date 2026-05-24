@@ -239,9 +239,9 @@ def _apply_edge_feature(
     feature_id = feature.get("id", "")
     edges: list[str] = feature.get("edges", [])
     if not edges:
-        raise ValueError(f"{feature_kind} requires at least one edge")
+        raise ValueError(f"{feature_kind}: requires at least one edge")
     if not body_store:
-        raise ValueError(f"no body found for {feature_kind}")
+        raise ValueError(f"{feature_kind}: no bodies in body_store")
 
     source_body = feature.get("source_body", "")
 
@@ -353,7 +353,7 @@ def _apply_edge_feature(
         applied.append(body.id)
 
     if not applied:
-        raise ValueError(f"no edges resolved for {feature_kind}")
+        raise ValueError(f"{feature_kind}: no edges resolved")
 
     if unresolved:
         return {
@@ -406,7 +406,7 @@ def _solve_fillet(
     radius_raw = feature.get("radius")
     radius = float(radius_raw if radius_raw is not None else 1.0)
     if radius <= 0:
-        raise ValueError("fillet radius must be positive")
+        raise ValueError("fillet: radius must be positive")
     return _apply_edge_feature(
         feature, body_store, "fillet", apply_fillet_with_diff,
         lineage_fn=_apply_fillet_lineage,
@@ -428,7 +428,7 @@ def _solve_chamfer(
     angle_raw = feature.get("angle")
     angle = float(angle_raw if angle_raw is not None else 45.0)
     if distance <= 0:
-        raise ValueError("chamfer distance must be positive")
+        raise ValueError("chamfer: distance must be positive")
     return _apply_edge_feature(
         feature, body_store, "chamfer", apply_chamfer_with_diff,
         lineage_fn=_apply_chamfer_lineage,

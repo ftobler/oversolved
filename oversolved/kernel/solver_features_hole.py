@@ -70,10 +70,14 @@ def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, featur
         through_depth = 0.0
         through_back_offset = 0.0
 
+    skipped_count = 0
+    skipped_entity_ids: list[str] = []
     for entity in point_entities:
         eid = entity["id"]
         xy_entry = global_repo.elements.get(sketch_ref + "/" + eid + "/xy")
         if xy_entry is None:
+            skipped_count += 1
+            skipped_entity_ids.append(eid)
             logger.warning(
                 "hole: xy entry not found for entity '%s' in sketch '%s'; skipping",
                 eid, sketch_ref,
@@ -98,8 +102,22 @@ def _solve_hole(feature: dict, global_repo: Repository, body_store: dict, featur
         target_body.brep_diff = brep_diff
 
     target_body.modified_by.append(feature["id"])
-    return {
-        "status": "ok",
+    total = len(point_entities)
+    placed = total - skipped_count
+    if placed == 0:
+        raise ValueError(
+            f"hole: all {total} point(s) in sketch '{sketch_ref}' have no "
+            "XY data; nothing to place"
+        )
+    status = "partial" if skipped_count > 0 else "ok"
+    result: dict = {
+        "status": status,
         "body_id": target_body.id,
-        "hole_count": len(point_entities),
+        "hole_count": placed,
     }
+    if skipped_count > 0:
+        result["exception"] = (
+            f"hole: {skipped_count}/{total} point(s) skipped — "
+            "no XY data for: " + ", ".join(skipped_entity_ids)
+        )
+    return result

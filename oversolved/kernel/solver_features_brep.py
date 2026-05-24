@@ -43,10 +43,10 @@ def _solve_extrude(feature: dict, global_repo: Repository, body_store: dict) -> 
     distance = float(feature.get("distance") or feature.get("depth") or 1.0)
 
     if distance == 0:
-        raise ValueError("extrude distance must be non-zero")
+        raise ValueError("extrude: distance must be non-zero")
 
     if not sketch_refs:
-        raise ValueError("extrude requires at least one profile reference")
+        raise ValueError("extrude: requires at least one profile reference")
 
     all_loops: list = []
     cq_faces: list = []
@@ -157,10 +157,10 @@ def _solve_revolve(feature: dict, global_repo: Repository, body_store: dict) -> 
     angle = float(feature.get("angle") or 360.0)
 
     if angle == 0:
-        raise ValueError("revolve angle must be non-zero")
+        raise ValueError("revolve: angle must be non-zero")
 
     if not sketch_refs:
-        raise ValueError("revolve requires at least one profile reference")
+        raise ValueError("revolve: requires at least one profile reference")
 
     all_loops: list = []
     cq_faces: list = []

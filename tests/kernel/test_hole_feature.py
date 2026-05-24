@@ -206,6 +206,7 @@ def test_hole_missing_xy_entry_warns(caplog):
     features_by_id = {"pts": feature}
 
     with caplog.at_level(logging.WARNING, logger="oversolved.kernel.solver_features_hole"):
-        _solve_hole(feature, repo, body_store, features_by_id)
+        with pytest.raises(ValueError, match="hole: all 1 point"):
+            _solve_hole(feature, repo, body_store, features_by_id)
 
     assert "p1" in caplog.text or "xy" in caplog.text.lower()
