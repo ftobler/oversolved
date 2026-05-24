@@ -35,9 +35,11 @@ export function buildCommandEntries(
     { name: 'set_tool_project',      fn: () => getState().setActiveTool('project') },
     { name: 'set_tool_dimension',    fn: () => getState().setActiveTool('dimension') },
     { name: 'toggle_construction',   fn: () => getState().toggleConstruction() },
-    ...CONSTRAINTS.filter(c => c.shortcut).map(c => ({
+    ...CONSTRAINTS.map(c => ({
       name: `apply_${c.kind}`,
-      fn: () => getState().applyConstraint(c.kind),
+      fn: c.shortcut
+        ? () => getState().applyConstraint(c.kind)
+        : () => { alert(`Constraint "${c.label}" is not yet implemented.`); },
     })),
     { name: 'cancel_draw', fn: () => {
         getState().clearDraw()
@@ -46,6 +48,9 @@ export function buildCommandEntries(
     }},
     { name: 'cancel_pick', fn: () => {
       getState().setActivePickField(null)
+    }},
+    { name: 'set_tool_mirror', fn: () => {
+      alert('Mirror tool is not yet implemented.')
     }},
     { name: 'add_extrude', fn: handleAddExtrude },
     { name: 'add_hole', fn: handleAddHole },

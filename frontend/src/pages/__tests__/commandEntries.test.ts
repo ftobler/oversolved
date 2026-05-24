@@ -1,20 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { buildCommandEntries } from '@/pages/commandEntries'
 import { KEYMAP, FEATURE_KEYMAP, SKETCH_KEYMAP, clearAllHandlers } from '@/stores/commandRegistry'
+import { CONSTRAINTS } from '@/registry'
 
 // Ensure clean state before each test
 beforeEach(() => { clearAllHandlers() })
 
 // Commands that intentionally have no keyboard shortcut.
+const SHORTCUT_CONSTRAINT_KINDS = new Set(CONSTRAINTS.filter(c => c.shortcut).map(c => c.kind))
+const TOOLBAR_ONLY_CONSTRAINT_COMMANDS = CONSTRAINTS
+  .filter(c => !SHORTCUT_CONSTRAINT_KINDS.has(c.kind))
+  .map(c => `apply_${c.kind}`)
+
 const PROGRAMMATIC_ONLY = new Set([
   'cancel_pick',
   'set_tool_select',
   'set_tool_drag',
+  'set_tool_mirror',
   'set_tool_point',
   'set_tool_rect',
   'set_tool_center_rect',
   'add_hole',
   'add_transform',
+  ...TOOLBAR_ONLY_CONSTRAINT_COMMANDS,
 ])
 
 describe('buildCommandEntries', () => {
