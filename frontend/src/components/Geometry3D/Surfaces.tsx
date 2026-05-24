@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { Topology, TopologySurface, TopologyEdge, TopologyArcEdge, TopologyEdgeQuery, Point } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { ARC_SEGMENTS, COLOR_SELECTED, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
+import { ARC_SEGMENTS, COLOR_SELECTED, COLOR_INACTIVE, COLOR_HOVER } from '@/components/Geometry3D/constants'
 import { edgeSelectionId } from '@/components/Geometry3D/utils'
 
 type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string }
@@ -48,17 +48,28 @@ interface SurfaceMeshProps {
   mode: TopologyMode
 }
 
+// Fill color/opacity for a sketch area, given selection/hover state. Selection
+// wins over hover; hover is suppressed while another sketch is being edited
+// ('inactive'). Selection still shows when inactive so a picked area stays lit.
+// eslint-disable-next-line react-refresh/only-export-components
+export function surfaceFillStyle(
+  mode: TopologyMode, isSelected: boolean, isHovered: boolean,
+): { color: string; opacity: number } {
+  if (isSelected) return { color: COLOR_SELECTED, opacity: 0.30 }
+  if (isHovered && mode !== 'inactive') return { color: COLOR_HOVER, opacity: 0.20 }
+  if (mode === 'inactive') return { color: COLOR_INACTIVE, opacity: 0.10 }
+  return { color: 'white', opacity: 0.10 }
+}
+
 export function SurfaceMesh({ shape, query, mode }: SurfaceMeshProps) {
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
+  const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
 
-  // The selection id is the raw ancestral query, identical to what the
-  // collision-id buffer stores (no wrapping). See handleClick.
+  // Selection/hover keys are the raw ancestral query, identical to what the
+  // collision-id buffer stores (no wrapping) -- same convention as B-rep faces.
   const isSelected = normalSelection.has(query)
-
-  let color: string = 'white'
-  let opacity = 0.10
-  if (mode === 'inactive') { color = COLOR_INACTIVE; opacity = 0.10 }
-  if (isSelected) { color = COLOR_SELECTED; opacity = 0.30 }
+  const isHovered = hoveredSelectionId === query
+  const { color, opacity } = surfaceFillStyle(mode, isSelected, isHovered)
 
   // Decoration only -- never a selection path. The collision-id render pass is
   // the single selection source: a surface click routes through

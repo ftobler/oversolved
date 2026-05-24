@@ -1,8 +1,32 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { planeLabel } from '@/components/Geometry3D/utils'
-import { buildSurfaceShapes } from '@/components/Geometry3D/Surfaces'
+import { buildSurfaceShapes, surfaceFillStyle } from '@/components/Geometry3D/Surfaces'
+import { COLOR_SELECTED, COLOR_HOVER, COLOR_INACTIVE } from '@/utils/partColors'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Topology } from '@/types/cad'
+
+describe('surfaceFillStyle', () => {
+  it('selected areas use the selection color (wins over hover)', () => {
+    expect(surfaceFillStyle('view', true, false).color).toBe(COLOR_SELECTED)
+    expect(surfaceFillStyle('view', true, true).color).toBe(COLOR_SELECTED)
+    // Selection stays lit even while another sketch is being edited.
+    expect(surfaceFillStyle('inactive', true, false).color).toBe(COLOR_SELECTED)
+  })
+
+  it('hovered areas use the hover color when not inactive', () => {
+    expect(surfaceFillStyle('view', false, true).color).toBe(COLOR_HOVER)
+    expect(surfaceFillStyle('editing', false, true).color).toBe(COLOR_HOVER)
+  })
+
+  it('hover is suppressed while another sketch is being edited', () => {
+    expect(surfaceFillStyle('inactive', false, true).color).toBe(COLOR_INACTIVE)
+  })
+
+  it('plain areas are white in view mode, dimmed when inactive', () => {
+    expect(surfaceFillStyle('view', false, false).color).toBe('white')
+    expect(surfaceFillStyle('inactive', false, false).color).toBe(COLOR_INACTIVE)
+  })
+})
 
 // Surface selection stores the raw ancestral query verbatim (no wrapping):
 // the collision-id buffer is the single selection source.
