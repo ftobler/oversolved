@@ -145,6 +145,28 @@ def create_app(config: dict | None = None) -> Flask:
     sock = Sock(app)
     register_solver_ws(sock)
 
+    # ── JSON error handlers ────────────────────────────────────────────────────
+
+    def _json_error(status: int, message: str) -> tuple:
+        from flask import jsonify
+        return jsonify({"error": message}), status
+
+    @app.errorhandler(400)
+    def _bad_request(e):
+        return _json_error(400, "bad request")
+
+    @app.errorhandler(404)
+    def _not_found(e):
+        return _json_error(404, "not found")
+
+    @app.errorhandler(405)
+    def _method_not_allowed(e):
+        return _json_error(405, "method not allowed")
+
+    @app.errorhandler(500)
+    def _server_error(e):
+        return _json_error(500, "internal server error")
+
     @app.after_request
     def add_security_headers(response):
         if response.status_code == 101:
