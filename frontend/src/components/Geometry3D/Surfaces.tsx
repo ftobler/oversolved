@@ -4,7 +4,7 @@ import type { ThreeEvent } from '@react-three/fiber'
 import type { Topology, TopologySurface, TopologyEdge, TopologyArcEdge, TopologyEdgeQuery, Point } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { ARC_SEGMENTS, COLOR_SELECTED, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
-import { surfaceSelectionId, edgeSelectionId } from '@/components/Geometry3D/utils'
+import { edgeSelectionId } from '@/components/Geometry3D/utils'
 
 type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string }
 
@@ -44,32 +44,31 @@ export type TopologyMode = 'view' | 'editing' | 'inactive'
 
 interface SurfaceMeshProps {
   shape: THREE.Shape
-  featureId: string
   query: string
   mode: TopologyMode
 }
 
-export function SurfaceMesh({ shape, featureId, query, mode }: SurfaceMeshProps) {
-  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
-  const activePickField = useSketchEditorStore(s => s.activePickField)
+export function SurfaceMesh({ shape, query, mode }: SurfaceMeshProps) {
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
 
-  const id = surfaceSelectionId(featureId, query)
-  const isSelected = normalSelection.has(id)
+  // The selection id is the raw ancestral query, identical to what the
+  // collision-id buffer stores (no wrapping). See handleClick.
+  const isSelected = normalSelection.has(query)
 
   let color: string = 'white'
   let opacity = 0.10
   if (mode === 'inactive') { color = COLOR_INACTIVE; opacity = 0.10 }
   if (isSelected) { color = COLOR_SELECTED; opacity = 0.30 }
 
-  // Single click outcome: toggle normal selection. A pick chip, if active,
-  // consumes the result downstream (Layer 2). stopPropagation prevents the
-  // background DrawPlane from clearing the selection. In view mode without a
-  // pick field active, areas are still selectable; during editing they are
-  // decoration unless a pick field is consuming.
+  // Decoration only -- never a selection path. The collision-id render pass is
+  // the single selection source: a surface click routes through
+  // useIdBufferPointerDispatch, which stores the raw query verbatim. A second
+  // toggle here produced a duplicate, wrapped (`face:<fid>:<query>`) entry and
+  // raced the pick-chip consume, breaking profile picking. stopPropagation
+  // still guards against a mounted DrawPlane clearing the pick; onPointerMissed
+  // already ignores clicks the id-buffer consumed.
   const handleClick = mode === 'inactive' ? undefined : (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation()
-    if (mode === 'view' || activePickField) toggleNormalSelection(id)
   }
 
   return (
@@ -178,12 +177,11 @@ export function TopologyEdges({ topology, featureId, isEditing, activeFeatureId 
 
 interface TopologySurfacesProps {
   topology: Topology
-  featureId: string
   isEditing: boolean
   activeFeatureId?: string
 }
 
-export function TopologySurfaces({ topology, featureId, isEditing, activeFeatureId }: TopologySurfacesProps) {
+export function TopologySurfaces({ topology, isEditing, activeFeatureId }: TopologySurfacesProps) {
   const surfaces = useMemo(() => buildSurfaceShapes(topology), [topology])
   const mode: TopologyMode = activeFeatureId !== undefined ? (isEditing ? 'editing' : 'inactive') : 'view'
   return (
@@ -192,7 +190,6 @@ export function TopologySurfaces({ topology, featureId, isEditing, activeFeature
         <SurfaceMesh
           key={si}
           shape={s.shape}
-          featureId={featureId}
           query={s.query}
           mode={mode}
         />

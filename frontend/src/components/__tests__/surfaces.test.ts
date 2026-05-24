@@ -1,31 +1,25 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { surfaceSelectionId, planeLabel } from '@/components/Geometry3D/utils'
+import { planeLabel } from '@/components/Geometry3D/utils'
 import { buildSurfaceShapes } from '@/components/Geometry3D/Surfaces'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Topology } from '@/types/cad'
 
-// 3a: surfaceSelectionId helper
-describe('surfaceSelectionId', () => {
-  it('formats correctly', () => {
-    expect(surfaceSelectionId('sketch1', '?3;@sketch1abc')).toBe('face:sketch1:?3;@sketch1abc')
-  })
-})
-
-// 3b: store toggleSelect accepts face:-prefixed IDs
-describe('store toggleNormalSelection with face:-prefixed IDs', () => {
+// Surface selection stores the raw ancestral query verbatim (no wrapping):
+// the collision-id buffer is the single selection source.
+describe('store toggleNormalSelection with raw surface queries', () => {
   beforeEach(() => {
     useSketchEditorStore.getState().clearNormalSelection()
   })
 
-  it('adds face:-prefixed ID to selection', () => {
-    useSketchEditorStore.getState().toggleNormalSelection('face:sketch1:?3;@sketch1abc')
-    expect(useSketchEditorStore.getState().normalSelection.has('face:sketch1:?3;@sketch1abc')).toBe(true)
+  it('adds the raw query to selection', () => {
+    useSketchEditorStore.getState().toggleNormalSelection('?3;@sketch1abc')
+    expect(useSketchEditorStore.getState().normalSelection.has('?3;@sketch1abc')).toBe(true)
   })
 
-  it('removes face:-prefixed ID from selection on second call', () => {
-    useSketchEditorStore.getState().toggleNormalSelection('face:sketch1:?3;@sketch1abc')
-    useSketchEditorStore.getState().toggleNormalSelection('face:sketch1:?3;@sketch1abc')
-    expect(useSketchEditorStore.getState().normalSelection.has('face:sketch1:?3;@sketch1abc')).toBe(false)
+  it('removes the raw query from selection on second call', () => {
+    useSketchEditorStore.getState().toggleNormalSelection('?3;@sketch1abc')
+    useSketchEditorStore.getState().toggleNormalSelection('?3;@sketch1abc')
+    expect(useSketchEditorStore.getState().normalSelection.has('?3;@sketch1abc')).toBe(false)
   })
 })
 

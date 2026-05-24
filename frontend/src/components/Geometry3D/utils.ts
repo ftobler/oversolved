@@ -22,11 +22,6 @@ export function planeLabel(query: string | undefined): string {
   return 'Derived face'
 }
 
-// Returns the selection ID for a topology surface face.
-export function surfaceSelectionId(featureId: string, query: string): string {
-  return `face:${featureId}:${query}`
-}
-
 // Returns the selection ID for a topology edge.
 export function edgeSelectionId(featureId: string, query: string): string {
   return `edge:${featureId}:${query}`

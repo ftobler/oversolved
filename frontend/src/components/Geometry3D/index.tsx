@@ -153,7 +153,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // Draw-time snap reads hoveredVertexPosition from the store (VertexDots does the raycast hover).
   return (
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
-      {topology && <TopologySurfaces topology={topology} featureId={featureId} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
+      {topology && <TopologySurfaces topology={topology} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
       {topology && <TopologyEdges topology={topology} featureId={featureId} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} />
