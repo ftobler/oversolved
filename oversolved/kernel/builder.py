@@ -12,7 +12,10 @@ if TYPE_CHECKING:
 from oversolved.kernel.cadquery_ops import _normal_to_frame, _ensure_occ
 from oversolved.kernel.ocp_ops import ocp_copy_shape
 from oversolved.kernel.geom_hash import face_geometry_hash, edge_geometry_hash, vertex_geometry_hash
-from oversolved.kernel.query import Repository, emit_wire, absolute, _evict_ancestry_and_register, ref
+from oversolved.kernel.query import (
+    Repository, emit_wire, absolute, _evict_ancestry_and_register, ref,
+    _current_feature_id,
+)
 from oversolved.kernel.geometry_tessellation import MeshDict
 from oversolved.kernel.types3d import Body, FeatureCheckpoint, BuildState
 from oversolved.kernel.solver import _init_global_repo, _try_solve_feature
@@ -747,6 +750,11 @@ def build(
 
     registered_body_ids: set[str] = set(body_store.keys())
 
+    # Record the full feature order so the ancestry resolver can reject queries
+    # that would resolve forward (against features ordered after the querier),
+    # which can happen after a reorder leaves a feature solved late.
+    global_repo.set_feature_order([f.get("id", "") for f in all_features])
+
     def _register_body_faces(body: Body) -> None:
         """Register face/vertex ancestry for a body."""
         if body.shape is None:
@@ -797,8 +805,12 @@ def build(
         # Snapshot modified_by lengths so we can detect which bodies this feature changes.
         modified_by_len_before = {bid: len(body.modified_by) for bid, body in body_store.items()}
 
-        feature_result = _try_solve_feature(feature, global_repo, body_store, features_by_id)
-        _post_register(global_repo, fid, feature, feature_result)
+        token = _current_feature_id.set(fid)
+        try:
+            feature_result = _try_solve_feature(feature, global_repo, body_store, features_by_id)
+            _post_register(global_repo, fid, feature, feature_result)
+        finally:
+            _current_feature_id.reset(token)
         result[fid] = feature_result
 
         # Register new bodies and re-register bodies modified by this feature.

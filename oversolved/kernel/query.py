@@ -1,9 +1,16 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, TypeAlias, TYPE_CHECKING
+from typing import Any, Callable, TypeAlias, TYPE_CHECKING
+import contextvars
 import re
 import secrets
 from oversolved.kernel.solver_constants import _BUILTIN_PLANES
+
+# Feature currently being solved, set by the build loop. Read by the ancestry
+# resolver to reject candidates owned by features ordered after this one.
+_current_feature_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "current_feature_id", default=None
+)
 
 if TYPE_CHECKING:
     from oversolved.kernel.query_heuristics import HeuristicConfig, Outcome
@@ -28,6 +35,7 @@ __all__ = [
     "_init_global_repo",
     "_evict_ancestry_and_register",
     "_is_geom_hash_id",
+    "_current_feature_id",
 ]
 
 QueryType: TypeAlias = "LocalQuery | AbsoluteQuery | AncestryQuery"
@@ -473,6 +481,21 @@ def _is_geom_hash_id(id_str: str) -> bool:
     )
 
 
+def _feature_idx_of_element(repo: "Repository", eid: str) -> int | None:
+    """Return the build-order index of the element's owning feature.
+
+    Returns None for built-in geometry (origin, planes, reference geometry)
+    that carries no owning feature -- such elements are never ordering-gated.
+    """
+    el = repo.elements.get(eid)
+    if not isinstance(el, dict):
+        return None
+    owner = el.get("created_by") or el.get("sketch_id")
+    if not owner:
+        return None
+    return repo._feature_index.get(owner)
+
+
 class Repository:
     def __init__(self) -> None:
         self.elements: dict[str, Any] = {}
@@ -482,6 +505,13 @@ class Repository:
         # secondary hash index: geom_hash string (without "@") -> list of element ids
         # consulted only when ancestral resolution is ambiguous or empty
         self.by_geom_hash: dict[str, list[str]] = {}
+        # feature_id -> position in the current build order; empty means the
+        # ordering guard is inactive (e.g. a standalone solve()).
+        self._feature_index: dict[str, int] = {}
+
+    def set_feature_order(self, feature_order: list[str]) -> None:
+        """Record the current feature build order for the ordering guard."""
+        self._feature_index = {fid: i for i, fid in enumerate(feature_order)}
 
     def register(self, element_id: str, obj: Any):
         self.elements[element_id] = obj
@@ -529,9 +559,10 @@ class Repository:
         query_str: "str | QueryType",
         context: str | None = None,
         body_store: dict[str, Any] | None = None,
+        current_feature_id: str | None = None,
     ) -> Any:
         if isinstance(query_str, _QUERY_TYPES):
-            return self._query_typed(query_str, context, body_store)
+            return self._query_typed(query_str, context, body_store, current_feature_id)
         if not query_str:
             return None
         start = query_str[0]
@@ -547,7 +578,8 @@ class Repository:
         if start == '?':
             q = _parse_ancestry_obj(query_str)
             return self._resolve_ancestry_ids(
-                list(q.ancestor_ids), q.type_restriction, q.classifier, body_store
+                list(q.ancestor_ids), q.type_restriction, q.classifier,
+                body_store, current_feature_id,
             )
 
         return None
@@ -557,6 +589,7 @@ class Repository:
         q: QueryType,
         context: str | None,
         body_store: dict[str, Any] | None = None,
+        current_feature_id: str | None = None,
     ) -> Any:
         match q:
             case LocalQuery(eid, sub):
@@ -571,9 +604,36 @@ class Repository:
                 return self.elements.get(key)
             case AncestryQuery(ancestor_ids, type_restriction, classifier):
                 return self._resolve_ancestry_ids(
-                    list(ancestor_ids), type_restriction, classifier, body_store
+                    list(ancestor_ids), type_restriction, classifier,
+                    body_store, current_feature_id,
                 )
         return None  # type: ignore[return-value]
+
+    def _order_filter(self, current_feature_id: str | None) -> "Callable[[list[str]], list[str]]":
+        """Build a candidate filter that rejects elements owned by features
+        ordered after current_feature_id.
+
+        The querying feature defaults to the contextvar set by the build loop.
+        When no order is known (no index, or the feature is absent from it) the
+        filter is the identity, preserving standalone-solve behavior.
+        """
+        if current_feature_id is None:
+            current_feature_id = _current_feature_id.get()
+        current_idx: int | None = None
+        if current_feature_id is not None and self._feature_index:
+            current_idx = self._feature_index.get(current_feature_id)
+        if current_idx is None:
+            return lambda eids: eids
+
+        def _filter(eids: list[str]) -> list[str]:
+            kept = []
+            for eid in eids:
+                owner_idx = _feature_idx_of_element(self, eid)
+                if owner_idx is None or owner_idx <= current_idx:
+                    kept.append(eid)
+            return kept
+
+        return _filter
 
     def _resolve_ancestry_ids(
         self,
@@ -581,7 +641,10 @@ class Repository:
         type_restriction: str | None,
         classifier: str | None,
         body_store: dict[str, Any] | None = None,
+        current_feature_id: str | None = None,
     ) -> Any:
+        order_filter = self._order_filter(current_feature_id)
+
         # Separate geom_hash IDs from structural ancestor IDs.
         # Ancestral index is keyed only by structural IDs; hash is a secondary fallback.
         hash_ids = [i for i in ids if _is_geom_hash_id(i)]
@@ -594,6 +657,7 @@ class Repository:
             for registered_key, element_ids in self.ancestral.items():
                 if query_set <= registered_key:
                     candidate_ids.extend(element_ids)
+        candidate_ids = order_filter(candidate_ids)
 
         # Apply type restriction filter.
         if type_restriction is not None and candidate_ids:
@@ -637,7 +701,7 @@ class Repository:
             for key, element_ids in self.ancestral.items():
                 if key <= query_set:
                     partial_candidates.extend(element_ids)
-            partial_candidates = list(dict.fromkeys(partial_candidates))
+            partial_candidates = order_filter(list(dict.fromkeys(partial_candidates)))
             if type_restriction is not None:
                 partial_candidates = [
                     eid for eid in partial_candidates
@@ -660,7 +724,7 @@ class Repository:
                 fallback_ids = [eid for eid in fallback_ids if _obj_type(self.elements.get(eid)) == type_restriction]
             if classifier is not None:
                 fallback_ids = [eid for eid in fallback_ids if self.elements.get(eid, {}).get("classifier") == classifier]
-            candidate_ids = fallback_ids
+            candidate_ids = order_filter(fallback_ids)
 
         if not candidate_ids:
             return None
@@ -670,7 +734,7 @@ class Repository:
             )
         return self.elements.get(candidate_ids[0])
 
-    def query_all(self, query_str: str) -> list[Any]:
+    def query_all(self, query_str: str, current_feature_id: str | None = None) -> list[Any]:
         """Return all elements whose ancestor set is a superset of the query's IDs.
 
         The inverse of query(): where query() finds a single element given its full
@@ -680,12 +744,14 @@ class Repository:
         """
         if not query_str or query_str[0] != '?':
             return []
+        order_filter = self._order_filter(current_feature_id)
         ids, type_restriction = _parse_ancestry(query_str)
         query_set = frozenset(ids)
         candidate_ids: list[str] = []
         for registered_key, element_ids in self.ancestral.items():
             if query_set <= registered_key:  # query IDs are contained in registered ancestry
                 candidate_ids.extend(element_ids)
+        candidate_ids = order_filter(candidate_ids)
         if type_restriction is not None:
             candidate_ids = [
                 eid for eid in candidate_ids
@@ -696,13 +762,16 @@ class Repository:
     def query_all_typed(
         self,
         q: "AncestryQuery",
+        current_feature_id: str | None = None,
     ) -> list[Any]:
         """Typed variant of query_all accepting an AncestryQuery object."""
+        order_filter = self._order_filter(current_feature_id)
         query_set = frozenset(q.ancestor_ids)
         candidate_ids: list[str] = []
         for registered_key, element_ids in self.ancestral.items():
             if query_set <= registered_key:
                 candidate_ids.extend(element_ids)
+        candidate_ids = order_filter(candidate_ids)
         if q.type_restriction is not None:
             candidate_ids = [
                 eid for eid in candidate_ids
