@@ -13,6 +13,8 @@ Public API (identical to the old subprocess-based version):
 import json
 import logging
 import struct
+
+from oversolved.kernel.errors import error_result
 import threading
 from typing import Any
 
@@ -115,7 +117,7 @@ class BuildIsolator:
             status = response.get("status", "ok")
             if status == "error":
                 payload = response.get("payload", {})
-                entry["result"] = _error_result(
+                entry["result"] = error_result(
                     payload.get("exception", "solver error")
                 )
                 entry["json_done"] = True
@@ -171,7 +173,7 @@ class BuildIsolator:
             entries = list(self._pending.values())
             self._pending.clear()
             for entry in entries:
-                entry["result"] = _error_result(reason)
+                entry["result"] = error_result(reason)
         for entry in entries:
             entry["event"].set()
 
@@ -224,7 +226,7 @@ class BuildIsolator:
             self._try_reconnect()
             with self._lock:
                 if self._ws is None:
-                    return _error_result("solver daemon not connected")
+                    return error_result("solver daemon not connected")
                 self._pending[request_id] = entry
 
         with self._lock:
@@ -232,19 +234,19 @@ class BuildIsolator:
         if ws is None:
             with self._lock:
                 self._pending.pop(request_id, None)
-            return _error_result("solver daemon not connected")
+            return error_result("solver daemon not connected")
 
         try:
             ws.send(json.dumps(msg))
         except Exception:
             with self._lock:
                 self._pending.pop(request_id, None)
-            return _error_result("solver daemon send failed")
+            return error_result("solver daemon send failed")
 
         if not event.wait(timeout=self._timeout):
             with self._lock:
                 self._pending.pop(request_id, None)
-            return _error_result("solver request timed out")
+            return error_result("solver request timed out")
 
         with self._lock:
             try:
@@ -252,7 +254,7 @@ class BuildIsolator:
             except KeyError:
                 pending_entry = None
         if pending_entry is None or pending_entry["result"] is None:
-            return _error_result("solver request failed")
+            return error_result("solver request failed")
         return pending_entry["result"]
 
     def build(
@@ -284,11 +286,3 @@ class BuildIsolator:
                 except Exception:
                     pass
                 self._ws = None
-
-
-def _error_result(message: str) -> dict:
-    return {
-        "solve_ms": 0,
-        "result": {"_error": message},
-        "bodies": {},
-    }

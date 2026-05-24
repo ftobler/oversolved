@@ -4,12 +4,13 @@ import asyncio
 import time
 from unittest.mock import MagicMock, patch
 
-from oversolved.solver_daemon import WorkerPool, _error_result
+from oversolved.solver_daemon import WorkerPool
+from oversolved.kernel.errors import error_result
 
 
 class TestErrorResult:
     def test_returns_expected_dict(self):
-        result = _error_result("something went wrong")
+        result = error_result("something went wrong")
         assert result == {
             "solve_ms": 0,
             "result": {"_error": "something went wrong"},
@@ -17,7 +18,7 @@ class TestErrorResult:
         }
 
     def test_includes_custom_message(self):
-        result = _error_result("connection timeout")
+        result = error_result("connection timeout")
         assert result["result"]["_error"] == "connection timeout"
 
 

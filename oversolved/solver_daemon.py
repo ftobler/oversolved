@@ -13,6 +13,8 @@ import os
 import time
 import traceback
 import uuid
+
+from oversolved.kernel.errors import error_result
 from queue import Empty as _QueueEmpty
 from typing import Any
 
@@ -183,7 +185,7 @@ class _Worker:
             )
         except (BrokenPipeError, EOFError, OSError):
             self._restart()
-            return _error_result("build worker unavailable (restarted)")
+            return error_result("build worker unavailable (restarted)")
 
         try:
             rid, status, payload = self._output_queue.get(timeout=self._timeout)
@@ -191,29 +193,29 @@ class _Worker:
             logger.error("Build worker timed out after %.1fs", self._timeout)
             self._kill()
             self._start()
-            return _error_result("build timed out")
+            return error_result("build timed out")
         except (BrokenPipeError, EOFError, ConnectionResetError, OSError):
             logger.error("Build worker crashed (broken pipe)")
             self._restart()
-            return _error_result("build process crashed")
+            return error_result("build process crashed")
         except Exception as exc:
             logger.exception("Unexpected error reading from worker")
             self._restart()
-            return _error_result(f"build communication error: {exc}")
+            return error_result(f"build communication error: {exc}")
 
         if rid != request_id:
             logger.error(
                 "Build worker response id mismatch: expected %s, got %s",
                 request_id, rid,
             )
-            return _error_result("build response id mismatch")
+            return error_result("build response id mismatch")
 
         if status == "error":
             exc_msg = payload.get("exception", "unknown error") if isinstance(payload, dict) else str(payload)
             result_so_far = payload.get("result_so_far", {}) if isinstance(payload, dict) else {}
             if result_so_far:
                 return result_so_far
-            return _error_result(str(exc_msg))
+            return error_result(str(exc_msg))
 
         return payload
 
@@ -237,14 +239,6 @@ class _Worker:
                 pass
             self._worker.join(timeout=3)
         self._kill()
-
-
-def _error_result(message: str) -> dict:
-    return {
-        "solve_ms": 0,
-        "result": {"_error": message},
-        "bodies": {},
-    }
 
 
 class WorkerPool:

@@ -49,9 +49,9 @@ describe('useUndoRedo integration', () => {
 
     // Build undo stack: A, B, C (current is D)
     act(() => {
-      result.current.pushUndo({ type: 'm1' } as Mutation, docs[0] as PartDoc)
-      result.current.pushUndo({ type: 'm2' } as Mutation, docs[1] as PartDoc)
-      result.current.pushUndo({ type: 'm3' } as Mutation, docs[2] as PartDoc)
+      result.current.pushUndo({ type: 'delete_feature', featureId: 'm1' } as Mutation, docs[0] as PartDoc)
+      result.current.pushUndo({ type: 'delete_feature', featureId: 'm2' } as Mutation, docs[1] as PartDoc)
+      result.current.pushUndo({ type: 'delete_feature', featureId: 'm3' } as Mutation, docs[2] as PartDoc)
     })
 
     // Undo three times: D→C→B→A
