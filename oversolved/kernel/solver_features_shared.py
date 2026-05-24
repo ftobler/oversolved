@@ -653,6 +653,7 @@ def _apply_body_operation(
     if operation == "cut":
         cut_anything = False
         cut_body_id = None
+        cut_body_ids: list[str] = []
         for bid in target_ids:
             existing_body = body_store[bid]
             if existing_body.shape is None:
@@ -673,14 +674,32 @@ def _apply_body_operation(
                 face_lineage, edge_lineage,
             )
             cut_anything = True
+            cut_body_ids.append(bid)
             if cut_body_id is None:
                 cut_body_id = bid
+            # If cut splits the body into disconnected solids, create extra bodies.
+            solids = _split_compound(_ensure_occ(new_shape))
+            if len(solids) > 1:
+                existing_body.shape = _ensure_occ(solids[0])
+                for i, solid in enumerate(solids[1:], start=1):
+                    suffix = i
+                    while f"{bid}_{suffix}" in body_store:
+                        suffix += 1
+                    new_bid = f"{bid}_{suffix}"
+                    body_store[new_bid] = Body(
+                        id=new_bid,
+                        created_by=existing_body.created_by,
+                        shape=_ensure_occ(solid),
+                        sketch_id=existing_body.sketch_id,
+                    )
+                    cut_body_ids.append(new_bid)
         if not cut_anything:
             raise ValueError(
                 f"{op_name}: cut does not intersect any target body "
                 "- nothing to remove"
             )
         result["body_id"] = cut_body_id
+        result["body_ids"] = cut_body_ids
         result["operation"] = "cut"
         cut_body = body_store.get(cut_body_id)
         if cut_body is not None and _brep_diff_is_empty(cut_body.brep_diff):

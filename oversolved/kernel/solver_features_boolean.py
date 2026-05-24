@@ -6,7 +6,8 @@ from oversolved.kernel.query import Repository
 from oversolved.kernel.cadquery_ops import (
     _ensure_occ, boolean_cut_with_diff, boolean_union_with_diff, boolean_intersection_with_diff,
 )
-from oversolved.kernel.solver_features_shared import _resolve_body
+from oversolved.kernel.solver_features_shared import _resolve_body, _split_compound
+from oversolved.kernel.types3d import Body
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,26 @@ def _solve_boolean(
     # Single-op history: only the last tool's diff is retained (see plan Stage 3).
     target_body.brep_diff = last_diff
 
+    body_ids: list[str] = [target_body.id]
+    # If subtract split the body into disconnected solids, create extra bodies.
+    if operation == "subtract":
+        solids = _split_compound(_ensure_occ(result_shape))
+        if len(solids) > 1:
+            target_body.shape = _ensure_occ(solids[0])
+            for i, solid in enumerate(solids[1:], start=1):
+                suffix = i
+                while f"{target_body.id}_{suffix}" in body_store:
+                    suffix += 1
+                new_bid = f"{target_body.id}_{suffix}"
+                body_store[new_bid] = Body(
+                    id=new_bid,
+                    created_by=target_body.created_by,
+                    shape=_ensure_occ(solid),
+                    sketch_id=target_body.sketch_id,
+                )
+                body_ids.append(new_bid)
+
     for key in consumed_keys:
         body_store.pop(key, None)
 
-    return {"status": "ok", "body_id": target_body.id, "operation": operation}
+    return {"status": "ok", "body_id": target_body.id, "body_ids": body_ids, "operation": operation}

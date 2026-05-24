@@ -216,3 +216,58 @@ def test_new_operation_never_emits_solver_warning():
     body_store: dict = {}
     result = _call_helper(tool, body_store, operation="new")
     assert "solver_warning" not in result
+
+
+# ─── Cut split tests ───
+
+
+def test_cut_splits_body_into_two():
+    """When a cut bisects a body into disconnected solids, two bodies must result."""
+    import cadquery as cq
+    # Long box 20x10x10; a 6-wide cutter removes the center slice x∈[-3,3].
+    long_box = cq.Workplane("XY").box(20, 10, 10).val()
+    cutter = cq.Workplane("XY").box(6, 12, 12).val()
+    body_store = _make_body_store(long_box, body_id="body_b0", feature_id="b0")
+    result = _call_helper(cutter, body_store, operation="cut",
+                          body_id="body_feat1", feature_id="feat1")
+    assert result["status"] == "ok"
+    assert result["operation"] == "cut"
+    assert len(body_store) >= 2, (
+        f"expected >=2 bodies after cut-split, got {len(body_store)}: "
+        f"{list(body_store.keys())}"
+    )
+    assert "body_b0" in body_store
+    # Both bodies must be attributed to the original creator, not the cutting feature.
+    for bid, body in body_store.items():
+        assert body.created_by == "b0", (
+            f"body {bid!r} has wrong created_by: {body.created_by!r}"
+        )
+
+
+def test_cut_single_solid_does_not_split():
+    """A cut that does not disconnect the body must not create extra bodies."""
+    import cadquery as cq
+    # Box 5x5x5; a smaller 2x2x6 cutter removes a chunk but leaves one connected solid.
+    existing = cq.Workplane("XY").box(5, 5, 5).val()
+    cutter = cq.Workplane("XY").box(2, 2, 6).val()
+    body_store = _make_body_store(existing, body_id="body_b0", feature_id="b0")
+    result = _call_helper(cutter, body_store, operation="cut",
+                          body_id="body_feat1", feature_id="feat1")
+    assert result["status"] == "ok"
+    assert len(body_store) == 1, (
+        f"expected 1 body (no split), got {len(body_store)}: {list(body_store.keys())}"
+    )
+    assert "body_b0" in body_store
+    assert body_store["body_b0"].created_by == "b0"
+
+
+def test_cut_split_body_ids_in_result():
+    """Result dict must include body_ids list after a cut-split."""
+    import cadquery as cq
+    long_box = cq.Workplane("XY").box(20, 10, 10).val()
+    cutter = cq.Workplane("XY").box(6, 12, 12).val()
+    body_store = _make_body_store(long_box, body_id="body_b0", feature_id="b0")
+    result = _call_helper(cutter, body_store, operation="cut",
+                          body_id="body_feat1", feature_id="feat1")
+    assert "body_ids" in result
+    assert len(result["body_ids"]) == len(body_store)

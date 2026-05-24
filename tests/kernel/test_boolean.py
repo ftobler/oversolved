@@ -183,6 +183,34 @@ class TestSolveBooleanDirect:
         with pytest.raises(ValueError, match="body not found"):
             _solve_boolean(feature, None, {})
 
+    def test_boolean_subtract_splits_body(self):
+        """Subtract that bisects a body into disconnected solids creates two bodies."""
+        import cadquery as cq
+        long_box = cq.Workplane("XY").box(20, 10, 10).val()
+        cutter = cq.Workplane("XY").box(6, 12, 12).val()
+        target = Body(id="body_target", created_by="featA", shape=long_box)
+        tool = Body(id="body_tool", created_by="featB", shape=cutter)
+        store = {"body_target": target, "body_tool": tool}
+        feature = {
+            "id": "bool1",
+            "boolean": {"operation": "subtract", "target": "@body_target", "tools": ["@body_tool"]},
+        }
+        result = _solve_boolean(feature, None, store)
+        assert result["status"] == "ok"
+        assert "body_ids" in result
+        assert len(result["body_ids"]) == 2, (
+            f"expected 2 body_ids after subtract-split, got {result['body_ids']}"
+        )
+        assert "body_tool" not in store  # consumed
+        assert len(store) == 2, (
+            f"expected 2 bodies in store after split, got {len(store)}"
+        )
+        # Both surviving bodies must be attributed to the original creator.
+        for bid, body in store.items():
+            assert body.created_by == "featA", (
+                f"body {bid!r} has wrong created_by: {body.created_by!r}"
+            )
+
     def test_boolean_modifies_target_modified_by(self):
         """Target body should record the boolean feature id in modified_by."""
         target = _box_body("body_target", 0, 0, 0, 4, 4, 4)
