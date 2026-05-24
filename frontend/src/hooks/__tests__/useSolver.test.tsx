@@ -145,6 +145,30 @@ describe('reconcilePartStyle', () => {
     reconcilePartStyle(doc, {})
     expect(doc.part_style).toBeUndefined()
   })
+
+  it('does not mutate the original doc when called on a clone (in-place mutation guard)', () => {
+    const original = makeDoc()
+    const clone = structuredClone(original)
+    const bodies = { a: makeBody('a', { created_by: 'feat1' }) }
+    reconcilePartStyle(clone, bodies)
+    // Clone gets the style
+    expect(clone.part_style?.a?.name).toBe('part 1')
+    // Original must remain untouched
+    expect(original.part_style).toBeUndefined()
+  })
+
+  it('clone-then-reconcile pattern preserves existing styles', () => {
+    const original = makeDoc({ part_style: { x: { name: 'custom', color: '#FF0000' } } })
+    const clone = structuredClone(original)
+    const bodies = { x: makeBody('x'), y: makeBody('y') }
+    reconcilePartStyle(clone, bodies)
+    // Clone has updated style
+    expect(clone.part_style?.x?.name).toBe('custom')
+    expect(clone.part_style?.y?.name).toBe('part 1')
+    // Original untouched
+    expect(original.part_style?.x?.name).toBe('custom')
+    expect(original.part_style?.y).toBeUndefined()
+  })
 })
 
 describe('useSolver', () => {

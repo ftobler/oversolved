@@ -201,17 +201,21 @@ export function useSolver(
       }
       const unpacked = unpackBodies(header, buffer, jsonHeaderLen)
       const d = docRef.current
-      if (d) reconcilePartStyle(d, unpacked)
+      if (d) {
+        const withStyle = structuredClone(d)
+        reconcilePartStyle(withStyle, unpacked)
+        docRef.current = withStyle
+        if (uuid) {
+          const rollback = lastSentRollbackRef.current ?? (withStyle.features?.length ?? 0)
+          const pickBoundary = lastSentPickBoundaryRef.current
+          cacheGeometry(withStyle, rollback, pickBoundary, { header, buffer, jsonHeaderLen })
+        }
+      }
       setBodies(unpacked)
       if (header.pick_bodies && Object.keys(header.pick_bodies).length > 0) {
         setPickBodies(unpackPickBodies(header, buffer, jsonHeaderLen))
       } else {
         setPickBodies({})
-      }
-      if (uuid && d) {
-        const rollback = lastSentRollbackRef.current ?? (d.features?.length ?? 0)
-        const pickBoundary = lastSentPickBoundaryRef.current
-        cacheGeometry(d, rollback, pickBoundary, { header, buffer, jsonHeaderLen })
       }
     } catch (e) {
       console.error('[usePartDoc] Error applying geometry update:', e)
@@ -225,7 +229,13 @@ export function useSolver(
   const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
     applySolveResult(d, data, solveTimeMs)
     if (data.bodies) {
-      reconcilePartStyle(d, data.bodies)
+      const current = docRef.current
+      if (current) {
+        const withStyle = structuredClone(current)
+        reconcilePartStyle(withStyle, data.bodies)
+        docRef.current = withStyle
+        setDoc(withStyle)
+      }
       setBodies(data.bodies)
     }
     if (data.pick_bodies !== undefined) {
