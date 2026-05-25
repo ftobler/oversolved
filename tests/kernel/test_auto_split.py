@@ -5,9 +5,9 @@ User invariant (solver_arch.user.md §Parts / "Automatic splitting"):
    each solid becomes its own body in body_store, all attributed to
    the originating feature."
 
-Defends the `_split_compound` path in `_apply_body_operation`.
-If this test fails, suspect a regression in `_split_compound`,
-`ocp_explore_solids`, or the body-creation loop inside `_apply_body_operation`.
+Defends the `ocp_explore_solids` path in `_apply_body_operation`.
+If this test fails, suspect a regression in `ocp_explore_solids`
+or the body-creation loop inside `_apply_body_operation`.
 """
 import pytest
 

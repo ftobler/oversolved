@@ -739,7 +739,7 @@ def _refine_drag(
 
 
 def _solve_sketch(feature: dict, global_repo: Repository | None = None) -> dict:
-    # Expand compound entity kinds before processing.
+    # Expand composite sketch entities before processing.
     if any(e.get("kind") == "center_rect" for e in feature.get("entities", [])):
         feature = _expand_center_rect(feature)
 

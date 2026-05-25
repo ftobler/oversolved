@@ -255,7 +255,7 @@ def boolean_intersection_with_diff(target: Any, tool: Any) -> tuple[cq_shapes.Sh
 
 
 def fuse_shapes(shapes: list[Any]) -> cq_shapes.Shape:
-    """Fuse multiple shapes into one."""
+    """Fuse multiple shapes into one solid. Raises ValueError if shapes are disjoint."""
     if not shapes:
         raise ValueError("no shapes to fuse")
     if len(shapes) == 1:
@@ -263,15 +263,10 @@ def fuse_shapes(shapes: list[Any]) -> cq_shapes.Shape:
     result: cq_shapes.Shape = _ensure_cq(shapes[0])
     for shape in shapes[1:]:
         result = boolean_union(result, shape)
-    if len(result.Solids()) == 0:
-        from OCP.BRep import BRep_Builder
-        from OCP.TopoDS import TopoDS_Compound
-        builder = BRep_Builder()
-        compound = TopoDS_Compound()
-        builder.MakeCompound(compound)
-        for shp in shapes:
-            builder.Add(compound, _ensure_occ(shp))
-        result = _ensure_cq(compound)
+    if len(result.Solids()) != 1:
+        raise ValueError(
+            "fuse_shapes: shapes are disjoint, cannot fuse into a single solid"
+        )
     return result
 
 

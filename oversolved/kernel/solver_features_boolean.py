@@ -6,7 +6,8 @@ from oversolved.kernel.query import Repository
 from oversolved.kernel.cadquery_ops import (
     _ensure_occ, boolean_cut_with_diff, boolean_union_with_diff, boolean_intersection_with_diff,
 )
-from oversolved.kernel.solver_features_shared import _resolve_body, _split_compound
+from oversolved.kernel.solver_features_shared import _resolve_body
+from oversolved.kernel.ocp_ops import ocp_explore_solids
 from oversolved.kernel.types3d import Body
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ def _solve_boolean(
     body_ids: list[str] = [target_body.id]
     # If subtract split the body into disconnected solids, create extra bodies.
     if operation == "subtract":
-        solids = _split_compound(_ensure_occ(result_shape))
+        solids = ocp_explore_solids(_ensure_occ(result_shape))
         if len(solids) > 1:
             target_body.shape = _ensure_occ(solids[0])
             for i, solid in enumerate(solids[1:], start=1):

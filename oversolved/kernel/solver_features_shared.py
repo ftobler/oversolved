@@ -45,7 +45,7 @@ __all__ = [
     "_resolve_face_index_via_hash",
     "_resolve_face_profile",
     "_resolve_merge_targets",
-    "_split_compound",
+
     "_tessellate_edge",
 ]
 
@@ -418,12 +418,6 @@ def _collect_extrude_loops(
     return _extract_profile_loops(surfaces), pt, sketch_id, None
 
 
-def _split_compound(shape: TopoDS_Shape) -> list[TopoDS_Shape]:
-    raw_solids = ocp_explore_solids(_ensure_occ(shape))
-    if len(raw_solids) > 1:
-        return raw_solids
-    return [_ensure_occ(shape)]
-
 # ── Feature solvers ──
 
 
@@ -703,7 +697,7 @@ def _apply_body_operation(
             if cut_body_id is None:
                 cut_body_id = bid
             # If cut splits the body into disconnected solids, create extra bodies.
-            solids = _split_compound(_ensure_occ(new_shape))
+            solids = ocp_explore_solids(_ensure_occ(new_shape))
             if len(solids) > 1:
                 existing_body.shape = _ensure_occ(solids[0])
                 for i, solid in enumerate(solids[1:], start=1):
@@ -730,7 +724,7 @@ def _apply_body_operation(
         if cut_body is not None and _brep_diff_is_empty(cut_body.brep_diff):
             result["solver_warning"] = f"{op_name}: operation produced no geometry change"
     elif operation == "new":
-        solids = _split_compound(tool_shape)
+        solids = ocp_explore_solids(_ensure_occ(tool_shape))
         body_ids = []
         for i, solid in enumerate(solids):
             bid = body_id if i == 0 else f"{body_id}_{i}"
@@ -783,7 +777,7 @@ def _apply_body_operation(
         elif not need_new_body:
             raise ValueError(f"{op_name}: add could not fuse with any target body")
         else:
-            solids = _split_compound(tool_shape)
+            solids = ocp_explore_solids(_ensure_occ(tool_shape))
             body_ids = []
             for i, solid in enumerate(solids):
                 bid = body_id if i == 0 else f"{body_id}_{i}"

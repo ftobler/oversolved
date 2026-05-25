@@ -80,7 +80,7 @@ def ocp_collect_edge_hashes(topo: TopoDS_Shape) -> set[int]:
 
 
 def ocp_explore_solids(topo: TopoDS_Shape) -> list[TopoDS_Shape]:
-    """Return all TopoDS_Solid objects in *topo* via TopExp_Explorer."""
+    """Return all TopoDS_Solid objects in *topo* (works for solids, compounds, and any shape)."""
     from OCP.TopAbs import TopAbs_SOLID  # noqa: PLC0415
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
     from OCP.TopoDS import TopoDS  # noqa: PLC0415
@@ -93,11 +93,9 @@ def ocp_explore_solids(topo: TopoDS_Shape) -> list[TopoDS_Shape]:
 
 
 def ocp_count_solids(topo: TopoDS_Shape) -> int:
-    """Count solid sub-shapes in *topo*."""
-    from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND  # noqa: PLC0415
+    """Count solid sub-shapes in *topo* regardless of whether it is a solid or compound."""
+    from OCP.TopAbs import TopAbs_SOLID  # noqa: PLC0415
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
-    if topo.ShapeType() != TopAbs_COMPOUND:
-        return 1
     explorer = TopExp_Explorer(topo, TopAbs_SOLID)
     count = 0
     while explorer.More():

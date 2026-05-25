@@ -56,6 +56,24 @@ def _unit_box_face():
     return TopoDS.Face_s(exp.Current())
 
 
+def _make_disjoint_compound():
+    """Return an OCC compound containing two non-touching 5x5x5 boxes."""
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    from OCP.gp import gp_Pnt
+    from OCP.BRep import BRep_Builder
+    from OCP.TopoDS import TopoDS_Compound
+
+    box_a = BRepPrimAPI_MakeBox(5.0, 5.0, 5.0).Solid()
+    box_b = BRepPrimAPI_MakeBox(gp_Pnt(20.0, 0.0, 0.0), 5.0, 5.0, 5.0).Solid()
+
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    builder.Add(compound, box_a)
+    builder.Add(compound, box_b)
+    return compound
+
+
 def test_ocp_mesh_shape_runs():
     """ocp_mesh_shape must not raise on a valid shape."""
     ocp_mesh_shape(_unit_box_topo(), 0.1, 0.1)
@@ -102,8 +120,21 @@ def test_ocp_explore_solids_returns_solid():
 
 
 def test_ocp_count_solids_box():
-    """A box compound (if any) counts as 1 solid."""
-    assert ocp_count_solids(_unit_box_topo()) >= 1
+    """A single box counts as 1 solid."""
+    assert ocp_count_solids(_unit_box_topo()) == 1
+
+
+def test_ocp_count_solids_compound():
+    """A compound with 2 boxes counts as 2 solids."""
+    compound = _make_disjoint_compound()
+    assert ocp_count_solids(compound) == 2
+
+
+def test_ocp_explore_solids_compound():
+    """ocp_explore_solids on a compound returns all constituent solids."""
+    compound = _make_disjoint_compound()
+    solids = ocp_explore_solids(compound)
+    assert len(solids) == 2
 
 
 def test_ocp_fillet_factory_returns_maker():

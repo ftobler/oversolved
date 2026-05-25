@@ -155,7 +155,7 @@ def test_boolean_intersection_produces_overlap_volume():
 
 
 def test_fuse_shapes_multiple():
-    """Fuse three unit cubes into one compound."""
+    """Fuse three touching unit cubes into a single solid."""
     from cadquery.occ_impl.shapes import Face, Solid
     cubes = [
         Solid.extrudeLinear(Face.makePlane(1, 1, (i, 0, 0)), CQVector(0, 0, 1))
@@ -163,6 +163,15 @@ def test_fuse_shapes_multiple():
     ]
     result = fuse_shapes(cubes)
     assert result.Volume() == pytest.approx(3.0, abs=1e-4)
+
+
+def test_fuse_shapes_disjoint_raises():
+    """Fusing non-touching shapes raises ValueError (no compound fallback)."""
+    from cadquery.occ_impl.shapes import Face, Solid
+    cube_a = Solid.extrudeLinear(Face.makePlane(1, 1, (0, 0, 0)), CQVector(0, 0, 1))
+    cube_b = Solid.extrudeLinear(Face.makePlane(1, 1, (10, 0, 0)), CQVector(0, 0, 1))
+    with pytest.raises(ValueError, match="cannot fuse into a single solid"):
+        fuse_shapes([cube_a, cube_b])
 
 
 def test_revolve_face_basic():

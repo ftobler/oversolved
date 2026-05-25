@@ -96,6 +96,67 @@ def test_bodies_empty_for_sketch_only_doc():
     assert len(r['bodies']) == 0
 
 
+def test_body_registered_as_solid_type():
+    """A body with a compound/disjoint shape is still registered as type 'solid' in the repo."""
+    two_loop_sketch = {
+        "id": "sk1",
+        "kind": "sketch",
+        "plane": "@builtin_plane_front",
+        "entities": [
+            {"id": "a_bot", "kind": "line"},
+            {"id": "a_rit", "kind": "line"},
+            {"id": "a_top", "kind": "line"},
+            {"id": "a_lft", "kind": "line"},
+            {"id": "b_bot", "kind": "line"},
+            {"id": "b_rit", "kind": "line"},
+            {"id": "b_top", "kind": "line"},
+            {"id": "b_lft", "kind": "line"},
+        ],
+        "initial": {
+            "a_bot": [0, 0, 5, 0],
+            "a_rit": [5, 0, 5, 5],
+            "a_top": [5, 5, 0, 5],
+            "a_lft": [0, 5, 0, 0],
+            "b_bot": [15, 0, 20, 0],
+            "b_rit": [20, 0, 20, 5],
+            "b_top": [20, 5, 15, 5],
+            "b_lft": [15, 5, 15, 0],
+        },
+        "constraints": [
+            {"id": "ca1", "kind": "coincident",
+             "a": {"entity": "a_bot", "point": "end"}, "b": {"entity": "a_rit", "point": "start"}},
+            {"id": "ca2", "kind": "coincident",
+             "a": {"entity": "a_rit", "point": "end"}, "b": {"entity": "a_top", "point": "start"}},
+            {"id": "ca3", "kind": "coincident",
+             "a": {"entity": "a_top", "point": "end"}, "b": {"entity": "a_lft", "point": "start"}},
+            {"id": "ca4", "kind": "coincident",
+             "a": {"entity": "a_lft", "point": "end"}, "b": {"entity": "a_bot", "point": "start"}},
+            {"id": "cb1", "kind": "coincident",
+             "a": {"entity": "b_bot", "point": "end"}, "b": {"entity": "b_rit", "point": "start"}},
+            {"id": "cb2", "kind": "coincident",
+             "a": {"entity": "b_rit", "point": "end"}, "b": {"entity": "b_top", "point": "start"}},
+            {"id": "cb3", "kind": "coincident",
+             "a": {"entity": "b_top", "point": "end"}, "b": {"entity": "b_lft", "point": "start"}},
+            {"id": "cb4", "kind": "coincident",
+             "a": {"entity": "b_lft", "point": "end"}, "b": {"entity": "b_bot", "point": "start"}},
+        ],
+    }
+    extrude = {"id": "ex1", "kind": "extrude", "sketch": "$sk1", "distance": 5.0, "direction": "normal", "operation": "add"}
+    r = build({"features": [two_loop_sketch, extrude]})
+    if r["result"]["ex1"]["status"] != "ok":
+        pytest.skip(f"two-loop sketch extrude failed: {r['result']['ex1']}")
+
+    elements = r["_build_state"].checkpoints["ex1"].repo_snapshot.get("elements", {})
+    solid_entries = {k: v for k, v in elements.items() if isinstance(v, dict) and v.get("type") == "solid"}
+    assert len(solid_entries) >= 2, (
+        f"expected at least 2 solid-type entries in repo elements, got {len(solid_entries)}"
+    )
+    for eid, entry in solid_entries.items():
+        assert entry["type"] == "solid", (
+            f"entry {eid} has type {entry['type']!r}, expected 'solid'"
+        )
+
+
 def test_build_mesh_includes_brep_face_metadata_and_queries():
     """Extrude bodies should emit stable face metadata and ancestry queries."""
     spec = full_rect_extrude_spec(w=5.0, h=5.0, d=3.0)
