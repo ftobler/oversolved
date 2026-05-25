@@ -10,9 +10,13 @@ interface TransformEditorProps {
 }
 
 function resolveTransformQuery(selectionId: string): string {
-  return selectionId.startsWith('face:')
-    ? selectionId.split(':').slice(2).join(':')
-    : selectionId
+  if (selectionId.startsWith('face:')) {
+    return selectionId.split(':').slice(2).join(':')
+  }
+  if (selectionId.startsWith('entity:')) {
+    return '@' + selectionId.split(':').slice(1).join('/')
+  }
+  return selectionId
 }
 
 export function TransformEditor({ feature, onMutation, features, partLabels }: TransformEditorProps) {

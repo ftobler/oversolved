@@ -58,6 +58,11 @@ def _solve_transform(
     rotation_axis_origin = cfg.get("rotation_axis_origin")
     rotation_axis_direction = cfg.get("rotation_axis_direction")
     axis_query = cfg.get("rotation_axis")
+    if rotation_angle and not axis_query and not rotation_axis_origin and not rotation_axis_direction:
+        raise ValueError(
+            f"transform: rotation_angle is {rotation_angle} but no rotation axis specified; "
+            "provide rotation_axis, rotation_axis_origin+direction, or set rotation_angle=0"
+        )
     if axis_query:
         edge_ref = global_repo.query(axis_query, body_store=body_store)
         if edge_ref is None:
