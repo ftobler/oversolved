@@ -13,7 +13,8 @@ const iconModules = import.meta.glob('@/assets/icons/*.svg', {
 
 function iconUrl(filename: string | undefined): string | undefined {
   if (!filename) return undefined
-  return iconModules[`../assets/icons/${filename}.svg`]
+  return iconModules[`/src/assets/icons/${filename}.svg`]
+    ?? iconModules[`../assets/icons/${filename}.svg`]
 }
 
 function Icon({ file, size = 18 }: { file: string | undefined; size?: number }) {

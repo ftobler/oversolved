@@ -31,7 +31,8 @@ export const SYMBOL_TO_ICON: Readonly<Record<string, string>> = RENDER_KIND_TO_I
 export function getIconUrl(kind: string): string | undefined {
   const name = SYMBOL_TO_ICON[kind]
   if (!name) return undefined
-  return iconModules[`../assets/icons/${name}.svg`]
+  return iconModules[`/src/assets/icons/${name}.svg`]
+    ?? iconModules[`../assets/icons/${name}.svg`]
 }
 
 // World units per pixel for an orthographic camera.

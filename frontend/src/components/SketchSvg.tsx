@@ -20,8 +20,6 @@ const iconModules = import.meta.glob('@/assets/icons/*.svg', {
   import: 'default',
 }) as Record<string, string>
 
-import constraintParallelUrl from '@/assets/icons/constraint-parallel.svg?url'
-
 const SYMBOL_TO_ICON: Record<string, string> = {
   symbol_h:          'constraint-horizontal',
   symbol_v:          'constraint-vertical',
@@ -38,10 +36,10 @@ const SYMBOL_TO_ICON: Record<string, string> = {
 }
 
 function getIconUrl(kind: string): string | undefined {
-  if (kind === 'symbol_parallel') return constraintParallelUrl
   const name = SYMBOL_TO_ICON[kind]
   if (!name) return undefined
-  return iconModules[`../assets/icons/${name}.svg`]
+  return iconModules[`/src/assets/icons/${name}.svg`]
+    ?? iconModules[`../assets/icons/${name}.svg`]
 }
 
 function allPoints(sketches: Sketch[], topology?: Topology): [number, number][] {
