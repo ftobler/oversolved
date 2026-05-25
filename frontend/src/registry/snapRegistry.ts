@@ -19,8 +19,11 @@ export type SnapKind = 'vertex' | 'midpoint' | 'path' | 'kinda_horizontal' | 'ki
 // Type of element being dragged
 export type DraggedElementType = 'vertex' | 'entity'
 
-// Alignment tolerance in degrees for kinda_horizontal and kinda_vertical snap detection
-export const ALIGNMENT_TOLERANCE_DEG = 15
+// Alignment tolerance for kinda_horizontal and kinda_vertical snap detection.
+// Both conditions must be satisfied: angle within DEG and normal distance within DIST.
+// ALIGNMENT_TOLERANCE_DIST is in screen pixels; callers must scale by p2w(camera) before comparing to world coords.
+export const ALIGNMENT_TOLERANCE_DEG = 10
+export const ALIGNMENT_TOLERANCE_DIST = 20  // screen pixels
 
 // What snap kinds each dragged element type can snap to
 export const SNAP_RULES: Record<DraggedElementType, SnapKind[]> = {

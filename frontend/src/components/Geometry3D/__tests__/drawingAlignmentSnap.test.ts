@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { suggestConstraint, ALIGNMENT_TOLERANCE_DEG } from '@/registry'
+import { suggestConstraint, ALIGNMENT_TOLERANCE_DEG, ALIGNMENT_TOLERANCE_DIST } from '@/registry'
+import { detectDrawAlignment, isAlignmentSnap } from '@/components/interaction/useAlignmentSnapEffect'
 
 describe('alignment snap for draw tool', () => {
   beforeEach(() => {
@@ -29,96 +30,81 @@ describe('alignment snap for draw tool', () => {
     })
   })
 
-  describe('ALIGNMENT_TOLERANCE_DEG constant', () => {
-    it('is defined as 15 degrees', () => {
-      expect(ALIGNMENT_TOLERANCE_DEG).toBe(15)
+  describe('tolerance constants', () => {
+    it('ALIGNMENT_TOLERANCE_DEG is 10 degrees', () => {
+      expect(ALIGNMENT_TOLERANCE_DEG).toBe(10)
+    })
+
+    it('ALIGNMENT_TOLERANCE_DIST is 5 screen pixels', () => {
+      expect(ALIGNMENT_TOLERANCE_DIST).toBe(5)
     })
   })
 
-  describe('horizontal alignment detection', () => {
-    it('cursor within tolerance of horizontal axis is detected as kinda_horizontal', () => {
-      const lastPt: [number, number] = [0, 0]
-      const cursorPt: [number, number] = [5, 0.1]
+  describe('isAlignmentSnap', () => {
+    const tol = ALIGNMENT_TOLERANCE_DIST
 
-      const dx = cursorPt[0] - lastPt[0]
-      const dy = cursorPt[1] - lastPt[1]
-      const angleDeg = Math.atan2(dy, dx) * (180 / Math.PI)
-      const normalizedAngle = ((angleDeg % 180) + 180) % 180
+    describe('horizontal detection', () => {
+      it('detects near-horizontal when both angle and normal distance are within tolerance', () => {
+        expect(isAlignmentSnap(100, tol - 1, tol)).toBe('kinda_horizontal')
+      })
 
-      const isHorizontal = normalizedAngle < ALIGNMENT_TOLERANCE_DEG || 
-                           normalizedAngle > 180 - ALIGNMENT_TOLERANCE_DEG
+      it('detects exactly horizontal', () => {
+        expect(isAlignmentSnap(50, 0, tol)).toBe('kinda_horizontal')
+      })
 
-      expect(isHorizontal).toBe(true)
+      it('rejects when normal distance exceeds tolerance despite small angle', () => {
+        expect(isAlignmentSnap(100, tol + 1, tol)).toBeNull()
+      })
+
+      it('rejects when angle exceeds tolerance even if normal distance is small', () => {
+        expect(isAlignmentSnap(2, 1, tol)).toBeNull()
+      })
     })
 
-    it('cursor at exactly horizontal is detected as kinda_horizontal', () => {
-      const lastPt: [number, number] = [0, 0]
-      const cursorPt: [number, number] = [5, 0]
+    describe('vertical detection', () => {
+      it('detects near-vertical when both angle and normal distance are within tolerance', () => {
+        expect(isAlignmentSnap(tol - 1, 100, tol)).toBe('kinda_vertical')
+      })
 
-      const dx = cursorPt[0] - lastPt[0]
-      const dy = cursorPt[1] - lastPt[1]
-      const angleDeg = Math.atan2(dy, dx) * (180 / Math.PI)
-      const normalizedAngle = ((angleDeg % 180) + 180) % 180
+      it('detects exactly vertical', () => {
+        expect(isAlignmentSnap(0, 50, tol)).toBe('kinda_vertical')
+      })
 
-      const isHorizontal = normalizedAngle < ALIGNMENT_TOLERANCE_DEG || 
-                           normalizedAngle > 180 - ALIGNMENT_TOLERANCE_DEG
+      it('rejects when normal distance exceeds tolerance despite small angle', () => {
+        expect(isAlignmentSnap(tol + 1, 100, tol)).toBeNull()
+      })
 
-      expect(isHorizontal).toBe(true)
-    })
-  })
-
-  describe('vertical alignment detection', () => {
-    it('cursor within tolerance of vertical axis is detected as kinda_vertical', () => {
-      const lastPt: [number, number] = [0, 0]
-      const cursorPt: [number, number] = [0.1, 5]
-
-      const dx = cursorPt[0] - lastPt[0]
-      const dy = cursorPt[1] - lastPt[1]
-      const angleDeg = Math.atan2(dy, dx) * (180 / Math.PI)
-      const normalizedAngle = ((angleDeg % 180) + 180) % 180
-      const verticalAngle = Math.abs(normalizedAngle - 90)
-
-      const isVertical = verticalAngle < ALIGNMENT_TOLERANCE_DEG || 
-                         verticalAngle > 180 - ALIGNMENT_TOLERANCE_DEG
-
-      expect(isVertical).toBe(true)
+      it('rejects when angle exceeds tolerance even if normal distance is small', () => {
+        expect(isAlignmentSnap(1, 2, tol)).toBeNull()
+      })
     })
 
-    it('cursor at exactly vertical is detected as kinda_vertical', () => {
-      const lastPt: [number, number] = [0, 0]
-      const cursorPt: [number, number] = [0, 5]
+    describe('no detection', () => {
+      it('returns null for 45 degree line', () => {
+        expect(isAlignmentSnap(10, 10, tol)).toBeNull()
+      })
 
-      const dx = cursorPt[0] - lastPt[0]
-      const dy = cursorPt[1] - lastPt[1]
-      const angleDeg = Math.atan2(dy, dx) * (180 / Math.PI)
-      const normalizedAngle = ((angleDeg % 180) + 180) % 180
-      const verticalAngle = Math.abs(normalizedAngle - 90)
-
-      const isVertical = verticalAngle < ALIGNMENT_TOLERANCE_DEG || 
-                         verticalAngle > 180 - ALIGNMENT_TOLERANCE_DEG
-
-      expect(isVertical).toBe(true)
+      it('returns null when distance is too small', () => {
+        expect(isAlignmentSnap(0, 0.0001, tol)).toBeNull()
+      })
     })
   })
 
-  describe('no alignment detection', () => {
-    it('cursor at 45 degrees is not aligned', () => {
-      const lastPt: [number, number] = [0, 0]
-      const cursorPt: [number, number] = [5, 5]
+  describe('detectDrawAlignment', () => {
+    const tol = ALIGNMENT_TOLERANCE_DIST
 
-      const dx = cursorPt[0] - lastPt[0]
-      const dy = cursorPt[1] - lastPt[1]
-      const angleDeg = Math.atan2(dy, dx) * (180 / Math.PI)
-      const normalizedAngle = ((angleDeg % 180) + 180) % 180
+    it('wraps isAlignmentSnap into a result with point and vertexId', () => {
+      const result = detectDrawAlignment([60, 20], [10, 20], tol)
+      expect(result).toEqual({
+        kind: 'kinda_horizontal',
+        point: [10, 20],
+        vertexId: 'draw:last',
+      })
+    })
 
-      const isHorizontal = normalizedAngle < ALIGNMENT_TOLERANCE_DEG || 
-                           normalizedAngle > 180 - ALIGNMENT_TOLERANCE_DEG
-      const verticalAngle = Math.abs(normalizedAngle - 90)
-      const isVertical = verticalAngle < ALIGNMENT_TOLERANCE_DEG || 
-                         verticalAngle > 180 - ALIGNMENT_TOLERANCE_DEG
-
-      expect(isHorizontal).toBe(false)
-      expect(isVertical).toBe(false)
+    it('returns null when isAlignmentSnap returns null', () => {
+      const result = detectDrawAlignment([10, 10], [0, 0], tol)
+      expect(result).toBeNull()
     })
   })
 
@@ -144,6 +130,4 @@ describe('alignment snap for draw tool', () => {
       expect(state.alignmentSnapVertexId).toBeNull()
     })
   })
-
-
 })

@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
+import { useThree } from '@react-three/fiber'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { ALIGNMENT_TOLERANCE_DEG } from '@/registry'
+import { ALIGNMENT_TOLERANCE_DEG, ALIGNMENT_TOLERANCE_DIST } from '@/registry'
+import { p2w } from '@/components/sketch_helpers'
 
 export interface DrawAlignmentResult {
   kind: 'kinda_horizontal' | 'kinda_vertical'
@@ -8,26 +10,39 @@ export interface DrawAlignmentResult {
   vertexId: 'draw:last'
 }
 
-export function detectDrawAlignment(
-  currentPosition: [number, number],
-  drawLastPoint: [number, number],
-): DrawAlignmentResult | null {
-  const dx = currentPosition[0] - drawLastPoint[0]
-  const dy = currentPosition[1] - drawLastPoint[1]
+export function isAlignmentSnap(
+  dx: number, dy: number, normalToleranceWorld: number,
+): 'kinda_horizontal' | 'kinda_vertical' | null {
   const dist = Math.hypot(dx, dy)
   if (dist < 0.001) return null
 
   const angleDeg = Math.atan2(dy, dx) * (180 / Math.PI)
   const normalizedAngle = ((angleDeg % 180) + 180) % 180
 
-  if (normalizedAngle < ALIGNMENT_TOLERANCE_DEG || normalizedAngle > 180 - ALIGNMENT_TOLERANCE_DEG) {
-    return { kind: 'kinda_horizontal', point: drawLastPoint, vertexId: 'draw:last' }
+  const withinAngle = (targetCenter: number) => {
+    const diff = Math.abs(normalizedAngle - targetCenter)
+    return diff < ALIGNMENT_TOLERANCE_DEG || diff > 180 - ALIGNMENT_TOLERANCE_DEG
   }
-  const verticalAngle = Math.abs(normalizedAngle - 90)
-  if (verticalAngle < ALIGNMENT_TOLERANCE_DEG || verticalAngle > 180 - ALIGNMENT_TOLERANCE_DEG) {
-    return { kind: 'kinda_vertical', point: drawLastPoint, vertexId: 'draw:last' }
+
+  if (withinAngle(0)) {
+    if (Math.abs(dy) < normalToleranceWorld) return 'kinda_horizontal'
+  }
+  if (withinAngle(90)) {
+    if (Math.abs(dx) < normalToleranceWorld) return 'kinda_vertical'
   }
   return null
+}
+
+export function detectDrawAlignment(
+  currentPosition: [number, number],
+  drawLastPoint: [number, number],
+  normalToleranceWorld: number,
+): DrawAlignmentResult | null {
+  const dx = currentPosition[0] - drawLastPoint[0]
+  const dy = currentPosition[1] - drawLastPoint[1]
+  const kind = isAlignmentSnap(dx, dy, normalToleranceWorld)
+  if (!kind) return null
+  return { kind, point: drawLastPoint, vertexId: 'draw:last' }
 }
 
 /**
@@ -40,6 +55,7 @@ export function useAlignmentSnapEffect(
   drawLastPoint?: [number, number] | null,
 ) {
   const setAlignmentSnap = useSketchEditorStore(s => s.setAlignmentSnap)
+  const { camera } = useThree()
 
   useEffect(() => {
     if (!currentPosition || !drawLastPoint) {
@@ -47,11 +63,12 @@ export function useAlignmentSnapEffect(
       return
     }
 
-    const alignment = detectDrawAlignment(currentPosition, drawLastPoint)
+    const normalToleranceWorld = ALIGNMENT_TOLERANCE_DIST * p2w(camera)
+    const alignment = detectDrawAlignment(currentPosition, drawLastPoint, normalToleranceWorld)
     if (alignment) {
       setAlignmentSnap(alignment.point, alignment.kind, alignment.vertexId)
     } else {
       setAlignmentSnap(null, null, null)
     }
-  }, [currentPosition, drawLastPoint, setAlignmentSnap])
+  }, [currentPosition, drawLastPoint, setAlignmentSnap, camera])
 }
