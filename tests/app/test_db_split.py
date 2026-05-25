@@ -5,7 +5,11 @@ import sys
 
 
 def test_public_api_compat():
-    """All names from the original db.py public API are importable from oversolved.db."""
+    """All names from the original db.py public API are importable from oversolved.db.
+
+    The private _to_bytes helper is intentionally not re-exported (it lives in
+    oversolved.db.migrations); only the public surface is guaranteed here.
+    """
     from oversolved.db import (  # noqa: F401
         DatabaseConnection,
         SQLiteConnection,
@@ -16,7 +20,6 @@ def test_public_api_compat():
         SessionStore,
         DocumentStore,
         PeriodicTaskStore,
-        _to_bytes,
     )
 
 

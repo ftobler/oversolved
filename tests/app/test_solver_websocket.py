@@ -526,7 +526,7 @@ class TestPackGeometryUpdate:
     def test_pack_geometry_update_structure(self):
         """Binary frame starts with 4-byte big-endian json length followed by JSON."""
         import struct
-        from oversolved.blueprints.solver_ws import pack_geometry_update
+        from oversolved.kernel.geometry_pack import pack_geometry_update
 
         result = pack_geometry_update(msg_id=7, bodies={}, pick_bodies=None)
         assert isinstance(result, bytes)
@@ -541,7 +541,7 @@ class TestPackGeometryUpdate:
         """Vertex and face data survives a pack/unpack round-trip."""
         import struct
         import array as _array
-        from oversolved.blueprints.solver_ws import pack_geometry_update
+        from oversolved.kernel.geometry_pack import pack_geometry_update
 
         body = {
             "created_by": "extrude_0",
