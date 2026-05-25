@@ -245,7 +245,7 @@ export function useSolver(
 
   const reSolve = useCallback(async (
     d: PartDoc,
-    opts?: { validate?: boolean; bypassCache?: boolean },
+    opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string } },
   ) => {
     setSolving(true)
     setSolveTime(null)
@@ -263,7 +263,16 @@ export function useSolver(
       const editingFeatureId = store.editingFeatureId
       const effectiveRollback = storeRollback ?? allFeatures.length
 
-      const solveFeatures = allFeatures.slice(0, effectiveRollback).filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
+      let solveFeatures = allFeatures.slice(0, effectiveRollback).filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
+      const dragAnchor = opts?.dragAnchor
+      if (dragAnchor) {
+        // Transient hint: tells the solver which entity was just dragged so it can
+        // anchor it firmly at the dropped position. Attached only to the payload
+        // clone, never persisted to the doc or cache key.
+        solveFeatures = solveFeatures.map(f =>
+          f.id === dragAnchor.featureId ? { ...f, drag_anchor: dragAnchor.entityId } : f,
+        )
+      }
       const adjustedRollback = solveFeatures.length
       const isPreview = storeRollback !== null || pickBoundary !== null
 

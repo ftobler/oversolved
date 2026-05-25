@@ -8,7 +8,7 @@ import { failLoud } from '@/stores/stateInvariants'
 
 export { healDoc, BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
-export type ReSolveFn = (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean }) => Promise<void> | void
+export type ReSolveFn = (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string } }) => Promise<void> | void
 
 export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
   const modeRef = useRef(mode)
@@ -66,7 +66,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
     docRef.current = next
     setDoc(next)
-    reSolve(next, { bypassCache: true })
+    const dragAnchor =
+      m.type === 'move_vertex' || m.type === 'move_vertex_with_constraint' || m.type === 'move_entity'
+        ? { featureId: m.featureId, entityId: m.entityId }
+        : undefined
+    reSolve(next, { bypassCache: true, dragAnchor })
   }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo])
 
   const previewOriginalDoc = useRef<PartDoc | null>(null)

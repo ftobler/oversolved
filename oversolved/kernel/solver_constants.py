@@ -17,6 +17,17 @@ LOSS_THRESHOLD = 1e-4
 RANK_TOL = 1e-6
 RANK_BOUNDARY_TOL = 1
 
+# ─── Drag-stability regularization ───
+# Linear penalty w*(x - x0) per parameter, appended as soft residuals during a
+# drag re-solve only (when a feature carries a drag_anchor hint). It biases the
+# constraint null-space toward the pre-solve state, so the just-dragged element
+# stays at its dropped position and sized elements do not drift toward a
+# singularity. Weights are small relative to hard-constraint residuals (weight
+# 1.0) so real constraints always dominate; the bias only resolves otherwise
+# free DOF. These rows are excluded from the rank/DOF analysis.
+REG_WEIGHT_BASE = 1e-3  # all parameters during a drag re-solve
+REG_WEIGHT_DRAG = 5e-2  # parameters of the dragged entity
+
 # ─── Geometry tolerances ───
 TOL_LOOP_CLOSURE = 1e-6     # max 2D gap to consider a profile-loop edge chain closed
 TOL_NEAR_ZERO_AREA = 1e-12  # area below which a polygon is considered degenerate

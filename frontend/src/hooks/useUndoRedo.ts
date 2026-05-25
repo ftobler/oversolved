@@ -7,7 +7,7 @@ type UndoEntry = { doc: PartDoc; mutation: Mutation }
 export function useUndoRedo(
   docRef: React.MutableRefObject<PartDoc | null>,
   setDoc: React.Dispatch<React.SetStateAction<PartDoc | null>>,
-  reSolve: (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean }) => void | Promise<void>,
+  reSolve: (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string } }) => void | Promise<void>,
 ) {
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [redoStack, setRedoStack] = useState<UndoEntry[]>([])

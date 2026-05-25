@@ -11,7 +11,7 @@ interface UseEditFeatureInput {
   commitEditSession: () => void
   cancelEditSession: () => void
   docRef: React.MutableRefObject<PartDoc | null>
-  reSolve: (doc: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean }) => void | Promise<void>
+  reSolve: (doc: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string } }) => void | Promise<void>
   setMode: (mode: 'sketch' | 'feature' | 'code') => void
   // Called on edit exit to drop the sketch-on-face FSM state. Optional so
   // tests / future call sites that don't use plane picking can omit it.

@@ -263,6 +263,7 @@ export interface PartFeature {
   transform?: TransformFeatureDef  // present when kind === 'transform'
   mirror?: MirrorFeatureDef  // present when kind === 'mirror'
   file_id?: string  // present when kind === 'import_step'
+  drag_anchor?: string  // transient solve-only hint: entity just dragged, anchored firmly by the solver
 }
 
 export type Feature = PartFeature
