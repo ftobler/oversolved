@@ -381,7 +381,7 @@ def test_mesh_face_queries_have_correct_created_by_after_cut():
     """Mesh face_queries must use @ex2 for new cut-hole walls, @ex1 for inherited."""
     pytest.importorskip("OCP.gp")
     from oversolved.kernel.builder import build
-    from oversolved.kernel.query import _parse_ancestry
+    from oversolved.kernel.query import _parse_ancestry, _is_geom_hash_id
 
     r = build(_cut_fixture())
     if r["result"]["ex2"]["status"] != "ok":
@@ -391,8 +391,15 @@ def test_mesh_face_queries_have_correct_created_by_after_cut():
     created_by_set: set[str] = set()
     for fq in face_queries:
         ids, _ = _parse_ancestry(fq)
-        if len(ids) >= 2:
-            created_by_set.add(ids[1][1:])  # strip @ prefix
+        # created_by is the first ancestor that is neither a geometry hash
+        # (gface_/gnormal_) nor the body id token.
+        cb = next(
+            (i[1:] for i in ids
+             if not _is_geom_hash_id(i) and not i.startswith("@body_")),
+            None,
+        )
+        if cb is not None:
+            created_by_set.add(cb)
 
     assert "ex1" in created_by_set, f"expected ex1 in face_queries, got {created_by_set}"
     assert "ex2" in created_by_set, f"expected ex2 in face_queries, got {created_by_set}"

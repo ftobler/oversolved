@@ -452,11 +452,17 @@ def _coerce_type(
 
 
 def _is_geom_hash_id(id_str: str) -> bool:
-    """Return True if id_str is a wire-format geom_hash reference (@gface_*, @gedge_*, @gvertex_*)."""
+    """Return True if id_str is a wire-format geom_hash reference.
+
+    Covers the precise element hashes (@gface_*, @gedge_*, @gvertex_*) and the
+    face orientation-only fallback (@gnormal_*). All are partitioned out of the
+    ancestry set and used only as resolve-time tie-breakers.
+    """
     return (
         id_str.startswith("@gface_")
         or id_str.startswith("@gedge_")
         or id_str.startswith("@gvertex_")
+        or id_str.startswith("@gnormal_")
     )
 
 
@@ -650,11 +656,22 @@ class Repository:
                 candidate_ids = []
 
         if len(candidate_ids) > 1 and hash_ids:
-            geom_hash_str = hash_ids[0][1:]
-            hash_set = {eid for eid in self.by_geom_hash.get(geom_hash_str, []) if eid in self.elements}
-            narrowed = [eid for eid in candidate_ids if eid in hash_set]
-            if narrowed:
-                candidate_ids = narrowed
+            # Tie-break by geometry hash in specificity order: the precise
+            # element hash first (@gface_/@gedge_/@gvertex_), then the face
+            # orientation-only fallback (@gnormal_) for when a reshaped face's
+            # centroid drifted so the precise hash went stale. Narrowing stays
+            # within the ancestry-matched set, so @gnormal_ can never reach
+            # across lineages.
+            precise_hashes = [h[1:] for h in hash_ids if not h.startswith("@gnormal_")]
+            normal_hashes = [h[1:] for h in hash_ids if h.startswith("@gnormal_")]
+            for tier in (precise_hashes, normal_hashes):
+                if len(candidate_ids) <= 1:
+                    break
+                for geom_hash_str in tier:
+                    hash_set = {eid for eid in self.by_geom_hash.get(geom_hash_str, []) if eid in self.elements}
+                    narrowed = [eid for eid in candidate_ids if eid in hash_set]
+                    if narrowed:
+                        candidate_ids = narrowed
 
         if not candidate_ids and non_hash_ids:
             partial_candidates: list[str] = []
@@ -671,7 +688,12 @@ class Repository:
                 return self.elements.get(partial_candidates[0])
 
         if not candidate_ids and hash_ids:
-            geom_hash_str = hash_ids[0][1:]
+            # No ancestry matched: resolve by the precise hash only. The
+            # @gnormal_ fallback is deliberately skipped here -- without an
+            # ancestry set to bound it, normal-only would match faces across
+            # unrelated lineages (the forbidden fail-wrong).
+            precise_hashes = [h[1:] for h in hash_ids if not h.startswith("@gnormal_")]
+            geom_hash_str = precise_hashes[0] if precise_hashes else hash_ids[0][1:]
             fallback_ids = [eid for eid in self.by_geom_hash.get(geom_hash_str, []) if eid in self.elements]
             if type_restriction is not None:
                 fallback_ids = [eid for eid in fallback_ids if _obj_type(self.elements.get(eid)) == type_restriction]

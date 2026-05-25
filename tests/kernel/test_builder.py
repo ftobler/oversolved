@@ -166,11 +166,12 @@ def test_build_mesh_includes_brep_face_metadata_and_queries():
     assert len(mesh["face_data"]) > 0
     assert len(mesh["triangle_to_face"]) == len(mesh["faces"])
     assert len(mesh["face_queries"]) == len(mesh["face_data"])
-    from oversolved.kernel.geom_hash import face_geometry_hash
+    from oversolved.kernel.geom_hash import face_geometry_hash, face_normal_hash
     fd0 = mesh["face_data"][0]
     expected_hash = face_geometry_hash(fd0["centroid"], fd0["normal"])
+    expected_normal_hash = face_normal_hash(fd0["normal"])
     assert mesh["face_queries"][0] == make_ancestry_query(
-        [f"@{expected_hash}", "@ex1", "@body_ex1",
+        [f"@{expected_hash}", f"@{expected_normal_hash}", "@ex1", "@body_ex1",
          "@sk1/bottom", "@sk1/left", "@sk1/right", "@sk1/top"],
         "flatface",
     )

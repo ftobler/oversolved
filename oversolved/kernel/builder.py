@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from OCP.TopoDS import TopoDS_Shape
 from oversolved.kernel.cadquery_ops import _normal_to_frame, _ensure_occ
 from oversolved.kernel.ocp_ops import ocp_copy_shape
-from oversolved.kernel.geom_hash import face_geometry_hash, edge_geometry_hash, vertex_geometry_hash
+from oversolved.kernel.geom_hash import face_geometry_hash, face_normal_hash, edge_geometry_hash, vertex_geometry_hash
 from oversolved.kernel.query import (
     Repository, emit_wire, absolute, _evict_ancestry_and_register, ref,
     _current_feature_id,
@@ -401,7 +401,10 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: MeshDict) -> Non
         if any(global_repo.elements.get(eid) == payload for eid in existing_ids):
             continue  # already registered with identical payload
         index_tag = emit_wire(absolute(body.id, f"face{face_idx}"))
-        _evict_ancestry_and_register(global_repo, ancestor_ids, payload, index_tag, geom_hash=geom_hash)
+        eid = _evict_ancestry_and_register(global_repo, ancestor_ids, payload, index_tag, geom_hash=geom_hash)
+        # Index the orientation-only fallback hash too, so a query whose precise
+        # centroid+normal hash went stale can still narrow by normal.
+        global_repo.by_geom_hash.setdefault(face_normal_hash(normal), []).append(eid)
 
 
 def _register_solid_ancestry(global_repo, body: Body) -> None:
@@ -570,13 +573,16 @@ def _register_brep_vertex_ancestry(global_repo, body: Body, vertices: list, vert
 def _rewrite_created_by(query_str: str, new_created_by: str) -> str:
     """Rewrite the @created_by tag in an ancestry query string.
 
-    Tessellation queries use a 3-tag format: [@geom_hash, @created_by, @body_id].
-    The @created_by tag is always at index 1.
+    Tessellation queries lead with one or more geometry-hash tags (edges/
+    vertices: [@gedge_/@gvertex_, ...]; faces: [@gface_, @gnormal_, ...])
+    followed by @created_by then @body_id. The @created_by tag is the first
+    ancestor that is not a geometry hash.
     """
-    from oversolved.kernel.query import _parse_ancestry, make_ancestry_query, ref
+    from oversolved.kernel.query import _parse_ancestry, make_ancestry_query, ref, _is_geom_hash_id
     ids, type_restriction = _parse_ancestry(query_str)
-    if len(ids) >= 2:
-        ids[1] = ref(new_created_by)
+    cb_idx = next((i for i, tok in enumerate(ids) if not _is_geom_hash_id(tok)), None)
+    if cb_idx is not None:
+        ids[cb_idx] = ref(new_created_by)
         return make_ancestry_query(ids, type_restriction)
     return query_str
 

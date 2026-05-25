@@ -327,3 +327,59 @@ def test_sketch_on_filleted_multi_profile_face_resolves() -> None:
     assert r2['result']['sk2'].get('status') != 'exception', (
         f"sk2 failed on rebuild: {r2['result']['sk2'].get('exception')}"
     )
+
+
+def test_sketch_plane_follows_face_when_centroid_drifts_via_normal_fallback() -> None:
+    """A reshaped face (centroid drifts, normal preserved) still resolves.
+
+    The face query carries two geometry tokens: the precise gface_
+    (centroid+normal) and an orientation-only gnormal_ fallback. When the body
+    is edited so the picked end-cap moves -- its centroid drifts but its normal
+    is unchanged -- the precise hash goes stale, and the resolver must fall back
+    to the normal hash. Among the two opposite-facing end-caps of this
+    two-circle body the normal is unique, so it must resolve to the moved face
+    (and never to the opposite cap).
+    """
+    pytest.importorskip("OCP.gp")
+
+    sk1 = {
+        'id': 'sk1', 'kind': 'sketch', 'plane': '@builtin_plane_top',
+        'entities': [
+            {'id': 'cA', 'kind': 'circle'},
+            {'id': 'cB', 'kind': 'circle'},
+        ],
+        'initial': {'cA': [0.0, 0.0, 5.0], 'cB': [20.0, 0.0, 5.0]},
+    }
+
+    def extrude(dist: float) -> dict:
+        return {
+            'id': 'ex1', 'kind': 'extrude',
+            'extrude': {'sketch': ['$sk1'], 'distance': dist, 'direction': 'normal'},
+        }
+
+    # Pick the +y end-cap at distance 10.
+    r0 = build({'features': [sk1, extrude(10.0)]})
+    mesh = r0['bodies']['body_ex1']['mesh']
+    picked = next(
+        (q for q, fd in zip(mesh['face_queries'], mesh['face_data'])
+         if fd['surface_type'] == 'flatface' and fd['normal'][1] > 0.9),
+        None,
+    )
+    assert picked is not None, 'expected a +y flatface cap'
+    assert '@gnormal_' in picked, 'face query must carry the gnormal_ fallback token'
+
+    sk2 = {'id': 'sk2', 'kind': 'sketch', 'plane': picked,
+           'entities': [], 'constraints': []}
+
+    # Extrude longer: the +y cap moves from y=10 to y=14. gface_ goes stale;
+    # gnormal_ must rescue and land the plane on the moved cap, not the y=0 one.
+    r = build({'features': [sk1, extrude(14.0), sk2]})
+    res = r['result']['sk2']
+    assert res.get('status') != 'exception', (
+        f"sk2 failed after centroid drift: {res.get('exception')}"
+    )
+    origin_y = res['plane_transform']['origin'][1]
+    assert abs(origin_y - 14.0) < 0.5, (
+        f"plane landed at y={origin_y:.3f}, expected ~14 (the moved +y cap, "
+        f"not the opposite y=0 cap)"
+    )

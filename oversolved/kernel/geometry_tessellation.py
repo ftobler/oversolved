@@ -35,6 +35,7 @@ from oversolved.kernel.cadquery_ops import (
 from oversolved.kernel.geom_hash import (
     edge_geometry_hash,
     face_geometry_hash,
+    face_normal_hash,
     vertex_geometry_hash,
 )
 from oversolved.kernel.geometry_io import stl_file_to_shape, step_file_to_shape
@@ -637,8 +638,11 @@ def _build_face_query(
     if not created_by:
         return None
     geom_hash = face_geometry_hash(centroid, normal)
+    normal_hash = face_normal_hash(normal)
     if body_id:
-        ids = [ref(geom_hash), ref(created_by), ref(body_id)]
+        # gface_ (centroid+normal) is the precise identity; gnormal_ is the
+        # orientation-only fallback the resolver uses when the centroid drifts.
+        ids = [ref(geom_hash), ref(normal_hash), ref(created_by), ref(body_id)]
         if face_tokens:
             ids.extend(face_tokens)
         elif profile_queries:

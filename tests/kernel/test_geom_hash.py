@@ -42,6 +42,16 @@ class TestFaceGeometryHash:
         h2 = fgh([1, 2, 3], [0, 0, 1])
         assert h1 == h2
 
+    def test_normal_hash_orientation_only(self):
+        """gnormal_ depends on the normal alone (the centroid-drift fallback)."""
+        from oversolved.kernel.geom_hash import face_normal_hash
+        h1 = face_normal_hash([0, 0, 1])
+        h2 = face_normal_hash([0, 0, 1])
+        h3 = face_normal_hash([0, 1, 0])
+        assert h1 == h2
+        assert h1.startswith("gnormal_")
+        assert h1 != h3
+
 
 class TestEdgeGeometryHash:
     def test_line_deterministic(self):

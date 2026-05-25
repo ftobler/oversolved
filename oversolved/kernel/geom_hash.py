@@ -45,6 +45,21 @@ def face_geometry_hash(centroid: list[float], normal: list[float]) -> str:
     return "gface_" + digest
 
 
+def face_normal_hash(normal: list[float]) -> str:
+    """Return e.g. 'gnormal_a3f9b2c18d4e5f6a' from the face normal alone.
+
+    A weaker, orientation-only identity used as a resolve-time *fallback* for
+    `face_geometry_hash`: when a face is reshaped so its centroid shifts (so the
+    full centroid+normal hash goes stale) the normal often survives. Resolution
+    tries the exact gface_ hash first and only falls back to this within the
+    already-ancestry-matched candidate set, so it can never pick a face from an
+    unrelated lineage.
+    """
+    parts = [str(round(v, 4)) for v in normal]
+    digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+    return "gnormal_" + digest
+
+
 def _curve_data_items(curve_data: dict) -> list[str]:
     """Flatten exact curve data into a deterministic list of strings for hashing."""
     items = []
