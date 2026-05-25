@@ -124,7 +124,7 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
         </mesh>
       )}
       <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
-        <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
+        <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', userSelect: 'none', WebkitUserSelect: 'none' }}>
           {label}
         </div>
       </Html>

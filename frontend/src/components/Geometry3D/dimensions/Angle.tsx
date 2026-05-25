@@ -192,7 +192,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
 
       {/* Label text */}
       <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
-        <div style={{ color, fontSize: 18, fontFamily: 'monospace', background: '#111', padding: '0 6px', borderRadius: 2, whiteSpace: 'nowrap' }}>
+        <div style={{ color, fontSize: 18, fontFamily: 'monospace', background: '#111', padding: '0 6px', borderRadius: 2, whiteSpace: 'nowrap', userSelect: 'none', WebkitUserSelect: 'none' }}>
           {label}
         </div>
       </Html>
