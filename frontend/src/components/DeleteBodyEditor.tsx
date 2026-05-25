@@ -1,7 +1,7 @@
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 import { usePickField } from '@/hooks/useFieldPicking'
-import { resolveBodyPickRef } from '@/utils/resolveBodyPickRef'
+
 
 interface DeleteBodyEditorProps {
   feature: PartFeature
@@ -16,7 +16,7 @@ export function DeleteBodyEditor({
   const db = feature.delete_body ?? { body: '' }
   const fid = feature.id
   const bodyPick = usePickField(fid, 'body', (selectionId) => {
-    onMutation({ type: 'set_delete_body_field', featureId: fid, field: 'body', value: resolveBodyPickRef(selectionId) })
+    onMutation({ type: 'set_delete_body_field', featureId: fid, field: 'body', value: selectionId })
   })
 
   return (

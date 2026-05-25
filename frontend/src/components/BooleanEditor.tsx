@@ -1,7 +1,7 @@
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/PickChip'
 import { usePickField } from '@/hooks/useFieldPicking'
-import { resolveBodyPickRef } from '@/utils/resolveBodyPickRef'
+
 
 interface BooleanEditorProps {
   feature: PartFeature
@@ -14,11 +14,11 @@ export function BooleanEditor({ feature, onMutation, features, partLabels }: Boo
   const bool = feature.boolean ?? { operation: 'union', target: '', tools: [] }
   const fid = feature.id
   const targetPick = usePickField(fid, 'target', (selectionId) => {
-    onMutation({ type: 'set_boolean_field', featureId: fid, field: 'target', value: resolveBodyPickRef(selectionId) })
+    onMutation({ type: 'set_boolean_field', featureId: fid, field: 'target', value: selectionId })
   })
 
   const toolPick = usePickField(fid, 'tools', (selectionId) => {
-    onMutation({ type: 'add_boolean_tool', featureId: fid, tool: resolveBodyPickRef(selectionId) })
+    onMutation({ type: 'add_boolean_tool', featureId: fid, tool: selectionId })
   }, { multi: true })
 
   return (

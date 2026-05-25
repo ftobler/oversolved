@@ -432,7 +432,9 @@ def _split_compound(shape: TopoDS_Shape) -> list[TopoDS_Shape]:
 def _resolve_body(ref: str, body_store: dict) -> Body:
     """Resolve a body reference to a Body object.
 
-    Accepts "@feat", "feat", or "body_feat" forms.
+    Accepts "@feat", "feat", "body_feat", viewport selection formats
+    ("face:feature_id:...", "entity:sketch_id:entity_id", "body:body_id",
+    "edge:...", "vertex:..."), and ancestry queries ("?...:flatface").
     Raises ValueError if no matching body is found.
     """
     key = ref.lstrip("@")
@@ -444,6 +446,31 @@ def _resolve_body(ref: str, body_store: dict) -> Body:
     for body in body_store.values():
         if body.created_by == key:
             return body
+    # Handle ? ancestry queries — extract @body_* ancestors
+    if ref.startswith("?"):
+        try:
+            from oversolved.kernel.query import _parse_ancestry
+            ids, _ = _parse_ancestry(ref)
+            for aid in ids:
+                if aid.startswith("@body_"):
+                    bid = aid[1:]
+                    if bid in body_store:
+                        return body_store[bid]
+        except Exception:
+            pass
+    # Handle viewport selection prefixes: face:feature_id:..., entity:sk_id:eid, etc.
+    if ":" in ref:
+        parts = ref.split(":")
+        if len(parts) >= 2:
+            candidate = parts[1]
+            if candidate in body_store:
+                return body_store[candidate]
+            body_prefixed = "body_" + candidate
+            if body_prefixed in body_store:
+                return body_store[body_prefixed]
+            for body in body_store.values():
+                if body.created_by == candidate:
+                    return body
     raise ValueError(f"body not found for ref '{ref}'")
 
 

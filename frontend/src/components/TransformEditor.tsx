@@ -26,7 +26,7 @@ export function TransformEditor({ feature, onMutation, features, partLabels }: T
   const transform = feature.transform ?? { body: '', operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 }
   const fid = feature.id
   const bodyPick = usePickField(fid, 'body', (selectionId) => {
-    onMutation({ type: 'set_transform_field', featureId: fid, field: 'body', value: resolveTransformQuery(selectionId) })
+    onMutation({ type: 'set_transform_field', featureId: fid, field: 'body', value: selectionId })
   })
 
   const axisPick = usePickField(fid, 'rotation_axis', (selectionId) => {

@@ -104,6 +104,25 @@ def test_transform_missing_body_returns_exception():
     assert r["result"]["tr1"]["status"] == "exception"
 
 
+def test_transform_body_resolved_from_face_query():
+    """Body can be resolved from a face ancestry query containing @body_*."""
+    ancestors = ["@gface_0000000000000000", "@ex1", "@body_ex1",
+                 "@sk1/bottom", "@sk1/top", "@sk1/left", "@sk1/right"]
+    lengths_hex = ",".join(hex(len(a))[2:] for a in ancestors)
+    face_query = "?" + lengths_hex + ";" + "".join(ancestors) + ":flatface"
+    doc = _extrude_doc()
+    doc["features"].append({
+        "id": "tr1", "kind": "transform",
+        "transform": {"body": face_query, "translation": [20, 0, 0], "operation": "new"},
+    })
+    r = build(doc)
+    assert r["result"]["tr1"]["status"] == "ok", r["result"]["tr1"]
+    bid = r["result"]["tr1"]["body_id"]
+    verts = r["bodies"][bid]["mesh"]["vertices"]
+    xs = [v[0] for v in verts]
+    assert min(xs) >= 20 - 1e-3
+
+
 def test_transform_identity_does_not_crash():
     doc = _extrude_doc()
     doc["features"].append({
