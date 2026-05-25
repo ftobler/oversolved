@@ -60,7 +60,7 @@ _ARC_SEGMENTS = 32
 _KNOWN_FEATURE_KINDS = frozenset({
     "sketch", "plane", "extrude", "revolve",
     "import_step", "fillet", "chamfer",
-    "array", "boolean", "delete_body",
+    "array", "circular_array", "boolean", "delete_body",
     "hole", "transform", "mirror",
 })
 

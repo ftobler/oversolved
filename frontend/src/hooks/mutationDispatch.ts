@@ -44,6 +44,8 @@ import {
   applyRemoveBooleanTool,
   applyAddArray,
   applySetArrayField,
+  applyAddCircularArray,
+  applySetCircularArrayField,
   applyAddDeleteBody,
   applySetDeleteBodyField,
   applyAddHole,
@@ -166,6 +168,10 @@ export const mutationHandlers: MutationHandlers = {
     applyAddArray(next, m.featureId, m.label),
   set_array_field: (next, m) =>
     applySetArrayField(next, m.featureId, m.field, m.value),
+  add_circular_array: (next, m) =>
+    applyAddCircularArray(next, m.featureId, m.label),
+  set_circular_array_field: (next, m) =>
+    applySetCircularArrayField(next, m.featureId, m.field, m.value),
   set_body_visibility: (next, m) =>
     applySetBodyVisibility(next, m.bodyId, m.visible),
   add_delete_body: (next, m) =>

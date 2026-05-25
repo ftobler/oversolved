@@ -47,6 +47,8 @@ const ALL_MUTATION_TYPES = [
   'remove_boolean_tool',
   'add_array',
   'set_array_field',
+  'add_circular_array',
+  'set_circular_array_field',
   'set_body_visibility',
   'add_delete_body',
   'set_delete_body_field',

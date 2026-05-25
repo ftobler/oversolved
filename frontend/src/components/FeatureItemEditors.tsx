@@ -10,6 +10,7 @@ import { HoleEditor } from '@/components/HoleEditor'
 import { TransformEditor } from '@/components/TransformEditor'
 import { MirrorEditor } from '@/components/MirrorEditor'
 import ArrayEditor from '@/components/ArrayEditor'
+import CircularArrayEditor from '@/components/CircularArrayEditor'
 import { DeleteBodyEditor } from '@/components/DeleteBodyEditor'
 
 interface FeatureItemEditorsProps {
@@ -104,6 +105,14 @@ export function FeatureItemEditors({
       )}
       {feature.kind === 'array' && editingFeatureId === feature.id && (
         <ArrayEditor
+          feature={feature}
+          onMutation={onMutation}
+          features={fps}
+          partLabels={labels}
+        />
+      )}
+      {feature.kind === 'circular_array' && editingFeatureId === feature.id && (
+        <CircularArrayEditor
           feature={feature}
           onMutation={onMutation}
           features={fps}

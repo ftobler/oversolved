@@ -39,7 +39,7 @@ export interface BooleanFeatureDef {
 
 export interface ArrayFeatureDef {
   source_body?: string
-  mode?: 'linear' | 'rectangular' | 'rotational'
+  mode?: 'linear' | 'rectangular'
   operation?: 'add' | 'new'
   include_source?: boolean
   count_x?: number
@@ -50,6 +50,12 @@ export interface ArrayFeatureDef {
   pitch_y?: number
   direction_y?: [number, number, number]
   direction_y_query?: string
+}
+
+export interface CircularArrayFeatureDef {
+  source_body?: string
+  operation?: 'add' | 'new'
+  include_source?: boolean
   count?: number
   step_angle?: number | null
   axis?: string
@@ -258,6 +264,7 @@ export interface PartFeature {
   chamfer?: ChamferFeatureDef  // present when kind === 'chamfer'
   boolean?: BooleanFeatureDef  // present when kind === 'boolean'
   array?: ArrayFeatureDef  // present when kind === 'array'
+  circular_array?: CircularArrayFeatureDef  // present when kind === 'circular_array'
   delete_body?: DeleteBodyFeatureDef  // present when kind === 'delete_body'
   hole?: HoleFeatureDef  // present when kind === 'hole'
   transform?: TransformFeatureDef  // present when kind === 'transform'
@@ -567,6 +574,8 @@ export type Mutation =
   | { type: 'remove_boolean_tool'; featureId: string; tool: string }
   | { type: 'add_array'; featureId: string; label?: string }
   | { type: 'set_array_field'; featureId: string; field: keyof ArrayFeatureDef; value: unknown }
+  | { type: 'add_circular_array'; featureId: string; label?: string }
+  | { type: 'set_circular_array_field'; featureId: string; field: keyof CircularArrayFeatureDef; value: unknown }
   | { type: 'add_delete_body'; featureId: string; body?: string; label?: string }
   | { type: 'set_delete_body_field'; featureId: string; field: keyof DeleteBodyFeatureDef; value: unknown }
   | { type: 'add_hole'; featureId: string; label?: string }

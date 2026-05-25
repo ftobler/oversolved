@@ -24,6 +24,7 @@ from oversolved.kernel.solver_registry import _post_register
 from oversolved.kernel import (
     solver_features_brep,
     solver_features_array,
+    solver_features_circular_array,
     solver_features_boolean,
     solver_features_delete,
     solver_features_fillet_chamfer,
@@ -79,6 +80,7 @@ def _extract_all_keys(mod: Any) -> frozenset[str]:
 _FEATURE_MODULES = (
     solver_features_brep,
     solver_features_array,
+    solver_features_circular_array,
     solver_features_boolean,
     solver_features_delete,
     solver_features_fillet_chamfer,

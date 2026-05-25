@@ -137,6 +137,21 @@ export function FeatureItemActions({
           </button>
         </>
       )}
+      {kind === 'circular_array' && showEditBtn && (
+        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit circular array">
+          <img src={contextEditIcon} alt="Edit" />
+        </button>
+      )}
+      {kind === 'circular_array' && showExitBtn && (
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <img src={okIcon} alt="OK" />
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <img src={cancelIcon} alt="Cancel" />
+          </button>
+        </>
+      )}
       {kind === 'delete_body' && showEditBtn && (
         <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit delete body">
           <img src={contextEditIcon} alt="Edit" />
@@ -236,7 +251,7 @@ export function FeatureItemActions({
           <img src={isVisible ? iconEyeIcon : iconEyeOffIcon} alt={isVisible ? 'Visible' : 'Hidden'} />
         </button>
       )}
-      {!isEditing && (kind === 'extrude' || kind === 'revolve' || kind === 'fillet' || kind === 'chamfer' || kind === 'boolean' || kind === 'array' || kind === 'delete_body' || kind === 'import_step' || kind === 'mirror') && (
+      {!isEditing && (kind === 'extrude' || kind === 'revolve' || kind === 'fillet' || kind === 'chamfer' || kind === 'boolean' || kind === 'array' || kind === 'circular_array' || kind === 'delete_body' || kind === 'import_step' || kind === 'mirror') && (
         <span className="feature-visibility-placeholder" />
       )}
       {!isBuiltIn && !isOrigin && (

@@ -43,6 +43,8 @@ export {
   applyRemoveBooleanTool,
   applyAddArray,
   applySetArrayField,
+  applyAddCircularArray,
+  applySetCircularArrayField,
   applyAddDeleteBody,
   applySetDeleteBodyField,
   applyAddHole,

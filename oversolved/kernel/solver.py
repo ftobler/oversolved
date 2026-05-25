@@ -44,6 +44,7 @@ from oversolved.kernel.solver_residuals import _build_residuals_fn
 from oversolved.kernel.solver_render import _constraint_render
 from oversolved.kernel.solver_features_brep import _solve_extrude, _solve_revolve  # noqa: F401
 from oversolved.kernel.solver_features_array import _solve_array  # noqa: F401
+from oversolved.kernel.solver_features_circular_array import _solve_circular_array  # noqa: F401
 from oversolved.kernel.solver_features_import import _solve_import_step  # noqa: F401
 from oversolved.kernel.solver_features_fillet_chamfer import _solve_fillet, _solve_chamfer  # noqa: F401
 from oversolved.kernel.solver_features_boolean import _solve_boolean  # noqa: F401
@@ -195,6 +196,7 @@ def _build_feature_handlers() -> None:
         "chamfer": _make_body_store_dispatcher(_solve_chamfer),
         "revolve": _make_body_store_dispatcher(_solve_revolve),
         "array": _make_body_store_dispatcher(_solve_array),
+        "circular_array": _make_body_store_dispatcher(_solve_circular_array),
         "boolean": _make_body_store_dispatcher(_solve_boolean),
         "delete_body": _make_body_store_dispatcher(_solve_delete_body),
         "hole": _dispatch_hole,

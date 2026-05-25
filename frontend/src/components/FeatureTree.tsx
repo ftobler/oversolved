@@ -16,6 +16,7 @@ import featureFilletIcon from '@/assets/icons/feature-fillet.svg'
 import featureChamferIcon from '@/assets/icons/feature-chamfer.svg'
 import featureBooleanIcon from '@/assets/icons/feature-boolean.svg'
 import featureArrayIcon from '@/assets/icons/feature-array.svg'
+import featureCircularArrayIcon from '@/assets/icons/feature-circular-array.svg'
 import featureDeleteBodyIcon from '@/assets/icons/feature-delete-body.svg'
 import featureHoleIcon from '@/assets/icons/feature-hole.svg'
 import featureTransformIcon from '@/assets/icons/feature-transform.svg'
@@ -44,6 +45,8 @@ const getFeatureIcon = (kind: string | undefined) => {
       return featureBooleanIcon
     case 'array':
       return featureArrayIcon
+    case 'circular_array':
+      return featureCircularArrayIcon
     case 'delete_body':
       return featureDeleteBodyIcon
     case 'hole':
@@ -275,7 +278,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                   className="feature-icon"
                 />
                 {(() => {
-                  const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'hole' || feature.kind === 'transform' ? solveResults?.[feature.id] : undefined
+                  const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'circular_array' || feature.kind === 'hole' || feature.kind === 'transform' ? solveResults?.[feature.id] : undefined
                   const bodyResult = r && isBodyFeatureResult(r) ? r : undefined
                   const hasMeshError = bodyResult?.body_id
                     ? bodies?.[bodyResult.body_id]?.mesh_error : undefined

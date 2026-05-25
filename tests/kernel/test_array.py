@@ -242,6 +242,132 @@ class TestArrayRotational:
         assert_mesh_valid(mesh)
 
 
+class TestCircularArray:
+    def _circular_spec(self, count: int = 4, step_angle=None, include_source: bool = True):
+        """Build a spec with a box and a circular array feature."""
+        from solver_helpers import box_extrude_spec
+        spec = box_extrude_spec(w=5, h=5, d=5, extrude_id="extrude1")
+        spec["features"].append({
+            "id": "ca1",
+            "kind": "circular_array",
+            "circular_array": {
+                "source_body": "extrude1",
+                "count": count,
+                "step_angle": step_angle,
+                "axis_origin": [0, 0, 0],
+                "axis_direction": [0, 0, 1],
+                "operation": "add",
+                "include_source": include_source,
+            },
+        })
+        return spec
+
+    def test_rotational_4_instances(self):
+        """4x90 deg rotational -- full ring around Z axis."""
+        from oversolved.kernel.builder import build
+        from solver_helpers import assert_mesh_valid
+
+        r = build(self._circular_spec(4))
+        assert r["result"]["ca1"]["status"] == "ok", r["result"]["ca1"]
+        mesh = r["bodies"]["body_extrude1"]["mesh"]
+        assert_mesh_valid(mesh)
+
+    def test_rotational_5_instances(self):
+        """5 instances evenly spaced -- reproduces bug report."""
+        from oversolved.kernel.builder import build
+        from solver_helpers import assert_mesh_valid
+
+        r = build(self._circular_spec(5))
+        assert r["result"]["ca1"]["status"] == "ok", r["result"]["ca1"]
+        mesh = r["bodies"]["body_extrude1"]["mesh"]
+        assert_mesh_valid(mesh)
+
+    def test_rotational_evenly_spaced(self):
+        """step_angle=None -> 360/count, 6 instances equally spaced."""
+        from oversolved.kernel.builder import build
+        from solver_helpers import assert_mesh_valid
+
+        r = build(self._circular_spec(6))
+        assert r["result"]["ca1"]["status"] == "ok", r["result"]["ca1"]
+        mesh = r["bodies"]["body_extrude1"]["mesh"]
+        assert_mesh_valid(mesh)
+
+    def test_rotational_step_angle(self):
+        """Explicit step_angle produces correct spacing."""
+        from oversolved.kernel.builder import build
+        from solver_helpers import assert_mesh_valid
+
+        r = build(self._circular_spec(4, step_angle=45.0))
+        assert r["result"]["ca1"]["status"] == "ok", r["result"]["ca1"]
+        mesh = r["bodies"]["body_extrude1"]["mesh"]
+        assert_mesh_valid(mesh)
+
+    def test_rotational_new_operation(self):
+        """operation=new creates a separate body."""
+        from oversolved.kernel.builder import build
+        from solver_helpers import box_extrude_spec, assert_mesh_valid
+
+        spec = box_extrude_spec(w=5, h=5, d=5, extrude_id="extrude1")
+        spec["features"].append({
+            "id": "ca1",
+            "kind": "circular_array",
+            "circular_array": {
+                "source_body": "extrude1",
+                "count": 4,
+                "step_angle": None,
+                "axis_origin": [0, 0, 0],
+                "axis_direction": [0, 0, 1],
+                "operation": "new",
+                "include_source": True,
+            },
+        })
+        r = build(spec)
+        assert r["result"]["ca1"]["status"] == "ok", r["result"]["ca1"]
+        assert "body_ca1" in r["bodies"]
+        assert_mesh_valid(r["bodies"]["body_ca1"]["mesh"])
+
+    def test_rotational_no_source(self):
+        """include_source=False should still produce count copies."""
+        from oversolved.kernel.builder import build
+        from solver_helpers import assert_mesh_valid
+
+        r = build(self._circular_spec(5, include_source=False))
+        assert r["result"]["ca1"]["status"] == "ok", r["result"]["ca1"]
+        mesh = r["bodies"]["body_extrude1"]["mesh"]
+        assert_mesh_valid(mesh)
+
+    def test_count_zero_raises(self):
+        """count=0 should return an exception."""
+        from oversolved.kernel.builder import build
+
+        r = build(self._circular_spec(0))
+        assert r["result"]["ca1"]["status"] == "exception"
+
+    def test_missing_source_body_error(self):
+        """Non-existent source_body should report exception."""
+        from oversolved.kernel.builder import build
+        from solver_helpers import box_extrude_spec
+
+        spec = box_extrude_spec(w=5, h=5, d=5, extrude_id="extrude1")
+        spec["features"].append({
+            "id": "ca1",
+            "kind": "circular_array",
+            "circular_array": {
+                "source_body": "nonexistent_body",
+                "count": 4,
+                "step_angle": None,
+                "axis_origin": [0, 0, 0],
+                "axis_direction": [0, 0, 1],
+                "operation": "add",
+                "include_source": True,
+            },
+        })
+        r = build(spec)
+        assert r["result"]["ca1"]["status"] == "exception"
+        assert "nonexistent_body" in r["result"]["ca1"]["exception"]
+        assert "available" in r["result"]["ca1"]["exception"]
+
+
 class TestArrayErrors:
     def test_count_zero_raises(self):
         """count=0 should return ok but produce empty instances."""

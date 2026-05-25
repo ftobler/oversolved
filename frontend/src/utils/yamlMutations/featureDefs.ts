@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, DeleteBodyFeatureDef, HoleFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, DeleteBodyFeatureDef, HoleFeatureDef } from '@/types/cad'
 import { ALL_COORD_INDICES } from '@/registry'
 import { warn, round, findFeature, randomId, normalizeExtrudeSketch, normalizeRevolveSketch } from './helpers'
 
@@ -84,7 +84,7 @@ export function applySetArrayField(doc: PartDoc, featureId: string, field: keyof
     return
   }
   if (field === 'mode' && typeof value === 'string') {
-    applySetArrayMode(doc, featureId, value as 'linear' | 'rectangular' | 'rotational')
+    applySetArrayMode(doc, featureId, value as 'linear' | 'rectangular')
     return
   }
   setFeatureField(feature.array as unknown as Record<string, unknown>, field, value)
@@ -372,7 +372,7 @@ export function applyAddArray(doc: PartDoc, featureId: string, label?: string): 
 export function applySetArrayMode(
   doc: PartDoc,
   featureId: string,
-  mode: 'linear' | 'rectangular' | 'rotational',
+  mode: 'linear' | 'rectangular',
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.array) {
@@ -385,24 +385,40 @@ export function applySetArrayMode(
     if (typeof feature.array.pitch_x !== 'number') feature.array.pitch_x = 20
     delete feature.array.count_y
     delete feature.array.pitch_y
-    delete feature.array.count
-    delete feature.array.step_angle
-    delete feature.array.axis
   } else if (mode === 'rectangular') {
     if (typeof feature.array.count_x !== 'number') feature.array.count_x = 2
     if (typeof feature.array.pitch_x !== 'number') feature.array.pitch_x = 20
     if (typeof feature.array.count_y !== 'number') feature.array.count_y = 2
     if (typeof feature.array.pitch_y !== 'number') feature.array.pitch_y = 20
-    delete feature.array.count
-    delete feature.array.step_angle
-    delete feature.array.axis
-  } else {
-    if (typeof feature.array.count !== 'number') feature.array.count = 4
-    delete feature.array.count_x
-    delete feature.array.pitch_x
-    delete feature.array.count_y
-    delete feature.array.pitch_y
   }
+}
+
+// ─── Circular Array ───
+
+export function applyAddCircularArray(doc: PartDoc, featureId: string, label?: string): void {
+  if (!doc.features) doc.features = []
+  const feature: PartFeature = {
+    id: featureId,
+    kind: 'circular_array',
+    label: label ?? 'Circular Array',
+    circular_array: {
+      count: 4,
+      operation: 'add',
+      include_source: true,
+      axis_origin: [0, 0, 0],
+      axis_direction: [0, 0, 1],
+    },
+  }
+  doc.features.push(feature)
+}
+
+export function applySetCircularArrayField(doc: PartDoc, featureId: string, field: keyof CircularArrayFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.circular_array) {
+    warn(`applySetCircularArrayField: feature ${featureId} has no circular_array`)
+    return
+  }
+  setFeatureField(feature.circular_array as unknown as Record<string, unknown>, field, value)
 }
 
 // ─── Delete Body ───

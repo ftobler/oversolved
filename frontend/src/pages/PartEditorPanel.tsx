@@ -9,6 +9,7 @@ import featureFilletIcon from '@/assets/icons/feature-fillet.svg'
 import featureChamferIcon from '@/assets/icons/feature-chamfer.svg'
 import featureBooleanIcon from '@/assets/icons/feature-boolean.svg'
 import featureArrayIcon from '@/assets/icons/feature-array.svg'
+import featureCircularArrayIcon from '@/assets/icons/feature-circular-array.svg'
 import featureDeleteBodyIcon from '@/assets/icons/feature-delete-body.svg'
 import featureHoleIcon from '@/assets/icons/feature-hole.svg'
 import featureTransformIcon from '@/assets/icons/feature-transform.svg'
@@ -121,6 +122,8 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Add Boolean" onClick={() => handleAddFeature('boolean')} disabled={readOnly}><img src={featureBooleanIcon} alt="Add Boolean" /></button>
 
               <button className="editor-btn" title="Add Array" onClick={() => handleAddFeature('array')} disabled={readOnly}><img src={featureArrayIcon} alt="Add Array" /></button>
+
+              <button className="editor-btn" title="Add Circular Array" onClick={() => handleAddFeature('circular_array')} disabled={readOnly}><img src={featureCircularArrayIcon} alt="Add Circular Array" /></button>
 
               <button className="editor-btn" title="Delete Body" onClick={() => handleAddFeature('delete_body')} disabled={readOnly}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
 
