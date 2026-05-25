@@ -739,13 +739,23 @@ def _apply_body_operation(
                     new_shape, brep_diff = boolean_union_with_diff(old_target_shape, tool_shape)
                 except Exception as exc:
                     raise ValueError(f"{op_name}: add operation failed: {exc}")
+                merged_shape = _ensure_occ(new_shape)
                 if merge_target:
-                    if ocp_count_solids(_ensure_occ(new_shape)) > 1:
+                    if ocp_count_solids(merged_shape) > 1:
                         raise ValueError(
                             f"{op_name}: add would create island shape "
                             "not touching target body"
                         )
-                existing_body.shape = _ensure_occ(new_shape)
+                else:
+                    # Default add (no explicit target): only fuse with a body the
+                    # new solid actually connects to. If the union stays disjoint
+                    # (solid count does not drop), the profile is a separate part,
+                    # so skip this body and let it become its own body.
+                    old_n = ocp_count_solids(old_target_shape)
+                    tool_n = ocp_count_solids(_ensure_occ(tool_shape))
+                    if ocp_count_solids(merged_shape) >= old_n + tool_n:
+                        continue
+                existing_body.shape = merged_shape
                 existing_body.modified_by.append(feature_id)
                 existing_body.brep_diff = brep_diff
                 _transfer_boolean_lineage(
@@ -762,7 +772,7 @@ def _apply_body_operation(
             fused_body = body_store.get(fused_body_id)
             if fused_body is not None and _brep_diff_is_empty(fused_body.brep_diff):
                 result["solver_warning"] = f"{op_name}: operation produced no geometry change"
-        elif not need_new_body:
+        elif merge_target:
             raise ValueError(f"{op_name}: add could not fuse with any target body")
         else:
             solids = ocp_explore_solids(_ensure_occ(tool_shape))

@@ -68,6 +68,28 @@ def test_add_operation_fuses_with_existing_touching_body():
     assert result["body_id"] == "body_b0"
 
 
+def test_add_with_disjoint_body_creates_separate_part():
+    """Default add (no merge_target) must not fuse a spatially disjoint solid.
+
+    Two separate profiles should yield two distinct bodies, not one compound
+    body. Regression for the '2 part document' bug.
+    """
+    import cadquery as cq
+    box_a = cq.Workplane("XY").box(5, 5, 5).val()
+    # Tool far away: shares no face or volume with the existing body.
+    tool = cq.Workplane("XY").transformed(offset=(100, 0, 0)).box(5, 5, 5).val()
+    body_store = _make_body_store(box_a, body_id="body_b0", feature_id="b0")
+    result = _call_helper(tool, body_store, operation="add",
+                          body_id="body_feat1", feature_id="feat1")
+    assert result["status"] == "ok"
+    assert result["operation"] == "add"
+    assert result["body_id"] == "body_feat1"
+    assert "body_b0" in body_store
+    assert "body_feat1" in body_store
+    assert len(body_store) == 2
+    assert body_store["body_feat1"].created_by == "feat1"
+
+
 def test_cut_operation_removes_intersection():
     import cadquery as cq
     # Existing body: box 5x5x5 at origin
