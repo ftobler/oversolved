@@ -603,30 +603,13 @@ def _run_solver(
     constraints: list,
     entities: dict,
     entity_offsets: dict,
-    reg_weights: np.ndarray | None = None,
 ) -> tuple[np.ndarray, str, np.ndarray, int, float, int]:
     """Run scipy least_squares, compute status, rank, DOF.
 
     Returns (x_sol, status, J, rank, final_loss, n_params).
-
-    ``reg_weights`` (length n_params, optional) appends linear penalty residuals
-    w*(x - x0) to the optimizer objective only. These soft rows are stripped from
-    the returned Jacobian and excluded from the loss so they never influence the
-    rank/DOF/status analysis -- they only break ties among otherwise free DOF.
     """
-    reg_idx = np.flatnonzero(reg_weights) if reg_weights is not None else np.empty(0, dtype=int)
-    n_reg = int(reg_idx.size)
-    if n_reg:
-        reg_w = reg_weights[reg_idx]  # type: ignore[index]
-        x0_reg = x0[reg_idx]
-
-        def opt_residuals(x: np.ndarray) -> np.ndarray:
-            return np.concatenate([residuals_fn(x), reg_w * (x[reg_idx] - x0_reg)])
-    else:
-        opt_residuals = residuals_fn
-
     opt = least_squares(
-        opt_residuals,
+        residuals_fn,
         x0,
         method="trf",
         jac="3-point",
@@ -637,13 +620,11 @@ def _run_solver(
         x_scale="jac",
     )
     x_sol = opt.x
-    # Loss and Jacobian for status must reflect hard constraints only.
-    hard_residuals = residuals_fn(x_sol)
-    final_loss = float(np.sum(hard_residuals**2))
+    final_loss = 2.0 * float(opt.cost)
 
     J = (
-        opt.jac[:opt.jac.shape[0] - n_reg]
-        if opt.jac is not None and opt.jac.shape[0] - n_reg > 0
+        opt.jac
+        if opt.jac is not None and opt.jac.shape[0] > 0
         else np.zeros((0, len(x_sol)))
     )
     rank = int(np.linalg.matrix_rank(J, tol=RANK_TOL))
@@ -725,6 +706,36 @@ def _drag_reg_weights(
     return weights
 
 
+def _refine_drag(
+    x_clean: np.ndarray, x0: np.ndarray, residuals_fn: Callable, reg_weights: np.ndarray,
+) -> np.ndarray:
+    """Re-position free DOF after a drag without disturbing the constraint status.
+
+    Runs a second least_squares seeded at the constraint solution ``x_clean``,
+    adding linear penalty rows w*(x - x0) that pull each parameter toward its
+    pre-solve value (firmest for the dragged entity). Hard constraints keep
+    weight 1.0 and dominate, so the manifold is preserved; the penalty only
+    selects a point within the free DOF. The status/rank/loss reported to the
+    caller come from the unregularized solve, so this never raises a false
+    overconstrained error.
+    """
+    reg_idx = np.flatnonzero(reg_weights)
+    if reg_idx.size == 0:
+        return x_clean
+    reg_w = reg_weights[reg_idx]
+    x0_reg = x0[reg_idx]
+
+    def opt_residuals(x: np.ndarray) -> np.ndarray:
+        return np.concatenate([residuals_fn(x), reg_w * (x[reg_idx] - x0_reg)])
+
+    opt = least_squares(
+        opt_residuals, x_clean,
+        method="trf", jac="3-point",
+        ftol=1e-10, xtol=1e-10, gtol=1e-10, max_nfev=10000, x_scale="jac",
+    )
+    return opt.x
+
+
 def _solve_sketch(feature: dict, global_repo: Repository | None = None) -> dict:
     # Expand compound entity kinds before processing.
     if any(e.get("kind") == "center_rect" for e in feature.get("entities", [])):
@@ -783,8 +794,12 @@ def _solve_sketch(feature: dict, global_repo: Repository | None = None) -> dict:
     residuals_fn, _ = _build_residuals_fn(constraints_active, entities, entity_offsets, x0)
     x_sol, status, J, rank, _final_loss, n_params = _run_solver(
         x0, residuals_fn, constraints_active, entities, entity_offsets,
-        reg_weights=reg_weights,
     )
+
+    # Drag firmness: only re-position free DOF, and only when there are any.
+    # Status/rank above stay authoritative, so a drag never fabricates an error.
+    if reg_weights is not None and status == "underconstrained":
+        x_sol = _refine_drag(x_sol, x0, residuals_fn, reg_weights)
 
     geom_solved = _geometry_from_array(x_sol, entities, entity_offsets)
 

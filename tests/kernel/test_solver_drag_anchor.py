@@ -159,3 +159,52 @@ def test_drag_anchor_keeps_free_radius_from_collapsing():
     assert _dist(p1, [25.0, 0.0]) < 0.05              # dragged point stays at drop
     assert _dist(c1[:2], [25.0, 0.0]) < 0.05          # centre followed via concentric
     assert abs(c1[2] - 10.0) < 1e-3                   # radius did not collapse
+
+
+# ─── Regression: drag must not fabricate an overconstrained error ───
+
+_TANGENT_LINE = """
+version: 1
+kind: part
+features:
+  - id: sketch_1
+    kind: sketch
+    plane: "@builtin_plane_top"
+    {anchor}
+    initial:
+      ln: [-4.676, 13.879, -0.2957603546, 4.9862164482]
+      circ: [0.0067007292, -0.0026910692, 4.9996135439]
+    entities:
+      - id: circ
+        kind: circle
+      - id: ln
+        kind: line
+    constraints:
+      - id: c1
+        kind: coincident
+        a: {{entity: circ, point: center}}
+        b: {{external_xy: [0.0, 0.0]}}
+      - id: c2
+        kind: tangent
+        a: {{entity: ln, point: end}}
+        b: {{entity: circ}}
+      - id: c3
+        kind: coincident
+        a: {{entity: ln, point: end}}
+        b: {{entity: circ}}
+      - id: c4
+        kind: diameter
+        target: {{entity: circ}}
+        value: 10
+"""
+
+
+def test_drag_anchor_does_not_fabricate_overconstrained():
+    """A line tangent+coincident to a fixed circle, with a free start vertex,
+    is underconstrained. Dragging that vertex must report the same status with
+    the anchor as without -- the firmness penalty must never inflate the hard
+    loss into a false overconstrained error (bugreports/move_solve_error)."""
+    plain = _result(_TANGENT_LINE.format(anchor=""))
+    dragged = _result(_TANGENT_LINE.format(anchor="drag_anchor: ln"))
+    assert plain["status"] == "underconstrained"
+    assert dragged["status"] == plain["status"]
