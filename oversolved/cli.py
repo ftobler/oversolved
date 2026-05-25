@@ -65,8 +65,8 @@ def _get_db_from_config(args: argparse.Namespace, init_db: bool = True):
     elif config["DB_TYPE"] == "sqlite":
         conn = SQLiteConnection(config["DB_PATH"])
     db = Database(conn)
-    from oversolved.app import _register_migrations
-    _register_migrations(db)
+    from oversolved.migrations import discover_and_register
+    discover_and_register(db)
     if init_db:
         db.init()
     return db

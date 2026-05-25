@@ -4,14 +4,15 @@ import json
 import pytest
 import psycopg2
 from werkzeug.security import generate_password_hash
-from oversolved.app import create_app, _register_migrations
+from oversolved.app import create_app
+from oversolved.migrations import discover_and_register
 from oversolved.db import Database, PostgreSQLConnection, SessionStore, UserStore
 from oversolved.auth import authenticate_token, AuthOk, AuthError
 
 
 def _make_db(pg_dsn):
     database = Database(PostgreSQLConnection(pg_dsn))
-    _register_migrations(database)
+    discover_and_register(database)
     database.init()
     return database
 

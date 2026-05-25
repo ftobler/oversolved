@@ -21,11 +21,6 @@ from oversolved.migrations import discover_and_register
 logger = logging.getLogger(__name__)
 
 
-def _register_migrations(db: Database) -> None:
-    """Register all migrations on a Database instance (backward compat for tests)."""
-    discover_and_register(db)
-
-
 def _ensure_admin_user(db: Database, testing: bool = False) -> None:
     """Create the default admin user if it doesn't exist."""
     admin_password = os.environ.get("OVERSOLVED_ADMIN_PASSWORD")

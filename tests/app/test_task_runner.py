@@ -27,9 +27,9 @@ class FakeTask(PeriodicTask):
 
 
 def _make_db(pg_dsn):
-    from oversolved.app import _register_migrations
+    from oversolved.migrations import discover_and_register
     database = Database(PostgreSQLConnection(pg_dsn))
-    _register_migrations(database)
+    discover_and_register(database)
     database.init()
     return database
 
