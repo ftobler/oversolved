@@ -17,7 +17,6 @@ vi.mock('@/hooks/useDocumentState', () => ({
     saveDoc: vi.fn(),
     renameDoc: vi.fn(),
   }),
-  healDoc: vi.fn(),
   BUILTIN_FEATURE_DEFAULTS: {},
   BUILTIN_FEATURE_IDS: new Set<string>(),
 }))

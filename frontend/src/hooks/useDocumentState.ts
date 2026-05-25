@@ -13,22 +13,6 @@ export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
 
 export const BUILTIN_FEATURE_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 
-export function healDoc(raw: unknown): PartDoc {
-  const doc = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const userFeatures = Array.isArray(doc.features) ? (doc.features as PartFeature[]) : []
-  const existingIds = new Set(userFeatures.map(f => f.id))
-  const missingBuiltins = BUILTIN_FEATURE_DEFAULTS.filter(f => !existingIds.has(f.id))
-  const healedFeatures = userFeatures.map(f =>
-    f.kind === 'sketch' && !f.plane ? { ...f, plane: '@builtin_plane_front' } : f,
-  )
-  return {
-    ...doc,
-    version:  (doc.version as number) ?? 1,
-    kind:     (doc.kind    as string) ?? 'part',
-    features: [...missingBuiltins, ...healedFeatures],
-  } as PartDoc
-}
-
 export function useDocumentState(
   uuid: string | undefined,
   reSolveRef: React.MutableRefObject<((d: PartDoc) => void) | null>,
@@ -48,7 +32,7 @@ export function useDocumentState(
     queueMicrotask(() => setLoading(true))
     http.getJson<{ content: string; name: string; owner_username?: string; permission?: string; is_public?: boolean }>(`/api/documents/${uuid}`)
       .then(data => {
-        const parsed = healDoc(parseYaml(data.content))
+        const parsed = parseYaml(data.content) as PartDoc
         docRef.current = parsed
         setDoc(parsed)
         setDocName(data.name)
