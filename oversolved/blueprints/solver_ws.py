@@ -65,9 +65,9 @@ def solver_websocket(ws):
         return
 
     build_timeout = current_app.config.get("SOLVER_WS_BUILD_TIMEOUT", 30)
-    auth_check_interval = current_app.config.get("WS_AUTH_CHECK_INTERVAL", 50)
-    solver_host = current_app.config.get("SOLVER_DAEMON_HOST", "127.0.0.1")
-    solver_port = current_app.config.get("SOLVER_DAEMON_PORT", 9100)
+    auth_check_interval = current_app.config["OVERSOLVED"].ws_auth_check_interval
+    solver_host = current_app.config["OVERSOLVED"].solver_daemon_host
+    solver_port = current_app.config["OVERSOLVED"].solver_daemon_port
     isolator = BuildIsolator(host=solver_host, port=solver_port, timeout=build_timeout)
     db = get_db()
 
@@ -126,7 +126,7 @@ def _resolve_import_files(data):
     The solver must never read from the filesystem, so the Flask app layer
     reads each uploaded STEP file and inlines its content into the feature.
     """
-    upload_dir = Path(current_app.config["UPLOAD_DIR"]).resolve()
+    upload_dir = Path(current_app.config["OVERSOLVED"].upload_dir).resolve()
     features = data.get("features", []) or []
     for feature in features:
         if feature.get("kind") != "import_step":

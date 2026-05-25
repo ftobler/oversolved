@@ -119,14 +119,8 @@ def create_app(config: dict | None = None) -> Flask:
     _ensure_admin_user(db, testing=app.config.get("TESTING", False))
     db.close()
 
-    # Build and store structured config; also mirror keys for legacy consumers.
     oversolved_cfg = OversolvedConfig.from_env(instance_path=app.instance_path)
     app.config["OVERSOLVED"] = oversolved_cfg
-    app.config.setdefault("UPLOAD_DIR", oversolved_cfg.upload_dir)
-    app.config.setdefault("SOLVER_WS_CACHE_MAX_SIZE", oversolved_cfg.solver_ws_cache_max_size)
-    app.config.setdefault("WS_AUTH_CHECK_INTERVAL", oversolved_cfg.ws_auth_check_interval)
-    app.config.setdefault("SOLVER_DAEMON_HOST", oversolved_cfg.solver_daemon_host)
-    app.config.setdefault("SOLVER_DAEMON_PORT", oversolved_cfg.solver_daemon_port)
 
     # Register blueprints
     app.register_blueprint(auth_bp)

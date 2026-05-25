@@ -460,7 +460,7 @@ class TestSolverWebSocket:
     @patch("oversolved.blueprints.solver_ws.BuildIsolator")
     def test_websocket_auth_periodic_recheck(self, mock_isolator_cls, app):
         """Auth is re-checked every WS_AUTH_CHECK_INTERVAL messages."""
-        app.config["WS_AUTH_CHECK_INTERVAL"] = 2
+        app.config["OVERSOLVED"].ws_auth_check_interval = 2
         mock_isolator = _make_mock_isolator({
             "solve_ms": 1,
             "result": {},

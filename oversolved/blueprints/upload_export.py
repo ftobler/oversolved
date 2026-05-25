@@ -15,7 +15,7 @@ ALLOWED_EXTENSIONS = {".step", ".stp", ".iges", ".igs"}
 def get_upload_dir():
     """Return the upload directory from app config or env var fallback."""
     try:
-        return current_app.config["UPLOAD_DIR"]
+        return current_app.config["OVERSOLVED"].upload_dir
     except RuntimeError:
         return os.environ.get(
             "OVERSOLVED_UPLOAD_DIR",

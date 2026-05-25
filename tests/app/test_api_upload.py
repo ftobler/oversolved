@@ -117,6 +117,6 @@ def test_file_persisted(authed_client, step_file):
         response = authed_client.post("/api/upload", data={"file": (f, "cube.step")})
     data = response.get_json()
     file_id = data["file_id"]
-    upload_dir = authed_client.application.config["UPLOAD_DIR"]
+    upload_dir = authed_client.application.config["OVERSOLVED"].upload_dir
     filepath = os.path.join(upload_dir, file_id)
     assert os.path.isfile(filepath), f"uploaded file not found at {filepath}"
