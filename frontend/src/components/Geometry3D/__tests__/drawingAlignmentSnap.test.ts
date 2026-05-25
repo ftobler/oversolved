@@ -35,66 +35,66 @@ describe('alignment snap for draw tool', () => {
       expect(ALIGNMENT_TOLERANCE_DEG).toBe(10)
     })
 
-    it('ALIGNMENT_TOLERANCE_DIST is 5 screen pixels', () => {
-      expect(ALIGNMENT_TOLERANCE_DIST).toBe(5)
+    it('ALIGNMENT_TOLERANCE_DIST is 20 screen pixels', () => {
+      expect(ALIGNMENT_TOLERANCE_DIST).toBe(20)
     })
   })
 
   describe('isAlignmentSnap', () => {
-    const tol = ALIGNMENT_TOLERANCE_DIST
+    const TOL = 20  // world-space tolerance for test
 
     describe('horizontal detection', () => {
       it('detects near-horizontal when both angle and normal distance are within tolerance', () => {
-        expect(isAlignmentSnap(100, tol - 1, tol)).toBe('kinda_horizontal')
+        expect(isAlignmentSnap(100, 4, TOL)).toBe('kinda_horizontal')
       })
 
       it('detects exactly horizontal', () => {
-        expect(isAlignmentSnap(50, 0, tol)).toBe('kinda_horizontal')
+        expect(isAlignmentSnap(50, 0, TOL)).toBe('kinda_horizontal')
       })
 
       it('rejects when normal distance exceeds tolerance despite small angle', () => {
-        expect(isAlignmentSnap(100, tol + 1, tol)).toBeNull()
+        expect(isAlignmentSnap(100, 21, TOL)).toBeNull()
       })
 
       it('rejects when angle exceeds tolerance even if normal distance is small', () => {
-        expect(isAlignmentSnap(2, 1, tol)).toBeNull()
+        expect(isAlignmentSnap(2, 1, TOL)).toBeNull()
       })
     })
 
     describe('vertical detection', () => {
       it('detects near-vertical when both angle and normal distance are within tolerance', () => {
-        expect(isAlignmentSnap(tol - 1, 100, tol)).toBe('kinda_vertical')
+        expect(isAlignmentSnap(4, 100, TOL)).toBe('kinda_vertical')
       })
 
       it('detects exactly vertical', () => {
-        expect(isAlignmentSnap(0, 50, tol)).toBe('kinda_vertical')
+        expect(isAlignmentSnap(0, 50, TOL)).toBe('kinda_vertical')
       })
 
       it('rejects when normal distance exceeds tolerance despite small angle', () => {
-        expect(isAlignmentSnap(tol + 1, 100, tol)).toBeNull()
+        expect(isAlignmentSnap(21, 100, TOL)).toBeNull()
       })
 
       it('rejects when angle exceeds tolerance even if normal distance is small', () => {
-        expect(isAlignmentSnap(1, 2, tol)).toBeNull()
+        expect(isAlignmentSnap(1, 2, TOL)).toBeNull()
       })
     })
 
     describe('no detection', () => {
       it('returns null for 45 degree line', () => {
-        expect(isAlignmentSnap(10, 10, tol)).toBeNull()
+        expect(isAlignmentSnap(10, 10, TOL)).toBeNull()
       })
 
       it('returns null when distance is too small', () => {
-        expect(isAlignmentSnap(0, 0.0001, tol)).toBeNull()
+        expect(isAlignmentSnap(0, 0.0001, TOL)).toBeNull()
       })
     })
   })
 
   describe('detectDrawAlignment', () => {
-    const tol = ALIGNMENT_TOLERANCE_DIST
+    const TOL = 20
 
     it('wraps isAlignmentSnap into a result with point and vertexId', () => {
-      const result = detectDrawAlignment([60, 20], [10, 20], tol)
+      const result = detectDrawAlignment([60, 20], [10, 20], TOL)
       expect(result).toEqual({
         kind: 'kinda_horizontal',
         point: [10, 20],
@@ -103,7 +103,7 @@ describe('alignment snap for draw tool', () => {
     })
 
     it('returns null when isAlignmentSnap returns null', () => {
-      const result = detectDrawAlignment([10, 10], [0, 0], tol)
+      const result = detectDrawAlignment([10, 10], [0, 0], TOL)
       expect(result).toBeNull()
     })
   })
