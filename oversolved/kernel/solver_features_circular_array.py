@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from OCP.gp import gp_Trsf
 from oversolved.kernel.query import Repository
-from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, boolean_union_with_diff, fuse_shapes, make_compound
+from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, boolean_union_with_diff
 from oversolved.kernel.types3d import Body
 from oversolved.kernel.geometry_features import make_rotation_trsf, transform_copy
 from oversolved.kernel.solver_features_shared import (
@@ -51,8 +51,8 @@ def _build_circular_transforms(
         body_store=body_store,
     )
     trsfs: list[gp_Trsf] = []
-    start = 0 if include_source else 1
-    for i in range(start, start + count):
+    num = count if not include_source else count - 1
+    for i in range(1, 1 + num):
         trsf = make_rotation_trsf(axis_origin, axis_direction, math.radians(step * i))
         trsfs.append(trsf)
     return trsfs
@@ -102,14 +102,14 @@ def _solve_circular_array(
 
     result_body_id = "body_" + feature_id
     if operation == "new":
-        tool_shape = make_compound(instances)
-        new_body = Body(
-            id=result_body_id,
-            created_by=feature_id,
-            shape=_ensure_occ(tool_shape),
-            sketch_id="",
-        )
-        body_store[result_body_id] = new_body
+        for i, shape in enumerate(instances):
+            bid = result_body_id if i == 0 else f"{result_body_id}_{i}"
+            body_store[bid] = Body(
+                id=bid,
+                created_by=feature_id,
+                shape=_ensure_occ(shape),
+                sketch_id="",
+            )
         return {"status": "ok", "body_id": result_body_id, "operation": "new"}
     else:
         if len(instances) == 1:

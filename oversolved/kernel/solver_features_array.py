@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from OCP.gp import gp_Trsf
 from oversolved.kernel.query import Repository
-from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, boolean_union_with_diff, fuse_shapes, make_compound
+from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, boolean_union_with_diff
 from oversolved.kernel.types3d import Body
 from oversolved.kernel.geometry_features import make_translation_trsf, transform_copy
 from oversolved.kernel.solver_features_shared import (
@@ -47,8 +47,8 @@ def _build_array_transforms(
             global_repo,
             feature.get("direction_x", [1, 0, 0]),
         )
-        start = 0 if include_source else 1
-        for i in range(start, start + count_x):
+        num = count_x if not include_source else count_x - 1
+        for i in range(1, 1 + num):
             trsf = make_translation_trsf(dir_x[0] * pitch_x * i, dir_x[1] * pitch_x * i, dir_x[2] * pitch_x * i)
             trsfs.append(trsf)
 
@@ -67,9 +67,9 @@ def _build_array_transforms(
             global_repo,
             feature.get("direction_y", [0, 1, 0]),
         )
-        start_x = 0 if include_source else 1
+        num_x = count_x if not include_source else count_x - 1
         for j in range(count_y):
-            for i in range(start_x, start_x + count_x):
+            for i in range(1, 1 + num_x):
                 trsf = make_translation_trsf(
                     dir_x[0] * pitch_x * i + dir_y[0] * pitch_y * j,
                     dir_x[1] * pitch_x * i + dir_y[1] * pitch_y * j,
@@ -124,14 +124,14 @@ def _solve_array(
 
     result_body_id = "body_" + feature_id
     if operation == "new":
-        tool_shape = make_compound(instances)
-        new_body = Body(
-            id=result_body_id,
-            created_by=feature_id,
-            shape=_ensure_occ(tool_shape),
-            sketch_id="",
-        )
-        body_store[result_body_id] = new_body
+        for i, shape in enumerate(instances):
+            bid = result_body_id if i == 0 else f"{result_body_id}_{i}"
+            body_store[bid] = Body(
+                id=bid,
+                created_by=feature_id,
+                shape=_ensure_occ(shape),
+                sketch_id="",
+            )
         return {"status": "ok", "body_id": result_body_id, "operation": "new"}
     else:
         # Fuse incrementally so the final union's BrepDiff is captured. The seam

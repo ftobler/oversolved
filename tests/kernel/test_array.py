@@ -120,9 +120,9 @@ class TestArrayLinear:
         assert_mesh_bbox(mesh, x_range=(20, 25), y_range=(0, 5), z_range=(0, 5))
 
     def test_new_operation_creates_separate_body(self):
-        """operation=new should not modify the source body and create body_arr1."""
+        """operation=new creates separate split bodies."""
         from oversolved.kernel.builder import build
-        from solver_helpers import box_extrude_spec, assert_mesh_bbox
+        from solver_helpers import box_extrude_spec, assert_mesh_bbox, assert_mesh_valid
 
         spec = box_extrude_spec(w=5, h=5, d=5, extrude_id="extrude1")
         spec["features"].append(
@@ -147,12 +147,11 @@ class TestArrayLinear:
             r["bodies"]["body_extrude1"]["mesh"],
             x_range=(0, 5), y_range=(0, 5), z_range=(0, 5),
         )
-        # New body for array
-        assert "body_arr1" in r["bodies"]
-        assert_mesh_bbox(
-            r["bodies"]["body_arr1"]["mesh"],
-            x_range=(0, 25), y_range=(0, 5), z_range=(0, 5),
-        )
+        # 3 split bodies: source at 0 + copies at 10, 20
+        body_ids = sorted(b for b in r["bodies"] if b.startswith("body_arr1"))
+        assert body_ids == ["body_arr1", "body_arr1_1", "body_arr1_2"], body_ids
+        for bid in body_ids:
+            assert_mesh_valid(r["bodies"][bid]["mesh"])
 
 
 class TestArrayRectangular:
@@ -248,7 +247,7 @@ class TestCircularArray:
         assert_mesh_valid(mesh)
 
     def test_rotational_new_operation(self):
-        """operation=new creates a separate body."""
+        """operation=new creates 4 split bodies (source + 3 copies)."""
         from oversolved.kernel.builder import build
         from solver_helpers import box_extrude_spec, assert_mesh_valid
 
@@ -268,8 +267,12 @@ class TestCircularArray:
         })
         r = build(spec)
         assert r["result"]["ca1"]["status"] == "ok", r["result"]["ca1"]
-        assert "body_ca1" in r["bodies"]
-        assert_mesh_valid(r["bodies"]["body_ca1"]["mesh"])
+        body_ids = sorted(b for b in r["bodies"] if b.startswith("body_ca1"))
+        assert len(body_ids) == 4, (
+            f"expected 4 bodies, got {body_ids}"
+        )
+        for bid in body_ids:
+            assert_mesh_valid(r["bodies"][bid]["mesh"])
 
     def test_rotational_no_source(self):
         """include_source=False should still produce count copies."""
@@ -362,28 +365,17 @@ class TestCircularArray:
         ca = r["result"]["ca1"]
         assert ca["status"] == "ok", ca
         assert ca["body_id"] == "body_ca1", ca
-        mesh = r["bodies"]["body_ca1"]["mesh"]
-        assert_mesh_valid(mesh)
-        assert len(mesh["vertices"]) > 100, (
-            f"expected >100 vertices, got {len(mesh['vertices'])}"
+        # Verify 4 split bodies
+        body_ids = sorted(b for b in r["bodies"] if b.startswith("body_ca1"))
+        assert len(body_ids) == 4, (
+            f"expected 4 bodies starting with body_ca1, got {body_ids}"
         )
-        assert len(mesh["faces"]) > 100, (
-            f"expected >100 faces, got {len(mesh['faces'])}"
-        )
-        # Verify 4 distinct solids in the array body
-        from OCP.TopExp import TopExp_Explorer
-        from OCP.TopAbs import TopAbs_SOLID
-        body_shapes = r.get("_body_shapes", {})
-        arr_shape = body_shapes.get("body_ca1")
-        assert arr_shape is not None, "body_ca1 not in _body_shapes"
-        exp = TopExp_Explorer(arr_shape, TopAbs_SOLID)
-        n_solids = 0
-        while exp.More():
-            n_solids += 1
-            exp.Next()
-        assert n_solids == 4, (
-            f"expected 4 solids in circular array body, got {n_solids}"
-        )
+        for bid in body_ids:
+            mesh = r["bodies"][bid]["mesh"]
+            assert_mesh_valid(mesh)
+            assert len(mesh["vertices"]) > 10, (
+                f"{bid}: expected >10 vertices, got {len(mesh['vertices'])}"
+            )
 
 
 class TestArrayErrors:

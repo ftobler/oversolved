@@ -254,22 +254,6 @@ def boolean_intersection_with_diff(target: Any, tool: Any) -> tuple[cq_shapes.Sh
     return _boolean_with_diff(target, tool, "common")
 
 
-def make_compound(shapes: list[Any]) -> cq_shapes.Shape:
-    """Build a compound (group) of shapes without fusing them."""
-    if not shapes:
-        raise ValueError("no shapes to compound")
-    if len(shapes) == 1:
-        return _ensure_cq(shapes[0])
-    from OCP.BRep import BRep_Builder
-    from OCP.TopoDS import TopoDS_Compound
-    builder = BRep_Builder()
-    compound = TopoDS_Compound()
-    builder.MakeCompound(compound)
-    for shp in shapes:
-        builder.Add(compound, _ensure_occ(shp))
-    return _ensure_cq(compound)
-
-
 def fuse_shapes(shapes: list[Any]) -> cq_shapes.Shape:
     """Fuse multiple shapes into one."""
     if not shapes:
