@@ -38,7 +38,6 @@ from oversolved.kernel.geom_hash import (
     vertex_geometry_hash,
 )
 from oversolved.kernel.geometry_io import stl_file_to_shape, step_file_to_shape
-from oversolved.kernel.ocp_ops import ocp_mesh_shape
 from oversolved.kernel.profile_loops import classify_loops
 from oversolved.kernel.query import make_ancestry_query, ref, index_ref
 from oversolved.kernel.types3d import Frame3D
@@ -571,6 +570,7 @@ def revolve_face(
 def _sort_shape_faces(
     solid: cq_shapes.Shape,
     deflection: float = 0.1,
+    angular_deflection: float = 0.1,
 ) -> list[tuple[Any, list, list, list, list, str]]:
     """Return sorted [(face, verts, idxs, centroid, normal, surface_type), ...].
 
@@ -579,7 +579,7 @@ def _sort_shape_faces(
     """
     raw_faces: list[tuple] = []
     for face in solid.Faces():
-        verts, idxs = face.tessellate(deflection)
+        verts, idxs = face.tessellate(deflection, angular_deflection)
         centroid = _compute_face_centroid(face)
         normal = _compute_face_normal(face)
         surface_type = _get_face_surface_type(face)
@@ -736,6 +736,8 @@ def _tessellate_and_assemble_faces(
     body_id: str | None,
     profile_queries: list[str] | None = None,
     face_lineage: dict[str, list[str]] | None = None,
+    deflection: float = 0.1,
+    angular_deflection: float = 0.1,
 ) -> tuple[
     list[dict],
     list[int],
@@ -752,7 +754,7 @@ def _tessellate_and_assemble_faces(
         _init_mesh_accumulators()
     )
     try:
-        raw_faces = _sort_shape_faces(solid)
+        raw_faces = _sort_shape_faces(solid, deflection=deflection, angular_deflection=angular_deflection)
         for face_idx, (face, verts, idxs, centroid, normal, surface_type) in enumerate(raw_faces):
             face_area, triangle_count = _append_face_triangles(
                 all_vertices, all_faces,
@@ -775,7 +777,15 @@ def _tessellate_and_assemble_faces(
     return face_data, triangle_to_face, face_queries, all_vertices, all_faces
 
 
-def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body_id: str | None = None, profile_queries: list[str] | None = None, face_lineage: dict[str, list[str]] | None = None) -> MeshDict:
+def solid_to_mesh(
+    solid: TopoDS_Shape | str,
+    created_by: str | None = None,
+    body_id: str | None = None,
+    profile_queries: list[str] | None = None,
+    face_lineage: dict[str, list[str]] | None = None,
+    deflection: float = 0.1,
+    angular_deflection: float = 0.1,
+) -> MeshDict:
     """Tessellate a cadquery solid to a mesh dict.
 
     Iterates faces and tessellates each one individually so that face
@@ -788,18 +798,17 @@ def solid_to_mesh(solid: TopoDS_Shape | str, created_by: str | None = None, body
             body so that multiple bodies from the same feature have unique queries.
         profile_queries: Optional profile-layer entity tokens to include in
             ancestry queries, so queries survive geometry changes.
+        deflection: Linear deflection for tessellation (default 0.1).
+        angular_deflection: Angular deflection in radians (default 0.1).
     """
     if isinstance(solid, str):
         solid = _load_shape_from_path(solid)
     solid = _ensure_cq(solid)
 
-    topo_shape = _ensure_occ(solid)
-    try:
-        ocp_mesh_shape(topo_shape, 0.1, 0.1)
-    except Exception as exc:
-        logger.warning("solid_to_mesh: BRepMesh_IncrementalMesh failed: %s", exc)
-
-    fd, t2f, fq, verts, faces = _tessellate_and_assemble_faces(solid, created_by, body_id, profile_queries, face_lineage)
+    fd, t2f, fq, verts, faces = _tessellate_and_assemble_faces(
+        solid, created_by, body_id, profile_queries, face_lineage,
+        deflection=deflection, angular_deflection=angular_deflection,
+    )
     if not verts:
         logger.warning("solid_to_mesh produced no vertices; returning unit cube fallback")
         return _unit_cube_mesh()

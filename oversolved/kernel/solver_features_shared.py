@@ -28,7 +28,6 @@ from oversolved.kernel.ocp_ops import (
     ocp_count_solids,
     ocp_explore_solids,
     ocp_extract_face_loops,
-    ocp_mesh_shape,
 )
 
 logger = logging.getLogger(__name__)
@@ -231,8 +230,7 @@ def _resolve_face_index_via_hash(
     normal = _compute_face_normal(target_face)
 
     try:
-        ocp_mesh_shape(_ensure_occ(shape), 0.1, 0.1)
-        verts, idxs = target_face.tessellate(0.1)
+        verts, idxs = target_face.tessellate(0.1, 0.1)
     except Exception as exc:
         logger.warning("face hash resolution: tessellation failed: %s", exc)
         return None

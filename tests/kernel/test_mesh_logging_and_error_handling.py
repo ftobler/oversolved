@@ -27,8 +27,8 @@ def test_solid_to_mesh_uses_module_level_logger(caplog):
 
     shape = _make_box_shape()
 
-    # BRepMesh_IncrementalMesh is a local import inside solid_to_mesh; patch at OCP level.
-    with mock.patch("OCP.BRepMesh.BRepMesh_IncrementalMesh", side_effect=RuntimeError("mock tessellation error")):
+    # Patch at CadQuery's module-level import so face.tessellate() triggers the error.
+    with mock.patch("cadquery.occ_impl.shapes.BRepMesh_IncrementalMesh", side_effect=RuntimeError("mock tessellation error")):
         with caplog.at_level(logging.WARNING, logger="oversolved.kernel.geometry_tessellation"):
             result = solid_to_mesh(shape)
 
@@ -46,7 +46,7 @@ def test_solid_to_mesh_logs_on_tessellation_failure(caplog):
 
     shape = _make_box_shape()
 
-    with mock.patch("OCP.BRepMesh.BRepMesh_IncrementalMesh", side_effect=RuntimeError("boom")):
+    with mock.patch("cadquery.occ_impl.shapes.BRepMesh_IncrementalMesh", side_effect=RuntimeError("boom")):
         with caplog.at_level(logging.WARNING, logger="oversolved.kernel.geometry_tessellation"):
             solid_to_mesh(shape)
 
