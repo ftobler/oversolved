@@ -21,7 +21,7 @@ except ImportError:
 from oversolved.kernel.cadquery_ops import (
     _compute_face_centroid, _compute_face_normal,
     _ensure_occ,
-    _face_sort_key, _triangle_area,
+    _face_sort_key,
     boolean_cut_with_diff, boolean_intersection, boolean_union_with_diff,
 )
 from oversolved.kernel.ocp_ops import (
@@ -229,19 +229,7 @@ def _resolve_face_index_via_hash(
     centroid = _compute_face_centroid(target_face)
     normal = _compute_face_normal(target_face)
 
-    try:
-        verts, idxs = target_face.tessellate(0.1, 0.1)
-    except Exception as exc:
-        logger.warning("face hash resolution: tessellation failed: %s", exc)
-        return None
-
-    flat_verts = [list(v.toTuple()) for v in verts]
-    area = sum(
-        _triangle_area(flat_verts[tri[0]], flat_verts[tri[1]], flat_verts[tri[2]])
-        for tri in idxs
-    )
-
-    geom_hash = face_geometry_hash(centroid, normal, area)
+    geom_hash = face_geometry_hash(centroid, normal)
     try:
         query_str = make_ancestry_query([ref(geom_hash)], "face")
         face_entry = global_repo.query(query_str, body_store={})

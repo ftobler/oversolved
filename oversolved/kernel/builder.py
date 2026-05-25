@@ -326,41 +326,25 @@ def _brep_diff_new_face_hashes(body: Body) -> set[str]:
     boolean op) so their `@created_by` can be tagged with the cutting feature
     rather than the body's original creator.
 
-    Area is computed by tessellating each new face and summing triangle areas
-    (same method as solid_to_mesh) so the resulting hash matches the hash
-    computed from the tessellated mesh.
-
-    The new_faces handles are sub-shapes of body.shape, so the whole solid is
-    meshed once and each face's triangulation is read back from that shared mesh.
-    Meshing faces in isolation gives a different triangulation for curved faces
-    (hole walls, fillet surfaces) and would not match the final mesh's area hash.
+    The hash is centroid + normal only, both of which are tessellation-stable,
+    so the new-face handles can be measured directly without re-meshing the
+    whole solid to match a triangle-summed area.
     """
     diff = getattr(body, "brep_diff", None)
     if diff is None or not diff.new_faces or body.shape is None:
         return set()
     try:
-        from oversolved.kernel.cadquery_ops import _compute_face_centroid, _compute_face_normal, _triangle_area, _ensure_occ
-        from oversolved.kernel.ocp_ops import ocp_mesh_shape
+        from oversolved.kernel.cadquery_ops import _compute_face_centroid, _compute_face_normal
         import cadquery.occ_impl.shapes as cq_shapes  # noqa: PLC0415
     except ImportError:
         return set()
-    try:
-        ocp_mesh_shape(_ensure_occ(body.shape), 0.1, 0.1)
-    except Exception as exc:
-        logger.debug("brep_diff solid mesh skip: %s", exc)
     hashes: set[str] = set()
     for topo_face in diff.new_faces:
         try:
             cq_face = cq_shapes.Shape.cast(topo_face)
             centroid = _compute_face_centroid(cq_face)
             normal = _compute_face_normal(cq_face)
-            verts, idxs = cq_face.tessellate(0.1)
-            flat_verts = [list(v.toTuple()) for v in verts]
-            area = sum(
-                _triangle_area(flat_verts[tri[0]], flat_verts[tri[1]], flat_verts[tri[2]])
-                for tri in idxs
-            )
-            hashes.add(face_geometry_hash(centroid, normal, area))
+            hashes.add(face_geometry_hash(centroid, normal))
         except Exception as exc:  # narrow OCP errors aren't easy to type
             logger.debug("brep_diff hash skip: %s", exc)
     return hashes
@@ -384,8 +368,7 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: MeshDict) -> Non
     for face_idx, face_info in enumerate(face_data):
         centroid = face_info.get("centroid", [0.0, 0.0, 0.0])
         normal = face_info.get("normal", [0.0, 0.0, 1.0])
-        area = face_info.get("area", 0.0)
-        geom_hash = face_geometry_hash(centroid, normal, area)
+        geom_hash = face_geometry_hash(centroid, normal)
 
         # Per-face provenance: new faces track to the latest modifier, not the
         # body's original creator. Falls back to body.created_by for inherited
@@ -645,7 +628,7 @@ def _tessellate_body_geometry(body: Body, tess_cache: dict[int, dict] | None = N
             new_face_hashes = _brep_diff_new_face_hashes(body)
             if new_face_hashes:
                 for i, fd in enumerate(mesh.get("face_data", [])):
-                    gh = face_geometry_hash(fd["centroid"], fd["normal"], fd["area"])
+                    gh = face_geometry_hash(fd["centroid"], fd["normal"])
                     if gh in new_face_hashes:
                         mesh["face_queries"][i] = _rewrite_created_by(mesh["face_queries"][i], modifier)
 

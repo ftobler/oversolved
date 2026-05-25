@@ -272,3 +272,58 @@ def test_sketch_on_face_after_boolean_cut_partial_rebuild() -> None:
     assert sk3_result3.get('status') != 'exception', (
         f"sk3 failed (partial rebuild): {sk3_result3.get('exception')}"
     )
+
+
+def test_sketch_on_filleted_multi_profile_face_resolves() -> None:
+    """Sketch on a flat end-cap of a multi-profile, filleted body must resolve.
+
+    Regression for bugreports/sketch_2_fail: two circles extruded into one body
+    share identical face ancestry (both circles land in every face's profile
+    set), so the two opposite-facing end-caps are distinguishable only by the
+    face geom-hash. That hash previously folded in the triangle-summed area,
+    which drifts by ~1e-5 between the registration pass and the result-mesh
+    pass, so the picked hash never matched what was registered and the plane
+    query raised AmbiguousQueryError. With area dropped from the hash the
+    centroid+normal uniquely identify the picked face, and the query must
+    resolve on the first build and survive a second from-scratch rebuild.
+    """
+    pytest.importorskip("OCP.gp")
+
+    sk1 = {
+        'id': 'sk1', 'kind': 'sketch', 'plane': '@builtin_plane_top',
+        'entities': [
+            {'id': 'cA', 'kind': 'circle'},
+            {'id': 'cB', 'kind': 'circle'},
+        ],
+        'initial': {'cA': [0.0, 0.0, 5.0], 'cB': [20.0, 0.0, 5.0]},
+    }
+    ex1 = {
+        'id': 'ex1', 'kind': 'extrude',
+        'extrude': {'sketch': ['$sk1'], 'distance': 10.0, 'direction': 'normal'},
+    }
+
+    # Build base body, then pick a flat end-cap face from the result mesh
+    # (this is the query the frontend would store).
+    r0 = build({'features': [sk1, ex1]})
+    mesh = r0['bodies']['body_ex1']['mesh']
+    face_query = next(
+        (q for q, fd in zip(mesh['face_queries'], mesh['face_data'])
+         if fd['surface_type'] == 'flatface'),
+        None,
+    )
+    assert face_query is not None, 'expected a flatface query on the extruded body'
+
+    sk2 = {'id': 'sk2', 'kind': 'sketch', 'plane': face_query,
+           'entities': [], 'constraints': []}
+    spec = {'features': [sk1, ex1, sk2]}
+
+    r1 = build(spec)
+    assert r1['result']['sk2'].get('status') != 'exception', (
+        f"sk2 failed on first build: {r1['result']['sk2'].get('exception')}"
+    )
+    # A second from-scratch rebuild re-tessellates the body; the picked hash
+    # must still match (proves the hash no longer depends on noisy mesh area).
+    r2 = build(spec)
+    assert r2['result']['sk2'].get('status') != 'exception', (
+        f"sk2 failed on rebuild: {r2['result']['sk2'].get('exception')}"
+    )

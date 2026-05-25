@@ -1,6 +1,6 @@
 """Geometry hash functions for stable face/edge/vertex identity.
 
-Hashes are computed from geometry attributes (centroid, normal, area for faces;
+Hashes are computed from geometry attributes (centroid, normal for faces;
 kind, start, end, angles for edges) rounded to 4 decimal places. The hash is
 stable for any face/edge whose geometry doesn't change.
 
@@ -30,11 +30,17 @@ def _arc_angle_deg(edge: dict, start: bool) -> float:
     return 0.0
 
 
-def face_geometry_hash(centroid: list[float], normal: list[float], area: float) -> str:
-    """Return e.g. 'gface_a3f9b2c18d4e5f6a' from geometry attributes rounded to 4 dp."""
+def face_geometry_hash(centroid: list[float], normal: list[float]) -> str:
+    """Return e.g. 'gface_a3f9b2c18d4e5f6a' from centroid + normal rounded to 4 dp.
+
+    Area is deliberately excluded: it is summed from the face triangulation and
+    so varies by ~1e-5 between tessellation passes (and across OCP versions),
+    which flips the 4dp hash and breaks identity for a geometrically unchanged
+    face. Centroid and normal are tessellation-stable and already discriminate
+    the faces that the resolver must tell apart.
+    """
     parts = [str(round(v, 4)) for v in centroid]
     parts.extend(str(round(v, 4)) for v in normal)
-    parts.append(str(round(area, 4)))
     digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
     return "gface_" + digest
 

@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from OCP.TopoDS import TopoDS_Shape
 from oversolved.kernel.query import Repository
 from oversolved.kernel.types3d import Body
-from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, _compute_face_centroid, _compute_face_normal, _triangle_area
+from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, _compute_face_centroid, _compute_face_normal
 from oversolved.kernel.geometry_tessellation import edge_to_geom_dict
 from oversolved.kernel.geom_hash import edge_geometry_hash, face_geometry_hash
 from oversolved.kernel.query import make_ancestry_query, _parse_ancestry, ref, body_id_of
@@ -204,12 +204,9 @@ def _resolve_face_to_edges(q: str, body: Body) -> list[TopoDS_Shape]:
     cq_body = _ensure_cq(body.shape)
 
     for cq_face in cq_body.Faces():
-        verts, idxs = cq_face.tessellate(0.1)
-        verts_list = [list(v.toTuple()) for v in verts]
         centroid = _compute_face_centroid(cq_face)
         normal = _compute_face_normal(cq_face)
-        area = sum(_triangle_area(verts_list[t[0]], verts_list[t[1]], verts_list[t[2]]) for t in idxs)
-        gh = face_geometry_hash(centroid, normal, area)
+        gh = face_geometry_hash(centroid, normal)
         if ref(gh) == target_hash:
             occ_face = _ensure_occ(cq_face)
             exp = TopExp_Explorer(occ_face, TopAbs_EDGE)

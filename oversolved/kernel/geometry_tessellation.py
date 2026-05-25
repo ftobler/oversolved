@@ -629,7 +629,6 @@ def _build_face_query(
     face_idx: int,
     centroid: list,
     normal: list,
-    face_area: float,
     surface_type: str,
     profile_queries: list[str] | None = None,
     face_tokens: list[str] | None = None,
@@ -637,7 +636,7 @@ def _build_face_query(
     """Return ancestry query string for a face, or None if created_by is None."""
     if not created_by:
         return None
-    geom_hash = face_geometry_hash(centroid, normal, face_area)
+    geom_hash = face_geometry_hash(centroid, normal)
     if body_id:
         ids = [ref(geom_hash), ref(created_by), ref(body_id)]
         if face_tokens:
@@ -766,7 +765,7 @@ def _tessellate_and_assemble_faces(
                 )
                 query = _build_face_query(
                     created_by, body_id, face_idx, centroid, normal,
-                    face_area, surface_type, profile_queries=profile_queries,
+                    surface_type, profile_queries=profile_queries,
                     face_tokens=_face_tokens(face, face_lineage),
                 )
                 if query:

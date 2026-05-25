@@ -12,25 +12,35 @@ from oversolved.kernel.geom_hash import (
 
 class TestFaceGeometryHash:
     def test_deterministic(self):
-        h1 = face_geometry_hash([1, 2, 3], [0, 0, 1], 10.0)
-        h2 = face_geometry_hash([1, 2, 3], [0, 0, 1], 10.0)
+        h1 = face_geometry_hash([1, 2, 3], [0, 0, 1])
+        h2 = face_geometry_hash([1, 2, 3], [0, 0, 1])
         assert h1 == h2
         assert h1.startswith("gface_")
 
     def test_different_centroid_different_hash(self):
-        h1 = face_geometry_hash([1, 2, 3], [0, 0, 1], 10.0)
-        h2 = face_geometry_hash([4, 2, 3], [0, 0, 1], 10.0)
+        h1 = face_geometry_hash([1, 2, 3], [0, 0, 1])
+        h2 = face_geometry_hash([4, 2, 3], [0, 0, 1])
         assert h1 != h2
 
     def test_different_normal_different_hash(self):
-        h1 = face_geometry_hash([1, 2, 3], [0, 0, 1], 10.0)
-        h2 = face_geometry_hash([1, 2, 3], [1, 0, 0], 10.0)
+        h1 = face_geometry_hash([1, 2, 3], [0, 0, 1])
+        h2 = face_geometry_hash([1, 2, 3], [1, 0, 0])
         assert h1 != h2
 
-    def test_different_area_different_hash(self):
-        h1 = face_geometry_hash([1, 2, 3], [0, 0, 1], 10.0)
-        h2 = face_geometry_hash([1, 2, 3], [0, 0, 1], 20.0)
-        assert h1 != h2
+    def test_area_excluded_from_hash(self):
+        """Area is mesh-derived and noisy; it must not affect face identity.
+
+        A face whose centroid+normal are unchanged must hash identically even
+        if the tessellation-summed area drifts between passes (the bug behind
+        sketch-on-face plane resolution failing after fillet edits).
+        """
+        from oversolved.kernel.geom_hash import face_geometry_hash as fgh
+        import inspect
+        # signature carries no area parameter
+        assert "area" not in inspect.signature(fgh).parameters
+        h1 = fgh([1, 2, 3], [0, 0, 1])
+        h2 = fgh([1, 2, 3], [0, 0, 1])
+        assert h1 == h2
 
 
 class TestEdgeGeometryHash:
@@ -150,7 +160,7 @@ class TestEdgeGeometryHash:
 
     def test_face_digest_length_16_chars(self):
         from oversolved.kernel.geom_hash import face_geometry_hash as fgh
-        h = fgh([1, 2, 3], [0, 0, 1], 10.0)
+        h = fgh([1, 2, 3], [0, 0, 1])
         hex_part = h.removeprefix("gface_")
         assert len(hex_part) == 16
 
