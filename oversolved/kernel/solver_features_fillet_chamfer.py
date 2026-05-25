@@ -126,8 +126,6 @@ def _build_edge_index(body: Body) -> _EdgeIndex:
             aq_hash = make_ancestry_query(ids, edge_type)
             query_to_edge[aq_hash] = te
 
-        # Legacy index query for backward compat with stored documents.
-        # No new index queries are emitted; index_ref() has zero callers.
         query_to_edge[f"?{body.id}:edge:{idx}"] = te
 
     return _EdgeIndex(query_to_edge, hash_to_edge)

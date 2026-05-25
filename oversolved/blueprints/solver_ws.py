@@ -12,7 +12,6 @@ from oversolved.auth import authenticate_token, AuthOk
 from oversolved.db import RebuildTimeStore
 from oversolved.rate_limit import RateLimiter
 from oversolved.kernel.build_isolated import BuildIsolator
-from oversolved.kernel.geometry_pack import pack_geometry_update  # noqa: F401 re-export
 
 logger = logging.getLogger(__name__)
 

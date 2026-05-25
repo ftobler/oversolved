@@ -25,7 +25,6 @@ __all__ = [
     "parse_query",
     "emit_wire",
     "ref",
-    "index_ref",
     "body_id_of",
     "local",
     "absolute",
@@ -201,16 +200,6 @@ def ref(element_id: str) -> str:
     '@'-prefixed token strings.
     """
     return "@" + element_id
-
-
-def index_ref(owner_id: str, kind: str, idx: int) -> str:
-    """LEGACY ordinal ancestor token: '@<owner><kind><idx>' (concatenated form).
-
-    Positional / OCC-iteration-order identity. Forbidden long-term -- see
-    feature/drop-legacy-edge-queries.md. Isolated here so every emission can be
-    removed in one place once recursive lineage lands. Do NOT add new callers.
-    """
-    return f"@{owner_id}{kind}{idx}"
 
 
 _BODY_AT_RE = re.compile(r"@(body_[^@:;,]+)")

@@ -3,7 +3,7 @@ export { IdRenderTarget } from './IdRenderTarget'
 export { IdResolver, resolvePixelWindow, type ResolvedHit, type ResolveOptions } from './IdResolver'
 export { FaceIdLayer, FACE_LAYER_NAME, type FaceBodyRegistration } from './FaceIdLayer'
 export { EdgeIdLayer, EDGE_LAYER_NAME, EDGE_DEPTH_BIAS, type EdgeBodyRegistration } from './EdgeIdLayer'
-export { VertexIdLayer, VERTEX_LAYER_NAME, VERTEX_FAT_PIXELS, type VertexBodyRegistration } from './VertexIdLayer'
+export { VertexIdLayer, VERTEX_LAYER_NAME, type VertexBodyRegistration } from './VertexIdLayer'
 export {
   IdPipeline, DEFAULT_WINDOW_SIZE,
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,

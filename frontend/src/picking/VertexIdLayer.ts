@@ -16,9 +16,6 @@ import { idToRGBNormalized } from './idEncoding'
  * wins over edge wins over face" priority via geometric layering.
  */
 export const VERTEX_LAYER_NAME = 'vertex'
-/** @deprecated No longer used -- vertices render as 1px points (resolver window provides snap radius). */
-export const VERTEX_FAT_PIXELS = 16
-
 export interface VertexIdLayerConfig {
   name?: string
   priority?: number

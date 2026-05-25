@@ -39,7 +39,7 @@ from oversolved.kernel.geom_hash import (
 )
 from oversolved.kernel.geometry_io import stl_file_to_shape, step_file_to_shape
 from oversolved.kernel.profile_loops import classify_loops
-from oversolved.kernel.query import make_ancestry_query, ref, index_ref
+from oversolved.kernel.query import make_ancestry_query, ref
 from oversolved.kernel.types3d import Frame3D
 
 logger = logging.getLogger(__name__)
