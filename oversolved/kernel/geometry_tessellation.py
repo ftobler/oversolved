@@ -848,6 +848,84 @@ def _build_seam_hashes(occ_solid: Any) -> set[int]:
     return seam_hashes
 
 
+def _extract_nurbs_curve_data(curve: Any) -> dict[str, Any]:
+    """Extract exact NURBS/analytic curve parameters from a BRepAdaptor_Curve.
+
+    Returns a dict of stable geometry data that can be used to compute a
+    geometry hash without evaluating the curve (no tessellation dependency).
+    Returns an empty dict for unrecognized curve types.
+    """
+    from OCP.GeomAbs import (
+        GeomAbs_BSplineCurve, GeomAbs_BezierCurve,
+        GeomAbs_Ellipse, GeomAbs_Hyperbola, GeomAbs_Parabola,
+        GeomAbs_OffsetCurve,
+    )
+
+    curve_type = curve.GetType()
+
+    if curve_type == GeomAbs_BSplineCurve:
+        bspline = curve.BSpline()
+        np = bspline.NbPoles()
+        return {
+            "type": "BSpline",
+            "degree": bspline.Degree(),
+            "poles": [[round(float(bspline.Pole(i).X()), 4),
+                       round(float(bspline.Pole(i).Y()), 4),
+                       round(float(bspline.Pole(i).Z()), 4)]
+                      for i in range(1, np + 1)],
+            "weights": [round(float(bspline.Weight(i)), 4) for i in range(1, np + 1)],
+            "knots": [round(float(bspline.Knot(i)), 4) for i in range(1, bspline.NbKnots() + 1)],
+        }
+
+    if curve_type == GeomAbs_BezierCurve:
+        bezier = curve.Bezier()
+        np = bezier.NbPoles()
+        return {
+            "type": "Bezier",
+            "poles": [[round(float(bezier.Pole(i).X()), 4),
+                       round(float(bezier.Pole(i).Y()), 4),
+                       round(float(bezier.Pole(i).Z()), 4)]
+                      for i in range(1, np + 1)],
+        }
+
+    if curve_type == GeomAbs_Ellipse:
+        ell = curve.Ellipse()
+        loc = ell.Location()
+        return {
+            "type": "Ellipse",
+            "center": [round(float(loc.X()), 4), round(float(loc.Y()), 4), round(float(loc.Z()), 4)],
+            "major_radius": round(float(ell.MajorRadius()), 4),
+            "minor_radius": round(float(ell.MinorRadius()), 4),
+        }
+
+    if curve_type == GeomAbs_Hyperbola:
+        hyp = curve.Hyperbola()
+        loc = hyp.Location()
+        return {
+            "type": "Hyperbola",
+            "center": [round(float(loc.X()), 4), round(float(loc.Y()), 4), round(float(loc.Z()), 4)],
+            "major_radius": round(float(hyp.MajorRadius()), 4),
+            "minor_radius": round(float(hyp.MinorRadius()), 4),
+        }
+
+    if curve_type == GeomAbs_Parabola:
+        par = curve.Parabola()
+        foc = par.Focus()
+        return {
+            "type": "Parabola",
+            "focus": [round(float(foc.X()), 4), round(float(foc.Y()), 4), round(float(foc.Z()), 4)],
+            "focal_length": round(float(par.Focal()), 4),
+        }
+
+    if curve_type == GeomAbs_OffsetCurve:
+        return {
+            "type": "Offset",
+            "offset": round(float(curve.OffsetValue()), 4),
+        }
+
+    return {}
+
+
 def edge_to_geom_dict(edge: Any) -> tuple[dict, tuple]:
     """Return (geometry dict, sort key) for a cadquery edge.
 
@@ -902,16 +980,18 @@ def edge_to_geom_dict(edge: Any) -> tuple[dict, tuple]:
                     round(xdir.X(), 6), round(xdir.Y(), 6), round(xdir.Z(), 6))
 
     else:
-        n_pts = 16
         curve = edge._geomAdaptor()
         u0 = curve.FirstParameter()
         u1 = curve.LastParameter()
+
+        curve_data = _extract_nurbs_curve_data(curve)
+        n_pts = 32
         points = []
         for i in range(n_pts + 1):
             t = u0 + (u1 - u0) * i / n_pts
             pt = edge.positionAt(t, mode="parameter")
             points.append([pt.x, pt.y, pt.z])
-        ed = {"kind": "spline", "points": points}
+        ed = {"kind": "spline", "curve_data": curve_data, "points": points}
         mid = points[n_pts // 2]
         sort_key = (1, "spline", round(mid[0], 6), round(mid[1], 6), round(mid[2], 6), 0.0, 0.0, 0.0)
 

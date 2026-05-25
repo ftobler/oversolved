@@ -193,7 +193,8 @@ def test_solid_to_edges_spline():
         f"expected 2 spline edges, got {len(spline_edges)}"
     )
     se = spline_edges[0]
-    assert len(se["points"]) == 17  # n_pts + 1
+    assert len(se["points"]) == 33  # n_pts + 1
+    assert "curve_data" in se
     for coord in se["points"][0]:
         assert math.isfinite(coord)
     for coord in se["points"][-1]:
@@ -254,3 +255,55 @@ def test_apply_edge_modifier_warns_once(caplog):
         + str([r.message for r in warning_records])
     )
     assert "edges failed" in warning_records[0].message
+
+
+def test_spline_hash_stable_under_n_pts():
+    """edge_geometry_hash for splines must not depend on n_pts.
+
+    The hash should use exact curve_data, not sampled points, so that
+    changing the rendering sampling rate does not break edge queries.
+    """
+    from oversolved.kernel.geom_hash import edge_geometry_hash
+    from cadquery.occ_impl import shapes as cq_shapes
+    from cadquery.occ_impl.geom import Vector
+
+    pts = [Vector(0, 0, 0), Vector(1, 1, 0), Vector(2, 0.5, 0), Vector(3, 0, 0)]
+    e = cq_shapes.Edge.makeSpline(pts)
+    close = cq_shapes.Edge.makeLine(pts[-1], pts[0])
+    w = cq_shapes.Wire.assembleEdges([e, close])
+    f = cq_shapes.Face.makeFromWires(w)
+    solid = cq_shapes.Solid.extrudeLinear(f, Vector(0, 0, 1))
+
+    from oversolved.kernel.geometry_tessellation import edge_to_geom_dict, _extract_nurbs_curve_data
+    edges = solid.edges()
+    spline_edges = [e for e in edges if e.geomType() not in ("LINE", "CIRCLE")]
+    assert len(spline_edges) > 0
+    se = spline_edges[0]
+
+    ed, _ = edge_to_geom_dict(se)
+    ref_hash = edge_geometry_hash(ed)
+    assert "curve_data" in ed, "spline edge should have curve_data"
+
+    curve = se._geomAdaptor()
+    u0 = curve.FirstParameter()
+    u1 = curve.LastParameter()
+    curve_data = _extract_nurbs_curve_data(curve)
+    assert curve_data, "curve_data should be non-empty for BSpline"
+
+    # Different n_pts values produce different sampled points but identical hash
+    for n in [4, 8, 16, 64]:
+        different_points = []
+        for i in range(n + 1):
+            t = u0 + (u1 - u0) * i / n
+            pt = se.positionAt(t, mode="parameter")
+            different_points.append([pt.x, pt.y, pt.z])
+        modified_ed = {"kind": "spline", "curve_data": curve_data, "points": different_points}
+        assert edge_geometry_hash(modified_ed) == ref_hash, (
+            f"hash changed when n_pts={n}"
+        )
+
+    # Without curve_data, the hash uses points and should differ
+    points_only_ed = {"kind": "spline", "points": ed["points"]}
+    assert edge_geometry_hash(points_only_ed) != ref_hash, (
+        "hash without curve_data should differ from curve_data-based hash"
+    )

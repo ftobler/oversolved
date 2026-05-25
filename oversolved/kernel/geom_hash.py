@@ -39,10 +39,32 @@ def face_geometry_hash(centroid: list[float], normal: list[float], area: float) 
     return "gface_" + digest
 
 
+def _curve_data_items(curve_data: dict) -> list[str]:
+    """Flatten exact curve data into a deterministic list of strings for hashing."""
+    items = []
+    for key in sorted(curve_data):
+        val = curve_data[key]
+        items.append(key)
+        if isinstance(val, list):
+            for element in val:
+                if isinstance(element, list):
+                    items.extend(str(round(x, 4)) for x in element)
+                else:
+                    items.append(str(round(element, 4)))
+        elif isinstance(val, (int, float)):
+            items.append(str(round(val, 4)))
+        else:
+            items.append(str(val))
+    return items
+
+
 def edge_geometry_hash(edge: dict) -> str:
     """Return 'gedge_<hash>' for an edge dict.
 
     Arc edges include angle span to distinguish arcs with equal center/radius.
+    Spline edges use exact curve data (NURBS control points, knots, etc.)
+    rather than sampled points, so the hash is independent of tessellation
+    settings like n_pts.
     """
     kind = edge.get("kind", "")
     items = [kind]
@@ -67,7 +89,11 @@ def edge_geometry_hash(edge: dict) -> str:
             items.extend(str(round(v, 4)) for v in edge.get("axis", [0, 0, 1]))
             items.extend(str(round(v, 4)) for v in edge.get("x_axis", [1, 0, 0]))
     else:
-        items.extend(str(round(v, 4)) for pt in edge.get("points", [[0, 0, 0]]) for v in pt)
+        curve_data = edge.get("curve_data")
+        if curve_data:
+            items.extend(_curve_data_items(curve_data))
+        else:
+            items.extend(str(round(v, 4)) for pt in edge.get("points", [[0, 0, 0]]) for v in pt)
     digest = hashlib.sha256("|".join(items).encode()).hexdigest()[:16]
     return "gedge_" + digest
 
