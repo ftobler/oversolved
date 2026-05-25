@@ -16,6 +16,9 @@ function resolveTransformQuery(selectionId: string): string {
   if (selectionId.startsWith('entity:')) {
     return '@' + selectionId.split(':').slice(1).join('/')
   }
+  if (selectionId.startsWith('vertex:')) {
+    return '@' + selectionId.split(':').slice(1).join('/')
+  }
   return selectionId
 }
 
