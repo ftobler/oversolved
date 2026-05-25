@@ -187,61 +187,6 @@ class TestArrayRectangular:
         assert_mesh_bbox(mesh, x_range=(0, 20), y_range=(0, 20), z_range=(0, 5))
 
 
-class TestArrayRotational:
-    def test_rotational_4_instances(self):
-        """4x90 deg rotational -- full ring around Z axis."""
-        from oversolved.kernel.builder import build
-        from solver_helpers import box_extrude_spec, assert_mesh_valid
-
-        spec = box_extrude_spec(w=5, h=5, d=5, extrude_id="extrude1")
-        spec["features"].append(
-            {
-                "id": "arr1",
-                "kind": "array",
-                "array": {
-                    "source_body": "extrude1",
-                    "mode": "rotational",
-                    "count": 4,
-                    "axis_origin": [0, 0, 0],
-                    "axis_direction": [0, 0, 1],
-                    "operation": "add",
-                    "include_source": True,
-                },
-            }
-        )
-        r = build(spec)
-        assert r["result"]["arr1"]["status"] == "ok", r["result"]["arr1"]
-        mesh = r["bodies"]["body_extrude1"]["mesh"]
-        assert_mesh_valid(mesh)
-
-    def test_rotational_evenly_spaced(self):
-        """step_angle=None -> 360/count, 6 instances equally spaced."""
-        from oversolved.kernel.builder import build
-        from solver_helpers import box_extrude_spec, assert_mesh_valid
-
-        spec = box_extrude_spec(w=5, h=5, d=5, extrude_id="extrude1")
-        spec["features"].append(
-            {
-                "id": "arr1",
-                "kind": "array",
-                "array": {
-                    "source_body": "extrude1",
-                    "mode": "rotational",
-                    "count": 6,
-                    "step_angle": None,
-                    "axis_origin": [0, 0, 0],
-                    "axis_direction": [0, 0, 1],
-                    "operation": "add",
-                    "include_source": True,
-                },
-            }
-        )
-        r = build(spec)
-        assert r["result"]["arr1"]["status"] == "ok", r["result"]["arr1"]
-        mesh = r["bodies"]["body_extrude1"]["mesh"]
-        assert_mesh_valid(mesh)
-
-
 class TestCircularArray:
     def _circular_spec(self, count: int = 4, step_angle=None, include_source: bool = True):
         """Build a spec with a box and a circular array feature."""

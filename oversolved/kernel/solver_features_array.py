@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import math
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -9,9 +8,8 @@ if TYPE_CHECKING:
 from oversolved.kernel.query import Repository
 from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, boolean_union_with_diff, fuse_shapes
 from oversolved.kernel.types3d import Body
-from oversolved.kernel.geometry_features import make_translation_trsf, make_rotation_trsf, transform_copy
+from oversolved.kernel.geometry_features import make_translation_trsf, transform_copy
 from oversolved.kernel.solver_features_shared import (
-    _resolve_axis_query,
     _resolve_body,
     _resolve_direction_query,
 )

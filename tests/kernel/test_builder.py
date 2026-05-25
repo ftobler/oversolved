@@ -671,12 +671,11 @@ _SOLVER_FEATURE_KEYS = frozenset({
     "hole", "diameter", "depth_mode", "target",
     # array
     "array", "mode", "source_body", "include_source",
-    # circular_array
-    "circular_array",
-    "count", "count_x", "count_y",
+    "count_x", "count_y",
     "pitch_x", "pitch_y",
     "direction_x_query", "direction_x", "direction_y_query", "direction_y",
-    "step_angle",
+    # circular_array
+    "circular_array", "count", "step_angle",
     # boolean
     "boolean", "tools", "keep_tools",
     # delete_body
