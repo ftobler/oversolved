@@ -596,12 +596,16 @@ def _rewrite_created_by(query_str: str, new_created_by: str) -> str:
     return query_str
 
 
-def _tessellate_body_geometry(body: Body) -> dict[str, Any]:
+def _tessellate_body_geometry(body: Body, tess_cache: dict[int, dict] | None = None) -> dict[str, Any]:
     """Tessellate a single body without registering ancestry.
 
     After tessellation, rewrites query strings for boolean-new elements
     (faces, edges, vertices) to use body.modified_by[-1] instead of
     body.created_by, matching the created_by used by _register_brep_*_ancestry.
+
+    When *tess_cache* is provided and body.shape is in the cache, the cached
+    entry is returned directly, skipping tessellation entirely. Registration
+    callers still receive a fully-populated entry.
     """
     entry: dict[str, Any] = {
         "id": body.id,
@@ -611,6 +615,10 @@ def _tessellate_body_geometry(body: Body) -> dict[str, Any]:
     if body.shape is None:
         entry["mesh_error"] = "no shape"
         return entry
+    if tess_cache is not None:
+        hit = tess_cache.get(hash(body.shape))
+        if hit is not None:
+            return hit
     try:
         from oversolved.kernel.geometry_tessellation import solid_to_mesh, solid_to_edges, solid_to_vertices
         pq = body.profile_queries if body.profile_queries else None
@@ -666,12 +674,16 @@ def _tessellate_body_geometry(body: Body) -> dict[str, Any]:
 
 
 def _tessellate_bodies(
-    body_store: dict[str, Body], global_repo=None
+    body_store: dict[str, Body], global_repo=None, tess_cache: dict[int, dict] | None = None,
 ) -> dict[str, dict]:
-    """Convert all OCC shapes in body_store to mesh dicts."""
+    """Convert all OCC shapes in body_store to mesh dicts.
+
+    *tess_cache* is passed to each _tessellate_body_geometry call, allowing
+    pre-computed tessellations for unchanged bodies to skip re-meshing.
+    """
     out: dict[str, dict] = {}
     for body_id, body in body_store.items():
-        entry = _tessellate_body_geometry(body)
+        entry = _tessellate_body_geometry(body, tess_cache=tess_cache)
         if global_repo is not None and "mesh" in entry:
             _register_brep_face_ancestry(global_repo, body, entry["mesh"])
             _register_brep_edge_ancestry(
@@ -755,6 +767,13 @@ def build(
         for fid in prev_state.feature_order[:first_dirty]:
             result[fid] = prev_state.checkpoints[fid].result
             new_checkpoints[fid] = prev_state.checkpoints[fid]
+
+    tess_seed: dict[int, dict] = {}
+    if prev_state and first_dirty > 0:
+        for bid, body in body_store.items():
+            cached = checkpoint.bodies_snapshot.get(bid)
+            if cached is not None and body.shape is not None:
+                tess_seed[hash(body.shape)] = cached
 
     registered_body_ids: set[str] = set(body_store.keys())
 
@@ -858,7 +877,7 @@ def build(
     active_fids = {f.get("id", "") for f in all_features}
     global_repo.gc(active_fids)
 
-    bodies_out = _tessellate_bodies(body_store, global_repo)
+    bodies_out = _tessellate_bodies(body_store, global_repo, tess_cache=tess_seed or None)
 
     # Build a cache of tessellations keyed by OCC shape hash so that each unique
     # OCC shape is tessellated at most once across all checkpoints.
@@ -885,10 +904,12 @@ def build(
         fid: FeatureCheckpoint(
             spec=checkpoint.spec,
             result=checkpoint.result,
-            repo_snapshot=_snapshot_with_brep_geometry(checkpoint, _checkpoint_bodies_out(checkpoint)),
+            repo_snapshot=_snapshot_with_brep_geometry(checkpoint, cp_bodies),
             body_store_snapshot=copy.copy(checkpoint.body_store_snapshot),
+            bodies_snapshot=cp_bodies,
         )
         for fid, checkpoint in new_checkpoints.items()
+        for cp_bodies in (_checkpoint_bodies_out(checkpoint),)
     }
     build_ms = round((time.perf_counter() - t0) * 1000, 1)
     result.update(_BUILTIN_PLANE_RESULTS)
@@ -909,7 +930,9 @@ def build(
         if pick_checkpoint is None and prev_state is not None:
             pick_checkpoint = prev_state.checkpoints.get(target_fid)
         if pick_checkpoint is not None:
-            pick_bodies_out = _tessellate_bodies(pick_checkpoint.body_store_snapshot, None)
+            pick_bodies_out = pick_checkpoint.bodies_snapshot or _tessellate_bodies(
+                pick_checkpoint.body_store_snapshot, None
+            )
 
     response = {
         "solve_ms": build_ms,

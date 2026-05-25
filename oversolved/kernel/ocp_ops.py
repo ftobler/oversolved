@@ -21,10 +21,15 @@ if TYPE_CHECKING:
     from OCP.gp import gp_Trsf, gp_Circ
 
 
-def ocp_mesh_shape(topo: TopoDS_Shape, lin_deflection: float, ang_deflection: float) -> None:
-    """Compute incremental mesh on *topo* in-place (BRepMesh_IncrementalMesh)."""
+def ocp_mesh_shape(topo: TopoDS_Shape, lin_deflection: float, ang_deflection: float, in_parallel: bool = True) -> None:
+    """Compute incremental mesh on *topo* in-place (BRepMesh_IncrementalMesh).
+
+    *in_parallel* controls the 5th BRepMesh_IncrementalMesh argument (isInParallel).
+    Defaults to True for performance; set False when determinism requirements demand
+    single-threaded meshing.
+    """
     from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: PLC0415
-    BRepMesh_IncrementalMesh(topo, lin_deflection, False, ang_deflection)
+    BRepMesh_IncrementalMesh(topo, lin_deflection, False, ang_deflection, in_parallel)
 
 
 def ocp_read_stl(filepath: str) -> TopoDS_Shape:

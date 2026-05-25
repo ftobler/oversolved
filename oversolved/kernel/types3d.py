@@ -64,6 +64,7 @@ class FeatureCheckpoint:
     result: dict
     repo_snapshot: dict[str, Any]
     body_store_snapshot: dict[str, Body]  # shapes are mutable; use _copy_shape() to defensively copy
+    bodies_snapshot: dict[str, dict] = field(default_factory=dict)  # body_id -> tessellation entry
 
 
 @dataclass
