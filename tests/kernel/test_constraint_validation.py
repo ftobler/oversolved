@@ -7,7 +7,7 @@ These tests cover fixes for the following bug reports:
 """
 from oversolved.kernel.solver import _solve_sketch, _post_register, _filter_local_constraints
 from oversolved.kernel.query import Repository
-from oversolved.kernel.solver import _register_solved_geometry_slash
+from oversolved.kernel.solver_registry import _register_solved_geometry_slash
 
 
 class TestConstraintAutoDeletion:

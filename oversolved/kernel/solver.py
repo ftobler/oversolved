@@ -16,42 +16,34 @@ import yaml
 import numpy as np
 from scipy.optimize import least_squares
 from oversolved.kernel.topology import detect_topology
-from oversolved.kernel.query import Repository, _init_global_repo  # noqa: F401
+from oversolved.kernel.query import Repository, _init_global_repo
 from oversolved.kernel.solver_constants import (
     _FRONT_PLANE, ENTITY_SIZES, LOSS_THRESHOLD, RANK_TOL, RANK_BOUNDARY_TOL,
     ORIGIN_ID, ORIGIN_FIX_ID, _BUILTIN_PLANES, _BUILTIN_PLANE_RESULTS,
     _PROJECTED_KINDS, _FACE_TYPES, REG_WEIGHT_BASE, REG_WEIGHT_DRAG,
 )
-from oversolved.kernel.solver_plane import (  # noqa: F401
+from oversolved.kernel.solver_plane import (
     is_plane_type, is_point_type, _resolve_plane_early,
-    _2d_to_3d, _3d_to_2d, _source_sketch_id,
-    _resolve_source_geometry, _project_source_to_params,
-    _get_point_3d, _get_edge_3d, _normalize,
-    _rotate_frame_around_normal,
-    _plane_three_point, _plane_on_face, _plane_on_face_edge_angle,
-    _plane_edge_point, _plane_through_point, _plane_line_angle,
-    _plane_offset, _solve_plane,
+    _project_source_to_params,
+    _get_point_3d,
+    _solve_plane,
 )
-from oversolved.kernel.solver_registry import (  # noqa: F401
-    _clear_feature_geometry_registrations,
+from oversolved.kernel.solver_registry import (
     _post_register, _enrich_geometry,
-    _register_solved_geometry_slash,
     _plane_transform,
-    _register_topology_surfaces, _register_topology_edges,
-    _register_topology_vertices, _register_sketch_feature,
 )
 from oversolved.kernel.solver_residuals import _build_residuals_fn
 from oversolved.kernel.solver_render import _constraint_render
-from oversolved.kernel.solver_features_brep import _solve_extrude, _solve_revolve  # noqa: F401
-from oversolved.kernel.solver_features_array import _solve_array  # noqa: F401
-from oversolved.kernel.solver_features_circular_array import _solve_circular_array  # noqa: F401
-from oversolved.kernel.solver_features_import import _solve_import_step  # noqa: F401
-from oversolved.kernel.solver_features_fillet_chamfer import _solve_fillet, _solve_chamfer  # noqa: F401
-from oversolved.kernel.solver_features_boolean import _solve_boolean  # noqa: F401
-from oversolved.kernel.solver_features_delete import _solve_delete_body  # noqa: F401
-from oversolved.kernel.solver_features_hole import _solve_hole  # noqa: F401
-from oversolved.kernel.solver_features_transform_mirror import _solve_transform, _solve_mirror  # noqa: F401
-from oversolved.kernel.solver_features_shared import _extract_profile_loops, _resolve_body  # noqa: F401
+from oversolved.kernel.solver_features_brep import _solve_extrude, _solve_revolve
+from oversolved.kernel.solver_features_array import _solve_array
+from oversolved.kernel.solver_features_circular_array import _solve_circular_array
+from oversolved.kernel.solver_features_import import _solve_import_step
+from oversolved.kernel.solver_features_fillet_chamfer import _solve_fillet, _solve_chamfer
+from oversolved.kernel.solver_features_boolean import _solve_boolean
+from oversolved.kernel.solver_features_delete import _solve_delete_body
+from oversolved.kernel.solver_features_hole import _solve_hole
+from oversolved.kernel.solver_features_transform_mirror import _solve_transform, _solve_mirror
+from oversolved.kernel.solver_features_shared import _extract_profile_loops, _resolve_body
 
 logger = logging.getLogger(__name__)
 

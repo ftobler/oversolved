@@ -1,5 +1,5 @@
 from pytest import approx
-from oversolved.kernel.solver import _extract_profile_loops
+from oversolved.kernel.solver_features_shared import _extract_profile_loops
 
 
 def surface_from_edges(edges):

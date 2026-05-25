@@ -3,7 +3,8 @@ import importlib
 import pytest
 
 from oversolved.kernel.types3d import Body
-from oversolved.kernel.solver import _resolve_body, _solve_boolean
+from oversolved.kernel.solver import _solve_boolean
+from oversolved.kernel.solver_features_shared import _resolve_body
 
 pytestmark = [
     pytest.mark.skipif(

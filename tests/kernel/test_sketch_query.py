@@ -3,7 +3,8 @@ that reference entities in the first sketch via query strings."""
 
 import math
 from oversolved.kernel.query import Repository
-from oversolved.kernel.solver import solve, _register_solved_geometry_slash
+from oversolved.kernel.solver import solve
+from oversolved.kernel.solver_registry import _register_solved_geometry_slash
 
 
 TOL = 1e-5
