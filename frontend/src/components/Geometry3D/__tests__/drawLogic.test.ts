@@ -189,6 +189,26 @@ describe('computeDrawClick - rect tool', () => {
     }
     expect(result.clearTool).toBe(true)
   })
+
+  it('second click ignores alignment snap (would collapse rectangle)', () => {
+    const snap = emptySnap()
+    snap.alignmentSnapPoint = [0, 0]
+    snap.alignmentSnapKind = 'kinda_horizontal'
+    const result = computeDrawClick('rect', [[0, 0]], [8, 4], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    if (result.mutations[0].type === 'add_rect') {
+      expect(result.mutations[0].p1).toEqual([8, 4])
+    }
+  })
+
+  it('first click still respects vertex hover snap', () => {
+    const snap = emptySnap()
+    snap.hoveredVertexId = 'v1'
+    snap.hoveredVertexPosition = [10, 20]
+    const result = computeDrawClick('rect', [], [5, 5], snap, FEATURE, newId)
+    expect(result.nextDrawPoints).toEqual([[10, 20]])
+    expect(result.nextDrawSnap).toEqual({ vertexId: 'v1' })
+  })
 })
 
 describe('computeDrawClick - center_rect tool', () => {
@@ -207,6 +227,17 @@ describe('computeDrawClick - center_rect tool', () => {
       expect(result.mutations[0].corner).toEqual([3, 3])
     }
     expect(result.clearTool).toBe(true)
+  })
+
+  it('second click ignores alignment snap (would collapse rectangle)', () => {
+    const snap = emptySnap()
+    snap.alignmentSnapPoint = [0, 0]
+    snap.alignmentSnapKind = 'kinda_vertical'
+    const result = computeDrawClick('center_rect', [[0, 0]], [8, 4], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    if (result.mutations[0].type === 'add_center_rect') {
+      expect(result.mutations[0].corner).toEqual([8, 4])
+    }
   })
 })
 
