@@ -67,21 +67,21 @@ class TestArrayLinear:
         mesh = r["bodies"]["body_extrude1"]["mesh"]
         assert_mesh_bbox(mesh, x_range=(0, expected_max), y_range=(0, 5), z_range=(0, 5))
 
-    @pytest.mark.parametrize("count,expected_max", [
-        (2, 25),   # transformed copy at 0, copy at 20
-        (3, 45),   # copies at 0, 20, 40
-        (4, 65),   # copies at 0, 20, 40, 60
-        (5, 85),   # copies at 0, 20, 40, 60, 80
+    @pytest.mark.parametrize("count,expected_lo,expected_hi", [
+        (2, 20, 45),   # copies at 20, 40 -> range [20, 40+5]
+        (3, 20, 65),   # copies at 20, 40, 60 -> range [20, 60+5]
+        (4, 20, 85),   # copies at 20, 40, 60, 80 -> range [20, 80+5]
+        (5, 20, 105),  # copies at 20, 40, 60, 80, 100 -> range [20, 100+5]
     ])
-    def test_linear_count_no_source(self, count, expected_max):
-        """count=N with include_source=False produces N transformed copies."""
+    def test_linear_count_no_source(self, count, expected_lo, expected_hi):
+        """count=N with include_source=False produces N distinct transformed copies."""
         from oversolved.kernel.builder import build
         from solver_helpers import assert_mesh_bbox
 
         r = build(_linear_array_spec(count, 20, include_source=False))
         assert r["result"]["arr1"]["status"] == "ok", r["result"]["arr1"]
         mesh = r["bodies"]["body_extrude1"]["mesh"]
-        assert_mesh_bbox(mesh, x_range=(0, expected_max), y_range=(0, 5), z_range=(0, 5))
+        assert_mesh_bbox(mesh, x_range=(expected_lo, expected_hi), y_range=(0, 5), z_range=(0, 5))
 
     @pytest.mark.parametrize("count,pitch,expected_max", [
         (4, 2, 11),   # (4-1)*2 + 5 = 11
@@ -110,14 +110,14 @@ class TestArrayLinear:
         assert_mesh_bbox(mesh, x_range=(0, 5), y_range=(0, 5), z_range=(0, 5))
 
     def test_linear_count_1_no_source(self):
-        """count=1 with include_source=False produces 1 transformed copy."""
+        """count=1 with include_source=False produces 1 transformed copy at pitch."""
         from oversolved.kernel.builder import build
         from solver_helpers import assert_mesh_bbox
 
         r = build(_linear_array_spec(1, 20, include_source=False))
         assert r["result"]["arr1"]["status"] == "ok", r["result"]["arr1"]
         mesh = r["bodies"]["body_extrude1"]["mesh"]
-        assert_mesh_bbox(mesh, x_range=(0, 5), y_range=(0, 5), z_range=(0, 5))
+        assert_mesh_bbox(mesh, x_range=(20, 25), y_range=(0, 5), z_range=(0, 5))
 
     def test_new_operation_creates_separate_body(self):
         """operation=new should not modify the source body and create body_arr1."""
@@ -312,10 +312,83 @@ class TestCircularArray:
         assert "nonexistent_body" in r["result"]["ca1"]["exception"]
         assert "available" in r["result"]["ca1"]["exception"]
 
+    def test_rotational_count_4_no_source_with_revolve(self):
+        """Circular array of revolve body: count=4, step=72, no-source, new-body.
+
+        Regression: OCC boolean fuse failed when copies shared a coincident
+        face at the origin (each revolve copy starts at the same point).
+        The fix falls back to a compound so the shape remains valid.
+        """
+        from oversolved.kernel.builder import build
+        from solver_helpers import (
+            rect_sketch_spec,
+            assert_mesh_valid,
+        )
+
+        def _rect_at_offset(w=2.0, h=1.0, ox=1.0, sid="sk1"):
+            s = rect_sketch_spec(w=w, h=h, sketch_id=sid)
+            for k in s["initial"]:
+                s["initial"][k] = [
+                    s["initial"][k][0] + ox,
+                    s["initial"][k][1],
+                    s["initial"][k][2] + ox,
+                    s["initial"][k][3],
+                ]
+            return s
+
+        spec = {
+            "features": [
+                _rect_at_offset(w=2.0, h=1.0, ox=1.0, sid="sk1"),
+                {
+                    "id": "rev1", "kind": "revolve",
+                    "sketch": "$sk1", "angle": 360,
+                    "axis_origin": [0, 0, 0],
+                    "axis_direction": [0, 1, 0],
+                },
+                {
+                    "id": "ca1", "kind": "circular_array",
+                    "circular_array": {
+                        "count": 4, "step_angle": 72,
+                        "include_source": False,
+                        "operation": "new",
+                        "axis_origin": [0, 0, 0],
+                        "axis_direction": [0, 0, 1],
+                    },
+                },
+            ],
+        }
+        r = build(spec)
+        assert r["result"]["rev1"]["status"] == "ok", r["result"]["rev1"]
+        ca = r["result"]["ca1"]
+        assert ca["status"] == "ok", ca
+        assert ca["body_id"] == "body_ca1", ca
+        mesh = r["bodies"]["body_ca1"]["mesh"]
+        assert_mesh_valid(mesh)
+        assert len(mesh["vertices"]) > 100, (
+            f"expected >100 vertices, got {len(mesh['vertices'])}"
+        )
+        assert len(mesh["faces"]) > 100, (
+            f"expected >100 faces, got {len(mesh['faces'])}"
+        )
+        # Verify 4 distinct solids in the array body
+        from OCP.TopExp import TopExp_Explorer
+        from OCP.TopAbs import TopAbs_SOLID
+        body_shapes = r.get("_body_shapes", {})
+        arr_shape = body_shapes.get("body_ca1")
+        assert arr_shape is not None, "body_ca1 not in _body_shapes"
+        exp = TopExp_Explorer(arr_shape, TopAbs_SOLID)
+        n_solids = 0
+        while exp.More():
+            n_solids += 1
+            exp.Next()
+        assert n_solids == 4, (
+            f"expected 4 solids in circular array body, got {n_solids}"
+        )
+
 
 class TestArrayErrors:
-    def test_count_zero_raises(self):
-        """count=0 should return ok but produce empty instances."""
+    def test_count_zero_with_source(self):
+        """count_x=0 with include_source=true should produce just the source body."""
         from oversolved.kernel.builder import build
         from solver_helpers import box_extrude_spec
 
@@ -331,6 +404,30 @@ class TestArrayErrors:
                     "pitch_x": 10,
                     "direction_x": [1, 0, 0],
                     "operation": "add",
+                },
+            }
+        )
+        r = build(spec)
+        assert r["result"]["arr1"]["status"] == "ok"
+
+    def test_count_zero_no_source_raises(self):
+        """count_x=0 with include_source=false should raise because there are no instances."""
+        from oversolved.kernel.builder import build
+        from solver_helpers import box_extrude_spec
+
+        spec = box_extrude_spec(w=5, h=5, d=5, extrude_id="extrude1")
+        spec["features"].append(
+            {
+                "id": "arr1",
+                "kind": "array",
+                "array": {
+                    "source_body": "extrude1",
+                    "mode": "linear",
+                    "count_x": 0,
+                    "pitch_x": 10,
+                    "direction_x": [1, 0, 0],
+                    "operation": "add",
+                    "include_source": False,
                 },
             }
         )

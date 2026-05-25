@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from OCP.gp import gp_Trsf
 from oversolved.kernel.query import Repository
-from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, boolean_union_with_diff, fuse_shapes
+from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, boolean_union_with_diff, fuse_shapes, make_compound
 from oversolved.kernel.types3d import Body
 from oversolved.kernel.geometry_features import make_rotation_trsf, transform_copy
 from oversolved.kernel.solver_features_shared import (
@@ -35,6 +35,7 @@ def _build_circular_transforms(
     body_store: dict | None = None,
 ) -> list[gp_Trsf]:
     count = int(feature.get("count", 4))
+    include_source = bool(feature.get("include_source", True))
     step_angle_raw = feature.get("step_angle")
     if step_angle_raw is None:
         step = 360.0 / count
@@ -50,7 +51,8 @@ def _build_circular_transforms(
         body_store=body_store,
     )
     trsfs: list[gp_Trsf] = []
-    for i in range(count):
+    start = 0 if include_source else 1
+    for i in range(start, start + count):
         trsf = make_rotation_trsf(axis_origin, axis_direction, math.radians(step * i))
         trsfs.append(trsf)
     return trsfs
@@ -90,18 +92,17 @@ def _solve_circular_array(
     trsfs = _build_circular_transforms(feature, global_repo, body_store)
 
     instances: list = []
-    for i, trsf in enumerate(trsfs):
-        if i == 0 and include_source:
-            instances.append(body.shape)
-        else:
-            instances.append(transform_copy(body.shape, trsf))
+    if include_source:
+        instances.append(body.shape)
+    for trsf in trsfs:
+        instances.append(transform_copy(body.shape, trsf))
 
     if not instances:
         raise ValueError("circular_array produced no instances")
 
     result_body_id = "body_" + feature_id
     if operation == "new":
-        tool_shape = fuse_shapes(instances)
+        tool_shape = make_compound(instances)
         new_body = Body(
             id=result_body_id,
             created_by=feature_id,

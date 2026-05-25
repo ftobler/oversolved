@@ -790,6 +790,18 @@ def _resolve_direction_query(
         length = math.sqrt(sum(v * v for v in d))
         if length > 1e-12:
             return [v / length for v in d]
+    elif data and "external_params" in data and data.get("kind") == "line":
+        sketch_id = data.get("sketch_id", "")
+        plane = global_repo.elements.get("_pt_" + sketch_id) if sketch_id else None
+        if plane:
+            from oversolved.kernel.solver_registry import _sketch_to_world_2d
+            params = data["external_params"]
+            start = _sketch_to_world_2d(params[0:2], plane)
+            end = _sketch_to_world_2d(params[2:4], plane)
+            d = [end[k] - start[k] for k in range(3)]
+            length = math.sqrt(sum(v * v for v in d))
+            if length > 1e-12:
+                return [v / length for v in d]
     return fallback
 
 
@@ -811,4 +823,17 @@ def _resolve_axis_query(
         length = math.sqrt(sum(v * v for v in d))
         if length > 1e-12:
             return axis_origin, [v / length for v in d]
+    elif data and "external_params" in data and data.get("kind") == "line":
+        sketch_id = data.get("sketch_id", "")
+        plane = global_repo.elements.get("_pt_" + sketch_id) if sketch_id else None
+        if plane:
+            from oversolved.kernel.solver_registry import _sketch_to_world_2d
+            params = data["external_params"]
+            start = _sketch_to_world_2d(params[0:2], plane)
+            end = _sketch_to_world_2d(params[2:4], plane)
+            axis_origin = list(start)
+            d = [end[k] - start[k] for k in range(3)]
+            length = math.sqrt(sum(v * v for v in d))
+            if length > 1e-12:
+                return axis_origin, [v / length for v in d]
     return fallback_origin, fallback_direction

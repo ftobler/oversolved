@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from OCP.gp import gp_Trsf
 from oversolved.kernel.query import Repository
-from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, boolean_union_with_diff, fuse_shapes
+from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, boolean_union_with_diff, fuse_shapes, make_compound
 from oversolved.kernel.types3d import Body
 from oversolved.kernel.geometry_features import make_translation_trsf, transform_copy
 from oversolved.kernel.solver_features_shared import (
@@ -36,6 +36,7 @@ def _build_array_transforms(
     global_repo: Repository,
 ) -> list[gp_Trsf]:
     mode = feature.get("mode", "linear")
+    include_source = bool(feature.get("include_source", True))
     trsfs: list[gp_Trsf] = []
 
     if mode == "linear":
@@ -46,7 +47,8 @@ def _build_array_transforms(
             global_repo,
             feature.get("direction_x", [1, 0, 0]),
         )
-        for i in range(count_x):
+        start = 0 if include_source else 1
+        for i in range(start, start + count_x):
             trsf = make_translation_trsf(dir_x[0] * pitch_x * i, dir_x[1] * pitch_x * i, dir_x[2] * pitch_x * i)
             trsfs.append(trsf)
 
@@ -65,8 +67,9 @@ def _build_array_transforms(
             global_repo,
             feature.get("direction_y", [0, 1, 0]),
         )
+        start_x = 0 if include_source else 1
         for j in range(count_y):
-            for i in range(count_x):
+            for i in range(start_x, start_x + count_x):
                 trsf = make_translation_trsf(
                     dir_x[0] * pitch_x * i + dir_y[0] * pitch_y * j,
                     dir_x[1] * pitch_x * i + dir_y[1] * pitch_y * j,
@@ -111,18 +114,17 @@ def _solve_array(
     trsfs = _build_array_transforms(feature, global_repo)
 
     instances: list = []
-    for i, trsf in enumerate(trsfs):
-        if i == 0 and include_source:
-            instances.append(body.shape)
-        else:
-            instances.append(transform_copy(body.shape, trsf))
+    if include_source:
+        instances.append(body.shape)
+    for trsf in trsfs:
+        instances.append(transform_copy(body.shape, trsf))
 
     if not instances:
         raise ValueError("array produced no instances")
 
     result_body_id = "body_" + feature_id
     if operation == "new":
-        tool_shape = fuse_shapes(instances)
+        tool_shape = make_compound(instances)
         new_body = Body(
             id=result_body_id,
             created_by=feature_id,
