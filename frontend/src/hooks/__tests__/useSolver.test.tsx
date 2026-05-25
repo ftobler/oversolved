@@ -97,11 +97,11 @@ describe('reconcilePartStyle', () => {
     expect(doc.part_style?.b?.name).toBe('part 1')
   })
 
-  it('normalizes 3-digit hex colors to 6-digit uppercase', () => {
-    const doc = makeDoc({ part_style: { a: { name: 'part 1', color: '#abc' } } })
+  it('accepts 6-digit hex colors and converts to uppercase', () => {
+    const doc = makeDoc({ part_style: { a: { name: 'part 1', color: '#abcabc' } } })
     const bodies = { a: makeBody('a') }
     reconcilePartStyle(doc, bodies)
-    expect(doc.part_style?.a?.color).toBe('#AABBCC')
+    expect(doc.part_style?.a?.color).toBe('#ABCABC')
   })
 
   it('leaves invalid hex colors as-is', () => {

@@ -44,9 +44,5 @@ export function normalizeHexColor(color: string | undefined): string | null {
   if (!color) return null
   const trimmed = color.trim()
   if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toUpperCase()
-  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
-    const s = trimmed.slice(1)
-    return (`#${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}`).toUpperCase()
-  }
   return null
 }
