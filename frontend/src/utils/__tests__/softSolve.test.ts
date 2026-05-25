@@ -331,3 +331,85 @@ describe('test_edge_drag_delta', () => {
     expect(arc.end).toEqual([13, 10])
   })
 })
+
+// ─── test_soft_solve_honours_horizontal_vertical ───
+//
+// Dragging an endpoint of an H/V-constrained line must keep the line aligned
+// during the live preview (not skew). The non-dragged endpoint follows on the
+// locked axis, and the alignment propagates through coincident partners.
+describe('test_soft_solve_honours_horizontal_vertical', () => {
+  type Ln = { start: [number, number]; end: [number, number] }
+
+  it('keeps a horizontal line horizontal: other endpoint follows in Y', () => {
+    const sketch = makeSketchWithLines()  // L1: [0,0]-[10,0]
+    const feature: PartFeature = {
+      id: 'S1', kind: 'sketch',
+      constraints: [{ id: 'c_h', kind: 'horizontal', target: '$L1' }],
+    }
+    const drag = makeVertexDrag({ currentWorld: [15, 5] as [number, number] })
+    const result = softSolve({ sketch, drag, feature })
+
+    expect((result.L1 as Ln).end).toEqual([15, 5])
+    // start follows in Y (line stays horizontal), keeps its X.
+    expect((result.L1 as Ln).start).toEqual([0, 5])
+  })
+
+  it('keeps a vertical line vertical: other endpoint follows in X', () => {
+    const sketch = makeSketchWithLines()  // L2: [10,0]-[10,10]
+    const feature: PartFeature = {
+      id: 'S1', kind: 'sketch',
+      constraints: [{ id: 'c_v', kind: 'vertical', target: '$L2' }],
+    }
+    const drag = makeVertexDrag({
+      entityId: 'L2', vertexKey: 'end', vertexId: 'vertex:S1:L2:end',
+      startWorld: [10, 10], currentWorld: [15, 12] as [number, number],
+    })
+    const result = softSolve({ sketch, drag, feature })
+
+    expect((result.L2 as Ln).end).toEqual([15, 12])
+    // start follows in X (line stays vertical), keeps its Y.
+    expect((result.L2 as Ln).start).toEqual([15, 0])
+  })
+
+  it('honours point-pair horizontal: partner point follows in Y', () => {
+    const sketch = {
+      P1: { x: 0, y: 0 },
+      P2: { x: 8, y: 3 },
+    } as unknown as Sketch
+    const feature: PartFeature = {
+      id: 'S1', kind: 'sketch',
+      constraints: [{ id: 'c_h', kind: 'horizontal', a: '$P1xy', b: '$P2xy' }],
+    }
+    const drag = makeVertexDrag({
+      entityId: 'P1', vertexKey: 'xy', vertexId: 'vertex:S1:P1:xy',
+      startWorld: [0, 0], currentWorld: [5, 7] as [number, number],
+    })
+    const result = softSolve({ sketch, drag, feature })
+
+    expect(result.P1 as { x: number; y: number }).toEqual({ x: 5, y: 7 })
+    // P2 shares Y, keeps its X.
+    expect(result.P2 as { x: number; y: number }).toEqual({ x: 8, y: 7 })
+  })
+
+  it('propagates H alignment through a coincident partner', () => {
+    const sketch = makeSketchWithLines()  // L1 [0,0]-[10,0], L2 [10,0]-[10,10]
+    const feature: PartFeature = {
+      id: 'S1', kind: 'sketch',
+      constraints: [
+        { id: 'c_h', kind: 'horizontal', target: '$L1' },
+        { id: 'c_co', kind: 'coincident', a: '$L1end', b: '$L2start' },
+      ],
+    }
+    // Drag L1.start up/left.
+    const drag = makeVertexDrag({
+      entityId: 'L1', vertexKey: 'start', vertexId: 'vertex:S1:L1:start',
+      startWorld: [0, 0], currentWorld: [-3, 4] as [number, number],
+    })
+    const result = softSolve({ sketch, drag, feature })
+
+    expect((result.L1 as Ln).start).toEqual([-3, 4])
+    // L1.end follows in Y (horizontal), then drags L2.start with it (coincident).
+    expect((result.L1 as Ln).end).toEqual([10, 4])
+    expect((result.L2 as Ln).start).toEqual([10, 4])
+  })
+})
