@@ -79,21 +79,18 @@ class AbsoluteQuery:
 
 @dataclass(frozen=True)
 class AncestryQuery:
-    """?A,B;<id0><id1>...[:<type>][@<classifier>]"""
+    """?A,B;<id0><id1>...[:<type>]"""
     ancestor_ids: tuple[str, ...]
     type_restriction: str | None = None
-    classifier: str | None = None
 
     @staticmethod
     def from_parts(
         ids: list[str],
         type_restriction: str | None = None,
-        classifier: str | None = None,
     ) -> "AncestryQuery":
         return AncestryQuery(
             ancestor_ids=tuple(ids),
             type_restriction=type_restriction,
-            classifier=classifier,
         )
 
 
@@ -156,13 +153,11 @@ def emit_wire(q: QueryType) -> str:
             if eid:
                 return "@" + feature_id + "/" + eid + (("/" + sub) if sub else "")
             return "@" + feature_id
-        case AncestryQuery(ancestor_ids, type_restriction, classifier):
+        case AncestryQuery(ancestor_ids, type_restriction):
             lengths = ",".join(format(len(i), "x") for i in ancestor_ids)
             body = "?" + lengths + ";" + "".join(ancestor_ids)
             if type_restriction:
                 body += ":" + type_restriction
-            if classifier:
-                body += "@" + classifier
             return body
     raise TypeError(f"Unknown query type: {type(q)!r}")  # type: ignore[return]
 
@@ -181,13 +176,9 @@ def _parse_absolute(s: str) -> AbsoluteQuery:
 
 def _parse_ancestry_obj(s: str) -> AncestryQuery:
     ids, type_restriction = _parse_ancestry(s)
-    classifier: str | None = None
-    if type_restriction and "@" in type_restriction:
-        type_restriction, classifier = type_restriction.split("@", 1)
     return AncestryQuery(
         ancestor_ids=tuple(ids),
         type_restriction=type_restriction or None,
-        classifier=classifier,
     )
 
 
@@ -310,7 +301,6 @@ def absolute(feature_id: str, eid: str = "", sub: str = "") -> AbsoluteQuery:
 def ancestry(
     ids: "list[QueryType | str]",
     type_restriction: str | None = None,
-    classifier: str | None = None,
 ) -> AncestryQuery:
     """Build an AncestryQuery from typed Query objects or raw wire strings.
 
@@ -321,7 +311,7 @@ def ancestry(
         emit_wire(i) if isinstance(i, _QUERY_TYPES) else i
         for i in ids
     ]
-    return AncestryQuery.from_parts(wire_ids, type_restriction, classifier)
+    return AncestryQuery.from_parts(wire_ids, type_restriction)
 
 
 def _parse_ancestry(query_str: str) -> tuple[list[str], str | None]:
@@ -567,7 +557,7 @@ class Repository:
         if start == '?':
             q = _parse_ancestry_obj(query_str)
             return self._resolve_ancestry_ids(
-                list(q.ancestor_ids), q.type_restriction, q.classifier,
+                list(q.ancestor_ids), q.type_restriction,
                 body_store, current_feature_id,
             )
 
@@ -591,9 +581,9 @@ class Repository:
                 else:
                     key = feature_id
                 return self.elements.get(key)
-            case AncestryQuery(ancestor_ids, type_restriction, classifier):
+            case AncestryQuery(ancestor_ids, type_restriction):
                 return self._resolve_ancestry_ids(
-                    list(ancestor_ids), type_restriction, classifier,
+                    list(ancestor_ids), type_restriction,
                     body_store, current_feature_id,
                 )
         return None  # type: ignore[return-value]
@@ -628,18 +618,14 @@ class Repository:
         self,
         ids: list[str],
         type_restriction: str | None,
-        classifier: str | None,
         body_store: dict[str, Any] | None = None,
         current_feature_id: str | None = None,
     ) -> Any:
         order_filter = self._order_filter(current_feature_id)
 
-        # Separate geom_hash IDs from structural ancestor IDs.
-        # Ancestral index is keyed only by structural IDs; hash is a secondary fallback.
         hash_ids = [i for i in ids if _is_geom_hash_id(i)]
         non_hash_ids = [i for i in ids if not _is_geom_hash_id(i)]
 
-        # Tier 1: ancestral resolution with structural (non-hash) IDs.
         candidate_ids: list[str] = []
         if non_hash_ids:
             query_set = frozenset(non_hash_ids)
@@ -648,7 +634,6 @@ class Repository:
                     candidate_ids.extend(element_ids)
         candidate_ids = order_filter(candidate_ids)
 
-        # Apply type restriction filter.
         if type_restriction is not None and candidate_ids:
             exact_matches = [
                 eid for eid in candidate_ids
@@ -657,7 +642,6 @@ class Repository:
             if exact_matches:
                 candidate_ids = exact_matches
             else:
-                # Coercion: no exact type match, try to resolve from candidates.
                 for eid in candidate_ids:
                     element = self.elements.get(eid)
                     coerced = _coerce_type(element, type_restriction, body_store, self.elements)
@@ -665,26 +649,13 @@ class Repository:
                         return coerced
                 candidate_ids = []
 
-        # Apply classifier filter.
-        if classifier is not None and candidate_ids:
-            candidate_ids = [
-                eid for eid in candidate_ids
-                if self.elements.get(eid, {}).get("classifier") == classifier
-            ]
-
-        # Hash narrowing: if ambiguous and a hash is present, narrow by by_geom_hash.
         if len(candidate_ids) > 1 and hash_ids:
-            geom_hash_str = hash_ids[0][1:]  # strip leading '@'
+            geom_hash_str = hash_ids[0][1:]
             hash_set = {eid for eid in self.by_geom_hash.get(geom_hash_str, []) if eid in self.elements}
             narrowed = [eid for eid in candidate_ids if eid in hash_set]
             if narrowed:
                 candidate_ids = narrowed
 
-        # Tier 2: partial ancestral (reverse direction) -- only if unique.
-        # After a feature rename or upstream edit, the query may carry ancestors
-        # that were never registered.  When tier 1 (query <= key) finds nothing,
-        # try the complement direction (key <= query): a registered key that is a
-        # subset of the query means the core ancestors still match.
         if not candidate_ids and non_hash_ids:
             partial_candidates: list[str] = []
             for key, element_ids in self.ancestral.items():
@@ -696,23 +667,14 @@ class Repository:
                     eid for eid in partial_candidates
                     if _obj_type(self.elements.get(eid)) == type_restriction
                 ]
-            if classifier is not None:
-                partial_candidates = [
-                    eid for eid in partial_candidates
-                    if self.elements.get(eid, {}).get("classifier") == classifier
-                ]
-            # Only accept if exactly one unique candidate; ambiguity falls through to hash.
             if len(partial_candidates) == 1:
                 return self.elements.get(partial_candidates[0])
 
-        # Tier 3: hash fallback -- when ancestral yields nothing, consult by_geom_hash directly.
         if not candidate_ids and hash_ids:
             geom_hash_str = hash_ids[0][1:]
             fallback_ids = [eid for eid in self.by_geom_hash.get(geom_hash_str, []) if eid in self.elements]
             if type_restriction is not None:
                 fallback_ids = [eid for eid in fallback_ids if _obj_type(self.elements.get(eid)) == type_restriction]
-            if classifier is not None:
-                fallback_ids = [eid for eid in fallback_ids if self.elements.get(eid, {}).get("classifier") == classifier]
             candidate_ids = order_filter(fallback_ids)
 
         if not candidate_ids:
@@ -765,11 +727,6 @@ class Repository:
             candidate_ids = [
                 eid for eid in candidate_ids
                 if _obj_type(self.elements.get(eid)) == q.type_restriction
-            ]
-        if q.classifier is not None:
-            candidate_ids = [
-                eid for eid in candidate_ids
-                if self.elements.get(eid, {}).get("classifier") == q.classifier
             ]
         return [self.elements[eid] for eid in candidate_ids if eid in self.elements]
 

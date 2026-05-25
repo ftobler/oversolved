@@ -110,11 +110,6 @@ def test_ancestry_with_type():
     assert s.endswith(":flatface")
 
 
-def test_ancestry_with_classifier():
-    s = emit_wire(ancestry(["@a"], "flatface", "inner"))
-    assert ":flatface@inner" in s
-
-
 def test_ancestry_from_string_no_type():
     # "@sk1a" has length 5 -> hex "5"
     q = parse_query("?5,5;@sk1a@sk1b")
@@ -126,14 +121,6 @@ def test_ancestry_from_string_typed():
     q = parse_query("?5,5;@sk1a@sk1b:flatface")
     assert isinstance(q, AncestryQuery)
     assert q.type_restriction == "flatface"
-
-
-def test_ancestry_from_string_classified():
-    # "@a" length 2, "@b" length 2
-    q = parse_query("?2,2;@a@b:flatface@inner")
-    assert isinstance(q, AncestryQuery)
-    assert q.type_restriction == "flatface"
-    assert q.classifier == "inner"
 
 
 def test_ancestry_roundtrip():

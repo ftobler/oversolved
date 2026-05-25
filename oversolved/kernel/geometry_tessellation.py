@@ -937,6 +937,7 @@ def edge_to_geom_dict(edge: Any) -> tuple[dict, tuple]:
     TWO_PI = 2.0 * math.pi
     CIRCLE_TOL = 1e-4
     gt = edge.geomType()
+    ed: dict[str, Any] = {}
 
     if gt == "LINE":
         sp = edge.startPoint()
