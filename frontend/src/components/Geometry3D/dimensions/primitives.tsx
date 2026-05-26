@@ -79,7 +79,7 @@ export function ArcTail({ cx, cy, radius, startAngleDeg, sign, color, lengthPx =
 // overshoots a small amount past the end (the arrow tip), both constant in
 // pixels regardless of zoom.
 const EXTENSION_OVERSHOOT_PX = 6
-const EXTENSION_GAP_PX = 4
+const EXTENSION_GAP_PX = 10
 export function ExtensionLine({ start, end, color, overshootPx = EXTENSION_OVERSHOOT_PX, gapPx = EXTENSION_GAP_PX }: {
   start: [number, number]; end: [number, number]; color: string; overshootPx?: number; gapPx?: number
 }) {
@@ -89,7 +89,7 @@ export function ExtensionLine({ start, end, color, overshootPx = EXTENSION_OVERS
     const dx = end[0] - start[0], dy = end[1] - start[1]
     const len = Math.hypot(dx, dy) || 1
     const ux = dx / len, uy = dy / len
-    const g = Math.min(gapPx * scale, len)  // never start past the end
+    const g = Math.min(gapPx * scale, len * 0.4)  // keep a visible witness line
     const o = overshootPx * scale
     return [[start[0] + ux * g, start[1] + uy * g, 0], [end[0] + ux * o, end[1] + uy * o, 0]]
   }
