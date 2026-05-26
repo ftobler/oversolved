@@ -4,7 +4,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w, sampleArc } from '@/components/sketch_helpers'
-import { Arrowhead, ArcTail } from './primitives'
+import { Arrowhead, ArcTail, ExtensionLine } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
@@ -56,6 +56,28 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   const arcStartPt: [number, number, number] = [vx + arcR * Math.cos(angle1), vy + arcR * Math.sin(angle1), 0]
   const arcEndPt: [number, number, number] = [vx + arcR * Math.cos(angle2), vy + arcR * Math.sin(angle2), 0]
 
+  // Radial witness lines. A measured segment lies along its ray at signed radii
+  // [sMin, sMax] from the vertex. When the arc radius falls outside that range
+  // the arc no longer touches the segment, so extend the segment along the ray
+  // out to the arc endpoint (gap at the geometry, overshoot past the arrow tip).
+  // Returns the witness start point on the ray, or null when the arc sits on the
+  // segment (no witness needed).
+  const radialWitnessStart = (
+    px1: number, py1: number, px2: number, py2: number, ang: number,
+  ): [number, number] | null => {
+    const dx = Math.cos(ang), dy = Math.sin(ang)
+    const s1 = (px1 - vx) * dx + (py1 - vy) * dy
+    const s2 = (px2 - vx) * dx + (py2 - vy) * dy
+    const sMax = Math.max(s1, s2), sMin = Math.min(s1, s2)
+    let b: number | null = null
+    if (arcR > sMax) b = sMax
+    else if (arcR < sMin) b = sMin
+    if (b === null) return null
+    return [vx + b * dx, vy + b * dy]
+  }
+  const witnessAStart = radialWitnessStart(dim.p1[0], dim.p1[1], dim.p2[0], dim.p2[1], angle1)
+  const witnessBStart = radialWitnessStart(dim.p3[0], dim.p3[1], dim.p4[0], dim.p4[1], angle2)
+
   // Outside: draw a solid arc extension from the nearer arc endpoint to the label.
   const extArcPts = isInside ? null : sampleArc(
     vx, vy, arcR,
@@ -101,6 +123,10 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
 
   return (
     <group key={cid}>
+      {/* Radial witness lines connecting the measured segments to the arc */}
+      {witnessAStart && <ExtensionLine start={witnessAStart} end={[arcStartPt[0], arcStartPt[1]]} color={color} />}
+      {witnessBStart && <ExtensionLine start={witnessBStart} end={[arcEndPt[0], arcEndPt[1]]} color={color} />}
+
       {/* Arc spanning the angle */}
       <Line points={arcPts} color={color} lineWidth={1} depthTest={false} />
 
