@@ -251,7 +251,7 @@ export function FeatureItemActions({
           <img src={isVisible ? iconEyeIcon : iconEyeOffIcon} alt={isVisible ? 'Visible' : 'Hidden'} />
         </button>
       )}
-      {!isEditing && (kind === 'extrude' || kind === 'revolve' || kind === 'fillet' || kind === 'chamfer' || kind === 'boolean' || kind === 'array' || kind === 'circular_array' || kind === 'delete_body' || kind === 'import_step' || kind === 'mirror') && (
+      {!isEditing && (kind === 'extrude' || kind === 'revolve' || kind === 'fillet' || kind === 'chamfer' || kind === 'boolean' || kind === 'array' || kind === 'circular_array' || kind === 'delete_body' || kind === 'import_step' || kind === 'mirror' || kind === 'transform') && (
         <span className="feature-visibility-placeholder" />
       )}
       {!isBuiltIn && !isOrigin && (

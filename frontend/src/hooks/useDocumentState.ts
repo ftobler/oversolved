@@ -32,7 +32,10 @@ export function useDocumentState(
     queueMicrotask(() => setLoading(true))
     http.getJson<{ content: string; name: string; owner_username?: string; permission?: string; is_public?: boolean }>(`/api/documents/${uuid}`)
       .then(data => {
-        const parsed = parseYaml(data.content) as PartDoc
+        const parsed = (parseYaml(data.content) ?? {}) as PartDoc
+        if (!parsed.features || parsed.features.length === 0) {
+          parsed.features = BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f }))
+        }
         docRef.current = parsed
         setDoc(parsed)
         setDocName(data.name)
