@@ -34,49 +34,68 @@ interface SceneControllerProps {
 export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef }: SceneControllerProps) {
   const { camera } = useThree()
   const ctrlRef = useRef<OrbitControlsImpl | null>(null)
-  const mounted = useRef(false)
+  const restoreMounted = useRef(false)
+  const resetMounted = useRef(false)
 
-  // R3F can expose a new camera reference on scene changes (e.g. when
-  // SketchPlaneDisplay or Geometry3D mounts during sketch edit entry).
-  // Detect reference swaps during render and restore the previous position,
-  // zoom, and orbit target so the user's view does not jump.
-  const prevCameraRef = useRef<THREE.Camera | null>(null)
-  const pendingRestore = useRef<{ pos: THREE.Vector3; zoom: number; target: THREE.Vector3 | null } | null>(null)
+  // Track the previous camera identity and its state so we can restore
+  // after R3F replaces the camera or resets its position/zoom during
+  // reconciliation (e.g. on scene changes like entering sketch edit).
+  const prevCamRef = useRef<THREE.Camera | null>(null)
+  const justSwapped = useRef(false)
+  const prevCamState = useRef<{ pos: THREE.Vector3; zoom: number; target: THREE.Vector3 }>({
+    pos: new THREE.Vector3(),
+    zoom: INITIAL_ZOOM,
+    target: new THREE.Vector3(),
+  })
 
-  if (prevCameraRef.current !== camera) {
-    // Camera was replaced by R3F — save state from the previous instance
-    // before it is lost.
-    if (prevCameraRef.current) {
-      const prevCam = prevCameraRef.current
-      console.log('[CAMERA-DEBUG] SceneController: camera reference CHANGED, saving old state. oldPos=', prevCam.position.toArray(), 'oldZoom=', 'zoom' in prevCam ? (prevCam as unknown as { zoom: number }).zoom : 'N/A')
-      pendingRestore.current = {
-        pos: prevCam.position.clone(),
-        zoom: ('zoom' in prevCam) ? (prevCam as unknown as { zoom: number }).zoom : INITIAL_ZOOM,
-        target: ctrlRef.current?.target?.clone() ?? null,
-      }
-    } else {
-      console.log('[CAMERA-DEBUG] SceneController: first camera init')
+  // Detect camera swaps and save the previous camera's state before the
+  // new one's position is committed (R3F may have already reset it).
+  if (prevCamRef.current !== camera) {
+    if (prevCamRef.current) {
+      const prev = prevCamRef.current
+      prevCamState.current.pos.copy(prev.position)
+      prevCamState.current.zoom = ('zoom' in prev) ? (prev as unknown as { zoom: number }).zoom : INITIAL_ZOOM
+      if (ctrlRef.current?.target) prevCamState.current.target.copy(ctrlRef.current.target)
+      justSwapped.current = true
+      console.log('[CAMERA-DEBUG] SceneController: camera ref changed, saved old pos=', prevCamState.current.pos.toArray(), 'zoom=', prevCamState.current.zoom)
     }
-    prevCameraRef.current = camera
+    prevCamRef.current = camera
+  }
+
+  // Persist camera state during render (before R3F commit) so any
+  // position/zoom reset done by R3F during commit can be detected.
+  const savedPos = useRef(new THREE.Vector3())
+  const savedZoom = useRef(INITIAL_ZOOM)
+  const savedTarget = useRef(new THREE.Vector3())
+  savedPos.current.copy(camera.position)
+  if ('zoom' in camera) {
+    savedZoom.current = (camera as unknown as { zoom: number }).zoom
+  }
+  if (ctrlRef.current?.target) {
+    savedTarget.current.copy(ctrlRef.current.target)
   }
 
   cameraRef.current = camera
 
-  // Apply any pending restore synchronously after the commit so the camera
-  // state is correct before the browser paints the next frame.
+  // After every render, check whether the camera state was changed
+  // unexpectedly during R3F's commit phase and restore if needed.
   useLayoutEffect(() => {
-    const saved = pendingRestore.current
-    pendingRestore.current = null
-    if (!saved) return
-    console.log('[CAMERA-DEBUG] SceneController: restoring camera state. pos=', saved.pos.toArray(), 'zoom=', saved.zoom, 'target=', saved.target?.toArray())
-    camera.position.copy(saved.pos)
-    if ('zoom' in camera) {
-      (camera as unknown as { zoom: number }).zoom = saved.zoom
-      camera.updateProjectionMatrix()
-    }
-    if (saved.target) {
-      ctrlRef.current?.target.copy(saved.target)
-      ctrlRef.current?.update()
+    if (!restoreMounted.current) { restoreMounted.current = true; return }
+    const swapped = justSwapped.current
+    justSwapped.current = false
+    const posReset = camera.position.distanceToSquared(savedPos.current) > 0.01
+    const zoomReset = Math.abs(('zoom' in camera ? (camera as unknown as { zoom: number }).zoom : INITIAL_ZOOM) - savedZoom.current) > 0.01
+    if (swapped || posReset || zoomReset) {
+      console.log('[CAMERA-DEBUG] SceneController: restoring camera! swapped=', swapped, 'posReset=', posReset, 'zoomReset=', zoomReset, 'to pos=', prevCamState.current.pos.toArray(), 'zoom=', prevCamState.current.zoom)
+      camera.position.copy(prevCamState.current.pos)
+      if ('zoom' in camera) {
+        (camera as unknown as { zoom: number }).zoom = prevCamState.current.zoom
+        camera.updateProjectionMatrix()
+      }
+      if (ctrlRef.current?.target) {
+        ctrlRef.current.target.copy(prevCamState.current.target)
+        ctrlRef.current.update()
+      }
     }
   })
 
@@ -84,7 +103,7 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
   // reference on scene changes (sketch edit entry, etc.) and including it
   // would reset the camera that should only happen via resetTrigger.
   useEffect(() => {
-    if (!mounted.current) { mounted.current = true; console.log('[CAMERA-DEBUG] SceneController: first mount, skipping reset'); return }
+    if (!resetMounted.current) { resetMounted.current = true; console.log('[CAMERA-DEBUG] SceneController: first mount, skipping reset'); return }
     console.log('[CAMERA-DEBUG] SceneController: resetTrigger fired, resetting camera to INITIAL_POSITION. resetTrigger=', resetTrigger)
     camera.position.set(...INITIAL_POSITION)
     if ('zoom' in camera) {
@@ -93,7 +112,6 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
     }
     ctrlRef.current?.target.set(0, 0, 0)
     ctrlRef.current?.update()
-    pendingRestore.current = null
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetTrigger])
 

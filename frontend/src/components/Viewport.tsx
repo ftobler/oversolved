@@ -646,8 +646,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           }
         }}
       >
-        <OrthographicCamera makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={-10} far={1000} /* clipping planes */ />
-        <SceneController resetTrigger={resetTrigger} canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} controlsRef={controlsRef} />
+        <OrthographicCamera key="main-camera" makeDefault position={INITIAL_POSITION} zoom={INITIAL_ZOOM} near={-10} far={1000} /* clipping planes */ />
+        <SceneController key="scene-ctrl" resetTrigger={resetTrigger} canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} controlsRef={controlsRef} />
 
         {ENABLE_ID_BUFFER_PICKING && <IdPickingDriver onReady={onIdPipelineReady} />}
         {showDebugHit && <IdDebugOverlay />}

@@ -1,6 +1,6 @@
 import React, { createRef } from 'react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, act } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import * as THREE from 'three'
 import SceneController from '@/components/Viewport/SceneController'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
