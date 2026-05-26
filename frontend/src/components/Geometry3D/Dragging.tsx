@@ -9,16 +9,18 @@ import { DashedLine } from '@/components/sketch_dimensions'
 import { p2w } from '@/components/sketch_helpers'
 import { COLOR_SNAP, COLOR_PREVIEW } from '@/components/Geometry3D/constants'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
-import { computeDragMove, shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
+import { computeDragMove, shouldActivateDrag, collectCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
+import type { PartConstraint } from '@/types/cad'
 import type { DragToolContext } from '@/tools/DragTool'
 import { sketchToVertexCandidates, sketchToEntityCandidates } from '@/components/Geometry3D/snapDetection'
 import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlane'
 
-export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: {
+export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, constraints }: {
   featureId: string
   sketch?: Sketch
   sketchGroupRef?: React.RefObject<THREE.Group | null>
   otherSketches?: Record<string, Sketch>
+  constraints?: PartConstraint[]
 }) {
   const drag = useSketchEditorStore(s => s.drag)
   const dragPending = useSketchEditorStore(s => s.dragPending)
@@ -122,15 +124,27 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches }: 
       const vertexCandidates = sketchToVertexCandidates(sketch, featureId, 'active_sketch')
       const entityCandidates = sketchToEntityCandidates(sketch, featureId, 'active_sketch')
       const skipIds = new Set<string>()
-      skipIds.add(currentDrag.entityId)
+      // Qualify with featureId: candidate ids are `entity:${featureId}:${entityId}`
+      // and `vertex:${featureId}:${entityId}:${key}`. The bare entityId matched
+      // vertices (substring) but never entities (exact compare), so the dragged
+      // entity itself stayed a snap target -- visible when dragging a point.
+      skipIds.add(`${featureId}:${currentDrag.entityId}`)
       if (otherSketches) {
         for (const [otherFeatId, otherSketch] of Object.entries(otherSketches)) {
           vertexCandidates.push(...sketchToVertexCandidates(otherSketch, otherFeatId, 'other_sketch'))
           entityCandidates.push(...sketchToEntityCandidates(otherSketch, otherFeatId, 'other_sketch'))
         }
       }
+      // Coincident partners of the dragged vertex move with it (softSolve keeps
+      // them on top of the dragged dot). Excluding them stops the snap indicator
+      // from latching onto a partner sitting under the cursor.
+      const bondedVertexIds = collectCoincidentVertexIds(
+        constraints ?? [], featureId, currentDrag.entityId, currentDrag.vertexKey,
+      )
+      const filteredVertexCandidates = vertexCandidates.filter(c => !bondedVertexIds.has(c.id))
+
       const result = computeDragMove(
-        localPoint, vertexCandidates, entityCandidates, skipIds,
+        localPoint, filteredVertexCandidates, entityCandidates, skipIds,
         currentDrag, pixelsPerUnit,
       )
 
