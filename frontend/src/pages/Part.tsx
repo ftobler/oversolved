@@ -60,7 +60,11 @@ export default function Part() {
     // Don't auto-zoom if user already entered sketch edit mode. The
     // onFirstSolve callback fires via setTimeout(0) after the solve
     // completes, which may race with sketch edit entry.
-    if (usePartEditorStore.getState().activeSketchFeatureId) return
+    if (usePartEditorStore.getState().activeSketchFeatureId) {
+      console.log('[CAMERA-DEBUG] handleFirstSolve: skipped (activeSketchFeatureId=', usePartEditorStore.getState().activeSketchFeatureId, ')')
+      return
+    }
+    console.log('[CAMERA-DEBUG] handleFirstSolve: calling autoZoomToFit')
     viewportRef.current?.autoZoomToFit()  // camera-only; intentional no-op when Viewport absent
   }, [])
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)

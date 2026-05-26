@@ -408,21 +408,24 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const zoomAttemptsRef = useRef(0)
   const MAX_ZOOM_ATTEMPTS = 5
   const autoZoomToFit = useCallback(() => {
-    if (zoomDoneRef.current) return
-    // Never zoom while the user is editing a sketch — rollback-driven body
-    // changes should not reposition the camera, and the deferred onFirstSolve
-    // timeout must not zoom after the user has already entered edit mode.
-    if (usePartEditorStore.getState().activeSketchFeatureId) return
+    if (zoomDoneRef.current) { console.log('[CAMERA-DEBUG] autoZoomToFit: skipped (zoomDoneRef=true)'); return }
+    if (usePartEditorStore.getState().activeSketchFeatureId) { console.log('[CAMERA-DEBUG] autoZoomToFit: skipped (activeSketchFeatureId=', usePartEditorStore.getState().activeSketchFeatureId, ')'); return }
     zoomAttemptsRef.current++
     if (zoomAttemptsRef.current > MAX_ZOOM_ATTEMPTS) {
       zoomDoneRef.current = true
+      console.log('[CAMERA-DEBUG] autoZoomToFit: max attempts reached')
       return
     }
-    if (autoZoomToFitNow()) { zoomDoneRef.current = true; return }
+    console.log('[CAMERA-DEBUG] autoZoomToFit: attempting zoom, attempt', zoomAttemptsRef.current)
+    if (autoZoomToFitNow()) { zoomDoneRef.current = true; console.log('[CAMERA-DEBUG] autoZoomToFit: zoom SUCCEEDED'); return }
+    console.log('[CAMERA-DEBUG] autoZoomToFit: zoom failed, will retry')
   }, [autoZoomToFitNow])
   // Re-trigger when bodies arrive (binary WS frame processed), unless already done.
   // Skip while editing a sketch: rollback-driven body changes should not reposition the camera.
-  useEffect(() => { if (!zoomDoneRef.current && !activeFeatureId) autoZoomToFit() }, [bodies, autoZoomToFit, activeFeatureId])
+  useEffect(() => {
+    console.log('[CAMERA-DEBUG] autoZoom useEffect: zoomDoneRef=', zoomDoneRef.current, 'activeFeatureId=', activeFeatureId, 'bodies keys=', Object.keys(bodies).length)
+    if (!zoomDoneRef.current && !activeFeatureId) autoZoomToFit()
+  }, [bodies, autoZoomToFit, activeFeatureId])
 
   const alignCameraToPlane = useCallback((planeId: string) => {
     const camera = cameraRef.current as THREE.OrthographicCamera | null
