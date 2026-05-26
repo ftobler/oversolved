@@ -4,7 +4,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w } from '@/components/sketch_helpers'
-import { Arrowhead, ArrowTail } from './primitives'
+import { Arrowhead, ArrowTail, ExtensionLine } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
@@ -107,8 +107,8 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
 
   return (
     <group key={cid}>
-      <Line points={[[x1, y1, 0], [d1x, d1y, 0]]} color={color} lineWidth={1} depthTest={false} />
-      <Line points={[[x2, y2, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} depthTest={false} />
+      <ExtensionLine start={[x1, y1]} end={[d1x, d1y]} color={color} />
+      <ExtensionLine start={[x2, y2]} end={[d2x, d2y]} color={color} />
       <Line points={[[d1x, d1y, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} depthTest={false} />
       {isInside ? (
         // Inside: arrows at boundaries pointing outward.
