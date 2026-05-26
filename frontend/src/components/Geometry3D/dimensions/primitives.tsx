@@ -44,6 +44,36 @@ export function ArrowTail({ origin, dir, color }: { origin: [number, number]; di
   )
 }
 
+// Tail that follows the dimension arc (a circle centred at cx,cy with the given
+// radius) instead of a straight tangent, so it does not kink away from a curved
+// angular dimension. Length is constant in screen pixels; sign selects the
+// angular travel direction (+1 CCW, -1 CW) from startAngleDeg.
+const ARC_TAIL_STEPS = 8
+export function ArcTail({ cx, cy, radius, startAngleDeg, sign, color, lengthPx = 25 }: {
+  cx: number; cy: number; radius: number; startAngleDeg: number; sign: number; color: string; lengthPx?: number
+}) {
+  const lineRef = useRef<Line2>(null)
+  const { camera } = useThree()
+  const compute = (scale: number): [number, number, number][] => {
+    const r = Math.max(Math.abs(radius), 1e-6)
+    const dTheta = ((lengthPx * scale) / r) * Math.sign(sign || 1)
+    const a0 = startAngleDeg * (Math.PI / 180)
+    const pts: [number, number, number][] = []
+    for (let i = 0; i <= ARC_TAIL_STEPS; i++) {
+      const a = a0 + (dTheta * i) / ARC_TAIL_STEPS
+      pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a), 0])
+    }
+    return pts
+  }
+  useFrame(() => {
+    const geo = lineRef.current?.geometry
+    if (!geo) return
+    const pts = compute(p2w(camera))
+    geo.setPositions(pts.flat())
+  })
+  return <Line ref={lineRef} points={compute(p2w(camera))} color={color} lineWidth={1} depthTest={false} />
+}
+
 // Line with dash/gap sizes in pixels, constant regardless of zoom.
 export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5, depthTest, renderOrder, onPointerOver, onPointerOut }: {
   points: [number, number, number][]

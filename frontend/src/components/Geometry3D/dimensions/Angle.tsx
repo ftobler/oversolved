@@ -4,7 +4,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w, sampleArc } from '@/components/sketch_helpers'
-import { Arrowhead, ArrowTail } from './primitives'
+import { Arrowhead, ArcTail } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
@@ -120,9 +120,9 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
             <Line points={extArcPts} color={color} lineWidth={1} depthTest={false} />
           )}
           <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[arcStartPt[0] - tanStartInX, arcStartPt[1] - tanStartInY]} color={color} />
-          <ArrowTail origin={[arcStartPt[0], arcStartPt[1]]} dir={[-tanStartInX, -tanStartInY]} color={color} />
+          <ArcTail cx={vx} cy={vy} radius={arcR} startAngleDeg={a0deg} sign={-arcSign} color={color} />
           <Arrowhead tip={[arcEndPt[0],   arcEndPt[1]  ]} from={[arcEndPt[0]   - tanEndInX,   arcEndPt[1]   - tanEndInY  ]} color={color} />
-          <ArrowTail origin={[arcEndPt[0], arcEndPt[1]]} dir={[-tanEndInX, -tanEndInY]} color={color} />
+          <ArcTail cx={vx} cy={vy} radius={arcR} startAngleDeg={a1deg} sign={arcSign} color={color} />
         </>
       )}
 
