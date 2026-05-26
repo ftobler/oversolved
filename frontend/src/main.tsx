@@ -13,7 +13,9 @@ import App from '@/App.tsx'
 import { initializeTools } from '@/tools'
 import { ToastProvider } from '@/contexts/ToastContext'
 
-const theme = createTheme()
+const theme = createTheme({
+  palette: { mode: 'dark', background: { default: '#111' } },
+})
 
 initializeTools()
 
