@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, PartFeature } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -55,15 +55,34 @@ export interface Geometry3DProps {
 export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, solveStatus, entityStatus, otherSketches, featureDef }: Geometry3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const drag = useSketchEditorStore(s => s.drag)
+  const isDraggingThis = !!drag && drag.featureId === featureId
 
   // During drag on this feature, show soft-solve preview (honours coincidence constraints,
   // other constraints relax silently). Hard solve fires on pointer-up via onMutation.
-  const displaySketch = useMemo(() => {
-    if (drag && drag.featureId === featureId) {
-      return softSolve({ sketch: solved, drag, feature: featureDef })
+  const preview = useMemo(
+    () => (drag && drag.featureId === featureId ? softSolve({ sketch: solved, drag, feature: featureDef }) : null),
+    [solved, drag, featureId, featureDef],
+  )
+
+  // On pointer-up the committed mutation re-solves asynchronously. Until the
+  // fresh `solved` arrives we keep showing the last soft-solve preview, so the
+  // geometry doesn't snap back to its pre-drag position for the solver round-trip.
+  // Derived synchronously via the "adjust state during render" pattern (no effect,
+  // so no one-frame revert). A new `solved` identity supersedes the held preview.
+  const [held, setHeld] = useState<Sketch | null>(null)
+  const [tracker, setTracker] = useState<{ solved: Sketch; preview: Sketch | null }>({ solved, preview })
+  let nextHeld = held
+  if (tracker.solved !== solved || tracker.preview !== preview) {
+    if (tracker.solved !== solved) {
+      nextHeld = null  // fresh solve replaces the hold
+    } else if (tracker.preview && !preview) {
+      nextHeld = tracker.preview  // drag just ended: freeze its last preview
     }
-    return solved
-  }, [solved, drag, featureId, featureDef])
+    setTracker({ solved, preview })
+  }
+  if (nextHeld !== held) setHeld(nextHeld)
+
+  const displaySketch = isDraggingThis ? (preview as Sketch) : (nextHeld ?? solved)
 
   const extent = useMemo(() => sketchExtent(displaySketch), [displaySketch])
 
