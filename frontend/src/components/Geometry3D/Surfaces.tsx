@@ -103,13 +103,19 @@ function _isValidPoint(p: Point): boolean {
   return Number.isFinite(p[0]) && Number.isFinite(p[1])
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
+export function edgeColorStyle(mode: TopologyMode, isSelected: boolean): string {
+  if (isSelected) return COLOR_SELECTED
+  return mode === 'editing' ? 'white' : COLOR_INACTIVE
+}
+
 function EdgeMesh({ edge, featureId, mode }: EdgeMeshProps) {
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const id = edgeSelectionId(featureId, edge.query)
   const isSelected = normalSelection.has(id)
 
-  const color = isSelected ? COLOR_SELECTED : 'white'
+  const color = edgeColorStyle(mode, isSelected)
 
   const start = edge.start
   const end = edge.end
@@ -177,6 +183,7 @@ interface TopologyEdgesProps {
 export function TopologyEdges({ topology, featureId, isEditing, activeFeatureId }: TopologyEdgesProps) {
   const edges = topology.edges ?? []
   const mode: TopologyMode = activeFeatureId !== undefined ? (isEditing ? 'editing' : 'inactive') : 'view'
+  if (mode !== 'editing') return null
   return (
     <>
       {edges.map((edge, ei) => (

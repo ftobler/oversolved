@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { planeLabel } from '@/components/Geometry3D/utils'
-import { buildSurfaceShapes, surfaceFillStyle } from '@/components/Geometry3D/Surfaces'
+import { buildSurfaceShapes, surfaceFillStyle, edgeColorStyle } from '@/components/Geometry3D/Surfaces'
 import { COLOR_SELECTED, COLOR_HOVER, COLOR_INACTIVE } from '@/utils/partColors'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Topology } from '@/types/cad'
@@ -63,6 +63,16 @@ describe('planeLabel', () => {
   })
   it('returns None for undefined', () => {
     expect(planeLabel(undefined)).toBe('None')
+  })
+})
+
+describe('edgeColorStyle', () => {
+  it('selected edges always use the selection color regardless of mode', () => {
+    expect(edgeColorStyle('editing', true)).toBe(COLOR_SELECTED)
+  })
+
+  it('unselected edges are white in editing mode (active closed-loop indicator)', () => {
+    expect(edgeColorStyle('editing', false)).toBe('white')
   })
 })
 
