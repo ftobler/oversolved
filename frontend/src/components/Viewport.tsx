@@ -290,38 +290,44 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     return canvas.toDataURL('image/png')
   }, [])
 
-  const autoZoomToFitNow = useCallback(() => {
+  // Auto-fit: frame a document's content once, when its geometry first becomes
+  // available. `fitPending` is the single intent flag. It starts true (fit the
+  // first document on open) and is re-armed per document by the imperative
+  // autoZoomToFit() (called on each document's first solve). Because it is a
+  // re-armable intent, not a permanent latch, loading a second document into
+  // the same Viewport re-fits - the latch bug that left later documents
+  // unframed is gone. Camera-only; never mutates app state.
+  const fitPendingRef = useRef(true)
+
+  const tryFit = useCallback(() => {
+    if (!fitPendingRef.current) return
+    // Don't reframe while editing a sketch: rollback-driven body changes during
+    // edit must not reposition the camera. Stays pending until edit ends.
+    if (usePartEditorStore.getState().activeSketchFeatureId) { traceCamera('fit:skip', 'editing sketch'); return }
     const camera = cameraRef.current as THREE.OrthographicCamera | null
-    if (!camera) return false
-    return fitToContent(camera, controlsRef.current, bodiesRef.current, sceneRef.current)
+    if (!camera) return
+    // Geometry (binary) arrives after the JSON solve, so the first attempts may
+    // find no bounds; stay pending and retry as `bodies` populate.
+    if (fitToContent(camera, controlsRef.current, bodiesRef.current, sceneRef.current)) {
+      fitPendingRef.current = false
+      traceCamera('fit:done')
+    }
   }, [])
 
-  // Binary geometry for 3D bodies arrives after the JSON solve result, so we
-  // must handle the timing gap: try immediately, then re-trigger when bodies
-  // prop populates. The ref prevents re-zooming after the first successful fit.
-  // zoomAttempts limits retries so that late-arriving bodies don't re-zoom
-  // the camera during editing transitions.
-  const zoomDoneRef = useRef(false)
-  const zoomAttemptsRef = useRef(0)
-  const MAX_ZOOM_ATTEMPTS = 5
+  // Imperative: re-arm the fit for the current document and attempt immediately.
+  // Called on each document's first solve; guards (editing / no geometry yet)
+  // live in tryFit, so a stale or mid-edit call is harmless.
   const autoZoomToFit = useCallback(() => {
-    if (zoomDoneRef.current) { traceCamera('fit:skip', 'already done'); return }
-    if (usePartEditorStore.getState().activeSketchFeatureId) { traceCamera('fit:skip', 'editing sketch', usePartEditorStore.getState().activeSketchFeatureId); return }
-    zoomAttemptsRef.current++
-    if (zoomAttemptsRef.current > MAX_ZOOM_ATTEMPTS) {
-      zoomDoneRef.current = true
-      traceCamera('fit:giveup', 'max attempts')
-      return
-    }
-    traceCamera('fit:attempt', zoomAttemptsRef.current)
-    if (autoZoomToFitNow()) { zoomDoneRef.current = true; traceCamera('fit:done'); return }
-  }, [autoZoomToFitNow])
-  // Re-trigger when bodies arrive (binary WS frame processed), unless already done.
-  // Skip while editing a sketch: rollback-driven body changes should not reposition the camera.
+    traceCamera('fit:request')
+    fitPendingRef.current = true
+    tryFit()
+  }, [tryFit])
+
+  // Re-attempt as bodies arrive and when edit state changes (so a fit deferred
+  // during sketch edit lands once the user exits).
   useEffect(() => {
-    traceCamera('fit:effect', 'done=', zoomDoneRef.current, 'editing=', activeFeatureId, 'bodies=', Object.keys(bodies).length)
-    if (!zoomDoneRef.current && !activeFeatureId) autoZoomToFit()
-  }, [bodies, autoZoomToFit, activeFeatureId])
+    tryFit()
+  }, [bodies, activeFeatureId, tryFit])
 
   const alignCameraToPlane = useCallback((planeId: string) => {
     const camera = cameraRef.current as THREE.OrthographicCamera | null

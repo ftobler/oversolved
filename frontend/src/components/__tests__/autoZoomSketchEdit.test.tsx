@@ -153,6 +153,30 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     expect(testCamera.zoom).toBe(999)
   })
 
+  it('re-fits when autoZoomToFit is called again (second document loaded, not a one-time latch)', async () => {
+    const ref = createRef<ViewportHandle>()
+    render(<Viewport ref={ref} />)
+
+    // First document: geometry arrives and the camera fits.
+    await act(async () => {
+      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+    })
+    expect(testCamera.zoom).not.toBe(200)
+
+    // User moves the camera; sentinel to detect a re-fit.
+    testCamera.zoom = 999
+    testCamera.updateProjectionMatrix()
+
+    // Second document's first solve re-arms auto-fit via the imperative handle
+    // (what Part.handleFirstSolve does). The old zoomDoneRef latch made this a
+    // no-op; it must now re-fit the (already present) geometry.
+    act(() => {
+      ref.current?.autoZoomToFit()
+    })
+
+    expect(testCamera.zoom).not.toBe(999)
+  })
+
   it('does not zoom via imperative handle if activeSketchFeatureId is set (onFirstSolve race)', async () => {
     const ref = createRef<ViewportHandle>()
     render(<Viewport ref={ref} />)
