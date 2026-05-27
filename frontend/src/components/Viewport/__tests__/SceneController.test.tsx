@@ -30,18 +30,10 @@ function makeRef<T>(initial: T): React.MutableRefObject<T> {
 }
 
 describe('SceneController camera preservation', () => {
-  it('preserves camera position, zoom, and target when R3F replaces the camera reference', async () => {
+  it('initializes the first camera and preserves the user pose when R3F swaps the camera instance', async () => {
     const { useThree } = await import('@react-three/fiber')
 
     const cam1 = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
-    cam1.position.set(50, 60, 100)
-    cam1.zoom = 300
-    cam1.updateProjectionMatrix()
-
-    const cam2 = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
-    cam2.position.set(20, 20, 100)  // INITIAL_POSITION
-    cam2.zoom = 200  // INITIAL_ZOOM
-    cam2.updateProjectionMatrix()
 
     const cameraRef = makeRef<THREE.Camera | null>(null)
     const canvasRef = makeRef<HTMLCanvasElement | null>(null)
@@ -63,10 +55,19 @@ describe('SceneController camera preservation', () => {
       />
     )
 
-    // Camera ref should point to cam1
-    expect(cameraRef.current).toBe(cam1)
+    // The first camera instance is placed at the initial pose.
+    expect(cam1.position.x).toBe(20)
+    expect(cam1.zoom).toBe(200)
 
-    // Now simulate R3F returning a new camera (what happens on scene changes)
+    // The user orbits/zooms.
+    cam1.position.set(50, 60, 100)
+    cam1.zoom = 300
+    cam1.updateProjectionMatrix()
+
+    // R3F swaps the camera instance on sketch edit entry. The new instance
+    // (born at defaults) must inherit the user's current pose, NOT reset to
+    // the initial view.
+    const cam2 = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
     ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ camera: cam2 })
 
     rerender(
@@ -80,10 +81,7 @@ describe('SceneController camera preservation', () => {
       />
     )
 
-    // cameraRef should now point to cam2
     expect(cameraRef.current).toBe(cam2)
-
-    // cam2 should have the same position as cam1 (preserved)
     expect(cam2.position.x).toBe(50)
     expect(cam2.position.y).toBe(60)
     expect(cam2.position.z).toBe(100)
@@ -94,9 +92,6 @@ describe('SceneController camera preservation', () => {
     const { useThree } = await import('@react-three/fiber')
 
     const cam = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
-    cam.position.set(50, 60, 100)
-    cam.zoom = 300
-    cam.updateProjectionMatrix()
 
     ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ camera: cam })
 
@@ -119,7 +114,10 @@ describe('SceneController camera preservation', () => {
       />
     )
 
-    // Zoom should still be user-set
+    // Simulate the user moving the camera away from the initial pose.
+    cam.position.set(50, 60, 100)
+    cam.zoom = 300
+    cam.updateProjectionMatrix()
     expect(cam.zoom).toBe(300)
 
     // Trigger reset
