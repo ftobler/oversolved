@@ -16,6 +16,7 @@ import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
 import OriginMarker from '@/components/Viewport/OriginMarker'
 import ReferencePlane from '@/components/Viewport/ReferencePlane'
 import SceneController from '@/components/Viewport/SceneController'
+import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
@@ -31,12 +32,6 @@ import { getBodiesToRender, getSketchesToRender, getPreviewBodies } from '@/comp
 import { buildBodySnapSketch, builtinPlaneTransform, BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjection'
 import type { SketchData } from '@/types/cad'
 
-const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
-const INITIAL_ZOOM = 200
-// A single, stable camera config. R3F creates the default camera from this
-// exactly once and never swaps or re-applies it on re-render (it only updates
-// the frustum on resize). near/far are the clipping planes.
-const INITIAL_CAMERA = { position: INITIAL_POSITION, zoom: INITIAL_ZOOM, near: -10, far: 1000 }
 const ENABLE_ID_BUFFER_PICKING = true
 
 export interface ViewportProps {

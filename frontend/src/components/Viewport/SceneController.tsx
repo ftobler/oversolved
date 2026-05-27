@@ -5,9 +5,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { drawCubeGizmo, type Pv, type Hit } from '@/components/CubeGizmo.utils'
-
-const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
-const INITIAL_ZOOM = 200
+import { INITIAL_POSITION, INITIAL_ZOOM } from '@/components/Viewport/cameraConstants'
 
 const MOUSE_BUTTONS = {
   LEFT: -1 as unknown as THREE.MOUSE,
