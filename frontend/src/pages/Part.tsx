@@ -45,6 +45,7 @@ function extractFeatures(doc: PartDoc | null): PartFeature[] {
 }
 
 const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
+  plane: { field: 'plane' },
   extrude: { field: 'sketch', multi: true },
   revolve: { field: 'sketch', multi: true },
   fillet: { field: 'edges', multi: true },
@@ -360,10 +361,13 @@ export default function Part() {
     const label = `plane ${planeCount + 1}`
     const faceQuery = [...selection].find(id => id.startsWith('?') && id.includes(':face'))
     const definition = faceQuery ? { mode: 'on_face', face: faceQuery } as const : undefined
-    usePartEditorStore.getState().setRollbackPosition(features.length + 1)
+    const store = usePartEditorStore.getState()
+    store.setRollbackPosition(features.length + 1)
     handleMutation({ type: 'add_plane', featureId, label, definition })
-    enterEditFeature(featureId)
-  }, [doc, features.length, handleMutation, selection, enterEditFeature])
+    store.setEditingFeatureId(featureId)
+    const firstPick = FIRST_PICK_FIELD['plane']
+    if (firstPick) setActivePickField({ featureId, ...firstPick })
+  }, [doc, features.length, handleMutation, selection, setActivePickField])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
