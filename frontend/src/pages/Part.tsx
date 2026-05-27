@@ -44,6 +44,19 @@ function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
 }
 
+const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
+  extrude: { field: 'sketch', multi: true },
+  revolve: { field: 'sketch', multi: true },
+  fillet: { field: 'edges', multi: true },
+  chamfer: { field: 'edges', multi: true },
+  hole: { field: 'sketch' },
+  boolean: { field: 'target' },
+  transform: { field: 'body' },
+  mirror: { field: 'body' },
+  delete_body: { field: 'body' },
+  circular_array: { field: 'axis' },
+}
+
 export default function Part() {
   const { uuid } = useParams<{ uuid: string }>()
   const navigate = useNavigate()
@@ -331,8 +344,14 @@ export default function Part() {
     store.setRollbackPosition(features.length + 1)
     store.setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
-    enterEditFeature(fid)
-  }, [doc, features, handleMutation, bodies, enterEditFeature])
+    // enterEditFeature would bail because React hasn't re-rendered with the
+    // new feature yet (features.findIndex(f => f.id === fid) returns -1).
+    // Enter edit mode eagerly without starting a session — commit/cancel
+    // handle the no-session case gracefully.
+    store.setEditingFeatureId(fid)
+    const firstPick = FIRST_PICK_FIELD[kind]
+    if (firstPick) setActivePickField({ featureId: fid, ...firstPick })
+  }, [doc, features, handleMutation, bodies, setActivePickField])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
@@ -461,9 +480,19 @@ export default function Part() {
   const handleUserRollbackChange = useCallback((pos: number | null) => {
     const store = usePartEditorStore.getState()
     store.setRollbackPosition(pos)
-    store.setPickBoundary(null)
-    if (docRef.current) reSolve(docRef.current)
-  }, [docRef, reSolve])
+    if (store.editingFeatureId && doc) {
+      // An edit is active — keep pickBoundary in sync so the invariant
+      // in reSolve (assertEditingInvariant) doesn't fire.
+      const fts = extractFeatures(doc)
+      const nonBuiltIns = fts.filter(f => !BUILT_IN_IDS.has(f.id))
+      const idx = nonBuiltIns.findIndex(f => f.id === store.editingFeatureId)
+      store.setPickBoundary(idx >= 0 ? idx : null)
+    } else {
+      store.setPickBoundary(null)
+    }
+    // Bypass cache: a user-initiated rollback change should always re-solve.
+    if (docRef.current) reSolve(docRef.current, { bypassCache: true })
+  }, [docRef, reSolve, doc])
 
   const toggleVisibility = useCallback((featureId: string) => {
     handleMutation({ type: 'set_feature_visibility', featureId, visible: !visibleFeaturesWithEdit.has(featureId) })

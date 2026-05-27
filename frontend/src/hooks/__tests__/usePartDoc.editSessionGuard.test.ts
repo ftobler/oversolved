@@ -68,14 +68,14 @@ describe('usePartDoc edit session guards', () => {
     expect(() => result.current.startEditSession(true)).toThrow('[usePartDoc] startEditSession called while an edit session is already active')
   })
 
-  it('throws on commitEditSession without start', () => {
+  it('does not throw on commitEditSession without start', () => {
     const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
-    expect(() => result.current.commitEditSession()).toThrow('[usePartDoc] commitEditSession called with no active edit session')
+    expect(() => result.current.commitEditSession()).not.toThrow()
   })
 
-  it('throws on cancelEditSession without start', () => {
+  it('does not throw on cancelEditSession without start', () => {
     const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
-    expect(() => result.current.cancelEditSession()).toThrow('[usePartDoc] cancelEditSession called with no active edit session')
+    expect(() => result.current.cancelEditSession()).not.toThrow()
   })
 
   it('throws on nested startPreviewMode', () => {

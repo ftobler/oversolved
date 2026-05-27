@@ -120,7 +120,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
   const commitEditSession = useCallback(() => {
     if (editSnapshotRef.current === null) {
-      failLoud('[usePartDoc] commitEditSession called with no active edit session')
+      // No active session (e.g. add+enter pattern where only editingFeatureId
+      // was set without starting a session). Silently skip.
       return
     }
     const snapshot = editSnapshotRef.current
@@ -137,7 +138,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
   const cancelEditSession = useCallback(() => {
     if (editSnapshotRef.current === null) {
-      failLoud('[usePartDoc] cancelEditSession called with no active edit session')
+      // No active session — silently skip.
       return
     }
     suppressUndoRef.current = false
