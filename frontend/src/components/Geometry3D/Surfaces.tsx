@@ -84,7 +84,6 @@ export function SurfaceMesh({ shape, query, mode }: SurfaceMeshProps) {
 
   return (
     <mesh
-      position={[0, 0, -0.003]}
       onClick={handleClick}
     >
       <shapeGeometry args={[shape]} />
