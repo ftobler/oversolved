@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { OrbitControls } from '@react-three/drei'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { useThree, useFrame } from '@react-three/fiber'
@@ -35,12 +35,19 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
   const { camera } = useThree()
   const ctrlRef = useRef<OrbitControlsImpl | null>(null)
   const lastReset = useRef(resetTrigger)
-  const prevCamera = useRef<THREE.Camera | null>(null)
 
   cameraRef.current = camera
 
-  function applyInitialView() {
-    console.log('[CAMERA-DEBUG] SceneController: applyInitialView -> INITIAL_POSITION')
+  // The single orthographic camera is created and initially positioned by the
+  // <Canvas orthographic camera={...}> in Viewport. R3F never swaps or
+  // repositions it on re-render. The ONLY automatic camera move here is an
+  // explicit Reset Viewport click (resetTrigger changing to a new value);
+  // everything else is user controlled. Comparing against the last acted-on
+  // value (not a "mounted" boolean) keeps StrictMode's setup/cleanup/setup
+  // double invocation from firing a spurious reset.
+  useEffect(() => {
+    if (resetTrigger === lastReset.current) return
+    lastReset.current = resetTrigger
     camera.position.set(...INITIAL_POSITION)
     if ('zoom' in camera) {
       (camera as { zoom: number; updateProjectionMatrix: () => void }).zoom = INITIAL_ZOOM
@@ -48,43 +55,6 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
     }
     ctrlRef.current?.target.set(0, 0, 0)
     ctrlRef.current?.update()
-  }
-
-  // The camera carries no declarative position/zoom props, so R3F never snaps
-  // it back to the initial pose on re-render. The ONLY automatic camera setup
-  // is the very first instance, placed at the initial view. R3F swaps the
-  // camera instance on scene changes (e.g. sketch edit entry); on such a swap
-  // we copy the user's current pose onto the new instance so the view stays
-  // put rather than jumping. Everything else is user controlled.
-  useLayoutEffect(() => {
-    const prev = prevCamera.current
-    prevCamera.current = camera
-    if (!prev) {
-      console.log('[CAMERA-DEBUG] SceneController: first camera instance, initializing')
-      applyInitialView()
-      return
-    }
-    if (prev === camera) { console.log('[CAMERA-DEBUG] SceneController: camera effect ran, SAME instance (no-op)'); return }
-    console.log('[CAMERA-DEBUG] SceneController: camera INSTANCE SWAP, preserving pose from', prev.position.toArray(), 'zoom', ('zoom' in prev) ? (prev as unknown as { zoom: number }).zoom : 'n/a')
-    camera.position.copy(prev.position)
-    camera.quaternion.copy(prev.quaternion)
-    if ('zoom' in camera && 'zoom' in prev) {
-      (camera as unknown as { zoom: number }).zoom = (prev as unknown as { zoom: number }).zoom
-      camera.updateProjectionMatrix()
-    }
-    ctrlRef.current?.update()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camera])
-
-  // Only reset when resetTrigger changes to a genuinely new value (the user
-  // clicked Reset Viewport). Comparing against the last acted-on value, rather
-  // than a "mounted" boolean, keeps StrictMode's setup/cleanup/setup double
-  // invocation from firing a spurious reset to the initial pose on load/edit.
-  useEffect(() => {
-    if (resetTrigger === lastReset.current) return
-    lastReset.current = resetTrigger
-    console.log('[CAMERA-DEBUG] SceneController: resetTrigger changed ->', resetTrigger)
-    applyInitialView()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetTrigger])
 

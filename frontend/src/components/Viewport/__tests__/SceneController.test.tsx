@@ -30,10 +30,13 @@ function makeRef<T>(initial: T): React.MutableRefObject<T> {
 }
 
 describe('SceneController camera preservation', () => {
-  it('initializes the first camera and preserves the user pose when R3F swaps the camera instance', async () => {
+  it('never touches the camera on re-render (camera is owned by the Canvas, user controlled)', async () => {
     const { useThree } = await import('@react-three/fiber')
 
-    const cam1 = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
+    const cam = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
+    cam.position.set(50, 60, 100)
+    cam.zoom = 300
+    cam.updateProjectionMatrix()
 
     const cameraRef = makeRef<THREE.Camera | null>(null)
     const canvasRef = makeRef<HTMLCanvasElement | null>(null)
@@ -42,7 +45,7 @@ describe('SceneController camera preservation', () => {
     const snapRef = makeRef<THREE.Vector3 | null>(null)
     const controlsRef = makeRef<OrbitControlsImpl | null>(null)
 
-    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ camera: cam1 })
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ camera: cam })
 
     const { rerender } = render(
       <SceneController
@@ -55,21 +58,12 @@ describe('SceneController camera preservation', () => {
       />
     )
 
-    // The first camera instance is placed at the initial pose.
-    expect(cam1.position.x).toBe(20)
-    expect(cam1.zoom).toBe(200)
+    // SceneController does NOT initialize the camera (the Canvas does); the
+    // user-set pose must be left exactly as-is.
+    expect(cam.position.toArray()).toEqual([50, 60, 100])
+    expect(cam.zoom).toBe(300)
 
-    // The user orbits/zooms.
-    cam1.position.set(50, 60, 100)
-    cam1.zoom = 300
-    cam1.updateProjectionMatrix()
-
-    // R3F swaps the camera instance on sketch edit entry. The new instance
-    // (born at defaults) must inherit the user's current pose, NOT reset to
-    // the initial view.
-    const cam2 = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
-    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ camera: cam2 })
-
+    // A re-render (e.g. canvas resize on sketch edit entry) must not move it.
     rerender(
       <SceneController
         canvasRef={canvasRef}
@@ -81,11 +75,8 @@ describe('SceneController camera preservation', () => {
       />
     )
 
-    expect(cameraRef.current).toBe(cam2)
-    expect(cam2.position.x).toBe(50)
-    expect(cam2.position.y).toBe(60)
-    expect(cam2.position.z).toBe(100)
-    expect(cam2.zoom).toBe(300)
+    expect(cam.position.toArray()).toEqual([50, 60, 100])
+    expect(cam.zoom).toBe(300)
   })
 
   it('resets camera when resetTrigger changes', async () => {
