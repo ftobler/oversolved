@@ -323,7 +323,7 @@ export function renderConstraints(
             <line x1={vx} y1={vy} x2={extBx} y2={extBy} stroke={color} strokeWidth={1} />
             <path d={arcPath} stroke={color} strokeWidth={1} fill="none" />
             <rect x={labelX - textWidth / 2} y={labelY - 7} width={textWidth} height={14} fill="#111" />
-            <text x={labelX} y={labelY} fill={color} fontSize={10} fontFamily="monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
+            <text x={labelX} y={labelY} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
           </g>
         )
       }
