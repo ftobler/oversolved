@@ -20,7 +20,7 @@ export function DeleteBodyEditor({
   })
 
   return (
-    <div className="feature-editor">
+    <div className="plane-editor">
       <div className="feature-field-row feature-field-row--stacked">
         <span className="feature-field-label">Body</span>
         <PickChip
