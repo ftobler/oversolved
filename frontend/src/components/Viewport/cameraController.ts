@@ -7,10 +7,10 @@ import { INITIAL_POSITION, INITIAL_ZOOM } from './cameraConstants'
 // Every programmatic camera move in the viewport goes through this module.
 // The camera itself is otherwise only touched by the user (OrbitControls) and
 // created once by the <Canvas>. Having a single set of writers means one place
-// answers "what moved the camera, and why" - flip CAMERA_TRACE to follow every
-// move with its trigger source, which is what makes hard-to-reproduce viewport
-// bugs traceable instead of a needle in a haystack.
-export const CAMERA_TRACE = true
+// answers "what moved the camera, and why" - flip CAMERA_TRACE to true to
+// follow every move with its trigger source, which is what makes
+// hard-to-reproduce viewport bugs traceable instead of a needle in a haystack.
+export const CAMERA_TRACE = false
 
 export function traceCamera(op: string, ...detail: unknown[]): void {
   if (CAMERA_TRACE) console.log(`[camera] ${op}`, ...detail)
