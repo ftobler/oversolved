@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { ViewportHandle } from '@/components/Viewport'
+import { traceCamera } from '@/components/Viewport/cameraController'
 import type { PartDoc, PartFeature, Mutation, Sketch } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
@@ -61,10 +62,10 @@ export default function Part() {
     // onFirstSolve callback fires via setTimeout(0) after the solve
     // completes, which may race with sketch edit entry.
     if (usePartEditorStore.getState().activeSketchFeatureId) {
-      console.log('[CAMERA-DEBUG] handleFirstSolve: skipped (activeSketchFeatureId=', usePartEditorStore.getState().activeSketchFeatureId, ')')
+      traceCamera('firstSolve:skip', 'editing sketch', usePartEditorStore.getState().activeSketchFeatureId)
       return
     }
-    console.log('[CAMERA-DEBUG] handleFirstSolve: calling autoZoomToFit')
+    traceCamera('firstSolve:fit')
     viewportRef.current?.autoZoomToFit()  // camera-only; intentional no-op when Viewport absent
   }, [])
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)

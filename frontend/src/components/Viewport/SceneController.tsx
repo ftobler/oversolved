@@ -5,7 +5,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { drawCubeGizmo, type Pv, type Hit } from '@/components/CubeGizmo.utils'
-import { INITIAL_POSITION, INITIAL_ZOOM } from '@/components/Viewport/cameraConstants'
+import { resetView, snapToDirection } from '@/components/Viewport/cameraController'
 
 const MOUSE_BUTTONS = {
   LEFT: -1 as unknown as THREE.MOUSE,
@@ -46,13 +46,7 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
   useEffect(() => {
     if (resetTrigger === lastReset.current) return
     lastReset.current = resetTrigger
-    camera.position.set(...INITIAL_POSITION)
-    if ('zoom' in camera) {
-      (camera as { zoom: number; updateProjectionMatrix: () => void }).zoom = INITIAL_ZOOM
-      camera.updateProjectionMatrix()
-    }
-    ctrlRef.current?.target.set(0, 0, 0)
-    ctrlRef.current?.update()
+    resetView(camera, ctrlRef.current, 'resetTrigger')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetTrigger])
 
@@ -69,11 +63,7 @@ export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverR
 
   useFrame(() => {
     if (snapRef.current) {
-      const dir = snapRef.current.clone().normalize()
-      const dist = camera.position.length()
-      camera.position.copy(dir.multiplyScalar(dist))
-      ctrlRef.current?.target.set(0, 0, 0)
-      ctrlRef.current?.update()
+      snapToDirection(camera, ctrlRef.current, snapRef.current)
       snapRef.current = null
     }
 

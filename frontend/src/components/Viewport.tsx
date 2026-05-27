@@ -17,6 +17,7 @@ import OriginMarker from '@/components/Viewport/OriginMarker'
 import ReferencePlane from '@/components/Viewport/ReferencePlane'
 import SceneController from '@/components/Viewport/SceneController'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
+import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/components/Viewport/cameraController'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
@@ -292,109 +293,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const autoZoomToFitNow = useCallback(() => {
     const camera = cameraRef.current as THREE.OrthographicCamera | null
     if (!camera) return false
-
-    let minX = Infinity, maxX = -Infinity
-    let minY = Infinity, maxY = -Infinity
-    let minZ = Infinity, maxZ = -Infinity
-
-    // Try body vertex data first (fast, accurate).
-    const bodiesData = bodiesRef.current
-    if (bodiesData && Object.keys(bodiesData).length > 0) {
-      for (const body of Object.values(bodiesData)) {
-        const verts = body.mesh?.vertices
-        if (!verts) continue
-        if (verts instanceof Float32Array) {
-          for (let i = 0; i < verts.length; i += 3) {
-            const x = verts[i], y = verts[i + 1], z = verts[i + 2]
-            if (!Number.isFinite(x)) continue
-            if (x < minX) minX = x; if (x > maxX) maxX = x
-            if (y < minY) minY = y; if (y > maxY) maxY = y
-            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
-          }
-        } else {
-          for (const [x, y, z] of verts) {
-            if (!Number.isFinite(x)) continue
-            if (x < minX) minX = x; if (x > maxX) maxX = x
-            if (y < minY) minY = y; if (y > maxY) maxY = y
-            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
-          }
-        }
-      }
-    }
-
-    // Fall back to scene traversal if no body vertex data found.
-    if (!Number.isFinite(minX)) {
-      const scene = sceneRef.current
-      if (scene) {
-        const box = new THREE.Box3()
-        let hasContent = false
-        scene.traverse((obj) => {
-          if (obj instanceof THREE.Mesh) {
-            obj.geometry.computeBoundingBox()
-            const geoBox = obj.geometry.boundingBox
-            if (geoBox) {
-              const worldBox = geoBox.clone().applyMatrix4(obj.matrixWorld)
-              box.union(worldBox)
-              hasContent = true
-            }
-          }
-        })
-        if (hasContent) {
-          const size = box.getSize(new THREE.Vector3())
-          const center = box.getCenter(new THREE.Vector3())
-          if (Number.isFinite(size.x) && Number.isFinite(size.y)) {
-            minX = center.x - size.x / 2; maxX = center.x + size.x / 2
-            minY = center.y - size.y / 2; maxY = center.y + size.y / 2
-            minZ = center.z - size.z / 2; maxZ = center.z + size.z / 2
-          }
-        }
-      }
-    }
-
-    if (!Number.isFinite(minX)) return false
-
-    const cx = (minX + maxX) / 2
-    const cy = (minY + maxY) / 2
-    const cz = (minZ + maxZ) / 2
-
-    const frustumHeight = camera.top - camera.bottom
-    const frustumWidth = camera.right - camera.left
-    if (frustumHeight <= 0 || frustumWidth <= 0) return false
-
-    // Project bounding box corners through camera view matrix to get screen-space extents.
-    camera.updateMatrixWorld()
-    const viewMatrix = camera.matrixWorldInverse
-    const corners = [
-      [minX, minY, minZ], [maxX, minY, minZ], [minX, maxY, minZ], [maxX, maxY, minZ],
-      [minX, minY, maxZ], [maxX, minY, maxZ], [minX, maxY, maxZ], [maxX, maxY, maxZ],
-    ]
-    let minVX = Infinity, maxVX = -Infinity, minVY = Infinity, maxVY = -Infinity
-    const tmp = new THREE.Vector3()
-    for (const [x, y, z] of corners) {
-      tmp.set(x, y, z).applyMatrix4(viewMatrix)
-      if (tmp.x < minVX) minVX = tmp.x; if (tmp.x > maxVX) maxVX = tmp.x
-      if (tmp.y < minVY) minVY = tmp.y; if (tmp.y > maxVY) maxVY = tmp.y
-    }
-    const viewSizeX = maxVX - minVX
-    const viewSizeY = maxVY - minVY
-
-    const margin = 2.0
-    const targetViewHeight = Math.max(viewSizeY * margin, viewSizeX * margin * (frustumHeight / frustumWidth))
-    const zoom = frustumHeight / targetViewHeight
-    if (zoom <= 0 || !Number.isFinite(zoom)) return false
-
-    camera.zoom = zoom
-    const centerWorld = new THREE.Vector3(cx, cy, cz)
-    const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
-    const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion)
-    const newPos = camera.position.clone()
-      .addScaledVector(camRight, camRight.dot(centerWorld) - camRight.dot(camera.position))
-      .addScaledVector(camUp, camUp.dot(centerWorld) - camUp.dot(camera.position))
-    camera.position.copy(newPos)
-    controlsRef.current?.target.set(cx, cy, cz)
-    controlsRef.current?.update()
-    camera.updateProjectionMatrix()
-    return true
+    return fitToContent(camera, controlsRef.current, bodiesRef.current, sceneRef.current)
   }, [])
 
   // Binary geometry for 3D bodies arrives after the JSON solve result, so we
@@ -406,78 +305,34 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const zoomAttemptsRef = useRef(0)
   const MAX_ZOOM_ATTEMPTS = 5
   const autoZoomToFit = useCallback(() => {
-    if (zoomDoneRef.current) { console.log('[CAMERA-DEBUG] autoZoomToFit: skipped (zoomDoneRef=true)'); return }
-    if (usePartEditorStore.getState().activeSketchFeatureId) { console.log('[CAMERA-DEBUG] autoZoomToFit: skipped (activeSketchFeatureId=', usePartEditorStore.getState().activeSketchFeatureId, ')'); return }
+    if (zoomDoneRef.current) { traceCamera('fit:skip', 'already done'); return }
+    if (usePartEditorStore.getState().activeSketchFeatureId) { traceCamera('fit:skip', 'editing sketch', usePartEditorStore.getState().activeSketchFeatureId); return }
     zoomAttemptsRef.current++
     if (zoomAttemptsRef.current > MAX_ZOOM_ATTEMPTS) {
       zoomDoneRef.current = true
-      console.log('[CAMERA-DEBUG] autoZoomToFit: max attempts reached')
+      traceCamera('fit:giveup', 'max attempts')
       return
     }
-    console.log('[CAMERA-DEBUG] autoZoomToFit: attempting zoom, attempt', zoomAttemptsRef.current)
-    if (autoZoomToFitNow()) { zoomDoneRef.current = true; console.log('[CAMERA-DEBUG] autoZoomToFit: zoom SUCCEEDED'); return }
-    console.log('[CAMERA-DEBUG] autoZoomToFit: zoom failed, will retry')
+    traceCamera('fit:attempt', zoomAttemptsRef.current)
+    if (autoZoomToFitNow()) { zoomDoneRef.current = true; traceCamera('fit:done'); return }
   }, [autoZoomToFitNow])
   // Re-trigger when bodies arrive (binary WS frame processed), unless already done.
   // Skip while editing a sketch: rollback-driven body changes should not reposition the camera.
   useEffect(() => {
-    console.log('[CAMERA-DEBUG] autoZoom useEffect: zoomDoneRef=', zoomDoneRef.current, 'activeFeatureId=', activeFeatureId, 'bodies keys=', Object.keys(bodies).length)
+    traceCamera('fit:effect', 'done=', zoomDoneRef.current, 'editing=', activeFeatureId, 'bodies=', Object.keys(bodies).length)
     if (!zoomDoneRef.current && !activeFeatureId) autoZoomToFit()
   }, [bodies, autoZoomToFit, activeFeatureId])
 
   const alignCameraToPlane = useCallback((planeId: string) => {
     const camera = cameraRef.current as THREE.OrthographicCamera | null
     if (!camera) return
-
-    const planeRotations: Record<string, [number, number, number]> = {
-      'builtin_plane_front': [0, 0, 100],
-      'builtin_plane_top': [0, 100, 0],
-      'builtin_plane_right': [100, 0, 0],
-      'builtin_plane_bottom': [0, -100, 0],
-      'builtin_plane_back': [0, 0, -100],
-      'builtin_plane_left': [-100, 0, 0],
-    }
-
-    const direction = planeRotations[planeId]
-    if (!direction) return
-
-    const distance = 100
-    const [dx, dy, dz] = direction
-    const norm = Math.sqrt(dx*dx + dy*dy + dz*dz)
-    camera.position.set(
-      (dx / norm) * distance,
-      (dy / norm) * distance,
-      (dz / norm) * distance
-    )
-
-    camera.lookAt(0, 0, 0)
-    controlsRef.current?.target.set(0, 0, 0)
-    controlsRef.current?.update()
-    camera.updateProjectionMatrix()
+    alignToPlane(camera, controlsRef.current, planeId)
   }, [cameraRef])
 
   const alignCameraToFace = useCallback((faceNormal: [number, number, number], faceCenter: [number, number, number]) => {
     const camera = cameraRef.current as THREE.OrthographicCamera | null
     if (!camera) return
-
-    const [nx, ny, nz] = faceNormal
-    const norm = Math.sqrt(nx*nx + ny*ny + nz*nz)
-    if (norm === 0) return
-
-    const distance = 100
-    const ndx = nx / norm
-    const ndy = ny / norm
-    const ndz = nz / norm
-
-    camera.position.set(
-      faceCenter[0] + ndx * distance,
-      faceCenter[1] + ndy * distance,
-      faceCenter[2] + ndz * distance
-    )
-    camera.lookAt(faceCenter[0], faceCenter[1], faceCenter[2])
-    controlsRef.current?.target.set(faceCenter[0], faceCenter[1], faceCenter[2])
-    controlsRef.current?.update()
-    camera.updateProjectionMatrix()
+    alignToFace(camera, controlsRef.current, faceNormal, faceCenter)
   }, [cameraRef])
 
   useImperativeHandle(ref, () => ({ captureScreenshot, captureScreenshotForSaving, autoZoomToFit, alignCameraToPlane, alignCameraToFace }), [captureScreenshot, captureScreenshotForSaving, autoZoomToFit, alignCameraToPlane, alignCameraToFace])
