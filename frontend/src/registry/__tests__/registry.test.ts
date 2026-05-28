@@ -120,11 +120,58 @@ describe('dimension rules', () => {
     ])).toEqual({ constraintKind: 'point_distance' })
   })
 
-  it('resolveDimension two picks: two different lines → angle', () => {
+  it('resolveDimension two picks: two different lines → angle (no sketch)', () => {
     expect(resolveDimension([
       { isVertex: false, target: 'L1', entityKind: 'line' },
       { isVertex: false, target: 'L2', entityKind: 'line' },
     ])).toEqual({ constraintKind: 'angle' })
+  })
+
+  it('resolveDimension two picks: two non-parallel lines (with sketch) → angle', () => {
+    const sketch = {
+      L1: { start: [0, 0] as [number, number], end: [10, 0] as [number, number] },
+      L2: { start: [0, 0] as [number, number], end: [0, 10] as [number, number] },
+    }
+    expect(resolveDimension(
+      [
+        { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
+        { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
+      ],
+      sketch,
+      'S1',
+    )).toEqual({ constraintKind: 'angle' })
+  })
+
+  it('resolveDimension two picks: two parallel lines (with sketch) → line_distance', () => {
+    // Two horizontal lines on different y -- parallel -> distance, not angle.
+    const sketch = {
+      L1: { start: [0, 0] as [number, number], end: [10, 0] as [number, number] },
+      L2: { start: [0, 5] as [number, number], end: [10, 5] as [number, number] },
+    }
+    expect(resolveDimension(
+      [
+        { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
+        { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
+      ],
+      sketch,
+      'S1',
+    )).toEqual({ constraintKind: 'line_distance' })
+  })
+
+  it('resolveDimension two picks: anti-parallel lines (with sketch) → line_distance', () => {
+    // Same direction but reversed -- still parallel (just opposite orientation).
+    const sketch = {
+      L1: { start: [0, 0] as [number, number], end: [10, 0] as [number, number] },
+      L2: { start: [10, 5] as [number, number], end: [0, 5] as [number, number] },
+    }
+    expect(resolveDimension(
+      [
+        { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
+        { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
+      ],
+      sketch,
+      'S1',
+    )).toEqual({ constraintKind: 'line_distance' })
   })
 
   it('resolveDimension two picks: two non-line entities → line_distance', () => {

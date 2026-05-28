@@ -37,7 +37,7 @@ export function DimensionPreview({
   const synth = useMemo(() => {
     if (activeTool !== 'dimension') return null
     if (dimensionPicks.length === 0) return null
-    const resolved = resolveDimension(dimensionPicks)
+    const resolved = resolveDimension(dimensionPicks, sketch, featureId)
     if (!resolved) return null
     const kind = resolved.constraintKind
     const targets = dimensionPicks.length === 2 && dimensionPicks[0].target === dimensionPicks[1].target

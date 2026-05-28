@@ -386,6 +386,12 @@ export const CONSTRAINT_SHORTCUTS: ReadonlyMap<string, string> =
 // single-entity pick resolves; the *sticky placement* FSM in DimensionTool then
 // decides when to commit (an empty-space click finalises whatever the resolver
 // currently says).
+//
+// When `sketch`+`featureId` are provided the resolver disambiguates two-line
+// picks that are parallel into a `line_distance` (an angle constraint between
+// parallel lines is degenerate). Without the geometry hint the table value
+// `angle` is returned as before, which is the safe default for tests / contexts
+// that don't have the solved sketch yet.
 
 export interface DimensionPick {
   isVertex: boolean
@@ -397,7 +403,52 @@ export interface ResolvedDimension {
   constraintKind: string
 }
 
-export function resolveDimension(picks: readonly DimensionPick[]): ResolvedDimension | null {
+// Tolerance for the parallel check: |cross(u,v)| <= eps treats the two unit
+// directions as parallel. Same magnitude as the solver's angle-comparison
+// tolerance; tight enough to never fire on a "skew but visually parallel"
+// pair the user actually wants an angle on.
+const PARALLEL_CROSS_EPS = 1e-6
+
+// Minimal sketch shape used by the parallel check (avoids importing the full
+// Sketch type into the registry layer). Entities are accessed by id; the check
+// reads `start` and `end` after a runtime guard and tolerates entity kinds
+// without those fields.
+export type ParallelCheckSketch = Record<string, unknown>
+
+function hasStartEnd(e: unknown): e is { start: [number, number]; end: [number, number] } {
+  if (e === null || typeof e !== 'object') return false
+  const o = e as { start?: unknown; end?: unknown }
+  return Array.isArray(o.start) && Array.isArray(o.end)
+}
+
+function linesAreParallel(
+  picks: readonly DimensionPick[],
+  sketch: ParallelCheckSketch,
+): boolean {
+  if (picks.length !== 2) return false
+  const [a, b] = picks
+  const eaId = a.target.split(':')[2]
+  const ebId = b.target.split(':')[2]
+  const ea = sketch[eaId]
+  const eb = sketch[ebId]
+  if (!hasStartEnd(ea) || !hasStartEnd(eb)) return false
+  const ax = ea.end[0] - ea.start[0]
+  const ay = ea.end[1] - ea.start[1]
+  const bx = eb.end[0] - eb.start[0]
+  const by = eb.end[1] - eb.start[1]
+  const na = Math.hypot(ax, ay)
+  const nb = Math.hypot(bx, by)
+  if (na === 0 || nb === 0) return false
+  // |cross(unit_a, unit_b)| = |sin(theta)|; parallel iff close to zero.
+  const cross = Math.abs(ax * by - ay * bx) / (na * nb)
+  return cross <= PARALLEL_CROSS_EPS
+}
+
+export function resolveDimension(
+  picks: readonly DimensionPick[],
+  sketch?: ParallelCheckSketch,
+  _featureId?: string,
+): ResolvedDimension | null {
   if (picks.length === 1) {
     const [p] = picks
     if (p.isVertex || !p.entityKind) return null
@@ -430,6 +481,13 @@ export function resolveDimension(picks: readonly DimensionPick[]): ResolvedDimen
       triggerType = a.entityKind === 'line' && b.entityKind === 'line' ? 'two_lines' : 'two_entities'
     } else {
       triggerType = 'mixed'
+    }
+    // Two parallel lines -> distance, not angle: the angle is 0/180 by
+    // construction, so the angle dim has nothing to measure. Only applies when
+    // sketch geometry is available.
+    if (triggerType === 'two_lines' && sketch && linesAreParallel(picks, sketch)) {
+      const distRule = DIMENSION_RULES.find(r => r.trigger.type === 'two_entities')
+      return distRule ? { constraintKind: distRule.constraintKind } : null
     }
     const rule = DIMENSION_RULES.find(r => r.trigger.type === triggerType)
     return rule ? { constraintKind: rule.constraintKind } : null

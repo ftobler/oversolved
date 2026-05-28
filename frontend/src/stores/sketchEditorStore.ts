@@ -516,7 +516,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   finalizeDimensionPlacement: (clientPos) => {
     const { dimensionPicks, activeFeatureId, dimensionCursorWorld } = get()
     if (!activeFeatureId || dimensionPicks.length === 0) return
-    const resolved = resolveDimension(dimensionPicks)
+    const sketch = _sketchCbs.getSketch?.(activeFeatureId) ?? null
+    const resolved = resolveDimension(dimensionPicks, sketch ?? undefined, activeFeatureId)
     if (!resolved) {
       // Vertex-only or otherwise undimensionable: silently drop and let the
       // user keep picking. Do not deactivate the tool.
@@ -547,7 +548,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     // it unchanged. Falls back to empty when the sketch isn't available
     // (e.g. tests without getSketch registered) or the geometry can't be
     // resolved.
-    const sketch = _sketchCbs.getSketch?.(featureId) ?? null
     const naturalValue = sketch
       ? computeNaturalDimensionValue(constraintKind, targets, sketch, featureId)
       : null
