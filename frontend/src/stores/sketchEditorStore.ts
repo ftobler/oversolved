@@ -4,6 +4,8 @@
 import { create } from 'zustand'
 import type { ActiveTool, Mutation, SelectionDomain } from '@/types/cad'
 import type { SnapKind } from '@/registry'
+import type { DimensionPick } from '@/registry'
+import { resolveDimension } from '@/registry'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { validateSketchEditorState, failLoud } from './stateInvariants'
 import { toolRegistry } from '@/registry/toolRegistry'
@@ -192,6 +194,10 @@ interface SketchEditorState {
   entityKindMap: Record<string, string>
   pendingDimTarget: string | null
   pendingDimEntityKind: string | null
+  // Sticky-placement state: the picks the user has made inside the active
+  // dimension-tool gesture. Empty until the first click, cleared on tool exit
+  // or after the placement dialog closes.
+  dimensionPicks: DimensionPick[]
   pendingDialog: DialogState | null
   pendingProjectTarget: { sourceFeatureId: string; sourceEntityId: string } | null
   contextMenu: [number, number] | null
@@ -213,6 +219,9 @@ interface SketchEditorState {
   openContextMenu: (pos: [number, number]) => void
   closeContextMenu: () => void
   setPendingDim: (target: string | null, entityKind: string | null) => void
+  addDimensionPick: (pick: DimensionPick) => void
+  clearDimensionPicks: () => void
+  finalizeDimensionPlacement: (clientPos: [number, number]) => void
   setActivePickField: (field: ActivePickField | null, opts?: { seed?: boolean }) => void
 }
 
@@ -246,6 +255,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   drawSnapVertexId: null,
   pendingDimTarget: null,
   pendingDimEntityKind: null,
+  dimensionPicks: [],
   pendingDialog: null,
   pendingProjectTarget: null,
   contextMenu: null,
@@ -349,12 +359,15 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       if (tool !== 'dimension') {
         updates.pendingDimTarget = null
         updates.pendingDimEntityKind = null
+        updates.dimensionPicks = []
       } else {
         // Entering the dimension tool wipes the current normal selection so
         // the picks the user makes inside the tool aren't contaminated by
         // whatever was selected before. (Spec: "user clicks 'd', everything
-        // de-selects.")
+        // de-selects.") Also resets any leftover placement picks so the first
+        // click starts a fresh gesture.
         updates.normalSelection = new Set<string>()
+        updates.dimensionPicks = []
       }
       // Clear stale pick-field state when entering any tool
       if (tool !== null && state.activePickField !== null) {
@@ -486,6 +499,57 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     if (devOnly || testMode) {
       validateSketchEditorState(get())
     }
+  },
+
+  addDimensionPick: (pick: DimensionPick) => {
+    const { dimensionPicks } = get()
+    // Cap at 2 picks: a third entity click replaces the second (lets the user
+    // swap their second pick without restarting the gesture).
+    const next = dimensionPicks.length >= 2
+      ? [dimensionPicks[0], pick]
+      : [...dimensionPicks, pick]
+    set({ dimensionPicks: next })
+  },
+
+  clearDimensionPicks: () => set({ dimensionPicks: [] }),
+
+  finalizeDimensionPlacement: (clientPos) => {
+    const { dimensionPicks, activeFeatureId } = get()
+    if (!activeFeatureId || dimensionPicks.length === 0) return
+    const resolved = resolveDimension(dimensionPicks)
+    if (!resolved) {
+      // Vertex-only or otherwise undimensionable: silently drop and let the
+      // user keep picking. Do not deactivate the tool.
+      return
+    }
+    const onMutation = _sketchCbs.onMutation
+    if (!onMutation) {
+      if (devOnly) console.warn('[sketchEditorStore] onMutation: callback not registered — finalizeDimensionPlacement will be a no-op.')
+      return
+    }
+    // The dim self-deduplicates if a same-line was clicked twice (length).
+    const targets = dimensionPicks.length === 2 && dimensionPicks[0].target === dimensionPicks[1].target
+      ? [dimensionPicks[0].target]
+      : dimensionPicks.map(p => p.target)
+    const featureId = activeFeatureId
+    const constraintKind = resolved.constraintKind
+
+    // Clear picks immediately so the next pointer event can't double-fire the
+    // dialog, but stay in the dimension tool until OK / Cancel resolves.
+    set({ dimensionPicks: [] })
+
+    get().openDialog({
+      position: clientPos,
+      label: 'Dimension value',
+      onConfirm: (input) => {
+        const val = parseFloat(input)
+        if (isNaN(val) || val <= 0) return
+        onMutation({ type: 'add_constraint', featureId, kind: constraintKind, targets, value: val })
+        // The dimension tool stays armed so the user can place several dims
+        // without re-pressing 'd'. They exit explicitly (Escape / different
+        // tool / tool button), matching standard CAD behaviour.
+      },
+    })
   },
 
   setActivePickField: (field, opts) => {

@@ -14,161 +14,101 @@ function createMockContext(overrides: Partial<DimensionToolContext> = {}): Dimen
     onMutation: null,
     pushMode: vi.fn(),
     popMode: vi.fn(),
-    pendingDimTarget: null,
-    pendingDimEntityKind: null,
     hoveredEntityKind: null,
-    setPendingDim: vi.fn(),
-    setActiveTool: vi.fn(),
-    openDialog: vi.fn(),
+    dimensionPicks: [],
+    addDimensionPick: vi.fn(),
     ...overrides,
   }
 }
 
 describe('DimensionTool', () => {
   describe('onClick', () => {
-    it('sets pending target for first click on a line', () => {
-      const setPendingDim = vi.fn()
+    it('pushes a line entity click into dimensionPicks', () => {
+      const addDimensionPick = vi.fn()
       const tool = createDimensionTool()
       const context = createMockContext({
-        setPendingDim,
-        activeFeatureId: 'S1',
+        addDimensionPick,
         hoveredSelectionId: 'entity:S1:L1',
         hoveredEntityKind: 'line',
       })
 
       tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)
 
-      expect(setPendingDim).toHaveBeenCalledWith('entity:S1:L1', 'line')
+      expect(addDimensionPick).toHaveBeenCalledWith({
+        isVertex: false, target: 'entity:S1:L1', entityKind: 'line',
+      })
     })
 
-    it('sets pending target with null entityKind for vertex', () => {
-      const setPendingDim = vi.fn()
+    it('pushes a vertex click with null entityKind', () => {
+      const addDimensionPick = vi.fn()
       const tool = createDimensionTool()
       const context = createMockContext({
-        setPendingDim,
-        activeFeatureId: 'S1',
+        addDimensionPick,
         hoveredVertexId: 'vertex:S1:L1:start',
         hoveredEntityKind: null,
       })
 
       tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)
 
-      expect(setPendingDim).toHaveBeenCalledWith('vertex:S1:L1:start', null)
+      expect(addDimensionPick).toHaveBeenCalledWith({
+        isVertex: true, target: 'vertex:S1:L1:start', entityKind: null,
+      })
     })
 
-    it('opens dialog immediately for circle (single-entity dimension)', () => {
-      const openDialog = vi.fn()
+    it('pushes a circle entity click into dimensionPicks', () => {
+      const addDimensionPick = vi.fn()
       const tool = createDimensionTool()
       const context = createMockContext({
-        openDialog,
-        activeFeatureId: 'S1',
+        addDimensionPick,
         hoveredSelectionId: 'entity:S1:C1',
         hoveredEntityKind: 'circle',
       })
 
       tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)
 
-      expect(openDialog).toHaveBeenCalledWith(expect.objectContaining({ label: 'Dimension value' }))
+      expect(addDimensionPick).toHaveBeenCalledWith({
+        isVertex: false, target: 'entity:S1:C1', entityKind: 'circle',
+      })
     })
 
-    it('does not open dialog immediately for line (goes pending)', () => {
-      const openDialog = vi.fn()
-      const setPendingDim = vi.fn()
+    it('does nothing when no target is hovered', () => {
+      const addDimensionPick = vi.fn()
+      const tool = createDimensionTool()
+      const context = createMockContext({ addDimensionPick })
+
+      tool.handlers.onClick!({ clientX: 0, clientY: 0 } as PointerEvent, [0, 0], context)
+
+      expect(addDimensionPick).not.toHaveBeenCalled()
+    })
+
+    it('does nothing when no active feature', () => {
+      const addDimensionPick = vi.fn()
       const tool = createDimensionTool()
       const context = createMockContext({
-        openDialog,
-        setPendingDim,
-        activeFeatureId: 'S1',
+        addDimensionPick,
+        activeFeatureId: null,
         hoveredSelectionId: 'entity:S1:L1',
         hoveredEntityKind: 'line',
       })
 
-      tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)
+      tool.handlers.onClick!({ clientX: 0, clientY: 0 } as PointerEvent, [0, 0], context)
 
-      expect(openDialog).not.toHaveBeenCalled()
-      expect(setPendingDim).toHaveBeenCalledWith('entity:S1:L1', 'line')
+      expect(addDimensionPick).not.toHaveBeenCalled()
     })
 
-    it('opens dialog on second click between two vertices', () => {
-      const openDialog = vi.fn()
+    it('does not open a dialog directly (placement is store-owned)', () => {
+      const addDimensionPick = vi.fn()
       const tool = createDimensionTool()
       const context = createMockContext({
-        openDialog,
-        activeFeatureId: 'S1',
-        pendingDimTarget: 'vertex:S1:L1:start',
-        pendingDimEntityKind: null,
-        hoveredVertexId: 'vertex:S1:L2:start',
-        hoveredEntityKind: null,
-      })
-
-      tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)
-
-      expect(openDialog).toHaveBeenCalledWith(expect.objectContaining({
-        label: 'Dimension value',
-      }))
-    })
-
-    it('same entity clicked twice opens single-entity dimension dialog', () => {
-      const openDialog = vi.fn()
-      const tool = createDimensionTool()
-      const context = createMockContext({
-        openDialog,
-        activeFeatureId: 'S1',
-        pendingDimTarget: 'entity:S1:L1',
-        pendingDimEntityKind: 'line',
-        hoveredSelectionId: 'entity:S1:L1',
-        hoveredEntityKind: 'line',
-      })
-
-      tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)
-
-      expect(openDialog).toHaveBeenCalledWith(expect.objectContaining({ label: 'Dimension value' }))
-    })
-
-    it('line self-dim: null entityKind produces line_distance (bug guard)', () => {
-      const openDialog = vi.fn()
-      const setPendingDim = vi.fn()
-      const tool = createDimensionTool()
-      // When entityKind is null (the bug), second click on same line
-      // falls through to the two-entity path instead of single-entity (length).
-      const context = createMockContext({
-        openDialog,
-        setPendingDim,
-        activeFeatureId: 'S1',
-        pendingDimTarget: 'entity:S1:L1',
-        pendingDimEntityKind: null,
-        hoveredSelectionId: 'entity:S1:L1',
-        hoveredEntityKind: null,
-      })
-
-      tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)
-
-      // Should still open a dialog (falls through to the two-entity path)
-      expect(openDialog).toHaveBeenCalledWith(expect.objectContaining({ label: 'Dimension value' }))
-    })
-
-    it('emits add_constraint mutation on dialog confirm', () => {
-      const onMutation = vi.fn()
-      const setActiveTool = vi.fn()
-      const tool = createDimensionTool()
-      let confirmCb: ((v: string) => void) | undefined
-      const context = createMockContext({
-        onMutation,
-        setActiveTool,
-        activeFeatureId: 'S1',
+        addDimensionPick,
         hoveredSelectionId: 'entity:S1:C1',
         hoveredEntityKind: 'circle',
-        openDialog: vi.fn((opts) => { confirmCb = opts.onConfirm }),
       })
 
       tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)
-      confirmCb!('10')
 
-      expect(onMutation).toHaveBeenCalledWith(expect.objectContaining({
-        type: 'add_constraint',
-        featureId: 'S1',
-      }))
-      expect(setActiveTool).toHaveBeenCalledWith(null)
+      // No openDialog on context anymore; the tool just accumulates picks.
+      expect(addDimensionPick).toHaveBeenCalledTimes(1)
     })
   })
 

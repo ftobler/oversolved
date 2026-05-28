@@ -91,16 +91,13 @@ describe('dimension rules', () => {
     }
   })
 
-  it('resolveDimension single pick: arc → radius, circle → diameter', () => {
+  it('resolveDimension single pick: arc → radius, circle → diameter, line → length', () => {
     expect(resolveDimension([{ isVertex: false, target: 'E1', entityKind: 'arc' }]))
       .toEqual({ constraintKind: 'radius' })
     expect(resolveDimension([{ isVertex: false, target: 'E2', entityKind: 'circle' }]))
       .toEqual({ constraintKind: 'diameter' })
-  })
-
-  it('resolveDimension single pick: line waits for second click (null)', () => {
     expect(resolveDimension([{ isVertex: false, target: 'L1', entityKind: 'line' }]))
-      .toBeNull()
+      .toEqual({ constraintKind: 'length' })
   })
 
   it('resolveDimension single pick: vertex or unknown returns null', () => {

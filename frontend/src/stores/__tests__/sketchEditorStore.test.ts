@@ -743,6 +743,21 @@ describe('sketchEditorStore', () => {
         expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
       })
 
+      it('clears dimensionPicks when entering OR leaving the dimension tool', () => {
+        useSketchEditorStore.setState({ dimensionPicks: [
+          { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
+        ] })
+        // Switching to a non-dimension tool drops the picks.
+        useSketchEditorStore.getState().setActiveTool('line')
+        expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
+        // Re-arming the dimension tool also drops any residual picks.
+        useSketchEditorStore.setState({ dimensionPicks: [
+          { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
+        ] })
+        useSketchEditorStore.getState().setActiveTool('dimension')
+        expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
+      })
+
       it('clears activePickField and chip-owned selection when entering a tool', () => {
         useSketchEditorStore.setState({
           activePickField: { featureId: 'Sketch1', field: 'plane' },
@@ -894,6 +909,148 @@ describe('sketchEditorStore', () => {
         type: 'delete',
         targets: ['entity:S1:L1', 'constraint:S1:C1'],
       })
+    })
+  })
+
+  describe('dimension sticky placement', () => {
+    beforeEach(() => {
+      useSketchEditorStore.setState({
+        activeTool: 'dimension',
+        activeFeatureId: 'S1',
+        dimensionPicks: [],
+        pendingDialog: null,
+        normalSelection: new Set(),
+      })
+    })
+
+    it('addDimensionPick appends', () => {
+      useSketchEditorStore.getState().addDimensionPick({
+        isVertex: false, target: 'entity:S1:L1', entityKind: 'line',
+      })
+      expect(useSketchEditorStore.getState().dimensionPicks).toHaveLength(1)
+      useSketchEditorStore.getState().addDimensionPick({
+        isVertex: false, target: 'entity:S1:L2', entityKind: 'line',
+      })
+      expect(useSketchEditorStore.getState().dimensionPicks).toHaveLength(2)
+    })
+
+    it('addDimensionPick caps at 2 picks (third replaces second)', () => {
+      const a = { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }
+      const b = { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' }
+      const c = { isVertex: true, target: 'vertex:S1:L3:start' }
+      useSketchEditorStore.getState().addDimensionPick(a)
+      useSketchEditorStore.getState().addDimensionPick(b)
+      useSketchEditorStore.getState().addDimensionPick(c)
+      const picks = useSketchEditorStore.getState().dimensionPicks
+      expect(picks).toHaveLength(2)
+      expect(picks[0]).toEqual(a)
+      expect(picks[1]).toEqual(c)
+    })
+
+    it('clearDimensionPicks resets to empty', () => {
+      useSketchEditorStore.setState({ dimensionPicks: [
+        { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
+      ] })
+      useSketchEditorStore.getState().clearDimensionPicks()
+      expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
+    })
+
+    it('finalizeDimensionPlacement: single line → dialog opens; OK dispatches add_constraint(length)', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([200, 300])
+
+      const dialog = useSketchEditorStore.getState().pendingDialog
+      expect(dialog).not.toBeNull()
+      expect(dialog!.label).toBe('Dimension value')
+      expect(dialog!.position).toEqual([200, 300])
+      // Picks are dropped immediately so a second click can't double-fire.
+      expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
+
+      dialog!.onConfirm('42')
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint', featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 42,
+      })
+    })
+
+    it('finalizeDimensionPlacement: two lines → angle on OK', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.setState({
+        dimensionPicks: [
+          { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
+          { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
+        ],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      dialog.onConfirm('45')
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint', featureId: 'S1', kind: 'angle',
+        targets: ['entity:S1:L1', 'entity:S1:L2'], value: 45,
+      })
+    })
+
+    it('finalizeDimensionPlacement: same-line twice deduplicates targets to one (length)', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      const pick = { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }
+      useSketchEditorStore.setState({ dimensionPicks: [pick, pick] })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      dialog.onConfirm('10')
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint', featureId: 'S1', kind: 'length',
+        targets: ['entity:S1:L1'], value: 10,
+      })
+    })
+
+    it('finalizeDimensionPlacement: vertex alone is undimensionable, no dialog opens', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: true, target: 'vertex:S1:L1:start' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+      // Picks are preserved so the user can keep adding without restarting.
+      expect(useSketchEditorStore.getState().dimensionPicks).toHaveLength(1)
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('finalizeDimensionPlacement: empty picks is a no-op', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.setState({ dimensionPicks: [] })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('finalizeDimensionPlacement: Cancel (dialog onConfirm not called) dispatches nothing', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      useSketchEditorStore.getState().closeDialog()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('finalizeDimensionPlacement: OK keeps the tool armed for the next dim', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      dialog.onConfirm('5')
+      expect(useSketchEditorStore.getState().activeTool).toBe('dimension')
     })
   })
 })

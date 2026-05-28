@@ -140,7 +140,16 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       lastClickWasStale = false
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
-      if (!hit) return
+      if (!hit) {
+        // Empty-space click during dimension placement -> finalise.
+        // The store decides whether the current picks are enough to dispatch.
+        const store = useSketchEditorStore.getState()
+        if (store.activeTool === 'dimension' && store.dimensionPicks.length > 0) {
+          store.finalizeDimensionPlacement([e.clientX, e.clientY])
+          setLastClickIdHit(true)
+        }
+        return
+      }
       // Single click outcome for every selectable layer: toggle into normal
       // selection. The only exceptions are active sketch TOOLS (dimension /
       // entity / vertex drawing), which are not a parallel pick path — they

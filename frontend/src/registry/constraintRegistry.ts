@@ -378,15 +378,14 @@ export const CONSTRAINT_SHORTCUTS: ReadonlyMap<string, string> =
 // ─── Unified dimension resolver ───
 // One entry point drives every Dimension-tool click outcome. `DIMENSION_RULES`
 // is the data; `resolveDimension` is the only resolver. The tool calls it with
-// 1 pick (after a single click) to detect single-element dims like radius /
-// diameter, and with 2 picks to detect pair dims (point_distance, angle,
-// line_distance) or the same-line-clicked-twice case (length).
+// 1 pick to detect single-element dims (length / radius / diameter) and with
+// 2 picks to detect pair dims (point_distance, angle, line_distance, or the
+// same-line-twice path to length).
 //
-// Lines held for a second click: a lone line click cannot tell whether the
-// user wants "length of this line" or "this line paired with the next thing,"
-// so `resolveDimension([line])` returns null and the tool buffers it. The
-// length case is then realised by clicking the same line again (the table's
-// `two_lines` rule, narrowed by the same-target check below).
+// A vertex alone returns null -- a single point is undimensionable. Every other
+// single-entity pick resolves; the *sticky placement* FSM in DimensionTool then
+// decides when to commit (an empty-space click finalises whatever the resolver
+// currently says).
 
 export interface DimensionPick {
   isVertex: boolean
@@ -402,8 +401,6 @@ export function resolveDimension(picks: readonly DimensionPick[]): ResolvedDimen
   if (picks.length === 1) {
     const [p] = picks
     if (p.isVertex || !p.entityKind) return null
-    // Lines wait for a second click (placement gesture or pair partner).
-    if (p.entityKind === 'line') return null
     const rule = DIMENSION_RULES.find(
       r => r.trigger.type === 'single_entity' && r.trigger.entityKind === p.entityKind,
     )

@@ -141,38 +141,36 @@ describe('dispatchDragInitiation guard logic', () => {
   })
 })
 
-describe('dispatchSketchClick with entityKind', () => {
+describe('dispatchSketchClick with entityKind (sticky placement)', () => {
   beforeEach(() => {
     useSketchEditorStore.setState({
       activeTool: 'dimension',
       activeFeatureId: 'S1',
       hoveredSelectionId: null,
       hoveredVertexId: null,
-      pendingDimTarget: null,
-      pendingDimEntityKind: null,
+      dimensionPicks: [],
       pendingDialog: null,
       normalSelection: new Set(),
     })
   })
 
-  it('circle entityKind opens dialog immediately', () => {
-    useSketchEditorStore.setState({
-      hoveredSelectionId: 'entity:S1:C1',
-    })
+  it('circle entityKind appends to dimensionPicks (no dialog yet)', () => {
+    useSketchEditorStore.setState({ hoveredSelectionId: 'entity:S1:C1' })
     dispatchSketchClick('entity:S1:C1', 'circle', 100, 100)
     const s = useSketchEditorStore.getState()
-    expect(s.pendingDialog).not.toBeNull()
-    expect(s.pendingDialog!.label).toBe('Dimension value')
+    expect(s.pendingDialog).toBeNull()
+    expect(s.dimensionPicks).toEqual([
+      { isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' },
+    ])
   })
 
-  it('line entityKind goes to pending state', () => {
-    useSketchEditorStore.setState({
-      hoveredSelectionId: 'entity:S1:L1',
-    })
+  it('line entityKind appends to dimensionPicks (no dialog yet)', () => {
+    useSketchEditorStore.setState({ hoveredSelectionId: 'entity:S1:L1' })
     dispatchSketchClick('entity:S1:L1', 'line', 100, 100)
     const s = useSketchEditorStore.getState()
     expect(s.pendingDialog).toBeNull()
-    expect(s.pendingDimTarget).toBe('entity:S1:L1')
-    expect(s.pendingDimEntityKind).toBe('line')
+    expect(s.dimensionPicks).toEqual([
+      { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
+    ])
   })
 })

@@ -146,6 +146,7 @@ export function applyAddConstraint(
   kind: string,
   targets: string[],
   value?: number,
+  pos?: [number, number],
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature) return
@@ -165,6 +166,7 @@ export function applyAddConstraint(
     c.target = pt(targets[0])
   }
   if (value !== undefined) c.value = value
+  if (pos !== undefined) c.pos = pos
   feature.constraints.push(c)
 }
 
