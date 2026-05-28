@@ -126,7 +126,13 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
     })
   }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
-  useDimDispatchRegistration(cid, { onOver, onOut, onClick, onDoubleClick, onPointerDown })
+  useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
+
+  const handleLabelClick = useCallback((e: React.MouseEvent) => {
+    if (!interaction) return
+    e.stopPropagation()
+    onClick({ stopPropagation: () => {} })
+  }, [interaction, onClick])
 
   return (
     <group key={cid}>
@@ -168,8 +174,13 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       )}
-      <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: 'none' }}>
-        <div style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', userSelect: 'none', WebkitUserSelect: 'none' }}>
+      <Html position={[labelX, labelY, 0.001]} center>
+        <div
+          onClick={handleLabelClick}
+          onDoubleClick={(e) => { if (interaction) { e.stopPropagation(); onDoubleClick({ stopPropagation: () => {}, clientX: e.clientX, clientY: e.clientY }) } }}
+          onPointerDown={(e) => { if (interaction) { e.stopPropagation(); onPointerDown({ stopPropagation: () => {}, clientX: e.clientX, clientY: e.clientY }) } }}
+          style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', userSelect: 'none', WebkitUserSelect: 'none', cursor: interaction ? 'pointer' : undefined }}
+        >
           {label}
         </div>
       </Html>
