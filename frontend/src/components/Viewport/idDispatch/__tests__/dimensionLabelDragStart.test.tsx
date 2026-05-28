@@ -42,6 +42,7 @@ describe('useIdBufferPointerDispatch: dimension label drag start', () => {
     registerDimCallbacks('c1', {
       onOver: () => {}, onOut: () => {},
       onClick: () => {},
+      onDoubleClick: () => {},
       onPointerDown,
     })
 
@@ -67,6 +68,7 @@ describe('useIdBufferPointerDispatch: dimension label drag start', () => {
     registerDimCallbacks('c1', {
       onOver: () => {}, onOut: () => {},
       onClick: () => {},
+      onDoubleClick: () => {},
       onPointerDown,
     })
 

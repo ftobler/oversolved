@@ -44,7 +44,7 @@ describe('dimensionLabel pick goes through the id buffer (267.3 cutover)', () =>
     const onClick = vi.fn()
     registerDimCallbacks('c1', {
       onOver: () => {}, onOut: () => {},
-      onClick, onPointerDown: () => {},
+      onClick, onDoubleClick: () => {}, onPointerDown: () => {},
     })
 
     const resolveSpy = vi.fn().mockReturnValue({
@@ -69,7 +69,7 @@ describe('dimensionLabel pick goes through the id buffer (267.3 cutover)', () =>
     const onClick = vi.fn()
     registerDimCallbacks('c1', {
       onOver: () => {}, onOut: () => {},
-      onClick, onPointerDown: () => {},
+      onClick, onDoubleClick: () => {}, onPointerDown: () => {},
     })
 
     let nextHit: { layer: string; entityKey: string } | null = {
