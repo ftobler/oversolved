@@ -192,8 +192,6 @@ interface SketchEditorState {
   showDebugHit: boolean
   showConstraintTiles: boolean
   entityKindMap: Record<string, string>
-  pendingDimTarget: string | null
-  pendingDimEntityKind: string | null
   // Sticky-placement state: the picks the user has made inside the active
   // dimension-tool gesture. Empty until the first click, cleared on tool exit
   // or after the placement dialog closes.
@@ -218,7 +216,6 @@ interface SketchEditorState {
   setPendingProjectTarget: (target: { sourceFeatureId: string; sourceEntityId: string } | null) => void
   openContextMenu: (pos: [number, number]) => void
   closeContextMenu: () => void
-  setPendingDim: (target: string | null, entityKind: string | null) => void
   addDimensionPick: (pick: DimensionPick) => void
   clearDimensionPicks: () => void
   finalizeDimensionPlacement: (clientPos: [number, number]) => void
@@ -253,8 +250,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   drawPoints: [],
   drawHover: null,
   drawSnapVertexId: null,
-  pendingDimTarget: null,
-  pendingDimEntityKind: null,
   dimensionPicks: [],
   pendingDialog: null,
   pendingProjectTarget: null,
@@ -357,8 +352,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       }
       // Clear stale pending dimension state when not in dimension tool
       if (tool !== 'dimension') {
-        updates.pendingDimTarget = null
-        updates.pendingDimEntityKind = null
         updates.dimensionPicks = []
       } else {
         // Entering the dimension tool wipes the current normal selection so
@@ -493,13 +486,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setPendingProjectTarget: (target) => set({ pendingProjectTarget: target }),
   openContextMenu: (pos) => set({ contextMenu: pos }),
   closeContextMenu: () => set({ contextMenu: null }),
-
-  setPendingDim: (target, entityKind) => {
-    set({ pendingDimTarget: target, pendingDimEntityKind: entityKind })
-    if (devOnly || testMode) {
-      validateSketchEditorState(get())
-    }
-  },
 
   addDimensionPick: (pick: DimensionPick) => {
     const { dimensionPicks } = get()

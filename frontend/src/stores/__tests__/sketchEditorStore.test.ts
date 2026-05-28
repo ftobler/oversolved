@@ -21,8 +21,7 @@ function reset() {
     orbitEnabled: true,
     activeTool: null,
     activeFeatureId: null,
-    pendingDimTarget: null,
-    pendingDimEntityKind: null,
+    dimensionPicks: [],
     pendingDialog: null,
     activePickField: null,
     hoveredVertexId: null,
@@ -721,39 +720,35 @@ describe('sketchEditorStore', () => {
 
   describe('self-cleaning state transitions', () => {
     describe('setActiveTool', () => {
-      it('clears pendingDimTarget when switching from dimension to another tool', () => {
-        useSketchEditorStore.setState({ pendingDimTarget: 'entity:S1:L1', pendingDimEntityKind: 'line' })
-        useSketchEditorStore.getState().setActiveTool('line')
-        const s = useSketchEditorStore.getState()
-        expect(s.pendingDimTarget).toBeNull()
-        expect(s.pendingDimEntityKind).toBeNull()
-      })
-
-      it('preserves pendingDimTarget when staying in dimension tool', () => {
-        useSketchEditorStore.setState({ pendingDimTarget: 'entity:S1:L1', pendingDimEntityKind: 'line' })
-        useSketchEditorStore.getState().setActiveTool('dimension')
-        const s = useSketchEditorStore.getState()
-        expect(s.pendingDimTarget).toBe('entity:S1:L1')
-        expect(s.pendingDimEntityKind).toBe('line')
-      })
-
       it('clears normalSelection when entering the dimension tool', () => {
         useSketchEditorStore.setState({ normalSelection: new Set(['entity:S1:L1', 'vertex:S1:L2:start']) })
         useSketchEditorStore.getState().setActiveTool('dimension')
         expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
       })
 
-      it('clears dimensionPicks when entering OR leaving the dimension tool', () => {
-        useSketchEditorStore.setState({ dimensionPicks: [
-          { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
-        ] })
-        // Switching to a non-dimension tool drops the picks.
+      it('clears dimensionPicks when leaving the dimension tool', () => {
+        // Activate dimension tool, accumulate a pick, then switch away.
+        useSketchEditorStore.getState().setActiveTool('dimension')
+        useSketchEditorStore.getState().addDimensionPick({
+          isVertex: false, target: 'entity:S1:L1', entityKind: 'line',
+        })
+        expect(useSketchEditorStore.getState().dimensionPicks).toHaveLength(1)
         useSketchEditorStore.getState().setActiveTool('line')
         expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
-        // Re-arming the dimension tool also drops any residual picks.
-        useSketchEditorStore.setState({ dimensionPicks: [
-          { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
-        ] })
+      })
+
+      it('clears dimensionPicks when re-entering the dimension tool', () => {
+        // Accumulate a pick inside dimension, exit, re-enter -> picks reset.
+        useSketchEditorStore.getState().setActiveTool('dimension')
+        useSketchEditorStore.getState().addDimensionPick({
+          isVertex: false, target: 'entity:S1:L1', entityKind: 'line',
+        })
+        useSketchEditorStore.getState().setActiveTool(null)
+        // Simulate a stray pick from before re-arming (shouldn't survive).
+        useSketchEditorStore.getState().setActiveTool('dimension')
+        useSketchEditorStore.getState().addDimensionPick({
+          isVertex: false, target: 'entity:S1:L2', entityKind: 'line',
+        })
         useSketchEditorStore.getState().setActiveTool('dimension')
         expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
       })

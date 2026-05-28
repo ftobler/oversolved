@@ -8,8 +8,7 @@ import type { SketchEditorInvariantState } from '@/stores/stateInvariants'
 function defaultState(): SketchEditorInvariantState {
   return {
     activeTool: null,
-    pendingDimTarget: null,
-    pendingDimEntityKind: null,
+    dimensionPicks: [],
     activePickField: null,
     drawPoints: [],
     drawHover: null,
@@ -22,31 +21,19 @@ describe('validateSketchEditorState', () => {
     expect(() => validateSketchEditorState(defaultState())).not.toThrow()
   })
 
-  describe('pendingDimTarget invariant', () => {
-    it('throws when pendingDimTarget is set but activeTool is not dimension', () => {
-      const state = { ...defaultState(), pendingDimTarget: 'entity:S1:L1', activeTool: 'line' }
-      expect(() => validateSketchEditorState(state)).toThrow('[invariant] pendingDimTarget')
+  describe('dimensionPicks invariant', () => {
+    it('throws when dimensionPicks is non-empty but activeTool is not dimension', () => {
+      const state = { ...defaultState(), dimensionPicks: [{ target: 'entity:S1:L1' }], activeTool: 'line' }
+      expect(() => validateSketchEditorState(state)).toThrow('[invariant] dimensionPicks')
     })
 
-    it('passes when pendingDimTarget is set with activeTool dimension', () => {
-      const state = { ...defaultState(), pendingDimTarget: 'entity:S1:L1', activeTool: 'dimension' }
+    it('passes when dimensionPicks is non-empty with activeTool dimension', () => {
+      const state = { ...defaultState(), dimensionPicks: [{ target: 'entity:S1:L1' }], activeTool: 'dimension' }
       expect(() => validateSketchEditorState(state)).not.toThrow()
     })
 
-    it('passes when both are null/default', () => {
-      const state = { ...defaultState(), pendingDimTarget: null, activeTool: null }
-      expect(() => validateSketchEditorState(state)).not.toThrow()
-    })
-  })
-
-  describe('pendingDimEntityKind invariant', () => {
-    it('throws when pendingDimEntityKind set but pendingDimTarget is null', () => {
-      const state = { ...defaultState(), pendingDimEntityKind: 'line', pendingDimTarget: null }
-      expect(() => validateSketchEditorState(state)).toThrow('[invariant] pendingDimEntityKind')
-    })
-
-    it('passes when both are set consistently', () => {
-      const state = { ...defaultState(), pendingDimEntityKind: 'line', pendingDimTarget: 'entity:S1:L1', activeTool: 'dimension' }
+    it('passes when picks are empty and tool is null', () => {
+      const state = { ...defaultState(), dimensionPicks: [], activeTool: null }
       expect(() => validateSketchEditorState(state)).not.toThrow()
     })
   })
@@ -88,15 +75,15 @@ describe('validateSketchEditorState', () => {
   })
 
   describe('multiple violations', () => {
-    it('reports the first violation (pendingDimTarget check)', () => {
+    it('reports the first violation (dimensionPicks check)', () => {
       const state = {
         ...defaultState(),
-        pendingDimTarget: 'entity:S1:L1',
+        dimensionPicks: [{ target: 'entity:S1:L1' }],
         activePickField: { featureId: 'Sketch1', field: 'plane' },
         activeTool: 'select',
       }
-      // pendingDimTarget check runs first
-      expect(() => validateSketchEditorState(state)).toThrow('[invariant] pendingDimTarget')
+      // dimensionPicks check runs first
+      expect(() => validateSketchEditorState(state)).toThrow('[invariant] dimensionPicks')
     })
   })
 })

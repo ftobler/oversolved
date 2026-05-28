@@ -24,8 +24,7 @@ export const DRAWING_TOOLS = new Set<DrawingToolKind>(['line', 'rect', 'center_r
 
 export interface SketchEditorInvariantState {
   activeTool: string | null
-  pendingDimTarget: string | null
-  pendingDimEntityKind: string | null
+  dimensionPicks: unknown[]
   activePickField: { featureId: string; field: string } | null
   drawPoints: unknown[]
   drawHover: unknown
@@ -33,17 +32,10 @@ export interface SketchEditorInvariantState {
 }
 
 export function validateSketchEditorState(state: SketchEditorInvariantState): void {
-  if (state.pendingDimTarget !== null && state.activeTool !== 'dimension') {
+  if (state.dimensionPicks.length > 0 && state.activeTool !== 'dimension') {
     failLoud(
-      `[invariant] pendingDimTarget set ('${state.pendingDimTarget}') `
+      `[invariant] dimensionPicks has ${state.dimensionPicks.length} entries `
       + `but activeTool is '${state.activeTool}', expected 'dimension'`,
-    )
-  }
-
-  if (state.pendingDimEntityKind !== null && state.pendingDimTarget === null) {
-    failLoud(
-      `[invariant] pendingDimEntityKind set ('${state.pendingDimEntityKind}') `
-      + 'but pendingDimTarget is null',
     )
   }
 
