@@ -78,7 +78,7 @@ def _constraint_render(c: dict, geom: dict) -> dict:
         n = math.hypot(dx, dy)
         # Degenerate (zero-length) line produces p1 == p2 render.
         normal = [-dy / n, dx / n] if n > 0 else [0.0, 1.0]
-        return {
+        result = {
             "kind": "dim_linear",
             "p1": e["start"],
             "p2": e["end"],
@@ -86,6 +86,9 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "normal": normal,
             "entity": eid,
         }
+        if "pos" in c and c["pos"]:
+            result["pos"] = c["pos"]
+        return result
 
     elif kind == "radius":
         eid = c["target"]["entity"]
@@ -96,25 +99,31 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             if "start" in e
             else [e["center"][0] + e["radius"], e["center"][1]]
         )
-        return {
+        result = {
             "kind": "dim_radius",
             "p1": center,
             "p2": edge,
             "value": c["value"],
             "entity": eid,
         }
+        if "pos" in c and c["pos"]:
+            result["pos"] = c["pos"]
+        return result
 
     elif kind == "diameter":
         eid = c["target"]["entity"]
         e = geom[eid]
         cx, cy, r = e["center"][0], e["center"][1], e["radius"]
-        return {
+        result = {
             "kind": "dim_diameter",
             "p1": [cx - r, cy],
             "p2": [cx + r, cy],
             "value": c["value"],
             "entity": eid,
         }
+        if "pos" in c and c["pos"]:
+            result["pos"] = c["pos"]
+        return result
 
     elif kind == "line_distance":
         eid_a = c["a"]["entity"]
@@ -122,11 +131,16 @@ def _constraint_render(c: dict, geom: dict) -> dict:
         dx = ea["end"][0] - ea["start"][0]
         dy = ea["end"][1] - ea["start"][1]
         n = math.hypot(dx, dy)
-        nx, ny = (-dy / n, dx / n) if n > 0 else (0.0, 1.0)
+        # Normal along the line direction so the dimension line slides parallel
+        # to the reference line, not perpendicular to it. Must match the frontend
+        # computeConstraintRender convention for line_distance, otherwise the
+        # pos written at placement time lands at the wrong offset.
+        nx, ny = (dx / n, dy / n) if n > 0 else (0.0, 1.0)
+        perp_dir = (-dy / n, dx / n) if n > 0 else (1.0, 0.0)
         pb = _geom_point(geom, c["b"])
-        t = (pb[0] - ea["start"][0]) * nx + (pb[1] - ea["start"][1]) * ny
-        foot = [pb[0] - t * nx, pb[1] - t * ny]
-        return {
+        t = (pb[0] - ea["start"][0]) * perp_dir[0] + (pb[1] - ea["start"][1]) * perp_dir[1]
+        foot = [pb[0] - t * perp_dir[0], pb[1] - t * perp_dir[1]]
+        result = {
             "kind": "dim_linear",
             "p1": foot,
             "p2": list(pb),
@@ -134,6 +148,9 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "normal": [nx, ny],
             "entity": eid_a,
         }
+        if "pos" in c and c["pos"]:
+            result["pos"] = c["pos"]
+        return result
 
     elif kind == "coincident":
         a_eid = c["a"]["entity"]
@@ -182,7 +199,7 @@ def _constraint_render(c: dict, geom: dict) -> dict:
     elif kind == "angle":
         eid = c["a"]["entity"]
         ea, eb = geom[eid], geom[c["b"]["entity"]]
-        return {
+        result = {
             "kind": "dim_angle",
             "p1": ea["start"],
             "p2": ea["end"],
@@ -191,6 +208,9 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "value": c["value"],
             "entity": eid,
         }
+        if "pos" in c and c["pos"]:
+            result["pos"] = c["pos"]
+        return result
 
     elif kind == "tangent":
         arc_ref = c.get("arc") or (_pick_arc_ref(c, geom))
@@ -241,7 +261,7 @@ def _constraint_render(c: dict, geom: dict) -> dict:
         n = math.hypot(dx, dy)
         normal = [-dy / n, dx / n] if n > 0 else [0.0, 1.0]
         eid = c["a"].get("entity") or c["b"].get("entity") or ""
-        return {
+        result = {
             "kind": "dim_linear",
             "p1": pa,
             "p2": pb,
@@ -249,6 +269,9 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "normal": normal,
             "entity": eid,
         }
+        if "pos" in c and c["pos"]:
+            result["pos"] = c["pos"]
+        return result
 
     elif kind == "midpoint":
         if "line" in c:
