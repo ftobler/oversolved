@@ -174,7 +174,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       )}
-      <Html position={[labelX, labelY, 0.001]} center>
+      <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: interaction ? 'auto' : 'none' }}>
         <div
           onClick={handleLabelClick}
           onDoubleClick={(e) => { if (interaction) { e.stopPropagation(); onDoubleClick({ stopPropagation: () => {}, clientX: e.clientX, clientY: e.clientY }) } }}
