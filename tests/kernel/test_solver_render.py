@@ -234,3 +234,49 @@ def test_line_distance_no_pos():
     }
     r = _constraint_render(c, geom)
     assert "pos" not in r
+
+
+def test_line_distance_ext1_line_is_ref_entity_segment():
+    """ext1_line must hold the reference line's start-end bounding box
+    so the renderer can evaluate whether the extension line is needed."""
+    geom = _line_geom()
+    c = {
+        "id": "d1",
+        "kind": "line_distance",
+        "a": {"entity": "L1"},
+        "b": {"entity": "L2"},
+        "value": 5.0,
+    }
+    r = _constraint_render(c, geom)
+    assert r["ext1_line"] == [0.0, 0.0, 10.0, 0.0]
+
+
+def test_line_distance_ext2_line_for_line_target():
+    """When the target entity is a line, ext2_line holds its segment bounds."""
+    geom = _line_geom()
+    c = {
+        "id": "d1",
+        "kind": "line_distance",
+        "a": {"entity": "L1"},
+        "b": {"entity": "L2"},  # L2 is a line
+        "value": 5.0,
+    }
+    r = _constraint_render(c, geom)
+    assert r["ext2_line"] == [0.0, 5.0, 10.0, 5.0]
+
+
+def test_line_distance_ext2_line_absent_for_point_target():
+    """When the target entity is a point, ext2_line must be absent."""
+    geom = {
+        "L1": {"start": [0.0, 0.0], "end": [10.0, 0.0]},
+        "P1": {"x": 5.0, "y": 3.0},
+    }
+    c = {
+        "id": "d1",
+        "kind": "line_distance",
+        "a": {"entity": "L1"},
+        "b": {"entity": "P1"},  # P1 is a point
+        "value": 3.0,
+    }
+    r = _constraint_render(c, geom)
+    assert "ext2_line" not in r

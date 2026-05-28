@@ -405,6 +405,11 @@ export interface DimLinearRender {
   entity?: string
   // Label offset in sketch space relative to midpoint(p1, p2).
   pos?: Point
+  // Entity segment bounding the extension line on each side
+  // (x1, y1, x2, y2). When present the renderer can skip the
+  // extension line if the dimension-line endpoint projects inside.
+  ext1_line?: [number, number, number, number]
+  ext2_line?: [number, number, number, number]
 }
 
 export interface DimRadiusRender {

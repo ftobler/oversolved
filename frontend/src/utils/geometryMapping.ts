@@ -390,6 +390,17 @@ export function computeConstraintRender(constraint: PartConstraint, sketch: Sket
     const perpDir: [number, number] = n > 0 ? [-dy / n, dx / n] : [1, 0]
     const t = (pb[0] - ea.start[0]) * perpDir[0] + (pb[1] - ea.start[1]) * perpDir[1]
     const foot: Point = [pb[0] - t * perpDir[0], pb[1] - t * perpDir[1]]
+    // Extension-line evaluation segments so LinearDimension can decide
+    // whether to draw each extension line and where it touches the entity.
+    const ext1Line: [number, number, number, number] = [ea.start[0], ea.start[1], ea.end[0], ea.end[1]]
+    let ext2Line: [number, number, number, number] | undefined
+    const ebEid = resolved.b.entity
+    if (ebEid) {
+      const eb = sketch[ebEid] as LineSegment | Arc | undefined
+      if (eb && 'start' in eb && 'end' in eb) {
+        ext2Line = [eb.start[0], eb.start[1], eb.end[0], eb.end[1]]
+      }
+    }
     return {
       kind: 'dim_linear',
       p1: foot,
@@ -397,6 +408,8 @@ export function computeConstraintRender(constraint: PartConstraint, sketch: Sket
       value: resolved.value || 0,
       normal,
       entity: eid,
+      ext1_line: ext1Line,
+      ...(ext2Line && { ext2_line: ext2Line }),
       ...(resolved.pos && { pos: resolved.pos }),
     }
   }

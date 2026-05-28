@@ -13,7 +13,7 @@ import type { PlaneTransform } from '@/types/cad'
 
 export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransform }: {
   cid: string
-  dim: { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number] }
+  dim: { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number]; ext1_line?: [number, number, number, number]; ext2_line?: [number, number, number, number] }
   dimOffset: number
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
@@ -80,6 +80,29 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
 
   const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
 
+  // Extension-line evaluation: each side is evaluated independently.
+  // When an entity segment is provided (ext1_line / ext2_line) the extension
+  // line is skipped if the dimension-line endpoint projects inside the segment
+  // (the dim already touches the entity). Otherwise the line runs from the
+  // nearest segment point to the dimension-line endpoint.
+  const extEval = (lx1: number, ly1: number, lx2: number, ly2: number, dx: number, dy: number) => {
+    const edx = lx2 - lx1, edy = ly2 - ly1
+    const elen2 = edx * edx + edy * edy
+    if (elen2 < 1e-12) return { skip: true, touchX: lx1, touchY: ly1 } as const
+    let t = ((dx - lx1) * edx + (dy - ly1) * edy) / elen2
+    t = Math.max(0, Math.min(1, t))
+    const nx = lx1 + t * edx, ny = ly1 + t * edy
+    const d2 = (dx - nx) * (dx - nx) + (dy - ny) * (dy - ny)
+    // If the dim line endpoint projects onto the segment (within fp tolerance),
+    // the dimension already crosses the entity -- no extension line needed.
+    return d2 < 0.001
+      ? { skip: true, touchX: nx, touchY: ny } as const
+      : { skip: false, touchX: nx, touchY: ny } as const
+  }
+
+  const ext1 = dim.ext1_line ? extEval(dim.ext1_line[0], dim.ext1_line[1], dim.ext1_line[2], dim.ext1_line[3], d1x, d1y) : { skip: false, touchX: x1, touchY: y1 } as const
+  const ext2 = dim.ext2_line ? extEval(dim.ext2_line[0], dim.ext2_line[1], dim.ext2_line[2], dim.ext2_line[3], d2x, d2y) : { skip: false, touchX: x2, touchY: y2 } as const
+
   useDimensionLabelIdRegistration({
     constraintId: cid,
     position: [labelX, labelY, 0.001],
@@ -107,8 +130,8 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
 
   return (
     <group key={cid}>
-      <ExtensionLine start={[x1, y1]} end={[d1x, d1y]} color={color} />
-      <ExtensionLine start={[x2, y2]} end={[d2x, d2y]} color={color} />
+      {!ext1.skip && <ExtensionLine start={[ext1.touchX, ext1.touchY]} end={[d1x, d1y]} color={color} />}
+      {!ext2.skip && <ExtensionLine start={[ext2.touchX, ext2.touchY]} end={[d2x, d2y]} color={color} />}
       <Line points={[[d1x, d1y, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} depthTest={false} />
       {isInside ? (
         // Inside: arrows at boundaries pointing outward.

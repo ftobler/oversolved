@@ -147,7 +147,13 @@ def _constraint_render(c: dict, geom: dict) -> dict:
             "value": c["value"],
             "normal": [nx, ny],
             "entity": eid_a,
+            "ext1_line": [ea["start"][0], ea["start"][1], ea["end"][0], ea["end"][1]],
         }
+        eb_eid = c["b"].get("entity", "")
+        if eb_eid and eb_eid in geom:
+            eb = geom[eb_eid]
+            if "start" in eb and "end" in eb:
+                result["ext2_line"] = [eb["start"][0], eb["start"][1], eb["end"][0], eb["end"][1]]
         if "pos" in c and c["pos"]:
             result["pos"] = c["pos"]
         return result
