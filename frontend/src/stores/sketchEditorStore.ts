@@ -6,7 +6,7 @@ import type { ActiveTool, Mutation, SelectionDomain, Sketch } from '@/types/cad'
 import type { SnapKind } from '@/registry'
 import type { DimensionPick } from '@/registry'
 import { resolveDimension } from '@/registry'
-import { computeNaturalDimensionValue } from '@/utils/dimensionNaturalValue'
+import { computeNaturalDimensionValue, computeAnchorRelativePos } from '@/utils/dimensionNaturalValue'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { validateSketchEditorState, failLoud } from './stateInvariants'
 import { toolRegistry } from '@/registry/toolRegistry'
@@ -199,6 +199,11 @@ interface SketchEditorState {
   // dimension-tool gesture. Empty until the first click, cleared on tool exit
   // or after the placement dialog closes.
   dimensionPicks: DimensionPick[]
+  // Latest cursor position in sketch-local world coords during dim placement.
+  // Written by the R3F-side pointermove projection (see Drawing.tsx); read by
+  // finalizeDimensionPlacement to fill `pos` on the new constraint so the
+  // dim lands at the click point instead of the renderer's default offset.
+  dimensionCursorWorld: [number, number] | null
   pendingDialog: DialogState | null
   pendingProjectTarget: { sourceFeatureId: string; sourceEntityId: string } | null
   contextMenu: [number, number] | null
@@ -221,6 +226,7 @@ interface SketchEditorState {
   closeContextMenu: () => void
   addDimensionPick: (pick: DimensionPick) => void
   clearDimensionPicks: () => void
+  setDimensionCursorWorld: (p: [number, number] | null) => void
   finalizeDimensionPlacement: (clientPos: [number, number]) => void
   setActivePickField: (field: ActivePickField | null, opts?: { seed?: boolean }) => void
 }
@@ -254,6 +260,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   drawHover: null,
   drawSnapVertexId: null,
   dimensionPicks: [],
+  dimensionCursorWorld: null,
   pendingDialog: null,
   pendingProjectTarget: null,
   contextMenu: null,
@@ -356,14 +363,16 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       // Clear stale pending dimension state when not in dimension tool
       if (tool !== 'dimension') {
         updates.dimensionPicks = []
+        updates.dimensionCursorWorld = null
       } else {
         // Entering the dimension tool wipes the current normal selection so
         // the picks the user makes inside the tool aren't contaminated by
         // whatever was selected before. (Spec: "user clicks 'd', everything
-        // de-selects.") Also resets any leftover placement picks so the first
+        // de-selects.") Also resets any leftover placement state so the first
         // click starts a fresh gesture.
         updates.normalSelection = new Set<string>()
         updates.dimensionPicks = []
+        updates.dimensionCursorWorld = null
       }
       // Clear stale pick-field state when entering any tool
       if (tool !== null && state.activePickField !== null) {
@@ -502,8 +511,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   clearDimensionPicks: () => set({ dimensionPicks: [] }),
 
+  setDimensionCursorWorld: (p) => set({ dimensionCursorWorld: p }),
+
   finalizeDimensionPlacement: (clientPos) => {
-    const { dimensionPicks, activeFeatureId } = get()
+    const { dimensionPicks, activeFeatureId, dimensionCursorWorld } = get()
     if (!activeFeatureId || dimensionPicks.length === 0) return
     const resolved = resolveDimension(dimensionPicks)
     if (!resolved) {
@@ -523,9 +534,14 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const featureId = activeFeatureId
     const constraintKind = resolved.constraintKind
 
+    // Snapshot the placement anchor BEFORE clearing -- the cursorWorld field
+    // is cleared on tool exit but we want the dispatched pos to point at where
+    // the click happened, not at a later cursor position.
+    const placementWorld = dimensionCursorWorld
+
     // Clear picks immediately so the next pointer event can't double-fire the
     // dialog, but stay in the dimension tool until OK / Cancel resolves.
-    set({ dimensionPicks: [] })
+    set({ dimensionPicks: [], dimensionCursorWorld: null })
 
     // Pre-fill the dialog with the current measured value so Enter accepts
     // it unchanged. Falls back to empty when the sketch isn't available
@@ -546,7 +562,20 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       onConfirm: (input) => {
         const val = parseFloat(input)
         if (isNaN(val) || val <= 0) return
-        onMutation({ type: 'add_constraint', featureId, kind: constraintKind, targets, value: val })
+        // The pos written by the placement click anchors the dim label where
+        // the user clicked instead of the renderer's default offset. Compute
+        // it relative to the dim's natural anchor so the LinearDimension /
+        // RadiusDimension / DiameterDimension / AngleDimension components,
+        // which interpret pos as an anchor-relative offset, render it at the
+        // requested world point.
+        const pos = (placementWorld && sketch)
+          ? computeAnchorRelativePos(constraintKind, targets, sketch, featureId, placementWorld)
+          : null
+        onMutation({
+          type: 'add_constraint',
+          featureId, kind: constraintKind, targets, value: val,
+          ...(pos && { pos }),
+        })
         // The dimension tool stays armed so the user can place several dims
         // without re-pressing 'd'. They exit explicitly (Escape / different
         // tool / tool button), matching standard CAD behaviour.

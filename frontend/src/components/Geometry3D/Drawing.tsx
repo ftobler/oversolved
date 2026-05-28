@@ -63,6 +63,8 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const effectiveTool = activeTool ?? 'drag'
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
   const setDrawHover = useSketchEditorStore(s => s.setDrawHover)
+  const dimensionPicks = useSketchEditorStore(s => s.dimensionPicks)
+  const setDimensionCursorWorld = useSketchEditorStore(s => s.setDimensionCursorWorld)
   const clearDraw = useSketchEditorStore(s => s.clearDraw)
   const onMutation = getSketchCallback('onMutation')
   const clearNormalSelection = useSketchEditorStore(s => s.clearNormalSelection)
@@ -99,9 +101,18 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     // Math-plane projection -- no scene mesh involved, so no other geometry
     // can block the raycast. Replaces the former raycaster.intersectObject(mesh) pattern.
     const worldPt = projectCursorToSketchPlane(camera, group, { x: ndcX, y: ndcY })
-    if (!worldPt) { setDrawHover(null); return }
+    if (!worldPt) {
+      setDrawHover(null)
+      if (dimensionPicks.length > 0) setDimensionCursorWorld(null)
+      return
+    }
     const sanitized = sanitizePointerEvent({ point: worldPt, clientX: e.clientX, clientY: e.clientY }, resolvedGroupRef)
     setDrawHover(sanitized?.localPoint ?? null)
+    // Mirror the cursor world point for the dimension-placement gesture so the
+    // empty-click finalize can write `pos` at exactly where the user clicked.
+    if (effectiveTool === 'dimension' && dimensionPicks.length > 0 && sanitized?.localPoint) {
+      setDimensionCursorWorld(sanitized.localPoint)
+    }
   }
 
   // Attach once per mount; handler ref provides fresh values on every call.

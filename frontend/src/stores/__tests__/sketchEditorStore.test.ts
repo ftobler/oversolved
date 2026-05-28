@@ -1072,5 +1072,56 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
       expect(useSketchEditorStore.getState().pendingDialog!.defaultValue).toBeUndefined()
     })
+
+    it('finalizeDimensionPlacement: writes pos relative to the dim anchor when cursorWorld is set', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+        dimensionCursorWorld: [5, 7],  // 5 along the line, 7 above it
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      useSketchEditorStore.getState().pendingDialog!.onConfirm('10')
+      // Length anchor = midpoint(L1) = (5, 0). Pos = world - anchor = (0, 7).
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10,
+        pos: [0, 7],
+      })
+      setSketchCallback('getSketch', null)
+    })
+
+    it('finalizeDimensionPlacement: omits pos when no cursorWorld', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+        dimensionCursorWorld: null,
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      useSketchEditorStore.getState().pendingDialog!.onConfirm('10')
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10,
+      })
+      setSketchCallback('getSketch', null)
+    })
+
+    it('finalizeDimensionPlacement: clears cursorWorld together with picks', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' }],
+        dimensionCursorWorld: [1, 2],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      expect(useSketchEditorStore.getState().dimensionCursorWorld).toBeNull()
+    })
   })
 })

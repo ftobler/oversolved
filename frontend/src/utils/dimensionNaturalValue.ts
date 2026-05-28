@@ -57,3 +57,50 @@ export function computeNaturalDimensionValue(
   }
   return null
 }
+
+/**
+ * Convert an absolute world-space placement point to the anchor-relative
+ * offset (`pos`) expected by the dim renderers. Each renderer interprets
+ * `pos` relative to its dim-specific anchor:
+ *
+ *   dim_linear   -> anchor = midpoint(p1, p2)
+ *   dim_radius   -> anchor = p1 (center)
+ *   dim_diameter -> anchor = midpoint(p1, p2)  (which is the circle center)
+ *   dim_angle    -> anchor = the two lines' intersection vertex
+ *
+ * Returns null when the kind isn't a supported dim or geometry can't resolve.
+ * Angle dims fall back to null because the vertex is computed inside
+ * angleDimensionLogic and we'd duplicate the math here for marginal value --
+ * angle dims revert to the default placement and the user drags.
+ */
+export function computeAnchorRelativePos(
+  kind: string,
+  targets: readonly string[],
+  sketch: Sketch,
+  featureId: string,
+  world: readonly [number, number],
+): [number, number] | null {
+  const c: PartConstraint = { id: '__preview__', kind }
+  const refs = targets.map(t => parseTarget(t, featureId))
+  if (kind === 'length' || kind === 'radius' || kind === 'diameter') {
+    c.target = refs[0]
+  } else {
+    c.a = refs[0]
+    c.b = refs[1]
+  }
+
+  const render = computeConstraintRender(c, sketch) as
+    DimLinearRender | DimRadiusRender | DimDiameterRender | DimAngleRender | { kind: 'unknown' | string }
+
+  if (render.kind === 'dim_radius') {
+    const r = render as DimRadiusRender
+    return [world[0] - r.p1[0], world[1] - r.p1[1]]
+  }
+  if (render.kind === 'dim_linear' || render.kind === 'dim_diameter') {
+    const r = render as DimLinearRender | DimDiameterRender
+    const ax = (r.p1[0] + r.p2[0]) / 2
+    const ay = (r.p1[1] + r.p2[1]) / 2
+    return [world[0] - ax, world[1] - ay]
+  }
+  return null
+}
