@@ -4,9 +4,11 @@ import { resolveDimension } from '@/registry'
 import { parseTarget } from '@/utils/yamlMutations/helpers'
 import { computeConstraintRender } from '@/utils/geometryMapping'
 import { computeNaturalDimensionValue } from '@/utils/dimensionNaturalValue'
+import { computeAngleDimension } from './angleDimensionLogic'
 import type {
   PartConstraint, PlaneTransform, Sketch,
   DimLinearRender, DimRadiusRender, DimDiameterRender,
+  DimAngleRender,
 } from '@/types/cad'
 import { LinearDimension } from './Linear'
 import { RadiusDimension, DiameterDimension } from './Radial'
@@ -55,10 +57,7 @@ export function DimensionPreview({
       c.b = refs[1]
     }
 
-    // Anchor-relative pos for label placement at the cursor. For kinds whose
-    // anchor we know (linear/radius/diameter) we offset to follow the cursor;
-    // for angle we leave pos undefined and the preview lands at the default
-    // mid-arc position until the user finalises.
+    // Anchor-relative pos for label placement at the cursor.
     if (cursorWorld) {
       const render0 = computeConstraintRender(c, sketch)
       if (render0.kind === 'dim_linear' || render0.kind === 'dim_diameter') {
@@ -69,6 +68,10 @@ export function DimensionPreview({
       } else if (render0.kind === 'dim_radius') {
         const r0 = render0 as DimRadiusRender
         c.pos = [cursorWorld[0] - r0.p1[0], cursorWorld[1] - r0.p1[1]]
+      } else if (render0.kind === 'dim_angle') {
+        const r0 = render0 as DimAngleRender
+        const base = computeAngleDimension(r0.p1, r0.p2, r0.p3, r0.p4)
+        c.pos = [cursorWorld[0] - base.vx, cursorWorld[1] - base.vy]
       }
     }
 

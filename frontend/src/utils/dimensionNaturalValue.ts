@@ -7,6 +7,7 @@ import type {
 } from '@/types/cad'
 import { parseTarget } from '@/utils/yamlMutations/helpers'
 import { computeConstraintRender } from '@/utils/geometryMapping'
+import { computeAngleDimension } from '@/components/Geometry3D/dimensions/angleDimensionLogic'
 
 /**
  * Compute the natural measurement for a freshly-placed dimension so the value-
@@ -101,6 +102,11 @@ export function computeAnchorRelativePos(
     const ax = (r.p1[0] + r.p2[0]) / 2
     const ay = (r.p1[1] + r.p2[1]) / 2
     return [world[0] - ax, world[1] - ay]
+  }
+  if (render.kind === 'dim_angle') {
+    const r = render as DimAngleRender
+    const base = computeAngleDimension(r.p1, r.p2, r.p3, r.p4)
+    return [world[0] - base.vx, world[1] - base.vy]
   }
   return null
 }
