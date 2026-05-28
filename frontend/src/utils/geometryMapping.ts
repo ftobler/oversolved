@@ -132,6 +132,7 @@ export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string 
   const kind = getEntityKind(entity)
   if (kind === 'arc') {
     const arc = entity as Arc | ProjectedArc
+    if (pt === 'center') return [...arc.center] as [number, number]
     return pt !== 'end' ? arc.start : arc.end
   } else if (kind === 'line') {
     const line = entity as LineSegment | ProjectedLineSegment

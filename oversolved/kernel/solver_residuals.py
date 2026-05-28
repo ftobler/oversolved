@@ -369,6 +369,8 @@ def _build_residuals_fn(
         elif kind in ("circle", "projected_circle"):
             return ep[0:2]
         elif kind in ("arc", "projected_arc"):
+            if point == "center":
+                return ep[0:2]
             cx, cy, r = ep[0], ep[1], ep[2]
             a_deg = ep[3] if point != "end" else ep[4]
             return np.array(
