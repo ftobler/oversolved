@@ -18,7 +18,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
 }) {
-  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
+  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
@@ -103,7 +103,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
     })
   }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
-  useDimDispatchRegistration(cid, { onOver, onOut, onClick, onPointerDown })
+  useDimDispatchRegistration(cid, { onOver, onOut, onClick, onDoubleClick, onPointerDown })
 
   return (
     <group key={cid}>

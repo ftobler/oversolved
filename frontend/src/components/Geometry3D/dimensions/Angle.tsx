@@ -18,7 +18,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
 }) {
-  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, false)
+  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, false)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
@@ -119,7 +119,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
     })
   }, [interaction, cid, vx, vy, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
-  useDimDispatchRegistration(cid, { onOver, onOut, onClick, onPointerDown })
+  useDimDispatchRegistration(cid, { onOver, onOut, onClick, onDoubleClick, onPointerDown })
 
   return (
     <group key={cid}>

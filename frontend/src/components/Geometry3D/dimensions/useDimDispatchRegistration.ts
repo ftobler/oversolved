@@ -5,6 +5,7 @@ interface DispatchTarget {
   onOver: (ev: { stopPropagation: () => void }) => void
   onOut: () => void
   onClick: (ev: { stopPropagation: () => void; clientX: number; clientY: number }) => void
+  onDoubleClick: (ev: { stopPropagation: () => void; clientX: number; clientY: number }) => void
   onPointerDown: (ev: { stopPropagation: () => void; clientX: number; clientY: number }) => void
 }
 
@@ -26,6 +27,8 @@ export function useDimDispatchRegistration(cid: string, target: DispatchTarget):
       onOut:  () => targetRef.current.onOut(),
       onClick: (clientX, clientY) =>
         targetRef.current.onClick({ stopPropagation: () => { }, clientX, clientY }),
+      onDoubleClick: (clientX, clientY) =>
+        targetRef.current.onDoubleClick({ stopPropagation: () => { }, clientX, clientY }),
       onPointerDown: (clientX, clientY) =>
         targetRef.current.onPointerDown({ stopPropagation: () => { }, clientX, clientY }),
     })

@@ -12,6 +12,7 @@ export interface DimCallbacks {
   onOver: () => void
   onOut: () => void
   onClick: (clientX: number, clientY: number) => void
+  onDoubleClick: (clientX: number, clientY: number) => void
   onPointerDown: (clientX: number, clientY: number) => void
 }
 

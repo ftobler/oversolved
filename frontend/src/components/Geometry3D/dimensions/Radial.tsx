@@ -17,7 +17,7 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
 }) {
-  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
+  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
@@ -98,7 +98,7 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   }, [interaction, cid, cx, cy, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
-  useDimDispatchRegistration(cid, { onOver, onOut, onClick, onPointerDown })
+  useDimDispatchRegistration(cid, { onOver, onOut, onClick, onDoubleClick, onPointerDown })
 
   return (
     <group key={cid}>
@@ -138,7 +138,7 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
 }) {
-  const { color, onOver, onOut, onClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
+  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
   const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
@@ -211,7 +211,7 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
     })
   }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
 
-  useDimDispatchRegistration(cid, { onOver, onOut, onClick, onPointerDown })
+  useDimDispatchRegistration(cid, { onOver, onOut, onClick, onDoubleClick, onPointerDown })
 
   return (
     <group key={cid}>

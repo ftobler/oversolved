@@ -39,11 +39,18 @@ export function useDimInteraction(cid: string, value: number, interaction: DimIn
     setHovered(false)
     if (interaction) setHoveredConstraintEntities(new Set())
   }, [interaction, setHoveredConstraintEntities])
-  const onClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
+  // Single-click selects only. The edit dialog is gated behind double-click so a
+  // selected dim can be deleted via the Delete key without the modal eating focus.
+  const onClick = useCallback((ev: { stopPropagation: () => void }) => {
     if (consumeClick()) return
     if (!interaction) return
     ev.stopPropagation()
     useSketchEditorStore.getState().toggleNormalSelection(`constraint:${interaction.featureId}:${cid}`)
+  }, [interaction, cid, consumeClick])
+  const onDoubleClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
+    if (consumeClick()) return
+    if (!interaction) return
+    ev.stopPropagation()
     useSketchEditorStore.getState().openDialog({
       position: [ev.clientX, ev.clientY],
       label: interaction.promptLabel,
@@ -66,7 +73,7 @@ export function useDimInteraction(cid: string, value: number, interaction: DimIn
   const isDragged = drag?.type === 'dim_label' && drag.constraintId === cid
 
   const color = hovered ? '#ffffff' : COLOR_CONSTRAINT
-  return { hovered, color, onOver, onOut, onClick, resetDragMoved, isDragged }
+  return { hovered, color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged }
 }
 
 // Returns the active dragged label position for this constraint (if being dragged), else null.

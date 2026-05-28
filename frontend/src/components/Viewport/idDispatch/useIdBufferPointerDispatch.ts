@@ -159,6 +159,17 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       setLastClickIdHit(true)
     }
 
+    const onDoubleClick = (e: MouseEvent) => {
+      if (e.button !== 0 || !attached) return
+      const hit = resolveSync(e, attached)
+      if (!hit) return
+      // Only dimension labels currently care about double-click (opens the
+      // value-edit dialog; single-click selects so Delete can target the dim).
+      if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
+        dimensionLabelAdapter.onDoubleClick(hit.entityKey, e.clientX, e.clientY)
+      }
+    }
+
     const onPointerDown = (e: MouseEvent) => {
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
@@ -178,6 +189,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       c.addEventListener('pointermove', onPointerMove)
       c.addEventListener('pointerdown', onPointerDown)
       c.addEventListener('click', onClick)
+      c.addEventListener('dblclick', onDoubleClick)
     }
 
     const initial = canvasRef?.current ?? glRef.current?.domElement ?? null
@@ -198,6 +210,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         attached.removeEventListener('pointermove', onPointerMove)
         attached.removeEventListener('pointerdown', onPointerDown)
         attached.removeEventListener('click', onClick)
+        attached.removeEventListener('dblclick', onDoubleClick)
         attached = null
       }
       if (lastHoverLayer === DIMENSION_LABEL_LAYER_NAME && lastHoverEntity !== null) {
