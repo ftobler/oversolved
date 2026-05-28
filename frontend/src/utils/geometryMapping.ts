@@ -295,6 +295,35 @@ export function computeConstraintRender(constraint: PartConstraint, sketch: Sket
     const ea = sketch[eid] as LineSegment | Arc
     const eb = sketch[eid2] as LineSegment | Arc
     if (!ea || !eb || !('start' in ea) || !('end' in ea) || !('start' in eb) || !('end' in eb)) return { kind: 'unknown' }
+    // Parallel lines have no meaningful angle vertex (intersection at infinity).
+    // Render as a perpendicular linear distance so the dim is visually correct,
+    // matching the Dimension-tool preview's resolution for the parallel case.
+    const dax = ea.end[0] - ea.start[0]
+    const day = ea.end[1] - ea.start[1]
+    const dbx = eb.end[0] - eb.start[0]
+    const dby = eb.end[1] - eb.start[1]
+    const na = Math.hypot(dax, day)
+    const nb = Math.hypot(dbx, dby)
+    const parallel = na > 0 && nb > 0 && Math.abs(dax * dby - day * dbx) / (na * nb) <= 1e-6
+    if (parallel) {
+      const normal: Point = [dax / na, day / na]
+      const perpDir: [number, number] = [-day / na, dax / na]
+      const pb: Point = eb.start
+      const t = (pb[0] - ea.start[0]) * perpDir[0] + (pb[1] - ea.start[1]) * perpDir[1]
+      const foot: Point = [pb[0] - t * perpDir[0], pb[1] - t * perpDir[1]]
+      return {
+        kind: 'dim_linear',
+        p1: foot,
+        p2: pb,
+        // Use the geometric perpendicular distance rather than the constraint's
+        // angle value -- the angle is 0/180 by parallelism and would render as
+        // a misleading "0" between visibly separated lines.
+        value: Math.abs(t),
+        normal,
+        entity: eid,
+        ...(resolved.pos && { pos: resolved.pos }),
+      }
+    }
     return {
       kind: 'dim_angle',
       p1: ea.start,
