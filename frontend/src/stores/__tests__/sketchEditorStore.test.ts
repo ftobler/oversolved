@@ -737,6 +737,12 @@ describe('sketchEditorStore', () => {
         expect(s.pendingDimEntityKind).toBe('line')
       })
 
+      it('clears normalSelection when entering the dimension tool', () => {
+        useSketchEditorStore.setState({ normalSelection: new Set(['entity:S1:L1', 'vertex:S1:L2:start']) })
+        useSketchEditorStore.getState().setActiveTool('dimension')
+        expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+      })
+
       it('clears activePickField and chip-owned selection when entering a tool', () => {
         useSketchEditorStore.setState({
           activePickField: { featureId: 'Sketch1', field: 'plane' },

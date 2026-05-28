@@ -349,6 +349,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       if (tool !== 'dimension') {
         updates.pendingDimTarget = null
         updates.pendingDimEntityKind = null
+      } else {
+        // Entering the dimension tool wipes the current normal selection so
+        // the picks the user makes inside the tool aren't contaminated by
+        // whatever was selected before. (Spec: "user clicks 'd', everything
+        // de-selects.")
+        updates.normalSelection = new Set<string>()
       }
       // Clear stale pick-field state when entering any tool
       if (tool !== null && state.activePickField !== null) {
