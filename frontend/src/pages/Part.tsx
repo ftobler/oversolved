@@ -426,6 +426,15 @@ export default function Part() {
   }, [handleExitSketch])
 
   useEffect(() => {
+    // Used by finalizeDimensionPlacement to pre-fill the value-edit dialog
+    // with the current natural measurement.
+    setSketchCallback('getSketch', (featureId: string) => {
+      return solveResults?.[featureId]?.solved ?? null
+    })
+    return () => setSketchCallback('getSketch', null)
+  }, [solveResults])
+
+  useEffect(() => {
     useSketchEditorStore.getState().setActiveFeatureId(activeSketchFeatureId ?? null)
   }, [activeSketchFeatureId])
 

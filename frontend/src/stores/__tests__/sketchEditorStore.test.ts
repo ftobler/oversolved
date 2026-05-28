@@ -1047,5 +1047,30 @@ describe('sketchEditorStore', () => {
       dialog.onConfirm('5')
       expect(useSketchEditorStore.getState().activeTool).toBe('dimension')
     })
+
+    it('finalizeDimensionPlacement: dialog defaultValue is the natural measurement', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      expect(useSketchEditorStore.getState().pendingDialog!.defaultValue).toBe('10')
+      setSketchCallback('getSketch', null)
+    })
+
+    it('finalizeDimensionPlacement: no getSketch → dialog opens with no default', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', null)
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      expect(useSketchEditorStore.getState().pendingDialog!.defaultValue).toBeUndefined()
+    })
   })
 })

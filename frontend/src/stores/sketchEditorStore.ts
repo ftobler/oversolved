@@ -2,10 +2,11 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import { create } from 'zustand'
-import type { ActiveTool, Mutation, SelectionDomain } from '@/types/cad'
+import type { ActiveTool, Mutation, SelectionDomain, Sketch } from '@/types/cad'
 import type { SnapKind } from '@/registry'
 import type { DimensionPick } from '@/registry'
 import { resolveDimension } from '@/registry'
+import { computeNaturalDimensionValue } from '@/utils/dimensionNaturalValue'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { validateSketchEditorState, failLoud } from './stateInvariants'
 import { toolRegistry } from '@/registry/toolRegistry'
@@ -19,10 +20,12 @@ const _sketchCbs: {
   onMutation: ((m: Mutation) => void) | null
   onRebuild: (() => void) | null
   onExitSketch: (() => void) | null
-} = { onMutation: null, onRebuild: null, onExitSketch: null }
+  getSketch: ((featureId: string) => Sketch | null) | null
+} = { onMutation: null, onRebuild: null, onExitSketch: null, getSketch: null }
 
 export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => void) | null): void
 export function setSketchCallback(key: 'onRebuild' | 'onExitSketch', cb: (() => void) | null): void
+export function setSketchCallback(key: 'getSketch', cb: ((featureId: string) => Sketch | null) | null): void
 export function setSketchCallback(key: keyof typeof _sketchCbs, cb: unknown): void {
   (_sketchCbs as Record<string, unknown>)[key] = cb
 }
@@ -524,9 +527,22 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     // dialog, but stay in the dimension tool until OK / Cancel resolves.
     set({ dimensionPicks: [] })
 
+    // Pre-fill the dialog with the current measured value so Enter accepts
+    // it unchanged. Falls back to empty when the sketch isn't available
+    // (e.g. tests without getSketch registered) or the geometry can't be
+    // resolved.
+    const sketch = _sketchCbs.getSketch?.(featureId) ?? null
+    const naturalValue = sketch
+      ? computeNaturalDimensionValue(constraintKind, targets, sketch, featureId)
+      : null
+    const defaultValue = naturalValue !== null
+      ? (Number.isInteger(naturalValue) ? String(naturalValue) : naturalValue.toFixed(2))
+      : undefined
+
     get().openDialog({
       position: clientPos,
       label: 'Dimension value',
+      defaultValue,
       onConfirm: (input) => {
         const val = parseFloat(input)
         if (isNaN(val) || val <= 0) return
