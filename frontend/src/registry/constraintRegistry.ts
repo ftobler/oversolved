@@ -375,39 +375,68 @@ export const CONSTRAINT_SHORTCUTS: ReadonlyMap<string, string> =
       .map(c => [c.shortcut!, `apply_${c.kind}`])
   )
 
-/**
- * Resolve the dimension constraint kind for a single-entity click.
- * Returns the constraint kind string, or null if the entity kind
- * is not a valid single-click dimension target (needs two clicks).
- */
-export function resolveSingleEntityDimension(entityKind: string): string | null {
-  const rule = DIMENSION_RULES.find(
-    r => r.trigger.type === 'single_entity' && r.trigger.entityKind === entityKind
-  )
-  return rule?.constraintKind ?? null
+// ─── Unified dimension resolver ───
+// One entry point drives every Dimension-tool click outcome. `DIMENSION_RULES`
+// is the data; `resolveDimension` is the only resolver. The tool calls it with
+// 1 pick (after a single click) to detect single-element dims like radius /
+// diameter, and with 2 picks to detect pair dims (point_distance, angle,
+// line_distance) or the same-line-clicked-twice case (length).
+//
+// Lines held for a second click: a lone line click cannot tell whether the
+// user wants "length of this line" or "this line paired with the next thing,"
+// so `resolveDimension([line])` returns null and the tool buffers it. The
+// length case is then realised by clicking the same line again (the table's
+// `two_lines` rule, narrowed by the same-target check below).
+
+export interface DimensionPick {
+  isVertex: boolean
+  target: string
+  entityKind?: string | null
 }
 
-/**
- * Resolve the dimension constraint kind for a two-target click.
- * @param firstIsVertex    Whether the first click was on a vertex.
- * @param secondIsVertex   Whether the second click was on a vertex.
- * @param firstEntityKind  Entity kind of the first click (if entity).
- * @param secondEntityKind Entity kind of the second click (if entity).
- */
-export function resolveTwoTargetDimension(
-  firstIsVertex: boolean,
-  secondIsVertex: boolean,
-  firstEntityKind?: string,
-  secondEntityKind?: string,
-): string {
-  if (firstIsVertex && secondIsVertex) {
-    return DIMENSION_RULES.find(r => r.trigger.type === 'two_vertices')!.constraintKind
+export interface ResolvedDimension {
+  constraintKind: string
+}
+
+export function resolveDimension(picks: readonly DimensionPick[]): ResolvedDimension | null {
+  if (picks.length === 1) {
+    const [p] = picks
+    if (p.isVertex || !p.entityKind) return null
+    // Lines wait for a second click (placement gesture or pair partner).
+    if (p.entityKind === 'line') return null
+    const rule = DIMENSION_RULES.find(
+      r => r.trigger.type === 'single_entity' && r.trigger.entityKind === p.entityKind,
+    )
+    return rule ? { constraintKind: rule.constraintKind } : null
   }
-  if (!firstIsVertex && !secondIsVertex) {
-    if (firstEntityKind === 'line' && secondEntityKind === 'line') {
-      return DIMENSION_RULES.find(r => r.trigger.type === 'two_lines')!.constraintKind
+
+  if (picks.length === 2) {
+    const [a, b] = picks
+    // Same line clicked twice -> length. Both entityKinds must be known 'line';
+    // a null entityKind on either side falls through to the generic two-entity
+    // path (line_distance), see DimensionTool null-entityKind bug guard.
+    if (
+      a.target === b.target
+      && !a.isVertex && !b.isVertex
+      && a.entityKind === 'line' && b.entityKind === 'line'
+    ) {
+      const rule = DIMENSION_RULES.find(
+        r => r.trigger.type === 'single_entity' && r.trigger.entityKind === 'line',
+      )
+      return rule ? { constraintKind: rule.constraintKind } : null
     }
-    return DIMENSION_RULES.find(r => r.trigger.type === 'two_entities')!.constraintKind
+
+    let triggerType: 'two_vertices' | 'two_lines' | 'two_entities' | 'mixed'
+    if (a.isVertex && b.isVertex) {
+      triggerType = 'two_vertices'
+    } else if (!a.isVertex && !b.isVertex) {
+      triggerType = a.entityKind === 'line' && b.entityKind === 'line' ? 'two_lines' : 'two_entities'
+    } else {
+      triggerType = 'mixed'
+    }
+    const rule = DIMENSION_RULES.find(r => r.trigger.type === triggerType)
+    return rule ? { constraintKind: rule.constraintKind } : null
   }
-  return DIMENSION_RULES.find(r => r.trigger.type === 'mixed')!.constraintKind
+
+  return null
 }

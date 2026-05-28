@@ -7,8 +7,7 @@ import {
   TOOLBAR_CONSTRAINTS,
   CONSTRAINT_SHORTCUTS,
   DIMENSION_RULES,
-  resolveSingleEntityDimension,
-  resolveTwoTargetDimension,
+  resolveDimension,
 } from '@/registry/constraintRegistry'
 import {
   ENTITIES,
@@ -92,22 +91,64 @@ describe('dimension rules', () => {
     }
   })
 
-  it('resolveSingleEntityDimension maps known entity kinds', () => {
-    expect(resolveSingleEntityDimension('line')).toBe('length')
-    expect(resolveSingleEntityDimension('arc')).toBe('radius')
-    expect(resolveSingleEntityDimension('circle')).toBe('diameter')
+  it('resolveDimension single pick: arc → radius, circle → diameter', () => {
+    expect(resolveDimension([{ isVertex: false, target: 'E1', entityKind: 'arc' }]))
+      .toEqual({ constraintKind: 'radius' })
+    expect(resolveDimension([{ isVertex: false, target: 'E2', entityKind: 'circle' }]))
+      .toEqual({ constraintKind: 'diameter' })
   })
 
-  it('resolveSingleEntityDimension returns null for unknown kinds', () => {
-    expect(resolveSingleEntityDimension('point')).toBeNull()
-    expect(resolveSingleEntityDimension('unknown')).toBeNull()
+  it('resolveDimension single pick: line waits for second click (null)', () => {
+    expect(resolveDimension([{ isVertex: false, target: 'L1', entityKind: 'line' }]))
+      .toBeNull()
   })
 
-  it('resolveTwoTargetDimension resolves correctly', () => {
-    expect(resolveTwoTargetDimension(true, true)).toBe('point_distance')
-    expect(resolveTwoTargetDimension(false, false)).toBe('line_distance')
-    expect(resolveTwoTargetDimension(true, false)).toBe('line_distance')
-    expect(resolveTwoTargetDimension(false, true)).toBe('line_distance')
+  it('resolveDimension single pick: vertex or unknown returns null', () => {
+    expect(resolveDimension([{ isVertex: true, target: 'V1' }])).toBeNull()
+    expect(resolveDimension([{ isVertex: false, target: 'X', entityKind: 'point' }]))
+      .toBeNull()
+    expect(resolveDimension([{ isVertex: false, target: 'X', entityKind: null }]))
+      .toBeNull()
+  })
+
+  it('resolveDimension two picks: same line clicked twice → length', () => {
+    const pick = { isVertex: false, target: 'L1', entityKind: 'line' as const }
+    expect(resolveDimension([pick, pick])).toEqual({ constraintKind: 'length' })
+  })
+
+  it('resolveDimension two picks: vertex+vertex → point_distance', () => {
+    expect(resolveDimension([
+      { isVertex: true, target: 'V1' },
+      { isVertex: true, target: 'V2' },
+    ])).toEqual({ constraintKind: 'point_distance' })
+  })
+
+  it('resolveDimension two picks: two different lines → angle', () => {
+    expect(resolveDimension([
+      { isVertex: false, target: 'L1', entityKind: 'line' },
+      { isVertex: false, target: 'L2', entityKind: 'line' },
+    ])).toEqual({ constraintKind: 'angle' })
+  })
+
+  it('resolveDimension two picks: two non-line entities → line_distance', () => {
+    expect(resolveDimension([
+      { isVertex: false, target: 'A1', entityKind: 'arc' },
+      { isVertex: false, target: 'C1', entityKind: 'circle' },
+    ])).toEqual({ constraintKind: 'line_distance' })
+  })
+
+  it('resolveDimension two picks: vertex+entity → line_distance', () => {
+    expect(resolveDimension([
+      { isVertex: true, target: 'V1' },
+      { isVertex: false, target: 'L1', entityKind: 'line' },
+    ])).toEqual({ constraintKind: 'line_distance' })
+  })
+
+  it('resolveDimension two picks: same target but null entityKind falls through (bug guard)', () => {
+    // Mirrors DimensionTool null-entityKind bug guard: not 'line'+'line' so the
+    // same-target shortcut is skipped and we fall through to two_entities.
+    const pick = { isVertex: false, target: 'L1', entityKind: null }
+    expect(resolveDimension([pick, pick])).toEqual({ constraintKind: 'line_distance' })
   })
 })
 

@@ -130,7 +130,7 @@ describe('DimensionTool', () => {
       const setPendingDim = vi.fn()
       const tool = createDimensionTool()
       // When entityKind is null (the bug), second click on same line
-      // falls through to resolveTwoTargetDimension instead of single-entity path.
+      // falls through to the two-entity path instead of single-entity (length).
       const context = createMockContext({
         openDialog,
         setPendingDim,
@@ -143,7 +143,7 @@ describe('DimensionTool', () => {
 
       tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)
 
-      // Should still open a dialog (falls through to resolveTwoTargetDimension)
+      // Should still open a dialog (falls through to the two-entity path)
       expect(openDialog).toHaveBeenCalledWith(expect.objectContaining({ label: 'Dimension value' }))
     })
 

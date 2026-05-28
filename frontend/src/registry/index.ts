@@ -5,10 +5,9 @@ export {
   TOOLBAR_CONSTRAINTS,
   CONSTRAINT_SHORTCUTS,
   DIMENSION_RULES,
-  resolveSingleEntityDimension,
-  resolveTwoTargetDimension,
+  resolveDimension,
 } from '@/registry/constraintRegistry'
-export type { ConstraintDef, DimensionRule } from '@/registry/constraintRegistry'
+export type { ConstraintDef, DimensionRule, DimensionPick, ResolvedDimension } from '@/registry/constraintRegistry'
 
 export {
   ENTITIES,
