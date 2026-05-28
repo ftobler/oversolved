@@ -83,9 +83,7 @@ function buildSketchSegments(
       appendSegment(positions, planeMatrix, v, l.start[0], l.start[1], l.end[0], l.end[1])
     } else if (kind === 'arc') {
       const a = entity as Arc
-      const a0 = a.angle_start * (180 / Math.PI)
-      const a1 = a.angle_end   * (180 / Math.PI)
-      const pts = sampleArcCCW(a.center[0], a.center[1], a.radius, a0, a1)
+      const pts = sampleArcCCW(a.center[0], a.center[1], a.radius, a.angle_start, a.angle_end)
       for (let i = 0; i < pts.length - 1; i++) {
         appendSegment(positions, planeMatrix, v, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
       }
