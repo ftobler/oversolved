@@ -100,7 +100,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   useDimensionLabelIdRegistration({
     constraintId: cid,
     position: [labelX, labelY, 0.001],
-    enabled: !isDragged,
+    enabled: !!interaction && !isDragged,
     planeTransform,
   })
   const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {

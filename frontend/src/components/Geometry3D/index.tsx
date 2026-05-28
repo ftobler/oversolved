@@ -12,6 +12,7 @@ import { sketchExtent } from '@/components/Geometry3D/drawGeometry'
 
 // Constraint display
 import { ConstraintOverlays } from '@/components/Geometry3D/Constraints'
+import { DimensionPreview } from '@/components/Geometry3D/dimensions/Preview'
 
 // Topology surface rendering
 import { TopologySurfaces, TopologyEdges } from '@/components/Geometry3D/Surfaces'
@@ -182,6 +183,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
       {isEditing && <DragAlignmentIndicator />}
       <DrawPreview activeFeatureId={activeFeatureId} />
       <DrawPlane featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} />
+      {isEditing && <DimensionPreview featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} planeTransform={resolvedPlaneTransform} />}
     </group>
   )
 }

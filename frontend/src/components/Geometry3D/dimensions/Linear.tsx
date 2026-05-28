@@ -83,7 +83,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
   useDimensionLabelIdRegistration({
     constraintId: cid,
     position: [labelX, labelY, 0.001],
-    enabled: !isDragged,
+    enabled: !!interaction && !isDragged,
     planeTransform,
   })
 
