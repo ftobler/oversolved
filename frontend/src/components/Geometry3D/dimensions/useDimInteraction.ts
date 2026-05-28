@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { COLOR_CONSTRAINT } from '@/components/sketch_helpers'
+import { COLOR_SELECTED } from '@/components/Geometry3D/constants'
 import { useClickAfterDragSuppression } from '../useClickAfterDragSuppression'
 
 /** Optional interactive context for dimension components.
@@ -72,8 +73,11 @@ export function useDimInteraction(cid: string, value: number, interaction: DimIn
   // doubles as a UX nicety -- the hit halo stays visually quiet mid-drag.
   const isDragged = drag?.type === 'dim_label' && drag.constraintId === cid
 
-  const color = hovered ? '#ffffff' : COLOR_CONSTRAINT
-  return { hovered, color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged }
+  const selKey = interaction ? `constraint:${interaction.featureId}:${cid}` : null
+  const selected = useSketchEditorStore(s => selKey ? s.normalSelection.has(selKey) : false)
+
+  const color = selected ? COLOR_SELECTED : hovered ? '#ffffff' : COLOR_CONSTRAINT
+  return { hovered, selected, color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged }
 }
 
 // Returns the active dragged label position for this constraint (if being dragged), else null.
