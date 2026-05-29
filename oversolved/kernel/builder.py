@@ -636,8 +636,10 @@ def _tessellate_body_geometry(body: Body, tess_cache: dict[int, dict] | None = N
     if tess_cache is not None:
         hit = tess_cache.get(hash(body.shape))
         if hit is not None:
-            assert hit["id"] == body.id
-            return hit
+            if hit["id"] != body.id:
+                logger.warning("Tess cache hash collision for body %s (cached=%s), re-tessellating", body.id, hit["id"])
+            else:
+                return hit
     try:
         from oversolved.kernel.geometry_tessellation import solid_to_mesh, solid_to_edges, solid_to_vertices
         pq = body.profile_queries if body.profile_queries else None
@@ -911,8 +913,9 @@ def build(
         out: dict[str, dict] = {}
         for body_id, body in checkpoint.body_store_snapshot.items():
             entry = _shape_tess_cache.get(hash(body.shape), {})
-            if entry:
-                assert entry["id"] == body_id
+            if entry and entry.get("id") != body_id:
+                logger.warning("Checkpoint tess cache hash collision for body %s (cached=%s)", body_id, entry.get("id"))
+                entry = {}
             out[body_id] = entry
         return out
 

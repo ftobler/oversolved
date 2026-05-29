@@ -1,3 +1,9 @@
+"""Element-geometry query engine.
+
+``QueryNode``/``build_query``/``resolve_query`` are Option B staging (unwired).
+``_resolve_ancestry_ids`` is the live resolver used by the production query path.
+"""
+
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, TypeAlias, TYPE_CHECKING
@@ -6,8 +12,10 @@ import re
 import secrets
 from oversolved.kernel.solver_constants import _BUILTIN_PLANES
 
-# Feature currently being solved, set by the build loop. Read by the ancestry
-# resolver to reject candidates owned by features ordered after this one.
+# Guard active only during the solve loop (set by _try_solve_feature, reset
+# after). Outside the loop (registration, tessellation) the contextvar is None
+# and _order_filter degrades to identity. Read by the ancestry resolver to
+# reject candidates owned by features ordered after the current one.
 _current_feature_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "current_feature_id", default=None
 )
@@ -95,7 +103,7 @@ class AncestryQuery:
 
 
 @dataclass(eq=True, frozen=True)
-class QueryNode:
+class QueryNode:  # UNWIRED: Option B staging
     """Recursive ancestral lineage node.
 
     Each node represents one ancestor in the lineage chain. The flat
@@ -212,7 +220,7 @@ def body_id_of(query_str: str, body_store: dict[str, Any] | None = None) -> str 
     return candidates[0] if candidates else None
 
 
-def build_query(element_id: str, parent_map: dict[str, list[str]]) -> QueryNode:
+def build_query(element_id: str, parent_map: dict[str, list[str]]) -> QueryNode:  # UNWIRED: Option B staging
     """Recursively compose a QueryNode from a parent map.
 
     parent_map[child_id] = [parent_id, ...] gives the immediate parents.
@@ -226,7 +234,7 @@ def build_query(element_id: str, parent_map: dict[str, list[str]]) -> QueryNode:
     )
 
 
-def resolve_query(
+def resolve_query(  # UNWIRED: Option B staging
     node: QueryNode,
     repo: "Repository",
     cfg: HeuristicConfig | None = None,
@@ -482,6 +490,15 @@ def _feature_idx_of_element(repo: "Repository", eid: str) -> int | None:
 
 
 class Repository:
+    """Element registry for the CAD query engine.
+
+    Element IDs are ephemeral: minted per solve cycle by
+    ``register_ancestor`` (``secrets.token_urlsafe(9)``), evicted by
+    ``gc()`` when their owning feature is removed, and replaced by
+    ``_evict_ancestry_and_register`` on re-registration. Consumers must not
+    persist or rely on element IDs across solve cycles.
+    """
+
     def __init__(self) -> None:
         self.elements: dict[str, Any] = {}
         # frozenset of ancestor ids -> list of element ids
@@ -497,6 +514,15 @@ class Repository:
     def set_feature_order(self, feature_order: list[str]) -> None:
         """Record the current feature build order for the ordering guard."""
         self._feature_index = {fid: i for i, fid in enumerate(feature_order)}
+
+    def _prune_geom_hash(self) -> None:
+        """Remove by_geom_hash entries whose element IDs no longer exist."""
+        stale = [
+            h for h, eids in self.by_geom_hash.items()
+            if not any(eid in self.elements for eid in eids)
+        ]
+        for h in stale:
+            del self.by_geom_hash[h]
 
     def register(self, element_id: str, obj: Any):
         self.elements[element_id] = obj
@@ -534,10 +560,7 @@ class Repository:
         for key in stale_keys:
             for eid in self.ancestral.pop(key):
                 self.elements.pop(eid, None)
-        # Prune by_geom_hash entries whose element IDs are all evicted.
-        stale_hashes = [h for h, eids in self.by_geom_hash.items() if not any(eid in self.elements for eid in eids)]
-        for h in stale_hashes:
-            del self.by_geom_hash[h]
+        self._prune_geom_hash()
 
     def query(
         self,
@@ -598,12 +621,15 @@ class Repository:
         """Build a candidate filter that rejects elements owned by features
         ordered after current_feature_id.
 
-        The querying feature defaults to the contextvar set by the build loop.
-        When no order is known (no index, or the feature is absent from it) the
-        filter is the identity, preserving standalone-solve behavior.
+        Guard active only during the solve loop: _feature_index is populated
+        by set_feature_order(), but the contextvar is reset outside
+        _try_solve_feature. When both the parameter and contextvar are None,
+        the filter degrades to identity.
         """
         if current_feature_id is None:
             current_feature_id = _current_feature_id.get()
+        # When _feature_index is populated but the contextvar is unset we are
+        # outside the solve loop; the identity fallback below is correct.
         current_idx: int | None = None
         if current_feature_id is not None and self._feature_index:
             current_idx = self._feature_index.get(current_feature_id)
@@ -804,13 +830,6 @@ def _evict_ancestry_and_register(
     for old_id in repo.ancestral.pop(key, []):
         repo.elements.pop(old_id, None)
 
-    # Prune by_geom_hash entries whose element IDs were just evicted.
-    if repo.by_geom_hash:
-        stale_hashes = [
-            h for h, eids in repo.by_geom_hash.items()
-            if not any(eid in repo.elements for eid in eids)
-        ]
-        for h in stale_hashes:
-            del repo.by_geom_hash[h]
+    repo._prune_geom_hash()
 
     return repo.register_ancestor(ancestor_ids, payload, geom_hash=geom_hash)

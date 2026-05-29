@@ -174,6 +174,9 @@ export function useSolver(
         }
       }
     }
+    if (data.bodies) {
+      reconcilePartStyle(cloned, data.bodies)
+    }
     setSolveResults(results)
     const timings: Record<string, number> = {}
     for (const [id, feature] of Object.entries(result)) {
@@ -229,13 +232,6 @@ export function useSolver(
   const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
     applySolveResult(d, data, solveTimeMs)
     if (data.bodies) {
-      const current = docRef.current
-      if (current) {
-        const withStyle = structuredClone(current)
-        reconcilePartStyle(withStyle, data.bodies)
-        docRef.current = withStyle
-        setDoc(withStyle)
-      }
       setBodies(data.bodies)
     }
     if (data.pick_bodies !== undefined) {

@@ -207,6 +207,31 @@ describe('useSolver', () => {
   }
 
   describe('reSolve', () => {
+    it('calls setDoc exactly once per response (no double clone)', async () => {
+      const { result, setDoc } = setupHook()
+      mockSolver.solve.mockResolvedValue({
+        solve_ms: 0,
+        result: {},
+        bodies: { a: makeBody('a') } as Record<string, BodyResult>,
+        _build_state: null,
+      })
+      await act(async () => { await result.current.reSolve(makeDoc()) })
+      expect(setDoc).toHaveBeenCalledTimes(1)
+    })
+
+    it('reconciles part_style from bodies in the single setDoc call', async () => {
+      const { result, setDoc } = setupHook()
+      mockSolver.solve.mockResolvedValue({
+        solve_ms: 0,
+        result: {},
+        bodies: { a: makeBody('a') } as Record<string, BodyResult>,
+        _build_state: null,
+      })
+      await act(async () => { await result.current.reSolve(makeDoc()) })
+      const docArg = setDoc.mock.calls[0][0]
+      expect(docArg.part_style?.a?.name).toBe('part 1')
+    })
+
     it('sets solving=true then false on success', async () => {
       const { result } = setupHook()
       expect(result.current.solving).toBe(false)

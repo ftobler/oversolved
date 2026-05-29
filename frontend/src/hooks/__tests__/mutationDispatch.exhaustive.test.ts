@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 
-const ALL_MUTATION_TYPES = [
+export const ALL_MUTATION_TYPES = [
   'move_vertex',
   'move_vertex_with_constraint',
   'move_entity',
