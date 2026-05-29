@@ -706,8 +706,13 @@ def _trace_face_cycles(
     return surfaces
 
 
-def _circle_arcs(cx: float, cy: float, r: float) -> list:
-    """Return two semicircle arcs representing a full circle boundary."""
+def _circle_arcs(cx: float, cy: float, r: float, eid: str | None = None) -> list:
+    """Return two semicircle arcs representing a full circle boundary.
+
+    *eid* is the source sketch entity id; when given it is stamped on both arcs
+    so per-edge/face lineage can trace back to the originating circle (the
+    half-edge tracer carries ids for polyline profiles; circles take this path).
+    """
     return [
         {
             "kind": "arc",
@@ -720,6 +725,7 @@ def _circle_arcs(cx: float, cy: float, r: float) -> list:
             "end": [cx - r, cy],
             "start_vertex": None,
             "end_vertex": None,
+            "id": eid,
         },
         {
             "kind": "arc",
@@ -732,6 +738,7 @@ def _circle_arcs(cx: float, cy: float, r: float) -> list:
             "end": [cx + r, cy],
             "start_vertex": None,
             "end_vertex": None,
+            "id": eid,
         },
     ]
 
@@ -780,11 +787,11 @@ def _build_standalone_surfaces(
                 emit_wire(absolute(feature_id)),
             ]
             query = make_ancestry_query(ancestor_ids, "flatface")
-            boundary = _circle_arcs(cx, cy, r)
+            boundary = _circle_arcs(cx, cy, r, eid=eid)
             if idx > 0:
                 inner_eid, inner_e = grp_sorted[idx - 1]
                 icx, icy, ir = inner_e["center"][0], inner_e["center"][1], inner_e["radius"]
-                boundary += _circle_arcs(icx, icy, ir)
+                boundary += _circle_arcs(icx, icy, ir, eid=inner_eid)
             surfaces.append({"boundary": boundary, "query": query})
             surf_count += 1
 

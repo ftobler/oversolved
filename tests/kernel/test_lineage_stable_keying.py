@@ -236,3 +236,51 @@ def test_fillet_targets_picked_rim_via_ancestry():
         resolved = repo.query(_strip_geom_hashes(q))
         assert resolved is not None, f"post-fillet side face did not resolve by ancestry: {q!r}"
         assert resolved.get("type") in ("face", "flatface")
+
+
+# ─── circle profiles: entity id flows through the closed-circle edge ───
+
+def _cylinder_spec(radius: float = 10.0, distance: float = 10.0) -> dict:
+    """A single circle sketch extruded into a cylinder."""
+    sketch = {
+        "id": "sk_cyl", "kind": "sketch", "label": "circle",
+        "plane": "@builtin_plane_top",
+        "entities": [{"id": "circ", "kind": "circle"}],
+        "initial": {"circ": [0, 0, radius]},
+        "constraints": [
+            {"id": "cc", "kind": "coincident", "a": "$circcenter", "b": "@builtin_origin"},
+            {"id": "cd", "kind": "diameter", "target": "$circ", "value": 2 * radius, "pos": [0, 0]},
+        ],
+    }
+    extrude = {"id": "ex_cyl", "kind": "extrude", "label": "extrude",
+               "sketch": "$sk_cyl", "distance": distance, "direction": "normal"}
+    return {"features": [sketch, extrude]}
+
+
+def test_cylinder_side_face_resolves_by_circle_ancestry():
+    """The lateral face of a cylinder carries its source circle's lineage.
+
+    A circle profile is a single closed OCC edge described as two semicircle
+    arcs, so the entity id is matched by center+radius rather than endpoints.
+    The cylinder wall then resolves by ancestry alone (the two caps carry no
+    profile token); the two rims legitimately share the circle and stay a
+    geom-hash tie.
+    """
+    pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
+    from oversolved.kernel.builder import build, _repo_from_snapshot
+
+    r = build(_cylinder_spec())
+    assert r["result"]["ex_cyl"]["status"] == "ok"
+    body_out = r["bodies"]["body_ex_cyl"]
+    repo = _repo_from_snapshot(r["_build_state"].checkpoints["ex_cyl"].repo_snapshot)
+
+    wall_queries = [
+        q for q in body_out["mesh"]["face_queries"]
+        if "@sk_cyl/circ" in _non_hash_ancestor_set(q)
+    ]
+    assert len(wall_queries) == 1, f"expected one lineaged cylinder wall, got {len(wall_queries)}"
+
+    resolved = repo.query(_strip_geom_hashes(wall_queries[0]))
+    assert resolved is not None, "cylinder wall did not resolve by ancestry alone"
+    assert resolved.get("type") in ("face", "cylinderface")

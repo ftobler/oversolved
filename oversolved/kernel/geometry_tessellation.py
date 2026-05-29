@@ -348,6 +348,34 @@ def _entity_to_occ_edge_map(
             abs(a[0] - bx) < 1e-6 and abs(a[1] - by) < 1e-6 and abs(a[2] - bz) < 1e-6
         )
 
+    def _closed_circle_match(entity: dict, occ_e: Any) -> bool:
+        """Match a closed (full) circular OCC edge to a circle/arc entity.
+
+        A full circle is a single closed OCC edge (start == end), so endpoint
+        matching cannot tell it from the two semicircle arcs that describe a
+        circle profile. Fall back to center + radius for that closed case only;
+        partial arcs keep distinct endpoints and resolve above.
+        """
+        if entity.get("kind") not in ("circle", "arc") or entity.get("center") is None:
+            return False
+        if occ_e.geomType() != "CIRCLE":
+            return False
+        sp, ep = occ_e.startPoint(), occ_e.endPoint()
+        if not _points_match([sp.x, sp.y, sp.z], ep):
+            return False  # not a closed circle; leave to endpoint matching
+        try:
+            circ = occ_e._geomAdaptor().Circle()
+            loc, radius = circ.Location(), circ.Radius()
+        except Exception:
+            return False
+        center_3d = _uv_to_3d(entity["center"])
+        return (
+            abs(center_3d[0] - loc.X()) < 1e-6
+            and abs(center_3d[1] - loc.Y()) < 1e-6
+            and abs(center_3d[2] - loc.Z()) < 1e-6
+            and abs(float(entity.get("radius", 0.0)) - radius) < 1e-6
+        )
+
     occ_edges = list(face.Edges())
     mapping: dict[int, str] = {}
     for loop in loops:
@@ -363,7 +391,8 @@ def _entity_to_occ_edge_map(
                 sp = occ_e.startPoint()
                 ep = occ_e.endPoint()
                 if (_points_match(start_3d, sp) and _points_match(end_3d, ep)) or \
-                   (_points_match(start_3d, ep) and _points_match(end_3d, sp)):
+                   (_points_match(start_3d, ep) and _points_match(end_3d, sp)) or \
+                   _closed_circle_match(entity, occ_e):
                     mapping[hash(occ_e)] = eid
                     break
     return mapping
