@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
@@ -8,6 +8,15 @@ export default function ContextMenuDialog() {
   const dialog = useSketchEditorStore(s => s.pendingDialog)
   const closeDialog = useSketchEditorStore(s => s.closeDialog)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [seenDialog, setSeenDialog] = useState(dialog)
+
+  // Reset the validation error when a different dialog opens (render-phase
+  // adjustment on prop change, per the React docs).
+  if (dialog !== seenDialog) {
+    setSeenDialog(dialog)
+    setError(null)
+  }
 
   useEffect(() => {
     if (dialog) {
@@ -24,7 +33,15 @@ export default function ContextMenuDialog() {
   const [x, y] = dialog.position
 
   const handleConfirm = () => {
-    dialog.onConfirm(inputRef.current?.value ?? '')
+    const value = inputRef.current?.value ?? ''
+    // Reject invalid input in place: keep the dialog open and show why, rather
+    // than silently dropping the gesture.
+    const err = dialog.validate?.(value) ?? null
+    if (err) {
+      setError(err)
+      return
+    }
+    dialog.onConfirm(value)
     closeDialog()
   }
 
@@ -52,10 +69,12 @@ export default function ContextMenuDialog() {
         type="number"
         defaultValue={dialog.defaultValue ?? ''}
         onKeyDown={handleKeyDown}
-        className="context-menu-input"
+        onChange={() => { if (error) setError(null) }}
+        className={error ? 'context-menu-input invalid' : 'context-menu-input'}
       />
       <button className="context-menu-btn context-menu-btn-ok" onClick={handleConfirm}><img src={okIcon} alt="OK" /></button>
       <button className="context-menu-btn context-menu-btn-cancel" onClick={() => { dialog.onCancel?.(); closeDialog() }}><img src={cancelIcon} alt="Cancel" /></button>
+      {error && <span className="context-menu-error" role="alert">{error}</span>}
     </div>
   )
 }

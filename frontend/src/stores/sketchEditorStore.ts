@@ -70,6 +70,9 @@ export interface DialogState {
   defaultValue?: string
   onConfirm: (val: string) => void
   onCancel?: () => void
+  // Return an error message to reject the input (dialog stays open and shows
+  // it); return null to accept. Omit to accept any input.
+  validate?: (val: string) => string | null
 }
 
 // Dragging a geometry vertex or whole edge.
@@ -557,9 +560,19 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       position: clientPos,
       label: 'Dimension value',
       defaultValue,
-      onConfirm: (input) => {
+      validate: (input) => {
         const val = parseFloat(input)
-        if (isNaN(val) || val <= 0) return
+        if (isNaN(val)) return 'Enter a number'
+        if (val <= 0) return 'Must be greater than 0'
+        return null
+      },
+      onConfirm: (input) => {
+        // Accepting the rounded default unchanged commits the exact measured
+        // value, so an already-satisfied dimension is not nudged by the
+        // display rounding. Any edit commits the typed value.
+        const value = (naturalValue !== null && input === defaultValue)
+          ? naturalValue
+          : parseFloat(input)
         // The pos written by the placement click anchors the dim label where
         // the user clicked instead of the renderer's default offset. Compute
         // it relative to the dim's natural anchor so the LinearDimension /
@@ -571,7 +584,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
           : null
         onMutation({
           type: 'add_constraint',
-          featureId, kind: constraintKind, targets, value: val,
+          featureId, kind: constraintKind, targets, value,
           ...(pos && { pos }),
         })
         // The dimension tool stays armed so the user can place several dims

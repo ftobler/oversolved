@@ -1062,6 +1062,53 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', null)
     })
 
+    it('finalizeDimensionPlacement: accepting the rounded default commits the exact measured value', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      // Length 12.345... -> default displays rounded to 2 decimals.
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [12.3456, 0] },
+      } as never))
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      expect(dialog.defaultValue).toBe('12.35')
+      // Submitting the default unchanged commits the full-precision value, not 12.35.
+      dialog.onConfirm(dialog.defaultValue!)
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ value: 12.3456 }))
+      setSketchCallback('getSketch', null)
+    })
+
+    it('finalizeDimensionPlacement: editing the default commits the typed value', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [12.3456, 0] },
+      } as never))
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      useSketchEditorStore.getState().pendingDialog!.onConfirm('20')
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ value: 20 }))
+      setSketchCallback('getSketch', null)
+    })
+
+    it('finalizeDimensionPlacement: dialog.validate rejects non-numeric and non-positive input', () => {
+      setSketchCallback('onMutation', vi.fn())
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const validate = useSketchEditorStore.getState().pendingDialog!.validate!
+      expect(validate('abc')).toBeTruthy()
+      expect(validate('0')).toBeTruthy()
+      expect(validate('-3')).toBeTruthy()
+      expect(validate('5')).toBeNull()
+    })
+
     it('finalizeDimensionPlacement: no getSketch → dialog opens with no default', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)

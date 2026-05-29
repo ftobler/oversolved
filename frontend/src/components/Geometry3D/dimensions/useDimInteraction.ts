@@ -56,10 +56,14 @@ export function useDimInteraction(cid: string, value: number, interaction: DimIn
       position: [ev.clientX, ev.clientY],
       label: interaction.promptLabel,
       defaultValue: String(value),
-      onConfirm: (input) => {
+      validate: (input) => {
         const val = parseFloat(input)
-        if (isNaN(val) || (validatePositive && val <= 0)) return
-        getSketchCallback('onMutation')?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: val })
+        if (isNaN(val)) return 'Enter a number'
+        if (validatePositive && val <= 0) return 'Must be greater than 0'
+        return null
+      },
+      onConfirm: (input) => {
+        getSketchCallback('onMutation')?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: parseFloat(input) })
       },
     })
   }, [interaction, cid, value, validatePositive, consumeClick])

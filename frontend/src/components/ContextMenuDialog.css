@@ -35,6 +35,15 @@
   border-color: #4fc3f7;
 }
 
+.context-menu-input.invalid {
+  border-color: #e57373;
+}
+
+.context-menu-error {
+  color: #e57373;
+  user-select: none;
+}
+
 .context-menu-btn {
   background: #2a2a2a;
   border: 1px solid #555;
