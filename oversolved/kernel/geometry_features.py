@@ -222,11 +222,35 @@ def _extract_edge_modifier_lineage(
     from OCP.TopTools import TopTools_IndexedDataMapOfShapeListOfShape  # noqa: PLC0415
     from oversolved.kernel.ocp_ops import ocp_face_area  # noqa: PLC0415
     from oversolved.kernel.cadquery_ops import _compute_face_centroid, _compute_face_normal  # noqa: PLC0415
+    from oversolved.kernel.geom_hash import face_geometry_hash  # noqa: PLC0415
+    from oversolved.kernel.geometry_tessellation import _occ_edge_geom_hash  # noqa: PLC0415
 
+    # Lineage is keyed by copy-stable geometry hash (gface_/gedge_), not OCC
+    # subshape hash, so it survives the shape copies the build does. See
+    # lineage-stable-keying.md.
     old_face_lineage: dict[str, list[str]] = lineage_source.get("face_lineage", {}) or {}
     old_edge_lineage: dict[str, list[str]] = lineage_source.get("edge_lineage", {}) or {}
 
-    # Map: output face hash → entity tokens
+    def _face_gh(occ_f: "Any") -> str:
+        cq_f = cq_shapes.Shape.cast(occ_f)
+        return face_geometry_hash(list(_compute_face_centroid(cq_f)), list(_compute_face_normal(cq_f)))
+
+    def _as_shape_list(result: "Any") -> list:
+        """Normalize an OCC history accessor result to a list of shapes.
+
+        BRepFilletAPI Modified/Generated return a TopTools_ListOfShape; other
+        makers may return a single TopoDS_Shape. Handle both.
+        """
+        if result is None:
+            return []
+        if hasattr(result, "IsNull"):
+            return [] if result.IsNull() else [result]
+        try:
+            return list(result)
+        except TypeError:
+            return []
+
+    # Map: output face geom hash → entity tokens
     new_face_lineage: dict[str, list[str]] = {}
 
     # ── Step 1: Walk old faces, map to output via OCC history ──
@@ -274,8 +298,7 @@ def _extract_edge_modifier_lineage(
         exp.Next()
 
     for old_f, old_c, old_a, old_n in old_faces:
-        old_fh = str(hash(old_f))
-        tokens = old_face_lineage.get(old_fh)
+        tokens = old_face_lineage.get(face_geometry_hash(old_c, old_n))
         if not tokens:
             continue
         try:
@@ -283,29 +306,29 @@ def _extract_edge_modifier_lineage(
                 continue
         except Exception:
             pass
-        mods = maker.Modified(old_f)
-        if mods.Size() > 0:
-            for i in range(mods.Size()):
-                out_f = mods.Value(i + 1)
-                new_face_lineage[str(hash(out_f))] = list(tokens)
+        mod_faces = _as_shape_list(maker.Modified(old_f))
+        if mod_faces:
+            for out_f in mod_faces:
+                new_face_lineage[_face_gh(out_f)] = list(tokens)
         else:
             out_f = _find_output_face(old_c, old_a, old_n)
             if out_f is not None:
-                new_face_lineage[str(hash(out_f))] = list(tokens)
+                new_face_lineage[_face_gh(out_f)] = list(tokens)
 
     # ── Step 2: Filleted edges → generated faces ──
     for edge in filleted_edges:
-        eh = str(hash(edge))
-        edge_tokens = old_edge_lineage.get(eh)
+        egh = _occ_edge_geom_hash(edge)
+        edge_tokens = old_edge_lineage.get(egh) if egh is not None else None
         if not edge_tokens:
             continue
         try:
-            generated = maker.Generated(edge)
-            if not generated.IsNull():
+            for generated in _as_shape_list(maker.Generated(edge)):
+                if generated.ShapeType() == TopAbs_FACE:
+                    new_face_lineage.setdefault(_face_gh(generated), edge_tokens)
+                    continue
                 gen_exp = TopExp_Explorer(generated, TopAbs_FACE)
                 while gen_exp.More():
-                    gen_face = gen_exp.Current()
-                    new_face_lineage.setdefault(str(hash(gen_face)), edge_tokens)
+                    new_face_lineage.setdefault(_face_gh(gen_exp.Current()), edge_tokens)
                     gen_exp.Next()
         except Exception:
             pass
@@ -317,17 +340,19 @@ def _extract_edge_modifier_lineage(
     edge_exp = TopExp_Explorer(new_shape, TopAbs_EDGE)
     while edge_exp.More():
         se = edge_exp.Current()
-        sh = str(hash(se))
+        egh = _occ_edge_geom_hash(se)
+        if egh is None:
+            edge_exp.Next()
+            continue
         eids: list[str] = []
         seen: set[str] = set()
         for face in e2f.FindFromKey(se):
-            fh = str(hash(face))
-            for eid in new_face_lineage.get(fh, []):
+            for eid in new_face_lineage.get(_face_gh(face), []):
                 if eid not in seen:
                     seen.add(eid)
                     eids.append(eid)
         if eids:
-            new_edge_lineage[sh] = eids
+            new_edge_lineage[egh] = eids
         edge_exp.Next()
 
     return new_face_lineage, new_edge_lineage

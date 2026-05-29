@@ -8,8 +8,8 @@ if TYPE_CHECKING:
 from oversolved.kernel.query import Repository
 from oversolved.kernel.types3d import Body
 from oversolved.kernel.cadquery_ops import _ensure_cq, _ensure_occ, _compute_face_centroid, _compute_face_normal
-from oversolved.kernel.geometry_tessellation import edge_to_geom_dict
-from oversolved.kernel.geom_hash import edge_geometry_hash, face_geometry_hash
+from oversolved.kernel.geometry_tessellation import edge_to_geom_dict, _edge_lineage_tokens
+from oversolved.kernel.geom_hash import edge_geometry_hash, face_geometry_hash, is_geom_keyed_lineage
 from oversolved.kernel.query import make_ancestry_query, _parse_ancestry, ref, body_id_of
 from oversolved.kernel.geometry_features import (
     apply_fillet_with_diff, apply_chamfer_with_diff,
@@ -117,10 +117,11 @@ def _build_edge_index(body: Body) -> _EdgeIndex:
             if geom_hash in new_edge_hashes:
                 edge_created_by = body.modified_by[-1]
             ids = [ref(geom_hash), ref(edge_created_by), ref(body.id)]
-            if body.edge_lineage:
-                tokens = body.edge_lineage.get(str(hash(te)))
-                if tokens:
-                    ids.extend(tokens)
+            # Mirror solid_to_edges: geom-keyed lineage supplies per-edge tokens
+            # (looked up by edge geometry hash), else fall back to the profile
+            # blob for legacy bodies so the index query matches the stored query.
+            if is_geom_keyed_lineage(body.edge_lineage, "gedge_"):
+                ids.extend(_edge_lineage_tokens(ed, body.edge_lineage))
             elif body.profile_queries:
                 ids.extend(body.profile_queries)
             aq_hash = make_ancestry_query(ids, edge_type)

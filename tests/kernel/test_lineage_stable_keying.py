@@ -9,6 +9,49 @@ the registration key so sibling faces resolve by their own ancestry.
 
 import pytest
 
+from solver_helpers import extrude_spec, rect_sketch_spec
+
+
+def _strip_geom_hashes(query: str) -> str:
+    """Drop the @gface_/@gnormal_/@gedge_ tokens so resolution is by ancestry alone."""
+    from oversolved.kernel.query import _parse_ancestry, make_ancestry_query, _is_geom_hash_id
+    ids, type_r = _parse_ancestry(query)
+    kept = [i for i in ids if not _is_geom_hash_id(i)]
+    return make_ancestry_query(kept, type_r)
+
+
+def _non_hash_ancestor_set(query: str) -> frozenset[str]:
+    from oversolved.kernel.query import _parse_ancestry, _is_geom_hash_id
+    ids, _ = _parse_ancestry(query)
+    return frozenset(i for i in ids if not _is_geom_hash_id(i))
+
+
+def _sketch_tokens(query: str) -> frozenset[str]:
+    """The @sk1/<entity> per-entity tokens carried by a query."""
+    return frozenset(t for t in _non_hash_ancestor_set(query) if t.startswith("@sk1/"))
+
+
+def _is_side_face(query: str) -> bool:
+    """A lateral face carries exactly one sketch entity token (its bounding line).
+
+    The two caps carry the full body-wide profile blob (all four tokens) instead,
+    so they tie and fall to the geom-hash tier - they are not side faces.
+    """
+    return len(_sketch_tokens(query)) == 1
+
+
+def _build_box(distance: float = 10.0):
+    """Build a 10x10 rect extrude and return (rehydrated repo, body_out)."""
+    from oversolved.kernel.builder import build, _repo_from_snapshot
+    sk = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+    ex = extrude_spec("sk1", "ex1", distance=distance)
+    result = build({"features": [sk, ex]})
+    assert result["result"]["ex1"]["status"] == "ok"
+    body_out = result["bodies"]["body_ex1"]
+    final_snap = result["_build_state"].checkpoints["ex1"].repo_snapshot
+    repo = _repo_from_snapshot(final_snap)
+    return repo, body_out
+
 
 def _face_geom_hashes(occ_shape) -> list[str]:
     """Geometry-hash key for every face of a shape (copy-stable identity)."""
@@ -78,3 +121,118 @@ def test_lineage_key_stable_across_copy():
     assert before_sub.isdisjoint(after_sub), (
         "subshape hashes are expected to change across a copy (regression guard)"
     )
+
+
+# ─── test 1: a side face resolves by ancestry alone (geom hash stripped) ───
+
+def test_extrude_side_face_resolves_by_ancestry():
+    """A side-face query resolves to exactly one face with only ancestry tokens.
+
+    Strips @gface_/@gnormal_ so the geom-hash tier cannot do the work; the
+    per-face lineage must carry the resolution. Failed before this feature
+    (lineage was inert: returned None).
+    """
+    pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
+    repo, body_out = _build_box()
+
+    mesh = body_out["mesh"]
+    face_queries = mesh["face_queries"]
+    face_data = mesh["face_data"]
+    assert len(face_queries) == len(face_data) == 6
+
+    side_indices = [i for i, q in enumerate(face_queries) if _is_side_face(q)]
+    assert len(side_indices) == 4, f"expected 4 lineaged side faces, got {len(side_indices)}"
+
+    for i in side_indices:
+        stripped = _strip_geom_hashes(face_queries[i])
+        resolved = repo.query(stripped)
+        assert resolved is not None, f"side face {i} did not resolve by ancestry: {stripped!r}"
+        assert resolved.get("type") in ("face", "flatface")
+        # Resolved to the very face we asked about: normals agree.
+        rn = resolved.get("normal")
+        fn = face_data[i]["normal"]
+        assert rn is not None
+        dot = sum(rn[k] * fn[k] for k in range(3))
+        assert abs(abs(dot) - 1.0) < 1e-6, f"resolved a different face: dot={dot}"
+
+
+# ─── test 2: the four side faces carry four distinct non-hash ancestor sets ───
+
+def test_extrude_faces_have_distinct_lineage():
+    """The 4 side faces must have 4 distinct non-hash ancestor sets.
+
+    Before this feature every face shared the identical body-wide profile blob,
+    so the geom hash was the sole discriminator.
+    """
+    pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
+    _repo, body_out = _build_box()
+    face_queries = body_out["mesh"]["face_queries"]
+
+    side_sets = [_non_hash_ancestor_set(q) for q in face_queries if _is_side_face(q)]
+    assert len(side_sets) == 4
+    assert len(set(side_sets)) == 4, f"side faces share ancestry: {side_sets}"
+
+
+# ─── test 6: an extrude edge resolves by ancestry alone (mirror of test 1) ───
+
+def test_extrude_edge_resolves_by_ancestry():
+    """A corner edge resolves to exactly one edge with the geom hash stripped.
+
+    An edge inherits a profile token from each adjacent face, so a single
+    profile token alone is shared by all four edges of a side face. The four
+    vertical corner edges each sit between two distinct side faces and so carry
+    two distinct profile tokens -- a set unique to that one edge, which must
+    resolve by ancestry alone.
+    """
+    pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
+    repo, body_out = _build_box()
+
+    corner_edges = [q for q in body_out["edge_queries"] if len(_sketch_tokens(q)) >= 2]
+    assert len(corner_edges) == 4, f"expected 4 two-token corner edges, got {len(corner_edges)}"
+
+    for q in corner_edges:
+        stripped = _strip_geom_hashes(q)
+        resolved = repo.query(stripped)
+        assert resolved is not None, f"edge did not resolve by ancestry: {stripped!r}"
+        assert resolved.get("type") in ("edge", "straightedge")
+
+
+# ─── test 5: lineage propagates through a fillet (ancestry alone still resolves) ───
+
+def test_fillet_targets_picked_rim_via_ancestry():
+    """An inherited side face still resolves by ancestry alone after a fillet.
+
+    _extract_edge_modifier_lineage re-keys the carried-over lineage onto the
+    filleted shape's geometry hashes; a side face untouched by the fillet keeps
+    its single-token lineage, so the hash-stripped query resolves to it uniquely.
+    """
+    pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
+    from oversolved.kernel.builder import build, _repo_from_snapshot
+
+    sk = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+    ex = extrude_spec("sk1", "ex1", distance=10.0)
+    spec = {"features": [sk, ex]}
+    r0 = build(spec)
+    body0 = r0["bodies"]["body_ex1"]
+    edge_q = next(q for ed, q in zip(body0["edges"], body0["edge_queries"]) if ed.get("kind") == "line")
+
+    spec["features"].append(
+        {"id": "fillet1", "kind": "fillet", "label": "Fillet", "edges": [edge_q], "radius": 1.0}
+    )
+    r = build(spec)
+    assert r["result"]["fillet1"]["status"] == "ok"
+
+    body = r["bodies"]["body_ex1"]
+    repo = _repo_from_snapshot(r["_build_state"].checkpoints["fillet1"].repo_snapshot)
+
+    side_queries = [q for q in body["mesh"]["face_queries"] if _is_side_face(q)]
+    assert side_queries, "no inherited side face kept its lineage through the fillet"
+
+    for q in side_queries:
+        resolved = repo.query(_strip_geom_hashes(q))
+        assert resolved is not None, f"post-fillet side face did not resolve by ancestry: {q!r}"
+        assert resolved.get("type") in ("face", "flatface")

@@ -693,6 +693,7 @@ def _trace_face_cycles(
                     "boundary": [
                         {
                             **hes[i][2],
+                            "id": he_eid[i],
                             "start_vertex": hes[i][0],
                             "end_vertex": hes[i][1],
                         }

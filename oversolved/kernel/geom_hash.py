@@ -19,6 +19,20 @@ import math
 logger = logging.getLogger(__name__)
 
 
+def is_geom_keyed_lineage(lineage: dict | None, prefix: str) -> bool:
+    """True if a lineage map is keyed by stable geometry hashes (this feature),
+    not the legacy OCC subshape hashes (decimal int strings).
+
+    Producers re-keyed onto geometry hashes use 'gface_'/'gedge_' keys; a body
+    whose lineage is still subshape-keyed reads as inert here, so callers keep
+    the body-wide profile-query fallback for it (no regression) until its
+    producer is re-keyed. *prefix* is 'gface_' for faces, 'gedge_' for edges.
+    """
+    if not lineage:
+        return False
+    return next(iter(lineage)).startswith(prefix)
+
+
 def _arc_angle_deg(edge: dict, start: bool) -> float:
     """Return arc angle in degrees, normalizing from radians if needed."""
     deg_key = "angle_start_deg" if start else "angle_end_deg"

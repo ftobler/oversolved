@@ -36,6 +36,7 @@ from oversolved.kernel.geom_hash import (
     edge_geometry_hash,
     face_geometry_hash,
     face_normal_hash,
+    is_geom_keyed_lineage,
     vertex_geometry_hash,
 )
 from oversolved.kernel.geometry_io import stl_file_to_shape, step_file_to_shape
@@ -368,13 +369,38 @@ def _entity_to_occ_edge_map(
     return mapping
 
 
+def _occ_face_geom_hash(occ_face: Any) -> str | None:
+    """Geometry-hash key for a raw OCC face, matching the mesh consumer's key.
+
+    Wraps the face as a cadquery Face and reuses the exact centroid/normal the
+    tessellation path computes, so producer and consumer keys agree.
+    """
+    try:
+        cq_face = cq_shapes.Shape.cast(occ_face)
+        return face_geometry_hash(_compute_face_centroid(cq_face), _compute_face_normal(cq_face))
+    except Exception:
+        return None
+
+
+def _occ_edge_geom_hash(occ_edge: Any) -> str | None:
+    """Geometry-hash key for a raw OCC edge, matching the mesh consumer's key."""
+    try:
+        cq_edge = cq_shapes.Shape.cast(occ_edge)
+        ed, _ = edge_to_geom_dict(cq_edge)
+        return edge_geometry_hash(ed)
+    except Exception:
+        return None
+
+
 def _build_prism_lineage_map(
     occ_face: Any, prism_builder: Any, entity_map: dict[int, str],
 ) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     """Use MakePrism.Generated() to map solid subshapes to profile entity IDs.
 
-    Returns (face_lineage, edge_lineage) where each maps solid subshape hash
-    to a list of profile entity tokens.
+    Returns (face_lineage, edge_lineage) where each maps the solid subshape's
+    copy-stable geometry hash to a list of profile entity tokens. Keying on the
+    geometry hash (not the OCC subshape hash) is what lets the lineage survive
+    the shape copies the build pipeline does.
     """
     from OCP.TopExp import TopExp_Explorer  # noqa: PLC0415
     from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE  # noqa: PLC0415
@@ -393,18 +419,28 @@ def _build_prism_lineage_map(
         eh = hash(occ_e)
         if eh in entity_map:
             try:
-                generated = prism_builder.Generated(occ_e)
-                if not generated.IsNull():
-                    gen_exp = TopExp_Explorer(generated, TopAbs_FACE)
-                    while gen_exp.More():
-                        profile_edge_to_face[hash(gen_exp.Current())] = eh
-                        gen_exp.Next()
+                # MakePrism.Generated() returns a TopTools_ListOfShape of the
+                # lateral face(s) swept from this profile edge (not a single
+                # shape). Iterate it and record each generated face.
+                for generated in prism_builder.Generated(occ_e):
+                    if generated.IsNull():
+                        continue
+                    if generated.ShapeType() == TopAbs_FACE:
+                        profile_edge_to_face[hash(generated)] = eh
+                    else:
+                        gen_exp = TopExp_Explorer(generated, TopAbs_FACE)
+                        while gen_exp.More():
+                            profile_edge_to_face[hash(gen_exp.Current())] = eh
+                            gen_exp.Next()
             except Exception:
                 pass
         exp.Next()
 
-    # solid face → profile entity tokens
+    # solid face → profile entity tokens, keyed by copy-stable geometry hash.
+    # subhash_to_geom bridges the internal subshape-hash adjacency map (below)
+    # to the geometry-hash keys.
     face_lineage: dict[str, list[str]] = {}
+    subhash_to_geom: dict[int, str] = {}
     face_exp = TopExp_Explorer(solid_shape, TopAbs_FACE)
     while face_exp.More():
         sf = face_exp.Current()
@@ -415,7 +451,10 @@ def _build_prism_lineage_map(
             eid = entity_map.get(peh, "")
             if eid:
                 entity_ids.append(eid)
-        face_lineage[str(sh)] = entity_ids
+        gh = _occ_face_geom_hash(sf)
+        if gh is not None:
+            subhash_to_geom[sh] = gh
+            face_lineage[gh] = entity_ids
         face_exp.Next()
 
     # solid edge → profile entity tokens (from adjacent faces + vertices)
@@ -428,17 +467,22 @@ def _build_prism_lineage_map(
     edge_exp = TopExp_Explorer(solid_shape, TopAbs_EDGE)
     while edge_exp.More():
         se = edge_exp.Current()
-        sh = hash(se)
+        egh = _occ_edge_geom_hash(se)
+        if egh is None:
+            edge_exp.Next()
+            continue
         edge_entity_ids: list[str] = []
         face_list = e2f.FindFromKey(se)
         seen: set[str] = set()
         for face in face_list:
-            fh = hash(face)
-            for eid in face_lineage.get(str(fh), []):
+            fgh = subhash_to_geom.get(hash(face))
+            if fgh is None:
+                continue
+            for eid in face_lineage.get(fgh, []):
                 if eid not in seen:
                     seen.add(eid)
                     edge_entity_ids.append(eid)
-        edge_lineage[str(sh)] = edge_entity_ids
+        edge_lineage[egh] = edge_entity_ids
         edge_exp.Next()
 
     return face_lineage, edge_lineage
@@ -692,25 +736,29 @@ def _build_face_query(
     return make_ancestry_query([abs_id, ref(created_by)], surface_type)
 
 
-def _face_tokens(face: Any, face_lineage: dict[str, list[str]] | None) -> list[str]:
-    """Get per-face entity tokens from the lineage map, or empty list."""
+def _face_tokens(centroid: list[float], normal: list[float], face_lineage: dict[str, list[str]] | None) -> list[str]:
+    """Get per-face entity tokens from the lineage map, or empty list.
+
+    Keyed on the copy-stable face geometry hash so tokens survive the shape
+    copies the build does for OCC-mutation safety (subshape hashes do not).
+    """
     if face_lineage is None:
         return []
-    try:
-        fh = str(hash(face.wrapped))
-    except Exception:
-        return []
-    return face_lineage.get(fh, [])
+    return face_lineage.get(face_geometry_hash(centroid, normal), [])
 
 
 def _edge_lineage_tokens(ed: dict, edge_lineage: dict[str, list[str]] | None) -> list[str]:
-    """Get per-edge entity tokens from the lineage map, or empty list."""
+    """Get per-edge entity tokens from the lineage map, or empty list.
+
+    Keyed on the copy-stable edge geometry hash, mirroring _face_tokens.
+    """
     if edge_lineage is None:
         return []
-    eh = ed.get("_occ_hash", "")
-    if not eh:
+    try:
+        key = edge_geometry_hash(ed)
+    except Exception:
         return []
-    return edge_lineage.get(eh, [])
+    return edge_lineage.get(key, [])
 
 
 def _unit_cube_mesh() -> MeshDict:
@@ -795,6 +843,11 @@ def _tessellate_and_assemble_faces(
     face_data, triangle_to_face, face_queries, all_vertices, all_faces = (
         _init_mesh_accumulators()
     )
+    # With a geom-keyed per-face lineage map every face is keyed by its own
+    # tokens; the body-wide profile blob is suppressed so a single-token side
+    # query is not shadowed by a cap that carries the whole profile. Bodies with
+    # no lineage (or legacy subshape-keyed lineage) keep the profile fallback.
+    fallback_pq = None if is_geom_keyed_lineage(face_lineage, "gface_") else profile_queries
     try:
         raw_faces = _sort_shape_faces(solid, deflection=deflection, angular_deflection=angular_deflection)
         for face_idx, (face, verts, idxs, centroid, normal, surface_type) in enumerate(raw_faces):
@@ -808,8 +861,8 @@ def _tessellate_and_assemble_faces(
                 )
                 query = _build_face_query(
                     created_by, body_id, face_idx, centroid, normal,
-                    surface_type, profile_queries=profile_queries,
-                    face_tokens=_face_tokens(face, face_lineage),
+                    surface_type, profile_queries=fallback_pq,
+                    face_tokens=_face_tokens(centroid, normal, face_lineage),
                 )
                 if query:
                     face_queries.append(query)
@@ -1079,6 +1132,10 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
     edges: list[dict] = []
     edge_queries: list[str] = []
 
+    # See _tessellate_and_assemble_faces: with a geom-keyed edge lineage map the
+    # body-wide profile blob is suppressed so per-edge tokens are not shadowed.
+    fallback_pq = None if is_geom_keyed_lineage(edge_lineage, "gedge_") else profile_queries
+
     for idx, (ed, _) in enumerate(raw_edges):
         edges.append(ed)
         if created_by:
@@ -1089,8 +1146,8 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
                 e_tokens = _edge_lineage_tokens(ed, edge_lineage)
                 if e_tokens:
                     ids.extend(e_tokens)
-                elif profile_queries:
-                    ids.extend(profile_queries)
+                elif fallback_pq:
+                    ids.extend(fallback_pq)
                 edge_queries.append(make_ancestry_query(ids, edge_type))
             else:
                 # no body_id — geom-hash + created_by, never index-ref

@@ -167,14 +167,19 @@ def test_build_mesh_includes_brep_face_metadata_and_queries():
     assert len(mesh["triangle_to_face"]) == len(mesh["faces"])
     assert len(mesh["face_queries"]) == len(mesh["face_data"])
     from oversolved.kernel.geom_hash import face_geometry_hash, face_normal_hash
+    from oversolved.kernel.query import _parse_ancestry
     fd0 = mesh["face_data"][0]
     expected_hash = face_geometry_hash(fd0["centroid"], fd0["normal"])
     expected_normal_hash = face_normal_hash(fd0["normal"])
-    assert mesh["face_queries"][0] == make_ancestry_query(
-        [f"@{expected_hash}", f"@{expected_normal_hash}", "@ex1", "@body_ex1",
-         "@sk1/bottom", "@sk1/left", "@sk1/right", "@sk1/top"],
-        "flatface",
-    )
+    # Per-face lineage: a face's query leads with its precise + orientation geom
+    # hashes, then @created_by/@body, then ONLY that face's own profile tokens.
+    # A lateral face carries exactly its one bounding sketch line (not the whole
+    # body-wide profile blob, which was the pre-lineage behaviour).
+    ids, type_r = _parse_ancestry(mesh["face_queries"][0])
+    assert type_r == "flatface"
+    assert ids[:4] == [f"@{expected_hash}", f"@{expected_normal_hash}", "@ex1", "@body_ex1"]
+    sketch_tokens = [i for i in ids if i.startswith("@sk1/")]
+    assert sketch_tokens == ["@sk1/left"], sketch_tokens
 
 
 def test_build_returns_edge_queries_and_vertices():

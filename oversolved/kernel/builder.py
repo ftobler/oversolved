@@ -11,12 +11,12 @@ if TYPE_CHECKING:
     from OCP.TopoDS import TopoDS_Shape
 from oversolved.kernel.cadquery_ops import _normal_to_frame, _ensure_occ
 from oversolved.kernel.ocp_ops import ocp_copy_shape
-from oversolved.kernel.geom_hash import face_geometry_hash, face_normal_hash, edge_geometry_hash, vertex_geometry_hash
+from oversolved.kernel.geom_hash import face_geometry_hash, face_normal_hash, edge_geometry_hash, vertex_geometry_hash, is_geom_keyed_lineage
 from oversolved.kernel.query import (
     Repository, emit_wire, absolute, _evict_ancestry_and_register, ref,
     _current_feature_id,
 )
-from oversolved.kernel.geometry_tessellation import MeshDict
+from oversolved.kernel.geometry_tessellation import MeshDict, _edge_lineage_tokens, _face_tokens
 from oversolved.kernel.types3d import Body, FeatureCheckpoint, BuildState
 from oversolved.kernel.solver import _init_global_repo, _try_solve_feature
 from oversolved.kernel.solver_constants import _BUILTIN_PLANE_RESULTS
@@ -411,7 +411,15 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: MeshDict) -> Non
             emit_wire(absolute(face_created_by)),
             emit_wire(absolute(body.id)),
         ]
-        if body.profile_queries:
+        # Thread the SAME per-face lineage tokens the mesh query carries into the
+        # registration key, so query.non_hash ⊆ key by construction and sibling
+        # faces resolve by their own ancestry rather than the body-wide profile
+        # blob. When a geom-keyed per-face lineage map is active the profile blob
+        # is suppressed (mirroring the query side); bodies without lineage (or
+        # legacy subshape-keyed lineage) fall back to profile_queries.
+        if is_geom_keyed_lineage(body.face_lineage, "gface_"):
+            ancestor_ids.extend(_face_tokens(centroid, normal, body.face_lineage))
+        elif body.profile_queries:
             ancestor_ids.extend(body.profile_queries)
         x_axis, y_axis = _normal_to_frame(normal)
         payload = {
@@ -549,7 +557,11 @@ def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_quer
             emit_wire(absolute(edge_created_by)),
             emit_wire(absolute(body.id)),
         ]
-        if body.profile_queries:
+        # Same single-source-of-truth as faces: carry the per-edge lineage tokens
+        # the edge query uses (else the profile blob, only for legacy bodies).
+        if is_geom_keyed_lineage(body.edge_lineage, "gedge_"):
+            ancestor_ids.extend(_edge_lineage_tokens(edge, body.edge_lineage))
+        elif body.profile_queries:
             ancestor_ids.extend(body.profile_queries)
         edge_type = "straightedge" if edge.get("kind") == "line" else "edge"
         payload: dict[str, Any] = {

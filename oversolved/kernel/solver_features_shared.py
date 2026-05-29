@@ -533,10 +533,19 @@ def _transfer_boolean_lineage(
     target_face_list = _face_geometry_list(old_target_shape)
     tool_face_list = _face_geometry_list(tool_shape) if tool_shape is not None else []
 
+    from oversolved.kernel.geom_hash import face_geometry_hash  # noqa: PLC0415
+    from oversolved.kernel.geometry_tessellation import _occ_edge_geom_hash  # noqa: PLC0415
+
+    def _face_gh(f: "Any") -> str:
+        cq_f = cq_shapes.Shape.cast(f)
+        return face_geometry_hash(list(_compute_face_centroid(cq_f)), list(_compute_face_normal(cq_f)))
+
     def _lineage_tokens(f: "Any", lineage_dict: dict[str, list[str]] | None) -> list[str] | None:
+        # Lineage is geom-hash keyed (see lineage-stable-keying.md), so look up
+        # by the face geometry hash rather than the copy-fragile subshape hash.
         if lineage_dict is None:
             return None
-        return lineage_dict.get(str(hash(f)))
+        return lineage_dict.get(_face_gh(f))
 
     def _face_geom_key(c: list, a: float, n: list) -> tuple:
         return (round(c[0], 6), round(c[1], 6), round(c[2], 6),
@@ -575,7 +584,7 @@ def _transfer_boolean_lineage(
             if src is not None:
                 tokens = _lineage_tokens(src, body.face_lineage)
                 if tokens:
-                    new_face_lineage[str(hash(output_face))] = tokens
+                    new_face_lineage[_face_gh(output_face)] = tokens
 
     # New faces: match against tool shape's faces.
     if diff.new_faces and tool_face_lineage:
@@ -584,7 +593,7 @@ def _transfer_boolean_lineage(
             if src is not None:
                 tokens = _lineage_tokens(src, tool_face_lineage)
                 if tokens:
-                    new_face_lineage[str(hash(output_face))] = tokens
+                    new_face_lineage[_face_gh(output_face)] = tokens
 
     body.face_lineage = new_face_lineage
 
@@ -596,17 +605,19 @@ def _transfer_boolean_lineage(
         edge_exp = TopExp_Explorer(body.shape, TopAbs_EDGE)
         while edge_exp.More():
             se = edge_exp.Current()
-            sh = str(hash(se))
+            egh = _occ_edge_geom_hash(se)
+            if egh is None:
+                edge_exp.Next()
+                continue
             eids: list[str] = []
             seen: set[str] = set()
             for face in e2f.FindFromKey(se):
-                fh = str(hash(face))
-                for eid in new_face_lineage.get(fh, []):
+                for eid in new_face_lineage.get(_face_gh(face), []):
                     if eid not in seen:
                         seen.add(eid)
                         eids.append(eid)
             if eids:
-                new_edge_lineage[sh] = eids
+                new_edge_lineage[egh] = eids
             edge_exp.Next()
         body.edge_lineage = new_edge_lineage
 
