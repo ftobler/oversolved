@@ -648,11 +648,27 @@ class Repository:
             if exact_matches:
                 candidate_ids = exact_matches
             else:
+                # Collect every distinct coercion result rather than returning the
+                # first: two candidates that coerce to different elements is an
+                # ambiguous query and must fail loud, not silently pick one
+                # (fail-safe over fail-wrong). Candidates coercing to the same
+                # object -- e.g. several faces of one body coercing to that body's
+                # solid -- dedupe to a single result and resolve cleanly.
+                coerced_results: list[Any] = []
+                seen: set[int] = set()
                 for eid in candidate_ids:
                     element = self.elements.get(eid)
                     coerced = _coerce_type(element, type_restriction, body_store, self.elements)
-                    if coerced is not None:
-                        return coerced
+                    if coerced is not None and id(coerced) not in seen:
+                        seen.add(id(coerced))
+                        coerced_results.append(coerced)
+                if len(coerced_results) == 1:
+                    return coerced_results[0]
+                if len(coerced_results) > 1:
+                    raise AmbiguousQueryError(
+                        f"Query coerced to {len(coerced_results)} distinct "
+                        f"'{type_restriction}' elements"
+                    )
                 candidate_ids = []
 
         if len(candidate_ids) > 1 and hash_ids:

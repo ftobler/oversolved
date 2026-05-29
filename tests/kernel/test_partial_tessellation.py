@@ -22,6 +22,15 @@ _DUMMY_SHAPE = object()
 _FAKE_MESH: dict = {"vertices": [], "face_data": [], "vertex_queries": [], "edge_queries": []}
 _FAKE_EDGES: dict = {"edges": [], "edge_queries": []}
 _FAKE_VERTS: dict = {"vertices": [], "vertex_queries": []}
+# A populated mesh flagged as fallback: vertices present but tessellation failed.
+_FAKE_FALLBACK_MESH: dict = {
+    "vertices": [[0, 0, 0], [1, 0, 0], [1, 1, 0]],
+    "faces": [[0, 1, 2]],
+    "face_data": [],
+    "triangle_to_face": [0],
+    "face_queries": [],
+    "is_fallback": True,
+}
 
 
 def _make_body(bid: str = "body_ex1") -> Body:
@@ -63,6 +72,17 @@ def test_tessellate_full_success_has_no_mesh_error():
         entry = _tessellate_body_geometry(body)
     assert "mesh" in entry
     assert "mesh_error" not in entry
+
+
+def test_tessellate_fallback_cube_surfaces_mesh_error():
+    """A unit-cube fallback (is_fallback) becomes a mesh_error, not silent geometry."""
+    body = _make_body()
+    with mock.patch("oversolved.kernel.geometry_tessellation.solid_to_mesh", return_value=_FAKE_FALLBACK_MESH), \
+         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_edges", return_value=_FAKE_EDGES), \
+         mock.patch("oversolved.kernel.geometry_tessellation.solid_to_vertices", return_value=_FAKE_VERTS):
+        entry = _tessellate_body_geometry(body)
+    assert "mesh" not in entry, "fallback cube must not be shipped as real geometry"
+    assert entry.get("mesh_error")
 
 
 def test_tessellate_bodies_skips_partial_entry():

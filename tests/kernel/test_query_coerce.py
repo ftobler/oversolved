@@ -1,5 +1,6 @@
 """Tests for smart query type coercion in Repository.query()."""
-from oversolved.kernel.query import Repository, make_ancestry_query
+import pytest
+from oversolved.kernel.query import Repository, make_ancestry_query, AmbiguousQueryError
 
 
 class FakeBody:
@@ -109,6 +110,43 @@ def test_query_coerce_face_to_edge():
     result = repo.query(q, body_store=body_store)
     assert isinstance(result, dict)
     assert result["type"] == "straightedge"
+
+
+def test_query_coerce_ambiguous_distinct_solids_raises():
+    """Two candidates coercing to different solids is ambiguous -> fail loud.
+
+    Previously the coercion loop returned the first match silently (fail-wrong).
+    """
+    repo = Repository()
+    body_store = {"body_a": FakeBody("body_a"), "body_b": FakeBody("body_b")}
+    repo.register_ancestor(
+        ["@shared"],
+        {"type": "flatface", "body_id": "body_a", "face_index": 0, "created_by": "exA"},
+    )
+    repo.register_ancestor(
+        ["@shared"],
+        {"type": "flatface", "body_id": "body_b", "face_index": 0, "created_by": "exB"},
+    )
+    q = make_ancestry_query(["@shared"], type_restriction="solid")
+    with pytest.raises(AmbiguousQueryError):
+        repo.query(q, body_store=body_store)
+
+
+def test_query_coerce_same_solid_not_ambiguous():
+    """Several faces of one body coerce to the same solid -> resolve cleanly."""
+    repo = Repository()
+    body_store = {"body_ex1": FakeBody("body_ex1")}
+    repo.register_ancestor(
+        ["@shared"],
+        {"type": "flatface", "body_id": "body_ex1", "face_index": 0, "created_by": "ex1"},
+    )
+    repo.register_ancestor(
+        ["@shared"],
+        {"type": "flatface", "body_id": "body_ex1", "face_index": 1, "created_by": "ex1"},
+    )
+    q = make_ancestry_query(["@shared"], type_restriction="solid")
+    result = repo.query(q, body_store=body_store)
+    assert result is body_store["body_ex1"]
 
 
 def test_query_coerce_solid_to_edge():

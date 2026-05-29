@@ -625,6 +625,13 @@ def _tessellate_body_geometry(body: Body, tess_cache: dict[int, dict] | None = N
         entry["mesh_error"] = str(exc)
         return entry
 
+    # A fallback unit cube means tessellation produced no geometry. Surface it
+    # as a mesh_error instead of silently shipping a 1x1x1 cube the user would
+    # mistake for real geometry (fail-safe over fail-wrong).
+    if mesh.get("is_fallback"):
+        entry["mesh_error"] = "tessellation produced no geometry"
+        return entry
+
     # Rewrite query strings for boolean-new elements so the @created_by tag
     # matches what _register_brep_*_ancestry registers (body.modified_by[-1]
     # for new elements instead of body.created_by).
@@ -780,6 +787,8 @@ def build(
         try:
             from oversolved.kernel.geometry_tessellation import solid_to_mesh, solid_to_edges, solid_to_vertices
             mesh = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id)
+            if mesh.get("is_fallback"):
+                return  # tessellation failed; don't register unit-cube ancestry
             _register_brep_face_ancestry(global_repo, body, mesh)
             verts = solid_to_vertices(body.shape, created_by=body.created_by, body_id=body.id)
             _register_brep_vertex_ancestry(global_repo, body, verts["vertices"], verts["vertex_queries"])
