@@ -284,3 +284,51 @@ def test_cylinder_side_face_resolves_by_circle_ancestry():
     resolved = repo.query(_strip_geom_hashes(wall_queries[0]))
     assert resolved is not None, "cylinder wall did not resolve by ancestry alone"
     assert resolved.get("type") in ("face", "cylinderface")
+
+
+# ─── boolean-new faces resolve by ancestry to the cutting feature ───
+
+def _thru_cut_spec():
+    """A 10x10x10 box (ex1) with a 4x4 thru-hole cut (ex2)."""
+    sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
+    ex1 = extrude_spec("sk1", "ex1", distance=10.0)
+    sk2 = rect_sketch_spec(w=4.0, h=4.0, sketch_id="sk2")
+    sk2["initial"] = {"bottom": [3, 3, 7, 3], "right": [7, 3, 7, 7],
+                      "top": [7, 7, 3, 7], "left": [3, 7, 3, 3]}
+    ex2 = {"id": "ex2", "kind": "extrude", "label": "cut", "sketch": "$sk2",
+           "distance": 10.0, "direction": "normal", "operation": "cut"}
+    return {"features": [sk1, ex1, sk2, ex2]}
+
+
+def test_boolean_new_face_resolves_by_ancestry_to_cutting_feature():
+    """A cut wall resolves by ancestry alone to the CUTTING feature (ex2).
+
+    Boolean-new faces are tagged @created_by = modified_by[-1] (the cutting
+    feature) in both the mesh query and the registration; the boolean lineage
+    re-key also gives them the cutter's profile tokens. So a hash-stripped cut
+    wall query resolves to exactly one ex2-owned face -- closing the old
+    created_by divergence where new faces could only resolve by geometry hash.
+    """
+    pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
+    from oversolved.kernel.builder import build, _repo_from_snapshot
+
+    r = build(_thru_cut_spec())
+    assert r["result"]["ex2"]["status"] == "ok"
+    body_out = r["bodies"]["body_ex1"]
+    repo = _repo_from_snapshot(r["_build_state"].checkpoints["ex2"].repo_snapshot)
+
+    cut_walls = [q for q in body_out["mesh"]["face_queries"] if "@sk2/" in str(_non_hash_ancestor_set(q))]
+    assert len(cut_walls) == 4, f"expected 4 cut walls tagged to ex2, got {len(cut_walls)}"
+
+    for q in cut_walls:
+        nonhash = _non_hash_ancestor_set(q)
+        assert "@ex2" in nonhash and "@ex1" not in nonhash, (
+            f"cut wall should be owned by the cutting feature ex2, not ex1: {sorted(nonhash)}"
+        )
+        resolved = repo.query(_strip_geom_hashes(q))
+        assert resolved is not None, f"cut wall did not resolve by ancestry: {q!r}"
+        assert resolved.get("created_by") == "ex2", (
+            f"resolved face created_by={resolved.get('created_by')}, expected ex2 "
+            "(query/registration created_by must agree)"
+        )
