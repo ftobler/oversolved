@@ -105,8 +105,7 @@ def test_boolean_intersection_body_carries_brep_diff():
     from oversolved.kernel.builder import build
 
     r = build(_two_overlapping_boxes_intersection())
-    if r["result"]["bool1"]["status"] != "ok":
-        pytest.skip(f"intersection did not apply: {r['result']['bool1']}")
+    assert r["result"]["bool1"]["status"] == "ok", f"intersection did not apply: {r['result']['bool1']}"
 
     body = r["_build_state"].checkpoints["bool1"].body_store_snapshot.get("body_ex1")
     assert body is not None
@@ -117,8 +116,7 @@ def test_boolean_intersection_faces_tagged_with_intersection_feature():
     from oversolved.kernel.builder import build
 
     r = build(_two_overlapping_boxes_intersection())
-    if r["result"]["bool1"]["status"] != "ok":
-        pytest.skip(f"intersection did not apply: {r['result']['bool1']}")
+    assert r["result"]["bool1"]["status"] == "ok", f"intersection did not apply: {r['result']['bool1']}"
 
     cb = _created_by_set(r, "bool1", "body_ex1", _FACE_TYPES)
     assert "bool1" in cb, f"expected intersection feature to own at least one face, got {cb}"
@@ -292,8 +290,7 @@ def test_mirror_merge_carries_brep_diff_and_tags_feature():
     from oversolved.kernel.builder import build
 
     r = build(_mirror_merge_spec())
-    if r["result"]["mir1"]["status"] != "ok":
-        pytest.skip(f"mirror did not apply: {r['result']['mir1']}")
+    assert r["result"]["mir1"]["status"] == "ok", f"mirror did not apply: {r['result']['mir1']}"
     body = r["_build_state"].checkpoints["mir1"].body_store_snapshot.get("body_ex1")
     assert body is not None
     assert body.brep_diff is not None, "merged mirror body should carry brep_diff"

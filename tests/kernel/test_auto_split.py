@@ -106,6 +106,7 @@ def test_auto_split_via_full_builder():
     correctly attribute both bodies to the extrude feature.
     """
     pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
     from oversolved.kernel.builder import build
 
     # Two separate 5x5 squares, 10 units apart -- no touching, so auto-split fires.
@@ -155,8 +156,7 @@ def test_auto_split_via_full_builder():
     extrude = {"id": "ex1", "kind": "extrude", "sketch": "$sk1", "distance": 5.0, "direction": "normal", "operation": "add"}
 
     r = build({"features": [two_loop_sketch, extrude]})
-    if r["result"]["ex1"]["status"] != "ok":
-        pytest.skip(f"two-loop sketch extrude failed: {r['result']['ex1']}")
+    assert r["result"]["ex1"]["status"] == "ok", f"two-loop sketch extrude failed: {r['result']['ex1']}"
 
     bodies = r["bodies"]
     body_ids = list(bodies.keys())

@@ -66,6 +66,33 @@ def _copy_shape(shape: TopoDS_Shape | None) -> TopoDS_Shape | None:
         return None
 
 
+def _copy_body(body: Body) -> Body:
+    """Return a defensive copy of a Body dataclass."""
+    return Body(
+        id=body.id,
+        created_by=body.created_by,
+        modified_by=list(body.modified_by),
+        shape=_copy_shape(body.shape),
+        sketch_id=body.sketch_id,
+        brep_diff=body.brep_diff,
+        profile_queries=list(body.profile_queries),
+    )
+
+
+def _snapshot_repo(repo: Repository) -> dict[str, Any]:
+    """Deep-snapshot the repository's three mutable index dicts."""
+    return {
+        "elements": dict(repo.elements),
+        "ancestral": {k: list(v) for k, v in repo.ancestral.items()},
+        "by_geom_hash": {k: list(v) for k, v in repo.by_geom_hash.items()},
+    }
+
+
+def _snapshot_bodies(body_store: dict[str, Body]) -> dict[str, Body]:
+    """Snapshot every body in the store via defensive copy."""
+    return {bid: _copy_body(body) for bid, body in body_store.items()}
+
+
 def _extract_all_keys(mod: Any) -> frozenset[str]:
     """Return mod.ALL_KEYS; raise ImportError if the attribute is absent or wrong type."""
     keys = getattr(mod, "ALL_KEYS", None)
@@ -750,18 +777,7 @@ def build(
         last_clean_fid = features[first_dirty - 1].get("id", "")
         checkpoint = prev_state.checkpoints[last_clean_fid]
         global_repo = _repo_from_snapshot(checkpoint.repo_snapshot)
-        body_store = {
-            bid: Body(
-                id=body.id,
-                created_by=body.created_by,
-                modified_by=list(body.modified_by),
-                shape=_copy_shape(body.shape),
-                sketch_id=body.sketch_id,
-                brep_diff=body.brep_diff,
-                profile_queries=list(body.profile_queries),
-            )
-            for bid, body in checkpoint.body_store_snapshot.items()
-        }
+        body_store = _snapshot_bodies(checkpoint.body_store_snapshot)
         for fid in prev_state.feature_order[:first_dirty]:
             result[fid] = prev_state.checkpoints[fid].result
             new_checkpoints[fid] = prev_state.checkpoints[fid]
@@ -808,23 +824,8 @@ def build(
             new_checkpoints[fid] = FeatureCheckpoint(
                 spec=copy.deepcopy(feature),
                 result={"status": "suppressed"},
-                repo_snapshot={
-                    "elements": dict(global_repo.elements),
-                    "ancestral": {k: list(v) for k, v in global_repo.ancestral.items()},
-                    "by_geom_hash": {k: list(v) for k, v in global_repo.by_geom_hash.items()},
-                },
-                body_store_snapshot={
-                    bid: Body(
-                        id=body.id,
-                        created_by=body.created_by,
-                        modified_by=list(body.modified_by),
-                        shape=_copy_shape(body.shape),
-                        sketch_id=body.sketch_id,
-                        brep_diff=body.brep_diff,
-                        profile_queries=list(body.profile_queries),
-                    )
-                    for bid, body in body_store.items()
-                },
+                repo_snapshot=_snapshot_repo(global_repo),
+                body_store_snapshot=_snapshot_bodies(body_store),
             )
             result[fid] = {"status": "suppressed"}
             continue
@@ -855,23 +856,8 @@ def build(
         new_checkpoints[fid] = FeatureCheckpoint(
             spec=copy.deepcopy(feature),
             result=dict(feature_result),
-            repo_snapshot={
-                "elements": dict(global_repo.elements),
-                "ancestral": {k: list(v) for k, v in global_repo.ancestral.items()},
-                "by_geom_hash": {k: list(v) for k, v in global_repo.by_geom_hash.items()},
-            },
-            body_store_snapshot={
-                bid: Body(
-                    id=body.id,
-                    created_by=body.created_by,
-                    modified_by=list(body.modified_by),
-                    shape=_copy_shape(body.shape),
-                    sketch_id=body.sketch_id,
-                    brep_diff=body.brep_diff,
-                    profile_queries=list(body.profile_queries),
-                )
-                for bid, body in body_store.items()
-            },
+            repo_snapshot=_snapshot_repo(global_repo),
+            body_store_snapshot=_snapshot_bodies(body_store),
         )
 
     active_fids = {f.get("id", "") for f in all_features}

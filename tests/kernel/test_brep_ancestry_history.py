@@ -71,6 +71,7 @@ def test_ocp_boolean_with_history_pure_fuse_overlap_marks_shared_as_modified():
 def test_cut_body_carries_brep_diff():
     """After a cut, body.brep_diff is populated on the affected body."""
     pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
     from oversolved.kernel.builder import build
 
     sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
@@ -94,8 +95,7 @@ def test_cut_body_carries_brep_diff():
     ex2 = extrude_spec("sk2", "ex2", distance=12.0, operation="cut")
 
     r = build({"features": [sk1, ex1, sk2, ex2]})
-    if r["result"]["ex2"]["status"] != "ok":
-        pytest.skip(f"setup: cut didn't apply: {r['result']['ex2']}")
+    assert r["result"]["ex2"]["status"] == "ok", f"setup: cut didn't apply: {r['result']['ex2']}"
 
     state = r["_build_state"]
     body = state.checkpoints["ex2"].body_store_snapshot.get("body_ex1")
@@ -108,6 +108,7 @@ def test_new_faces_tagged_with_cutting_feature_in_ancestry():
     """Face ancestry: walls of the cut hole have @created_by = cutting feature (ex2),
     not the original box feature (ex1)."""
     pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
     from oversolved.kernel.builder import build
 
     sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
@@ -125,8 +126,7 @@ def test_new_faces_tagged_with_cutting_feature_in_ancestry():
     ex2 = extrude_spec("sk2", "ex2", distance=12.0, operation="cut")
 
     r = build({"features": [sk1, ex1, sk2, ex2]})
-    if r["result"]["ex2"]["status"] != "ok":
-        pytest.skip(f"setup: cut didn't apply: {r['result']['ex2']}")
+    assert r["result"]["ex2"]["status"] == "ok", f"setup: cut didn't apply: {r['result']['ex2']}"
 
     body_out = r["bodies"]["body_ex1"]
     face_data = body_out["mesh"]["face_data"]
@@ -175,11 +175,11 @@ def _cut_fixture():
 def test_boolean_cut_new_edge_attributed_to_cutter():
     """Edges along the cut perimeter are tagged created_by=ex2, not ex1."""
     pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
     from oversolved.kernel.builder import build
 
     r = build(_cut_fixture())
-    if r["result"]["ex2"]["status"] != "ok":
-        pytest.skip(f"cut failed: {r['result']['ex2']}")
+    assert r["result"]["ex2"]["status"] == "ok", f"cut failed: {r['result']['ex2']}"
 
     state = r["_build_state"]
     elements = state.checkpoints["ex2"].repo_snapshot["elements"]
@@ -260,11 +260,11 @@ def test_compose_through_clean_passthrough_when_no_modifier():
 def test_boolean_cut_inherited_edge_keeps_original_creator():
     """Original cube edges (outer faces) stay attributed to ex1 after cut."""
     pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
     from oversolved.kernel.builder import build
 
     r = build(_cut_fixture())
-    if r["result"]["ex2"]["status"] != "ok":
-        pytest.skip(f"cut failed: {r['result']['ex2']}")
+    assert r["result"]["ex2"]["status"] == "ok", f"cut failed: {r['result']['ex2']}"
 
     state = r["_build_state"]
     elements = state.checkpoints["ex2"].repo_snapshot["elements"]
@@ -285,11 +285,11 @@ def test_boolean_cut_inherited_edge_keeps_original_creator():
 def test_boolean_cut_new_vertex_attributed_to_cutter():
     """Corners of the cut hole (purely new vertices) are tagged created_by=ex2."""
     pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
     from oversolved.kernel.builder import build
 
     r = build(_cut_fixture())
-    if r["result"]["ex2"]["status"] != "ok":
-        pytest.skip(f"cut failed: {r['result']['ex2']}")
+    assert r["result"]["ex2"]["status"] == "ok", f"cut failed: {r['result']['ex2']}"
 
     state = r["_build_state"]
     elements = state.checkpoints["ex2"].repo_snapshot["elements"]
@@ -310,11 +310,11 @@ def test_boolean_cut_new_vertex_attributed_to_cutter():
 def test_vertex_mixed_adjacency_falls_back():
     """Original cube corners (inherited-edge-only adjacency) keep created_by=ex1."""
     pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
     from oversolved.kernel.builder import build
 
     r = build(_cut_fixture())
-    if r["result"]["ex2"]["status"] != "ok":
-        pytest.skip(f"cut failed: {r['result']['ex2']}")
+    assert r["result"]["ex2"]["status"] == "ok", f"cut failed: {r['result']['ex2']}"
 
     state = r["_build_state"]
     elements = state.checkpoints["ex2"].repo_snapshot["elements"]
@@ -359,6 +359,7 @@ def test_fuse_new_edges():
 def test_brep_diff_absent_no_regression():
     """A fresh extrude (no brep_diff) registers all edges/vertices under body.created_by."""
     pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
     from oversolved.kernel.builder import build
     from solver_helpers import rect_sketch_spec, extrude_spec
 
@@ -380,12 +381,12 @@ def test_brep_diff_absent_no_regression():
 def test_mesh_face_queries_have_correct_created_by_after_cut():
     """Mesh face_queries must use @ex2 for new cut-hole walls, @ex1 for inherited."""
     pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
     from oversolved.kernel.builder import build
     from oversolved.kernel.query import _parse_ancestry, _is_geom_hash_id
 
     r = build(_cut_fixture())
-    if r["result"]["ex2"]["status"] != "ok":
-        pytest.skip(f"cut failed: {r['result']['ex2']}")
+    assert r["result"]["ex2"]["status"] == "ok", f"cut failed: {r['result']['ex2']}"
 
     face_queries = r["bodies"]["body_ex1"]["mesh"]["face_queries"]
     created_by_set: set[str] = set()
@@ -408,12 +409,12 @@ def test_mesh_face_queries_have_correct_created_by_after_cut():
 def test_mesh_edge_queries_have_correct_created_by_after_cut():
     """Mesh edge_queries must use @ex2 for new cut perimeter edges, @ex1 for inherited."""
     pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
     from oversolved.kernel.builder import build
     from oversolved.kernel.query import _parse_ancestry
 
     r = build(_cut_fixture())
-    if r["result"]["ex2"]["status"] != "ok":
-        pytest.skip(f"cut failed: {r['result']['ex2']}")
+    assert r["result"]["ex2"]["status"] == "ok", f"cut failed: {r['result']['ex2']}"
 
     edge_queries = r["bodies"]["body_ex1"]["edge_queries"]
     created_by_set: set[str] = set()
@@ -429,12 +430,12 @@ def test_mesh_edge_queries_have_correct_created_by_after_cut():
 def test_mesh_vertex_queries_have_correct_created_by_after_cut():
     """Mesh vertex_queries must use @ex2 for new hole-corner vertices, @ex1 for inherited."""
     pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
     from oversolved.kernel.builder import build
     from oversolved.kernel.query import _parse_ancestry
 
     r = build(_cut_fixture())
-    if r["result"]["ex2"]["status"] != "ok":
-        pytest.skip(f"cut failed: {r['result']['ex2']}")
+    assert r["result"]["ex2"]["status"] == "ok", f"cut failed: {r['result']['ex2']}"
 
     vertex_queries = r["bodies"]["body_ex1"]["vertex_queries"]
     created_by_set: set[str] = set()
@@ -454,11 +455,11 @@ def test_tessellation_query_resolves_after_cut():
     unique face element via tier 1 + hash narrowing, not just hash fallback.
     """
     pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
     from oversolved.kernel.builder import build
 
     r = build(_cut_fixture())
-    if r["result"]["ex2"]["status"] != "ok":
-        pytest.skip(f"cut failed: {r['result']['ex2']}")
+    assert r["result"]["ex2"]["status"] == "ok", f"cut failed: {r['result']['ex2']}"
 
     state = r["_build_state"]
     repo_snap = state.checkpoints["ex2"].repo_snapshot

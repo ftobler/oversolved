@@ -98,6 +98,7 @@ def test_bodies_empty_for_sketch_only_doc():
 
 def test_body_registered_as_solid_type():
     """A body with a compound/disjoint shape is still registered as type 'solid' in the repo."""
+    pytest.importorskip("cadquery")
     two_loop_sketch = {
         "id": "sk1",
         "kind": "sketch",
@@ -143,8 +144,7 @@ def test_body_registered_as_solid_type():
     }
     extrude = {"id": "ex1", "kind": "extrude", "sketch": "$sk1", "distance": 5.0, "direction": "normal", "operation": "add"}
     r = build({"features": [two_loop_sketch, extrude]})
-    if r["result"]["ex1"]["status"] != "ok":
-        pytest.skip(f"two-loop sketch extrude failed: {r['result']['ex1']}")
+    assert r["result"]["ex1"]["status"] == "ok", f"two-loop sketch extrude failed: {r['result']['ex1']}"
 
     elements = r["_build_state"].checkpoints["ex1"].repo_snapshot.get("elements", {})
     solid_entries = {k: v for k, v in elements.items() if isinstance(v, dict) and v.get("type") == "solid"}
