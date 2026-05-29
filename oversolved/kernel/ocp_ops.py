@@ -235,6 +235,21 @@ def ocp_face_uv_bounds(topo_face: TopoDS_Shape) -> tuple[float, float, float, fl
     return BRepTools.UVBounds_s(topo_face)
 
 
+def ocp_bounding_box(topo: TopoDS_Shape) -> tuple[list[float], list[float]]:
+    """Return ([xmin, ymin, zmin], [xmax, ymax, zmax]) AABB of a shape.
+
+    Geometry-derived (OCC Bnd_Box), so it is copy/tessellation stable and gives
+    the same frame at query-emission and registration time. A small gap is added
+    by the mesher; we read the exact box (UseTriangulation off) for stability.
+    """
+    from OCP.Bnd import Bnd_Box  # noqa: PLC0415
+    from OCP.BRepBndLib import BRepBndLib  # noqa: PLC0415
+    box = Bnd_Box()
+    BRepBndLib.Add_s(topo, box, False)
+    xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+    return [xmin, ymin, zmin], [xmax, ymax, zmax]
+
+
 def ocp_copy_shape(topo: TopoDS_Shape) -> TopoDS_Shape:
     """Return an independent copy of *topo* via BRepBuilderAPI_Copy."""
     from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy  # noqa: PLC0415

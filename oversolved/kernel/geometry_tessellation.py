@@ -398,6 +398,19 @@ def _entity_to_occ_edge_map(
     return mapping
 
 
+def body_aabb_frame(shape: Any) -> tuple[list[float], list[float]]:
+    """Return (center, half_extents) of a body's AABB, the classifier frame.
+
+    Computed once per body and shared by query emission and ancestry
+    registration so the classifier tokens they produce are identical.
+    """
+    from oversolved.kernel.ocp_ops import ocp_bounding_box  # noqa: PLC0415
+    mn, mx = ocp_bounding_box(_ensure_occ(shape))
+    center = [(mn[i] + mx[i]) / 2.0 for i in range(3)]
+    half = [(mx[i] - mn[i]) / 2.0 for i in range(3)]
+    return center, half
+
+
 def _occ_face_geom_hash(occ_face: Any) -> str | None:
     """Geometry-hash key for a raw OCC face, matching the mesh consumer's key.
 

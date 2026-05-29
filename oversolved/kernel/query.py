@@ -459,6 +459,17 @@ def _coerce_type(
     return None
 
 
+def _is_classifier_id(id_str: str) -> bool:
+    """Return True if id_str is a wire-format geometric-classifier token (@cls_*).
+
+    Classifiers ride the ancestry id list like geom-hash tokens but drive a
+    separate, optional resolver tier (spatial role: which end of the body); they
+    are partitioned out of both the ancestral subset match and the geom-hash
+    tier. See geometric-classifiers.md.
+    """
+    return id_str.startswith("@cls_")
+
+
 def _is_geom_hash_id(id_str: str) -> bool:
     """Return True if id_str is a wire-format geom_hash reference.
 

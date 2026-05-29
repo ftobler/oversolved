@@ -139,3 +139,39 @@ def vertex_geometry_hash(pt: list[float]) -> str:
     """Return 'gvertex_<hash>'."""
     digest = hashlib.sha256("|".join(str(round(v, 4)) for v in pt).encode()).hexdigest()[:16]
     return "gvertex_" + digest
+
+
+# Fraction of a half-extent an element's representative point must clear, on an
+# axis, to count as "on that side" of the body. 0.5 keeps it firmly to one end
+# (caps/rims clear it easily; mid-body geometry stays unclassified on that axis).
+_CLASSIFIER_REL = 0.5
+
+
+def geometry_classifiers(
+    point: list[float],
+    center: list[float],
+    half_extents: list[float],
+    rel: float = _CLASSIFIER_REL,
+) -> list[str]:
+    """Return cardinal/axial classifier tokens ('cls_zp', 'cls_xn', ...).
+
+    Coarse, edit-stable spatial role of a face/edge: for each world axis, emit a
+    +/- token when the element's representative *point* sits clearly past the
+    body AABB center on that axis. Used as a resolver tier between ancestry and
+    the (edit-fragile) geometry hash; see geometric-classifiers.md.
+
+    Stable under translation and per-axis scaling (the sign of the offset is
+    preserved); not stable under body-reorienting rotation. Axes whose half
+    extent is ~0 (degenerate) emit nothing.
+    """
+    tokens: list[str] = []
+    for axis, name in enumerate("xyz"):
+        h = half_extents[axis]
+        if h <= 1e-9:
+            continue
+        offset = point[axis] - center[axis]
+        if offset > rel * h:
+            tokens.append("cls_" + name + "p")
+        elif offset < -rel * h:
+            tokens.append("cls_" + name + "n")
+    return tokens
