@@ -667,7 +667,10 @@ class Repository:
         order_filter = self._order_filter(current_feature_id)
 
         hash_ids = [i for i in ids if _is_geom_hash_id(i)]
-        non_hash_ids = [i for i in ids if not _is_geom_hash_id(i)]
+        classifier_ids = [i for i in ids if _is_classifier_id(i)]
+        # The ancestral subset match uses only the real provenance ids: geom
+        # hashes and classifiers ride the same id list but drive their own tiers.
+        non_hash_ids = [i for i in ids if not _is_geom_hash_id(i) and not _is_classifier_id(i)]
 
         candidate_ids: list[str] = []
         if non_hash_ids:
@@ -707,6 +710,20 @@ class Repository:
                         f"'{type_restriction}' elements"
                     )
                 candidate_ids = []
+
+        if len(candidate_ids) > 1 and classifier_ids:
+            # Stable tier BEFORE the geom hash: narrow ancestral siblings by their
+            # spatial role (which end of the body). Graceful -- applied only when
+            # it leaves a non-empty set, so a staled/absent classifier degrades to
+            # the geom-hash tier rather than zeroing the result. See
+            # geometric-classifiers.md.
+            wanted = {c[1:] for c in classifier_ids}  # strip '@'
+            narrowed = [
+                eid for eid in candidate_ids
+                if wanted <= set((self.elements.get(eid) or {}).get("classifiers", []))
+            ]
+            if narrowed:
+                candidate_ids = narrowed
 
         if len(candidate_ids) > 1 and hash_ids:
             # Tie-break by geometry hash in specificity order: the precise
@@ -772,7 +789,11 @@ class Repository:
             return []
         order_filter = self._order_filter(current_feature_id)
         ids, type_restriction = _parse_ancestry(query_str)
-        query_set = frozenset(ids)
+        # Geom hashes and classifiers are never in the ancestral key; match on
+        # provenance ids only (mirrors _resolve_ancestry_ids).
+        query_set = frozenset(
+            i for i in ids if not _is_geom_hash_id(i) and not _is_classifier_id(i)
+        )
         candidate_ids: list[str] = []
         for registered_key, element_ids in self.ancestral.items():
             if query_set <= registered_key:  # query IDs are contained in registered ancestry
@@ -792,7 +813,9 @@ class Repository:
     ) -> list[Any]:
         """Typed variant of query_all accepting an AncestryQuery object."""
         order_filter = self._order_filter(current_feature_id)
-        query_set = frozenset(q.ancestor_ids)
+        query_set = frozenset(
+            i for i in q.ancestor_ids if not _is_geom_hash_id(i) and not _is_classifier_id(i)
+        )
         candidate_ids: list[str] = []
         for registered_key, element_ids in self.ancestral.items():
             if query_set <= registered_key:

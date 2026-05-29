@@ -36,6 +36,7 @@ from oversolved.kernel.geom_hash import (
     edge_geometry_hash,
     face_geometry_hash,
     face_normal_hash,
+    geometry_classifiers,
     is_geom_keyed_lineage,
     vertex_geometry_hash,
 )
@@ -411,6 +412,15 @@ def body_aabb_frame(shape: Any) -> tuple[list[float], list[float]]:
     return center, half
 
 
+def _body_frame_safe(shape: Any) -> tuple[list[float], list[float]]:
+    """body_aabb_frame, degrading to a zero-extent frame (no classifiers) on error."""
+    try:
+        return body_aabb_frame(shape)
+    except Exception as exc:
+        logger.warning("body AABB frame failed; skipping classifiers: %s", exc)
+        return [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]
+
+
 def _occ_face_geom_hash(occ_face: Any) -> str | None:
     """Geometry-hash key for a raw OCC face, matching the mesh consumer's key.
 
@@ -758,6 +768,7 @@ def _build_face_query(
     surface_type: str,
     profile_queries: list[str] | None = None,
     face_tokens: list[str] | None = None,
+    classifiers: list[str] | None = None,
 ) -> str | None:
     """Return ancestry query string for a face, or None if created_by is None."""
     if not created_by:
@@ -772,6 +783,10 @@ def _build_face_query(
             ids.extend(face_tokens)
         elif profile_queries:
             ids.extend(profile_queries)
+        # Classifier tokens (spatial role) ride the id list; the resolver
+        # partitions them into a separate tier above the geom hash.
+        if classifiers:
+            ids.extend(ref(c) for c in classifiers)
         return make_ancestry_query(ids, surface_type)
     element_id = f"face{face_idx}"
     abs_id = ref(created_by) + "/" + element_id
@@ -891,6 +906,7 @@ def _tessellate_and_assemble_faces(
     # no lineage (or legacy subshape-keyed lineage) keep the profile fallback.
     fallback_pq = None if is_geom_keyed_lineage(face_lineage, "gface_") else profile_queries
     try:
+        center, half = _body_frame_safe(solid)
         raw_faces = _sort_shape_faces(solid, deflection=deflection, angular_deflection=angular_deflection)
         for face_idx, (face, verts, idxs, centroid, normal, surface_type) in enumerate(raw_faces):
             face_area, triangle_count = _append_face_triangles(
@@ -898,13 +914,16 @@ def _tessellate_and_assemble_faces(
                 triangle_to_face, face_idx, verts, idxs,
             )
             if triangle_count > 0:
+                classifiers = geometry_classifiers(centroid, center, half)
                 face_data.append(
-                    {"centroid": centroid, "normal": normal, "area": face_area, "surface_type": surface_type}
+                    {"centroid": centroid, "normal": normal, "area": face_area,
+                     "surface_type": surface_type, "classifiers": classifiers}
                 )
                 query = _build_face_query(
                     created_by, body_id, face_idx, centroid, normal,
                     surface_type, profile_queries=fallback_pq,
                     face_tokens=_face_tokens(centroid, normal, face_lineage),
+                    classifiers=classifiers,
                 )
                 if query:
                     face_queries.append(query)

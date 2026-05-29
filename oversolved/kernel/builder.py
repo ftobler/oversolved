@@ -432,6 +432,9 @@ def _register_brep_face_ancestry(global_repo, body: Body, mesh: MeshDict) -> Non
             "origin": centroid,
             "x_axis": x_axis,
             "y_axis": y_axis,
+            # Spatial-role classifiers the mesh query carries; the resolver narrows
+            # ancestral siblings by these before the geom-hash tie-break.
+            "classifiers": list(face_info.get("classifiers", [])),
         }
         key = frozenset(ancestor_ids)
         existing_ids = global_repo.ancestral.get(key, [])
