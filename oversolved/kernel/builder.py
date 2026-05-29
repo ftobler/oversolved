@@ -76,6 +76,8 @@ def _copy_body(body: Body) -> Body:
         sketch_id=body.sketch_id,
         brep_diff=body.brep_diff,
         profile_queries=list(body.profile_queries),
+        face_lineage={k: list(v) for k, v in body.face_lineage.items()},
+        edge_lineage={k: list(v) for k, v in body.edge_lineage.items()},
     )
 
 
