@@ -460,16 +460,19 @@ export function resolveDimension(
 
   if (picks.length === 2) {
     const [a, b] = picks
-    // Same line clicked twice -> length. Both entityKinds must be known 'line';
-    // a null entityKind on either side falls through to the generic two-entity
-    // path (line_distance), see DimensionTool null-entityKind bug guard.
+    // Same entity clicked twice -> resolve as its single-entity dim
+    // (line -> length, arc -> radius, circle -> diameter). A pair dim between an
+    // entity and itself is degenerate, so we never fall through to a two-entity
+    // distance. The entityKind must be known and equal on both picks; a null
+    // entityKind on either side can't identify the entity and falls through to
+    // the generic two-entity path (see DimensionTool null-entityKind bug guard).
     if (
       a.target === b.target
       && !a.isVertex && !b.isVertex
-      && a.entityKind === 'line' && b.entityKind === 'line'
+      && a.entityKind != null && a.entityKind === b.entityKind
     ) {
       const rule = DIMENSION_RULES.find(
-        r => r.trigger.type === 'single_entity' && r.trigger.entityKind === 'line',
+        r => r.trigger.type === 'single_entity' && r.trigger.entityKind === a.entityKind,
       )
       return rule ? { constraintKind: rule.constraintKind } : null
     }

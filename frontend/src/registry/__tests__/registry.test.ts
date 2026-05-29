@@ -113,6 +113,15 @@ describe('dimension rules', () => {
     expect(resolveDimension([pick, pick])).toEqual({ constraintKind: 'length' })
   })
 
+  it('resolveDimension two picks: same arc/circle clicked twice → single-entity dim', () => {
+    // A pair dim between an entity and itself is degenerate; same-target picks
+    // resolve to the entity's own dim, not a distance.
+    const arc = { isVertex: false, target: 'A1', entityKind: 'arc' as const }
+    expect(resolveDimension([arc, arc])).toEqual({ constraintKind: 'radius' })
+    const circle = { isVertex: false, target: 'C1', entityKind: 'circle' as const }
+    expect(resolveDimension([circle, circle])).toEqual({ constraintKind: 'diameter' })
+  })
+
   it('resolveDimension two picks: vertex+vertex → point_distance', () => {
     expect(resolveDimension([
       { isVertex: true, target: 'V1' },
