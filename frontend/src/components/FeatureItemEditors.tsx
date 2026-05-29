@@ -3,6 +3,7 @@ import { PlaneEditor } from '@/components/PlaneEditor'
 import { PlaneSelector } from '@/components/PlaneSelector'
 import { ExtrudeEditor } from '@/components/ExtrudeEditor'
 import { RevolveEditor } from '@/components/RevolveEditor'
+import { SweepEditor } from '@/components/SweepEditor'
 import { FilletEditor } from '@/components/FilletEditor'
 import { ChamferEditor } from '@/components/ChamferEditor'
 import { BooleanEditor } from '@/components/BooleanEditor'
@@ -65,6 +66,14 @@ export function FeatureItemEditors({
       )}
       {feature.kind === 'revolve' && editingFeatureId === feature.id && (
         <RevolveEditor
+          feature={feature}
+          onMutation={onMutation}
+          features={fps}
+          partLabels={labels}
+        />
+      )}
+      {feature.kind === 'sweep' && editingFeatureId === feature.id && (
+        <SweepEditor
           feature={feature}
           onMutation={onMutation}
           features={fps}

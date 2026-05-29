@@ -36,7 +36,7 @@ from oversolved.kernel.solver_registry import (
 )
 from oversolved.kernel.solver_residuals import _build_residuals_fn
 from oversolved.kernel.solver_render import _constraint_render
-from oversolved.kernel.solver_features_brep import _solve_extrude, _solve_revolve
+from oversolved.kernel.solver_features_brep import _solve_extrude, _solve_revolve, _solve_sweep
 from oversolved.kernel.solver_features_array import _solve_array
 from oversolved.kernel.solver_features_circular_array import _solve_circular_array
 from oversolved.kernel.solver_features_import import _solve_import_step
@@ -189,6 +189,7 @@ def _build_feature_handlers() -> None:
         "fillet": _make_body_store_dispatcher(_solve_fillet),
         "chamfer": _make_body_store_dispatcher(_solve_chamfer),
         "revolve": _make_body_store_dispatcher(_solve_revolve),
+        "sweep": _make_body_store_dispatcher(_solve_sweep),
         "array": _make_body_store_dispatcher(_solve_array),
         "circular_array": _make_body_store_dispatcher(_solve_circular_array),
         "boolean": _make_body_store_dispatcher(_solve_boolean),

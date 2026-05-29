@@ -62,6 +62,14 @@ export function describeMutation(m: Mutation): string {
       return `add revolve profile ${m.sketchQuery}`
     case 'remove_revolve_profile':
       return `remove revolve profile at index ${m.index}`
+    case 'add_sweep':
+      return `add sweep ${m.label ?? m.featureId}`
+    case 'set_sweep_field':
+      return `set sweep ${m.field} to ${m.value}`
+    case 'add_sweep_profile':
+      return `add sweep profile ${m.sketchQuery}`
+    case 'remove_sweep_profile':
+      return `remove sweep profile at index ${m.index}`
     case 'add_import_step':
       return `import STEP ${m.label ?? m.featureId}`
     case 'add_fillet':

@@ -10,6 +10,7 @@ import { RollbackSlider } from '@/components/RollbackSlider'
 import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
 import featureExtrudeIcon from '@/assets/icons/feature-extrude.svg'
 import featureRevolveIcon from '@/assets/icons/feature-revolve.svg'
+import featureSweepIcon from '@/assets/icons/feature-sweep.svg'
 import featureOriginIcon from '@/assets/icons/feature-origin.svg'
 import featurePlaneIcon from '@/assets/icons/feature-plane.svg'
 import featureFilletIcon from '@/assets/icons/feature-fillet.svg'
@@ -35,6 +36,8 @@ const getFeatureIcon = (kind: string | undefined) => {
       return featureExtrudeIcon
     case 'revolve':
       return featureRevolveIcon
+    case 'sweep':
+      return featureSweepIcon
     case 'origin':
       return featureOriginIcon
     case 'fillet':
@@ -278,7 +281,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                   className="feature-icon"
                 />
                 {(() => {
-                  const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'circular_array' || feature.kind === 'hole' || feature.kind === 'transform' ? solveResults?.[feature.id] : undefined
+                  const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'sweep' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'circular_array' || feature.kind === 'hole' || feature.kind === 'transform' ? solveResults?.[feature.id] : undefined
                   const bodyResult = r && isBodyFeatureResult(r) ? r : undefined
                   const hasMeshError = bodyResult?.body_id
                     ? bodies?.[bodyResult.body_id]?.mesh_error : undefined

@@ -558,6 +558,45 @@ def revolve_profile_with_lineage(
     return solid, face_lineage, edge_lineage
 
 
+def sweep_profile_with_lineage(
+    loops: list[list[dict]],
+    plane: Frame3D | dict,
+    spine_edges: list,
+    sketch_id: str = "",
+) -> tuple[cq_shapes.Solid, dict[str, list[str]], dict[str, list[str]]]:
+    """Sweep profile loops along a spine wire and return (solid, face_lineage, edge_lineage).
+
+    Uses BRepOffsetAPI_MakePipeShell.Generated() to track per-face/edge lineage,
+    analogous to extrude_profile_with_lineage for MakePrism. Only the outer
+    boundary of the profile is swept; holes are not yet carried through the sweep.
+    """
+    from oversolved.kernel.ocp_ops import ocp_make_pipe_shell_lineage  # noqa: PLC0415
+    if not loops:
+        raise ValueError("sweep: no profile loops")
+    if not spine_edges:
+        raise ValueError("sweep: empty path")
+
+    face = sketch_loops_to_face(loops, plane)
+    entity_map = _entity_to_occ_edge_map(face, loops, plane)
+    occ_face = _ensure_occ(face)
+    outer_wire = face.outerWire()
+    spine_wire = make_wire(spine_edges)
+
+    shape, builder = ocp_make_pipe_shell_lineage(
+        _ensure_occ(outer_wire), _ensure_occ(spine_wire)
+    )
+    face_lineage, edge_lineage = _build_prism_lineage_map(occ_face, builder, entity_map)
+
+    token_prefix = f"@{sketch_id}/" if sketch_id else "@"
+    for tokens in face_lineage.values():
+        tokens[:] = [t if t.startswith("@") else token_prefix + t for t in tokens]
+    for tokens in edge_lineage.values():
+        tokens[:] = [t if t.startswith("@") else token_prefix + t for t in tokens]
+
+    solid = cq_shapes.Solid(shape)
+    return solid, face_lineage, edge_lineage
+
+
 def revolve_face(
     face: cq_shapes.Face,
     axis_origin: list[float],

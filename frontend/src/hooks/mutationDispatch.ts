@@ -29,6 +29,10 @@ import {
   applySetRevolveField,
   applyAddRevolveProfile,
   applyRemoveRevolveProfile,
+  applyAddSweep,
+  applySetSweepField,
+  applyAddSweepProfile,
+  applyRemoveSweepProfile,
   applyAddImportStep,
   applyAddFillet,
   applyAddChamfer,
@@ -138,6 +142,14 @@ export const mutationHandlers: MutationHandlers = {
     applyAddRevolveProfile(next, m.featureId, m.sketchQuery),
   remove_revolve_profile: (next, m) =>
     applyRemoveRevolveProfile(next, m.featureId, m.index),
+  add_sweep: (next, m) =>
+    applyAddSweep(next, m.featureId, m.label, m.sketchQuery, m.pathQuery),
+  set_sweep_field: (next, m) =>
+    applySetSweepField(next, m.featureId, m.field, m.value),
+  add_sweep_profile: (next, m) =>
+    applyAddSweepProfile(next, m.featureId, m.sketchQuery),
+  remove_sweep_profile: (next, m) =>
+    applyRemoveSweepProfile(next, m.featureId, m.index),
   add_import_step: (next, m) =>
     applyAddImportStep(next, m.featureId, m.fileId, m.label),
   add_fillet: (next, m) =>

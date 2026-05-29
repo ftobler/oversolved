@@ -48,6 +48,7 @@ const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
   plane: { field: 'plane' },
   extrude: { field: 'sketch', multi: true },
   revolve: { field: 'sketch', multi: true },
+  sweep: { field: 'sketch', multi: true },
   fillet: { field: 'edges', multi: true },
   chamfer: { field: 'edges', multi: true },
   hole: { field: 'sketch' },

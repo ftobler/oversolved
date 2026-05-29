@@ -5,6 +5,7 @@ import LoadingOverlay from '@/components/LoadingOverlay'
 
 import featureExtrudeIcon from '@/assets/icons/feature-extrude.svg'
 import featureRevolveIcon from '@/assets/icons/feature-revolve.svg'
+import featureSweepIcon from '@/assets/icons/feature-sweep.svg'
 import featureFilletIcon from '@/assets/icons/feature-fillet.svg'
 import featureChamferIcon from '@/assets/icons/feature-chamfer.svg'
 import featureBooleanIcon from '@/assets/icons/feature-boolean.svg'
@@ -118,6 +119,7 @@ export default function PartEditorPanel({
 
               <button className="editor-btn" title="Add Extrude (E)" onClick={() => handleAddFeature('extrude', { sketchQuery: '', distance: 10 })} disabled={readOnly}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
               <button className="editor-btn" title="Add Revolve" onClick={() => handleAddFeature('revolve', { sketchQuery: '', angle: 360 })} disabled={readOnly}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
+              <button className="editor-btn" title="Add Sweep" onClick={() => handleAddFeature('sweep', { sketchQuery: '', pathQuery: '' })} disabled={readOnly}><img src={featureSweepIcon} alt="Add Sweep" /></button>
               <button className="editor-btn" title="Add Fillet" onClick={() => handleAddFeature('fillet')} disabled={readOnly}><img src={featureFilletIcon} alt="Add Fillet" /></button>
               <button className="editor-btn" title="Add Chamfer" onClick={() => handleAddFeature('chamfer')} disabled={readOnly}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
               <button className="editor-btn" title="Add Hole" onClick={() => handleAddFeature('hole')} disabled={readOnly}><img src={featureHoleIcon} alt="Add Hole" /></button>

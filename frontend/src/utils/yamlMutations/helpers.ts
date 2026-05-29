@@ -50,3 +50,8 @@ export function normalizeRevolveSketch(sketch: string | string[]): string[] {
   if (Array.isArray(sketch)) return sketch
   return sketch ? [sketch] : []
 }
+
+export function normalizeSweepSketch(sketch: string | string[]): string[] {
+  if (Array.isArray(sketch)) return sketch
+  return sketch ? [sketch] : []
+}

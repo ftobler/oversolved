@@ -295,6 +295,32 @@ def ocp_make_revol_lineage(
     return builder.Shape(), builder
 
 
+def ocp_make_pipe_shell_lineage(
+    profile_wire: TopoDS_Shape, spine_wire: TopoDS_Shape,
+) -> tuple[TopoDS_Shape, Any]:
+    """Sweep ``profile_wire`` along ``spine_wire`` into a capped solid.
+
+    Returns (shape, builder); the builder exposes Generated() for per-face
+    lineage queries, analogous to ocp_make_revol_lineage. The profile is added
+    without contact/correction so the section keeps its orientation along the
+    default (corrected Frenet) spine trihedron.
+    """
+    from OCP.BRepOffsetAPI import BRepOffsetAPI_MakePipeShell  # noqa: PLC0415
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_RightCorner  # noqa: PLC0415
+    from OCP.TopoDS import TopoDS  # noqa: PLC0415
+    builder = BRepOffsetAPI_MakePipeShell(TopoDS.Wire_s(spine_wire))
+    # RightCorner gives a clean mitre at sharp (C0) spine joints; smooth spines
+    # are unaffected, so the default transition's self-intersection is avoided.
+    builder.SetTransitionMode(BRepBuilderAPI_RightCorner)
+    builder.Add(profile_wire, False, False)
+    builder.Build()
+    if not builder.IsDone():
+        raise ValueError("BRepOffsetAPI_MakePipeShell failed")
+    if not builder.MakeSolid():
+        raise ValueError("sweep: could not cap swept shell into a solid")
+    return builder.Shape(), builder
+
+
 def ocp_make_face_from_wire(outer_wire: TopoDS_Shape, hole_wires: list) -> TopoDS_Shape:
     """Build a planar face directly from OCC wires without running ShapeFix on inputs.
 

@@ -76,6 +76,13 @@ export interface RevolveFeatureDef {
   merge_target?: string
 }
 
+export interface SweepFeatureDef {
+  sketch: string | string[]  // profile reference(s)
+  path: string  // query for the spine: a sketch whose edges form the path
+  operation?: 'add' | 'cut' | 'new'
+  merge_target?: string
+}
+
 export interface DeleteBodyFeatureDef {
   body: string
 }
@@ -260,6 +267,7 @@ export interface PartFeature {
   definition?: PlaneDef
   extrude?: ExtrudeFeatureDef  // present when kind === 'extrude'
   revolve?: RevolveFeatureDef  // present when kind === 'revolve'
+  sweep?: SweepFeatureDef  // present when kind === 'sweep'
   fillet?: FilletFeatureDef  // present when kind === 'fillet'
   chamfer?: ChamferFeatureDef  // present when kind === 'chamfer'
   boolean?: BooleanFeatureDef  // present when kind === 'boolean'
@@ -564,6 +572,10 @@ export type Mutation =
   | { type: 'set_revolve_field'; featureId: string; field: keyof RevolveFeatureDef; value: unknown }
   | { type: 'add_revolve_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_revolve_profile'; featureId: string; index: number }
+  | { type: 'add_sweep'; featureId: string; label?: string; sketchQuery: string; pathQuery: string }
+  | { type: 'set_sweep_field'; featureId: string; field: keyof SweepFeatureDef; value: unknown }
+  | { type: 'add_sweep_profile'; featureId: string; sketchQuery: string }
+  | { type: 'remove_sweep_profile'; featureId: string; index: number }
   | { type: 'add_import_step'; featureId: string; fileId: string; label?: string }
   | { type: 'add_fillet'; featureId: string; label?: string }
   | { type: 'add_chamfer'; featureId: string; label?: string }

@@ -721,10 +721,10 @@ _SOLVER_FEATURE_KEYS = frozenset({
     "id", "kind",
     # sketch
     "plane", "entities", "constraints", "initial",
-    # brep: extrude / revolved
+    # brep: extrude / revolve / sweep
     "sketch", "distance", "depth", "operation", "direction",
-    "extrude", "revolve", "merge_target",
-    "angle", "axis_origin", "axis_direction", "axis",
+    "extrude", "revolve", "sweep", "merge_target",
+    "angle", "axis_origin", "axis_direction", "axis", "path",
     # fillet / chamfer
     "fillet", "chamfer", "edges", "radius",
     # import

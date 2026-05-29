@@ -1,6 +1,6 @@
-import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, DeleteBodyFeatureDef, HoleFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, DeleteBodyFeatureDef, HoleFeatureDef } from '@/types/cad'
 import { ALL_COORD_INDICES } from '@/registry'
-import { warn, round, findFeature, randomId, normalizeExtrudeSketch, normalizeRevolveSketch } from './helpers'
+import { warn, round, findFeature, randomId, normalizeExtrudeSketch, normalizeRevolveSketch, normalizeSweepSketch } from './helpers'
 
 // ─── Auto-hide consumed sketches (feature 223) ───
 
@@ -219,6 +219,67 @@ export function applyRemoveRevolveProfile(doc: PartDoc, featureId: string, index
   const current = normalizeRevolveSketch(feature.revolve.sketch)
   current.splice(index, 1)
   feature.revolve.sketch = current
+}
+
+// ─── Sweep ───
+
+export function applySetSweepField(doc: PartDoc, featureId: string, field: keyof SweepFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.sweep) {
+    warn(`applySetSweepField: feature ${featureId} has no sweep`)
+    return
+  }
+  setFeatureField(feature.sweep as unknown as Record<string, unknown>, field, value)
+}
+
+export function applyAddSweep(
+  doc: PartDoc,
+  featureId: string,
+  label: string | undefined,
+  sketchQuery: string,
+  pathQuery: string,
+): void {
+  if (!doc.features) doc.features = []
+  const feature: PartFeature = {
+    id: featureId,
+    kind: 'sweep',
+    label: label ?? 'Sweep',
+    sweep: {
+      sketch: sketchQuery ? [sketchQuery] : [],
+      path: pathQuery ?? '',
+    },
+  }
+  doc.features.push(feature)
+}
+
+export function applyAddSweepProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.sweep) {
+    warn(`applyAddSweepProfile: feature ${featureId} has no sweep`)
+    return
+  }
+  const current = normalizeSweepSketch(feature.sweep.sketch)
+  const idx = current.indexOf(sketchQuery)
+  if (idx >= 0) {
+    current.splice(idx, 1)
+  } else {
+    current.push(sketchQuery)
+    // Auto-hide consumed sketch (feature 223)
+    const sourceSketchId = findSketchFeatureIdFromQuery(doc, sketchQuery)
+    if (sourceSketchId) autoHideIfNotOverridden(doc, sourceSketchId, featureId)
+  }
+  feature.sweep.sketch = current
+}
+
+export function applyRemoveSweepProfile(doc: PartDoc, featureId: string, index: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.sweep) {
+    warn(`applyRemoveSweepProfile: feature ${featureId} has no sweep`)
+    return
+  }
+  const current = normalizeSweepSketch(feature.sweep.sketch)
+  current.splice(index, 1)
+  feature.sweep.sketch = current
 }
 
 // ─── Import Step ───

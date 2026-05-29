@@ -515,6 +515,26 @@ def toolbar_revolve(ctx):
     _arrowhead(ctx, end_x - 0.13, end_y + 0.08, math.degrees(end_angle) + 80, px(8))
 
 
+@icon("frontend/src/assets/icons/feature-sweep.svg")
+def toolbar_sweep(ctx):
+    # Sweep icon: a profile rectangle swept along a curved path arrow
+    # Profile rectangle at the start of the path
+    x0, x1 = 0.12, 0.34
+    y0, y1 = 0.18, 0.50
+    ctx.move_to(x0, y0)
+    ctx.line_to(x1, y0)
+    ctx.line_to(x1, y1)
+    ctx.line_to(x0, y1)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # Curved path the profile follows, from the rectangle down and to the right
+    ctx.move_to(0.23, 0.50)
+    ctx.curve_to(0.23, 0.80, 0.55, 0.85, 0.82, 0.70)
+    stroke(ctx, 1.5)
+    _arrowhead(ctx, 0.82, 0.70, -25, px(8))
+
+
 def _pencil(ctx):
     # Sketch/pencil icon (horizontal)
     # Pencil shaft
