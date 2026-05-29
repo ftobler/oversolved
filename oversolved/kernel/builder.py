@@ -821,13 +821,16 @@ def build(
                 return
 
             from oversolved.kernel.geometry_tessellation import solid_to_mesh, solid_to_edges, solid_to_vertices
-            mesh = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id)
+            pq = body.profile_queries if body.profile_queries else None
+            fl = body.face_lineage if body.face_lineage else None
+            el = body.edge_lineage if body.edge_lineage else None
+            mesh = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id, profile_queries=pq, face_lineage=fl)
             if mesh.get("is_fallback"):
                 return  # tessellation failed; don't register unit-cube ancestry
             _register_brep_face_ancestry(global_repo, body, mesh)
-            verts = solid_to_vertices(body.shape, created_by=body.created_by, body_id=body.id)
+            verts = solid_to_vertices(body.shape, created_by=body.created_by, body_id=body.id, profile_queries=pq)
             _register_brep_vertex_ancestry(global_repo, body, verts["vertices"], verts["vertex_queries"])
-            edges = solid_to_edges(body.shape, created_by=body.created_by, body_id=body.id)
+            edges = solid_to_edges(body.shape, created_by=body.created_by, body_id=body.id, profile_queries=pq, edge_lineage=el)
             _register_brep_edge_ancestry(global_repo, body, edges["edges"], edges["edge_queries"])
             _shape_tess_cache[shape_hash] = {
                 "id": body.id,

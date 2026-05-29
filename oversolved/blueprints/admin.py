@@ -263,6 +263,12 @@ def import_backup():
     if not file.filename or not file.filename.endswith('.zip'):
         return api_error("File must be a zip file", "BAD_REQUEST", 400)
 
+    # Best-effort compressed-size pre-check (None under chunked encoding).
+    MAX_IMPORT_FILE_SIZE = 100 * 1024 * 1024
+    compressed_size = request.content_length
+    if compressed_size is not None and compressed_size > MAX_IMPORT_FILE_SIZE:
+        return api_error("File too large", "CONTENT_TOO_LARGE", 413)
+
     try:
         MAX_ZIP_ENTRIES = 10000
         MAX_ZIP_DECOMPRESSED = 500 * 1024 * 1024
