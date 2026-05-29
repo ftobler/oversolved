@@ -58,9 +58,16 @@ element's query.
   extrude caps and cylinder rims; the only edit-stable discriminator for sibling
   edges (which have no `@gnormal_` fallback). Stable under translation + per-axis
   scale; not under body-reorienting rotation (body-local axes are future work).
-- **Line division** `@cls_pos`/`@cls_neg`, **circle containment**
-  `@cls_inner`/`@cls_outer` (planned): the 2D `classify_surface_*` primitives
-  exist (geometry_tessellation.py) but are not yet wired into the tier.
+- **Line division** (implemented): a sketch surface split from a same-ancestry
+  sibling by a line (e.g. a circle cut by a line) carries `cls_ld_<lineid>_p|n`,
+  the side of each shared bounding line taken in a canonical direction. A stable
+  alternative to the positional `surface:N` index. Stamped in `topology.py` and
+  registered on the surface element's payload.
+- **Circle containment** `@cls_inner`/`@cls_outer` (deferred): the existing
+  `classify_surface_by_circle_side` primitive is geometrically unsound for an
+  annulus (the ring's area-centroid sits in the hole), and the disk-vs-ring case
+  is a subset-ancestry, not same-ancestry, ambiguity. A correct discriminator
+  needs loop-nesting info; left for a follow-up.
 
 ## Feature-Plane References (`@<FEAT>`)
 
