@@ -244,10 +244,6 @@ def constraint_tangent(ctx):
     ctx.line_to(tx, y1)
     stroke(ctx, 2)
 
-    # # Small dot at tangent point
-    # ctx.arc(tx, cy, px(2.5), 0, 2 * math.pi)
-    # ctx.fill()
-
 
 @icon(
     "frontend/src/assets/icons/constraint-midpoint.svg", angle=-15
@@ -273,13 +269,9 @@ def constraint_concentric(ctx):
     # Parameters
     cx, cy = 0.5, 0.5  # shared center
     r_outer = 0.3  # outer ring radius
-    # r_inner = 0.20        # inner ring radius
 
     ctx.arc(cx, cy, r_outer, 0, 2 * math.pi)
     stroke(ctx, 1.5)
-
-    # ctx.arc(cx, cy, r_inner, 0, 2 * math.pi)
-    # stroke(ctx, 2)
 
     # Center dot
     ctx.arc(cx, cy, px(2.5), 0, 2 * math.pi)
@@ -461,34 +453,6 @@ def toolbar_help(ctx):
     ctx.arc(cx, cy - r * 0.35, r * 0.2, math.pi, 0)
     ctx.line_to(cx + r * 0.2, cy - r * 0.05)
     stroke(ctx, 1.5)
-
-
-# @icon("frontend/src/assets/icons/toolbar-visualizer.svg")
-# def toolbar_visualizer(ctx):
-#     # Bug icon
-#     # Head (circle)
-#     ctx.arc(0.5, 0.3, 0.1, 0, 2 * math.pi)
-#     stroke(ctx, 1.5)
-
-#     # Body
-#     ctx.move_to(0.5, 0.4)
-#     ctx.line_to(0.5, 0.7)
-#     stroke(ctx, 1.5)
-
-#     # Antennae
-#     ctx.move_to(0.45, 0.25)
-#     ctx.line_to(0.35, 0.1)
-#     ctx.move_to(0.55, 0.25)
-#     ctx.line_to(0.65, 0.1)
-#     stroke(ctx, 1.5)
-
-#     # Legs
-#     for x_offset in [-0.15, 0.15]:
-#         ctx.move_to(0.5 + x_offset, 0.5)
-#         ctx.line_to(0.5 + x_offset * 1.5, 0.65)
-#         ctx.move_to(0.5 + x_offset, 0.6)
-#         ctx.line_to(0.5 + x_offset * 1.5, 0.75)
-#     stroke(ctx, 1.5)
 
 
 @icon("frontend/src/assets/icons/feature-extrude.svg")
@@ -1286,13 +1250,6 @@ def feature_hole(ctx):
 
         ctx.restore()
 
-    # ctx.move_to(0.5, 0.5 - d)
-    # ctx.line_to(0.5, 0.5 + d)
-    # stroke(ctx, 1.5)
-    # ctx.move_to(0.5 - d, 0.5)
-    # ctx.line_to(0.5 + d, 0.5)
-    # stroke(ctx, 1.5)
-
 
 @icon("frontend/src/assets/icons/feature-mirror.svg")
 def feature_mirror(ctx):
@@ -1341,13 +1298,6 @@ def feature_transform(ctx):
     # but only top-left and bottom-right corners to avoid clutter
     partial_line(box_left, box_top, box_left + 0.3, box_top - 0.25, 0.3, 0.7)
     partial_line(box_left + box_w, box_top + box_h, box_left + 0.3 + box_w, box_top - 0.25 + box_h, 0.3, 0.65)
-
-    # # Arrow connecting centers
-    # cx0, cy0 = box_left + box_w / 2, box_top + box_h / 2
-    # cx1, cy1 = cx0 + 0.35, cy0 - 0.25
-    # ctx.move_to(cx0, cy0)
-    # ctx.line_to(cx1, cy1)
-    # stroke(ctx, 1.0)
 
 
 if __name__ == "__main__":

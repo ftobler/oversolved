@@ -1,5 +1,6 @@
 """Tests for the standalone task runner (no background thread)."""
 
+import argparse
 import pytest
 from datetime import datetime, timedelta, timezone
 from oversolved.db import Database, PostgreSQLConnection, PeriodicTaskStore
@@ -276,3 +277,44 @@ class TestCliArgs:
         args = parser.parse_args(["run_tasks", "--force-task", "document.empty_trash"])
         assert args.command == "run_tasks"
         assert args.force_task == "document.empty_trash"
+
+
+class TestRunTasksClosesDbOnce:
+    """run_tasks must close its DB exactly once on every path (no double-close)."""
+
+    def _run(self, monkeypatch, args):
+        from oversolved import cli
+        closes = {"n": 0}
+
+        class FakeDb:
+            def close(self):
+                closes["n"] += 1
+
+        monkeypatch.setattr(cli, "_get_db_from_config", lambda a, init_db=True: FakeDb())
+        monkeypatch.setattr(
+            "oversolved.periodic_tasks.TaskScheduler.run_due_tasks",
+            lambda self, db: [],
+        )
+        cli.run_tasks(args)
+        return closes["n"]
+
+    def test_single_run_closes_once(self, monkeypatch):
+        args = argparse.Namespace(force_task=None, loop=False)
+        assert self._run(monkeypatch, args) == 1
+
+    def test_force_task_closes_once(self, monkeypatch):
+        from oversolved import cli
+        closes = {"n": 0}
+
+        class FakeDb:
+            def close(self):
+                closes["n"] += 1
+
+        monkeypatch.setattr(cli, "_get_db_from_config", lambda a, init_db=True: FakeDb())
+        monkeypatch.setattr(
+            "oversolved.periodic_tasks.TaskScheduler.force_run_task",
+            lambda self, key, db: {"status": "success"},
+        )
+        args = argparse.Namespace(force_task="document.empty_trash", loop=False)
+        cli.run_tasks(args)
+        assert closes["n"] == 1

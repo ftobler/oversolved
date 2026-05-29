@@ -56,17 +56,6 @@ def _cron_next(cron_expr: str, from_time: datetime) -> datetime:
     return next_dt
 
 
-def _parse_cron(cron_expr: str) -> datetime:
-    """Parse a cron expression and return the next run time from now.
-
-    Supports simple expressions like:
-    - "0 2 * * *" (daily at 2:00 AM)
-    - "0 */6 * * *" (every 6 hours)
-    - "0 0 * * 0" (weekly on Sunday)
-    """
-    return _cron_next(cron_expr, datetime.now(timezone.utc))
-
-
 def is_task_due(last_run_at: str | None, cron_expr: str, now: datetime | None = None) -> bool:
     """Check if a task is due to run based on last_run_at and cron schedule."""
     if now is None:

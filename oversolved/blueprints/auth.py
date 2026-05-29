@@ -7,9 +7,22 @@ from oversolved.db import UserStore, SessionStore
 from oversolved.blueprints import get_db, require_csrf, api_error
 from oversolved.rate_limit import RateLimiter
 
-DUMMY_HASH = generate_password_hash("dummy")
-
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+_dummy_hash: str | None = None
+
+
+def _get_dummy_hash() -> str:
+    """Dummy bcrypt hash for timing-equalization on unknown users.
+
+    Computed on first use, not at import: generate_password_hash is ~250ms and
+    would otherwise run on every process/test startup whether login is hit or not.
+    """
+    global _dummy_hash
+    if _dummy_hash is None:
+        _dummy_hash = generate_password_hash("dummy")
+    return _dummy_hash
+
 
 # ─── Rate limiting for login ───
 
@@ -55,7 +68,7 @@ def login():
         or user_store.find_by_email(credential)
     )
     if user is None:
-        check_password_hash(DUMMY_HASH, password)
+        check_password_hash(_get_dummy_hash(), password)
         _record_login_failure(client_ip)
         return api_error("Invalid credentials", "INVALID_CREDENTIALS", 401)
     if not check_password_hash(user["password_hash"], password):

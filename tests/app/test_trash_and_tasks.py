@@ -11,7 +11,7 @@ from oversolved.db import (
     UserStore,
     PeriodicTaskStore,
 )
-from oversolved.periodic_tasks import TaskScheduler, EmptyTrashTask, _parse_cron
+from oversolved.periodic_tasks import TaskScheduler, EmptyTrashTask, _cron_next
 
 
 def _make_db(pg_dsn):
@@ -258,8 +258,8 @@ class TestPeriodicTasks:
     """Tests for periodic task framework."""
 
     def test_cron_parser_daily(self):
-        next_run = _parse_cron("0 2 * * *")
         now = datetime.now(timezone.utc)
+        next_run = _cron_next("0 2 * * *", now)
         assert next_run.hour == 2
         assert next_run.minute == 0
         assert next_run > now or (next_run.day == now.day and next_run.hour >= 2)

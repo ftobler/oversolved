@@ -46,6 +46,10 @@ class Database:
         self._version = row[0] if row[0] is not None else 0
         return self._version
 
+    def get_all_migrations(self) -> list[tuple[int, str, Callable]]:
+        """Return all registered migrations (version, name, func), sorted by version."""
+        return list(self._migrations)
+
     def get_pending_migrations(self) -> list[tuple[int, str, Callable]]:
         """Return migrations with version > current version."""
         current = self.get_current_version()

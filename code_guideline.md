@@ -139,7 +139,7 @@ def generate_feature_id(length=18):
 - `@inner` / `@outer` — inside/outside circle
 - `@north` / `@south` / `@east` / `@west` — cardinal directions
 
-### Anchrestry Lists
+### Ancestry Lists
 
 **Format:** `?A,B;<idA><idB>` where A,B are hex lengths
 

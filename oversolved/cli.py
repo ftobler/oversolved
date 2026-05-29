@@ -1,6 +1,7 @@
 """Unified CLI for Oversolved with subcommands."""
 
 import argparse
+import os
 import signal
 import sys
 import time
@@ -17,7 +18,6 @@ def _positive_int(value: str) -> int:
 
 def _validate_db_args(args: argparse.Namespace) -> dict:
     """Build DB config dict and validate database-specific args."""
-    import os
     config = {"DB_TYPE": args.db_type, "DEBUG": getattr(args, "debug", False)}
 
     if args.db_type == "postgres":
@@ -112,8 +112,6 @@ def run_tasks(args: argparse.Namespace) -> None:
             print("No tasks were due.")
         db.close()
 
-    db.close()
-
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser with subcommands."""
@@ -160,18 +158,18 @@ def cmd_db(args: argparse.Namespace) -> None:
 
     if args.db_command == "status":
         current = db.get_current_version()
-        pending = db.get_pending_migrations()
-        latest = max((v for v, _, _ in db._migrations), default=0)
+        all_migrations = db.get_all_migrations()
+        latest = max((v for v, _, _ in all_migrations), default=0)
 
         print(f"Schema version: {current}")
         print(f"Latest:         {latest}")
         print()
-        if not db._migrations:
+        if not all_migrations:
             print("No migrations registered.")
         else:
             print(f"{'Version':<8} {'Name':<35} {'Status'}")
             print("-" * 60)
-            for version, name, _ in db._migrations:
+            for version, name, _ in all_migrations:
                 status = "applied" if version <= current else "pending"
                 print(f"{version:<8} {name:<35} {status}")
         db.close()
