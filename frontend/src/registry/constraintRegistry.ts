@@ -1,6 +1,9 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
+import { parseSelectionId } from '@/utils/selectionId'
+import { segmentsAreParallel } from '@/utils/segmentGeometry'
+
 // ─── Constraint Registry — single source of truth for all sketch constraints. ───
 //
 // Every constraint recognised by the solver is listed here exactly once.
@@ -403,12 +406,6 @@ export interface ResolvedDimension {
   constraintKind: string
 }
 
-// Tolerance for the parallel check: |cross(u,v)| <= eps treats the two unit
-// directions as parallel. Same magnitude as the solver's angle-comparison
-// tolerance; tight enough to never fire on a "skew but visually parallel"
-// pair the user actually wants an angle on.
-const PARALLEL_CROSS_EPS = 1e-6
-
 // Minimal sketch shape used by the parallel check (avoids importing the full
 // Sketch type into the registry layer). Entities are accessed by id; the check
 // reads `start` and `end` after a runtime guard and tolerates entity kinds
@@ -421,27 +418,31 @@ function hasStartEnd(e: unknown): e is { start: [number, number]; end: [number, 
   return Array.isArray(o.start) && Array.isArray(o.end)
 }
 
+// Extract the bare entity id from a selection-key target via the shared parser
+// (rather than positional string splitting). Non-entity / malformed targets
+// return null, so the parallel check then falls back to the default angle dim.
+function entityIdOf(target: string): string | null {
+  try {
+    const sel = parseSelectionId(target)
+    return sel.kind === 'entity' ? sel.eid : null
+  } catch {
+    return null
+  }
+}
+
 function linesAreParallel(
   picks: readonly DimensionPick[],
   sketch: ParallelCheckSketch,
 ): boolean {
   if (picks.length !== 2) return false
   const [a, b] = picks
-  const eaId = a.target.split(':')[2]
-  const ebId = b.target.split(':')[2]
+  const eaId = entityIdOf(a.target)
+  const ebId = entityIdOf(b.target)
+  if (!eaId || !ebId) return false
   const ea = sketch[eaId]
   const eb = sketch[ebId]
   if (!hasStartEnd(ea) || !hasStartEnd(eb)) return false
-  const ax = ea.end[0] - ea.start[0]
-  const ay = ea.end[1] - ea.start[1]
-  const bx = eb.end[0] - eb.start[0]
-  const by = eb.end[1] - eb.start[1]
-  const na = Math.hypot(ax, ay)
-  const nb = Math.hypot(bx, by)
-  if (na === 0 || nb === 0) return false
-  // |cross(unit_a, unit_b)| = |sin(theta)|; parallel iff close to zero.
-  const cross = Math.abs(ax * by - ay * bx) / (na * nb)
-  return cross <= PARALLEL_CROSS_EPS
+  return segmentsAreParallel(ea.start, ea.end, eb.start, eb.end)
 }
 
 // Map picks to the constraint `targets` array. Two picks on the same entity

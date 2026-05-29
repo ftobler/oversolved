@@ -6,6 +6,7 @@ import type {
 } from '@/types/cad'
 import { getDefaultParams } from '@/registry'
 import { getEntityKind } from '@/types/cad'
+import { segmentsAreParallel } from '@/utils/segmentGeometry'
 
 type ResolvedRef = { entity: string; point?: string } | null | undefined
 
@@ -301,12 +302,8 @@ export function computeConstraintRender(constraint: PartConstraint, sketch: Sket
     // matching the Dimension-tool preview's resolution for the parallel case.
     const dax = ea.end[0] - ea.start[0]
     const day = ea.end[1] - ea.start[1]
-    const dbx = eb.end[0] - eb.start[0]
-    const dby = eb.end[1] - eb.start[1]
     const na = Math.hypot(dax, day)
-    const nb = Math.hypot(dbx, dby)
-    const parallel = na > 0 && nb > 0 && Math.abs(dax * dby - day * dbx) / (na * nb) <= 1e-6
-    if (parallel) {
+    if (segmentsAreParallel(ea.start, ea.end, eb.start, eb.end)) {
       const normal: Point = [dax / na, day / na]
       const perpDir: [number, number] = [-day / na, dax / na]
       const pb: Point = eb.start
