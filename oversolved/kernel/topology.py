@@ -34,8 +34,10 @@ Output
 
 import logging
 import math
+from collections import defaultdict
 from typing import Any, TypedDict
-from oversolved.kernel.query import make_ancestry_query, emit_wire, absolute
+from oversolved.kernel.query import make_ancestry_query, emit_wire, absolute, _parse_ancestry
+from oversolved.kernel.profile_loops import _loop_centroid
 from oversolved.kernel.solver_constants import (
     TOL_LOOP_CLOSURE, TOL_TOPOLOGY_EPS, TOL_TOPOLOGY_MERGE, TOL_TOPOLOGY_SPLIT
 )
@@ -798,6 +800,66 @@ def _build_standalone_surfaces(
     return surfaces
 
 
+# ── Geometric classifiers: line division (Phase 2) ──
+
+
+def _line_side_tokens(surface: dict) -> list[str]:
+    """Side-of-line classifier tokens for one surface.
+
+    For each bounding line, emit `cls_ld_<lineid>_p|n` from the sign of the
+    surface's area-centroid against that line. The line is taken in a canonical
+    (endpoint-sorted) direction so two sibling surfaces sharing the dividing
+    line compute opposite signs regardless of half-edge orientation.
+    """
+    boundary = surface.get("boundary", [])
+    centroid = _loop_centroid(boundary)
+    cx, cy = centroid[0], centroid[1]
+    tokens: set[str] = set()
+    for e in boundary:
+        if e.get("kind") != "line":
+            continue
+        eid = e.get("id")
+        s, en = e.get("start"), e.get("end")
+        if not eid or not s or not en:
+            continue
+        (x1, y1), (x2, y2) = sorted(((s[0], s[1]), (en[0], en[1])))
+        cross = (x2 - x1) * (cy - y1) - (y2 - y1) * (cx - x1)
+        if abs(cross) < _EPS:
+            continue  # centroid on the line; cannot classify
+        tokens.add("cls_ld_" + eid + ("_p" if cross > 0 else "_n"))
+    return sorted(tokens)
+
+
+def _attach_line_division_classifiers(surfaces: list[dict]) -> None:
+    """Disambiguate same-ancestry sibling surfaces by which side of their shared
+    bounding line(s) they sit -- a stable alternative to the positional
+    `surface:N` index (e.g. a circle cut by a line into two half-disks).
+
+    Only ancestry groups with >1 surface are touched, so single-region sketches
+    are unchanged. Tokens are stamped on the surface dict and appended to its
+    ancestry query; classifiers drive a separate resolver tier (they are not
+    part of the ancestral key). See geometric-classifiers.md.
+    """
+    groups: dict[frozenset, list[dict]] = defaultdict(list)
+    for s in surfaces:
+        q = s.get("query", "")
+        if not q.startswith("?"):
+            continue
+        ids, _ = _parse_ancestry(q)
+        key = frozenset(i for i in ids if i.startswith("@") and "/" in i)
+        groups[key].append(s)
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        for s in group:
+            tokens = _line_side_tokens(s)
+            if not tokens:
+                continue
+            s["classifiers"] = tokens
+            ids, t = _parse_ancestry(s["query"])
+            s["query"] = make_ancestry_query(ids + ["@" + tok for tok in tokens], t)
+
+
 # ── Main entry point  ──
 
 
@@ -846,6 +908,7 @@ def detect_topology(geometry: dict, feature_id: str = "") -> TopologyDict:
 
     surfaces = _trace_face_cycles(hes, he_eid, verts, feature_id)
     surfaces += _build_standalone_surfaces(circles, splits, feature_id, len(surfaces))
+    _attach_line_division_classifiers(surfaces)
 
     return {
         "intersection_points": {

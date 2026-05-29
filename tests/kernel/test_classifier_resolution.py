@@ -317,3 +317,85 @@ def test_classifier_payload_matches_query():
         assert resolved is not None
         query_cls = sorted(t[1:] for t in _cls_tokens(q))  # strip '@'
         assert sorted(resolved.get("classifiers", [])) == query_cls, (q, resolved.get("classifiers"))
+
+
+# ─── Phase 2: line-division classifiers for same-ancestry sketch surfaces ───
+
+def _register_surfaces(topo):
+    """Register a topology's surfaces into a fresh repo on the XY plane."""
+    from oversolved.kernel.query import Repository
+    from oversolved.kernel.solver_registry import _register_topology_surfaces
+    from oversolved.kernel.types3d import Frame3D
+    repo = Repository()
+    plane = Frame3D(origin=[0, 0, 0], x_axis=[1, 0, 0], y_axis=[0, 1, 0], normal=[0, 0, 1])
+    _register_topology_surfaces(repo, topo, plane)
+    return repo
+
+
+def _strip_index(query):
+    from oversolved.kernel.query import _parse_ancestry, make_ancestry_query
+    ids, t = _parse_ancestry(query)
+    return make_ancestry_query([i for i in ids if not i.startswith("surface:")], t)
+
+
+def test_split_circle_surfaces_get_line_division_classifiers():
+    from oversolved.kernel.topology import detect_topology
+    topo = detect_topology(
+        {"circ": {"center": [0, 0], "radius": 10.0},
+         "cut": {"start": [-10, 0], "end": [10, 0]}},
+        feature_id="sk1",
+    )
+    assert len(topo["surfaces"]) == 2
+    cls = sorted(s.get("classifiers", []) for s in topo["surfaces"])
+    assert cls == [["cls_ld_cut_n"], ["cls_ld_cut_p"]], cls
+
+
+def test_split_surfaces_resolve_by_classifier_without_index():
+    """The two half-disks share ancestry; with the positional surface:N index
+    stripped they resolve only via the stable line-division classifier."""
+    from oversolved.kernel.topology import detect_topology
+    from oversolved.kernel.query import AmbiguousQueryError, _parse_ancestry, make_ancestry_query, _is_classifier_id
+    topo = detect_topology(
+        {"circ": {"center": [0, 0], "radius": 10.0},
+         "cut": {"start": [-10, 0], "end": [10, 0]}},
+        feature_id="sk1",
+    )
+    repo = _register_surfaces(topo)
+
+    for s in topo["surfaces"]:
+        q_no_index = _strip_index(s["query"])
+        resolved = repo.query(q_no_index)
+        assert resolved is not None, f"surface did not resolve by classifier: {q_no_index!r}"
+        assert resolved.get("classifiers") == s["classifiers"]
+        # Drop the classifier too -> the two half-disks are an ancestral tie.
+        ids, t = _parse_ancestry(q_no_index)
+        bare = make_ancestry_query([i for i in ids if not _is_classifier_id(i)], t)
+        with pytest.raises(AmbiguousQueryError):
+            repo.query(bare)
+
+
+def test_single_region_sketch_has_no_classifiers():
+    """A sketch with one surface per ancestry group is untouched (no churn)."""
+    from oversolved.kernel.topology import detect_topology
+    topo = detect_topology(
+        {"circ": {"center": [0, 0], "radius": 5.0}}, feature_id="sk1",
+    )
+    assert len(topo["surfaces"]) == 1
+    assert topo["surfaces"][0].get("classifiers", []) == []
+    assert "@cls_" not in topo["surfaces"][0]["query"]
+
+
+def test_four_quadrant_split_distinct_classifiers():
+    """Two perpendicular cuts -> 4 quadrant surfaces, each with a distinct
+    pair of line-division tokens (qualified per dividing line)."""
+    from oversolved.kernel.topology import detect_topology
+    topo = detect_topology(
+        {"circ": {"center": [0, 0], "radius": 10.0},
+         "h": {"start": [-10, 0], "end": [10, 0]},
+         "v": {"start": [0, -10], "end": [0, 10]}},
+        feature_id="sk1",
+    )
+    quads = [s for s in topo["surfaces"] if s.get("classifiers")]
+    assert len(quads) == 4, [s["query"] for s in topo["surfaces"]]
+    token_sets = {frozenset(s["classifiers"]) for s in quads}
+    assert len(token_sets) == 4, token_sets  # all four quadrants distinct

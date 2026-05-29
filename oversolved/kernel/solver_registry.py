@@ -1,6 +1,6 @@
 import logging
 import math
-from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query, _evict_ancestry_and_register, ref
+from oversolved.kernel.query import Repository, _parse_ancestry, make_ancestry_query, _evict_ancestry_and_register, ref, _is_classifier_id
 from oversolved.kernel.profile_loops import match_area_reid, _surface_ancestor_key, _loop_centroid
 from oversolved.kernel.types3d import Frame3D
 
@@ -361,26 +361,24 @@ def _register_topology_surfaces(
             world_origin = list(origin)
 
         ids, _ = _parse_ancestry(query)
-        key = frozenset(ids)
-        existing_ids = global_repo.ancestral.get(key, [])
-        if any(global_repo.elements.get(eid) == {
+        # Classifiers drive a separate resolver tier: keep them out of the
+        # ancestral key (mirrors B-rep face/edge registration) and put the bare
+        # list on the payload instead.
+        key_ids = [i for i in ids if not _is_classifier_id(i)]
+        classifiers = [i[1:] for i in ids if _is_classifier_id(i)]
+        payload = {
             "type": "flatface",
             "origin": world_origin,
             "x_axis": list(x_axis),
             "y_axis": list(y_axis),
             "normal": list(normal),
-        } for eid in existing_ids):
+            "classifiers": classifiers,
+        }
+        key = frozenset(key_ids)
+        existing_ids = global_repo.ancestral.get(key, [])
+        if any(global_repo.elements.get(eid) == payload for eid in existing_ids):
             continue
-        _evict_ancestry_and_register(
-            global_repo, ids,
-            {
-                "type": "flatface",
-                "origin": world_origin,
-                "x_axis": list(x_axis),
-                "y_axis": list(y_axis),
-                "normal": list(normal),
-            },
-        )
+        _evict_ancestry_and_register(global_repo, key_ids, payload)
 
 
 def _register_topology_edges(
