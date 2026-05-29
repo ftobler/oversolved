@@ -6,6 +6,7 @@ export {
   CONSTRAINT_SHORTCUTS,
   DIMENSION_RULES,
   resolveDimension,
+  dimensionTargets,
 } from '@/registry/constraintRegistry'
 export type { ConstraintDef, DimensionRule, DimensionPick, ResolvedDimension } from '@/registry/constraintRegistry'
 

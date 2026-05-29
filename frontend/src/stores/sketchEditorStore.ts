@@ -5,7 +5,7 @@ import { create } from 'zustand'
 import type { ActiveTool, Mutation, SelectionDomain, Sketch } from '@/types/cad'
 import type { SnapKind } from '@/registry'
 import type { DimensionPick } from '@/registry'
-import { resolveDimension } from '@/registry'
+import { resolveDimension, dimensionTargets } from '@/registry'
 import { computeNaturalDimensionValue, computeAnchorRelativePos } from '@/utils/dimensionNaturalValue'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { validateSketchEditorState, failLoud } from './stateInvariants'
@@ -528,10 +528,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       if (devOnly) console.warn('[sketchEditorStore] onMutation: callback not registered — finalizeDimensionPlacement will be a no-op.')
       return
     }
-    // The dim self-deduplicates if a same-line was clicked twice (length).
-    const targets = dimensionPicks.length === 2 && dimensionPicks[0].target === dimensionPicks[1].target
-      ? [dimensionPicks[0].target]
-      : dimensionPicks.map(p => p.target)
+    // The dim self-deduplicates if a same entity was clicked twice.
+    const targets = dimensionTargets(dimensionPicks)
     const featureId = activeFeatureId
     const constraintKind = resolved.constraintKind
 

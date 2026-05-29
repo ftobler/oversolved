@@ -444,6 +444,17 @@ function linesAreParallel(
   return cross <= PARALLEL_CROSS_EPS
 }
 
+// Map picks to the constraint `targets` array. Two picks on the same entity
+// collapse to a single target (the same-line/arc/circle dim path); everything
+// else maps one target per pick. Shared so the live preview and the committed
+// constraint can never disagree about target identity.
+export function dimensionTargets(picks: readonly DimensionPick[]): string[] {
+  if (picks.length === 2 && picks[0].target === picks[1].target) {
+    return [picks[0].target]
+  }
+  return picks.map(p => p.target)
+}
+
 export function resolveDimension(
   picks: readonly DimensionPick[],
   sketch?: ParallelCheckSketch,

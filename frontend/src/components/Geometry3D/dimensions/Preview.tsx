@@ -1,14 +1,11 @@
 import { useMemo } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { resolveDimension } from '@/registry'
+import { resolveDimension, dimensionTargets } from '@/registry'
 import { parseTarget } from '@/utils/yamlMutations/helpers'
 import { computeConstraintRender } from '@/utils/geometryMapping'
-import { computeNaturalDimensionValue } from '@/utils/dimensionNaturalValue'
-import { computeAngleDimension } from './angleDimensionLogic'
+import { computeNaturalDimensionValue, computeAnchorRelativePos } from '@/utils/dimensionNaturalValue'
 import type {
   PartConstraint, PlaneTransform, Sketch,
-  DimLinearRender, DimRadiusRender, DimDiameterRender,
-  DimAngleRender,
 } from '@/types/cad'
 import { LinearDimension } from './Linear'
 import { RadiusDimension, DiameterDimension } from './Radial'
@@ -42,9 +39,7 @@ export function DimensionPreview({
     const resolved = resolveDimension(dimensionPicks, sketch, featureId)
     if (!resolved) return null
     const kind = resolved.constraintKind
-    const targets = dimensionPicks.length === 2 && dimensionPicks[0].target === dimensionPicks[1].target
-      ? [dimensionPicks[0].target]
-      : dimensionPicks.map(p => p.target)
+    const targets = dimensionTargets(dimensionPicks)
     const value = computeNaturalDimensionValue(kind, targets, sketch, featureId) ?? 0
 
     // Build a fake PartConstraint to feed through computeConstraintRender.
@@ -57,22 +52,11 @@ export function DimensionPreview({
       c.b = refs[1]
     }
 
-    // Anchor-relative pos for label placement at the cursor.
+    // Anchor-relative pos so the ghost label tracks the cursor. Shares the
+    // commit-time math so preview and committed dim place the label identically.
     if (cursorWorld) {
-      const render0 = computeConstraintRender(c, sketch)
-      if (render0.kind === 'dim_linear' || render0.kind === 'dim_diameter') {
-        const r0 = render0 as DimLinearRender | DimDiameterRender
-        const ax = (r0.p1[0] + r0.p2[0]) / 2
-        const ay = (r0.p1[1] + r0.p2[1]) / 2
-        c.pos = [cursorWorld[0] - ax, cursorWorld[1] - ay]
-      } else if (render0.kind === 'dim_radius') {
-        const r0 = render0 as DimRadiusRender
-        c.pos = [cursorWorld[0] - r0.p1[0], cursorWorld[1] - r0.p1[1]]
-      } else if (render0.kind === 'dim_angle') {
-        const r0 = render0 as DimAngleRender
-        const base = computeAngleDimension(r0.p1, r0.p2, r0.p3, r0.p4)
-        c.pos = [cursorWorld[0] - base.vx, cursorWorld[1] - base.vy]
-      }
+      const pos = computeAnchorRelativePos(kind, targets, sketch, featureId, cursorWorld)
+      if (pos) c.pos = pos
     }
 
     const render = computeConstraintRender(c, sketch)
