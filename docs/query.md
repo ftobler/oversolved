@@ -8,15 +8,18 @@ The solver uses queries to reference geometry. A query is a string (or typed obj
 - **Element IDs within a feature**: user-assigned at creation. Sub-element suffixes (`start`, `end`, `center`, `xy`) identify sub-portions.
 - **Auto-generated topology IDs**: `secrets.token_urlsafe(9)` → 12-char base64url, assigned during `register_ancestor`.
 
-A fully-qualified key is `feature_id + element_id + sub_suffix`. Example: `sketch1line1start`.
+There are two element-key conventions, one per repository:
+
+- **Local sketch repo** (`solver.py` `_get_or_build_repo`): concatenated, no separator. Example: `sketch1line1start`. Matches `$` `LocalQuery` resolution (`context + ele + sub`).
+- **Global repo** (`solver_registry.py`): slash-separated. Example: `sketch1/line1/start`. Matches `@` `AbsoluteQuery` resolution (`feat + "/" + ele + "/" + sub`).
 
 ## Query Syntax
 
 | Prefix | Kind | Description |
 |--------|------|-------------|
-| `$<ELE><SUB>` | Local | Element within current feature context. Resolved as `context + ele + sub`. |
-| `@<FEAT><ELE><SUB>` | Absolute | Cross-feature lookup by concatenated key `feat + ele + sub`. |
-| `?<H,L>;<idA><idB>[:TYPE][@CLASSIFIER]` | Ancestry | Ancestry-based query with hex-encoded lengths, optional type filter and geometric classifier. |
+| `$<ELE><SUB>` | Local | Element within current feature context. Resolved as `context + ele + sub` (concatenated). |
+| `@<FEAT>/<ELE>/<SUB>` | Absolute | Cross-feature lookup by slash-separated key `feat + "/" + ele + "/" + sub`. |
+| `?<H,L>;<idA><idB>[:TYPE]` | Ancestry | Ancestry-based query with hex-encoded lengths and optional type filter. |
 
 Dispatched by `parse_query()` first character. Sub suffixes require a non-alphanumeric character before them to avoid false matches (e.g. `sketch_start` ≠ `sketch_` + `start`).
 
@@ -34,19 +37,19 @@ Dispatched by `parse_query()` first character. Sub suffixes require a non-alphan
 
 A query for a parent type also matches subtypes (e.g. `face` matches `flatface`).
 
-## Geometric Classifiers
+## Geometric Classifiers (planned, not implemented)
 
-When multiple surfaces share ancestry (e.g. a circle cut by a line), classifiers disambiguate:
+A planned mechanism to disambiguate surfaces that share ancestry (e.g. a circle cut by a line):
 
 - **Line Division**: `@pos` (left/above), `@neg` (right/below)
 - **Circle Containment**: `@inner` (inside), `@outer` (outside)
 - **Cardinal Direction**: `@north` (+Y), `@south` (-Y), `@east` (+X), `@west` (-X)
 
-Classifiers are parsed and carried in the `AncestryQuery` data model but the resolver does not yet filter on them.
+Status: not implemented. There is no classifier field on `AncestryQuery` and `_parse_ancestry` does not extract one. A `@classifier` appended after the `:TYPE` field would currently be swallowed into the type-restriction string. Today, surfaces sharing ancestry are disambiguated by the `@gface_`/`@gnormal_`/`@gedge_` geometry-hash tie-breakers instead.
 
 ## Feature-Plane References (`@<FEAT>`)
 
-`@<FEAT>` where FEAT matches a registered feature ID resolves via flat lookup in `self.elements`. Sketches, extrudes, and built-in planes are registered this way. Must match the registered key exactly.
+`@<FEAT>` where FEAT matches a registered feature ID resolves via flat lookup in `self.elements`. Sketches, extrudes, and built-in planes are registered this way. Must match the registered key exactly (slash-separated for element/sub keys, e.g. `@sketch1/line1/start`).
 
 ## 3D B-rep Face Queries
 

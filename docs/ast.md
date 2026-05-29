@@ -193,12 +193,12 @@ Refs use `{"entity": "<eid>", "point": "start"|"end"|"center"|"xy"}` or `{"exter
 | Prefix | Kind | Example |
 |--------|------|---------|
 | `$<eid><sub>` | LocalQuery — entity in current sketch | `$line1/start` |
-| `@<feature_id><eid><sub>` | AbsoluteQuery — cross-feature | `@sk1/line1/start`, `@builtin_plane_front` |
+| `@<feature_id>/<eid>/<sub>` | AbsoluteQuery — cross-feature | `@sk1/line1/start`, `@builtin_plane_front` |
 | `?<hex_lengths>;<id_strings>[:<type>]` | AncestryQuery — hierarchical | `?4;@ex1:solid` |
 
 Sub suffixes: `start`, `end`, `center`, `xy`. Ancestry types: `solid`, `face`, `flatface`, `cylinderface`, `edge`, `straightedge`, `vertex`.
 
-Geometric classifiers (`@pos`, `@neg`, `@inner`, `@outer`, `@north`, `@south`, `@east`, `@west`) disambiguate topology elements sharing ancestry (parsed but not yet used in resolution).
+Geometric classifiers (`@pos`, `@neg`, `@inner`, `@outer`, `@north`, `@south`, `@east`, `@west`) are a planned mechanism to disambiguate topology elements sharing ancestry. Not implemented: no classifier field exists on `AncestryQuery` and the parser does not extract one. See `docs/query.md`.
 
 ## Built-in Planes
 
