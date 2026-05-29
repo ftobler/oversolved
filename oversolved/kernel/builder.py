@@ -792,6 +792,10 @@ def build(
 
     registered_body_ids: set[str] = set(body_store.keys())
 
+    # Thread-local tessellation cache: each unique body.shape is meshed once
+    # across the feature loop and the post-loop checkpoint rebuild.
+    _shape_tess_cache: dict[int, dict] = {}
+
     # Record the full feature order so the ancestry resolver can reject queries
     # that would resolve forward (against features ordered after the querier),
     # which can happen after a reorder leaves a feature solved late.
@@ -802,6 +806,20 @@ def build(
         if body.shape is None:
             return
         try:
+            shape_hash = hash(body.shape)
+            if shape_hash in _shape_tess_cache:
+                cached = _shape_tess_cache[shape_hash]
+                mesh = cached.get("mesh")
+                if mesh is not None:
+                    _register_brep_face_ancestry(global_repo, body, mesh)
+                    _register_brep_vertex_ancestry(
+                        global_repo, body, cached.get("vertices", []), cached.get("vertex_queries", []),
+                    )
+                    _register_brep_edge_ancestry(
+                        global_repo, body, cached.get("edges", []), cached.get("edge_queries", []),
+                    )
+                return
+
             from oversolved.kernel.geometry_tessellation import solid_to_mesh, solid_to_edges, solid_to_vertices
             mesh = solid_to_mesh(body.shape, created_by=body.created_by, body_id=body.id)
             if mesh.get("is_fallback"):
@@ -811,6 +829,16 @@ def build(
             _register_brep_vertex_ancestry(global_repo, body, verts["vertices"], verts["vertex_queries"])
             edges = solid_to_edges(body.shape, created_by=body.created_by, body_id=body.id)
             _register_brep_edge_ancestry(global_repo, body, edges["edges"], edges["edge_queries"])
+            _shape_tess_cache[shape_hash] = {
+                "id": body.id,
+                "created_by": body.created_by,
+                "modified_by": list(body.modified_by),
+                "mesh": mesh,
+                "edges": edges["edges"],
+                "edge_queries": edges["edge_queries"],
+                "vertices": verts["vertices"],
+                "vertex_queries": verts["vertex_queries"],
+            }
         except Exception as exc:
             logger.warning("Failed to register B-rep ancestry for body %s: %s", body.id, exc)
 
@@ -866,13 +894,6 @@ def build(
 
     bodies_out = _tessellate_bodies(body_store, global_repo, tess_cache=tess_seed or None)
 
-    # Build a cache of tessellations keyed by OCC shape hash so that each unique
-    # OCC shape is tessellated at most once across all checkpoints.
-    # The cache relies on the OCP TShape pointer being stable for the lifetime
-    # of the same topological entity (same underlying TShape -> same pointer).
-    # hash(shape) uses the underlying TShape pointer (not the Python wrapper address),
-    # so it remains stable across Python wrapper GC/reallocation at the same address.
-    _shape_tess_cache: dict[int, dict] = {}
     for body_id, body in body_store.items():
         if body.shape is not None and body_id in bodies_out:
             _shape_tess_cache[hash(body.shape)] = bodies_out[body_id]
@@ -892,17 +913,22 @@ def build(
             out[body_id] = entry
         return out
 
-    new_checkpoints = {
-        fid: FeatureCheckpoint(
+    # Only rebuild checkpoints for dirty features; clean prefix carried over
+    # from prev_state passes through untouched (its snapshot data is already valid).
+    clean_prefix_fids: set[str] = set()
+    if prev_state and first_dirty > 0:
+        clean_prefix_fids = set(prev_state.feature_order[:first_dirty])
+    for fid, checkpoint in list(new_checkpoints.items()):
+        if fid in clean_prefix_fids:
+            continue
+        cp_bodies = _checkpoint_bodies_out(checkpoint)
+        new_checkpoints[fid] = FeatureCheckpoint(
             spec=checkpoint.spec,
             result=checkpoint.result,
             repo_snapshot=_snapshot_with_brep_geometry(checkpoint, cp_bodies),
             body_store_snapshot=copy.copy(checkpoint.body_store_snapshot),
             bodies_snapshot=cp_bodies,
         )
-        for fid, checkpoint in new_checkpoints.items()
-        for cp_bodies in (_checkpoint_bodies_out(checkpoint),)
-    }
     build_ms = round((time.perf_counter() - t0) * 1000, 1)
     result.update(_BUILTIN_PLANE_RESULTS)
 

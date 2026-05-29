@@ -33,6 +33,8 @@ def _arc_angle_deg(edge: dict, start: bool) -> float:
 def face_geometry_hash(centroid: list[float], normal: list[float]) -> str:
     """Return e.g. 'gface_a3f9b2c18d4e5f6a' from centroid + normal rounded to 4 dp.
 
+    Inputs must come from exact geometry (GProp center-of-mass, surface-UV
+    midpoint normal), never from the face triangulation.
     Area is deliberately excluded: it is summed from the face triangulation and
     so varies by ~1e-5 between tessellation passes (and across OCP versions),
     which flips the 4dp hash and breaks identity for a geometrically unchanged
