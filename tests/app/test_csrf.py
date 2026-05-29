@@ -26,12 +26,16 @@ class TestRequireCsrfDecorator:
 
         return app
 
-    def test_missing_origin_and_referer_accepted(self):
-        """Same-origin requests without Origin/Referer are accepted (browsers always send these)."""
+    def test_missing_origin_and_referer_rejected(self):
+        """Mutating requests must carry an Origin or Referer. Browsers always send
+        one on a state-changing request, so a request missing both is treated as a
+        CSRF risk and rejected (see CSRF hardening in require_csrf)."""
         app = self._make_app()
         with app.test_client() as client:
             resp = client.post("/test")
-            assert resp.status_code == 200
+            assert resp.status_code == 403
+            data = resp.get_json()
+            assert data["code"] == "CSRF_FAILED"
 
     def test_wrong_origin_rejected(self):
         app = self._make_app()

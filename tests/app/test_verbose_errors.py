@@ -128,12 +128,21 @@ class TestVerboseUploadErrors:
 class TestVerbosePreviewErrors:
 
     def test_preview_size_limit_vague(self, authed_client):
+        # PUT no longer implicitly creates documents, so create one first; the
+        # preview-size check is only reached on an existing, editable doc.
+        uuid = json.loads(
+            authed_client.post(
+                "/api/documents",
+                data=json.dumps({"name": "Doc"}),
+                content_type="application/json",
+            ).data
+        )["uuid"]
         img = Image.new("RGB", (600, 600), color="red")
         buf = BytesIO()
         img.save(buf, format="PNG")
         b64 = __import__("base64").b64encode(buf.getvalue()).decode()
         resp = authed_client.put(
-            "/api/documents/doc_uuid",
+            f"/api/documents/{uuid}",
             data=json.dumps({"content": "test", "preview_image": b64}),
             content_type="application/json",
         )

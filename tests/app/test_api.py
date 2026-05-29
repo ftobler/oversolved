@@ -174,8 +174,10 @@ class TestDocumentAPI:
         )
         assert response.status_code == 400
 
-    def test_upsert_creates_with_human_readable_name(self, authed_client):
-        """PUT to a non-existent UUID creates a doc with a human-readable name."""
+    def test_put_nonexistent_uuid_rejected(self, authed_client):
+        """PUT no longer implicitly creates documents (security hardening: it now
+        routes through require_doc_permission). A non-existent UUID is rejected
+        with 404 rather than upserted into existence."""
         import uuid as uuid_mod
         new_uuid = "test-upsert-" + uuid_mod.uuid4().hex
         response = authed_client.put(
@@ -183,10 +185,10 @@ class TestDocumentAPI:
             data=json.dumps({"content": "version: 1\n"}),
             content_type="application/json",
         )
-        assert response.status_code == 200
+        assert response.status_code == 404
 
-        data = json.loads(authed_client.get(f"/api/documents/{new_uuid}").data)
-        assert data["name"] == "Imported Document"
+        # And no document was created as a side effect.
+        assert authed_client.get(f"/api/documents/{new_uuid}").status_code == 404
 
     def test_rename_document(self, authed_client):
         uuid = json.loads(
