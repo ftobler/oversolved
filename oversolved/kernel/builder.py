@@ -636,6 +636,7 @@ def _tessellate_body_geometry(body: Body, tess_cache: dict[int, dict] | None = N
     if tess_cache is not None:
         hit = tess_cache.get(hash(body.shape))
         if hit is not None:
+            assert hit["id"] == body.id
             return hit
     try:
         from oversolved.kernel.geometry_tessellation import solid_to_mesh, solid_to_edges, solid_to_vertices
@@ -867,6 +868,8 @@ def build(
 
     # Build a cache of tessellations keyed by OCC shape hash so that each unique
     # OCC shape is tessellated at most once across all checkpoints.
+    # The cache relies on the OCP TShape pointer being stable for the lifetime
+    # of the same topological entity (same underlying TShape -> same pointer).
     # hash(shape) uses the underlying TShape pointer (not the Python wrapper address),
     # so it remains stable across Python wrapper GC/reallocation at the same address.
     _shape_tess_cache: dict[int, dict] = {}
@@ -881,10 +884,13 @@ def build(
                 _shape_tess_cache[hash(body.shape)] = _tessellate_body_geometry(body)
 
     def _checkpoint_bodies_out(checkpoint: FeatureCheckpoint) -> dict[str, dict]:
-        return {
-            body_id: _shape_tess_cache.get(hash(body.shape), {})
-            for body_id, body in checkpoint.body_store_snapshot.items()
-        }
+        out: dict[str, dict] = {}
+        for body_id, body in checkpoint.body_store_snapshot.items():
+            entry = _shape_tess_cache.get(hash(body.shape), {})
+            if entry:
+                assert entry["id"] == body_id
+            out[body_id] = entry
+        return out
 
     new_checkpoints = {
         fid: FeatureCheckpoint(

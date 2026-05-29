@@ -320,7 +320,9 @@ class DocumentStore:
         sort: key from _SORT_ORDERS, defaults to name
         user_id: caller's user id (unused for "public" filter)
         """
-        order = self._SORT_ORDERS.get(sort, "name")
+        order = self._SORT_ORDERS.get(sort)
+        if order is None:
+            order = "d.name"
         like = f"%{search}%" if search else None
 
         select = (
@@ -406,7 +408,9 @@ class DocumentStore:
 
     def list_by_owner(self, owner_id: int, sort: str = "name") -> list[dict]:
         """List all documents for an owner."""
-        order = self._SORT_ORDERS.get(sort, "name")
+        order = self._SORT_ORDERS.get(sort)
+        if order is None:
+            order = "d.name"
         cursor = self.db.execute(
             f"SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at,"
             f" d.is_public FROM documents d WHERE d.deleted_at IS NULL"

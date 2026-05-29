@@ -2,6 +2,7 @@
 
 from functools import wraps
 from typing import Literal
+from urllib.parse import urlparse
 from flask import g, jsonify, request, current_app
 from oversolved.db import (
     Database, DatabaseConnection, SQLiteConnection,
@@ -60,10 +61,12 @@ def require_csrf(f):
             return f(*args, **kwargs)
         origin = request.headers.get("Origin")
         referer = request.headers.get("Referer")
-        host = request.host_url.rstrip("/")
-        if origin and origin != host:
+        if not origin and not referer:
             return api_error("Request blocked for security reasons. Please reload the page.", "CSRF_FAILED", 403)
-        if referer and not referer.startswith(host):
+        host_netloc = urlparse(request.url).netloc
+        if origin and urlparse(origin).netloc != host_netloc:
+            return api_error("Request blocked for security reasons. Please reload the page.", "CSRF_FAILED", 403)
+        if referer and urlparse(referer).netloc != host_netloc:
             return api_error("Request blocked for security reasons. Please reload the page.", "CSRF_FAILED", 403)
         return f(*args, **kwargs)
     return decorated

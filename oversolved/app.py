@@ -196,7 +196,7 @@ def create_app(config: dict | None = None) -> Flask:
             try:
                 requested = (frontend_dist / path).resolve()
                 resolved_dist = frontend_dist.resolve()
-                if not str(requested).startswith(str(resolved_dist)):
+                if not requested.is_relative_to(resolved_dist):
                     return "", 404
             except (OSError, ValueError):
                 return "", 404

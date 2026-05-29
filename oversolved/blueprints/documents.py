@@ -75,6 +75,7 @@ def get_document(uuid):
 @documents_bp.route("/<uuid>", methods=["PUT"])
 @require_auth
 @require_csrf
+@require_doc_permission("edit")
 def update_document(uuid):
     if not request.is_json:
         return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
@@ -86,13 +87,6 @@ def update_document(uuid):
         return api_error('"content" must be a string', "BAD_REQUEST", 400)
     db = get_db()
     doc_store = DocumentStore(db)
-    doc = doc_store.retrieve(uuid)
-    if doc is None:
-        doc_store.create_with_uuid(uuid, "Imported Document", g.current_user["id"])
-    else:
-        permission = doc_store.get_permission(uuid, g.current_user["id"])
-        if permission not in ("owner", "edit"):
-            return api_error("Forbidden", "FORBIDDEN", 403)
     doc_store.store_content(uuid, content)
     if data.get("preview_image"):
         image_data = base64.b64decode(data["preview_image"])
