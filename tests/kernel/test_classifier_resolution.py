@@ -179,3 +179,141 @@ def test_existing_queries_unaffected_by_classifier_tier():
         no_cls = _rebuild(q, keep_hash=True, keep_cls=False)
         assert _cls_tokens(no_cls) == []
         assert repo.query(no_cls) is not None, f"classifier-free query regressed: {no_cls!r}"
+
+
+# ─── edges: the headline case (no @gnormal_ fallback for edges) ───
+
+def _cylinder_spec(radius=10.0, distance=10.0):
+    sketch = {
+        "id": "sk_cyl", "kind": "sketch", "label": "circle",
+        "plane": "@builtin_plane_top",
+        "entities": [{"id": "circ", "kind": "circle"}],
+        "initial": {"circ": [0, 0, radius]},
+        "constraints": [
+            {"id": "cc", "kind": "coincident", "a": "$circcenter", "b": "@builtin_origin"},
+            {"id": "cd", "kind": "diameter", "target": "$circ", "value": 2 * radius, "pos": [0, 0]},
+        ],
+    }
+    extrude = {"id": "ex_cyl", "kind": "extrude", "label": "extrude",
+               "sketch": "$sk_cyl", "distance": distance, "direction": "normal"}
+    return {"features": [sketch, extrude]}
+
+
+def _build_cyl(radius=10.0, distance=10.0):
+    from oversolved.kernel.builder import build, _repo_from_snapshot
+    r = build(_cylinder_spec(radius, distance))
+    assert r["result"]["ex_cyl"]["status"] == "ok"
+    repo = _repo_from_snapshot(r["_build_state"].checkpoints["ex_cyl"].repo_snapshot)
+    return r, repo, r["bodies"]["body_ex_cyl"]
+
+
+def _rim_queries(body_out):
+    """The two full-circle rim edge queries (the ancestral-sibling edges)."""
+    return [
+        q for ed, q in zip(body_out["edges"], body_out["edge_queries"])
+        if ed.get("kind") == "circle"
+    ]
+
+
+def test_cylinder_rims_resolve_by_classifier():
+    """The two cylinder rims share ancestry and have no normal fallback; the
+    axial classifier is the only thing that tells them apart by ancestry."""
+    pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
+    _r, repo, body_out = _build_cyl()
+    rims = _rim_queries(body_out)
+    assert len(rims) == 2
+
+    seen_centroids = []
+    for q in rims:
+        # one classifier token, opposite signs on the extrude axis
+        assert len(_cls_tokens(q)) == 1, _cls_tokens(q)
+        resolved = repo.query(_rebuild(q, keep_hash=False, keep_cls=True))
+        assert resolved is not None, f"rim did not resolve by classifier: {q!r}"
+        assert resolved.get("type") in ("edge", "straightedge")
+        # without the classifier the two rims are an ancestral tie
+        from oversolved.kernel.query import AmbiguousQueryError
+        with pytest.raises(AmbiguousQueryError):
+            repo.query(_rebuild(q, keep_hash=False, keep_cls=False))
+        seen_centroids.append(tuple(resolved.get("start") or resolved.get("center") or ()))
+    assert _cls_tokens(rims[0]) != _cls_tokens(rims[1]), "rims must carry opposite tokens"
+
+
+def test_classifier_survives_height_edit():
+    """The value proposition: capture the top-rim query, rebuild at a different
+    height so the @gedge_ hash stales, and the captured query still resolves to
+    the new top rim via the axial classifier (no edge normal fallback exists)."""
+    pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
+    from oversolved.kernel.builder import build, _repo_from_snapshot
+    from oversolved.kernel.query import _parse_ancestry, _is_geom_hash_id
+
+    _r, _repo, body0 = _build_cyl(distance=10.0)
+    rims = _rim_queries(body0)
+    # pick the rim whose classifier is the +axis end (the "top" rim)
+    top_q = next(q for q in rims if any(t.endswith("p") for t in _cls_tokens(q)))
+    top_token = _cls_tokens(top_q)[0]
+
+    # Rebuild taller: the rim moves, so its precise @gedge_ hash goes stale.
+    r2 = build(_cylinder_spec(distance=25.0))
+    repo2 = _repo_from_snapshot(r2["_build_state"].checkpoints["ex_cyl"].repo_snapshot)
+
+    old_hash = [i for i in _parse_ancestry(top_q)[0] if _is_geom_hash_id(i)]
+    assert old_hash, "expected a @gedge_ hash on the original rim query"
+    # Sanity: the stale hash no longer identifies anything in the taller build.
+    assert repo2.query(make_hash_only(top_q)) is None
+
+    # The full captured query still resolves -- via the classifier, not the hash.
+    resolved = repo2.query(top_q)
+    assert resolved is not None, "stale rim query failed to re-resolve via classifier"
+    assert resolved.get("type") in ("edge", "straightedge")
+    # and it is the +axis (top) rim of the taller cylinder, not the bottom one
+    # (a circle edge's payload carries no start point, so check its classifier).
+    assert top_token.endswith("p")
+    assert top_token[1:] in resolved.get("classifiers", []), resolved.get("classifiers")
+    assert top_token.replace("p", "n")[1:] not in resolved.get("classifiers", [])
+
+
+def make_hash_only(query):
+    """The query reduced to just its geom-hash tokens + type (no ancestry/classifier)."""
+    from oversolved.kernel.query import _parse_ancestry, make_ancestry_query, _is_geom_hash_id
+    ids, t = _parse_ancestry(query)
+    return make_ancestry_query([i for i in ids if _is_geom_hash_id(i)], t)
+
+
+# ─── test 5: the classifier tier degrades gracefully ───
+
+def test_classifier_tier_is_graceful():
+    """A classifier set that matches no candidate must NOT zero the result: the
+    tier is skipped (narrowed set empty) and the geom hash still resolves."""
+    pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
+    from oversolved.kernel.query import _parse_ancestry, make_ancestry_query
+    repo, body_out = _top_plane_box()
+    caps = _cap_queries(body_out)
+    cap = caps[0]
+    cap_tokens = _cls_tokens(cap)
+    assert len(cap_tokens) == 1
+    # Add the OPPOSITE-sign token: no face is both +axis and -axis, so the
+    # classifier narrowing yields nothing and must fall through to the hash.
+    contradictory = cap_tokens[0][:-1] + ("n" if cap_tokens[0].endswith("p") else "p")
+    ids, t = _parse_ancestry(cap)
+    bogus = make_ancestry_query(ids + [contradictory], t)
+    resolved = repo.query(bogus)
+    assert resolved is not None, "contradictory classifier zeroed a hash-resolvable query"
+    assert resolved.get("type") in ("face", "flatface")
+
+
+# ─── test 8: query tokens equal the registered payload classifiers ───
+
+def test_classifier_payload_matches_query():
+    """Single source of truth: the @cls_* tokens a face query carries equal the
+    bare classifier list registered on the element it resolves to."""
+    pytest.importorskip("OCP.gp")
+    pytest.importorskip("cadquery")
+    repo, body_out = _top_plane_box()
+    for q in body_out["mesh"]["face_queries"]:
+        resolved = repo.query(q)
+        assert resolved is not None
+        query_cls = sorted(t[1:] for t in _cls_tokens(q))  # strip '@'
+        assert sorted(resolved.get("classifiers", [])) == query_cls, (q, resolved.get("classifiers"))

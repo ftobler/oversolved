@@ -575,6 +575,9 @@ def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_quer
             "kind": edge.get("kind"),
             "start": edge.get("start"),
             "end": edge.get("end"),
+            # Spatial-role classifiers the edge query carries; the only edit-stable
+            # discriminator for ancestral-sibling edges (no @gnormal_ fallback).
+            "classifiers": list(edge.get("classifiers", [])),
         }
         index_tag = emit_wire(absolute(body.id, f"edge{idx}"))
         _evict_ancestry_and_register(global_repo, ancestor_ids, payload, index_tag, geom_hash=geom_hash)

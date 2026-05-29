@@ -421,6 +421,29 @@ def _body_frame_safe(shape: Any) -> tuple[list[float], list[float]]:
         return [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]
 
 
+def _edge_representative_point(ed: dict) -> list[float] | None:
+    """A single 3D point standing in for an edge when classifying its position.
+
+    Line: segment midpoint. Circle/arc: the curve center (a rim's center sits on
+    the axis at that rim's end, so it offsets cleanly along the extrude axis).
+    Spline: the middle sample.
+    """
+    kind = ed.get("kind")
+    if kind == "line":
+        s, e = ed.get("start"), ed.get("end")
+        if s and e:
+            return [(s[i] + e[i]) / 2.0 for i in range(3)]
+    elif kind in ("circle", "arc"):
+        c = ed.get("center")
+        if c and len(c) == 3:
+            return list(c)
+    else:
+        pts = ed.get("points")
+        if pts:
+            return list(pts[len(pts) // 2])
+    return None
+
+
 def _occ_face_geom_hash(occ_face: Any) -> str | None:
     """Geometry-hash key for a raw OCC face, matching the mesh consumer's key.
 
@@ -1196,9 +1219,15 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
     # See _tessellate_and_assemble_faces: with a geom-keyed edge lineage map the
     # body-wide profile blob is suppressed so per-edge tokens are not shadowed.
     fallback_pq = None if is_geom_keyed_lineage(edge_lineage, "gedge_") else profile_queries
+    center, half = _body_frame_safe(solid)
 
     for idx, (ed, _) in enumerate(raw_edges):
         edges.append(ed)
+        # Spatial-role classifiers, the edit-stable handle the resolver narrows by
+        # before the geom hash -- the only such handle for edges (no @gnormal_).
+        pt = _edge_representative_point(ed)
+        classifiers = geometry_classifiers(pt, center, half) if pt is not None else []
+        ed["classifiers"] = classifiers
         if created_by:
             geom_hash = edge_geometry_hash(ed)
             edge_type = "straightedge" if ed["kind"] == "line" else "edge"
@@ -1209,10 +1238,15 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
                     ids.extend(e_tokens)
                 elif fallback_pq:
                     ids.extend(fallback_pq)
+                if classifiers:
+                    ids.extend(ref(c) for c in classifiers)
                 edge_queries.append(make_ancestry_query(ids, edge_type))
             else:
                 # no body_id — geom-hash + created_by, never index-ref
-                edge_queries.append(make_ancestry_query([ref(geom_hash), ref(created_by)], edge_type))
+                ids = [ref(geom_hash), ref(created_by)]
+                if classifiers:
+                    ids.extend(ref(c) for c in classifiers)
+                edge_queries.append(make_ancestry_query(ids, edge_type))
 
     return {"edges": edges, "edge_queries": edge_queries}
 
