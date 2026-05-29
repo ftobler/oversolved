@@ -37,15 +37,30 @@ Dispatched by `parse_query()` first character. Sub suffixes require a non-alphan
 
 A query for a parent type also matches subtypes (e.g. `face` matches `flatface`).
 
-## Geometric Classifiers (planned, not implemented)
+## Geometric Classifiers
 
-A planned mechanism to disambiguate surfaces that share ancestry (e.g. a circle cut by a line):
+An edit-stable resolver tier between ancestry and the geometry-hash tie-break,
+disambiguating elements that share ancestry (genuine siblings of one operation).
 
-- **Line Division**: `@pos` (left/above), `@neg` (right/below)
-- **Circle Containment**: `@inner` (inside), `@outer` (outside)
-- **Cardinal Direction**: `@north` (+Y), `@south` (-Y), `@east` (+X), `@west` (-X)
+Wire form: classifier tokens are minted `@cls_*` and ride the existing
+length-prefixed ancestry id list (no grammar change), exactly like the
+`@gface_`/`@gedge_` hash tokens. `_is_classifier_id` partitions them out of both
+the ancestral subset match and the hash tier; `_resolve_ancestry_ids` narrows
+candidates by them BEFORE the hash, and only when the narrowed set is non-empty
+(graceful -- a staled/absent classifier degrades to the hash tier, never zeroes
+the result). Each face/edge element carries its bare token list in
+`payload["classifiers"]`; the matching `@cls_*` tokens are embedded in the
+element's query.
 
-Status: not implemented. There is no classifier field on `AncestryQuery` and `_parse_ancestry` does not extract one. A `@classifier` appended after the `:TYPE` field would currently be swallowed into the type-restriction string. Today, surfaces sharing ancestry are disambiguated by the `@gface_`/`@gnormal_`/`@gedge_` geometry-hash tie-breakers instead.
+- **Cardinal / axial** (Phase 1, implemented): `@cls_xp`/`@cls_xn`/`@cls_yp`/
+  `@cls_yn`/`@cls_zp`/`@cls_zn` -- which end of the body AABB an element's
+  representative point sits past, per world axis (`geometry_classifiers`). Splits
+  extrude caps and cylinder rims; the only edit-stable discriminator for sibling
+  edges (which have no `@gnormal_` fallback). Stable under translation + per-axis
+  scale; not under body-reorienting rotation (body-local axes are future work).
+- **Line division** `@cls_pos`/`@cls_neg`, **circle containment**
+  `@cls_inner`/`@cls_outer` (planned): the 2D `classify_surface_*` primitives
+  exist (geometry_tessellation.py) but are not yet wired into the tier.
 
 ## Feature-Plane References (`@<FEAT>`)
 
@@ -85,18 +100,27 @@ Finds elements whose registered ancestor set is a **superset** of the query's se
 ## Resolution Decision Tree
 
 ```
-Parse → extract IDs, type_restriction, classifier
+Parse → ids, type_restriction
   ↓
-Find candidates where registered_key ⊆ query_set
-  |-- None → return None
+Partition ids → provenance (ancestry) | classifiers (@cls_*) | geom hashes (@g*)
   ↓
-Apply type_restriction:
-  |-- Exact matches → narrow
-  |-- No matches → coerce (subtype/upward/downward)
-  |-- Still none → return None
+Ancestral tier: candidates where provenance_set ⊆ registered_key; order-filter
   ↓
-Check count:
-  |-- 0 → None
-  |-- 1 → return element
-  |-- >1 → raise AmbiguousQueryError
+Type restriction: keep exact-type matches; else coerce (subtype/upward/downward),
+  >1 distinct coercions → AmbiguousQueryError
+  ↓
+Classifier tier (if >1 candidates): narrow to payload.classifiers ⊇ query
+  classifiers; applied only if non-empty (else fall through)
+  ↓
+Geom-hash tier (if >1 candidates): narrow by precise @gface_/@gedge_/@gvertex_,
+  then the @gnormal_ orientation fallback; each applied only if non-empty
+  ↓
+Fallbacks when the ancestral tier found nothing:
+  |-- partial ancestral (registered_key ⊆ provenance_set), unique → return
+  |-- precise hash only (no @gnormal_ here) → candidates
+  ↓
+0 → None | 1 → element | >1 → AmbiguousQueryError
 ```
+
+The classifier and geom-hash tiers only ever *narrow* an already
+ancestry-matched candidate set, so neither can reach across lineages.
