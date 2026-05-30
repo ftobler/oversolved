@@ -5,6 +5,7 @@ import type { Mutation, Entity } from '@/types/cad'
 import type { SnapKind } from '@/registry'
 import { suggestConstraint } from '@/registry'
 import { getEntityKind } from '@/types/cad'
+import { parseQuery } from '@/utils/query'
 import { circumcircle, arcAnglesFromRadiusPoint } from '@/components/Geometry3D/drawGeometry'
 
 export interface DrawSnapState {
@@ -197,29 +198,55 @@ export function computeDrawClick(
 
   if (t === 'project') {
     const hid = snap.hoveredSelectionId
-    if (!hid || !hid.startsWith('entity:')) return nothing
-    const parts = hid.split(':')
-    if (parts.length < 3) return nothing
-    const sourceFeatureId = parts[1]
-    const sourceEntityId = parts[2]
-    if (sourceFeatureId === featureId) return nothing
+    if (!hid) return nothing
 
-    const source = `@${sourceFeatureId}/${sourceEntityId}`
-    let kind = 'projected_line'
-    const entity = otherSketches?.[sourceFeatureId]?.[sourceEntityId]
-      ?? sketch?.[sourceEntityId]
-    if (entity) {
-      const ek = getEntityKind(entity)
-      if (ek === 'arc') kind = 'projected_arc'
-      else if (ek === 'circle') kind = 'projected_circle'
-      else if (ek === 'point') kind = 'projected_point'
+    // Sketch entity pick: entity:<featureId>:<entityId>
+    if (hid.startsWith('entity:')) {
+      const parts = hid.split(':')
+      if (parts.length < 3) return nothing
+      const sourceFeatureId = parts[1]
+      const sourceEntityId = parts[2]
+      if (sourceFeatureId === featureId) return nothing
+
+      const source = `@${sourceFeatureId}/${sourceEntityId}`
+      let kind = 'projected_line'
+      const entity = otherSketches?.[sourceFeatureId]?.[sourceEntityId]
+        ?? sketch?.[sourceEntityId]
+      if (entity) {
+        const ek = getEntityKind(entity)
+        if (ek === 'arc') kind = 'projected_arc'
+        else if (ek === 'circle') kind = 'projected_circle'
+        else if (ek === 'point') kind = 'projected_point'
+      }
+      return {
+        mutations: [{ type: 'add_projected_entity', featureId, kind, source }],
+        nextDrawPoints: null,
+        nextDrawSnap: null,
+        clearTool: true,
+      }
     }
-    return {
-      mutations: [{ type: 'add_projected_entity', featureId, kind, source }],
-      nextDrawPoints: null,
-      nextDrawSnap: null,
-      clearTool: true,
+
+    // Body geometry pick: ancestry query from face/edge/vertex layer
+    if (hid.startsWith('?')) {
+      let kind = 'projected_point'
+      try {
+        const q = parseQuery(hid)
+        if (q.kind === 'ancestry' && q.typeRestriction) {
+          const tr = q.typeRestriction
+          if (tr === 'edge' || tr === 'straightedge') {
+            kind = 'projected_line'
+          }
+        }
+      } catch { /* parse failure — keep default projected_point */ }
+      return {
+        mutations: [{ type: 'add_projected_entity', featureId, kind, source: hid }],
+        nextDrawPoints: null,
+        nextDrawSnap: null,
+        clearTool: true,
+      }
     }
+
+    return nothing
   }
 
   return nothing

@@ -350,3 +350,171 @@ def test_projection_failure_logged(caplog):
     result = solve_features(spec)
     assert result['features'][0]['status'] in ('ok', 'fully_constrained', 'underconstrained')
     assert "Projection failed" in caplog.text
+
+
+# ── Body geometry projection (face / edge / vertex via ancestry queries) ──
+
+
+def test_resolve_source_geometry_face():
+    """_resolve_source_geometry resolves a face ancestry query to 3D centroid."""
+    from oversolved.kernel.query import Repository, make_ancestry_query
+    from oversolved.kernel.solver_plane import _resolve_source_geometry
+
+    repo = Repository()
+    face_key = make_ancestry_query(["@body_1", "@feat_A"], "flatface")
+    repo.register_ancestor(["@body_1", "@feat_A"], {
+        "type": "flatface",
+        "centroid": [10.0, 20.0, 30.0],
+        "origin": [10.0, 20.0, 30.0],
+        "normal": [0.0, 0.0, 1.0],
+    })
+    kind, data = _resolve_source_geometry(face_key, repo)
+    assert kind == "point"
+    assert data == [10.0, 20.0, 30.0]
+
+
+def test_resolve_source_geometry_face_origin_fallback():
+    """When centroid is absent, origin is used as fallback for face centroid."""
+    from oversolved.kernel.query import Repository, make_ancestry_query
+    from oversolved.kernel.solver_plane import _resolve_source_geometry
+
+    repo = Repository()
+    face_key = make_ancestry_query(["@body_1", "@feat_A"], "flatface")
+    repo.register_ancestor(["@body_1", "@feat_A"], {
+        "type": "flatface",
+        "origin": [5.0, 6.0, 7.0],
+        "normal": [0.0, 0.0, 1.0],
+    })
+    kind, data = _resolve_source_geometry(face_key, repo)
+    assert kind == "point"
+    assert data == [5.0, 6.0, 7.0]
+
+
+def test_resolve_source_geometry_edge():
+    """_resolve_source_geometry resolves an edge ancestry query to 3D line."""
+    from oversolved.kernel.query import Repository, make_ancestry_query
+    from oversolved.kernel.solver_plane import _resolve_source_geometry
+
+    repo = Repository()
+    edge_key = make_ancestry_query(["@body_1", "@feat_A"], "straightedge")
+    repo.register_ancestor(["@body_1", "@feat_A"], {
+        "type": "straightedge",
+        "start": [0.0, 0.0, 0.0],
+        "end": [3.0, 4.0, 0.0],
+    })
+    kind, data = _resolve_source_geometry(edge_key, repo)
+    assert kind == "line"
+    assert data["start"] == [0.0, 0.0, 0.0]
+    assert data["end"] == [3.0, 4.0, 0.0]
+
+
+def test_resolve_source_geometry_vertex():
+    """_resolve_source_geometry resolves a vertex ancestry query to 3D point."""
+    from oversolved.kernel.query import Repository, make_ancestry_query
+    from oversolved.kernel.solver_plane import _resolve_source_geometry
+
+    repo = Repository()
+    vertex_key = make_ancestry_query(["@body_1", "_v0", "vertex"], "vertex")
+    repo.register_ancestor(["@body_1", "_v0", "vertex"], {
+        "type": "vertex",
+        "x": 7.0,
+        "y": 8.0,
+        "z": 9.0,
+    })
+    kind, data = _resolve_source_geometry(vertex_key, repo)
+    assert kind == "point"
+    assert data == [7.0, 8.0, 9.0]
+
+
+def test_project_body_edge_onto_sketch():
+    """Project a 3D body edge onto a sketch plane via ancestry query source."""
+    from oversolved.kernel.query import Repository, make_ancestry_query
+    from oversolved.kernel.solver_constants import _FRONT_PLANE
+    from oversolved.kernel.solver_plane import _project_source_to_params
+
+    repo = Repository()
+    edge_key = make_ancestry_query(["@body_1", "@feat_ext"], "straightedge")
+    repo.register_ancestor(["@body_1", "@feat_ext"], {
+        "type": "straightedge",
+        "start": [1.0, 2.0, 0.0],
+        "end": [4.0, 5.0, 0.0],
+    })
+    params = _project_source_to_params(
+        "projected_line", edge_key, _FRONT_PLANE, repo,
+    )
+    assert len(params) == 4
+    # On the front plane (z=0), 2D equals the XY components.
+    assert params[0:2] == [1.0, 2.0]
+    assert params[2:4] == [4.0, 5.0]
+
+
+def test_project_body_face_centroid_onto_sketch():
+    """Project a 3D body face centroid onto a sketch plane."""
+    from oversolved.kernel.query import Repository, make_ancestry_query
+    from oversolved.kernel.solver_constants import _FRONT_PLANE
+    from oversolved.kernel.solver_plane import _project_source_to_params
+
+    repo = Repository()
+    face_key = make_ancestry_query(["@body_1", "@feat_ext"], "flatface")
+    repo.register_ancestor(["@body_1", "@feat_ext"], {
+        "type": "flatface",
+        "centroid": [2.5, 3.5, 0.0],
+        "origin": [2.5, 3.5, 0.0],
+        "normal": [0.0, 0.0, 1.0],
+    })
+    params = _project_source_to_params(
+        "projected_point", face_key, _FRONT_PLANE, repo,
+    )
+    assert len(params) == 2
+    assert params == [2.5, 3.5]
+
+
+def test_project_body_vertex_onto_sketch():
+    """Project a 3D body vertex onto a sketch plane."""
+    from oversolved.kernel.query import Repository, make_ancestry_query
+    from oversolved.kernel.solver_constants import _FRONT_PLANE
+    from oversolved.kernel.solver_plane import _project_source_to_params
+
+    repo = Repository()
+    vertex_key = make_ancestry_query(["@body_1", "v0", "vertex"], "vertex")
+    repo.register_ancestor(["@body_1", "v0", "vertex"], {
+        "type": "vertex",
+        "x": 9.0,
+        "y": 7.0,
+        "z": 0.0,
+    })
+    params = _project_source_to_params(
+        "projected_point", vertex_key, _FRONT_PLANE, repo,
+    )
+    assert len(params) == 2
+    assert params == [9.0, 7.0]
+
+
+def test_project_cross_plane_with_body_repo():
+    """Project a line across planes using a Repository pre-populated with body-like geometry.
+
+    The projection resolver uses _resolve_source_geometry to turn a query into 3D
+    coords, then _project_source_to_params to project onto the target plane.
+    Face/edge/vertex types carry 3D world coords directly (no source-plane transform).
+    """
+    from oversolved.kernel.query import Repository, make_ancestry_query
+    from oversolved.kernel.solver_constants import _FRONT_PLANE, _BUILTIN_PLANES
+    from oversolved.kernel.solver_plane import _project_source_to_params
+
+    repo = Repository()
+    top_plane = _BUILTIN_PLANES["builtin_plane_top"]
+
+    edge_key = make_ancestry_query(["@body_1", "@feat_ext"], "straightedge")
+    repo.register_ancestor(["@body_1", "@feat_ext"], {
+        "type": "straightedge",
+        # Edge on front plane in world space: from (1,0,0) to (3,0,0)
+        "start": [1.0, 0.0, 0.0],
+        "end": [3.0, 0.0, 0.0],
+    })
+    params = _project_source_to_params(
+        "projected_line", edge_key, top_plane, repo,
+    )
+    # Projected to top plane (XZ): world X → sketch X, world Z → sketch Y
+    # start=(1,0,0) → (1, 0), end=(3,0,0) → (3, 0)
+    assert params[0:2] == [1.0, 0.0]
+    assert params[2:4] == [3.0, 0.0]

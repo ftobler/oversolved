@@ -148,6 +148,22 @@ def _resolve_source_geometry(source_query: str, global_repo: Repository) -> tupl
                 "end_angle": params[4],
             }
 
+    # 3D body geometry resolved via ancestry query: face / edge / vertex.
+    # These payloads carry 3D world coordinates, not 2D sketch params.
+    data_type = data.get("type", "")
+    if data_type in ("face", "flatface", "cylinderface"):
+        point_3d = data.get("centroid") or data.get("origin") or [0.0, 0.0, 0.0]
+        return "point", point_3d
+    if data_type in ("edge", "straightedge"):
+        start = data.get("start", [0.0, 0.0, 0.0])
+        end = data.get("end", [0.0, 0.0, 0.0])
+        return "line", {"start": start, "end": end}
+    if data_type == "vertex":
+        vx = data.get("x", 0.0)
+        vy = data.get("y", 0.0)
+        vz = data.get("z", 0.0)
+        return "point", [vx, vy, vz]
+
     raise ValueError(f"cannot resolve source geometry for {source_query!r}")
 
 

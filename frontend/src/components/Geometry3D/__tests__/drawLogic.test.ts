@@ -266,4 +266,56 @@ describe('computeDrawClick - project tool', () => {
     }
     expect(result.clearTool).toBe(true)
   })
+
+  it('emits add_projected_entity for edge ancestry query pick', () => {
+    const snap = emptySnap()
+    const ancQuery = '?4,4;@bxx@fyy:straightedge'
+    snap.hoveredSelectionId = ancQuery
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0].type).toBe('add_projected_entity')
+    if (result.mutations[0].type === 'add_projected_entity') {
+      expect(result.mutations[0].source).toBe(ancQuery)
+      expect(result.mutations[0].kind).toBe('projected_line')
+    }
+    expect(result.clearTool).toBe(true)
+  })
+
+  it('emits add_projected_entity for face ancestry query pick', () => {
+    const snap = emptySnap()
+    const ancQuery = '?4,4;@bxx@fyy:flatface'
+    snap.hoveredSelectionId = ancQuery
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0].type).toBe('add_projected_entity')
+    if (result.mutations[0].type === 'add_projected_entity') {
+      expect(result.mutations[0].source).toBe(ancQuery)
+      expect(result.mutations[0].kind).toBe('projected_point')
+    }
+    expect(result.clearTool).toBe(true)
+  })
+
+  it('emits add_projected_entity for vertex ancestry query pick (no type restriction)', () => {
+    const snap = emptySnap()
+    const ancQuery = '?4,4;@bxx@vxx'
+    snap.hoveredSelectionId = ancQuery
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0].type).toBe('add_projected_entity')
+    if (result.mutations[0].type === 'add_projected_entity') {
+      expect(result.mutations[0].source).toBe(ancQuery)
+      expect(result.mutations[0].kind).toBe('projected_point')
+    }
+    expect(result.clearTool).toBe(true)
+  })
+
+  it('returns nothing for malformed ancestry query in project tool', () => {
+    const snap = emptySnap()
+    snap.hoveredSelectionId = '?not-valid'
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
+    // Malformed ancestry queries still emit (they fall back to projected_point with the raw string as source)
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0].type).toBe('add_projected_entity')
+    expect(result.clearTool).toBe(true)
+  })
 })
