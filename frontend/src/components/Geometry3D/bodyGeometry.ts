@@ -90,32 +90,10 @@ export function buildFaceBoundarySegments(mesh: Mesh3D, brepFaceIndex: number): 
     }
   }
 
-  // Group boundary edges by world-space position key to detect seam duplicates.
-  // At a seam, two boundary edges occupy the same 3D line (u=0 and u=2π in the
-  // parametric tessellation). Any position group with more than one edge is a
-  // seam artifact and should be suppressed.
-  const PREC = 4  // decimal places for position rounding
-  const byPos = new Map<string, [number, number][]>()
+  const pts: number[] = []
   for (const [key, count] of edgeCount) {
     if (count !== 1) continue
     const [v1, v2] = edgeVerts.get(key)!
-    const p1 = getVertex(vertices, v1)
-    const p2 = getVertex(vertices, v2)
-    const ax = p1[0].toFixed(PREC), ay = p1[1].toFixed(PREC), az = p1[2].toFixed(PREC)
-    const bx = p2[0].toFixed(PREC), by = p2[1].toFixed(PREC), bz = p2[2].toFixed(PREC)
-    // Canonical key: lexicographically smaller endpoint first so orientation doesn't matter.
-    const posKey = `${ax},${ay},${az}` < `${bx},${by},${bz}`
-      ? `${ax},${ay},${az}|${bx},${by},${bz}`
-      : `${bx},${by},${bz}|${ax},${ay},${az}`
-    const bucket = byPos.get(posKey)
-    if (bucket) bucket.push([v1, v2])
-    else byPos.set(posKey, [[v1, v2]])
-  }
-
-  const pts: number[] = []
-  for (const bucket of byPos.values()) {
-    if (bucket.length > 1) continue  // coincident duplicate = seam artifact
-    const [v1, v2] = bucket[0]
     pts.push(...getVertex(vertices, v1), ...getVertex(vertices, v2))
   }
   return new Float32Array(pts)
@@ -177,7 +155,6 @@ export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
   const parts: number[] = []
 
   for (const edge of edges) {
-    if (edge.seam) continue
     if (edge.kind === 'line') {
       if (_isValidSegment(edge.start) && _isValidSegment(edge.end)) {
         parts.push(...edge.start, ...edge.end)
@@ -233,9 +210,7 @@ export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
 export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
   const counts: number[] = []
   for (const edge of edges) {
-    if (edge.seam) {
-      counts.push(0)
-    } else if (edge.kind === 'line') {
+    if (edge.kind === 'line') {
       counts.push(1)
     } else if (edge.kind === 'circle' || edge.kind === 'arc') {
       const sweep = edge.angle_end - edge.angle_start

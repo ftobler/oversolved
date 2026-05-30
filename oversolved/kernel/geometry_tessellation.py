@@ -1004,29 +1004,6 @@ def solid_to_mesh(
     return mesh
 
 
-def _build_seam_hashes(occ_solid: Any) -> set[int]:
-    """Return Python hashes of TopoDS_Edge shapes that are seam edges.
-
-    A seam edge has both its adjacent faces being the same face (the periodic
-    surface wraps around). Detected by finding edges with only one unique
-    adjacent face in the edge-to-face adjacency map.
-    """
-    from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE  # noqa: PLC0415
-    from OCP.TopTools import TopTools_IndexedDataMapOfShapeListOfShape  # noqa: PLC0415
-    from OCP.TopExp import TopExp  # noqa: PLC0415
-
-    e2f: TopTools_IndexedDataMapOfShapeListOfShape = TopTools_IndexedDataMapOfShapeListOfShape()
-    TopExp.MapShapesAndAncestors_s(occ_solid, TopAbs_EDGE, TopAbs_FACE, e2f)
-
-    seam_hashes: set[int] = set()
-    for i in range(1, e2f.Size() + 1):
-        face_list = e2f.FindFromIndex(i)
-        unique: set[int] = {hash(face) for face in face_list}
-        if len(unique) == 1:
-            seam_hashes.add(hash(e2f.FindKey(i)))
-    return seam_hashes
-
-
 def _extract_nurbs_curve_data(curve: Any) -> dict[str, Any]:
     """Extract exact NURBS/analytic curve parameters from a BRepAdaptor_Curve.
 
@@ -1110,8 +1087,7 @@ def edge_to_geom_dict(edge: Any) -> tuple[dict, tuple]:
 
     Shared by solid_to_edges and the fillet edge resolver so both compute the
     exact same edge_geometry_hash. The sort key gives deterministic edge
-    indices independent of OCC iteration order. The dict omits the "seam" flag
-    (callers add it when relevant); "seam" is not part of the geometry hash.
+    indices independent of OCC iteration order.
     """
     TWO_PI = 2.0 * math.pi
     CIRCLE_TOL = 1e-4
@@ -1193,8 +1169,6 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
         return {"edges": [], "edge_queries": []}
     solid = _ensure_cq(solid)
 
-    seam_hashes = _build_seam_hashes(occ_solid)
-
     raw_edges: list[tuple] = []
     seen_hashes: set[int] = set()
 
@@ -1205,8 +1179,6 @@ def solid_to_edges(solid: TopoDS_Shape, created_by: str | None = None, body_id: 
         seen_hashes.add(h)
 
         ed, sort_key = edge_to_geom_dict(edge)
-        if h in seam_hashes:
-            ed["seam"] = True  # type: ignore[assignment]
         ed["_occ_hash"] = str(h)
         raw_edges.append((ed, sort_key))
 
