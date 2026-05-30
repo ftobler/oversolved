@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from oversolved.kernel.solver import solve_features
 
 # ── Projected entity tests ──
@@ -408,19 +409,18 @@ def test_resolve_source_geometry_edge():
     assert data["end"] == [3.0, 4.0, 0.0]
 
 
-def test_resolve_source_geometry_curved_edge_raises_clear_error():
-    """A curved edge has no straight endpoints; resolving must fail cleanly,
-    not crash with 'NoneType - float' when the None coords reach the projection."""
-    import pytest
+def test_resolve_source_geometry_unsupported_edge_raises_clear_error():
+    """A spline edge has neither straight endpoints nor circle/arc params, so
+    resolving must fail cleanly, not crash with 'NoneType - float' when the None
+    coords reach the projection."""
     from oversolved.kernel.query import Repository, make_ancestry_query
     from oversolved.kernel.solver_plane import _resolve_source_geometry
 
     repo = Repository()
     edge_key = make_ancestry_query(["@body_1", "@feat_A"], "edge")
-    # Curved edge: circle/arc/spline carry no start/end in the ancestry payload.
     repo.register_ancestor(["@body_1", "@feat_A"], {
         "type": "edge",
-        "kind": "circle",
+        "kind": "spline",
         "start": None,
         "end": None,
     })
@@ -444,6 +444,58 @@ def test_resolve_source_geometry_vertex():
     kind, data = _resolve_source_geometry(vertex_key, repo)
     assert kind == "point"
     assert data == [7.0, 8.0, 9.0]
+
+
+def test_resolve_and_project_circle_body_edge():
+    """A circular body edge resolves to circle geometry and projects to
+    [cx, cy, radius] on a parallel sketch plane."""
+    from oversolved.kernel.query import Repository, make_ancestry_query
+    from oversolved.kernel.solver_constants import _FRONT_PLANE
+    from oversolved.kernel.solver_plane import _resolve_source_geometry, _project_source_to_params
+
+    repo = Repository()
+    edge_key = make_ancestry_query(["@body_1", "@feat_ext"], "edge")
+    repo.register_ancestor(["@body_1", "@feat_ext"], {
+        "type": "edge",
+        "kind": "circle",
+        "center": [2.0, 3.0, 0.0],
+        "radius": 5.0,
+    })
+    kind, data = _resolve_source_geometry(edge_key, repo)
+    assert kind == "circle"
+    assert data == {"center": [2.0, 3.0, 0.0], "radius": 5.0}
+
+    params = _project_source_to_params("projected_circle", edge_key, _FRONT_PLANE, repo)
+    assert params == [2.0, 3.0, 5.0]
+
+
+def test_project_arc_body_edge_onto_sketch():
+    """An arc body edge projects to [cx, cy, radius, start_angle, end_angle] in
+    the sketch-plane frame, computed from the arc's 3D frame and parameters."""
+    import math
+    from oversolved.kernel.query import Repository, make_ancestry_query
+    from oversolved.kernel.solver_constants import _FRONT_PLANE
+    from oversolved.kernel.solver_plane import _project_source_to_params
+
+    repo = Repository()
+    edge_key = make_ancestry_query(["@body_1", "@feat_ext"], "edge")
+    repo.register_ancestor(["@body_1", "@feat_ext"], {
+        "type": "edge",
+        "kind": "arc",
+        "center": [0.0, 0.0, 0.0],
+        "radius": 2.0,
+        "axis": [0.0, 0.0, 1.0],
+        "x_axis": [1.0, 0.0, 0.0],
+        "angle_start": 0.0,
+        "angle_end": math.pi / 2,
+    })
+    cx, cy, r, sa, ea = _project_source_to_params(
+        "projected_arc", edge_key, _FRONT_PLANE, repo,
+    )
+    assert (cx, cy) == (0.0, 0.0)
+    assert r == pytest.approx(2.0)
+    assert sa == pytest.approx(0.0)
+    assert ea == pytest.approx(math.pi / 2)
 
 
 def test_project_body_edge_onto_sketch():

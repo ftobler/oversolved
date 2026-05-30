@@ -14,6 +14,9 @@ export interface DrawSnapState {
   hoveredSnapKind: SnapKind | null
   /** Composite ID: "entity:featureId:entityId" or null */
   hoveredSelectionId: string | null
+  /** Curve kind of the hovered body edge ('line'|'circle'|'arc'|'spline'),
+   *  used by the project tool to choose the projected entity kind. */
+  hoveredSourceKind?: string | null
   drawSnapVertexId: string | null
   alignmentSnapPoint: [number, number] | null
   alignmentSnapKind: string | null
@@ -234,7 +237,11 @@ export function computeDrawClick(
         if (q.kind === 'ancestry' && q.typeRestriction) {
           const tr = q.typeRestriction
           if (tr === 'edge' || tr === 'straightedge') {
-            kind = 'projected_line'
+            // The query alone can't tell a line from a circle/arc; the hovered
+            // edge's curve kind (when known) selects the projected entity kind.
+            if (snap.hoveredSourceKind === 'circle') kind = 'projected_circle'
+            else if (snap.hoveredSourceKind === 'arc') kind = 'projected_arc'
+            else kind = 'projected_line'
           }
         }
       } catch { /* parse failure — keep default projected_point */ }

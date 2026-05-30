@@ -575,6 +575,14 @@ def _register_brep_edge_ancestry(global_repo, body: Body, edges: list, edge_quer
             "kind": edge.get("kind"),
             "start": edge.get("start"),
             "end": edge.get("end"),
+            # Curve geometry for circle/arc edges so they can be projected onto a
+            # sketch (straight edges use start/end; these are None for lines).
+            "center": edge.get("center"),
+            "radius": edge.get("radius"),
+            "axis": edge.get("axis"),
+            "x_axis": edge.get("x_axis"),
+            "angle_start": edge.get("angle_start"),
+            "angle_end": edge.get("angle_end"),
             # Spatial-role classifiers the edge query carries; the only edit-stable
             # discriminator for ancestral-sibling edges (no @gnormal_ fallback).
             "classifiers": list(edge.get("classifiers", [])),

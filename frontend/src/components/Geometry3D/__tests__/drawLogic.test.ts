@@ -281,6 +281,42 @@ describe('computeDrawClick - project tool', () => {
     expect(result.clearTool).toBe(true)
   })
 
+  it('emits projected_circle for a circular body edge pick', () => {
+    const snap = emptySnap()
+    const ancQuery = '?4,4;@bxx@fyy:edge'
+    snap.hoveredSelectionId = ancQuery
+    snap.hoveredSourceKind = 'circle'
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0].type).toBe('add_projected_entity')
+    if (result.mutations[0].type === 'add_projected_entity') {
+      expect(result.mutations[0].source).toBe(ancQuery)
+      expect(result.mutations[0].kind).toBe('projected_circle')
+    }
+  })
+
+  it('emits projected_arc for an arc body edge pick', () => {
+    const snap = emptySnap()
+    const ancQuery = '?4,4;@bxx@fyy:edge'
+    snap.hoveredSelectionId = ancQuery
+    snap.hoveredSourceKind = 'arc'
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
+    expect(result.mutations[0].type).toBe('add_projected_entity')
+    if (result.mutations[0].type === 'add_projected_entity') {
+      expect(result.mutations[0].kind).toBe('projected_arc')
+    }
+  })
+
+  it('falls back to projected_line for a curved edge with unknown source kind', () => {
+    const snap = emptySnap()
+    snap.hoveredSelectionId = '?4,4;@bxx@fyy:edge'
+    // hoveredSourceKind unset (e.g. body not registered) -> safe line default.
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
+    if (result.mutations[0].type === 'add_projected_entity') {
+      expect(result.mutations[0].kind).toBe('projected_line')
+    }
+  })
+
   it('emits add_projected_entity for face ancestry query pick', () => {
     const snap = emptySnap()
     const ancQuery = '?4,4;@bxx@fyy:flatface'

@@ -116,11 +116,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       bodyId,
       mesh,
       edgeQueries,
+      edgeKinds: edges.map(e => e.kind),
       vertexQueries,
       updateFaceGeometryForQuery,
       clearFaceGeometry,
     })
-  }, [interactive, visible, featureId, bodyId, mesh, edgeQueries, vertexQueries, updateFaceGeometryForQuery, clearFaceGeometry])
+  }, [interactive, visible, featureId, bodyId, mesh, edges, edgeQueries, vertexQueries, updateFaceGeometryForQuery, clearFaceGeometry])
 
   const isBodySelected = normalSelection.has('@' + bodyId)
 

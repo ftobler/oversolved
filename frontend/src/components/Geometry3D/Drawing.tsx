@@ -14,6 +14,7 @@ import type { Sketch } from '@/types/cad'
 import type { DrawingToolContext } from '@/tools/DrawingTool'
 import { computePreviewPts } from '@/components/Geometry3D/drawGeometry'
 import { markDrawToolClickConsumed } from '@/components/Viewport/idDispatch/drawToolClickGuard'
+import { findEdgeKindForQuery } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 
 export function DrawPreview({ activeFeatureId }: { activeFeatureId?: string }) {
   const activeTool = useSketchEditorStore(s => s.activeTool)
@@ -160,6 +161,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
         const context: DrawingToolContext = {
           normalSelection: state.normalSelection,
           hoveredSelectionId: state.hoveredSelectionId,
+          hoveredSourceKind: findEdgeKindForQuery(state.hoveredSelectionId ?? '') ?? null,
           isPointerDown: state.isPointerDown,
           activeFeatureId: state.activeFeatureId,
           hoveredVertexId,

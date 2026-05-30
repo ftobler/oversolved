@@ -13,6 +13,8 @@ export interface BodyDispatchCallbacks {
   bodyId: string
   mesh: Mesh3D
   edgeQueries: readonly string[] | undefined
+  /** Curve kind ('line' | 'circle' | 'arc' | 'spline') parallel to edgeQueries. */
+  edgeKinds?: readonly string[]
   vertexQueries: readonly string[] | undefined
   updateFaceGeometryForQuery: (faceQuery: string) => void
   clearFaceGeometry: () => void
@@ -39,6 +41,19 @@ export function registerBodyCallbacks(bodyKey: string, cb: BodyDispatchCallbacks
       }
     }
   }
+}
+
+/**
+ * Resolve a body edge query to its curve kind ('line' | 'circle' | 'arc' |
+ * 'spline'), so the project tool can create the matching projected entity.
+ * Returns undefined when the query is not a registered body edge.
+ */
+export function findEdgeKindForQuery(q: string): string | undefined {
+  for (const body of byBodyKey.values()) {
+    const idx = body.edgeQueries?.indexOf(q) ?? -1
+    if (idx >= 0) return body.edgeKinds?.[idx]
+  }
+  return undefined
 }
 
 export function findBodyForFaceQuery(q: string): { body: BodyDispatchCallbacks; index: number } | null {

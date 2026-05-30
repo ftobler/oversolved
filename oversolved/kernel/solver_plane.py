@@ -155,17 +155,38 @@ def _resolve_source_geometry(source_query: str, global_repo: Repository) -> tupl
         point_3d = data.get("centroid") or data.get("origin") or [0.0, 0.0, 0.0]
         return "point", point_3d
     if data_type in ("edge", "straightedge"):
+        edge_kind = data.get("kind")
+        if edge_kind in ("circle", "arc"):
+            center = data.get("center")
+            radius = data.get("radius")
+            if center is None or radius is None:
+                raise ValueError(
+                    f"cannot project {edge_kind} edge {source_query!r}: "
+                    f"missing center/radius in ancestry payload"
+                )
+            if edge_kind == "circle":
+                return "circle", {"center": center, "radius": radius}
+            # Carry the arc's 3D frame so the projector can compute the start/end
+            # angles in the target sketch plane (the stored angles are in the
+            # edge's own parameter space, not the sketch frame).
+            return "arc", {
+                "center": center,
+                "radius": radius,
+                "axis": data.get("axis"),
+                "x_axis": data.get("x_axis"),
+                "angle_start": data.get("angle_start"),
+                "angle_end": data.get("angle_end"),
+            }
         start = data.get("start")
         end = data.get("end")
-        # Curved edges (circle / arc / spline) carry no straight endpoints in the
-        # ancestry payload, so there is nothing to project as a line. Fail with a
-        # clear message instead of letting None coordinates reach the projection
+        # Splines (and any edge lacking endpoints) cannot be projected as a line;
+        # fail clearly instead of letting None coordinates reach the projection
         # math (which raised "NoneType - float").
         if start is None or end is None:
             raise ValueError(
                 f"cannot project edge {source_query!r} as a line: no straight "
-                f"endpoints (kind={data.get('kind')!r}); only straight edges are "
-                f"supported as projected_line sources"
+                f"endpoints (kind={edge_kind!r}); only line, circle and arc edges "
+                f"are supported as projection sources"
             )
         return "line", {"start": start, "end": end}
     if data_type == "vertex":
@@ -193,10 +214,46 @@ def _project_source_to_params(
         c2d = _3d_to_2d(data_3d["center"], target_plane)
         return c2d + [data_3d["radius"]]
     if projected_kind == "projected_arc":
-        c2d = _3d_to_2d(data_3d["center"], target_plane)
-        return c2d + [data_3d["radius"], data_3d["start_angle"], data_3d["end_angle"]]
+        # A sketch arc source carries 2D start/end angles directly; a 3D body arc
+        # carries its own frame, from which the sketch-plane angles are computed.
+        if "start_angle" in data_3d and "end_angle" in data_3d:
+            c2d = _3d_to_2d(data_3d["center"], target_plane)
+            return c2d + [data_3d["radius"], data_3d["start_angle"], data_3d["end_angle"]]
+        return _project_3d_arc_to_params(data_3d, target_plane)
 
     raise ValueError(f"unknown projected kind: {projected_kind!r}")
+
+
+def _project_3d_arc_to_params(arc_3d: dict, target_plane: Frame3D | dict) -> list:
+    """Project a 3D body arc (center + frame + parameter angles) to sketch-plane
+    arc params [cx, cy, radius, start_angle, end_angle].
+
+    The arc's parameter-space angles are resolved to 3D endpoints, projected to
+    2D, then re-measured relative to the projected center in the sketch frame so
+    the angles are correct regardless of the arc's own x-axis orientation.
+    Assumes the arc plane is parallel to the sketch plane (matching the circle
+    case); a non-parallel arc projects to an ellipse, which a circular arc cannot
+    represent.
+    """
+    center = np.array(arc_3d["center"], dtype=float)
+    radius = float(arc_3d["radius"])
+    x_axis = _normalize(np.array(arc_3d["x_axis"], dtype=float))
+    normal = _normalize(np.array(arc_3d["axis"], dtype=float))
+    y_axis = np.cross(normal, x_axis)
+    a0 = float(arc_3d["angle_start"])
+    a1 = float(arc_3d["angle_end"])
+
+    start_3d = center + radius * (np.cos(a0) * x_axis + np.sin(a0) * y_axis)
+    end_3d = center + radius * (np.cos(a1) * x_axis + np.sin(a1) * y_axis)
+
+    c2d = _3d_to_2d(list(center), target_plane)
+    s2d = _3d_to_2d(list(start_3d), target_plane)
+    e2d = _3d_to_2d(list(end_3d), target_plane)
+
+    start_angle = float(np.arctan2(s2d[1] - c2d[1], s2d[0] - c2d[0]))
+    end_angle = float(np.arctan2(e2d[1] - c2d[1], e2d[0] - c2d[0]))
+    radius_2d = float(np.hypot(s2d[0] - c2d[0], s2d[1] - c2d[1]))
+    return c2d + [radius_2d, start_angle, end_angle]
 
 
 def _get_point_3d(ref: Frame3D | dict, global_repo: Repository) -> np.ndarray:
