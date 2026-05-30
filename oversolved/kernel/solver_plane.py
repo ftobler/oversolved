@@ -155,8 +155,18 @@ def _resolve_source_geometry(source_query: str, global_repo: Repository) -> tupl
         point_3d = data.get("centroid") or data.get("origin") or [0.0, 0.0, 0.0]
         return "point", point_3d
     if data_type in ("edge", "straightedge"):
-        start = data.get("start", [0.0, 0.0, 0.0])
-        end = data.get("end", [0.0, 0.0, 0.0])
+        start = data.get("start")
+        end = data.get("end")
+        # Curved edges (circle / arc / spline) carry no straight endpoints in the
+        # ancestry payload, so there is nothing to project as a line. Fail with a
+        # clear message instead of letting None coordinates reach the projection
+        # math (which raised "NoneType - float").
+        if start is None or end is None:
+            raise ValueError(
+                f"cannot project edge {source_query!r} as a line: no straight "
+                f"endpoints (kind={data.get('kind')!r}); only straight edges are "
+                f"supported as projected_line sources"
+            )
         return "line", {"start": start, "end": end}
     if data_type == "vertex":
         vx = data.get("x", 0.0)

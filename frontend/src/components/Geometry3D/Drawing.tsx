@@ -13,6 +13,7 @@ import { useAlignmentSnapEffect } from '@/components/interaction/useAlignmentSna
 import type { Sketch } from '@/types/cad'
 import type { DrawingToolContext } from '@/tools/DrawingTool'
 import { computePreviewPts } from '@/components/Geometry3D/drawGeometry'
+import { markDrawToolClickConsumed } from '@/components/Viewport/idDispatch/drawToolClickGuard'
 
 export function DrawPreview({ activeFeatureId }: { activeFeatureId?: string }) {
   const activeTool = useSketchEditorStore(s => s.activeTool)
@@ -149,6 +150,11 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
 
         const tool = toolRegistry.get(effectiveTool)
         if (!tool?.handlers.onPointerDown) return
+
+        // The project tool commits on this pointer-down (and resets the tool),
+        // so claim the click: the canvas click listener must not also toggle
+        // normal selection on the body entity we are projecting.
+        if (effectiveTool === 'project') markDrawToolClickConsumed()
 
         const state = useSketchEditorStore.getState()
         const context: DrawingToolContext = {

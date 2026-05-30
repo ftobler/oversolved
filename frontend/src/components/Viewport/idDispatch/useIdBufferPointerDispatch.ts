@@ -10,6 +10,7 @@ import { sketchVertexAdapter } from './sketchVertexAdapter'
 import { planeAdapter } from './planeAdapter'
 import { originAdapter } from './originAdapter'
 import { getToolAllowedLayers } from './toolAllowedLayers'
+import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
@@ -139,6 +140,13 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       setLastClickIdHit(false)
       lastClickWasStale = false
       if (e.button !== 0 || !attached) return
+      // A sketch drawing tool (e.g. project) already consumed this click on
+      // pointer-down and may have reset the tool to null since. Don't let the
+      // click also toggle normal selection on the entity it just acted on.
+      if (takeDrawToolClickConsumed()) {
+        setLastClickIdHit(true)
+        return
+      }
       const hit = resolveSync(e, attached)
       if (!hit) {
         // Empty-space click during dimension placement -> finalise.

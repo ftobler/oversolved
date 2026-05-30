@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useIdBufferPointerDispatch } from '../useIdBufferPointerDispatch'
 import { registerDimCallbacks, resetDimCallbacksForTest } from '../dimensionLabelCallbacks'
-import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME } from '@/picking'
+import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, EDGE_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { sketchVertexAdapter } from '../sketchVertexAdapter'
+import { markDrawToolClickConsumed, takeDrawToolClickConsumed } from '../drawToolClickGuard'
 
 class StubRenderer {
   domElement: HTMLCanvasElement
@@ -158,6 +159,54 @@ describe('useIdBufferPointerDispatch', () => {
       await act(async () => { firePointerDown(canvas) })
       expect(spy).not.toHaveBeenCalled()
       spy.mockRestore()
+    })
+  })
+
+  describe('draw-tool click guard (project commit on pointer-down)', () => {
+    const EDGE_KEY = '?17;@gedge_abc:edge'
+
+    function stubEdgeHit() {
+      pipeline.resolveSync = vi.fn().mockReturnValue({
+        id: 3, layer: EDGE_LAYER_NAME, entityKey: EDGE_KEY, distancePx: 0,
+      })
+    }
+
+    beforeEach(() => {
+      // The project tool resets the tool to null after committing on pointer-down,
+      // so by click time the tool reads as null (all layers allowed).
+      useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set() })
+      takeDrawToolClickConsumed()  // clear any leaked flag from prior tests
+    })
+
+    it('skips normal selection when a drawing tool already consumed the click', async () => {
+      stubEdgeHit()
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([EDGE_LAYER_NAME]),
+      }))
+
+      markDrawToolClickConsumed()  // mimic DrawPlane.onPointerDown for the project tool
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+      })
+
+      // The source edge must NOT land in normal selection, and we never even resolve.
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+      expect(pipeline.resolveSync).not.toHaveBeenCalled()
+    })
+
+    it('toggles normal selection on a B-rep hit when the click was not consumed', async () => {
+      stubEdgeHit()
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([EDGE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+      })
+
+      expect(useSketchEditorStore.getState().normalSelection.has(EDGE_KEY)).toBe(true)
     })
   })
 

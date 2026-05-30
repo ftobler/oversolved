@@ -408,6 +408,26 @@ def test_resolve_source_geometry_edge():
     assert data["end"] == [3.0, 4.0, 0.0]
 
 
+def test_resolve_source_geometry_curved_edge_raises_clear_error():
+    """A curved edge has no straight endpoints; resolving must fail cleanly,
+    not crash with 'NoneType - float' when the None coords reach the projection."""
+    import pytest
+    from oversolved.kernel.query import Repository, make_ancestry_query
+    from oversolved.kernel.solver_plane import _resolve_source_geometry
+
+    repo = Repository()
+    edge_key = make_ancestry_query(["@body_1", "@feat_A"], "edge")
+    # Curved edge: circle/arc/spline carry no start/end in the ancestry payload.
+    repo.register_ancestor(["@body_1", "@feat_A"], {
+        "type": "edge",
+        "kind": "circle",
+        "start": None,
+        "end": None,
+    })
+    with pytest.raises(ValueError, match="no straight"):
+        _resolve_source_geometry(edge_key, repo)
+
+
 def test_resolve_source_geometry_vertex():
     """_resolve_source_geometry resolves a vertex ancestry query to 3D point."""
     from oversolved.kernel.query import Repository, make_ancestry_query
