@@ -401,7 +401,6 @@ def test_four_quadrant_split_distinct_classifiers():
     assert len(token_sets) == 4, token_sets  # all four quadrants distinct
 
 
-
 # ─── circle containment is a non-problem: concentric regions have DISJOINT lineage ───
 
 def test_concentric_circles_resolve_by_disjoint_lineage():
