@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import type { LineSegment } from '@/types/cad'
+import type { LineSegment, Sketch } from '@/types/cad'
+import { COLOR_PROJECTED, COLOR_INACTIVE, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
 
 const MockLine = vi.fn((_props: Record<string, unknown>) => null)
 const MockDashedLine = vi.fn((_props: Record<string, unknown>) => null)
@@ -114,6 +115,31 @@ describe('EntityItem selected-entity render order', () => {
 
     const props = MockLine.mock.calls[0]?.[0] as Record<string, unknown>
     // renderOrder should be undefined or 0 when not selected and not editing
+    const ro = props.renderOrder as number | undefined
+    expect(ro == null || ro === 0).toBe(true)
+  })
+})
+
+describe('ProjectedEntities color and render order', () => {
+  const PROJECTED_LINE = { start: [0, 0], end: [1, 0], projected: true }
+  const SKETCH: Sketch = { p1: PROJECTED_LINE } as unknown as Sketch
+
+  it('renders amber and shares the sketch edit render order while editing', async () => {
+    const { ProjectedEntities } = await import('@/components/Geometry3D/EntityLines')
+    render(<ProjectedEntities sketch={SKETCH} featureId="sketch1" isEditing={true} />)
+
+    const props = MockLine.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(props.color).toBe(COLOR_PROJECTED)
+    expect(props.renderOrder).toBe(RENDER_ORDER_EDITING)
+    expect(props.depthTest).toBe(false)
+  })
+
+  it('renders grey (inactive) when the sketch is not being edited', async () => {
+    const { ProjectedEntities } = await import('@/components/Geometry3D/EntityLines')
+    render(<ProjectedEntities sketch={SKETCH} featureId="sketch1" isEditing={false} />)
+
+    const props = MockLine.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(props.color).toBe(COLOR_INACTIVE)
     const ro = props.renderOrder as number | undefined
     expect(ro == null || ro === 0).toBe(true)
   })

@@ -5,7 +5,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { sampleArc, sampleArcCCW, pointTo3D, allFinite } from '@/components/sketch_helpers'
 import { DashedLine } from '@/components/sketch_dimensions'
 import { VertexDot, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
 
 interface EntityItemProps {
   entity: Entity
@@ -113,8 +113,13 @@ export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, 
   )
 }
 
-// Renders all projected entities in the sketch (those with projected: true) in amber.
-export function ProjectedEntities({ sketch, featureId }: { sketch: Sketch; featureId: string }) {
+// Renders all projected entities in the sketch (those with projected: true).
+// Amber while the sketch is being edited; grey (COLOR_INACTIVE) otherwise, so
+// projected geometry matches the rest of the sketch. renderOrder mirrors the
+// active sketch lines (RENDER_ORDER_EDITING) so it shares the same z-index.
+export function ProjectedEntities({ sketch, featureId, isEditing = false }: { sketch: Sketch; featureId: string; isEditing?: boolean }) {
+  const color = isEditing ? COLOR_PROJECTED : COLOR_INACTIVE
+  const renderOrder = isEditing ? RENDER_ORDER_EDITING : undefined
   return (
     <>
       {Object.entries(sketch)
@@ -124,18 +129,18 @@ export function ProjectedEntities({ sketch, featureId }: { sketch: Sketch; featu
           if ('start' in entity && 'end' in entity && 'radius' in entity) {
             const arc = entity as Arc
             const pts = sampleArcCCW(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
-            return <Line key={id} points={pts} color={COLOR_PROJECTED} lineWidth={1} depthTest={false} />
+            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={false} renderOrder={renderOrder} />
           } else if ('start' in entity && 'end' in entity) {
             const line = entity as LineSegment
             const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
-            return <Line key={id} points={pts} color={COLOR_PROJECTED} lineWidth={1} depthTest={false} />
+            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={false} renderOrder={renderOrder} />
           } else if ('center' in entity) {
             const circ = entity as Circle
             const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
-            return <Line key={id} points={pts} color={COLOR_PROJECTED} lineWidth={1} depthTest={false} />
+            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={false} renderOrder={renderOrder} />
           } else {
             const pt = entity as PointEntity
-            return <ProjectedOriginPoint key={id} x={pt.x} y={pt.y} featureId={featureId} entityId={id} />
+            return <ProjectedOriginPoint key={id} x={pt.x} y={pt.y} featureId={featureId} entityId={id} isEditing={isEditing} />
           }
         })}
     </>
