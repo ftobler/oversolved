@@ -63,11 +63,12 @@ element's query.
   the side of each shared bounding line taken in a canonical direction. A stable
   alternative to the positional `surface:N` index. Stamped in `topology.py` and
   registered on the surface element's payload.
-- **Circle containment** `@cls_inner`/`@cls_outer` (deferred): the existing
-  `classify_surface_by_circle_side` primitive is geometrically unsound for an
-  annulus (the ring's area-centroid sits in the hole), and the disk-vs-ring case
-  is a subset-ancestry, not same-ancestry, ambiguity. A correct discriminator
-  needs loop-nesting info; left for a follow-up.
+- **Circle containment** (investigated, not needed): concentric regions do not
+  share ancestry -- a disk and the ring around it are each identified by their
+  own bounding circle (`{@sk/inner}` vs `{@sk/outer}`; the hole circle is in the
+  ring's boundary but not its ancestry), so they already resolve by distinct
+  lineage with no tie to break. The `classify_surface_by_circle_side` primitive
+  stays unwired.
 
 ## Feature-Plane References (`@<FEAT>`)
 

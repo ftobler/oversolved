@@ -399,3 +399,36 @@ def test_four_quadrant_split_distinct_classifiers():
     assert len(quads) == 4, [s["query"] for s in topo["surfaces"]]
     token_sets = {frozenset(s["classifiers"]) for s in quads}
     assert len(token_sets) == 4, token_sets  # all four quadrants distinct
+
+
+
+# ─── circle containment is a non-problem: concentric regions have DISJOINT lineage ───
+
+def test_concentric_circles_resolve_by_disjoint_lineage():
+    """Phase 3 (circle containment) is unnecessary: a disk and the ring around it
+    do NOT share ancestry. Each region is identified by its OWN bounding circle
+    (disk -> the inner circle, ring -> the outer circle); the hole circle sits in
+    the ring's boundary but never enters its ancestry. So the two resolve by
+    distinct circle lineage with the positional surface index stripped -- there is
+    no sibling tie for a containment classifier to break (unlike the line-split
+    case, where the two halves genuinely share {circ, cut})."""
+    from oversolved.kernel.topology import detect_topology
+    topo = detect_topology(
+        {"outer": {"center": [0, 0], "radius": 10.0},
+         "inner": {"center": [0, 0], "radius": 4.0}},
+        feature_id="sk1",
+    )
+    assert len(topo["surfaces"]) == 2
+    # No classifier tokens are emitted for concentric circles.
+    for s in topo["surfaces"]:
+        assert s.get("classifiers", []) == []
+        assert "@cls_" not in s["query"]
+
+    # Ancestry is disjoint, so each region resolves uniquely even index-stripped.
+    repo = _register_surfaces(topo)
+    seen = set()
+    for s in topo["surfaces"]:
+        resolved = repo.query(_strip_index(s["query"]))
+        assert resolved is not None, f"region did not resolve by lineage: {s['query']!r}"
+        seen.add(tuple(resolved["origin"]))
+    assert len(seen) == 2, "the two concentric regions resolved to distinct elements"
