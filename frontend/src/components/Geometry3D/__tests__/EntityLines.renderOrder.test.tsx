@@ -118,6 +118,27 @@ describe('EntityItem selected-entity render order', () => {
     const ro = props.renderOrder as number | undefined
     expect(ro == null || ro === 0).toBe(true)
   })
+
+  it('solid line that is visible-only (not editing, not selected) depth-tests normally', async () => {
+    const { EntityItem } = await import('@/components/Geometry3D/EntityLines')
+    resetStore({ normalSelection: new Set() })
+
+    render(
+      <EntityItem
+        entity={LINE_ENTITY}
+        entityId="line1"
+        entityKind="line"
+        featureId="sketch1"
+        baseColor="#aaaaaa"
+        isEditing={false}
+      />
+    )
+
+    const props = MockLine.mock.calls[0]?.[0] as Record<string, unknown>
+    // depthTest must NOT be forced false, so the visible sketch sits at its
+    // plane (occluded by B-rep in front) like the sketch area, not floating.
+    expect(props.depthTest).toBeUndefined()
+  })
 })
 
 describe('ProjectedEntities color and render order', () => {

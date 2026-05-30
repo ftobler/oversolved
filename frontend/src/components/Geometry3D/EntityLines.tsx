@@ -44,7 +44,7 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
       <group>
         {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
-            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
         </group>
         <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start"  isEditing={isEditing} />
         <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end"  isEditing={isEditing} />
@@ -63,7 +63,7 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
 
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
-            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
         </group>
         <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start"  isEditing={isEditing} />
         <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end"  isEditing={isEditing} />
@@ -83,7 +83,7 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
 
           {construction
             ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
-            : <Line points={pts} color={color} lineWidth={lw} depthTest={false} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
         </group>
         <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center"  isEditing={isEditing} />
       </>
@@ -120,6 +120,9 @@ export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, 
 export function ProjectedEntities({ sketch, featureId, isEditing = false }: { sketch: Sketch; featureId: string; isEditing?: boolean }) {
   const color = isEditing ? COLOR_PROJECTED : COLOR_INACTIVE
   const renderOrder = isEditing ? RENDER_ORDER_EDITING : undefined
+  // While editing, draw on top (depthTest off). When only visible, depth-test
+  // normally so the sketch sits at its plane like the rest of the sketch/area.
+  const depthTest = isEditing ? false : undefined
   return (
     <>
       {Object.entries(sketch)
@@ -129,15 +132,15 @@ export function ProjectedEntities({ sketch, featureId, isEditing = false }: { sk
           if ('start' in entity && 'end' in entity && 'radius' in entity) {
             const arc = entity as Arc
             const pts = sampleArcCCW(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={false} renderOrder={renderOrder} />
+            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
           } else if ('start' in entity && 'end' in entity) {
             const line = entity as LineSegment
             const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={false} renderOrder={renderOrder} />
+            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
           } else if ('center' in entity) {
             const circ = entity as Circle
             const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={false} renderOrder={renderOrder} />
+            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
           } else {
             const pt = entity as PointEntity
             return <ProjectedOriginPoint key={id} x={pt.x} y={pt.y} featureId={featureId} entityId={id} isEditing={isEditing} />
