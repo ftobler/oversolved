@@ -125,31 +125,35 @@ beforeEach(() => {
 const sketch: Feature = makeFeature('sk1', 'sketch')
 const extrude: Feature = makeFeature('ex1', 'extrude')
 
-describe('Viewport body interactive flag', () => {
-  it('bodyItems are interactive with no active feature', () => {
+describe('Viewport body interactivity', () => {
+  it('does not force bodies inert when no feature is active', () => {
     usePartEditorStore.setState({ features: [sketch, extrude], bodies: makeBody() })
     const { container } = render(<Viewport />)
     container.querySelectorAll('[data-testid="body-3d"]').forEach(el => {
-      expect(el.getAttribute('data-interactive')).toBe('true')
+      // Viewport leaves Body3D's `interactive` default (true) in place.
+      expect(el.getAttribute('data-interactive')).not.toBe('false')
     })
   })
 
-  it('bodyItems are inert (interactive=false) while a sketch is active', () => {
-    // User invariant (solver_arch.user.md §Viewport Layers):
-    //   "Sketch geometry takes precedence in visual AND clicks."
-    // B-rep faces/edges must not intercept clicks while a sketch is being edited.
+  it('keeps bodies interactive while a sketch is being edited so the pick (collision) pass stays live', () => {
+    // User invariant: during sketch editing the collision renderpass works
+    // normally so the Project tool can pick 3D body geometry. Sketch geometry
+    // takes precedence over bodies via ID-buffer layer priority (z-index), not
+    // by making bodies inert -- so Body3D must NOT be forced interactive=false.
     usePartEditorStore.setState({
       features: [sketch, extrude],
       bodies: makeBody(),
       activeSketchFeatureId: 'sk1',
     })
     const { container } = render(<Viewport />)
-    container.querySelectorAll('[data-testid="body-3d"]').forEach(el => {
-      expect(el.getAttribute('data-interactive')).toBe('false')
+    const items = container.querySelectorAll('[data-testid="body-3d"]')
+    expect(items.length).toBeGreaterThan(0)
+    items.forEach(el => {
+      expect(el.getAttribute('data-interactive')).not.toBe('false')
     })
   })
 
-  it('ghostMode renders pickBodies as normal interactive bodies and shows a preview edge overlay', () => {
+  it('ghostMode renders pickBodies and shows a preview edge overlay', () => {
     usePartEditorStore.setState({
       features: [sketch, extrude],
       bodies: makeBody(),
@@ -161,8 +165,8 @@ describe('Viewport body interactive flag', () => {
     // Only pickBodyItems rendered as Body3D, no duplicate for preview
     const items = getAllByTestId('body-3d')
     expect(items.length).toBe(1)
-    // All Body3D items are interactive (no ghost/inert Body3D)
-    items.forEach(el => expect(el.getAttribute('data-interactive')).toBe('true'))
+    // Bodies are not forced inert.
+    items.forEach(el => expect(el.getAttribute('data-interactive')).not.toBe('false'))
     // Preview edge overlay is present
     expect(getByTestId('preview-edge-overlay')).toBeTruthy()
   })
