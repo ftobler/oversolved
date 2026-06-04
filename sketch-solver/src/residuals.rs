@@ -13,6 +13,7 @@
 //! them identically to a `fixed` constraint for solve, rank, and status.
 
 use crate::constraints::{Axis, Constraint, ConstraintKind, PointSelector, Ref, RefRole};
+use crate::sparse::SparseRow;
 use crate::{Entity, Input, Kind};
 use nalgebra::DMatrix;
 use std::collections::HashMap;
@@ -587,6 +588,35 @@ impl<'a> Problem<'a> {
             }
         }
         j
+    }
+
+    /// Sparse Jacobian: each row as `(col_index, value)` pairs for nonzero entries.
+    /// Builds the same row set as `jacobian` but converts to sparse representation.
+    pub fn jacobian_sparse(&self, x: &[f64], n: usize) -> Vec<SparseRow> {
+        let mut dense_rows: Vec<Vec<f64>> = Vec::new();
+        for c in self.constraints {
+            self.jac_one(c, x, n, &mut dense_rows);
+        }
+        for &i in &self.pinned_indices {
+            let mut row = vec![0.0; n];
+            row[i] = 1.0;
+            dense_rows.push(row);
+        }
+        for &(i, _) in &self.equality_pins {
+            let mut row = vec![0.0; n];
+            row[i] = 1.0;
+            dense_rows.push(row);
+        }
+
+        dense_rows
+            .into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .enumerate()
+                    .filter(|&(_, v)| v != 0.0)
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 
     fn residual_one_vec(&self, c: &Constraint, x: &[f64]) -> Vec<f64> {
