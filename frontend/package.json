@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "shadow:wasm": "cd ../sketch-solver && wasm-pack build --target web --out-dir pkg --release && cd ../frontend && node scripts/copyWasm.mjs"
+    "shadow:wasm": "cd ../sketch-solver && wasm-pack build --target web --out-dir pkg --release && cd ../frontend && node scripts/copyWasm.mjs",
+    "occ:install": "npm i --no-save opencascade.js@1.1.1"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
