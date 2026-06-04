@@ -17,6 +17,12 @@ const RANK_TOL: f64 = 1e-6;
 /// Sum of squared residuals above this means the system is unsatisfiable
 /// (mirrors `LOSS_THRESHOLD`).
 const LOSS_THRESHOLD: f64 = 1e-4;
+/// Drag re-solve regularization, mirroring `solver_constants.py`. A linear
+/// penalty `w*(x - x0)` per param biases the constraint null-space toward the
+/// pre-drag state so free DOF do not drift; weights are small vs hard
+/// constraints (weight 1) so real constraints always dominate.
+const REG_WEIGHT_BASE: f64 = 1e-3;
+const REG_WEIGHT_DRAG: f64 = 5e-2;
 
 pub fn solve_sketch(input: &Input) -> Output {
     let problem = Problem::new(input);
@@ -43,7 +49,18 @@ pub fn solve_sketch(input: &Input) -> Output {
         Status::FullyConstrained
     };
 
-    let params_solved: Vec<f32> = result.x.iter().map(|&v| v as f32).collect();
+    // Drag firmness: only re-position free DOF, and only when there are any.
+    // The status/rank above stay authoritative (computed from the unregularized
+    // solve), so a drag never fabricates a false classification -- mirrors the
+    // `_refine_drag` gate in `_solve_sketch`.
+    let x_final: Vec<f64> = if input.options.drag_mode && status == Status::Underconstrained {
+        let weights = drag_reg_weights(input, n);
+        refine_drag(&result.x, &x0, &problem, n, &weights)
+    } else {
+        result.x.clone()
+    };
+
+    let params_solved: Vec<f32> = x_final.iter().map(|&v| v as f32).collect();
 
     let (entity_status, vertex_freedom) = if input.options.skip_status_pass {
         (Vec::new(), Vec::new())
@@ -68,6 +85,55 @@ pub fn solve_sketch(input: &Input) -> Output {
             ms: 0.0,
         },
     }
+}
+
+/// Per-param drag regularization weights, mirroring `_drag_reg_weights`. Every
+/// param gets `REG_WEIGHT_BASE`; the dragged (anchor) entity's params get the
+/// firmer `REG_WEIGHT_DRAG`. The contract carries a single `drag_anchor_id`
+/// (an entity index); an out-of-range id just leaves the base weights (still a
+/// valid, gentle pull toward the pre-drag state).
+fn drag_reg_weights(input: &Input, n: usize) -> Vec<f64> {
+    let mut weights = vec![REG_WEIGHT_BASE; n];
+    let anchor = input.options.drag_anchor_id as usize;
+    if let Some(e) = input.entities.get(anchor) {
+        let end = (e.param_offset + e.kind.param_count()).min(n);
+        for w in weights.iter_mut().take(end).skip(e.param_offset) {
+            *w = REG_WEIGHT_DRAG;
+        }
+    }
+    weights
+}
+
+/// Second, regularized solve seeded at the constraint solution `x_clean`, adding
+/// linear penalty rows `w*(x - x0)` that pull each param toward its pre-drag
+/// value. Hard constraints keep weight 1 and dominate, so the manifold is
+/// preserved; the penalty only selects a point within the free DOF. Mirrors
+/// `_refine_drag`, folded into the crate so the drag path is a single call.
+fn refine_drag(
+    x_clean: &[f64],
+    x0: &[f64],
+    problem: &Problem,
+    n: usize,
+    weights: &[f64],
+) -> Vec<f64> {
+    let f2 = |x: &[f64]| {
+        let mut r = problem.residuals(x);
+        for i in 0..n {
+            r.push(weights[i] * (x[i] - x0[i]));
+        }
+        r
+    };
+    let jac2 = |x: &[f64]| {
+        let base = problem.jacobian(x, n);
+        let m = base.nrows();
+        let mut aug = DMatrix::<f64>::zeros(m + n, n);
+        aug.view_mut((0, 0), (m, n)).copy_from(&base);
+        for i in 0..n {
+            aug[(m + i, i)] = weights[i];
+        }
+        aug
+    };
+    solve_lm(x_clean, &f2, &jac2).x
 }
 
 /// Total parameters pinned, for the rigid-body-DOF bookkeeping. Mirrors
@@ -346,5 +412,62 @@ mod tests {
         assert!((p[2] - p[4]).abs() < 1e-4, "x meet {} vs {}", p[2], p[4]);
         assert!((p[3] - p[5]).abs() < 1e-4, "y meet {} vs {}", p[3], p[5]);
         assert!(out.diagnostics.residual_norm < 1e-4);
+    }
+
+    #[test]
+    fn drag_reg_weights_bump_only_the_anchor_entity() {
+        // line (off 0, 4 params) + point (off 4, 2 params); anchor = the point.
+        let inp = Input {
+            options: Options { drag_anchor_id: 1, ..Default::default() },
+            ..input(vec![line(0), point(4)], vec![0.0; 6], vec![])
+        };
+        let w = drag_reg_weights(&inp, 6);
+        assert_eq!(&w[0..4], &[REG_WEIGHT_BASE; 4]); // line stays at base
+        assert_eq!(&w[4..6], &[REG_WEIGHT_DRAG; 2]); // point (anchor) bumped
+    }
+
+    #[test]
+    fn drag_preserves_status_rank_and_feasibility() {
+        // p1 fixed at origin (seeded off), p2 free. Underconstrained either way.
+        // Dragging must not change the classification, only re-place free DOF.
+        let mut fix_p1 = c_target(ConstraintKind::Fixed, 0, PointSelector::Absent);
+        fix_p1.xy = Some((0.0, 0.0));
+        let make = |drag: bool| Input {
+            options: Options { drag_mode: drag, drag_anchor_id: 1, ..Default::default() },
+            ..input(vec![point(0), point(2)], vec![1.0, 1.0, 3.0, 4.0], vec![fix_p1.clone()])
+        };
+
+        let plain = solve_sketch(&make(false));
+        let dragged = solve_sketch(&make(true));
+
+        // Status / rank / per-entity status are taken from the unregularized
+        // solve, so they are identical with and without drag.
+        assert_eq!(dragged.overall_status, plain.overall_status);
+        assert_eq!(dragged.overall_status, Status::Underconstrained.to_u8());
+        assert_eq!(dragged.diagnostics.rank, plain.diagnostics.rank);
+        assert_eq!(dragged.entity_status, plain.entity_status);
+
+        // Both solves are feasible and place the fixed point at the origin.
+        assert!(dragged.diagnostics.residual_norm < 1e-4);
+        assert!(dragged.params_solved[0].abs() < 1e-3 && dragged.params_solved[1].abs() < 1e-3);
+        // The free, undragged-by-constraints point stays near its seed under reg.
+        assert!((dragged.params_solved[2] - 3.0).abs() < 1e-2);
+        assert!((dragged.params_solved[3] - 4.0).abs() < 1e-2);
+    }
+
+    #[test]
+    fn drag_on_manifold_seed_is_a_no_op() {
+        // Underconstrained, seeded already satisfying all constraints: the refine
+        // pass must leave the geometry put (reg pulls toward x0, already there).
+        let inp = Input {
+            options: Options { drag_mode: true, drag_anchor_id: 0, ..Default::default() },
+            ..input(vec![line(0)], vec![1.0, 2.0, 5.0, 2.0], vec![])
+        };
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+        let p = &out.params_solved;
+        for (got, want) in p.iter().zip([1.0, 2.0, 5.0, 2.0]) {
+            assert!((got - want).abs() < 1e-4, "drag moved a satisfied DOF: {p:?}");
+        }
     }
 }
