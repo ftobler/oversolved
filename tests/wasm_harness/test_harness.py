@@ -7,13 +7,14 @@ extractor produces valid output.
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
 import pytest
 
-# Ensure the tests/ directory is importable
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+# Imports use the `wasm_harness.` package prefix (pytest places tests/ on
+# sys.path during collection). The `tests.` namespace prefix was fragile: on
+# some Python versions the `tests` namespace package finalizes its __path__
+# before this module's sys.path edit ran, so `tests.wasm_harness` failed to
+# resolve in a full-suite run.
 
 
 class TestRunKernel:
@@ -21,7 +22,7 @@ class TestRunKernel:
 
     def test_empty_doc(self):
         """An empty PartDoc spec should produce a valid result."""
-        from tests.wasm_harness.run_kernel import run_specs
+        from wasm_harness.run_kernel import run_specs
 
         results = run_specs([{"label": "empty", "spec": {"version": 1, "kind": "part", "features": []}}])
         assert len(results) == 1
@@ -36,8 +37,8 @@ class TestRunKernel:
 
     def test_rect_sketch(self):
         """A fully-constrained rectangle sketch should solve (rank-boundary may yield underconstrained)."""
-        from tests.wasm_harness.run_kernel import run_specs
-        from tests.solver_helpers import rect_sketch_spec
+        from wasm_harness.run_kernel import run_specs
+        from solver_helpers import rect_sketch_spec
 
         spec = {"features": [rect_sketch_spec(w=10, h=10, sketch_id="sk1")]}
         results = run_specs([{"label": "rect", "spec": spec}])
@@ -53,8 +54,8 @@ class TestRunKernel:
 
     def test_box_extrude_has_mesh(self):
         """A box extrude should produce a mesh with 6 faces and 24 edges."""
-        from tests.wasm_harness.run_kernel import run_specs
-        from tests.solver_helpers import full_rect_extrude_spec
+        from wasm_harness.run_kernel import run_specs
+        from solver_helpers import full_rect_extrude_spec
 
         pytest.importorskip("cadquery")
         results = run_specs([{"label": "box", "spec": full_rect_extrude_spec(w=5, h=5, d=5)}])
@@ -70,7 +71,7 @@ class TestRunKernel:
 
     def test_unknown_feature_kind_does_not_crash_runner(self):
         """A spec with error should return ok=False with an error message."""
-        from tests.wasm_harness.run_kernel import run_specs
+        from wasm_harness.run_kernel import run_specs
 
         results = run_specs([{"label": "bad", "spec": {"features": [{"id": "x", "kind": "unknown_feature"}]}}])
         assert len(results) == 1
@@ -84,7 +85,7 @@ class TestExtractFixtures:
 
     def test_all_fixtures_have_required_keys(self):
         """Every fixture should have label and spec keys."""
-        from tests.wasm_harness.extract_fixtures import _make_fixtures
+        from wasm_harness.extract_fixtures import _make_fixtures
 
         fixtures = _make_fixtures()
         assert len(fixtures) > 0
@@ -94,8 +95,8 @@ class TestExtractFixtures:
 
     def test_fixture_coverage(self):
         """Verify we cover at least the main feature kinds."""
-        from tests.wasm_harness.extract_fixtures import _make_fixtures
-        from tests.wasm_harness.run_kernel import run_specs
+        from wasm_harness.extract_fixtures import _make_fixtures
+        from wasm_harness.run_kernel import run_specs
 
         fixtures = _make_fixtures()
         results = run_specs(fixtures)
@@ -106,7 +107,7 @@ class TestExtractFixtures:
 
     def test_output_file_exists(self):
         """The regression baseline should have been written to the expected path."""
-        from tests.wasm_harness.extract_fixtures import OUTPUT_PATH
+        from wasm_harness.extract_fixtures import OUTPUT_PATH
 
         if not OUTPUT_PATH.exists():
             pytest.skip("Regression baseline not yet generated. Run extract_fixtures.py first.")

@@ -19,17 +19,24 @@ import sys
 from pathlib import Path
 from typing import Any
 
-# Allow importing from tests/ even when run as a script
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# Make the harness package and tests/ helpers importable when run as a script.
+# (Under pytest, tests/ is already on sys.path; importing via the `tests.`
+# namespace prefix is fragile across Python versions, so we mirror the rest of
+# the suite and import siblings by their top-level names.)
+_TESTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_REPO_ROOT = os.path.dirname(_TESTS_DIR)
+for _p in (_TESTS_DIR, _REPO_ROOT):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-from tests.wasm_harness.run_kernel import run_specs  # noqa: E402
-from tests.solver_helpers import (  # noqa: E402
+from wasm_harness.run_kernel import run_specs  # noqa: E402
+from solver_helpers import (  # noqa: E402
     rect_sketch_spec,
     extrude_spec,
     hole_spec,
     point_sketch_spec,
 )
-from tests.parseable_fixture import make_sketch, make_doc  # noqa: E402
+from parseable_fixture import make_sketch, make_doc  # noqa: E402
 
 OUTPUT_PATH = Path(__file__).resolve().parent.parent.parent / "frontend" / "src" / "wasm-kernel" / "regression-baseline.json"
 
