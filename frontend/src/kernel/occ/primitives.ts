@@ -103,7 +103,13 @@ export function makePrism(
 
 // --- tessellation primitive ------------------------------------------------
 
-/** BRepMesh_IncrementalMesh, matching cadquery's Shape.mesh defaults (relative off, parallel on). */
+/**
+ * BRepMesh_IncrementalMesh on a shape, matching cadquery's `Shape.mesh`:
+ * `BRepMesh_IncrementalMesh(shape, tol, True, angTol)` -- isRelative=True,
+ * parallel defaulting False. The relative flag scales deflection by the shape's
+ * size, so meshing each face individually (as cadquery does) is what reproduces
+ * Python's per-face triangulation; do not substitute a single solid-level mesh.
+ */
 export function meshShape(
   oc: OccModule,
   scope: DisposeScope,
@@ -111,7 +117,57 @@ export function meshShape(
   linearDeflection: number,
   angularDeflection: number,
 ): void {
-  scope.track(new oc.BRepMesh_IncrementalMesh_2(shape, linearDeflection, false, angularDeflection, true))
+  scope.track(new oc.BRepMesh_IncrementalMesh_2(shape, linearDeflection, true, angularDeflection, false))
+}
+
+export interface FaceTessellation {
+  /** Per-face vertices in world coordinates (location transform applied). */
+  vertices: Vec3[]
+  /** Triangles as 0-based indices into `vertices`, winding fixed for orientation. */
+  triangles: [number, number, number][]
+}
+
+/**
+ * Replicate cadquery `Face.tessellate(linear, angular)` for a single face:
+ * mesh it, read its `Poly_Triangulation`, transform nodes by the location, and
+ * emit triangles with REVERSED-orientation winding flipped -- node-for-node, so
+ * the assembled mesh matches Python's. Returns empty when the face has no
+ * triangulation.
+ */
+export function tessellateFace(
+  oc: OccModule,
+  scope: DisposeScope,
+  face: OccShape,
+  linearDeflection: number,
+  angularDeflection: number,
+): FaceTessellation {
+  meshShape(oc, scope, face, linearDeflection, angularDeflection)
+  const loc = scope.track(new oc.TopLoc_Location_1())
+  const handle = scope.track(oc.BRep_Tool.Triangulation(face, loc))
+  if (handle.IsNull()) return { vertices: [], triangles: [] }
+  const poly = handle.get()
+  if (!poly) return { vertices: [], triangles: [] }
+
+  const trsf = scope.track(loc.Transformation())
+  const reverse = isReversed(oc, face)
+
+  const vertices: Vec3[] = []
+  const nbNodes = poly.NbNodes()
+  for (let i = 1; i <= nbNodes; i++) {
+    const n = scope.track(poly.Node(i).Transformed(trsf))
+    vertices.push([n.X(), n.Y(), n.Z()])
+  }
+
+  const triangles: [number, number, number][] = []
+  const nbTri = poly.NbTriangles()
+  for (let i = 1; i <= nbTri; i++) {
+    const t = poly.Triangle(i)
+    const a = t.Value(1) - 1
+    const b = t.Value(2) - 1
+    const c = t.Value(3) - 1
+    triangles.push(reverse ? [a, c, b] : [a, b, c])
+  }
+  return { vertices, triangles }
 }
 
 // --- face geometry readers -------------------------------------------------
