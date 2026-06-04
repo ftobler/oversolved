@@ -133,10 +133,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        run: |
-          rustup update stable
-          rustup component add clippy
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
