@@ -3,7 +3,7 @@ name = "sketch-solver"
 version = "0.0.0"
 edition = "2021"
 publish = false
-description = "Sketch constraint solver (WASM kernel migration, phase 1). Skeleton: I/O contract only, no solver yet."
+description = "Sketch constraint solver (WASM kernel migration, phase 1): flat I/O codec, residual builders, hand-rolled Levenberg-Marquardt."
 
 [lib]
 # cdylib for the eventual wasm-pack/wasm-bindgen build; rlib so native `cargo test`
@@ -11,9 +11,14 @@ description = "Sketch constraint solver (WASM kernel migration, phase 1). Skelet
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Intentionally empty for the skeleton. Phase 1 adds: nalgebra (matrix ops) and a
-# hand-rolled Levenberg-Marquardt driver; wasm-bindgen is added by the wasm-pack
-# wiring step. Keep finite-difference Jacobian first (scipy parity), analytic later.
+# nalgebra supplies the dense matrix + SVD primitives the LM driver and the
+# rank/null-space analysis need. `default-features = false` + `std` keeps the
+# pulled-in surface small and wasm32-friendly (no rand-backed paths we don't
+# use). The Levenberg-Marquardt driver itself is hand-rolled (see lm.rs) for
+# exact damping/rank control; we deliberately do not pull in `argmin`.
+# Finite-difference Jacobian first (scipy parity), analytic later. wasm-bindgen
+# is added by the wasm-pack wiring step (next sub-phase), not here.
+nalgebra = { version = "0.33", default-features = false, features = ["std"] }
 
 [profile.release]
 opt-level = 3

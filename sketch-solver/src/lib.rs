@@ -1,21 +1,33 @@
 //! Sketch constraint solver crate (WASM kernel migration, phase 1).
 //!
-//! SKELETON ONLY. This file pins the input/output contract from
-//! `feature/wasm-kernel-migration.md` ("Crate boundary" and "Projections")
-//! and a stub `solve_sketch` so the toolchain (native + wasm32) builds green
-//! before any numerics land. There is no solver here yet.
+//! Phase 1.0 vertical slice: the flat typed-array I/O codec, the constraint
+//! residual builders ported from `solver_residuals.py`, a hand-rolled
+//! Levenberg-Marquardt driver with a 3-point finite-difference Jacobian, and the
+//! rank / status / per-entity-status / vertex-freedom analysis ported from
+//! `solver.py`. It is correct on the trivial sketches the unit tests cover; it is
+//! deliberately *not* optimized (no analytic Jacobian, no zero-copy decode, no
+//! drag fast-path) and is not yet wired across the wasm-bindgen boundary.
 //!
-//! Design invariants the real implementation must keep (from the plan):
+//! Design invariants the implementation keeps (from `feature/wasm-kernel-migration.md`):
 //!   - No JS callbacks during a solve; no OCC.js access. The crate does not
 //!     know what a brep is.
 //!   - Projection is NOT modelled here. A projected entity is just an entity
-//!     whose params are bit-set in `pinned_mask`. Residual builders branch on
-//!     geometric kind only (line/circle/arc/point), never on projected-ness.
+//!     whose params are pinned (`pinned_mask` / `equality_pins`). Residual
+//!     builders branch on geometric kind only (line/circle/arc/point), never on
+//!     projected-ness.
 //!   - `equality_pins` carries `_residual_fixed` mode 3 (pin a param to an
 //!     explicit user (x, y) target that is constraint payload, not x0).
 //!   - `vertex_freedom` (per-entity null-space directions from the Jacobian
-//!     SVD) must be emitted; the frontend drag math consumes it.
+//!     SVD) is emitted; the frontend drag math consumes it.
 //!   - `skip_status_pass` is the drag-mode escape hatch (no per-entity SVD).
+
+pub mod codec;
+pub mod constraints;
+pub mod lm;
+pub mod residuals;
+pub mod solve;
+
+pub use constraints::{Axis, Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 
 /// Geometric entity kinds the solver understands. Post kind-collapse (phase
 /// 0.5) there are exactly four; projection is a pin-mask concern, not a kind.
@@ -37,9 +49,30 @@ impl Kind {
             Kind::Point => 2,
         }
     }
+
+    pub fn from_u8(v: u8) -> Option<Self> {
+        Some(match v {
+            0 => Kind::Line,
+            1 => Kind::Circle,
+            2 => Kind::Arc,
+            3 => Kind::Point,
+            _ => return None,
+        })
+    }
+
+    pub fn to_u8(self) -> u8 {
+        match self {
+            Kind::Line => 0,
+            Kind::Circle => 1,
+            Kind::Arc => 2,
+            Kind::Point => 3,
+        }
+    }
 }
 
-/// One sketch entity: its kind plus offsets into the flat id/param buffers.
+/// One sketch entity: its kind plus the offset into the flat param buffer.
+/// (The contract's `id_offset` into a separate id buffer is a TS-side concern;
+/// the crate works in entity *indices* and never sees string ids.)
 #[derive(Debug, Clone)]
 pub struct Entity {
     pub kind: Kind,
@@ -62,18 +95,35 @@ pub struct Options {
     pub skip_status_pass: bool,
 }
 
-/// Built from flat typed arrays handed across the WASM boundary. Phase 1 adds a
-/// zero-copy decoder; the skeleton keeps owned Vecs for clarity.
+/// Built from flat typed arrays handed across the WASM boundary (see `codec`).
 #[derive(Debug, Clone, Default)]
 pub struct Input {
     pub entities: Vec<Entity>,
     pub params_initial: Vec<f32>,
-    /// One bit per param; 1 = pinned to its `params_initial` value.
+    /// One bit per param (LSB-first within each byte); 1 = pinned to its
+    /// `params_initial` value.
     pub pinned_mask: Vec<u8>,
     pub equality_pins: Vec<EqualityPin>,
+    pub constraints: Vec<Constraint>,
     pub options: Options,
-    // Constraints are deliberately omitted from the skeleton: their flat
-    // encoding (one arm per kind) lands with the residual builders in phase 1.
+}
+
+impl Input {
+    /// True when param `i` is pinned to its initial value by `pinned_mask`.
+    pub fn is_pinned(&self, i: usize) -> bool {
+        let byte = i / 8;
+        let bit = i % 8;
+        self.pinned_mask
+            .get(byte)
+            .map(|b| (b >> bit) & 1 == 1)
+            .unwrap_or(false)
+    }
+
+    /// Count of params pinned by `pinned_mask` over `[0, n_params)`. Bits beyond
+    /// the param range are ignored so a slack-padded mask byte never over-counts.
+    pub fn pinned_mask_bit_count(&self, n_params: usize) -> usize {
+        (0..n_params).filter(|&i| self.is_pinned(i)).count()
+    }
 }
 
 /// Per-entity and overall constraint status (mirrors the Python solver strings).
@@ -82,6 +132,16 @@ pub enum Status {
     FullyConstrained,
     Underconstrained,
     Overconstrained,
+}
+
+impl Status {
+    pub fn to_u8(self) -> u8 {
+        match self {
+            Status::FullyConstrained => 0,
+            Status::Underconstrained => 1,
+            Status::Overconstrained => 2,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -96,24 +156,18 @@ pub struct Diagnostics {
 #[derive(Debug, Clone, Default)]
 pub struct Output {
     pub params_solved: Vec<f32>,
-    /// Per-entity; empty when `options.skip_status_pass`.
+    /// Per-entity status code (`Status::to_u8`); empty when `skip_status_pass`.
     pub entity_status: Vec<u8>,
     pub overall_status: u8,
-    /// Per-entity null-space directions for drag (Jacobian SVD). Empty in stub.
+    /// Per-entity null-space directions for drag (Jacobian SVD), flattened as
+    /// `[entity_count][dir_x, dir_y, ...]`. Empty when `skip_status_pass`.
     pub vertex_freedom: Vec<f32>,
     pub diagnostics: Diagnostics,
 }
 
-/// STUB. Echoes `params_initial` into `params_solved` so the pipeline is
-/// exercisable end to end. Phase 1 replaces this body with the LM driver.
+/// Solve a sketch. See `solve::solve_sketch` for the orchestration.
 pub fn solve_sketch(input: &Input) -> Output {
-    Output {
-        params_solved: input.params_initial.clone(),
-        entity_status: Vec::new(),
-        overall_status: Status::Underconstrained as u8,
-        vertex_freedom: Vec::new(),
-        diagnostics: Diagnostics::default(),
-    }
+    solve::solve_sketch(input)
 }
 
 #[cfg(test)]
@@ -129,15 +183,14 @@ mod tests {
     }
 
     #[test]
-    fn stub_solve_is_identity_on_params() {
+    fn pinned_mask_reads_lsb_first() {
         let input = Input {
-            entities: vec![Entity { kind: Kind::Line, param_offset: 0 }],
-            params_initial: vec![0.0, 0.0, 1.0, 0.0],
-            pinned_mask: vec![0],
-            equality_pins: Vec::new(),
-            options: Options::default(),
+            pinned_mask: vec![0b0000_0101],
+            ..Default::default()
         };
-        let out = solve_sketch(&input);
-        assert_eq!(out.params_solved, input.params_initial);
+        assert!(input.is_pinned(0));
+        assert!(!input.is_pinned(1));
+        assert!(input.is_pinned(2));
+        assert!(!input.is_pinned(8)); // out of range -> false
     }
 }
