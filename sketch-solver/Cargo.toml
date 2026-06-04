@@ -20,6 +20,11 @@ crate-type = ["cdylib", "rlib"]
 # is added by the wasm-pack wiring step (next sub-phase), not here.
 nalgebra = { version = "0.33", default-features = false, features = ["std"] }
 
+# wasm-bindgen is only needed for the wasm32 boundary (src/wasm.rs). Keeping it
+# target-scoped means native `cargo test` never pulls in the JS-glue crate.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+
 [profile.release]
 opt-level = 3
 lto = true

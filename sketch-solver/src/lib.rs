@@ -21,11 +21,15 @@
 //!     SVD) is emitted; the frontend drag math consumes it.
 //!   - `skip_status_pass` is the drag-mode escape hatch (no per-entity SVD).
 
+pub mod api;
 pub mod codec;
 pub mod constraints;
 pub mod lm;
 pub mod residuals;
 pub mod solve;
+
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
 
 pub use constraints::{Axis, Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 
