@@ -122,6 +122,16 @@ export interface OccEdgeBuilder extends OccDisposable {
   Edge(): OccShape
 }
 
+/** A handle (e.g. Handle_Geom_TrimmedCurve) whose `.get()` yields the object. */
+export interface OccGeomHandle extends OccDisposable {
+  get(): OccDisposable | null
+}
+
+export interface OccArcMaker extends OccDisposable {
+  IsDone(): boolean
+  Value(): OccGeomHandle
+}
+
 export interface OccWireBuilder extends OccDisposable {
   Add_1(edge: OccShape): void
   Wire(): OccShape
@@ -193,7 +203,19 @@ export interface OccModule extends OccSpikeModule {
   // --- 2b: shape construction --------------------------------------------
   gp_Dir_4: new (x: number, y: number, z: number) => OccXYZ
   gp_Ax2_3: new (origin: OccPnt, normal: OccXYZ) => OccDisposable
+  /** gp_Ax2(location, N, Vx): the 3-arg form used to orient a circle. */
+  gp_Ax2_2: new (origin: OccPnt, normal: OccXYZ, xDir: OccXYZ) => OccDisposable
+  gp_Circ_2: new (axis: OccDisposable, radius: number) => OccDisposable
+  GC_MakeArcOfCircle_1: new (
+    circle: OccDisposable,
+    alpha1: number,
+    alpha2: number,
+    sense: boolean,
+  ) => OccArcMaker
+  Handle_Geom_Curve_2: new (curve: OccDisposable) => OccDisposable
   BRepBuilderAPI_MakeEdge_3: new (p1: OccPnt, p2: OccPnt) => OccEdgeBuilder
+  BRepBuilderAPI_MakeEdge_8: new (circle: OccDisposable) => OccEdgeBuilder
+  BRepBuilderAPI_MakeEdge_24: new (curve: OccDisposable) => OccEdgeBuilder
   BRepBuilderAPI_MakeWire_1: new () => OccWireBuilder
   BRepPrimAPI_MakeBox_1: new (dx: number, dy: number, dz: number) => OccPrismBuilder
   BRepPrimAPI_MakeCylinder_3: new (axis: OccDisposable, radius: number, height: number) => OccPrismBuilder

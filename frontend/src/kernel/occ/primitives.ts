@@ -58,6 +58,68 @@ export function makeLineEdge(oc: OccModule, scope: DisposeScope, start: Vec3, en
   return builder.Edge()
 }
 
+/** A full-circle edge (ocp_make_circle + ocp_make_edge_from_circle). */
+export function makeCircleEdge(
+  oc: OccModule,
+  scope: DisposeScope,
+  center: Vec3,
+  normal: Vec3,
+  xAxis: Vec3,
+  radius: number,
+): OccShape {
+  const circ = makeCirc(oc, scope, center, normal, xAxis, radius)
+  const builder = scope.track(new oc.BRepBuilderAPI_MakeEdge_8(circ))
+  return builder.Edge()
+}
+
+/**
+ * A circular or arc edge, mirroring cadquery `make_arc_edge`: a ~2pi span is a
+ * full circle, otherwise a trimmed arc via GC_MakeArcOfCircle. Angles in radians.
+ */
+export function makeArcEdge(
+  oc: OccModule,
+  scope: DisposeScope,
+  center: Vec3,
+  normal: Vec3,
+  xAxis: Vec3,
+  radius: number,
+  angleStart: number,
+  angleEnd: number,
+): OccShape {
+  const span = Math.abs(angleEnd - angleStart)
+  if (span < 1e-6) throw new Error(`make_arc_edge: degenerate zero-span arc (span=${span})`)
+  if (Math.abs(span - 2 * Math.PI) < 1e-6) {
+    return makeCircleEdge(oc, scope, center, normal, xAxis, radius)
+  }
+  const circ = makeCirc(oc, scope, center, normal, xAxis, radius)
+  const arc = scope.track(new oc.GC_MakeArcOfCircle_1(circ, angleStart, angleEnd, true))
+  const trimmed = scope.track(arc.Value())
+  const curve = trimmed.get()
+  if (!curve) throw new Error('make_arc_edge: GC_MakeArcOfCircle produced no curve')
+  // Upcast Handle_Geom_TrimmedCurve -> Handle_Geom_Curve for MakeEdge.
+  const geomCurve = scope.track(new oc.Handle_Geom_Curve_2(curve))
+  const builder = scope.track(new oc.BRepBuilderAPI_MakeEdge_24(geomCurve))
+  return builder.Edge()
+}
+
+function makeCirc(
+  oc: OccModule,
+  scope: DisposeScope,
+  center: Vec3,
+  normal: Vec3,
+  xAxis: Vec3,
+  radius: number,
+): OccShape {
+  const ax2 = scope.track(
+    new oc.gp_Ax2_2(
+      scope.track(new oc.gp_Pnt_3(center[0], center[1], center[2])),
+      scope.track(new oc.gp_Dir_4(normal[0], normal[1], normal[2])),
+      scope.track(new oc.gp_Dir_4(xAxis[0], xAxis[1], xAxis[2])),
+    ),
+  )
+  return scope.track(new oc.gp_Circ_2(ax2, radius))
+}
+
 /** Assemble ordered edges into a wire (BRepBuilderAPI_MakeWire). */
 export function makeWire(oc: OccModule, scope: DisposeScope, edges: OccShape[]): OccShape {
   const builder = scope.track(new oc.BRepBuilderAPI_MakeWire_1())

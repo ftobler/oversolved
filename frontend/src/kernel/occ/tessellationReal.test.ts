@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'
 import { HandleTable } from './handleTable'
-import { buildBox, buildCylinder, buildExtrudedProfile } from './shapes'
+import { buildBox, buildCylinder, buildExtrudedProfile, buildProfileExtrude, type EdgeSpec } from './shapes'
 import { solidToMesh, type TessMesh, type FaceDatum } from './tessellation'
 import type { OccModule } from './occTypes'
 import type { OccHandle } from './handleTable'
@@ -58,6 +58,13 @@ function buildFixture(occ: OccModule, table: HandleTable, fx: Fixture): OccHandl
       distance: p.distance as number,
     })
   }
+  if (fx.kind === 'profile') {
+    return buildProfileExtrude(occ, table, {
+      edges: p.edges as EdgeSpec[],
+      direction: p.direction as Vec3,
+      distance: p.distance as number,
+    })
+  }
   throw new Error(`unknown fixture kind ${fx.kind}`)
 }
 
@@ -88,7 +95,7 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
     return { ts, py: fx.mesh }
   }
 
-  function assertFaceDataParity(ts: TessMesh, py: FixtureMesh) {
+  function assertFaceDataParity(ts: TessMesh, py: FixtureMesh, exactArea: boolean) {
     expect(ts.face_data).toHaveLength(py.face_data.length)
     // Both kernels sort faces by the same (flat-before-curved, normal, centroid)
     // key, so face_data is aligned index-for-index.
@@ -96,16 +103,19 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
       const a = ts.face_data[i]
       const b = py.face_data[i]
       expect(a.surface_type).toBe(b.surface_type)
+      // Centroid is the GProp area-centroid (exact geometry, not tessellation).
       for (let k = 0; k < 3; k++) expect(a.centroid[k]).toBeCloseTo(b.centroid[k], 5)
       if (a.surface_type === 'flatface') {
-        // Planar faces have a single well-defined normal and an exact area.
+        // A planar face has a single well-defined normal in both kernels.
         for (let k = 0; k < 3; k++) expect(a.normal[k]).toBeCloseTo(b.normal[k], 5)
+      }
+      // A curved face has no single normal: Python samples via a point
+      // projection, we via SLProps at the UV midpoint, so the sampled angle (and
+      // thus the normal) legitimately differs -- not asserted.
+      if (exactArea) {
         expect(a.area).toBeCloseTo(b.area, 4)
       } else {
-        // A curved face has no single normal: Python samples it via a point
-        // projection, we via SLProps at the UV midpoint, so the sampled angle
-        // (and thus the normal) legitimately differs. Area is a tessellation
-        // sum, so compare it within tolerance, not exactly.
+        // Areas are tessellation sums over a curved boundary; compare in band.
         expect(a.area).toBeGreaterThan(0)
         expect(Math.abs(a.area - b.area) / b.area).toBeLessThan(0.02)
       }
@@ -115,6 +125,8 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
     expect(Math.max(...ts.triangle_to_face)).toBeLessThan(ts.face_data.length)
   }
 
+  // Straight-boundary bodies: tessellation is corner-only and deterministic, so
+  // these match Python node-for-node.
   for (const planar of ['box_10x10x5', 'extruded_square_10x10x5']) {
     it(`matches Python exactly for ${planar} (planar, deterministic)`, () => {
       const { ts, py } = run(planar)
@@ -127,20 +139,23 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
         for (let k = 0; k < 3; k++) expect(tsv[i][k]).toBeCloseTo(pyv[i][k], 6)
       }
       expect(ts.triangle_to_face).toEqual(py.triangle_to_face)
-      assertFaceDataParity(ts, py)
+      assertFaceDataParity(ts, py, true)
     })
   }
 
-  it('matches Python for the cylinder within tessellation tolerance', () => {
-    const { ts, py } = run('cylinder_r3_h10')
-    // Curved-wall triangle count can differ slightly between OCC builds; gate on
-    // topology (face count + surface types), areas, and a tight count band.
-    assertFaceDataParity(ts, py)
-    const tsArea = totalArea(ts.face_data)
-    const pyArea = totalArea(py.face_data)
-    expect(Math.abs(tsArea - pyArea) / pyArea).toBeLessThan(0.01)
-    const tsTris = ts.faces.length
-    const pyTris = py.faces.length
-    expect(Math.abs(tsTris - pyTris) / pyTris).toBeLessThan(0.05)
-  })
+  // Curved-boundary bodies (primitive cylinder, circle-extrude, line+arc wedge):
+  // tessellation node count depends on deflection, so gate on topology, areas,
+  // and a triangle-count band rather than node-for-node equality.
+  for (const curved of ['cylinder_r3_h10', 'circle_extrude_r3_h10', 'pie_wedge_r10_q1_h5']) {
+    it(`matches Python for ${curved} within tessellation tolerance`, () => {
+      const { ts, py } = run(curved)
+      assertFaceDataParity(ts, py, false)
+      const tsArea = totalArea(ts.face_data)
+      const pyArea = totalArea(py.face_data)
+      expect(Math.abs(tsArea - pyArea) / pyArea).toBeLessThan(0.01)
+      const tsTris = ts.faces.length
+      const pyTris = py.faces.length
+      expect(Math.abs(tsTris - pyTris) / pyTris).toBeLessThan(0.05)
+    })
+  }
 })

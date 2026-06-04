@@ -11,7 +11,9 @@ import { DisposeScope } from './disposeScope'
 import { HandleTable, type OccHandle } from './handleTable'
 import type { OccModule } from './occTypes'
 import {
+  makeArcEdge,
   makeBox,
+  makeCircleEdge,
   makeCylinder,
   makeFaceFromWire,
   makeLineEdge,
@@ -123,6 +125,54 @@ export function buildExtrudedProfile(
     const edges = spec.loop.map((p, i) =>
       makeLineEdge(oc, scope, p, spec.loop[(i + 1) % spec.loop.length]),
     )
+    const wire = makeWire(oc, scope, edges)
+    const face = makeFaceFromWire(oc, scope, wire)
+    const solid = makePrism(oc, scope, face, spec.direction, spec.distance)
+    return table.register(solid, spec.owner)
+  } finally {
+    scope.dispose()
+  }
+}
+
+/** One profile edge: a straight segment, a circular arc, or a full circle. */
+export type EdgeSpec =
+  | { kind: 'line'; start: Vec3; end: Vec3 }
+  | {
+      kind: 'arc'
+      center: Vec3
+      normal: Vec3
+      xAxis: Vec3
+      radius: number
+      angleStart: number
+      angleEnd: number
+    }
+  | { kind: 'circle'; center: Vec3; normal: Vec3; xAxis: Vec3; radius: number }
+
+export interface ProfileExtrudeSpec {
+  edges: EdgeSpec[]
+  direction: Vec3
+  distance: number
+  owner?: string
+}
+
+/**
+ * Extrude a profile made of mixed line/arc/circle edges (the general make-a-body
+ * path: rounded rectangles, slots, circles). The edges must form a single closed
+ * loop in order.
+ */
+export function buildProfileExtrude(
+  oc: OccModule,
+  table: HandleTable,
+  spec: ProfileExtrudeSpec,
+): OccHandle {
+  if (spec.edges.length < 1) throw new Error('profile needs at least one edge')
+  const scope = new DisposeScope()
+  try {
+    const edges = spec.edges.map((e) => {
+      if (e.kind === 'line') return makeLineEdge(oc, scope, e.start, e.end)
+      if (e.kind === 'circle') return makeCircleEdge(oc, scope, e.center, e.normal, e.xAxis, e.radius)
+      return makeArcEdge(oc, scope, e.center, e.normal, e.xAxis, e.radius, e.angleStart, e.angleEnd)
+    })
     const wire = makeWire(oc, scope, edges)
     const face = makeFaceFromWire(oc, scope, wire)
     const solid = makePrism(oc, scope, face, spec.direction, spec.distance)

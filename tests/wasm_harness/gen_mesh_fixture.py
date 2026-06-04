@@ -11,6 +11,7 @@ Run: .venv/bin/python tests/wasm_harness/gen_mesh_fixture.py
 """
 
 import json
+import math
 import os
 
 from cadquery.occ_impl import shapes as cq_shapes
@@ -18,6 +19,7 @@ from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
 
 from oversolved.kernel.cadquery_ops import (
     extrude_face,
+    make_arc_edge,
     make_cylinder,
     make_face_from_wires,
     make_line_edge,
@@ -36,6 +38,23 @@ def _extruded_square(side, height):
     wire = make_wire(edges)
     face = make_face_from_wires(wire)
     return extrude_face(face, [0.0, 0.0, 1.0], height)
+
+
+def _build_edge(spec):
+    if spec["kind"] == "line":
+        return make_line_edge(spec["start"], spec["end"])
+    if spec["kind"] == "circle":
+        return make_arc_edge(spec["center"], spec["radius"], spec["normal"], spec["xAxis"], 0.0, 2 * math.pi)
+    return make_arc_edge(
+        spec["center"], spec["radius"], spec["normal"], spec["xAxis"], spec["angleStart"], spec["angleEnd"]
+    )
+
+
+def _profile_extrude(edges, direction, distance):
+    occ_edges = [_build_edge(s) for s in edges]
+    wire = make_wire(occ_edges)
+    face = make_face_from_wires(wire)
+    return extrude_face(face, direction, distance)
 
 
 def _mesh_payload(solid):
@@ -76,6 +95,62 @@ def main():
                 "distance": 5.0,
             },
             "mesh": _mesh_payload(_extruded_square(10.0, 5.0)),
+        },
+        "circle_extrude_r3_h10": {
+            "kind": "profile",
+            "params": {
+                "edges": [
+                    {"kind": "circle", "center": [0, 0, 0], "normal": [0, 0, 1], "xAxis": [1, 0, 0], "radius": 3.0},
+                ],
+                "direction": [0.0, 0.0, 1.0],
+                "distance": 10.0,
+            },
+            "mesh": _mesh_payload(
+                _profile_extrude(
+                    [{"kind": "circle", "center": [0, 0, 0], "normal": [0, 0, 1], "xAxis": [1, 0, 0], "radius": 3.0}],
+                    [0.0, 0.0, 1.0],
+                    10.0,
+                )
+            ),
+        },
+        "pie_wedge_r10_q1_h5": {
+            "kind": "profile",
+            "params": {
+                "edges": [
+                    {"kind": "line", "start": [0, 0, 0], "end": [10, 0, 0]},
+                    {
+                        "kind": "arc",
+                        "center": [0, 0, 0],
+                        "normal": [0, 0, 1],
+                        "xAxis": [1, 0, 0],
+                        "radius": 10.0,
+                        "angleStart": 0.0,
+                        "angleEnd": math.pi / 2,
+                    },
+                    {"kind": "line", "start": [0, 10, 0], "end": [0, 0, 0]},
+                ],
+                "direction": [0.0, 0.0, 1.0],
+                "distance": 5.0,
+            },
+            "mesh": _mesh_payload(
+                _profile_extrude(
+                    [
+                        {"kind": "line", "start": [0, 0, 0], "end": [10, 0, 0]},
+                        {
+                            "kind": "arc",
+                            "center": [0, 0, 0],
+                            "normal": [0, 0, 1],
+                            "xAxis": [1, 0, 0],
+                            "radius": 10.0,
+                            "angleStart": 0.0,
+                            "angleEnd": math.pi / 2,
+                        },
+                        {"kind": "line", "start": [0, 10, 0], "end": [0, 0, 0]},
+                    ],
+                    [0.0, 0.0, 1.0],
+                    5.0,
+                )
+            ),
         },
     }
 
