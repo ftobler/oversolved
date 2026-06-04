@@ -2,6 +2,7 @@
   {
     "bodies": {},
     "error": null,
+    "input_sketches": [],
     "label": "empty_doc",
     "ok": true,
     "result": {
@@ -85,6 +86,150 @@
   {
     "bodies": {},
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 10
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 10
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            10,
+            0
+          ],
+          "left": [
+            0,
+            10,
+            0,
+            0
+          ],
+          "right": [
+            10,
+            0,
+            10,
+            10
+          ],
+          "top": [
+            10,
+            10,
+            0,
+            10
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "rect_sketch_10x10",
     "ok": true,
     "result": {
@@ -211,6 +356,27 @@
   {
     "bodies": {},
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [],
+        "entities": [
+          {
+            "id": "line1",
+            "kind": "line"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "line1": [
+            0,
+            0,
+            10,
+            0
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "line_sketch_unconstrained",
     "ok": true,
     "result": {
@@ -526,6 +692,150 @@
       }
     },
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 5
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 5
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            5,
+            0
+          ],
+          "left": [
+            0,
+            5,
+            0,
+            0
+          ],
+          "right": [
+            5,
+            0,
+            5,
+            5
+          ],
+          "top": [
+            5,
+            5,
+            0,
+            5
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "box_extrude_5x5x5",
     "ok": true,
     "result": {
@@ -981,6 +1291,292 @@
       }
     },
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 10
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 10
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk_base",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            10,
+            0
+          ],
+          "left": [
+            0,
+            10,
+            0,
+            0
+          ],
+          "right": [
+            10,
+            0,
+            10,
+            10
+          ],
+          "top": [
+            10,
+            10,
+            0,
+            10
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      },
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 4
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 4
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk_hole",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            4,
+            0
+          ],
+          "left": [
+            0,
+            4,
+            0,
+            0
+          ],
+          "right": [
+            4,
+            0,
+            4,
+            4
+          ],
+          "top": [
+            4,
+            4,
+            0,
+            4
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "box_with_cut_10x10",
     "ok": true,
     "result": {
@@ -1587,6 +2183,292 @@
       }
     },
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 3
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 3
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            3,
+            0
+          ],
+          "left": [
+            0,
+            3,
+            0,
+            0
+          ],
+          "right": [
+            3,
+            0,
+            3,
+            3
+          ],
+          "top": [
+            3,
+            3,
+            0,
+            3
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      },
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 2
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 2
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk2",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            2,
+            0
+          ],
+          "left": [
+            0,
+            2,
+            0,
+            0
+          ],
+          "right": [
+            2,
+            0,
+            2,
+            2
+          ],
+          "top": [
+            2,
+            2,
+            0,
+            2
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "two_bodies_new_operation",
     "ok": true,
     "result": {
@@ -11890,6 +12772,150 @@
       }
     },
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 2
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 1
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "bottom": [
+            1,
+            0,
+            3,
+            0
+          ],
+          "left": [
+            1,
+            1,
+            1,
+            0
+          ],
+          "right": [
+            3,
+            0,
+            3,
+            1
+          ],
+          "top": [
+            3,
+            1,
+            1,
+            1
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "revolve_360deg",
     "ok": true,
     "result": {
@@ -17311,6 +18337,167 @@
       }
     },
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 10
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 10
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            10,
+            0
+          ],
+          "left": [
+            0,
+            10,
+            0,
+            0
+          ],
+          "right": [
+            10,
+            0,
+            10,
+            10
+          ],
+          "top": [
+            10,
+            10,
+            0,
+            10
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      },
+      {
+        "constraints": [],
+        "entities": [
+          {
+            "id": "pt0",
+            "kind": "point"
+          }
+        ],
+        "id": "pts",
+        "initial": {
+          "pt0": [
+            5,
+            5
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "box_with_hole",
     "ok": true,
     "result": {
@@ -18969,6 +20156,150 @@
       }
     },
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 10
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 10
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            10,
+            0
+          ],
+          "left": [
+            0,
+            10,
+            0,
+            0
+          ],
+          "right": [
+            10,
+            0,
+            10,
+            10
+          ],
+          "top": [
+            10,
+            10,
+            0,
+            10
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "box_with_fillet",
     "ok": true,
     "result": {
@@ -19373,6 +20704,150 @@
       }
     },
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 10
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 10
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            10,
+            0
+          ],
+          "left": [
+            0,
+            10,
+            0,
+            0
+          ],
+          "right": [
+            10,
+            0,
+            10,
+            10
+          ],
+          "top": [
+            10,
+            10,
+            0,
+            10
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "box_with_chamfer",
     "ok": true,
     "result": {
@@ -19723,6 +21198,292 @@
       }
     },
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 4
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 4
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk_a",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            4,
+            0
+          ],
+          "left": [
+            0,
+            4,
+            0,
+            0
+          ],
+          "right": [
+            4,
+            0,
+            4,
+            4
+          ],
+          "top": [
+            4,
+            4,
+            0,
+            4
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      },
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 4
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 4
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk_b",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            4,
+            0
+          ],
+          "left": [
+            0,
+            4,
+            0,
+            0
+          ],
+          "right": [
+            4,
+            0,
+            4,
+            4
+          ],
+          "top": [
+            4,
+            4,
+            0,
+            4
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "boolean_union",
     "ok": true,
     "result": {
@@ -19901,6 +21662,54 @@
   {
     "bodies": {},
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "id": "c_h",
+            "kind": "horizontal",
+            "target": {
+              "entity": "line1"
+            }
+          },
+          {
+            "arc": {
+              "entity": "circle1"
+            },
+            "id": "c_t",
+            "kind": "tangent",
+            "line": {
+              "entity": "line1"
+            }
+          }
+        ],
+        "entities": [
+          {
+            "id": "line1",
+            "kind": "line"
+          },
+          {
+            "id": "circle1",
+            "kind": "circle"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "circle1": [
+            5,
+            0,
+            2
+          ],
+          "line1": [
+            0,
+            5,
+            10,
+            5
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "sketch_circle_tangent_line",
     "ok": true,
     "result": {
@@ -20008,6 +21817,28 @@
   {
     "bodies": {},
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [],
+        "entities": [
+          {
+            "id": "arc1",
+            "kind": "arc"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "arc1": [
+            0,
+            0,
+            5,
+            0,
+            90
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "sketch_arc",
     "ok": true,
     "result": {
@@ -20108,6 +21939,7 @@
   {
     "bodies": {},
     "error": null,
+    "input_sketches": [],
     "label": "plane_offset_10",
     "ok": true,
     "result": {
@@ -21226,6 +23058,150 @@
       }
     },
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 3
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 3
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            3,
+            0
+          ],
+          "left": [
+            0,
+            3,
+            0,
+            0
+          ],
+          "right": [
+            3,
+            0,
+            3,
+            3
+          ],
+          "top": [
+            3,
+            3,
+            0,
+            3
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "array_rectangular_3x2",
     "ok": true,
     "result": {
@@ -21576,6 +23552,150 @@
       }
     },
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "a": {
+              "entity": "bottom",
+              "point": "end"
+            },
+            "b": {
+              "entity": "right",
+              "point": "start"
+            },
+            "id": "c1",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "right",
+              "point": "end"
+            },
+            "b": {
+              "entity": "top",
+              "point": "start"
+            },
+            "id": "c2",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "top",
+              "point": "end"
+            },
+            "b": {
+              "entity": "left",
+              "point": "start"
+            },
+            "id": "c3",
+            "kind": "coincident"
+          },
+          {
+            "a": {
+              "entity": "left",
+              "point": "end"
+            },
+            "b": {
+              "entity": "bottom",
+              "point": "start"
+            },
+            "id": "c4",
+            "kind": "coincident"
+          },
+          {
+            "id": "c5",
+            "kind": "horizontal",
+            "target": {
+              "entity": "bottom"
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "horizontal",
+            "target": {
+              "entity": "top"
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "vertical",
+            "target": {
+              "entity": "right"
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "vertical",
+            "target": {
+              "entity": "left"
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "length",
+            "target": {
+              "entity": "bottom"
+            },
+            "value": 3
+          },
+          {
+            "id": "c10",
+            "kind": "length",
+            "target": {
+              "entity": "left"
+            },
+            "value": 3
+          }
+        ],
+        "entities": [
+          {
+            "id": "bottom",
+            "kind": "line"
+          },
+          {
+            "id": "right",
+            "kind": "line"
+          },
+          {
+            "id": "top",
+            "kind": "line"
+          },
+          {
+            "id": "left",
+            "kind": "line"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "bottom": [
+            0,
+            0,
+            3,
+            0
+          ],
+          "left": [
+            0,
+            3,
+            0,
+            0
+          ],
+          "right": [
+            3,
+            0,
+            3,
+            3
+          ],
+          "top": [
+            3,
+            3,
+            0,
+            3
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "mirror_plane_right",
     "ok": true,
     "result": {
@@ -21708,6 +23828,43 @@
   {
     "bodies": {},
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "id": "c_fix",
+            "kind": "fixed",
+            "target": {
+              "entity": "p1"
+            },
+            "x": 0,
+            "y": 0
+          }
+        ],
+        "entities": [
+          {
+            "id": "p1",
+            "kind": "point"
+          },
+          {
+            "id": "p2",
+            "kind": "point"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "p1": [
+            0,
+            0
+          ],
+          "p2": [
+            3,
+            4
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "sketch_fixed_point",
     "ok": true,
     "result": {
@@ -21812,6 +23969,66 @@
   {
     "bodies": {},
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "id": "c_fix",
+            "kind": "fixed",
+            "target": {
+              "entity": "line1",
+              "point": "start"
+            },
+            "x": 0,
+            "y": 0
+          },
+          {
+            "id": "c_h",
+            "kind": "horizontal",
+            "target": {
+              "entity": "line1"
+            }
+          },
+          {
+            "a": {
+              "entity": "line1"
+            },
+            "b": {
+              "entity": "line2"
+            },
+            "id": "c_ang",
+            "kind": "angle",
+            "value": 45
+          }
+        ],
+        "entities": [
+          {
+            "id": "line1",
+            "kind": "line"
+          },
+          {
+            "id": "line2",
+            "kind": "line"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "line1": [
+            0,
+            0,
+            10,
+            0
+          ],
+          "line2": [
+            0,
+            0,
+            5,
+            8
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "sketch_angle_45",
     "ok": true,
     "result": {
@@ -21920,6 +24137,53 @@
   {
     "bodies": {},
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "id": "c_fix",
+            "kind": "fixed",
+            "target": {
+              "entity": "p1"
+            },
+            "x": 0,
+            "y": 0
+          },
+          {
+            "a": {
+              "entity": "p1"
+            },
+            "b": {
+              "entity": "p2"
+            },
+            "id": "c_coin",
+            "kind": "coincident"
+          }
+        ],
+        "entities": [
+          {
+            "id": "p1",
+            "kind": "point"
+          },
+          {
+            "id": "p2",
+            "kind": "point"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "p1": [
+            0,
+            0
+          ],
+          "p2": [
+            5,
+            3
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "sketch_coincident_points",
     "ok": true,
     "result": {
@@ -22024,6 +24288,54 @@
   {
     "bodies": {},
     "error": null,
+    "input_sketches": [
+      {
+        "constraints": [
+          {
+            "id": "c_fix1",
+            "kind": "fixed",
+            "target": {
+              "entity": "p1"
+            },
+            "x": 0,
+            "y": 0
+          },
+          {
+            "a": {
+              "entity": "p1"
+            },
+            "b": {
+              "entity": "p2"
+            },
+            "id": "c_dist",
+            "kind": "point_distance",
+            "value": 10
+          }
+        ],
+        "entities": [
+          {
+            "id": "p1",
+            "kind": "point"
+          },
+          {
+            "id": "p2",
+            "kind": "point"
+          }
+        ],
+        "id": "sk1",
+        "initial": {
+          "p1": [
+            0,
+            0
+          ],
+          "p2": [
+            8,
+            6
+          ]
+        },
+        "plane": "@builtin_plane_front"
+      }
+    ],
     "label": "sketch_distance_10",
     "ok": true,
     "result": {

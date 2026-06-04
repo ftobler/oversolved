@@ -119,6 +119,31 @@ def _sanitise_result(_feature_id: str, feature_result: dict[str, Any]) -> dict[s
     return cleaned
 
 
+def _extract_input_sketches(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """Capture the solver-relevant input of each sketch feature.
+
+    The WASM shadow harness feeds these straight to the Rust solver and diffs
+    its output against this entry's Python ``result``; embedding the input here
+    keeps the baseline the single source of truth (no duplicated fixtures on the
+    TS side). Only fields the Rust solver consumes are kept.
+    """
+    sketches: list[dict[str, Any]] = []
+    for feature in spec.get("features", []):
+        if not isinstance(feature, dict) or feature.get("kind") != "sketch":
+            continue
+        sketches.append({
+            "id": feature.get("id", ""),
+            "plane": feature.get("plane"),
+            "entities": [
+                {"id": e.get("id"), "kind": e.get("kind")}
+                for e in feature.get("entities", [])
+            ],
+            "initial": feature.get("initial", {}),
+            "constraints": feature.get("constraints", []),
+        })
+    return sketches
+
+
 def run_specs(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Run the Python kernel on each entry and return regression data."""
     results: list[dict[str, Any]] = []
@@ -142,6 +167,7 @@ def run_specs(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "label": label,
                 "ok": True,
                 "error": None,
+                "input_sketches": _extract_input_sketches(spec),
                 "result": sanitised_result,
                 "bodies": sanitised_bodies,
             })
