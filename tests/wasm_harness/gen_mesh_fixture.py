@@ -25,7 +25,11 @@ from oversolved.kernel.cadquery_ops import (
     make_line_edge,
     make_wire,
 )
-from oversolved.kernel.geometry_tessellation import solid_to_mesh
+from oversolved.kernel.geometry_tessellation import (
+    solid_to_edges,
+    solid_to_mesh,
+    solid_to_vertices,
+)
 
 
 def _box_solid(dx, dy, dz):
@@ -75,17 +79,34 @@ def _mesh_payload(solid):
     }
 
 
+def _edges_payload(solid):
+    # Strip the internal _occ_hash / classifiers keys; keep pure geometry.
+    out = []
+    for ed in solid_to_edges(solid)["edges"]:
+        e = {k: v for k, v in ed.items() if not k.startswith("_") and k != "classifiers"}
+        out.append(e)
+    return out
+
+
+def _verts_payload(solid):
+    return solid_to_vertices(solid)["vertices"]
+
+
+def _geometry(solid):
+    return {"mesh": _mesh_payload(solid), "edges": _edges_payload(solid), "vertices": _verts_payload(solid)}
+
+
 def main():
     fixtures = {
         "box_10x10x5": {
             "kind": "box",
             "params": {"dx": 10.0, "dy": 10.0, "dz": 5.0},
-            "mesh": _mesh_payload(_box_solid(10.0, 10.0, 5.0)),
+            **_geometry(_box_solid(10.0, 10.0, 5.0)),
         },
         "cylinder_r3_h10": {
             "kind": "cylinder",
             "params": {"center": [0.0, 0.0, 0.0], "axis": [0.0, 0.0, 1.0], "radius": 3.0, "height": 10.0},
-            "mesh": _mesh_payload(make_cylinder([0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 3.0, 10.0)),
+            **_geometry(make_cylinder([0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 3.0, 10.0)),
         },
         "extruded_square_10x10x5": {
             "kind": "extrude",
@@ -94,7 +115,7 @@ def main():
                 "direction": [0.0, 0.0, 1.0],
                 "distance": 5.0,
             },
-            "mesh": _mesh_payload(_extruded_square(10.0, 5.0)),
+            **_geometry(_extruded_square(10.0, 5.0)),
         },
         "circle_extrude_r3_h10": {
             "kind": "profile",
@@ -105,7 +126,7 @@ def main():
                 "direction": [0.0, 0.0, 1.0],
                 "distance": 10.0,
             },
-            "mesh": _mesh_payload(
+            **_geometry(
                 _profile_extrude(
                     [{"kind": "circle", "center": [0, 0, 0], "normal": [0, 0, 1], "xAxis": [1, 0, 0], "radius": 3.0}],
                     [0.0, 0.0, 1.0],
@@ -132,7 +153,7 @@ def main():
                 "direction": [0.0, 0.0, 1.0],
                 "distance": 5.0,
             },
-            "mesh": _mesh_payload(
+            **_geometry(
                 _profile_extrude(
                     [
                         {"kind": "line", "start": [0, 0, 0], "end": [10, 0, 0]},

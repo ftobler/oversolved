@@ -17,9 +17,13 @@
  */
 
 import type { DisposeScope } from './disposeScope'
-import type { OccModule, OccShape, OccOrientedShape } from './occTypes'
+import type { OccModule, OccShape, OccOrientedShape, OccSubShape } from './occTypes'
+import type { EdgeData } from '@/types/cad'
 
 export type Vec3 = [number, number, number]
+
+/** Heterogeneous edge sort key (type_order, kind, then rounded coords). */
+export type EdgeSortKey = (number | string)[]
 
 // --- primitive solids -----------------------------------------------------
 
@@ -274,4 +278,101 @@ export function faceNormal(oc: OccModule, scope: DisposeScope, face: OccShape): 
   const n = props.Normal()
   const sign = isReversed(oc, face) ? -1 : 1
   return [n.X() * sign, n.Y() * sign, n.Z() * sign]
+}
+
+// --- edge / vertex geometry readers ---------------------------------------
+
+const TWO_PI = 2 * Math.PI
+const CIRCLE_TOL = 1e-4
+const r6 = (x: number): number => Math.round(x * 1e6) / 1e6
+
+/** Mirror of `edge_to_geom_dict`: (geometry, deterministic sort key) for an edge. */
+export function edgeToGeom(
+  oc: OccModule,
+  scope: DisposeScope,
+  edge: OccShape,
+): { ed: EdgeData; sortKey: EdgeSortKey } {
+  const ad = scope.track(new oc.BRepAdaptor_Curve_2(edge))
+  const t = ad.GetType().value
+  const u0 = ad.FirstParameter()
+  const u1 = ad.LastParameter()
+
+  if (t === oc.GeomAbs_CurveType.GeomAbs_Line.value) {
+    const sp = ad.Value(u0)
+    const ep = ad.Value(u1)
+    const s: Vec3 = [sp.X(), sp.Y(), sp.Z()]
+    const e: Vec3 = [ep.X(), ep.Y(), ep.Z()]
+    // type_order 0 keeps straight edges before curved (fillet-arc-stable indices).
+    return {
+      ed: { kind: 'line', start: s, end: e },
+      sortKey: [0, 'line', r6(s[0]), r6(s[1]), r6(s[2]), r6(e[0]), r6(e[1]), r6(e[2])],
+    }
+  }
+
+  if (t === oc.GeomAbs_CurveType.GeomAbs_Circle.value) {
+    const circ = scope.track(ad.Circle())
+    const c = circ.Location()
+    const axis = circ.Axis().Direction()
+    const xdir = circ.XAxis().Direction()
+    const radius = circ.Radius()
+    const center: Vec3 = [c.X(), c.Y(), c.Z()]
+    const ax: Vec3 = [axis.X(), axis.Y(), axis.Z()]
+    const xd: Vec3 = [xdir.X(), xdir.Y(), xdir.Z()]
+    const span = u1 - u0
+    const isFull = Math.abs(Math.abs(span) - TWO_PI) < CIRCLE_TOL || Math.abs(span) < CIRCLE_TOL
+    const kind: 'circle' | 'arc' = isFull ? 'circle' : 'arc'
+    return {
+      ed: { kind, center, radius, axis: ax, x_axis: xd, angle_start: u0, angle_end: u1 },
+      // x_axis breaks the tie between the two semicircle halves OCC makes for a
+      // full circle (same center/radius/span) so their order is stable.
+      sortKey: [1, kind, r6(center[0]), r6(center[1]), r6(center[2]), r6(radius), r6(u0), r6(u1), r6(xd[0]), r6(xd[1]), r6(xd[2])],
+    }
+  }
+
+  // Fallback: sample the curve into a polyline (matches the Python spline arm;
+  // NURBS curve_data extraction is a geom_hash concern deferred to 2c).
+  const N = 32
+  const points: Vec3[] = []
+  for (let i = 0; i <= N; i++) {
+    const u = u0 + ((u1 - u0) * i) / N
+    const p = ad.Value(u)
+    points.push([p.X(), p.Y(), p.Z()])
+  }
+  const mid = points[N / 2]
+  return {
+    ed: { kind: 'spline', points },
+    sortKey: [1, 'spline', r6(mid[0]), r6(mid[1]), r6(mid[2]), 0, 0, 0],
+  }
+}
+
+/** Unique edges of a solid (deduped by topological identity), with geometry + sort key. */
+export function readSolidEdges(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+): { ed: EdgeData; sortKey: EdgeSortKey }[] {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+  const uniq: OccSubShape[] = []
+  for (; exp.More(); exp.Next()) {
+    const edge = scope.track(oc.TopoDS.Edge_1(exp.Current())) as OccSubShape
+    if (!uniq.some((u) => u.IsSame(edge))) uniq.push(edge)
+  }
+  return uniq.map((edge) => edgeToGeom(oc, scope, edge))
+}
+
+/** Unique B-rep vertices of a solid (deduped by topological identity). */
+export function readSolidVertices(oc: OccModule, scope: DisposeScope, solid: OccShape): Vec3[] {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_VERTEX, E.TopAbs_SHAPE))
+  const uniq: OccSubShape[] = []
+  const out: Vec3[] = []
+  for (; exp.More(); exp.Next()) {
+    const v = scope.track(oc.TopoDS.Vertex_1(exp.Current())) as OccSubShape
+    if (uniq.some((u) => u.IsSame(v))) continue
+    uniq.push(v)
+    const p = oc.BRep_Tool.Pnt(v)
+    out.push([p.X(), p.Y(), p.Z()])
+  }
+  return out
 }

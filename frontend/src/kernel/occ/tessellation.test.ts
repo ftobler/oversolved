@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assembleMesh, type RawFaceGeom } from './tessellation'
+import { assembleMesh, compareEdgeSortKeys, type RawFaceGeom } from './tessellation'
 import type { Vec3 } from './primitives'
 
 // A planar quad face as two triangles, with per-face 0-based indices.
@@ -113,5 +113,41 @@ describe('assembleMesh', () => {
     ])
     const mesh = assembleMesh([empty, real])
     expect(mesh.face_data).toHaveLength(1)
+  })
+})
+
+describe('compareEdgeSortKeys', () => {
+  it('orders straight edges (type 0) before curved (type 1)', () => {
+    const line = [0, 'line', 5, 5, 5, 9, 9, 9]
+    const circle = [1, 'circle', 0, 0, 0, 3]
+    expect(compareEdgeSortKeys(line, circle)).toBe(-1)
+    expect(compareEdgeSortKeys(circle, line)).toBe(1)
+  })
+
+  it('orders curved kinds lexicographically (arc < circle < spline)', () => {
+    const arc = [1, 'arc', 0, 0, 0]
+    const circle = [1, 'circle', 0, 0, 0]
+    const spline = [1, 'spline', 0, 0, 0]
+    expect(compareEdgeSortKeys(arc, circle)).toBe(-1)
+    expect(compareEdgeSortKeys(circle, spline)).toBe(-1)
+  })
+
+  it('breaks ties by the numeric coordinate fields', () => {
+    const a = [0, 'line', 1, 0, 0, 0, 0, 0]
+    const b = [0, 'line', 2, 0, 0, 0, 0, 0]
+    expect(compareEdgeSortKeys(a, b)).toBe(-1)
+    expect(compareEdgeSortKeys(b, a)).toBe(1)
+    expect(compareEdgeSortKeys(a, a)).toBe(0)
+  })
+
+  it('sorts a mixed edge list deterministically', () => {
+    const keys = [
+      [1, 'circle', 0, 0, 10, 3],
+      [0, 'line', 0, 0, 0, 0, 0, 5],
+      [1, 'arc', 0, 0, 0, 10, 0, 1.57],
+      [0, 'line', 0, 0, 0, 10, 0, 0],
+    ]
+    const sorted = [...keys].sort(compareEdgeSortKeys)
+    expect(sorted.map((k) => k[1])).toEqual(['line', 'line', 'arc', 'circle'])
   })
 })

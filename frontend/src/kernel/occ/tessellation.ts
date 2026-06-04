@@ -22,11 +22,15 @@ import {
   faceCentroid,
   faceNormal,
   faceSurfaceType,
+  readSolidEdges,
+  readSolidVertices,
   tessellateFace,
+  type EdgeSortKey,
   type SurfaceType,
   type Vec3,
 } from './primitives'
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
+import type { EdgeData } from '@/types/cad'
 
 export interface FaceDatum {
   centroid: Vec3
@@ -161,6 +165,56 @@ export function solidToMesh(
   const scope = new DisposeScope()
   try {
     return assembleMesh(readShapeFaces(oc, scope, solid, deflection, angularDeflection))
+  } finally {
+    scope.dispose()
+  }
+}
+
+/** Lexicographic comparator over heterogeneous edge sort keys (number|string). */
+export function compareEdgeSortKeys(a: EdgeSortKey, b: EdgeSortKey): number {
+  const n = Math.min(a.length, b.length)
+  for (let i = 0; i < n; i++) {
+    const x = a[i]
+    const y = b[i]
+    if (typeof x === 'number' && typeof y === 'number') {
+      if (x < y) return -1
+      if (x > y) return 1
+    } else {
+      const sx = String(x)
+      const sy = String(y)
+      if (sx < sy) return -1
+      if (sx > sy) return 1
+    }
+  }
+  return a.length - b.length
+}
+
+/**
+ * Unique edge geometry of a solid, sorted into deterministic indices (mirrors
+ * `solid_to_edges`, geometry half). `edge_queries` are deferred to 2c.
+ */
+export function solidToEdges(oc: OccModule, table: HandleTable, handle: OccHandle): EdgeData[] {
+  const solid = table.get(handle)
+  const scope = new DisposeScope()
+  try {
+    const raw = readSolidEdges(oc, scope, solid)
+    raw.sort((a, b) => compareEdgeSortKeys(a.sortKey, b.sortKey))
+    return raw.map((r) => r.ed)
+  } finally {
+    scope.dispose()
+  }
+}
+
+/**
+ * Unique B-rep vertices of a solid (mirrors `solid_to_vertices`, geometry half).
+ * Python does not sort vertices, so the order follows OCC iteration; callers
+ * that need parity should compare as a set. `vertex_queries` are deferred to 2c.
+ */
+export function solidToVertices(oc: OccModule, table: HandleTable, handle: OccHandle): Vec3[] {
+  const solid = table.get(handle)
+  const scope = new DisposeScope()
+  try {
+    return readSolidVertices(oc, scope, solid)
   } finally {
     scope.dispose()
   }

@@ -147,6 +147,30 @@ export interface OccLocation extends OccDisposable {
   Transformation(): OccTrsf
 }
 
+/** A sub-shape (edge/vertex) we dedup by topological identity. */
+export interface OccSubShape extends OccDisposable {
+  IsSame(other: OccDisposable): boolean
+}
+
+export interface OccAxisDir {
+  Direction(): OccXYZ
+}
+
+export interface OccCircle extends OccDisposable {
+  Location(): OccXYZ
+  Radius(): number
+  Axis(): OccAxisDir
+  XAxis(): OccAxisDir
+}
+
+export interface OccCurveAdaptor extends OccDisposable {
+  GetType(): OccEnumValue
+  FirstParameter(): number
+  LastParameter(): number
+  Value(u: number): OccXYZ
+  Circle(): OccCircle
+}
+
 /** Opaque embind enum value (e.g. `TopAbs_ShapeEnum.TopAbs_FACE`). */
 export type OccShapeEnumValue = object
 
@@ -194,10 +218,28 @@ export interface OccSpikeModule {
 }
 
 export interface OccModule extends OccSpikeModule {
-  // Richer location + triangulation than the spike slice (node-level access).
+  // Richer location + triangulation than the spike slice (node-level access),
+  // plus VERTEX exploration, edge/vertex casts, and the curve adaptor.
   TopLoc_Location_1: new () => OccLocation
   BRep_Tool: {
     Triangulation(face: OccShape, loc: OccLocation): OccTriangulationHandle
+    Pnt(vertex: OccShape): OccXYZ
+  }
+  TopAbs_ShapeEnum: {
+    TopAbs_FACE: OccShapeEnumValue
+    TopAbs_EDGE: OccShapeEnumValue
+    TopAbs_VERTEX: OccShapeEnumValue
+    TopAbs_SHAPE: OccShapeEnumValue
+  }
+  TopoDS: {
+    Face_1(shape: OccShape): OccShape
+    Edge_1(shape: OccShape): OccShape
+    Vertex_1(shape: OccShape): OccShape
+  }
+  BRepAdaptor_Curve_2: new (edge: OccShape) => OccCurveAdaptor
+  GeomAbs_CurveType: {
+    GeomAbs_Line: OccEnumValue
+    GeomAbs_Circle: OccEnumValue
   }
 
   // --- 2b: shape construction --------------------------------------------
