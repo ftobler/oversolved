@@ -22,13 +22,16 @@ pub struct LmResult {
 
 /// Relative step for the central finite-difference Jacobian. `cbrt(eps)` is the
 /// usual optimum for a 3-point stencil (truncation vs round-off balance).
+#[cfg(test)]
 fn fd_step(xj: f64) -> f64 {
     f64::EPSILON.cbrt() * xj.abs().max(1.0)
 }
 
 /// Central 3-point finite-difference Jacobian of `f` at `x`. `m` is the residual
-/// count (taken from a prior `f(x)` so we can size the matrix).
-fn fd_jacobian(f: &impl Fn(&[f64]) -> Vec<f64>, x: &[f64], m: usize) -> DMatrix<f64> {
+/// count (taken from a prior `f(x)` so we can size the matrix). Kept for the
+/// analytic-vs-FD cross-check tests; the solver now uses an analytic Jacobian.
+#[cfg(test)]
+pub(crate) fn fd_jacobian(f: &impl Fn(&[f64]) -> Vec<f64>, x: &[f64], m: usize) -> DMatrix<f64> {
     let n = x.len();
     let mut j = DMatrix::<f64>::zeros(m, n);
     if m == 0 {
@@ -54,8 +57,13 @@ fn norm2(v: &[f64]) -> f64 {
     v.iter().map(|&e| e * e).sum::<f64>().sqrt()
 }
 
-/// Solve `min_x 0.5 * ||f(x)||²` from the seed `x0`.
-pub fn solve_lm(x0: &[f64], f: &impl Fn(&[f64]) -> Vec<f64>) -> LmResult {
+/// Solve `min_x 0.5 * ||f(x)||²` from the seed `x0`. `jac(x)` returns the
+/// Jacobian of `f` at `x` (m rows x n cols); the caller supplies it analytically.
+pub fn solve_lm(
+    x0: &[f64],
+    f: &impl Fn(&[f64]) -> Vec<f64>,
+    jac: &impl Fn(&[f64]) -> DMatrix<f64>,
+) -> LmResult {
     let n = x0.len();
     let mut x = x0.to_vec();
     let mut r = f(&x);
@@ -78,11 +86,11 @@ pub fn solve_lm(x0: &[f64], f: &impl Fn(&[f64]) -> Vec<f64>) -> LmResult {
     const LAMBDA_UP: f64 = 3.0;
     const LAMBDA_DOWN: f64 = 0.4;
 
-    let mut jac = fd_jacobian(f, &x, m);
+    let mut jacm = jac(&x);
     let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>();
 
     // Initial damping from the scale of JᵀJ's diagonal.
-    let mut jtj = jac.transpose() * &jac;
+    let mut jtj = jacm.transpose() * &jacm;
     let mut lambda = 1e-3
         * (0..n)
             .map(|i| jtj[(i, i)])
@@ -93,7 +101,7 @@ pub fn solve_lm(x0: &[f64], f: &impl Fn(&[f64]) -> Vec<f64>) -> LmResult {
     while iters < MAX_ITERS {
         iters += 1;
         let rv = DVector::from_vec(r.clone());
-        let g = jac.transpose() * &rv; // gradient Jᵀr
+        let g = jacm.transpose() * &rv; // gradient Jᵀr
 
         if g.amax() < GTOL {
             break;
@@ -121,8 +129,8 @@ pub fn solve_lm(x0: &[f64], f: &impl Fn(&[f64]) -> Vec<f64>) -> LmResult {
                 let cost_drop = cost - cost_new;
                 x = x_new;
                 r = r_new;
-                jac = fd_jacobian(f, &x, m);
-                jtj = jac.transpose() * &jac;
+                jacm = jac(&x);
+                jtj = jacm.transpose() * &jacm;
                 lambda = (lambda * LAMBDA_DOWN).max(1e-12);
                 accepted = true;
 
@@ -131,7 +139,7 @@ pub fn solve_lm(x0: &[f64], f: &impl Fn(&[f64]) -> Vec<f64>) -> LmResult {
                 if dx < XTOL * xnorm || cost_drop < FTOL * cost.max(1e-30) {
                     return LmResult {
                         x,
-                        jacobian: jac,
+                        jacobian: jacm,
                         residual_norm: norm2(&r),
                         iters,
                     };
@@ -153,7 +161,7 @@ pub fn solve_lm(x0: &[f64], f: &impl Fn(&[f64]) -> Vec<f64>) -> LmResult {
 
     LmResult {
         x,
-        jacobian: jac,
+        jacobian: jacm,
         residual_norm: norm2(&r),
         iters,
     }

@@ -24,7 +24,8 @@ pub fn solve_sketch(input: &Input) -> Output {
     let n = x0.len();
 
     let f = |x: &[f64]| problem.residuals(x);
-    let result = solve_lm(&x0, &f);
+    let jac = |x: &[f64]| problem.jacobian(x, n);
+    let result = solve_lm(&x0, &f, &jac);
 
     let jac = result.jacobian;
     let final_loss = result.residual_norm * result.residual_norm;

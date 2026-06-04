@@ -14,10 +14,13 @@
 
 use crate::constraints::{Axis, Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 use crate::{Entity, Input, Kind};
+use nalgebra::DMatrix;
 use std::collections::HashMap;
 
 /// A point in sketch-plane coordinates.
 type P2 = [f64; 2];
+
+const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
 
 pub struct Problem<'a> {
     entities: &'a [Entity],
@@ -549,6 +552,409 @@ impl<'a> Problem<'a> {
             }
         }
     }
+
+    // ─── Analytic Jacobian ───
+    //
+    // Derivative rows that mirror `residuals` row-for-row. Smooth/explicit
+    // constraints get hand-written derivatives; the gnarlier ones (those whose
+    // residual normalizes a direction or goes through atan2) fall back to a
+    // per-constraint central finite difference over only their involved params.
+    // The fallback keeps correctness trivially (it IS finite differences) while
+    // the common cheap constraints avoid the O(2N) full-FD cost.
+
+    /// Jacobian of the full stacked residual at `x` (m rows x `n` params).
+    pub fn jacobian(&self, x: &[f64], n: usize) -> DMatrix<f64> {
+        let mut rows: Vec<Vec<f64>> = Vec::new();
+        for c in self.constraints {
+            self.jac_one(c, x, n, &mut rows);
+        }
+        for &i in &self.pinned_indices {
+            let mut row = vec![0.0; n];
+            row[i] = 1.0;
+            rows.push(row);
+        }
+        for &(i, _) in &self.equality_pins {
+            let mut row = vec![0.0; n];
+            row[i] = 1.0;
+            rows.push(row);
+        }
+
+        let m = rows.len();
+        let mut j = DMatrix::<f64>::zeros(m, n);
+        for (r_i, row) in rows.iter().enumerate() {
+            for (c_i, &v) in row.iter().enumerate() {
+                j[(r_i, c_i)] = v;
+            }
+        }
+        j
+    }
+
+    fn residual_one_vec(&self, c: &Constraint, x: &[f64]) -> Vec<f64> {
+        let mut r = Vec::new();
+        self.residual_one(c, x, &mut r);
+        r
+    }
+
+    /// Param indices a constraint's references touch (full entity blocks).
+    fn involved_params(&self, c: &Constraint) -> Vec<usize> {
+        let mut idxs = Vec::new();
+        for (_, rf) in &c.refs {
+            if let Ref::Entity { index, .. } = rf {
+                let off = self.offset_of(*index);
+                let size = self.kind_of(*index).param_count();
+                for i in 0..size {
+                    if !idxs.contains(&(off + i)) {
+                        idxs.push(off + i);
+                    }
+                }
+            }
+        }
+        idxs
+    }
+
+    /// Central finite-difference rows for one constraint, perturbing only the
+    /// params it touches. Used as the fallback for constraints without an
+    /// analytic derivative.
+    fn fd_constraint_rows(&self, c: &Constraint, x: &[f64], n: usize) -> Vec<Vec<f64>> {
+        let base = self.residual_one_vec(c, x);
+        let k = base.len();
+        if k == 0 {
+            return Vec::new();
+        }
+        let mut rows = vec![vec![0.0; n]; k];
+        let mut xp = x.to_vec();
+        for j in self.involved_params(c) {
+            let h = f64::EPSILON.cbrt() * x[j].abs().max(1.0);
+            xp[j] = x[j] + h;
+            let fp = self.residual_one_vec(c, &xp);
+            xp[j] = x[j] - h;
+            let fm = self.residual_one_vec(c, &xp);
+            xp[j] = x[j];
+            let inv = 1.0 / (2.0 * h);
+            for (row, (&p, &m)) in fp.iter().zip(fm.iter()).enumerate() {
+                rows[row][j] = (p - m) * inv;
+            }
+        }
+        rows
+    }
+
+    /// Jacobian of a 2D point reference w.r.t. its entity params: a list of
+    /// `(param_index, d(point.x), d(point.y))`. External refs contribute nothing.
+    fn point_jac(&self, x: &[f64], r: Ref) -> Vec<(usize, f64, f64)> {
+        match r {
+            Ref::External { .. } => Vec::new(),
+            Ref::Entity { index, point } => {
+                let off = self.offset_of(index);
+                match self.kind_of(index) {
+                    Kind::Line => {
+                        if point == PointSelector::End {
+                            vec![(off + 2, 1.0, 0.0), (off + 3, 0.0, 1.0)]
+                        } else {
+                            vec![(off, 1.0, 0.0), (off + 1, 0.0, 1.0)]
+                        }
+                    }
+                    Kind::Circle | Kind::Point => {
+                        vec![(off, 1.0, 0.0), (off + 1, 0.0, 1.0)]
+                    }
+                    Kind::Arc => {
+                        if point == PointSelector::Center {
+                            vec![(off, 1.0, 0.0), (off + 1, 0.0, 1.0)]
+                        } else {
+                            let ep = self.params(x, index);
+                            let rad = ep[2];
+                            let (a_idx, a_deg) = if point == PointSelector::End {
+                                (off + 4, ep[4])
+                            } else {
+                                (off + 3, ep[3])
+                            };
+                            let a = a_deg.to_radians();
+                            vec![
+                                (off, 1.0, 0.0),
+                                (off + 1, 0.0, 1.0),
+                                (off + 2, a.cos(), a.sin()),
+                                (a_idx, -rad * a.sin() * DEG2RAD, rad * a.cos() * DEG2RAD),
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn jac_one(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+        let Some(kind) = c.kind() else { return };
+        match kind {
+            ConstraintKind::Horizontal => self.jac_axis_aligned(c, x, n, rows, true),
+            ConstraintKind::Vertical => self.jac_axis_aligned(c, x, n, rows, false),
+            ConstraintKind::Length => self.jac_length(c, x, n, rows),
+            ConstraintKind::Radius => self.jac_single_param(c, n, rows, 2, 1.0),
+            ConstraintKind::Diameter => self.jac_single_param(c, n, rows, 2, 2.0),
+            ConstraintKind::Parallel => self.jac_parallel(c, x, n, rows),
+            ConstraintKind::Concentric => self.jac_concentric(c, n, rows),
+            ConstraintKind::EqualLength => self.jac_equal_length(c, x, n, rows),
+            ConstraintKind::PointDistance => self.jac_point_distance(c, x, n, rows),
+            ConstraintKind::Coincident => self.jac_coincident(c, x, n, rows),
+            ConstraintKind::Fixed => self.jac_fixed(c, x, n, rows),
+            // Direction-normalizing / atan2 residuals: finite-difference fallback.
+            ConstraintKind::LineDistance
+            | ConstraintKind::Normal
+            | ConstraintKind::Angle
+            | ConstraintKind::Tangent
+            | ConstraintKind::Midpoint => rows.extend(self.fd_constraint_rows(c, x, n)),
+        }
+    }
+
+    fn jac_axis_aligned(
+        &self,
+        c: &Constraint,
+        x: &[f64],
+        n: usize,
+        rows: &mut Vec<Vec<f64>>,
+        horizontal: bool,
+    ) {
+        // component index in a 2D point: y for horizontal, x for vertical.
+        let comp = if horizontal { 1 } else { 0 };
+        if let (Some(a), Some(b)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) {
+            let mut row = vec![0.0; n];
+            for (i, dx, dy) in self.point_jac(x, a) {
+                row[i] += if comp == 1 { dy } else { dx };
+            }
+            for (i, dx, dy) in self.point_jac(x, b) {
+                row[i] -= if comp == 1 { dy } else { dx };
+            }
+            rows.push(row);
+        } else if let Some(Ref::Entity { index, .. }) = c.ref_for(RefRole::Target) {
+            let off = self.offset_of(index);
+            let mut row = vec![0.0; n];
+            if horizontal {
+                row[off + 3] += 1.0; // ep[3] (end.y)
+                row[off + 1] -= 1.0; // ep[1] (start.y)
+            } else {
+                row[off + 2] += 1.0; // ep[2] (end.x)
+                row[off] -= 1.0; // ep[0] (start.x)
+            }
+            rows.push(row);
+        }
+    }
+
+    fn jac_length(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+        let Some(Ref::Entity { index, .. }) = c.ref_for(RefRole::Target) else {
+            return;
+        };
+        if c.value.is_none() {
+            return;
+        }
+        let off = self.offset_of(index);
+        let ep = self.params(x, index);
+        let (dx, dy) = (ep[2] - ep[0], ep[3] - ep[1]);
+        let nrm = (dx * dx + dy * dy).sqrt();
+        let mut row = vec![0.0; n];
+        if nrm > 0.0 {
+            row[off] = -dx / nrm;
+            row[off + 1] = -dy / nrm;
+            row[off + 2] = dx / nrm;
+            row[off + 3] = dy / nrm;
+        }
+        rows.push(row);
+    }
+
+    fn jac_single_param(
+        &self,
+        c: &Constraint,
+        n: usize,
+        rows: &mut Vec<Vec<f64>>,
+        local: usize,
+        coeff: f64,
+    ) {
+        let Some(Ref::Entity { index, .. }) = c.ref_for(RefRole::Target) else {
+            return;
+        };
+        if c.value.is_none() {
+            return;
+        }
+        let off = self.offset_of(index);
+        let mut row = vec![0.0; n];
+        row[off + local] = coeff;
+        rows.push(row);
+    }
+
+    fn jac_parallel(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+        let (Some(Ref::Entity { index: ai, .. }), Some(Ref::Entity { index: bi, .. })) =
+            (c.ref_for(RefRole::A), c.ref_for(RefRole::B))
+        else {
+            return;
+        };
+        let ea = self.params(x, ai).to_vec();
+        let eb = self.params(x, bi).to_vec();
+        let da = [ea[2] - ea[0], ea[3] - ea[1]];
+        let db = [eb[2] - eb[0], eb[3] - eb[1]];
+        let (oa, ob) = (self.offset_of(ai), self.offset_of(bi));
+        let mut row = vec![0.0; n];
+        // r = da.x*db.y - da.y*db.x
+        row[oa] += -db[1];
+        row[oa + 2] += db[1];
+        row[oa + 1] += db[0];
+        row[oa + 3] += -db[0];
+        row[ob] += da[1];
+        row[ob + 2] += -da[1];
+        row[ob + 1] += -da[0];
+        row[ob + 3] += da[0];
+        rows.push(row);
+    }
+
+    fn jac_concentric(&self, c: &Constraint, n: usize, rows: &mut Vec<Vec<f64>>) {
+        let (Some(Ref::Entity { index: ai, .. }), Some(Ref::Entity { index: bi, .. })) =
+            (c.ref_for(RefRole::A), c.ref_for(RefRole::B))
+        else {
+            return;
+        };
+        let (oa, ob) = (self.offset_of(ai), self.offset_of(bi));
+        let mut rx = vec![0.0; n];
+        rx[oa] = 1.0;
+        rx[ob] = -1.0;
+        rows.push(rx);
+        let mut ry = vec![0.0; n];
+        ry[oa + 1] = 1.0;
+        ry[ob + 1] = -1.0;
+        rows.push(ry);
+    }
+
+    fn jac_equal_length(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+        let (Some(Ref::Entity { index: ai, .. }), Some(Ref::Entity { index: bi, .. })) =
+            (c.ref_for(RefRole::A), c.ref_for(RefRole::B))
+        else {
+            return;
+        };
+        let ea = self.params(x, ai).to_vec();
+        let eb = self.params(x, bi).to_vec();
+        let (oa, ob) = (self.offset_of(ai), self.offset_of(bi));
+        let na = ((ea[2] - ea[0]).powi(2) + (ea[3] - ea[1]).powi(2)).sqrt();
+        let nb = ((eb[2] - eb[0]).powi(2) + (eb[3] - eb[1]).powi(2)).sqrt();
+        let mut row = vec![0.0; n];
+        if na > 0.0 {
+            let (dx, dy) = (ea[2] - ea[0], ea[3] - ea[1]);
+            row[oa] += -dx / na;
+            row[oa + 1] += -dy / na;
+            row[oa + 2] += dx / na;
+            row[oa + 3] += dy / na;
+        }
+        if nb > 0.0 {
+            let (dx, dy) = (eb[2] - eb[0], eb[3] - eb[1]);
+            row[ob] += dx / nb;
+            row[ob + 1] += dy / nb;
+            row[ob + 2] += -dx / nb;
+            row[ob + 3] += -dy / nb;
+        }
+        rows.push(row);
+    }
+
+    fn jac_point_distance(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+        let (Some(a), Some(b)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
+            return;
+        };
+        if c.value.is_none() {
+            return;
+        }
+        let pa = self.point(x, a);
+        let pb = self.point(x, b);
+        let ux = pb[0] - pa[0];
+        let uy = pb[1] - pa[1];
+        let d = (ux * ux + uy * uy).sqrt();
+        let mut row = vec![0.0; n];
+        if d > 0.0 {
+            for (i, dpx, dpy) in self.point_jac(x, a) {
+                row[i] += (-ux / d) * dpx + (-uy / d) * dpy;
+            }
+            for (i, dpx, dpy) in self.point_jac(x, b) {
+                row[i] += (ux / d) * dpx + (uy / d) * dpy;
+            }
+        }
+        rows.push(row);
+    }
+
+    fn jac_coincident(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+        if !self.coincident_is_point_point(c) {
+            rows.extend(self.fd_constraint_rows(c, x, n));
+            return;
+        }
+        let (Some(a), Some(b)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
+            return;
+        };
+        // r = [pa.x - pb.x, pa.y - pb.y]
+        let mut rx = vec![0.0; n];
+        let mut ry = vec![0.0; n];
+        for (i, dpx, dpy) in self.point_jac(x, a) {
+            rx[i] += dpx;
+            ry[i] += dpy;
+        }
+        for (i, dpx, dpy) in self.point_jac(x, b) {
+            rx[i] -= dpx;
+            ry[i] -= dpy;
+        }
+        rows.push(rx);
+        rows.push(ry);
+    }
+
+    /// True when `r_coincident` would take its final point-to-point branch (the
+    /// only branch with a clean analytic derivative). Mirrors that branch logic.
+    fn coincident_is_point_point(&self, c: &Constraint) -> bool {
+        let (Some(a_ref), Some(b_ref)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
+            return false;
+        };
+        let a_external = matches!(a_ref, Ref::External { .. });
+        let b_external = matches!(b_ref, Ref::External { .. });
+        let a_point = matches!(a_ref, Ref::Entity { point, .. } if point.is_present());
+        let b_point = matches!(b_ref, Ref::Entity { point, .. } if point.is_present());
+        let a_kind = match a_ref {
+            Ref::Entity { index, .. } => Some(self.kind_of(index)),
+            _ => None,
+        };
+        let b_kind = match b_ref {
+            Ref::Entity { index, .. } => Some(self.kind_of(index)),
+            _ => None,
+        };
+        let branch1 = !a_external
+            && !b_external
+            && !a_point
+            && !b_point
+            && a_kind == Some(Kind::Line)
+            && b_kind == Some(Kind::Line);
+        let branch2 = !b_external && !b_point && b_kind == Some(Kind::Line);
+        let branch3 = !b_external
+            && !b_point
+            && (b_kind == Some(Kind::Circle) || b_kind == Some(Kind::Arc));
+        !(branch1 || branch2 || branch3)
+    }
+
+    fn jac_fixed(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+        let Some(target) = c.ref_for(RefRole::Target) else {
+            return;
+        };
+        let Ref::Entity { index, point } = target else {
+            return;
+        };
+        let has_point = point.is_present();
+        let has_xy = c.xy.is_some();
+        if has_point || has_xy {
+            // r = [pt.x - fix_x, pt.y - fix_y]; fix is constant.
+            let mut rx = vec![0.0; n];
+            let mut ry = vec![0.0; n];
+            for (i, dpx, dpy) in self.point_jac(x, target) {
+                rx[i] += dpx;
+                ry[i] += dpy;
+            }
+            rows.push(rx);
+            rows.push(ry);
+        } else {
+            let off = self.offset_of(index);
+            let size = self.kind_of(index).param_count();
+            for i in 0..size {
+                let mut row = vec![0.0; n];
+                row[off + i] = 1.0;
+                rows.push(row);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -664,5 +1070,138 @@ mod tests {
         assert_eq!(r.len(), 2);
         assert!((r[0]).abs() < 1e-12);
         assert!((r[1] - 4.0).abs() < 1e-12);
+    }
+
+    fn e_ref(index: u32, point: PointSelector) -> Ref {
+        Ref::Entity { index, point }
+    }
+
+    fn cons(kind: ConstraintKind, refs: Vec<(RefRole, Ref)>) -> Constraint {
+        Constraint {
+            kind_code: kind.to_u8(),
+            refs,
+            ..Default::default()
+        }
+    }
+
+    fn cons_v(kind: ConstraintKind, refs: Vec<(RefRole, Ref)>, value: f64) -> Constraint {
+        Constraint {
+            kind_code: kind.to_u8(),
+            refs,
+            value: Some(value),
+            ..Default::default()
+        }
+    }
+
+    /// Cover every constraint kind (and both coincident analytic + fallback
+    /// branches, plus the arc point_jac) in one problem, then assert the
+    /// analytic Jacobian matches a full finite-difference Jacobian everywhere.
+    /// FD is the trusted oracle (it is what shadow-mode parity validated against
+    /// Python), so this gate catches any hand-derivative mistake.
+    #[test]
+    fn analytic_jacobian_matches_finite_difference() {
+        use PointSelector::{Absent, Center, End, Start, Xy};
+        use RefRole::{Arc as ArcR, Line as LineR, Point as PointR, A, B, Target};
+
+        let entities = vec![
+            ent(Kind::Line, 0),   // 0  L1 [0..4]
+            ent(Kind::Line, 4),   // 1  L2 [4..8]
+            ent(Kind::Circle, 8), // 2  C1 [8..11]
+            ent(Kind::Arc, 11),   // 3  A1 [11..16]
+            ent(Kind::Point, 16), // 4  P1 [16..18]
+            ent(Kind::Point, 18), // 5  P2 [18..20]
+        ];
+        let params = vec![
+            0.0, 0.0, 3.0, 1.0, // L1
+            1.0, 2.0, 4.0, 5.0, // L2
+            2.0, 3.0, 2.5, // C1
+            1.0, 1.0, 2.0, 30.0, 120.0, // A1
+            5.0, 6.0, // P1
+            7.0, 2.0, // P2
+        ];
+
+        let constraints = vec![
+            cons(ConstraintKind::Horizontal, vec![(Target, e_ref(0, Absent))]),
+            cons(ConstraintKind::Horizontal, vec![(A, e_ref(0, Start)), (B, e_ref(4, End))]),
+            cons(ConstraintKind::Vertical, vec![(Target, e_ref(1, Absent))]),
+            cons_v(ConstraintKind::Length, vec![(Target, e_ref(0, Absent))], 5.0),
+            cons_v(ConstraintKind::Radius, vec![(Target, e_ref(2, Absent))], 4.0),
+            cons_v(ConstraintKind::Diameter, vec![(Target, e_ref(2, Absent))], 8.0),
+            cons(ConstraintKind::Parallel, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))]),
+            cons(ConstraintKind::Concentric, vec![(A, e_ref(2, Absent)), (B, e_ref(3, Absent))]),
+            cons(ConstraintKind::EqualLength, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))]),
+            cons_v(ConstraintKind::PointDistance, vec![(A, e_ref(4, Xy)), (B, e_ref(5, Xy))], 3.0),
+            // coincident: analytic point-point (incl. arc endpoint point_jac)
+            cons(ConstraintKind::Coincident, vec![(A, e_ref(4, Xy)), (B, e_ref(5, Xy))]),
+            cons(ConstraintKind::Coincident, vec![(A, e_ref(3, Start)), (B, e_ref(5, Xy))]),
+            // coincident fallback branches
+            cons(ConstraintKind::Coincident, vec![(A, e_ref(4, Xy)), (B, e_ref(1, Absent))]),
+            cons(ConstraintKind::Coincident, vec![(A, e_ref(4, Xy)), (B, e_ref(2, Absent))]),
+            cons(ConstraintKind::Coincident, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))]),
+            // direction-normalizing / atan2 fallbacks
+            cons(ConstraintKind::Normal, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))]),
+            cons_v(ConstraintKind::Angle, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))], 30.0),
+            cons(ConstraintKind::Tangent, vec![(LineR, e_ref(0, Absent)), (ArcR, e_ref(2, Absent))]),
+            cons(ConstraintKind::Tangent, vec![(LineR, e_ref(0, Absent)), (ArcR, e_ref(3, Start))]),
+            cons(ConstraintKind::Midpoint, vec![(LineR, e_ref(0, Absent)), (PointR, e_ref(4, Xy))]),
+            cons_v(ConstraintKind::LineDistance, vec![(A, e_ref(0, Absent)), (B, e_ref(5, Xy))], 1.0),
+            // fixed: explicit-xy point, point+xy, and full-entity
+            Constraint {
+                kind_code: ConstraintKind::Fixed.to_u8(),
+                refs: vec![(Target, e_ref(4, Absent))],
+                xy: Some((1.0, 1.0)),
+                ..Default::default()
+            },
+            Constraint {
+                kind_code: ConstraintKind::Fixed.to_u8(),
+                refs: vec![(Target, e_ref(0, Start))],
+                xy: Some((0.0, 0.0)),
+                ..Default::default()
+            },
+            cons(ConstraintKind::Fixed, vec![(Target, e_ref(1, Absent))]),
+            // arc center selector through fixed (exercises Center point_jac)
+            Constraint {
+                kind_code: ConstraintKind::Fixed.to_u8(),
+                refs: vec![(Target, e_ref(3, Center))],
+                xy: Some((1.0, 1.0)),
+                ..Default::default()
+            },
+        ];
+
+        let mut inp = input(entities, params, constraints);
+        inp.pinned_mask = vec![0b0000_0010]; // pin param 1
+        inp.equality_pins = vec![EqualityPin {
+            param_index: 9,
+            target: 2.0,
+        }];
+
+        let p = Problem::new(&inp);
+        // Evaluate away from the seed so derivatives are exercised at a generic point.
+        let x: Vec<f64> = inp
+            .params_initial
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| v as f64 + 0.37 * ((i as f64) * 1.3).sin())
+            .collect();
+        let n = x.len();
+
+        let analytic = p.jacobian(&x, n);
+        let residual_fn = |xx: &[f64]| p.residuals(xx);
+        let m = residual_fn(&x).len();
+        let fd = crate::lm::fd_jacobian(&residual_fn, &x, m);
+
+        assert_eq!(analytic.nrows(), m);
+        assert_eq!(fd.nrows(), m);
+        for r in 0..m {
+            for col in 0..n {
+                let diff = (analytic[(r, col)] - fd[(r, col)]).abs();
+                assert!(
+                    diff < 1e-4,
+                    "row {r} col {col}: analytic={} fd={} (diff {diff})",
+                    analytic[(r, col)],
+                    fd[(r, col)],
+                );
+            }
+        }
     }
 }
