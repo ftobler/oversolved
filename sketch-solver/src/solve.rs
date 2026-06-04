@@ -148,15 +148,15 @@ fn refine_drag_sparse(
 ) -> Vec<f64> {
     let f2 = |x: &[f64]| {
         let mut r = problem.residuals(x);
-        for i in 0..n {
-            r.push(weights[i] * (x[i] - x0[i]));
+        for (&w, (&xi, &x0i)) in weights.iter().zip(x.iter().zip(x0.iter())) {
+            r.push(w * (xi - x0i));
         }
         r
     };
     let jac2 = |x: &[f64]| {
         let mut aug = problem.jacobian_sparse(x, n);
-        for i in 0..n {
-            aug.push(vec![(i, weights[i])]);
+        for (i, &w) in weights.iter().enumerate() {
+            aug.push(vec![(i, w)]);
         }
         aug
     };

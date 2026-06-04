@@ -127,3 +127,30 @@ jobs:
         with:
           name: frontend-dist-${{ matrix.os }}
           path: frontend/dist/
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup update stable
+          rustup component add clippy
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Test
+        run: cargo test
+        working-directory: sketch-solver
+
+      - name: Lint (clippy)
+        run: cargo clippy -- -D warnings
+        working-directory: sketch-solver
+
+      - name: Build WASM (web + nodejs)
+        run: |
+          wasm-pack build --target web --out-dir pkg --release
+          wasm-pack build --target nodejs --out-dir pkg-node --release
+        working-directory: sketch-solver

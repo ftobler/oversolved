@@ -73,6 +73,17 @@ run_solver:
     oversolved-solver --debug
 
 
+# Build the Rust solver to WASM (web target for frontend + nodejs target for tests)
+wasm:
+    cd sketch-solver && wasm-pack build --target web --out-dir pkg --release
+    cd sketch-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
+    cd frontend && node scripts/copyWasm.mjs
+
+# Lint the Rust solver crate (clippy, deny warnings)
+rust-lint:
+    cd sketch-solver && cargo clippy -- -D warnings
+
+
 set shell := ["bash", "-cu"]
 run:
     trap 'kill 0' EXIT; \
