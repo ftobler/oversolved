@@ -1,5 +1,5 @@
 /**
- * In-memory [[OccModule]] double for the always-on leak gate.
+ * In-memory [[OccSpikeModule]] double for the always-on leak gate.
  *
  * The real opencascade.js build is a gitignored, opt-in 66 MB artifact (see
  * `loadOcc.ts`), so the gated spike test only runs locally. This double lets
@@ -22,12 +22,12 @@ import type {
   OccExplorer,
   OccFaceBuilder,
   OccListOfShape,
-  OccModule,
+  OccSpikeModule,
   OccPolygonBuilder,
   OccPrismBuilder,
   OccShape,
   OccShapeEnumValue,
-  OccTriangulationHandle,
+  OccTriangulationHandleBasic,
 } from './occTypes'
 
 export class Ledger {
@@ -68,7 +68,7 @@ function borrowed(): OccShape {
   }
 }
 
-export interface FakeOccModule extends OccModule {
+export interface FakeOccModule extends OccSpikeModule {
   ledger: Ledger
 }
 
@@ -173,7 +173,7 @@ export function makeFakeOcc(): FakeOccModule {
     }
   }
 
-  class TriangulationHandle implements OccTriangulationHandle {
+  class TriangulationHandle implements OccTriangulationHandleBasic {
     private readonly d = owned()
     IsNull(): boolean {
       return false

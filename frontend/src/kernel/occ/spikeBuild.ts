@@ -13,7 +13,7 @@
 
 import { DisposeScope } from './disposeScope'
 import { HandleTable, type OccHandle } from './handleTable'
-import type { OccModule } from './occTypes'
+import type { OccSpikeModule } from './occTypes'
 
 export interface MeshResult {
   solidFaces: number
@@ -38,7 +38,7 @@ export interface ExtrudeOutput {
 }
 
 export function extrudeSquareAndTessellate(
-  oc: OccModule,
+  oc: OccSpikeModule,
   table: HandleTable,
   opts: ExtrudeOptions = {},
 ): ExtrudeOutput {

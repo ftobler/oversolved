@@ -1,0 +1,133 @@
+/**
+ * Port of the `cadquery_ops.py` helper set plus the body-building orchestration.
+ * Pure geometry helpers (triangle area, face sort key) live here, and the
+ * make-a-body entry points (`buildBox`, `buildCylinder`, `buildExtrudedProfile`)
+ * compose `primitives.ts` and register the produced solid in the
+ * [[HandleTable]]. This module never touches OCC.js types directly; that is
+ * primitives.ts's job.
+ */
+
+import { DisposeScope } from './disposeScope'
+import { HandleTable, type OccHandle } from './handleTable'
+import type { OccModule } from './occTypes'
+import {
+  makeBox,
+  makeCylinder,
+  makeFaceFromWire,
+  makeLineEdge,
+  makePrism,
+  makeWire,
+  type SurfaceType,
+  type Vec3,
+} from './primitives'
+
+// --- pure helpers ----------------------------------------------------------
+
+/** Area of a triangle from three 3D points (mirrors `_triangle_area`). */
+export function triangleArea(p0: Vec3, p1: Vec3, p2: Vec3): number {
+  const v1: Vec3 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]]
+  const v2: Vec3 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]]
+  const nx = v1[1] * v2[2] - v1[2] * v2[1]
+  const ny = v1[2] * v2[0] - v1[0] * v2[2]
+  const nz = v1[0] * v2[1] - v1[1] * v2[0]
+  return 0.5 * Math.sqrt(nx * nx + ny * ny + nz * nz)
+}
+
+function round6(x: number): number {
+  // Sort-key quantisation only; exact banker's-rounding parity with Python's
+  // round() is unnecessary because the values compared are well-separated.
+  return Math.round(x * 1e6) / 1e6
+}
+
+export interface FaceSortItem {
+  centroid: Vec3
+  normal: Vec3
+  surfaceType: SurfaceType
+}
+
+/**
+ * Sort key mirroring `_face_sort_key_from_tuple`: flat faces before curved,
+ * then by (normal, centroid) rounded to 6 decimals. Returned as a flat numeric
+ * tuple for lexicographic comparison.
+ */
+export function faceSortKey(item: FaceSortItem): number[] {
+  const typeOrder = item.surfaceType === 'flatface' ? 0 : 1
+  const n = item.normal
+  const c = item.centroid
+  return [typeOrder, round6(n[0]), round6(n[1]), round6(n[2]), round6(c[0]), round6(c[1]), round6(c[2])]
+}
+
+/** Lexicographic comparator over `faceSortKey` outputs. */
+export function compareFaceSortKeys(a: number[], b: number[]): number {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] < b[i]) return -1
+    if (a[i] > b[i]) return 1
+  }
+  return 0
+}
+
+// --- body building ---------------------------------------------------------
+
+export interface BoxSpec {
+  dx: number
+  dy: number
+  dz: number
+  owner?: string
+}
+
+export function buildBox(oc: OccModule, table: HandleTable, spec: BoxSpec): OccHandle {
+  const scope = new DisposeScope()
+  try {
+    const solid = makeBox(oc, scope, spec.dx, spec.dy, spec.dz)
+    return table.register(solid, spec.owner)
+  } finally {
+    scope.dispose()
+  }
+}
+
+export interface CylinderSpec {
+  center: Vec3
+  axis: Vec3
+  radius: number
+  height: number
+  owner?: string
+}
+
+export function buildCylinder(oc: OccModule, table: HandleTable, spec: CylinderSpec): OccHandle {
+  const scope = new DisposeScope()
+  try {
+    const solid = makeCylinder(oc, scope, spec.center, spec.axis, spec.radius, spec.height)
+    return table.register(solid, spec.owner)
+  } finally {
+    scope.dispose()
+  }
+}
+
+export interface ExtrudeProfileSpec {
+  /** Closed polygon of world-space corners (not repeating the first point). */
+  loop: Vec3[]
+  /** Extrude direction (unit vector). */
+  direction: Vec3
+  distance: number
+  owner?: string
+}
+
+export function buildExtrudedProfile(
+  oc: OccModule,
+  table: HandleTable,
+  spec: ExtrudeProfileSpec,
+): OccHandle {
+  if (spec.loop.length < 3) throw new Error('extrude profile needs at least 3 points')
+  const scope = new DisposeScope()
+  try {
+    const edges = spec.loop.map((p, i) =>
+      makeLineEdge(oc, scope, p, spec.loop[(i + 1) % spec.loop.length]),
+    )
+    const wire = makeWire(oc, scope, edges)
+    const face = makeFaceFromWire(oc, scope, wire)
+    const solid = makePrism(oc, scope, face, spec.direction, spec.distance)
+    return table.register(solid, spec.owner)
+  } finally {
+    scope.dispose()
+  }
+}

@@ -18,7 +18,7 @@
 import { HandleTable } from './handleTable'
 import { extrudeSquareAndTessellate, type ExtrudeOptions, type MeshResult } from './spikeBuild'
 import { loadOccWeb } from './loadOccWeb'
-import type { OccModule } from './occTypes'
+import type { OccSpikeModule } from './occTypes'
 
 export interface ExtrudeSquareRequest {
   id: number
@@ -45,7 +45,7 @@ export interface BuilderErrResponse {
 export type BuilderResponse = BuilderOkResponse | BuilderErrResponse
 
 export interface BuilderDeps {
-  loadOcc: () => Promise<OccModule | null>
+  loadOcc: () => Promise<OccSpikeModule | null>
   table: HandleTable
 }
 
