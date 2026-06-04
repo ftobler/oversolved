@@ -8,6 +8,7 @@ import { unflattenGeometry } from '@/utils/geometryMapping'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
 import { useGeometryCache } from '@/hooks/useGeometryCache'
 import { invalidateDocCache } from '@/utils/buildCache'
+import { maybeRunShadow } from '@/wasm-kernel/shadowMode'
 import { PART_COLOR_PALETTE, normalizeHexColor } from '@/utils/partColors'
 import { unpackBodies, unpackPickBodies } from '@/utils/geometryUnpack'
 import type { GeometryHeader } from '@/utils/geometryUnpack'
@@ -364,6 +365,10 @@ export function useSolver(
           if (isStale()) return
         }
         applySolveResult(d, buildResponse, solveTimeMs)
+        // Phase 1 WASM shadow mode: solve sketches with the Rust kernel in
+        // parallel and log any disagreement. Off unless localStorage.wasmShadow
+        // is set; never affects the canonical Python result above.
+        void maybeRunShadow(d.features, buildResponse.result)
         if (!firstSolveDone.current && onFirstSolve) {
           firstSolveDone.current = true
           setTimeout(onFirstSolve, 0)

@@ -1,0 +1,116 @@
+/**
+ * Lower the sketch features of a live PartDoc into the resolved `SketchInput`
+ * the Rust shadow solver consumes.
+ *
+ * Live constraints carry sketch-local query-string refs (`$line1`, `$arc1start`)
+ * which we resolve to `{entity, point}` dict form here -- the same sketch-local
+ * resolution `geometryMapping.resolveQueryRef` already does for rendering, NOT
+ * the ancestral / projection query system (that is phase 2c). A constraint whose
+ * refs do not all resolve to local entities is dropped, mirroring the backend's
+ * `_filter_local_constraints`; the Python solver drops them too, so the
+ * constraint sets stay aligned.
+ *
+ * Sketches that need resolution we cannot do client-side yet -- projected
+ * entities (a `source` query into ancestral brep) and `center_rect` sugar -- are
+ * skipped with a reason. Those await the phase-2 projection lowering.
+ */
+
+import type { PartConstraint, PartFeature } from '@/types/cad'
+import type { SketchInput } from './lowerSketch'
+
+export interface ExtractedSketch {
+  featureId: string
+  sketch: SketchInput
+}
+
+export interface SkippedSketch {
+  featureId: string
+  reason: string
+}
+
+export interface ExtractResult {
+  sketches: ExtractedSketch[]
+  skipped: SkippedSketch[]
+}
+
+const KNOWN_POINTS = ['start', 'end', 'center', 'xy'] as const
+const REF_KEYS = ['target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b'] as const
+
+/** Resolve a `$entityId[point]` query against the sketch's local entity ids. */
+function resolveLocal(
+  q: string | undefined,
+  entityIds: Set<string>,
+): { entity: string; point?: string } | null {
+  if (!q || !q.startsWith('$')) return null
+  const local = q.slice(1)
+  for (const pt of KNOWN_POINTS) {
+    if (local.length > pt.length && local.endsWith(pt)) {
+      const eid = local.slice(0, -pt.length)
+      if (entityIds.has(eid)) return { entity: eid, point: pt }
+    }
+  }
+  if (entityIds.has(local)) return { entity: local }
+  return null
+}
+
+/**
+ * Lower one constraint to dict-ref form. Returns null (drop the constraint) when
+ * any present ref does not resolve to a local entity -- matching the backend.
+ */
+function lowerConstraint(
+  c: PartConstraint,
+  entityIds: Set<string>,
+): Record<string, unknown> | null {
+  const out: Record<string, unknown> = { id: c.id, kind: c.kind }
+  for (const key of REF_KEYS) {
+    const raw = c[key]
+    if (raw == null) continue
+    const resolved = resolveLocal(raw, entityIds)
+    if (!resolved) return null
+    out[key] = resolved
+  }
+  if (typeof c.value === 'number') out.value = c.value
+  if (typeof c.x === 'number' && typeof c.y === 'number') {
+    out.x = c.x
+    out.y = c.y
+  }
+  if (typeof c.axis === 'string') out.axis = c.axis
+  return out
+}
+
+export function partDocToSketches(features: PartFeature[] | undefined): ExtractResult {
+  const sketches: ExtractedSketch[] = []
+  const skipped: SkippedSketch[] = []
+
+  for (const feature of features ?? []) {
+    if (feature.kind !== 'sketch') continue
+    const entities = feature.entities ?? []
+
+    if (entities.some((e) => e.source)) {
+      skipped.push({ featureId: feature.id, reason: 'projection (needs phase-2 lowering)' })
+      continue
+    }
+    if (entities.some((e) => e.kind === 'center_rect')) {
+      skipped.push({ featureId: feature.id, reason: 'center_rect sugar (not expanded)' })
+      continue
+    }
+
+    const entityIds = new Set(entities.map((e) => e.id))
+    const constraints: Array<Record<string, unknown>> = []
+    for (const c of feature.constraints ?? []) {
+      const lowered = lowerConstraint(c, entityIds)
+      if (lowered) constraints.push(lowered)
+    }
+
+    const sketch: SketchInput = {
+      id: feature.id,
+      plane: feature.plane ?? null,
+      entities: entities.map((e) => ({ id: e.id, kind: e.kind })),
+      initial: feature.initial ?? {},
+      constraints,
+    }
+    sketches.push({ featureId: feature.id, sketch })
+  }
+
+  return { sketches, skipped }
+}
