@@ -1,0 +1,20 @@
+[package]
+name = "sketch-solver"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Sketch constraint solver (WASM kernel migration, phase 1). Skeleton: I/O contract only, no solver yet."
+
+[lib]
+# cdylib for the eventual wasm-pack/wasm-bindgen build; rlib so native `cargo test`
+# and a future headless CLI/Node CI runner can link it. See feature/wasm-kernel-migration.md.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Intentionally empty for the skeleton. Phase 1 adds: nalgebra (matrix ops) and a
+# hand-rolled Levenberg-Marquardt driver; wasm-bindgen is added by the wasm-pack
+# wiring step. Keep finite-difference Jacobian first (scipy parity), analytic later.
+
+[profile.release]
+opt-level = 3
+lto = true
