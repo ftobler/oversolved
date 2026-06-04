@@ -10,6 +10,16 @@ import { segmentsAreParallel } from '@/utils/segmentGeometry'
 
 type ResolvedRef = { entity: string; point?: string } | null | undefined
 
+// Legacy projected_* kinds normalize to their base geometric kind; projection
+// is signalled by the entity's `source`, not by the kind. Tolerated on read so
+// documents saved before the kind-collapse keep loading.
+const BASE_KIND: Readonly<Record<string, string>> = {
+  projected_line: 'line',
+  projected_circle: 'circle',
+  projected_arc: 'arc',
+  projected_point: 'point',
+}
+
 interface ResolvedConstraint {
   id: string
   kind: string
@@ -36,22 +46,30 @@ export function unflattenGeometry(
   const data = flat || {}
 
   for (const entityDef of entities) {
-    const { id, kind } = entityDef
+    const { id } = entityDef
+    // Projection is a metadata flag carried by `source`, not a distinct kind.
+    // Legacy docs may still use projected_* kinds; normalize them to base kinds.
+    const kind = BASE_KIND[entityDef.kind] ?? entityDef.kind
+    const source = entityDef.source
+    const projected = source != null && source !== ''
     const construction = entityDef.construction === true
     const params = data[id] || getDefaultParams(kind)
+    const projTag = projected ? { projected: true as const, source: source as string } : null
 
     if (kind === 'line') {
       result[id] = {
         start: [params[0] || 0, params[1] || 0],
         end: [params[2] || 0, params[3] || 0],
         ...(construction && { construction: true }),
-      }
+        ...(projTag ?? {}),
+      } as LineSegment | ProjectedLineSegment
     } else if (kind === 'circle') {
       result[id] = {
         center: [params[0] || 0, params[1] || 0],
         radius: params[2] || 0,
         ...(construction && { construction: true }),
-      }
+        ...(projTag ?? {}),
+      } as Circle | ProjectedCircle
     } else if (kind === 'arc') {
       const cx = params[0] || 0, cy = params[1] || 0, r = params[2] || 0, a0 = params[3] || 0, a1 = params[4] || 0
       result[id] = {
@@ -62,46 +80,14 @@ export function unflattenGeometry(
         start: [cx + r * Math.cos((a0 * Math.PI) / 180), cy + r * Math.sin((a0 * Math.PI) / 180)],
         end: [cx + r * Math.cos((a1 * Math.PI) / 180), cy + r * Math.sin((a1 * Math.PI) / 180)],
         ...(construction && { construction: true }),
-      }
+        ...(projTag ?? {}),
+      } as Arc | ProjectedArc
     } else if (kind === 'point') {
-      result[id] = { x: params[0] || 0, y: params[1] || 0 }
-    } else if (kind === 'projected_line') {
-      const source = entityDef.source ?? ''
-      result[id] = {
-        start: [params[0] || 0, params[1] || 0],
-        end: [params[2] || 0, params[3] || 0],
-        projected: true,
-        source,
-      } as ProjectedLineSegment
-    } else if (kind === 'projected_circle') {
-      const source = entityDef.source ?? ''
-      result[id] = {
-        center: [params[0] || 0, params[1] || 0],
-        radius: params[2] || 0,
-        projected: true,
-        source,
-      } as ProjectedCircle
-    } else if (kind === 'projected_arc') {
-      const cx = params[0] || 0, cy = params[1] || 0, r = params[2] || 0, a0 = params[3] || 0, a1 = params[4] || 0
-      const source = entityDef.source ?? ''
-      result[id] = {
-        center: [cx, cy],
-        radius: r,
-        angle_start: a0,
-        angle_end: a1,
-        start: [cx + r * Math.cos((a0 * Math.PI) / 180), cy + r * Math.sin((a0 * Math.PI) / 180)],
-        end: [cx + r * Math.cos((a1 * Math.PI) / 180), cy + r * Math.sin((a1 * Math.PI) / 180)],
-        projected: true,
-        source,
-      } as ProjectedArc
-    } else if (kind === 'projected_point') {
-      const source = entityDef.source ?? ''
       result[id] = {
         x: params[0] || 0,
         y: params[1] || 0,
-        projected: true,
-        source,
-      } as ProjectedPointEntity
+        ...(projTag ?? {}),
+      } as PointEntity | ProjectedPointEntity
     }
   }
   return result

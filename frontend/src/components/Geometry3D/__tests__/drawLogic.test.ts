@@ -276,7 +276,7 @@ describe('computeDrawClick - project tool', () => {
     expect(result.mutations[0].type).toBe('add_projected_entity')
     if (result.mutations[0].type === 'add_projected_entity') {
       expect(result.mutations[0].source).toBe(ancQuery)
-      expect(result.mutations[0].kind).toBe('projected_line')
+      expect(result.mutations[0].kind).toBe('line')
     }
     expect(result.clearTool).toBe(true)
   })
@@ -291,7 +291,7 @@ describe('computeDrawClick - project tool', () => {
     expect(result.mutations[0].type).toBe('add_projected_entity')
     if (result.mutations[0].type === 'add_projected_entity') {
       expect(result.mutations[0].source).toBe(ancQuery)
-      expect(result.mutations[0].kind).toBe('projected_circle')
+      expect(result.mutations[0].kind).toBe('circle')
     }
   })
 
@@ -303,7 +303,7 @@ describe('computeDrawClick - project tool', () => {
     const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
     expect(result.mutations[0].type).toBe('add_projected_entity')
     if (result.mutations[0].type === 'add_projected_entity') {
-      expect(result.mutations[0].kind).toBe('projected_arc')
+      expect(result.mutations[0].kind).toBe('arc')
     }
   })
 
@@ -313,7 +313,7 @@ describe('computeDrawClick - project tool', () => {
     // hoveredSourceKind unset (e.g. body not registered) -> safe line default.
     const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
     if (result.mutations[0].type === 'add_projected_entity') {
-      expect(result.mutations[0].kind).toBe('projected_line')
+      expect(result.mutations[0].kind).toBe('line')
     }
   })
 
@@ -326,7 +326,7 @@ describe('computeDrawClick - project tool', () => {
     expect(result.mutations[0].type).toBe('add_projected_entity')
     if (result.mutations[0].type === 'add_projected_entity') {
       expect(result.mutations[0].source).toBe(ancQuery)
-      expect(result.mutations[0].kind).toBe('projected_point')
+      expect(result.mutations[0].kind).toBe('point')
     }
     expect(result.clearTool).toBe(true)
   })
@@ -340,7 +340,7 @@ describe('computeDrawClick - project tool', () => {
     expect(result.mutations[0].type).toBe('add_projected_entity')
     if (result.mutations[0].type === 'add_projected_entity') {
       expect(result.mutations[0].source).toBe(ancQuery)
-      expect(result.mutations[0].kind).toBe('projected_point')
+      expect(result.mutations[0].kind).toBe('point')
     }
     expect(result.clearTool).toBe(true)
   })

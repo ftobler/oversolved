@@ -212,14 +212,16 @@ export function computeDrawClick(
       if (sourceFeatureId === featureId) return nothing
 
       const source = `@${sourceFeatureId}/${sourceEntityId}`
-      let kind = 'projected_line'
+      // Projection is carried by `source`, not by a distinct entity kind: emit
+      // the base geometric kind of the source curve plus the source query.
+      let kind = 'line'
       const entity = otherSketches?.[sourceFeatureId]?.[sourceEntityId]
         ?? sketch?.[sourceEntityId]
       if (entity) {
         const ek = getEntityKind(entity)
-        if (ek === 'arc') kind = 'projected_arc'
-        else if (ek === 'circle') kind = 'projected_circle'
-        else if (ek === 'point') kind = 'projected_point'
+        if (ek === 'arc') kind = 'arc'
+        else if (ek === 'circle') kind = 'circle'
+        else if (ek === 'point') kind = 'point'
       }
       return {
         mutations: [{ type: 'add_projected_entity', featureId, kind, source }],
@@ -231,20 +233,20 @@ export function computeDrawClick(
 
     // Body geometry pick: ancestry query from face/edge/vertex layer
     if (hid.startsWith('?')) {
-      let kind = 'projected_point'
+      let kind = 'point'
       try {
         const q = parseQuery(hid)
         if (q.kind === 'ancestry' && q.typeRestriction) {
           const tr = q.typeRestriction
           if (tr === 'edge' || tr === 'straightedge') {
             // The query alone can't tell a line from a circle/arc; the hovered
-            // edge's curve kind (when known) selects the projected entity kind.
-            if (snap.hoveredSourceKind === 'circle') kind = 'projected_circle'
-            else if (snap.hoveredSourceKind === 'arc') kind = 'projected_arc'
-            else kind = 'projected_line'
+            // edge's curve kind (when known) selects the base entity kind.
+            if (snap.hoveredSourceKind === 'circle') kind = 'circle'
+            else if (snap.hoveredSourceKind === 'arc') kind = 'arc'
+            else kind = 'line'
           }
         }
-      } catch { /* parse failure — keep default projected_point */ }
+      } catch { /* parse failure: keep default point */ }
       return {
         mutations: [{ type: 'add_projected_entity', featureId, kind, source: hid }],
         nextDrawPoints: null,

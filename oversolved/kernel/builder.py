@@ -18,7 +18,7 @@ from oversolved.kernel.query import (
 )
 from oversolved.kernel.geometry_tessellation import MeshDict, _edge_lineage_tokens, _face_tokens
 from oversolved.kernel.types3d import Body, FeatureCheckpoint, BuildState
-from oversolved.kernel.solver import _init_global_repo, _try_solve_feature
+from oversolved.kernel.solver import _init_global_repo, _try_solve_feature, _normalize_projected_entities
 from oversolved.kernel.solver_constants import _BUILTIN_PLANE_RESULTS
 from oversolved.kernel.solver_registry import _post_register
 from oversolved.kernel import (
@@ -774,7 +774,12 @@ def build(
                       feature IDs (full list) so that subsequent calls with
                       different rollback positions can do proper dirty checking.
     """
-    all_features: list[dict] = spec.get("features", [])
+    # Collapse legacy projected_* entity kinds to base kind + source once, so
+    # dirty detection, solving, post-registration, and checkpoint specs all
+    # operate on the normalized form. No-op fast path for docs without them.
+    all_features: list[dict] = [
+        _normalize_projected_entities(f) for f in spec.get("features", [])
+    ]
     if rollback_position is not None:
         features = all_features[:rollback_position]
     else:

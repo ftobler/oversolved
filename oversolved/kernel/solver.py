@@ -22,7 +22,7 @@ from oversolved.kernel.query import Repository, _init_global_repo
 from oversolved.kernel.solver_constants import (
     _FRONT_PLANE, ENTITY_SIZES, LOSS_THRESHOLD, RANK_TOL, RANK_BOUNDARY_TOL,
     ORIGIN_ID, ORIGIN_FIX_ID, _BUILTIN_PLANES, _BUILTIN_PLANE_RESULTS,
-    _PROJECTED_KINDS, _FACE_TYPES, REG_WEIGHT_BASE, REG_WEIGHT_DRAG,
+    _PROJECTED_KIND_MAP, _FACE_TYPES, REG_WEIGHT_BASE, REG_WEIGHT_DRAG,
 )
 from oversolved.kernel.solver_plane import (
     is_plane_type, is_point_type, _resolve_plane_early,
@@ -59,6 +59,30 @@ __all__ = [
 ]
 
 
+def _normalize_projected_entities(feature: dict) -> dict:
+    """Collapse legacy projected_* entity kinds to their base kind.
+
+    Projection is a sketch-level concern carried by an entity's `source` query,
+    not a distinct entity kind. New docs emit the base kind with `source`; this
+    shim normalizes legacy docs (`projected_line`, ...) on read so the solver,
+    residuals, and registry only ever see base geometric kinds. `source` is
+    preserved, so a normalized entity is still recognized as projected.
+
+    Returns the feature unchanged when it has no projected_* entities so the
+    common path allocates nothing.
+    """
+    entities = feature.get("entities")
+    if not entities or not any(e.get("kind") in _PROJECTED_KIND_MAP for e in entities):
+        return feature
+    normalized = [
+        {**e, "kind": _PROJECTED_KIND_MAP[e["kind"]]} if e.get("kind") in _PROJECTED_KIND_MAP else e
+        for e in entities
+    ]
+    new_feature = dict(feature)
+    new_feature["entities"] = normalized
+    return new_feature
+
+
 def solve(yaml_str: str) -> dict:
     """Solve all sketch features in a YAML document.
 
@@ -80,6 +104,7 @@ def solve(yaml_str: str) -> dict:
     result = {}
     body_store: dict = {}
     for feature in features:
+        feature = _normalize_projected_entities(feature)
         feature_result = _try_solve_feature(feature, global_repo, body_store, features_by_id)
         result[feature["id"]] = feature_result
         _post_register(global_repo, feature["id"], feature, feature_result)
@@ -103,6 +128,7 @@ def solve_features(spec: dict) -> dict:
 
     results = []
     for feature in features:
+        feature = _normalize_projected_entities(feature)
         feature_result = _try_solve_feature(feature, global_repo, body_store, features_by_id)
         fid = feature.get("id", "")
 
@@ -256,35 +282,6 @@ def _geometry_from_array(x, entities: dict, entity_offsets: dict) -> dict[str, A
             out[eid] = {"x": float(ep[0]), "y": float(ep[1])}
             if is_construction:
                 out[eid]["construction"] = True
-        elif kind == "projected_line":
-            out[eid] = {
-                "start": [float(ep[0]), float(ep[1])],
-                "end": [float(ep[2]), float(ep[3])],
-            }
-        elif kind == "projected_circle":
-            out[eid] = {
-                "center": [float(ep[0]), float(ep[1])],
-                "radius": float(ep[2]),
-            }
-        elif kind == "projected_arc":
-            cx, cy, r = float(ep[0]), float(ep[1]), float(ep[2])
-            a0, a1 = float(ep[3]), float(ep[4])
-            out[eid] = {
-                "center": [cx, cy],
-                "radius": r,
-                "angle_start": a0,
-                "angle_end": a1,
-                "start": [
-                    cx + r * math.cos(math.radians(a0)),
-                    cy + r * math.sin(math.radians(a0)),
-                ],
-                "end": [
-                    cx + r * math.cos(math.radians(a1)),
-                    cy + r * math.sin(math.radians(a1)),
-                ],
-            }
-        elif kind == "projected_point":
-            out[eid] = {"x": float(ep[0]), "y": float(ep[1])}
     return out
 
 
@@ -433,10 +430,12 @@ def _process_projected_entities(
 
     target_plane = _resolve_plane_early(feature.get("plane"), global_repo)
     for entity in feature.get("entities", []):
-        kind = entity.get("kind", "")
-        if kind in _PROJECTED_KINDS:
+        source_query = entity.get("source", "")
+        # An entity is projected when it carries a `source` query into ancestral
+        # geometry; the geometric kind is incidental.
+        if source_query:
+            kind = entity.get("kind", "")
             eid = entity["id"]
-            source_query = entity.get("source", "")
             try:
                 proj_params = _project_source_to_params(
                     kind, source_query, target_plane, global_repo
@@ -734,6 +733,8 @@ def _refine_drag(
 
 
 def _solve_sketch(feature: dict, global_repo: Repository | None = None) -> dict:
+    # Normalize legacy projected_* kinds so direct callers see only base kinds.
+    feature = _normalize_projected_entities(feature)
     # Expand composite sketch entities before processing.
     if any(e.get("kind") == "center_rect" for e in feature.get("entities", [])):
         feature = _expand_center_rect(feature)
@@ -834,12 +835,13 @@ def _solve_sketch(feature: dict, global_repo: Repository | None = None) -> dict:
             "superfluous": c["id"] in superfluous_ids,
         }
 
-    # Split geometry: user entities go to "geometry", projected entities to "projected".
+    # One geometry dict for all solved entities. The injected origin (flagged
+    # `projected`) is internal scaffolding, excluded from both the geometry and
+    # the per-entity status; projected entities (carrying a `source`) stay in
+    # geometry like any other entity and are tagged downstream from their source.
     user_entities = {eid: e for eid, e in entities.items() if not e.get("projected")}
-    projected_entities = {eid: e for eid, e in entities.items() if e.get("projected")}
 
     geometry_flat = _params_from_array(x_sol, user_entities, entity_offsets)
-    projected_flat = _params_from_array(x_sol, projected_entities, entity_offsets)
 
     features = {
         eid: {"status": st}
@@ -850,7 +852,6 @@ def _solve_sketch(feature: dict, global_repo: Repository | None = None) -> dict:
     result = {
         "status": status,
         "geometry": geometry_flat,
-        "projected": projected_flat,
         "features": features,
         "topology": topology,
         "constraints": constraints_out,

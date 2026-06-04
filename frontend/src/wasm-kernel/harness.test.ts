@@ -23,7 +23,6 @@ interface BodyEntry {
 interface FeatureResult {
   status: string
   geometry?: Record<string, number[]>
-  projected?: Record<string, number[]>
   features?: Record<string, { status: string }>
   plane?: Record<string, unknown>
   error?: string
@@ -37,7 +36,7 @@ interface RegressionEntry {
   bodies: Record<string, BodyEntry>
 }
 
-const entries = baseline as RegressionEntry[]
+const entries = baseline as unknown as RegressionEntry[]
 
 describe('WASM kernel regression baseline', () => {
   it('has entries', () => {

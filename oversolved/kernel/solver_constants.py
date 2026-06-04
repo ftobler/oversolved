@@ -7,10 +7,6 @@ ENTITY_SIZES: dict[str, int] = {
     "circle": 3,
     "arc": 5,
     "point": 2,
-    "projected_line": 4,
-    "projected_circle": 3,
-    "projected_arc": 5,
-    "projected_point": 2,
 }
 
 LOSS_THRESHOLD = 1e-4
@@ -47,9 +43,16 @@ _BUILTIN_PLANES: dict = {
     "builtin_plane_right": {**RIGHT.to_dict(), "type": "plane"},
 }
 
-_PROJECTED_KINDS = frozenset(
-    {"projected_line", "projected_circle", "projected_arc", "projected_point"}
-)
+# Legacy projected_* entity kinds map to their base geometric kind. Projection is
+# a sketch-level lifecycle concern (a `source` query + pinned params), not an
+# entity kind, so the solver sees only base kinds plus an optional `source`.
+# New docs emit the base kind directly; this map normalizes legacy docs on read.
+_PROJECTED_KIND_MAP: dict[str, str] = {
+    "projected_line": "line",
+    "projected_circle": "circle",
+    "projected_arc": "arc",
+    "projected_point": "point",
+}
 
 _FACE_TYPES = frozenset({"face", "flatface", "cylinderface"})
 _PLANE_TYPES = frozenset({"plane", "face", "flatface"})

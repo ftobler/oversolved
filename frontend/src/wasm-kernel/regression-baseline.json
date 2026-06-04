@@ -204,12 +204,6 @@
             10.0
           ]
         },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
-          ]
-        },
         "status": "underconstrained"
       }
     }
@@ -306,12 +300,6 @@
             0.0,
             0.0,
             10.0,
-            0.0
-          ]
-        },
-        "projected": {
-          "_origin": [
-            0.0,
             0.0
           ]
         },
@@ -658,12 +646,6 @@
             5.0,
             0.0,
             5.0
-          ]
-        },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
           ]
         },
         "status": "underconstrained"
@@ -1124,12 +1106,6 @@
             10.0
           ]
         },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
-          ]
-        },
         "status": "underconstrained"
       },
       "sk_hole": {
@@ -1171,12 +1147,6 @@
             4.0,
             0.0,
             4.0
-          ]
-        },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
           ]
         },
         "status": "underconstrained"
@@ -1742,12 +1712,6 @@
             3.0
           ]
         },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
-          ]
-        },
         "status": "underconstrained"
       },
       "sk2": {
@@ -1789,12 +1753,6 @@
             2.0,
             0.0,
             2.0
-          ]
-        },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
           ]
         },
         "status": "underconstrained"
@@ -12054,12 +12012,6 @@
             1.0
           ]
         },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
-          ]
-        },
         "status": "underconstrained"
       }
     }
@@ -17455,12 +17407,6 @@
             5.0
           ]
         },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
-          ]
-        },
         "status": "underconstrained"
       },
       "sk1": {
@@ -17502,12 +17448,6 @@
             10.0,
             0.0,
             10.0
-          ]
-        },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
           ]
         },
         "status": "underconstrained"
@@ -19154,12 +19094,6 @@
             10.0
           ]
         },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
-          ]
-        },
         "status": "underconstrained"
       }
     }
@@ -19564,12 +19498,6 @@
             10.0
           ]
         },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
-          ]
-        },
         "status": "underconstrained"
       }
     }
@@ -19923,12 +19851,6 @@
             4.0
           ]
         },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
-          ]
-        },
         "status": "underconstrained"
       },
       "sk_b": {
@@ -19970,12 +19892,6 @@
             4.0,
             0.0,
             4.0
-          ]
-        },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
           ]
         },
         "status": "underconstrained"
@@ -20085,12 +20001,6 @@
             4.7153026172
           ]
         },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
-          ]
-        },
         "status": "underconstrained"
       }
     }
@@ -20189,12 +20099,6 @@
             5.0,
             0.0,
             90.0
-          ]
-        },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
           ]
         },
         "status": "underconstrained"
@@ -21447,12 +21351,6 @@
             3.0
           ]
         },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
-          ]
-        },
         "status": "underconstrained"
       }
     }
@@ -21803,12 +21701,6 @@
             3.0
           ]
         },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
-          ]
-        },
         "status": "underconstrained"
       }
     }
@@ -21911,12 +21803,6 @@
           "p2": [
             3.0,
             4.0
-          ]
-        },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
           ]
         },
         "status": "underconstrained"
@@ -22027,12 +21913,6 @@
             7.0290378095
           ]
         },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
-          ]
-        },
         "status": "underconstrained"
       }
     }
@@ -22133,12 +22013,6 @@
             -0.0
           ],
           "p2": [
-            0.0,
-            0.0
-          ]
-        },
-        "projected": {
-          "_origin": [
             0.0,
             0.0
           ]
@@ -22245,12 +22119,6 @@
           "p2": [
             8.0,
             6.0
-          ]
-        },
-        "projected": {
-          "_origin": [
-            0.0,
-            0.0
           ]
         },
         "status": "underconstrained"

@@ -330,6 +330,158 @@ def test_projected_entity_as_constraint_target():
     np.testing.assert_array_almost_equal(geometry['line1']['start'], [2, 3], decimal=4)
 
 
+def test_base_kind_with_source_is_projected():
+    """Post kind-collapse: a base-kind entity carrying a `source` projects, with
+    no `projected_*` kind in the AST. The result tags it projected via `source`."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [{'id': 'line1', 'kind': 'line'}],
+                'initial': {'line1': [1.0, 2.0, 3.0, 4.0]},
+                'constraints': [],
+            },
+            {
+                'id': 'sketch1',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                # Base kind 'line' plus a source query -- no projected_line kind.
+                'entities': [{'id': 'pl1', 'kind': 'line', 'source': '@sketch0/line1'}],
+                'initial': {},
+                'constraints': [],
+            },
+        ]
+    }
+    result = solve_features(spec)
+
+    geometry = result['features'][1]['geometry']
+    assert 'pl1' in geometry
+    np.testing.assert_array_almost_equal(geometry['pl1']['start'], [1, 2], decimal=5)
+    np.testing.assert_array_almost_equal(geometry['pl1']['end'], [3, 4], decimal=5)
+    # Projected-ness comes from the source flag, not a distinct kind.
+    assert geometry['pl1'].get('projected') is True
+
+
+def test_legacy_projected_kind_normalizes_to_base():
+    """A legacy `projected_line` entity loads identically to the base-kind form,
+    so old documents keep working through the deserialize shim."""
+    def _solve(kind: str) -> dict:
+        spec = {
+            'features': [
+                {
+                    'id': 'sketch0',
+                    'kind': 'sketch',
+                    'plane': '@builtin_plane_front',
+                    'entities': [{'id': 'line1', 'kind': 'line'}],
+                    'initial': {'line1': [0.0, 0.0, 5.0, 0.0]},
+                    'constraints': [],
+                },
+                {
+                    'id': 'sketch1',
+                    'kind': 'sketch',
+                    'plane': '@builtin_plane_front',
+                    'entities': [{'id': 'pl1', 'kind': kind, 'source': '@sketch0/line1'}],
+                    'initial': {},
+                    'constraints': [],
+                },
+            ]
+        }
+        return solve_features(spec)['features'][1]['geometry']['pl1']
+
+    legacy = _solve('projected_line')
+    modern = _solve('line')
+    assert legacy == modern
+    assert legacy.get('projected') is True
+
+
+def test_base_kind_without_source_is_not_projected():
+    """A plain base-kind entity (no source) is never tagged projected."""
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [{'id': 'line1', 'kind': 'line'}],
+                'initial': {'line1': [0.0, 0.0, 1.0, 0.0]},
+                'constraints': [],
+            },
+        ]
+    }
+    geometry = solve_features(spec)['features'][0]['geometry']
+    assert 'projected' not in geometry['line1']
+
+
+def test_solve_sketch_result_has_no_separate_projected_dict():
+    """The solver result payload is a single geometry dict; the separate
+    `projected` key is gone after kind-collapse."""
+    from oversolved.kernel.solver import _solve_sketch
+
+    result = _solve_sketch({
+        'id': 'sketch0',
+        'kind': 'sketch',
+        'plane': '@builtin_plane_front',
+        'entities': [{'id': 'line1', 'kind': 'line'}],
+        'initial': {'line1': [0.0, 0.0, 1.0, 0.0]},
+        'constraints': [],
+    })
+    assert 'geometry' in result
+    assert 'projected' not in result
+
+
+def test_legacy_projected_kind_registers_subpaths_through_build():
+    """Regression: legacy projected_* docs must normalize on the build() path too.
+
+    A projection of a projection (multi-hop) only resolves if sketch1's projected
+    line was registered with base kind `line` and its /start //end sub-paths. The
+    build() loop (used by the daemon) must normalize before _post_register, or the
+    second hop fails to resolve the first projected entity's edge geometry.
+    """
+    from oversolved.kernel.builder import build
+
+    spec = {
+        'features': [
+            {
+                'id': 'sketch0',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                'entities': [{'id': 'line1', 'kind': 'line'}],
+                'initial': {'line1': [1.0, 2.0, 3.0, 4.0]},
+                'constraints': [
+                    {'id': 'f', 'kind': 'fixed', 'target': {'entity': 'line1'}},
+                ],
+            },
+            {
+                'id': 'sketch1',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                # Legacy kind name on purpose -- exercises the deserialize shim.
+                'entities': [{'id': 'pl1', 'kind': 'projected_line', 'source': '@sketch0/line1'}],
+                'initial': {},
+                'constraints': [],
+            },
+            {
+                'id': 'sketch2',
+                'kind': 'sketch',
+                'plane': '@builtin_plane_front',
+                # Second hop: projects the first projected entity.
+                'entities': [{'id': 'pl2', 'kind': 'projected_line', 'source': '@sketch1/pl1'}],
+                'initial': {},
+                'constraints': [],
+            },
+        ]
+    }
+    r = build(spec)
+
+    sketch2 = r['result']['sketch2']
+    assert sketch2['status'] in ('ok', 'fully_constrained', 'underconstrained')
+    # build() geometry is flat params [x1, y1, x2, y2]; the second-hop projection
+    # must carry through the original source coordinates.
+    np.testing.assert_array_almost_equal(sketch2['geometry']['pl2'], [1, 2, 3, 4], decimal=5)
+
+
 def test_projection_failure_logged(caplog):
     """An unresolvable source query causes projection failure but should not crash."""
     import logging
@@ -465,7 +617,7 @@ def test_resolve_and_project_circle_body_edge():
     assert kind == "circle"
     assert data == {"center": [2.0, 3.0, 0.0], "radius": 5.0}
 
-    params = _project_source_to_params("projected_circle", edge_key, _FRONT_PLANE, repo)
+    params = _project_source_to_params("circle", edge_key, _FRONT_PLANE, repo)
     assert params == [2.0, 3.0, 5.0]
 
 
@@ -490,7 +642,7 @@ def test_project_arc_body_edge_onto_sketch():
         "angle_end": math.pi / 2,
     })
     cx, cy, r, sa, ea = _project_source_to_params(
-        "projected_arc", edge_key, _FRONT_PLANE, repo,
+        "arc", edge_key, _FRONT_PLANE, repo,
     )
     assert (cx, cy) == (0.0, 0.0)
     assert r == pytest.approx(2.0)
@@ -512,7 +664,7 @@ def test_project_body_edge_onto_sketch():
         "end": [4.0, 5.0, 0.0],
     })
     params = _project_source_to_params(
-        "projected_line", edge_key, _FRONT_PLANE, repo,
+        "line", edge_key, _FRONT_PLANE, repo,
     )
     assert len(params) == 4
     # On the front plane (z=0), 2D equals the XY components.
@@ -535,7 +687,7 @@ def test_project_body_face_centroid_onto_sketch():
         "normal": [0.0, 0.0, 1.0],
     })
     params = _project_source_to_params(
-        "projected_point", face_key, _FRONT_PLANE, repo,
+        "point", face_key, _FRONT_PLANE, repo,
     )
     assert len(params) == 2
     assert params == [2.5, 3.5]
@@ -556,7 +708,7 @@ def test_project_body_vertex_onto_sketch():
         "z": 0.0,
     })
     params = _project_source_to_params(
-        "projected_point", vertex_key, _FRONT_PLANE, repo,
+        "point", vertex_key, _FRONT_PLANE, repo,
     )
     assert len(params) == 2
     assert params == [9.0, 7.0]
@@ -584,7 +736,7 @@ def test_project_cross_plane_with_body_repo():
         "end": [3.0, 0.0, 0.0],
     })
     params = _project_source_to_params(
-        "projected_line", edge_key, top_plane, repo,
+        "line", edge_key, top_plane, repo,
     )
     # Projected to top plane (XZ): world X → sketch X, world Z → sketch Y
     # start=(1,0,0) → (1, 0), end=(3,0,0) → (3, 0)

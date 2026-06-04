@@ -364,11 +364,11 @@ def _build_residuals_fn(
         ep = get_params(x, eid)
         kind = entities[eid]["kind"]
         point = ref.get("point", "start")
-        if kind in ("line", "projected_line"):
+        if kind == "line":
             return ep[2:4] if point == "end" else ep[0:2]
-        elif kind in ("circle", "projected_circle"):
+        elif kind == "circle":
             return ep[0:2]
-        elif kind in ("arc", "projected_arc"):
+        elif kind == "arc":
             if point == "center":
                 return ep[0:2]
             cx, cy, r = ep[0], ep[1], ep[2]
@@ -376,7 +376,7 @@ def _build_residuals_fn(
             return np.array(
                 [cx + r * np.cos(np.radians(a_deg)), cy + r * np.sin(np.radians(a_deg))]
             )
-        elif kind in ("point", "projected_point"):
+        elif kind == "point":
             return ep[0:2]
         raise ValueError(f"Unknown kind: {kind!r}")
 

@@ -199,21 +199,26 @@ def _resolve_source_geometry(source_query: str, global_repo: Repository) -> tupl
 
 
 def _project_source_to_params(
-    projected_kind: str, source_query: str, target_plane: Frame3D | dict, global_repo: Repository
+    kind: str, source_query: str, target_plane: Frame3D | dict, global_repo: Repository
 ) -> list:
+    """Map source geometry onto the target sketch plane as flat params for `kind`.
+
+    `kind` is the entity's base geometric kind (line/circle/arc/point); projection
+    is signalled by the entity carrying a `source`, not by a distinct kind.
+    """
     kind_hint, data_3d = _resolve_source_geometry(source_query, global_repo)
 
-    if projected_kind == "projected_point":
+    if kind == "point":
         u, v = _3d_to_2d(data_3d, target_plane)
         return [u, v]
-    if projected_kind == "projected_line":
+    if kind == "line":
         s2d = _3d_to_2d(data_3d["start"], target_plane)
         e2d = _3d_to_2d(data_3d["end"], target_plane)
         return s2d + e2d
-    if projected_kind == "projected_circle":
+    if kind == "circle":
         c2d = _3d_to_2d(data_3d["center"], target_plane)
         return c2d + [data_3d["radius"]]
-    if projected_kind == "projected_arc":
+    if kind == "arc":
         # A sketch arc source carries 2D start/end angles directly; a 3D body arc
         # carries its own frame, from which the sketch-plane angles are computed.
         if "start_angle" in data_3d and "end_angle" in data_3d:
@@ -221,7 +226,7 @@ def _project_source_to_params(
             return c2d + [data_3d["radius"], data_3d["start_angle"], data_3d["end_angle"]]
         return _project_3d_arc_to_params(data_3d, target_plane)
 
-    raise ValueError(f"unknown projected kind: {projected_kind!r}")
+    raise ValueError(f"cannot project source geometry as kind {kind!r}")
 
 
 def _project_3d_arc_to_params(arc_3d: dict, target_plane: Frame3D | dict) -> list:
@@ -282,7 +287,7 @@ def _get_point_3d(ref: Frame3D | dict, global_repo: Repository) -> np.ndarray:
 def _get_edge_3d(ref: Frame3D | dict, global_repo: Repository) -> tuple:
     if isinstance(ref, Frame3D):
         raise ValueError("reference is a plane, not an edge")
-    if "external_params" in ref and ref.get("kind") in ("line", "projected_line"):
+    if "external_params" in ref and ref.get("kind") == "line":
         p = ref["external_params"]
         sketch_id = ref.get("sketch_id")
         if sketch_id:

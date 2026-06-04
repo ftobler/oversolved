@@ -110,7 +110,7 @@ def _sanitise_result(_feature_id: str, feature_result: dict[str, Any]) -> dict[s
         return {"status": "exception", "error": str(feature_result)}
 
     cleaned: dict[str, Any] = {}
-    for key in ("status", "geometry", "projected", "features", "plane", "exception"):
+    for key in ("status", "geometry", "features", "plane", "exception"):
         if key in feature_result:
             cleaned[key] = feature_result[key]
     if feature_result.get("status") == "exception":

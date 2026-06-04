@@ -161,9 +161,8 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
 | `circle` | `[cx, cy, r]` | center, radius |
 | `arc` | `[cx, cy, r, a0, a1]` | center, radius, start angle (deg), end angle (deg) |
 | `center_rect` | compound (expanded to 4 lines) | xy, size |
-| `projected_*` | same as base type | projected from 3D source |
 
-Projected entities carry a `source` field and get an automatic `fixed` constraint. Any entity can set `construction: true`.
+Projection is not a kind: any base-kind entity (`line`/`circle`/`arc`/`point`) that carries a `source` field is projected from a 3D source and gets an automatic `fixed` constraint pinning it. Legacy `projected_*` kinds are still accepted on read and normalized to their base kind. Any entity can set `construction: true`.
 
 ## Constraints
 

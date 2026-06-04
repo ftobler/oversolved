@@ -134,7 +134,10 @@ export const ENTITIES: readonly EntityDef[] = [
     showInToolbar: true,
   },
   {
-    kind: 'projected_line',
+    // The project tool produces a base-kind entity (line/circle/arc/point)
+    // carrying a `source` query; projection is not a distinct entity kind. This
+    // entry exists only to register the tool's shortcut and toolbar metadata.
+    kind: 'project',
     label: 'Project',
     description: 'Project geometry from another sketch onto this sketch plane.',
     paramCount: 4,

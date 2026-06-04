@@ -29,12 +29,47 @@ describe('unflattenGeometry projected_line', () => {
     expect((sketch['l1'] as ProjectedLineSegment).source).toBe('@sketch0/line1')
   })
 
-  it('defaults to empty source when source is missing', () => {
+  it('a projected_* kind without a source is not projected (projection needs a source)', () => {
     const sketch = unflattenGeometry(
       { 'l1': [0, 0, 1, 0] },
       [{ id: 'l1', kind: 'projected_line' }]
     )
-    expect((sketch['l1'] as ProjectedLineSegment).source).toBe('')
+    expect(isProjectedEntity(sketch['l1'])).toBe(false)
+    expect((sketch['l1'] as unknown as { source?: string }).source).toBeUndefined()
+  })
+})
+
+describe('unflattenGeometry base kind + source (post kind-collapse)', () => {
+  it('a base-kind line carrying a source is projected', () => {
+    const sketch = unflattenGeometry(
+      { 'l1': [1, 2, 3, 4] },
+      [{ id: 'l1', kind: 'line', source: '@sketch0/line1' }]
+    )
+    const e = sketch['l1']
+    expect(isProjectedLine(e)).toBe(true)
+    expect((e as ProjectedLineSegment).start).toEqual([1, 2])
+    expect((e as ProjectedLineSegment).source).toBe('@sketch0/line1')
+  })
+
+  it('a base-kind point carrying a source is projected', () => {
+    const sketch = unflattenGeometry(
+      { 'p1': [7, 8] },
+      [{ id: 'p1', kind: 'point', source: '@sketch0/p1' }]
+    )
+    expect(isProjectedPoint(sketch['p1'])).toBe(true)
+    expect((sketch['p1'] as ProjectedPointEntity).source).toBe('@sketch0/p1')
+  })
+
+  it('the legacy projected_line kind and the base-kind+source form are equivalent', () => {
+    const legacy = unflattenGeometry(
+      { 'l1': [1, 2, 3, 4] },
+      [{ id: 'l1', kind: 'projected_line', source: '@s/l' }]
+    )
+    const modern = unflattenGeometry(
+      { 'l1': [1, 2, 3, 4] },
+      [{ id: 'l1', kind: 'line', source: '@s/l' }]
+    )
+    expect(legacy['l1']).toEqual(modern['l1'])
   })
 })
 

@@ -164,7 +164,11 @@ def _post_register(
 
 
 def _enrich_geometry(flat_geometry: dict, feature: dict) -> dict:
-    """Convert flat-param geometry to rich dict format, adding projected:True for projected kinds."""
+    """Convert flat-param geometry to rich dict format.
+
+    An entity is projected when it carries a `source` query, not by a distinct
+    kind; projected entities get a `projected: True` tag on their rich geometry.
+    """
     entities = {e["id"]: e for e in feature.get("entities", [])}
     rich: dict = {}
     for eid, params in flat_geometry.items():
@@ -184,31 +188,11 @@ def _enrich_geometry(flat_geometry: dict, feature: dict) -> dict:
             }
         elif kind == "point":
             rich[eid] = {"xy": list(params[0:2])}
-        elif kind == "projected_line":
-            rich[eid] = {
-                "start": list(params[0:2]),
-                "end": list(params[2:4]),
-                "projected": True,
-            }
-        elif kind == "projected_circle":
-            rich[eid] = {
-                "center": list(params[0:2]),
-                "radius": float(params[2]),
-                "projected": True,
-            }
-        elif kind == "projected_arc":
-            cx, cy, r, a0, a1 = params
-            rich[eid] = {
-                "center": [float(cx), float(cy)],
-                "radius": float(r),
-                "angle_start": float(a0),
-                "angle_end": float(a1),
-                "projected": True,
-            }
-        elif kind == "projected_point":
-            rich[eid] = {"xy": list(params[0:2]), "projected": True}
         else:
             rich[eid] = list(params)
+            continue
+        if entity and entity.get("source"):
+            rich[eid]["projected"] = True
     return rich
 
 
@@ -226,11 +210,11 @@ def _register_solved_geometry_slash(
         prefix = feature_id + "/" + eid
         # Normalize to flat params for registration
         if isinstance(val, dict):
-            if kind in ("line", "projected_line"):
+            if kind == "line":
                 params = list(val.get("start", [0, 0])) + list(val.get("end", [0, 0]))
-            elif kind in ("circle", "projected_circle"):
+            elif kind == "circle":
                 params = list(val.get("center", [0, 0])) + [val.get("radius", 0)]
-            elif kind in ("arc", "projected_arc"):
+            elif kind == "arc":
                 cx, cy = val.get("center", [0, 0])
                 params = [
                     cx,
@@ -239,7 +223,7 @@ def _register_solved_geometry_slash(
                     val.get("angle_start", 0),
                     val.get("angle_end", 0),
                 ]
-            elif kind in ("point", "projected_point"):
+            elif kind == "point":
                 params = list(val.get("xy", [0, 0]))
             else:
                 continue
@@ -248,7 +232,7 @@ def _register_solved_geometry_slash(
         global_repo.register(
             prefix, {"external_params": params, "kind": kind, "sketch_id": feature_id}
         )
-        if kind in ("line", "projected_line"):
+        if kind == "line":
             global_repo.register(
                 prefix + "/start",
                 {"external_xy": list(params[0:2]), "sketch_id": feature_id},
@@ -257,12 +241,12 @@ def _register_solved_geometry_slash(
                 prefix + "/end",
                 {"external_xy": list(params[2:4]), "sketch_id": feature_id},
             )
-        elif kind in ("circle", "projected_circle"):
+        elif kind == "circle":
             global_repo.register(
                 prefix + "/center",
                 {"external_xy": list(params[0:2]), "sketch_id": feature_id},
             )
-        elif kind in ("arc", "projected_arc"):
+        elif kind == "arc":
             cx, cy, r = params[0], params[1], params[2]
             a_start, a_end = params[3], params[4]
             global_repo.register(
@@ -288,7 +272,7 @@ def _register_solved_geometry_slash(
             global_repo.register(
                 prefix + "/center", {"external_xy": [cx, cy], "sketch_id": feature_id}
             )
-        elif kind in ("point", "projected_point"):
+        elif kind == "point":
             global_repo.register(
                 prefix + "/xy",
                 {"external_xy": list(params[0:2]), "sketch_id": feature_id},
