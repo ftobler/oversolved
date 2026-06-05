@@ -1,0 +1,605 @@
+[
+  {
+    "name": "exact_subset_single",
+    "ops": [
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "edge:0",
+          "@body_x"
+        ],
+        "obj": {
+          "type": "edge",
+          "tag": "the-edge"
+        }
+      }
+    ],
+    "queries": [
+      {
+        "query": "?7,7;@feat_a@body_x",
+        "result": {
+          "type": "edge",
+          "tag": "the-edge"
+        }
+      },
+      {
+        "query": "?7,7,6;@feat_a@body_xedge:0:edge",
+        "result": {
+          "type": "edge",
+          "tag": "the-edge"
+        }
+      },
+      {
+        "query": "?5;@nope",
+        "result": null
+      }
+    ]
+  },
+  {
+    "name": "exact_subset_ambiguous",
+    "ops": [
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "surface:0"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "f0"
+        }
+      },
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "surface:1"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "f1"
+        }
+      }
+    ],
+    "queries": [
+      {
+        "query": "?7;@feat_a",
+        "error": "AmbiguousQueryError"
+      },
+      {
+        "query": "?7,9;@feat_asurface:1:flatface",
+        "result": {
+          "type": "flatface",
+          "tag": "f1"
+        }
+      }
+    ]
+  },
+  {
+    "name": "type_restriction_subtype",
+    "ops": [
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "surface:0"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "ff"
+        }
+      }
+    ],
+    "queries": [
+      {
+        "query": "?7,9;@feat_asurface:0:face",
+        "result": {
+          "type": "flatface",
+          "tag": "ff"
+        }
+      },
+      {
+        "query": "?7,9;@feat_asurface:0:vertex",
+        "result": null
+      }
+    ]
+  },
+  {
+    "name": "coerce_to_solid",
+    "ops": [
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "surface:0"
+        ],
+        "obj": {
+          "type": "flatface",
+          "body_id": "body_x",
+          "created_by": "feat_a"
+        }
+      }
+    ],
+    "queries": [
+      {
+        "query": "?7,9;@feat_asurface:0:solid",
+        "body_store": {
+          "body_x": {
+            "type": "solid",
+            "body_id": "body_x",
+            "tag": "the-solid"
+          }
+        },
+        "result": {
+          "type": "solid",
+          "body_id": "body_x",
+          "tag": "the-solid"
+        }
+      }
+    ]
+  },
+  {
+    "name": "coerce_ambiguous",
+    "ops": [
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a"
+        ],
+        "obj": {
+          "type": "flatface",
+          "body_id": "body_x",
+          "created_by": "feat_a"
+        }
+      },
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a"
+        ],
+        "obj": {
+          "type": "flatface",
+          "body_id": "body_y",
+          "created_by": "feat_a"
+        }
+      }
+    ],
+    "queries": [
+      {
+        "query": "?7;@feat_a:solid",
+        "body_store": {
+          "body_x": {
+            "type": "solid",
+            "body_id": "body_x"
+          },
+          "body_y": {
+            "type": "solid",
+            "body_id": "body_y"
+          }
+        },
+        "error": "AmbiguousQueryError"
+      }
+    ]
+  },
+  {
+    "name": "classifier_narrowing",
+    "ops": [
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "surface:0"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "top",
+          "classifiers": [
+            "cls_zp"
+          ]
+        }
+      },
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "surface:1"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "bot",
+          "classifiers": [
+            "cls_zn"
+          ]
+        }
+      }
+    ],
+    "queries": [
+      {
+        "query": "?7,7;@feat_a@cls_zp:flatface",
+        "result": {
+          "type": "flatface",
+          "tag": "top",
+          "classifiers": [
+            "cls_zp"
+          ]
+        }
+      },
+      {
+        "query": "?7,7;@feat_a@cls_zn:flatface",
+        "result": {
+          "type": "flatface",
+          "tag": "bot",
+          "classifiers": [
+            "cls_zn"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "geom_hash_tiebreak",
+    "ops": [
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "surface:0"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "A"
+        },
+        "geom_hash": "gface_aaaa"
+      },
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "surface:1"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "B"
+        },
+        "geom_hash": "gface_bbbb"
+      }
+    ],
+    "queries": [
+      {
+        "query": "?7,b;@feat_a@gface_bbbb:flatface",
+        "result": {
+          "type": "flatface",
+          "tag": "B"
+        }
+      },
+      {
+        "query": "?b;@gface_aaaa:flatface",
+        "result": {
+          "type": "flatface",
+          "tag": "A"
+        }
+      }
+    ]
+  },
+  {
+    "name": "partial_ancestral",
+    "ops": [
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "only"
+        }
+      }
+    ],
+    "queries": [
+      {
+        "query": "?7,7,9;@feat_a@feat_bsurface:3:flatface",
+        "result": {
+          "type": "flatface",
+          "tag": "only"
+        }
+      }
+    ]
+  },
+  {
+    "name": "ordering_guard",
+    "feature_order": [
+      "feat_a",
+      "feat_b"
+    ],
+    "ops": [
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@shared"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "from_a",
+          "created_by": "feat_a"
+        }
+      },
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@shared"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "from_b",
+          "created_by": "feat_b"
+        }
+      }
+    ],
+    "queries": [
+      {
+        "query": "?7;@shared:flatface",
+        "current_feature_id": "feat_a",
+        "result": {
+          "type": "flatface",
+          "tag": "from_a",
+          "created_by": "feat_a"
+        }
+      },
+      {
+        "query": "?7;@shared:flatface",
+        "current_feature_id": "feat_b",
+        "error": "AmbiguousQueryError"
+      }
+    ]
+  },
+  {
+    "name": "query_all",
+    "ops": [
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "surface:0"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "f0"
+        }
+      },
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "surface:1"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "f1"
+        }
+      },
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "edge:0"
+        ],
+        "obj": {
+          "type": "straightedge",
+          "tag": "e0"
+        }
+      }
+    ],
+    "queries": [
+      {
+        "query": "?7;@feat_a:flatface",
+        "kind": "query_all",
+        "results": [
+          {
+            "type": "flatface",
+            "tag": "f0"
+          },
+          {
+            "type": "flatface",
+            "tag": "f1"
+          }
+        ]
+      },
+      {
+        "query": "?7;@feat_a",
+        "kind": "query_all",
+        "results": [
+          {
+            "type": "flatface",
+            "tag": "f0"
+          },
+          {
+            "type": "flatface",
+            "tag": "f1"
+          },
+          {
+            "type": "straightedge",
+            "tag": "e0"
+          }
+        ]
+      },
+      {
+        "query": "?7;@feat_a:straightedge",
+        "kind": "query_all",
+        "results": [
+          {
+            "type": "straightedge",
+            "tag": "e0"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "gc_eviction",
+    "ops": [
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "surface:0"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "keep"
+        }
+      },
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_b",
+          "surface:0"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "drop"
+        }
+      },
+      {
+        "op": "gc",
+        "active_fids": [
+          "feat_a"
+        ]
+      }
+    ],
+    "queries": [
+      {
+        "query": "?7,9;@feat_asurface:0:flatface",
+        "result": {
+          "type": "flatface",
+          "tag": "keep"
+        }
+      },
+      {
+        "query": "?7,9;@feat_bsurface:0:flatface",
+        "result": null
+      }
+    ]
+  },
+  {
+    "name": "evict_register_index_tag",
+    "ops": [
+      {
+        "op": "register_ancestor",
+        "ancestors": [
+          "@feat_a",
+          "surface:0",
+          "stale_geom"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "stale"
+        }
+      },
+      {
+        "op": "evict_register",
+        "ancestors": [
+          "@feat_a",
+          "surface:0",
+          "fresh_geom"
+        ],
+        "obj": {
+          "type": "flatface",
+          "tag": "fresh"
+        },
+        "index_tag": "surface:0"
+      }
+    ],
+    "queries": [
+      {
+        "query": "?7,9;@feat_asurface:0:flatface",
+        "result": {
+          "type": "flatface",
+          "tag": "fresh"
+        }
+      }
+    ]
+  },
+  {
+    "name": "builtin_and_direct",
+    "init_builtin": true,
+    "ops": [
+      {
+        "op": "register",
+        "id": "feat_a/e0",
+        "obj": {
+          "type": "line",
+          "tag": "abs"
+        }
+      },
+      {
+        "op": "register",
+        "id": "ctx_e0",
+        "obj": {
+          "type": "line",
+          "tag": "loc"
+        }
+      }
+    ],
+    "queries": [
+      {
+        "query": "@builtin_plane_front",
+        "result": {
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "x_axis": [
+            1,
+            0,
+            0
+          ],
+          "y_axis": [
+            0,
+            1,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "type": "plane"
+        }
+      },
+      {
+        "query": "@builtin_origin",
+        "result": {
+          "external_xy": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "query": "@feat_a/e0",
+        "result": {
+          "type": "line",
+          "tag": "abs"
+        }
+      },
+      {
+        "query": "$e0",
+        "context": "ctx_",
+        "result": {
+          "type": "line",
+          "tag": "loc"
+        }
+      },
+      {
+        "query": "$e0",
+        "result": null
+      },
+      {
+        "query": "",
+        "result": null
+      }
+    ]
+  }
+]

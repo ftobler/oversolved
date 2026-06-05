@@ -1,0 +1,33 @@
+// Port of the slices of oversolved/kernel/solver_constants.py the TS kernel
+// needs (topology tolerances + builtin planes/origin for the global repository).
+// Kept narrow on purpose; grows as further phases need more constants.
+
+export const TOL_LOOP_CLOSURE = 1e-6
+export const TOL_NEAR_ZERO_AREA = 1e-12
+export const TOL_TOPOLOGY_EPS = 1e-9
+export const TOL_TOPOLOGY_MERGE = 1e-7
+export const TOL_TOPOLOGY_SPLIT = 1e-7
+
+export const BUILTIN_PLANES: Record<string, Record<string, unknown>> = {
+  builtin_plane_front: {
+    origin: [0, 0, 0],
+    x_axis: [1, 0, 0],
+    y_axis: [0, 1, 0],
+    normal: [0, 0, 1],
+    type: "plane",
+  },
+  builtin_plane_top: {
+    origin: [0, 0, 0],
+    x_axis: [1, 0, 0],
+    y_axis: [0, 0, -1],
+    normal: [0, 1, 0],
+    type: "plane",
+  },
+  builtin_plane_right: {
+    origin: [0, 0, 0],
+    x_axis: [0, 0, -1],
+    y_axis: [0, 1, 0],
+    normal: [1, 0, 0],
+    type: "plane",
+  },
+}
