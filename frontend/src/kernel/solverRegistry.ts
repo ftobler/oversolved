@@ -59,7 +59,7 @@ export const UNPORTED_KINDS = new Set([
 // ── Per-doc gate ─────────────────────────────────────────────────────────
 
 /** Return true when every feature in `features` has a ported TS solver. */
-export function isDocFullyPorted(features: Array<Record<string, unknown>>): boolean {
+export function isDocFullyPorted(features: Array<{ kind?: unknown }>): boolean {
   for (const f of features) {
     const kind = f.kind as string | undefined
     if (!kind) continue
@@ -72,7 +72,7 @@ export function isDocFullyPorted(features: Array<Record<string, unknown>>): bool
  * Return the set of unported kinds found in `features`, or an empty set when
  * every kind is ported.  Useful for diagnostics.
  */
-export function unportedKinds(features: Array<Record<string, unknown>>): Set<string> {
+export function unportedKinds(features: Array<{ kind?: unknown }>): Set<string> {
   const missing = new Set<string>()
   for (const f of features) {
     const kind = f.kind as string | undefined

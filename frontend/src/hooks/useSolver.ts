@@ -14,6 +14,7 @@ import { unpackBodies, unpackPickBodies } from '@/utils/geometryUnpack'
 import type { GeometryHeader } from '@/utils/geometryUnpack'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
+import { isDocFullyPorted } from '@/kernel/builder'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
 
@@ -275,6 +276,15 @@ export function useSolver(
 
       assertEditingInvariant(editingFeatureId, allFeatures, effectiveRollback, pickBoundary)
 
+      // Phase 2g per-doc router: check whether every feature kind is ported to
+      // the TS kernel. When OCC.js is provisioned this branch will route locally
+      // instead of going to the Python WebSocket. For now it logs so the soak
+      // period can measure coverage.
+      if (isDocFullyPorted(solveFeatures)) {
+        // TODO(2g): when OCC.js is available, dispatch locally via
+        // createFeatureSolver + build() instead of solverWs.solve().
+      }
+
       if (uuid && opts?.bypassCache) {
         await invalidateDocCache(uuid)
       }
@@ -365,9 +375,9 @@ export function useSolver(
           if (isStale()) return
         }
         applySolveResult(d, buildResponse, solveTimeMs)
-        // Phase 1 WASM shadow mode: solve sketches with the Rust kernel in
-        // parallel and log any disagreement. Off unless localStorage.wasmShadow
-        // is set; never affects the canonical Python result above.
+        // Phase 1 WASM shadow mode (always-on): solve sketches with the Rust
+        // kernel in parallel and log any disagreement. Fire-and-forget; a
+        // missing wasm build only skips silently.
         void maybeRunShadow(d.features, buildResponse.result)
         if (!firstSolveDone.current && onFirstSolve) {
           firstSolveDone.current = true
