@@ -1,0 +1,373 @@
+{
+  "target": [
+    10.0,
+    10.0,
+    10.0
+  ],
+  "tool": [
+    4.0,
+    4.0,
+    4.0
+  ],
+  "new": {
+    "tool_face_lineage": {
+      "gface_14f1ddd9d15292ac": [
+        "@U/gface_14f1ddd9d15292ac"
+      ],
+      "gface_c91cc6d3e859b6a9": [
+        "@U/gface_c91cc6d3e859b6a9"
+      ],
+      "gface_5feba8c93ff06f62": [
+        "@U/gface_5feba8c93ff06f62"
+      ],
+      "gface_a687c5f79a65cd5e": [
+        "@U/gface_a687c5f79a65cd5e"
+      ],
+      "gface_6cba1c2c33b27ebf": [
+        "@U/gface_6cba1c2c33b27ebf"
+      ],
+      "gface_9a6963d6e789ac5b": [
+        "@U/gface_9a6963d6e789ac5b"
+      ]
+    },
+    "result": {
+      "status": "ok",
+      "body_id": "body_f",
+      "body_ids": [
+        "body_f"
+      ],
+      "operation": "new"
+    },
+    "store": {
+      "body_f": {
+        "volume": 63.999999999999986,
+        "created_by": "featF",
+        "modified_by": [],
+        "face_lineage": {
+          "gface_14f1ddd9d15292ac": [
+            "@U/gface_14f1ddd9d15292ac"
+          ],
+          "gface_c91cc6d3e859b6a9": [
+            "@U/gface_c91cc6d3e859b6a9"
+          ],
+          "gface_5feba8c93ff06f62": [
+            "@U/gface_5feba8c93ff06f62"
+          ],
+          "gface_a687c5f79a65cd5e": [
+            "@U/gface_a687c5f79a65cd5e"
+          ],
+          "gface_6cba1c2c33b27ebf": [
+            "@U/gface_6cba1c2c33b27ebf"
+          ],
+          "gface_9a6963d6e789ac5b": [
+            "@U/gface_9a6963d6e789ac5b"
+          ]
+        },
+        "edge_lineage": {}
+      }
+    }
+  },
+  "cut": {
+    "target_face_lineage": {
+      "gface_74c4233398de69cd": [
+        "@T/gface_74c4233398de69cd"
+      ],
+      "gface_9d9c8f2a6abfdb9e": [
+        "@T/gface_9d9c8f2a6abfdb9e"
+      ],
+      "gface_5c9d5d36c1e0b2bd": [
+        "@T/gface_5c9d5d36c1e0b2bd"
+      ],
+      "gface_5e6ec6bc4d7483cf": [
+        "@T/gface_5e6ec6bc4d7483cf"
+      ],
+      "gface_82cd586681a86232": [
+        "@T/gface_82cd586681a86232"
+      ],
+      "gface_1d1621f08bf26afa": [
+        "@T/gface_1d1621f08bf26afa"
+      ]
+    },
+    "tool_face_lineage": {
+      "gface_14f1ddd9d15292ac": [
+        "@U/gface_14f1ddd9d15292ac"
+      ],
+      "gface_c91cc6d3e859b6a9": [
+        "@U/gface_c91cc6d3e859b6a9"
+      ],
+      "gface_5feba8c93ff06f62": [
+        "@U/gface_5feba8c93ff06f62"
+      ],
+      "gface_a687c5f79a65cd5e": [
+        "@U/gface_a687c5f79a65cd5e"
+      ],
+      "gface_6cba1c2c33b27ebf": [
+        "@U/gface_6cba1c2c33b27ebf"
+      ],
+      "gface_9a6963d6e789ac5b": [
+        "@U/gface_9a6963d6e789ac5b"
+      ]
+    },
+    "result": {
+      "status": "ok",
+      "body_id": "body_t",
+      "body_ids": [
+        "body_t"
+      ],
+      "operation": "cut"
+    },
+    "store": {
+      "body_t": {
+        "volume": 935.9999999999999,
+        "created_by": "featT",
+        "modified_by": [
+          "featF"
+        ],
+        "face_lineage": {
+          "gface_0a15f9fc06dd5bf3": [
+            "@T/gface_74c4233398de69cd"
+          ],
+          "gface_b3e0c734f2b82ce4": [
+            "@T/gface_5c9d5d36c1e0b2bd"
+          ],
+          "gface_1d1621f08bf26afa": [
+            "@T/gface_1d1621f08bf26afa"
+          ],
+          "gface_5e6ec6bc4d7483cf": [
+            "@T/gface_5e6ec6bc4d7483cf"
+          ],
+          "gface_cb1105c480944029": [
+            "@T/gface_82cd586681a86232"
+          ],
+          "gface_9d9c8f2a6abfdb9e": [
+            "@T/gface_9d9c8f2a6abfdb9e"
+          ],
+          "gface_0fcf62dbf4a39534": [
+            "@U/gface_a687c5f79a65cd5e"
+          ],
+          "gface_11797915cf8d8d6c": [
+            "@U/gface_9a6963d6e789ac5b"
+          ],
+          "gface_48d51e7f579b6b74": [
+            "@U/gface_c91cc6d3e859b6a9"
+          ]
+        },
+        "edge_lineage": {
+          "gedge_a7fcfc5b8f3388c6": [
+            "@T/gface_5c9d5d36c1e0b2bd",
+            "@T/gface_74c4233398de69cd"
+          ],
+          "gedge_84082540f6f780a6": [
+            "@T/gface_1d1621f08bf26afa",
+            "@T/gface_74c4233398de69cd"
+          ],
+          "gedge_a78188937f91e51b": [
+            "@T/gface_5e6ec6bc4d7483cf",
+            "@T/gface_74c4233398de69cd"
+          ],
+          "gedge_01b8874e4605293a": [
+            "@T/gface_74c4233398de69cd",
+            "@T/gface_82cd586681a86232"
+          ],
+          "gedge_23ad3beb6a0bb745": [
+            "@T/gface_74c4233398de69cd",
+            "@U/gface_a687c5f79a65cd5e"
+          ],
+          "gedge_df1ed20f6fd2546e": [
+            "@T/gface_74c4233398de69cd",
+            "@U/gface_9a6963d6e789ac5b"
+          ],
+          "gedge_a3ad96ee2d9e050a": [
+            "@T/gface_5c9d5d36c1e0b2bd",
+            "@T/gface_82cd586681a86232"
+          ],
+          "gedge_9e9ccf6c824d9e83": [
+            "@T/gface_5c9d5d36c1e0b2bd",
+            "@T/gface_9d9c8f2a6abfdb9e"
+          ],
+          "gedge_5370a6f56cefa2c3": [
+            "@T/gface_1d1621f08bf26afa",
+            "@T/gface_5c9d5d36c1e0b2bd"
+          ],
+          "gedge_4d1ee4db161bb9f6": [
+            "@T/gface_5c9d5d36c1e0b2bd",
+            "@U/gface_9a6963d6e789ac5b"
+          ],
+          "gedge_0dd56919a31abab9": [
+            "@T/gface_5c9d5d36c1e0b2bd",
+            "@U/gface_c91cc6d3e859b6a9"
+          ],
+          "gedge_a7c7c564fc2b9c29": [
+            "@T/gface_1d1621f08bf26afa",
+            "@T/gface_5e6ec6bc4d7483cf"
+          ],
+          "gedge_d3e23204c587551a": [
+            "@T/gface_1d1621f08bf26afa",
+            "@T/gface_9d9c8f2a6abfdb9e"
+          ],
+          "gedge_c1fe57792cc42613": [
+            "@T/gface_5e6ec6bc4d7483cf",
+            "@T/gface_82cd586681a86232"
+          ],
+          "gedge_b0c901e498436048": [
+            "@T/gface_5e6ec6bc4d7483cf",
+            "@T/gface_9d9c8f2a6abfdb9e"
+          ],
+          "gedge_b65b066277fd4861": [
+            "@T/gface_82cd586681a86232",
+            "@T/gface_9d9c8f2a6abfdb9e"
+          ],
+          "gedge_2a19e30518adac45": [
+            "@T/gface_82cd586681a86232",
+            "@U/gface_c91cc6d3e859b6a9"
+          ],
+          "gedge_d6520317cd61d51d": [
+            "@T/gface_82cd586681a86232",
+            "@U/gface_a687c5f79a65cd5e"
+          ],
+          "gedge_d2b157f73438adf0": [
+            "@U/gface_a687c5f79a65cd5e",
+            "@U/gface_c91cc6d3e859b6a9"
+          ],
+          "gedge_e24a2cffa8b7655e": [
+            "@U/gface_9a6963d6e789ac5b",
+            "@U/gface_a687c5f79a65cd5e"
+          ],
+          "gedge_a955a3674d7d2c83": [
+            "@U/gface_9a6963d6e789ac5b",
+            "@U/gface_c91cc6d3e859b6a9"
+          ]
+        }
+      }
+    }
+  },
+  "add_fuse": {
+    "target_face_lineage": {
+      "gface_74c4233398de69cd": [
+        "@T/gface_74c4233398de69cd"
+      ],
+      "gface_9d9c8f2a6abfdb9e": [
+        "@T/gface_9d9c8f2a6abfdb9e"
+      ],
+      "gface_5c9d5d36c1e0b2bd": [
+        "@T/gface_5c9d5d36c1e0b2bd"
+      ],
+      "gface_5e6ec6bc4d7483cf": [
+        "@T/gface_5e6ec6bc4d7483cf"
+      ],
+      "gface_82cd586681a86232": [
+        "@T/gface_82cd586681a86232"
+      ],
+      "gface_1d1621f08bf26afa": [
+        "@T/gface_1d1621f08bf26afa"
+      ]
+    },
+    "tool_face_lineage": {
+      "gface_14f1ddd9d15292ac": [
+        "@U/gface_14f1ddd9d15292ac"
+      ],
+      "gface_c91cc6d3e859b6a9": [
+        "@U/gface_c91cc6d3e859b6a9"
+      ],
+      "gface_5feba8c93ff06f62": [
+        "@U/gface_5feba8c93ff06f62"
+      ],
+      "gface_a687c5f79a65cd5e": [
+        "@U/gface_a687c5f79a65cd5e"
+      ],
+      "gface_6cba1c2c33b27ebf": [
+        "@U/gface_6cba1c2c33b27ebf"
+      ],
+      "gface_9a6963d6e789ac5b": [
+        "@U/gface_9a6963d6e789ac5b"
+      ]
+    },
+    "result": {
+      "status": "ok",
+      "body_id": "body_t",
+      "body_ids": [
+        "body_t"
+      ],
+      "operation": "add"
+    },
+    "store": {
+      "body_t": {
+        "volume": 999.9999999999998,
+        "created_by": "featT",
+        "modified_by": [
+          "featF"
+        ],
+        "face_lineage": {
+          "gface_74c4233398de69cd": [
+            "@T/gface_74c4233398de69cd"
+          ],
+          "gface_5c9d5d36c1e0b2bd": [
+            "@T/gface_5c9d5d36c1e0b2bd"
+          ],
+          "gface_82cd586681a86232": [
+            "@T/gface_82cd586681a86232"
+          ],
+          "gface_1d1621f08bf26afa": [
+            "@T/gface_1d1621f08bf26afa"
+          ],
+          "gface_5e6ec6bc4d7483cf": [
+            "@T/gface_5e6ec6bc4d7483cf"
+          ],
+          "gface_9d9c8f2a6abfdb9e": [
+            "@T/gface_9d9c8f2a6abfdb9e"
+          ]
+        },
+        "edge_lineage": {
+          "gedge_967b6a6b9e52c674": [
+            "@T/gface_5c9d5d36c1e0b2bd",
+            "@T/gface_74c4233398de69cd"
+          ],
+          "gedge_0a5c091f6b330c7d": [
+            "@T/gface_74c4233398de69cd",
+            "@T/gface_82cd586681a86232"
+          ],
+          "gedge_a78188937f91e51b": [
+            "@T/gface_5e6ec6bc4d7483cf",
+            "@T/gface_74c4233398de69cd"
+          ],
+          "gedge_84082540f6f780a6": [
+            "@T/gface_1d1621f08bf26afa",
+            "@T/gface_74c4233398de69cd"
+          ],
+          "gedge_0013dd02e80bd620": [
+            "@T/gface_5c9d5d36c1e0b2bd",
+            "@T/gface_82cd586681a86232"
+          ],
+          "gedge_5370a6f56cefa2c3": [
+            "@T/gface_1d1621f08bf26afa",
+            "@T/gface_5c9d5d36c1e0b2bd"
+          ],
+          "gedge_9e9ccf6c824d9e83": [
+            "@T/gface_5c9d5d36c1e0b2bd",
+            "@T/gface_9d9c8f2a6abfdb9e"
+          ],
+          "gedge_b65b066277fd4861": [
+            "@T/gface_82cd586681a86232",
+            "@T/gface_9d9c8f2a6abfdb9e"
+          ],
+          "gedge_c1fe57792cc42613": [
+            "@T/gface_5e6ec6bc4d7483cf",
+            "@T/gface_82cd586681a86232"
+          ],
+          "gedge_a7c7c564fc2b9c29": [
+            "@T/gface_1d1621f08bf26afa",
+            "@T/gface_5e6ec6bc4d7483cf"
+          ],
+          "gedge_d3e23204c587551a": [
+            "@T/gface_1d1621f08bf26afa",
+            "@T/gface_9d9c8f2a6abfdb9e"
+          ],
+          "gedge_b0c901e498436048": [
+            "@T/gface_5e6ec6bc4d7483cf",
+            "@T/gface_9d9c8f2a6abfdb9e"
+          ]
+        }
+      }
+    }
+  }
+}
