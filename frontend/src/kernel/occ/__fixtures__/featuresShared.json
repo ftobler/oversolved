@@ -1,0 +1,1698 @@
+{
+  "tessellate_edge": [
+    {
+      "name": "line",
+      "edge": {
+        "kind": "line",
+        "start": [
+          0,
+          0
+        ],
+        "end": [
+          3,
+          4
+        ]
+      },
+      "expected": [
+        [
+          3,
+          4
+        ]
+      ]
+    },
+    {
+      "name": "line_default_kind",
+      "edge": {
+        "end": [
+          1,
+          2
+        ]
+      },
+      "expected": [
+        [
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "line_no_end",
+      "edge": {
+        "kind": "line"
+      },
+      "expected": []
+    },
+    {
+      "name": "arc_ccw_quarter",
+      "edge": {
+        "kind": "arc",
+        "center": [
+          0,
+          0
+        ],
+        "radius": 5.0,
+        "angle_start_deg": 0.0,
+        "angle_end_deg": 90.0,
+        "ccw": true
+      },
+      "expected": [
+        [
+          4.903926402016152,
+          0.9754516100806412
+        ],
+        [
+          4.619397662556434,
+          1.913417161825449
+        ],
+        [
+          4.157348061512726,
+          2.777851165098011
+        ],
+        [
+          3.5355339059327378,
+          3.5355339059327373
+        ],
+        [
+          2.7778511650980113,
+          4.157348061512726
+        ],
+        [
+          1.9134171618254492,
+          4.619397662556434
+        ],
+        [
+          0.9754516100806416,
+          4.903926402016152
+        ],
+        [
+          3.061616997868383e-16,
+          5.0
+        ]
+      ]
+    },
+    {
+      "name": "arc_cw_half",
+      "edge": {
+        "kind": "arc",
+        "center": [
+          1,
+          1
+        ],
+        "radius": 2.0,
+        "angle_start_deg": 180.0,
+        "angle_end_deg": 0.0,
+        "ccw": false
+      },
+      "expected": [
+        [
+          -0.9615705608064609,
+          1.3901806440322564
+        ],
+        [
+          -0.8477590650225735,
+          1.7653668647301797
+        ],
+        [
+          -0.6629392246050907,
+          2.1111404660392044
+        ],
+        [
+          -0.4142135623730949,
+          2.414213562373095
+        ],
+        [
+          -0.11114046603920458,
+          2.6629392246050902
+        ],
+        [
+          0.23463313526982055,
+          2.8477590650225735
+        ],
+        [
+          0.6098193559677441,
+          2.961570560806461
+        ],
+        [
+          1.0000000000000002,
+          3.0
+        ],
+        [
+          1.3901806440322566,
+          2.961570560806461
+        ],
+        [
+          1.7653668647301797,
+          2.8477590650225735
+        ],
+        [
+          2.1111404660392044,
+          2.6629392246050907
+        ],
+        [
+          2.414213562373095,
+          2.414213562373095
+        ],
+        [
+          2.6629392246050907,
+          2.1111404660392044
+        ],
+        [
+          2.8477590650225735,
+          1.7653668647301797
+        ],
+        [
+          2.961570560806461,
+          1.3901806440322564
+        ],
+        [
+          3.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "arc_full_default_angles",
+      "edge": {
+        "kind": "arc",
+        "center": [
+          0,
+          0
+        ],
+        "radius": 1.0
+      },
+      "expected": [
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "name": "arc_ccw_wrap",
+      "edge": {
+        "kind": "arc",
+        "center": [
+          0,
+          0
+        ],
+        "radius": 3.0,
+        "angle_start_deg": 350.0,
+        "angle_end_deg": 10.0,
+        "ccw": true
+      },
+      "expected": [
+        [
+          2.988584094275237,
+          -0.26146722824297497
+        ],
+        [
+          3.0,
+          -7.347880794884119e-16
+        ],
+        [
+          2.9885840942752364,
+          0.26146722824297614
+        ],
+        [
+          2.9544232590366244,
+          0.5209445330007898
+        ]
+      ]
+    }
+  ],
+  "extract_profile_loops": [
+    {
+      "name": "empty",
+      "surfaces": [],
+      "expected": []
+    },
+    {
+      "name": "square",
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                0,
+                0
+              ],
+              "end": [
+                10,
+                0
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                10,
+                0
+              ],
+              "end": [
+                10,
+                10
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                10,
+                10
+              ],
+              "end": [
+                0,
+                10
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                0,
+                10
+              ],
+              "end": [
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": [
+        [
+          {
+            "kind": "line",
+            "start": [
+              0,
+              0
+            ],
+            "end": [
+              10,
+              0
+            ]
+          },
+          {
+            "kind": "line",
+            "start": [
+              10,
+              0
+            ],
+            "end": [
+              10,
+              10
+            ]
+          },
+          {
+            "kind": "line",
+            "start": [
+              10,
+              10
+            ],
+            "end": [
+              0,
+              10
+            ]
+          },
+          {
+            "kind": "line",
+            "start": [
+              0,
+              10
+            ],
+            "end": [
+              0,
+              0
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "square_unordered_reversed",
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                0,
+                0
+              ],
+              "end": [
+                10,
+                0
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                10,
+                10
+              ],
+              "end": [
+                10,
+                0
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                10,
+                10
+              ],
+              "end": [
+                0,
+                10
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                0,
+                10
+              ],
+              "end": [
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": [
+        [
+          {
+            "kind": "line",
+            "start": [
+              0,
+              0
+            ],
+            "end": [
+              10,
+              0
+            ]
+          },
+          {
+            "kind": "line",
+            "start": [
+              10,
+              0
+            ],
+            "end": [
+              10,
+              10
+            ]
+          },
+          {
+            "kind": "line",
+            "start": [
+              10,
+              10
+            ],
+            "end": [
+              0,
+              10
+            ]
+          },
+          {
+            "kind": "line",
+            "start": [
+              0,
+              10
+            ],
+            "end": [
+              0,
+              0
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "with_arc",
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                0,
+                0
+              ],
+              "end": [
+                10,
+                0
+              ]
+            },
+            {
+              "kind": "arc",
+              "start": [
+                10,
+                0
+              ],
+              "end": [
+                10,
+                10
+              ],
+              "center": [
+                10,
+                5
+              ],
+              "radius": 5.0,
+              "angle_start_deg": -90.0,
+              "angle_end_deg": 90.0,
+              "ccw": true
+            },
+            {
+              "kind": "line",
+              "start": [
+                10,
+                10
+              ],
+              "end": [
+                0,
+                10
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                0,
+                10
+              ],
+              "end": [
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": [
+        [
+          {
+            "kind": "line",
+            "start": [
+              0,
+              0
+            ],
+            "end": [
+              10,
+              0
+            ]
+          },
+          {
+            "kind": "arc",
+            "start": [
+              10,
+              0
+            ],
+            "end": [
+              10,
+              10
+            ],
+            "center": [
+              10,
+              5
+            ],
+            "radius": 5.0,
+            "angle_start_deg": -90.0,
+            "angle_end_deg": 90.0,
+            "ccw": true
+          },
+          {
+            "kind": "line",
+            "start": [
+              10,
+              10
+            ],
+            "end": [
+              0,
+              10
+            ]
+          },
+          {
+            "kind": "line",
+            "start": [
+              0,
+              10
+            ],
+            "end": [
+              0,
+              0
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "reversed_arc",
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                0,
+                0
+              ],
+              "end": [
+                10,
+                0
+              ]
+            },
+            {
+              "kind": "arc",
+              "start": [
+                10,
+                10
+              ],
+              "end": [
+                10,
+                0
+              ],
+              "center": [
+                10,
+                5
+              ],
+              "radius": 5.0,
+              "angle_start_deg": 90.0,
+              "angle_end_deg": -90.0,
+              "ccw": false
+            },
+            {
+              "kind": "line",
+              "start": [
+                10,
+                10
+              ],
+              "end": [
+                0,
+                10
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                0,
+                10
+              ],
+              "end": [
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": [
+        [
+          {
+            "kind": "line",
+            "start": [
+              0,
+              0
+            ],
+            "end": [
+              10,
+              0
+            ]
+          },
+          {
+            "kind": "arc",
+            "start": [
+              10,
+              0
+            ],
+            "end": [
+              10,
+              10
+            ],
+            "center": [
+              10,
+              5
+            ],
+            "radius": 5.0,
+            "angle_start_deg": -90.0,
+            "angle_end_deg": 90.0,
+            "ccw": true
+          },
+          {
+            "kind": "line",
+            "start": [
+              10,
+              10
+            ],
+            "end": [
+              0,
+              10
+            ]
+          },
+          {
+            "kind": "line",
+            "start": [
+              0,
+              10
+            ],
+            "end": [
+              0,
+              0
+            ]
+          }
+        ]
+      ]
+    }
+  ],
+  "resolve_direction": [
+    {
+      "name": "forward",
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "plane": {
+        "origin": [
+          1,
+          2,
+          3
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ]
+      },
+      "direction": "",
+      "distance": 10.0,
+      "expected": {
+        "vec": [
+          0,
+          0,
+          1
+        ],
+        "distance": 10.0,
+        "plane": {
+          "origin": [
+            1,
+            2,
+            3
+          ],
+          "x_axis": [
+            1,
+            0,
+            0
+          ],
+          "y_axis": [
+            0,
+            1,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "name": "reverse",
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "plane": {
+        "origin": [
+          1,
+          2,
+          3
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ]
+      },
+      "direction": "reverse",
+      "distance": 10.0,
+      "expected": {
+        "vec": [
+          0,
+          0,
+          -1
+        ],
+        "distance": 10.0,
+        "plane": {
+          "origin": [
+            1,
+            2,
+            3
+          ],
+          "x_axis": [
+            1,
+            0,
+            0
+          ],
+          "y_axis": [
+            0,
+            1,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "name": "symmetric",
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "plane": {
+        "origin": [
+          1,
+          2,
+          3
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ]
+      },
+      "direction": "symmetric",
+      "distance": 10.0,
+      "expected": {
+        "vec": [
+          0,
+          0,
+          1
+        ],
+        "distance": 10.0,
+        "plane": {
+          "origin": [
+            1.0,
+            2.0,
+            -2.0
+          ],
+          "x_axis": [
+            1,
+            0,
+            0
+          ],
+          "y_axis": [
+            0,
+            1,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "name": "symmetric_tilted",
+      "normal": [
+        0.0,
+        0.6,
+        0.8
+      ],
+      "plane": {
+        "origin": [
+          1,
+          2,
+          3
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ]
+      },
+      "direction": "symmetric",
+      "distance": 5.0,
+      "expected": {
+        "vec": [
+          0.0,
+          0.6,
+          0.8
+        ],
+        "distance": 5.0,
+        "plane": {
+          "origin": [
+            1.0,
+            0.5,
+            1.0
+          ],
+          "x_axis": [
+            1,
+            0,
+            0
+          ],
+          "y_axis": [
+            0,
+            1,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    }
+  ],
+  "resolve_body": [
+    {
+      "name": "direct_key",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b",
+        "body_feat_c_1": "feat_c"
+      },
+      "ref": "body_feat_a",
+      "expected_id": "body_feat_a",
+      "error": false
+    },
+    {
+      "name": "at_prefixed",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b",
+        "body_feat_c_1": "feat_c"
+      },
+      "ref": "@feat_b",
+      "expected_id": "feat_b",
+      "error": false
+    },
+    {
+      "name": "body_prefixed",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b",
+        "body_feat_c_1": "feat_c"
+      },
+      "ref": "feat_a",
+      "expected_id": "body_feat_a",
+      "error": false
+    },
+    {
+      "name": "by_created_by",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b",
+        "body_feat_c_1": "feat_c"
+      },
+      "ref": "feat_c",
+      "expected_id": "body_feat_c_1",
+      "error": false
+    },
+    {
+      "name": "viewport_face",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b",
+        "body_feat_c_1": "feat_c"
+      },
+      "ref": "face:feat_b:7",
+      "expected_id": "feat_b",
+      "error": false
+    },
+    {
+      "name": "viewport_body_prefixed",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b",
+        "body_feat_c_1": "feat_c"
+      },
+      "ref": "body:feat_a:0",
+      "expected_id": "body_feat_a",
+      "error": false
+    },
+    {
+      "name": "not_found",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b",
+        "body_feat_c_1": "feat_c"
+      },
+      "ref": "nonexistent_xyz",
+      "expected_id": null,
+      "error": true
+    }
+  ],
+  "resolve_merge_targets": [
+    {
+      "name": "none_all",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b"
+      },
+      "merge_target": null,
+      "expected": [
+        "body_feat_a",
+        "feat_b"
+      ],
+      "error": false
+    },
+    {
+      "name": "empty_all",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b"
+      },
+      "merge_target": "",
+      "expected": [
+        "body_feat_a",
+        "feat_b"
+      ],
+      "error": false
+    },
+    {
+      "name": "direct",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b"
+      },
+      "merge_target": "body_feat_a",
+      "expected": [
+        "body_feat_a"
+      ],
+      "error": false
+    },
+    {
+      "name": "at_prefixed",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b"
+      },
+      "merge_target": "@feat_b",
+      "expected": [
+        "feat_b"
+      ],
+      "error": false
+    },
+    {
+      "name": "by_created_by",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b"
+      },
+      "merge_target": "feat_a",
+      "expected": [
+        "body_feat_a"
+      ],
+      "error": false
+    },
+    {
+      "name": "not_found",
+      "store": {
+        "body_feat_a": "feat_a",
+        "feat_b": "feat_b"
+      },
+      "merge_target": "nope",
+      "expected": null,
+      "error": true
+    }
+  ],
+  "brep_diff_is_empty": [
+    {
+      "name": "none",
+      "diff": null,
+      "expected": false
+    },
+    {
+      "name": "empty",
+      "diff": {},
+      "expected": true
+    },
+    {
+      "name": "has_new_face",
+      "diff": {
+        "new_faces": [
+          "f"
+        ]
+      },
+      "expected": false
+    },
+    {
+      "name": "has_modified_edge",
+      "diff": {
+        "modified_input_edges": [
+          "e"
+        ]
+      },
+      "expected": false
+    },
+    {
+      "name": "inherited_only",
+      "diff": {
+        "inherited_faces": [
+          "f"
+        ],
+        "inherited_edges": [
+          "e"
+        ]
+      },
+      "expected": true
+    }
+  ],
+  "register_top_face": [
+    {
+      "name": "front_square",
+      "feature_id": "feat_x",
+      "plane": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ]
+      },
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                0,
+                0
+              ],
+              "end": [
+                10,
+                0
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                10,
+                0
+              ],
+              "end": [
+                10,
+                10
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                10,
+                10
+              ],
+              "end": [
+                0,
+                10
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                0,
+                10
+              ],
+              "end": [
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "distance": 10.0,
+      "expected": {
+        "feat_x/top_face": {
+          "type": "flatface",
+          "centroid": [
+            5.0,
+            5.0,
+            10.0
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "origin": [
+            0.0,
+            0.0,
+            10.0
+          ],
+          "x_axis": [
+            1,
+            0,
+            0
+          ],
+          "y_axis": [
+            0,
+            1,
+            0
+          ]
+        },
+        "feat_x/top_face/edge0": {
+          "type": "straightedge",
+          "start": [
+            0.0,
+            0.0,
+            10.0
+          ],
+          "end": [
+            10.0,
+            0.0,
+            10.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "tilted_square",
+      "feature_id": "feat_y",
+      "plane": {
+        "origin": [
+          1,
+          2,
+          3
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          0,
+          1
+        ],
+        "normal": [
+          0,
+          -1,
+          0
+        ]
+      },
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                0,
+                0
+              ],
+              "end": [
+                10,
+                0
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                10,
+                0
+              ],
+              "end": [
+                10,
+                10
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                10,
+                10
+              ],
+              "end": [
+                0,
+                10
+              ]
+            },
+            {
+              "kind": "line",
+              "start": [
+                0,
+                10
+              ],
+              "end": [
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "distance": 4.0,
+      "expected": {
+        "feat_y/top_face": {
+          "type": "flatface",
+          "centroid": [
+            6.0,
+            -2.0,
+            8.0
+          ],
+          "normal": [
+            0,
+            -1,
+            0
+          ],
+          "origin": [
+            1.0,
+            -2.0,
+            3.0
+          ],
+          "x_axis": [
+            1,
+            0,
+            0
+          ],
+          "y_axis": [
+            0,
+            0,
+            1
+          ]
+        },
+        "feat_y/top_face/edge0": {
+          "type": "straightedge",
+          "start": [
+            1.0,
+            -2.0,
+            3.0
+          ],
+          "end": [
+            11.0,
+            -2.0,
+            3.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "no_surfaces",
+      "feature_id": "feat_z",
+      "plane": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ]
+      },
+      "surfaces": [],
+      "distance": 5.0,
+      "expected": {
+        "feat_z/top_face": {
+          "type": "flatface",
+          "centroid": [
+            0.0,
+            0.0,
+            5.0
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "origin": [
+            0.0,
+            0.0,
+            5.0
+          ],
+          "x_axis": [
+            1,
+            0,
+            0
+          ],
+          "y_axis": [
+            0,
+            1,
+            0
+          ]
+        }
+      }
+    }
+  ],
+  "resolve_direction_query": [
+    {
+      "name": "empty_query",
+      "registered": {},
+      "plane_elems": {},
+      "query": "",
+      "fallback": [
+        0,
+        0,
+        1
+      ],
+      "expected": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "missing",
+      "registered": {},
+      "plane_elems": {},
+      "query": "@missing",
+      "fallback": [
+        0,
+        0,
+        1
+      ],
+      "expected": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "edge_3d",
+      "registered": {
+        "e1": {
+          "start": [
+            0,
+            0,
+            0
+          ],
+          "end": [
+            0,
+            0,
+            5
+          ]
+        }
+      },
+      "plane_elems": {},
+      "query": "@e1",
+      "fallback": [
+        1,
+        0,
+        0
+      ],
+      "expected": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "edge_zero_len",
+      "registered": {
+        "e1": {
+          "start": [
+            1,
+            1,
+            1
+          ],
+          "end": [
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "plane_elems": {},
+      "query": "@e1",
+      "fallback": [
+        1,
+        0,
+        0
+      ],
+      "expected": [
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "external_line",
+      "registered": {
+        "ln": {
+          "external_params": [
+            0,
+            0,
+            3,
+            0
+          ],
+          "kind": "line",
+          "sketch_id": "sk1"
+        }
+      },
+      "plane_elems": {
+        "_pt_sk1": {
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "x_axis": [
+            1,
+            0,
+            0
+          ],
+          "y_axis": [
+            0,
+            1,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "query": "@ln",
+      "fallback": [
+        0,
+        1,
+        0
+      ],
+      "expected": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "resolve_axis_query": [
+    {
+      "name": "empty_query",
+      "registered": {},
+      "plane_elems": {},
+      "query": "",
+      "fallback_origin": [
+        0,
+        0,
+        0
+      ],
+      "fallback_direction": [
+        0,
+        0,
+        1
+      ],
+      "expected": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "direction": [
+          0,
+          0,
+          1
+        ]
+      }
+    },
+    {
+      "name": "edge_3d",
+      "registered": {
+        "a1": {
+          "start": [
+            1,
+            2,
+            3
+          ],
+          "end": [
+            1,
+            2,
+            8
+          ]
+        }
+      },
+      "plane_elems": {},
+      "query": "@a1",
+      "fallback_origin": [
+        0,
+        0,
+        0
+      ],
+      "fallback_direction": [
+        1,
+        0,
+        0
+      ],
+      "expected": {
+        "origin": [
+          1,
+          2,
+          3
+        ],
+        "direction": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "external_line",
+      "registered": {
+        "ln": {
+          "external_params": [
+            2,
+            0,
+            2,
+            4
+          ],
+          "kind": "line",
+          "sketch_id": "sk1"
+        }
+      },
+      "plane_elems": {
+        "_pt_sk1": {
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "x_axis": [
+            1,
+            0,
+            0
+          ],
+          "y_axis": [
+            0,
+            1,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "query": "@ln",
+      "fallback_origin": [
+        0,
+        0,
+        0
+      ],
+      "fallback_direction": [
+        1,
+        0,
+        0
+      ],
+      "expected": {
+        "origin": [
+          2,
+          0,
+          0
+        ],
+        "direction": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      }
+    }
+  ]
+}

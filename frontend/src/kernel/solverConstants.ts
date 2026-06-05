@@ -8,6 +8,10 @@ export const TOL_TOPOLOGY_EPS = 1e-9
 export const TOL_TOPOLOGY_MERGE = 1e-7
 export const TOL_TOPOLOGY_SPLIT = 1e-7
 
+// Arc tessellation density (mirrors solver_constants._ARC_SEGMENTS): the number
+// of straight segments a full 360deg arc is sampled into for profile loops.
+export const ARC_SEGMENTS = 32
+
 export const BUILTIN_PLANES: Record<string, Record<string, unknown>> = {
   builtin_plane_front: {
     origin: [0, 0, 0],
