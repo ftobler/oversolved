@@ -1,0 +1,112 @@
+// Port of oversolved/kernel/types3d.py
+// Kernel-side 3D data structures used by the builder and B-rep system.
+
+import type { OccHandle } from './occ/handleTable'
+
+/** History from an OCP boolean operation, classifying output sub-shapes. */
+export interface BrepDiff {
+  new_faces: unknown[]
+  inherited_faces: unknown[]
+  new_edges: unknown[]
+  inherited_edges: unknown[]
+  modified_input_faces: unknown[]
+  deleted_input_faces: unknown[]
+  modified_input_edges: unknown[]
+  deleted_input_edges: unknown[]
+}
+
+/** A 3D solid body tracked through the feature stack. */
+export interface Body {
+  id: string
+  created_by: string
+  modified_by: string[]
+  /** OCC handle (opaque) or null for bodies without geometry. */
+  shape: OccHandle | null
+  sketch_id: string
+  brep_diff: BrepDiff | null
+  profile_queries: string[]
+  face_lineage: Record<string, string[]>
+  edge_lineage: Record<string, string[]>
+}
+
+/** Cached state at a single feature boundary for partial rebuild. */
+export interface FeatureCheckpoint {
+  spec: Record<string, unknown>
+  result: Record<string, unknown>
+  repo_snapshot: Record<string, unknown>
+  body_store_snapshot: Record<string, Body>
+  bodies_snapshot: Record<string, unknown>
+}
+
+/** Opaque cache passed from one build() call to the next. */
+export interface BuildState {
+  feature_order: string[]
+  checkpoints: Record<string, FeatureCheckpoint>
+}
+
+/** A right-handed 3D coordinate frame. */
+export interface Frame3D {
+  origin: [number, number, number]
+  x_axis: [number, number, number]
+  y_axis: [number, number, number]
+  normal: [number, number, number]
+}
+
+export function frameFromPlaneTransform(pt: {
+  rotation: number[]
+  origin: number[]
+}): Frame3D {
+  const r = pt.rotation
+  return {
+    origin: [pt.origin[0], pt.origin[1], pt.origin[2]],
+    x_axis: [r[0], r[1], r[2]],
+    y_axis: [r[3], r[4], r[5]],
+    normal: [r[6], r[7], r[8]],
+  }
+}
+
+export function frameToPlaneTransform(f: Frame3D): {
+  rotation: number[]
+  origin: number[]
+} {
+  return {
+    rotation: f.x_axis.concat(f.y_axis, f.normal),
+    origin: f.origin,
+  }
+}
+
+/** Compute orthonormal (x_axis, y_axis) for a plane given its unit normal. */
+export function normalToFrame(normal: [number, number, number]): {
+  x_axis: [number, number, number]
+  y_axis: [number, number, number]
+} {
+  const [nx, ny, nz] = normal
+  let ax = 0.0
+  let ay = 0.0
+  let az = 1.0
+  if (Math.abs(nz) >= 0.9) {
+    ax = 1.0
+    ay = 0.0
+    az = 0.0
+  }
+  let cx = ny * az - nz * ay
+  let cy = nz * ax - nx * az
+  let cz = nx * ay - ny * ax
+  const mag = Math.sqrt(cx * cx + cy * cy + cz * cz)
+  if (mag > 1e-12) {
+    cx /= mag
+    cy /= mag
+    cz /= mag
+  } else {
+    cx = 1.0
+    cy = 0.0
+    cz = 0.0
+  }
+  const yx = ny * cz - nz * cy
+  const yy = nz * cx - nx * cz
+  const yz = nx * cy - ny * cx
+  return {
+    x_axis: [cx, cy, cz],
+    y_axis: [yx, yy, yz],
+  }
+}

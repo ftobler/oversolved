@@ -218,4 +218,27 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
       assertEdgeVertexParity(ts, fx)
     })
   }
+
+  it('emits face_queries and classifiers for a box (2d wiring)', () => {
+    const fx = allFixtures['box_10x10x5']
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildFixture(occ, table, fx)
+    const mesh = solidToMesh(occ, table, h, {
+      createdBy: 'ex1',
+      bodyId: 'body_ex1',
+      profileQueries: ['@sk1/line1'],
+    })
+    table.release(h)
+    table.assertNoLeaks()
+    expect(mesh.face_queries.length).toBe(6)
+    expect(mesh.face_data.length).toBe(6)
+    for (const q of mesh.face_queries) {
+      expect(q).toContain('ex1')
+      expect(q).toContain('body_ex1')
+    }
+    // A 10x10x5 box has one face per side; every planar face gets a classifier.
+    const allClassifiers = mesh.face_data.flatMap((fd) => fd.classifiers ?? [])
+    expect(allClassifiers.length).toBe(6)
+    expect(new Set(allClassifiers).size).toBe(6) // each face has a unique side
+  })
 })

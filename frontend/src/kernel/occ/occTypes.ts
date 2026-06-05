@@ -288,6 +288,14 @@ export interface OccModule extends OccSpikeModule {
   TopAbs_Orientation: {
     TopAbs_REVERSED: OccEnumValue
   }
+
+  // --- 2d: bounding box (classifier frame) --------------------------------
+  Bnd_Box: new () => OccDisposable & {
+    Get(): [number, number, number, number, number, number]
+  }
+  BRepBndLib: {
+    Add_s(shape: OccShape, box: OccDisposable, useTriangulation: boolean): void
+  }
 }
 
 /** A face shape exposes its orientation (FORWARD/REVERSED) via Orientation_1. */

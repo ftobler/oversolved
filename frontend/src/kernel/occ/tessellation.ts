@@ -30,6 +30,8 @@ import {
   type Vec3,
 } from './primitives'
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
+import { geometryClassifiers, isGeomKeyedLineage } from '../geomHash'
+import { buildFaceQuery, faceTokens } from '../faceQuery'
 import type { EdgeData } from '@/types/cad'
 
 export interface FaceDatum {
@@ -37,6 +39,7 @@ export interface FaceDatum {
   normal: Vec3
   area: number
   surface_type: SurfaceType
+  classifiers?: string[]
 }
 
 export interface TessMesh {
@@ -44,6 +47,7 @@ export interface TessMesh {
   faces: [number, number, number][]
   face_data: FaceDatum[]
   triangle_to_face: number[]
+  face_queries: string[]
   is_fallback: boolean
 }
 
@@ -145,26 +149,75 @@ export function assembleMesh(rawFaces: RawFaceGeom[]): TessMesh {
     }
   })
 
-  return { vertices, faces, face_data: faceData, triangle_to_face: triangleToFace, is_fallback: false }
+  return { vertices, faces, face_data: faceData, triangle_to_face: triangleToFace, face_queries: [], is_fallback: false }
+}
+
+function bodyFrameFromMesh(rawFaces: RawFaceGeom[]): { center: Vec3; half: Vec3 } {
+  if (!rawFaces.length) return { center: [0, 0, 0], half: [0, 0, 0] }
+  const min: Vec3 = [Infinity, Infinity, Infinity]
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity]
+  for (const face of rawFaces) {
+    for (const v of face.vertices) {
+      for (let i = 0; i < 3; i++) {
+        if (v[i] < min[i]) min[i] = v[i]
+        if (v[i] > max[i]) max[i] = v[i]
+      }
+    }
+  }
+  return {
+    center: [(min[0] + max[0]) / 2.0, (min[1] + max[1]) / 2.0, (min[2] + max[2]) / 2.0],
+    half: [(max[0] - min[0]) / 2.0, (max[1] - min[1]) / 2.0, (max[2] - min[2]) / 2.0],
+  }
+}
+
+export interface SolidMeshOptions extends TessellateOptions {
+  createdBy?: string
+  bodyId?: string
+  profileQueries?: string[] | null
+  faceLineage?: Record<string, string[]> | null
 }
 
 /**
  * Tessellate a solid (held in `table` under `handle`) to a mesh. Mirrors
  * `solid_to_mesh`: per-face tessellation, flat-before-curved face ordering,
- * `triangle_to_face` mapping, and per-face geometry in `face_data`.
+ * `triangle_to_face` mapping, per-face geometry in `face_data`, plus the
+ * ancestry `face_queries` and spatial `classifiers` wired here in 2d.
  */
 export function solidToMesh(
   oc: OccModule,
   table: HandleTable,
   handle: OccHandle,
-  opts: TessellateOptions = {},
+  opts: SolidMeshOptions = {},
 ): TessMesh {
   const deflection = opts.deflection ?? 0.1
   const angularDeflection = opts.angularDeflection ?? 0.1
   const solid = table.get(handle)
   const scope = new DisposeScope()
   try {
-    return assembleMesh(readShapeFaces(oc, scope, solid, deflection, angularDeflection))
+    const raw = readShapeFaces(oc, scope, solid, deflection, angularDeflection)
+    const mesh = assembleMesh(raw)
+    const { center, half } = bodyFrameFromMesh(raw)
+    const fallbackPq = isGeomKeyedLineage(opts.faceLineage, 'gface_') ? null : opts.profileQueries
+    const faceQueries: string[] = []
+    for (let faceIdx = 0; faceIdx < mesh.face_data.length; faceIdx++) {
+      const fd = mesh.face_data[faceIdx]
+      const classifiers = geometryClassifiers(fd.centroid, center, half)
+      fd.classifiers = classifiers
+      const query = buildFaceQuery(
+        opts.createdBy,
+        opts.bodyId,
+        faceIdx,
+        fd.centroid,
+        fd.normal,
+        fd.surface_type,
+        fallbackPq,
+        faceTokens(fd.centroid, fd.normal, opts.faceLineage ?? null),
+        classifiers,
+      )
+      if (query) faceQueries.push(query)
+    }
+    mesh.face_queries = faceQueries
+    return mesh
   } finally {
     scope.dispose()
   }

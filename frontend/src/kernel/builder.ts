@@ -1,0 +1,712 @@
+// Port of oversolved/kernel/builder.py.
+//
+// Orchestrates the feature-stack solve loop with dirty detection, checkpoint
+// cache, and incremental rebuild. Feature solvers are injected via a registry so
+// this module is testable with mock solvers before the real leaf features are
+// ported (2e/2f).
+
+import { sha256Hex } from './sha256'
+import { Repository, evictAncestryAndRegister, emitWire, absolute, ref, setCurrentFeatureId } from './query'
+import { faceGeometryHash, faceNormalHash, edgeGeometryHash, vertexGeometryHash, isGeomKeyedLineage } from './geomHash'
+import { faceTokens, edgeLineageTokens } from './faceQuery'
+import { normalToFrame } from './types3d'
+import type { Body, FeatureCheckpoint, BuildState } from './types3d'
+import type { TessMesh } from './occ/tessellation'
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+export interface FeatureResult {
+  [key: string]: unknown
+  status?: string
+  solve_ms?: number
+}
+
+export type FeatureSolver = (
+  feature: Record<string, unknown>,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+  featuresById: Record<string, Record<string, unknown>>,
+) => FeatureResult
+
+export interface BuildDeps {
+  /** Solve a single feature. Called by the orchestration loop. */
+  trySolveFeature: FeatureSolver
+  /** Register solved geometry / topology into the repo after a feature solves. */
+  postRegister: (
+    repo: Repository,
+    featureId: string,
+    feature: Record<string, unknown>,
+    result: FeatureResult,
+  ) => void
+  /** Create a fresh global repository. */
+  initGlobalRepo: () => Repository
+  /** Tessellate all bodies in the store. */
+  tessellateBodies: (
+    bodyStore: Record<string, Body>,
+    repo: Repository | null,
+    tessCache?: Record<number, Record<string, unknown>>,
+  ) => Record<string, Record<string, unknown>>
+  /** Optional: normalize legacy projected_* entity kinds. Defaults to identity. */
+  normalizeProjectedEntities?: (f: Record<string, unknown>) => Record<string, unknown>
+}
+
+export interface BuildOptions {
+  prevState?: BuildState | null
+  pickBoundary?: number | null
+  rollbackPosition?: number | null
+}
+
+export interface BuildResponse {
+  solve_ms: number
+  result: Record<string, unknown>
+  bodies: Record<string, unknown>
+  _build_state: BuildState
+  pick_bodies?: Record<string, unknown>
+  _validation?: RebuildValidation
+}
+
+export interface RebuildValidation {
+  level: 1 | 2 | 3
+  passed: boolean
+  fp_only?: boolean
+  diffs: Record<string, unknown>
+}
+
+// ── Feature key union for dirty detection ──────────────────────────────────
+
+const COMMON_FEATURE_KEYS = new Set([
+  'id', 'kind',
+  'plane', 'entities', 'constraints', 'initial',
+  'definition',
+  'hide', 'label', 'suppressed', 'file_id',
+])
+
+// Placeholder; will grow as leaf features are ported.
+const FEATURE_CMP_KEYS = COMMON_FEATURE_KEYS
+
+function _normalizeSpec(spec: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const k of FEATURE_CMP_KEYS) {
+    if (k in spec) out[k] = spec[k]
+  }
+  return out
+}
+
+// ── Dirty detection ────────────────────────────────────────────────────────
+
+export function findFirstDirty(
+  features: Array<Record<string, unknown>>,
+  prevState: BuildState | null | undefined,
+): number {
+  if (!prevState) return 0
+  const prevOrder = prevState.feature_order
+  for (let i = 0; i < features.length; i++) {
+    const feature = features[i]
+    const fid = String(feature.id ?? '')
+    if (i >= prevOrder.length || prevOrder[i] !== fid) return i
+    const prevCheckpoint = prevState.checkpoints[fid]
+    if (!prevCheckpoint) return i
+    if (JSON.stringify(_normalizeSpec(prevCheckpoint.spec as Record<string, unknown>))
+        !== JSON.stringify(_normalizeSpec(feature))) {
+      return i
+    }
+  }
+  return features.length
+}
+
+// ── Shape / body snapshot helpers ───────────────────────────────────────────
+
+function _copyBody(body: Body): Body {
+  return {
+    id: body.id,
+    created_by: body.created_by,
+    modified_by: [...body.modified_by],
+    shape: body.shape,
+    sketch_id: body.sketch_id,
+    brep_diff: body.brep_diff,
+    profile_queries: [...body.profile_queries],
+    face_lineage: { ...body.face_lineage },
+    edge_lineage: { ...body.edge_lineage },
+  }
+}
+
+function _snapshotRepo(repo: Repository): Record<string, unknown> {
+  return {
+    elements: Object.fromEntries(repo.elements),
+    ancestral: Object.fromEntries(
+      [...repo.ancestral.entries()].map(([k, v]) => [k, { set: [...v.set], eids: [...v.eids] }])
+    ),
+    byGeomHash: Object.fromEntries(
+      [...repo.byGeomHash.entries()].map(([k, v]) => [k, [...v]])
+    ),
+  }
+}
+
+function _snapshotBodies(bodyStore: Record<string, Body>): Record<string, Body> {
+  return Object.fromEntries(Object.entries(bodyStore).map(([k, v]) => [k, _copyBody(v)]))
+}
+
+function _dedupeRepo(repo: Repository): void {
+  for (const [key, entry] of [...repo.ancestral.entries()]) {
+    const uniqueIds: string[] = []
+    const seen = new Set<string>()
+    for (const elementId of entry.eids) {
+      const payload = repo.elements.get(elementId)
+      if (payload === undefined) continue
+      const payloadHash = JSON.stringify(payload, Object.keys(payload as object).sort())
+      if (seen.has(payloadHash)) {
+        repo.elements.delete(elementId)
+        continue
+      }
+      seen.add(payloadHash)
+      uniqueIds.push(elementId)
+    }
+    if (uniqueIds.length) {
+      entry.eids = uniqueIds
+    } else {
+      repo.ancestral.delete(key)
+    }
+  }
+}
+
+function _repoFromSnapshot(repoSnapshot: Record<string, unknown>): Repository {
+  const repo = new Repository()
+  if (repoSnapshot.elements || repoSnapshot.ancestral) {
+    repo.elements = new Map(Object.entries(repoSnapshot.elements as Record<string, unknown>))
+    repo.ancestral = new Map(
+      Object.entries(repoSnapshot.ancestral as Record<string, { set: string[]; eids: string[] }>).map(
+        ([k, v]) => [k, { set: new Set(v.set), eids: [...v.eids] }]
+      )
+    )
+    repo.byGeomHash = new Map(
+      Object.entries(repoSnapshot.byGeomHash as Record<string, string[]>).map(([k, v]) => [k, [...v]])
+    )
+  }
+  _dedupeRepo(repo)
+  return repo
+}
+
+// ── Hash / validation helpers ───────────────────────────────────────────────
+
+function _stableJson(obj: unknown): string {
+  return JSON.stringify(obj, (_k, v) => {
+    if (v instanceof Map) {
+      const entries = [...v.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+      return Object.fromEntries(entries)
+    }
+    if (typeof v === 'number' && Object.is(v, -0)) return 0
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const sorted: Record<string, unknown> = {}
+      for (const key of Object.keys(v).sort()) sorted[key] = (v as Record<string, unknown>)[key]
+      return sorted
+    }
+    return v
+  })
+}
+
+function _roundFloats(obj: unknown, ndigits: number): unknown {
+  if (typeof obj === 'number') {
+    const r = Number(obj.toFixed(ndigits))
+    return Object.is(r, -0) ? 0 : r
+  }
+  if (Array.isArray(obj)) return obj.map((v) => _roundFloats(v, ndigits))
+  if (obj && typeof obj === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(obj)) out[k] = _roundFloats(v, ndigits)
+    return out
+  }
+  return obj
+}
+
+const RESULT_NON_GEOMETRIC_KEYS = new Set(['solve_ms'])
+
+function _stripNonGeometric(obj: unknown): unknown {
+  if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(obj)) {
+      if (!RESULT_NON_GEOMETRIC_KEYS.has(k)) out[k] = _stripNonGeometric(v)
+    }
+    return out
+  }
+  if (Array.isArray(obj)) return obj.map(_stripNonGeometric)
+  return obj
+}
+
+export function hashCheckpointSpec(cp: FeatureCheckpoint): string {
+  return sha256Hex(_stableJson(cp.spec))
+}
+
+export function hashResultDict(result: Record<string, unknown>, fpRound?: number | null): string {
+  let payload = _stripNonGeometric(result)
+  if (fpRound != null) payload = _roundFloats(payload, fpRound)
+  return sha256Hex(_stableJson(payload))
+}
+
+function _diffRepoSnapshot(
+  a: BuildState,
+  b: BuildState,
+  featureIdx?: number | null,
+): Record<string, unknown> {
+  const diff: Record<string, unknown> = {}
+  if (JSON.stringify(a.feature_order) !== JSON.stringify(b.feature_order)) {
+    diff['feature_order'] = { a: a.feature_order, b: b.feature_order }
+  }
+  const fids = featureIdx != null ? [a.feature_order[featureIdx]] : a.feature_order
+  for (const fid of fids) {
+    const cpA = a.checkpoints[fid]
+    const cpB = b.checkpoints[fid]
+    if (!cpA || !cpB) {
+      const arr = (diff['missing_checkpoints'] ??= []) as unknown[]
+      arr.push(fid)
+      continue
+    }
+    const aBodies = Object.fromEntries(
+      Object.entries(cpA.body_store_snapshot).map(([bid, body]) => [
+        bid,
+        { created_by: body.created_by, modified_by: [...body.modified_by] },
+      ])
+    )
+    const bBodies = Object.fromEntries(
+      Object.entries(cpB.body_store_snapshot).map(([bid, body]) => [
+        bid,
+        { created_by: body.created_by, modified_by: [...body.modified_by] },
+      ])
+    )
+    if (JSON.stringify(aBodies) !== JSON.stringify(bBodies)) {
+      const store = (diff['body_store'] ??= {}) as Record<string, unknown>
+      store[fid] = { a: aBodies, b: bBodies }
+    }
+    const aRepo = cpA.repo_snapshot as Record<string, unknown>
+    const bRepo = cpB.repo_snapshot as Record<string, unknown>
+    const aAncestral = aRepo.ancestral as Record<string, unknown> | undefined
+    const bAncestral = bRepo.ancestral as Record<string, unknown> | undefined
+    const aKeys = new Set(aAncestral ? Object.keys(aAncestral) : [])
+    const bKeys = new Set(bAncestral ? Object.keys(bAncestral) : [])
+    const added = [...bKeys].filter((k) => !aKeys.has(k)).sort()
+    const removed = [...aKeys].filter((k) => !bKeys.has(k)).sort()
+    if (added.length || removed.length) {
+      const ra = (diff['repo_ancestral'] ??= {}) as Record<string, unknown>
+      ra[fid] = {
+        added: added.slice(0, 20),
+        removed: removed.slice(0, 20),
+        added_total: added.length,
+        removed_total: removed.length,
+      }
+    }
+  }
+  return diff
+}
+
+export function validateIncremental(
+  incrementalState: BuildState,
+  incrementalResult: Record<string, unknown>,
+  doc: Record<string, unknown>,
+  deps: BuildDeps,
+): RebuildValidation {
+  const docForFull = Object.fromEntries(Object.entries(doc).filter(([k]) => k !== '_validate'))
+  const fresh = build(docForFull, { prevState: null }, deps)
+  const freshState = fresh._build_state
+  const freshResult = fresh.result as Record<string, unknown>
+
+  // L1: spec hash per feature.
+  for (const fid of incrementalState.feature_order) {
+    const cpA = incrementalState.checkpoints[fid]
+    const cpB = freshState.checkpoints[fid]
+    if (!cpA || !cpB) {
+      return { level: 1, passed: false, diffs: { missing_checkpoint: fid } }
+    }
+    if (hashCheckpointSpec(cpA) !== hashCheckpointSpec(cpB)) {
+      return { level: 1, passed: false, diffs: { feature_id: fid } }
+    }
+  }
+
+  // L2: result dict, strict then FP-tolerant.
+  const incR = Object.fromEntries(incrementalState.feature_order.map((fid) => [fid, incrementalResult[fid]]))
+  const freshR = Object.fromEntries(freshState.feature_order.map((fid) => [fid, freshResult[fid]]))
+  if (hashResultDict(incR) !== hashResultDict(freshR)) {
+    if (hashResultDict(incR, 4) === hashResultDict(freshR, 4)) {
+      return { level: 2, passed: false, fp_only: true, diffs: { reason: 'floating-point drift within 4dp tolerance' } }
+    }
+    return { level: 3, passed: false, diffs: _diffRepoSnapshot(incrementalState, freshState) }
+  }
+
+  // L3 final guard.
+  const l3 = _diffRepoSnapshot(incrementalState, freshState)
+  if (Object.keys(l3).length) {
+    return { level: 3, passed: false, diffs: l3 }
+  }
+  return { level: 3, passed: true, diffs: {} }
+}
+
+// ── B-rep diff hash helpers (stubs: full OCC-backed diff deferred to 2e/2f) ─
+
+function _brepDiffNewFaceHashes(_body: Body): Set<string> {
+  return new Set()
+}
+
+function _brepDiffNewEdgeHashes(_body: Body): Set<string> {
+  return new Set()
+}
+
+function _brepDiffNewVertexHashes(_body: Body): Set<string> {
+  return new Set()
+}
+
+// ── Ancestry registration (mirrors Python builder.py) ──────────────────────
+
+function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: TessMesh): void {
+  if (!body.created_by || !mesh.face_data) return
+  const newFaceHashes = _brepDiffNewFaceHashes(body)
+  for (let faceIdx = 0; faceIdx < mesh.face_data.length; faceIdx++) {
+    const faceInfo = mesh.face_data[faceIdx]
+    const centroid = faceInfo.centroid
+    const normal = faceInfo.normal
+    const geomHash = faceGeometryHash(centroid, normal)
+    let faceCreatedBy = body.created_by
+    if (newFaceHashes.size && newFaceHashes.has(geomHash) && body.modified_by.length) {
+      faceCreatedBy = body.modified_by[body.modified_by.length - 1]
+    }
+    const ancestorIds = [
+      emitWire(absolute(body.id, `face${faceIdx}`)),
+      emitWire(absolute(faceCreatedBy)),
+      emitWire(absolute(body.id)),
+    ]
+    if (isGeomKeyedLineage(body.face_lineage, 'gface_')) {
+      ancestorIds.push(...faceTokens(centroid, normal, body.face_lineage))
+    } else if (body.profile_queries.length) {
+      ancestorIds.push(...body.profile_queries)
+    }
+    const { x_axis, y_axis } = normalToFrame(normal)
+    const payload = {
+      type: faceInfo.surface_type ?? 'face',
+      body_id: body.id,
+      created_by: faceCreatedBy,
+      face_index: faceIdx,
+      centroid,
+      normal,
+      origin: centroid,
+      x_axis,
+      y_axis,
+      classifiers: faceInfo.classifiers ?? [],
+    }
+    const key = [...new Set(ancestorIds)].sort().join('\0')
+    const entry = globalRepo.ancestral.get(key)
+    const existingIds = entry ? entry.eids : []
+    if (existingIds.some((eid) => _stableJson(globalRepo.elements.get(eid)) === _stableJson(payload))) {
+      continue
+    }
+    const indexTag = emitWire(absolute(body.id, `face${faceIdx}`))
+    const eid = evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, geomHash)
+    const nhash = faceNormalHash(normal)
+    globalRepo.byGeomHash.set(nhash, [...(globalRepo.byGeomHash.get(nhash) ?? []), eid])
+  }
+}
+
+function _registerBrepEdgeAncestry(
+  globalRepo: Repository,
+  body: Body,
+  edges: Array<Record<string, unknown>>,
+  edgeQueries: string[],
+): void {
+  if (!body.created_by || !edgeQueries.length) return
+  const newEdgeHashes = _brepDiffNewEdgeHashes(body)
+  for (let idx = 0; idx < edges.length && idx < edgeQueries.length; idx++) {
+    const edge = edges[idx]
+    const geomHash = edgeGeometryHash(edge)
+    let edgeCreatedBy = body.created_by
+    if (newEdgeHashes.size && newEdgeHashes.has(geomHash) && body.modified_by.length) {
+      edgeCreatedBy = body.modified_by[body.modified_by.length - 1]
+    }
+    const ancestorIds = [
+      emitWire(absolute(body.id, `edge${idx}`)),
+      emitWire(absolute(edgeCreatedBy)),
+      emitWire(absolute(body.id)),
+    ]
+    if (isGeomKeyedLineage(body.edge_lineage, 'gedge_')) {
+      ancestorIds.push(...edgeLineageTokens(edge, body.edge_lineage))
+    } else if (body.profile_queries.length) {
+      ancestorIds.push(...body.profile_queries)
+    }
+    const edgeType = edge.kind === 'line' ? 'straightedge' : 'edge'
+    const payload = {
+      type: edgeType,
+      body_id: body.id,
+      created_by: edgeCreatedBy,
+      edge_index: idx,
+      kind: edge.kind,
+      start: edge.start,
+      end: edge.end,
+      center: edge.center,
+      radius: edge.radius,
+      axis: edge.axis,
+      x_axis: edge.x_axis,
+      angle_start: edge.angle_start,
+      angle_end: edge.angle_end,
+      classifiers: (edge.classifiers as string[]) ?? [],
+    }
+    const indexTag = emitWire(absolute(body.id, `edge${idx}`))
+    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, geomHash)
+  }
+}
+
+function _registerBrepVertexAncestry(
+  globalRepo: Repository,
+  body: Body,
+  vertices: Array<number[]>,
+  vertexQueries: string[],
+): void {
+  if (!body.created_by || !vertexQueries.length) return
+  const newVertexHashes = _brepDiffNewVertexHashes(body)
+  for (let idx = 0; idx < vertices.length && idx < vertexQueries.length; idx++) {
+    const pt = vertices[idx]
+    const geomHash = vertexGeometryHash(pt)
+    let vertexCreatedBy = body.created_by
+    if (newVertexHashes.size && newVertexHashes.has(geomHash) && body.modified_by.length) {
+      vertexCreatedBy = body.modified_by[body.modified_by.length - 1]
+    }
+    const ancestorIds = [
+      emitWire(absolute(body.id, `vertex${idx}`)),
+      emitWire(absolute(vertexCreatedBy)),
+      emitWire(absolute(body.id)),
+    ]
+    if (body.profile_queries.length) ancestorIds.push(...body.profile_queries)
+    const payload = {
+      type: 'vertex',
+      body_id: body.id,
+      created_by: vertexCreatedBy,
+      vertex_index: idx,
+      origin: pt,
+    }
+    const indexTag = emitWire(absolute(body.id, `vertex${idx}`))
+    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, geomHash)
+  }
+}
+
+function _registerSolidAncestry(globalRepo: Repository, body: Body): void {
+  if (!body.created_by) return
+  globalRepo.registerAncestor([ref(body.created_by)], {
+    type: 'solid',
+    body_id: body.id,
+    created_by: body.created_by,
+  })
+}
+
+function _registerExtrusionFeature(globalRepo: Repository, featureId: string, sketchId = ''): void {
+  if (!featureId) return
+  globalRepo.registerAncestor([ref(featureId)], {
+    type: 'extrusion-feature',
+    feature_id: featureId,
+    sketch_id: sketchId,
+  })
+}
+
+function _snapshotWithBrepGeometry(
+  checkpoint: FeatureCheckpoint,
+  bodiesOut: Record<string, Record<string, unknown>>,
+): Record<string, unknown> {
+  const repo = _repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
+  for (const [bodyId, body] of Object.entries(checkpoint.body_store_snapshot)) {
+    const bodyOut = bodiesOut[bodyId] ?? {}
+    const mesh = bodyOut['mesh'] as TessMesh | undefined
+    if (mesh) {
+      _registerBrepFaceAncestry(repo, body, mesh)
+    }
+    const edges = (bodyOut['edges'] as Array<Record<string, unknown>>) ?? []
+    const edgeQueries = (bodyOut['edge_queries'] as string[]) ?? []
+    if (edges.length && edgeQueries.length) {
+      _registerBrepEdgeAncestry(repo, body, edges, edgeQueries)
+    }
+    const vertices = (bodyOut['vertices'] as Array<number[]>) ?? []
+    const vertexQueries = (bodyOut['vertex_queries'] as string[]) ?? []
+    if (vertices.length && vertexQueries.length) {
+      _registerBrepVertexAncestry(repo, body, vertices, vertexQueries)
+    }
+    if (body.created_by) {
+      _registerSolidAncestry(repo, body)
+      _registerExtrusionFeature(repo, body.created_by, body.sketch_id)
+    }
+  }
+  return {
+    version: 2,
+    elements: Object.fromEntries(repo.elements),
+    ancestral: Object.fromEntries(
+      [...repo.ancestral.entries()].map(([k, v]) => [k, { set: [...v.set], eids: [...v.eids] }])
+    ),
+    byGeomHash: Object.fromEntries(
+      [...repo.byGeomHash.entries()].map(([k, v]) => [k, [...v]])
+    ),
+  }
+}
+
+// ── Build orchestration ──────────────────────────────────────────────────────
+
+export function build(
+  spec: Record<string, unknown>,
+  options: BuildOptions,
+  deps: BuildDeps,
+): BuildResponse {
+  const t0 = performance.now()
+
+  const allFeatures = (spec.features as Array<Record<string, unknown>> ?? [])
+    .map((f) => deps.normalizeProjectedEntities ? deps.normalizeProjectedEntities(f) : f)
+  const features = options.rollbackPosition != null
+    ? allFeatures.slice(0, options.rollbackPosition)
+    : allFeatures
+
+  const firstDirty = findFirstDirty(features, options.prevState)
+
+  const globalRepo = deps.initGlobalRepo()
+  const bodyStore: Record<string, Body> = {}
+  const result: Record<string, unknown> = {}
+  const newCheckpoints: Record<string, FeatureCheckpoint> = {}
+
+  // Preserve previous topology on full rebuild so area re-ID can fire after
+  // entity deletions.  Mirrors Python's _topo_ preservation block.
+  if (options.prevState && firstDirty === 0) {
+    for (const feature of features) {
+      const fid = String(feature.id ?? '')
+      const prevCp = options.prevState.checkpoints[fid]
+      if (!prevCp) continue
+      const prevTopo = (prevCp.repo_snapshot as Record<string, unknown>).elements as Record<string, unknown> | undefined
+      if (prevTopo && ('_topo_' + fid) in prevTopo) {
+        globalRepo.elements.set('_topo_' + fid, prevTopo['_topo_' + fid])
+      }
+    }
+  }
+
+  // Restore clean prefix from prev_state.
+  if (options.prevState && firstDirty > 0) {
+    const lastCleanFid = String(features[firstDirty - 1].id ?? '')
+    const checkpoint = options.prevState.checkpoints[lastCleanFid]
+    if (checkpoint) {
+      Object.assign(globalRepo, _repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>))
+      Object.assign(bodyStore, _snapshotBodies(checkpoint.body_store_snapshot))
+      for (const fid of options.prevState.feature_order.slice(0, firstDirty)) {
+        result[fid] = options.prevState.checkpoints[fid].result
+        newCheckpoints[fid] = options.prevState.checkpoints[fid]
+      }
+    }
+  }
+
+  const registeredBodyIds = new Set(Object.keys(bodyStore))
+
+  globalRepo.setFeatureOrder(allFeatures.map((f) => String(f.id ?? '')))
+
+  const featuresById = Object.fromEntries(allFeatures.map((f) => [String(f.id ?? ''), f]))
+
+  for (const feature of features.slice(firstDirty)) {
+    const fid = String(feature.id ?? '')
+
+    if (feature.suppressed) {
+      newCheckpoints[fid] = {
+        spec: { ...feature },
+        result: { status: 'suppressed' },
+        repo_snapshot: _snapshotRepo(globalRepo),
+        body_store_snapshot: _snapshotBodies(bodyStore),
+        bodies_snapshot: {},
+      }
+      result[fid] = { status: 'suppressed' }
+      continue
+    }
+
+    const modifiedByLenBefore = Object.fromEntries(
+      Object.entries(bodyStore).map(([bid, b]) => [bid, b.modified_by.length])
+    )
+
+    setCurrentFeatureId(fid)
+    try {
+      const featureResult = deps.trySolveFeature(feature, globalRepo, bodyStore, featuresById)
+      deps.postRegister(globalRepo, fid, feature, featureResult)
+      result[fid] = featureResult
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e)
+      result[fid] = { status: 'exception', exception: err, solve_ms: 0 }
+    } finally {
+      setCurrentFeatureId(null)
+    }
+
+    for (const [bodyId, body] of Object.entries(bodyStore)) {
+      if (!registeredBodyIds.has(bodyId) && body.shape != null) {
+        _registerSolidAncestry(globalRepo, body)
+        _registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
+        registeredBodyIds.add(bodyId)
+      } else if (body.shape != null && body.modified_by.length > (modifiedByLenBefore[bodyId] ?? 0)) {
+        // Body was modified; re-register faces so downstream features see updates.
+        // TODO: full _registerBodyFaces when tessellation is wired.
+      }
+    }
+
+    newCheckpoints[fid] = {
+      spec: JSON.parse(JSON.stringify(feature)),
+      result: JSON.parse(JSON.stringify(result[fid])),
+      repo_snapshot: _snapshotRepo(globalRepo),
+      body_store_snapshot: _snapshotBodies(bodyStore),
+      bodies_snapshot: {},
+    }
+  }
+
+  const activeFids = new Set(allFeatures.map((f) => String(f.id ?? '')))
+  globalRepo.gc(activeFids)
+
+  const bodiesOut = deps.tessellateBodies(bodyStore, globalRepo)
+
+  // Rebuild checkpoints for dirty features.
+  const cleanPrefixFids = new Set<string>()
+  if (options.prevState && firstDirty > 0) {
+    for (const fid of options.prevState.feature_order.slice(0, firstDirty)) {
+      cleanPrefixFids.add(fid)
+    }
+  }
+
+  for (const fid of Object.keys(newCheckpoints)) {
+    if (cleanPrefixFids.has(fid)) continue
+    const checkpoint = newCheckpoints[fid]
+    const cpBodies = Object.fromEntries(
+      Object.entries(checkpoint.body_store_snapshot).map(([bid, _body]) => {
+        // In a full port, tessellation cache lookup goes here.
+        return [bid, {}]
+      })
+    )
+    newCheckpoints[fid] = {
+      spec: checkpoint.spec,
+      result: checkpoint.result,
+      repo_snapshot: _snapshotWithBrepGeometry(checkpoint, cpBodies),
+      body_store_snapshot: checkpoint.body_store_snapshot,
+      bodies_snapshot: cpBodies,
+    }
+  }
+
+  const buildMs = Math.round((performance.now() - t0) * 10) / 10
+
+  const newState: BuildState = {
+    feature_order: allFeatures.map((f) => String(f.id ?? '')),
+    checkpoints: newCheckpoints,
+  }
+
+  let pickBodiesOut: Record<string, unknown> | undefined
+  const pickBoundary = options.pickBoundary
+  if (pickBoundary != null && pickBoundary > 0 && pickBoundary <= features.length) {
+    const targetFid = String(features[pickBoundary - 1].id ?? '')
+    const pickCheckpoint = newCheckpoints[targetFid] ?? options.prevState?.checkpoints[targetFid]
+    if (pickCheckpoint) {
+      const snap = pickCheckpoint.bodies_snapshot
+      pickBodiesOut = (Object.keys(snap).length)
+        ? snap
+        : deps.tessellateBodies(pickCheckpoint.body_store_snapshot, null)
+    }
+  }
+
+  const response: BuildResponse = {
+    solve_ms: buildMs,
+    result,
+    bodies: bodiesOut,
+    _build_state: newState,
+    ...(pickBodiesOut ? { pick_bodies: pickBodiesOut } : {}),
+  }
+
+  if (spec._validate) {
+    response._validation = validateIncremental(newState, result, spec, deps)
+  }
+
+  return response
+}
