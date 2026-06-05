@@ -50,6 +50,20 @@ export interface OccListOfShape extends OccDisposable {
 }
 
 /**
+ * BRepOffsetAPI_MakePipeShell: sweep a profile along a spine. Shares the
+ * Shape()/Generated() lineage surface with OccPrismBuilder; adds the
+ * sweep-specific setup + capping calls. `Add_1(profile, contact, correction)`
+ * is the 3-arg overload; `SetTransitionMode` and `Build` take the default arg.
+ */
+export interface OccPipeShellBuilder extends OccPrismBuilder {
+  SetTransitionMode(mode: OccEnumValue): void
+  Add_1(profile: OccShape, withContact: boolean, withCorrection: boolean): void
+  Build(): void
+  IsDone(): boolean
+  MakeSolid(): boolean
+}
+
+/**
  * BRepTools_History from a boolean op (algo.History()) or a ShapeUpgrade
  * (unify.History_1()). The `Modified`/`Generated` lists drain via
  * Size/First_1/RemoveFirst -- there is no list-iterator binding in this build.
@@ -416,6 +430,13 @@ export interface OccModule extends OccSpikeModule {
     angle: number,
     copy: boolean,
   ) => OccPrismBuilder
+
+  // --- 2f: sweep leaf -----------------------------------------------------
+  /** BRepOffsetAPI_MakePipeShell(spineWire): no overload suffix in this build. */
+  BRepOffsetAPI_MakePipeShell: new (spine: OccShape) => OccPipeShellBuilder
+  BRepBuilderAPI_TransitionMode: {
+    BRepBuilderAPI_RightCorner: OccEnumValue
+  }
 }
 
 /** A face shape exposes its orientation (FORWARD/REVERSED) via Orientation_1. */

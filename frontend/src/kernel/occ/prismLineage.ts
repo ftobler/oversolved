@@ -427,3 +427,43 @@ export function revolveProfileWithLineage(
   prefixTokens(lineage.edgeLineage, tokenPrefix)
   return { solid, faceLineage: lineage.faceLineage, edgeLineage: lineage.edgeLineage }
 }
+
+// ─── sweep (the sweep leaf's brep producer) ───
+
+/**
+ * Sweep profile loops along a spine wire and return (solid, faceLineage,
+ * edgeLineage) (mirrors `sweep_profile_with_lineage`). Only the profile's OUTER
+ * boundary is swept (holes are not carried through the pipe shell, matching
+ * Python); lineage still comes from MakePipeShell.Generated() over the face's
+ * profile edges. The spine edges are pre-built world-space OCC edges. RightCorner
+ * transition gives a clean mitre at sharp (C0) spine joints.
+ */
+export function sweepProfileWithLineage(
+  oc: OccModule,
+  scope: DisposeScope,
+  loops: LoopEdge[][],
+  plane: PlaneLike,
+  spineEdges: OccShape[],
+  sketchId = '',
+): { solid: OccShape; faceLineage: Record<string, string[]>; edgeLineage: Record<string, string[]> } {
+  if (loops.length === 0) throw new Error('sweep: no profile loops')
+  if (spineEdges.length === 0) throw new Error('sweep: empty path')
+
+  const face = sketchLoopsToFace(oc, scope, loops, plane)
+  const outerWire = scope.track(oc.BRepTools.OuterWire(face))
+  const spineWire = makeWire(oc, scope, spineEdges)
+
+  const builder = scope.track(new oc.BRepOffsetAPI_MakePipeShell(spineWire))
+  builder.SetTransitionMode(oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner)
+  builder.Add_1(outerWire, false, false)
+  builder.Build()
+  if (!builder.IsDone()) throw new Error('BRepOffsetAPI_MakePipeShell failed')
+  if (!builder.MakeSolid()) throw new Error('sweep: could not cap swept shell into a solid')
+  const solid = builder.Shape()
+
+  const lineage = buildPrismLineageMap(oc, scope, face, builder, loops, plane)
+  const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
+  prefixTokens(lineage.faceLineage, tokenPrefix)
+  prefixTokens(lineage.edgeLineage, tokenPrefix)
+  return { solid, faceLineage: lineage.faceLineage, edgeLineage: lineage.edgeLineage }
+}

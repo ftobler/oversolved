@@ -1,0 +1,522 @@
+{
+  "cases": [
+    {
+      "name": "straight",
+      "loops": [
+        [
+          {
+            "id": "s1",
+            "kind": "line",
+            "start": [
+              -2.0,
+              -2.0
+            ],
+            "end": [
+              2.0,
+              -2.0
+            ]
+          },
+          {
+            "id": "s2",
+            "kind": "line",
+            "start": [
+              2.0,
+              -2.0
+            ],
+            "end": [
+              2.0,
+              2.0
+            ]
+          },
+          {
+            "id": "s3",
+            "kind": "line",
+            "start": [
+              2.0,
+              2.0
+            ],
+            "end": [
+              -2.0,
+              2.0
+            ]
+          },
+          {
+            "id": "s4",
+            "kind": "line",
+            "start": [
+              -2.0,
+              2.0
+            ],
+            "end": [
+              -2.0,
+              -2.0
+            ]
+          }
+        ]
+      ],
+      "plane": {
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "x_axis": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "y_axis": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "segments": [
+        {
+          "kind": "line",
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "end": [
+            0.0,
+            0.0,
+            10.0
+          ]
+        }
+      ],
+      "sketch_id": "sk1",
+      "flat": true,
+      "volume": 159.99999999999997,
+      "face_lineage": {
+        "gface_9cd45ba85d824410": [
+          "@sk1/s1"
+        ],
+        "gface_6a22a201a9dc1b6d": [
+          "@sk1/s2"
+        ],
+        "gface_d789a5b7282d5a9d": [
+          "@sk1/s3"
+        ],
+        "gface_5790a46814480a1e": [
+          "@sk1/s4"
+        ],
+        "gface_89757cc02fcc3ba0": [],
+        "gface_602aaef615240c52": []
+      },
+      "edge_lineage": {
+        "gedge_6fc1f37d4b673b4b": [
+          "@sk1/s1",
+          "@sk1/s4"
+        ],
+        "gedge_bbaabd94960f2b89": [
+          "@sk1/s1"
+        ],
+        "gedge_19ce20c666d3e1d9": [
+          "@sk1/s1",
+          "@sk1/s2"
+        ],
+        "gedge_0ece1cc62524990a": [
+          "@sk1/s1"
+        ],
+        "gedge_c6f928a71e61cf12": [
+          "@sk1/s2"
+        ],
+        "gedge_d3b259a7b4873d04": [
+          "@sk1/s2",
+          "@sk1/s3"
+        ],
+        "gedge_ee57e8fb86de1607": [
+          "@sk1/s2"
+        ],
+        "gedge_c43f48ce2beab96e": [
+          "@sk1/s3"
+        ],
+        "gedge_dbcd3182b605ac35": [
+          "@sk1/s3",
+          "@sk1/s4"
+        ],
+        "gedge_2c1feb3dab3027c1": [
+          "@sk1/s3"
+        ],
+        "gedge_ab6bf6c0e16b218f": [
+          "@sk1/s4"
+        ],
+        "gedge_2506ba925ae80203": [
+          "@sk1/s4"
+        ]
+      }
+    },
+    {
+      "name": "lshape",
+      "loops": [
+        [
+          {
+            "id": "s1",
+            "kind": "line",
+            "start": [
+              -2.0,
+              -2.0
+            ],
+            "end": [
+              2.0,
+              -2.0
+            ]
+          },
+          {
+            "id": "s2",
+            "kind": "line",
+            "start": [
+              2.0,
+              -2.0
+            ],
+            "end": [
+              2.0,
+              2.0
+            ]
+          },
+          {
+            "id": "s3",
+            "kind": "line",
+            "start": [
+              2.0,
+              2.0
+            ],
+            "end": [
+              -2.0,
+              2.0
+            ]
+          },
+          {
+            "id": "s4",
+            "kind": "line",
+            "start": [
+              -2.0,
+              2.0
+            ],
+            "end": [
+              -2.0,
+              -2.0
+            ]
+          }
+        ]
+      ],
+      "plane": {
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "x_axis": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "y_axis": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "segments": [
+        {
+          "kind": "line",
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "end": [
+            0.0,
+            0.0,
+            10.0
+          ]
+        },
+        {
+          "kind": "line",
+          "start": [
+            0.0,
+            0.0,
+            10.0
+          ],
+          "end": [
+            6.0,
+            0.0,
+            10.0
+          ]
+        }
+      ],
+      "sketch_id": "sk2",
+      "flat": true,
+      "volume": 256.0,
+      "face_lineage": {
+        "gface_209c761503a25af7": [
+          "@sk2/s1"
+        ],
+        "gface_276c7c90065aff4f": [
+          "@sk2/s2"
+        ],
+        "gface_5639f263708a405f": [
+          "@sk2/s3"
+        ],
+        "gface_01cd1c4c5a3cff2a": [
+          "@sk2/s4"
+        ],
+        "gface_42f72e69c2a06d1a": [
+          "@sk2/s1"
+        ],
+        "gface_647f644d27e193b2": [
+          "@sk2/s2"
+        ],
+        "gface_3d0145cf649724b6": [
+          "@sk2/s3"
+        ],
+        "gface_23a0b5c75aab0ec1": [
+          "@sk2/s4"
+        ],
+        "gface_89757cc02fcc3ba0": [],
+        "gface_36243002d2969ba9": []
+      },
+      "edge_lineage": {
+        "gedge_314c797dd297a401": [
+          "@sk2/s1",
+          "@sk2/s4"
+        ],
+        "gedge_bbaabd94960f2b89": [
+          "@sk2/s1"
+        ],
+        "gedge_8faf0cc309d04479": [
+          "@sk2/s1",
+          "@sk2/s2"
+        ],
+        "gedge_5456ceceda11f36b": [
+          "@sk2/s1"
+        ],
+        "gedge_c6f928a71e61cf12": [
+          "@sk2/s2"
+        ],
+        "gedge_6634201b691ad6ae": [
+          "@sk2/s2",
+          "@sk2/s3"
+        ],
+        "gedge_3a37450fcd3af111": [
+          "@sk2/s2"
+        ],
+        "gedge_c43f48ce2beab96e": [
+          "@sk2/s3"
+        ],
+        "gedge_c1b90033ef3fd62d": [
+          "@sk2/s3",
+          "@sk2/s4"
+        ],
+        "gedge_c59125db1a8f6f73": [
+          "@sk2/s3"
+        ],
+        "gedge_ab6bf6c0e16b218f": [
+          "@sk2/s4"
+        ],
+        "gedge_548a060cca8377dd": [
+          "@sk2/s4"
+        ],
+        "gedge_23a56f6279b1f49a": [
+          "@sk2/s1",
+          "@sk2/s4"
+        ],
+        "gedge_2ed2dd00050c888a": [
+          "@sk2/s1",
+          "@sk2/s2"
+        ],
+        "gedge_5e6bff3c8b7792ba": [
+          "@sk2/s1"
+        ],
+        "gedge_2b7ae91698de6cb8": [
+          "@sk2/s2",
+          "@sk2/s3"
+        ],
+        "gedge_108c300770aa795b": [
+          "@sk2/s2"
+        ],
+        "gedge_ca5afd67a1926018": [
+          "@sk2/s3",
+          "@sk2/s4"
+        ],
+        "gedge_f4587b9bcddbfa92": [
+          "@sk2/s3"
+        ],
+        "gedge_88cde8f7f0618b92": [
+          "@sk2/s4"
+        ]
+      }
+    },
+    {
+      "name": "arc",
+      "loops": [
+        [
+          {
+            "id": "s1",
+            "kind": "line",
+            "start": [
+              -2.0,
+              -2.0
+            ],
+            "end": [
+              2.0,
+              -2.0
+            ]
+          },
+          {
+            "id": "s2",
+            "kind": "line",
+            "start": [
+              2.0,
+              -2.0
+            ],
+            "end": [
+              2.0,
+              2.0
+            ]
+          },
+          {
+            "id": "s3",
+            "kind": "line",
+            "start": [
+              2.0,
+              2.0
+            ],
+            "end": [
+              -2.0,
+              2.0
+            ]
+          },
+          {
+            "id": "s4",
+            "kind": "line",
+            "start": [
+              -2.0,
+              2.0
+            ],
+            "end": [
+              -2.0,
+              -2.0
+            ]
+          }
+        ]
+      ],
+      "plane": {
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "x_axis": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "y_axis": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "segments": [
+        {
+          "kind": "arc",
+          "center": [
+            10.0,
+            0.0,
+            0.0
+          ],
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "end": [
+            10.0,
+            0.0,
+            10.0
+          ],
+          "radius": 10.0
+        }
+      ],
+      "sketch_id": "sk3",
+      "flat": false,
+      "volume": 251.32741228718345,
+      "face_lineage": {
+        "gface_3ae0ed7ebe659e1a": [
+          "@sk3/s1"
+        ],
+        "gface_9c2f5e3666002d44": [
+          "@sk3/s2"
+        ],
+        "gface_ec3ac4189a9f77db": [
+          "@sk3/s3"
+        ],
+        "gface_cf86c19e056bcd05": [
+          "@sk3/s4"
+        ],
+        "gface_89757cc02fcc3ba0": [],
+        "gface_aa97ad813b0d3990": []
+      },
+      "edge_lineage": {
+        "gedge_ce4448b99f129162": [
+          "@sk3/s1",
+          "@sk3/s4"
+        ],
+        "gedge_bbaabd94960f2b89": [
+          "@sk3/s1"
+        ],
+        "gedge_31636d6b45b4f06d": [
+          "@sk3/s1",
+          "@sk3/s2"
+        ],
+        "gedge_7e767a8708edb87d": [
+          "@sk3/s1"
+        ],
+        "gedge_c6f928a71e61cf12": [
+          "@sk3/s2"
+        ],
+        "gedge_bd101afaa94b20c5": [
+          "@sk3/s2",
+          "@sk3/s3"
+        ],
+        "gedge_3c8bf4ad6cbc925a": [
+          "@sk3/s2"
+        ],
+        "gedge_c43f48ce2beab96e": [
+          "@sk3/s3"
+        ],
+        "gedge_2dc27df21ca33c89": [
+          "@sk3/s3",
+          "@sk3/s4"
+        ],
+        "gedge_a39a2d23042c7a41": [
+          "@sk3/s3"
+        ],
+        "gedge_ab6bf6c0e16b218f": [
+          "@sk3/s4"
+        ],
+        "gedge_017dc3715bf31946": [
+          "@sk3/s4"
+        ]
+      }
+    }
+  ]
+}
