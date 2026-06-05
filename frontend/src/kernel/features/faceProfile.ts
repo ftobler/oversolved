@@ -1,0 +1,234 @@
+// Port of the face-profile resolution chain in solver_features_shared.py:
+// `_resolve_face_index_via_hash`, `_extract_loops_from_occ_face`,
+// `_resolve_face_profile`, `_collect_extrude_loops`. This is the routing layer
+// the extrude/revolve leaves call to turn a profile reference (a `$sketch`, a
+// body face `@feat/face/N`, or an ancestral surface query) into 2D loops + the
+// plane to build on. The OCC face->loops work lives in occ/faceLoops.ts; the
+// pure surface-loop assembly is extractProfileLoops (features/shared.ts).
+//
+// Body shapes are HandleTable handles, so the OCC-backed branches resolve them
+// via the table; the topo-surface branches (`@`/`?` against stored sketch
+// topology) are pure and need no OCC.
+
+import type { DisposeScope } from '../occ/disposeScope'
+import type { OccModule, OccShape } from '../occ/occTypes'
+import type { HandleTable, OccHandle } from '../occ/handleTable'
+import type { Body, Frame3D } from '../types3d'
+import { Repository, parseAncestry, makeAncestryQuery, ref } from '../query'
+import { faceCentroid, faceNormal } from '../occ/primitives'
+import { faceGeometryHash } from '../geomHash'
+import { extractOccFace, extractFaceLoops } from '../occ/faceLoops'
+import { extractProfileLoops, registerTopFace, type PlaneLike } from './shared'
+
+type Dict = Record<string, unknown>
+type EdgeDict = Record<string, unknown>
+
+export interface FaceProfile {
+  loops: EdgeDict[][]
+  plane: PlaneLike
+  /** The OCC face when resolved from a body, else null (topo-surface paths). */
+  face: OccShape | null
+}
+
+function bodyShape(table: HandleTable, body: Body): OccShape {
+  if (body.shape === null) throw new Error(`body ${body.id} has no shape`)
+  return table.get<OccShape>(body.shape as OccHandle)
+}
+
+/**
+ * Resolve an old sorted face index to the current index via the face's geometry
+ * hash (mirrors `_resolve_face_index_via_hash`). Returns null when resolution
+ * fails (index out of range, geometry read error, or hash not in the repo).
+ */
+export function resolveFaceIndexViaHash(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  oldIndex: number,
+  globalRepo: Repository,
+): number | null {
+  let targetFace: OccShape
+  try {
+    targetFace = extractOccFace(oc, scope, shape, oldIndex)
+  } catch {
+    return null
+  }
+  const centroid = faceCentroid(oc, scope, targetFace)
+  const normal = faceNormal(oc, scope, targetFace)
+  const geomHash = faceGeometryHash(centroid, normal)
+  try {
+    const queryStr = makeAncestryQuery([ref(geomHash)], 'face')
+    const faceEntry = globalRepo.query(queryStr, null, {}) as Dict | null
+    if (faceEntry && 'face_index' in faceEntry) {
+      return faceEntry.face_index as number
+    }
+  } catch {
+    // query failure -> fall through to null (use the caller's old index)
+  }
+  return null
+}
+
+/** Loops + plane + face for a body's sorted face index (mirrors `_extract_loops_from_occ_face`). */
+export function extractLoopsFromOccFace(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  faceIndex: number,
+): FaceProfile {
+  const { loops, plane, face } = extractFaceLoops(oc, scope, shape, faceIndex)
+  return { loops, plane, face }
+}
+
+function findBodyForFeature(bodyStore: Record<string, Body>, featId: string): Body | null {
+  const direct = bodyStore['body_' + featId]
+  if (direct !== undefined && direct.shape !== null) return direct
+  for (const b of Object.values(bodyStore)) {
+    if (b.created_by === featId && b.shape !== null) return b
+  }
+  return null
+}
+
+const SLASH_FACE = /^@([^/]+)\/face\/(\d+)$/
+
+/**
+ * Resolve a profile reference to (loops, plane, face) (mirrors
+ * `_resolve_face_profile`). Handles the body-face slash form `@feat/face/N`,
+ * repo entries carrying body_id+face_index, `@feat`/`?...` topo-surface forms.
+ */
+export function resolveFaceProfile(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  sketchRef: string,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+): FaceProfile {
+  const slash = SLASH_FACE.exec(sketchRef)
+  if (slash) {
+    const featId = slash[1]
+    let faceIndex = parseInt(slash[2], 10)
+    const body = findBodyForFeature(bodyStore, featId)
+    if (body === null) throw new Error(`No body found for feature '${featId}'`)
+    const shape = bodyShape(table, body)
+    const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo)
+    if (resolved !== null) faceIndex = resolved
+    return extractLoopsFromOccFace(oc, scope, shape, faceIndex)
+  }
+
+  const faceEntry = globalRepo.query(sketchRef, null, bodyStore) as Dict | null
+  if (faceEntry === null) throw new Error(`Profile face not found: ${sketchRef}`)
+
+  const bodyId = faceEntry.body_id as string | undefined
+  const faceIndex = faceEntry.face_index as number | undefined
+  if (bodyId !== undefined && faceIndex !== undefined) {
+    const body = bodyStore[bodyId]
+    if (body === undefined || body.shape === null) {
+      throw new Error(`Body '${bodyId}' not found or has no shape`)
+    }
+    return extractLoopsFromOccFace(oc, scope, bodyShape(table, body), faceIndex)
+  }
+
+  if (sketchRef.startsWith('@')) {
+    const featId = sketchRef.slice(1).split('/')[0]
+    const body = findBodyForFeature(bodyStore, featId)
+    if (body === null) throw new Error(`No body found for feature '${featId}'`)
+    const topo = (globalRepo.elements.get('_topo_' + body.sketch_id) as Dict | undefined) ?? {}
+    const surfaces = (topo.surfaces as Dict[]) ?? []
+    const effectivePlane: PlaneLike = {
+      origin: (faceEntry.origin as number[]) ?? [0, 0, 0],
+      x_axis: (faceEntry.x_axis as number[]) ?? [1, 0, 0],
+      y_axis: (faceEntry.y_axis as number[]) ?? [0, 1, 0],
+      normal: (faceEntry.normal as number[]) ?? [0, 0, 1],
+    }
+    return { loops: extractProfileLoops(surfaces), plane: effectivePlane, face: null }
+  }
+
+  if (sketchRef.startsWith('?')) {
+    const [targetIds] = parseAncestry(sketchRef)
+    let sketchId: string | null = null
+    for (const aid of targetIds) {
+      if (aid.startsWith('@')) {
+        const candidate = aid.slice(1)
+        if (globalRepo.elements.get('_pt_' + candidate) !== undefined) {
+          sketchId = candidate
+          break
+        }
+      }
+    }
+    if (sketchId === null) {
+      throw new Error(`Cannot find parent sketch for surface query: ${sketchRef}`)
+    }
+    const surfacePt = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
+    if (surfacePt === undefined) throw new Error(`Sketch plane not found for: ${sketchId}`)
+    const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
+    const allSurfaces = (topo.surfaces as Dict[]) ?? []
+    const matched = allSurfaces.filter((s) => {
+      const q = (s.query as string) ?? ''
+      if (!q.startsWith('?')) return false
+      const [ids] = parseAncestry(q)
+      return ids.length === targetIds.length && ids.every((v, i) => v === targetIds[i])
+    })
+    return {
+      loops: extractProfileLoops(matched.length ? matched : allSurfaces),
+      plane: surfacePt,
+      face: null,
+    }
+  }
+
+  throw new Error(`Cannot resolve profile from: ${sketchRef}`)
+}
+
+export interface ExtrudeLoops {
+  loops: EdgeDict[][]
+  plane: PlaneLike
+  sketchId: string
+  face: OccShape | null
+}
+
+/**
+ * Resolve an extrude's profile to (loops, plane, sketch_id, face) (mirrors
+ * `_collect_extrude_loops`). For a plain `$sketch` ref it registers the swept
+ * top face and reads the sketch topology; for `@`/`?` refs it routes through
+ * resolveFaceProfile.
+ */
+export function collectExtrudeLoops(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  sketchRef: string,
+  featureId: string,
+  distance: number,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+): ExtrudeLoops {
+  if (sketchRef.startsWith('?') || sketchRef.startsWith('@')) {
+    let sketchId = ''
+    if (sketchRef.startsWith('?')) {
+      const [targetIds] = parseAncestry(sketchRef)
+      for (const aid of targetIds) {
+        if (aid.startsWith('@') && !aid.includes('/')) {
+          const candidate = aid.slice(1)
+          if (globalRepo.elements.get('_pt_' + candidate) !== undefined) {
+            sketchId = candidate
+            break
+          }
+        }
+      }
+    } else {
+      sketchId = sketchRef.slice(1).split('/')[0]
+    }
+    const { loops, plane, face } = resolveFaceProfile(oc, scope, table, sketchRef, globalRepo, bodyStore)
+    return { loops, plane, sketchId, face }
+  }
+
+  const sketchId = sketchRef.replace(/^\$+/, '')
+  const pt = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
+  if (pt === undefined) throw new Error(`sketch not found: ${sketchId}`)
+  const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
+  const surfaces = (topo.surfaces as Dict[]) ?? []
+  registerTopFace(globalRepo, featureId, pt, surfaces, distance)
+  return { loops: extractProfileLoops(surfaces), plane: pt, sketchId, face: null }
+}
+
+// Re-export Frame3D for consumers building plane inputs.
+export type { Frame3D }

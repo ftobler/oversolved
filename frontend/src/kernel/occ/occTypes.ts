@@ -147,6 +147,46 @@ export interface OccSurfaceAdaptor extends OccDisposable {
   LastUParameter(): number
   FirstVParameter(): number
   LastVParameter(): number
+  /** Only valid when GetType() is GeomAbs_Plane (used for face-profile planes). */
+  Plane(): OccPln
+}
+
+/** gp_Pnt2d / gp_Dir2d: a 2D point or direction on a face's parameter space. */
+export interface OccPnt2d extends OccDisposable {
+  X(): number
+  Y(): number
+}
+
+export interface OccCircle2d extends OccDisposable {
+  Location(): OccPnt2d
+  Radius(): number
+}
+
+/** BRepAdaptor_Curve2d: a face PCurve (2D parameter-space curve of an edge). */
+export interface OccCurve2dAdaptor extends OccDisposable {
+  FirstParameter(): number
+  LastParameter(): number
+  GetType(): OccEnumValue
+  Circle(): OccCircle2d
+  Value(u: number): OccPnt2d
+}
+
+export interface OccWireExplorer extends OccDisposable {
+  More(): boolean
+  Next(): void
+  Current(): OccShape
+}
+
+/** gp_Ax3 read accessors (a plane's coordinate frame). */
+export interface OccAx3 {
+  Location(): OccXYZ
+  XDirection(): OccXYZ
+  YDirection(): OccXYZ
+  Direction(): OccXYZ
+}
+
+export interface OccPln extends OccDisposable {
+  Position(): OccAx3
 }
 
 export interface OccSLProps extends OccDisposable {
@@ -266,6 +306,7 @@ export interface OccModule extends OccSpikeModule {
     TopAbs_EDGE: OccShapeEnumValue
     TopAbs_VERTEX: OccShapeEnumValue
     TopAbs_SOLID: OccShapeEnumValue
+    TopAbs_WIRE: OccShapeEnumValue
     TopAbs_SHAPE: OccShapeEnumValue
   }
   TopoDS: {
@@ -273,6 +314,7 @@ export interface OccModule extends OccSpikeModule {
     Edge_1(shape: OccShape): OccShape
     Vertex_1(shape: OccShape): OccShape
     Solid_1(shape: OccShape): OccShape
+    Wire_1(shape: OccShape): OccShape
   }
   BRepAdaptor_Curve_2: new (edge: OccShape) => OccCurveAdaptor
   GeomAbs_CurveType: {
@@ -354,6 +396,13 @@ export interface OccModule extends OccSpikeModule {
     unifyFaces: boolean,
     concatBSplines: boolean,
   ) => OccUnify
+
+  // --- 2e: face-profile loop extraction (extrude/revolve from a face) ------
+  BRepTools: {
+    OuterWire(face: OccShape): OccShape
+  }
+  BRepTools_WireExplorer_3: new (wire: OccShape, face: OccShape) => OccWireExplorer
+  BRepAdaptor_Curve2d_2: new (edge: OccShape, face: OccShape) => OccCurve2dAdaptor
 }
 
 /** A face shape exposes its orientation (FORWARD/REVERSED) via Orientation_1. */

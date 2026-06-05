@@ -1,0 +1,193 @@
+{
+  "sketch_id": "sk",
+  "feature_id": "featX",
+  "distance": 10.0,
+  "plane": {
+    "origin": [
+      0,
+      0,
+      0
+    ],
+    "x_axis": [
+      1,
+      0,
+      0
+    ],
+    "y_axis": [
+      0,
+      1,
+      0
+    ],
+    "normal": [
+      0,
+      0,
+      1
+    ]
+  },
+  "surfaces": [
+    {
+      "boundary": [
+        {
+          "kind": "line",
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            10,
+            0
+          ]
+        },
+        {
+          "kind": "line",
+          "start": [
+            10,
+            0
+          ],
+          "end": [
+            10,
+            10
+          ]
+        },
+        {
+          "kind": "line",
+          "start": [
+            10,
+            10
+          ],
+          "end": [
+            0,
+            10
+          ]
+        },
+        {
+          "kind": "line",
+          "start": [
+            0,
+            10
+          ],
+          "end": [
+            0,
+            0
+          ]
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "loops": [
+      [
+        {
+          "kind": "line",
+          "start": [
+            0,
+            0
+          ],
+          "end": [
+            10,
+            0
+          ]
+        },
+        {
+          "kind": "line",
+          "start": [
+            10,
+            0
+          ],
+          "end": [
+            10,
+            10
+          ]
+        },
+        {
+          "kind": "line",
+          "start": [
+            10,
+            10
+          ],
+          "end": [
+            0,
+            10
+          ]
+        },
+        {
+          "kind": "line",
+          "start": [
+            0,
+            10
+          ],
+          "end": [
+            0,
+            0
+          ]
+        }
+      ]
+    ],
+    "plane": {
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "x_axis": [
+        1,
+        0,
+        0
+      ],
+      "y_axis": [
+        0,
+        1,
+        0
+      ],
+      "normal": [
+        0,
+        0,
+        1
+      ]
+    },
+    "returned_sketch_id": "sk",
+    "top_face": {
+      "featX/top_face": {
+        "type": "flatface",
+        "centroid": [
+          5.0,
+          5.0,
+          10.0
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          10.0
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ]
+      },
+      "featX/top_face/edge0": {
+        "type": "straightedge",
+        "start": [
+          0.0,
+          0.0,
+          10.0
+        ],
+        "end": [
+          10.0,
+          0.0,
+          10.0
+        ]
+      }
+    }
+  }
+}
