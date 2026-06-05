@@ -468,6 +468,17 @@ export interface OccModule extends OccSpikeModule {
   gp_Trsf_1: new () => OccTrsf
   /** BRepBuilderAPI_Transform(shape, trsf, copy): apply a gp_Trsf to a shape. */
   BRepBuilderAPI_Transform_2: new (shape: OccShape, trsf: OccTrsf, copy: boolean) => OccTransformBuilder
+
+  // --- 2f: import_step (STEP read; export/write deferred to phase 3) -------
+  /** Emscripten in-memory filesystem (write the STEP bytes here, then ReadFile). */
+  FS: {
+    writeFile(path: string, data: Uint8Array | string): void
+    unlink(path: string): void
+  }
+  STEPControl_Reader_1: new () => OccStepReader
+  IFSelect_ReturnStatus: {
+    IFSelect_RetDone: OccEnumValue
+  }
 }
 
 /** A face shape exposes its orientation (FORWARD/REVERSED) via Orientation_1. */
@@ -491,4 +502,11 @@ export interface OccTrsf extends OccDisposable {
 export interface OccTransformBuilder extends OccDisposable {
   Build(): void
   Shape(): OccShape
+}
+
+/** STEPControl_Reader: read a STEP file from the emscripten FS into a shape. */
+export interface OccStepReader extends OccDisposable {
+  ReadFile(path: string): OccEnumValue
+  TransferRoots(): number
+  OneShape(): OccShape
 }
