@@ -710,3 +710,18 @@ export function build(
 
   return response
 }
+
+// ── TS kernel router (phase 2g) ──────────────────────────────────────────
+//
+// The solver registry provides the per-doc fallback router: a kind-set
+// membership gate that dispatches a doc to the TS/WASM leaf solvers when
+// every feature kind is ported, else signals the caller to fall back to
+// Python.  Re-exported here so `builder.ts` is the canonical integration
+// point for wiring the TS kernel into `BuildDeps.trySolveFeature`.
+export {
+  PORTED_FEATURE_KINDS,
+  isDocFullyPorted,
+  unportedKinds,
+  getSolver,
+  createFeatureSolver,
+} from './solverRegistry'
