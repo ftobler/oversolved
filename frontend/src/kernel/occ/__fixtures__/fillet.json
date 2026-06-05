@@ -1,0 +1,290 @@
+{
+  "cases": [
+    {
+      "name": "fillet_r2",
+      "kind": "fillet",
+      "box": [
+        10.0,
+        10.0,
+        10.0
+      ],
+      "value": 2.0,
+      "target_edge_hash": "gedge_0013dd02e80bd620",
+      "face_lineage_in": {
+        "gface_74c4233398de69cd": [
+          "@face_0"
+        ],
+        "gface_9d9c8f2a6abfdb9e": [
+          "@face_1"
+        ],
+        "gface_5c9d5d36c1e0b2bd": [
+          "@face_2"
+        ],
+        "gface_5e6ec6bc4d7483cf": [
+          "@face_3"
+        ],
+        "gface_82cd586681a86232": [
+          "@face_4"
+        ],
+        "gface_1d1621f08bf26afa": [
+          "@face_5"
+        ]
+      },
+      "edge_lineage_in": {
+        "gedge_967b6a6b9e52c674": [
+          "@edge_0"
+        ],
+        "gedge_84082540f6f780a6": [
+          "@edge_1"
+        ],
+        "gedge_a78188937f91e51b": [
+          "@edge_2"
+        ],
+        "gedge_9787e5608c7272fd": [
+          "@edge_3"
+        ],
+        "gedge_9e9ccf6c824d9e83": [
+          "@edge_4"
+        ],
+        "gedge_d3e23204c587551a": [
+          "@edge_5"
+        ],
+        "gedge_b0c901e498436048": [
+          "@edge_6"
+        ],
+        "gedge_b65b066277fd4861": [
+          "@edge_7"
+        ],
+        "gedge_0013dd02e80bd620": [
+          "@edge_8"
+        ],
+        "gedge_5370a6f56cefa2c3": [
+          "@edge_9"
+        ],
+        "gedge_c1fe57792cc42613": [
+          "@edge_10"
+        ],
+        "gedge_a7c7c564fc2b9c29": [
+          "@edge_11"
+        ]
+      },
+      "volume": 991.4159265358978,
+      "face_lineage_out": {
+        "gface_e2defc44d1b8a501": [
+          "@face_0"
+        ],
+        "gface_80f49fc076d5f3ee": [
+          "@face_1"
+        ],
+        "gface_77c0a05705ea1a8d": [
+          "@face_2"
+        ],
+        "gface_5e6ec6bc4d7483cf": [
+          "@face_3"
+        ],
+        "gface_da48d931c2a5665b": [
+          "@face_4"
+        ],
+        "gface_1d1621f08bf26afa": [
+          "@face_5"
+        ],
+        "gface_671d3b34ce3d9b6a": [
+          "@edge_8"
+        ]
+      },
+      "edge_lineage_out": {
+        "gedge_c018db3f0e86d66f": [
+          "@edge_8"
+        ],
+        "gedge_84082540f6f780a6": [
+          "@face_5"
+        ],
+        "gedge_a78188937f91e51b": [
+          "@face_3"
+        ],
+        "gedge_3d2eba9e29907318": [
+          "@face_1"
+        ],
+        "gedge_76e0e8a50979c1c7": [
+          "@edge_8"
+        ],
+        "gedge_5370a6f56cefa2c3": [
+          "@face_5"
+        ],
+        "gedge_88aa579443b4e67b": [
+          "@edge_8"
+        ],
+        "gedge_92cb7792c0e05417": [
+          "@edge_8",
+          "@face_1"
+        ],
+        "gedge_a7c7c564fc2b9c29": [
+          "@face_3",
+          "@face_5"
+        ],
+        "gedge_d3e23204c587551a": [
+          "@face_1",
+          "@face_5"
+        ],
+        "gedge_c1fe57792cc42613": [
+          "@face_3"
+        ],
+        "gedge_9350ab07a91dbbbd": [
+          "@face_1"
+        ],
+        "gedge_b0c901e498436048": [
+          "@face_1",
+          "@face_3"
+        ]
+      },
+      "diff_counts": {
+        "new_faces": 1,
+        "inherited_faces": 6,
+        "new_edges": 22,
+        "inherited_edges": 8,
+        "modified_input_faces": 4,
+        "deleted_input_faces": 0,
+        "modified_input_edges": 8,
+        "deleted_input_edges": 16
+      }
+    },
+    {
+      "name": "chamfer_d2",
+      "kind": "chamfer",
+      "box": [
+        10.0,
+        10.0,
+        10.0
+      ],
+      "value": 2.0,
+      "target_edge_hash": "gedge_0013dd02e80bd620",
+      "face_lineage_in": {
+        "gface_74c4233398de69cd": [
+          "@face_0"
+        ],
+        "gface_9d9c8f2a6abfdb9e": [
+          "@face_1"
+        ],
+        "gface_5c9d5d36c1e0b2bd": [
+          "@face_2"
+        ],
+        "gface_5e6ec6bc4d7483cf": [
+          "@face_3"
+        ],
+        "gface_82cd586681a86232": [
+          "@face_4"
+        ],
+        "gface_1d1621f08bf26afa": [
+          "@face_5"
+        ]
+      },
+      "edge_lineage_in": {
+        "gedge_967b6a6b9e52c674": [
+          "@edge_0"
+        ],
+        "gedge_84082540f6f780a6": [
+          "@edge_1"
+        ],
+        "gedge_a78188937f91e51b": [
+          "@edge_2"
+        ],
+        "gedge_9787e5608c7272fd": [
+          "@edge_3"
+        ],
+        "gedge_9e9ccf6c824d9e83": [
+          "@edge_4"
+        ],
+        "gedge_d3e23204c587551a": [
+          "@edge_5"
+        ],
+        "gedge_b0c901e498436048": [
+          "@edge_6"
+        ],
+        "gedge_b65b066277fd4861": [
+          "@edge_7"
+        ],
+        "gedge_0013dd02e80bd620": [
+          "@edge_8"
+        ],
+        "gedge_5370a6f56cefa2c3": [
+          "@edge_9"
+        ],
+        "gedge_c1fe57792cc42613": [
+          "@edge_10"
+        ],
+        "gedge_a7c7c564fc2b9c29": [
+          "@edge_11"
+        ]
+      },
+      "volume": 979.9999999999999,
+      "face_lineage_out": {
+        "gface_3b703bd608ca1c9f": [
+          "@face_0"
+        ],
+        "gface_8353bca680dfea7d": [
+          "@face_1"
+        ],
+        "gface_77c0a05705ea1a8d": [
+          "@face_2"
+        ],
+        "gface_5e6ec6bc4d7483cf": [
+          "@face_3"
+        ],
+        "gface_da48d931c2a5665b": [
+          "@face_4"
+        ],
+        "gface_1d1621f08bf26afa": [
+          "@face_5"
+        ],
+        "gface_7172228fbc17b4d2": [
+          "@edge_8"
+        ]
+      },
+      "edge_lineage_out": {
+        "gedge_84082540f6f780a6": [
+          "@face_5"
+        ],
+        "gedge_a78188937f91e51b": [
+          "@face_3"
+        ],
+        "gedge_3d2eba9e29907318": [
+          "@face_1"
+        ],
+        "gedge_5370a6f56cefa2c3": [
+          "@face_5"
+        ],
+        "gedge_4eaf6e114b9779f7": [
+          "@face_1"
+        ],
+        "gedge_a7c7c564fc2b9c29": [
+          "@face_3",
+          "@face_5"
+        ],
+        "gedge_d3e23204c587551a": [
+          "@face_1",
+          "@face_5"
+        ],
+        "gedge_c1fe57792cc42613": [
+          "@face_3"
+        ],
+        "gedge_9350ab07a91dbbbd": [
+          "@face_1"
+        ],
+        "gedge_b0c901e498436048": [
+          "@face_1",
+          "@face_3"
+        ]
+      },
+      "diff_counts": {
+        "new_faces": 1,
+        "inherited_faces": 6,
+        "new_edges": 22,
+        "inherited_edges": 8,
+        "modified_input_faces": 4,
+        "deleted_input_faces": 0,
+        "modified_input_edges": 8,
+        "deleted_input_edges": 16
+      }
+    }
+  ]
+}

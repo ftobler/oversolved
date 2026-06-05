@@ -64,6 +64,23 @@ export interface OccPipeShellBuilder extends OccPrismBuilder {
 }
 
 /**
+ * BRepFilletAPI_Make{Fillet,Chamfer}: the edge-modifier makers. They share the
+ * boolean-style history surface (IsDeleted / Modified / Generated) plus the
+ * edge-add calls. `Add_2(value, edge)` is the (radius|distance, edge) overload;
+ * `AddDA(distance, angle, edge)` is the chamfer angle-distance form.
+ */
+export interface OccEdgeModifierMaker extends OccDisposable {
+  Add_2(value: number, edge: OccShape): void
+  AddDA(distance: number, angle: number, edge: OccShape): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
+  IsDeleted(shape: OccShape): boolean
+  Modified(shape: OccShape): OccListOfShape
+  Generated(shape: OccShape): OccListOfShape
+}
+
+/**
  * BRepTools_History from a boolean op (algo.History()) or a ShapeUpgrade
  * (unify.History_1()). The `Modified`/`Generated` lists drain via
  * Size/First_1/RemoveFirst -- there is no list-iterator binding in this build.
@@ -436,6 +453,15 @@ export interface OccModule extends OccSpikeModule {
   BRepOffsetAPI_MakePipeShell: new (spine: OccShape) => OccPipeShellBuilder
   BRepBuilderAPI_TransitionMode: {
     BRepBuilderAPI_RightCorner: OccEnumValue
+  }
+
+  // --- 2f: fillet / chamfer leaf ------------------------------------------
+  /** BRepFilletAPI_MakeFillet(shape, ChFi3d_Rational): the 2-arg form. */
+  BRepFilletAPI_MakeFillet: new (shape: OccShape, fshape: OccEnumValue) => OccEdgeModifierMaker
+  /** BRepFilletAPI_MakeChamfer(shape): the 1-arg form. */
+  BRepFilletAPI_MakeChamfer: new (shape: OccShape) => OccEdgeModifierMaker
+  ChFi3d_FilletShape: {
+    ChFi3d_Rational: OccEnumValue
   }
 }
 
