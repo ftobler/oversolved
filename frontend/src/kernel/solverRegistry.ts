@@ -29,11 +29,13 @@ import { solveArray, solveCircularArray } from './features/array'
 import { solveTransform, solveMirror } from './features/transformMirror'
 import { solveDeleteBody } from './features/deleteBody'
 import { solveImportStep } from './features/importStep'
+import { solveSketch } from './features/sketch'
 
 // ── Ported kind set ──────────────────────────────────────────────────────
 
-/** Feature kinds that have a TS/WASM solver (all 13 leaf kinds). */
+/** Feature kinds that have a TS/WASM solver. */
 export const PORTED_FEATURE_KINDS = Object.freeze(new Set([
+  'sketch',
   'extrude',
   'revolve',
   'sweep',
@@ -49,9 +51,8 @@ export const PORTED_FEATURE_KINDS = Object.freeze(new Set([
   'import_step',
 ]))
 
-/** Kinds that the TS kernel cannot solve (sketches, planes, origin, etc.). */
+/** Kinds that the TS kernel cannot solve (planes, origin, etc.). */
 export const UNPORTED_KINDS = new Set([
-  'sketch',
   'plane',
   'origin',
 ])
@@ -97,6 +98,9 @@ type LeafSolver = (
 const _s = (fn: (...args: any[]) => any): LeafSolver => fn
 
 const KIND_SOLVER: Record<string, LeafSolver> = {
+  sketch: _s((_oc, _scope, _table, feature: Record<string, unknown>, globalRepo: Repository, bodyStore: Record<string, Body>) =>
+    solveSketch(feature, globalRepo, bodyStore),
+  ),
   extrude: _s(solveExtrude),
   revolve: _s(solveRevolve),
   sweep: _s(solveSweep),

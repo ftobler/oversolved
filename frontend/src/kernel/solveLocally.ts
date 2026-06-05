@@ -11,6 +11,7 @@
 import { build, type BuildDeps, type BuildResponse } from './builder'
 import { Repository } from './query'
 import { createFeatureSolver } from './solverRegistry'
+import { initSketchSolver } from './features/sketch'
 import { loadOccWeb } from './occ/loadOccWeb'
 import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
@@ -86,6 +87,10 @@ export async function solveLocally(
     return null
   }
   console.log('[solveLocally] OCC.js loaded, running build()')
+
+  // Pre-load the Rust sketch solver (fire-and-forget — if absent, sketch
+  // features will throw and the builder catches them).
+  void initSketchSolver()
 
   const scope = new DisposeScope()
   const table = new HandleTable({ finalizerGuard: false })
