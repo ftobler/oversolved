@@ -1,0 +1,375 @@
+{
+  "cases": [
+    {
+      "name": "array_linear_add",
+      "kind": "array",
+      "feature_id": "arr1",
+      "source_spec": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          4.0,
+          4.0,
+          4.0
+        ]
+      ],
+      "sub": {
+        "source_body": "body_s",
+        "mode": "linear",
+        "count_x": 3,
+        "pitch_x": 3.0,
+        "direction_x": [
+          1,
+          0,
+          0
+        ],
+        "include_source": true,
+        "operation": "add"
+      },
+      "register_plane": false,
+      "result": {
+        "status": "ok",
+        "body_id": "body_s",
+        "operation": "add"
+      },
+      "store": {
+        "body_s": {
+          "volume": 159.99999999999997,
+          "created_by": "ex_s",
+          "modified_by": [
+            "arr1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "array_linear_new",
+      "kind": "array",
+      "feature_id": "arr2",
+      "source_spec": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          4.0,
+          4.0,
+          4.0
+        ]
+      ],
+      "sub": {
+        "source_body": "body_s",
+        "mode": "linear",
+        "count_x": 3,
+        "pitch_x": 10.0,
+        "direction_x": [
+          1,
+          0,
+          0
+        ],
+        "include_source": true,
+        "operation": "new"
+      },
+      "register_plane": false,
+      "result": {
+        "status": "ok",
+        "body_id": "body_arr2",
+        "operation": "new"
+      },
+      "store": {
+        "body_arr2": {
+          "volume": 63.999999999999986,
+          "created_by": "arr2",
+          "modified_by": []
+        },
+        "body_arr2_1": {
+          "volume": 63.999999999999986,
+          "created_by": "arr2",
+          "modified_by": []
+        },
+        "body_arr2_2": {
+          "volume": 63.999999999999986,
+          "created_by": "arr2",
+          "modified_by": []
+        },
+        "body_s": {
+          "volume": 63.999999999999986,
+          "created_by": "ex_s",
+          "modified_by": []
+        }
+      }
+    },
+    {
+      "name": "circular_add",
+      "kind": "circular_array",
+      "feature_id": "ca1",
+      "source_spec": [
+        [
+          5.0,
+          -2.0,
+          -2.0
+        ],
+        [
+          4.0,
+          4.0,
+          4.0
+        ]
+      ],
+      "sub": {
+        "source_body": "body_s",
+        "count": 4,
+        "step_angle": 90.0,
+        "axis_origin": [
+          0,
+          0,
+          0
+        ],
+        "axis_direction": [
+          0,
+          0,
+          1
+        ],
+        "include_source": true,
+        "operation": "add"
+      },
+      "register_plane": false,
+      "result": {
+        "status": "ok",
+        "body_id": "body_s",
+        "operation": "add"
+      },
+      "store": {
+        "body_s": {
+          "volume": 255.9999999999999,
+          "created_by": "ex_s",
+          "modified_by": [
+            "ca1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "transform_translate_new",
+      "kind": "transform",
+      "feature_id": "tr1",
+      "source_spec": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          4.0,
+          4.0,
+          4.0
+        ]
+      ],
+      "sub": {
+        "body": "body_s",
+        "translation": [
+          10.0,
+          0.0,
+          0.0
+        ],
+        "operation": "new"
+      },
+      "register_plane": false,
+      "result": {
+        "status": "ok",
+        "body_id": "body_tr1",
+        "operation": "new"
+      },
+      "store": {
+        "body_s": {
+          "volume": 63.999999999999986,
+          "created_by": "ex_s",
+          "modified_by": []
+        },
+        "body_tr1": {
+          "volume": 63.999999999999986,
+          "created_by": "tr1",
+          "modified_by": []
+        }
+      }
+    },
+    {
+      "name": "transform_rotate_replace",
+      "kind": "transform",
+      "feature_id": "tr2",
+      "source_spec": [
+        [
+          2.0,
+          0.0,
+          0.0
+        ],
+        [
+          4.0,
+          4.0,
+          4.0
+        ]
+      ],
+      "sub": {
+        "body": "body_s",
+        "rotation_angle": 90.0,
+        "rotation_axis_origin": [
+          0,
+          0,
+          0
+        ],
+        "rotation_axis_direction": [
+          0,
+          0,
+          1
+        ],
+        "operation": "replace"
+      },
+      "register_plane": false,
+      "result": {
+        "status": "ok",
+        "body_id": "body_s",
+        "operation": "replace"
+      },
+      "store": {
+        "body_s": {
+          "volume": 63.999999999999986,
+          "created_by": "ex_s",
+          "modified_by": [
+            "tr2"
+          ]
+        }
+      }
+    },
+    {
+      "name": "transform_scale_new",
+      "kind": "transform",
+      "feature_id": "tr3",
+      "source_spec": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          4.0,
+          4.0,
+          4.0
+        ]
+      ],
+      "sub": {
+        "body": "body_s",
+        "scale": 2.0,
+        "scale_center": [
+          0,
+          0,
+          0
+        ],
+        "operation": "new"
+      },
+      "register_plane": false,
+      "result": {
+        "status": "ok",
+        "body_id": "body_tr3",
+        "operation": "new"
+      },
+      "store": {
+        "body_s": {
+          "volume": 63.999999999999986,
+          "created_by": "ex_s",
+          "modified_by": []
+        },
+        "body_tr3": {
+          "volume": 511.9999999999999,
+          "created_by": "tr3",
+          "modified_by": []
+        }
+      }
+    },
+    {
+      "name": "mirror_merge",
+      "kind": "mirror",
+      "feature_id": "mi1",
+      "source_spec": [
+        [
+          2.0,
+          2.0,
+          2.0
+        ],
+        [
+          4.0,
+          4.0,
+          4.0
+        ]
+      ],
+      "sub": {
+        "body": "body_s",
+        "plane": "@builtin_plane_front",
+        "merge": true,
+        "keep_original": true
+      },
+      "register_plane": true,
+      "result": {
+        "status": "ok",
+        "body_id": "body_s",
+        "operation": "merge"
+      },
+      "store": {
+        "body_s": {
+          "volume": 127.99999999999994,
+          "created_by": "ex_s",
+          "modified_by": [
+            "mi1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "mirror_new",
+      "kind": "mirror",
+      "feature_id": "mi2",
+      "source_spec": [
+        [
+          2.0,
+          2.0,
+          2.0
+        ],
+        [
+          4.0,
+          4.0,
+          4.0
+        ]
+      ],
+      "sub": {
+        "body": "body_s",
+        "plane": "@builtin_plane_front",
+        "merge": false,
+        "keep_original": true
+      },
+      "register_plane": true,
+      "result": {
+        "status": "ok",
+        "body_id": "body_mi2",
+        "body_ids": [
+          "body_s",
+          "body_mi2"
+        ],
+        "operation": "new"
+      },
+      "store": {
+        "body_mi2": {
+          "volume": 63.999999999999986,
+          "created_by": "mi2",
+          "modified_by": []
+        },
+        "body_s": {
+          "volume": 63.999999999999986,
+          "created_by": "ex_s",
+          "modified_by": []
+        }
+      }
+    }
+  ]
+}

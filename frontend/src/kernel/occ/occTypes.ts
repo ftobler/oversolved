@@ -133,8 +133,6 @@ export interface OccPntValue extends OccXYZ {
   Transformed(trsf: OccTrsf): OccPntValue
 }
 
-export type OccTrsf = OccDisposable
-
 /** Embind enum value carrying a numeric `.value`. */
 export interface OccEnumValue {
   value: number
@@ -465,9 +463,32 @@ export interface OccModule extends OccSpikeModule {
   ChFi3d_FilletShape: {
     ChFi3d_Rational: OccEnumValue
   }
+
+  // --- 2f: transform / mirror / array group -------------------------------
+  gp_Trsf_1: new () => OccTrsf
+  /** BRepBuilderAPI_Transform(shape, trsf, copy): apply a gp_Trsf to a shape. */
+  BRepBuilderAPI_Transform_2: new (shape: OccShape, trsf: OccTrsf, copy: boolean) => OccTransformBuilder
 }
 
 /** A face shape exposes its orientation (FORWARD/REVERSED) via Orientation_1. */
 export interface OccOrientedShape extends OccShape {
   Orientation_1(): OccEnumValue
+}
+
+/**
+ * gp_Trsf: a rigid/scale transform. `Multiply(T)` composes in place (this = this
+ * * T), mirroring Python's `combined.Multiply(...)`. SetMirror_3 mirrors across
+ * the plane of a gp_Ax2.
+ */
+export interface OccTrsf extends OccDisposable {
+  SetTranslation_1(vec: OccVec): void
+  SetRotation_1(axis: OccDisposable, angle: number): void
+  SetScale(center: OccPnt, factor: number): void
+  SetMirror_3(ax2: OccDisposable): void
+  Multiply(other: OccTrsf): void
+}
+
+export interface OccTransformBuilder extends OccDisposable {
+  Build(): void
+  Shape(): OccShape
 }
