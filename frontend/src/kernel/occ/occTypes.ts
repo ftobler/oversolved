@@ -44,6 +44,42 @@ export interface OccListOfShape extends OccDisposable {
   Size(): number
   First_1(): OccShape
   RemoveFirst(): void
+  Append_1(s: OccShape): void
+}
+
+/**
+ * BRepTools_History from a boolean op (algo.History()) or a ShapeUpgrade
+ * (unify.History_1()). The `Modified`/`Generated` lists drain via
+ * Size/First_1/RemoveFirst -- there is no list-iterator binding in this build.
+ */
+export interface OccHistory extends OccDisposable {
+  IsRemoved(s: OccShape): boolean
+  Modified(s: OccShape): OccListOfShape
+}
+
+/** A Handle_BRepTools_History; `.get()` yields the History object. */
+export interface OccHistoryHandle extends OccDisposable {
+  get(): OccHistory
+}
+
+/** BRepAlgoAPI_Cut/Fuse/Common: the history-aware boolean operation. */
+export interface OccBooleanOp extends OccDisposable {
+  SetArguments(args: OccListOfShape): void
+  SetTools(tools: OccListOfShape): void
+  SetToFillHistory(fill: boolean): void
+  Build(): void
+  IsDone(): boolean
+  HasHistory(): boolean
+  History(): OccHistoryHandle
+  Shape(): OccShape
+}
+
+/** ShapeUpgrade_UnifySameDomain: cadquery Shape.clean() with exposed history. */
+export interface OccUnify extends OccDisposable {
+  AllowInternalEdges(allow: boolean): void
+  Build(): void
+  Shape(): OccShape
+  History_1(): OccHistoryHandle
 }
 
 export interface OccExplorer extends OccDisposable {
@@ -229,12 +265,14 @@ export interface OccModule extends OccSpikeModule {
     TopAbs_FACE: OccShapeEnumValue
     TopAbs_EDGE: OccShapeEnumValue
     TopAbs_VERTEX: OccShapeEnumValue
+    TopAbs_SOLID: OccShapeEnumValue
     TopAbs_SHAPE: OccShapeEnumValue
   }
   TopoDS: {
     Face_1(shape: OccShape): OccShape
     Edge_1(shape: OccShape): OccShape
     Vertex_1(shape: OccShape): OccShape
+    Solid_1(shape: OccShape): OccShape
   }
   BRepAdaptor_Curve_2: new (edge: OccShape) => OccCurveAdaptor
   GeomAbs_CurveType: {
@@ -272,6 +310,14 @@ export interface OccModule extends OccSpikeModule {
       skipShared: boolean,
       useTriangulation: boolean,
     ): void
+    /** Volume of a (closed) shape; mirrors cadquery Solid.Volume. */
+    VolumeProperties_1(
+      shape: OccShape,
+      props: OccGProps,
+      onlyClosed: boolean,
+      skipShared: boolean,
+      useTriangulation: boolean,
+    ): void
   }
   BRepAdaptor_Surface_2: new (face: OccShape, restriction: boolean) => OccSurfaceAdaptor
   BRepLProp_SLProps_1: new (
@@ -296,6 +342,18 @@ export interface OccModule extends OccSpikeModule {
   BRepBndLib: {
     Add_s(shape: OccShape, box: OccDisposable, useTriangulation: boolean): void
   }
+
+  // --- 2e: boolean ops + history + clean ----------------------------------
+  BRepAlgoAPI_Cut_1: new () => OccBooleanOp
+  BRepAlgoAPI_Fuse_1: new () => OccBooleanOp
+  BRepAlgoAPI_Common_1: new () => OccBooleanOp
+  TopTools_ListOfShape_1: new () => OccListOfShape
+  ShapeUpgrade_UnifySameDomain_2: new (
+    shape: OccShape,
+    unifyEdges: boolean,
+    unifyFaces: boolean,
+    concatBSplines: boolean,
+  ) => OccUnify
 }
 
 /** A face shape exposes its orientation (FORWARD/REVERSED) via Orientation_1. */

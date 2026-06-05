@@ -132,6 +132,9 @@ export function makeFakeOcc(): FakeOccModule {
     RemoveFirst(): void {
       if (this.n > 0) this.n--
     }
+    Append_1(): void {
+      this.n++
+    }
     delete(): void {
       this.d.delete()
     }

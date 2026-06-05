@@ -1,0 +1,60 @@
+{
+  "target": [
+    10.0,
+    10.0,
+    10.0
+  ],
+  "tool": [
+    4.0,
+    4.0,
+    4.0
+  ],
+  "cut": {
+    "diff": {
+      "new_faces": 3,
+      "inherited_faces": 6,
+      "new_edges": 18,
+      "inherited_edges": 24,
+      "modified_input_faces": 3,
+      "deleted_input_faces": 3,
+      "modified_input_edges": 18,
+      "deleted_input_edges": 6
+    },
+    "volume": 935.9999999999999,
+    "result_faces": 9,
+    "result_edges": 42,
+    "result_solids": 1
+  },
+  "fuse": {
+    "diff": {
+      "new_faces": 0,
+      "inherited_faces": 6,
+      "new_edges": 0,
+      "inherited_edges": 24,
+      "modified_input_faces": 6,
+      "deleted_input_faces": 3,
+      "modified_input_edges": 24,
+      "deleted_input_edges": 6
+    },
+    "volume": 999.9999999999998,
+    "result_faces": 6,
+    "result_edges": 24,
+    "result_solids": 1
+  },
+  "common": {
+    "diff": {
+      "new_faces": 3,
+      "inherited_faces": 3,
+      "new_edges": 18,
+      "inherited_edges": 6,
+      "modified_input_faces": 6,
+      "deleted_input_faces": 3,
+      "modified_input_edges": 24,
+      "deleted_input_edges": 18
+    },
+    "volume": 63.999999999999986,
+    "result_faces": 6,
+    "result_edges": 24,
+    "result_solids": 1
+  }
+}
