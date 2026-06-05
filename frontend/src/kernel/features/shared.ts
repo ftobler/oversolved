@@ -323,7 +323,7 @@ export function brepDiffIsEmpty(diff: BrepDiff | null): boolean {
 // ─── Direction / axis queries ───
 
 /** Transform 2D sketch coords to 3D world space (mirrors `_sketch_to_world_2d`). */
-function sketchToWorld2d(xy: number[], plane: PlaneLike): number[] {
+export function sketchToWorld2d(xy: number[], plane: PlaneLike): number[] {
   const [u, v] = xy
   return [
     plane.origin[0] + u * plane.x_axis[0] + v * plane.y_axis[0],

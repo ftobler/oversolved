@@ -366,3 +366,64 @@ export function extrudeProfileWithLineage(
   if (solid === null) throw new Error('no loops to extrude')
   return { solid, faceLineage, edgeLineage }
 }
+
+// ─── revolve (the revolve leaf's brep producer) ───
+
+function makeAxis(oc: OccModule, scope: DisposeScope, origin: Vec3, direction: Vec3): OccShape {
+  return scope.track(
+    new oc.gp_Ax1_2(
+      scope.track(new oc.gp_Pnt_3(origin[0], origin[1], origin[2])),
+      scope.track(new oc.gp_Dir_4(direction[0], direction[1], direction[2])),
+    ),
+  ) as unknown as OccShape
+}
+
+/**
+ * Revolve a single face around an axis (mirrors `revolve_face` / `ocp_revolve`).
+ * Returns the raw solid living in `scope`; the caller owns its lifetime.
+ */
+export function revolveFace(
+  oc: OccModule,
+  scope: DisposeScope,
+  face: OccShape,
+  axisOrigin: Vec3,
+  axisDirection: Vec3,
+  angleDeg: number,
+): OccShape {
+  if (angleDeg === 0) throw new Error('revolve angle must be non-zero')
+  const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
+  const builder = scope.track(
+    new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, (angleDeg * Math.PI) / 180, true),
+  )
+  return builder.Shape()
+}
+
+/**
+ * Revolve profile loops around an axis and return (solid, faceLineage,
+ * edgeLineage) (mirrors `revolve_profile_with_lineage`). Unlike extrude, revolve
+ * treats `loops` as one face (loops[0] outer, the rest holes) -- no disjoint-group
+ * fan-out -- and uses BRepPrimAPI_MakeRevol.Generated() for lineage. Tokens are
+ * `@sketch_id/entity`.
+ */
+export function revolveProfileWithLineage(
+  oc: OccModule,
+  scope: DisposeScope,
+  loops: LoopEdge[][],
+  plane: PlaneLike,
+  axisOrigin: Vec3,
+  axisDirection: Vec3,
+  angleDeg: number,
+  sketchId = '',
+): { solid: OccShape; faceLineage: Record<string, string[]>; edgeLineage: Record<string, string[]> } {
+  const face = sketchLoopsToFace(oc, scope, loops, plane)
+  const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
+  const builder = scope.track(
+    new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, (angleDeg * Math.PI) / 180, true),
+  )
+  const solid = builder.Shape()
+  const lineage = buildPrismLineageMap(oc, scope, face, builder, loops, plane)
+  const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
+  prefixTokens(lineage.faceLineage, tokenPrefix)
+  prefixTokens(lineage.edgeLineage, tokenPrefix)
+  return { solid, faceLineage: lineage.faceLineage, edgeLineage: lineage.edgeLineage }
+}

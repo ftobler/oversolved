@@ -1,0 +1,280 @@
+{
+  "cases": [
+    {
+      "name": "full",
+      "loops": [
+        [
+          {
+            "id": "e1",
+            "kind": "line",
+            "start": [
+              2.0,
+              0.0
+            ],
+            "end": [
+              5.0,
+              0.0
+            ]
+          },
+          {
+            "id": "e2",
+            "kind": "line",
+            "start": [
+              5.0,
+              0.0
+            ],
+            "end": [
+              5.0,
+              4.0
+            ]
+          },
+          {
+            "id": "e3",
+            "kind": "line",
+            "start": [
+              5.0,
+              4.0
+            ],
+            "end": [
+              2.0,
+              4.0
+            ]
+          },
+          {
+            "id": "e4",
+            "kind": "line",
+            "start": [
+              2.0,
+              4.0
+            ],
+            "end": [
+              2.0,
+              0.0
+            ]
+          }
+        ]
+      ],
+      "plane": {
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "x_axis": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "y_axis": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "axis_origin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "angle": 360.0,
+      "sketch_id": "sk1",
+      "volume": 263.8937829015426,
+      "face_lineage": {
+        "gface_abccd26fcc1c0756": [
+          "@sk1/e1"
+        ],
+        "gface_0a110db0a889ae68": [
+          "@sk1/e2"
+        ],
+        "gface_600f22a122c1828e": [
+          "@sk1/e3"
+        ],
+        "gface_86951b3e74a040a3": [
+          "@sk1/e4"
+        ]
+      },
+      "edge_lineage": {
+        "gedge_d8a0dbefafbe9d82": [
+          "@sk1/e1",
+          "@sk1/e4"
+        ],
+        "gedge_fdedd7977023dbcf": [
+          "@sk1/e1",
+          "@sk1/e2"
+        ],
+        "gedge_5d6fc2115d8e8450": [
+          "@sk1/e2",
+          "@sk1/e3"
+        ],
+        "gedge_fd5be6a862efa919": [
+          "@sk1/e2"
+        ],
+        "gedge_6ce11904bc8c9028": [
+          "@sk1/e3",
+          "@sk1/e4"
+        ],
+        "gedge_4d9b215060416968": [
+          "@sk1/e4"
+        ]
+      }
+    },
+    {
+      "name": "wedge",
+      "loops": [
+        [
+          {
+            "id": "e1",
+            "kind": "line",
+            "start": [
+              2.0,
+              0.0
+            ],
+            "end": [
+              5.0,
+              0.0
+            ]
+          },
+          {
+            "id": "e2",
+            "kind": "line",
+            "start": [
+              5.0,
+              0.0
+            ],
+            "end": [
+              5.0,
+              4.0
+            ]
+          },
+          {
+            "id": "e3",
+            "kind": "line",
+            "start": [
+              5.0,
+              4.0
+            ],
+            "end": [
+              2.0,
+              4.0
+            ]
+          },
+          {
+            "id": "e4",
+            "kind": "line",
+            "start": [
+              2.0,
+              4.0
+            ],
+            "end": [
+              2.0,
+              0.0
+            ]
+          }
+        ]
+      ],
+      "plane": {
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "x_axis": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "y_axis": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "axis_origin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "angle": 90.0,
+      "sketch_id": "sk2",
+      "volume": 65.97344572538566,
+      "face_lineage": {
+        "gface_1826a49098feef6b": [
+          "@sk2/e1"
+        ],
+        "gface_d3d3901a1cf8d3ea": [
+          "@sk2/e2"
+        ],
+        "gface_fe22c09cc18eadab": [
+          "@sk2/e3"
+        ],
+        "gface_a457bc03fec01cd0": [
+          "@sk2/e4"
+        ],
+        "gface_038be2585677eeec": [],
+        "gface_31277f16edbc1956": []
+      },
+      "edge_lineage": {
+        "gedge_4f86e78e43be6464": [
+          "@sk2/e1",
+          "@sk2/e4"
+        ],
+        "gedge_4074580d9311d908": [
+          "@sk2/e1",
+          "@sk2/e2"
+        ],
+        "gedge_72a177dc62e6c98b": [
+          "@sk2/e1"
+        ],
+        "gedge_cdc40acfbb7b90bb": [
+          "@sk2/e1"
+        ],
+        "gedge_9448bf87e22378ec": [
+          "@sk2/e2",
+          "@sk2/e3"
+        ],
+        "gedge_fd5be6a862efa919": [
+          "@sk2/e2"
+        ],
+        "gedge_08f1341a68e71ae1": [
+          "@sk2/e2"
+        ],
+        "gedge_69159c2a792d9487": [
+          "@sk2/e3",
+          "@sk2/e4"
+        ],
+        "gedge_4d21de29201fe980": [
+          "@sk2/e3"
+        ],
+        "gedge_0cda625aa553ab9d": [
+          "@sk2/e3"
+        ],
+        "gedge_4d9b215060416968": [
+          "@sk2/e4"
+        ],
+        "gedge_e0bc376931b96e17": [
+          "@sk2/e4"
+        ]
+      }
+    }
+  ]
+}

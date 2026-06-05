@@ -405,6 +405,17 @@ export interface OccModule extends OccSpikeModule {
   }
   BRepTools_WireExplorer_3: new (wire: OccShape, face: OccShape) => OccWireExplorer
   BRepAdaptor_Curve2d_2: new (edge: OccShape, face: OccShape) => OccCurve2dAdaptor
+
+  // --- 2f: revolve leaf ---------------------------------------------------
+  /** gp_Ax1(location, direction): the axis a revolve sweeps around. */
+  gp_Ax1_2: new (origin: OccPnt, direction: OccXYZ) => OccDisposable
+  /** BRepPrimAPI_MakeRevol(profile, axis, angleRad, copy): the 4-arg form. */
+  BRepPrimAPI_MakeRevol_1: new (
+    profile: OccShape,
+    axis: OccDisposable,
+    angle: number,
+    copy: boolean,
+  ) => OccPrismBuilder
 }
 
 /** A face shape exposes its orientation (FORWARD/REVERSED) via Orientation_1. */
