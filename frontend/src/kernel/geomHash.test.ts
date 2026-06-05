@@ -1,0 +1,118 @@
+import { describe, it, expect } from "vitest"
+import fixture from "./occ/__fixtures__/geomHashes.json"
+import {
+  pyRound4Str,
+  faceGeometryHash,
+  faceNormalHash,
+  edgeGeometryHash,
+  vertexGeometryHash,
+  geometryClassifiers,
+  isGeomKeyedLineage,
+} from "./geomHash"
+import { sha256Hex } from "./sha256"
+
+// The cross-language hash parity gate for phase 2c: every digest the TS kernel
+// computes must match the Python kernel byte-for-byte. The fixture is generated
+// by tests/wasm_harness/gen_geomhash_fixture.py.
+
+describe("sha256Hex", () => {
+  it("matches known FIPS-180-4 vectors", () => {
+    expect(sha256Hex("")).toBe(
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    )
+    expect(sha256Hex("abc")).toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    )
+  })
+})
+
+describe("pyRound4Str matches CPython str(round(v, 4))", () => {
+  const cases: [number, string][] = [
+    [5.0, "5.0"],
+    [-1.0, "-1.0"],
+    [0.0, "0.0"],
+    [-0.0, "-0.0"],
+    [0.12345, "0.1235"],
+    [0.123449999, "0.1234"],
+    [2.675, "2.675"],
+    [-2.675, "-2.675"],
+    [0.00004, "0.0"],
+    [0.00006, "0.0001"],
+    [-0.00006, "-0.0001"],
+    [1234567.89012, "1234567.8901"],
+    [0.1, "0.1"],
+    [0.30000000000000004, "0.3"],
+    [123.45605, "123.4561"],
+    [-0.0001, "-0.0001"],
+    [99999.99995, "99999.9999"],
+    [1.0000000001, "1.0"],
+  ]
+  for (const [v, want] of cases) {
+    it(`${v} -> ${want}`, () => expect(pyRound4Str(v)).toBe(want))
+  }
+})
+
+describe("face hashes match Python", () => {
+  for (const c of fixture.faces) {
+    it(`face ${c.face_geometry_hash}`, () => {
+      expect(faceGeometryHash(c.centroid, c.normal)).toBe(c.face_geometry_hash)
+      expect(faceNormalHash(c.normal)).toBe(c.face_normal_hash)
+    })
+  }
+})
+
+describe("edge hashes match Python", () => {
+  for (const c of fixture.edges) {
+    it(`edge ${c.edge.kind} ${c.edge_geometry_hash}`, () => {
+      expect(edgeGeometryHash(c.edge as Record<string, unknown>)).toBe(c.edge_geometry_hash)
+    })
+  }
+
+  it("throws when an arc lacks center/radius", () => {
+    expect(() => edgeGeometryHash({ kind: "arc", angle_start_deg: 0, angle_end_deg: 90 })).toThrow(
+      /arc edge missing/,
+    )
+  })
+})
+
+describe("vertex hashes match Python", () => {
+  for (const c of fixture.vertices) {
+    it(`vertex ${c.vertex_geometry_hash}`, () => {
+      expect(vertexGeometryHash(c.pt)).toBe(c.vertex_geometry_hash)
+    })
+  }
+})
+
+describe("geometry classifiers match Python", () => {
+  for (const c of fixture.classifiers) {
+    it(`classifiers ${JSON.stringify(c.classifiers)}`, () => {
+      expect(geometryClassifiers(c.point, c.center, c.half_extents)).toEqual(c.classifiers)
+    })
+  }
+})
+
+// JSON cannot carry negative zero (the bundler's JSON loader folds -0.0 to 0),
+// so the -0 -> "-0.0" path is gated against hardcoded Python references here.
+describe("negative-zero parity (Python str(-0.0) == '-0.0')", () => {
+  it("face", () => {
+    expect(faceGeometryHash([-0, 0.00004, 0.00006], [-0.00006, 1.0000000001, 0.0])).toBe(
+      "gface_8184560a28c2480f",
+    )
+  })
+  it("vertex", () => {
+    expect(vertexGeometryHash([-0, 1.5, -0])).toBe("gvertex_536bafde7ea2b0b9")
+  })
+  it("edge line", () => {
+    expect(
+      edgeGeometryHash({ kind: "line", start: [-0, 2.25, -7.125], end: [3.33333, 4.44444, 5.55555] }),
+    ).toBe("gedge_38cf3eef30784d47")
+  })
+})
+
+describe("isGeomKeyedLineage matches Python", () => {
+  for (const c of fixture.geom_keyed_lineage) {
+    it(`${JSON.stringify(c.lineage)} / ${c.prefix} -> ${c.expected}`, () => {
+      expect(isGeomKeyedLineage(c.lineage, c.prefix)).toBe(c.expected)
+    })
+  }
+})

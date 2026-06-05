@@ -1,0 +1,378 @@
+{
+  "faces": [
+    {
+      "centroid": [
+        5.0,
+        5.0,
+        0.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "face_geometry_hash": "gface_1d01db5eadca7654",
+      "face_normal_hash": "gnormal_df22ece7807f55b8"
+    },
+    {
+      "centroid": [
+        -2.675,
+        0.12345,
+        99999.99995
+      ],
+      "normal": [
+        0.5773502691896258,
+        0.5773502691896258,
+        0.5773502691896258
+      ],
+      "face_geometry_hash": "gface_42206cdccd7a3f9e",
+      "face_normal_hash": "gnormal_5e2d74b92e4331d2"
+    },
+    {
+      "centroid": [
+        -1.25,
+        4e-05,
+        6e-05
+      ],
+      "normal": [
+        -6e-05,
+        1.0000000001,
+        0.0
+      ],
+      "face_geometry_hash": "gface_00c479a45628f47d",
+      "face_normal_hash": "gnormal_54ee6a561c66051f"
+    },
+    {
+      "centroid": [
+        1234567.89012,
+        0.123449999,
+        123.45605
+      ],
+      "normal": [
+        0.0,
+        -0.0001,
+        0.7071067811865476
+      ],
+      "face_geometry_hash": "gface_e7a4b86ee74b6bb1",
+      "face_normal_hash": "gnormal_42dd5bd6a6c1c6f5"
+    }
+  ],
+  "edges": [
+    {
+      "edge": {
+        "kind": "line",
+        "start": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "end": [
+          10.0,
+          0.0,
+          0.0
+        ]
+      },
+      "edge_geometry_hash": "gedge_0013dd02e80bd620"
+    },
+    {
+      "edge": {
+        "kind": "line",
+        "start": [
+          -1.5,
+          2.25,
+          -7.125
+        ],
+        "end": [
+          3.33333,
+          4.44444,
+          5.55555
+        ]
+      },
+      "edge_geometry_hash": "gedge_bea3ef10828b7a26"
+    },
+    {
+      "edge": {
+        "kind": "circle",
+        "radius": 3.0,
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "edge_geometry_hash": "gedge_fdfdc423d26e55f9"
+    },
+    {
+      "edge": {
+        "kind": "circle",
+        "radius": 2.675,
+        "center": [
+          -2.675,
+          6e-05,
+          99999.99995
+        ]
+      },
+      "edge_geometry_hash": "gedge_a73a821123b3e778"
+    },
+    {
+      "edge": {
+        "kind": "arc",
+        "radius": 5.0,
+        "center": [
+          1.0,
+          2.0,
+          3.0
+        ],
+        "angle_start_deg": 0.0,
+        "angle_end_deg": 180.0,
+        "axis": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "x_axis": [
+          1.0,
+          0.0,
+          0.0
+        ]
+      },
+      "edge_geometry_hash": "gedge_0acff812de83da00"
+    },
+    {
+      "edge": {
+        "kind": "arc",
+        "radius": 5.0,
+        "center": [
+          1.0,
+          2.0,
+          3.0
+        ],
+        "angle_start": 0.0,
+        "angle_end": 3.141592653589793,
+        "axis": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "x_axis": [
+          -1.0,
+          0.0,
+          0.0
+        ]
+      },
+      "edge_geometry_hash": "gedge_a7d9c330435f4d35"
+    },
+    {
+      "edge": {
+        "kind": "arc",
+        "radius": 1.5,
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angle_start_deg": 45.0,
+        "angle_end_deg": 135.0
+      },
+      "edge_geometry_hash": "gedge_951d57b777d8efeb"
+    },
+    {
+      "edge": {
+        "kind": "spline",
+        "curve_data": {
+          "control_points": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              1.0,
+              2.0,
+              0.0
+            ],
+            [
+              3.3333,
+              -4.4444,
+              5.5555
+            ]
+          ],
+          "knots": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "periodic": false,
+          "rational": true,
+          "type": "BSpline"
+        }
+      },
+      "edge_geometry_hash": "gedge_e34fb94dc078b7be"
+    },
+    {
+      "edge": {
+        "kind": "spline",
+        "points": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            1.1111,
+            2.2222,
+            3.3333
+          ]
+        ]
+      },
+      "edge_geometry_hash": "gedge_bdca73227ff59e71"
+    },
+    {
+      "edge": {
+        "kind": "mystery"
+      },
+      "edge_geometry_hash": "gedge_25f7d7195cc87105"
+    }
+  ],
+  "vertices": [
+    {
+      "pt": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vertex_geometry_hash": "gvertex_e0c8b95630a205d8"
+    },
+    {
+      "pt": [
+        -3.5,
+        4e-05,
+        6e-05
+      ],
+      "vertex_geometry_hash": "gvertex_510950f2fa82c75e"
+    },
+    {
+      "pt": [
+        1234567.89012,
+        -2.675,
+        0.12345
+      ],
+      "vertex_geometry_hash": "gvertex_e3a6320fe607c8c2"
+    }
+  ],
+  "classifiers": [
+    {
+      "point": [
+        10.0,
+        0.0,
+        5.0
+      ],
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "half_extents": [
+        10.0,
+        10.0,
+        5.0
+      ],
+      "classifiers": [
+        "cls_xp",
+        "cls_zp"
+      ]
+    },
+    {
+      "point": [
+        -10.0,
+        -10.0,
+        -5.0
+      ],
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "half_extents": [
+        10.0,
+        10.0,
+        5.0
+      ],
+      "classifiers": [
+        "cls_xn",
+        "cls_yn",
+        "cls_zn"
+      ]
+    },
+    {
+      "point": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "half_extents": [
+        10.0,
+        0.0,
+        5.0
+      ],
+      "classifiers": []
+    },
+    {
+      "point": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "half_extents": [
+        10.0,
+        10.0,
+        10.0
+      ],
+      "classifiers": []
+    }
+  ],
+  "geom_keyed_lineage": [
+    {
+      "lineage": {
+        "gface_abc": 1
+      },
+      "prefix": "gface_",
+      "expected": true
+    },
+    {
+      "lineage": {
+        "gedge_abc": 1
+      },
+      "prefix": "gface_",
+      "expected": false
+    },
+    {
+      "lineage": {
+        "123": 1
+      },
+      "prefix": "gedge_",
+      "expected": false
+    },
+    {
+      "lineage": {},
+      "prefix": "gface_",
+      "expected": false
+    },
+    {
+      "lineage": null,
+      "prefix": "gface_",
+      "expected": false
+    }
+  ]
+}
