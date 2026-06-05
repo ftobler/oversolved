@@ -1,39 +1,79 @@
 /**
- * Browser/Worker loader for opencascade.js, mirroring `solverWasm.ts`.
+ * Browser loader for opencascade.js via dynamic script injection.
  *
- * The OCC module is a heavy, opt-in, gitignored artifact served at a
- * configurable base URL (default `/occ/`); it is NOT bundled. The dynamic
- * import is `@vite-ignore`d so `vite build` never tries to resolve it. When it
- * is absent this resolves to `null` and the caller degrades gracefully rather
- * than breaking.
+ * The Emscripten build is a classic IIFE script (not an ES module), so it
+ * must be loaded via a ``<script>`` tag. It sets ``window.opencascade`` as a
+ * factory function; we call it with ``locateFile`` to point at the .wasm.
  *
- * Provisioning the served artifact (copying `opencascade.wasm.js` +
- * `opencascade.wasm.wasm` under `public/occ/` and pointing the JS at the wasm)
- * is a later shard; this loader pins the seam. The headless node loader
- * (`loadOcc.ts`) is what the spike tests actually exercise today.
+ * The artifact is a heavy, opt-in, gitignored file served under ``/occ/``;
+ * it is NOT bundled. Provision with:
+ *
+ *   npm run occ:install && npm run occ:provision
  */
 
 import type { OccModule } from './occTypes'
-
-type OccFactory = (config: {
-  locateFile: (path: string) => string
-}) => Promise<OccModule>
 
 const DEFAULT_BASE = '/occ/'
 
 let cached: Promise<OccModule | null> | null = null
 
 export function loadOccWeb(base: string = DEFAULT_BASE): Promise<OccModule | null> {
-  if (cached) return cached
+  if (cached) {
+    console.log('[loadOccWeb] returning cached promise')
+    return cached
+  }
+  // Skip in test environments (jsdom has no network layer for script fetches).
+  if (import.meta.env.MODE === 'test') {
+    console.log('[loadOccWeb] test environment, skipping')
+    return Promise.resolve(null)
+  }
+  console.log('[loadOccWeb] starting load from', base)
   cached = (async () => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
     try {
-      const mod = (await import(/* @vite-ignore */ `${base}opencascade.wasm.js`)) as {
-        default: OccFactory
+      const w = window as any
+
+      if (w.opencascade) {
+        console.log('[loadOccWeb] window.opencascade already present, calling factory')
+        return await (w.opencascade as any)({
+          locateFile: (p: string) => (p.endsWith('.wasm') ? `${base}opencascade.wasm.wasm` : p),
+        })
       }
-      return await mod.default({
-        locateFile: (path) => (path.endsWith('.wasm') ? `${base}opencascade.wasm.wasm` : path),
+
+      console.log('[loadOccWeb] injecting script tag:', `${base}opencascade.wasm.js`)
+      await new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = `${base}opencascade.wasm.js`
+        const timeout = setTimeout(() => {
+          console.error('[loadOccWeb] script load timed out after 10s')
+          reject(new Error(`timeout loading ${script.src}`))
+        }, 10_000)
+        script.onload = () => {
+          clearTimeout(timeout)
+          console.log('[loadOccWeb] script loaded, window.opencascade =', typeof w.opencascade)
+          resolve()
+        }
+        script.onerror = () => {
+          clearTimeout(timeout)
+          console.error('[loadOccWeb] script load error')
+          reject(new Error(`failed to load ${script.src}`))
+        }
+        document.head.appendChild(script)
       })
-    } catch {
+
+      const factory = w.opencascade
+      if (!factory) {
+        console.warn('[loadOccWeb] script loaded but window.opencascade is', typeof factory)
+        return null
+      }
+      console.log('[loadOccWeb] calling factory with locateFile')
+      const mod = await (factory as any)({
+        locateFile: (p: string) => (p.endsWith('.wasm') ? `${base}opencascade.wasm.wasm` : p),
+      })
+      console.log('[loadOccWeb] factory resolved, module ready')
+      return mod as OccModule
+    } catch (e) {
+      console.error('[loadOccWeb] error:', e)
       return null
     }
   })()

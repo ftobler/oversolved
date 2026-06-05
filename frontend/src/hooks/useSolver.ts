@@ -15,6 +15,7 @@ import type { GeometryHeader } from '@/utils/geometryUnpack'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
 import { isDocFullyPorted } from '@/kernel/builder'
+import { solveLocally } from '@/kernel/solveLocally'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
 
@@ -248,6 +249,7 @@ export function useSolver(
     setSolving(true)
     setSolveTime(null)
     const startTime = performance.now()
+    console.log('[useSolver] reSolve called, features:', (d.features ?? []).map((f: { kind?: string }) => f.kind))
 
     const currentRequestId = ++requestIdRef.current
     const isStale = () => currentRequestId !== requestIdRef.current
@@ -276,13 +278,53 @@ export function useSolver(
 
       assertEditingInvariant(editingFeatureId, allFeatures, effectiveRollback, pickBoundary)
 
-      // Phase 2g per-doc router: check whether every feature kind is ported to
-      // the TS kernel. When OCC.js is provisioned this branch will route locally
-      // instead of going to the Python WebSocket. For now it logs so the soak
-      // period can measure coverage.
-      if (isDocFullyPorted(solveFeatures)) {
-        // TODO(2g): when OCC.js is available, dispatch locally via
-        // createFeatureSolver + build() instead of solverWs.solve().
+      const solvePayload: Record<string, unknown> = {
+        ...d,
+        ...(uuid ? { id: uuid } : {}),
+        features: solveFeatures,
+        rollback_position: adjustedRollback,
+        request_version: currentRequestId,
+        is_preview: isPreview,
+      }
+
+      if (pickBoundary !== null) {
+        solvePayload.pick_boundary = pickBoundary
+      }
+
+      if (opts?.validate) {
+        solvePayload._validate = true
+      }
+
+      // Phase 4a live routing: for fully-ported docs, try the TS/WASM kernel
+      // first. Falls back to Python WebSocket when OCC.js is unavailable.
+      // Skip local solve when there are no features (empty doc or preview-only).
+      if (solveFeatures.length > 0 && isDocFullyPorted(solveFeatures)) {
+        console.log('[useSolver] doc is fully ported, attempting local solve')
+        const local = await solveLocally(solvePayload, {
+          prevState: null,
+          pickBoundary: pickBoundary ?? null,
+          rollbackPosition: adjustedRollback,
+          validate: opts?.validate,
+        })
+        if (local) {
+          if (isStale()) return
+          lastSentRollbackRef.current = effectiveRollback
+          lastSentPickBoundaryRef.current = pickBoundary
+          const endTime = performance.now()
+          const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
+          if (local._validation) setValidation(local._validation)
+          applySolveResult(d, local as unknown as BuildResponse, solveTimeMs)
+          void maybeRunShadow(d.features, local.result)
+          if (!firstSolveDone.current && onFirstSolve) {
+            firstSolveDone.current = true
+            setTimeout(onFirstSolve, 0)
+          }
+          if (!cancelledRef.current) setSolving(false)
+          return
+        }
+        console.log('[useSolver] local solve returned null, falling back to Python WebSocket')
+      } else {
+        console.log('[useSolver] doc not fully ported, using Python WebSocket')
       }
 
       if (uuid && opts?.bypassCache) {
@@ -313,23 +355,6 @@ export function useSolver(
 
       if (isStale()) {
         return
-      }
-
-      const solvePayload: Record<string, unknown> = {
-        ...d,
-        ...(uuid ? { id: uuid } : {}),
-        features: solveFeatures,
-        rollback_position: adjustedRollback,
-        request_version: currentRequestId,
-        is_preview: isPreview,
-      }
-
-      if (pickBoundary !== null) {
-        solvePayload.pick_boundary = pickBoundary
-      }
-
-      if (opts?.validate) {
-        solvePayload._validate = true
       }
 
       const response = await solverWs.solve(solvePayload) as Record<string, unknown>
