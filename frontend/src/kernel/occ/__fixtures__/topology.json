@@ -1300,12 +1300,12 @@
     },
     "expected": {
       "intersection_points": {
-        "_v3": {
-          "x": 5.0,
-          "y": 0.0
-        },
         "_v2": {
           "x": -5.0,
+          "y": 0.0
+        },
+        "_v3": {
+          "x": 5.0,
           "y": 0.0
         }
       },
@@ -1664,6 +1664,97 @@
           "query": "?8,9,9,9,4;@skP/arc@skP/ln_a@skP/ln_bsurface:0@skP:flatface"
         }
       ]
+    }
+  },
+  "collinear_overlap": {
+    "feature_id": "skCO",
+    "geometry": {
+      "ln_a": {
+        "start": [
+          0,
+          0
+        ],
+        "end": [
+          10,
+          0
+        ]
+      },
+      "ln_b": {
+        "start": [
+          5,
+          0
+        ],
+        "end": [
+          15,
+          0
+        ]
+      }
+    },
+    "expected": {
+      "intersection_points": {},
+      "vertices": {
+        "_v0": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "_v1": {
+          "x": 10.0,
+          "y": 0.0
+        },
+        "_v2": {
+          "x": 5.0,
+          "y": 0.0
+        },
+        "_v3": {
+          "x": 15.0,
+          "y": 0.0
+        }
+      },
+      "edges": [
+        {
+          "query": "?a,6,5;@skCO/ln_aedge:0@skCO:straightedge",
+          "entity_id": "ln_a",
+          "edge_index": 0,
+          "start": [
+            0.0,
+            0.0
+          ],
+          "end": [
+            5.0,
+            0.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?a,6,5;@skCO/ln_aedge:1@skCO:straightedge",
+          "entity_id": "ln_a",
+          "edge_index": 1,
+          "start": [
+            5.0,
+            0.0
+          ],
+          "end": [
+            10.0,
+            0.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?a,6,5;@skCO/ln_bedge:2@skCO:straightedge",
+          "entity_id": "ln_b",
+          "edge_index": 2,
+          "start": [
+            10.0,
+            0.0
+          ],
+          "end": [
+            15.0,
+            0.0
+          ],
+          "kind": "line"
+        }
+      ],
+      "surfaces": []
     }
   }
 }

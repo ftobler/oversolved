@@ -115,7 +115,29 @@ def _cases():
                 "ln_b": _line(0, 10, 0, 0),
             },
         },
+        # Two overlapping collinear segments exercise the _collinear_overlap path
+        # in _find_all_intersections (regular intersection returns nothing for
+        # parallel/collinear lines, so the overlap fallback splits both edges).
+        "collinear_overlap": {
+            "feature_id": "skCO",
+            "geometry": {
+                "ln_a": _line(0, 0, 10, 0),
+                "ln_b": _line(5, 0, 15, 0),
+            },
+        },
     }
+
+
+def _stabilize(expected):
+    """Make the dumped fixture reproducible run-to-run.
+
+    detect_topology builds intersection_points from a Python set, whose string
+    iteration order is not stable across processes (hash randomization). The TS
+    test compares objects by sorted keys, so order never affects pass/fail, but
+    sorting here keeps the committed JSON deterministic on regeneration.
+    """
+    expected["intersection_points"] = dict(sorted(expected["intersection_points"].items()))
+    return expected
 
 
 def main():
@@ -124,7 +146,7 @@ def main():
         name: {
             "feature_id": c["feature_id"],
             "geometry": c["geometry"],
-            "expected": detect_topology(c["geometry"], c["feature_id"]),
+            "expected": _stabilize(detect_topology(c["geometry"], c["feature_id"])),
         }
         for name, c in cases.items()
     }
