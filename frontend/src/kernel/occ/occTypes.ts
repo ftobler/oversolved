@@ -32,6 +32,8 @@ export interface OccPolygonBuilder extends OccDisposable {
 
 export interface OccFaceBuilder extends OccDisposable {
   Face(): OccShape
+  /** Add a hole wire to the face under construction (BRepBuilderAPI_MakeFace::Add). */
+  Add(wire: OccShape): void
 }
 
 export interface OccPrismBuilder extends OccDisposable {

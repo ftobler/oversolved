@@ -134,7 +134,8 @@ export function makeWire(oc: OccModule, scope: DisposeScope, edges: OccShape[]):
 /**
  * Planar face from an outer wire (+ optional hole wires), with the same
  * ShapeFix_Face.FixOrientation pass as `ocp_make_face_from_wire` so the face
- * normal sign matches Python.
+ * normal sign matches Python. Hole wires are added with MakeFace.Add before the
+ * orientation fix, mirroring the Python builder's `Add` loop.
  */
 export function makeFaceFromWire(
   oc: OccModule,
@@ -143,8 +144,8 @@ export function makeFaceFromWire(
   holeWires: OccShape[] = [],
 ): OccShape {
   const builder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(outerWire, true))
+  for (const hw of holeWires) builder.Add(hw)
   const raw = builder.Face()
-  void holeWires // hole wires need MakeFace.Add (a later shard); planar profiles only here
   const fixer = scope.track(new oc.ShapeFix_Face_2(raw))
   fixer.FixOrientation_1()
   fixer.Perform()
