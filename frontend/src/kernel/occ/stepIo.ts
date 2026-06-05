@@ -1,8 +1,7 @@
-// STEP read adapter for the import_step leaf (phase 2f). Writes the STEP bytes to
-// the emscripten in-memory FS, reads them with STEPControl_Reader, and applies an
-// optional uniform scale. STEP *export* (writing) is fragile under the headless
-// test host and is deferred to phase 3 (server-side or Worker-side); reading
-// externally-provided STEP bytes works here, which is all import needs.
+// STEP read/write adapter for the import_step leaf (phase 2f/3). Import writes
+// the STEP bytes to the emscripten in-memory FS, reads them with
+// STEPControl_Reader, and applies an optional uniform scale. Export writes a
+// shape to the FS with STEPControl_Writer and reads the resulting bytes back.
 
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape } from './occTypes'
@@ -58,4 +57,34 @@ export function stepBytesToShape(
       // best-effort cleanup
     }
   }
+}
+
+/**
+ * Serialise a shape to STEP bytes (mirrors Python `_serialise_step`).
+ * Uses the emscripten MEMFS: writes to a scratch path, then reads it back.
+ * The caller owns the scope; the returned bytes are a standalone copy.
+ */
+export function stepShapeToBytes(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+): Uint8Array {
+  const path = STEP_SCRATCH_PATH
+  const writer = scope.track(new oc.STEPControl_Writer_1())
+  const wStatus = writer.Transfer(shape, oc.STEPControl_StepModelType.STEPControl_AsIs, true)
+  if ((wStatus as { value: number }).value !== 1) {
+    throw new Error('STEP export: Transfer failed')
+  }
+  const wrote = writer.Write(path)
+  if ((wrote as { value: number }).value !== 1) {
+    throw new Error('STEP export: Write failed')
+  }
+  const text = oc.FS.readFile(path, { encoding: 'utf8' })
+  try {
+    oc.FS.unlink(path)
+  } catch {
+    // best-effort cleanup
+  }
+  const enc = new TextEncoder()
+  return enc.encode(text)
 }

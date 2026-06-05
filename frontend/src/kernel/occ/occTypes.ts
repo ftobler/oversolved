@@ -469,13 +469,19 @@ export interface OccModule extends OccSpikeModule {
   /** BRepBuilderAPI_Transform(shape, trsf, copy): apply a gp_Trsf to a shape. */
   BRepBuilderAPI_Transform_2: new (shape: OccShape, trsf: OccTrsf, copy: boolean) => OccTransformBuilder
 
-  // --- 2f: import_step (STEP read; export/write deferred to phase 3) -------
+  // --- 2f: import_step (STEP read + write) --------------------------------
   /** Emscripten in-memory filesystem (write the STEP bytes here, then ReadFile). */
   FS: {
     writeFile(path: string, data: Uint8Array | string): void
     unlink(path: string): void
+    readFile(path: string, opts: { encoding: string }): string
   }
   STEPControl_Reader_1: new () => OccStepReader
+  /** STEPControl_Writer: serialise a shape to the emscripten FS. */
+  STEPControl_Writer_1: new () => OccStepWriter
+  STEPControl_StepModelType: {
+    STEPControl_AsIs: OccEnumValue
+  }
   IFSelect_ReturnStatus: {
     IFSelect_RetDone: OccEnumValue
   }
@@ -509,4 +515,10 @@ export interface OccStepReader extends OccDisposable {
   ReadFile(path: string): OccEnumValue
   TransferRoots(): number
   OneShape(): OccShape
+}
+
+/** STEPControl_Writer: serialise a shape to a STEP file on the emscripten FS. */
+export interface OccStepWriter extends OccDisposable {
+  Transfer(shape: OccShape, mode: OccEnumValue, compound: boolean): OccEnumValue
+  Write(path: string): OccEnumValue
 }
