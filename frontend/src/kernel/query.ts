@@ -9,11 +9,11 @@
 
 import {
   Outcome,
-  HeuristicConfig,
   DEFAULT_HEURISTIC_CONFIG,
   scoreOverlap,
   pickBest,
 } from "./queryHeuristics"
+import type { HeuristicConfig } from "./queryHeuristics"
 import { BUILTIN_PLANES } from "./solverConstants"
 
 export class AmbiguousQueryError extends Error {}

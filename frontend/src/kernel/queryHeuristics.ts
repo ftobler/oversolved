@@ -3,11 +3,13 @@
 // winner), Ambiguous (multiple plausible), Unresolved (none). All knobs live in
 // HeuristicConfig (data, not magic numbers).
 
-export enum Outcome {
-  RESOLVED = "RESOLVED",
-  AMBIGUOUS = "AMBIGUOUS",
-  UNRESOLVED = "UNRESOLVED",
-}
+export const Outcome = {
+  RESOLVED: "RESOLVED",
+  AMBIGUOUS: "AMBIGUOUS",
+  UNRESOLVED: "UNRESOLVED",
+} as const
+
+export type Outcome = (typeof Outcome)[keyof typeof Outcome]
 
 export interface HeuristicConfig {
   // minimum fraction of old constituent-entity IDs that must appear in a new
