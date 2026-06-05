@@ -32,6 +32,20 @@ export function makeBox(oc: OccModule, scope: DisposeScope, dx: number, dy: numb
   return builder.Shape()
 }
 
+/** Axis-aligned box anchored at a corner point (BRepPrimAPI_MakeBox(corner, dx, dy, dz)). */
+export function makeBoxAt(
+  oc: OccModule,
+  scope: DisposeScope,
+  corner: Vec3,
+  dx: number,
+  dy: number,
+  dz: number,
+): OccShape {
+  const pnt = scope.track(new oc.gp_Pnt_3(corner[0], corner[1], corner[2]))
+  const builder = scope.track(new oc.BRepPrimAPI_MakeBox_2(pnt, dx, dy, dz))
+  return builder.Shape()
+}
+
 export function makeCylinder(
   oc: OccModule,
   scope: DisposeScope,

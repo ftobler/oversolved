@@ -1,0 +1,270 @@
+{
+  "cases": [
+    {
+      "name": "union",
+      "operation": "union",
+      "tool_refs": [
+        "body_u0"
+      ],
+      "keep_tools": false,
+      "target_spec": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          10.0,
+          10.0,
+          10.0
+        ]
+      ],
+      "tool_specs": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            6.0,
+            6.0,
+            6.0
+          ]
+        ]
+      ],
+      "result": {
+        "status": "ok",
+        "body_id": "body_t",
+        "body_ids": [
+          "body_t"
+        ],
+        "operation": "union"
+      },
+      "store": {
+        "body_t": {
+          "volume": 999.9999999999998,
+          "created_by": "ex_t",
+          "modified_by": [
+            "bool1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "subtract",
+      "operation": "subtract",
+      "tool_refs": [
+        "body_u0"
+      ],
+      "keep_tools": false,
+      "target_spec": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          10.0,
+          10.0,
+          10.0
+        ]
+      ],
+      "tool_specs": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            6.0,
+            6.0,
+            6.0
+          ]
+        ]
+      ],
+      "result": {
+        "status": "ok",
+        "body_id": "body_t",
+        "body_ids": [
+          "body_t"
+        ],
+        "operation": "subtract"
+      },
+      "store": {
+        "body_t": {
+          "volume": 784.0000000000001,
+          "created_by": "ex_t",
+          "modified_by": [
+            "bool1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "intersect",
+      "operation": "intersect",
+      "tool_refs": [
+        "body_u0"
+      ],
+      "keep_tools": false,
+      "target_spec": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          10.0,
+          10.0,
+          10.0
+        ]
+      ],
+      "tool_specs": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            6.0,
+            6.0,
+            6.0
+          ]
+        ]
+      ],
+      "result": {
+        "status": "ok",
+        "body_id": "body_t",
+        "body_ids": [
+          "body_t"
+        ],
+        "operation": "intersect"
+      },
+      "store": {
+        "body_t": {
+          "volume": 216.0,
+          "created_by": "ex_t",
+          "modified_by": [
+            "bool1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "subtract_keep",
+      "operation": "subtract",
+      "tool_refs": [
+        "body_u0"
+      ],
+      "keep_tools": true,
+      "target_spec": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          10.0,
+          10.0,
+          10.0
+        ]
+      ],
+      "tool_specs": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            6.0,
+            6.0,
+            6.0
+          ]
+        ]
+      ],
+      "result": {
+        "status": "ok",
+        "body_id": "body_t",
+        "body_ids": [
+          "body_t"
+        ],
+        "operation": "subtract"
+      },
+      "store": {
+        "body_t": {
+          "volume": 784.0000000000001,
+          "created_by": "ex_t",
+          "modified_by": [
+            "bool1"
+          ]
+        },
+        "body_u0": {
+          "volume": 216.0,
+          "created_by": "ex_u0",
+          "modified_by": []
+        }
+      }
+    },
+    {
+      "name": "subtract_split",
+      "operation": "subtract",
+      "tool_refs": [
+        "body_u0"
+      ],
+      "keep_tools": false,
+      "target_spec": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          10.0,
+          10.0,
+          10.0
+        ]
+      ],
+      "tool_specs": [
+        [
+          [
+            -1.0,
+            -1.0,
+            4.0
+          ],
+          [
+            12.0,
+            12.0,
+            2.0
+          ]
+        ]
+      ],
+      "result": {
+        "status": "ok",
+        "body_id": "body_t",
+        "body_ids": [
+          "body_t",
+          "body_t_1"
+        ],
+        "operation": "subtract"
+      },
+      "store": {
+        "body_t": {
+          "volume": 399.9999999999999,
+          "created_by": "ex_t",
+          "modified_by": [
+            "bool1"
+          ]
+        },
+        "body_t_1": {
+          "volume": 399.9999999999999,
+          "created_by": "ex_t",
+          "modified_by": []
+        }
+      }
+    }
+  ]
+}

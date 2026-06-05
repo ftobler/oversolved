@@ -373,6 +373,8 @@ export interface OccModule extends OccSpikeModule {
   BRepBuilderAPI_MakeEdge_24: new (curve: OccDisposable) => OccEdgeBuilder
   BRepBuilderAPI_MakeWire_1: new () => OccWireBuilder
   BRepPrimAPI_MakeBox_1: new (dx: number, dy: number, dz: number) => OccPrismBuilder
+  /** BRepPrimAPI_MakeBox(corner, dx, dy, dz): an axis-aligned box at a corner. */
+  BRepPrimAPI_MakeBox_2: new (corner: OccPnt, dx: number, dy: number, dz: number) => OccPrismBuilder
   BRepPrimAPI_MakeCylinder_3: new (axis: OccDisposable, radius: number, height: number) => OccPrismBuilder
   ShapeFix_Face_2: new (face: OccShape) => OccShapeFixFace
 
