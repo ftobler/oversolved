@@ -1,0 +1,1669 @@
+{
+  "square": {
+    "feature_id": "sk1",
+    "geometry": {
+      "ln_b": {
+        "start": [
+          0,
+          0
+        ],
+        "end": [
+          10,
+          0
+        ]
+      },
+      "ln_r": {
+        "start": [
+          10,
+          0
+        ],
+        "end": [
+          10,
+          10
+        ]
+      },
+      "ln_t": {
+        "start": [
+          10,
+          10
+        ],
+        "end": [
+          0,
+          10
+        ]
+      },
+      "ln_l": {
+        "start": [
+          0,
+          10
+        ],
+        "end": [
+          0,
+          0
+        ]
+      }
+    },
+    "expected": {
+      "intersection_points": {},
+      "vertices": {
+        "_v0": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "_v1": {
+          "x": 10.0,
+          "y": 0.0
+        },
+        "_v2": {
+          "x": 10.0,
+          "y": 10.0
+        },
+        "_v3": {
+          "x": 0.0,
+          "y": 10.0
+        }
+      },
+      "edges": [
+        {
+          "query": "?9,6,4;@sk1/ln_bedge:0@sk1:straightedge",
+          "entity_id": "ln_b",
+          "edge_index": 0,
+          "start": [
+            0.0,
+            0.0
+          ],
+          "end": [
+            10.0,
+            0.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?9,6,4;@sk1/ln_redge:1@sk1:straightedge",
+          "entity_id": "ln_r",
+          "edge_index": 1,
+          "start": [
+            10.0,
+            0.0
+          ],
+          "end": [
+            10.0,
+            10.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?9,6,4;@sk1/ln_tedge:2@sk1:straightedge",
+          "entity_id": "ln_t",
+          "edge_index": 2,
+          "start": [
+            10.0,
+            10.0
+          ],
+          "end": [
+            0.0,
+            10.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?9,6,4;@sk1/ln_ledge:3@sk1:straightedge",
+          "entity_id": "ln_l",
+          "edge_index": 3,
+          "start": [
+            0.0,
+            10.0
+          ],
+          "end": [
+            0.0,
+            0.0
+          ],
+          "kind": "line"
+        }
+      ],
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                0.0,
+                0.0
+              ],
+              "end": [
+                10.0,
+                0.0
+              ],
+              "id": "ln_b",
+              "start_vertex": "_v0",
+              "end_vertex": "_v1"
+            },
+            {
+              "kind": "line",
+              "start": [
+                10.0,
+                0.0
+              ],
+              "end": [
+                10.0,
+                10.0
+              ],
+              "id": "ln_r",
+              "start_vertex": "_v1",
+              "end_vertex": "_v2"
+            },
+            {
+              "kind": "line",
+              "start": [
+                10.0,
+                10.0
+              ],
+              "end": [
+                0.0,
+                10.0
+              ],
+              "id": "ln_t",
+              "start_vertex": "_v2",
+              "end_vertex": "_v3"
+            },
+            {
+              "kind": "line",
+              "start": [
+                0.0,
+                10.0
+              ],
+              "end": [
+                0.0,
+                0.0
+              ],
+              "id": "ln_l",
+              "start_vertex": "_v3",
+              "end_vertex": "_v0"
+            }
+          ],
+          "query": "?9,9,9,9,9,4;@sk1/ln_b@sk1/ln_l@sk1/ln_r@sk1/ln_tsurface:0@sk1:flatface"
+        }
+      ]
+    }
+  },
+  "square_with_construction": {
+    "feature_id": "sk1",
+    "geometry": {
+      "ln_b": {
+        "start": [
+          0,
+          0
+        ],
+        "end": [
+          10,
+          0
+        ]
+      },
+      "ln_r": {
+        "start": [
+          10,
+          0
+        ],
+        "end": [
+          10,
+          10
+        ]
+      },
+      "ln_t": {
+        "start": [
+          10,
+          10
+        ],
+        "end": [
+          0,
+          10
+        ]
+      },
+      "ln_l": {
+        "start": [
+          0,
+          10
+        ],
+        "end": [
+          0,
+          0
+        ]
+      },
+      "ln_diag_constr": {
+        "start": [
+          0,
+          0
+        ],
+        "end": [
+          10,
+          10
+        ],
+        "construction": true
+      }
+    },
+    "expected": {
+      "intersection_points": {},
+      "vertices": {
+        "_v0": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "_v1": {
+          "x": 10.0,
+          "y": 0.0
+        },
+        "_v2": {
+          "x": 10.0,
+          "y": 10.0
+        },
+        "_v3": {
+          "x": 0.0,
+          "y": 10.0
+        }
+      },
+      "edges": [
+        {
+          "query": "?9,6,4;@sk1/ln_bedge:0@sk1:straightedge",
+          "entity_id": "ln_b",
+          "edge_index": 0,
+          "start": [
+            0.0,
+            0.0
+          ],
+          "end": [
+            10.0,
+            0.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?9,6,4;@sk1/ln_redge:1@sk1:straightedge",
+          "entity_id": "ln_r",
+          "edge_index": 1,
+          "start": [
+            10.0,
+            0.0
+          ],
+          "end": [
+            10.0,
+            10.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?9,6,4;@sk1/ln_tedge:2@sk1:straightedge",
+          "entity_id": "ln_t",
+          "edge_index": 2,
+          "start": [
+            10.0,
+            10.0
+          ],
+          "end": [
+            0.0,
+            10.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?9,6,4;@sk1/ln_ledge:3@sk1:straightedge",
+          "entity_id": "ln_l",
+          "edge_index": 3,
+          "start": [
+            0.0,
+            10.0
+          ],
+          "end": [
+            0.0,
+            0.0
+          ],
+          "kind": "line"
+        }
+      ],
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                0.0,
+                0.0
+              ],
+              "end": [
+                10.0,
+                0.0
+              ],
+              "id": "ln_b",
+              "start_vertex": "_v0",
+              "end_vertex": "_v1"
+            },
+            {
+              "kind": "line",
+              "start": [
+                10.0,
+                0.0
+              ],
+              "end": [
+                10.0,
+                10.0
+              ],
+              "id": "ln_r",
+              "start_vertex": "_v1",
+              "end_vertex": "_v2"
+            },
+            {
+              "kind": "line",
+              "start": [
+                10.0,
+                10.0
+              ],
+              "end": [
+                0.0,
+                10.0
+              ],
+              "id": "ln_t",
+              "start_vertex": "_v2",
+              "end_vertex": "_v3"
+            },
+            {
+              "kind": "line",
+              "start": [
+                0.0,
+                10.0
+              ],
+              "end": [
+                0.0,
+                0.0
+              ],
+              "id": "ln_l",
+              "start_vertex": "_v3",
+              "end_vertex": "_v0"
+            }
+          ],
+          "query": "?9,9,9,9,9,4;@sk1/ln_b@sk1/ln_l@sk1/ln_r@sk1/ln_tsurface:0@sk1:flatface"
+        }
+      ]
+    }
+  },
+  "triangle": {
+    "feature_id": "skT",
+    "geometry": {
+      "ln_a": {
+        "start": [
+          0,
+          0
+        ],
+        "end": [
+          8,
+          0
+        ]
+      },
+      "ln_b": {
+        "start": [
+          8,
+          0
+        ],
+        "end": [
+          4,
+          6
+        ]
+      },
+      "ln_c": {
+        "start": [
+          4,
+          6
+        ],
+        "end": [
+          0,
+          0
+        ]
+      }
+    },
+    "expected": {
+      "intersection_points": {},
+      "vertices": {
+        "_v0": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "_v1": {
+          "x": 8.0,
+          "y": 0.0
+        },
+        "_v2": {
+          "x": 4.0,
+          "y": 6.0
+        }
+      },
+      "edges": [
+        {
+          "query": "?9,6,4;@skT/ln_aedge:0@skT:straightedge",
+          "entity_id": "ln_a",
+          "edge_index": 0,
+          "start": [
+            0.0,
+            0.0
+          ],
+          "end": [
+            8.0,
+            0.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?9,6,4;@skT/ln_bedge:1@skT:straightedge",
+          "entity_id": "ln_b",
+          "edge_index": 1,
+          "start": [
+            8.0,
+            0.0
+          ],
+          "end": [
+            4.0,
+            6.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?9,6,4;@skT/ln_cedge:2@skT:straightedge",
+          "entity_id": "ln_c",
+          "edge_index": 2,
+          "start": [
+            4.0,
+            6.0
+          ],
+          "end": [
+            0.0,
+            0.0
+          ],
+          "kind": "line"
+        }
+      ],
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                0.0,
+                0.0
+              ],
+              "end": [
+                8.0,
+                0.0
+              ],
+              "id": "ln_a",
+              "start_vertex": "_v0",
+              "end_vertex": "_v1"
+            },
+            {
+              "kind": "line",
+              "start": [
+                8.0,
+                0.0
+              ],
+              "end": [
+                4.0,
+                6.0
+              ],
+              "id": "ln_b",
+              "start_vertex": "_v1",
+              "end_vertex": "_v2"
+            },
+            {
+              "kind": "line",
+              "start": [
+                4.0,
+                6.0
+              ],
+              "end": [
+                0.0,
+                0.0
+              ],
+              "id": "ln_c",
+              "start_vertex": "_v2",
+              "end_vertex": "_v0"
+            }
+          ],
+          "query": "?9,9,9,9,4;@skT/ln_a@skT/ln_b@skT/ln_csurface:0@skT:flatface"
+        }
+      ]
+    }
+  },
+  "square_diagonal_split": {
+    "feature_id": "skD",
+    "geometry": {
+      "ln_b": {
+        "start": [
+          0,
+          0
+        ],
+        "end": [
+          10,
+          0
+        ]
+      },
+      "ln_r": {
+        "start": [
+          10,
+          0
+        ],
+        "end": [
+          10,
+          10
+        ]
+      },
+      "ln_t": {
+        "start": [
+          10,
+          10
+        ],
+        "end": [
+          0,
+          10
+        ]
+      },
+      "ln_l": {
+        "start": [
+          0,
+          10
+        ],
+        "end": [
+          0,
+          0
+        ]
+      },
+      "ln_diag": {
+        "start": [
+          0,
+          0
+        ],
+        "end": [
+          10,
+          10
+        ]
+      }
+    },
+    "expected": {
+      "intersection_points": {},
+      "vertices": {
+        "_v0": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "_v1": {
+          "x": 10.0,
+          "y": 0.0
+        },
+        "_v2": {
+          "x": 10.0,
+          "y": 10.0
+        },
+        "_v3": {
+          "x": 0.0,
+          "y": 10.0
+        }
+      },
+      "edges": [
+        {
+          "query": "?9,6,4;@skD/ln_bedge:0@skD:straightedge",
+          "entity_id": "ln_b",
+          "edge_index": 0,
+          "start": [
+            0.0,
+            0.0
+          ],
+          "end": [
+            10.0,
+            0.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?9,6,4;@skD/ln_redge:1@skD:straightedge",
+          "entity_id": "ln_r",
+          "edge_index": 1,
+          "start": [
+            10.0,
+            0.0
+          ],
+          "end": [
+            10.0,
+            10.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?9,6,4;@skD/ln_tedge:2@skD:straightedge",
+          "entity_id": "ln_t",
+          "edge_index": 2,
+          "start": [
+            10.0,
+            10.0
+          ],
+          "end": [
+            0.0,
+            10.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?9,6,4;@skD/ln_ledge:3@skD:straightedge",
+          "entity_id": "ln_l",
+          "edge_index": 3,
+          "start": [
+            0.0,
+            10.0
+          ],
+          "end": [
+            0.0,
+            0.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?c,6,4;@skD/ln_diagedge:4@skD:straightedge",
+          "entity_id": "ln_diag",
+          "edge_index": 4,
+          "start": [
+            0.0,
+            0.0
+          ],
+          "end": [
+            10.0,
+            10.0
+          ],
+          "kind": "line"
+        }
+      ],
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                0.0,
+                0.0
+              ],
+              "end": [
+                10.0,
+                0.0
+              ],
+              "id": "ln_b",
+              "start_vertex": "_v0",
+              "end_vertex": "_v1"
+            },
+            {
+              "kind": "line",
+              "start": [
+                10.0,
+                0.0
+              ],
+              "end": [
+                10.0,
+                10.0
+              ],
+              "id": "ln_r",
+              "start_vertex": "_v1",
+              "end_vertex": "_v2"
+            },
+            {
+              "kind": "line",
+              "start": [
+                10.0,
+                10.0
+              ],
+              "end": [
+                0.0,
+                0.0
+              ],
+              "id": "ln_diag",
+              "start_vertex": "_v2",
+              "end_vertex": "_v0"
+            }
+          ],
+          "query": "?9,c,9,9,4;@skD/ln_b@skD/ln_diag@skD/ln_rsurface:0@skD:flatface"
+        },
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                10.0,
+                10.0
+              ],
+              "end": [
+                0.0,
+                10.0
+              ],
+              "id": "ln_t",
+              "start_vertex": "_v2",
+              "end_vertex": "_v3"
+            },
+            {
+              "kind": "line",
+              "start": [
+                0.0,
+                10.0
+              ],
+              "end": [
+                0.0,
+                0.0
+              ],
+              "id": "ln_l",
+              "start_vertex": "_v3",
+              "end_vertex": "_v0"
+            },
+            {
+              "kind": "line",
+              "start": [
+                0.0,
+                0.0
+              ],
+              "end": [
+                10.0,
+                10.0
+              ],
+              "id": "ln_diag",
+              "start_vertex": "_v0",
+              "end_vertex": "_v2"
+            }
+          ],
+          "query": "?c,9,9,9,4;@skD/ln_diag@skD/ln_l@skD/ln_tsurface:1@skD:flatface"
+        }
+      ]
+    }
+  },
+  "standalone_circle": {
+    "feature_id": "skC",
+    "geometry": {
+      "ci": {
+        "center": [
+          0,
+          0
+        ],
+        "radius": 5
+      }
+    },
+    "expected": {
+      "intersection_points": {},
+      "vertices": {},
+      "edges": [],
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 5,
+              "angle_start_deg": 0.0,
+              "angle_end_deg": 180.0,
+              "ccw": true,
+              "start": [
+                5,
+                0
+              ],
+              "end": [
+                -5,
+                0
+              ],
+              "start_vertex": null,
+              "end_vertex": null,
+              "id": "ci"
+            },
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 5,
+              "angle_start_deg": 180.0,
+              "angle_end_deg": 360.0,
+              "ccw": true,
+              "start": [
+                -5,
+                0
+              ],
+              "end": [
+                5,
+                0
+              ],
+              "start_vertex": null,
+              "end_vertex": null,
+              "id": "ci"
+            }
+          ],
+          "query": "?7,9,4;@skC/cisurface:0@skC:flatface"
+        }
+      ]
+    }
+  },
+  "concentric_annulus": {
+    "feature_id": "skA",
+    "geometry": {
+      "ci_out": {
+        "center": [
+          0,
+          0
+        ],
+        "radius": 10
+      },
+      "ci_in": {
+        "center": [
+          0,
+          0
+        ],
+        "radius": 4
+      }
+    },
+    "expected": {
+      "intersection_points": {},
+      "vertices": {},
+      "edges": [],
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 4,
+              "angle_start_deg": 0.0,
+              "angle_end_deg": 180.0,
+              "ccw": true,
+              "start": [
+                4,
+                0
+              ],
+              "end": [
+                -4,
+                0
+              ],
+              "start_vertex": null,
+              "end_vertex": null,
+              "id": "ci_in"
+            },
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 4,
+              "angle_start_deg": 180.0,
+              "angle_end_deg": 360.0,
+              "ccw": true,
+              "start": [
+                -4,
+                0
+              ],
+              "end": [
+                4,
+                0
+              ],
+              "start_vertex": null,
+              "end_vertex": null,
+              "id": "ci_in"
+            }
+          ],
+          "query": "?a,9,4;@skA/ci_insurface:0@skA:flatface"
+        },
+        {
+          "boundary": [
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 10,
+              "angle_start_deg": 0.0,
+              "angle_end_deg": 180.0,
+              "ccw": true,
+              "start": [
+                10,
+                0
+              ],
+              "end": [
+                -10,
+                0
+              ],
+              "start_vertex": null,
+              "end_vertex": null,
+              "id": "ci_out"
+            },
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 10,
+              "angle_start_deg": 180.0,
+              "angle_end_deg": 360.0,
+              "ccw": true,
+              "start": [
+                -10,
+                0
+              ],
+              "end": [
+                10,
+                0
+              ],
+              "start_vertex": null,
+              "end_vertex": null,
+              "id": "ci_out"
+            },
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 4,
+              "angle_start_deg": 0.0,
+              "angle_end_deg": 180.0,
+              "ccw": true,
+              "start": [
+                4,
+                0
+              ],
+              "end": [
+                -4,
+                0
+              ],
+              "start_vertex": null,
+              "end_vertex": null,
+              "id": "ci_in"
+            },
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 4,
+              "angle_start_deg": 180.0,
+              "angle_end_deg": 360.0,
+              "ccw": true,
+              "start": [
+                -4,
+                0
+              ],
+              "end": [
+                4,
+                0
+              ],
+              "start_vertex": null,
+              "end_vertex": null,
+              "id": "ci_in"
+            }
+          ],
+          "query": "?b,9,4;@skA/ci_outsurface:1@skA:flatface"
+        }
+      ]
+    }
+  },
+  "two_circles_intersecting": {
+    "feature_id": "skX",
+    "geometry": {
+      "ci_l": {
+        "center": [
+          0,
+          0
+        ],
+        "radius": 6
+      },
+      "ci_r": {
+        "center": [
+          8,
+          0
+        ],
+        "radius": 6
+      }
+    },
+    "expected": {
+      "intersection_points": {
+        "_v0": {
+          "x": 4.0,
+          "y": -4.47213595499958
+        },
+        "_v1": {
+          "x": 4.0,
+          "y": 4.47213595499958
+        }
+      },
+      "vertices": {
+        "_v0": {
+          "x": 4.0,
+          "y": -4.47213595499958
+        },
+        "_v1": {
+          "x": 4.0,
+          "y": 4.47213595499958
+        }
+      },
+      "edges": [
+        {
+          "query": "?9,6,4;@skX/ci_ledge:0@skX:edge",
+          "entity_id": "ci_l",
+          "edge_index": 0,
+          "start": [
+            4.0,
+            -4.47213595499958
+          ],
+          "end": [
+            4.0,
+            4.47213595499958
+          ],
+          "kind": "arc",
+          "center": [
+            0,
+            0
+          ],
+          "radius": 6
+        },
+        {
+          "query": "?9,6,4;@skX/ci_ledge:1@skX:edge",
+          "entity_id": "ci_l",
+          "edge_index": 1,
+          "start": [
+            4.0,
+            4.47213595499958
+          ],
+          "end": [
+            4.0,
+            -4.47213595499958
+          ],
+          "kind": "arc",
+          "center": [
+            0,
+            0
+          ],
+          "radius": 6
+        },
+        {
+          "query": "?9,6,4;@skX/ci_redge:2@skX:edge",
+          "entity_id": "ci_r",
+          "edge_index": 2,
+          "start": [
+            4.0,
+            -4.472135954999579
+          ],
+          "end": [
+            4.0,
+            4.472135954999579
+          ],
+          "kind": "arc",
+          "center": [
+            8,
+            0
+          ],
+          "radius": 6
+        },
+        {
+          "query": "?9,6,4;@skX/ci_redge:3@skX:edge",
+          "entity_id": "ci_r",
+          "edge_index": 3,
+          "start": [
+            4.0,
+            4.472135954999579
+          ],
+          "end": [
+            3.9999999999999982,
+            -4.472135954999578
+          ],
+          "kind": "arc",
+          "center": [
+            8,
+            0
+          ],
+          "radius": 6
+        }
+      ],
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 6,
+              "angle_start_deg": -48.18968510422141,
+              "angle_end_deg": 48.18968510422141,
+              "ccw": true,
+              "start": [
+                4.0,
+                -4.47213595499958
+              ],
+              "end": [
+                4.0,
+                4.47213595499958
+              ],
+              "id": "ci_l",
+              "start_vertex": "_v0",
+              "end_vertex": "_v1"
+            },
+            {
+              "kind": "arc",
+              "center": [
+                8,
+                0
+              ],
+              "radius": 6,
+              "angle_start_deg": 131.81031489577862,
+              "angle_end_deg": 228.18968510422138,
+              "ccw": true,
+              "start": [
+                4.0,
+                4.472135954999579
+              ],
+              "end": [
+                3.9999999999999982,
+                -4.472135954999578
+              ],
+              "id": "ci_r",
+              "start_vertex": "_v1",
+              "end_vertex": "_v0"
+            }
+          ],
+          "query": "?9,9,9,4;@skX/ci_l@skX/ci_rsurface:0@skX:flatface"
+        },
+        {
+          "boundary": [
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 6,
+              "angle_start_deg": 48.18968510422141,
+              "angle_end_deg": -48.18968510422141,
+              "ccw": false,
+              "start": [
+                4.0,
+                4.47213595499958
+              ],
+              "end": [
+                4.0,
+                -4.47213595499958
+              ],
+              "id": "ci_l",
+              "start_vertex": "_v1",
+              "end_vertex": "_v0"
+            },
+            {
+              "kind": "arc",
+              "center": [
+                8,
+                0
+              ],
+              "radius": 6,
+              "angle_start_deg": -131.81031489577862,
+              "angle_end_deg": 131.81031489577862,
+              "ccw": true,
+              "start": [
+                4.0,
+                -4.472135954999579
+              ],
+              "end": [
+                4.0,
+                4.472135954999579
+              ],
+              "id": "ci_r",
+              "start_vertex": "_v0",
+              "end_vertex": "_v1"
+            }
+          ],
+          "query": "?9,9,9,4;@skX/ci_l@skX/ci_rsurface:1@skX:flatface"
+        },
+        {
+          "boundary": [
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 6,
+              "angle_start_deg": 48.18968510422141,
+              "angle_end_deg": 311.8103148957786,
+              "ccw": true,
+              "start": [
+                4.0,
+                4.47213595499958
+              ],
+              "end": [
+                4.0,
+                -4.47213595499958
+              ],
+              "id": "ci_l",
+              "start_vertex": "_v1",
+              "end_vertex": "_v0"
+            },
+            {
+              "kind": "arc",
+              "center": [
+                8,
+                0
+              ],
+              "radius": 6,
+              "angle_start_deg": 228.18968510422138,
+              "angle_end_deg": 131.81031489577862,
+              "ccw": false,
+              "start": [
+                3.9999999999999982,
+                -4.472135954999578
+              ],
+              "end": [
+                4.0,
+                4.472135954999579
+              ],
+              "id": "ci_r",
+              "start_vertex": "_v0",
+              "end_vertex": "_v1"
+            }
+          ],
+          "query": "?9,9,9,4;@skX/ci_l@skX/ci_rsurface:2@skX:flatface"
+        }
+      ]
+    }
+  },
+  "line_through_circle": {
+    "feature_id": "skLC",
+    "geometry": {
+      "ci": {
+        "center": [
+          0,
+          0
+        ],
+        "radius": 5
+      },
+      "ln": {
+        "start": [
+          -10,
+          0
+        ],
+        "end": [
+          10,
+          0
+        ]
+      }
+    },
+    "expected": {
+      "intersection_points": {
+        "_v3": {
+          "x": 5.0,
+          "y": 0.0
+        },
+        "_v2": {
+          "x": -5.0,
+          "y": 0.0
+        }
+      },
+      "vertices": {
+        "_v0": {
+          "x": -10.0,
+          "y": 0.0
+        },
+        "_v1": {
+          "x": 10.0,
+          "y": 0.0
+        },
+        "_v2": {
+          "x": -5.0,
+          "y": 0.0
+        },
+        "_v3": {
+          "x": 5.0,
+          "y": 0.0
+        }
+      },
+      "edges": [
+        {
+          "query": "?8,6,5;@skLC/lnedge:0@skLC:straightedge",
+          "entity_id": "ln",
+          "edge_index": 0,
+          "start": [
+            -10.0,
+            0.0
+          ],
+          "end": [
+            -5.0,
+            0.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?8,6,5;@skLC/lnedge:1@skLC:straightedge",
+          "entity_id": "ln",
+          "edge_index": 1,
+          "start": [
+            -5.0,
+            0.0
+          ],
+          "end": [
+            5.0,
+            0.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?8,6,5;@skLC/lnedge:2@skLC:straightedge",
+          "entity_id": "ln",
+          "edge_index": 2,
+          "start": [
+            5.0,
+            0.0
+          ],
+          "end": [
+            10.0,
+            0.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?8,6,5;@skLC/ciedge:3@skLC:edge",
+          "entity_id": "ci",
+          "edge_index": 3,
+          "start": [
+            5.0,
+            0.0
+          ],
+          "end": [
+            -5.0,
+            6.123233995736766e-16
+          ],
+          "kind": "arc",
+          "center": [
+            0,
+            0
+          ],
+          "radius": 5
+        },
+        {
+          "query": "?8,6,5;@skLC/ciedge:4@skLC:edge",
+          "entity_id": "ci",
+          "edge_index": 4,
+          "start": [
+            -5.0,
+            6.123233995736766e-16
+          ],
+          "end": [
+            5.0,
+            -1.2246467991473533e-15
+          ],
+          "kind": "arc",
+          "center": [
+            0,
+            0
+          ],
+          "radius": 5
+        }
+      ],
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                -5.0,
+                0.0
+              ],
+              "end": [
+                5.0,
+                0.0
+              ],
+              "id": "ln",
+              "start_vertex": "_v2",
+              "end_vertex": "_v3"
+            },
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 5,
+              "angle_start_deg": 0.0,
+              "angle_end_deg": 180.0,
+              "ccw": true,
+              "start": [
+                5.0,
+                0.0
+              ],
+              "end": [
+                -5.0,
+                6.123233995736766e-16
+              ],
+              "id": "ci",
+              "start_vertex": "_v3",
+              "end_vertex": "_v2"
+            }
+          ],
+          "query": "?8,8,9,5,c;@skLC/ci@skLC/lnsurface:0@skLC@cls_ld_ln_p:flatface",
+          "classifiers": [
+            "cls_ld_ln_p"
+          ]
+        },
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                5.0,
+                0.0
+              ],
+              "end": [
+                -5.0,
+                0.0
+              ],
+              "id": "ln",
+              "start_vertex": "_v3",
+              "end_vertex": "_v2"
+            },
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 5,
+              "angle_start_deg": 180.0,
+              "angle_end_deg": 360.0,
+              "ccw": true,
+              "start": [
+                -5.0,
+                6.123233995736766e-16
+              ],
+              "end": [
+                5.0,
+                -1.2246467991473533e-15
+              ],
+              "id": "ci",
+              "start_vertex": "_v2",
+              "end_vertex": "_v3"
+            }
+          ],
+          "query": "?8,8,9,5,c;@skLC/ci@skLC/lnsurface:1@skLC@cls_ld_ln_n:flatface",
+          "classifiers": [
+            "cls_ld_ln_n"
+          ]
+        }
+      ]
+    }
+  },
+  "pie_wedge": {
+    "feature_id": "skP",
+    "geometry": {
+      "ln_a": {
+        "start": [
+          0,
+          0
+        ],
+        "end": [
+          10,
+          0
+        ]
+      },
+      "arc": {
+        "center": [
+          0,
+          0
+        ],
+        "radius": 10,
+        "angle_start": 0,
+        "angle_end": 90,
+        "start": [
+          10.0,
+          0.0
+        ],
+        "end": [
+          6.123233995736766e-16,
+          10.0
+        ]
+      },
+      "ln_b": {
+        "start": [
+          0,
+          10
+        ],
+        "end": [
+          0,
+          0
+        ]
+      }
+    },
+    "expected": {
+      "intersection_points": {},
+      "vertices": {
+        "_v0": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "_v1": {
+          "x": 10.0,
+          "y": 0.0
+        },
+        "_v2": {
+          "x": 0.0,
+          "y": 10.0
+        }
+      },
+      "edges": [
+        {
+          "query": "?9,6,4;@skP/ln_aedge:0@skP:straightedge",
+          "entity_id": "ln_a",
+          "edge_index": 0,
+          "start": [
+            0.0,
+            0.0
+          ],
+          "end": [
+            10.0,
+            0.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?9,6,4;@skP/ln_bedge:1@skP:straightedge",
+          "entity_id": "ln_b",
+          "edge_index": 1,
+          "start": [
+            0.0,
+            10.0
+          ],
+          "end": [
+            0.0,
+            0.0
+          ],
+          "kind": "line"
+        },
+        {
+          "query": "?8,6,4;@skP/arcedge:2@skP:edge",
+          "entity_id": "arc",
+          "edge_index": 2,
+          "start": [
+            10.0,
+            0.0
+          ],
+          "end": [
+            6.123233995736766e-16,
+            10.0
+          ],
+          "kind": "arc",
+          "center": [
+            0,
+            0
+          ],
+          "radius": 10
+        }
+      ],
+      "surfaces": [
+        {
+          "boundary": [
+            {
+              "kind": "line",
+              "start": [
+                0.0,
+                0.0
+              ],
+              "end": [
+                10.0,
+                0.0
+              ],
+              "id": "ln_a",
+              "start_vertex": "_v0",
+              "end_vertex": "_v1"
+            },
+            {
+              "kind": "arc",
+              "center": [
+                0,
+                0
+              ],
+              "radius": 10,
+              "angle_start_deg": 0.0,
+              "angle_end_deg": 90.0,
+              "ccw": true,
+              "start": [
+                10.0,
+                0.0
+              ],
+              "end": [
+                6.123233995736766e-16,
+                10.0
+              ],
+              "id": "arc",
+              "start_vertex": "_v1",
+              "end_vertex": "_v2"
+            },
+            {
+              "kind": "line",
+              "start": [
+                0.0,
+                10.0
+              ],
+              "end": [
+                0.0,
+                0.0
+              ],
+              "id": "ln_b",
+              "start_vertex": "_v2",
+              "end_vertex": "_v0"
+            }
+          ],
+          "query": "?8,9,9,9,4;@skP/arc@skP/ln_a@skP/ln_bsurface:0@skP:flatface"
+        }
+      ]
+    }
+  }
+}
