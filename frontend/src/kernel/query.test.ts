@@ -8,6 +8,7 @@ import {
   setCurrentFeatureId,
   featureIdxOfElement,
   isGeomHashId,
+  isClassifierId,
   parseQuery,
   emitWire,
   parseAncestry,
@@ -522,6 +523,63 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     const resultB = repo.query(makeAncestryQuery(["@gface_bbb", "@ex1", "@body1"]))
     expect(resultB).not.toBeNull()
     expect((resultB as Payload)["face_index"]).toBe(1)
+  })
+})
+
+/** Tests for the geometric-classifier predicate functions mirroring
+ *  Python's TestClassifierTokenPredicate. */
+describe("geometric classifier predicates", () => {
+  it("recognises @cls_ prefix", () => {
+    expect(isClassifierId("@cls_zp")).toBe(true)
+    expect(isClassifierId("@cls_xn")).toBe(true)
+  })
+
+  it("rejects non-classifier ids", () => {
+    expect(isClassifierId("@gface_abc")).toBe(false)
+    expect(isClassifierId("@ex1")).toBe(false)
+    expect(isClassifierId("@sk1/left")).toBe(false)
+  })
+
+  it("classifier is not a geom hash (partitions are disjoint)", () => {
+    expect(isGeomHashId("@cls_zp")).toBe(false)
+  })
+})
+
+/** Port of Python's classifier-resolution tier tests: spatial classifier tokens
+ *  survive edits, resolve gracefully against contradictory input, and stay
+ *  consistent between query emission and element registration. */
+describe("classifier tier resolution", () => {
+  it("contradictory classifiers do not zero a hash-resolvable query", () => {
+    const repo = new Repository()
+    const payloadP = { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zp"] }
+    const payloadN = { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] }
+    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], payloadP, "gface_aaa")
+    repo.registerAncestor(["@body1/face1", "@ex1", "@body1"], payloadN, "gface_bbb")
+
+    // @cls_zp resolves the +Z cap via ancestry + classifier + hash.
+    const r1 = repo.query(makeAncestryQuery(["@gface_aaa", "@cls_zp", "@ex1", "@body1"]))
+    expect(r1).not.toBeNull()
+    expect((r1 as Payload).classifiers).toEqual(["cls_zp"])
+
+    // Add the OPPOSITE-sign classifier: no face matches both clauses, so
+    // the classifier tier narrows to nothing.  The hash still resolves.
+    const contradictory = makeAncestryQuery(["@gface_aaa", "@cls_zp", "@cls_zn", "@ex1", "@body1"])
+    const r2 = repo.query(contradictory)
+    expect(r2).not.toBeNull()
+    expect((r2 as Payload).classifiers).toEqual(["cls_zp"])
+  })
+
+  /** Single source of truth: the @cls_* tokens on a query match the bare
+   *  classifier list registered on the element it resolves to. */
+  it("classifier on resolved element matches the query tokens", () => {
+    const repo = new Repository()
+    const payload = { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_xp", "cls_yp"] }
+    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], payload, "gface_abc")
+
+    const result = repo.query(makeAncestryQuery(["@cls_xp", "@cls_yp", "@gface_abc", "@ex1", "@body1"]))
+    expect(result).not.toBeNull()
+    const cls = (result as Payload).classifiers as string[]
+    expect(cls).toEqual(["cls_xp", "cls_yp"])
   })
 })
 
