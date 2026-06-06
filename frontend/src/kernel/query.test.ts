@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, beforeEach } from "vitest"
 import scenarios from "./occ/__fixtures__/queryScenarios.json"
 import {
   Repository,
@@ -6,7 +6,6 @@ import {
   initGlobalRepo,
   evictAncestryAndRegister,
   setCurrentFeatureId,
-  getCurrentFeatureId,
   featureIdxOfElement,
   isGeomHashId,
   parseQuery,
@@ -25,7 +24,7 @@ import {
   tagSet,
   resolveQuery,
 } from "./query"
-import type { QueryNode } from "./query"
+import type { QueryNode, AncestryQuery } from "./query"
 import {
   Outcome,
   DEFAULT_HEURISTIC_CONFIG,

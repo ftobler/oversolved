@@ -18,7 +18,6 @@ import {
   BUILTIN_PLANES,
   FRONT_PLANE,
   isPlaneType,
-  isPointType,
   resolveBarePlaneId,
 } from "./solverConstants"
 
