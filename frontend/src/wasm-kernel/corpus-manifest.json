@@ -1,0 +1,305 @@
+{
+  "summary": {
+    "total": 42,
+    "ok": 42,
+    "by_tier": {
+      "anchor": 20,
+      "dimension_angle": 3,
+      "dimension_length": 6,
+      "dimension_radius": 3,
+      "edge_query": 4,
+      "plane_query": 3,
+      "slash_point": 3
+    }
+  },
+  "coverage": {
+    "array/anchor": [
+      "array_rectangular_3x2"
+    ],
+    "boolean/anchor": [
+      "boolean_union"
+    ],
+    "chamfer/anchor": [
+      "box_with_chamfer"
+    ],
+    "chamfer/edge_query": [
+      "pick_chamfer_edge0",
+      "pick_chamfer_edge1"
+    ],
+    "extrude/anchor": [
+      "box_extrude_5x5x5",
+      "box_with_cut_10x10",
+      "two_bodies_new_operation"
+    ],
+    "fillet/anchor": [
+      "box_with_fillet"
+    ],
+    "fillet/edge_query": [
+      "pick_fillet_edge0",
+      "pick_fillet_edge1"
+    ],
+    "hole/anchor": [
+      "box_with_hole"
+    ],
+    "hole/slash_point": [
+      "pick_hole_1pt",
+      "pick_hole_2pt",
+      "pick_hole_3pt"
+    ],
+    "mirror/anchor": [
+      "mirror_plane_right"
+    ],
+    "mirror/plane_query": [
+      "pick_mirror_front",
+      "pick_mirror_top",
+      "pick_mirror_right"
+    ],
+    "plane/anchor": [
+      "plane_offset_10"
+    ],
+    "revolve/anchor": [
+      "revolve_360deg"
+    ],
+    "sketch/anchor": [
+      "empty_doc",
+      "rect_sketch_10x10",
+      "line_sketch_unconstrained",
+      "sketch_circle_tangent_line",
+      "sketch_arc",
+      "sketch_fixed_point",
+      "sketch_angle_45",
+      "sketch_coincident_points",
+      "sketch_distance_10"
+    ],
+    "sketch/dimension_angle": [
+      "dim_angle_30",
+      "dim_angle_45",
+      "dim_angle_60"
+    ],
+    "sketch/dimension_length": [
+      "dim_rect_5x5",
+      "dim_rect_8x4",
+      "dim_rect_12x7",
+      "dim_line_len3",
+      "dim_line_len7",
+      "dim_line_len15"
+    ],
+    "sketch/dimension_radius": [
+      "dim_circle_dia4",
+      "dim_circle_dia10",
+      "dim_circle_dia20"
+    ]
+  },
+  "cases": {
+    "array_rectangular_3x2": {
+      "feature_kind": "array",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "boolean_union": {
+      "feature_kind": "boolean",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "box_extrude_5x5x5": {
+      "feature_kind": "extrude",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "box_with_chamfer": {
+      "feature_kind": "chamfer",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "box_with_cut_10x10": {
+      "feature_kind": "extrude",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "box_with_fillet": {
+      "feature_kind": "fillet",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "box_with_hole": {
+      "feature_kind": "hole",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "dim_angle_30": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_angle",
+      "ok": true
+    },
+    "dim_angle_45": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_angle",
+      "ok": true
+    },
+    "dim_angle_60": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_angle",
+      "ok": true
+    },
+    "dim_circle_dia10": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_radius",
+      "ok": true
+    },
+    "dim_circle_dia20": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_radius",
+      "ok": true
+    },
+    "dim_circle_dia4": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_radius",
+      "ok": true
+    },
+    "dim_line_len15": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_length",
+      "ok": true
+    },
+    "dim_line_len3": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_length",
+      "ok": true
+    },
+    "dim_line_len7": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_length",
+      "ok": true
+    },
+    "dim_rect_12x7": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_length",
+      "ok": true
+    },
+    "dim_rect_5x5": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_length",
+      "ok": true
+    },
+    "dim_rect_8x4": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_length",
+      "ok": true
+    },
+    "empty_doc": {
+      "feature_kind": "sketch",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "line_sketch_unconstrained": {
+      "feature_kind": "sketch",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "mirror_plane_right": {
+      "feature_kind": "mirror",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "pick_chamfer_edge0": {
+      "feature_kind": "chamfer",
+      "query_tier": "edge_query",
+      "ok": true
+    },
+    "pick_chamfer_edge1": {
+      "feature_kind": "chamfer",
+      "query_tier": "edge_query",
+      "ok": true
+    },
+    "pick_fillet_edge0": {
+      "feature_kind": "fillet",
+      "query_tier": "edge_query",
+      "ok": true
+    },
+    "pick_fillet_edge1": {
+      "feature_kind": "fillet",
+      "query_tier": "edge_query",
+      "ok": true
+    },
+    "pick_hole_1pt": {
+      "feature_kind": "hole",
+      "query_tier": "slash_point",
+      "ok": true
+    },
+    "pick_hole_2pt": {
+      "feature_kind": "hole",
+      "query_tier": "slash_point",
+      "ok": true
+    },
+    "pick_hole_3pt": {
+      "feature_kind": "hole",
+      "query_tier": "slash_point",
+      "ok": true
+    },
+    "pick_mirror_front": {
+      "feature_kind": "mirror",
+      "query_tier": "plane_query",
+      "ok": true
+    },
+    "pick_mirror_right": {
+      "feature_kind": "mirror",
+      "query_tier": "plane_query",
+      "ok": true
+    },
+    "pick_mirror_top": {
+      "feature_kind": "mirror",
+      "query_tier": "plane_query",
+      "ok": true
+    },
+    "plane_offset_10": {
+      "feature_kind": "plane",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "rect_sketch_10x10": {
+      "feature_kind": "sketch",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "revolve_360deg": {
+      "feature_kind": "revolve",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "sketch_angle_45": {
+      "feature_kind": "sketch",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "sketch_arc": {
+      "feature_kind": "sketch",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "sketch_circle_tangent_line": {
+      "feature_kind": "sketch",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "sketch_coincident_points": {
+      "feature_kind": "sketch",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "sketch_distance_10": {
+      "feature_kind": "sketch",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "sketch_fixed_point": {
+      "feature_kind": "sketch",
+      "query_tier": "anchor",
+      "ok": true
+    },
+    "two_bodies_new_operation": {
+      "feature_kind": "extrude",
+      "query_tier": "anchor",
+      "ok": true
+    }
+  }
+}

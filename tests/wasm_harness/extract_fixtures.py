@@ -30,6 +30,7 @@ for _p in (_TESTS_DIR, _REPO_ROOT):
         sys.path.insert(0, _p)
 
 from wasm_harness.run_kernel import run_specs  # noqa: E402
+from wasm_harness.corpus import parametric_fixtures  # noqa: E402
 from solver_helpers import (  # noqa: E402
     rect_sketch_spec,
     extrude_spec,
@@ -39,6 +40,46 @@ from solver_helpers import (  # noqa: E402
 from parseable_fixture import make_sketch, make_doc  # noqa: E402
 
 OUTPUT_PATH = Path(__file__).resolve().parent.parent.parent / "frontend" / "src" / "wasm-kernel" / "regression-baseline.json"
+MANIFEST_PATH = OUTPUT_PATH.parent / "corpus-manifest.json"
+
+
+def _anchor_tag(spec: dict) -> dict:
+    """Best-effort tag for a hand-written anchor spec: its last feature kind, tier 'anchor'."""
+    feats = spec.get("features", [])
+    kind = "sketch"
+    for f in feats:
+        if f.get("kind"):
+            kind = f["kind"]
+    return {"feature_kind": kind, "query_tier": "anchor"}
+
+
+def _write_manifest(fixtures: list[dict[str, Any]], results: list[dict[str, Any]]) -> None:
+    """Write the coverage manifest: per-case tags + ok flag, grouped by tier."""
+    ok_by_label = {r["label"]: r["ok"] for r in results}
+    cases: dict[str, Any] = {}
+    coverage: dict[str, list[str]] = {}
+    for fx in fixtures:
+        label = fx["label"]
+        tags = fx.get("tags") or _anchor_tag(fx["spec"])
+        entry = {**tags, "ok": ok_by_label.get(label, False)}
+        cases[label] = entry
+        key = f"{tags['feature_kind']}/{tags['query_tier']}"
+        coverage.setdefault(key, []).append(label)
+    by_tier: dict[str, int] = {}
+    for label, c in cases.items():
+        by_tier[c["query_tier"]] = by_tier.get(c["query_tier"], 0) + 1
+    manifest = {
+        "summary": {
+            "total": len(cases),
+            "ok": sum(1 for c in cases.values() if c["ok"]),
+            "by_tier": dict(sorted(by_tier.items())),
+        },
+        "coverage": dict(sorted(coverage.items())),
+        "cases": dict(sorted(cases.items())),
+    }
+    with open(MANIFEST_PATH, "w") as f:
+        json.dump(manifest, f, indent=2)
+    print(f"Written manifest to {MANIFEST_PATH} (by_tier={dict(sorted(by_tier.items()))})", file=sys.stderr)
 
 
 def _make_fixtures() -> list[dict[str, Any]]:
@@ -324,18 +365,24 @@ def _make_fixtures() -> list[dict[str, Any]]:
 
 
 def main() -> None:
-    fixtures = _make_fixtures()
+    # Curated hand anchors (kept verbatim) + the parametric corpus (4b.4).
+    fixtures = _make_fixtures() + parametric_fixtures()
     print(f"Running {len(fixtures)} fixtures through Python kernel...", file=sys.stderr)
     results = run_specs(fixtures)
 
     ok_count = sum(1 for r in results if r["ok"])
     err_count = len(results) - ok_count
     print(f"  ok={ok_count} errors={err_count}", file=sys.stderr)
+    if err_count:
+        for r in results:
+            if not r["ok"]:
+                print(f"  ERROR {r['label']}: {r['error'].splitlines()[0]}", file=sys.stderr)
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_PATH, "w") as f:
         json.dump(results, f, indent=2, sort_keys=True)
     print(f"Written to {OUTPUT_PATH}", file=sys.stderr)
+    _write_manifest(fixtures, results)
 
 
 if __name__ == "__main__":
