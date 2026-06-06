@@ -39,7 +39,13 @@ export interface SketchResult {
 let solverBytes: SolveBytes | null = null
 let solverLoading: Promise<SolveBytes | null> | null = null
 
-/** Start loading the Rust solver. Safe to call multiple times. */
+/** Inject a pre-loaded solver (node tests call this with ``loadSolver()``). */
+export function setSketchSolver(bytes: SolveBytes | null): void {
+  solverBytes = bytes
+  solverLoading = null
+}
+
+/** Start loading the Rust solver from ``/wasm/`` (browser path). */
 export async function initSketchSolver(): Promise<SolveBytes | null> {
   if (solverBytes) return solverBytes
   if (!solverLoading) {

@@ -167,6 +167,7 @@ def run_specs(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "label": label,
                 "ok": True,
                 "error": None,
+                "spec": spec,
                 "input_sketches": _extract_input_sketches(spec),
                 "result": sanitised_result,
                 "bodies": sanitised_bodies,
@@ -176,6 +177,7 @@ def run_specs(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "label": label,
                 "ok": False,
                 "error": f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}",
+                "spec": spec,
                 "result": {},
                 "bodies": {},
             })
