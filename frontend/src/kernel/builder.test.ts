@@ -247,7 +247,7 @@ describe('build with mock solvers', () => {
     const edge = { kind: 'line', start: [0, 0, 0], end: [0, 10, 0] }
     let resolvedDuringF2: unknown = undefined
     const makeBody = (): Body => ({
-      id: 'body_f1', created_by: 'f1', modified_by: [], shape: 1, sketch_id: '',
+      id: 'body_f1', created_by: 'f1', modified_by: [], shape: 1 as unknown as Body['shape'], sketch_id: '',
       brep_diff: null, profile_queries: [], face_lineage: {}, edge_lineage: {},
     })
     const deps = makeDeps({
