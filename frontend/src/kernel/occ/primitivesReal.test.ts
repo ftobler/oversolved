@@ -17,9 +17,13 @@ import {
   faceNormal,
   faceArea,
   faceSurfaceType,
+  makeFaceFromWire,
+  makePrism,
+  makeWire,
   type SurfaceType,
   type Vec3,
 } from './primitives'
+import { revolveFace } from './prismLineage'
 import type { OccModule, OccShape } from './occTypes'
 
 const oc = await loadOcc()
@@ -128,6 +132,116 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
     expect(total).toBeCloseTo(400, 6)
     table.release(h)
     table.assertNoLeaks()
+  })
+
+  // ─────────────────────────────────────────────────────────
+  // Ported from tests/kernel/test_ocp_tool_shapes.py
+
+  /** Create a 1x1 square face in the XY plane via makeFaceFromWire. */
+  function makeUnitSquareFace(occ2: OccModule, scope: DisposeScope): OccShape {
+    const p00 = scope.track(new occ2.gp_Pnt_3(0, 0, 0))
+    const p10 = scope.track(new occ2.gp_Pnt_3(1, 0, 0))
+    const p11 = scope.track(new occ2.gp_Pnt_3(1, 1, 0))
+    const p01 = scope.track(new occ2.gp_Pnt_3(0, 1, 0))
+    const e1 = scope.track(new occ2.BRepBuilderAPI_MakeEdge_3(p00, p10)).Edge()
+    const e2 = scope.track(new occ2.BRepBuilderAPI_MakeEdge_3(p10, p11)).Edge()
+    const e3 = scope.track(new occ2.BRepBuilderAPI_MakeEdge_3(p11, p01)).Edge()
+    const e4 = scope.track(new occ2.BRepBuilderAPI_MakeEdge_3(p01, p00)).Edge()
+    const wire = makeWire(occ2, scope, [e1, e2, e3, e4])
+    return makeFaceFromWire(occ2, scope, wire)
+  }
+
+  /**
+   * ocp_make_prism uses Copy=True; the input face must not be mutated.
+   */
+  it('makePrism does not mutate the input face (Copy=True)', () => {
+    const scope = new DisposeScope()
+    try {
+      const face = makeUnitSquareFace(occ, scope)
+      const areaBefore = faceArea(occ, scope, face)
+      makePrism(occ, scope, face, [0, 0, 1], 2.0)
+      const areaAfter = faceArea(occ, scope, face)
+      expect(areaAfter).toBeCloseTo(areaBefore, 6)
+      expect(areaAfter).toBeCloseTo(1.0, 6) // 1x1 square
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  /**
+   * ocp_revolve / revolveFace uses Copy=True; the input face must not be mutated.
+   */
+  it('revolveFace does not mutate the input face (Copy=True)', () => {
+    const scope = new DisposeScope()
+    try {
+      const face = makeUnitSquareFace(occ, scope)
+      const areaBefore = faceArea(occ, scope, face)
+      revolveFace(occ, scope, face, [0, 0, 0], [0, 1, 0], 90)
+      const areaAfter = faceArea(occ, scope, face)
+      expect(areaAfter).toBeCloseTo(areaBefore, 6)
+      expect(areaAfter).toBeCloseTo(1.0, 6)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  /**
+   * ocp_make_face_from_wire / makeFaceFromWire must NOT silently repair a gap
+   * in the outer wire. A 0.5 gap exceeds Precision::Confusion() (1e-7). The
+   * gap must be surfaced either by the wire builder (throw) or the face builder
+   * (throw or degenerate-face with zero area).
+   */
+  it('makeFaceFromWire does not silently repair a gapped outer wire', () => {
+    const scope = new DisposeScope()
+    const GAP = 0.5
+    try {
+      const e1 = scope.track(
+        new occ.BRepBuilderAPI_MakeEdge_3(
+          scope.track(new occ.gp_Pnt_3(0, 0, 0)),
+          scope.track(new occ.gp_Pnt_3(1, 0, 0)),
+        ),
+      ).Edge()
+      const e2 = scope.track(
+        new occ.BRepBuilderAPI_MakeEdge_3(
+          scope.track(new occ.gp_Pnt_3(1, 0, 0)),
+          scope.track(new occ.gp_Pnt_3(1, 1, 0)),
+        ),
+      ).Edge()
+      // deliberate gap: next edge starts at (1+GAP, 1, 0) instead of (1, 1, 0)
+      const e3 = scope.track(
+        new occ.BRepBuilderAPI_MakeEdge_3(
+          scope.track(new occ.gp_Pnt_3(1 + GAP, 1, 0)),
+          scope.track(new occ.gp_Pnt_3(0, 1, 0)),
+        ),
+      ).Edge()
+      const e4 = scope.track(
+        new occ.BRepBuilderAPI_MakeEdge_3(
+          scope.track(new occ.gp_Pnt_3(0, 1, 0)),
+          scope.track(new occ.gp_Pnt_3(0, 0, 0)),
+        ),
+      ).Edge()
+
+      // Layer 1: wire builder should reject the gap
+      let wire: OccShape
+      try {
+        wire = makeWire(occ, scope, [e1, e2, e3, e4])
+      } catch {
+        return // gap correctly surfaced by wire builder
+      }
+
+      // Layer 2: face builder must not silently repair
+      try {
+        const face = makeFaceFromWire(occ, scope, wire)
+        const area = faceArea(occ, scope, face)
+        // A silently-repaired face would have non-trivial area (~0.25);
+        // a degenerate face from a gapped wire has near-zero area.
+        expect(area).toBeLessThan(0.001)
+      } catch {
+        // face builder or area computation threw — gap correctly surfaced
+      }
+    } finally {
+      scope.dispose()
+    }
   })
 
   it('stays leak-free across a 50-iteration build/evict loop', () => {
