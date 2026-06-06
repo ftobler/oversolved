@@ -365,6 +365,49 @@ describe('validateIncremental', () => {
     expect(v.level).toBe(2)
     expect(v.fp_only).toBe(true)
   })
+
+  it('catches corrupted body_store created_by at L3', () => {
+    /** Corrupting a body's created_by in the incremental state triggers a level-3
+     *  failure. This is the control test: verifies the comparator catches
+     *  body_store drift. Without this, a bug in _diffRepoSnapshot could silently
+     *  swallow corruption. Port of test_rebuild_equivalence_corrupt_created_by_fails. */
+    const deps = makeDeps({
+      trySolveFeature: (_f, _r, bodyStore): FeatureResult => {
+        bodyStore['body_ex1'] = {
+          id: 'body_ex1',
+          created_by: 'ex1',
+          modified_by: [],
+          shape: null,
+          sketch_id: 'sk1',
+          brep_diff: null,
+          profile_queries: [],
+          face_lineage: {},
+          edge_lineage: {},
+        }
+        return { status: 'ok' }
+      },
+    })
+    const r = build(
+      { features: [{ id: 'sk1', kind: 'sketch' }, { id: 'ex1', kind: 'extrude' }] },
+      {},
+      deps,
+    )
+    expect(r.result.ex1).toMatchObject({ status: 'ok' })
+
+    const state = r._build_state
+    const body = state.checkpoints.ex1.body_store_snapshot['body_ex1']
+    expect(body).toBeDefined()
+    body.created_by = 'TAMPERED'
+
+    const v = validateIncremental(
+      state,
+      r.result,
+      { features: [{ id: 'sk1', kind: 'sketch' }, { id: 'ex1', kind: 'extrude' }] },
+      deps,
+    )
+    expect(v.passed).toBe(false)
+    expect(v.level).toBe(3)
+  })
 })
 
 // ─── Ported from tests/kernel/test_builder_partial_rebuild.py ───
