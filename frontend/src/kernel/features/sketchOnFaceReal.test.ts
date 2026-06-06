@@ -13,7 +13,7 @@ import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
 import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
-import { build, type BuildDeps } from '../builder'
+import { build, type BuildDeps, type BuildResponse } from '../builder'
 import { initGlobalRepo } from '../query'
 import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from './postRegister'
@@ -113,7 +113,7 @@ function extrudeDoc(): Dict {
  * Return the first face query from the first body in a build result
  * (port of `_face_query_from_build`).
  */
-function faceQueryFromBuild(r: Record<string, unknown>): string | null {
+function faceQueryFromBuild(r: BuildResponse): string | null {
   const bodies = (r.bodies as Record<string, BodyOutput>) ?? {}
   for (const body of Object.values(bodies)) {
     const mesh = body.mesh
