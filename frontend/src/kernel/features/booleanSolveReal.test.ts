@@ -110,4 +110,37 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       }
     })
   }
+
+  describe('boolean inline cases (ported from test_boolean.py)', () => {
+    it('multiple tools are all consumed', () => {
+      /** Boolean with two tools should consume both.
+       *  Port of test_boolean_multiple_tools. */
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
+          body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[0, 0, 0], [2, 2, 2]]),
+          body_u1: bodyFromSpec(occ, scope, table, 'body_u1', 'ex_u1', [[3, 0, 0], [2, 2, 2]]),
+        }
+        const targetVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+
+        const result = solveBoolean(
+          occ, scope, table,
+          { id: 'bool1', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0', 'body_u1'] } },
+          new Repository(),
+          bodyStore,
+        )
+        expect(result.status).toBe('ok')
+        expect(result.operation).toBe('subtract')
+        // Both tools consumed
+        expect('body_u0' in bodyStore).toBe(false)
+        expect('body_u1' in bodyStore).toBe(false)
+        // Target volume reduced
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeLessThan(targetVol)
+      } finally {
+        scope.dispose()
+      }
+    })
+  })
 })

@@ -52,4 +52,14 @@ describe('solveRevolve guard paths', () => {
     expect(result.status).toBe('ok')
     expect(result.mesh_warning).toMatch(/no closed profile/)
   })
+
+  it('angle=0 defaults to 360 (no error)', () => {
+    /** angle=0 is coerced to 360 by the || operator -- no error.
+     *  This is intentional upstream behavior, not a bug. */
+    const repo = new Repository()
+    repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+    expect(() =>
+      solveRevolve(oc, scope, table, { id: 'f1', revolve: { sketch: '$sk', angle: 0 } }, repo, {}),
+    ).not.toThrow(/angle must be non-zero/)
+  })
 })

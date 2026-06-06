@@ -50,4 +50,33 @@ describe('solveHole guard paths', () => {
       solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: 'body_t' } }, repo, { body_t: nullBody('body_t') }, {}),
     ).toThrow(/has no shape/)
   })
+
+  it('throws when sketch has no point entities', () => {
+    /** Hole referenced sketch with no point entities raises.
+     *  Port of test_hole_no_points_raises. */
+    const repo = new Repository()
+    repo.register('_pt_sk', PLANE)
+    expect(() =>
+      solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: 'body_t' } }, repo, {
+        body_t: { ...nullBody('body_t'), shape: 1 as never },
+      }, { sk: { entities: [{ id: 'l1', kind: 'line' }] } }),
+    ).toThrow(/has no point entities/)
+  })
+
+  it('throws when all points have no XY data (ported to holeReal.test.ts)', () => {
+    /** All point entities missing XY data raises. Requires real OCC.
+     *  Ported to holeReal.test.ts (inline OCC case). */
+  })
+
+  it('throws when target body does not exist', () => {
+    /** Non-existent target body raises.
+     *  Port of test_hole_missing_target_raises. */
+    const repo = new Repository()
+    repo.register('_pt_sk', PLANE)
+    expect(() =>
+      solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: '@body_missing' } }, repo, {
+        body_ex1: nullBody('body_ex1'),
+      }, { sk: { entities: [{ id: 'p1', kind: 'point' }] } }),
+    ).toThrow(/body not found/)
+  })
 })

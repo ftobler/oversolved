@@ -46,6 +46,59 @@ describe('array / circular_array guard paths', () => {
       solveCircularArray(oc, scope, table, { id: 'c', circular_array: {} }, repo, {}),
     ).toThrow(/no source body with shape found/)
   })
+
+  it('array: count_x=0 with include_source=false raises', () => {
+    /** count_x=0 with include_source=false produces no instances -- can
+     *  only be tested with real OCC; guard path verifies error surfaces. */
+    const store = { body_s: { ...nullBody('body_s'), shape: 1 as never } }
+    expect(() =>
+      solveArray(oc, scope, table, {
+        id: 'a', array: { source_body: 'body_s', mode: 'linear', count_x: 0, include_source: false },
+      }, repo, store),
+    ).toThrow()
+  })
+
+  it('circular_array: count=0 raises', () => {
+    /** count=0 should produce an error (division by zero in step_angle). */
+    const store = { body_s: { ...nullBody('body_s'), shape: 1 as never } }
+    expect(() =>
+      solveCircularArray(oc, scope, table, {
+        id: 'c', circular_array: { source_body: 'body_s', count: 0 },
+      }, repo, store),
+    ).toThrow()
+  })
+
+  it('circular_array: missing source body with available IDs in message', () => {
+    /** Non-existent source_body reports available body IDs. */
+    expect(() =>
+      solveCircularArray(oc, scope, table, {
+        id: 'c', circular_array: { source_body: 'nonexistent' },
+      }, repo, { body_real: nullBody('body_real') }),
+    ).toThrow(/source body 'nonexistent' not found/)
+    try {
+      solveCircularArray(oc, scope, table, {
+        id: 'c', circular_array: { source_body: 'nonexistent' },
+      }, repo, { body_real: nullBody('body_real') })
+    } catch (e) {
+      expect((e as Error).message).toMatch(/available body IDs/)
+    }
+  })
+
+  it('array: missing source body with available IDs in message', () => {
+    /** Non-existent source_body reports available body IDs. */
+    expect(() =>
+      solveArray(oc, scope, table, {
+        id: 'a', array: { source_body: 'nonexistent' },
+      }, repo, { body_real: nullBody('body_real') }),
+    ).toThrow(/source body 'nonexistent' not found/)
+    try {
+      solveArray(oc, scope, table, {
+        id: 'a', array: { source_body: 'nonexistent' },
+      }, repo, { body_real: nullBody('body_real') })
+    } catch (e) {
+      expect((e as Error).message).toMatch(/available body IDs/)
+    }
+  })
 })
 
 describe('transform / mirror guard paths', () => {

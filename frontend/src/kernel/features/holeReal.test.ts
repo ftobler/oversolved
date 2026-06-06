@@ -97,4 +97,36 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       }
     })
   }
+
+  describe('hole inline cases (ported from test_hole_feature.py)', () => {
+    it('reverse direction drills from opposite side', () => {
+      /** Hole with direction='reverse' drills from opposite side of the target.
+       *  Port of test_hole_reverse_direction. */
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const repo = new Repository()
+        repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+        repo.register('sk/p1/xy', { external_xy: [10, 10] })
+        const box = makeBox(occ, scope, 20, 20, 10)
+        const bodyStore: Record<string, Body> = {
+          body_t: {
+            id: 'body_t', created_by: 'ex_t', modified_by: [],
+            shape: table.register(scope.detach(box), 'ex_t'),
+            sketch_id: 'sk_t', brep_diff: null,
+            profile_queries: [], face_lineage: {}, edge_lineage: {},
+          },
+        }
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: { sketch: '@sk', diameter: 10, depth: 5, direction: 'reverse', target: 'body_t' },
+        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        expect(result.status).toBe('ok')
+        expect(result.hole_count).toBe(1)
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeLessThan(20 * 20 * 10)
+      } finally {
+        scope.dispose()
+      }
+    })
+  })
 })

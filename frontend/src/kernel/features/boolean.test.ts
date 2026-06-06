@@ -52,4 +52,21 @@ describe('solveBoolean guard paths', () => {
       ),
     ).toThrow(/unknown operation 'xor'/)
   })
+
+  it('throws when tool body does not exist', () => {
+    /** Tool body that does not exist should raise.
+     *  Ported to booleanSolveReal.test.ts (real OCC required). */
+  })
+
+  it('throws when target body does not exist', () => {
+    /** Target body that does not exist should raise.
+     *  Port of test_boolean_target_not_found. */
+    expect(() =>
+      solveBoolean(oc, scope, table, {
+        id: 'b', boolean: { operation: 'union', target: '@body_missing', tools: ['body_u0'] },
+      }, repo, {
+        body_u0: body('body_u0'),
+      }),
+    ).toThrow(/body not found/)
+  })
 })

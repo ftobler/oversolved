@@ -8,8 +8,9 @@ import {
   type BuildDeps,
   type FeatureResult,
 } from './builder'
-import { Repository, makeAncestryQuery } from './query'
+import { Repository, makeAncestryQuery, ref, canonical } from './query'
 import { edgeGeometryHash } from './geomHash'
+import { repoFromSnapshot } from './builder'
 import type { BuildState, FeatureCheckpoint, Body } from './types3d'
 
 function makeDeps(overrides?: Partial<BuildDeps>): BuildDeps {
@@ -643,5 +644,168 @@ describe('rollback transitions', () => {
     const rRedo = build({ features }, { prevState: rUndo._build_state, rollbackPosition: 3 }, deps)
     expect(rRedo.result.sk2).toMatchObject({ status: 'ok' })
     expect(rRedo.result.sk1).toEqual(geomSk1)
+  })
+})
+
+// ─── Ported from tests/kernel/test_builder.py (not already covered) ───
+
+describe('pickBoundary edge cases', () => {
+  it('pickBoundary=0 should not return pick_bodies', () => {
+    /** Port of test_pick_boundary_zero_returns_no_pick_bodies. */
+    const deps = makeDeps()
+    const r = build(
+      { features: [{ id: 'sk1', kind: 'sketch' }, { id: 'ex1', kind: 'extrude' }] },
+      { pickBoundary: 0 },
+      deps,
+    )
+    expect(r.pick_bodies).toBeUndefined()
+  })
+
+  it('pickBoundary out of range should not return pick_bodies', () => {
+    /** Port of test_pick_boundary_out_of_range_returns_no_pick_bodies. */
+    const deps = makeDeps()
+    const r = build(
+      { features: [{ id: 'sk1', kind: 'sketch' }] },
+      { pickBoundary: 10 },
+      deps,
+    )
+    expect(r.pick_bodies).toBeUndefined()
+  })
+})
+
+describe('repo serialization', () => {
+  it('repoFromSnapshot deduplicates elements with identical payloads', () => {
+    /** Two elements with identical payloads under the same ancestral key
+     *  get collapsed. Port of test_dedupe_repo_collapses_duplicate_payloads. */
+    const payload = { type: 'flatface', body_id: 'b1' }
+    const key = canonical(['@ex1face0', '@ex1'])
+    const snapshot = {
+      elements: { id1: { ...payload }, id2: { ...payload } },
+      ancestral: { [key]: { set: ['@ex1face0', '@ex1'], eids: ['id1', 'id2'] } },
+      byGeomHash: {},
+    }
+    const repo = repoFromSnapshot(snapshot)
+    const entry = repo.ancestral.get(key)
+    expect(entry?.eids).toHaveLength(1)
+    expect(repo.elements.has('id2')).toBe(false)
+  })
+})
+
+describe('robustness', () => {
+  it('features without id do not crash the build', () => {
+    /** Features missing the 'id' key must not crash with KeyError.
+     *  Port of test_features_by_id_missing_key. */
+    const r = build({ features: [{}] }, {}, makeDeps())
+    expect(r.result).toBeDefined()
+  })
+})
+
+// ─── Ported from tests/kernel/test_builder_partial_rebuild.py (remaining) ───
+
+describe('clean prefix reuse', () => {
+  it('_build_state is a separate key that can be removed', () => {
+    /** _build_state exists on the raw build() result and can be
+     *  popped without affecting the rest of the response.
+     *  Port of test_build_state_is_separate_key. */
+    const r = build({ features: [{ id: 'sk1', kind: 'sketch' }] }, {}, makeDeps())
+    expect('_build_state' in r).toBe(true)
+    const copy = { ...r }
+    delete (copy as Record<string, unknown>)._build_state
+    expect('_build_state' in copy).toBe(false)
+  })
+
+  it('unchanged feature list reuses all checkpoints', () => {
+    /** [sk1, sk2] -> [sk1, sk2] unchanged: all checkpoints are
+     *  reused from cache. Port of test_builder_clean_unchanged_list. */
+    const deps = makeTrackerDeps()
+    const features = [
+      { id: 'sk1', kind: 'sketch' },
+      { id: 'sk2', kind: 'sketch' },
+    ]
+    const r1 = build({ features }, {}, deps)
+    const state1 = r1._build_state
+
+    const r2 = build({ features }, { prevState: state1 }, deps)
+    expect(r2.result.sk1).toEqual(r1.result.sk1)
+    expect(r2.result.sk2).toEqual(r1.result.sk2)
+  })
+})
+
+describe('edge cases', () => {
+  it('rollback_position=0 followed by full build succeeds', () => {
+    /** Build with rollback_position=0 returns empty state;
+     *  subsequent build with features does a full rebuild.
+     *  Port of test_rollback_zero_cascade_full_rebuild. */
+    const deps = makeTrackerDeps()
+    const features = [
+      { id: 'sk1', kind: 'sketch' },
+      { id: 'ex1', kind: 'extrude' },
+    ]
+
+    const rEmpty = build({ features }, { rollbackPosition: 0 }, deps)
+    expect(Object.keys(rEmpty._build_state.checkpoints)).toHaveLength(0)
+
+    const rFull = build({ features }, { prevState: rEmpty._build_state }, deps)
+    expect(rFull.result.sk1).toMatchObject({ status: 'ok' })
+    expect(rFull.result.ex1).toMatchObject({ status: 'ok' })
+  })
+
+  it('corrupted checkpoint missing body_id does not crash rebuild', () => {
+    /** Missing body_id in body_store_snapshot should not crash.
+     *  Port of test_corrupted_checkpoint_missing_body_id. */
+    const deps = makeTrackerDeps()
+    const features = [
+      { id: 'sk1', kind: 'sketch' },
+      { id: 'ex1', kind: 'extrude' },
+    ]
+    const r1 = build({ features }, {}, deps)
+    const state1 = r1._build_state
+
+    // Corrupt: remove body_ex1 from checkpoint snapshot.
+    delete state1.checkpoints.ex1.body_store_snapshot['body_ex1']
+
+    const features2 = [
+      { id: 'sk1', kind: 'sketch' },
+      { id: 'ex1', kind: 'extrude' },
+      { id: 'sk_new', kind: 'sketch' },
+    ]
+    const r2 = build({ features: features2 }, { prevState: state1 }, deps)
+    expect(r2.result.sk_new).toMatchObject({ status: 'ok' })
+  })
+
+  it('GC removes ancestry entries for removed features', () => {
+    /** After rebuilding with fewer features, the final repo snapshot
+     *  has no entries for removed features.
+     *  Port of test_builder_gc_after_feature_remove. */
+    const deps = makeDeps({
+      trySolveFeature: (feature, repo): FeatureResult => {
+        repo.registerAncestor([ref(feature.id as string)], { type: 'sketch', feature_id: feature.id })
+        return { status: 'ok', solved: feature.id }
+      },
+    })
+    const r1 = build(
+      { features: [{ id: 'sk1', kind: 'sketch' }, { id: 'sk2', kind: 'sketch' }] },
+      {},
+      deps,
+    )
+
+    // sk2 checkpoint should have @sk2 entries in its repo_snapshot.
+    const sk2Snap = r1._build_state.checkpoints.sk2.repo_snapshot as Record<string, unknown>
+    const sk2Ancestral = (sk2Snap.ancestral as Record<string, { set: string[] }>) ?? {}
+    const hasSk2 = Object.keys(sk2Ancestral).some((k) => k.includes('@sk2'))
+    expect(hasSk2).toBe(true)
+
+    // Rebuild with only sk1.
+    const r2 = build(
+      { features: [{ id: 'sk1', kind: 'sketch' }] },
+      { prevState: r1._build_state },
+      deps,
+    )
+
+    // sk1 checkpoint in the new state must have no @sk2 ancestry entries.
+    const sk1Snap = r2._build_state.checkpoints.sk1.repo_snapshot as Record<string, unknown>
+    const sk1Ancestral = (sk1Snap.ancestral as Record<string, unknown>) ?? {}
+    const hasSk2After = Object.keys(sk1Ancestral).some((k) => k.includes('@sk2'))
+    expect(hasSk2After).toBe(false)
   })
 })
