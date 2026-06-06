@@ -270,6 +270,7 @@ describe("query coercion", () => {
     expect(result).toHaveProperty("type", "straightedge")
   })
 
+  /** Two candidates coercing to different solids is ambiguous -> fail loud. */
   it("raises when coercion yields distinct solids (ambiguous)", () => {
     const repo = new Repository()
     const bodyStore: Record<string, unknown> = {
@@ -288,6 +289,7 @@ describe("query coercion", () => {
     expect(() => repo.query(q, null, bodyStore)).toThrow(AmbiguousQueryError)
   })
 
+  /** Several faces of one body coerce to the same solid -> resolve cleanly. */
   it("resolves cleanly when several faces coerce to the same solid", () => {
     const repo = new Repository()
     const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
@@ -322,8 +324,16 @@ describe("query coercion", () => {
   })
 })
 
+/** Tests for tier-2 partial ancestral resolver.
+ *
+ * The resolver has three tiers:
+ * 1. Full ancestral — query_set <= registered_key
+ * 2. Partial ancestral — registered_key <= query_set (reverse direction, unique only)
+ * 3. Geometry hash fallback */
 describe("partial ancestral resolver (tier 2)", () => {
+  /** Query carries an extra ancestor not in registration; tier 2 resolves it. */
   it("resolves when unique — extra ancestor in query not in registration", () => {
+    // Registered under {A, B} but the query has {A, B, extra}
     const repo = new Repository()
     const payload = { type: "face", body_id: "body1", created_by: "ex1" }
     repo.registerAncestor(["@A", "@B"], payload, "gface_hash1")
@@ -332,7 +342,10 @@ describe("partial ancestral resolver (tier 2)", () => {
     expect((result as Record<string, unknown>).created_by).toBe("ex1")
   })
 
+  /** Two elements share no common registered superset but both match tier 2. */
   it("ambiguous yields no match — two entries both match tier 2 but >1 candidate", () => {
+    // Query has both @A and @B — tier 1 finds nothing (query not subset of any key),
+    // tier 2 finds both (@A <= query_set and @B <= query_set) — returns nothing
     const repo = new Repository()
     repo.registerAncestor(["@A"], { type: "face", body_id: "body1", created_by: "ex1" }, "gface_a")
     repo.registerAncestor(["@B"], { type: "face", body_id: "body2", created_by: "ex2" }, "gface_b")
@@ -340,7 +353,10 @@ describe("partial ancestral resolver (tier 2)", () => {
     expect(result).toBeNull()
   })
 
+  /** No subset relation either way — tier 2 finds nothing, falls to tier 3 (hash). */
   it("falls to hash when ancestors are disjoint — no subset relation either way", () => {
+    // Query with completely different ancestors — @X, @Y have no subset relation
+    // with @A, @B, @C. Tier 1+2 miss. Hash fallback resolves via @gface_hash1.
     const repo = new Repository()
     repo.registerAncestor(
       ["@A", "@B", "@C"],
@@ -352,7 +368,9 @@ describe("partial ancestral resolver (tier 2)", () => {
     expect((result as Record<string, unknown>).created_by).toBe("ex1")
   })
 
+  /** Tier 1 exact-match candidate is returned without scanning tier 2. */
   it("full match wins over partial — tier 1 exact superset returned without scanning tier 2", () => {
+    // @A, @B is a subset that would match tier 2, but the full @A,@B,@C match wins
     const repo = new Repository()
     repo.registerAncestor(["@A", "@B", "@C"], { type: "face", body_id: "body1", created_by: "full" })
     repo.registerAncestor(["@A", "@B"], { type: "face", body_id: "body2", created_by: "partial" })
@@ -361,6 +379,7 @@ describe("partial ancestral resolver (tier 2)", () => {
     expect((result as Record<string, unknown>).created_by).toBe("full")
   })
 
+  /** Tier 2 respects type_restriction. */
   it("respects type restriction in tier 2", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -376,6 +395,7 @@ describe("partial ancestral resolver (tier 2)", () => {
     expect(resultWrong).toBeNull()
   })
 
+  /** Verify that existing tier 1 behaviour (query <= key) is undisturbed. */
   it("tier 1 subset still resolves — query with fewer ancestors than registered key", () => {
     const repo = new Repository()
     repo.registerAncestor(["@A", "@B", "@C"], { type: "face", body_id: "body1", created_by: "ex1" })
@@ -400,6 +420,7 @@ function makeFacePayload(bodyId: string, createdBy: string, idx: number): Payloa
   }
 }
 
+/** Tests for two-tier ancestry resolution: ancestral primary, geom_hash fallback. */
 describe("geom-hash fallback (two-tier ancestry resolution)", () => {
   it("isGeomHashId detects prefixes", () => {
     expect(isGeomHashId("@gface_abc123")).toBe(true)
@@ -410,6 +431,7 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     expect(isGeomHashId("@body_ex1/face0")).toBe(false)
   })
 
+  /** Hash in by_geom_hash does not affect pure-ancestry queries. */
   it("hash in byGeomHash does not affect pure-ancestry queries", () => {
     const repo = new Repository()
     const payload = makeFacePayload("body1", "ex1", 0)
@@ -421,6 +443,7 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     expect(r["created_by"]).toBe("ex1")
   })
 
+  /** After registering with geom_hash, no frozenset in ancestral contains a geom_hash string. */
   it("no geom_hash tag in any ancestral key Set", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -441,6 +464,7 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     }
   })
 
+  /** register_ancestor with geom_hash populates by_geom_hash. */
   it("registerAncestor with geomHash populates byGeomHash", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -453,6 +477,7 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     expect(repo.byGeomHash.get("gface_abc")!.length).toBe(1)
   })
 
+  /** When ancestral query finds nothing, by_geom_hash is consulted as last resort. */
   it("hash fallback when ancestral query finds nothing", () => {
     const repo = new Repository()
     const payload = makeFacePayload("body1", "ex1", 0)
@@ -464,6 +489,7 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     expect(r["created_by"]).toBe("ex1")
   })
 
+  /** Hash fallback respects type_restriction. */
   it("hash fallback respects type restriction", () => {
     const repo = new Repository()
     const facePayload = makeFacePayload("body1", "ex1", 0)
@@ -478,6 +504,7 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     expect(wrongType).toBeNull()
   })
 
+  /** Two faces share structural ancestry but differ by hash; hash narrows the result. */
   it("hash disambiguates when shared structural ancestry is ambiguous", () => {
     const repo = new Repository()
     const payloadA = makeFacePayload("body1", "ex1", 0)
@@ -499,6 +526,8 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
 })
 
 describe("ambiguous ancestry queries", () => {
+  /** Direct test: manually create a scenario where the repository has
+   *  multiple elements with overlapping ancestor sets. */
   it("raises when two surfaces share the same ancestor set", () => {
     const repo = new Repository()
     const ancestorIds = ["@sketch_1/circle", "@sketch_1/right_line"]
@@ -516,6 +545,7 @@ describe("ambiguous ancestry queries", () => {
     }
   })
 
+  /** Test that adding surface indices to ancestor IDs disambiguates queries. */
   it("surface index disambiguates queries", () => {
     const ancestorIds = ["@sketch_1/circle", "@sketch_1/right_line"]
     const query1 = makeAncestryQuery(ancestorIds, "face")
@@ -531,6 +561,7 @@ describe("ambiguous ancestry queries", () => {
     expect(query1Indexed).not.toBe(query2Indexed)
   })
 
+  /** Test that indexed queries resolve to a single surface, not both. */
   it("indexed queries resolve to a single surface each", () => {
     const repo = new Repository()
 
@@ -555,6 +586,13 @@ describe("ambiguous ancestry queries", () => {
   })
 })
 
+/** Characterization tests: type coercion is exact-tier only.
+ *
+ * _resolve_ancestry_ids attempts _coerce_type ONLY when the exact tier
+ * (query_set <= registered_key) produced candidates. The recovery tiers
+ * filter by strict type and never coerce. This is intentional: once we are
+ * already guessing (partial or hash-only match), type coercion widens the
+ * guess and invites a fail-wrong pick. */
 describe("type coercion tier scope", () => {
   const flatfaceObj = {
     type: "flatface",
@@ -571,18 +609,24 @@ describe("type coercion tier scope", () => {
     return repo
   }
 
+  /** Baseline: an exact-tier flatface coerces up to its solid. */
   it("coercion happens in exact tier", () => {
     const repo = repoWithFlatface(["@A"])
     const q = makeAncestryQuery(["@A"], "solid")
     expect(repo.query(q, null, bodyStoreWithSolid)).toBe(bodyObj)
   })
 
+  /** Same flatface reached via the partial tier (query carries an extra id)
+   *  does NOT coerce to solid -- strict type filter -> no match. */
   it("coercion skipped in partial tier (type strict filter drops match)", () => {
     const repo = repoWithFlatface(["@A"])
+    // query_set {@A, @extra} is not a subset of {@A}, so the exact tier misses
+    // and the partial tier ({@A} <= {@A, @extra}) is what fires
     const q = makeAncestryQuery(["@A", "@extra"], "solid")
     expect(repo.query(q, null, bodyStoreWithSolid)).toBeNull()
   })
 
+  /** Contrast: the same partial match resolves fine when no type is demanded. */
   it("partial tier resolves without type restriction", () => {
     const repo = repoWithFlatface(["@A"])
     const q = makeAncestryQuery(["@A", "@extra"])
@@ -591,12 +635,16 @@ describe("type coercion tier scope", () => {
     expect((result as Record<string, unknown>).type).toBe("flatface")
   })
 
+  /** A face reached only via the no-ancestry hash fallback does NOT coerce. */
   it("coercion skipped in hash fallback tier (no ancestry = strict type filter)", () => {
     const repo = repoWithFlatface(["@A"], "gface_h")
+    // @X shares no subset relation with @A (tiers 1+2 miss); only the precise
+    // hash matches. With type_restriction=solid the strict filter drops it.
     const q = makeAncestryQuery(["@gface_h", "@X"], "solid")
     expect(repo.query(q, null, bodyStoreWithSolid)).toBeNull()
   })
 
+  /** Contrast: the hash fallback resolves the face when no type is demanded. */
   it("hash fallback resolves without type restriction", () => {
     const repo = repoWithFlatface(["@A"], "gface_h")
     const q = makeAncestryQuery(["@gface_h", "@X"])
@@ -657,6 +705,8 @@ describe("coerceType scoped to same created_by feature", () => {
   })
 })
 
+/** Ordering guard: a query from feature N must never resolve against geometry
+ * owned by a feature ordered after N in the current build order. */
 describe("ordering guard", () => {
   function reg(
     repo: Repository,
@@ -669,6 +719,8 @@ describe("ordering guard", () => {
   }
 
   it("filters forward references after reorder", () => {
+    // Both extrudes are built on sk1, so a broad query for @sk1 matches both.
+    // From ex1 the ex2-owned element is forward and must be filtered out.
     const repo = new Repository()
     repo.setFeatureOrder(["sk1", "ex1", "ex2"])
     reg(repo, ["@sk1"], "ex1")
@@ -681,6 +733,7 @@ describe("ordering guard", () => {
   })
 
   it("builtin elements are never ordering-gated", () => {
+    // No created_by/sketch_id => built-in, never ordering-gated
     const repo = new Repository()
     repo.setFeatureOrder(["f0", "f1"])
     repo.registerAncestor(["@builtin"], { type: "plane" })
@@ -700,6 +753,7 @@ describe("ordering guard", () => {
   })
 
   it("absolute queries are never ordering-gated", () => {
+    // Absolute references are explicit and not ordering-gated, even forward.
     const repo = new Repository()
     repo.setFeatureOrder(["ex1", "ex2"])
     repo.register("ex2/vertex/2", { type: "vertex", created_by: "ex2" })
@@ -722,6 +776,7 @@ describe("ordering guard", () => {
   })
 
   it("ordering guard is no-op without current feature", () => {
+    // No current feature => filter is identity, both match → ambiguous
     const repo = new Repository()
     repo.setFeatureOrder(["ex1", "ex2"])
     reg(repo, ["@sk1"], "ex1")
@@ -732,6 +787,8 @@ describe("ordering guard", () => {
   })
 
   it("hash fallback rejects forward match", () => {
+    // Identical geom hash, distinct ancestry; query carries only the hash so
+    // resolution lands in the tier-3 hash fallback.
     const repo = new Repository()
     repo.setFeatureOrder(["f0", "f1"])
     reg(repo, ["@f0"], "f0", "gface_X")
@@ -761,8 +818,16 @@ describe("ordering guard", () => {
   })
 })
 
+/** Characterization tests for feature-geometry registration cleanup.
+ *
+ * clear_by_sketch_id is elements-only: it removes direct payloads but does NOT
+ * prune the ancestral index. Used standalone it can leave dangling refs. The
+ * orchestrated clear_feature_geometry_registrations prunes both together. */
 describe("clearBySketchId", () => {
   it("can leave dangling refs when used standalone", () => {
+    // clear_by_sketch_id removes every elements entry carrying the sketch_id
+    // but does NOT prune the ancestral index. Used standalone it can leave
+    // dangling refs: a token still listed in ancestral but absent from elements.
     const repo = new Repository()
     const eid = repo.registerAncestor(
       ["@sketch1/line1", "@sketch1"],
@@ -779,7 +844,10 @@ describe("clearBySketchId", () => {
   })
 })
 
+/** The orchestration prunes ancestral + elements together, leaving no
+ * dangling eid: every eid listed in any ancestral list still exists in elements. */
 describe("clearFeatureGeometryRegistrations", () => {
+  /** The orchestration prunes ancestral + elements together: no dangling eid. */
   it("leaves no dangling refs after cleanup", () => {
     const repo = new Repository()
     const topoEid = repo.registerAncestor(
@@ -839,7 +907,9 @@ function makeSnapshot(repo: Repository): Record<string, unknown> {
   return { elements, ancestral, byGeomHash }
 }
 
+/** Tests for repo snapshot shallow copy memory and correctness. */
 describe("repoFromSnapshot", () => {
+  /** _repo_from_snapshot with shallow copy produces same query results. */
   it("preserves correctness with payloads", () => {
     const original = buildRepoWithPayloads(100)
     const snapshot = makeSnapshot(original)
@@ -852,6 +922,8 @@ describe("repoFromSnapshot", () => {
     expect(new Set(repo.ancestral.keys())).toEqual(new Set(original.ancestral.keys()))
   })
 
+  /** dict() copy uses less memory than deepcopy for the same payloads —
+   *  shallow copies share value objects instead of duplicating them. */
   it("shallow copy isolates eids arrays from snapshot source", () => {
     const original = buildRepoWithPayloads(500)
     const snapshot = makeSnapshot(original)
@@ -876,6 +948,7 @@ describe("repoFromSnapshot", () => {
     expect(repoEntry!.eids.length).toBe(origLen)
   })
 
+  /** Appending to an ancestral list in deserialized repo does not affect snapshot. */
   it("isolates ancestral lists from snapshot", () => {
     const repo = buildRepoWithPayloads(10)
     const snapshot = makeSnapshot(repo)
@@ -892,12 +965,14 @@ describe("repoFromSnapshot", () => {
     expect(snapshotAncestral[existingKey].eids.length).toBe(3)
   })
 
+  /** Empty snapshot produces empty repo. */
   it("handles empty snapshot", () => {
     const repo = repoFromSnapshot({ elements: {}, ancestral: {}, byGeomHash: {} })
     expect(repo.elements.size).toBe(0)
     expect(repo.ancestral.size).toBe(0)
   })
 
+  /** Old-format snapshot (no elements/ancestral keys) returns empty repo. */
   it("returns empty repo for old-format snapshot (no elements/ancestral wrapper)", () => {
     const oldSnapshot = { e1: { id: "e1", kind: "point", params: [1.0, 2.0] } }
     const repo = repoFromSnapshot(oldSnapshot)
@@ -908,6 +983,9 @@ describe("repoFromSnapshot", () => {
 
 // ─── Ancestral registry lifecycle (ported from test_ancestral_registry_lifecycle.py) ───
 
+/** Tests for the ancestral registry lifecycle: re-registration, GC, reset on
+ * geometry changes. Exercised via _evict_ancestry_and_register, postRegister,
+ * and clear_feature_geometry_registrations. */
 describe("ancestral registry lifecycle", () => {
   function ancestralCountForQuery(repo: Repository, query: string): number {
     const [ids] = parseAncestry(query)
@@ -937,7 +1015,7 @@ describe("ancestral registry lifecycle", () => {
       evictAncestryAndRegister(repo, ids, vertexData)
     }
 
-    let vertexCounts: number[] = []
+    const vertexCounts: number[] = []
     for (const entry of repo.ancestral.values()) {
       for (const eid of entry.eids) {
         const payload = repo.elements.get(eid)
@@ -1017,6 +1095,7 @@ describe("ancestral registry lifecycle", () => {
     expect(result).not.toBeNull()
   })
 
+  /** Ancestry entry for removed feature is evicted by gc(active_fids=set()). */
   it("gc removes stale entry", () => {
     const repo = new Repository()
     repo.registerAncestor(["@f1", "surf1"], { type: "flatface" })
@@ -1028,6 +1107,7 @@ describe("ancestral registry lifecycle", () => {
     expect(repo.elements.size).toBe(0)
   })
 
+  /** Ancestry entry for active feature is kept by gc(active_fids={"f1"}). */
   it("gc keeps active entry", () => {
     const repo = new Repository()
     const eid = repo.registerAncestor(["@f1", "surf1"], { type: "flatface" })
@@ -1039,6 +1119,7 @@ describe("ancestral registry lifecycle", () => {
     expect(repo.elements.get(eid)).not.toBeNull()
   })
 
+  /** Entries without @-prefixed tags (built-ins) are not evicted. */
   it("gc keeps builtin entries", () => {
     const repo = new Repository()
     repo.registerAncestor(["builtin_front", "builtin_plane"], { type: "plane" })
@@ -1048,6 +1129,7 @@ describe("ancestral registry lifecycle", () => {
     expect(repo.ancestral.size).toBe(1)
   })
 
+  /** Only stale entries are removed; active entries survive. */
   it("gc partial eviction", () => {
     const repo = new Repository()
     repo.registerAncestor(["@f1", "surf1"], { type: "flatface" })
@@ -1147,6 +1229,7 @@ describe("resolvePlaneEarly", () => {
 //      requires OCC build pipeline — skipped in this suite) ───
 
 describe("makeAncestryQuery construction details", () => {
+  /** Result starts with '?' and ends with ':face'. */
   it("produces wire format with type restriction suffix", () => {
     const ids = ["@sketchA/lineX", "@sketchA/lineY"]
     const q = makeAncestryQuery(ids, "face")
@@ -1154,6 +1237,7 @@ describe("makeAncestryQuery construction details", () => {
     expect(q.endsWith(":face")).toBe(true)
   })
 
+  /** Caller is responsible for sort order - different order → different string. */
   it("preserves caller-determined sort order", () => {
     const q_ab = makeAncestryQuery(["@a", "@b"], "face")
     const q_ba = makeAncestryQuery(["@b", "@a"], "face")
@@ -1181,7 +1265,15 @@ describe("parseAncestry edge cases", () => {
   })
 })
 
+/** Geometry simplification scenario: a query was built with ancestors {A, B, C}
+ * (e.g. three concurrent lines), but after a geometry change the element is
+ * re-registered with only {A, B}. The old query must still resolve because
+ * {A, B} ⊆ {A, B, C}.
+ *
+ * If a query matches more than one element, it is ambiguous and must raise. */
 describe("query ambiguity — partial resolve", () => {
+  /** Two elements share ancestor A; query with {A, B} finds both via
+   *  partial match (one exact, one subset of larger set) -> ambiguous. */
   it("partial match ambiguous when query matches multiple entries", () => {
     const repo = new Repository()
     repo.registerAncestor(["@A", "@B"], { type: "pt", x: 1.0, y: 0.0 })
@@ -1190,6 +1282,7 @@ describe("query ambiguity — partial resolve", () => {
     expect(() => repo.query(q)).toThrow(AmbiguousQueryError)
   })
 
+  /** Partial resolve becomes unambiguous when type narrows it to one. */
   it("ambiguous partial match disambiguated by type restriction", () => {
     const repo = new Repository()
     repo.registerAncestor(["@A", "@B"], { type: "pt" })
@@ -1257,7 +1350,11 @@ describe("B-rep vertex and face integration", () => {
 
 // ─── QueryNode / buildQuery / tagSet ───
 
+/** Tests for recursive ancestral queries (Stage 1): QueryNode, buildQuery,
+ * tagSet — the query tree builder/type layer. */
 describe("QueryNode / buildQuery / tagSet", () => {
+  /** build_query walks parent_map recursively and produces a QueryNode
+   *  tree that matches the lineage we'd expect for an extrude edge. */
   it("buildQuery composes parent chain", () => {
     const parentMap: Record<string, string[]> = {
       edge0: ["extrude1"],
@@ -1300,6 +1397,7 @@ describe("QueryNode / buildQuery / tagSet", () => {
     expect(tags.has(ref("plane_front"))).toBe(true)
   })
 
+  /** build_query leaves @-prefixed IDs untouched. */
   it("buildQuery preserves @ prefix", () => {
     const parentMap: Record<string, string[]> = { el: ["@already_prefixed"] }
     const node = buildQuery("el", parentMap)
@@ -1307,11 +1405,14 @@ describe("QueryNode / buildQuery / tagSet", () => {
     expect(node.parents[0].id).toBe("@already_prefixed")
   })
 
+  /** A terminal node (no parents) produces a tag set of size 1. */
   it("tagSet empty terminal node", () => {
     const node: QueryNode = { id: ref("solo"), parents: [], leafGeom: null }
     expect(tagSet(node)).toEqual(new Set([ref("solo")]))
   })
 
+  /** QueryNode.tag_set() flattens the tree to a frozenset suitable for
+   *  the existing flat Repository.ancestral resolver. */
   it("tagSet derives flat set", () => {
     const grandparentNode: QueryNode = { id: ref("grandparent"), parents: [], leafGeom: null }
     const node: QueryNode = {
@@ -1327,6 +1428,7 @@ describe("QueryNode / buildQuery / tagSet", () => {
     )
   })
 
+  /** QueryNode stores leaf_geom but it's not part of tag_set. */
   it("leafGeom is preserved but not in tagSet", () => {
     const node: QueryNode = {
       id: ref("edge"),
@@ -1340,8 +1442,18 @@ describe("QueryNode / buildQuery / tagSet", () => {
 
 // ─── resolveQuery ───
 
+/** Tests for recursive ancestral queries (Stage 1).
+ *
+ * Covers: QueryNode, build_query, resolve_query, HeuristicConfig, Outcome.
+ * Stage 1 exercises the type/builder/walker against synthetic trees and
+ * the area re-ID case. */
 describe("resolveQuery", () => {
+  /** resolve_query descends a tree against a Repository and matches
+   *  when all branches are present. */
   it("branches and reconverges", () => {
+    // Register two elements under overlapping ancestor sets.
+    // Element A: @sketch1/line1 + @sketch1/line2 + @plane_front
+    // Element B: @sketch1/line1 + @sketch1/line3 + @plane_front
     const repo = new Repository()
 
     repo.registerAncestor(
@@ -1353,6 +1465,8 @@ describe("resolveQuery", () => {
       { type: "test_b", value: 2 },
     )
 
+    // Build a query tree that matches element A exactly.
+    // face_area -> sketch1/line1, sketch1/line2 -> plane_front
     const node: QueryNode = {
       id: ref("face_area"),
       parents: [
@@ -1375,6 +1489,8 @@ describe("resolveQuery", () => {
     expect(result).not.toBeNull()
     expect((result as Record<string, unknown>).value).toBe(1)
 
+    // A query that only mentions sketch1/line1 (without line2) is ambiguous —
+    // both A and B match. Should be Ambiguous, not silently picking one.
     const nodeAmbiguous: QueryNode = {
       id: ref("face_area"),
       parents: [
@@ -1418,7 +1534,11 @@ describe("resolveQuery", () => {
     expect(outcome4).toBe(Outcome.UNRESOLVED)
   })
 
+  /** Replace one constituent entity with a new one — the area still resolves
+   *  via partial-overlap scoring (generalized match_area_reid). */
   it("partial branch resolves with 2/3 overlap", () => {
+    // Replace line_c with arc_new — partial match via overlap.
+    // Stock threshold (0.5) and 2/3 overlap should resolve.
     const repo = new Repository()
     const oldAncestors = [ref("sk1/line_a"), ref("sk1/line_b"), ref("sk1/line_c")]
     repo.registerAncestor(oldAncestors, { type: "flatface", area: 12.0 })
@@ -1437,6 +1557,7 @@ describe("resolveQuery", () => {
     expect(outcome).toBe(Outcome.RESOLVED)
     expect((result as Record<string, unknown>).area).toBe(12.0)
 
+    // Query with only 1/3 overlap should fail with default threshold.
     const nodeLow: QueryNode = {
       id: ref("surface_area"),
       parents: [
@@ -1450,6 +1571,8 @@ describe("resolveQuery", () => {
     expect(outcome2).toBe(Outcome.UNRESOLVED)
   })
 
+  /** Same partial-match case under different HeuristicConfig values flips
+   *  the outcome resolved↔unresolved purely from config, with no walker change. */
   it("heuristic config is tweakable", () => {
     const repo = new Repository()
     const ancestors = [ref("sk/edge_a"), ref("sk/edge_b"), ref("sk/edge_c")]
@@ -1465,17 +1588,23 @@ describe("resolveQuery", () => {
       leafGeom: null,
     }
 
+    // Strict config: overlap_threshold 0.6 → 1/3 fails → UNRESOLVED.
     const strict: HeuristicConfig = { ...DEFAULT_HEURISTIC_CONFIG, overlapThreshold: 0.6 }
     const [outcomeStrict] = resolveQuery(node, repo, strict)
     expect(outcomeStrict).toBe(Outcome.UNRESOLVED)
 
+    // Loose config: overlap_threshold 0.2 → 1/3 passes → RESOLVED.
     const loose: HeuristicConfig = { ...DEFAULT_HEURISTIC_CONFIG, overlapThreshold: 0.2 }
     const [outcomeLoose, result] = resolveQuery(node, repo, loose)
     expect(outcomeLoose).toBe(Outcome.RESOLVED)
     expect((result as Record<string, unknown>).length).toBe(10.0)
   })
 
+  /** Two candidates with scores within ambiguity_margin must produce
+   *  AMBIGUOUS, never a silent pick. */
   it("ambiguity margin forces ambiguous", () => {
+    // Loose threshold so both partial matches pass Tier 2.
+    // Two elements with nearly-equal overlap scores.
     const repo = new Repository()
     const cfg: HeuristicConfig = {
       ...DEFAULT_HEURISTIC_CONFIG,
@@ -1486,6 +1615,7 @@ describe("resolveQuery", () => {
     repo.registerAncestor([ref("sk/edge_a"), ref("sk/edge_b")], { type: "straightedge", id: "A" })
     repo.registerAncestor([ref("sk/edge_a"), ref("sk/edge_c")], { type: "straightedge", id: "B" })
 
+    // Query that overlaps both equally (each matches 1/2 = 0.5).
     const node: QueryNode = {
       id: ref("surface"),
       parents: [
@@ -1499,6 +1629,8 @@ describe("resolveQuery", () => {
     expect(outcome).toBe(Outcome.AMBIGUOUS)
   })
 
+  /** An element with only a geom-hash (no structural ancestors, like an
+   *  imported STEP face) resolves via the hash fallback tier. */
   it("geom-hash-only resolves when no lineage", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -1513,6 +1645,7 @@ describe("resolveQuery", () => {
     expect((result as Record<string, unknown>).area).toBe(42.0)
   })
 
+  /** A QueryNode with an empty tag set returns UNRESOLVED. */
   it("resolveQuery no tag set returns UNRESOLVED", () => {
     const repo = new Repository()
     const node: QueryNode = { id: "", parents: [], leafGeom: null }
@@ -1525,6 +1658,7 @@ describe("resolveQuery", () => {
 // ─── HeuristicConfig / scoreOverlap / pickBest ───
 
 describe("HeuristicConfig defaults", () => {
+  /** DEFAULT_HEURISTIC_CONFIG has sensible defaults. */
   it("defaults are sensible", () => {
     const cfg = DEFAULT_HEURISTIC_CONFIG
     expect(cfg.overlapThreshold).toBe(0.5)
@@ -1537,6 +1671,7 @@ describe("HeuristicConfig defaults", () => {
 })
 
 describe("scoreOverlap", () => {
+  /** score_overlap handles empty sets and perfect matches. */
   it("edge cases and exact matches", () => {
     expect(scoreOverlap(new Set(), new Set())).toBe(0.0)
     expect(scoreOverlap(new Set(["a"]), new Set())).toBe(0.0)
@@ -1547,6 +1682,7 @@ describe("scoreOverlap", () => {
 })
 
 describe("pickBest", () => {
+  /** pick_best with one candidate returns RESOLVED. */
   it("single candidate returns RESOLVED", () => {
     const cfg = DEFAULT_HEURISTIC_CONFIG
     const [outcome, winner] = pickBest([["item", 0.8]], cfg)
@@ -1554,6 +1690,7 @@ describe("pickBest", () => {
     expect(winner).toBe("item")
   })
 
+  /** pick_best with one candidate beating another by > margin. */
   it("clear winner beats runner-up by > margin", () => {
     const cfg: HeuristicConfig = { ...DEFAULT_HEURISTIC_CONFIG, ambiguityMargin: 0.2 }
     const [outcome, winner] = pickBest(
@@ -1564,6 +1701,7 @@ describe("pickBest", () => {
     expect(winner).toBe("A")
   })
 
+  /** pick_best with scores within margin returns AMBIGUOUS. */
   it("ambiguous within margin", () => {
     const cfg: HeuristicConfig = { ...DEFAULT_HEURISTIC_CONFIG, ambiguityMargin: 0.3 }
     const [outcome, winner] = pickBest(
@@ -1574,6 +1712,7 @@ describe("pickBest", () => {
     expect(winner).toBeNull()
   })
 
+  /** pick_best with no candidates returns UNRESOLVED. */
   it("empty returns UNRESOLVED", () => {
     const [outcome, winner] = pickBest([], DEFAULT_HEURISTIC_CONFIG)
     expect(outcome).toBe(Outcome.UNRESOLVED)
@@ -1583,6 +1722,12 @@ describe("pickBest", () => {
 
 // ─── queryAll ───
 
+/** Tests for the ancestry hierarchy: solid, extrusion-feature, sketch-feature queries.
+ *
+ * Key invariants:
+ * - Leaf entities carry the feature root in their ancestor set.
+ * - query() with a full ancestor set finds the exact entity.
+ * - query_all() with just the feature root enumerates all entities of a given type. */
 describe("queryAll", () => {
   it("returns empty for non-ancestry query", () => {
     const repo = new Repository()
@@ -1631,6 +1776,7 @@ describe("queryAll", () => {
     expect(repo.queryAll(makeAncestryQuery(["@feat3"], "flatface"))).toEqual([])
   })
 
+  /** Existing exact queries must still resolve after the feature root is added. */
   it("resolves with extended ancestor set", () => {
     const repo = new Repository()
     repo.registerAncestor(["@feat1face0", "@feat1"], { type: "flatface", x: 1 })

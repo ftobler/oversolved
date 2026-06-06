@@ -44,6 +44,7 @@ function arcEdge(cx: number, cy: number, r: number, aStartDeg: number, aEndDeg: 
 
 describe('loopSignedArea', () => {
   it('is positive (CCW) and equals the area for a square', () => {
+    // 2x2 CCW square: area should be +4
     expect(loopSignedArea(square(10))).toBeCloseTo(100, 9)
   })
   it('flips sign for a reversed (CW) loop', () => {
@@ -244,6 +245,7 @@ describe('classifyLoops additional', () => {
   it('is order independent when hole is listed before outer', () => {
     const outer = rect(0, 0, 4, 4)
     const hole = rect(1, 1, 3, 3)
+    // hole listed before outer
     const groups = classifyLoops([hole, outer])
     expect(groups).toHaveLength(1)
     const [o, holes] = groups[0]
@@ -265,6 +267,9 @@ describe('classifyLoops additional', () => {
   })
 
   it('treats shared-boundary loops as independent outers', () => {
+    /** Two non-overlapping loops whose edge endpoints touch: both independent outers.
+     *  Loop A: (0,0)-(1,0)-(1,1)-(0,1), Loop B: (1,0)-(2,0)-(2,1)-(1,1).
+     *  They share the edge x=1, so start points of B lie on A's boundary. */
     const a = rect(0, 0, 1, 1)
     const b = rect(1, 0, 2, 1)
     const groups = classifyLoops([a, b])
@@ -273,9 +278,13 @@ describe('classifyLoops additional', () => {
   })
 
   it('classifies hole whose start touches outer boundary correctly', () => {
+    /** Hole whose start point lies on the outer loop's boundary is still classified
+     *  correctly.  Outer: (0,0)-(4,0)-(4,4)-(0,4).
+     *  Hole: (2,0)-(3,0)-(3,2)-(2,2) -- bottom edge of hole starts on outer's bottom edge. */
     const outer = rect(0, 0, 4, 4)
     const hole = rect(2, 0, 3, 2)
     const groups = classifyLoops([outer, hole])
+    // hole centroid (2.5, 1.0) is strictly inside outer; must be a hole
     expect(groups).toHaveLength(1)
     const [o, holes] = groups[0]
     expect(o).toBe(outer)
@@ -284,6 +293,7 @@ describe('classifyLoops additional', () => {
   })
 
   it('classifies concave outer (L-shape) with hole inside', () => {
+    /** Concave outer (L-shape) with a hole inside is classified correctly. */
     const lShape: LoopEdge[] = [
       { kind: 'line', start: [0, 0], end: [4, 0] },
       { kind: 'line', start: [4, 0], end: [4, 2] },
@@ -302,6 +312,7 @@ describe('classifyLoops additional', () => {
   })
 
   it('classifies arc-containing outer loop with inner hole', () => {
+    /** Loop containing an arc (bulging outward) should still classify as outer. */
     const arcLoop: LoopEdge[] = [
       { kind: 'line', start: [0, 0], end: [4, 0] },
       { kind: 'line', start: [4, 0], end: [4, 4] },
@@ -317,6 +328,7 @@ describe('classifyLoops additional', () => {
   })
 
   it('handles arc-only loop without start keys without crashing', () => {
+    /** classify_loops should work when the loop has no 'start' keys (OCC arcs). */
     const arcOnly: LoopEdge[] = [
       { kind: 'arc', center: [0, 0], radius: 5.0, angle_start_deg: 0.0, angle_end_deg: 180.0, ccw: true },
     ]
@@ -325,6 +337,9 @@ describe('classifyLoops additional', () => {
   })
 
   it('classifies small-arc loop as outer, not a hole', () => {
+    /** Loop containing a very small arc (< 5 degrees) is outer, not a hole.
+     *  The arc midpoint can lie on the concave side of a tight-radius arc.
+     *  Using the centroid as rep point must classify this loop as an outer boundary. */
     const r = 10.0
     const aStart = 0.0
     const aEnd = 3.0
@@ -344,6 +359,7 @@ describe('classifyLoops additional', () => {
   })
 
   it('classifies small-arc loop inside outer rect as a hole', () => {
+    /** Outer rect + inner small-arc loop: inner is classified as a hole. */
     const outer = rect(-5, -5, 5, 5)
     const r = 0.5
     const arc = arcEdge(0.0, 0.0, r, 0.0, 3.0)
@@ -367,6 +383,8 @@ describe('classifyLoops additional', () => {
 
 describe('loopSignedArea additional', () => {
   it('computes larger area for loop with outward-bulging arc', () => {
+    /** A CCW loop with a semicircle arc bulging outward should have larger area
+     *  than the chord-only approximation would give. */
     const loop: LoopEdge[] = [
       { kind: 'line', start: [0, 0], end: [2, 0] },
       { kind: 'line', start: [2, 0], end: [2, 1] },
@@ -379,13 +397,17 @@ describe('loopSignedArea additional', () => {
   })
 
   it('does not crash on arc edge without start keys', () => {
+    /** OCC-sourced arc dicts without 'start'/'end' keys should not crash. */
     const e: LoopEdge = { kind: 'arc', center: [0, 0], radius: 1.0, angle_start_deg: 0.0, angle_end_deg: 90.0, ccw: true }
+    // Only 1 point (the midpoint) -- too few for a real area, returns 0
     expect(loopSignedArea([e])).toBe(0.0)
   })
 })
 
 describe('pointInLoop additional', () => {
   it('arc midpoint matters for point inside arc bulge', () => {
+    /** A point that lies inside the arc bulge but outside the chord polygon
+     *  should be correctly detected as inside when arc midpoints are sampled. */
     const loop: LoopEdge[] = [
       { kind: 'line', start: [0, 0], end: [2, 0] },
       { kind: 'line', start: [2, 0], end: [2, 1] },
@@ -422,6 +444,9 @@ describe('loopCentroid', () => {
   })
 
   it('computes area centroid of L-shape, not vertex average', () => {
+    // L-shape (6x6 square minus a 4x4 corner), CCW. Area centroid is (2.2, 2.2);
+    // the average of the vertices is (2.667, 2.667), so the two disagree clearly.
+    // Flatface centroid must be the area centroid, not the average of boundary endpoints.
     const lShape: LoopEdge[] = [
       { kind: 'line', start: [0, 0], end: [6, 0] },
       { kind: 'line', start: [6, 0], end: [6, 2] },
@@ -433,25 +458,30 @@ describe('loopCentroid', () => {
     const [cx, cy] = loopCentroid(lShape)
     expect(cx).toBeCloseTo(2.2, 7)
     expect(cy).toBeCloseTo(2.2, 7)
+    // Must NOT be the old endpoint/vertex average (16/6 ≈ 2.667)
     expect(Math.abs(cx - 16 / 6)).toBeGreaterThan(0.1)
   })
 
   it('offsets half-disk centroid toward arc', () => {
+    /** A half-disk's centroid is offset toward the arc by 4r/(3*pi), not at the
+     *  diameter midpoint. This only resolves if arcs are sampled finely. */
     const r = 2.0
     const loop: LoopEdge[] = [
       { kind: 'line', start: [-r, 0], end: [r, 0] },
       { kind: 'arc', start: [r, 0], end: [-r, 0], center: [0, 0], radius: r, angle_start_deg: 0, angle_end_deg: 180, ccw: true },
     ]
     const [cx, cy] = loopCentroid(loop)
-    const expectedCy = 4 * r / (3 * Math.PI)
+    const expectedCy = 4 * r / (3 * Math.PI)  // ~0.8488
     expect(cx).toBeCloseTo(0.0, 7)
     expect(cy).toBeCloseTo(expectedCy, 2)
+    // The diameter midpoint (circle center) is y=0; the fix must move off it.
     expect(cy).toBeGreaterThan(0.5)
   })
 })
 
 describe('arcSamplePoints', () => {
   it('returns midpoint for 0 to 90 degree arc', () => {
+    // midpoint of 0->90 deg arc at origin radius 1 is at 45 deg
     const pts = arcSamplePoints(arcEdge(0, 0, 1, 0, 90), 1)
     expect(pts).toHaveLength(1)
     expect(pts[0][0]).toBeCloseTo(Math.cos(Math.PI / 4), 9)
@@ -471,8 +501,11 @@ describe('arcSamplePoints', () => {
 
 describe('loopPts', () => {
   it('default arc sampling produces start + one midpoint', () => {
+    /** Default arc sampling (1) must still yield the single midpoint, preserving
+     *  behaviour for loopSignedArea / pointInLoop. */
     const arc: LoopEdge = { kind: 'arc', start: [1, 0], center: [0, 0], radius: 1.0, angle_start_deg: 0, angle_end_deg: 90, ccw: true }
-    const pts = loopPts([arc])
+    const pts = loopPts([arc])  // default arc_samples=1
+    // start + one interior (midpoint at 45 deg).
     expect(pts).toHaveLength(2)
     expect(pts[0]).toEqual([1, 0])
     expect(pts[1][0]).toBeCloseTo(Math.cos(Math.PI / 4))
