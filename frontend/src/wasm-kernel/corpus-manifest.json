@@ -1,13 +1,14 @@
 {
   "summary": {
-    "total": 57,
-    "ok": 57,
+    "total": 65,
+    "ok": 65,
     "by_tier": {
+      "ancestral": 5,
       "anchor": 20,
       "dimension_angle": 3,
       "dimension_length": 6,
-      "dimension_radius": 3,
-      "edge_query": 4,
+      "dimension_radius": 5,
+      "edge_query": 5,
       "plane_query": 3,
       "real_doc": 15,
       "slash_point": 3
@@ -16,6 +17,10 @@
   "coverage": {
     "array/anchor": [
       "array_rectangular_3x2"
+    ],
+    "boolean/ancestral": [
+      "chain_extrude_cut",
+      "boolean_intersect"
     ],
     "boolean/anchor": [
       "boolean_union"
@@ -27,6 +32,9 @@
       "pick_chamfer_edge0",
       "pick_chamfer_edge1"
     ],
+    "circular_array/ancestral": [
+      "circular_array_3copies"
+    ],
     "extrude/anchor": [
       "box_extrude_5x5x5",
       "box_with_cut_10x10",
@@ -37,7 +45,8 @@
     ],
     "fillet/edge_query": [
       "pick_fillet_edge0",
-      "pick_fillet_edge1"
+      "pick_fillet_edge1",
+      "chain_extrude_fillet"
     ],
     "hole/anchor": [
       "box_with_hole"
@@ -103,15 +112,28 @@
       "dim_line_len15"
     ],
     "sketch/dimension_radius": [
+      "origin_circle_dia6",
+      "origin_circle_dia12",
       "dim_circle_dia4",
       "dim_circle_dia10",
       "dim_circle_dia20"
+    ],
+    "sweep/ancestral": [
+      "sweep_straight_z"
+    ],
+    "transform/ancestral": [
+      "transform_translate"
     ]
   },
   "cases": {
     "array_rectangular_3x2": {
       "feature_kind": "array",
       "query_tier": "anchor",
+      "ok": true
+    },
+    "boolean_intersect": {
+      "feature_kind": "boolean",
+      "query_tier": "ancestral",
       "ok": true
     },
     "boolean_union": {
@@ -142,6 +164,21 @@
     "box_with_hole": {
       "feature_kind": "hole",
       "query_tier": "anchor",
+      "ok": true
+    },
+    "chain_extrude_cut": {
+      "feature_kind": "boolean",
+      "query_tier": "ancestral",
+      "ok": true
+    },
+    "chain_extrude_fillet": {
+      "feature_kind": "fillet",
+      "query_tier": "edge_query",
+      "ok": true
+    },
+    "circular_array_3copies": {
+      "feature_kind": "circular_array",
+      "query_tier": "ancestral",
       "ok": true
     },
     "dim_angle_30": {
@@ -217,6 +254,16 @@
     "mirror_plane_right": {
       "feature_kind": "mirror",
       "query_tier": "anchor",
+      "ok": true
+    },
+    "origin_circle_dia12": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_radius",
+      "ok": true
+    },
+    "origin_circle_dia6": {
+      "feature_kind": "sketch",
+      "query_tier": "dimension_radius",
       "ok": true
     },
     "pick_chamfer_edge0": {
@@ -387,6 +434,16 @@
     "sketch_fixed_point": {
       "feature_kind": "sketch",
       "query_tier": "anchor",
+      "ok": true
+    },
+    "sweep_straight_z": {
+      "feature_kind": "sweep",
+      "query_tier": "ancestral",
+      "ok": true
+    },
+    "transform_translate": {
+      "feature_kind": "transform",
+      "query_tier": "ancestral",
       "ok": true
     },
     "two_bodies_new_operation": {
