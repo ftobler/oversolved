@@ -1,7 +1,7 @@
 {
   "summary": {
-    "total": 56,
-    "ok": 56,
+    "total": 57,
+    "ok": 57,
     "by_tier": {
       "anchor": 20,
       "dimension_angle": 3,
@@ -9,7 +9,7 @@
       "dimension_radius": 3,
       "edge_query": 4,
       "plane_query": 3,
-      "real_doc": 14,
+      "real_doc": 15,
       "slash_point": 3
     }
   },
@@ -71,6 +71,7 @@
       "real_querytest3",
       "real_split",
       "real_star",
+      "real_translate",
       "real_two_objects_1",
       "real_two_objects_2"
     ],
@@ -329,6 +330,11 @@
       "ok": true
     },
     "real_star": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_translate": {
       "feature_kind": "real",
       "query_tier": "real_doc",
       "ok": true

@@ -8,8 +8,9 @@ import {
   type BuildDeps,
   type FeatureResult,
 } from './builder'
-import { Repository } from './query'
-import type { BuildState, FeatureCheckpoint } from './types3d'
+import { Repository, makeAncestryQuery } from './query'
+import { edgeGeometryHash } from './geomHash'
+import type { BuildState, FeatureCheckpoint, Body } from './types3d'
 
 function makeDeps(overrides?: Partial<BuildDeps>): BuildDeps {
   return {
@@ -233,6 +234,40 @@ describe('build with mock solvers', () => {
     )
     expect(calledWith).toEqual(['body_x'])
     expect(r.bodies['body_x']).toEqual({ mesh: { face_data: [] } })
+  })
+
+  it('registers B-rep edge ancestry into the live repo during the loop', () => {
+    // Regression: the builder must register a body's B-rep face/edge/vertex
+    // ancestry into the *live* repo as each feature solves (Python's
+    // _register_body_faces), not only after the loop. Otherwise a later feature
+    // resolving against an earlier body's edge -- e.g. a circular_array axis
+    // edge-query -- sees an empty repo and falls back to a default axis, which in
+    // the OCC path produced degenerate overlapping copies that hung the kernel
+    // (translate.yaml real-doc anchor). The edge must be queryable WHEN f2 solves.
+    const edge = { kind: 'line', start: [0, 0, 0], end: [0, 10, 0] }
+    let resolvedDuringF2: unknown = undefined
+    const makeBody = (): Body => ({
+      id: 'body_f1', created_by: 'f1', modified_by: [], shape: 1, sketch_id: '',
+      brep_diff: null, profile_queries: [], face_lineage: {}, edge_lineage: {},
+    })
+    const deps = makeDeps({
+      tessellateBodies: (store) => Object.fromEntries(
+        Object.keys(store).map((bid) => [bid, { mesh: { face_data: [] }, edges: [edge], vertices: [] }]),
+      ),
+      trySolveFeature: (feature, repo, bodyStore): FeatureResult => {
+        if (feature.id === 'f1') {
+          bodyStore['body_f1'] = makeBody()
+        } else if (feature.id === 'f2') {
+          const q = makeAncestryQuery(['@' + edgeGeometryHash(edge)], 'straightedge')
+          resolvedDuringF2 = repo.query(q)
+        }
+        return { status: 'ok' }
+      },
+    })
+    build({ features: [{ id: 'f1', kind: 'extrude' }, { id: 'f2', kind: 'circular_array' }] }, {}, deps)
+    expect(resolvedDuringF2).not.toBeNull()
+    expect((resolvedDuringF2 as Record<string, unknown>).start).toEqual([0, 0, 0])
+    expect((resolvedDuringF2 as Record<string, unknown>).type).toBe('straightedge')
   })
 
   it('preserves _topo_ on full rebuild', () => {

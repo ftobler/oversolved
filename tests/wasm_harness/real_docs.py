@@ -32,10 +32,14 @@ _BUILTIN_FEATURE_KINDS = {"origin", "plane"}
 # Docs that HANG the TS kernel (sync infinite loop -> cannot be skipped at runtime,
 # since JS can't interrupt synchronous code; including them blocks the whole gate).
 # Quarantined here with the finding; remove a stem once the kernel bug is fixed.
-#   translate: hangs in the chain {face-query extrude profile (?...surface:0:flatface),
-#     circular_array about an edge-query axis, chained flatface boolean union} -- the
-#     real-doc anchor surfaced a genuine TS-kernel infinite loop. Investigate.
-_QUARANTINE_STEMS = {"translate"}
+#   (translate: FIXED. The hang was a circular_array whose edge-query axis failed
+#    to resolve in the TS kernel -- the builder never registered B-rep face/edge/
+#    vertex ancestry into the *live* repo during the feature loop (Python's
+#    _register_body_faces was unported, builder.ts had a TODO), so the axis query
+#    fell back to the world Z origin and the degenerate overlapping rotated copies
+#    hung ShapeUpgrade_UnifySameDomain. Wiring _registerBodyFaces into the loop
+#    resolves the axis to Python's edge and the fuse completes.)
+_QUARANTINE_STEMS: set[str] = set()
 _CORPUS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "oversolved_corpus",

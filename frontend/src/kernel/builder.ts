@@ -501,6 +501,34 @@ function _registerExtrusionFeature(globalRepo: Repository, featureId: string, sk
   })
 }
 
+// Tessellate one body and register its B-rep face/edge/vertex ancestry into the
+// live repo (mirrors Python builder.py `_register_body_faces`). Called per
+// feature in the build loop so a later feature's face/edge/vertex query resolves
+// against an earlier body's geometry (e.g. a circular_array axis edge query).
+// `edge_queries`/`vertex_queries` are presence/length gates only in the registrar
+// (their content is unused), so length-matched placeholders suffice.
+function _registerBodyFaces(
+  globalRepo: Repository,
+  body: Body,
+  deps: BuildDeps,
+  tessCache: Record<number, Record<string, unknown>>,
+): void {
+  if (body.shape == null) return
+  try {
+    const out = deps.tessellateBodies({ [body.id]: body }, globalRepo, tessCache)[body.id]
+    if (!out) return
+    const mesh = out.mesh as TessMesh | undefined
+    if (mesh && !mesh.is_fallback) _registerBrepFaceAncestry(globalRepo, body, mesh)
+    const edges = (out.edges as Array<Record<string, unknown>>) ?? []
+    if (edges.length) _registerBrepEdgeAncestry(globalRepo, body, edges, edges.map(() => ''))
+    const verts = (out.vertices as number[][]) ?? []
+    if (verts.length) _registerBrepVertexAncestry(globalRepo, body, verts, verts.map(() => ''))
+  } catch {
+    // Non-fatal: a body that fails to tessellate just lacks B-rep ancestry, as
+    // in Python (it logs a warning and continues).
+  }
+}
+
 function _snapshotWithBrepGeometry(
   checkpoint: FeatureCheckpoint,
   bodiesOut: Record<string, Record<string, unknown>>,
@@ -595,6 +623,10 @@ export function build(
 
   const featuresById = Object.fromEntries(allFeatures.map((f) => [String(f.id ?? ''), f]))
 
+  // Per-build tessellation cache shared by the in-loop B-rep registration and
+  // the post-loop tessellation, so each unique body shape meshes at most once.
+  const tessCache: Record<number, Record<string, unknown>> = {}
+
   for (const feature of features.slice(firstDirty)) {
     const fid = String(feature.id ?? '')
 
@@ -628,12 +660,13 @@ export function build(
 
     for (const [bodyId, body] of Object.entries(bodyStore)) {
       if (!registeredBodyIds.has(bodyId) && body.shape != null) {
+        _registerBodyFaces(globalRepo, body, deps, tessCache)
         _registerSolidAncestry(globalRepo, body)
         _registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
         registeredBodyIds.add(bodyId)
       } else if (body.shape != null && body.modified_by.length > (modifiedByLenBefore[bodyId] ?? 0)) {
         // Body was modified; re-register faces so downstream features see updates.
-        // TODO: full _registerBodyFaces when tessellation is wired.
+        _registerBodyFaces(globalRepo, body, deps, tessCache)
       }
     }
 
@@ -649,7 +682,7 @@ export function build(
   const activeFids = new Set(allFeatures.map((f) => String(f.id ?? '')))
   globalRepo.gc(activeFids)
 
-  const bodiesOut = deps.tessellateBodies(bodyStore, globalRepo)
+  const bodiesOut = deps.tessellateBodies(bodyStore, globalRepo, tessCache)
 
   // Rebuild checkpoints for dirty features.
   const cleanPrefixFids = new Set<string>()
