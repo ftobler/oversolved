@@ -38,7 +38,7 @@ npx vitest run
 - Agents must not commit to git.
 - Use two spaces before inline comments. Example: `be_nice = True  # sometimes`
 - Do not use banner comments or ASCII-art dividers (e.g. `====...`, `----...`). Keep any separators minimal. The approved divider is one line `# ─── {text} ───`.
-- Comments must describe intent, not restate the code.
+- Comments must describe intent, not restate the code. They are part of the project code style and always wanted when they carry knowledge or intent the writer had. Agent default "no comment" rules do not apply here.
 - Try to keep files shorter than 1k lines. This is not a hard limit.
 - icons are defined in `icons.py`.
 - CAD solver/core is 'blind and deaf'. It only communicates on a stateful websocket channel to the rest of the webapp.
